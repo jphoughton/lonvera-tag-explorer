@@ -109,7 +109,14 @@ export function buildShell({ onBack }) {
     tieBtn.setAttribute('aria-expanded', String(open));
     if (open) loadTieout(tiePanel);
   });
-  srcBannerEl = h('div', { class: 'source-banner meta', id: 'source-banner' }, srcTextEl, tieBtn);
+  const moreBtn = h('button', { type: 'button', class: 'btn small src-more', id: 'src-more', 'aria-expanded': 'false' }, 'More');
+  moreBtn.addEventListener('click', () => {
+    const open = !srcBannerEl.classList.contains('open');
+    srcBannerEl.classList.toggle('open', open);
+    moreBtn.textContent = open ? 'Less' : 'More';
+    moreBtn.setAttribute('aria-expanded', String(open));
+  });
+  srcBannerEl = h('div', { class: 'source-banner meta', id: 'source-banner' }, srcTextEl, moreBtn, tieBtn);
 
   labelEl = h('strong', { class: 'range-label', id: 'range-label' });
   noteEl = h('div', { class: 'range-note', id: 'range-note' });
@@ -267,7 +274,7 @@ function syncSource(p) {
   srcBtns.upstack.disabled = !avail && !up;
   srcBtns.upstack.title = avail ? "Upstack's attribution: new customers or all orders credited to each ad (any-click, 30-day window)" : 'Upstack data is not loaded yet';
   srcBtns.meta.title = "Meta's own reporting (as the ad platform attributes purchases)";
-  srcBannerEl.className = 'source-banner ' + srcView.key;
+  srcBannerEl.className = 'source-banner ' + srcView.key + (srcBannerEl.classList.contains('open') ? ' open' : '');
   setSrcText(up ? srcView.label + '. ' : null, up ? (srcView.summary || '') : META_SUMMARY);
 }
 

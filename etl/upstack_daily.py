@@ -124,8 +124,8 @@ def run(since: dt.date, until: dt.date, workers: int = 4, dry_run: bool = False,
                 batch = {}
         if not recs and not skip_done:
             raise db.JobFailed("nothing to pull")
-        chan_since = min(recs) if recs else since
-        chan = pull_channel(client, chan_since, until) if recs else []
+        chan_since = min(recs) if recs else since             # a resumed backfill with nothing left still refreshes the channel feed and the build
+        chan = pull_channel(client, chan_since, until)
         stats.update(days_pulled=len(recs), api_calls=client.calls, channel_rows=len(chan))
         if dry_run:
             db.log("dry run: nothing written")
@@ -133,8 +133,7 @@ def run(since: dt.date, until: dt.date, workers: int = 4, dry_run: bool = False,
         if batch:
             check_days(conn, batch)
             write_days(conn, batch)
-        if recs:
-            write_channel(conn, chan, chan_since, until)
+        write_channel(conn, chan, chan_since, until)
         db.set_meta(conn, "upstack_pulled_at", dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
         stats["build"] = upstack_build.build(conn)
         conn.commit()

@@ -440,4 +440,9 @@ tr.total.extra td .note-link { font-weight: 400; font-size: 11px; margin-left: 6
 .tieout-table tr.muted th, .tieout-table tr.muted td { color: var(--muted); }
 .tieout-notes { margin: 4px 0 8px 18px; padding: 0; color: var(--text); }
 .tieout-notes li { margin: 2px 0; }
-@media (max-width: 720px) { .source-banner .src-text { flex-basis: 100%; } }
+.source-banner .src-more { display: none; }
+@media (max-width: 720px) {
+  .source-banner .src-text { flex-basis: 100%; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .source-banner.open .src-text { display: block; }
+  .source-banner .src-more { display: inline-block; }
+}
