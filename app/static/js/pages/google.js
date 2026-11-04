@@ -1,11 +1,12 @@
-// Marketing metrics, channel Google: campaign types and campaigns from Upstack's Google feeds. No creatives, so no tag tree: two tables and a trend chart.
+// Marketing metrics, platform Google: campaign types and campaigns from Upstack's Google feeds. No creatives, so no tag tree: two tables and a trend chart.
+// Two views of one page: the overview ('/?platform=google': trend, campaign types, campaigns) and Campaigns ('/campaigns?platform=google': trend and the campaigns table first, the types as a filter).
 // Numbers: Google's own reporting (default) or Upstack's attribution (Numbers from switch, same as the Meta pages). See app/google.py.
 import { h, fmt, href, apiWindow, globalParams, isNum, metricLabel, colPref, setColPref, refreshCmp } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { metricColumns } from '../columns.js';
 import { setRangeInfo } from '../controls.js';
-import { breadcrumbs } from '../components.js';
+import { breadcrumbs, viewSwitch, srcBadge } from '../components.js';
 import { trendChart, BAR_COLOR, LINE_COLOR } from '../charts.js';
 
 const TYPES = ['Shopping', 'Search', 'Performance Max', 'Demand Gen', 'Other'];
@@ -46,18 +47,20 @@ function colChips() {
     });
     return b;
   };
-  return h('div', { class: 'ctl colchips' }, h('span', { class: 'ctl-name' }, 'Columns'),
+  return h('div', { class: 'ctl colchips' }, srcBadge(), h('span', { class: 'ctl-name' }, 'Columns'),
     h('span', { class: 'chips', role: 'group', 'aria-label': 'Columns' }, mk('traffic', 'Traffic', 'Impressions, Clicks, CTR, CPC'), mk('advanced', 'Advanced', 'CPM, Conv rate')));
 }
 
 function typeBadge(t) { return h('span', { class: 'badge muted-badge', title: 'Campaign type, read from the campaign name' }, t); }
 
+const basePath = () => (location.pathname === '/campaigns' ? '/campaigns' : '/');
+
 function typesTable(rows, total, G, info) {
   const labelCol = { key: 'label', label: 'Campaign type', sticky: true, sort: (r) => r.label, total: () => 'Total',
-    cell: (r) => h('a', { href: href('/google', { ...G, type: r.key }), class: 'rowlink' }, r.label) };
+    cell: (r) => h('a', { href: href(basePath(), { ...G, type: r.key }), class: 'rowlink' }, r.label) };
   const countCol = { key: 'active', label: 'Campaigns with spend', num: true, sort: (r) => r.m.active_campaigns, cell: (r) => fmt.int(r.m.active_campaigns), total: (t) => fmt.int(t.m.active_campaigns),
     title: 'Campaigns that spent in the selected range' };
-  return createTable({ columns: [labelCol, countCol, ...googleColumns(info)], rows, total: { m: total }, rowKey: (r) => r.key, rowHref: (r) => href('/google', { ...G, type: r.key }),
+  return createTable({ columns: [labelCol, countCol, ...googleColumns(info)], rows, total: { m: total }, rowKey: (r) => r.key, rowHref: (r) => href(basePath(), { ...G, type: r.key }),
     tableClass: 'compact', testid: 'google-types', sortKey: 'spend', sortDir: 'desc' });
 }
 
@@ -121,10 +124,12 @@ function trendPanel(p, scope, signal) {
 
 export async function googlePage(ctx) {
   const { params: p, signal } = ctx;
-  const G = globalParams(p);
+  const G = { ...globalParams(p), platform: 'google' };
   const wp = apiWindow(p);
   const type = TYPES.includes(p.type) ? p.type : null;
-  document.title = 'Google · Marketing metrics';
+  const campaignsView = location.pathname === '/campaigns';
+  const base = basePath();
+  document.title = (campaignsView ? 'Google campaigns' : 'Google') + ' · Marketing metrics';
   const [types, camps] = await Promise.all([
     api('/api/google/rollup', { group: 'type', ...wp }, { signal }),
     api('/api/google/rollup', { group: 'campaign', ...(type ? { type } : {}), ...wp }, { signal }),
@@ -132,19 +137,28 @@ export async function googlePage(ctx) {
   if (!ctx.alive()) return;
   setRangeInfo(p, types.window_info, types.compare_info || null, { unclassified: false });
   const panel = trendPanel(p, type ? { type } : {}, signal);
-  const crumbs = [{ label: 'Marketing metrics', href: href('/', G) }, { label: 'Google', href: type ? href('/google', G) : null }, ...(type ? [{ label: type }] : [])];
+  const root = { label: 'Marketing metrics', href: href('/', { ...G, platform: null }) };
+  const crumbs = [root, { label: campaignsView ? 'Google campaigns' : 'Google', href: type ? href(base, G) : null }, ...(type ? [{ label: type }] : [])];
   if (crumbs.length === 2) crumbs[1].href = null;
   const tTypes = typesTable(types.rows, types.total.m, G, types.window_info);
   const tCamps = campaignsTable(camps.rows, camps.total.m, G, types.window_info);
-  ctx.mount(h('div', { class: 'page', 'data-level': 'google' },
-    h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'Google'), h('span', { class: 'badge muted-badge', title: 'Read from Upstack: its Google ad-platform feed and its attribution' }, 'Upstack-fed · campaign level'))),
+  // Campaigns view: the types are a filter row above the campaigns table (the overview shows them as a table of their own)
+  const typeChips = h('div', { class: 'ctl', id: 'type-ctl' }, h('span', { class: 'ctl-name' }, 'Campaign type'),
+    h('span', { class: 'segs', role: 'group', 'aria-label': 'Campaign type', 'data-testid': 'type-filter' },
+      h('a', { class: 'seg', href: href(base, G), 'data-type': 'all', 'aria-pressed': String(!type) }, 'All'),
+      types.rows.filter((r) => (r.m.spend || 0) > 0 || r.key === type).map((r) => h('a', { class: 'seg', href: href(base, { ...G, type: r.key }), 'data-type': r.key, 'aria-pressed': String(type === r.key) }, r.label))));
+  const campHead = h('div', { class: 'tablehead' }, h('h2', { id: 'campaigns-title' }, type ? `Campaigns · ${type}` : 'Campaigns'),
+    campaignsView ? colChips() : null, type && !campaignsView ? h('a', { class: 'btnlink', href: href(base, G) }, 'All types') : null);
+  ctx.mount(h('div', { class: 'page', 'data-level': campaignsView ? 'google-campaigns' : 'google' },
+    h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', campaignsView ? 'Campaigns' : 'Google'), h('span', { class: 'badge muted-badge', title: 'Read from Upstack: its Google ad-platform feed and its attribution' }, 'Google · Upstack-fed · campaign level'),
+      h('span', { class: 'spacer' }), viewSwitch(campaignsView ? 'campaigns' : 'home', G, 'google'))),
     h('div', { class: 'crumbrow' }, breadcrumbs(crumbs)),
     panel.el,
-    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Campaign types'), colChips()),
-    h('div', { class: 'note-line' }, 'Upstack exposes no Google campaign type, so it is read from the campaign name (Shopping, Search, Performance Max, Demand Gen; a name that says none of them is Other).'),
-    tTypes.el,
-    h('div', { class: 'tablehead' }, h('h2', { id: 'campaigns-title' }, type ? `Campaigns · ${type}` : 'Campaigns'),
-      type ? h('a', { class: 'btnlink', href: href('/google', G) }, 'All types') : null),
+    campaignsView ? h('div', { class: 'ctl-row' }, typeChips) : null,
+    campaignsView ? null : h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Campaign types'), colChips()),
+    campaignsView ? null : h('div', { class: 'note-line' }, 'Upstack exposes no Google campaign type, so it is read from the campaign name (Shopping, Search, Performance Max, Demand Gen; a name that says none of them is Other).'),
+    campaignsView ? null : tTypes.el,
+    campHead,
     tCamps.el));
   panel.load();
 }

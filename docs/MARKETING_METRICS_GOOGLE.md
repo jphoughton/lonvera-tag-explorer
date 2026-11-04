@@ -1,12 +1,11 @@
-# Marketing metrics: renamed section, channel switch, Google from Upstack
+# Marketing metrics: renamed section, Google from Upstack
 
 ## Rename
 The section formerly called **Tags** (top bar `Lonvera | Marketing metrics | Projections`, page titles, headings, breadcrumb root, login heading) is now **Marketing metrics**. URLs, route names and code identifiers are unchanged
 (`/`, `/p/<slug>`, `/ad/<id>`, `tag_set` ...), so bookmarks and the API keep working. The product page's inner **View by Tags | Campaigns** switch keeps its name: it really is the tag hierarchy view.
 
-## Channel switch
-`Channel: Meta | Google` is the first control in the header bar. Meta is the existing pages. **Google** is a new page at `/google`. The date range, comparison and the Numbers-from choice carry over when switching;
-Stage, Active only and the Meta trend picks are Meta-only and are dropped. On the Google page the stage chips and the Meta-vs-Upstack tie-out button are hidden.
+## Platform
+The first control of the bar is **Platform: All | Meta | Google** (see [PLATFORMS.md](PLATFORMS.md)). Google is `/?platform=google` (overview: trend, campaign types, campaigns) and `/campaigns?platform=google` (the campaigns table first, the types as a filter). The first URL, `/google`, redirects to `/?platform=google`. The date range, comparison and the Numbers-from choice carry over; Stage, Active only and the Meta trend picks are Meta-only and are dropped on Google.
 
 ## What the Google page shows
 Campaign level (Google has no creatives, so no tag tree): a trend chart (Bars: spend, purchases, revenue, clicks, impressions; Line: ROAS, CPA, CTR, CPC, conv rate; Day | Week; comparison drawn as outline bars),

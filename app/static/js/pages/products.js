@@ -1,7 +1,7 @@
 import { h, enc, fmt, href, apiWindow, globalParams, badge, empty, isNum, onCmpRefresh } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
-import { columnsChips, legendLine } from '../components.js';
+import { columnsChips, legendLine, viewSwitch } from '../components.js';
 import { createTrendPanel, createPins } from '../trend.js';
 import { metricColumns, trendColumn, pinColumn, flatTotal } from '../columns.js';
 import { setRangeInfo, ensureStatus, windowInfoFallback } from '../controls.js';
@@ -98,7 +98,7 @@ export async function productsPage(ctx) {
   });
   onCmpRefresh(() => t.refresh());
   ctx.mount(h('div', { class: 'page' },
-    h('div', { class: 'pagehead' }, h('h1', 'Marketing metrics'), h('div', { class: 'note-line' }, 'Meta, by product')),
+    h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'Marketing metrics'), h('span', { class: 'spacer' }), viewSwitch('home', G, 'meta')), h('div', { class: 'note-line' }, 'Meta, by product')),
     legendLine(),
     panel.el,
     h('div', { class: 'tablehead' }, columnsChips()),

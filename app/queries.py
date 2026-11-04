@@ -1645,6 +1645,7 @@ def coverage(conn, meta: DataMeta, w: WindowSpec, product: dict) -> dict:
 
 REMAINDER_NAME = "(days without ad-level detail)"
 NO_CAMPAIGN_NAME = "(no campaign data)"
+NO_PRODUCT, NO_PRODUCT_SLUG = "No product", "none"
 
 
 def _cmp_window(w: WindowSpec) -> WindowSpec | None:
@@ -2021,6 +2022,135 @@ f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win, {in_cmp} AS in_cmp FR
     if spark:
         total["spark"] = attach_spark_campaigns(conn, meta, w, product, rows, spark)
     return {"by_stage": by_stage, "rows": rows, "total": total}
+
+
+def _pfa(product_id: int | None | str = "all") -> str:
+    """CTE `pfa` (meta_family_key, product_id): every Meta family with the ONE product it counts under, the same rule the Products table uses: a tracker
+    family belongs to the product of its first row across all products (ad_metrics.is_first_row); a family off the tracker keeps its assigned product
+    (NULL = assigned to no active product, listed as 'No product'). So a Meta family is never counted twice and the sum over products is the whole
+    Meta account. (The per-product Campaigns views use _pf(), which counts a family that sits under two products for both.)
+    product_id: 'all' = every row, an int = that product, None = only the families of no active product."""
+    where = "" if product_id == "all" else (" WHERE pa.product_id IS NULL" if product_id is None else " WHERE pa.product_id = %(prod)s")
+    return f"""
+pfa AS (
+  SELECT pa.meta_family_key, pa.product_id FROM (
+    SELECT m.meta_family_key, am.product_id
+    FROM meta_family_map m
+    JOIN ad_metrics am ON am.family_key = m.tracker_family_key AND am.is_first_row AND NOT starts_with(am.family_key, 'id:')
+    JOIN tracker_rows tr ON tr.id = am.tracker_row_id{alive('tr')}
+    JOIN products pr ON pr.id = am.product_id AND pr.active
+    UNION
+    SELECT u.meta_family_key, CASE WHEN pr.active THEN u.product_id END
+    FROM unmatched_meta u LEFT JOIN products pr ON pr.id = u.product_id
+  ) pa{where}
+)
+"""
+
+
+def campaigns_all(conn, meta: DataMeta, w: WindowSpec, product: dict | None | str = "all", spark: tuple[str, int] | None = None) -> dict:
+    """Every Meta campaign across all products (platform level): one row per campaign, with the Product it runs (one product, or 'Mixed' with the
+    per-product split in `products`). product: 'all', a product dict (only that product's ads count in every row) or None (families of no active product only).
+    Numbers are the per-product Campaigns view's (tracker families plus the product's off-tracker families), with each Meta family counted once under its
+    first row's product (see _pfa), so the total ties to the Products table's 'All spend' row for a date window. Since launch has no meaning here (every day held), as in the product view."""
+    wf, wt = w.span(meta)
+    cw = _cmp_window(w)
+    d7 = meta.data_through - dt.timedelta(days=6)
+    d1 = meta.data_through - dt.timedelta(days=1)
+    params: dict[str, Any] = {"wf": wf, "wt": wt, "d7": d7, "d1": d1, "stages": w.stages,
+                              "lo": min(wf, d7, cw.date_from) if cw is not None else min(wf, d7),
+                              "cf": cw.date_from if cw is not None else wf, "ct": cw.date_to if cw is not None else wt}
+    pid = product["id"] if isinstance(product, dict) else (None if product is None else "all")
+    if isinstance(product, dict):
+        params["prod"] = product["id"]
+    in_cmp = "(day BETWEEN %(cf)s AND %(ct)s)" if cw is not None else "FALSE"
+    base = f"""
+WITH {_pfa(pid)},
+r AS (
+  SELECT ad.ad_id, ad.meta_family_key, ad.campaign_id, ad.day, ad.spend, ad.purchases, ad.conv_value, ad.impressions, ad.link_clicks, pfa.product_id,
+         CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END AS stage,
+         starts_with(ad.ad_id, 'fam:') AS is_fam
+  FROM ad_daily ad JOIN pfa ON pfa.meta_family_key = ad.meta_family_key
+  LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
+  WHERE ad.day >= %(lo)s
+),
+f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win, {in_cmp} AS in_cmp FROM r)
+"""
+    groups = rows_of(conn, act(base + f"""
+        SELECT f.campaign_id, f.stage, f.product_id, mc.name, mc.account,
+               count(DISTINCT f.ad_id) FILTER (WHERE f.in_win AND NOT f.is_fam AND f.spend > 0) AS ads,
+               count(DISTINCT f.meta_family_key) FILTER (WHERE f.in_win AND f.spend > 0) AS families,
+               {_filtered_sums('f', 'f.in_win', 'f.in_cmp')},
+               COALESCE(sum(f.spend) FILTER (WHERE f.day >= %(d7)s), 0) AS spend_7d,
+               COALESCE(sum(f.spend) FILTER (WHERE f.day >= %(d1)s), 0) > 0 AS live,
+               max(f.day) FILTER (WHERE f.spend > 0) AS last_day
+        FROM f LEFT JOIN meta_campaigns mc ON mc.campaign_id = f.campaign_id
+        GROUP BY f.campaign_id, f.stage, f.product_id, mc.name, mc.account""", w.active), params)
+    prods = {r["id"]: r for r in rows_of(conn, "SELECT id, slug, name, sort_order FROM products WHERE active ORDER BY sort_order, id")}
+    keep = set(w.stages)
+    shown = [g for g in groups if g["stage"] in keep and any(g[k] != 0 for k in ("spend", "purchases", "c_spend", "c_purch"))]
+
+    by_camp: dict[str, dict] = {}
+    for g in shown:
+        c = by_camp.setdefault(g["campaign_id"], {"g": [], "prod": {}})
+        c["g"].append(g)
+        c["prod"][g["product_id"]] = c["prod"].get(g["product_id"], Decimal(0)) + g["spend"]
+
+    def label(pid_) -> str:
+        return prods[pid_]["name"] if pid_ in prods else NO_PRODUCT
+
+    rows = []
+    for cid, c in by_camp.items():
+        gs = c["g"]
+        acc = {k: sum((g[k] for g in gs), Decimal(0)) for k in _ALL_KEYS}
+        acc["spend_7d"] = sum((g["spend_7d"] for g in gs), Decimal(0))
+        first = gs[0]
+        split = sorted(c["prod"].items(), key=lambda kv: -kv[1])
+        total_sp = sum((v for _, v in split), Decimal(0))
+        one = len(split) == 1
+        last_days = [g["last_day"] for g in gs if g["last_day"]]
+        rows.append({"campaign_id": cid, "name": NO_CAMPAIGN_NAME if cid == "" else (first["name"] or cid),
+                     "account": first["account"], "stage": "unclassified" if cid == "" else first["stage"],
+                     "product": label(split[0][0]) if one else "Mixed", "product_slug": (prods[split[0][0]]["slug"] if split[0][0] in prods else None) if one else None,
+                     "products": [{"slug": prods[k]["slug"] if k in prods else None, "name": label(k), "spend": f2(v), "share": ratio(v, total_sp, 4)} for k, v in split],
+                     "ads": sum(int(g["ads"]) for g in gs), "families": sum(int(g["families"]) for g in gs),
+                     **window_block(side_a(acc), w, side_b(acc)), "spend_7d": f2(acc["spend_7d"]), "live": any(bool(g["live"]) for g in gs),
+                     "last_day": max(last_days).isoformat() if last_days else None, "_sort": (-acc["spend"], -acc["c_spend"], cid)})
+    rows.sort(key=lambda r: r.pop("_sort"))
+
+    tot = {k: sum((g[k] for g in shown), Decimal(0)) for k in _ALL_KEYS}
+    total = {"campaigns": sum(1 for r in rows if r["campaign_id"] != ""), "ads": sum(r["ads"] for r in rows), **window_block(side_a(tot), w, side_b(tot)),
+             "spend_7d": f2(sum((g["spend_7d"] for g in shown), Decimal(0)))}
+    apply_shares(rows + [total], total)
+
+    # the product filter chips: every active product with its campaigns / spend in this window (before the product filter) is only known for the
+    # unfiltered call, so the API asks for it separately (see campaign_products)
+    if spark:
+        total["spark"] = attach_spark_campaigns_all(conn, meta, w, pid, params.get("prod"), rows, spark)
+    return {"rows": rows, "total": total}
+
+
+def campaign_products(conn, meta: DataMeta, w: WindowSpec) -> list[dict]:
+    """The product filter of the platform Campaigns view: every active product with its campaign count and spend in the window (stage and active
+    filters applied, no product filter), plus a 'none' entry when some families belong to no active product. Sorted like the Products table; products
+    with no spend are listed with 0."""
+    wf, wt = w.span(meta)
+    sql = f"""
+WITH {_pfa('all')}
+SELECT pfa.product_id, count(DISTINCT ad.campaign_id) FILTER (WHERE ad.campaign_id <> '' AND ad.spend > 0) AS campaigns, COALESCE(sum(ad.spend), 0) AS spend
+FROM ad_daily ad JOIN pfa ON pfa.meta_family_key = ad.meta_family_key
+LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
+WHERE ad.day BETWEEN %(wf)s AND %(wt)s
+  AND (CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END) = ANY(%(stages)s)
+GROUP BY pfa.product_id"""
+    got = {r["product_id"]: r for r in rows_of(conn, act(sql, w.active), {"wf": wf, "wt": wt, "stages": w.stages})}
+    out = []
+    for p in rows_of(conn, "SELECT id, slug, name FROM products WHERE active ORDER BY sort_order, id"):
+        r = got.get(p["id"])
+        out.append({"slug": p["slug"], "name": p["name"], "campaigns": int(r["campaigns"]) if r else 0, "spend": f2(r["spend"]) if r else 0.0})
+    r = got.get(None)
+    if r:
+        out.append({"slug": NO_PRODUCT_SLUG, "name": NO_PRODUCT, "campaigns": int(r["campaigns"]), "spend": f2(r["spend"])})
+    return out
 
 
 def stage_daily(conn, meta: DataMeta, product: dict, df: dt.date, dtt: dt.date, stages: list[str] | None = None, active: bool = False) -> list[dict]:
@@ -2604,7 +2734,7 @@ def attach_spark_tree(conn, meta, w, product, root_level, last, cluster, icp, pa
 TOTAL_KEY = "__total__"
 
 
-def _spark_ad_rows(conn, meta, w, product, spark, key_sql: str, where_sql: str, params: dict) -> dict[str, list]:
+def _spark_ad_rows(conn, meta, w, product, spark, key_sql: str, where_sql: str, params: dict, pf_cte: str | None = None) -> dict[str, list]:
     """Sparkline arrays straight from ad_daily rows (campaign / ad grain), plus the total of the same rows under TOTAL_KEY.
     key_sql and where_sql are fixed fragments from this module."""
     metric, n = spark
@@ -2613,14 +2743,23 @@ def _spark_ad_rows(conn, meta, w, product, spark, key_sql: str, where_sql: str, 
     sums = ", ".join(f"sum({e[k]}) AS {k}" for k in _A_KEYS)
     stage_expr = "CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END"
     sql = f"""
-        WITH {_pf()},
+        WITH {pf_cte or _pf()},
         g AS (
           SELECT COALESCE(({key_sql}) COLLATE "C", '{TOTAL_KEY}') AS gk, ad.day, {sums}
           FROM ad_daily ad LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
           WHERE ad.day BETWEEN %(sf)s AND %(st)s AND {stage_expr} = ANY(%(stages)s) AND {where_sql}
           GROUP BY GROUPING SETS ((({key_sql}) COLLATE "C", ad.day), (ad.day))
         )"""
-    return _spark_arrays(conn, sql, {**params, "pid": product["id"], "sf": sf, "st": st, "stages": w.stages}, metric, w.active)
+    return _spark_arrays(conn, sql, {**params, **({"pid": product["id"]} if product else {}), "sf": sf, "st": st, "stages": w.stages}, metric, w.active)
+
+
+def attach_spark_campaigns_all(conn, meta, w, pid, prod_id, rows, spark):
+    """Sparklines of the platform Campaigns view; pid/prod_id as in campaigns_all (the product filter)."""
+    arrays = _spark_ad_rows(conn, meta, w, None, spark, "ad.campaign_id", "ad.meta_family_key IN (SELECT meta_family_key FROM pfa)",
+                            {"prod": prod_id} if prod_id is not None else {}, pf_cte=_pfa(pid))
+    for r in rows:
+        r["spark"] = arrays.get(r["campaign_id"]) or _blank_spark(spark[1], spark[0])
+    return arrays.get(TOTAL_KEY) or _blank_spark(spark[1], spark[0])
 
 
 def attach_spark_campaigns(conn, meta, w, product, rows, spark):
@@ -2732,7 +2871,11 @@ def sources_summary(meta: DataMeta) -> dict:
     """What the source switch can offer: Upstack is available once its tables are built; `lag_days` > 1 means it is behind Meta's data."""
     up = meta.upstack_through
     gt = meta.google_through
-    return {"default": "meta", "meta": {"available": True, "through": meta.data_through.isoformat()},
+    plats = [{"key": "meta", "name": "Meta", "available": True, "first_day": meta.daily_start.isoformat() if meta.daily_start else None,
+              "through": meta.data_through.isoformat()},
+             {"key": "google", "name": "Google", "available": gt is not None and meta.google_first_day is not None,
+              "first_day": meta.google_first_day.isoformat() if meta.google_first_day else None, "through": gt.isoformat() if gt else None}]
+    return {"default": "meta", "platforms": plats, "meta": {"available": True, "through": meta.data_through.isoformat()},
             "google": {"available": gt is not None and meta.google_first_day is not None, "through": gt.isoformat() if gt else None,
                        "first_day": meta.google_first_day.isoformat() if meta.google_first_day else None,
                        "upstack_first_day": meta.google_upstack_first_day.isoformat() if meta.google_upstack_first_day else None,

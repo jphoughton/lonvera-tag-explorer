@@ -1,5 +1,5 @@
 // Shared page components: breadcrumbs, filter bar, Meta-ads table, unmatched panel.
-import { h, enc, fmt, isNum, currentParams, href, apiWindow, globalParams, debounce, navigate, stageBadge, liveDot, thumb, empty, colPref, setColPref, refreshCmp } from './util.js';
+import { h, enc, fmt, isNum, currentParams, href, apiWindow, globalParams, debounce, navigate, stageBadge, liveDot, thumb, empty, colPref, setColPref, refreshCmp, srcBadgeText } from './util.js';
 import { api, AuthError } from './api.js';
 import { createTable } from './table.js';
 import { metricColumns, FLAT_KEYS, fixTotal, trendColumn, bothStagesIncluded } from './columns.js';
@@ -12,6 +12,21 @@ export function breadcrumbs(items) {
     h('ol', items.map((it, i) =>
       h('li', { class: i === last ? 'current' : '', 'aria-current': i === last ? 'page' : null },
         it.href && i !== last ? h('a', { href: it.href }, it.chip || null, it.label) : h('span', it.chip || null, it.label)))));
+}
+
+// "View: Products | Campaigns" (Meta) or "Overview | Campaigns" (Google): the two views of a platform; the range, stage and numbers choice carry over (platform stays in G)
+export function viewSwitch(active, G, platform = 'meta') {
+  const first = platform === 'meta' ? 'Products' : 'Overview';
+  const mk = (label, key, to) => h('a', { class: 'seg', href: to, 'data-platform-view': key, 'aria-current': active === key ? 'page' : null, 'aria-pressed': String(active === key) }, label);
+  const g = { ...G };
+  delete g.type; delete g.product;
+  return h('div', { class: 'ctl', id: 'view-switch' }, h('span', { class: 'ctl-name' }, 'View'),
+    h('span', { class: 'segs', role: 'group', 'aria-label': 'View' }, mk(first, 'home', href('/', g)), mk('Campaigns', 'campaigns', href('/campaigns', g))));
+}
+
+// "Numbers: Upstack · new customers": which numbers the table beside it shows; text kept current by controls.js (refreshSrcBadges) on every flip
+export function srcBadge() {
+  return h('span', { class: 'src-badge', 'data-testid': 'src-badge', title: 'Which numbers this table shows. Change it with Numbers from, in the bar above the page.' }, srcBadgeText());
 }
 
 // "Columns" chip group: Traffic (Impressions, Link clicks, CTR, CPC; default on) and Advanced (CPM, Conv rate; default off)
@@ -27,6 +42,7 @@ export function columnsChips() {
     return b;
   };
   return h('div', { class: 'ctl colchips' },
+    srcBadge(),
     h('span', { class: 'ctl-name' }, 'Columns'),
     h('span', { class: 'chips', role: 'group', 'aria-label': 'Columns' }, mk('traffic', 'Traffic', 'Impressions, Link clicks, CTR, CPC'), mk('advanced', 'Advanced', 'CPM, Conv rate'), mk('trend', 'Trend', 'Sparkline per row')));
 }

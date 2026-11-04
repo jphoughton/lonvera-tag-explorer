@@ -1,4 +1,4 @@
-import { $, h, fmt, setRenderer, navigate, currentParams, qs, href, globalParams, hasDateWindow, compareOn, cleanParams, setViewStateProvider, clearCmpRefreshers, loadViewState, navIndex, getParentHint, setParentHint } from './js/util.js';
+import { $, h, fmt, setRenderer, navigate, currentParams, qs, href, globalParams, hasDateWindow, compareOn, cleanParams, setViewStateProvider, clearCmpRefreshers, loadViewState, navIndex, getParentHint, setParentHint, currentPlatform } from './js/util.js';
 import { setUnauthorizedHandler, AuthError, ApiError } from './js/api.js';
 import { buildShell, showControls, syncControls, loadStatus, setRangeInfo, getStatus, setBackDisabled, setPendingNote, isAuthDisabled } from './js/controls.js';
 import { destroyCharts } from './js/charts.js';
@@ -9,13 +9,19 @@ import { productsPage } from './js/pages/products.js';
 import { productPage } from './js/pages/product.js';
 import { adPage } from './js/pages/ad.js';
 import { googlePage } from './js/pages/google.js';
+import { campaignsPage } from './js/pages/campaigns.js';
+import { allPlatformsPage } from './js/pages/platforms.js';
 
+// Platform pages: '/' is the home of the chosen platform (platform=all overview, google, else Meta's products) and '/campaigns' its Campaigns view.
+// Google's campaigns are part of its one page, so its Campaigns view is the same page with the campaigns table first.
+const homePage = (ctx) => { const pl = currentPlatform(); return pl === 'all' ? allPlatformsPage(ctx) : pl === 'google' ? googlePage(ctx) : productsPage(ctx); };
+const campaignsRoute = (ctx) => (currentPlatform() === 'google' ? googlePage(ctx) : campaignsPage(ctx));
 const routes = [
   { re: /^\/login\/?$/, page: loginPage, public: true },
-  { re: /^\/?$/, page: productsPage },
+  { re: /^\/?$/, page: homePage },
+  { re: /^\/campaigns\/?$/, page: campaignsRoute },
   { re: /^\/p\/([^/]+)\/?$/, page: productPage },
   { re: /^\/ad\/([^/]+)\/?$/, page: adPage },
-  { re: /^\/google\/?$/, page: googlePage },
 ];
 
 let token = 0;
@@ -47,7 +53,8 @@ function parentUrl() {
     if (p.cluster) return href(base, G);
     return href('/', G);
   }
-  if (/^\/google\/?$/.test(path)) return p.type ? href('/google', G) : href('/', G);
+  if (path === '/campaigns') return href('/', G);
+  if (path === '/' && p.type) return href('/', { ...G, type: null });
   if (/^\/ad\//.test(path)) return getParentHint() || href('/', G);
   return null;
 }
@@ -110,6 +117,7 @@ function showBlank(root, why) {
 
 async function render(opts = {}) {
   if (/^\/projection(\/|$)/.test(location.pathname)) { location.replace(location.pathname + location.search); return; }   // Projections is a separate page (e.g. returning from /login)
+  if (/^\/google\/?$/.test(location.pathname)) history.replaceState(history.state, '', '/' + qs(cleanParams({ ...currentParams(), platform: 'google' })));   // the first Google URL, kept working
   const my = ++token;
   if (abort) abort.abort();
   abort = new AbortController();

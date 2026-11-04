@@ -765,6 +765,8 @@ def status():
     extra = dict(auth="disabled", user="guest") if AUTH_DISABLED else dict(user=request.cookies.get("user"))
     extra["stale"] = dict(is_stale=os.environ.get("MOCK_STALE") == "1", reason="the last Meta pull failed (token rejected)" if os.environ.get("MOCK_STALE") == "1" else None)
     extra["last_ok_at"] = "2026-11-02T22:12:00+00:00"
+    extra["sources"] = dict(platforms=[dict(key="meta", name="Meta", available=True, first_day=DAILY_START.isoformat(), through=DATA_THROUGH.isoformat()),
+                                       dict(key="google", name="Google", available=True, first_day=DAILY_START.isoformat(), through=DATA_THROUGH.isoformat())])
     return jsonify(**extra, data_through=DATA_THROUGH.isoformat(), daily_start=DAILY_START.isoformat(), lifetime_cutoff=CUTOFF.isoformat(),
                    last_refresh=dict(job="run_daily", finished_at="2026-11-03T06:12:00+00:00", status="ok"), products=len(PRODUCTS))
 
@@ -1264,18 +1266,16 @@ def ads(slug):
     return jsonify(window_info=win["info"], compare_info=cinfo(), rows=rows, total=tot)
 
 
-@app.get("/api/products/<slug>/campaigns")
-def campaigns(slug):
-    win = parse_win(request.args)
-    prod_meta(slug)
+def campaign_payload(win, slugs):
+    """(rows, by_stage, total) of the campaigns of the given products (None = every product); one product per mock campaign"""
     out = {}
     for ad in cur_ads():
-        if ad["product"] != slug:
+        if slugs is not None and ad["product"] not in slugs:
             continue
         fam = FAM_BY_KEY.get(ad["fam"]) if ad["fam"] else None
         r = ad_row(ad, win, fam["launch"] if fam else None)
         c = CAMPAIGNS[ad["campaign_id"]]
-        e = out.setdefault(c["campaign_id"], dict(campaign_id=c["campaign_id"], name=c["name"], account=c["account"], stage=c["stage"], ads=0, fams=set(), spend=0.0, purchases=0, revenue=0.0, spend_7d=0.0, live=False, last_day=None))
+        e = out.setdefault(c["campaign_id"], dict(campaign_id=c["campaign_id"], name=c["name"], account=c["account"], stage=c["stage"], product_slug=ad["product"], ads=0, fams=set(), spend=0.0, purchases=0, revenue=0.0, spend_7d=0.0, live=False, last_day=None))
         e["ads"] += 1; e["fams"].add(ad["fam"] or ad["meta_family"]); e.setdefault("_ads", []).append(ad)
         e["spend"] += r["spend"]; e["purchases"] += r["purchases"]; e["revenue"] += r["revenue"]; e["spend_7d"] += r["spend_7d"]
         e.setdefault("_rows", []).append(r)
@@ -1315,7 +1315,65 @@ def campaigns(slug):
     tot = total_of(rows, win)
     tot["ads"] = sum(r["ads"] for r in rows)
     shares(rows, tot)
+    return rows, by_stage, tot
+
+
+@app.get("/api/products/<slug>/campaigns")
+def campaigns(slug):
+    win = parse_win(request.args)
+    prod_meta(slug)
+    rows, by_stage, tot = campaign_payload(win, {slug})
     return jsonify(window_info=win["info"], compare_info=cinfo(), by_stage=by_stage, rows=rows, total=tot)
+
+
+@app.get("/api/campaigns")
+def platform_campaigns():
+    """Platform level (Meta): every campaign across the products. The mock has one product per campaign, so the biggest campaign is shown as Mixed (70 / 30 with
+    a second product) to exercise that cell; the API tests cover the real split."""
+    win = parse_win(request.args)
+    slug = request.args.get("product")
+    names = {p["slug"]: p["name"] for p in PRODUCTS}
+    if slug and slug != "none":
+        prod_meta(slug)
+    only = {slug} if slug and slug != "none" else (set() if slug == "none" else None)
+    rows, _by_stage, tot = campaign_payload(win, only)
+    for r in rows:
+        s = r.pop("product_slug")
+        r.update(product=names[s], product_slug=s, products=[dict(slug=s, name=names[s], spend=r["spend"], share=1.0)])
+    if not slug and rows:
+        r0 = rows[0]
+        first = r0["product_slug"]
+        other = next(p for p in PRODUCTS if p["slug"] != first)
+        r0.update(product="Mixed", product_slug=None, products=[dict(slug=first, name=names[first], spend=round(r0["spend"] * 0.7, 2), share=0.7),
+                                                               dict(slug=other["slug"], name=other["name"], spend=round(r0["spend"] * 0.3, 2), share=0.3)])
+    chips = []
+    for p in PRODUCTS:
+        prs, _b, pt = campaign_payload(win, {p["slug"]})
+        chips.append(dict(slug=p["slug"], name=p["name"], campaigns=len(prs), spend=pt["spend"]))
+    brief = dict(slug=slug, name=names.get(slug, "No product")) if slug else None
+    return jsonify(platform="meta", product=brief, scope="tracker+unmatched", window_info=win["info"], compare_info=cinfo(), products=chips, rows=rows, total=tot)
+
+
+@app.get("/api/platforms/overview")
+def platforms_overview():
+    win = parse_win({k: v for k, v in request.args.items() if k in ("window", "from", "to")})
+    _rows, _bs, tot = campaign_payload(win, None)
+    imp, clk = tot.get("impressions"), tot.get("link_clicks")
+
+    def meta_m(pu, rv):
+        sp = tot["spend"]
+        return dict(spend=sp, purchases=pu, revenue=round(rv, 2), roas=round(rv / sp, 4) if sp else None, cpa=round(sp / pu, 2) if pu else None, impressions=imp, link_clicks=clk,
+                    ctr=round(clk / imp, 5) if imp and clk else None, cpc=round(sp / clk, 4) if clk else None)
+    meta_rows = [dict(basis="reported", label="Meta's own reporting", labels=dict(purchases="Purchases"), m=meta_m(tot["purchases"], tot["revenue"])),
+                 dict(basis="nc", label="Upstack · new customers", labels=dict(purchases="New customers"), m=meta_m(round(tot["purchases"] * 0.7), tot["revenue"] * 0.72)),
+                 dict(basis="all", label="Upstack · all orders", labels=dict(purchases="Orders"), m=meta_m(round(tot["purchases"] * 1.2), tot["revenue"] * 1.1))]
+    for r in meta_rows:
+        r["window"] = dict(win["info"], clamped=False)
+    g_rows_out = []
+    for basis, src, label in (("reported", "meta", "Google's own reporting"), ("nc", "upstack", "Upstack · new customers"), ("all", "upstack", "Upstack · all orders")):
+        _r, total, info = g_rows("type", dict(source=src, basis="all" if basis == "all" else "nc"), win)
+        g_rows_out.append(dict(basis=basis, label=label, labels=info["source"]["labels"], m=total, window=dict(win["info"], clamped=False)))
+    return jsonify(window_info=win["info"], compare_info=None, platforms=[dict(key="meta", name="Meta", rows=meta_rows, note=None), dict(key="google", name="Google", rows=g_rows_out, note=None)])
 
 
 @app.get("/api/products/<slug>/stage-daily")
@@ -1667,7 +1725,7 @@ def shell(*_a, **_k):
     return send_from_directory(STATIC, "index.html")
 
 
-for rule in ("/", "/login", "/google", "/p/<slug>", "/ad/<rid>"):
+for rule in ("/", "/login", "/google", "/campaigns", "/p/<slug>", "/ad/<rid>"):
     app.add_url_rule(rule, endpoint="shell" + rule, view_func=shell)
 
 

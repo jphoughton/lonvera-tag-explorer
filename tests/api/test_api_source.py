@@ -147,3 +147,30 @@ def test_coverage_follows_the_source(upstack, client):
     assert d["window_info"]["source"]["key"] == "upstack" and d["available"] is True
     meta = get_ok(client, f"/api/products/vita-bull/coverage?{W}")
     assert {r["key"] for r in d["rows"] if r["state"] == "no_ads"} == {r["key"] for r in meta["rows"] if r["state"] == "no_ads"}      # no ads: never source-dependent
+
+
+# ---- platform level: the all-products Campaigns view and the overview follow the flip like every other page
+
+@pytest.mark.parametrize("basis", ["nc", "all"])
+def test_platform_campaigns_total_ties_to_the_products_table_in_upstack_mode(upstack, client, basis):
+    x = f"&source=upstack&basis={basis}"
+    d = get_ok(client, f"/api/campaigns?{W}{x}")
+    all_ = tot(client, x)["total_all"]["m"]
+    assert d["total"]["spend"] == pytest.approx(all_["spend"], abs=0.011) and d["total"]["purchases"] == pytest.approx(all_["purchases"], abs=0.011)
+    assert d["total"]["revenue"] == pytest.approx(all_["revenue"], abs=0.011)
+    assert d["window_info"]["source"]["key"] == "upstack" and d["window_info"]["source"]["basis"] == basis
+    meta_d = get_ok(client, f"/api/campaigns?{W}")
+    assert d["total"]["spend"] == meta_d["total"]["spend"]                                       # spend is Meta's in both modes
+    assert get_ok(client, f"/api/campaigns?{W}") == meta_d                                       # and the flip does not leak into the next request
+
+
+def test_overview_meta_rows_follow_the_basis(upstack, client):
+    d = get_ok(client, f"/api/platforms/overview?{W}")
+    meta = next(p for p in d["platforms"] if p["key"] == "meta")
+    by = {r["basis"]: r for r in meta["rows"]}
+    assert {"reported", "nc", "all"} <= set(by)
+    for basis in ("nc", "all"):
+        want = tot(client, f"&source=upstack&basis={basis}")["total_all"]["m"]
+        assert by[basis]["m"]["purchases"] == pytest.approx(want["purchases"], abs=0.011) and by[basis]["m"]["revenue"] == pytest.approx(want["revenue"], abs=0.011)
+    assert by["reported"]["m"]["spend"] == by["nc"]["m"]["spend"] == by["all"]["m"]["spend"]
+    assert by["all"]["m"]["purchases"] >= by["nc"]["m"]["purchases"] > 0
