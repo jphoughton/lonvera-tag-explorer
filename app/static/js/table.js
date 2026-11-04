@@ -37,7 +37,9 @@ export function createTable(opts) {
 
   const wrap = h('div', { class: 'tablewrap' });
   const foot = h('div', { class: 'tablefoot' });
-  const root = h('div', { class: 'tablebox', 'data-testid': opts.testid || null }, wrap, foot);
+  // shown when columns sit beyond the right edge: names them and scrolls on click
+  const hint = h('div', { class: 'scrollhint', 'data-testid': 'scroll-hint', hidden: true });
+  const root = h('div', { class: 'tablebox', 'data-testid': opts.testid || null }, wrap, foot, hint);
 
   // columns may hide themselves (c.hidden()): the Testing/Scaling columns only make sense when both stages are included
   let visCols = columns;
@@ -107,7 +109,7 @@ export function createTable(opts) {
     });
     if (opts.expand) {
       const open = expanded.has(key);
-      const btn = h('button', { type: 'button', class: 'caret', 'aria-expanded': String(open), title: 'Show Meta ads', 'aria-label': 'Show Meta ads' }, open ? '▾' : '▸');
+      const btn = h('button', { type: 'button', class: 'caret', 'aria-expanded': String(open), title: 'Show ads', 'aria-label': 'Show ads' }, open ? '▾' : '▸');
       btn.addEventListener('click', (e) => { e.stopPropagation(); toggle(key, r); });
       tr.append(h('td', { class: 'caretcell' }, btn));
     }
@@ -147,11 +149,12 @@ export function createTable(opts) {
     render();
   }
 
-  function totalRow() {
-    const tr = h('tr', { class: 'total' });
+  // footer rows: the main "Total" plus optional extra rows (opts.extraTotals: [{label, total, cls}])
+  function totalRow(t, label, cls) {
+    const tr = h('tr', { class: 'total ' + (cls || '') });
     if (opts.expand) tr.append(h('td', { class: 'caretcell' }));
     visCols.forEach((c, i) => {
-      const v = c.total ? c.total(total) : (i === 0 ? 'Total' : '');
+      const v = i === 0 && label != null ? label : (c.total ? c.total(t) : (i === 0 ? 'Total' : ''));
       tr.append(h('td', { class: [c.num ? 'num' : '', c.sticky ? 'sticky' : '', c.cls || ''].join(' ').trim() }, v == null ? '' : v));
     });
     return tr;
@@ -177,7 +180,10 @@ export function createTable(opts) {
       tbody.append(h('tr', { class: 'emptyrow' }, h('td', { colspan: String(colCount) }, opts.emptyText || 'No rows.')));
     }
     table.append(tbody);
-    if (total) table.append(h('tfoot', totalRow()));
+    if (total) {
+      const extra = (opts.extraTotals || []).filter((x) => x && x.total);
+      table.append(h('tfoot', totalRow(total, opts.totalLabel), ...extra.map((x) => totalRow(x.total, x.label, x.cls))));
+    }
     const st = wrap.scrollTop, sl = wrap.scrollLeft;
     // keep keyboard focus on the same row / caret / header button across a re-render
     const ae = document.activeElement;
@@ -189,6 +195,15 @@ export function createTable(opts) {
       else if (th) refocus = { head: th.dataset.col, sel: ae.classList.contains('deltabtn') ? 'button.deltabtn' : 'button.thbtn' };
     }
     wrap.replaceChildren(table);
+    // several footer rows pin on top of each other: each one sits above the rows below it
+    const frows = table.tFoot ? [...table.tFoot.rows] : [];
+    if (frows.length > 1) {
+      let off = 0;
+      for (let i = frows.length - 1; i >= 0; i--) {
+        for (const td of frows[i].cells) td.style.bottom = off + 'px';
+        off += frows[i].offsetHeight;
+      }
+    }
     wrap.scrollTop = st; wrap.scrollLeft = sl;
     if (refocus) {
       let target = null;
@@ -211,7 +226,24 @@ export function createTable(opts) {
       );
     }
     if (opts.onCount) opts.onCount(list.length, rows.length);
+    updateHint();
   }
+
+  function updateHint() {
+    const left = wrap.scrollWidth - wrap.clientWidth - wrap.scrollLeft;
+    if (!wrap.clientWidth || left <= 4) { hint.hidden = true; hint.replaceChildren(); return; }
+    const wr = wrap.getBoundingClientRect();
+    const names = [...wrap.querySelectorAll(':scope > table > thead th[data-col]')]
+      .filter((th) => th.getBoundingClientRect().right > wr.right + 1)
+      .map((th) => { const c = columns.find((x) => x.key === th.dataset.col); return c ? labelOf(c) : null; })
+      .filter((x) => x && String(x).trim());
+    hint.replaceChildren(
+      h('span', { class: 'muted' }, names.length ? `More columns to the right: ${names.join(', ')}` : 'More columns to the right'),
+      h('button', { type: 'button', class: 'btn small', onclick: () => wrap.scrollBy({ left: Math.round(wrap.clientWidth * 0.8), behavior: 'smooth' }) }, 'Scroll right ›'));
+    hint.hidden = false;
+  }
+  wrap.addEventListener('scroll', updateHint, { passive: true });
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => updateHint()).observe(wrap);
 
   render();
   onCmpRefresh(render); // per-day / column-group toggles re-render without a refetch

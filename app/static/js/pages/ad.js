@@ -1,9 +1,9 @@
-import { h, enc, fmt, href, apiWindow, sparkParams, globalParams, badge, confBadge, stageBadge, liveDot, methodFlags, safeUrl, empty, isNum, colorChip, safeColor, cmpView, onCmpRefresh, setParentHint } from '../util.js';
+import { h, enc, fmt, href, apiWindow, sparkParams, globalParams, badge, confBadge, stageBadge, liveDot, methodFlags, safeUrl, empty, isNum, colorChip, safeColor, cmpView, onCmpRefresh, setParentHint, stageSet, STAGES, currentParams } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { setRangeInfo } from '../controls.js';
 import { flatTotal } from '../columns.js';
-import { breadcrumbs, section, adsTable, columnsChips } from '../components.js';
+import { breadcrumbs, section, adsTable, columnsChips, legendLine } from '../components.js';
 import { createTrendPanel } from '../trend.js';
 import { createPreview, adLinks } from '../preview.js';
 
@@ -63,8 +63,11 @@ function metricsCard(d, wi) {
   if (!f) return null;
   const rows = [['Since launch', f.launch, 'launch'], ['Last 7d', f.d7, 'd7'], ['Last 30d', f.d30, 'd30']];
   if (wi && wi.kind !== 'launch' && f.window) rows.push([wi.label || 'Selected window', f.window, 'window']);
+  // the fixed rows (since launch / 7d / 30d) are not cut by the Stage filter; the selected-window row is
+  const stageCut = stageSet(currentParams()).size < STAGES.length;
   const tr = rows.map(([label, m, key]) => h('tr', { 'data-row': key },
-    h('th', { scope: 'row' }, label),
+    h('th', { scope: 'row' }, label, stageCut && key !== 'window'
+      ? h('span', { class: 'muted small all-stages', title: 'This row ignores the Stage filter.' }, ' · all stages') : null),
     h('td', { class: 'num', title: m ? fmt.money2(m.spend) : null }, fmt.money(m && m.spend)),
     h('td', { class: 'num' }, fmt.int(m && m.purchases)),
     h('td', { class: 'num', title: m ? fmt.money2(m.revenue) : null }, fmt.money(m && m.revenue)),
@@ -72,14 +75,14 @@ function metricsCard(d, wi) {
     h('td', { class: 'num' }, fmt.money(m && m.cpa))));
   const cmpBlock = compareTable(d, wi);
   return h('div', { class: 'card', id: 'family-metrics' },
-    h('div', { class: 'card-head' }, h('h3', 'Family metrics'), h('span', { class: 'live-flag' }, liveDot(f.live), f.live ? ' Live now' : ' Not live')),
+    h('div', { class: 'card-head' }, h('h3', 'Creative metrics'), h('span', { class: 'live-flag' }, liveDot(f.live), f.live ? ' Live now' : ' Not live')),
     h('table', { class: 'mini' },
       h('thead', h('tr', h('th'), ['Spend', 'Purchases', 'Revenue', 'ROAS', 'CPA'].map((x) => h('th', { class: 'num' }, x)))),
       h('tbody', tr)),
     cmpBlock,
     h('div', { class: 'muted small' }, d.metrics.counted_on_this_row
-      ? 'Metrics are counted on this tracker row (first row of the ad family).'
-      : 'Family-level numbers. In the tables they are counted once, on the family’s first tracker row, which is not this one.'));
+      ? 'Metrics are counted on this tracker row (first row of the creative).'
+      : 'Creative-level numbers. In the tables they are counted once, on the creative’s first tracker row, which is not this one.'));
 }
 
 function tagBlock(d) {
@@ -101,7 +104,7 @@ function tagBlock(d) {
       kv('What was seen', t.seen),
       kv('Why', t.why),
       kv('Runner-up', t.runner_up),
-      t.copy_only_line ? kv('Copy-only pick', `${t.copy_only_line.line_code || ''}${t.copy_only_line.label ? ' · ' + t.copy_only_line.label : ''}`) : null,
+      t.copy_only_line ? kv('Copy-only pick', [t.copy_only_line.line_code, t.copy_only_line.label].filter((x) => x != null && String(x).trim() !== '').join(' · ') || null) : null,
       h('div', { class: 'muted small' }, `Tag set ${t.tag_set}${t.version ? ' · ' + t.version : ''}`));
   } else {
     body.push(h('div', { class: 'muted' }, 'Not line-mapped. Tracker tags below.'));
@@ -153,7 +156,7 @@ function copyBlock(d) {
   const parts = [];
   if (d.concept_name || d.description || d.hypothesis) {
     parts.push(h('div', { class: 'subblock' },
-      kv('Concept', d.concept_name), kv('Description', d.description), kv('Hypothesis', d.hypothesis), kv('Meta ad name', d.meta_ad_name)));
+      kv('Concept', d.concept_name), kv('Description', d.description), kv('Hypothesis', d.hypothesis), kv('Ad name', d.meta_ad_name)));
   }
   if ((c.primary_text || []).length) parts.push(h('div', { class: 'subblock' }, h('div', { class: 'subtle-head' }, 'Primary text'), c.primary_text.map((t, i) => h('div', { class: 'copy-item' }, c.primary_text.length > 1 ? h('span', { class: 'idx' }, i + 1) : null, textBlock(t)))));
   if ((c.headlines || []).length) parts.push(h('div', { class: 'subblock' }, h('div', { class: 'subtle-head' }, 'Headlines'), h('ul', { class: 'headlines' }, c.headlines.map((t) => h('li', t)))));
@@ -178,7 +181,7 @@ function siblingsTable(d, G) {
     { key: 'pain_point', label: 'Pain point', sort: (r) => r.pain_point },
     { key: 'status', label: 'Status', sort: (r) => r.status },
   ];
-  return section('Other tracker rows in this family', createTable({ columns: cols, rows, rowKey: (r) => String(r.id), rowHref: (r) => href('/ad/' + enc(r.id), G), tableClass: 'compact', testid: 'siblings-table' }).el, { id: 'siblings' });
+  return section('Other tracker rows of this creative', createTable({ columns: cols, rows, rowKey: (r) => String(r.id), rowHref: (r) => href('/ad/' + enc(r.id), G), tableClass: 'compact', testid: 'siblings-table' }).el, { id: 'siblings' });
 }
 
 function campaignsTable(d, p, slug, G) {
@@ -215,7 +218,7 @@ export async function adPage(ctx) {
   const slug = d.product.slug;
   const path = '/p/' + enc(slug);
   const title = d.ad_family || d.concept_id;
-  document.title = `${title} · Tag Explorer`;
+  document.title = `Creative: ${title} · Tag Explorer`;
 
   const tg = d.tag || {};
   const tt = d.tracker_tag || {};
@@ -241,7 +244,7 @@ export async function adPage(ctx) {
   const famTotal = flatTotal(metaAds, { days: wi && wi.days, bdays: d.compare_info && d.compare_info.days });
   const adsRows = metaAds.map((r) => (r.spend_share != null ? r : { ...r, spend_share: famTotal.spend > 0 ? r.spend / famTotal.spend : null }));
   const adsT = metaAds.length ? adsTable({ ...p }, { rows: adsRows, total: famTotal }, {
-    showFamily: false, linkAd: false, shareLabel: '% of family',
+    showFamily: false, linkAd: false, shareLabel: '% of creative',
     campaignHref: (r) => href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }),
   }) : null;
   if (adsT) onCmpRefresh(() => adsT.refresh());
@@ -251,12 +254,12 @@ export async function adPage(ctx) {
     h('div', { class: 'crumbrow' }, breadcrumbs(crumbs)),
     h('div', { class: 'pagehead' },
       h('div', { class: 'titleline' },
-        h('h1', { id: 'ad-title' }, title),
+        h('h1', { id: 'ad-title' }, h('span', { class: 'muted' }, 'Creative: '), title),
         d.status ? badge(d.status, 'status') : null,
         d.ad_type ? badge(d.ad_type, 'type') : null,
         h('span', { class: 'spacer' }),
         adLinks(d.links || { story_url: d.story_url }), extLink('Asset', d.asset_url),
-        h('a', { class: 'btnlink', href: href(path, { ...G, view: 'ads', family_key: d.family_key }) }, 'Meta ads table')),
+        h('a', { class: 'btnlink', href: href(path, { ...G, view: 'ads', family_key: d.family_key }) }, 'Ads table')),
       h('div', { class: 'note-line' }, meta)),
     section('See the ad', preview.el, { id: 'see-ad' }),
     h('div', { class: 'adgrid' },
@@ -265,7 +268,7 @@ export async function adPage(ctx) {
     h('div', { class: 'twocol' }, tagBlock(d), lineBlock(d)),
     copyBlock(d),
     siblingsTable(d, G),
-    adsT ? section('Meta ads in this family', adsT.el, { id: 'meta-ads', aside: columnsChips() }) : null,
+    adsT ? section('Ads · copies of this creative', h('div', null, legendLine(), adsT.el), { id: 'meta-ads', aside: columnsChips() }) : null,
     campaignsTable(d, p, slug, G),
   ));
   onCmpRefresh(() => {
@@ -275,4 +278,13 @@ export async function adPage(ctx) {
   });
   panel.load();
   preview.load();
+  // the creative's own endpoint carries no sparklines for its ads: take them from the ads endpoint (same rows, same window)
+  if (adsT && adsRows.length && adsRows.some((r) => r.spark == null)) {
+    api(`/api/products/${enc(slug)}/ads`, { family_key: d.family_key, ...apiWindow(p), ...sparkParams(p) }, { signal }).then((x) => {
+      if (!ctx.alive() || !x || !Array.isArray(x.rows)) return;
+      const by = new Map(x.rows.filter((r) => r.ad_id != null).map((r) => [r.ad_id, r.spark]));
+      for (const r of adsRows) if (r.spark == null && by.has(r.ad_id)) r.spark = by.get(r.ad_id);
+      adsT.refresh();
+    }).catch(() => { /* sparklines are optional */ });
+  }
 }

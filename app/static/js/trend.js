@@ -304,7 +304,7 @@ export function createTrendPanel(opts) {
     const o = { ...scopeParams(sc), grain };
     if (split === 'stage') o.split = 'stage';
     if (windowed) Object.assign(o, apiWindow(p));
-    else { const a = apiWindow(p); if (a.stage) o.stage = a.stage; }
+    else { const a = apiWindow(p); if (a.stage) o.stage = a.stage; if (a.active) o.active = a.active; }
     return o;
   }
   const trendUrl = (sl) => `/api/products/${enc(sl)}/trend`;

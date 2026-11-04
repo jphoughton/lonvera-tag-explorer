@@ -48,8 +48,10 @@ def table_data(page, testid="level-table"):
           const keys = trs.map(tr => tr.dataset.key);
           const labels = trs.map(tr => tr.dataset.label);
           const levels = trs.map(tr => { const m = /lv(\\d)/.exec(tr.className); return m ? +m[1] : null; });
-          const foot = [...t.querySelectorAll(':scope > tfoot > tr > td')].map(td => td.innerText.trim());
-          return {heads, rows, keys, labels, levels, foot};
+          const frows = [...t.querySelectorAll(':scope > tfoot > tr')];
+          const foot = frows.length ? [...frows[0].children].map(td => td.innerText.trim()) : [];
+          const footRows = frows.map(tr => ({cls: tr.className, cells: [...tr.children].map(td => td.innerText.trim())}));
+          return {heads, rows, keys, labels, levels, foot, footRows};
         }""",
         testid,
     )
@@ -119,7 +121,7 @@ def drill_to_families(page):
     """product root -> cluster -> icp -> pain -> families table (via Open ›). returns [cluster, icp, pain]"""
     goto_product(page)
     labels = []
-    for expected in ("ICPs in", "Pain points in", "Ad families in"):
+    for expected in ("ICPs in", "Pain points in", "Creatives in"):
         labels.append(open_first_row(page))
         expect(page.locator("#level-title")).to_contain_text(expected)
         wait_rows(page)
@@ -321,6 +323,580 @@ def test_login_then_logout(anon_page):
     expect(page).to_have_url(re.compile(r"/login"))
 
 
+# ------------------------------------------------------------------ stale banner, stage note, landing account rows
+def fake_status(page, patch):
+    """serve /api/status with fields overridden (works against the mock and the real API)"""
+    def handler(route):
+        resp = route.fetch()
+        body = resp.json()
+        body.update(patch)
+        route.fulfill(response=resp, json=body)
+    page.route("**/api/status", handler)
+
+
+def test_stale_banner_shows_on_every_page_when_stale_and_is_not_dismissible(page):
+    page.goto("/")
+    page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
+    expect(page.locator("#stale-banner")).to_be_hidden()  # fresh: no banner
+    assert "failed" not in page.locator("#status").inner_text().lower()
+    fake_status(page, {"stale": {"is_stale": True, "reason": "the last Meta pull failed (token rejected)"}, "last_ok_at": "2026-11-02T22:12:00+00:00",
+                       "last_refresh": {"job": "run_daily", "finished_at": "2026-11-03T06:12:00+00:00", "status": "failed"}})
+    for u in ("/", f"/p/{SLUG}", f"/p/{SLUG}?view=ads", f"/p/{SLUG}?view=campaigns"):
+        page.goto(u)
+        page.wait_for_selector(".tablebox")
+        idle(page)
+        b = page.locator("#stale-banner")
+        expect(b).to_be_visible()
+        txt = b.inner_text()
+        assert re.fullmatch(r"Data may be out of date: the last Meta pull failed \(token rejected\)\. Last successful refresh .+; data through [A-Z][a-z]{2} \d{1,2}\.", txt), txt
+        assert b.locator("button, a").count() == 0 and b.get_attribute("role") == "status"  # not dismissible
+        assert "failed" not in page.locator("#status").inner_text().lower()  # the muted "(failed)" is gone from the header
+        bg = page.evaluate("() => getComputedStyle(document.querySelector('#stale-banner')).backgroundColor")
+        assert bg.startswith("rgb(255, 2") or bg.startswith("rgb(255, 24"), bg  # yellow
+        # sits under the header
+        assert page.evaluate("() => document.querySelector('#stale-banner').getBoundingClientRect().top >= document.querySelector('#topbar').getBoundingClientRect().bottom - 1")
+    shot(page, "44_stale_banner")
+
+
+def test_stage_note_tooltip_and_legend_only_when_not_both_stages(page):
+    page.goto(f"/p/{SLUG}?stage=scaling")
+    wait_rows(page)
+    note = page.evaluate("() => fetch('/api/products/%s/tree?root=cluster&depth=0&stage=scaling').then(r => r.json()).then(d => (d.window_info || {}).stage_note || null)" % SLUG)
+    if not note:
+        pytest.skip("API sends no window_info.stage_note")
+    for st in ("testing", "scaling", "unclassified"):
+        loc = chip(page, st)
+        if loc.is_visible():
+            assert loc.get_attribute("title") == note
+    expect(page.locator("[data-testid=legend-stage]")).to_contain_text("Stage filter: " + note)
+    page.goto(f"/p/{SLUG}")  # both stages: no tooltip, no legend line
+    wait_rows(page)
+    assert chip(page, "scaling").get_attribute("title") in (None, note) and page.locator("[data-testid=legend-stage]").count() == 0
+
+
+def test_landing_has_tracker_total_not_on_tracker_and_account_total_rows(page):
+    page.goto("/")
+    page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
+    idle(page)
+    d = table_data(page, "products-table")
+    if len(d["footRows"]) < 3:
+        pytest.skip("API sends no unmatched / total_all on the landing envelope")
+    labels = [r["cells"][0] if r["cells"][0] else r["cells"][1] for r in d["footRows"]]
+    assert labels[0].startswith("Total") and labels[1].startswith("Not on the tracker") and labels[2].startswith("All spend (Meta account total)"), labels
+    assert "extra" in d["footRows"][1]["cls"] and "untracked" in d["footRows"][1]["cls"]
+    assert page.locator("[data-testid=products-table] tfoot tr.untracked a.note-link").inner_text() == "see each product’s Not on the tracker panel"
+    si, hi = d["heads"].index("spend"), d["heads"].index("spend_share")
+    rows_sp = sum(num(r[si]) or 0 for r in d["rows"])
+    tot, unm, allsp = (num(r["cells"][si]) for r in d["footRows"][:3])
+    assert abs(tot - rows_sp) <= len(d["rows"]) and tot > 0
+    assert abs(allsp - (tot + unm)) <= 2 + 0.001 * allsp, (tot, unm, allsp)  # account total = tracker products + not on the tracker
+    sh = [num(r["cells"][hi]) for r in d["footRows"][:3]]
+    assert d["footRows"][2]["cells"][hi].split("\n")[0] == "100.0%"
+    assert abs(sh[0] + sh[1] - 100) <= 0.6  # % of spend is relative to the account total
+    assert abs(sum(num(r[hi]) or 0 for r in d["rows"]) - sh[0]) <= 0.5 + 0.1 * len(d["rows"])
+    # all three footer rows are pinned inside the box (no scrolling to the end)
+    ok = page.evaluate("""() => { const w = document.querySelector('[data-testid=products-table] .tablewrap').getBoundingClientRect();
+        return [...document.querySelectorAll('[data-testid=products-table] tfoot tr')].map(tr => { const r = tr.getBoundingClientRect(); return r.top >= w.top - 1 && r.bottom <= w.bottom + 1; }); }""")
+    assert all(ok) and len(ok) == 3, ok
+    pos = page.evaluate("() => [...document.querySelectorAll('[data-testid=products-table] tfoot td')].map(td => getComputedStyle(td).position)")
+    assert set(pos) == {"sticky"}
+    # compare + per day show up in the extra rows too
+    page.goto("/?window=7d&compare=30d")
+    page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
+    idle(page)
+    assert page.locator("[data-testid=products-table] tfoot tr.untracked .cmpcell").count() >= 5
+    assert page.locator("[data-testid=products-table] tfoot tr.all .cmpcell").count() >= 5
+    d2 = table_data(page, "products-table")
+    assert abs(num(d2["footRows"][2]["cells"][si]) - (num(d2["footRows"][0]["cells"][si]) + num(d2["footRows"][1]["cells"][si]))) <= 2 + 0.01 * num(d2["footRows"][2]["cells"][si])
+    shot(page, "45_landing_account_rows")
+
+
+@pytest.mark.parametrize("window", ["", "?window=30d"])
+def test_unmatched_panel_total_matches_the_landing_not_on_tracker_row(page, window):
+    page.goto("/" + window)
+    page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
+    idle(page)
+    d = table_data(page, "products-table")
+    if len(d["footRows"]) < 3:
+        pytest.skip("API sends no unmatched on the landing envelope")
+    si = d["heads"].index("spend")
+    landing = num(d["footRows"][1]["cells"][si])
+    api = page.context.request
+    products = api.get("/api/products").json()
+    per_product = [api.get(f"/api/products/{p['slug']}/unmatched{window}").json()["total"]["spend"] for p in (products if isinstance(products, list) else products["rows"])]
+    assert abs(sum(per_product) - landing) <= max(2.0, 0.002 * landing), (per_product, landing)
+    # the panel itself: a launch window reads as lifetime
+    page.goto(f"/p/{SLUG}{window}")
+    wait_rows(page)
+    page.locator("#unmatched summary").click()
+    page.wait_for_selector("[data-testid=unmatched-table]")
+    if not window:
+        expect(page.locator("#unmatched-window")).to_contain_text("lifetime")
+
+
+# ------------------------------------------------------------------ Active only filter (v1.9)
+def api_requests(page):
+    reqs = []
+    page.on("request", lambda r: reqs.append(r.url) if "/api/" in r.url and "/api/login" not in r.url and "/api/status" not in r.url and "/media/" not in r.url else None)
+    return reqs
+
+
+def has_active_support(page):
+    d = page.context.request.get(f"/api/products/{SLUG}/tree?root=cluster&depth=0&active=1").json()
+    return bool((d.get("window_info") or {}).get("active_ads") is not None or "ctive" in ((d.get("window_info") or {}).get("note") or ""))
+
+
+def test_active_only_chip_toggles_url_refetches_tables_and_trend(page):
+    if not has_active_support(page):
+        pytest.skip("API does not implement active=1 yet")
+    goto_product(page, "?window=30d")
+    wait_trend(page)
+    chip_ = page.locator("#active-chip")
+    expect(chip_).to_have_attribute("aria-pressed", "false")
+    assert chip_.inner_text() == "Active only"
+    assert page.evaluate("() => { const a = document.querySelector('#active-chip'), b = document.querySelector('.schip[data-stage=testing]'); return a.parentElement === b.parentElement; }")  # beside the Stage chips
+    before = table_data(page)
+    n0, s0 = num(foot_value(page, "unique_ads")), num(foot_value(page, "spend"))
+    assert page.locator("[data-testid=legend-active]").count() == 0
+    reqs = api_requests(page)
+    chip_.click()
+    expect(page).to_have_url(re.compile(r"active=1"))
+    idle(page)
+    wait_trend(page)
+    expect(chip_).to_have_attribute("aria-pressed", "true")
+    for ep in ("/tree", "/trend", "/unmatched"):
+        assert any(ep in u and "active=1" in u for u in reqs), (ep, reqs)
+    assert not any(("/tree" in u or "/trend" in u) and "active=1" not in u for u in reqs[-6:]), reqs  # every refetch after the toggle is filtered
+    n1, s1 = num(foot_value(page, "unique_ads")), num(foot_value(page, "spend"))
+    assert n1 <= n0 and s1 <= s0
+    assert n1 < n0 or s1 < s0 or not IS_MOCK
+    # legend under the table + the count next to the chip + the window note
+    expect(page.locator("[data-testid=legend-active]")).to_contain_text("Showing creatives with active ads; numbers are for their active ads only")
+    expect(page.locator("[data-testid=legend-active]")).to_contain_text("status as of")
+    expect(page.locator("#active-count")).to_have_text(re.compile(r"\d[\d,]* active ads"))
+    expect(page.locator("#range-note")).to_contain_text("Active ads only")
+    shot(page, "43_active_only")
+    # off again: the unfiltered numbers come back
+    chip_.click()
+    idle(page)
+    assert "active" not in qparams(page)
+    assert num(foot_value(page, "spend")) == s0 and num(foot_value(page, "unique_ads")) == n0
+    assert page.locator("[data-testid=legend-active]").count() == 0 and page.locator("#active-count").inner_text() == ""
+
+
+def test_active_only_persists_across_drills_back_reload_and_every_screen(page):
+    if not has_active_support(page):
+        pytest.skip("API does not implement active=1 yet")
+    page.goto("/?active=1")
+    page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
+    wait_trend(page)
+    expect(page.locator("#active-chip")).to_have_attribute("aria-pressed", "true")  # deep link
+    expect(page.locator("#active-count")).to_have_text(re.compile(r"\d[\d,]* active ads"))
+    expect(page.locator("[data-testid=legend-active]")).to_be_visible()
+    reqs = api_requests(page)
+    page.locator("[data-testid=products-table] tbody tr[data-key] a.prodname").first.click()
+    wait_rows(page)
+    wait_trend(page)
+    assert qparams(page)["active"] == "1"
+    open_first_row(page)  # drill
+    wait_rows(page)
+    open_first_row(page)
+    wait_rows(page)
+    open_first_row(page)
+    wait_rows(page)
+    assert qparams(page)["active"] == "1"
+    first_row(page).locator("button.caret").click()  # ads under a creative
+    page.wait_for_selector(f"{TABLE} tr.lv4", timeout=8000)
+    first_row(page).locator("a.row-open").click()  # ad detail: ad table, trend (full series) and preview all filtered
+    expect(page.locator("#ad-title")).to_be_visible()
+    wait_trend(page)
+    assert qparams(page)["active"] == "1"
+    expect(page.locator("#active-chip")).to_have_attribute("aria-pressed", "true")
+    page.click("#back")  # Back keeps it
+    wait_rows(page)
+    assert qparams(page)["active"] == "1"
+    page.reload()
+    wait_rows(page)
+    expect(page.locator("#active-chip")).to_have_attribute("aria-pressed", "true")
+    # the other screens
+    for u in (f"/p/{SLUG}?view=ads&active=1", f"/p/{SLUG}?view=campaigns&active=1", f"/p/{SLUG}?all=1&active=1"):
+        page.goto(u)
+        page.wait_for_selector(".tablebox")
+        idle(page)
+        expect(page.locator("#active-chip")).to_have_attribute("aria-pressed", "true")
+        expect(page.locator("[data-testid=legend-active]")).to_be_visible()
+    # every API call made while active=1 carried the filter (tables, sparklines, trend, unmatched, campaigns, ads, ad detail)
+    unfiltered = [u for u in reqs if re.search(r"/(tree|trend|families|campaigns|unmatched|stage-daily|rollup)\?|/ads\?|/api/ads/\d+\?|/api/products\?", u) and "/preview" not in u and "active=1" not in u]
+    assert not unfiltered, unfiltered
+    # the chip toggles from any screen and keeps the rest of the URL
+    page.goto(f"/p/{SLUG}?view=ads&window=14d&active=1")
+    wait_rows(page, "ads-table")
+    if IS_MOCK:
+        assert set(col(page, "status", "ads-table")) <= {"ACTIVE", ""}  # ad tables list only active ads
+    page.locator("#active-chip").click()
+    idle(page)
+    q = qparams(page)
+    assert "active" not in q and q["view"] == "ads" and q["window"] == "14d"
+
+
+# ------------------------------------------------------------------ creative / ad vocabulary and the first column
+LEGEND = "Creative = one ad concept and all its copies. Ad = one copy running in a campaign and ad set."
+
+
+def test_creative_ad_vocabulary_headings_legend_and_columns(page):
+    cluster, icp, pain = drill_to_families(page)
+    expect(page.locator("#level-title")).to_have_text(f"Creatives in {pain}")
+    heads = [t.strip().replace("\n", " ") for t in page.locator(f"{HEAD} th").all_inner_texts()]
+    assert heads[0] == "Creative" and "Creatives" in heads and "Unique ads" not in heads, heads
+    live_th = page.locator(f"{HEAD} th[data-col=live_now]")
+    assert live_th.get_attribute("title") == "Creatives that spent in the last 2 days"
+    # legend line + (i) tooltip under the heading of every table page
+    pages = ["/", f"/p/{SLUG}", purl(cluster, icp, pain), f"/p/{SLUG}?all=1", f"/p/{SLUG}?view=ads", f"/p/{SLUG}?view=campaigns"]
+    for u in pages:
+        page.goto(u)
+        page.wait_for_selector(".tablebox")
+        idle(page)
+        leg = page.locator("[data-testid=legend]").first
+        expect(leg).to_contain_text(LEGEND)
+        tip = leg.locator(".info-i")
+        assert tip.inner_text() == "ⓘ" and "one ad concept" in tip.get_attribute("title") and "campaign and ad set" in tip.get_attribute("title")
+        text = page.locator("body").inner_text().lower()
+        assert not re.search(r"ad famil|meta ads?\b|\bfamilies\b", text), (u, re.findall(r"ad famil\w*|meta ads?\b|\bfamilies\b", text))
+    page.goto(f"/p/{SLUG}?all=1")
+    wait_rows(page)
+    expect(page.locator("#level-title")).to_have_text("All creatives")
+    assert page.locator(f"{HEAD} th[data-col=display]").inner_text().strip() == "Creative"
+    # the Ads view of one creative: 'Ads running <creative>', same URL params as before (view=ads, family_key)
+    page.locator(f"{BODY_ROWS} .row-ads").first.click()
+    expect(page).to_have_url(re.compile(r"view=ads"))
+    assert "family_key" in qparams(page)
+    wait_rows(page, "ads-table")
+    expect(page.locator("#level-title")).to_contain_text("Ads running ")
+    assert page.locator(f"[data-testid=ads-table] > .tablewrap > table > thead th[data-col=ad_name]").inner_text().strip() == "Ad"
+    # a campaign's rows are Ads
+    page.goto(f"/p/{SLUG}?view=campaigns")
+    page.wait_for_selector("[data-testid=campaign-table]")
+    idle(page)
+    if page.locator("[data-testid=campaign-table] tbody tr[data-key]").count():
+        page.locator("[data-testid=campaign-table] tbody tr[data-key] a.rowlink").first.click()
+        wait_rows(page, "ads-table")
+        expect(page.locator("#level-title")).to_have_text("Ads")
+    # ad detail: 'Creative: <name>' with the ads table (copies of this creative) below
+    page.goto(purl(cluster, icp, pain))
+    wait_rows(page)
+    first_row(page).locator("a.row-open").click()
+    expect(page.locator("#ad-title")).to_contain_text("Creative: ")
+    if page.locator("#meta-ads").count():
+        expect(page.locator("#meta-ads")).to_contain_text("copies of this creative")
+        expect(page.locator("#meta-ads [data-testid=legend]")).to_contain_text(LEGEND)
+    expect(page.locator("#family-metrics")).to_contain_text("Creative metrics")
+
+
+def test_creative_row_second_line_shows_type_status_launch_and_ad_counts(page):
+    drill_to_families(page)
+    meta = first_row(page).locator(".meta")
+    expect(meta).to_be_visible()
+    text = meta.inner_text()
+    assert meta.locator(".chip-type").inner_text() in ("Video", "Image"), text
+    if IS_MOCK:
+        assert re.search(r"\d+ ads? · \d+ live", text), text
+        assert page.locator(f"{BODY_ROWS} .meta-status").first.inner_text().strip()
+    # the same on the flat creatives table
+    page.goto(f"/p/{SLUG}?all=1")
+    wait_rows(page)
+    t2 = page.locator(f"{BODY_ROWS} .meta").first.inner_text()
+    assert page.locator(f"{BODY_ROWS} .meta .chip-type").first.inner_text() in ("Video", "Image")
+    if IS_MOCK:
+        assert re.search(r"\d+ ads? · \d+ live", t2), t2
+        assert re.search(r"20\d\d-\d\d-\d\d", " ".join(page.locator(f"{BODY_ROWS} .meta-launch").all_inner_texts()))  # launch date
+
+
+@pytest.mark.parametrize("width,dpr", [(900, 1), (1100, 1), (1440, 1), (900, 2), (1440, 2)])
+def test_first_column_name_is_always_visible_and_wraps(browser, base_url, width, dpr):
+    """regression: the creative name must never collapse to zero width; name on line one, badges / Open / meta below"""
+    from conftest import USERNAME
+    ctx_ = browser.new_context(viewport={"width": width, "height": 900}, device_scale_factor=dpr, base_url=base_url)
+    try:
+        assert ctx_.request.post(base_url + "/api/login", data={"username": USERNAME, "password": PASSWORD}).status in (204, 200)
+        pg = ctx_.new_page()
+        cluster, icp, pain = drill_to_families(pg)
+        pg.locator(f"{BODY_ROWS} button.caret").first.click()  # open a creative: its ads (lv4 rows) are checked too
+        pg.wait_for_selector(f"{TABLE} tr.lv4", timeout=8000)
+
+        def audit(selector):
+            return pg.evaluate("""(sel) => [...document.querySelectorAll(sel)].slice(0, 8).map(row => {
+                const nm = row.querySelector('.nm'); const meta = row.querySelector('.meta, .sub'); const td = row.querySelector('td.labelcol, td.adcol');
+                if (!nm) return null;
+                const r = nm.getBoundingClientRect(); const cs = getComputedStyle(nm); const mr = meta ? meta.getBoundingClientRect() : null;
+                const nameEl = nm.querySelector('.adname, .lvlname') || nm;
+                const nr = nameEl.getBoundingClientRect(); const ncs = getComputedStyle(nameEl);
+                return {text: nm.innerText.trim(), w: r.width, h: r.height, nameW: nr.width, clipped: nm.scrollWidth > nm.clientWidth + 1, overflow: ncs.overflow, ellipsis: ncs.textOverflow === 'ellipsis',
+                        ws: cs.whiteSpace, tdW: td ? td.getBoundingClientRect().width : null, metaBelow: mr ? mr.top >= r.top + r.height - 1 : true};
+            }).filter(Boolean)""", selector)
+
+        for sel in (f"{TABLE} tbody tr.lv3", f"{TABLE} tbody tr.lv4"):
+            rows = audit(sel)
+            assert rows, sel
+            for r in rows:
+                assert r["text"], r
+                assert r["w"] >= 60 and r["nameW"] >= 40 and r["h"] > 8, r  # not collapsed
+                assert r["ws"] == "normal" and not r["ellipsis"] and not r["clipped"], r  # wraps instead of clipping
+                assert r["metaBelow"], r  # badges / Open / meta sit on the second line
+                assert r["tdW"] is None or r["tdW"] >= 270, r  # first column min-width ~280
+        for u in (f"/p/{SLUG}?all=1", f"/p/{SLUG}?view=ads"):
+            pg.goto(u)
+            pg.wait_for_selector(".tablebox tbody tr[data-key]")
+            idle(pg)
+            for r in audit("[data-testid=level-table] tbody tr[data-key], [data-testid=ads-table] tbody tr[data-key]"):
+                assert r["w"] >= 60 and not r["clipped"] and r["ws"] == "normal" and r["metaBelow"], (u, r)
+        pg.screenshot(path=str(SHOTS / f"42_first_column_{width}_{dpr}x.png"))
+    finally:
+        ctx_.close()
+
+
+# ------------------------------------------------------------------ thumbnails lightbox, live preview, links
+LB = ".lightbox[role=dialog]"
+
+
+def first_video_ad_id(page):
+    api = page.context.request
+    for r in api.get(f"/api/products/{SLUG}/families").json()["rows"]:
+        if r.get("ad_type") == "VID" and r.get("primary_id") is not None:
+            return r["primary_id"]
+    pytest.skip("no video ad")
+
+
+def test_lightbox_opens_from_any_thumbnail_and_closes_three_ways(page):
+    page.goto(f"/p/{SLUG}?view=ads")
+    wait_rows(page, "ads-table")
+    thumb = page.locator("[data-testid=ads-table] tbody img.thumb.zoomable").first
+    name_alt = thumb.get_attribute("alt")
+    url = page.url
+    thumb.click()
+    dlg = page.locator(LB)
+    expect(dlg).to_be_visible()
+    assert dlg.get_attribute("aria-modal") == "true" and dlg.get_attribute("aria-label")
+    assert page.url == url  # a thumbnail click does not follow the row link
+    img = dlg.locator("img.lb-img")
+    expect(img).to_be_visible()
+    assert img.get_attribute("src").startswith("/media/") and img.get_attribute("alt")  # alt text
+    assert page.evaluate("() => document.querySelector('.lightbox .lb-img').naturalWidth") > 0
+    expect(dlg.locator("#lb-open")).to_have_text("Open ad page")
+    expect(dlg.locator("#lb-live")).to_have_text("See live ad")
+    assert dlg.locator(".modal-title").inner_text().strip()  # the ad name
+    shot(page, "38_lightbox")
+    page.keyboard.press("Escape")  # 1. Esc
+    expect(dlg).to_have_count(0)
+    assert page.evaluate("() => document.activeElement && document.activeElement.classList.contains('zoomable')")  # focus restored to the thumbnail
+    thumb.click()
+    expect(dlg).to_be_visible()
+    page.mouse.click(5, 5)  # 2. click outside
+    expect(dlg).to_have_count(0)
+    thumb.click()
+    dlg.locator(".modal-close").click()  # 3. the x button
+    expect(dlg).to_have_count(0)
+    # keyboard: the thumbnail is a focusable button (Enter opens)
+    thumb.focus()
+    page.keyboard.press("Enter")
+    expect(dlg).to_be_visible()
+    page.keyboard.press("Escape")
+    assert name_alt
+
+
+def test_lightbox_from_tree_rows_does_not_drop_down_the_row_and_opens_ad_page(page):
+    drill_to_families(page)
+    row = first_row(page)
+    caret = row.locator("button.caret")
+    expect(caret).to_have_attribute("aria-expanded", "false")
+    row.locator("img.thumb.zoomable").click()
+    expect(page.locator(LB)).to_be_visible()
+    expect(page.locator(f"{BODY_ROWS} button.caret").first).to_have_attribute("aria-expanded", "false")  # the row stayed closed
+    page.locator("#lb-open").click()  # Open ad page
+    expect(page).to_have_url(re.compile(r"/ad/\d+"))
+    expect(page.locator(LB)).to_have_count(0)
+    expect(page.locator("#ad-title")).to_be_visible()
+
+
+def test_lightbox_frames_arrows_keyboard_and_focus_trap(page):
+    ad_id = first_video_ad_id(page)
+    page.goto(f"/ad/{ad_id}")
+    expect(page.locator("#ad-title")).to_be_visible()
+    frames = page.locator("#media .frames button.media-link")
+    assert frames.count() >= 2
+    frames.nth(1).click()  # opens on the clicked frame
+    dlg = page.locator(LB)
+    expect(dlg).to_be_visible()
+    n = page.locator(".lb-strip .lb-frame").count()
+    assert n >= 3
+    counter = dlg.locator(".lb-counter")
+    assert re.fullmatch(rf"\d+ / {n}", counter.inner_text())
+    start = int(counter.inner_text().split(" / ")[0])
+    page.keyboard.press("ArrowRight")
+    assert int(counter.inner_text().split(" / ")[0]) == start % n + 1
+    page.keyboard.press("ArrowLeft")
+    page.keyboard.press("ArrowLeft")
+    assert int(counter.inner_text().split(" / ")[0]) == (start - 2) % n + 1
+    src_before = dlg.locator("img.lb-img").get_attribute("src")
+    dlg.locator(".lb-nav.next").click()
+    assert dlg.locator("img.lb-img").get_attribute("src") != src_before
+    dlg.locator(".lb-nav.prev").click()
+    assert dlg.locator("img.lb-img").get_attribute("src") == src_before
+    dlg.locator(".lb-strip .lb-frame").nth(n - 1).click()  # click a frame in the strip
+    assert counter.inner_text() == f"{n} / {n}"
+    page.keyboard.press("ArrowRight")  # wraps around
+    assert counter.inner_text() == f"1 / {n}"
+    alt = dlg.locator("img.lb-img").get_attribute("alt")
+    assert re.search(r"frame \d+ of \d+", alt)
+    # detail: ad name, tag and a transcript snippet
+    expect(dlg.locator(".lb-tag")).to_contain_text("Tag:")
+    expect(dlg.locator(".lb-transcript")).to_contain_text("Transcript:")
+    assert len(dlg.locator(".lb-transcript").inner_text()) <= 320
+    # focus stays inside the dialog (trap), forwards and backwards
+    for _ in range(14):
+        page.keyboard.press("Tab")
+        assert page.evaluate("() => document.querySelector('.lightbox').contains(document.activeElement)")
+    for _ in range(14):
+        page.keyboard.press("Shift+Tab")
+        assert page.evaluate("() => document.querySelector('.lightbox').contains(document.activeElement)")
+    shot(page, "39_lightbox_frames")
+    page.keyboard.press("Escape")
+    expect(dlg).to_have_count(0)
+
+
+@pytest.mark.mock_only
+def test_see_the_ad_section_formats_iframe_and_sizes(page):
+    ad_id = first_video_ad_id(page)
+    reqs = []
+    page.on("request", lambda r: reqs.append(r.url) if "/preview" in r.url and "/api/" in r.url else None)
+    page.goto(f"/ad/{ad_id}")
+    section = page.locator("#see-ad")
+    expect(section).to_be_visible()
+    expect(section.locator("h2")).to_have_text("See the ad")
+    fr = section.locator("iframe.preview-frame")
+    expect(fr).to_be_visible()
+    assert fr.get_attribute("sandbox") == "allow-scripts allow-same-origin allow-popups" and fr.get_attribute("loading") == "lazy"
+    assert "/mock/preview" in fr.get_attribute("src") and fr.get_attribute("title")
+    assert fr.evaluate("e => [e.clientWidth, e.clientHeight]") == [400, 700]  # mobile feed
+    page.wait_for_function("() => !document.querySelector('#see-ad .preview-msg.overlay')")  # spinner goes away once loaded
+    assert [b.inner_text() for b in section.locator(".preview-formats button").all()] == ["Mobile feed", "Desktop feed", "Reels", "Stories"]
+    for key, size in (("desktop_feed", [540, 600]), ("reels", [400, 700]), ("stories", [400, 700]), ("mobile_feed", [400, 700])):
+        section.locator(f"button[data-format={key}]").click()
+        page.wait_for_function("(k) => { const f = document.querySelector('#see-ad iframe.preview-frame'); return !!f && f.getAttribute('src').includes('format=' + k); }", arg=key)
+        assert section.locator("iframe.preview-frame").evaluate("e => [e.clientWidth, e.clientHeight]") == size, key
+        assert any(f"format={key}" in u for u in reqs)
+    # the preview frame shows the mock ad
+    assert "Mock Meta preview" in page.frame_locator("#see-ad iframe.preview-frame").locator("#mock-ad").inner_text()
+    shot(page, "40_see_the_ad")
+
+
+@pytest.mark.allow_errors
+def test_preview_off_and_error_states(page):
+    ad_id = first_video_ad_id(page)
+    # preview switched off: a clear message, the links only, no iframe
+    page.route("**/api/ads/*/preview*", lambda route: route.fulfill(status=200, content_type="application/json", body='{"enabled": false, "src": null, "format": "mobile_feed"}'))
+    page.goto(f"/ad/{ad_id}")
+    expect(page.locator("#see-ad")).to_contain_text("Live preview off")
+    assert page.locator("#see-ad iframe").count() == 0 and page.locator("#see-ad .preview-formats").is_hidden()
+    assert page.locator("#see-ad .preview-msg").get_attribute("data-state") == "off"
+    # enabled but Meta returned an error
+    page.unroute("**/api/ads/*/preview*")
+    page.route("**/api/ads/*/preview*", lambda route: route.fulfill(status=200, content_type="application/json", body='{"enabled": true, "src": null, "error": "Meta rejected the preview request"}'))
+    page.goto(f"/ad/{ad_id}")
+    expect(page.locator("#see-ad")).to_contain_text("Preview unavailable")
+    expect(page.locator("#see-ad")).to_contain_text("Meta rejected the preview request")
+    assert page.locator("#see-ad iframe").count() == 0
+    # an unsafe src is never framed
+    page.unroute("**/api/ads/*/preview*")
+    page.route("**/api/ads/*/preview*", lambda route: route.fulfill(status=200, content_type="application/json", body='{"enabled": true, "src": "javascript:alert(1)", "format": "mobile_feed"}'))
+    page.goto(f"/ad/{ad_id}")
+    expect(page.locator("#see-ad")).to_contain_text("Preview unavailable")
+    assert page.locator("#see-ad iframe").count() == 0
+    # HTTP failure
+    page.unroute("**/api/ads/*/preview*")
+    page.route("**/api/ads/*/preview*", lambda route: route.fulfill(status=502, content_type="application/json", body='{"error": "bad gateway"}'))
+    page.goto(f"/ad/{ad_id}")
+    expect(page.locator("#see-ad")).to_contain_text("Preview unavailable")
+    shot(page, "41_preview_unavailable")
+
+
+@pytest.mark.allow_errors
+def test_eye_icon_and_lightbox_open_the_preview_modal(page):
+    page.goto(f"/p/{SLUG}?view=ads")
+    wait_rows(page, "ads-table")
+    reqs = []
+    page.on("request", lambda r: reqs.append(r.url) if "/preview" in r.url and "/api/" in r.url else None)
+    eye = page.locator("[data-testid=ads-table] tbody button.eye").first
+    expect(eye).to_be_visible()
+    assert eye.get_attribute("title") == "See live ad"
+    eye.click()
+    modal = page.locator(".preview-modal[role=dialog]")
+    expect(modal).to_be_visible()
+    page.wait_for_function("() => !!document.querySelector('.preview-modal .preview-msg') || !!document.querySelector('.preview-modal iframe')")
+    assert any("/api/meta-ads/" in u and u.split("?")[0].endswith("/preview") for u in reqs), reqs  # the per-Meta-ad endpoint
+    page.keyboard.press("Escape")
+    expect(modal).to_have_count(0)
+    # lightbox -> See live ad: the preview stacks above it; Esc closes the top one first
+    page.locator("[data-testid=ads-table] tbody img.thumb.zoomable").first.click()
+    expect(page.locator(LB)).to_be_visible()
+    page.locator("#lb-live").click()
+    expect(modal).to_be_visible()
+    assert page.locator(LB).count() == 1
+    page.keyboard.press("Escape")
+    expect(modal).to_have_count(0)
+    expect(page.locator(LB)).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(page.locator(LB)).to_have_count(0)
+    # the eye on a tree ad row
+    drill_to_families(page)
+    first_row(page).locator("button.caret").click()
+    page.wait_for_selector(f"{TABLE} tr.lv4", timeout=8000)
+    page.locator(f"{TABLE} tr.lv4 button.eye").first.click()
+    expect(modal).to_be_visible()
+    page.keyboard.press("Escape")
+
+
+def test_facebook_post_and_ads_manager_links_are_present_and_safe(page):
+    page.goto(f"/p/{SLUG}?view=ads")
+    wait_rows(page, "ads-table")
+    fb = page.locator("[data-testid=ads-table] tbody a[data-link=facebook-post]")
+    am = page.locator("[data-testid=ads-table] tbody a[data-link=ads-manager]")
+    if not fb.count():
+        pytest.skip("API returns no links yet")
+    assert fb.count() >= 1 and am.count() >= 1
+    for loc in (fb, am):
+        for i in range(min(loc.count(), 5)):
+            a = loc.nth(i)
+            assert a.get_attribute("target") == "_blank"
+            rel = a.get_attribute("rel")
+            assert "noopener" in rel and "noreferrer" in rel
+            assert re.match(r"https?://", a.get_attribute("href"))
+    assert fb.first.inner_text().startswith("Facebook post") and am.first.inner_text().startswith("Ads Manager")
+    # ad detail page
+    drill_to_families(page)
+    first_row(page).locator("a.row-open").click()
+    expect(page.locator("#ad-title")).to_be_visible()
+    for sel in ("a[data-link=facebook-post]", "a[data-link=ads-manager]"):
+        a = page.locator(f".pagehead {sel}").first
+        if a.count():
+            assert a.get_attribute("target") == "_blank" and "noopener" in a.get_attribute("rel") and "noreferrer" in a.get_attribute("rel")
+    assert page.locator("a[href^='javascript:']").count() == 0
+
+
+@pytest.mark.mock_only
+def test_unsafe_link_urls_are_not_rendered(page):
+    api = page.context.request
+    rows = api.get(f"/api/products/{SLUG}/families").json()["rows"]
+    x = next(r for r in rows if r["display"].startswith("XSS"))
+    page.goto(f"/ad/{x['primary_id']}")
+    expect(page.locator("#ad-title")).to_be_visible()
+    assert page.locator("a[href^='javascript:']").count() == 0
+    assert page.locator(".pagehead a[data-link=facebook-post]").count() == 0  # the javascript: story_url was dropped
+    assert page.locator(".pagehead a[data-link=ads-manager]").count() == 1
+    page.goto(f"/p/{SLUG}?view=ads&family_key={x['family_key']}")
+    wait_rows(page, "ads-table")
+    assert page.locator("a[href^='javascript:']").count() == 0
+
+
 # ------------------------------------------------------------------ logins disabled (AUTH_DISABLED=1)
 def test_auth_disabled_first_visit_loads_without_cookie_login_or_logout(noauth_page):
     page = noauth_page
@@ -354,7 +930,7 @@ def test_auth_disabled_login_page_redirects_to_the_app(noauth_page):
 
 
 # ------------------------------------------------------------------ pinned Total row on every table
-def assert_total_row(page, testid, strict=True):
+def assert_total_row(page, testid, strict=True):  # the landing's first footer row is a share of the Meta account total, not 100%
     d = table_data(page, testid)
     assert d["foot"] and any(c.startswith("Total") for c in d["foot"][:2]), (testid, d["foot"][:2])  # (a caret column may come first)
     i = d["heads"].index("spend")
@@ -362,7 +938,7 @@ def assert_total_row(page, testid, strict=True):
     if strict and shown and shown < 400:  # (long tables render 400 rows at a time)
         s = sum(num(r[i]) or 0 for r in d["rows"])
         assert abs(s - num(d["foot"][i])) <= max(2.0, shown * 1.0), (testid, s, d["foot"][i])
-    if "spend_share" in d["heads"]:
+    if "spend_share" in d["heads"] and testid != "products-table":
         assert d["foot"][d["heads"].index("spend_share")].split("\n")[0] == "100.0%", (testid, d["foot"])
     pos = page.evaluate("(t) => getComputedStyle(document.querySelector(`[data-testid=${t}] tfoot td`)).position", testid)
     assert pos == "sticky"
@@ -426,7 +1002,7 @@ def test_total_row_with_compare_per_day_and_single_stage(page):
     d = assert_total_row(page, "products-table")
     assert page.locator("[data-testid=products-table] tfoot .cmpcell").count() >= 8  # compare sub-lines in the total row
     i = d["heads"].index("spend")
-    assert "vs " in page.locator(f"[data-testid=products-table] tfoot td:nth-child({i + 1}) .cmpcell .b").inner_text()
+    assert "vs " in page.locator(f"[data-testid=products-table] tfoot td:nth-child({i + 1}) .cmpcell .b").first.inner_text()
     page.uncheck("#perday")  # raw totals: the total spend is the sum of the raw row spends
     d = assert_total_row(page, "products-table")
     page.goto("/?stage=scaling")
@@ -461,7 +1037,7 @@ def test_products_landing(page):
     roas = col(page, "roas", "products-table")
     assert all(re.fullmatch(r"\d+\.\d\d|–", v) for v in roas), roas
     shares = [num(v) for v in col(page, "spend_share", "products-table")]
-    assert abs(sum(s or 0 for s in shares) - 100) <= 1, shares
+    assert 50 <= sum(s or 0 for s in shares) <= 100.5, shares  # relative to the Meta account total (the rest is "Not on the tracker")
     assert page.locator("[data-testid=products-table] .badge").count() >= 1
     for gone in ("spend_7d", "cpa_7d"):
         assert not has_col(page, gone, "products-table")
@@ -499,7 +1075,7 @@ def test_open_link_drill_down_with_breadcrumb(page):
     expect(page.locator("#level-title")).to_contain_text("Pain points in")
     wait_rows(page)
     pain = open_first_row(page)
-    expect(page.locator("#level-title")).to_contain_text("Ad families in")
+    expect(page.locator("#level-title")).to_contain_text("Creatives in")
     wait_rows(page)
     q = qparams(page)
     assert (q["cluster"], q["icp"], q["pain"]) == (cluster, icp, pain)
@@ -533,7 +1109,7 @@ def test_level_columns_share_and_total_row(page):
     assert not any(c in heads for c in ADVANCED_COLS), "Advanced (CPM, Conv rate) is off by default"
     labels = [t.strip().replace("\n", " ") for t in page.locator(f"{HEAD} th").all_inner_texts()]
     assert not any("7d" in x for x in labels), labels
-    for lbl in ["Unique ads", "Live now", "Spend", "% of spend", "Impressions", "Link clicks", "CTR", "CPC", "Purchases", "Revenue", "ROAS", "CPA", "Testing $", "Scaling $", "Testing %"]:
+    for lbl in ["Creatives", "Live now", "Spend", "% of spend", "Impressions", "Link clicks", "CTR", "CPC", "Purchases", "Revenue", "ROAS", "CPA", "Testing $", "Scaling $", "Testing %"]:
         assert any(lbl.replace(" ", "") in x.replace(" ", "") for x in labels), (lbl, labels)
     assert d["foot"][0] == "Total"
     i = d["heads"].index("spend")
@@ -544,7 +1120,7 @@ def test_level_columns_share_and_total_row(page):
     assert abs(sum(num(v) or 0 for v in sh) - 100) <= 0.6, sh
     assert foot_value(page, "spend_share") == "100.0%"
     assert page.locator(f"{BODY_ROWS} a.row-ads").count() == len(d["rows"])
-    expect(page.locator("#all-ads")).to_have_text("All ads in view")
+    expect(page.locator("#all-ads")).to_have_text("All creatives in view")
     pos = page.evaluate("() => getComputedStyle(document.querySelector('[data-testid=level-table] tfoot td')).position")
     assert pos == "sticky"
 
@@ -777,7 +1353,7 @@ def test_back_without_history_goes_to_parent_level(page):
     page.goto(ad_href)
     expect(page.locator("#ad-title")).to_be_visible()
     page.click("#back")  # ad detail -> its pain-point (families) page
-    expect(page.locator("#level-title")).to_contain_text("Ad families in")
+    expect(page.locator("#level-title")).to_contain_text("Creatives in")
 
 
 def test_filter_changes_replace_history_so_back_is_not_an_undo(page):
@@ -809,7 +1385,7 @@ def test_sorting_each_level(page, level):
         open_first_row(page)
         wait_rows(page)
     if level == "families":
-        expect(page.locator("#level-title")).to_contain_text("Ad families in")
+        expect(page.locator("#level-title")).to_contain_text("Creatives in")
     for key in ["spend", "spend_share", "impressions", "link_clicks", "ctr", "cpc", "roas", "cpa", "unique_ads", "testing_pct"]:
         sort_both_ways(page, key)
     th = page.locator(f"{HEAD} th[data-col=label]")
@@ -1078,12 +1654,12 @@ def test_family_row_inline_meta_ads_and_ads_action(page):
     expect(page).to_have_url(re.compile(r"view=ads"))
     assert "family_key" in qparams(page)
     wait_rows(page, "ads-table")
-    expect(page.locator("[data-testid=ads-table] > .tablewrap > table > thead th[data-col=spend_share]")).to_contain_text("% of family")
+    expect(page.locator("[data-testid=ads-table] > .tablewrap > table > thead th[data-col=spend_share]")).to_contain_text("% of creative")
 
 
 def test_families_flat_view_filters_and_deep_link(page):
     goto_product(page, "?all=1")
-    expect(page.locator("#level-title")).to_have_text("All ad families")
+    expect(page.locator("#level-title")).to_have_text("All creatives")
     n_all = len(table_data(page)["rows"])
     page.check("#flt-spend")
     expect(page).to_have_url(re.compile(r"spend=1"))
@@ -1114,7 +1690,7 @@ def test_families_flat_view_filters_and_deep_link(page):
 def test_all_ad_families_toggle(page):
     goto_product(page)
     page.click("#toggle-all")
-    expect(page.locator("#level-title")).to_have_text("All ad families")
+    expect(page.locator("#level-title")).to_have_text("All creatives")
     wait_rows(page)
     assert qparams(page).get("all") == "1"
     assert len(table_data(page)["rows"]) >= 1
@@ -1214,7 +1790,7 @@ def test_ad_detail_sections(page):
         expect(page.locator("#line-block table.ingredients tbody tr").first).to_be_visible()
     if page.locator("#meta-ads").count():
         expect(page.locator("#meta-ads")).to_be_visible()
-        expect(page.locator("#meta-ads th[data-col=spend_share]")).to_contain_text("% of family")
+        expect(page.locator("#meta-ads th[data-col=spend_share]")).to_contain_text("% of creative")
     # trend panel on the ad page: full series since daily_start, the selected window shaded (window A)
     expect(page.locator("#trend-panel")).to_be_visible()
     info = trend_info(page)
@@ -1233,7 +1809,7 @@ def test_ad_detail_mock_content(page):
     fams = api.get(f"/api/products/{SLUG}/families").json()["rows"]
     two = next(r for r in fams if r["n_rows"] > 1 and r["counted_here"])
     page.goto(f"/ad/{two['primary_id']}?window=30d")
-    expect(page.locator("#ad-title")).to_have_text(two["display"])
+    expect(page.locator("#ad-title")).to_have_text("Creative: " + two["display"])
     expect(page.locator("#siblings")).to_be_visible()
     assert page.locator("#siblings tbody tr").count() == two["n_rows"] - 1
     expect(page.locator("#tag-block .badge[class*=conf-]")).to_have_count(1)
@@ -1284,7 +1860,7 @@ def test_untrusted_strings_are_escaped(page):
     assert "XSS-<b>test</b>-family" in page.locator(TABLE).inner_text()
     assert page.locator(f"{TABLE} b").count() == 0
     page.goto(f"/ad/{x['primary_id']}")
-    expect(page.locator("#ad-title")).to_have_text("XSS-<b>test</b>-family")
+    expect(page.locator("#ad-title")).to_have_text("Creative: XSS-<b>test</b>-family")
     expect(page.locator("#copy-block")).to_contain_text("<img src=x onerror=window.__xss=1>")
     assert page.evaluate("() => window.__xss") is None
     assert page.locator("a[href^='javascript:']").count() == 0
@@ -2113,7 +2689,7 @@ def test_deep_link_reload_keeps_state(page):
     expect(page.locator(".seg[data-window='14d']")).to_have_attribute("aria-pressed", "true")
     expect(chip(page, "scaling")).to_have_attribute("aria-pressed", "true")
     expect(chip(page, "testing")).to_have_attribute("aria-pressed", "false")
-    expect(page.locator("#level-title")).to_contain_text("Ad families in")
+    expect(page.locator("#level-title")).to_contain_text("Creatives in")
     p2 = page.context.new_page()
     p2.goto(url)
     p2.wait_for_selector(f"{TABLE} tbody tr")
@@ -2182,3 +2758,257 @@ def test_no_page_level_horizontal_scroll_at_laptop_width(ctx, page, path):
     page.wait_for_timeout(200)
     sw = page.evaluate("() => [document.documentElement.scrollWidth, window.innerWidth]")
     assert sw[0] <= sw[1] + 1, sw
+
+
+# ------------------------------------------------------------------ QA fixes (D1-D9)
+def ad_page_url(page, **extra):
+    """open the first family's page from the families table and return its URL path (without query) + id"""
+    drill_to_families(page)
+    open_first_row(page)
+    page.wait_for_selector("#family-metrics")
+    idle(page)
+    m = re.search(r"/ad/(\d+)", page.url)
+    assert m
+    return m.group(0)
+
+
+def test_inline_meta_ad_rows_show_the_traffic_columns(page):
+    """D1: the Meta ads under a creative (inline rows) carry impressions / link clicks / CTR / CPC like every other row"""
+    drill_to_families(page)
+    page.locator(".seg[data-window='30d']").click()
+    wait_pressed(page, "window", "30d")
+    wait_rows(page)
+    d = table_data(page)
+    si = d["heads"].index("spend")
+    idx = next(i for i, r in enumerate(d["rows"]) if (num(r[si]) or 0) > 0)
+    page.locator(BODY_ROWS).nth(idx).locator("button.caret").click()
+    page.wait_for_selector(f"{TABLE} tr.lv4", timeout=8000)
+    idle(page)
+    d = table_data(page)
+    ad_rows = [(k, r) for k, lv, r in zip(d["keys"], d["levels"], d["rows"]) if lv == 4 and ":rem" not in k and (num(r[si]) or 0) > 0]
+    assert ad_rows, "no inline Meta ad with spend"
+    for key in ("impressions", "link_clicks", "ctr", "cpc"):
+        j = d["heads"].index(key)
+        vals = [num(r[j]) for _, r in ad_rows]
+        assert any(v is not None for v in vals), (key, vals)
+    # and they match the ads table for the same creative
+    ji, jc = d["heads"].index("impressions"), d["heads"].index("link_clicks")
+    imp_inline = sum(num(r[ji]) or 0 for _, r in ad_rows)
+    assert imp_inline > 0 and sum(num(r[jc]) or 0 for _, r in ad_rows) > 0
+
+
+@pytest.mark.allow_errors
+@pytest.mark.parametrize("a,b", [("2026-03-01", "2026-03-05"), ("2026-11-10", "2026-11-12")])
+def test_custom_range_outside_the_data_shows_empty_state_and_resets(page, a, b):
+    """D2: a range wholly outside the data is not an error page: a friendly empty state and a way back to the last valid window"""
+    goto_product(page, "?window=14d")
+    page.fill("#range-from", a)
+    page.fill("#range-to", b)
+    page.click("#range-apply")
+    box = page.locator("[data-testid=empty-range]")
+    expect(box).to_be_visible()
+    expect(page.locator(".errorbox")).to_have_count(0)
+    txt = box.inner_text()
+    assert "No data in this range" in txt and "May 6, 2026" in txt and "Nov 2, 2026" in txt, txt
+    assert box.locator("button").count() == 1 and "Retry" not in txt
+    page.locator("[data-testid=reset-range]").click()
+    wait_rows(page)
+    q = qparams(page)
+    assert q.get("window") == "14d" and "from" not in q and "to" not in q, q  # back to the last valid window
+    expect(page.locator("[data-testid=empty-range]")).to_have_count(0)
+    # a link straight into the empty range (no earlier window in this session): the same state; reset falls back to the default
+    page.goto(f"/p/{SLUG}?from={a}&to={b}")
+    expect(page.locator("[data-testid=empty-range]")).to_be_visible()
+    page.locator("[data-testid=reset-range]").click()
+    wait_rows(page)
+    assert "from" not in qparams(page)
+    # the landing page too
+    page.goto(f"/?from={a}&to={b}")
+    expect(page.locator("[data-testid=empty-range]")).to_be_visible()
+    shot(page, "46_empty_range")
+
+
+def test_collapse_all_after_a_slow_expand_stays_collapsed(page):
+    """D3: a slow /tree response must not undo a later Collapse all (or a later, shallower Expand to)"""
+    goto_product(page)
+    n_top = len(table_data(page)["rows"])
+    held = []
+
+    def handler(route):
+        if "depth=2" in route.request.url:
+            held.append(route)
+        else:
+            route.continue_()
+
+    page.route("**/api/products/*/tree*", handler)
+    page.locator("#expand-to [data-depth='2']").click()
+    for _ in range(40):
+        if held:
+            break
+        page.wait_for_timeout(100)
+    if not held:
+        pytest.skip("the tree already holds depth 2 (nothing to race)")
+    page.click("#collapse-all")
+    held[0].continue_()
+    page.wait_for_timeout(1500)
+    idle(page)
+    assert set(table_data(page)["levels"]) == {0} and len(table_data(page)["rows"]) == n_top
+    assert page.locator("#tree-busy").inner_text().strip() == ""  # no stuck 'Loading…'
+    page.unroute("**/api/products/*/tree*")
+    # later click wins in the other order too: +2 (slow) then +1 (fast) ends at +1
+    held.clear()
+    page.route("**/api/products/*/tree*", handler)
+    page.locator("#expand-to [data-depth='2']").click()
+    for _ in range(40):
+        if held:
+            break
+        page.wait_for_timeout(100)
+    page.locator("#expand-to [data-depth='1']").click()
+    page.wait_for_selector(f"{TABLE} tr.lv1", timeout=8000)
+    held[0].continue_()
+    page.wait_for_timeout(1500)
+    idle(page)
+    assert set(table_data(page)["levels"]) == {0, 1}
+
+
+def test_ad_detail_fixed_rows_say_all_stages_when_the_stage_filter_is_on(page):
+    """D4: the Since launch / Last 7d / Last 30d rows ignore the Stage filter: say so (the selected-window row honours it)"""
+    path = ad_page_url(page)
+    page.goto(f"{path}?window=30d")
+    page.wait_for_selector("#family-metrics")
+    idle(page)
+    assert page.locator("#family-metrics .all-stages").count() == 0
+    page.goto(f"{path}?window=30d&stage=testing")
+    page.wait_for_selector("#family-metrics")
+    idle(page)
+    for r in ("launch", "d7", "d30"):
+        expect(page.locator(f"#family-metrics tr[data-row={r}] th")).to_contain_text("all stages")
+    expect(page.locator("#family-metrics tr[data-row=window] th")).not_to_contain_text("all stages")
+
+
+def sticky_overflows(page, testid="level-table"):
+    return page.evaluate("""(tid) => { const out = [];
+        for (const tr of document.querySelectorAll(`[data-testid=${tid}] tbody tr[data-key]`)) {
+          const td = tr.querySelector('td.sticky'); if (!td) continue;
+          const c = td.getBoundingClientRect();
+          for (const el of td.querySelectorAll('a, .badge, .chip-type, .thumb, button')) {
+            const r = el.getBoundingClientRect();
+            if (r.width && r.right > c.right + 1) { out.push([tr.dataset.label, el.className || el.tagName, Math.round(r.right - c.right)]); break; }
+          }
+        } return out; }""", testid)
+
+
+def test_first_column_content_never_overflows_the_sticky_cell(page):
+    """D5: 'Open ›' and the confidence badge wrap inside the first column instead of sliding under the next one"""
+    drill_to_families(page)
+    page.locator(".seg[data-window='30d']").click()
+    wait_pressed(page, "window", "30d")
+    wait_rows(page)
+    assert sticky_overflows(page) == []
+    goto_product(page, "?window=30d")
+    page.click("#expand-all")
+    page.wait_for_selector(f"{TABLE} tr.lv3", timeout=8000)
+    idle(page)
+    assert sticky_overflows(page) == []
+    page.set_viewport_size({"width": 1024, "height": 800})
+    page.wait_for_timeout(200)
+    assert sticky_overflows(page) == []
+
+
+def test_columns_beyond_the_right_edge_are_announced_and_reachable(page):
+    """D6: with Traffic and Advanced on, the table scrolls sideways and says which columns are off-screen"""
+    page.set_viewport_size({"width": 1180, "height": 800})
+    drill_to_families(page)
+    d = table_data(page)
+    stage_cols = [c for c in STAGE_COLS if c in d["heads"]]
+    if not stage_cols:
+        pytest.skip("both stages are not included here")
+    wrap = page.locator(f"{TABLE} .tablewrap")
+    over = page.evaluate("() => { const w = document.querySelector('[data-testid=level-table] .tablewrap'); return w.scrollWidth - w.clientWidth; }")
+    assert over > 4, "expected the table to be wider than the box at 1180px"
+    hint = page.locator("[data-testid=scroll-hint]").first
+    expect(hint).to_be_visible()
+    assert "More columns to the right" in hint.inner_text()
+    # the last column is named while it is off-screen
+    last = stage_cols[-1]
+    last_label = page.locator(f"{HEAD} th[data-col={last}]").inner_text().split("\n")[0].strip()
+    assert last_label.rstrip(" ▲▼↑↓") in hint.inner_text(), (last_label, hint.inner_text())
+    for _ in range(6):
+        if not hint.is_visible():
+            break
+        hint.locator("button").click()
+        page.wait_for_timeout(450)
+    expect(hint).to_be_hidden()
+    ok = page.evaluate("""(c) => { const w = document.querySelector('[data-testid=level-table] .tablewrap').getBoundingClientRect();
+        const th = document.querySelector(`[data-testid=level-table] thead th[data-col=${c}]`).getBoundingClientRect(); return th.right <= w.right + 1; }""", last)
+    assert ok and wrap.evaluate("(w) => w.scrollLeft") > 0
+    shot(page, "47_scroll_hint")
+
+
+def test_campaigns_total_note_names_the_untracked_spend_and_stage_filter_drives_the_chart(page):
+    """D7 + D9"""
+    page.goto(f"/p/{SLUG}?view=campaigns&window=30d")
+    page.wait_for_selector("[data-testid=campaign-table]")
+    idle(page)
+    if not page.locator("[data-testid=campaign-table] tbody tr[data-key]").count():
+        pytest.skip("no campaign-level data loaded yet")
+    note = page.locator("[data-testid=campaign-total-note]")
+    summary = page.locator("#unmatched summary").inner_text()
+    m = re.search(r"\$[\d,]+", summary)
+    if m is None:
+        assert note.count() == 0  # nothing untracked: no note
+    else:
+        expect(note).to_be_visible()
+        assert "Total includes spend not on the tracker: " + m.group(0) in note.inner_text(), (note.inner_text(), summary)
+    # the Tags view has no such note
+    page.goto(f"/p/{SLUG}?window=30d")
+    wait_rows(page)
+    assert page.locator("[data-testid=campaign-total-note]").count() == 0
+    # D9: the Stage chips decide which stages the stacked chart draws
+    def labels(url):
+        page.goto(url)
+        page.wait_for_selector("#stage-chart")
+        idle(page)
+        return page.evaluate("() => Chart.getChart('stage-chart').data.datasets.map(d => d.label)")
+    assert labels(f"/p/{SLUG}?view=campaigns&window=30d&stage=testing") == ["Testing"]
+    assert labels(f"/p/{SLUG}?view=campaigns&window=30d&stage=scaling") == ["Scaling"]
+    assert labels(f"/p/{SLUG}?view=campaigns&window=30d")[:2] == ["Testing", "Scaling"]
+
+
+def test_trend_chart_draws_lines_above_bars_and_lists_the_legend_in_series_order(page):
+    """D8: lines sit above the (translucent) bars; legend = bars, line, then the compare series"""
+    page.goto(f"/p/{SLUG}?window=14d&compare=prev")
+    wait_rows(page)
+    wait_trend(page)
+    info = page.evaluate("""() => { const c = Chart.getChart('trend-chart');
+        return {order: c.data.datasets.map(d => ({label: d.label, type: d.type, order: d.order})),
+                legend: c.legend.legendItems.map(i => i.text), idx: c.data.datasets.map(d => d.label)}; }""")
+    bars = [d for d in info["order"] if d["type"] == "bar"]
+    lines = [d for d in info["order"] if d["type"] == "line"]
+    assert bars and lines and max(l["order"] for l in lines) < min(b["order"] for b in bars), info["order"]
+    assert info["legend"] == info["idx"], info  # legend in dataset order: bars, line, then B bars, B line
+    assert [d["type"] for d in info["order"]][:2] == ["bar", "line"] and info["idx"][-1].startswith("B ")
+
+
+def test_ad_detail_copy_only_pick_has_no_dangling_separator_and_ads_table_has_trend(page):
+    """D8: a blank line code does not leave ' · L08'; the creative's Meta-ads table fills its Trend column"""
+    path = ad_page_url(page)
+
+    def patch(route):
+        r = route.fetch()
+        body = r.json()
+        body["tag"] = body.get("tag") or {"cluster": "x", "icp": "y", "pain_point": "z", "method": "copy"}
+        body["tag"]["copy_only_line"] = {"line_code": "", "label": "L08"}
+        route.fulfill(response=r, json=body)
+
+    page.route(re.compile(r"/api/ads/\d+(\?|$)"), patch)
+    page.goto(f"{path}?window=30d")
+    page.wait_for_selector("#tag-block")
+    idle(page)
+    v = page.locator("#tag-block .kv", has_text="Copy-only pick").locator(".v")
+    assert v.inner_text().strip() == "L08"
+    page.unroute(re.compile(r"/api/ads/\d+(\?|$)"))
+    page.goto(path)  # since launch: the creative always has ads here
+    page.wait_for_selector("[data-testid=ads-table] tbody tr[data-key]")
+    idle(page)
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=ads-table] tbody tr[data-key] svg.spark').length > 0", timeout=8000)

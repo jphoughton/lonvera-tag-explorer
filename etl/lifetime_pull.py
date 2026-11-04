@@ -9,6 +9,7 @@ import argparse
 import datetime as dt
 
 from . import db, meta_api
+from .meta_pull import default_until
 from .resolver import classify_stage, fam
 
 TOL = 0.005
@@ -28,13 +29,16 @@ def aggregate(rows: list[dict]) -> dict[str, dict]:
     return out
 
 
-def pull(tok=None, today: dt.date | None = None) -> tuple[dict, list[dict]]:
-    """-> ({ad_id: totals}, recon rows). Raises GraphError / TokenRejected on API failure."""
+def pull(tok=None, until: dt.date | None = None) -> tuple[dict, list[dict]]:
+    """-> ({ad_id: totals}, recon rows). The window is [earliest allowed start, until] with until = the last complete day (data_through), NOT date_preset=maximum,
+    so since-launch is never ahead of the daily series. Raises GraphError / TokenRejected on API failure."""
     tok = tok or meta_api.get_token()
+    until = until or default_until()
+    since = meta_api.earliest_allowed()
     rows, recon = [], []
     for acct, an in meta_api.ACCOUNTS:
-        r = meta_api.pull_lifetime(tok, acct, an, today=today)
-        tot = meta_api.account_lifetime(tok, acct)
+        r = meta_api.pull_lifetime(tok, acct, an, since, until)
+        tot = meta_api.account_lifetime(tok, acct, since, until)
         ads_spend = sum(x["spend"] for x in r)
         off = abs(ads_spend - tot["spend"]) / tot["spend"] if tot["spend"] else 0.0
         recon.append({"account": an, "ads": len({x["ad_id"] for x in r}), "ads_spend": round(ads_spend, 2), "account_spend": round(tot["spend"], 2),
@@ -52,11 +56,12 @@ def load(conn, agg: dict[str, dict]) -> dict:
              for a in agg.values() if a["campaign_id"]}
     db.execmany(conn, """INSERT INTO meta_campaigns (campaign_id, account, name, stage) VALUES (%s,%s,%s,%s)
                          ON CONFLICT (campaign_id) DO UPDATE SET account=EXCLUDED.account, name=EXCLUDED.name, stage=EXCLUDED.stage""", camps.values())
-    db.execmany(conn, """INSERT INTO meta_ads (ad_id, account, ad_name, meta_family_key, campaign_id, adset_id, adset_name) VALUES (%s,%s,%s,%s,%s,%s,%s)
-                         ON CONFLICT (ad_id) DO UPDATE SET account=EXCLUDED.account, ad_name=EXCLUDED.ad_name, meta_family_key=EXCLUDED.meta_family_key,
+    db.execmany(conn, """INSERT INTO meta_ads (ad_id, account, ad_name, meta_family_key, family_name, campaign_id, adset_id, adset_name) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                         ON CONFLICT (ad_id) DO UPDATE SET account=EXCLUDED.account, ad_name=EXCLUDED.ad_name, meta_family_key=EXCLUDED.meta_family_key, family_name=EXCLUDED.family_name,
                          campaign_id=coalesce(EXCLUDED.campaign_id, meta_ads.campaign_id), adset_id=coalesce(EXCLUDED.adset_id, meta_ads.adset_id),
                          adset_name=coalesce(EXCLUDED.adset_name, meta_ads.adset_name)""",
-                [(a["ad_id"], a["account"], a["ad_name"], a["famkey"], a["campaign_id"] or None, a["adset_id"] or None, a["adset_name"] or None) for a in agg.values()])
+                [(a["ad_id"], a["account"], a["ad_name"], a["famkey"], fam(a["ad_name"]), a["campaign_id"] or None, a["adset_id"] or None, a["adset_name"] or None)
+                 for a in agg.values()])
     deleted = conn.execute("DELETE FROM meta_ad_lifetime").rowcount
     now = dt.datetime.now(dt.timezone.utc)
     n = db.bulk_copy(conn, "meta_ad_lifetime",
@@ -66,10 +71,16 @@ def load(conn, agg: dict[str, dict]) -> dict:
     return {"deleted": deleted, "inserted": n, "campaigns": len(camps)}
 
 
-def run(conn, tok=None, dry_run=False, ad_meta=True) -> dict:
+def check_recon(recon: list[dict]) -> None:
+    bad = [r for r in recon if not r["ok"]]
+    if bad:
+        raise db.JobFailed(f"lifetime spend does not reconcile with account totals (>0.5%): {bad}")
+
+
+def run(conn, tok=None, dry_run=False, ad_meta=True, until: dt.date | None = None) -> dict:
     tok = tok or meta_api.get_token()
-    agg, recon = pull(tok)
-    stats = {"ads": len(agg), "recon": recon, "spend": round(sum(a["spend"] for a in agg.values()), 2),
+    agg, recon = pull(tok, until)
+    stats = {"window": [meta_api.earliest_allowed().isoformat(), (until or default_until()).isoformat()], "ads": len(agg), "recon": recon, "spend": round(sum(a["spend"] for a in agg.values()), 2),
              "impressions": round(sum(a["impressions"] for a in agg.values())), "clicks": round(sum(a["clicks"] for a in agg.values())),
              "purchases": round(sum(a["purchases"] for a in agg.values())), "revenue": round(sum(a["value"] for a in agg.values()), 2)}
     bad = [r for r in recon if not r["ok"]]
@@ -93,14 +104,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--no-ad-meta", action="store_true")
+    ap.add_argument("--until", help="last complete day (default: yesterday, Pacific)")
     a = ap.parse_args()
+    until = dt.date.fromisoformat(a.until) if a.until else None
     if a.dry_run:
         with db.connect() as conn:
-            st = run(conn, dry_run=True)
+            st = run(conn, dry_run=True, until=until)
         db.log(f"DRY RUN: {st}")
         return
     with db.JobRun("lifetime_pull") as r, db.connect() as conn:
-        st = run(conn, ad_meta=not a.no_ad_meta)
+        st = run(conn, ad_meta=not a.no_ad_meta, until=until)
         r.stats = st
         r.rows_written = st["inserted"]
         db.log(f"  {st}")

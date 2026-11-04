@@ -21,8 +21,8 @@ const DIR = {
 const PP_KEYS = new Set(['spend_share', 'ctr', 'conv_rate']);
 
 const DEFS = [
-  ['unique_ads', 'Unique ads', 'int', 'Distinct ad families in this group (every tracker status)', 'sep'],
-  ['live_now', 'Live now', 'int', 'Families with spend on the last or second-to-last data day'],
+  ['unique_ads', 'Creatives', 'int', 'Distinct creatives in this group (every tracker status)', 'sep'],
+  ['live_now', 'Live now', 'int', 'Creatives that spent in the last 2 days'],
   ['spend', 'Spend', 'money', 'Meta-reported spend in the selected window'],
   ['spend_share', '% of spend', 'share', 'Share of the total spend of this table (a child’s share adds up to its parent’s)'],
   ['impressions', 'Impressions', 'int', 'Meta impressions in the selected window (blank where Meta data is not available)', '', 'traffic'],

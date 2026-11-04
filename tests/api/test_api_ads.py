@@ -105,7 +105,7 @@ def test_ads_row_fields(client, fx):
     r = next(x for x in d["rows"] if x["ad_id"] == "a2")
     assert r["ad_name"] == "VB-Fam-A - Copy 2 (a2)" and r["family_key"] == "vb-fam-a" and r["display"] == "VB-Fam-A" and r["primary_id"] == 1000
     assert r["campaign_id"] == "C200" and r["campaign_name"] == "VB_Testing_Cambium" and r["stage"] == "testing" and r["adset_name"] == "VB test set"
-    assert r["account"] == "Main" and r["status"] == "ACTIVE" and r["created_date"] == "2026-10-09" and isinstance(r["thumb_asset_id"], int)
+    assert r["account"] == "Lonvera Main" and r["status"] == "ACTIVE" and r["created_date"] == "2026-10-09" and isinstance(r["thumb_asset_id"], int)
     assert r["tag"] == {"cluster": "Alpha Cluster", "icp": "ICP One", "pain": "Pain A"} and r["on_tracker"] is True
     a2 = [x for x in fx.ad_daily if x["ad_id"] == "a2"]
     assert r["spend_7d"] == pytest.approx(float(sum(x["spend"] for x in a2 if x["day"] >= THROUGH - dt.timedelta(days=6))), abs=0.006)
@@ -241,22 +241,36 @@ def test_stage_daily(client, fx):
 @pytest.mark.parametrize("w,wo", [("", "all"), ("window=7d", (THROUGH - dt.timedelta(days=6), THROUGH)), ("window=30d", (THROUGH - dt.timedelta(days=29), THROUGH))])
 @pytest.mark.parametrize("s,so", STAGE_PARAMS)
 def test_unmatched(client, fx, w, wo, s, so):
+    """Date windows sum the daily rows; since launch (v1.10) is Meta's lifetime per family (lifetime-only families included), with a stage list the
+    included stages' daily rows plus - when 'unclassified' is included - what the daily rows do not explain."""
     d = get_ok(client, "/api/products/vita-bull/unmatched?" + qs(w, s))
     stages = F.STAGES if so == "all" else (so,)
+    pid = fx.product_ids["vita-bull"]
     want = {}
-    for r in fx.ad_daily:
-        if F.MAPPING[r["meta_family_key"]][0] is None and fx.unmatched[r["meta_family_key"]]["product_id"] == fx.product_ids["vita-bull"]:
-            if (wo == "all" or wo[0] <= r["day"] <= wo[1]) and F.stage_of_row(fx, r["campaign_id"]) in stages:
-                want.setdefault(r["meta_family_key"], []).append(r)
-    assert {r["meta_family_key"] for r in d["rows"]} == {k for k, v in want.items() if any(x["spend"] for x in v)}
+    for k, um in fx.unmatched.items():
+        if um["product_id"] != pid:
+            continue
+        rows = [r for r in fx.ad_daily if r["meta_family_key"] == k]
+        inc = [r for r in rows if (wo == "all" or wo[0] <= r["day"] <= wo[1]) and F.stage_of_row(fx, r["campaign_id"]) in stages]
+        sp, pu = sum((x["spend"] for x in inc), F.Z), sum((x["purchases"] for x in inc), F.Z)
+        if wo == "all" and "unclassified" in stages:
+            sp += um["spend_launch"] - sum((x["spend"] for x in rows), F.Z)
+            pu += um["purchases_launch"] - sum((x["purchases"] for x in rows), F.Z)
+        want[k] = (sp, pu)
+    assert {r["meta_family_key"] for r in d["rows"]} == {k for k, v in want.items() if v[0] != 0 or v[1] != 0}
     for r in d["rows"]:
-        v = want[r["meta_family_key"]]
-        assert r["spend"] == pytest.approx(float(sum(x["spend"] for x in v)), abs=0.006)
-        assert r["purchases"] == pytest.approx(float(sum(x["purchases"] for x in v)), abs=0.006)
+        sp, pu = want[r["meta_family_key"]]
+        assert r["spend"] == pytest.approx(float(sp), abs=0.006)
+        assert r["purchases"] == pytest.approx(float(pu), abs=0.006)
         um = fx.unmatched[r["meta_family_key"]]
         assert r["spend_7d"] == pytest.approx(float(um["spend_7d"]), abs=0.006) and r["live"] == um["live"] and r["meta_family"] == um["meta_family"]
+    if wo == "all" and so == "all":          # since launch with every stage: the lifetime's own impressions and clicks
+        for r in d["rows"]:
+            um = fx.unmatched[r["meta_family_key"]]
+            assert r["impressions"] == (int(um["impressions_launch"]) or None) and r["link_clicks"] == (int(um["clicks_launch"]) or None), r["meta_family_key"]
     assert d["total"]["families"] == len(d["rows"])
     assert d["total"]["spend"] == pytest.approx(sum(r["spend"] for r in d["rows"]), abs=0.011)
+    assert d["total"]["purchases"] == pytest.approx(sum(r["purchases"] for r in d["rows"]), abs=0.011)
     assert [r["spend"] for r in d["rows"]] == sorted((r["spend"] for r in d["rows"]), reverse=True)
 
 

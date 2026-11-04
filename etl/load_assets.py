@@ -86,10 +86,12 @@ def family_keys_for(key: str, family_keys: set[str]) -> list[str]:
     return [k for k in (key, "id:" + key) if k in family_keys]
 
 
-def upsert_asset(conn, fk, kind, idx, data, w, h, source=SOURCE):
-    conn.execute("""INSERT INTO creative_assets (family_key, kind, idx, mime, width, height, bytes, source) VALUES (%s,%s,%s,'image/jpeg',%s,%s,%s,%s)
-                    ON CONFLICT (family_key, kind, idx) DO UPDATE SET mime=EXCLUDED.mime, width=EXCLUDED.width, height=EXCLUDED.height,
-                    bytes=EXCLUDED.bytes, source=EXCLUDED.source, created_at=now()""", (fk, kind, idx, w, h, data, source))
+def upsert_asset(conn, fk, kind, idx, data, w, h, source=SOURCE, keep_existing=False):
+    """keep_existing: the family_key also belongs to another product (assets are keyed by family_key alone), so an asset that is already there stays."""
+    on_conflict = "DO NOTHING" if keep_existing else ("DO UPDATE SET mime=EXCLUDED.mime, width=EXCLUDED.width, height=EXCLUDED.height, "
+                                                       "bytes=EXCLUDED.bytes, source=EXCLUDED.source, created_at=now()")
+    conn.execute(f"""INSERT INTO creative_assets (family_key, kind, idx, mime, width, height, bytes, source) VALUES (%s,%s,%s,'image/jpeg',%s,%s,%s,%s)
+                     ON CONFLICT (family_key, kind, idx) {on_conflict}""", (fk, kind, idx, w, h, data, source))
 
 
 def load_transcripts(cd: Path) -> dict[str, str]:
@@ -134,12 +136,16 @@ def load(conn, cd: Path, only: str | None = None, product: str | None = None) ->
                                             (product,)).fetchall()}
     else:
         fkeys = {r[0] for r in conn.execute("SELECT DISTINCT family_key FROM tracker_rows").fetchall()}
+    shared: set[str] = set()                    # family_keys that also belong to another product: existing assets / content of those are never overwritten
+    if product:
+        shared = {r[0] for r in conn.execute("SELECT DISTINCT t.family_key FROM tracker_rows t JOIN products p ON p.id=t.product_id "
+                                             "WHERE p.slug <> %s AND t.family_key = ANY(%s)", (product, sorted(fkeys))).fetchall()}
     mi = json.loads((cd / "media_index.json").read_text())
     di = json.loads((cd / "drive_index.json").read_text()) if (cd / "drive_index.json").exists() else {}
     vi = load_video_index(cd)
     bl_shape = (cd / "video_index.json").exists()                      # contact-sheet cycle
     stats = {"source": src, "product": product, "families": len(mi), "unmatched_families": [], "thumbs": 0, "frames": 0, "fallback_thumbs": 0,
-             "no_image_families": 0, "bytes_thumbs": 0, "bytes_frames": 0, "content": 0, "dual_family_keys": 0}
+             "no_image_families": 0, "bytes_thumbs": 0, "bytes_frames": 0, "content": 0, "dual_family_keys": 0, "shared_with_other_products": len(shared)}
     resolved: dict[str, list[str]] = {}
     for k in list(mi) + [k for k in di if k not in mi]:
         fks = family_keys_for(k, fkeys)
@@ -156,7 +162,7 @@ def load(conn, cd: Path, only: str | None = None, product: str | None = None) ->
                 continue
             data, w, h = shrink(cd / rel, 640, 82)
             for fk in fks:
-                upsert_asset(conn, fk, "thumb", 0, data, w, h, src)
+                upsert_asset(conn, fk, "thumb", 0, data, w, h, src, fk in shared)
                 stats["thumbs"] += 1; stats["bytes_thumbs"] += len(data)
     if only in (None, "frames"):
         for k, fks in resolved.items():
@@ -181,13 +187,13 @@ def load(conn, cd: Path, only: str | None = None, product: str | None = None) ->
                     make_fallback = lambda p=paths[min(1, len(paths) - 1)]: shrink(p, 640, 82)
             for fk in fks:
                 for i, (data, w, h) in enumerate(tiles):
-                    upsert_asset(conn, fk, "frame", i, data, w, h, src)
+                    upsert_asset(conn, fk, "frame", i, data, w, h, src, fk in shared)
                     stats["frames"] += 1; stats["bytes_frames"] += len(data)
             # fallback thumbnail for video families whose creative has no thumbnail
             if tiles and not (rec.get("thumb") or dv.get("thumb")) and only is None:
                 data, w, h = make_fallback()
                 for fk in fks:
-                    upsert_asset(conn, fk, "thumb", 0, data, w, h, src + "-frame")
+                    upsert_asset(conn, fk, "thumb", 0, data, w, h, src + "-frame", fk in shared)
                     stats["fallback_thumbs"] += 1
     if only in (None, "content"):
         meta_copy = {k.lower(): v for k, v in json.loads((cd / "meta_copy.json").read_text()).items()}
@@ -217,14 +223,15 @@ def load(conn, cd: Path, only: str | None = None, product: str | None = None) ->
                 is_vid = _truthy(m.get("video")) or _truthy(c.get("video")) or bool(m.get("video_id"))
                 if bl_shape:
                     is_vid = is_vid or fk in tracker_vid or (dv.get("mime") or "").startswith("video/") or bool(vv.get("frames"))
-                conn.execute("""INSERT INTO family_content (family_key, meta_body, meta_title, meta_desc, transcript, transcript_seconds, story_url, is_video, ad_id, video_id, source)
-                                VALUES (%s,%s,%s,%s,%s,NULL,%s,%s,%s,%s,%s)
-                                ON CONFLICT (family_key) DO UPDATE SET
+                on_conflict = "DO NOTHING" if fk in shared else """DO UPDATE SET
                                 meta_body=COALESCE(EXCLUDED.meta_body, family_content.meta_body), meta_title=COALESCE(EXCLUDED.meta_title, family_content.meta_title),
                                 meta_desc=COALESCE(EXCLUDED.meta_desc, family_content.meta_desc), transcript=COALESCE(EXCLUDED.transcript, family_content.transcript),
                                 story_url=COALESCE(EXCLUDED.story_url, family_content.story_url), is_video=EXCLUDED.is_video,
                                 ad_id=COALESCE(EXCLUDED.ad_id, family_content.ad_id), video_id=COALESCE(EXCLUDED.video_id, family_content.video_id),
-                                source=EXCLUDED.source""",
+                                source=EXCLUDED.source"""
+                conn.execute(f"""INSERT INTO family_content (family_key, meta_body, meta_title, meta_desc, transcript, transcript_seconds, story_url, is_video, ad_id, video_id, source)
+                                VALUES (%s,%s,%s,%s,%s,NULL,%s,%s,%s,%s,%s)
+                                ON CONFLICT (family_key) {on_conflict}""",
                              (fk, c.get("body") or None, c.get("title") or None, c.get("desc") or None, tr or None, story_url(m, c), is_vid,
                               m.get("ad_id") or c.get("ad_id") or None, m.get("video_id") or c.get("video_id") or None, f"{src}:{tsrc}" if tsrc else src))
                 stats["content"] += 1

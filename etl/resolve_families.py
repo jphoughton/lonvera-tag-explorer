@@ -23,8 +23,8 @@ def all_meta_families(conn) -> dict[str, str]:
 def resolve(conn, rebuild: bool = False) -> dict:
     """rebuild=True drops the whole map first (e.g. to discard the sheet's Windows mapping) and re-resolves every Meta family."""
     trows = [{"family": f, "concept": c, "adname": n or ""} for f, c, n in
-             conn.execute("SELECT ad_family, concept_id, meta_ad_name FROM tracker_rows").fetchall()]
-    tracker_keys = {f.strip().lower() for f, in conn.execute("SELECT DISTINCT ad_family FROM tracker_rows WHERE ad_family <> ''").fetchall()}
+             conn.execute("SELECT ad_family, concept_id, meta_ad_name FROM tracker_rows WHERE deleted_at IS NULL").fetchall()]
+    tracker_keys = {f.strip().lower() for f, in conn.execute("SELECT DISTINCT ad_family FROM tracker_rows WHERE ad_family <> '' AND deleted_at IS NULL").fetchall()}
     created = {k: d.isoformat() for k, d in conn.execute(
         "SELECT meta_family_key, min(created_date) FROM meta_ads WHERE created_date IS NOT NULL GROUP BY 1").fetchall()}
     res = Resolver(trows, created)

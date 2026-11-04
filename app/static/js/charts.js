@@ -98,12 +98,12 @@ export function dailyChart(canvas, daily, shades = []) {
 }
 
 // stacked daily spend by stage
-export function stageChart(canvas, rows) {
+export function stageChart(canvas, rows, included) {
   const labels = rows.map((r) => r.day);
   const ds = (key, color) => ({ label: key[0].toUpperCase() + key.slice(1), data: rows.map((r) => r[key] || 0), backgroundColor: color, stack: 's' });
   const chart = new Chart(canvas, {
     type: 'bar',
-    data: { labels, datasets: [ds('testing', COLORS.testing), ds('scaling', COLORS.scaling), ds('unclassified', COLORS.unclassified)] },
+    data: { labels, datasets: [['testing', COLORS.testing], ['scaling', COLORS.scaling], ['unclassified', COLORS.unclassified]].filter(([k]) => !included || included.has(k)).map(([k, c]) => ds(k, c)) },
     options: {
       ...baseOptions(),
       scales: {
@@ -178,7 +178,7 @@ export function trendChart(canvas, cfg) {
     const o = {
       type: ds.type, label: ds.label, data: ds.data, yAxisID: ds.axis === 'right' ? 'y1' : 'y',
       borderColor: ds.color, backgroundColor: ds.outline ? 'rgba(0,0,0,0)' : (bar ? hexA(ds.color, ds.opaque ? 0.85 : 0.45) : ds.color),
-      borderWidth: ds.width || (bar ? 1 : 2.2), order: ds.order == null ? 1 : ds.order,
+      borderWidth: ds.width || (bar ? 1 : 2.2), order: ds.order == null ? (bar ? 1 : 0) : ds.order, // lower order is drawn on top: lines above bars
       _kind: ds.kind,
       _cmpDates: ds.cmpDates || null,
     };
@@ -213,7 +213,7 @@ export function trendChart(canvas, cfg) {
         y1: axis('right', cfg.right, '#c2610f', 'right'),
       },
       plugins: {
-        legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10 } },
+        legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10, sort: (a, b) => a.datasetIndex - b.datasetIndex } },
         windowShade: { shades: sh },
         tooltip: {
           callbacks: {

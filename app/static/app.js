@@ -1,5 +1,5 @@
-import { $, h, setRenderer, navigate, currentParams, qs, href, globalParams, hasDateWindow, compareOn, cleanParams, setViewStateProvider, clearCmpRefreshers, loadViewState, navIndex, getParentHint, setParentHint } from './js/util.js';
-import { setUnauthorizedHandler, AuthError } from './js/api.js';
+import { $, h, fmt, setRenderer, navigate, currentParams, qs, href, globalParams, hasDateWindow, compareOn, cleanParams, setViewStateProvider, clearCmpRefreshers, loadViewState, navIndex, getParentHint, setParentHint } from './js/util.js';
+import { setUnauthorizedHandler, AuthError, ApiError } from './js/api.js';
 import { buildShell, showControls, syncControls, loadStatus, setRangeInfo, getStatus, setBackDisabled, setPendingNote, isAuthDisabled } from './js/controls.js';
 import { destroyCharts } from './js/charts.js';
 import './js/lightbox.js';
@@ -71,6 +71,31 @@ function normalize(params) {
   return params;
 }
 
+// the window (A) of the last page that rendered; "Reset" on the empty-range state goes back to it
+let lastValid = null;
+const isEmptyRange = (e) => e instanceof ApiError && e.status === 400 && /no daily data in that range/i.test(e.message || '');
+const fullDay = (s) => (s ? `${fmt.day(s)}, ${String(s).slice(0, 4)}` : '–');
+
+async function showEmptyRange(params, root, my) {
+  let st = getStatus();
+  if (!st) { try { st = await loadStatus(abort.signal); } catch { st = getStatus(); } }
+  if (token !== my) return;
+  st = st || getStatus();
+  setRangeInfo(params, null, null);
+  root.removeAttribute('aria-busy');
+  const covers = st && st.daily_start && st.data_through ? ` Data covers ${fullDay(st.daily_start)} to ${fullDay(st.data_through)}.` : '';
+  const reset = () => {
+    const back = { ...params, window: undefined, from: undefined, to: undefined, ...(lastValid || {}) };
+    navigate(location.pathname + qs(cleanParams(back)));
+  };
+  root.replaceChildren(h('div', { class: 'page' },
+    h('div', { class: 'empty-range', role: 'status', 'data-testid': 'empty-range' },
+      h('strong', 'No data in this range.'),
+      h('span', null, covers),
+      h('div', null, h('button', { type: 'button', class: 'btn', 'data-testid': 'reset-range', onclick: reset },
+        'Back to the last valid range')))));
+}
+
 async function render(opts = {}) {
   const my = ++token;
   if (abort) abort.abort();
@@ -108,8 +133,10 @@ async function render(opts = {}) {
   if (opts.scroll !== false) window.scrollTo(0, 0);
   try {
     await route.page(ctx);
+    if (token === my && !route.public) lastValid = { window: params.window, from: params.from, to: params.to };
   } catch (e) {
     if (e instanceof AuthError || (e && e.name === 'AbortError') || token !== my) return;
+    if (isEmptyRange(e)) { await showEmptyRange(params, root, my); if (token === my) updateBack(); return; }
     console.warn('render failed', e);
     setRangeInfo(params, null, null);
     root.removeAttribute('aria-busy');

@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import time
+from zoneinfo import ZoneInfo
 
 from . import db
 from .resolver import pick, pick_clicks
@@ -108,7 +109,7 @@ def _paged(url, params, what, pace=0.4):
 def _async_report(tok, acct, an, extra: dict):
     """Run an async insights report with extra params (level, time_range / date_preset, fields...) and page the result."""
     import requests
-    p = {"access_token": tok, "filtering": json.dumps([{"field": "spend", "operator": "GREATER_THAN", "value": 0}])}
+    p = {"access_token": tok}
     p.update(extra)
     try:
         rid = requests.post(f"{G}/{acct}/insights", data=p, timeout=120).json().get("report_run_id")
@@ -135,9 +136,10 @@ def _async(tok, acct, since, until, an):
 
 def pull_chunk(tok, acct, an, since: dt.date, until: dt.date) -> list[dict]:
     """Ad-level daily insights for one account, [since, until]. Splits the window on 'reduce the amount of data', async at 1 day."""
+    # No row filter on purpose: spend>0 (and impressions>0) drop view/click-through purchases booked on days without delivery
+    # (measured 2026-10-26..30, Main: 10 purchases / $700 revenue on zero-spend rows, 22 of those rows with zero impressions; +4.8% rows).
     params = {"access_token": tok, "level": "ad", "time_increment": 1, "limit": 500, "fields": INSIGHT_FIELDS,
-              "time_range": json.dumps({"since": since.isoformat(), "until": until.isoformat()}),
-              "filtering": json.dumps([{"field": "spend", "operator": "GREATER_THAN", "value": 0}])}
+              "time_range": json.dumps({"since": since.isoformat(), "until": until.isoformat()})}
     try:
         rows = _paged(f"{G}/{acct}/insights", params, f"{an} {since}..{until}")
     except TooBig as e:
@@ -167,19 +169,56 @@ def date_chunks(since: dt.date, until: dt.date, days: int = CHUNK_DAYS):
     return out
 
 
-def fetch_ad_meta(tok, ad_ids: list[str], batch: int = 50, pace: float = 0.6) -> dict[str, dict]:
-    """created_time / effective_status / name for specific ads (best effort; stops quietly if rate-limited)."""
-    out = {}
-    for i in range(0, len(ad_ids), batch):
-        chunk = ad_ids[i:i + batch]
+PT = ZoneInfo("America/Los_Angeles")
+
+
+def parse_created(s) -> tuple[dt.datetime | None, dt.date | None]:
+    """Graph created_time ('2026-10-12T19:30:00+0000') -> (UTC instant, Pacific calendar date)."""
+    if not s:
+        return None, None
+    try:
+        t = dt.datetime.strptime(str(s), "%Y-%m-%dT%H:%M:%S%z")
+    except ValueError:
         try:
-            j = graph_get(f"{G}/", {"ids": ",".join(chunk), "fields": "name,created_time,effective_status", "access_token": tok}, "ad meta", max_retries=3)
-        except GraphError as e:
+            t = dt.datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+        except ValueError:
+            return None, None
+    return t, t.astimezone(PT).date()
+
+
+def _meta_batch(tok, chunk: list[str], out: dict, strict: bool):
+    try:
+        j = graph_get(f"{G}/", {"ids": ",".join(chunk), "fields": "name,created_time,effective_status", "access_token": tok}, "ad meta", max_retries=4 if strict else 2)
+    except TokenRejected:
+        raise
+    except RateLimited:
+        raise
+    except GraphError as e:
+        if len(chunk) > 1:                                   # one bad id (deleted / no access) poisons the whole call: bisect
+            mid = len(chunk) // 2
+            _meta_batch(tok, chunk[:mid], out, strict)
+            _meta_batch(tok, chunk[mid:], out, strict)
+        else:
+            out[chunk[0]] = {"error": db.scrub(e)[:120]}
+        return
+    for k, v in j.items():
+        if isinstance(v, dict):
+            at, pd = parse_created(v.get("created_time"))
+            out[str(k)] = {"created_at": at, "created": pd, "status": v.get("effective_status"), "name": v.get("name")}
+
+
+def fetch_ad_meta(tok, ad_ids: list[str], batch: int = 50, pace: float = 0.5, strict: bool = False) -> dict[str, dict]:
+    """created_at (UTC instant) / created (PACIFIC date) / effective_status / name for specific ads. strict=False stops quietly when rate-limited
+    (partial result); strict=True raises RateLimited / GraphError so the caller can fail loudly. Bad ids are skipped (their entry has 'error')."""
+    out: dict[str, dict] = {}
+    for i in range(0, len(ad_ids), batch):
+        try:
+            _meta_batch(tok, ad_ids[i:i + batch], out, strict)
+        except RateLimited as e:
+            if strict:
+                raise
             db.log(f"  ad meta fetch stopped at {i}/{len(ad_ids)}: {str(e)[:120]}")
             break
-        for k, v in j.items():
-            if isinstance(v, dict):
-                out[str(k)] = {"created": (v.get("created_time") or "")[:10] or None, "status": v.get("effective_status"), "name": v.get("name")}
         time.sleep(pace)
     return out
 
@@ -188,47 +227,44 @@ def fetch_ad_meta(tok, ad_ids: list[str], batch: int = 50, pace: float = 0.6) ->
 LIFETIME_FIELDS = "ad_id,ad_name,campaign_id,campaign_name,adset_id,adset_name,spend,impressions,actions,action_values,inline_link_clicks,date_start,date_stop"
 
 
-def pull_lifetime(tok, acct, an, earliest: dt.date | None = None, today: dt.date | None = None) -> list[dict]:
-    """All-time ad-level insights (one row per ad). Tries date_preset=maximum synchronously, then the async flow when Meta says the request is too big;
-    if `maximum` itself is rejected it falls back to an explicit time_range from `earliest`."""
-    today = today or dt.date.today()
-    earliest = earliest or today - dt.timedelta(days=36 * 30)        # Meta rejects start dates beyond 37 months (code 3018)
-    base = {"level": "ad", "fields": LIFETIME_FIELDS}
-    attempts = [{"date_preset": "maximum"},
-                {"time_range": json.dumps({"since": earliest.isoformat(), "until": today.isoformat()})}]
+def earliest_allowed(today: dt.date | None = None) -> dt.date:
+    """Meta rejects insight windows that start more than 37 months back (code 3018); use 36 months."""
+    t = today or dt.date.today()
+    return dt.date(t.year - 3, t.month, min(t.day, 28))
+
+
+def pull_lifetime(tok, acct, an, since: dt.date, until: dt.date) -> list[dict]:
+    """All-time ad-level insights (one row per ad) over an explicit window [since, until]: since = the earliest allowed start, until = the last complete day
+    (data_through), so since-launch is never ahead of the daily series. Sync paging first, the async report when Meta says it is too big (3 tries)."""
+    base = {"level": "ad", "fields": LIFETIME_FIELDS, "time_range": json.dumps({"since": since.isoformat(), "until": until.isoformat()}),
+            "filtering": json.dumps([{"field": "spend", "operator": "GREATER_THAN", "value": 0}])}      # lifetime filter is on all-time spend, so it loses nothing
+    params = {"access_token": tok, "limit": 500, **base}
     last = None
-    for a in attempts:
-        params = {"access_token": tok, "limit": 500, **base, **a,
-                  "filtering": json.dumps([{"field": "spend", "operator": "GREATER_THAN", "value": 0}])}
-        rows = None
-        for attempt in (1, 2, 3):                                        # async jobs fail transiently under load: retry before changing strategy
+    for attempt in (1, 2, 3):                                            # async jobs fail transiently under load
+        try:
             try:
-                try:
-                    rows = _paged(f"{G}/{acct}/insights", params, f"{an} lifetime")
-                except TooBig:
-                    db.log(f"  {an} lifetime too big for the sync call -> async report (attempt {attempt})")
-                    rows = _async_report(tok, acct, an, {**base, **a})
+                rows = _paged(f"{G}/{acct}/insights", params, f"{an} lifetime")
+            except TooBig:
+                db.log(f"  {an} lifetime too big for the sync call -> async report (attempt {attempt})")
+                rows = _async_report(tok, acct, an, base)
+            for r in rows:
+                r["account"] = an
+            return rows
+        except TokenRejected:
+            raise
+        except GraphError as e:
+            last = e
+            db.log(f"  {an} lifetime attempt {attempt} failed: {db.scrub(e)[:140]}")
+            if "async" not in str(e) or attempt == 3:
                 break
-            except TokenRejected:
-                raise
-            except GraphError as e:
-                last = e
-                db.log(f"  {an} lifetime {list(a)[0]} attempt {attempt} failed: {db.scrub(e)[:140]}")
-                if "async" not in str(e) or attempt == 3:
-                    break
-                time.sleep(60 * attempt)
-        if rows is None:
-            continue
-        for r in rows:
-            r["account"] = an
-        return rows
+            time.sleep(60 * attempt)
     raise last or GraphError(f"{an}: lifetime pull failed")
 
 
-def account_lifetime(tok, acct) -> dict:
-    """Account-level all-time totals (spend, impressions, link clicks, purchases)."""
-    j = graph_get(f"{G}/{acct}/insights", {"access_token": tok, "date_preset": "maximum", "fields": "spend,impressions,actions,action_values,inline_link_clicks"},
-                  "account lifetime")
+def account_lifetime(tok, acct, since: dt.date, until: dt.date) -> dict:
+    """Account-level totals over the same window (spend, impressions, link clicks, purchases)."""
+    j = graph_get(f"{G}/{acct}/insights", {"access_token": tok, "fields": "spend,impressions,actions,action_values,inline_link_clicks",
+                                           "time_range": json.dumps({"since": since.isoformat(), "until": until.isoformat()})}, "account lifetime")
     if not j.get("data"):
         return {"spend": 0.0, "impressions": 0.0, "clicks": 0.0, "purchases": 0.0, "value": 0.0}
     a = j["data"][0]

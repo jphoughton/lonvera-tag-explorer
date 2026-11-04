@@ -1,5 +1,5 @@
 // App header (Back, brand, data-through, logout) and the global range / stage / compare controls. State lives in the URL.
-import { h, navigate, setParams, fmt, currentParams, stageSet, stageParam, STAGES, hasDateWindow, compareOn, cmpView, applyCompareState, refreshCmp, qs, cleanParams } from './util.js';
+import { h, navigate, setParams, fmt, isNum, currentParams, stageSet, stageParam, STAGES, hasDateWindow, compareOn, cmpView, applyCompareState, refreshCmp, qs, cleanParams } from './util.js';
 import { api, AuthError } from './api.js';
 
 const PRESETS = [['launch', 'Since launch'], ['1d', '1d'], ['7d', '7d'], ['14d', '14d'], ['30d', '30d'], ['60d', '60d'], ['90d', '90d'], ['180d', '180d'], ['mtd', 'MTD']];
@@ -9,10 +9,13 @@ const STAGE_LABELS = { testing: 'Testing', scaling: 'Scaling', unclassified: 'Un
 let topbar, controls, statusEl, userEl, labelEl, noteEl, fromEl, toEl, errEl, backBtn;
 let cmpSel, cfromEl, ctoEl, cmpCustomBox, perDayWrap, perDayCb, cerrEl;
 let presetBtns = [], stageBtns = {};
+let activeBtn, activeCountEl;
 let status = null;
 let uncVisible = false;
 let pendingNote = null;
 let authDisabled = false;
+let stageNote = '';
+export const getStageNote = () => stageNote;
 let controlsOn = false;
 export const isAuthDisabled = () => authDisabled;
 // Log out + user name only exist when the deployment has logins (status.auth !== 'disabled')
@@ -66,6 +69,9 @@ export function buildShell({ onBack }) {
     stageBtns[st] = b;
   }
 
+  activeBtn = h('button', { type: 'button', class: 'schip active-chip', id: 'active-chip', 'aria-pressed': 'false', title: 'Only creatives with active ads; numbers are for their active ads' }, 'Active only');
+  activeBtn.addEventListener('click', () => setParams({ active: currentParams().active === '1' ? null : '1' }));
+  activeCountEl = h('span', { class: 'muted small', id: 'active-count' });
   cmpSel = h('select', { id: 'cmp', 'aria-label': 'Compare to' }, COMPARES.map(([v, t]) => h('option', { value: v }, t)));
   cmpSel.addEventListener('change', onCompareChange);
   cfromEl = h('input', { type: 'date', id: 'cmp-from', 'aria-label': 'Compare from date' });
@@ -86,7 +92,7 @@ export function buildShell({ onBack }) {
     h('div', { class: 'ctl-row' },
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Range'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Date range' }, presetBtns)),
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Custom'), fromEl, h('span', { class: 'muted' }, '–'), toEl, apply, errEl),
-      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Stage'), h('span', { class: 'chips', role: 'group', 'aria-label': 'Stage' }, Object.values(stageBtns))),
+      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Stage'), h('span', { class: 'chips', role: 'group', 'aria-label': 'Stage' }, Object.values(stageBtns), activeBtn), activeCountEl),
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Compare to'), cmpSel, cmpCustomBox, perDayWrap),
     ),
     h('div', { class: 'ctl-row second' }, labelEl),
@@ -157,6 +163,17 @@ async function logout() {
 }
 
 // ---------- state ----------
+// yellow strip under the header when the data is stale (not dismissible, hidden when fresh)
+function renderStaleBanner(st) {
+  const el = document.getElementById('stale-banner');
+  if (!el) return;
+  const stale = st && st.stale && st.stale.is_stale;
+  if (!stale || !controlsOn) { el.hidden = true; el.textContent = ''; return; }
+  const when = st.last_ok_at ? fmt.dateTime(st.last_ok_at) : 'unknown';
+  el.textContent = `Data may be out of date: ${st.stale.reason || 'the last refresh did not complete'}. Last successful refresh ${when}; data through ${fmt.day(st.data_through)}.`;
+  el.hidden = false;
+}
+
 export function showControls(on) {
   controls.hidden = !on;
   const src = document.getElementById('source');
@@ -164,6 +181,7 @@ export function showControls(on) {
   document.body.classList.toggle('no-controls', !on);
   controlsOn = on;
   applyAuthUi();
+  renderStaleBanner(status);
 }
 export function setBackDisabled(disabled) {
   if (backBtn) backBtn.disabled = !!disabled;
@@ -183,6 +201,8 @@ export function syncControls(p) {
   const win = custom ? null : (p.window || 'launch');
   presetBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.window === win)));
   syncStageChips(p);
+  activeBtn.setAttribute('aria-pressed', String(p.active === '1'));
+  activeCountEl.textContent = '';
   fromEl.value = custom ? p.from : '';
   toEl.value = custom ? p.to : '';
   errEl.textContent = '';
@@ -216,6 +236,10 @@ export function setRangeInfo(p, a, b, { unclassified = false } = {}) {
   if (unclassified !== uncVisible) { uncVisible = unclassified; syncStageChips(p); }
   perDayWrap.hidden = !cmpView.on;
   perDayCb.checked = cmpView.perDay;
+  stageNote = (a && a.stage_note) || '';
+  for (const st of STAGES) { if (stageNote) stageBtns[st].title = stageNote; else stageBtns[st].removeAttribute('title'); }
+  activeBtn.setAttribute('aria-pressed', String(p.active === '1'));
+  activeCountEl.textContent = p.active === '1' && a && isNum(a.active_ads) ? `${fmt.int(a.active_ads)} active ads` : '';
   if (!a) { labelEl.textContent = ''; noteEl.replaceChildren(); return; }
   labelEl.textContent = b ? `${rangeText(a)} vs ${rangeText(b)}` : (a.label || '');
   const notes = [];
@@ -267,8 +291,9 @@ export async function loadStatus(signal) {
     const lr = status.last_refresh;
     statusEl.replaceChildren(
       h('span', { id: 'data-through' }, 'Data through ' + fmt.day(status.data_through)),
-      lr && lr.finished_at ? h('span', { class: 'muted' }, ` · refreshed ${fmt.dateTime(lr.finished_at)}${lr.status && lr.status !== 'ok' && lr.status !== 'success' ? ' (' + lr.status + ')' : ''}`) : null,
+      lr && lr.finished_at ? h('span', { class: 'muted' }, ` · refreshed ${fmt.dateTime(lr.finished_at)}`) : null,
     );
+    renderStaleBanner(status);
     for (const el of [fromEl, toEl, cfromEl, ctoEl]) { el.min = status.daily_start || ''; el.max = status.data_through || ''; }
     const src = document.getElementById('source');
     if (src) {
@@ -284,5 +309,5 @@ export async function loadStatus(signal) {
 }
 export function getStatus() { return status; }
 export async function ensureStatus(signal) { return status || loadStatus(signal); }
-export function clearStatus() { status = null; if (statusEl) statusEl.textContent = ''; if (userEl) { userEl.textContent = ''; userEl.hidden = true; } const src = document.getElementById('source'); if (src) src.hidden = true; }
+export function clearStatus() { status = null; renderStaleBanner(null); if (statusEl) statusEl.textContent = ''; if (userEl) { userEl.textContent = ''; userEl.hidden = true; } const src = document.getElementById('source'); if (src) src.hidden = true; }
 export { cleanParams, qs };

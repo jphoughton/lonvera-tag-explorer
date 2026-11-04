@@ -1,147 +1,131 @@
-"""Daily refresh (Railway cron): tracker_sync -> meta_pull (trailing 7 days) -> lifetime_pull (all-time per ad) -> resolve new/unmatched Meta families -> build_metrics.
-Every step logs to etl_runs (and the umbrella 'run_daily' row); exits non-zero if any step failed. If the Meta pull fails (token, rate limit)
-and --source auto|sheet allows it, ad_daily's trailing days are refreshed from the sheet's Daily tab instead (family grain).
-Usage: python -m etl.run_daily [--days 7] [--source auto|meta|sheet] [--snapshot-dir D]"""
+"""Daily refresh (Railway cron), API-driven and ATOMIC:
+  1. tracker_sync (metadata only; a refusal is remembered and fails the run at the end, the Meta part still runs on the last good tracker rows)
+  2. READ phase (no database writes): Meta ad x day for the trailing 28 days (Meta restates conversions for weeks), all-time ad lifetime ending at the last
+     complete day, ad status/name/created for every ad with delivery in the last 60 days or a non-terminal status
+  3. WRITE phase, ONE transaction: replace those days, replace lifetime, update ads, resync names, resolve new/unmatched Meta families, rebuild metrics
+Any Meta failure (token rejected -> error 'meta token rejected', rate limit, reconcile failure ...) aborts before step 3: existing data stays untouched, the run is
+recorded failed in etl_runs, exit code 1. There is NO sheet fallback. app_meta: last_ok_at = finish time of the last FULLY successful run, refresh_status
+('ok'|'failed'), last_error (scrubbed).
+Usage: python -m etl.run_daily [--days 28] [--until D] [--force-tracker]"""
 from __future__ import annotations
 
 import argparse
 import datetime as dt
 import sys
 
-from . import backfill_sheet, build_metrics, db, lifetime_pull, meta_api, meta_pull, resolve_families, sheets_io, tracker_sync
+from . import build_metrics, db, lifetime_pull, meta_api, meta_pull, names, resolve_families, sheets_io, status_refresh, tracker_sync
+
+DEFAULT_DAYS = 28
 
 
-def refresh_from_sheet(conn, snapshot_dir=None, days: int = 7) -> dict:
-    """Fallback: replace the trailing `days` of ad_daily with the sheet's Daily rows (family grain, source='sheet')."""
-    daily = backfill_sheet.parse_daily(sheets_io.read_tab("meta_daily", snapshot_dir))
-    if not daily:
-        raise RuntimeError("sheet Daily tab returned no rows")
-    last = max(d[0] for d in daily)
-    first = last - dt.timedelta(days=days - 1)
-    rows = [d for d in daily if first <= d[0] <= last]
-    conn.execute("DELETE FROM ad_daily WHERE day BETWEEN %s AND %s", (first, last))
-    n = db.bulk_copy(conn, "ad_daily", ["ad_id", "day", "meta_family_key", "meta_family", "campaign_id", "spend", "purchases", "conv_value", "link_clicks", "source"],
-                     [("fam:" + name.lower(), day, name.lower(), name, "", sp, pu, cv, cl, "sheet") for day, name, sp, pu, cv, cl in rows])
-    return {"source": "sheet", "from": first.isoformat(), "to": last.isoformat(), "rows": n}
+def mark(status: str, error: str = "") -> None:
+    """Refresh bookkeeping on its own autocommit connection (works even if the main transaction failed)."""
+    with db.connect(autocommit=True) as c:
+        db.set_meta(c, "refresh_status", status)
+        db.set_meta(c, "last_error", db.scrub(error)[:500])
+        if status == "ok":
+            db.set_meta(c, "last_ok_at", dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
 
 
-def step(name, fn, results, fatal=True):
-    try:
-        out = fn()
-        results[name] = {"ok": True, **(out if isinstance(out, dict) else {})}
-        return out
-    except Exception as e:                                                  # noqa: BLE001
-        results[name] = {"ok": False, "error": db.scrub(e)[:300]}
-        db.log(f"  step {name} FAILED: {db.scrub(e)[:300]}")
-        if fatal:
-            raise
-        return None
+def meta_failure(e: Exception, what: str) -> db.JobFailed:
+    if isinstance(e, meta_api.TokenRejected) or "token rejected" in str(e):
+        return db.JobFailed("meta token rejected")
+    if isinstance(e, db.JobFailed):
+        return e
+    return db.JobFailed(f"{what} failed: {db.scrub(e)[:300]}")
 
 
-def run(days=7, source="auto", snapshot_dir=None, until=None) -> dict:
-    """tracker -> Meta -> resolve -> metrics. Any Meta failure still lets the sheet fallback + metrics finish (data stays fresh) but the run
-    is then FAILED loudly: etl_runs.status='failed' and error='meta token rejected' (Graph codes 190/102/463/467) or 'meta pull failed: ...'."""
+def run(days: int = DEFAULT_DAYS, snapshot_dir=None, until: dt.date | None = None, force_tracker: bool = False) -> dict:
     results: dict = {}
-    meta_error = None
-    with db.JobRun("run_daily") as top, db.connect() as conn:
-        top.stats = results
+    try:
+        with db.JobRun("run_daily") as top, db.connect() as conn:
+            top.stats = results
+            tracker_error = None
 
-        def s_tracker():
-            with db.JobRun("tracker_sync") as r:
-                st = tracker_sync.sync(conn, sheets_io.read_tab("creative_tracker", snapshot_dir))
-                conn.commit()
-                r.stats = {k: v for k, v in st.items() if k != "unknown_products"}
-                r.rows_written = st["rows_in_sheet"]
-            return {"rows": st["rows_in_sheet"], "inserted": st["inserted"]}
-        step("tracker_sync", s_tracker, results)
+            # ---- 1. tracker metadata (never blocks the Meta numbers) ----
+            try:
+                with db.JobRun("tracker_sync") as r:
+                    st = tracker_sync.sync(conn, sheets_io.read_tab("creative_tracker", snapshot_dir), force_tracker)
+                    conn.commit()
+                    r.stats = {k: v for k, v in st.items() if k != "unknown_products"}
+                    r.rows_written = st["rows_in_sheet"]
+                results["tracker_sync"] = {"ok": True, "rows": st["rows_in_sheet"], "inserted": st["inserted"], "deleted_now": st["deleted_now"]}
+            except Exception as e:                                            # noqa: BLE001
+                conn.rollback()
+                tracker_error = db.scrub(e)[:300] if isinstance(e, db.JobFailed) else "tracker sync failed: " + db.scrub(e)[:300]
+                results["tracker_sync"] = {"ok": False, "error": tracker_error}
+                db.log(f"  {tracker_error} (continuing with the last good tracker rows; the run will be marked failed)")
 
-        def s_meta():
+            # ---- 2. READ phase: Graph only, nothing is written ----
             u = until or meta_pull.default_until()
             since = u - dt.timedelta(days=days - 1)
             d0 = db.get_meta(conn, "daily_start")
             if d0:
                 since = max(since, dt.date.fromisoformat(d0))
-            with db.JobRun("meta_pull") as r:
-                try:
-                    st = meta_pull.pull_into_db(conn, since, u, snapshot_dir=snapshot_dir)
-                except meta_api.TokenRejected:
-                    raise db.JobFailed("meta token rejected") from None
-                st.pop("_pulled", None)
-                r.stats = st
-                r.rows_written = st["rows_inserted"]
-                r.data_through = u
-                if st["chunks_failed"] or st["chunks_loaded"] == 0:
-                    raise db.JobFailed("meta pull incomplete: " + db.scrub(st["chunks_failed"][:2]))
-            return {"source": "meta_api", "days": days, "rows": st["rows_inserted"]}
-
-        if source == "sheet":
-            step("meta", lambda: _sheet_refresh(conn, snapshot_dir, days), results)
-        else:
+            tok = None
             try:
-                step("meta", s_meta, results)
-            except Exception as e:                                          # noqa: BLE001
-                conn.rollback()
-                meta_error = "meta token rejected" if isinstance(e, (db.JobFailed, meta_api.TokenRejected)) and "token rejected" in str(e) \
-                    else "meta pull failed: " + db.scrub(e)[:200]
-                if source == "meta":
-                    raise db.JobFailed(meta_error) from None
-                db.log(f"  {meta_error}; falling back to the sheet's Daily tab (run will still be marked failed)")
-                step("meta_fallback", lambda: _sheet_refresh(conn, snapshot_dir, days), results)
-
-        def s_lifetime():
-            with db.JobRun("lifetime_pull") as r:
-                try:
-                    st = lifetime_pull.run(conn)
-                except meta_api.TokenRejected:
-                    raise db.JobFailed("meta token rejected") from None
-                r.stats = st
-                r.rows_written = st["inserted"]
-            return {"ads": st["ads"], "spend": st["spend"]}
-        if source != "sheet" and not meta_error:                           # the daily pull already failed (token / rate limit): don't pile the heavy call on top
+                tok = meta_api.get_token()
+                with db.JobRun("meta_pull") as r:
+                    pst, _ = meta_pull.run_pull(conn, since, u, atomic=True, load=False, tok=tok)
+                    if pst["chunks_failed"] or pst["chunks_loaded"] == 0:
+                        raise db.JobFailed("meta pull incomplete: " + db.scrub(pst["chunks_failed"][:2]))
+                    pending = pst.pop("_pending")
+                    r.stats = {k: v for k, v in pst.items() if k != "recon"}
+                    r.data_through = u
+                results["meta_pull"] = {"ok": True, "days": days, "since": since.isoformat(), "until": u.isoformat()}
+            except Exception as e:                                            # noqa: BLE001
+                raise meta_failure(e, "meta pull") from None
             try:
-                step("lifetime", s_lifetime, results)
-            except Exception as e:                                          # noqa: BLE001
-                conn.rollback()
-                meta_error = meta_error or ("meta token rejected" if "token rejected" in str(e) else "lifetime pull failed: " + db.scrub(e)[:200])
-                db.log(f"  {meta_error}; keeping the previous lifetime rows (run will be marked failed)")
+                with db.JobRun("lifetime_pull") as r:
+                    agg, recon = lifetime_pull.pull(tok, u)
+                    lifetime_pull.check_recon(recon)
+                    r.stats = {"ads": len(agg), "recon": recon}
+                results["lifetime_pull"] = {"ok": True, "ads": len(agg)}
+            except Exception as e:                                            # noqa: BLE001
+                raise meta_failure(e, "lifetime pull") from None
+            try:
+                with db.JobRun("status_refresh") as r:
+                    srows, sst = status_refresh.fetch_updates(conn, tok)
+                    r.stats = sst
+                results["status_refresh"] = {"ok": True, **{k: sst[k] for k in ("asked", "status_changed", "renamed", "created_changed")}}
+            except Exception as e:                                            # noqa: BLE001
+                raise meta_failure(e, "status refresh") from None
 
-        def s_resolve():
-            st = resolve_families.resolve(conn)
-            conn.commit()
-            return st
-        step("resolve", s_resolve, results)
-
-        def s_metrics():
+            # ---- 3. WRITE phase: one transaction ----
             with db.JobRun("build_metrics") as r:
-                st = build_metrics.rebuild(conn)
-                r.stats = {k: v for k, v in st.items() if k != "by_product"}
+                pending_stats = {"rows_inserted": 0, "rows_deleted": 0}
+                meta_pull.apply_pending(conn, pending, pending_stats)
+                lifetime_pull.load(conn, agg)
+                status_refresh.apply_updates(conn, srows)
+                names.resync(conn)
+                results["resolve"] = {"ok": True, **resolve_families.resolve(conn)}
+                st = build_metrics.rebuild(conn, commit=False)
+                conn.commit()
+                r.stats = {k: v for k, v in st.items() if k not in ("by_product", "unmatched_by_product")}
                 r.data_through = dt.date.fromisoformat(st["data_through"])
-            top.data_through = dt.date.fromisoformat(st["data_through"])
-            return {"data_through": st["data_through"], "unmatched_families": st["unmatched_families"]}
-        step("build_metrics", s_metrics, results)
-
-        if meta_error:                                                      # loud failure AFTER the data was kept fresh from the sheet
-            results["failure"] = meta_error
-            raise db.JobFailed(meta_error)
+                top.data_through = r.data_through
+            results["build_metrics"] = {"ok": True, "data_through": st["data_through"], "launch_total": st["launch_total"],
+                                        "rows_replaced": pending_stats["rows_inserted"]}
+            if tracker_error:
+                raise db.JobFailed(tracker_error)
+    except Exception as e:                                                    # noqa: BLE001
+        msg = str(e) if isinstance(e, db.JobFailed) else f"{type(e).__name__}: {e}"
+        mark("failed", msg)
+        raise
+    mark("ok")
     return results
-
-
-def _sheet_refresh(conn, snapshot_dir, days):
-    out = refresh_from_sheet(conn, snapshot_dir, days)
-    conn.commit()
-    return out
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--days", type=int, default=7)
-    ap.add_argument("--source", choices=["auto", "meta", "sheet"], default="auto")
-    ap.add_argument("--snapshot-dir", help="read the sheet from a snapshot instead of live (dev/QA)")
+    ap.add_argument("--days", type=int, default=DEFAULT_DAYS)
+    ap.add_argument("--snapshot-dir", help="read the tracker from a snapshot instead of live (dev/QA)")
     ap.add_argument("--until")
+    ap.add_argument("--force-tracker", action="store_true", help="skip the tracker blank-family / row-count guards")
     a = ap.parse_args()
     try:
-        res = run(a.days, a.source, a.snapshot_dir, dt.date.fromisoformat(a.until) if a.until else None)
-    except Exception as e:                                                  # noqa: BLE001
+        res = run(a.days, a.snapshot_dir, dt.date.fromisoformat(a.until) if a.until else None, a.force_tracker)
+    except Exception as e:                                                    # noqa: BLE001
         db.log("run_daily FAILED:", db.scrub(e))
         sys.exit(1)
     db.log("run_daily ok:", res)

@@ -19,10 +19,17 @@ def _arg(name: str) -> str | None:
     return v or None
 
 
+def _need_active(active: bool) -> None:
+    if active and not q._CAPS["active"]:
+        raise q.ApiError(503, "active-ads data is not built yet")
+
+
 def _ctx(with_window: bool = True):
     conn = db.get_conn()
     meta = q.load_meta(conn)
     w = q.parse_window(request.args, meta) if with_window else None
+    if w is not None:
+        _need_active(w.active)
     return conn, meta, w
 
 
@@ -39,9 +46,9 @@ def _all_days_info(w: q.WindowSpec, meta: q.DataMeta) -> dict:
 @bp.get("/api/status")
 def status():
     conn, meta, _ = _ctx(with_window=False)
-    n = len(q.rows_of(conn, """SELECT p.id FROM products p WHERE p.active AND (
-            EXISTS (SELECT 1 FROM tracker_rows r WHERE r.product_id = p.id)
-            OR EXISTS (SELECT 1 FROM unmatched_meta u WHERE u.product_id = p.id AND u.spend_all > 0))"""))
+    n = len(q.rows_of(conn, f"""SELECT p.id FROM products p WHERE p.active AND (
+            EXISTS (SELECT 1 FROM tracker_rows r WHERE r.product_id = p.id{q.alive("r")})
+            OR EXISTS (SELECT 1 FROM unmatched_meta u WHERE u.product_id = p.id AND {"GREATEST(u.spend_all, u.spend_launch)" if q._CAPS["unm_launch"] else "u.spend_all"} > 0))"""))
     return jsonify({**q.status(conn, meta, n), "auth": "disabled" if auth.auth_disabled() else "enabled", "user": auth.current_user()})
 
 
@@ -52,8 +59,10 @@ def products():
     conn, meta, w = _ctx()
     spark = q.parse_spark(request.args)
     if request.args.get("envelope") == "1":
-        rows, total = q.products_list(conn, meta, w, spark=spark, with_total=True)
-        return jsonify({"window_info": w.info(meta), "compare_info": w.compare_info(meta), "rows": rows, "total": total})
+        extras: dict = {}
+        rows, total = q.products_list(conn, meta, w, spark=spark, with_total=True, extras=extras)
+        # total = the tracker products; unmatched = all Meta spend on no tracker family; total_all = both = the whole Meta account
+        return jsonify({"window_info": w.info(meta), "compare_info": w.compare_info(meta), "rows": rows, "total": total, **extras})
     return jsonify(q.products_list(conn, meta, w, spark=spark))
 
 
@@ -133,6 +142,8 @@ def trend(slug: str):
 def stage_daily(slug: str):
     conn, meta, _ = _ctx(with_window=False)
     product = q.get_product(conn, slug)
+    active = q.parse_active(request.args)
+    _need_active(active)
     if any(request.args.get(k) for k in ("window", "from", "to")):
         w = q.parse_window({k: v for k, v in request.args.items() if k not in ("compare", "cfrom", "cto")}, meta)   # no comparison here
         df, dtt = w.span(meta)
@@ -142,7 +153,7 @@ def stage_daily(slug: str):
             raise q.ApiError(400, "days must be an integer from 1 to 366")
         dtt = meta.data_through
         df = max(meta.daily_start, dtt - dt.timedelta(days=int(raw) - 1))
-    return jsonify(q.stage_daily(conn, meta, product, df, dtt, q.stage_list(q.parse_stage(request.args))))
+    return jsonify(q.stage_daily(conn, meta, product, df, dtt, q.stage_list(q.parse_stage(request.args)), active=active))
 
 
 @bp.get("/api/products/<slug>/unmatched")
@@ -150,8 +161,16 @@ def unmatched(slug: str):
     conn, meta, w = _ctx()
     product = q.get_product(conn, slug)
     res = q.unmatched(conn, meta, w, product)
-    return jsonify({"product": q.product_brief(product), "window_info": _all_days_info(w, meta),
-                    "compare_info": w.compare_info(meta), **res})
+    info = w.info(meta)
+    if w.is_launch:
+        if w.active or q._CAPS["unm_launch"]:
+            info["label"] = "Since launch (Meta lifetime)"
+            info["note"] = ("Since launch is Meta's lifetime for these families, lifetime-only ones included"
+                            + ("." if q._CAPS["unm_traffic"] or w.active else " (spend, purchases and revenue; impressions and clicks are not part of it).")
+                            + (f" {info['note']}" if info["note"] else ""))
+        else:
+            info = _all_days_info(w, meta)
+    return jsonify({"product": q.product_brief(product), "window_info": info, "compare_info": w.compare_info(meta), **res})
 
 
 @bp.get("/api/ads/<int:row_id>")
@@ -209,7 +228,7 @@ def meta_ad_preview(ad_id: str):
 def tracker_ad_preview(row_id: int):
     def lookup():
         conn = db.get_conn()
-        row = q.row_of(conn, "SELECT family_key FROM tracker_rows WHERE id = %s", (row_id,))
+        row = q.row_of(conn, "SELECT family_key FROM tracker_rows WHERE id = %s" + q.alive("tracker_rows"), (row_id,))
         if not row:
             raise q.ApiError(404, "ad not found")
         ad = q.family_links(conn, [row["family_key"]])[row["family_key"]]["ad_id"]

@@ -124,3 +124,30 @@ def test_helpers():
     assert [load_assets._truthy(v) for v in ("True", "False", "", True, False, None, "1")] == [True, False, False, True, False, False, True]
     assert load_assets.story_url({"story": "https://s"}, {"story": "1_2"}) == "https://s" and load_assets.story_url({}, {"story": "1_2"}) == "https://www.facebook.com/1/posts/2/"
     assert load_assets.story_url({}, {}) is None
+
+
+def test_family_keys_shared_with_another_product_keep_their_existing_assets(conn, tmp_path, cycle):
+    """Assets and content are keyed by family_key alone. A key that also belongs to another product keeps what is already there (the other cycle's image);
+    a shared key with nothing yet is filled in."""
+    mi = json.loads((cycle / "media_index.json").read_text())
+    mi["shared"] = {"n": 8, "ad_id": "8", "video": False, "video_id": "", "thumb": "media/0001.jpg", "story": "https://s/old"}
+    mi["sharednew"] = {"n": 9, "ad_id": "9", "video": False, "video_id": "", "thumb": "media/0001.jpg", "story": ""}
+    (cycle / "media_index.json").write_text(json.dumps(mi))
+    trs = [trow("shared", "Shared", "BeefLiver", Type="IMG"), trow("shared", "Shared", "VitaBull", Type="IMG"),
+           trow("sharednew", "SharedNew", "BeefLiver", Type="IMG"), trow("sharednew", "SharedNew", "VitaBull", Type="IMG")]
+    snap = tmp_path / "snap"
+    snap.mkdir()
+    write_snapshot(snap, trs, [("2026-05-06", "x", 1, 0, 0, 0)])
+    tracker_sync.sync(conn, sheets_io.read_tab("creative_tracker", snap))
+    conn.execute("INSERT INTO creative_assets (family_key, kind, idx, bytes, source) VALUES ('shared','thumb',0,'\\x02'::bytea,'cycle-2026-11-03')")
+    conn.execute("INSERT INTO family_content (family_key, meta_body, source) VALUES ('shared','other product body','cycle-2026-11-03')")
+    conn.commit()
+    st = load_assets.load(conn, cycle, product="beef-liver")
+    assert st["shared_with_other_products"] == 2
+    assert conn.execute("SELECT count(*), min(source), bool_and(bytes = '\\x02'::bytea) FROM creative_assets WHERE family_key='shared'").fetchone() == (1, "cycle-2026-11-03", True)
+    assert conn.execute("SELECT meta_body, source, story_url FROM family_content WHERE family_key='shared'").fetchone() == ("other product body", "cycle-2026-11-03", None)
+    assert conn.execute("SELECT source FROM creative_assets WHERE family_key='sharednew'").fetchone()[0] == "cycle-2026-11-04"
+    assert conn.execute("SELECT count(*) FROM family_content WHERE family_key='sharednew'").fetchone()[0] == 1
+    before = conn.execute("SELECT family_key, kind, idx, md5(bytes) FROM creative_assets ORDER BY 1,2,3").fetchall()
+    load_assets.load(conn, cycle, product="beef-liver")
+    assert conn.execute("SELECT family_key, kind, idx, md5(bytes) FROM creative_assets ORDER BY 1,2,3").fetchall() == before

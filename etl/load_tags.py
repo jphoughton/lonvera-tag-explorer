@@ -53,11 +53,22 @@ def _fam(cid, af) -> tuple[str, str]:
     return cid, (str(af).strip() if af is not None and str(af).strip() else cid)
 
 
+def _live(conn) -> str:
+    """' AND deleted_at IS NULL' once migration 007 (soft delete) is applied, else ''."""
+    has = conn.execute("SELECT 1 FROM information_schema.columns WHERE table_name='tracker_rows' AND column_name='deleted_at'").fetchone()
+    return " AND deleted_at IS NULL" if has else ""
+
+
+# a tracker row with a blank Concept ID is a placeholder, not an ad: the tagging cycles skip it, so it is neither matched nor required
+_REAL = " AND btrim(concept_id) <> ''"
+
+
 def match_rows(conn, product_id: int, tags: list[dict]):
-    """-> (matches [(tag, tracker_row_id)], problems dict). Multisets of (concept_id, family) must be equal."""
+    """-> (matches [(tag, tracker_row_id)], problems dict). Multisets of (concept_id, family) must be equal (placeholder rows with a blank Concept ID
+    and soft-deleted rows are not part of the tracker side)."""
     by_key: dict[tuple, list] = collections.defaultdict(list)
-    for tid, cid, af in conn.execute("SELECT id, concept_id, ad_family FROM tracker_rows WHERE product_id=%s ORDER BY sheet_row NULLS LAST, id",
-                                     (product_id,)).fetchall():
+    for tid, cid, af in conn.execute("SELECT id, concept_id, ad_family FROM tracker_rows WHERE product_id=%s" + _live(conn) + _REAL +
+                                     " ORDER BY sheet_row NULLS LAST, id", (product_id,)).fetchall():
         by_key[_fam(cid, af)].append(tid)
     tag_by_key: dict[tuple, list] = collections.defaultdict(list)
     for t in sorted(tags, key=lambda t: t["row"]):
@@ -92,8 +103,11 @@ def _tag_row(t: dict, rid: int, tag_set: str, version: str, line_id) -> tuple:
 def load(conn, product_slug: str, tag_set: str, version: str, tags: list[dict], allow_mismatch: bool = False, flip: bool = True) -> dict:
     pid = conn.execute("SELECT id FROM products WHERE slug=%s", (product_slug,)).fetchone()[0]
     tags = [normalize(t) for t in tags]
-    lines = {(c, i, p): (lid, code) for lid, c, i, p, code in conn.execute(
-        "SELECT id, cluster, icp, pain_point, line_code FROM taxonomy_lines WHERE product_id=%s", (pid,)).fetchall()}
+    tax = conn.execute("SELECT id, cluster, icp, pain_point, emotional_trigger, line_code FROM taxonomy_lines WHERE product_id=%s", (pid,)).fetchall()
+    lines = {(c, i, p, t or ""): (lid, code) for lid, c, i, p, t, code in tax}                  # a line = cluster x ICP x pain x trigger (migration 006)
+    by3: dict[tuple, list] = collections.defaultdict(list)
+    for lid, c, i, p, t, code in tax:
+        by3[(c, i, p)].append((lid, code))
     matches, problems = match_rows(conn, pid, tags)
     bad = sum(len(v) for v in problems.values())
     if bad and not allow_mismatch:
@@ -101,8 +115,10 @@ def load(conn, product_slug: str, tag_set: str, version: str, tags: list[dict], 
     ids = [m[1] for m in matches]
     rows, missing_lines, code_mismatch = [], collections.Counter(), collections.Counter()
     for t, rid in matches:
-        lk = (t["cluster"], t["icp"], t["pain"])
+        lk = (t["cluster"], t["icp"], t["pain"], t.get("trigger") or "")
         ln = lines.get(lk)
+        if ln is None and len(by3.get(lk[:3], [])) == 1:                                       # trigger edited since the cycle: the only line with this key
+            ln = by3[lk[:3]][0]
         if ln is None:
             missing_lines[lk] += 1
         elif t.get("line") and t["line"] != ln[1]:
@@ -122,8 +138,9 @@ def load(conn, product_slug: str, tag_set: str, version: str, tags: list[dict], 
             info["type_mismatch"] += bool(t.get("type")) and (ty or "") != t["type"]
             info["status_mismatch"] += bool(t.get("status")) and (st or "") != t["status"]
             info["sheet_row_differs"] += sr != t["row"]
+    placeholders = conn.execute("SELECT count(*) FROM tracker_rows WHERE product_id=%s" + _live(conn) + " AND btrim(concept_id) = ''", (pid,)).fetchone()[0]
     with conn.transaction():
-        prod_rows = [r[0] for r in conn.execute("SELECT id FROM tracker_rows WHERE product_id=%s", (pid,)).fetchall()]
+        prod_rows = [r[0] for r in conn.execute("SELECT id FROM tracker_rows WHERE product_id=%s" + _live(conn) + _REAL, (pid,)).fetchall()]
         prev = conn.execute("UPDATE ad_tags SET is_current=false WHERE tag_set=%s AND is_current AND tracker_row_id = ANY(%s) AND version <> %s",
                             (tag_set, prod_rows, version)).rowcount
         conn.execute("DELETE FROM ad_tags WHERE tag_set=%s AND version=%s AND tracker_row_id = ANY(%s)", (tag_set, version, prod_rows))
@@ -141,10 +158,10 @@ def load(conn, product_slug: str, tag_set: str, version: str, tags: list[dict], 
     return {"product": product_slug, "tag_set": tag_set, "version": version, "tags_in_file": len(tags), "matched": len(matches),
             "tracker_rows": len(prod_rows), "unique_families": len({r[0] for r in conn.execute(
                 "SELECT family_key FROM tracker_rows WHERE id = ANY(%s)", (ids,)).fetchall()}),
-            "previous_marked_not_current": prev, "problems": {k: len(v) for k, v in problems.items()}, "line_code_mismatch": sum(code_mismatch.values()),
+            "previous_marked_not_current": prev, "ignored_blank_concept_rows": placeholders, "problems": {k: len(v) for k, v in problems.items()}, "line_code_mismatch": sum(code_mismatch.values()),
             "confidence": dict(collections.Counter(t.get("confidence") for t, _ in matches)),
             "method": dict(collections.Counter(t.get("method") for t, _ in matches)),
-            "lines_used": len([c for c in used if c]), "lines_in_taxonomy": len(lines),
+            "lines_used": len([c for c in used if c]), "lines_in_taxonomy": len(tax),
             "unused_line_codes": sorted(v[1] for v in lines.values() if v[1] not in used),
             "tracker_vs_file": info, "product_tag_set_flipped": flipped}
 

@@ -28,7 +28,7 @@ def check_block(m, compare, ctx):
 @pytest.mark.parametrize("extra", ["", "window=7d", "window=30d&stage=testing,scaling", "window=14d&compare=prev", "window=30d&compare=7d&stage=scaling,unclassified"])
 def test_products_envelope_has_a_total_row(client, fx, extra):
     env = get_ok(client, "/api/products?" + qs(extra, "envelope=1"))
-    assert set(env) == {"window_info", "compare_info", "rows", "total"}
+    assert set(env) == {"window_info", "compare_info", "rows", "total", "unmatched", "total_all"}
     rows, t = env["rows"], env["total"]["m"]
     assert get_ok(client, "/api/products?" + extra) == rows                           # the bare array form keeps working and equals envelope.rows
     assert env["total"]["rows"] == sum(r["rows"] for r in rows)

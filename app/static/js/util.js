@@ -93,7 +93,7 @@ export function debounce(fn, ms = 200) {
 }
 
 // ---------- URL state ----------
-export const GLOBAL_KEYS = ['window', 'from', 'to', 'stage', 'compare', 'cfrom', 'cto', 'perday', 'tb', 'tl', 'tg', 'ts'];
+export const GLOBAL_KEYS = ['window', 'from', 'to', 'stage', 'compare', 'cfrom', 'cto', 'perday', 'tb', 'tl', 'tg', 'ts', 'active'];
 
 export function qs(params) {
   const sp = new URLSearchParams();
@@ -150,6 +150,7 @@ export function apiWindow(p) {
     const set = stageSet(p);
     if (!STAGES.every((x) => set.has(x))) o.stage = STAGES.filter((x) => set.has(x)).join(',');
   }
+  if (p.active === '1') o.active = 1; // only creatives / ads that are ACTIVE now
   if (hasDateWindow(p)) {
     if (p.cfrom && p.cto) { o.cfrom = p.cfrom; o.cto = p.cto; }
     else if (p.compare) o.compare = p.compare;
@@ -175,6 +176,7 @@ export function cleanParams(p) {
   if (o.stage === 'all' || o.stage === STAGES.join(',')) delete o.stage;
   if (o.window === 'launch') delete o.window;
   if (o.from && o.to) delete o.window;
+  if (o.active !== '1' && o.active !== 1) delete o.active;
   if (o.tb === 'spend') delete o.tb;
   if (o.tl === 'roas') delete o.tl;
   if (o.tg === 'day') delete o.tg;

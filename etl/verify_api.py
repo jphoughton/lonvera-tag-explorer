@@ -67,7 +67,7 @@ def check_account_days(conn, tok, ck: Checks, since, until):
            f"spend not attributable to an account ${unknown:,.2f}; last-3-day diffs (Meta restatement window) {new_diffs}")
 
 
-def check_lifetime(conn, tok, ck: Checks):
+def check_lifetime(conn, tok, ck: Checks, until):
     viol = conn.execute("""SELECT count(*), coalesce(max(d.s - l.spend), 0) FROM (SELECT ad_id, sum(spend) s FROM ad_daily WHERE ad_id NOT LIKE 'fam:%' GROUP BY 1) d
                            JOIN meta_ad_lifetime l ON l.ad_id = d.ad_id AND l.source = 'meta_api' WHERE d.s > l.spend + 0.5""").fetchone()
     no_life = conn.execute("""SELECT count(*), coalesce(sum(s), 0) FROM (SELECT ad_id, sum(spend) s FROM ad_daily WHERE ad_id NOT LIKE 'fam:%' GROUP BY 1) d
@@ -78,7 +78,7 @@ def check_lifetime(conn, tok, ck: Checks):
                                                          WHERE l.source = 'meta_api' GROUP BY 1""").fetchall()}
     parts, ok = [], True
     for acct_id, an in meta_api.ACCOUNTS:
-        g = meta_api.account_lifetime(tok, acct_id)
+        g = meta_api.account_lifetime(tok, acct_id, meta_api.earliest_allowed(), until)
         mine = db_tot.get(an, 0.0)
         off = abs(mine - g["spend"]) / g["spend"] if g["spend"] else 0.0
         ok &= off <= 0.005
@@ -158,7 +158,7 @@ def check_consistency(conn, ck: Checks):
         WITH life AS (SELECT m.tracker_family_key fk, sum(l.spend) sp, sum(l.purchases) pu, sum(l.conv_value) rv, sum(l.impressions) im, sum(l.link_clicks) cl
                       FROM meta_ad_lifetime l JOIN meta_ads a ON a.ad_id = l.ad_id JOIN meta_family_map m ON m.meta_family_key = a.meta_family_key
                       WHERE l.source='meta_api' AND m.tracker_family_key IS NOT NULL GROUP BY 1),
-        fams AS (SELECT DISTINCT p.slug, t.family_key FROM tracker_rows t JOIN products p ON p.id=t.product_id)
+        fams AS (SELECT DISTINCT p.slug, m.family_key FROM ad_metrics m JOIN products p ON p.id=m.product_id WHERE m.is_first_row)
         SELECT f.slug, sum(round(l.sp, 2)), sum(round(l.pu, 0)), sum(round(l.rv, 2)), sum(l.im), sum(l.cl) FROM fams f JOIN life l ON l.fk = f.family_key GROUP BY 1""").fetchall()}
     bad = []
     for slug, v in prod.items():
@@ -181,6 +181,37 @@ def check_consistency(conn, ck: Checks):
     d7_bad = [(s, round(prod[s][5], 2), round(w7.get(s, 0), 2)) for s in prod if abs(prod[s][5] - w7.get(s, 0)) > 0.05]
     ck.add("7b tag groups cover every row/spend of their product; 7d sums = family_daily", not tag_bad and not d7_bad,
            f"tag coverage problems {tag_bad[:3]}; 7d mismatches {d7_bad[:3]} ({fam_bad} products)")
+
+
+def check_launch_totals(conn, ck: Checks):
+    r = conn.execute("""SELECT (SELECT coalesce(sum(spend_launch),0) FROM ad_metrics), (SELECT coalesce(sum(spend_launch),0) FROM unmatched_meta),
+                               (SELECT coalesce(sum(spend),0) FROM meta_ad_lifetime WHERE source='meta_api')""").fetchone()
+    tracked, unmatched, life = (float(x) for x in r)
+    ck.add("7c launch totals: tracker families + unmatched = API lifetime", abs(tracked + unmatched - life) < 1.0,
+           f"tracker families ${tracked:,.2f} + unmatched ${unmatched:,.2f} = ${tracked + unmatched:,.2f} vs lifetime ${life:,.2f}")
+    twice = conn.execute("SELECT count(*) FROM (SELECT family_key FROM ad_metrics WHERE is_first_row GROUP BY 1 HAVING count(*) > 1) x").fetchone()[0]
+    deleted = conn.execute("SELECT count(*) FROM ad_metrics m JOIN tracker_rows t ON t.id = m.tracker_row_id WHERE t.deleted_at IS NOT NULL").fetchone()[0]
+    ck.add("7d one first row per family across all products; deleted tracker rows excluded", twice == 0 and deleted == 0, f"families with 2+ first rows {twice}; deleted rows with metrics {deleted}")
+    ind = float(conn.execute("""SELECT coalesce(sum(round(x.sp, 2)), 0) FROM (SELECT m.tracker_family_key fk, sum(l.spend) sp FROM meta_ad_lifetime l
+                                JOIN meta_ads a ON a.ad_id = l.ad_id AND a.status = 'ACTIVE' JOIN meta_family_map m ON m.meta_family_key = a.meta_family_key
+                                WHERE l.source = 'meta_api' AND m.tracker_family_key IN (SELECT family_key FROM tracker_rows WHERE deleted_at IS NULL) GROUP BY 1) x""").fetchone()[0])
+    act = float(conn.execute("SELECT coalesce(sum(spend_launch_active), 0) FROM ad_metrics").fetchone()[0])
+    fda = float(conn.execute("SELECT coalesce(sum(spend), 0) FROM family_daily_active").fetchone()[0])
+    daily_act = float(conn.execute("""SELECT coalesce(sum(d.spend), 0) FROM ad_daily d JOIN meta_ads a ON a.ad_id = d.ad_id AND a.status = 'ACTIVE'
+                                      JOIN meta_family_map m ON m.meta_family_key = a.meta_family_key WHERE m.tracker_family_key IS NOT NULL""").fetchone()[0])
+    ck.add("7e active-only tables = ACTIVE ads only", abs(act - ind) < 1.0 and abs(fda - daily_act) < 1.0,
+           f"ad_metrics.spend_launch_active ${act:,.2f} vs independent ${ind:,.2f}; family_daily_active ${fda:,.2f} vs ACTIVE ad_daily ${daily_act:,.2f}")
+
+
+def check_status(conn, tok, ck: Checks, sample, seed):
+    thr = conn.execute("SELECT value::date FROM app_meta WHERE key='data_through'").fetchone()[0]
+    ids = [r[0] for r in conn.execute("SELECT DISTINCT ad_id FROM ad_daily WHERE day >= %s AND ad_id NOT LIKE 'fam:%%'", (thr - dt.timedelta(days=59),)).fetchall()]
+    random.Random(seed).shuffle(ids)
+    ids = ids[:max(sample, 1)]
+    got = meta_api.fetch_ad_meta(tok, ids, strict=True)
+    mine = dict(conn.execute("SELECT ad_id, status FROM meta_ads WHERE ad_id = ANY(%s)", (ids,)).fetchall())
+    diff = [(i, mine.get(i), v["status"]) for i, v in got.items() if "error" not in v and v["status"] != mine.get(i)]
+    ck.add("8 ad status vs Graph (random delivering ads)", len(diff) <= max(1, len(ids) * 0.03), f"{len(ids)} sampled, {len(diff)} differ {diff[:3]}")
 
 
 def vb_traffic(conn, ck: Checks):
@@ -219,11 +250,13 @@ def main():
         if not a.skip_api:
             tok = meta_api.get_token()
             check_account_days(conn, tok, ck, d0, thr)
-            check_lifetime(conn, tok, ck)
+            check_lifetime(conn, tok, ck, thr)
             check_trailing7(conn, tok, ck, thr, a.sample, a.seed)
+            check_status(conn, tok, ck, 60, a.seed)
             check_stage(conn, tok, ck, thr, a.days)
         check_structure(conn, ck)
         check_consistency(conn, ck)
+        check_launch_totals(conn, ck)
         vb_traffic(conn, ck)
         if a.vs_sheet and a.snapshot_dir:
             from . import verify_tieout
