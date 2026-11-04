@@ -38,7 +38,8 @@ const findModule = (seg, params) => {
   return modules.find((m) => dash(m.key) === dash(seg)) || null;
 };
 const moduleHref = (m, extra) => `/projection/${dash(m.key)}` + qs({ scenario: scenarios.slug, ...(extra || {}) });
-const homeHref = () => '/projection' + qs({ scenario: scenarios.slug });
+const homeHref = () => '/projection/overview' + qs({ scenario: scenarios.slug });     // the Overview page; /projection itself lands on Pacing
+const curSeg = () => { const { seg } = parseLoc(); return seg === 'overview' ? null : seg; };   // null = Overview
 
 function go(url, { replace = false } = {}) {
   if (replace) history.replaceState(history.state, '', url); else history.pushState({}, '', url);
@@ -160,9 +161,11 @@ const actions = {
 const nav = $('#pg-nav');
 const navMenu = $('#pg-navmenu');
 function buildNav() {
-  const { seg } = parseLoc();
+  const seg = curSeg();
+  const pacing = modules.find((m) => dash(m.key) === 'pacing' && m.built);       // Pacing is the first tab and the default page
   const groups = [];
   for (const m of modules) {
+    if (m === pacing) continue;
     let g = groups.find((x) => x.name === m.group);
     if (!g) { g = { name: m.group, items: [] }; groups.push(g); }
     g.items.push(m);
@@ -170,6 +173,7 @@ function buildNav() {
   groups.sort((a, b) => String(a.name).localeCompare(String(b.name)));
   // wide screens: tabs inline in the bar (groups are thin dividers, no labels)
   setChildren(nav,
+    pacing ? h('div', { class: 'pg-ngroup', 'data-group': 'pacing' }, h('a', { class: 'pg-tab', href: moduleHref(pacing), 'data-pg': '', 'data-key': pacing.key, 'data-built': 'true', 'aria-current': seg && dash(pacing.key) === dash(seg) ? 'page' : null }, pacing.label)) : null,
     h('div', { class: 'pg-ngroup' }, h('a', { class: 'pg-tab', href: homeHref(), 'data-pg': '', 'data-key': '', 'aria-current': !seg ? 'page' : null }, 'Overview')),
     groups.map((g) => h('div', { class: 'pg-ngroup', 'data-group': g.name },
       g.items.map((m) => h('a', {
@@ -179,6 +183,7 @@ function buildNav() {
   nav.hidden = false;
   // narrow screens: one "Projections" menu in the bar lists the same pages, grouped
   const pop = h('div', { class: 'pg-menu-pop pg-nav-pop', id: 'pg-nav-pop', 'aria-label': 'Projection pages' },
+    pacing ? h('a', { class: 'pg-mitem', role: 'menuitem', href: moduleHref(pacing), 'data-pg': '', 'data-key': pacing.key }, pacing.label) : null,
     h('a', { class: 'pg-mitem', role: 'menuitem', href: homeHref(), 'data-pg': '', 'data-key': '' }, 'Overview'),
     groups.map((g) => [
       h('div', { class: 'pg-mhead', role: 'presentation' }, GROUP_NAMES[g.name] || g.name),
@@ -191,7 +196,7 @@ function buildNav() {
   navMenu.hidden = false;
 }
 function markNav() {
-  const { seg } = parseLoc();
+  const seg = curSeg();
   let label = 'Overview';
   for (const a of document.querySelectorAll('#pg-nav a[data-key], #pg-navmenu a[data-key]')) {
     const on = seg ? dash(a.dataset.key) === dash(seg) : a.dataset.key === '';
@@ -422,7 +427,12 @@ async function route({ scroll = true } = {}) {
   document.body.dataset.pgState = 'loading';
   await teardown();
   if (my !== token) return;
-  const { seg, params } = parseLoc();
+  let { seg, params } = parseLoc();
+  if (!seg && modules.some((m) => dash(m.key) === 'pacing' && m.built)) {                  // /projection lands on Pacing
+    history.replaceState(history.state, '', '/projection/pacing' + location.search);
+    seg = 'pacing';
+  }
+  if (seg === 'overview') seg = null;
   if (params.scenario && scenarios.has(params.scenario) && params.scenario !== scenarios.slug) scenarios.select(params.scenario, { silent: true });
   buildBar();
   syncUrlScenario();
