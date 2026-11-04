@@ -3035,3 +3035,36 @@ def test_pages_never_scroll_horizontally_at_page_level(page, width):
                 return out.slice(0, 5); }""")
             pytest.fail(f"{path} at {width}px: page scrollWidth {sw[0]} > {sw[1]}: {culprit}")
     shot(page, f"48_no_page_scroll_{width}")
+
+
+# ------------------------------------------------------------------ source switch (Meta | Upstack)
+def test_source_switch_meta_upstack(page):
+    goto_product(page, "?window=14d")
+    seg = lambda key: page.locator(f"#source-ctl [data-source={key}]")          # noqa: E731
+    expect(seg("meta")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#basis-ctl")).to_be_hidden()                            # the Count sub-switch only exists with Upstack
+    expect(page.locator("#source-banner")).to_contain_text("Meta")               # the page states its source even in Meta mode
+    assert "source" not in qparams(page)
+    reqs = []
+    page.on("request", lambda r: reqs.append(r.url) if "/api/products/" in r.url else None)
+    seg("upstack").click()
+    expect(page).to_have_url(re.compile(r"source=upstack"))
+    expect(seg("upstack")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#basis-ctl")).to_be_visible()
+    expect(page.locator("#source-banner")).to_contain_text("Upstack")
+    expect(page.locator("#source-banner")).to_contain_text("new customers")
+    expect(page.locator(f"{HEAD} th[data-col=purchases]")).to_contain_text("New customers")
+    expect(page.locator(f"{HEAD} th[data-col=roas]")).to_contain_text("NC ROAS")
+    assert any("source=upstack" in u for u in reqs), "every metrics request carries the source"
+    page.locator("#basis-ctl [data-basis=all]").click()                          # all orders
+    expect(page).to_have_url(re.compile(r"basis=all"))
+    expect(page.locator(f"{HEAD} th[data-col=purchases]")).to_contain_text("Orders")
+    expect(page.locator(f"{HEAD} th[data-col=roas]")).not_to_contain_text("NC")
+    open_first_row(page)                                                          # the choice is carried across a drill
+    assert qparams(page)["source"] == "upstack" and qparams(page)["basis"] == "all" and qparams(page)["window"] == "14d"
+    expect(seg("upstack")).to_have_attribute("aria-pressed", "true")
+    seg("meta").click()                                                           # back to Meta: both params leave the URL, labels return
+    page.wait_for_function("() => !new URL(location.href).searchParams.has('source')")
+    assert "basis" not in qparams(page)
+    expect(page.locator(f"{HEAD} th[data-col=purchases]")).to_contain_text("Purchases")
+    shot(page, "09_source_switch")
