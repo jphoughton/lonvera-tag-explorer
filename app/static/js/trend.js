@@ -1,7 +1,7 @@
 // Trend panel (Chart.js), sparklines and the "pin rows into the chart" store.
-import { h, enc, isNum, apiWindow, currentParams, navigate, cleanParams, qs, cmpView, onCmpRefresh, colPref, trendCollapsed, setTrendCollapsed } from './util.js';
+import { h, enc, isNum, apiWindow, currentParams, navigate, cleanParams, qs, cmpView, onCmpRefresh, colPref, trendCollapsed, setTrendCollapsed, sparkMetric } from './util.js';
 import { api, AuthError } from './api.js';
-import { trendChart, fmtMetric } from './charts.js';
+import { trendChart, fmtMetric, BAR_COLOR, LINE_COLOR } from './charts.js';
 
 export const METRICS = [
   { key: 'spend', label: 'Spend', kind: 'money', additive: true },
@@ -76,25 +76,30 @@ export function sparkSvg(vals, { w = 70, h: hh = 20, title = '' } = {}) {
   return svg;
 }
 export function sparkTitle(vals) {
-  const m = metricInfo(currentParams().tm || 'spend');
+  const m = metricInfo(sparkMetric(currentParams()));
   const nums = vals.filter(isNum);
   if (!nums.length) return `${m.label}, last ${vals.length} days: no data`;
   return `${m.label}, last ${vals.length} days: ${fmtMetric(m.kind, Math.min(...nums))} – ${fmtMetric(m.kind, Math.max(...nums))}`;
 }
 
 // ---------- pins: rows pinned into the chart ----------
+export const PIN_HINT = 'Rows can be charted when Bars is None (the line then shows one row per line)';
 export function createPins(initial = [], max = MAX_PINS) {
   const map = new Map((initial || []).map((x) => [x.key, x]));
   const listeners = [];
+  let locked = false;
   const notify = () => {
     document.querySelectorAll('.pin-cb').forEach((cb) => {
       cb.checked = map.has(cb.dataset.key);
-      cb.disabled = !cb.checked && map.size >= max;
+      cb.disabled = locked || (!cb.checked && map.size >= max);
+      cb.title = locked ? PIN_HINT : (cb.disabled ? `Max ${max} rows in the chart` : 'Show in the trend chart');
     });
     listeners.forEach((f) => f());
   };
   return {
     max,
+    locked: () => locked,
+    setLocked(v) { locked = !!v; notify(); },
     has: (k) => map.has(k),
     size: () => map.size,
     full: () => map.size >= max,
@@ -167,46 +172,68 @@ function scopeParams(scope) {
 }
 
 // ---------- the panel ----------
+const ADDITIVE = new Set(METRICS.filter((m) => m.additive).map((m) => m.key));
+const SPLIT_HINT = 'Split by Stage applies to additive Bars metrics (Spend, Purchases, Revenue, Impressions, Link clicks).';
+
 /*
+ Dual-axis trend panel: Bars (left axis) + Line (right axis), each any metric or None. Defaults Bars = Spend, Line = ROAS.
  opts: { slug, p, scope, scopeLabel, pins, mode: 'scope'|'ad'|'landing', products (landing), signal,
          shadeInfo: {a, b} (ad mode), onSparks(slug -> [values]) (landing) }
 */
 export function createTrendPanel(opts) {
   const { slug, p, scope = {}, pins, mode = 'scope', signal } = opts;
+  const valid = (v, d) => (v === 'none' || METRIC[v] ? v : d);
   const state = {
-    metric: METRIC[p.tm] ? p.tm : 'spend',
+    bars: valid(p.tb, 'spend'),
+    line: valid(p.tl, 'roas'),
     grain: p.tg === 'week' ? 'week' : 'day',
-    split: ['stage', 'children'].includes(p.ts) ? p.ts : 'none',
+    split: p.ts === 'stage' ? 'stage' : 'none',
     overlay: true,
     collapsed: trendCollapsed(),
   };
   let chart = null;
   let abort = null;
   let seq = 0;
-  let last = null; // last normalised result for the overlay toggle / metric repaint
+  let last = null;
   const dayCache = new Map(); // landing: slug -> day-grain response
+  const barsAdditive = () => state.bars !== 'none' && ADDITIVE.has(state.bars);
+  const effSplit = () => (barsAdditive() && state.split === 'stage' ? 'stage' : 'none');
 
   // ----- DOM -----
-  const metricBtns = METRICS.map((m) => {
-    const b = h('button', { type: 'button', class: 'mchip', 'data-metric': m.key, 'aria-pressed': String(state.metric === m.key), hidden: !!m.advanced && !colPref('advanced') && state.metric !== m.key }, m.label);
-    b.addEventListener('click', () => {
-      if (state.metric === m.key) return;
-      const q = cleanParams({ ...currentParams(), tm: m.key });
-      navigate(location.pathname + qs(q), { replace: true, scroll: false }); // metric also drives the sparkline column: re-render the page
-    });
-    return b;
+  const optionsFor = (sel, current) => {
+    sel.replaceChildren(...METRICS.filter((m) => !m.advanced || colPref('advanced') || current === m.key).map((m) => h('option', { value: m.key }, m.label)), h('option', { value: 'none' }, 'None'));
+    sel.value = current;
+  };
+  const barsSel = h('select', { id: 'trend-bars', 'aria-label': 'Bars metric (left axis)' });
+  const lineSel = h('select', { id: 'trend-line', 'aria-label': 'Line metric (right axis)' });
+  optionsFor(barsSel, state.bars);
+  optionsFor(lineSel, state.line);
+  barsSel.addEventListener('change', () => pageNavigate({ tb: barsSel.value })); // bars also drive the sparkline column: re-render the page
+  lineSel.addEventListener('change', () => {
+    if (state.bars === 'none') { pageNavigate({ tl: lineSel.value }); return; } // sparklines follow the line while Bars = None: re-render
+    state.line = lineSel.value;
+    writeUrl('tl', state.line, 'roas');
+    if (last) paint(last); else load();
   });
+  const swapBtn = h('button', { type: 'button', class: 'btn small', id: 'trend-swap', title: 'Swap Bars and Line' }, 'Swap');
+  swapBtn.addEventListener('click', () => pageNavigate({ tb: state.line, tl: state.bars }));
+  function pageNavigate(changes) {
+    const q = cleanParams({ ...currentParams(), ...changes });
+    navigate(location.pathname + qs(q), { replace: true, scroll: false });
+  }
   const seg = (items, cur, attr, onPick) => items.map(([v, t]) => {
     const b = h('button', { type: 'button', class: 'seg', [attr]: v, 'aria-pressed': String(cur === v) }, t);
     b.addEventListener('click', () => onPick(v));
     return b;
   });
   const grainBtns = seg([['day', 'Day'], ['week', 'Week']], state.grain, 'data-grain', (v) => setState({ grain: v }, 'tg'));
-  const splitBtns = seg([['none', 'None'], ['stage', 'Stage'], ['children', 'Top rows']], state.split, 'data-split', (v) => setState({ split: v }, 'ts'));
+  const splitBtns = seg([['none', 'None'], ['stage', 'Stage']], state.split, 'data-split', (v) => setState({ split: v }, 'ts'));
+  const splitHint = h('span', { class: 'muted small', id: 'trend-split-hint' });
   const overlayCb = h('input', { type: 'checkbox', id: 'trend-overlay', checked: true });
   overlayCb.addEventListener('change', () => { state.overlay = overlayCb.checked; if (last) paint(last); });
   const overlayWrap = h('label', { class: 'check', id: 'trend-overlay-wrap', hidden: true }, overlayCb, ' Compare overlay');
   const pinInfo = h('span', { class: 'trend-pins', id: 'trend-pins', hidden: true });
+  const pinHint = h('span', { class: 'muted small', id: 'trend-pin-hint', hidden: true });
   const toggleBtn = h('button', { type: 'button', class: 'btn small', id: 'trend-toggle', 'aria-expanded': String(!state.collapsed), onclick: () => setCollapsed(!state.collapsed) }, state.collapsed ? 'Show' : 'Hide');
   const canvas = h('canvas', { id: 'trend-chart', role: 'img', 'aria-label': 'Trend chart' });
   const note = h('div', { class: 'trend-note', id: 'trend-note' });
@@ -216,14 +243,34 @@ export function createTrendPanel(opts) {
     h('div', { class: 'trend-head' },
       h('h2', 'Trend'),
       h('div', { class: 'trend-controls', hidden: state.collapsed },
-        h('span', { class: 'chips', id: 'trend-metrics', role: 'group', 'aria-label': 'Metric' }, metricBtns),
+        h('label', { class: 'ctl tsel bars' }, h('span', { class: 'ctl-name' }, 'Bars'), barsSel),
+        h('label', { class: 'ctl tsel line' }, h('span', { class: 'ctl-name' }, 'Line'), lineSel),
+        swapBtn,
         h('span', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Grain'), h('span', { class: 'segs', id: 'trend-grain' }, grainBtns)),
-        mode === 'ad' ? null : h('span', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Split by'), h('span', { class: 'segs', id: 'trend-split' }, splitBtns)),
-        overlayWrap, pinInfo, status),
+        h('span', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Split bars by'), h('span', { class: 'segs', id: 'trend-split' }, splitBtns), splitHint),
+        overlayWrap, pinInfo, pinHint, status),
       h('span', { class: 'spacer' }),
       toggleBtn),
     body);
   const controlsEl = el.querySelector('.trend-controls');
+
+  function syncSplitControl() {
+    const ok = barsAdditive();
+    splitBtns.forEach((b) => { b.disabled = !ok; b.setAttribute('aria-pressed', String(ok && b.dataset.split === state.split)); });
+    splitHint.textContent = ok ? '' : (state.bars === 'none' ? 'Split applies to the bars; Bars is None.' : 'Not available for ratio bars.');
+    splitHint.title = SPLIT_HINT;
+    el.querySelector('#trend-split').title = ok ? '' : SPLIT_HINT;
+  }
+  function syncPinLock() {
+    if (!pins) return;
+    const locked = state.bars !== 'none';
+    pins.setLocked(locked);
+    pinHint.hidden = !locked;
+    pinHint.textContent = locked ? 'To chart rows, set Bars to None.' : '';
+    pinHint.title = PIN_HINT;
+  }
+  syncSplitControl();
+  syncPinLock();
 
   // ----- state -----
   function writeUrl(key, value, dflt) {
@@ -234,7 +281,7 @@ export function createTrendPanel(opts) {
   function setState(patch, urlKey) {
     Object.assign(state, patch);
     if (urlKey === 'tg') { writeUrl('tg', state.grain, 'day'); grainBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.grain === state.grain))); }
-    if (urlKey === 'ts') { writeUrl('ts', state.split, 'none'); splitBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.split === state.split))); }
+    if (urlKey === 'ts') { writeUrl('ts', state.split, 'none'); syncSplitControl(); }
     load();
   }
   function setCollapsed(on) {
@@ -249,9 +296,10 @@ export function createTrendPanel(opts) {
   }
 
   // ----- data -----
+  const rowsMode = () => !!(pins && pins.size() > 0 && state.bars === 'none');
   function params(sc, { grain, split, windowed }) {
     const o = { ...scopeParams(sc), grain };
-    if (split === 'stage' || split === 'children') o.split = split;
+    if (split === 'stage') o.split = 'stage';
     if (windowed) Object.assign(o, apiWindow(p));
     else { const a = apiWindow(p); if (a.stage) o.stage = a.stage; }
     return o;
@@ -259,13 +307,13 @@ export function createTrendPanel(opts) {
   const trendUrl = (sl) => `/api/products/${enc(sl)}/trend`;
 
   async function fetchScope(sig) {
-    if (pins && pins.size() > 0) {
+    if (rowsMode()) {
       const list = pins.list();
       const results = await Promise.all(list.map((pn) => api(trendUrl(slug), params({ ...pn.scope }, { grain: state.grain, split: 'none', windowed: mode !== 'ad' }), { signal: sig })));
       const norm = results.map(normalize);
       return { ...norm[0], pinned: list.map((pn, i) => ({ key: pn.key, label: pn.label, points: norm[i].points })), cmp: null, byStage: null, children: null };
     }
-    const d = await api(trendUrl(slug), params(scope, { grain: state.grain, split: mode === 'ad' ? 'none' : state.split, windowed: mode !== 'ad' }), { signal: sig });
+    const d = await api(trendUrl(slug), params(scope, { grain: state.grain, split: effSplit(), windowed: mode !== 'ad' }), { signal: sig });
     return normalize(d);
   }
 
@@ -275,7 +323,6 @@ export function createTrendPanel(opts) {
     const got = await Promise.all(need.map((pr) => api(trendUrl(pr.slug), { grain: 'day', split: 'stage', ...apiWindow(p) }, { signal: sig })));
     need.forEach((pr, i) => dayCache.set(pr.slug, normalize(got[i])));
     const wk = (pts) => (state.grain === 'week' ? rebucketWeeks(pts) : pts);
-    const sel = pins && pins.size() > 0 ? prods.filter((pr) => pins.has(pr.slug)) : prods;
     const datas = prods.map((pr) => dayCache.get(pr.slug));
     const sumAt = (lists) => {
       const n = Math.max(...lists.map((l) => l.length), 0);
@@ -288,7 +335,7 @@ export function createTrendPanel(opts) {
     };
     const total = wk(sumAt(datas.map((d) => d.points)));
     const cmpLists = datas.map((d) => d.cmp).filter(Boolean);
-    const cmp = cmpLists.length ? wk(sumAt(cmpLists).map((x, i) => x || null).filter((x) => x)) : null;
+    const cmp = cmpLists.length ? wk(sumAt(cmpLists).filter((x) => x)) : null;
     const stages = {};
     for (const st of ['testing', 'scaling', 'unclassified']) {
       const lists = datas.map((d) => d.byStage && d.byStage[st]).filter(Boolean);
@@ -296,14 +343,15 @@ export function createTrendPanel(opts) {
     }
     const res = {
       windowInfo: datas[0] && datas[0].windowInfo, compareInfo: datas[0] && datas[0].compareInfo,
-      points: total, cmp, byStage: Object.keys(stages).length ? stages : null,
-      children: sel.map((pr, i) => ({ key: pr.slug, label: pr.name, color: PALETTE[prods.indexOf(pr) % PALETTE.length], points: wk(dayCache.get(pr.slug).points) })),
-      grain: state.grain,
+      points: total, cmp, byStage: Object.keys(stages).length ? stages : null, children: null, grain: state.grain,
     };
-    if (pins && pins.size() > 0) res.pinned = res.children.map((c) => ({ key: c.key, label: c.label, points: c.points }));
+    if (rowsMode()) {
+      res.pinned = prods.filter((pr) => pins.has(pr.slug)).map((pr) => ({ key: pr.slug, label: pr.name, points: wk(dayCache.get(pr.slug).points) }));
+    }
     if (opts.onSparks) {
+      const key = sparkMetric(currentParams());
       const sp = {};
-      for (const pr of prods) sp[pr.slug] = dayCache.get(pr.slug).points.slice(-30).map((pt) => (pt ? pt[state.metric] : null));
+      for (const pr of prods) sp[pr.slug] = dayCache.get(pr.slug).points.slice(-30).map((pt) => (pt ? pt[key] : null));
       opts.onSparks(sp);
     }
     return res;
@@ -332,43 +380,51 @@ export function createTrendPanel(opts) {
 
   // ----- chart -----
   function paint(res) {
-    const m = metricInfo(state.metric);
+    const bm = state.bars !== 'none' ? metricInfo(state.bars) : null;
+    const lm = state.line !== 'none' ? metricInfo(state.line) : null;
     const pts = res.points || [];
-    const base = res.pinned && res.pinned.length ? res.pinned[0].points : pts;
+    const rows = rowsMode() && res.pinned && res.pinned.length;
+    const base = rows ? res.pinned[0].points : pts;
     const labels = base.map((pt) => (pt ? pt.t : null));
-    // fill gaps (null-padded entries) with the previous label so the axis stays continuous
     for (let i = 0; i < labels.length; i++) if (labels[i] == null) labels[i] = pts[i] ? pts[i].t : labels[i - 1] || '';
-    const val = (list) => list.map((pt) => (pt && isNum(pt[m.key]) ? pt[m.key] : null));
+    const val = (list, m) => list.map((pt) => (pt && isNum(pt[m.key]) ? pt[m.key] : null));
     const partial = base.map((pt) => !!(pt && pt.partial));
     const datasets = [];
-    let stacked = false;
     const notes = [];
-    if (res.pinned && res.pinned.length) {
-      res.pinned.forEach((pn, i) => datasets.push({ label: pn.label, data: val(pn.points), color: PALETTE[i % PALETTE.length], width: 2, partialDash: true }));
-      notes.push(`Showing ${res.pinned.length} pinned row${res.pinned.length === 1 ? '' : 's'} (max ${MAX_PINS}).`);
-    } else if (state.split === 'stage' && res.byStage && mode !== 'ad') {
-      const order = ['testing', 'scaling', 'unclassified'].filter((s) => res.byStage[s]);
-      stacked = !!m.additive;
-      order.forEach((st) => datasets.push({
-        label: STAGE_NAME[st], data: val(res.byStage[st]), color: STAGE_COLOR[st], fill: stacked, stack: stacked ? 'stage' : undefined, width: 1.6, partialDash: !stacked,
-      }));
-    } else if (state.split === 'children' && res.children && mode !== 'ad') {
-      if (!res.children.length) notes.push('No child rows for this scope.');
-      res.children.forEach((c, i) => datasets.push({
-        label: c.label, data: val(c.points), color: c.key === '__other__' ? '#8b949e' : PALETTE[i % PALETTE.length], width: 1.6, partialDash: true,
-      }));
+    const split = effSplit();
+    const stacked = !!bm && split === 'stage' && !!res.byStage;
+    const hasData = (list) => list.some((pt) => pt && ((pt.spend || 0) > 0 || (pt.purchases || 0) > 0 || (pt.link_clicks || 0) > 0));
+    const order = ['testing', 'scaling', 'unclassified'].filter((s) => res.byStage && res.byStage[s] && (s !== 'unclassified' || hasData(res.byStage[s])));
+    if (rows) {
+      // pinned rows: one line per row on the right axis (Bars = None)
+      if (lm) res.pinned.forEach((pn, i) => datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: pn.label, data: val(pn.points, lm), color: PALETTE[i % PALETTE.length], width: 2, partialDash: true }));
+      notes.push(`Showing ${res.pinned.length} pinned row${res.pinned.length === 1 ? '' : 's'} on the line axis (max ${MAX_PINS}).`);
     } else {
-      datasets.push({ label: opts.scopeLabel || 'All', data: val(pts), color: PALETTE[0], width: 2, partialDash: true });
+      if (bm) {
+        if (stacked) {
+          order.forEach((st) => datasets.push({ axis: 'left', type: 'bar', kind: bm.kind, label: STAGE_NAME[st], data: val(res.byStage[st], bm), color: STAGE_COLOR[st], stack: 'stage', opaque: true }));
+        } else {
+          datasets.push({ axis: 'left', type: 'bar', kind: bm.kind, label: bm.label, data: val(pts, bm), color: BAR_COLOR });
+        }
+      }
+      if (lm) {
+        if (split === 'stage' && !lm.additive && res.byStage) {
+          order.forEach((st) => datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: `${lm.label} · ${STAGE_NAME[st]}`, data: val(res.byStage[st], lm), color: STAGE_COLOR[st], width: 2, partialDash: true }));
+        } else {
+          datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: lm.label, data: val(pts, lm), color: LINE_COLOR, width: 2.4, partialDash: true });
+        }
+      }
     }
-    // B overlay (dashed gray) only when Compare is on and no pinned rows
-    const showOverlay = cmpView.on && state.overlay && res.cmp && !(res.pinned && res.pinned.length) && mode !== 'ad';
+    if (!bm && !lm) notes.push('Pick a metric for Bars or Line.');
+    // compare overlay: B as dashed outlined bars + a dashed gray line
+    const showOverlay = cmpView.on && state.overlay && res.cmp && !rows && mode !== 'ad';
     overlayWrap.hidden = !(cmpView.on && mode !== 'ad');
     if (showOverlay) {
       const ci = res.compareInfo;
-      datasets.push({
-        label: 'B' + (ci && ci.label ? ' · ' + ci.label : ''), data: val(res.cmp), color: '#8b949e', dash: [5, 4], width: 1.4, order: 0, stack: 'b',
-        cmpDates: res.cmp.map((pt) => (pt ? pt.t : null)),
-      });
+      const tag = ' · ' + (ci && ci.label ? ci.label : 'window B');
+      const cmpDates = res.cmp.map((pt) => (pt ? pt.t : null));
+      if (bm) datasets.push({ axis: 'left', type: 'bar', kind: bm.kind, label: `B ${bm.label}${tag}`, data: val(res.cmp, bm), color: '#6b7684', outline: true, dash: [3, 3], order: 3, cmpDates });
+      if (lm) datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: `B ${lm.label}${tag}`, data: val(res.cmp, lm), color: '#8b949e', dash: [5, 4], width: 1.6, order: 0, cmpDates });
     }
     // window A / B shading (ad detail: the chart always shows the full series)
     const shades = [];
@@ -378,12 +434,16 @@ export function createTrendPanel(opts) {
       if (b && b.from && b.to && cmpView.on) shades.push({ from: b.from, to: b.to, color: 'rgba(217,130,43,0.20)' });
     }
     if (chart) chart.destroy();
-    chart = trendChart(canvas, { labels, grain: res.grain || state.grain, kind: m.kind, stacked, datasets, partial, shades });
+    chart = trendChart(canvas, {
+      labels, grain: res.grain || state.grain, partial, shades, stackedBars: stacked,
+      left: bm && !rows ? { kind: bm.kind, title: `${bm.label} (bars, left)` } : null,
+      right: lm ? { kind: lm.kind, title: `${lm.label} (line, right)` } : null,
+      datasets,
+    });
     const wi = res.windowInfo;
     if (wi && wi.note && mode !== 'ad') notes.push(wi.note);
     if (mode === 'ad' && shades.length) notes.push(shades.length > 1 ? 'Shaded: window A (blue) and window B (orange).' : 'Shaded: selected window.');
     note.replaceChildren(...notes.map((t) => h('span', { class: 'note info' }, t)));
-    // pins line
     if (pins && pins.size() > 0) {
       pinInfo.hidden = false;
       pinInfo.replaceChildren(`Pinned ${pins.size()}/${MAX_PINS} `, h('button', { type: 'button', class: 'btn small', id: 'trend-clear', onclick: () => pins.clear() }, 'Clear'));
@@ -392,10 +452,17 @@ export function createTrendPanel(opts) {
 
   // advanced metrics appear with the Advanced columns chip; pins re-draw the chart
   onCmpRefresh(() => {
-    metricBtns.forEach((b) => { const m = METRIC[b.dataset.metric]; b.hidden = !!m.advanced && !colPref('advanced') && state.metric !== m.key; });
+    optionsFor(barsSel, state.bars);
+    optionsFor(lineSel, state.line);
     overlayWrap.hidden = !(cmpView.on && mode !== 'ad');
   });
-  if (pins) pins.onChange(() => { if (!state.collapsed) load(); });
+  if (pins) pins.onChange(() => { if (!state.collapsed && state.bars === 'none') load(); else if (!state.collapsed) pinInfoOnly(); });
+  function pinInfoOnly() {
+    if (pins.size() > 0) {
+      pinInfo.hidden = false;
+      pinInfo.replaceChildren(`Pinned ${pins.size()}/${MAX_PINS} `, h('button', { type: 'button', class: 'btn small', id: 'trend-clear', onclick: () => pins.clear() }, 'Clear'));
+    } else pinInfo.hidden = true;
+  }
 
   return {
     el,

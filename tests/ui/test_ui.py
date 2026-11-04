@@ -169,16 +169,38 @@ def delta_pct(cell_text):
 
 
 def trend_info(page):
-    """state of the trend chart (Chart.js instance #trend-chart)"""
+    """state of the trend chart (Chart.js instance #trend-chart): datasets with type / axis, and both y axes"""
     return page.evaluate("""() => { const c = window.Chart && Chart.getChart('trend-chart'); if (!c) return null;
-        return {n: c.data.datasets.length, labels: c.data.labels.slice(), stacked: !!c.options.scales.y.stacked,
-                ds: c.data.datasets.map((d, i) => ({label: d.label, fill: !!d.fill, dash: d.borderDash || null, stack: d.stack || null, hidden: !c.isDatasetVisible(i), data: d.data.slice(), color: d.borderColor})),
-                shades: c.options.plugins.windowShade.shades, kind: c.data.datasets.length ? null : null}; }""")
+        const ax = (k) => { const s = c.scales[k]; if (!s) return null; const o = s.options; return {display: o.display !== false, title: o.title && o.title.display ? o.title.text : null, color: o.title ? o.title.color : null, tick: o.ticks ? o.ticks.color : null, stacked: !!o.stacked,
+            ticks: s.ticks.map(t => t.label)}; };
+        return {n: c.data.datasets.length, labels: c.data.labels.slice(),
+                stacked: !!c.options.scales.y.stacked,
+                axes: {left: ax('y'), right: ax('y1')},
+                ds: c.data.datasets.map((d, i) => ({label: d.label, type: d.type, axis: d.yAxisID === 'y1' ? 'right' : 'left', fill: !!d.fill, dash: d.borderDash || null, stack: d.stack || null, hidden: !c.isDatasetVisible(i), data: d.data.slice(), color: d.borderColor})),
+                shades: c.options.plugins.windowShade.shades}; }""")
+
+
+def bars_ds(info):
+    return [d for d in info["ds"] if d["type"] == "bar" and not d["label"].startswith("B ")]
+
+
+def line_ds(info):
+    return [d for d in info["ds"] if d["type"] == "line" and not d["label"].startswith("B ")]
+
+
+def pick_metric(page, which, key):
+    """which = 'bars' | 'line': choose a metric in the panel's selector (the page may re-render)"""
+    page.select_option(f"#trend-{which}", key)
 
 
 def wait_trend(page):
     """the trend chart exists, has data and is not loading"""
     page.wait_for_function("() => { const c = window.Chart && Chart.getChart('trend-chart'); const s = document.querySelector('#trend-status'); return !!c && c.data.datasets.length > 0 && s && s.textContent === ''; }")
+
+
+def trend_idle(page):
+    """the trend panel finished loading (it may legitimately have no series, e.g. Bars = Line = None)"""
+    page.wait_for_function("() => { const s = document.querySelector('#trend-status'); return !!s && s.textContent === '' && !!(window.Chart && Chart.getChart('trend-chart')); }")
 
 
 def trend_requests(page):
@@ -1014,12 +1036,12 @@ def test_ad_detail_sections(page):
     # trend panel on the ad page: full series since daily_start, the selected window shaded (window A)
     expect(page.locator("#trend-panel")).to_be_visible()
     info = trend_info(page)
-    assert info["n"] == 1 and len(info["labels"]) >= 100
+    assert info["n"] == 2 and len(info["labels"]) >= 100 and [d["type"] for d in info["ds"]] == ["bar", "line"]  # bars (Spend) + line (ROAS)
     sh = info["shades"]
     assert len(sh) == 1 and sh[0]["i1"] == len(info["labels"]) - 1 and sh[0]["i1"] - sh[0]["i0"] == 6, sh
     if IS_MOCK:
         assert len(info["labels"]) == 181 and info["labels"][0] == "2026-05-06" and info["labels"][-1] == "2026-11-02"
-    assert page.locator("#trend-split").count() == 0  # the ad page has no "Split by"
+    assert info["axes"]["left"]["display"] and info["axes"]["right"]["display"]
     expect(page.locator("#family-metrics")).to_contain_text("days")
 
 
@@ -1408,16 +1430,16 @@ def test_traffic_null_days_show_dash_and_the_api_note(page):
     assert "Impressions" not in page.locator("#range-note").inner_text()
 
 
-def test_ad_trend_panel_metric_chips_include_traffic(page):
+def test_ad_trend_panel_selectors_include_traffic(page):
     open_first_ad(page, "window=14d")
-    chips = page.locator("#trend-metrics .mchip:visible").all_inner_texts()
-    assert chips == ["Spend", "Purchases", "Revenue", "ROAS", "CPA", "Impressions", "Link clicks", "CTR", "CPC"], chips
-    page.locator("#trend-metrics .mchip[data-metric=impressions]").click()
-    expect(page).to_have_url(re.compile(r"tm=impressions"))
+    opts = page.locator("#trend-bars option").all_inner_texts()
+    assert opts == ["Spend", "Purchases", "Revenue", "ROAS", "CPA", "Impressions", "Link clicks", "CTR", "CPC", "None"], opts
+    pick_metric(page, "bars", "impressions")
+    expect(page).to_have_url(re.compile(r"tb=impressions"))
     wait_trend(page)
-    expect(page.locator("#trend-metrics .mchip[data-metric=impressions]")).to_have_attribute("aria-pressed", "true")
+    assert page.input_value("#trend-bars") == "impressions"
     if IS_MOCK:  # days without impressions are gaps (null), never zero
-        assert trend_info(page)["ds"][0]["data"][0] is None
+        assert bars_ds(trend_info(page))[0]["data"][0] is None
     shot(page, "27_ad_trend_impressions")
 
 
@@ -1447,147 +1469,204 @@ def test_trend_panel_renders_at_every_level(page):
         page.wait_for_selector(".tablebox")
         wait_trend(page)
         info = trend_info(page)
-        assert info["n"] >= 1 and len(info["labels"]) >= 5, (u, info)
+        assert info["n"] >= 2 and len(info["labels"]) >= 5, (u, info)
         expect(page.locator("#trend-panel")).to_be_visible()
-        # metric chips: CPM / Conv rate only appear with the Advanced columns chip
-        shown = page.locator("#trend-metrics .mchip:visible").all_inner_texts()
-        assert shown[:9] == ["Spend", "Purchases", "Revenue", "ROAS", "CPA", "Impressions", "Link clicks", "CTR", "CPC"], shown
-        assert "CPM" not in shown
+        # defaults: Bars = Spend (left axis), Line = ROAS (right axis), both axes labelled
+        assert page.input_value("#trend-bars") == "spend" and page.input_value("#trend-line") == "roas"
+        assert bars_ds(info) and line_ds(info)
+        assert info["axes"]["left"]["display"] and info["axes"]["right"]["display"]
+        assert "Spend" in info["axes"]["left"]["title"] and "ROAS" in info["axes"]["right"]["title"]
     shot(page, "28_trend_every_level")
+    # both selectors offer every metric (CPM / Conv rate only with the Advanced chip) and None
     page.goto(f"/p/{SLUG}")
     wait_trend(page)
+    opts = page.locator("#trend-bars option").all_inner_texts()
+    assert opts == ["Spend", "Purchases", "Revenue", "ROAS", "CPA", "Impressions", "Link clicks", "CTR", "CPC", "None"], opts
+    assert page.locator("#trend-line option").all_inner_texts() == opts
     page.locator(".cchip[data-cols=advanced]").click()
-    assert page.locator("#trend-metrics .mchip:visible").all_inner_texts()[-2:] == ["CPM", "Conv rate"]
+    assert page.locator("#trend-bars option").all_inner_texts()[-3:] == ["CPM", "Conv rate", "None"]
 
 
-def test_trend_metric_chips_drive_chart_url_and_sparklines(page):
+def test_trend_bars_line_selectors_swap_axes_and_url(page):
     goto_product(page)
     wait_trend(page)
-    expect(page.locator("#trend-metrics .mchip[data-metric=spend]")).to_have_attribute("aria-pressed", "true")
-    assert "tm" not in qparams(page)
-    first_spend = trend_info(page)["ds"][0]["data"]
+    info = trend_info(page)
+    assert [d["type"] for d in info["ds"]] == ["bar", "line"]
+    assert bars_ds(info)[0]["axis"] == "left" and line_ds(info)[0]["axis"] == "right"
+    assert "tb" not in qparams(page) and "tl" not in qparams(page)  # defaults are not in the URL
+    # axes: labelled per metric, tinted like their series (bars accent blue, line orange), tick formats per metric
+    assert info["axes"]["left"]["tick"] != info["axes"]["right"]["tick"]
+    assert re.fullmatch(r"\$[\d.,]+[KM]?", info["axes"]["left"]["ticks"][1]), info["axes"]["left"]["ticks"]  # money
+    assert re.fullmatch(r"\d+\.\d\d", info["axes"]["right"]["ticks"][1]), info["axes"]["right"]["ticks"]  # ROAS
     reqs = []
     page.on("request", lambda r: reqs.append(r.url) if "/api/products/" in r.url else None)
-    page.locator("#trend-metrics .mchip[data-metric=cpc]").click()
-    expect(page).to_have_url(re.compile(r"tm=cpc"))
+    # the bars metric also drives the sparkline column: the page re-fetches (trend + tables with spark=<bars>)
+    pick_metric(page, "bars", "revenue")
+    expect(page).to_have_url(re.compile(r"tb=revenue"))
     wait_rows(page)
     wait_trend(page)
-    expect(page.locator("#trend-metrics .mchip[data-metric=cpc]")).to_have_attribute("aria-pressed", "true")
-    assert any("/trend" in u for u in reqs), "a metric switch re-fetches the trend"
-    assert any("/tree" in u and "spark=cpc" in u for u in reqs), "the table asks for the new sparkline metric"
-    assert trend_info(page)["ds"][0]["data"] != first_spend
-    title = page.locator(f"{BODY_ROWS} svg.spark title").first.text_content()
-    assert "CPC" in title, title
-    # the metric is carried into the next level and survives a reload
-    open_first_row(page)
+    assert any("/trend" in u for u in reqs) and any("/tree" in u and "spark=revenue" in u for u in reqs)
+    info = trend_info(page)
+    assert "Revenue" in info["axes"]["left"]["title"] and bars_ds(info)[0]["label"] == "Revenue"
+    assert "Revenue" in page.locator(f"{BODY_ROWS} svg.spark title").first.text_content()
+    # the line metric is a client-side change: no request, URL tl=..., right axis re-formatted
+    n = len(reqs)
+    pick_metric(page, "line", "cpc")
+    expect(page).to_have_url(re.compile(r"tl=cpc"))
+    page.wait_for_timeout(200)
+    info = trend_info(page)
+    assert line_ds(info)[0]["label"] == "CPC" and "CPC" in info["axes"]["right"]["title"] and re.fullmatch(r"\$\d+\.\d\d", info["axes"]["right"]["ticks"][1])
+    assert len(reqs) == n, "changing the line metric must not refetch"
+    # Swap flips them (Bars <-> Line)
+    page.click("#trend-swap")
     wait_rows(page)
-    assert qparams(page)["tm"] == "cpc"
+    wait_trend(page)
+    assert qparams(page)["tb"] == "cpc" and qparams(page)["tl"] == "revenue"
+    info = trend_info(page)
+    assert bars_ds(info)[0]["label"] == "CPC" and line_ds(info)[0]["label"] == "Revenue"
+    assert "CPC" in info["axes"]["left"]["title"] and "Revenue" in info["axes"]["right"]["title"]
+    assert "CPC" in page.locator(f"{BODY_ROWS} svg.spark title").first.text_content()  # sparklines follow the bars
+    # None for one of them: that axis disappears
+    pick_metric(page, "line", "none")
+    page.wait_for_timeout(200)
+    info = trend_info(page)
+    assert line_ds(info) == [] and not info["axes"]["right"]["display"] and info["axes"]["left"]["display"]
+    pick_metric(page, "bars", "none")
+    wait_rows(page)
+    trend_idle(page)
+    assert qparams(page)["tb"] == "none" and qparams(page)["tl"] == "none"
+    assert trend_info(page)["n"] == 0 and "Pick a metric" in page.locator("#trend-note").inner_text()
+    pick_metric(page, "line", "ctr")
+    wait_rows(page)
+    wait_trend(page)
+    info = trend_info(page)
+    assert bars_ds(info) == [] and line_ds(info)[0]["label"] == "CTR" and not info["axes"]["left"]["display"] and info["axes"]["right"]["display"]
+    assert "CTR" in page.locator(f"{BODY_ROWS} svg.spark title").first.text_content()  # bars None -> sparklines follow the line
+    # survives reload, carried into the next level
     page.reload()
     wait_rows(page)
     wait_trend(page)
-    expect(page.locator("#trend-metrics .mchip[data-metric=cpc]")).to_have_attribute("aria-pressed", "true")
-    shot(page, "29_trend_metric_cpc")
+    assert page.input_value("#trend-bars") == "none" and page.input_value("#trend-line") == "ctr"
+    open_first_row(page)
+    wait_rows(page)
+    assert qparams(page)["tb"] == "none" and qparams(page)["tl"] == "ctr"
+    shot(page, "29_trend_dual_axis")
 
 
-def test_trend_grain_and_split_switches_refetch(page):
+def test_trend_split_stage_only_for_additive_bars(page):
     goto_product(page, "?window=60d")
     wait_trend(page)
     reqs = trend_requests(page)
+    # grain switch re-fetches; weeks are ISO weeks (60 days = about 9-10 buckets)
     day_labels = len(trend_info(page)["labels"])
     page.locator("#trend-grain [data-grain=week]").click()
     expect(page).to_have_url(re.compile(r"tg=week"))
     wait_trend(page)
     assert reqs and reqs[-1].get("grain") == "week"
-    wk = trend_info(page)
-    assert 8 <= len(wk["labels"]) <= 11 and len(wk["labels"]) < day_labels  # 60 days -> about 9 ISO weeks
+    assert 8 <= len(trend_info(page)["labels"]) <= 11 and len(trend_info(page)["labels"]) < day_labels
     page.locator("#trend-grain [data-grain=day]").click()
     wait_trend(page)
     assert reqs[-1].get("grain") == "day" and "tg" not in qparams(page)
-    # split by stage: additive metric = stacked areas, one per included stage (Testing teal, Scaling indigo)
+    # additive bars (Spend): the split control is enabled; Stage stacks Testing (teal) and Scaling (indigo) bars
+    assert not page.locator("#trend-split [data-split=stage]").is_disabled()
     n = len(reqs)
     page.locator("#trend-split [data-split=stage]").click()
     expect(page).to_have_url(re.compile(r"ts=stage"))
     wait_trend(page)
     assert len(reqs) == n + 1 and reqs[-1].get("split") == "stage"
     st = trend_info(page)
-    names = [d["label"] for d in st["ds"]]
-    assert "Testing" in names and "Scaling" in names, names
-    assert st["stacked"] is True and all(d["fill"] for d in st["ds"] if d["label"] in ("Testing", "Scaling"))
-    colors = {d["label"]: d["color"] for d in st["ds"]}
-    assert colors["Testing"] != colors["Scaling"]
+    stage_bars = [d for d in bars_ds(st) if d["label"] in ("Testing", "Scaling")]
+    assert {d["label"] for d in stage_bars} == {"Testing", "Scaling"} and all(d["stack"] == "stage" for d in stage_bars)
+    assert st["axes"]["left"]["stacked"] is True
+    assert len({d["color"] for d in stage_bars}) == 2
+    assert [d["label"] for d in line_ds(st)] == ["ROAS"] or all("ROAS" in d["label"] for d in line_ds(st))
+    # ROAS is a ratio: with Split = Stage the line becomes one line per stage on the right axis
+    assert {d["label"] for d in line_ds(st)} >= {"ROAS · Testing", "ROAS · Scaling"} and all(d["axis"] == "right" for d in line_ds(st))
+    # a metric on the line that is additive keeps the total line
+    pick_metric(page, "line", "purchases")
+    page.wait_for_timeout(200)
+    assert [d["label"] for d in line_ds(trend_info(page))] == ["Purchases"]
     shot(page, "30_trend_split_stage")
-    # a ratio metric draws one line per stage instead (not stacked)
-    page.locator("#trend-metrics .mchip[data-metric=roas]").click()
+    # ratio bars (ROAS): the split is not available (disabled + explanation) and nothing is split
+    pick_metric(page, "bars", "roas")
+    wait_rows(page)
     wait_trend(page)
-    st = trend_info(page)
-    assert st["stacked"] is False and not any(d["fill"] for d in st["ds"]) and "Testing" in [d["label"] for d in st["ds"]]
-    # split by top rows: one line per child row of the current table (+ Other)
-    page.locator("#trend-split [data-split=children]").click()
+    assert page.locator("#trend-split [data-split=stage]").is_disabled() and page.locator("#trend-split [data-split=none]").is_disabled()
+    assert page.locator("#trend-split-hint").inner_text().strip() != ""
+    info = trend_info(page)
+    assert not any(d["label"] in ("Testing", "Scaling") for d in info["ds"]) and len(bars_ds(info)) == 1
+    assert reqs[-1].get("split") is None  # the stage split is not requested
+    # additive again: the (still stored) split applies again
+    pick_metric(page, "bars", "impressions")
+    wait_rows(page)
     wait_trend(page)
-    assert reqs[-1].get("split") == "children"
-    kids = trend_info(page)
-    assert kids["n"] >= 2
-    tbl_labels = set(table_data(page)["labels"])
-    assert set(d["label"] for d in kids["ds"]) - {"Other"} <= tbl_labels | set(d["label"] for d in kids["ds"])
-    assert qparams(page)["ts"] == "children" and qparams(page)["tm"] == "roas"
-    shot(page, "31_trend_split_rows")
-    # state survives a reload and a drill
+    assert not page.locator("#trend-split [data-split=stage]").is_disabled() and reqs[-1].get("split") == "stage"
+    # the state survives a reload and a drill
     page.reload()
     wait_trend(page)
-    expect(page.locator("#trend-split [data-split=children]")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#trend-split [data-split=stage]")).to_have_attribute("aria-pressed", "true")
     open_first_row(page)
     wait_rows(page)
     wait_trend(page)
-    assert qparams(page)["ts"] == "children"
+    assert qparams(page)["ts"] == "stage" and qparams(page)["tb"] == "impressions"
+    # there is no "Top rows" split any more
+    assert page.locator("#trend-split [data-split=children]").count() == 0
 
 
-def test_trend_compare_overlay_only_when_compare_is_on(page):
+def test_trend_compare_overlay_bars_and_line(page):
     goto_product(page, "?window=14d")
     wait_trend(page)
     expect(page.locator("#trend-overlay-wrap")).to_be_hidden()
-    assert not any(d["label"].startswith("B") for d in trend_info(page)["ds"])
+    assert not any(d["label"].startswith("B ") for d in trend_info(page)["ds"])
     page.select_option("#cmp", "prev")
     expect(page).to_have_url(re.compile(r"compare=prev"))
     wait_rows(page)
     wait_trend(page)
     expect(page.locator("#trend-overlay-wrap")).to_be_visible()
     info = trend_info(page)
-    b = [d for d in info["ds"] if d["label"].startswith("B")]
-    assert len(b) == 1 and b[0]["dash"] and len(b[0]["data"]) == len(info["labels"])  # dashed gray line aligned to A by position
-    assert b[0]["color"] in ("#8b949e", "rgb(139, 148, 158)")
+    b = [d for d in info["ds"] if d["label"].startswith("B ")]
+    kinds = {d["type"]: d for d in b}
+    assert set(kinds) == {"bar", "line"}  # B as dashed outlined bars + a dashed gray line
+    assert kinds["bar"]["dash"] and kinds["line"]["dash"] and kinds["bar"]["axis"] == "left" and kinds["line"]["axis"] == "right"
+    assert all(len(d["data"]) == len(info["labels"]) for d in b)  # aligned to A by position
+    assert kinds["line"]["color"] in ("#8b949e", "rgb(139, 148, 158)")
     reqs = trend_requests(page)
-    page.uncheck("#trend-overlay")  # the overlay is a client-side toggle
-    assert not any(d["label"].startswith("B") for d in trend_info(page)["ds"]) and not reqs
+    page.uncheck("#trend-overlay")  # a client-side toggle
+    assert not any(d["label"].startswith("B ") for d in trend_info(page)["ds"]) and not reqs
     page.check("#trend-overlay")
-    assert any(d["label"].startswith("B") for d in trend_info(page)["ds"])
-    # the request carried the compare window
+    assert sum(1 for d in trend_info(page)["ds"] if d["label"].startswith("B ")) == 2
     page.locator("#trend-grain [data-grain=week]").click()
     wait_trend(page)
     assert reqs[-1].get("compare") == "prev" and reqs[-1].get("window") == "14d"
+    # with Line = None only the bars overlay is drawn
+    pick_metric(page, "line", "none")
+    page.wait_for_timeout(200)
+    assert [d["type"] for d in trend_info(page)["ds"] if d["label"].startswith("B ")] == ["bar"]
     page.select_option("#cmp", "off")
     wait_rows(page)
     wait_trend(page)
     expect(page.locator("#trend-overlay-wrap")).to_be_hidden()
-    assert not any(d["label"].startswith("B") for d in trend_info(page)["ds"])
+    assert not any(d["label"].startswith("B ") for d in trend_info(page)["ds"])
     shot(page, "32_trend_compare_overlay")
 
 
-def test_trend_hover_tooltip_and_legend_toggle(page):
+def test_trend_hover_tooltip_shows_both_values_and_legend_toggle(page):
     goto_product(page, "?window=30d&ts=stage")
     wait_trend(page)
     box = page.locator("#trend-chart").bounding_box()
     page.mouse.move(box["x"] + box["width"] * 0.55, box["y"] + box["height"] * 0.5)
     page.wait_for_timeout(250)
     tip = page.evaluate("""() => { const t = Chart.getChart('trend-chart').tooltip; return {n: t.getActiveElements().length, title: t.title, lines: (t.body || []).map(b => b.lines.join(' '))}; }""")
-    assert tip["n"] >= 1 and tip["title"], tip
+    assert tip["n"] >= 2 and tip["title"], tip
     assert re.search(r"[A-Z][a-z]{2} \d{1,2}", tip["title"][0]), tip  # the date
-    assert any(re.search(r"\$[\d,]+", ln) for ln in tip["lines"]) and any("Testing" in ln or "Scaling" in ln for ln in tip["lines"]), tip  # every plotted value, formatted like the tables
+    assert any(re.search(r"(Testing|Scaling): \$[\d,]+", ln) for ln in tip["lines"]), tip  # the bars value, formatted like the tables
+    assert any(re.search(r"ROAS.*: \d\.\d\d", ln) for ln in tip["lines"]), tip  # and the line value (both values of the date)
     shot(page, "33_trend_tooltip")
-    # clicking a legend entry hides that series
     before = trend_info(page)
     idx = next(i for i, d in enumerate(before["ds"]) if d["label"] == "Testing")
     assert before["ds"][idx]["hidden"] is False
     hb = page.evaluate("(i) => { const lg = Chart.getChart('trend-chart').legend.legendHitBoxes[i]; return {x: lg.left + lg.width / 2, y: lg.top + lg.height / 2}; }", idx)
+
     def click_legend():
         page.mouse.move(box["x"] + hb["x"], box["y"] + hb["y"])  # Chart.js legends need a hover before the click
         page.wait_for_timeout(150)
@@ -1678,8 +1757,16 @@ def test_sparkline_column_every_table_unsortable_totals_empty(page):
 def test_pin_rows_into_the_chart_max_8(page):
     goto_product(page)
     wait_trend(page)
-    assert page.locator(f"{BODY_ROWS} input.pin-cb").count() == len(table_data(page)["rows"])  # a "Chart" checkbox on every row
+    # with Bars set, the Chart checkboxes are disabled and a hint says how to enable them
     assert has_col(page, "_chart")
+    boxes = page.locator(f"{BODY_ROWS} input.pin-cb")
+    assert boxes.count() == len(table_data(page)["rows"]) and all(boxes.nth(i).is_disabled() for i in range(boxes.count()))
+    expect(page.locator("#trend-pin-hint")).to_contain_text("Bars to None")
+    pick_metric(page, "bars", "none")
+    wait_rows(page)
+    wait_trend(page)
+    assert all(not page.locator(f"{BODY_ROWS} input.pin-cb").nth(i).is_disabled() for i in range(boxes.count()))
+    expect(page.locator("#trend-pin-hint")).to_be_hidden()
     reqs = trend_requests(page)
     rows = page.locator(BODY_ROWS)
     labels = [rows.nth(i).get_attribute("data-label") for i in range(2)]
@@ -1687,7 +1774,9 @@ def test_pin_rows_into_the_chart_max_8(page):
         rows.nth(i).locator("input.pin-cb").check()
         wait_trend(page)
     info = trend_info(page)
-    assert [d["label"] for d in info["ds"]] == labels  # pinned rows appear as their own lines
+    assert [d["label"] for d in info["ds"]] == labels  # pinned rows appear as their own lines ...
+    assert all(d["type"] == "line" and d["axis"] == "right" for d in info["ds"])  # ... on the right axis only
+    assert not info["axes"]["left"]["display"]
     expect(page.locator("#trend-pins")).to_contain_text("Pinned 2/8")
     scopes = [r for r in reqs if r.get("cluster") in labels]
     assert len(scopes) >= 2, reqs  # each pinned row is a /trend request with the row's scope
@@ -1699,8 +1788,14 @@ def test_pin_rows_into_the_chart_max_8(page):
     wait_trend(page)
     assert page.locator("input.pin-cb:checked").count() == 0 and trend_info(page)["ds"][0]["label"] not in labels
     expect(page.locator("#trend-pins")).to_be_hidden()
+    # setting Bars again locks the checkboxes (pins are kept but not drawn)
+    pick_metric(page, "bars", "spend")
+    wait_rows(page)
+    assert page.locator(f"{BODY_ROWS} input.pin-cb").first.is_disabled()
     # at most 8: the 9th checkbox is disabled
-    drill_to_families(page)
+    cluster, icp, pain = drill_to_families(page)
+    page.goto(purl(cluster, icp, pain, tb="none"))
+    wait_rows(page)
     page.click("#toggle-all")
     wait_rows(page)
     boxes = page.locator(f"{BODY_ROWS} input.pin-cb")
@@ -1714,7 +1809,7 @@ def test_pin_rows_into_the_chart_max_8(page):
         boxes.nth(0).uncheck()
         assert not boxes.nth(8).is_disabled()
     # pins survive a drill and Back
-    goto_product(page)
+    goto_product(page, "?tb=none")
     first = first_row(page)
     lab = first.get_attribute("data-label")
     first.locator("input.pin-cb").check()
@@ -1728,22 +1823,28 @@ def test_pin_rows_into_the_chart_max_8(page):
     assert [d["label"] for d in trend_info(page)["ds"]] == [lab]
 
 
-def test_landing_trend_pins_products_and_split_rows(page):
+def test_landing_trend_dual_axis_pins_products_and_client_side_switches(page):
     page.goto("/")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     wait_trend(page)
+    info = trend_info(page)
+    assert [d["type"] for d in info["ds"]] == ["bar", "line"]
     reqs = trend_requests(page)
-    page.locator("#trend-split [data-split=children]").click()
-    wait_trend(page)
-    n_products = len(table_data(page, "products-table")["rows"])
-    assert trend_info(page)["n"] == n_products  # one line per product
-    page.locator("[data-testid=products-table] tbody tr[data-key]").first.locator("input.pin-cb").check()
-    wait_trend(page)
-    assert trend_info(page)["n"] == 1
     page.locator("#trend-grain [data-grain=week]").click()
     wait_trend(page)
     assert len(trend_info(page)["labels"]) < 40
+    page.locator("#trend-split [data-split=stage]").click()
+    wait_trend(page)
+    assert {d["label"] for d in bars_ds(trend_info(page))} >= {"Testing", "Scaling"}
     assert not reqs, "the landing page derives grain / split / pins from the per-product series it already has"
+    pick_metric(page, "bars", "none")
+    page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
+    idle(page)
+    wait_trend(page)
+    page.locator("[data-testid=products-table] tbody tr[data-key]").first.locator("input.pin-cb").check()
+    wait_trend(page)
+    info = trend_info(page)
+    assert info["n"] == 1 and info["ds"][0]["type"] == "line"  # one pinned product, a line on the right axis
 
 
 # ------------------------------------------------------------------ deep links, 401, layout

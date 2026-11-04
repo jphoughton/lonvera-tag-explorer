@@ -154,49 +154,72 @@ export function shadeIdx(labels, grain, from, to) {
   return [i0, Math.max(i0, i1)];
 }
 
+const BAR_COLOR = '#1a5fb4';
+const LINE_COLOR = '#d9822b';
+export { BAR_COLOR, LINE_COLOR };
+
 /*
- cfg: { labels:[t], grain, kind, stacked, datasets:[{label,data,color,fill,stack,dash,width,order,cmpDates,partialDash}], partial:[bool], shades:[{from,to,color}] }
+ Dual-axis chart: bars on the left axis, a line on the right axis.
+ cfg: { labels:[t], grain, partial:[bool], shades:[{from,to,color}], left:{kind,title}|null, right:{kind,title}|null, stackedBars,
+        datasets:[{axis:'left'|'right', type:'bar'|'line', label, data, color, fill?, stack?, dash?, outline?, width?, order?, cmpDates?, partialDash?}] }
 */
 export function trendChart(canvas, cfg) {
-  const { labels, grain, kind } = cfg;
+  const { labels, grain } = cfg;
   const sh = (cfg.shades || []).filter((x) => x && x.from && x.to).map((x) => { const [i0, i1] = shadeIdx(labels, grain, x.from, x.to); return { i0, i1, color: x.color }; });
   const datasets = cfg.datasets.map((ds) => {
+    const bar = ds.type === 'bar';
     const o = {
-      type: 'line', label: ds.label, data: ds.data, borderColor: ds.color, backgroundColor: ds.fill ? hexA(ds.color, 0.4) : ds.color,
-      fill: ds.fill ? 'origin' : false, borderDash: ds.dash, pointRadius: 0, pointHoverRadius: 3, borderWidth: ds.width || 1.6, tension: 0.12, spanGaps: false, order: ds.order == null ? 1 : ds.order,
+      type: ds.type, label: ds.label, data: ds.data, yAxisID: ds.axis === 'right' ? 'y1' : 'y',
+      borderColor: ds.color, backgroundColor: ds.outline ? 'rgba(0,0,0,0)' : (bar ? hexA(ds.color, ds.opaque ? 0.85 : 0.45) : ds.color),
+      borderWidth: ds.width || (bar ? 1 : 2.2), order: ds.order == null ? 1 : ds.order,
+      _kind: ds.kind,
       _cmpDates: ds.cmpDates || null,
     };
-    if (ds.stack) o.stack = ds.stack;
-    if (ds.partialDash && cfg.partial && cfg.partial.some(Boolean)) {
-      o.segment = { borderDash: (c) => (cfg.partial[c.p1DataIndex] || cfg.partial[c.p0DataIndex] ? [3, 3] : undefined) };
+    if (bar) {
+      o.borderRadius = 0;
+      if (ds.outline) { o.borderDash = ds.dash || [3, 3]; o.grouped = false; o.borderWidth = 1.2; }
+      if (ds.stack) o.stack = ds.stack;
+      else if (!ds.outline) o.stack = 'bars';
+    } else {
+      o.pointRadius = 0; o.pointHoverRadius = 3; o.tension = 0.12; o.spanGaps = false; o.borderDash = ds.dash;
+      if (ds.partialDash && cfg.partial && cfg.partial.some(Boolean)) {
+        o.segment = { borderDash: (c) => (cfg.partial[c.p1DataIndex] || cfg.partial[c.p0DataIndex] ? [3, 3] : undefined) };
+      }
     }
     return o;
   });
+  const axis = (side, a, color, position) => (a ? {
+    position, stacked: side === 'left' && !!cfg.stackedBars, beginAtZero: !['roas', 'rate', 'money2'].includes(a.kind) || side === 'left',
+    grid: side === 'left' ? undefined : { drawOnChartArea: false },
+    border: { color },
+    ticks: { color, callback: (v) => tickFmt(a.kind, v) },
+    title: { display: true, text: a.title, color, font: { weight: '600' } },
+  } : { display: false, position, grid: { drawOnChartArea: false } });
   const chart = new Chart(canvas, {
-    type: 'line',
+    type: 'bar',
     data: { labels, datasets },
     options: {
       ...baseOptions(),
       scales: {
         x: { ticks: { maxTicksLimit: 14, maxRotation: 0, callback: tickDay }, grid: { display: false } },
-        y: { stacked: !!cfg.stacked, beginAtZero: kind !== 'roas' && kind !== 'rate' && kind !== 'money2' ? true : false, ticks: { callback: (v) => tickFmt(kind, v) } },
+        y: axis('left', cfg.left, BAR_COLOR, 'left'),
+        y1: axis('right', cfg.right, '#c2610f', 'right'),
       },
       plugins: {
-        legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: false } },
+        legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10 } },
         windowShade: { shades: sh },
         tooltip: {
           callbacks: {
             title: (items) => {
               if (!items.length) return '';
               const i = items[0].dataIndex;
-              const t = labels[i];
-              const base = grain === 'week' ? `Week of ${fmt.day(t)}` : fmt.day(t);
+              const base = grain === 'week' ? `Week of ${fmt.day(labels[i])}` : fmt.day(labels[i]);
               return cfg.partial && cfg.partial[i] ? base + ' (partial)' : base;
             },
             label: (c) => {
               const cd = c.dataset._cmpDates;
               const name = cd && cd[c.dataIndex] ? `${c.dataset.label} (${fmt.day(cd[c.dataIndex])})` : c.dataset.label;
-              return `${name}: ${fmtMetric(kind, c.parsed.y)}`;
+              return `${name}: ${fmtMetric(c.dataset._kind, c.parsed.y)}`;
             },
           },
         },

@@ -320,3 +320,10 @@ table.dt td.trendcol, table.dt th.trendcol { width: 82px; min-width: 82px; paddi
 table.dt td.pincol, table.dt th.pincol { width: 44px; min-width: 44px; text-align: center; }
 .pin-cb { cursor: pointer; }
 .pin-cb:disabled { cursor: not-allowed; opacity: 0.45; }
+
+.tsel select { font: inherit; font-size: 12px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 5px; background: #fff; }
+.tsel.bars .ctl-name { color: #1a5fb4; font-weight: 600; }
+.tsel.line .ctl-name { color: #c2610f; font-weight: 600; }
+.tsel.bars select { border-color: #1a5fb4; }
+.tsel.line select { border-color: #d9822b; }
+.segs .seg:disabled { color: #9aa3af; cursor: not-allowed; background: #f6f7f9; }

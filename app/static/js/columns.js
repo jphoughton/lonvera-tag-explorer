@@ -1,7 +1,7 @@
 // Shared metric columns. The same metrics appear at every level: Spend, % of spend, traffic (impressions, link clicks, CTR, CPC), purchases, revenue, ROAS, CPA.
 // With comparison on, Spend / % of spend / Purchases / Revenue / ROAS / CPA cells get a second line "vs <B> ▲12%".
 import { h, fmt, isNum, cmpView, stageSet, currentParams, colPref } from './util.js';
-import { sparkSvg, sparkTitle, MAX_PINS } from './trend.js';
+import { sparkSvg, sparkTitle, MAX_PINS, PIN_HINT } from './trend.js';
 
 // Testing $ / Scaling $ / Testing % only make sense when both stages are included in the stage filter
 const STAGE_COLS = new Set(['testing_spend', 'scaling_spend', 'testing_pct']);
@@ -205,7 +205,8 @@ export function pinColumn({ pins, canPin = () => true, keyOf, labelOf, scopeOf }
       if (!canPin(r)) return '';
       const key = keyOf(r);
       const on = pins.has(key);
-      const cb = h('input', { type: 'checkbox', class: 'pin-cb', 'data-key': key, checked: on, disabled: !on && pins.full(), 'aria-label': 'Show ' + labelOf(r) + ' in the chart', title: on || !pins.full() ? 'Show in the trend chart' : `Max ${MAX_PINS} rows in the chart` });
+      const dis = pins.locked() || (!on && pins.full());
+      const cb = h('input', { type: 'checkbox', class: 'pin-cb', 'data-key': key, checked: on, disabled: dis, 'aria-label': 'Show ' + labelOf(r) + ' in the chart', title: pins.locked() ? PIN_HINT : (dis ? `Max ${MAX_PINS} rows in the chart` : 'Show in the trend chart') });
       cb.addEventListener('change', () => { if (!pins.toggle(key, labelOf(r), scopeOf(r))) cb.checked = false; });
       return cb;
     },

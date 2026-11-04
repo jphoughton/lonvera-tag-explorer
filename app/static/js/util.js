@@ -93,7 +93,7 @@ export function debounce(fn, ms = 200) {
 }
 
 // ---------- URL state ----------
-export const GLOBAL_KEYS = ['window', 'from', 'to', 'stage', 'compare', 'cfrom', 'cto', 'perday', 'tm', 'tg', 'ts'];
+export const GLOBAL_KEYS = ['window', 'from', 'to', 'stage', 'compare', 'cfrom', 'cto', 'perday', 'tb', 'tl', 'tg', 'ts'];
 
 export function qs(params) {
   const sp = new URLSearchParams();
@@ -175,7 +175,8 @@ export function cleanParams(p) {
   if (o.stage === 'all' || o.stage === STAGES.join(',')) delete o.stage;
   if (o.window === 'launch') delete o.window;
   if (o.from && o.to) delete o.window;
-  if (o.tm === 'spend') delete o.tm;
+  if (o.tb === 'spend') delete o.tb;
+  if (o.tl === 'roas') delete o.tl;
   if (o.tg === 'day') delete o.tg;
   if (o.ts === 'none') delete o.ts;
   if (o.cfrom && o.cto) delete o.compare;
@@ -251,9 +252,15 @@ export function setColPref(group, on) {
   try { localStorage.setItem(COLPREF[group], on ? '1' : '0'); } catch { /* ignore */ }
 }
 
-// trend panel metric drives the sparkline column: tables ask the API for that metric's last 30 days per row
+// the sparkline column follows the trend panel's BARS metric (the line metric when Bars = None)
+export function sparkMetric(p) {
+  const b = p.tb || 'spend';
+  if (b !== 'none') return b;
+  const l = p.tl || 'roas';
+  return l !== 'none' ? l : 'spend';
+}
 export function sparkParams(p) {
-  return { spark: p.tm || 'spend', spark_days: 30 };
+  return { spark: sparkMetric(p), spark_days: 30 };
 }
 export const TREND_METRIC_KEYS = ['spend', 'purchases', 'revenue', 'roas', 'cpa', 'impressions', 'link_clicks', 'ctr', 'cpc', 'cpm', 'conv_rate'];
 const TREND_COLLAPSE_KEY = 'tagexp.trend.collapsed';

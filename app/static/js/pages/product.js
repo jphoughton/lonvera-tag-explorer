@@ -85,10 +85,11 @@ async function tagsView(ctx, slug) {
   const first = ['Market cluster', 'ICP', 'Pain point', 'Ad family'][rootLevel];
   const title = rootLevel === 0 ? 'Market clusters' : rootLevel === 1 ? `ICPs in ${p.cluster}` : rootLevel === 2 ? `Pain points in ${p.icp}` : `Ad families in ${p.pain}`;
   const pins = createPins(ctx.restore && ctx.restore.pins);
+  // the panel first: it locks / unlocks the Chart checkboxes before the table renders them
+  const panel = createTrendPanel({ slug, p, scope: filters, scopeLabel: [p.pain, p.icp, p.cluster].find(Boolean) || product.name, pins, mode: 'scope', signal });
   const tree = createTree({ slug, p, signal, rootLevel, filters, first, restore: ctx.restore, pins });
   await tree.init(data.rows, data.total);
   if (!ctx.alive()) return;
-  const panel = createTrendPanel({ slug, p, scope: filters, scopeLabel: [p.pain, p.icp, p.cluster].find(Boolean) || product.name, pins, mode: 'scope', signal });
 
   ctx.mount(h('div', { class: 'page', 'data-level': ['cluster', 'icp', 'pain', 'families'][rootLevel] },
     pageHead(product, slug, p, 'tags'),
