@@ -148,3 +148,32 @@ def test_status_lists_the_platforms(client):
     s = get_ok(client, "/api/status")
     plats = {p["key"]: p for p in s["sources"]["platforms"]}
     assert set(plats) == {"meta", "google"} and plats["meta"]["available"] is True and plats["meta"]["through"] == str(THROUGH)
+
+
+def test_a_family_under_two_products_is_counted_once_like_the_products_table(client, pg):
+    """The per-product Campaigns views count a family that sits under two products for both; the platform view gives it to the product of its first row,
+    as the Products table does, so the total still ties. A second tracker row of an existing family under another product (not its first row) is added and removed."""
+    row = pg.execute("""SELECT r.id, r.family_key, r.product_id FROM tracker_rows r JOIN ad_metrics am ON am.tracker_row_id = r.id AND am.is_first_row
+                        JOIN meta_family_map m ON m.tracker_family_key = r.family_key JOIN products p ON p.id = r.product_id AND p.slug = 'vita-bull'
+                        WHERE r.deleted_at IS NULL AND NOT starts_with(r.family_key, 'id:') ORDER BY r.id LIMIT 1""").fetchone()
+    other = pg.execute("SELECT id FROM products WHERE slug = 'beef-liver'").fetchone()[0]
+    base_bl = get_ok(client, "/api/campaigns?window=30d&product=beef-liver&shared_family_case=before")["total"]["spend"]
+    base_per_product = get_ok(client, "/api/products/beef-liver/campaigns?window=30d&shared_family_case=before")["total"]["spend"]
+    new_id = None
+    try:
+        new_id = pg.execute("""INSERT INTO tracker_rows (product_id, row_key, concept_id, ad_family, family_key, sheet_row, status, ad_type, launch_date, raw)
+                               SELECT %s, 'SHARED#1', concept_id, ad_family, family_key, 9999, status, ad_type, launch_date, raw FROM tracker_rows WHERE id = %s RETURNING id""",
+                              (other, row[0])).fetchone()[0]
+        pg.execute("INSERT INTO ad_metrics (tracker_row_id, product_id, family_key, is_first_row) VALUES (%s, %s, %s, false)", (new_id, other, row[1]))
+        pg.commit()                                                                           # the app reads through its own connection
+        w = "window=30d&shared_family_case=after"
+        d = get_ok(client, f"/api/campaigns?{w}")
+        all_ = get_ok(client, f"/api/products?envelope=1&{w}")["total_all"]["m"]
+        assert d["total"]["spend"] == pytest.approx(all_["spend"], abs=0.011)                 # not double counted
+        assert get_ok(client, f"/api/campaigns?{w}&product=beef-liver")["total"]["spend"] == pytest.approx(base_bl, abs=0.011)     # the family stays with its first row's product
+        assert get_ok(client, f"/api/products/beef-liver/campaigns?{w}")["total"]["spend"] > base_per_product + 0.01               # while the product view counts it under both (the known difference)
+    finally:
+        if new_id is not None:
+            pg.execute("DELETE FROM ad_metrics WHERE tracker_row_id = %s", (new_id,))
+            pg.execute("DELETE FROM tracker_rows WHERE id = %s", (new_id,))
+            pg.commit()

@@ -2025,17 +2025,20 @@ f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win, {in_cmp} AS in_cmp FR
 
 
 def _pfa(product_id: int | None | str = "all") -> str:
-    """CTE `pfa` (meta_family_key, product_id): every Meta family with the product it counts under, the union of what _pf() builds per product.
-    A tracker family that sits under two products appears twice (as in the per-product views); a family off the tracker keeps its assigned product
-    (NULL = assigned to no active product, listed as 'No product'). product_id: 'all' = every row, an int = that product, None = only the families of no active product."""
+    """CTE `pfa` (meta_family_key, product_id): every Meta family with the ONE product it counts under, the same rule the Products table uses: a tracker
+    family belongs to the product of its first row across all products (ad_metrics.is_first_row); a family off the tracker keeps its assigned product
+    (NULL = assigned to no active product, listed as 'No product'). So a Meta family is never counted twice and the sum over products is the whole
+    Meta account. (The per-product Campaigns views use _pf(), which counts a family that sits under two products for both.)
+    product_id: 'all' = every row, an int = that product, None = only the families of no active product."""
     where = "" if product_id == "all" else (" WHERE pa.product_id IS NULL" if product_id is None else " WHERE pa.product_id = %(prod)s")
     return f"""
 pfa AS (
   SELECT pa.meta_family_key, pa.product_id FROM (
-    SELECT m.meta_family_key, t.product_id
+    SELECT m.meta_family_key, am.product_id
     FROM meta_family_map m
-    JOIN (SELECT DISTINCT tr.family_key, tr.product_id FROM tracker_rows tr JOIN products pr ON pr.id = tr.product_id AND pr.active
-          WHERE true{alive('tr')}) t ON t.family_key = m.tracker_family_key
+    JOIN ad_metrics am ON am.family_key = m.tracker_family_key AND am.is_first_row AND NOT starts_with(am.family_key, 'id:')
+    JOIN tracker_rows tr ON tr.id = am.tracker_row_id{alive('tr')}
+    JOIN products pr ON pr.id = am.product_id AND pr.active
     UNION
     SELECT u.meta_family_key, CASE WHEN pr.active THEN u.product_id END
     FROM unmatched_meta u LEFT JOIN products pr ON pr.id = u.product_id
@@ -2047,8 +2050,8 @@ pfa AS (
 def campaigns_all(conn, meta: DataMeta, w: WindowSpec, product: dict | None | str = "all", spark: tuple[str, int] | None = None) -> dict:
     """Every Meta campaign across all products (platform level): one row per campaign, with the Product it runs (one product, or 'Mixed' with the
     per-product split in `products`). product: 'all', a product dict (only that product's ads count in every row) or None (families of no active product only).
-    Numbers are the same sums as the per-product Campaigns view (tracker families plus the product's off-tracker families), summed over products, so
-    the total ties to the Products table's 'All spend' row for a date window. Since launch has no meaning here (every day held), as in the product view."""
+    Numbers are the per-product Campaigns view's (tracker families plus the product's off-tracker families), with each Meta family counted once under its
+    first row's product (see _pfa), so the total ties to the Products table's 'All spend' row for a date window. Since launch has no meaning here (every day held), as in the product view."""
     wf, wt = w.span(meta)
     cw = _cmp_window(w)
     d7 = meta.data_through - dt.timedelta(days=6)
