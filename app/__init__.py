@@ -13,7 +13,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.routing import IntegerConverter
 
-from . import api, auth, db, preview, respcache
+from . import api, auth, db, preview, projection, respcache
 from .config import load_config
 from .queries import ApiError
 
@@ -67,6 +67,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.extensions["response_cache"] = cache
     app.before_request(lambda: respcache.lookup(cache))         # after the auth guard (registered in init_auth): a cached answer is never served unauthenticated
     app.register_blueprint(api.bp)
+    projection.register(app)
     _register_pages(app)
     _register_errors(app)
     _register_headers(app)

@@ -165,4 +165,5 @@ document.addEventListener('click', (e) => {
 });
 
 buildShell({ onBack: goBack });
+document.querySelector('#topbar .navlink').after(h('a', { class: 'navlink', href: '/projection', target: '_self' }, 'Projections'));
 render({ restore: true });

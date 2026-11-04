@@ -1,0 +1,22 @@
+# Module brief: drivers (P1) — migration 120, `app/projection/drivers/`, page `drivers.js` ("Spend plan")
+
+Replaces `P&L` rows 1–22 plus the marketing-channel rows 50–57 and the override rows 7/10: ad spend, new-customer revenue, orders, CPA, AOV, NC-MER/ROAS, repeat total, Amazon, TikTok, sales tax, total company revenue. This module owns the LEVERS that make the model a growth or harvest case; get the plan editing right.
+
+## What the sheet does (read the formulas in the snapshot: P&L column C, U, V, W, X, Y of rows 7–22, 50–57)
+- Months row 8 (C..BJ = Jan-25…Dec-29); row 9 Actual/Projected is hard-coded to `<Jul-2026` (do NOT reproduce: actual months = months with loaded actuals and closed).
+- Actual months: NC-Rev (row 12) = cohort new customers × first order (from `Cohort Data - Unified` by month), NC-orders (13) = new customers, CPA (14) = spend/orders, AOV (15) = NC-Rev/orders, MER (16) = AOV/CPA, spend (11) = Meta+Google (rows 53+54). Marketing Spend (row 51) = sum of channel rows 52–56 (Amazon, Facebook, Google, Bing, TikTok) from QuickBooks values.
+- Forward months: Marketing Spend (row 51) is TYPED per month (currently $350K flat Oct-26…Dec-29; Aug $847K and Sep $546K typed), channel shares in `B52:B56` (Amazon 4.92%, Facebook 89.71%, Google 4.81%, Bing 0, TikTok 0.56%); Ad Spend (row 11) = Meta+Google = `sum(row53:row54)`; NC-CPA (14) and NC-AOV (15) TYPED per month (CPA $95/$100, AOV $69–72); NC-Rev (12) = row16 × sum(row53:row54) where row16 = AOV/CPA; NC-orders (13) = spend/CPA. Aug–Oct 2026 NC-Rev, spend and Amazon are typed actual/pacing values (overrides).
+- Repeat Revenue (17) comes from the cohorts module (`CohortResult.repeat_rev`); do not recompute. Total DTC (18) = repeat + NC; Amazon (19) typed per month ($175K flat forward; actual months typed from Amazon settlements); TikTok (20) mostly blank; Sales tax collected (21) = −(DTC × 7%) (an estimate); Total company revenue (22) = DTC + Amazon + TikTok + tax(negative).
+- `P&L!A6` Amazon scenario haircut and `Assumptions - DEAD` references are dead: ignore.
+
+## Build
+1. Series keys (scenario series; `kind` input|override): `spend_total`, `nc_cpa`, `nc_aov`, `amazon_rev`, `tiktok_rev`, plus scalar levers in params `drivers`: `channel_share` {amazon, meta, google, bing, tiktok} (default = sheet B52:B56), `sales_tax_rate` 0.07, `spend_pattern` builder inputs. Seed "Current plan" (slug `current`) from the sheet's typed cells via `etl/projection_drivers.py` (idempotent) so the engine reproduces the sheet exactly.
+2. Actuals: `proj_actuals` keys `spend.meta`, `spend.google`, `spend.amazon_ads`, `spend.bing`, `spend.tiktok`, `amazon_rev`, `tiktok_rev` by month. Meta actuals can come from the app's own `ad_daily` (sum spend by month; compare to QuickBooks Facebook line and report the gap); the others from the QuickBooks history (pnl module's upload) or the sheet's typed values. Document the priority order and show the source per month in the grid (note column).
+3. Engine `compute(scn, cohorts_inputs) -> DriverResult`: per contract. `actual_through` derived from data. Spend patterns (levers that generate the typed series when a month has no explicit input): flat, step, monthly growth %, ramp; NC-ROAS slide (start/end, linear) as optional lever; per-channel split; show implied NC-ROAS (= AOV/CPA) and implied blended MER. Keep the sheet's typed cells as overrides on top.
+4. API `/api/projection/drivers/…`: `table` (grid: spend, CPA, AOV, orders, NC revenue, ROAS, repeat, DTC, Amazon, TikTok, tax, total; inputs editable via `PUT /api/projection/series`), `patterns` (apply a pattern to a month range → writes series with audit), `compare?scenarios=a,b` (NC revenue, spend, ROAS by scenario).
+5. Page `drivers.js`: spend-plan grid (yellow input rows), pattern tool (range + pattern), NC-ROAS and implied payback hint, chart of spend vs NC revenue vs repeat, scenario compare strip.
+6. Reconcile map: rows 11, 12, 13, 14, 15, 16, 18, 19, 21, 22 and 51–56 (C..BJ) of `P&L` — drivers + cohort repeat feed row 18/22, so run reconcile with the real cohorts module once present, else the foundation stub for row 17.
+
+## Gotchas
+- Circularity is only apparent: forward cohorts' first-order revenue = drivers.nc_rev; repeat = cohorts.compute(nc_rev). Do not call cohorts from here.
+- Months with typed values that conflict with a formula (e.g. `V12`/`W12` literal 515139 / 401590 vs formula) are overrides; keep the first-class override mechanism and list them in MODULE_drivers.md as "typed in the sheet".

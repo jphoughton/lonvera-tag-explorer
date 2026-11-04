@@ -1266,6 +1266,8 @@ def family_ad_counts(conn, meta: DataMeta, w: WindowSpec, family_keys: list[str]
     else:
         params.update(wf=w.date_from, wt=w.date_to)
         day_cond, lo = "ad.day BETWEEN %(wf)s AND %(wt)s", min(w.date_from, meta.data_through - dt.timedelta(days=1))
+    if cnt_all_ads:        # since launch the ad count comes from meta_ads + lifetime below; the daily rows only decide "live" (the last two days)
+        lo = meta.data_through - dt.timedelta(days=1)
     params["lo"] = lo
     counts = f"""
             WITH m AS MATERIALIZED (SELECT meta_family_key, tracker_family_key FROM meta_family_map WHERE tracker_family_key = ANY(%(fks)s))
