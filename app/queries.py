@@ -1282,14 +1282,16 @@ def family_ad_counts(conn, meta: DataMeta, w: WindowSpec, family_keys: list[str]
     for r in rows_of(conn, act(counts, w.active), params):
         out[r["fk"]] = (int(r["n"]), int(r["live"]))
     if cnt_all_ads:                                    # since launch: every Meta ad the family has (meta_ads + the API lifetime table)
+        # every Meta ad of the family: its meta_ads rows, plus (all ads mode) lifetime rows of ads that have no meta_ads row; an ad without one is not active
         ma_on = " AND ma.status = 'ACTIVE'" if w.active else ""
-        ml_on = " AND EXISTS (SELECT 1 FROM meta_ads a2 WHERE a2.ad_id = ml.ad_id AND a2.status = 'ACTIVE')" if w.active else ""
+        orphans = "" if w.active else """
+                  UNION ALL
+                  SELECT m.tracker_family_key FROM m JOIN meta_ad_lifetime ml ON ml.meta_family_key = m.meta_family_key
+                  WHERE NOT EXISTS (SELECT 1 FROM meta_ads a2 WHERE a2.ad_id = ml.ad_id)"""
         for r in rows_of(conn, f"""
                 WITH m AS MATERIALIZED (SELECT meta_family_key, tracker_family_key FROM meta_family_map WHERE tracker_family_key = ANY(%(fks)s))
-                SELECT fk, count(DISTINCT ad_id) AS n FROM (
-                  SELECT m.tracker_family_key AS fk, ma.ad_id FROM m JOIN meta_ads ma ON ma.meta_family_key = m.meta_family_key WHERE TRUE{ma_on}
-                  UNION
-                  SELECT m.tracker_family_key, ml.ad_id FROM m JOIN meta_ad_lifetime ml ON ml.meta_family_key = m.meta_family_key WHERE TRUE{ml_on}
+                SELECT fk, count(*) AS n FROM (
+                  SELECT m.tracker_family_key AS fk FROM m JOIN meta_ads ma ON ma.meta_family_key = m.meta_family_key WHERE TRUE{ma_on}{orphans}
                 ) x GROUP BY fk""", {"fks": fks}):
             out[r["fk"]] = (int(r["n"]), out[r["fk"]][1])
     return out
@@ -2228,11 +2230,13 @@ d AS (
         stage_expr = "CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END"
         off_tracker = f"'{NOT_ON_TRACKER}'" if want_children else "''"
         sql += f"""
+smap AS MATERIALIZED (        -- Meta family -> selected tracker family: a small keyed table, so the daily rows hash-join it instead of re-running a nested loop
+  SELECT m.meta_family_key, s.family_key, s.ckey, s.clabel, s.color FROM meta_family_map m JOIN sel s ON s.family_key = m.tracker_family_key
+),
 d AS (
   SELECT COALESCE(s.ckey, {off_tracker}) AS ckey, COALESCE(s.clabel, {off_tracker}) AS clabel, s.color, ad.day, {stage_expr} AS stage, {sums}
   FROM ad_daily ad
-  LEFT JOIN meta_family_map m ON m.meta_family_key = ad.meta_family_key
-  LEFT JOIN sel s ON s.family_key = m.tracker_family_key
+  LEFT JOIN smap s ON s.meta_family_key = ad.meta_family_key
   {um_join}
   LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
   WHERE ad.campaign_id = %(campaign)s AND ad.day BETWEEN %(lo)s AND %(hi)s AND {member} AND {stage_expr} = ANY(%(stages)s)

@@ -241,6 +241,19 @@ body.no-controls { }
   .tablewrap { max-height: none; }
   #controls { position: static; }
   main#view { padding: 10px; }
+  /* phone widths: nothing outside a table may be wider than the viewport, so the bars wrap */
+  #topbar { position: static; height: auto; }
+  .topbar-in { flex-wrap: wrap; height: auto; gap: 4px 10px; padding: 6px 10px; }
+  .topbar-in .spacer { display: none; }
+  .topbar-in #status { order: 9; flex: 1 1 100%; font-size: 11px; }
+  .topbar-in #logout { margin-left: auto; }
+  .controls-in { padding: 6px 10px; }
+  .ctl { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+  .ctl .segs { flex-wrap: wrap; max-width: 100%; }
+  .ctl .segs .seg { border-bottom: 1px solid var(--line); margin-bottom: -1px; }
+  .ctl input[type=date] { min-width: 0; width: 132px; }
+  .adgrid > *, .twocol > *, .card { min-width: 0; }
+  table.mini { display: block; max-width: 100%; overflow-x: auto; }  /* small metric tables scroll inside their card */
 }
 
 /* ---------- v1.2 / v1.3: Back, stage chips, compare, tree ---------- */
