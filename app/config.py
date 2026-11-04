@@ -45,6 +45,9 @@ def load_config(overrides: dict | None = None) -> dict:
         "DB_POOL_MIN": int(env.get("DB_POOL_MIN", "1")),
         "DB_POOL_MAX": int(env.get("DB_POOL_MAX", "8")),
         "STATEMENT_TIMEOUT_MS": int(env.get("STATEMENT_TIMEOUT_MS", "20000")),
+        # In-process cache of finished metrics responses (MB, 0 = off): served until the ETL changes the data, see app/respcache.py.
+        "RESPONSE_CACHE_MB": int(env.get("RESPONSE_CACHE_MB", "64")),
+        "RESPONSE_CACHE_TTL_SEC": int(env.get("RESPONSE_CACHE_TTL_SEC", "600")),
         # Railway terminates TLS at a proxy; trust exactly one hop for the client IP / scheme.
         "TRUST_PROXY": _flag(env.get("TRUST_PROXY")) or bool(env.get("RAILWAY_ENVIRONMENT")),
     }

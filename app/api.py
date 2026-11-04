@@ -19,6 +19,15 @@ def _arg(name: str) -> str | None:
     return v or None
 
 
+# Which Meta ads an endpoint covers. 'tracker' = the ads of tracker creatives only; 'tracker+unmatched' = those plus the product's Meta ads that are
+# on no tracker family; 'unmatched' = only the latter.
+SCOPE_TRACKER, SCOPE_BOTH, SCOPE_UNMATCHED = "tracker", "tracker+unmatched", "unmatched"
+
+
+def _tag_filtered(*vals) -> bool:
+    return any(v is not None for v in vals)
+
+
 def _need_active(active: bool) -> None:
     if active and not q._CAPS["active"]:
         raise q.ApiError(503, "active-ads data is not built yet")
@@ -62,8 +71,10 @@ def products():
         extras: dict = {}
         rows, total = q.products_list(conn, meta, w, spark=spark, with_total=True, extras=extras)
         # total = the tracker products; unmatched = all Meta spend on no tracker family; total_all = both = the whole Meta account
-        return jsonify({"window_info": w.info(meta), "compare_info": w.compare_info(meta), "rows": rows, "total": total, **extras})
-    return jsonify(q.products_list(conn, meta, w, spark=spark))
+        return jsonify({"window_info": w.info(meta), "compare_info": w.compare_info(meta), "scope": SCOPE_TRACKER, "rows": rows, "total": total, **extras})
+    resp = jsonify(q.products_list(conn, meta, w, spark=spark))
+    resp.headers["X-Data-Scope"] = SCOPE_TRACKER                 # a bare array has no room for the field
+    return resp
 
 
 @bp.get("/api/products/<slug>/rollup")
@@ -74,7 +85,7 @@ def rollup(slug: str):
     cluster, icp = _arg("cluster"), _arg("icp")
     res = q.rollup(conn, meta, w, product, level, cluster, icp, spark=q.parse_spark(request.args))
     info = w.info(meta)
-    return jsonify({"product": q.product_brief(product), "level": level, "filters": {"cluster": cluster, "icp": icp},
+    return jsonify({"product": q.product_brief(product), "level": level, "filters": {"cluster": cluster, "icp": icp}, "scope": SCOPE_TRACKER,
                     "window": info, "window_info": info, "compare_info": w.compare_info(meta), **res})
 
 
@@ -85,7 +96,7 @@ def families(slug: str):
     cluster, icp, pain = _arg("cluster"), _arg("icp"), _arg("pain")
     res = q.families(conn, meta, w, product, cluster, icp, pain, spark=q.parse_spark(request.args))
     info = w.info(meta)
-    return jsonify({"product": q.product_brief(product), "filters": {"cluster": cluster, "icp": icp, "pain": pain},
+    return jsonify({"product": q.product_brief(product), "filters": {"cluster": cluster, "icp": icp, "pain": pain}, "scope": SCOPE_TRACKER,
                     "window": info, "window_info": info, "compare_info": w.compare_info(meta), **res})
 
 
@@ -94,13 +105,11 @@ def tree(slug: str):
     conn, meta, w = _ctx()
     product = q.get_product(conn, slug)
     root = (_arg("root") or "cluster").lower()
-    raw_depth = _arg("depth") or "0"
-    if not raw_depth.isdigit() or int(raw_depth) > 3:
-        raise q.ApiError(400, "depth must be 0, 1, 2 or 3")
+    depth = q.parse_uint(_arg("depth") or "0", 0, 3, "depth must be 0, 1, 2 or 3")
     flt = {"cluster": _arg("cluster"), "icp": _arg("icp"), "pain": _arg("pain")}
-    res = q.tree(conn, meta, w, product, root, flt["cluster"], flt["icp"], flt["pain"], int(raw_depth), spark=q.parse_spark(request.args))
+    res = q.tree(conn, meta, w, product, root, flt["cluster"], flt["icp"], flt["pain"], depth, spark=q.parse_spark(request.args))
     info = w.info(meta)
-    return jsonify({"product": q.product_brief(product), "root": root, "depth": int(raw_depth), "filters": flt,
+    return jsonify({"product": q.product_brief(product), "root": root, "depth": depth, "filters": flt, "scope": SCOPE_TRACKER,
                     "window": info, "window_info": info, "compare_info": w.compare_info(meta), **res})
 
 
@@ -111,7 +120,8 @@ def ads(slug: str):
     flt = {"cluster": _arg("cluster"), "icp": _arg("icp"), "pain": _arg("pain"),
            "family_key": _arg("family_key"), "campaign_id": _arg("campaign_id")}
     res = q.meta_ads(conn, meta, w, product, spark=q.parse_spark(request.args), **flt)
-    return jsonify({"product": q.product_brief(product), "filters": flt, "window_info": w.info(meta),
+    scope = SCOPE_TRACKER if _tag_filtered(flt["cluster"], flt["icp"], flt["pain"], flt["family_key"]) else SCOPE_BOTH
+    return jsonify({"product": q.product_brief(product), "filters": flt, "scope": scope, "window_info": w.info(meta),
                     "compare_info": w.compare_info(meta), **res})
 
 
@@ -120,7 +130,7 @@ def campaigns(slug: str):
     conn, meta, w = _ctx()
     product = q.get_product(conn, slug)
     res = q.campaigns(conn, meta, w, product, spark=q.parse_spark(request.args))
-    return jsonify({"product": q.product_brief(product), "window_info": _all_days_info(w, meta),
+    return jsonify({"product": q.product_brief(product), "scope": SCOPE_BOTH, "window_info": _all_days_info(w, meta),
                     "compare_info": w.compare_info(meta), **res})
 
 
@@ -135,7 +145,9 @@ def trend(slug: str):
     if w.is_launch:
         info["note"] = ("Trend covers every day held "
                         f"({q._fmt_day(meta.daily_start, True)} – {q._fmt_day(meta.data_through, True)}).") + (f" {info['note']}" if info["note"] else "")
-    return jsonify({"product": q.product_brief(product), "window_info": info, "compare_info": w.compare_info(meta), **res})
+    # `scope` of a trend is already the filter object, so its data scope is `data_scope`
+    data_scope = SCOPE_BOTH if flt["campaign_id"] is not None and not _tag_filtered(flt["cluster"], flt["icp"], flt["pain"], flt["family_key"]) else SCOPE_TRACKER
+    return jsonify({"product": q.product_brief(product), "data_scope": data_scope, "window_info": info, "compare_info": w.compare_info(meta), **res})
 
 
 @bp.get("/api/products/<slug>/stage-daily")
@@ -148,12 +160,12 @@ def stage_daily(slug: str):
         w = q.parse_window({k: v for k, v in request.args.items() if k not in ("compare", "cfrom", "cto")}, meta)   # no comparison here
         df, dtt = w.span(meta)
     else:
-        raw = _arg("days") or "90"
-        if not raw.isdigit() or not (1 <= int(raw) <= 366):
-            raise q.ApiError(400, "days must be an integer from 1 to 366")
+        days = q.parse_uint(_arg("days") or "90", 1, 366, "days must be an integer from 1 to 366")
         dtt = meta.data_through
-        df = max(meta.daily_start, dtt - dt.timedelta(days=int(raw) - 1))
-    return jsonify(q.stage_daily(conn, meta, product, df, dtt, q.stage_list(q.parse_stage(request.args)), active=active))
+        df = max(meta.daily_start, dtt - dt.timedelta(days=days - 1))
+    resp = jsonify(q.stage_daily(conn, meta, product, df, dtt, q.stage_list(q.parse_stage(request.args)), active=active))
+    resp.headers["X-Data-Scope"] = SCOPE_BOTH                    # a bare array has no room for the field
+    return resp
 
 
 @bp.get("/api/products/<slug>/unmatched")
@@ -170,29 +182,38 @@ def unmatched(slug: str):
                             + (f" {info['note']}" if info["note"] else ""))
         else:
             info = _all_days_info(w, meta)
-    return jsonify({"product": q.product_brief(product), "window_info": info, "compare_info": w.compare_info(meta), **res})
+    return jsonify({"product": q.product_brief(product), "scope": SCOPE_UNMATCHED, "window_info": info, "compare_info": w.compare_info(meta), **res})
 
 
-@bp.get("/api/ads/<int:row_id>")
+@bp.get("/api/ads/<aint:row_id>")
 def ad_detail(row_id: int):
     conn, meta, w = _ctx()
     res = q.ad_detail(conn, meta, w, row_id)
     res["window_info"] = w.info(meta)
     res["compare_info"] = w.compare_info(meta)
+    res["scope"] = SCOPE_TRACKER
     return jsonify(res)
 
 
-@bp.get("/media/<int:asset_id>")
+@bp.get("/media/<aint:asset_id>")
 def media(asset_id: int):
     conn = db.get_conn()
+    meta = q.media_meta(conn, asset_id)
+    if meta is None:
+        raise q.ApiError(404, "asset not found")
+    etag = meta["etag"]
+    headers = {"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"}
+    if request.if_none_match.contains(etag) and not request.headers.get("Range"):      # unchanged: no bytes from the database, no body
+        resp = Response(status=304, headers=headers)
+        resp.set_etag(etag)
+        return resp
     got = q.media(conn, asset_id)
     if got is None:
         raise q.ApiError(404, "asset not found")
     body, mime = got
-    resp = Response(body, mimetype=mime)
-    resp.headers["Cache-Control"] = "private, max-age=86400"
-    resp.headers["X-Content-Type-Options"] = "nosniff"
-    return resp
+    resp = Response(body, mimetype=mime, headers=headers)
+    resp.set_etag(etag)
+    return resp.make_conditional(request, accept_ranges=True, complete_length=len(body))
 
 
 # ---- ad previews (feature-flagged by META_PREVIEW_TOKEN) -----------------------------------------------------------------
@@ -224,7 +245,7 @@ def meta_ad_preview(ad_id: str):
     return _preview_response(ad_id, lookup)
 
 
-@bp.get("/api/ads/<int:row_id>/preview")
+@bp.get("/api/ads/<aint:row_id>/preview")
 def tracker_ad_preview(row_id: int):
     def lookup():
         conn = db.get_conn()

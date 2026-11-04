@@ -22,15 +22,19 @@ def targets(conn, data_through: dt.date, created_limit: int = 5000) -> dict[str,
     return {"recent": recent, "non_terminal": live, "missing_created": missing}
 
 
-def fetch_updates(conn, tok=None, created_limit: int = 5000) -> tuple[list[tuple], dict]:
-    """Graph reads only (no writes). Raises on any API failure. Returns (update rows, stats)."""
+def fetch_updates(conn, tok=None, created_limit: int = 5000, extra_ids=()) -> tuple[list[tuple], dict]:
+    """Graph reads only (no writes). Raises on any API failure. Returns (update rows, stats). extra_ids: ads that are about to be written by the same run
+    (new in the pulled days / lifetime); those the table does not know yet, or knows without a status, are fetched too."""
     tok = tok or meta_api.get_token()
     thr = conn.execute("SELECT max(day) FROM ad_daily").fetchone()[0] or dt.date.today()
     t = targets(conn, thr, created_limit)
-    ids = sorted(set(t["recent"]) | set(t["non_terminal"]) | set(t["missing_created"]))
+    extra = [str(i) for i in extra_ids]
+    known = {r[0] for r in conn.execute("SELECT ad_id FROM meta_ads WHERE ad_id = ANY(%s) AND status IS NOT NULL AND created_at IS NOT NULL", (extra,)).fetchall()} if extra else set()
+    t["new_in_run"] = [i for i in extra if i not in known]
+    ids = sorted(set(t["recent"]) | set(t["non_terminal"]) | set(t["missing_created"]) | set(t["new_in_run"]))
     got = meta_api.fetch_ad_meta(tok, ids, strict=True)
     old = {r[0]: r[1:] for r in conn.execute("SELECT ad_id, status, ad_name, created_date FROM meta_ads WHERE ad_id = ANY(%s)", (ids,)).fetchall()}
-    rows, stats = [], {"asked": len(ids), "recent_delivery": len(t["recent"]), "non_terminal": len(t["non_terminal"]), "missing_created": len(t["missing_created"]),
+    rows, stats = [], {"asked": len(ids), "recent_delivery": len(t["recent"]), "non_terminal": len(t["non_terminal"]), "missing_created": len(t["missing_created"]), "new_in_run": len(t["new_in_run"]),
                        "status_changed": 0, "renamed": 0, "created_changed": 0, "errors": 0, "status_counts": {}}
     for ad_id, v in got.items():
         if "error" in v:

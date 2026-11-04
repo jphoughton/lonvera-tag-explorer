@@ -33,7 +33,7 @@ def fx():
 
 def make_app(**overrides):
     cfg = {"DATABASE_URL": DB_URL, "APP_USERS": dict(USERS), "SECRET_KEY": "test-secret-key", "DEV_INSECURE_COOKIES": True,
-           "LOGIN_MAX_FAILS": 5, "DB_POOL_MAX": 4}
+           "LOGIN_MAX_FAILS": 5, "DB_POOL_MAX": 4, "RESPONSE_CACHE_MB": 0}          # (tests of the cache turn it on explicitly)
     cfg.update(overrides)
     return create_app(cfg)
 

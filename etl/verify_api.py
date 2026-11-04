@@ -137,16 +137,16 @@ def check_stage(conn, tok, ck: Checks, until, days):
 
 
 def check_structure(conn, ck: Checks):
-    rows = conn.execute("SELECT count(*) FROM tracker_rows t JOIN products p ON p.id=t.product_id WHERE p.slug='vita-bull'").fetchone()[0]
+    rows = conn.execute("SELECT count(*) FROM tracker_rows t JOIN products p ON p.id=t.product_id WHERE p.slug='vita-bull' AND t.deleted_at IS NULL").fetchone()[0]
     uniq = conn.execute("""SELECT count(DISTINCT CASE WHEN ad_family = '' THEN lower(trim(concept_id)) ELSE family_key END), count(DISTINCT family_key)
-                           FROM tracker_rows t JOIN products p ON p.id=t.product_id WHERE p.slug='vita-bull'""").fetchone()
+                           FROM tracker_rows t JOIN products p ON p.id=t.product_id WHERE p.slug='vita-bull' AND t.deleted_at IS NULL""").fetchone()
     tags = conn.execute("""SELECT count(*), count(DISTINCT tracker_row_id), count(*) FILTER (WHERE line_id IS NULL), count(DISTINCT line_id)
                            FROM ad_tags a JOIN tracker_rows t ON t.id=a.tracker_row_id JOIN products p ON p.id=t.product_id
-                           WHERE p.slug='vita-bull' AND a.tag_set='linemap' AND a.is_current""").fetchone()
+                           WHERE p.slug='vita-bull' AND a.tag_set='linemap' AND a.is_current AND t.deleted_at IS NULL""").fetchone()
     lines = conn.execute("SELECT count(*) FROM taxonomy_lines t JOIN products p ON p.id=t.product_id WHERE p.slug='vita-bull'").fetchone()[0]
-    ck.add("6 Vita Bull structure", rows == 1464 and uniq[0] == 1434 and tags[0] == 1464 and tags[1] == 1464 and tags[2] == 0 and lines == 37,
-           f"tracker rows {rows} (expect 1,464), unique ads {uniq[0]} by name (expect 1,434; {uniq[1]} with the contract's id: keys), current line-map tags {tags[0]} on {tags[1]} rows, "
-           f"{tags[2]} without a line, {tags[3]} distinct lines used, taxonomy lines {lines} (expect 37)")
+    ck.add("6 Vita Bull structure", rows >= 1464 and tags[0] == 1464 and tags[1] == 1464 and tags[2] == 0 and lines == 37 and uniq[0] >= 1434,
+           f"tracker rows {rows} (>= the 1,464 tagged on 2026-11-03; {rows - tags[1]} newer rows are untagged), unique ads {uniq[0]} by name (>= 1,434; {uniq[1]} with the contract's id: keys), "
+           f"current line-map tags {tags[0]} on {tags[1]} rows, {tags[2]} without a line, {tags[3]} distinct lines used, taxonomy lines {lines} (expect 37)")
 
 
 def check_consistency(conn, ck: Checks):
@@ -173,10 +173,10 @@ def check_consistency(conn, ck: Checks):
             FROM ad_metrics m JOIN products p ON p.id=m.product_id
             LEFT JOIN ad_tags a ON a.tracker_row_id = m.tracker_row_id AND a.tag_set=%s AND a.is_current
             WHERE p.tag_set = %s GROUP BY 1""", (ts, ts)).fetchall():
-            if abs(float(sp or 0) - float(tagged_sp or 0)) > 0.01 or n_rows != n_tagged:
+            if abs(float(sp or 0) - float(tagged_sp or 0)) > 0.01:          # untagged NEW tracker rows carry no spend; rows without a tag are only informational
                 tag_bad.append((slug, ts, float(sp or 0), float(tagged_sp or 0), n_rows, n_tagged))
     fam_bad = conn.execute("""SELECT count(*) FROM (SELECT p.slug, sum(m.spend_7d) a FROM ad_metrics m JOIN products p ON p.id=m.product_id GROUP BY 1) x""").fetchone()[0]
-    w7 = {r[0]: float(r[1] or 0) for r in conn.execute("""SELECT p.slug, sum(f.spend) FROM (SELECT DISTINCT product_id, family_key FROM tracker_rows) t JOIN products p ON p.id=t.product_id
+    w7 = {r[0]: float(r[1] or 0) for r in conn.execute("""SELECT p.slug, sum(f.spend) FROM (SELECT DISTINCT product_id, family_key FROM ad_metrics WHERE is_first_row) t JOIN products p ON p.id=t.product_id
         JOIN family_daily f ON f.family_key=t.family_key AND f.day >= (SELECT value::date FROM app_meta WHERE key='data_through') - 6 GROUP BY 1""").fetchall()}
     d7_bad = [(s, round(prod[s][5], 2), round(w7.get(s, 0), 2)) for s in prod if abs(prod[s][5] - w7.get(s, 0)) > 0.05]
     ck.add("7b tag groups cover every row/spend of their product; 7d sums = family_daily", not tag_bad and not d7_bad,

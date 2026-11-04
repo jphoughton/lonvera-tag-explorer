@@ -85,7 +85,8 @@ def run(days: int = DEFAULT_DAYS, snapshot_dir=None, until: dt.date | None = Non
                 raise meta_failure(e, "lifetime pull") from None
             try:
                 with db.JobRun("status_refresh") as r:
-                    srows, sst = status_refresh.fetch_updates(conn, tok)
+                    new_ids = {a["ad_id"] for agg_, _, _ in pending for a in agg_.values()} | set(agg)
+                    srows, sst = status_refresh.fetch_updates(conn, tok, extra_ids=new_ids)
                     r.stats = sst
                 results["status_refresh"] = {"ok": True, **{k: sst[k] for k in ("asked", "status_changed", "renamed", "created_changed")}}
             except Exception as e:                                            # noqa: BLE001

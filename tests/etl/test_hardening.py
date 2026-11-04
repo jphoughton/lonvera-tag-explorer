@@ -234,7 +234,7 @@ def stub_graph(monkeypatch, rows=None, token_error=False, life=None):
         return {"chunks": 1, "chunks_loaded": 1, "chunks_failed": [], "rows_inserted": 0, "rows_deleted": 0, "recon": [], "_pending": [(agg, since, until)]}, {}
     monkeypatch.setattr(meta_pull, "run_pull", run_pull)
     monkeypatch.setattr(lifetime_pull, "pull", lambda tok, until=None: (lifetime_pull.aggregate(life or []), [{"account": "x", "ok": True}]))
-    monkeypatch.setattr(status_refresh, "fetch_updates", lambda conn, tok=None, created_limit=5000: ([], {"asked": 0, "status_changed": 0, "renamed": 0, "created_changed": 0}))
+    monkeypatch.setattr(status_refresh, "fetch_updates", lambda conn, tok=None, created_limit=5000, extra_ids=(): ([], {"asked": 0, "status_changed": 0, "renamed": 0, "created_changed": 0}))
 
 
 def apirow(day, ad_id, name, **kw):
@@ -296,3 +296,15 @@ def test_blank_concept_id_rows_are_skipped_and_existing_ones_soft_deleted(conn, 
     conn.commit()
     st = tracker_sync.sync(conn, sheets_io.read_tab("creative_tracker", snap), force=True)
     assert st["deleted_now"] == 1 and conn.execute("SELECT deleted_at IS NOT NULL FROM tracker_rows WHERE row_key='#1'").fetchone()[0]
+
+
+def test_status_refresh_also_fetches_ads_new_in_this_run(conn, tmp_path, monkeypatch):
+    base(conn, tmp_path, [trow("S", "s", "VitaBull")])
+    put_ad(conn, "1", "s", status="ACTIVE")
+    conn.execute("UPDATE meta_ads SET created_at = now() WHERE ad_id = '1'")
+    put_daily(conn, "1", "2026-11-02", "s", 5.0)
+    conn.commit()
+    seen = {}
+    monkeypatch.setattr(meta_api, "fetch_ad_meta", lambda tok, ids, batch=50, pace=0, strict=False: seen.setdefault("ids", sorted(ids)) and {})
+    status_refresh.fetch_updates(conn, "tok", extra_ids=["1", "999"])
+    assert "999" in seen["ids"]                      # an ad the pull is about to insert is refreshed in the same run
