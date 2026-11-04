@@ -80,6 +80,27 @@ def specs():
     b.lever("summary_months", "Months in the spend-plan summary windows", group=G, unit="months", vt="integer", default=12, path=("drivers", "summary_months"), lo=1, hi=36, step=1,
             sheet="No sheet cell (app rule)", used="Length of the two windows the spend-plan page compares.", status="PARTIAL", probe="view", sens=False, notes="Changes the spend-plan page summary only.")
 
+    G = "Realized references (what the feeds say lately)"
+    REF = "No sheet cell (app rule for the read-only feed references beside the plan)"
+    b.lever("reference_days", "Days in the realized-reference window", group=G, unit="days", vt="integer", default=28, path=("drivers", "reference_days"), lo=7, hi=90, step=1, sheet=REF,
+            used="Realized cost per new customer, order value and the Amazon run-rate are read over this many complete days.", sens=False, probe="view",
+            notes="Moves the references shown beside the plan and the payback defaults, not the plan itself.")
+    b.lever("reference_tolerance", "How far a typed plan may sit from its reference before it gets a note", group=G, unit="fraction", vt="fraction", default=0.05,
+            path=("drivers", "reference_tolerance"), lo=0.01, hi=1, step=0.01, sheet=REF, used="A typed cost per customer or order value further than this from the realized figure gets a warning chip.", sens=False, probe="view")
+    b.lever("reference_gap_days", "Feed days that may be missing from the reference window", group=G, unit="days", vt="integer", default=2, path=("drivers", "reference_gap_days"), lo=0, hi=14, step=1, sheet=REF,
+            used="A realized figure is offered only when every counted feed has at least the window's days minus this many; otherwise it is withheld with the reason.", sens=False, probe="view",
+            also_used_by=("pacing", "financing"))
+    for key, label, default, lo, hi, step, sib, unit, vt in (
+            ("reference_cpa_min", "Lowest believable realized cost per new customer", 20.0, 0.01, 99999, 5, ("drivers", "reference_cpa_max"), "dollars", "money"),
+            ("reference_cpa_max", "Highest believable realized cost per new customer", 500.0, 0.01, 100000, 10, ("drivers", "reference_cpa_min"), "dollars", "money"),
+            ("reference_aov_min", "Lowest believable realized new-customer order value", 15.0, 0.01, 99999, 1, ("drivers", "reference_aov_max"), "dollars", "money"),
+            ("reference_aov_max", "Highest believable realized new-customer order value", 400.0, 0.01, 100000, 5, ("drivers", "reference_aov_min"), "dollars", "money")):
+        sib_default = {"reference_cpa_min": 20.0, "reference_cpa_max": 500.0, "reference_aov_min": 15.0, "reference_aov_max": 400.0}[sib[1]]
+        b.lever(key, label, group=G, unit=unit, vt=vt, default=default, path=("drivers", key), lo=lo, hi=hi, step=step, sheet=REF,
+                used="A realized figure outside the believable range is treated as a feed problem and withheld with the reason, so a bad feed cannot set a default.", sens=False, probe="view",
+                also_used_by=("pacing", "financing"), extra={"pair": (sib, sib_default)},
+                notes="Saved together with its partner bound (the module accepts the two as a pair); resetting one resets both.")
+
     G = "Sheet items the app does not carry"
     b.missing("pacing_blend", "Share of month-to-date pacing blended into the current month's repeat revenue", group=G, unit="fraction", default=0.5,
               sheet="P&L!W17 (0.5 x waterfall + 0.5 x pacing projection, one cell, Sep-26)", used="Blends the waterfall with the pacing projection for one month.",

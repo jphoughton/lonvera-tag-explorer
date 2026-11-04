@@ -52,11 +52,20 @@ def specs():
            "First-order revenue in the payback months; blank takes the last closed month from the pacing feed.", lo=0.01, hi=1e6, step=1, sens=False, extra={"computed": "payback_aov"})
     _lever(b, "payback.cac", "Cost per new customer for payback (blank follows pacing)", G, "dollars", "money", None, ("payback", "cac"), "Payback!B8 (=Automated Pacing!M7, live)",
            "Cost recovered by contribution; blank takes the last closed month from the pacing feed.", lo=0, hi=1e6, step=1, sens=False, extra={"computed": "payback_cac"})
+    _lever(b, "payback.loaded_lines", "P&L lines counted as a cost of each new-customer order (all-variable-costs payback)", G, "P&L line keys", "list", ["china_cogs", "fulfillment_services", "inbound_shipping", "payment_processing", "chargeback_management"],
+           ("payback", "loaded_lines"), "No sheet cell (the sheet's payback uses the typed product cost and fulfillment only)", "Each line's share of DTC revenue over the loaded window is subtracted from an order's value in the all-variable-costs payback.",
+           sens=False, extra={"alt": ["china_cogs", "fulfillment_services"]})
+    _lever(b, "payback.loaded_months", "Closed months averaged into the variable-cost shares", G, "months", "integer", 12, ("payback", "loaded_months"), "No sheet cell (added)",
+           "Window of closed P&L months behind the all-variable-costs shares.", lo=1, hi=36, step=1, sens=False, extra={"alt": 6})
+    _lever(b, "payback.loaded_rate", "All-variable-costs share typed over the computed one", G, "fraction", "fraction", None, ("payback", "loaded_rate"), "No sheet cell (added)",
+           "When set, replaces the computed variable-cost share of an order in the all-variable-costs payback; blank uses the P&L lines.", lo=0, hi=0.99, step=0.01, sens=False, extra={"alt": 0.45})
     _lever(b, "payback.curve", "Repeat curve for payback", G, "live or goal", "choice", "live", ("payback", "curve"), "Payback column O reads Curves column C (live)", "Which retention curve the payback months use.",
            choices=("live", "goal"), sens=False)
     G = "Spend x ROAS grid"
     _lever(b, "matrix.target_month", "Target payback month", G, "months", "integer", 3, ("matrix", "target_month"), "Spend-ROAS Matrix!B4", "Profit is measured at this month of age.", lo=0, hi=60, step=1, tie=("Spend-ROAS Matrix", "B4"), sens=False)
     _lever(b, "matrix.basis", "Profit basis", G, "cm or loaded", "choice", "cm", ("matrix", "basis"), "Spend-ROAS Matrix!B3 (CM)", "Contribution margin only, or fully loaded with fixed cost.", choices=("cm", "loaded"), sens=False)
+    _lever(b, "matrix.margin", "Margin rate behind the grid", G, "product or loaded", "choice", "product", ("matrix", "margin"), "No sheet cell (added)", "Product margin (order value less product cost and fulfillment), or the all-variable-costs margin.",
+           choices=("product", "loaded"), sens=False)
     _lever(b, "matrix.fixed_cost", "Fixed cost per month", G, "dollars per month", "money", 110000.0, ("matrix", "fixed_cost"), "Spend-ROAS Matrix!B7", "Subtracted on the fully loaded basis.", lo=0, hi=1e10, step=5000,
            tie=("Spend-ROAS Matrix", "B7"), sens=False)
     _lever(b, "matrix.spends", "Monthly spend levels in the grid", G, "dollars (list)", "list", [200000.0 + 100000.0 * i for i in range(19)], ("matrix", "spends"), "Spend-ROAS Matrix!A12:A30", "Rows of the profit grid.", sens=False, extra={"alt": [100000.0, 250000.0]})

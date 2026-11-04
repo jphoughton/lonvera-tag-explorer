@@ -181,6 +181,9 @@ def resolve(spec: VariableSpec, ctx: Context) -> Resolved:
         return Resolved(value=None, default=spec.default, changed=False, origin="default")
     if spec.binding == "param":
         raw = dig(ctx.scn.params, spec.path)
+        pair = (spec.extra or {}).get("pair")
+        if pair and dig(ctx.scn.params, pair[0]) is _ABSENT:                         # the module reads a pair of bounds only when both are stored
+            raw = _ABSENT
         value = spec.default if raw is _ABSENT else raw
         r = Resolved(value=value, default=spec.default, origin=_origin(ctx, spec.path))
         r.changed = not same(value, spec.default)
@@ -282,6 +285,12 @@ def _resolve_table(spec: VariableSpec, ctx: Context) -> Resolved:
     elif name == "pnl.qb_actuals":
         r = conn.execute("SELECT count(DISTINCT month) AS n, max(month) AS m FROM proj_actuals WHERE left(line_key, 4) = 'pnl.'").fetchone()
         text = f"{r['n']} months loaded, through {r['m']:%b %Y}" if r and r["m"] else "No months loaded"
+    elif name.startswith("pnl.upload."):
+        r = conn.execute("SELECT value FROM proj_pnl_settings WHERE key = 'upload'").fetchone()
+        v = (r["value"] or {}) if r else {}
+        key = name.split(".")[-1]
+        shown = v.get(key)
+        text = ("from the module default" if shown is None else (", ".join(shown) if isinstance(shown, list) else f"{shown:g}"))
     elif name == "pnl.vendor_retainers":
         n = _count(conn, "SELECT count(*) FROM proj_pnl_vendors")
         text = f"{n} vendors, reference only" if n is not None else text
@@ -490,6 +499,13 @@ def build_patch(ctx: Context, spec: VariableSpec, value: Any) -> dict:
         except ValueError as e:
             raise ApiError(400, f"{spec.label}: {e}") from None
         return nest(spec.path, {"segments": segs})
+    pair = (spec.extra or {}).get("pair")
+    if pair:                                                                          # two bounds the module saves as a pair: write both, or reset both
+        sib_path, sib_default = pair
+        if value is None:
+            return merge_patches(nest(spec.path, None), nest(sib_path, None))
+        sib = dig(ctx.scn.params, sib_path)
+        return merge_patches(nest(spec.path, value), nest(sib_path, sib_default if sib is _ABSENT else sib))
     if spec.id.startswith("drivers.channel_share.") and value is not None:
         shares = _rebalance_shares(ctx, spec.path[-1], float(value))
         return {"drivers": {"channel_share": shares}}

@@ -118,6 +118,12 @@ def specs():
             used="Actual months: every cost line is its loaded value; trailing rates read these months.", scope="all", unit="cells")
     b.table("freshness.stale_after_days", "QuickBooks counts as late after (days past the first unloaded month's end)", group=G, sheet="No sheet cell", unit="days", scope="all",
             used="The page and the daily check call the QuickBooks load late when the first month not loaded closed more than this many days ago (default 45).")
+    b.table("upload.low_ratio", "QuickBooks upload: income or cost below this share of its neighbouring months is flagged", group=G, sheet="No sheet cell (added)", unit="fraction (default 0.5)", scope="all",
+            used="A month whose total income or cost sits below this share of the months around it needs a look before it is loaded as books.")
+    b.table("upload.high_ratio", "QuickBooks upload: income or cost above this multiple of its neighbouring months is flagged", group=G, sheet="No sheet cell (added)", unit="multiple (default 2)", scope="all",
+            used="A month whose total income or cost is above this multiple of the months around it needs a look before it is loaded as books.")
+    b.table("upload.required_families", "QuickBooks upload: account families a month must carry to become books", group=G, sheet="No sheet cell (added)", unit="families", scope="all",
+            used="Revenue, cost of goods, fulfillment, marketing spend and operating expenses must all appear before a month is accepted.")
     b.table("vendor_retainers", "Vendor retainers, current and proposed", group=G, sheet="Fixed Expenses!B2:D11 (10 vendors; current $50,270, proposed $58,770 a month)",
             used="Reference only: no projected line reads it.", status="PARTIAL", unit="rows", scope="all", ticket="pnl#vendor-retainers-unwired",
             notes="The sheet does not wire it into any formula either.")

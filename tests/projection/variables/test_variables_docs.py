@@ -36,6 +36,9 @@ def test_every_ticket_heading_is_used_or_cross_referenced():
             continue                                         # another module's or agent's tickets
         for slug in re.findall(r"^### ([a-z0-9-]+):", f.read_text(), re.M):
             same_slug = any(t.split("#")[1] == slug for t in named)
+            body = re.search(rf"^### {re.escape(slug)}:.*?(?=^### |\Z)", f.read_text(), re.M | re.S).group(0)
+            if "Registered on the Variables page" in body:
+                continue                                           # closed: its variables are registered
             assert f"{mod}#{slug}" in named or same_slug or slug in ("unused-defaults-today", "view-only-levers", "reorder-default-literal", "tax-payment-months", "channel-share-sum"), (mod, slug)
 
 

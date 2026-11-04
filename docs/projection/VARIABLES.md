@@ -4,8 +4,8 @@ What this is: every input that drives the Lonvera Projections model, as a named,
 
 ## TLDR
 
-- 301 variables: 274 implemented (a test moves each one and an engine output changes), 5 partly wired, 22 sheet items the model does not carry.
-- 247 are single numbers or switches, edited in place on the page; 14 are monthly series (271 typed months in the sheet) and 18 are tables (orders, cohorts, rows), edited on their module page with a summary and a link here.
+- 315 variables: 288 implemented (a test moves each one and an engine output changes), 5 partly wired, 22 sheet items the model does not carry.
+- 258 are single numbers or switches, edited in place on the page; 14 are monthly series (271 typed months in the sheet) and 21 are tables (orders, cohorts, rows), edited on their module page with a summary and a link here.
 - Gaps still open are in `docs/projection/TICKETS_<module>.md`: one cost line whose driver cannot be saved, feed rules fixed in code, the TikTok ads formula, and intraday inputs the pacing module does not take. Closed during the build: one store for the payback inputs (`drivers.payback.*`), one store for the China landed cost (`pnl.cogs.china_cost.<sku>`), and typed demand rates above 1.
 
 ## Counts
@@ -13,14 +13,14 @@ What this is: every input that drives the Lonvera Projections model, as a named,
 | Module | Implemented | Partly wired | Not in the model | Total | Single numbers | Series | Tables |
 |---|---|---|---|---|---|---|---|
 | Cohorts and curves (`cohorts`) | 17 | 0 | 4 | 21 | 19 | 0 | 2 |
-| Spend plan (`drivers`) | 24 | 2 | 2 | 28 | 19 | 9 | 0 |
-| P&L (`pnl`) | 61 | 3 | 4 | 68 | 63 | 0 | 5 |
+| Spend plan (`drivers`) | 31 | 2 | 2 | 35 | 26 | 9 | 0 |
+| P&L (`pnl`) | 64 | 3 | 4 | 71 | 63 | 0 | 8 |
 | Inventory demand (`inventory_demand`) | 41 | 0 | 5 | 46 | 45 | 0 | 1 |
 | Inventory supply (`inventory_supply`) | 67 | 0 | 1 | 68 | 65 | 0 | 3 |
-| Cash and debt (`financing`) | 45 | 0 | 1 | 46 | 39 | 5 | 2 |
+| Cash and debt (`financing`) | 49 | 0 | 1 | 50 | 43 | 5 | 2 |
 | Pacing (`pacing`) | 18 | 0 | 5 | 23 | 18 | 0 | 5 |
 | Scenario modeler (`modeler`) | 1 | 0 | 0 | 1 | 1 | 0 | 0 |
-| **All** | **274** | **5** | **22** | **301** | **269** | **14** | **18** |
+| **All** | **288** | **5** | **22** | **315** | **280** | **14** | **21** |
 
 Status meaning: **IMPLEMENTED** the engine reads it and a test (`tests/projection/variables/test_variables_access.py`) moves it and sees an engine output change (or the planner's proposal for planner rules); **PARTIAL** it is exposed but stored twice, only changes what a page shows, or has no edit path yet; **MISSING** the sheet has it (a yellow cell or a number inside a formula) and the app does not, with the reason.
 
@@ -136,7 +136,7 @@ Columns: id; variable; kind (value, series, table); unit; the sheet's value; she
 | `cohorts.backtest_months` | Months in the model-against-actual check | value | months | 3 | No sheet cell | MISSING | The page compares modeled and actual repeat revenue over this many closed months. | Hard-coded in views.py (last 3 months). Ticket: cohorts#upload-rules. |
 | `cohorts.hist_waterfall_typed_nc_rev` | New-customer revenue typed beside each cohort on the waterfall tab | value | dollars | blank | Hist Waterfall - Last 4 Months Curve!B6:B35 (typed, stale) | MISSING (all) | The sheet applies the curve to these typed figures; the app uses the cohort table (new customers x first-order dollars). | Not a variable on purpose: the typed figures differ from the table by -4.2% to +5.5% per cohort because they were not refreshed with the table. |
 
-### Spend plan (`drivers`): 28 variables
+### Spend plan (`drivers`): 35 variables
 
 | Id | Variable | Kind | Unit | Sheet value | Sheet reference | Status | Used by | Notes |
 |---|---|---|---|---|---|---|---|---|
@@ -166,10 +166,17 @@ Columns: id; variable; kind (value, series, table); unit; the sheet's value; she
 | `drivers.payback.horizon_months` | Payback horizon | value | months | 36 | Payback!E20:E56 (36-month table) | IMPLEMENTED | Months of repeat curve counted before payback reads 'not within the horizon'; read by the Spend plan hint, the Cash and debt payback and the pacing payback box. | Also read by financing, pacing. |
 | `drivers.posture_band` | Growth or harvest band | value | fraction | 0.1 | No sheet cell (app rule) | PARTIAL | Next-window spend more than this share above the window before reads as growth, below it as harvest. | Changes the sentence on the spend-plan page only. |
 | `drivers.summary_months` | Months in the spend-plan summary windows | value | months | 12 | No sheet cell (app rule) | PARTIAL | Length of the two windows the spend-plan page compares. | Changes the spend-plan page summary only. |
+| `drivers.reference_days` | Days in the realized-reference window | value | days | 28 | No sheet cell (app rule for the read-only feed references beside the plan) | IMPLEMENTED | Realized cost per new customer, order value and the Amazon run-rate are read over this many complete days. | Moves the references shown beside the plan and the payback defaults, not the plan itself. |
+| `drivers.reference_tolerance` | How far a typed plan may sit from its reference before it gets a note | value | fraction | 0.05 | No sheet cell (app rule for the read-only feed references beside the plan) | IMPLEMENTED | A typed cost per customer or order value further than this from the realized figure gets a warning chip. |  |
+| `drivers.reference_gap_days` | Feed days that may be missing from the reference window | value | days | 2 | No sheet cell (app rule for the read-only feed references beside the plan) | IMPLEMENTED | A realized figure is offered only when every counted feed has at least the window's days minus this many; otherwise it is withheld with the reason. | Also read by pacing, financing. |
+| `drivers.reference_cpa_min` | Lowest believable realized cost per new customer | value | dollars | 20 | No sheet cell (app rule for the read-only feed references beside the plan) | IMPLEMENTED | A realized figure outside the believable range is treated as a feed problem and withheld with the reason, so a bad feed cannot set a default. | Saved together with its partner bound (the module accepts the two as a pair); resetting one resets both. Also read by pacing, financing. |
+| `drivers.reference_cpa_max` | Highest believable realized cost per new customer | value | dollars | 500 | No sheet cell (app rule for the read-only feed references beside the plan) | IMPLEMENTED | A realized figure outside the believable range is treated as a feed problem and withheld with the reason, so a bad feed cannot set a default. | Saved together with its partner bound (the module accepts the two as a pair); resetting one resets both. Also read by pacing, financing. |
+| `drivers.reference_aov_min` | Lowest believable realized new-customer order value | value | dollars | 15 | No sheet cell (app rule for the read-only feed references beside the plan) | IMPLEMENTED | A realized figure outside the believable range is treated as a feed problem and withheld with the reason, so a bad feed cannot set a default. | Saved together with its partner bound (the module accepts the two as a pair); resetting one resets both. Also read by pacing, financing. |
+| `drivers.reference_aov_max` | Highest believable realized new-customer order value | value | dollars | 400 | No sheet cell (app rule for the read-only feed references beside the plan) | IMPLEMENTED | A realized figure outside the believable range is treated as a feed problem and withheld with the reason, so a bad feed cannot set a default. | Saved together with its partner bound (the module accepts the two as a pair); resetting one resets both. Also read by pacing, financing. |
 | `drivers.pacing_blend` | Share of month-to-date pacing blended into the current month's repeat revenue | value | fraction | 0.5 | P&L!W17 (0.5 x waterfall + 0.5 x pacing projection, one cell, Sep-26) | MISSING | Blends the waterfall with the pacing projection for one month. | Wired to a single sheet column, so it goes stale the next month. The app uses the waterfall for planned months and loaded actuals for closed ones. |
 | `drivers.amazon_scenario_haircut` | Amazon scenario haircut | value | fraction | blank | P&L!A6 (reads the deleted 'Assumptions - DEAD' tab) | MISSING | Scaled Amazon revenue by scenario in the old model. | Dead in the sheet (the scenario selector was removed); scenarios are named copies now. |
 
-### P&L (`pnl`): 68 variables
+### P&L (`pnl`): 71 variables
 
 | Id | Variable | Kind | Unit | Sheet value | Sheet reference | Status | Used by | Notes |
 |---|---|---|---|---|---|---|---|---|
@@ -236,6 +243,9 @@ Columns: id; variable; kind (value, series, table); unit; the sheet's value; she
 | `pnl.ev.multiples` | Multiples applied to net operating income | value | multiples | 3, 4, 5, 6, 7, 8 | Formula literals 3 to 8 in P&L!C162:H162 | IMPLEMENTED | Columns of the implied enterprise value table. |  |
 | `pnl.qb_actuals` | QuickBooks history (Profit and Loss by month) | table | cells | rows on the module page | P&L!C:U pasted QuickBooks values (Jan-25 to Jul-26) | IMPLEMENTED (all) | Actual months: every cost line is its loaded value; trailing rates read these months. |  |
 | `pnl.freshness.stale_after_days` | QuickBooks counts as late after (days past the first unloaded month's end) | table | days | rows on the module page | No sheet cell | IMPLEMENTED (all) | The page and the daily check call the QuickBooks load late when the first month not loaded closed more than this many days ago (default 45). |  |
+| `pnl.upload.low_ratio` | QuickBooks upload: income or cost below this share of its neighbouring months is flagged | table | fraction (default 0.5) | rows on the module page | No sheet cell (added) | IMPLEMENTED (all) | A month whose total income or cost sits below this share of the months around it needs a look before it is loaded as books. |  |
+| `pnl.upload.high_ratio` | QuickBooks upload: income or cost above this multiple of its neighbouring months is flagged | table | multiple (default 2) | rows on the module page | No sheet cell (added) | IMPLEMENTED (all) | A month whose total income or cost is above this multiple of the months around it needs a look before it is loaded as books. |  |
+| `pnl.upload.required_families` | QuickBooks upload: account families a month must carry to become books | table | families | rows on the module page | No sheet cell (added) | IMPLEMENTED (all) | Revenue, cost of goods, fulfillment, marketing spend and operating expenses must all appear before a month is accepted. |  |
 | `pnl.vendor_retainers` | Vendor retainers, current and proposed | table | rows | rows on the module page | Fixed Expenses!B2:D11 (10 vendors; current $50,270, proposed $58,770 a month) | PARTIAL (all) | Reference only: no projected line reads it. | The sheet does not wire it into any formula either. Ticket: pnl#vendor-retainers-unwired. |
 | `pnl.payment_processing_rate` | Payment processing fee rate | value | fraction | 0.041 | P&L!B40 (typed 0.041) | MISSING | Nothing: P&L row 40 sums shipping supplies, Shopify subscriptions and seller fees; the typed rate is not read. | Unused in the sheet; the app's three payment lines are drivers. |
 | `pnl.cogs_adjustments` | Sales and cost of goods sold percent by channel and month | value | rows | blank | COGS Adjustments!B2:BJ13 (hidden, typed) | MISSING (all) | Nothing: no projected cell reads it. | Superseded by revenue from the spend plan. |
@@ -366,7 +376,7 @@ Columns: id; variable; kind (value, series, table); unit; the sheet's value; she
 | `inventory_supply.stock_counts` | Stock counts by warehouse and product | table | rows | rows on the module page | Warehance Fcst Inputs A35:D39, Amazon Fcst Inputs A36:B40, Intl Fcst Inputs A36:D40 | IMPLEMENTED (all) | Opening stock of each burn table (dated measurements). |  |
 | `inventory_supply.po_land_date_offsets` | Land dates typed as an offset from another order's date | value | days | 30 | Purchase Orders!G13, G17:G38, G40 (=G9+30, =G14+31, =G28+120 chains) | MISSING | Chained land dates in the sheet. | Stored as plain dates per order; the chain is not a variable. |
 
-### Cash and debt (`financing`): 46 variables
+### Cash and debt (`financing`): 50 variables
 
 | Id | Variable | Kind | Unit | Sheet value | Sheet reference | Status | Used by | Notes |
 |---|---|---|---|---|---|---|---|---|
@@ -393,9 +403,13 @@ Columns: id; variable; kind (value, series, table); unit; the sheet's value; she
 | `financing.equity_payback` | Equity paid back | series | dollars per month | 37 typed cells | P&L!W122:BJ122 (typed zeros) | IMPLEMENTED | Equity returned in the month; subtracted from cash. |  |
 | `financing.payback.aov` | Average order value for payback (blank follows pacing) | value | dollars | blank | Payback!B7 (=Automated Pacing!M6, live) | IMPLEMENTED | First-order revenue in the payback months; blank takes the last closed month from the pacing feed. |  |
 | `financing.payback.cac` | Cost per new customer for payback (blank follows pacing) | value | dollars | blank | Payback!B8 (=Automated Pacing!M7, live) | IMPLEMENTED | Cost recovered by contribution; blank takes the last closed month from the pacing feed. |  |
+| `financing.payback.loaded_lines` | P&L lines counted as a cost of each new-customer order (all-variable-costs payback) | value | P&L line keys | china_cogs, fulfillment_services, inbound_shipping, payment_processing, chargeback_management | No sheet cell (the sheet's payback uses the typed product cost and fulfillment only) | IMPLEMENTED | Each line's share of DTC revenue over the loaded window is subtracted from an order's value in the all-variable-costs payback. |  |
+| `financing.payback.loaded_months` | Closed months averaged into the variable-cost shares | value | months | 12 | No sheet cell (added) | IMPLEMENTED | Window of closed P&L months behind the all-variable-costs shares. |  |
+| `financing.payback.loaded_rate` | All-variable-costs share typed over the computed one | value | fraction | blank | No sheet cell (added) | IMPLEMENTED | When set, replaces the computed variable-cost share of an order in the all-variable-costs payback; blank uses the P&L lines. |  |
 | `financing.payback.curve` | Repeat curve for payback | value | live or goal | live | Payback column O reads Curves column C (live) | IMPLEMENTED | Which retention curve the payback months use. |  |
 | `financing.matrix.target_month` | Target payback month | value | months | 3 | Spend-ROAS Matrix!B4 | IMPLEMENTED | Profit is measured at this month of age. |  |
 | `financing.matrix.basis` | Profit basis | value | cm or loaded | cm | Spend-ROAS Matrix!B3 (CM) | IMPLEMENTED | Contribution margin only, or fully loaded with fixed cost. |  |
+| `financing.matrix.margin` | Margin rate behind the grid | value | product or loaded | product | No sheet cell (added) | IMPLEMENTED | Product margin (order value less product cost and fulfillment), or the all-variable-costs margin. |  |
 | `financing.matrix.fixed_cost` | Fixed cost per month | value | dollars per month | 110000 | Spend-ROAS Matrix!B7 | IMPLEMENTED | Subtracted on the fully loaded basis. |  |
 | `financing.matrix.spends` | Monthly spend levels in the grid | value | dollars (list) | 200000, 300000, 400000, 500000, 600000, 700000, +13 | Spend-ROAS Matrix!A12:A30 | IMPLEMENTED | Rows of the profit grid. |  |
 | `financing.matrix.roas` | New-customer return on ad spend levels in the grid | value | multiples (list) | 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, +7 | Spend-ROAS Matrix!B11:N11 | IMPLEMENTED | Columns of the profit grid. |  |
