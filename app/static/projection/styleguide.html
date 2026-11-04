@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="light dark">
+<title>Style guide · Lonvera Projections</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/projection/brand.css">
+<link rel="stylesheet" href="/static/js/projection/shell.css">
+<link rel="stylesheet" href="/static/js/projection/lib/grid.css">
+<link rel="icon" type="image/svg+xml" href="/static/projection/assets/favicon.svg">
+<style>
+  /* style guide layout only; every color comes from brand.css */
+  .sg { max-width: 1240px; margin: 0 auto; padding: var(--lv-sp-6) var(--lv-sp-4) var(--lv-sp-8); display: flex; flex-direction: column; gap: var(--lv-sp-7); }
+  .sg-bar { position: sticky; top: 0; z-index: 60; background: var(--lv-surface); border-bottom: 1px solid var(--lv-line); }
+  .sg-bar-in { max-width: 1240px; margin: 0 auto; padding: 0 var(--lv-sp-4); height: 42px; display: flex; align-items: center; gap: var(--lv-sp-4); }
+  .sg-bar .brand { font-size: var(--lv-fs-md); font-weight: var(--lv-fw-bold); color: var(--lv-ink); }
+  .sg-bar .sg-here { color: var(--lv-ink); font-weight: var(--lv-fw-bold); font-size: var(--lv-fs-base); }
+  .sg-bar .ctl-name { color: var(--lv-muted); }
+  .sg section { scroll-margin-top: 72px; }
+  .sg section > h2 { font-size: var(--lv-fs-lg); font-weight: var(--lv-fw-heavy); letter-spacing: -0.01em; margin-bottom: 2px; }
+  .sg section > .lede { margin: 0 0 var(--lv-sp-4); color: var(--lv-muted); max-width: 70ch; }
+  .sg h3 { font-size: var(--lv-fs-2xs); font-weight: var(--lv-fw-bold); text-transform: uppercase; letter-spacing: var(--lv-track-kicker); color: var(--lv-muted); margin: var(--lv-sp-5) 0 var(--lv-sp-2); }
+  .sw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--lv-sp-2); }
+  .sw { border: 1px solid var(--lv-line); border-radius: var(--lv-r-sm); overflow: hidden; background: var(--lv-surface); }
+  .sw i { display: flex; align-items: center; justify-content: center; height: 44px; font-style: normal; font-weight: var(--lv-fw-bold); font-size: var(--lv-fs-md); }
+  .sw b { display: block; padding: 5px 8px 0; font: var(--lv-fw-bold) var(--lv-fs-xs) var(--lv-mono); }
+  .sw span { display: block; padding: 0 8px 6px; font: var(--lv-fs-xs) var(--lv-mono); color: var(--lv-muted); }
+  .row { display: flex; flex-wrap: wrap; gap: var(--lv-sp-3); align-items: center; }
+  .logos { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--lv-sp-3); }
+  .logo-tile { border-radius: var(--lv-r-md); padding: var(--lv-sp-5); display: flex; flex-direction: column; gap: var(--lv-sp-3); align-items: flex-start; border: 1px solid var(--lv-line); }
+  .logo-tile.on-light { background: var(--lv-bone); }
+  .logo-tile.on-dark { background: var(--lv-night); }
+  .logo-tile small { font-size: var(--lv-fs-xs); color: var(--lv-muted); }
+  .logo-tile.on-dark small { color: var(--lv-on-inverse-2); }
+  .type-row { display: flex; align-items: baseline; gap: var(--lv-sp-4); padding: 6px 0; border-bottom: 1px solid var(--lv-line-soft); }
+  .type-row code { flex: 0 0 150px; font: var(--lv-fs-xs) var(--lv-mono); color: var(--lv-muted); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--lv-sp-4); }
+  .dd { border-radius: var(--lv-r-md); padding: var(--lv-sp-4); border: 1px solid var(--lv-line); background: var(--lv-surface); }
+  .dd h4 { margin: 0 0 var(--lv-sp-2); font-size: var(--lv-fs-sm); text-transform: uppercase; letter-spacing: var(--lv-track-kicker); display: flex; align-items: center; gap: 6px; }
+  .dd.do h4 { color: var(--lv-good); }
+  .dd.dont h4 { color: var(--lv-bad); }
+  .dd ul { margin: 0; padding-left: 18px; }
+  .dd li { margin: 4px 0; }
+  .chrome-demo { border-radius: var(--lv-r-md); overflow: hidden; border: 1px solid var(--lv-line); background: var(--lv-surface); }
+  .chrome-demo .pg-chrome { position: static; border-bottom: 0; box-shadow: none; }
+  .chrome-demo .topbar-in { height: 42px; overflow-x: auto; scrollbar-width: none; }
+  .chrome-demo .pg-nav { display: flex; }
+  .chrome-demo .pg-bar { display: flex; }
+  .chrome-demo .pg-menu-pop { position: static; box-shadow: var(--lv-shadow-2); }
+  .chrome-demo.copy { box-shadow: 0 2px 0 var(--lv-amber); border-color: var(--lv-amber); }
+  .chrome-demo.copy .pg-mode { display: inline-flex; }
+  .mini-label { font-size: var(--lv-fs-xs); color: var(--lv-muted); margin: var(--lv-sp-2) 0; }
+  .toast-static { position: static; display: block; }
+  .sg-note { color: var(--lv-muted); font-size: var(--lv-fs-xs); }
+  @media (max-width: 760px) { .two { grid-template-columns: 1fr; } .type-row { flex-direction: column; gap: 0; } .type-row code { flex: 0 0 auto; } }
+</style>
+</head>
+<body class="pg-body">
+<header class="sg-bar">
+  <div class="sg-bar-in">
+    <a class="brand" href="/">Lonvera</a>
+    <span class="sg-here">Style guide</span>
+    <span class="spacer"></span>
+    <span class="ctl"><span class="ctl-name">Theme</span>
+      <span class="segs" role="group" aria-label="Theme" id="sg-theme">
+        <button class="seg" type="button" data-v="auto" aria-pressed="true">Auto</button>
+        <button class="seg" type="button" data-v="light" aria-pressed="false">Light</button>
+        <button class="seg" type="button" data-v="dark" aria-pressed="false">Dark</button>
+      </span></span>
+    <span class="ctl"><span class="ctl-name">Density</span>
+      <span class="segs" role="group" aria-label="Density" id="sg-density">
+        <button class="seg" type="button" data-v="compact" aria-pressed="true">Compact</button>
+        <button class="seg" type="button" data-v="comfortable" aria-pressed="false">Comfortable</button>
+      </span></span>
+  </div>
+</header>
+
+<main class="sg" id="sg"></main>
+
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script type="module">
+import { h, toast, confirmTyped } from '/static/js/projection/lib/util.js';
+import { ui } from '/static/js/projection/lib/util.js';
+import { createGrid } from '/static/js/projection/lib/grid.js';
+import * as charts from '/static/js/projection/lib/charts.js';
+import * as F from '/static/js/projection/lib/format.js';
+
+const root = document.documentElement;
+const sg = document.getElementById('sg');
+const cv = (name) => getComputedStyle(root).getPropertyValue(name).trim();
+
+// ---------------------------------------------------------------- theme + density switches
+function segs(id, apply) {
+  const box = document.getElementById(id);
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-v]');
+    if (!b) return;
+    box.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    apply(b.dataset.v);
+    requestAnimationFrame(() => { paintSwatches(); drawCharts(); });
+  });
+}
+segs('sg-theme', (v) => { if (v === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', v); });
+segs('sg-density', (v) => { root.setAttribute('data-density', v); grid.setOptions({ density: v }); });
+
+// ---------------------------------------------------------------- helpers
+const section = (id, title, lede, ...kids) => h('section', { id }, h('h2', title), lede ? h('p', { class: 'lede' }, lede) : null, ...kids);
+const sw = (token, label) => h('div', { class: 'sw', 'data-token': token }, h('i', { style: { background: `var(${token})` } }, label || ''), h('b', token.replace('--lv-', '')), h('span', { class: 'sw-hex' }));
+const swGrid = (items) => h('div', { class: 'sw-grid' }, items.map(([t, l]) => sw(t, l)));
+function paintSwatches() {
+  document.querySelectorAll('.sw').forEach((el) => {
+    const hex = cv(el.dataset.token);
+    el.querySelector('.sw-hex').textContent = hex.toUpperCase();
+    const m = /^#([0-9a-f]{6})$/i.exec(hex);
+    if (m) { const n = parseInt(m[1], 16); const lum = (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255; el.querySelector('i').style.color = lum > 0.45 ? 'black' : 'white'; }
+  });
+}
+
+// ---------------------------------------------------------------- 1 brand
+const logoTile = (cls, src, note, height = 64) => h('div', { class: 'logo-tile ' + cls }, h('img', { src, alt: 'Lonvera', style: { height: height + 'px', width: 'auto', maxWidth: '100%' } }), h('small', note));
+sg.append(section('sg-brand', 'Brand', 'Warm bone surfaces, near-black ink, one ember accent for actions, the Lonvera mountain mark. Plus Jakarta Sans, 13px in tables. Plain words.',
+  h('div', { class: 'logos' },
+    logoTile('on-light', '/static/projection/assets/lonvera-logo-black.svg', 'Stacked logo, ink on bone (pages, print)'),
+    logoTile('on-dark', '/static/projection/assets/lonvera-logo-cream.svg', 'Stacked logo, cream on night'),
+    logoTile('on-dark', '/static/projection/assets/lonvera-lockup-cream.svg', 'Lockup (mark + wordmark) for dark bands and print headers', 30),
+    logoTile('on-light', '/static/projection/assets/lonvera-mark-black.svg', 'Mark alone (favicon, and the .lv-mark class)'),
+    h('div', { class: 'logo-tile on-light' }, h('span', { style: { fontSize: '14px', fontWeight: '700' } }, h('span', { class: 'lv-mark', style: { marginRight: '8px' } }), 'Lonvera'), h('small', 'Optional mark before the brand text: <span class="lv-mark">, takes the text color. Add it to both bars together.')))));
+
+// ---------------------------------------------------------------- 2 color
+sg.append(section('sg-color', 'Color', 'Role tokens, current theme. Components use these names only; the brand hex values sit behind them. Ember is for actions, brand and focus. Never for numbers, alerts or status.',
+  h('h3', 'Surfaces'), swGrid([['--lv-bg'], ['--lv-surface'], ['--lv-surface-2'], ['--lv-surface-3'], ['--lv-hover'], ['--lv-inverse'], ['--lv-topbar']]),
+  h('h3', 'Ink and lines'), swGrid([['--lv-ink', 'Aa'], ['--lv-ink-2', 'Aa'], ['--lv-muted', 'Aa'], ['--lv-line'], ['--lv-line-soft'], ['--lv-line-strong']]),
+  h('h3', 'Action (ember)'), swGrid([['--lv-action', 'Save'], ['--lv-action-hover'], ['--lv-action-active'], ['--lv-action-tint'], ['--lv-link', 'Link'], ['--lv-focus']]),
+  h('h3', 'Status (text on tint, each with an icon and a word)'), swGrid([['--lv-good-bg', 'OK'], ['--lv-warn-bg', 'Watch'], ['--lv-bad-bg', 'Bad'], ['--lv-info-bg', 'Info'], ['--lv-neutral-bg', 'Idle'], ['--lv-good'], ['--lv-warn'], ['--lv-bad'], ['--lv-info'], ['--lv-neutral']]),
+  h('h3', 'Cells and month headers'), swGrid([['--lv-input-bg', 'Input'], ['--lv-input-edge'], ['--lv-subtotal-bg', 'Subtotal'], ['--lv-total-bg', 'Total'], ['--lv-band-bg', 'Section'], ['--lv-actual-head', 'Actual'], ['--lv-proj-head', 'Projected*'], ['--lv-proj-cell'], ['--lv-proj-rule']]),
+  h('h3', 'Chart slots (fixed order; 1 to 3 are Vital Bull, Boneflex, Beef Liver)'),
+  swGrid([['--lv-viz-1', '1 Bull'], ['--lv-viz-2', '2 Bone'], ['--lv-viz-3', '3 Liver'], ['--lv-viz-4', '4'], ['--lv-viz-5', '5'], ['--lv-viz-6', '6'], ['--lv-viz-ink', 'Main'], ['--lv-viz-neutral', 'Other']])));
+
+// ---------------------------------------------------------------- 3 type
+const tr = (code, style, text) => h('div', { class: 'type-row' }, h('code', code), h('span', { style }, text));
+sg.append(section('sg-type', 'Type', 'Plus Jakarta Sans, self-hosted. Numbers use tabular figures so columns line up. Page titles 800 weight, labels 600, body 400.',
+  tr('fs-hero 40 / 800', 'font-size:var(--lv-fs-hero);font-weight:800;letter-spacing:-0.03em;line-height:1.05', '$6.7M'),
+  tr('fs-2xl 28 / 800', 'font-size:var(--lv-fs-2xl);font-weight:800;letter-spacing:-0.02em', 'FY27 net operating income'),
+  tr('fs-xl 20 / 800', 'font-size:var(--lv-fs-xl);font-weight:800;letter-spacing:-0.02em', 'Profit and loss'),
+  tr('fs-lg 16 / 600', 'font-size:var(--lv-fs-lg);font-weight:600', 'Spend falls to $350K a month, so NOI turns negative in November.'),
+  tr('fs-md 14 / 400', 'font-size:var(--lv-fs-md)', 'Purpose line under the page title, one sentence, plain words.'),
+  tr('fs-base 13 / 400', 'font-size:var(--lv-fs-base)', 'Table body and controls. Dense by default.'),
+  tr('fs-xs 11.5 / 400', 'font-size:var(--lv-fs-xs);color:var(--lv-muted)', 'Source caption: QuickBooks through Oct 2026; Meta spend from the ad account.'),
+  tr('fs-2xs 10.5 / 700 caps', 'font-size:var(--lv-fs-2xs);font-weight:700;letter-spacing:var(--lv-track-kicker);text-transform:uppercase;color:var(--lv-muted)', 'Group label'),
+  tr('tabular numerals', 'font-variant-numeric:tabular-nums;font-weight:600', '$1,234,567  $99,999  ($564,615)  12.5%  1.86x')));
+
+// ---------------------------------------------------------------- 4 controls
+const field = (label, el) => h('label', { class: 'ctl' }, h('span', { class: 'ctl-name' }, label), el);
+sg.append(section('sg-controls', 'Controls', 'Ember fill for the one primary action on a surface. Everything else is outlined. Destructive actions are crimson and need a typed confirm.',
+  h('div', { class: 'row' },
+    h('button', { class: 'btn primary', type: 'button' }, 'Save changes'),
+    h('button', { class: 'btn', type: 'button' }, 'Clone scenario'),
+    h('button', { class: 'btn small', type: 'button' }, 'Small'),
+    h('button', { class: 'btn danger', type: 'button' }, 'Delete scenario'),
+    h('button', { class: 'btn', type: 'button', disabled: true }, 'Disabled'),
+    h('span', { class: 'segs', role: 'group', 'aria-label': 'Grain' }, ['Day', 'Week', 'Month'].map((t, i) => h('button', { class: 'seg', type: 'button', 'aria-pressed': String(i === 2) }, t)))),
+  h('div', { class: 'row', style: { marginTop: '12px' } },
+    field('Scenario name', h('input', { type: 'text', value: 'Bull case', 'aria-label': 'Scenario name' })),
+    field('Search', h('input', { type: 'search', placeholder: 'Find a line' })),
+    field('Month', h('select', null, ['Nov 2026', 'Dec 2026', 'Jan 2027'].map((m) => h('option', m)))),
+    h('a', { href: '#sg-controls' }, 'Text link'))));
+
+// ---------------------------------------------------------------- 5 chips
+sg.append(section('sg-chips', 'Status chips', 'Icon plus word on every status. Stock: OUT, OVERDUE, ORDER SOON, OK. Data: ESTIMATE for values that are not actuals.',
+  h('div', { class: 'row' },
+    ui.chip('OK', 'good'), ui.chip('ORDER SOON', 'warn'), ui.chip('OUT', 'bad'), ui.chip('OVERDUE', 'bad', { solid: true }), ui.chip('Landed', 'info'), ui.chip('Planned', 'neutral'), ui.chip('Estimate', 'neutral', { estimate: true }),
+    ui.chip('Fresh through Nov 2', 'good'), ui.chip('3 days old', 'warn'), ui.chip('Feed stale', 'bad'))));
+
+// ---------------------------------------------------------------- 6 anatomy: chrome states + page header + TLDR
+const tab = (t, on, soon) => h('a', { class: 'pg-tab', href: '#sg-anatomy', 'data-built': String(!soon), 'aria-current': on ? 'page' : null }, t, soon ? h('span', { class: 'soon' }, 'soon') : null);
+const chromeDemo = (copy) => h('div', { class: 'chrome-demo' + (copy ? ' copy' : '') },
+  h('div', { class: 'pg-chrome' },
+    h('div', { class: 'topbar-in' },
+      h('a', { class: 'brand', href: '#sg-anatomy' }, 'Lonvera'),
+      h('a', { class: 'navlink', href: '#sg-anatomy' }, 'Tags'),
+      h('a', { class: 'navlink pg-brandnow', href: '#sg-anatomy' }, 'Projections'),
+      h('nav', { class: 'pg-nav', 'aria-label': 'Projection modules (example)' },
+        h('div', { class: 'pg-ngroup' }, tab('Overview', false)),
+        h('div', { class: 'pg-ngroup' }, tab('Cohorts', false), tab('Drivers', true), tab('P&L', false, true)),
+        h('div', { class: 'pg-ngroup' }, tab('Inventory demand', false, true), tab('Inventory supply', false, true), tab('Financing', false, true)),
+        h('div', { class: 'pg-ngroup' }, tab('Pacing', false, true))),
+      h('div', { class: 'pg-bar' },
+        h('select', { 'aria-label': 'Scenario' }, h('option', copy ? 'Bull case' : 'Current plan')),
+        h('span', { class: 'pg-ver' }, copy ? 'v7' : 'v31'),
+        h('span', { class: 'pg-mode' }, 'Copy'),
+        h('div', { class: 'pg-menu' }, h('button', { class: 'btn small pg-menubtn', type: 'button', 'aria-label': 'Scenario actions' }, '⋯'))))));
+const menuDemo = () => h('div', { class: 'chrome-demo', style: { width: 'fit-content', padding: '4px' } },
+  h('div', { class: 'pg-menu-pop', style: { position: 'static', boxShadow: 'none', border: 0 } },
+    ['New scenario', 'Clone this scenario', 'Rename', 'History and restore'].map((t) => h('button', { class: 'pg-mitem', type: 'button' }, t)),
+    h('div', { class: 'pg-msep' }), h('button', { class: 'pg-mitem danger', type: 'button' }, 'Delete this scenario')));
+sg.append(section('sg-anatomy', 'Page anatomy', 'One 42px bar, the same bar as the Tags pages: Lonvera, Tags, Projections, then the module tabs, then the scenario control at the right end. Under it: plan headline, then the page (title, one-line purpose, TLDR strip, the table or chart, one source caption).',
+  h('h3', 'The bar: plan of record'), chromeDemo(false),
+  h('h3', 'The bar: in a scenario copy (amber underline and Copy chip, so you never edit the wrong one)'), chromeDemo(true),
+  h('h3', 'Scenario actions menu (the ... button)'), menuDemo(),
+  h('h3', 'Page header with TLDR strip'),
+  h('div', { class: 'pg-card' }, ui.pageHeader({
+    title: 'Inventory supply',
+    purpose: 'What runs out, when it has to land, and what to order now.',
+    actions: [h('button', { class: 'btn', type: 'button' }, 'Suggest plan'), h('button', { class: 'btn primary', type: 'button' }, 'Add purchase order')],
+    tldr: { line: 'Vital Bull runs out in January unless 40,000 units land by December 1.', kpis: [
+      { label: 'First stock-out', value: 'Jan 2027*', tone: 'bad', note: 'Vital Bull, Revamp' },
+      { label: 'Order by', value: 'Oct 6', tone: 'bad', note: '26 days overdue' },
+      { label: 'Cash for open POs', value: '$1.2M', note: 'Nov to Mar*' },
+      { label: 'Months of cover', value: '2.1', tone: 'warn' },
+    ] } })),
+  ui.source('Warehance shipments through Nov 2, Amazon through Oct 31, purchase orders as entered. Projected values are marked *.')));
+
+// ---------------------------------------------------------------- 7 grid
+const months = Array.from({ length: 12 }, (_, i) => `${2026 + Math.floor((i + 4) / 12)}-${String(((i + 4) % 12) + 1).padStart(2, '0')}-01`);
+const status = months.map((_, i) => (i < 6 ? 'actual' : 'projected'));
+const mk = (f) => months.map((_, i) => f(i));
+const spend = mk((i) => (i < 6 ? [706000, 648000, 656000, 664000, 606000, 540000][i] : 350000));
+const cpa = mk((i) => (i < 6 ? 86 + i * 2 : 95));
+const aov = mk((i) => (i < 6 ? 68 + (i % 3) : 69));
+const orders = spend.map((v, i) => v / cpa[i]);
+const nc = orders.map((o, i) => o * aov[i]);
+const repeat = mk((i) => 200000 - i * 6000 + (i % 2) * 4000);
+const dtc = nc.map((v, i) => v + repeat[i]);
+const amazon = mk((i) => (i < 6 ? 170000 + i * 1200 : 175000));
+const total = dtc.map((v, i) => v + amazon[i]);
+const costs = total.map((v) => v * 0.31);
+const fees = total.map((v) => v * 0.12);
+const opex = mk(() => 215000);
+const noi = total.map((v, i) => v - costs[i] - fees[i] - spend[i] - opex[i]);
+const cover = mk((i) => [3.4, 2.9, 2.5, 2.1, 1.6, 1.2, 0.7, 0.3, 3.4, 2.9, 2.4, 1.9][i]);
+const row = (key, label, kind, fmt, values, extra = {}) => ({ key, label, kind, fmt, values, input: false, ...extra });
+const payload = () => ({
+  months, status,
+  rows: [
+    row('h1', 'Revenue', 'header', 'text', []),
+    row('spend', 'Ad spend', 'input', 'usd0', spend, { input: true, note: 'Typed monthly plan' }),
+    row('cpa', 'New-customer cost per order', 'input', 'usd', cpa, { input: true, agg: 'avg' }),
+    row('nc', 'New-customer revenue', 'calc', 'usd0', nc),
+    row('rep', 'Repeat revenue', 'calc', 'usd0', repeat),
+    row('dtc', 'Online store revenue', 'subtotal', 'usd0', dtc),
+    row('amz', 'Amazon revenue', 'input', 'usd0', amazon, { input: true }),
+    row('tot', 'Total revenue', 'total', 'usd0', total),
+    row('h2', 'Costs', 'header', 'text', []),
+    row('cogs', 'Cost of goods', 'calc', 'usd0', costs),
+    row('fee', 'Fees', 'calc', 'usd0', fees),
+    row('mkt', 'Marketing', 'calc', 'usd0', spend),
+    row('oh', 'Overhead', 'calc', 'usd0', opex),
+    row('noi', 'Net operating income', 'total', 'usd0', noi),
+    row('mar', 'Margin', 'ratio', 'pct', noi.map((v, i) => v / total[i])),
+    row('h3', 'Inventory', 'header', 'text', []),
+    row('cov', 'Months of cover', 'calc', 'num', cover, { digits: 1 }),
+    row('stk', 'Stock status', 'calc', 'text', cover.map((v) => (v < 0.5 ? 'OUT' : v < 1.5 ? 'ORDER SOON' : 'OK'))),
+  ],
+  captions: ['Sample data. QuickBooks through Oct 2026; later months are projected and marked *.'],
+});
+const gridHost = h('div', { id: 'sg-grid' });
+sg.append(section('sg-grid', 'Monthly grid', 'Months as columns, lines as rows. Amber cells are inputs: click and type, Enter commits and moves down, Tab moves right, Esc cancels, paste a row from Sheets. Calculated cells are quiet and read-only. Projected months are blue, asterisked and set off by a rule.', gridHost));
+const store = { spend: [...spend], cpa: [...cpa], amz: [...amazon] };
+const grid = createGrid(gridHost, {
+  payload: payload(), title: 'Operating plan', fy: false,
+  highlight: (c) => (c.key === 'noi' && typeof c.value === 'number' && c.value < 0 ? 'bad' : null),
+  onEdit: async (edits) => { await new Promise((r) => setTimeout(r, 450)); return null; },
+});
+
+// ---------------------------------------------------------------- 8 charts
+const cLine = h('canvas', { id: 'sg-line', 'aria-label': 'NOI by scenario' });
+const cBars = h('canvas', { id: 'sg-bars', 'aria-label': 'Units by product' });
+sg.append(section('sg-charts', 'Charts', 'Actual solid, projected dashed (lines) or lighter (bars) on a tinted band. Six slots in fixed order, never cycled; the three products always keep slots 1 to 3. One axis. Legend always, direct labels sparingly. The table above is the text alternative.',
+  h('div', { class: 'two' },
+    h('div', { class: 'pg-card' }, h('div', { class: 'pg-chartbox' }, cLine), ui.source('Current plan and two copies. Dashed = projected.')),
+    h('div', { class: 'pg-card' }, h('div', { class: 'pg-chartbox' }, cBars), ui.source('Units shipped by product. Slots: Vital Bull, Boneflex, Beef Liver.')))));
+function drawCharts() {
+  charts.destroyAll();
+  charts.scenarioCompare(cLine, { months, status, yFmt: 'usd0', baseline: { name: 'Current plan', values: noi }, others: [
+    { name: 'Spend +40%', values: noi.map((v, i) => (i < 6 ? v : v * 0.8 - 20000)) }, { name: 'Spend -40%', values: noi.map((v, i) => (i < 6 ? v : v * 1.2 + 30000)) }] });
+  charts.barChart(cBars, { months, status, stacked: true, yFmt: 'num', series: [
+    { label: 'Vital Bull', values: mk((i) => 9000 + i * 300), color: charts.PALETTE[0] },
+    { label: 'Boneflex', values: mk((i) => 5200 + i * 120), color: charts.PALETTE[1] },
+    { label: 'Beef Liver', values: mk((i) => 6100 - i * 80), color: charts.PALETTE[2] }] });
+}
+drawCharts();
+
+// ---------------------------------------------------------------- 9 states and micro-interactions
+const emptyBox = h('div'); ui.empty(emptyBox, 'No purchase orders yet. Add one to see when stock runs out.');
+const loadBox = h('div'); ui.loading(loadBox, 'Loading the plan…');
+const errBox = h('div'); ui.error(errBox, new Error('The plan did not load: the server did not answer. Your edits are safe.'), () => toast('Retrying…', 'info'));
+sg.append(section('sg-states', 'States', 'Plain-language empty, loading and error copy. Say what happened and what to do. Errors keep the user\'s work and offer Retry.',
+  h('div', { class: 'two' }, h('div', null, h('h3', 'Empty'), emptyBox, h('h3', 'Loading'), loadBox), h('div', null, h('h3', 'Error'), errBox)),
+  h('h3', 'Toasts and typed confirm'),
+  h('div', { class: 'row' },
+    h('button', { class: 'btn', type: 'button', onclick: () => toast('Saved 3 cells', 'ok') }, 'Saved toast'),
+    h('button', { class: 'btn', type: 'button', onclick: () => toast('Too many changes in a short time. Wait a minute and try again.', 'error') }, 'Error toast'),
+    h('button', { class: 'btn danger', type: 'button', onclick: () => confirmTyped({ title: 'Delete "Bull case"?', message: 'This removes the scenario and all of its inputs. Other scenarios are not affected.', expect: 'bull-case', confirmText: 'Delete scenario', onConfirm: async () => {} }) }, 'Delete with typed confirm'))));
+
+// ---------------------------------------------------------------- 10 do / don't
+const dd = (cls, title, items) => h('div', { class: 'dd ' + cls }, h('h4', title), h('ul', items.map((t) => h('li', t))));
+sg.append(section('sg-rules', 'Do and don\'t', null,
+  h('div', { class: 'two' },
+    dd('do', 'Do', [
+      'Lead with the so-what: "Vital Bull runs out in January unless 40,000 units land by December 1."',
+      'Expand on first use: "NC (new customer)", "NOI (net operating income)". Prefer the full words in labels.',
+      'Show negatives as ($564,615) in crimson, zero as an em dash, projected months with * and the blue header.',
+      'Put an icon and a word on every status: OUT, OVERDUE, ORDER SOON, OK.',
+      'Use ember only for the primary action, the active tab and the focus ring.',
+      'One short source caption per table: "QuickBooks through Oct 2026."',
+      'Say which scenario you are in, in the bar, on every screen.']),
+    dd('dont', 'Don\'t', [
+      'Don\'t open with the method: "Computed via a trailing four-month window..."',
+      'Don\'t write build history or rationale into labels: "memo (Josh\'s lever, see v3)".',
+      'Don\'t color a number red in ember orange, or show status by color alone.',
+      'Don\'t use a modal for a single cell edit. Edit in place; Esc cancels.',
+      'Don\'t make calculated cells look editable, or inputs look calculated.',
+      'Don\'t let the page scroll sideways: wide tables scroll inside their own container.',
+      'Don\'t add compliance caveats or banned-word lists to copy.']))));
+
+paintSwatches();
+</script>
+</body>
+</html>

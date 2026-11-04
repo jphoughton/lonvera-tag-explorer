@@ -70,4 +70,6 @@ def test_dataclasses_default_empty_and_module_keywords():
     assert m.compute is None and m.blueprint is None and m.ui is None
     s = I.Scenario(1, "current", "Current plan", {})
     assert s.base_slug is None and s.version == 1
-    assert list(I.MODULE_CATALOG) == ["cohorts", "drivers", "pnl", "inventory_demand", "inventory_supply", "financing", "pacing"]
+    from app.projection import engine
+    assert set(engine.ORDER) <= set(I.MODULE_CATALOG)                                          # every engine step is a catalog module (the catalog also lists page-only modules)
+    assert all(isinstance(v, tuple) and len(v) == 2 for v in I.MODULE_CATALOG.values())

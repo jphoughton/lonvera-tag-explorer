@@ -164,10 +164,10 @@ def test_cli_pass_fail_json_and_exit_codes(cli, capsys):
     assert R.main(["--module", "bogus"]) == 2
 
 
-def test_cli_requires_a_built_module_and_a_database(cli, pkg_factory, monkeypatch, capsys):
+def test_cli_requires_a_built_module_and_a_database(cli, core_db, pkg_factory, monkeypatch, capsys):
     monkeypatch.delenv("DATABASE_URL")
     assert R.main(["--module", "drivers"]) == 2
-    monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/tagexp_proj_core")
+    monkeypatch.setenv("DATABASE_URL", core_db)
     pkg_factory({})                                                                      # drivers not built -> engine uses the stub
     assert R.main(["--module", "drivers"]) == 2
     assert "not built" in capsys.readouterr().err

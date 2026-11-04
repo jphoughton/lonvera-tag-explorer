@@ -3,7 +3,8 @@
 Used by the daily refresh runner (`python -m etl.projection_daily`, which fails on a stale daily feed) and by GET /api/projection/freshness.
 
 Hook contract (module side, in etl/projection_<module>.py; conn rows are dicts):
-    freshness(conn) -> [{"feed": str, "label": str, "cadence": "daily" | "monthly-upload", "data_through": date | ISO str | None, "stale_after_days": int}]
+    freshness(conn) -> [{"feed": str, "label": str, "cadence": "daily" | "monthly-upload" | "manual", "data_through": date | ISO str | None, "stale_after_days": int}]
+      daily: a stale feed fails the daily run. monthly-upload / manual: a stale feed is reported (status 'stale', in /freshness) and never fails the run.
     refresh(conn, days=14) -> {"rows": int, "data_through": "YYYY-MM-DD", ...}      (idempotent, incremental, trailing-days upsert, no secrets in output)
 """
 from __future__ import annotations
@@ -13,14 +14,15 @@ import os
 import re
 from datetime import date, datetime, timezone
 from typing import Any, Callable
-from zoneinfo import ZoneInfo
 
+from . import clock
 from .interfaces import MODULE_CATALOG
 
 MODULE_KEYS = tuple(MODULE_CATALOG)
-CADENCES = ("daily", "monthly-upload")
+CADENCES = ("daily", "monthly-upload", "manual")
+CADENCE_LABELS = {"daily": "Daily", "monthly-upload": "Monthly upload", "manual": "Manual"}
+FATAL_WHEN_STALE = ("daily",)
 ERROR_LIMIT = 300
-PACIFIC = ZoneInfo("America/Los_Angeles")
 _CRED_URL = re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^/\s:@]+:[^@\s]+@", re.I)
 _SECRETS = [
     (re.compile(r"((?:access_token|api[_-]?key|token|password|secret)=)[^&\s'\"]+", re.I), r"\1***"),
@@ -44,7 +46,7 @@ def scrub(text: Any, limit: int = ERROR_LIMIT) -> str:
 
 
 def today_pacific() -> date:
-    return datetime.now(PACIFIC).date()
+    return clock.today_pt()
 
 
 def hook_module(key: str, importer: Callable[[str], Any] = importlib.import_module):
@@ -83,7 +85,7 @@ def evaluate(module: str, entry: dict, today: date) -> dict:
     age = max(0, (today - through).days) if through else None
     status = "unknown" if through is None else ("stale" if age > stale_after else "fresh")
     out = {"module": module, "feed": feed, "label": entry.get("label") or feed, "cadence": cadence,
-           "data_through": through.isoformat() if through else None, "age_days": age, "stale_after_days": stale_after, "status": status}
+           "cadence_label": CADENCE_LABELS[cadence], "data_through": through.isoformat() if through else None, "age_days": age, "stale_after_days": stale_after, "status": status}
     out["message"] = message(out)
     return out
 
@@ -149,4 +151,8 @@ def report(conn, today: date | None = None, importer: Callable[[str], Any] = imp
         out.append({"module": e["module"], "feed": "(module)", "label": "Freshness check", "cadence": None, "data_through": None, "age_days": None,
                     "stale_after_days": None, "status": "unknown", "message": e["error"], "last_run": runs.get(e["module"])})
     summary = {s: sum(1 for f in out if f["status"] == s) for s in ("fresh", "stale", "unknown")}
-    return {"generated_at": datetime.now(timezone.utc).isoformat(), "feeds": out, "summary": summary}
+    # degraded: modules whose data cannot be trusted right now (latest refresh failed, or their freshness check itself failed)
+    degraded = [{"module": m, "error": r["error"] or "refresh failed"} for m, r in runs.items() if r["status"] == "failed"]
+    degraded += [{"module": e["module"], "error": e["error"]} for e in [*errors, *({"module": k, "error": v} for k, v in problems.items())]
+                 if not any(d["module"] == e["module"] for d in degraded)]
+    return {"generated_at": datetime.now(timezone.utc).isoformat(), "feeds": out, "summary": summary, "degraded": degraded}

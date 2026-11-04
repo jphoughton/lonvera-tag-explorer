@@ -2,8 +2,8 @@
 
 CONTRACT v1.5: the Graph API is the only source of numbers and there is no tie-out to the Google Sheet. So these tests assert that the API agrees
 with itself at every level (tree == rollup == families == ads), that totals are the sum of rows, shares add up to 1, stage lists partition the
-unfiltered total, and that latency stays inside the budget. Nothing here hardcodes a business figure; the only structural counts are the
-Vita Bull tracker rows (1,464) and unique ads (1,434, or 1,435 while a blank-family row shares a name with a real family).
+unfiltered total, and that latency stays inside the budget. Nothing here hardcodes a business figure; the only structural counts are floors
+(the tracker only grows): at least 1,464 Vita Bull tracker rows and 1,434 unique ads.
 """
 import datetime as _dt
 import os
@@ -27,13 +27,14 @@ def _usable() -> bool:
         with psycopg.connect(REAL_URL, connect_timeout=3) as c:
             n = c.execute("SELECT count(*) FROM ad_metrics").fetchone()[0]
             cols = {r[0] for r in c.execute("""SELECT table_name || '.' || column_name FROM information_schema.columns
-                WHERE (table_name, column_name) IN (('family_daily','impressions'), ('ad_metrics','impressions_launch'), ('meta_ad_lifetime','link_clicks'))""")}
-            return n > 0 and len(cols) == 3
+                WHERE (table_name, column_name) IN (('family_daily','impressions'), ('ad_metrics','impressions_launch'), ('meta_ad_lifetime','link_clicks'),
+                                                    ('taxonomy_lines','added_after_tagging'))""")}
+            return n > 0 and len(cols) == 4
     except Exception:
         return False
 
 
-pytestmark = pytest.mark.skipif(not _usable(), reason="real database empty, unreachable, or migrations 003/004 not applied")
+pytestmark = pytest.mark.skipif(not _usable(), reason="real database empty, unreachable, or migrations 003/004/009 not applied")
 
 
 @pytest.fixture(scope="module")
@@ -96,8 +97,8 @@ EXTRAS = ["", "window=30d", "window=7d&stage=testing,scaling", "window=14d&compa
 # ------------------------------------------------------------------------------------------------------ structure
 def test_vita_bull_structure(rc):
     p = next(x for x in get(rc, "/api/products") if x["slug"] == "vita-bull")
-    assert p["rows"] == 1464
-    assert p["m"]["unique_ads"] in (1434, 1435)
+    assert p["rows"] >= 1464
+    assert p["m"]["unique_ads"] >= 1434
     assert p["tag_set"] == "linemap" and p["tag_label"] == "Line-mapped tags"
     tree = get(rc, "/api/products/vita-bull/tree?root=cluster&depth=3", budget=600)
     assert sum(1 for r in tree["rows"] if r["level"] == 2) >= 37             # every Communication Overview line is listed, with or without ads

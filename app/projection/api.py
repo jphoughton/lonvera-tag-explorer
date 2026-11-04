@@ -11,11 +11,11 @@ from datetime import date
 from typing import Any
 from urllib.parse import urlsplit
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
 
 from .. import db
 from ..queries import ApiError
-from . import audit, engine, freshness, registry, rwdb, scenarios, series
+from . import audit, degraded, engine, freshness, registry, rwdb, scenarios, series
 from .interfaces import AXIS_END, AXIS_START, parse_month
 from .limits import Limits
 
@@ -57,7 +57,8 @@ def _write_guard():
         return jsonify(error="origin_mismatch"), 403
     limits: Limits = current_app.extensions["proj_limits"]
     ip = request.remote_addr or "unknown"
-    wait = limits.mutations.hit(ip)
+    preview = path.rstrip("/").rsplit("/", 1)[-1] == "preview"       # computes and writes nothing: its own, higher budget
+    wait = limits.previews.hit(ip) if preview else limits.mutations.hit(ip)
     if not wait and _is_upload_path(path):
         wait = limits.uploads.hit(ip)
     if wait:
@@ -70,8 +71,25 @@ def _write_guard():
     return None
 
 
+def _degraded_gate(resp):
+    """A GET on a module's endpoints whose module (or anything it reads) the engine degraded during the request is answered 503 upstream_degraded,
+    whatever the module's own code returned (a 200 built on nothing, or its own 500)."""
+    path = request.path
+    code = resp.status_code
+    if request.method not in ("GET", "HEAD") or not path.startswith(PREFIX + "/") or not (200 <= code < 300 or code >= 500) or code == 503:
+        return resp
+    seg = path[len(PREFIX) + 1:].split("/", 1)[0].replace("-", "_")
+    errors = g.get("proj_degraded")
+    if not errors or seg not in engine.ORDER:
+        return resp
+    bad = degraded.degraded_in(errors, seg)
+    return degraded.response(bad) if bad else resp
+
+
 def install_guards(app) -> None:
     app.extensions["proj_limits"] = Limits.from_config(app.config)
+    degraded.register(app)
+    app.after_request(_degraded_gate)
     app.before_request(_write_guard)
 
 
@@ -132,6 +150,27 @@ def scenarios_list():
     return jsonify({"scenarios": scenarios.list_scenarios(db.get_conn())})
 
 
+@bp.get("/scenarios/archived")
+def scenarios_archived():
+    return jsonify({"archived": scenarios.list_archived(db.get_conn())})
+
+
+@bp.post("/scenarios/<slug>/detach")
+def scenarios_detach(slug: str):
+    data = _body()
+    with rwdb.get_rw() as conn:
+        row = scenarios.detach(conn, slug, expected_version=_int_field(data, "expected_version"), actor=audit.current_actor())
+    return jsonify({"scenario": row})
+
+
+@bp.post("/scenarios/<slug>/undelete")
+def scenarios_undelete(slug: str):
+    _body()
+    with rwdb.get_rw() as conn:
+        row = scenarios.undelete(conn, slug, actor=audit.current_actor())
+    return jsonify({"scenario": row})
+
+
 @bp.post("/scenarios")
 def scenarios_create():
     data = _body()
@@ -173,9 +212,9 @@ def scenarios_delete(slug: str):
 def scenarios_restore(slug: str):
     data = _body()
     with rwdb.get_rw() as conn:
-        row = scenarios.restore(conn, slug, data.get("version"), expected_version=_int_field(data, "expected_version"),
-                                actor=audit.current_actor())
-    return jsonify({"scenario": row})
+        row, stats = scenarios.restore(conn, slug, data.get("version"), expected_version=_int_field(data, "expected_version"),
+                                       actor=audit.current_actor())
+    return jsonify({"scenario": row, "restore": stats})
 
 
 @bp.get("/scenarios/<slug>/history")

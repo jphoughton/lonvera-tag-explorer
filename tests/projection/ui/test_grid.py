@@ -68,6 +68,7 @@ def test_edit_commit_sends_put_and_recomputes(page, base_url):
     with page.expect_request(lambda r: r.method == "PUT" and r.url.endswith("/api/projection/series")) as req:
         page.keyboard.press("Enter")
     body = req.value.post_data_json
+    assert isinstance(body.pop("expected_version"), int)                       # every scenario write names the version it was made against
     assert body == {"scenario": "current", "items": [{"line_key": "spend", "month": "2026-12-01", "value": 400000, "kind": "input"}]}
     assert req.value.headers["content-type"] == "application/json"
     expect(page.locator(".pg-gstatus")).to_have_text("Saved 1 cell")
@@ -313,7 +314,7 @@ def test_column_hover_highlight(page):
 
 def test_copy_table_as_tsv(page):
     open_module(page)
-    page.click("button:has-text('Copy')")
+    page.click(".pg-toolbar button:has-text('Copy')")
     expect(page.locator(".pg-toast")).to_contain_text("Copied table")
     text = page.evaluate("navigator.clipboard.readText()")
     lines = text.split("\n")

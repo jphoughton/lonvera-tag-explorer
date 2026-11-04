@@ -1,0 +1,7 @@
+# Design tickets: Pacing (pacing.js)
+
+Found in the 2026-11-03 usability vet (details and screenshots: `DESIGN_REVIEW.md`). Page JS owner: proj-pacing.
+
+1. **The five-second answer is mixed (medium).** The TLDR says "Revenue is pacing to $1.1M*, 106% of goal; net operating income 102%, 28 days left." Next to it, three of five numbers are amber or crimson (NC-ROAS 90%, ad spend 111%, payback 10 months vs goal 5). Josh can read "on track" and still be wrong about efficiency. Change: start the sentence with a verdict and name the worst lagging measure, for example "On pace on revenue (106%) and net operating income (102%), behind on efficiency: ad spend is at 111% of plan and NC-ROAS at 90%." Add a one-word verdict chip next to the Month picker (ON TRACK / MIXED / BEHIND) computed from the same pace numbers, with the icon and word (`ctx.ui.chip`). Done when: a first-time reader can say "on track or not" from the first line without reading the KPI colours.
+2. **Early-month caution should move the verdict, not just add a note (low).** The "Early in the month: 2 of 30 days so far" info chip is below the cards. When fewer than 5 days have passed, prefix the verdict with "Early:" and soften the tone (no crimson on pace numbers).
+3. **Asterisk contrast (fixed by the vet).** `.pacing-ast { opacity: .7 }` made the projection asterisk 3.1:1 in light and 4.0:1 in dark. Opacity removed, weight 700. No action needed; keep it when editing the style block.

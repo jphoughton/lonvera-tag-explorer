@@ -4,12 +4,12 @@
 
 A module takes part by adding etl/projection_<module>.py with
     refresh(conn, days=14) -> {"rows": int, "data_through": "YYYY-MM-DD", ...}     idempotent, incremental (upsert of the trailing days), no secrets in the output
-    freshness(conn) -> [{"feed", "label", "cadence": "daily" | "monthly-upload", "data_through": date | None, "stale_after_days": int}]
+    freshness(conn) -> [{"feed", "label", "cadence": "daily" | "monthly-upload" | "manual", "data_through": date | None, "stale_after_days": int}]
 Either hook may be missing: a module without `refresh` is skipped. Connections handed to the hooks use dict rows, like the app's.
 
 Each refresh runs in its own try/except, on its own connection, under a time cap (env PROJECTION_REFRESH_TIMEOUT_SEC, default 600). One module failing never
 stops the others. Every run is recorded in proj_refresh_runs (error text scrubbed, <= 300 chars). Exit code is 1 when any module failed OR any `daily` feed is
-stale beyond its stale_after_days (a stale `monthly-upload` feed is reported, never fatal), so Railway marks the deployment failed. Migrations are not
+stale beyond its stale_after_days (a stale `monthly-upload` or `manual` feed is reported, never fatal), so Railway marks the deployment failed. Migrations are not
 applied here (scripts/deploy/run_etl.sh does that first).
 """
 from __future__ import annotations
@@ -187,6 +187,7 @@ def run_all(keys: list[str], connect: Callable[[], Any], *, days: int = DEFAULT_
     finally:
         rec.close()
 
+    _purge_archived_scenarios(rec_connect or connect)
     conn = connect()
     try:
         feeds, errors = freshness.collect(conn, hooks, today, keys)
@@ -201,16 +202,36 @@ def run_all(keys: list[str], connect: Callable[[], Any], *, days: int = DEFAULT_
     return 0
 
 
+_NOT_FATAL_NOTE = {"monthly-upload": "monthly upload", "manual": "manual feed"}
+
+
+def _purge_archived_scenarios(connect: Callable[[], Any]) -> None:
+    """Housekeeping: permanently remove scenarios deleted more than 30 days ago. A failure is logged, never fatal."""
+    conn = None
+    try:
+        from app.projection import scenarios
+        conn = connect()
+        conn.autocommit = True
+        n = scenarios.purge_archived(conn)
+        if n:
+            log(f"purged {n} scenario(s) deleted more than {scenarios.ARCHIVE_DAYS} days ago")
+    except Exception as e:                                          # noqa: BLE001
+        log(f"could not purge deleted scenarios: {type(e).__name__}: {e}")
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def _print_freshness(feeds: list[dict], errors: list[dict]) -> list[dict]:
     stale_daily = []
     for f in feeds:
         tag = f["status"].upper() if f["status"] != "fresh" else "fresh"
         note = ""
         if f["status"] == "stale":
-            if f["cadence"] == "daily":
+            if f["cadence"] in freshness.FATAL_WHEN_STALE:
                 stale_daily.append(f)
             else:
-                note = " (monthly upload: not a failure)"
+                note = f" ({_NOT_FATAL_NOTE[f['cadence']]}: not a failure)"
         log(f"  {tag:<7} {f['module']}/{f['feed']} [{f['cadence']}]: {f['message']}{note}")
     for e in errors:
         log(f"  ERROR   {e['module']}: {e['error']}")

@@ -106,6 +106,7 @@ function showBlank(root, why) {
 }
 
 async function render(opts = {}) {
+  if (/^\/projection(\/|$)/.test(location.pathname)) { location.replace(location.pathname + location.search); return; }   // Projections is a separate page (e.g. returning from /login)
   const my = ++token;
   if (abort) abort.abort();
   abort = new AbortController();
@@ -183,5 +184,9 @@ document.addEventListener('click', (e) => {
 });
 
 buildShell({ onBack: goBack });
-document.querySelector('#topbar .navlink').after(h('a', { class: 'navlink', href: '/projection', target: '_self' }, 'Projections'));
+{ // top-level sections: Tags (this app) and Projections (separate page, same bar)
+  const brand = document.querySelector('#topbar .brand'); if (brand) brand.textContent = 'Lonvera';
+  const tags = document.querySelector('#topbar .navlink'); tags.textContent = 'Tags';
+  tags.after(h('a', { class: 'navlink', href: '/projection', target: '_self' }, 'Projections'));
+}
 render({ restore: true });

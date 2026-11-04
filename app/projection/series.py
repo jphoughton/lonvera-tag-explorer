@@ -11,6 +11,8 @@ A scenario cell wins over its base's; deleting a scenario cell (value null) reve
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import math
 import re
 from dataclasses import dataclass
@@ -44,6 +46,21 @@ def _dec(v: float | int) -> Decimal:
 
 # ------------------------------------------------------------------------------------------------------------------ reads
 
+# A read-only draft laid over the scenario's series for what-if runs that must write nothing (the scenario modeler). Active only in the current context
+# (a ContextVar: another request's thread never sees it). The function gets the winning cells and returns the cells the run should see.
+_OVERLAY: contextvars.ContextVar = contextvars.ContextVar("series_overlay", default=None)
+
+
+@contextlib.contextmanager
+def with_overlay(fn):
+    """`with series.with_overlay(fn): engine.run(...)`: every fetch_cells / get_series / get inside sees fn(conn, scn, cells, keys, prefix, from_, to)."""
+    token = _OVERLAY.set(fn)
+    try:
+        yield
+    finally:
+        _OVERLAY.reset(token)
+
+
 def fetch_cells(conn, scn: Scenario | str | None, keys: Iterable[str] | None = None, *, prefix: str | None = None,
                 from_: date | None = None, to: date | None = None) -> list[dict]:
     """Winning cells for the scenario and its fallback chain: [{line_key, month, value(float), kind, note, origin(slug)}]."""
@@ -63,8 +80,10 @@ def fetch_cells(conn, scn: Scenario | str | None, keys: Iterable[str] | None = N
         k = (r["line_key"], r["month"])
         if k not in best or rank[r["scenario_id"]] < rank[best[k]["scenario_id"]]:
             best[k] = r
-    return [{"line_key": r["line_key"], "month": r["month"], "value": float(r["value"]), "kind": r["kind"], "note": r["note"],
-             "origin": slugs[r["scenario_id"]]} for r in best.values()]
+    cells = [{"line_key": r["line_key"], "month": r["month"], "value": float(r["value"]), "kind": r["kind"], "note": r["note"],
+              "origin": slugs[r["scenario_id"]]} for r in best.values()]
+    overlay = _OVERLAY.get()
+    return overlay(conn, scn, cells, keys, prefix, from_, to) if overlay is not None else cells
 
 
 def get_series(conn, scn: Scenario | str | None, keys: Iterable[str] | None = None, *, prefix: str | None = None,
@@ -176,6 +195,8 @@ def apply_items(conn, slug: str, items: list[Item], *, expected_version: int | N
     Returns {version, changed}; a request that changes nothing leaves the version alone."""
     r = scenarios.lock_for_change(conn, slug, expected_version)
     sid = r["id"]
+    from . import validators                           # late: validators reads the module registry
+    validators.check_series(conn, scenarios.get_scenario(conn, slug), items)
     existing = {(e["line_key"], e["month"]): e for e in conn.execute(
         "SELECT line_key, month, value, kind, note FROM proj_series WHERE scenario_id = %s "
         "AND (line_key, month) IN (SELECT * FROM unnest(%s::text[], %s::date[]))",

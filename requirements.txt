@@ -6,3 +6,4 @@ google-api-python-client==2.201.0
 google-auth==2.62.1
 pillow==13.0.0
 tzdata==2026.6
+cryptography==50.0.2

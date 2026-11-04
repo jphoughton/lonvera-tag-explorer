@@ -1,0 +1,2434 @@
+{
+ "Amazon Fcst Inputs": {
+  "cells": 21,
+  "empty": 0,
+  "formula": 0,
+  "rows": {
+   "20": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "21": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "22": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "23": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "24": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "25": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "26": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "27": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "28": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "29": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "30": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "31": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "36": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "37": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "38": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "39": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "4": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "40": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "42": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "5": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "8": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   }
+  },
+  "typed": 21
+ },
+ "Automated Pacing ": {
+  "cells": 18,
+  "empty": 1,
+  "formula": 14,
+  "rows": {
+   "14": {
+    "empty": 0,
+    "first": 13,
+    "formula": 0,
+    "last": 13,
+    "range": "M:M",
+    "typed": 1
+   },
+   "15": {
+    "empty": 1,
+    "first": 13,
+    "formula": 0,
+    "last": 13,
+    "range": "M:M",
+    "typed": 0
+   },
+   "31": {
+    "empty": 0,
+    "first": 1,
+    "formula": 7,
+    "last": 8,
+    "range": "A:H",
+    "typed": 1
+   },
+   "4": {
+    "empty": 0,
+    "first": 1,
+    "formula": 7,
+    "last": 8,
+    "range": "A:H",
+    "typed": 1
+   }
+  },
+  "typed": 3
+ },
+ "COGS": {
+  "cells": 24,
+  "empty": 18,
+  "formula": 0,
+  "rows": {
+   "10": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "11": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "12": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "13": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "14": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "15": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "32": {
+    "empty": 0,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 1
+   },
+   "33": {
+    "empty": 0,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 1
+   },
+   "34": {
+    "empty": 0,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 1
+   },
+   "35": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "36": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "37": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "38": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "39": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "4": {
+    "empty": 0,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 1
+   },
+   "40": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "41": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "42": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "43": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "5": {
+    "empty": 0,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 1
+   },
+   "6": {
+    "empty": 0,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 1
+   },
+   "7": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "8": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   },
+   "9": {
+    "empty": 1,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 0
+   }
+  },
+  "typed": 6
+ },
+ "COGS Adjustments": {
+  "cells": 36,
+  "empty": 0,
+  "formula": 36,
+  "rows": {
+   "10": {
+    "empty": 0,
+    "first": 15,
+    "formula": 6,
+    "last": 20,
+    "range": "O:T",
+    "typed": 0
+   },
+   "12": {
+    "empty": 0,
+    "first": 15,
+    "formula": 6,
+    "last": 20,
+    "range": "O:T",
+    "typed": 0
+   },
+   "13": {
+    "empty": 0,
+    "first": 15,
+    "formula": 6,
+    "last": 20,
+    "range": "O:T",
+    "typed": 0
+   },
+   "20": {
+    "empty": 0,
+    "first": 15,
+    "formula": 6,
+    "last": 20,
+    "range": "O:T",
+    "typed": 0
+   },
+   "21": {
+    "empty": 0,
+    "first": 15,
+    "formula": 6,
+    "last": 20,
+    "range": "O:T",
+    "typed": 0
+   },
+   "25": {
+    "empty": 0,
+    "first": 15,
+    "formula": 6,
+    "last": 20,
+    "range": "O:T",
+    "typed": 0
+   }
+  },
+  "typed": 0
+ },
+ "Cohort Data - Unified": {
+  "cells": 8,
+  "empty": 0,
+  "formula": 0,
+  "rows": {
+   "27": {
+    "empty": 0,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 1
+   },
+   "28": {
+    "empty": 0,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 1
+   },
+   "29": {
+    "empty": 0,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 1
+   },
+   "30": {
+    "empty": 0,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 1
+   },
+   "31": {
+    "empty": 0,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 1
+   },
+   "32": {
+    "empty": 0,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 1
+   },
+   "33": {
+    "empty": 0,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 1
+   },
+   "34": {
+    "empty": 0,
+    "first": 6,
+    "formula": 0,
+    "last": 6,
+    "range": "F:F",
+    "typed": 1
+   }
+  },
+  "typed": 8
+ },
+ "Curves": {
+  "cells": 1,
+  "empty": 0,
+  "formula": 0,
+  "rows": {
+   "2": {
+    "empty": 0,
+    "first": 3,
+    "formula": 0,
+    "last": 3,
+    "range": "C:C",
+    "typed": 1
+   }
+  },
+  "typed": 1
+ },
+ "FBA Transfers": {
+  "cells": 350,
+  "empty": 92,
+  "formula": 0,
+  "rows": {
+   "10": {
+    "empty": 2,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 5
+   },
+   "11": {
+    "empty": 2,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 5
+   },
+   "12": {
+    "empty": 2,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 5
+   },
+   "13": {
+    "empty": 2,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 5
+   },
+   "14": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "15": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "16": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "17": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "18": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "19": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "20": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "21": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "22": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "23": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "24": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "25": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "26": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "27": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "28": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "29": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "30": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "31": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "32": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "33": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "34": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "35": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "36": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "37": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "38": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "39": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "4": {
+    "empty": 0,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 7
+   },
+   "40": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "41": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "42": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "43": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "44": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "45": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "46": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "47": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "48": {
+    "empty": 7,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 0
+   },
+   "49": {
+    "empty": 7,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 0
+   },
+   "5": {
+    "empty": 2,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 5
+   },
+   "50": {
+    "empty": 7,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 0
+   },
+   "51": {
+    "empty": 7,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 0
+   },
+   "52": {
+    "empty": 7,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 0
+   },
+   "53": {
+    "empty": 7,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 0
+   },
+   "6": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "7": {
+    "empty": 1,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 6
+   },
+   "8": {
+    "empty": 2,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 5
+   },
+   "9": {
+    "empty": 2,
+    "first": 1,
+    "formula": 0,
+    "last": 7,
+    "range": "A:G",
+    "typed": 5
+   }
+  },
+  "typed": 258
+ },
+ "Intl Fcst Inputs": {
+  "cells": 34,
+  "empty": 0,
+  "formula": 0,
+  "rows": {
+   "20": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "21": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "22": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "23": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "24": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "25": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "26": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "27": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "28": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "29": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "30": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "31": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "36": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "37": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "38": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "39": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "4": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "40": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "45": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 3
+   },
+   "46": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 3
+   },
+   "47": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 3
+   },
+   "48": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 3
+   },
+   "49": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "5": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "50": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "8": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   }
+  },
+  "typed": 34
+ },
+ "Month Snapshot": {
+  "cells": 1,
+  "empty": 0,
+  "formula": 0,
+  "rows": {
+   "3": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   }
+  },
+  "typed": 1
+ },
+ "P&L": {
+  "cells": 488,
+  "empty": 73,
+  "formula": 289,
+  "rows": {
+   "11": {
+    "empty": 11,
+    "first": 1,
+    "formula": 42,
+    "last": 75,
+    "range": "A:BW",
+    "typed": 1
+   },
+   "12": {
+    "empty": 11,
+    "first": 1,
+    "formula": 41,
+    "last": 75,
+    "range": "A:BW",
+    "typed": 2
+   },
+   "13": {
+    "empty": 11,
+    "first": 1,
+    "formula": 42,
+    "last": 75,
+    "range": "A:BW",
+    "typed": 1
+   },
+   "14": {
+    "empty": 11,
+    "first": 1,
+    "formula": 3,
+    "last": 75,
+    "range": "A:BW",
+    "typed": 40
+   },
+   "15": {
+    "empty": 9,
+    "first": 1,
+    "formula": 6,
+    "last": 75,
+    "range": "A:BW",
+    "typed": 39
+   },
+   "16": {
+    "empty": 10,
+    "first": 1,
+    "formula": 43,
+    "last": 75,
+    "range": "A:BW",
+    "typed": 1
+   },
+   "17": {
+    "empty": 10,
+    "first": 1,
+    "formula": 43,
+    "last": 75,
+    "range": "A:BW",
+    "typed": 1
+   },
+   "19": {
+    "empty": 0,
+    "first": 22,
+    "formula": 0,
+    "last": 62,
+    "range": "V:BJ",
+    "typed": 41
+   },
+   "198": {
+    "empty": 0,
+    "first": 7,
+    "formula": 6,
+    "last": 16,
+    "range": "G:P",
+    "typed": 0
+   },
+   "199": {
+    "empty": 0,
+    "first": 7,
+    "formula": 6,
+    "last": 16,
+    "range": "G:P",
+    "typed": 0
+   },
+   "200": {
+    "empty": 0,
+    "first": 7,
+    "formula": 6,
+    "last": 16,
+    "range": "G:P",
+    "typed": 0
+   },
+   "201": {
+    "empty": 0,
+    "first": 7,
+    "formula": 6,
+    "last": 16,
+    "range": "G:P",
+    "typed": 0
+   },
+   "202": {
+    "empty": 0,
+    "first": 7,
+    "formula": 6,
+    "last": 16,
+    "range": "G:P",
+    "typed": 0
+   },
+   "8": {
+    "empty": 0,
+    "first": 24,
+    "formula": 39,
+    "last": 62,
+    "range": "X:BJ",
+    "typed": 0
+   }
+  },
+  "typed": 126
+ },
+ "Payback": {
+  "cells": 110,
+  "empty": 74,
+  "formula": 29,
+  "rows": {
+   "11": {
+    "empty": 0,
+    "first": 4,
+    "formula": 0,
+    "last": 4,
+    "range": "D:D",
+    "typed": 1
+   },
+   "112": {
+    "empty": 19,
+    "first": 1,
+    "formula": 1,
+    "last": 21,
+    "range": "A:U",
+    "typed": 1
+   },
+   "113": {
+    "empty": 19,
+    "first": 1,
+    "formula": 1,
+    "last": 21,
+    "range": "A:U",
+    "typed": 1
+   },
+   "12": {
+    "empty": 0,
+    "first": 4,
+    "formula": 1,
+    "last": 4,
+    "range": "D:D",
+    "typed": 0
+   },
+   "127": {
+    "empty": 0,
+    "first": 1,
+    "formula": 20,
+    "last": 21,
+    "range": "A:U",
+    "typed": 1
+   },
+   "58": {
+    "empty": 20,
+    "first": 1,
+    "formula": 1,
+    "last": 21,
+    "range": "A:U",
+    "typed": 0
+   },
+   "59": {
+    "empty": 15,
+    "first": 1,
+    "formula": 3,
+    "last": 21,
+    "range": "A:U",
+    "typed": 3
+   },
+   "7": {
+    "empty": 0,
+    "first": 2,
+    "formula": 1,
+    "last": 2,
+    "range": "B:B",
+    "typed": 0
+   },
+   "8": {
+    "empty": 0,
+    "first": 2,
+    "formula": 1,
+    "last": 2,
+    "range": "B:B",
+    "typed": 0
+   },
+   "9": {
+    "empty": 1,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 0
+   }
+  },
+  "typed": 7
+ },
+ "Purchase Orders": {
+  "cells": 205,
+  "empty": 31,
+  "formula": 37,
+  "rows": {
+   "16": {
+    "empty": 1,
+    "first": 1,
+    "formula": 2,
+    "last": 16,
+    "range": "A:P",
+    "typed": 8
+   },
+   "2": {
+    "empty": 2,
+    "first": 1,
+    "formula": 2,
+    "last": 16,
+    "range": "A:P",
+    "typed": 7
+   },
+   "20": {
+    "empty": 2,
+    "first": 1,
+    "formula": 2,
+    "last": 16,
+    "range": "A:P",
+    "typed": 7
+   },
+   "21": {
+    "empty": 2,
+    "first": 1,
+    "formula": 2,
+    "last": 16,
+    "range": "A:P",
+    "typed": 7
+   },
+   "28": {
+    "empty": 2,
+    "first": 1,
+    "formula": 2,
+    "last": 16,
+    "range": "A:P",
+    "typed": 7
+   },
+   "29": {
+    "empty": 2,
+    "first": 1,
+    "formula": 2,
+    "last": 16,
+    "range": "A:P",
+    "typed": 7
+   },
+   "3": {
+    "empty": 2,
+    "first": 1,
+    "formula": 2,
+    "last": 16,
+    "range": "A:P",
+    "typed": 7
+   },
+   "30": {
+    "empty": 2,
+    "first": 1,
+    "formula": 2,
+    "last": 16,
+    "range": "A:P",
+    "typed": 7
+   },
+   "4": {
+    "empty": 1,
+    "first": 2,
+    "formula": 2,
+    "last": 16,
+    "range": "B:P",
+    "typed": 7
+   },
+   "40": {
+    "empty": 2,
+    "first": 1,
+    "formula": 3,
+    "last": 16,
+    "range": "A:P",
+    "typed": 6
+   },
+   "41": {
+    "empty": 2,
+    "first": 1,
+    "formula": 3,
+    "last": 16,
+    "range": "A:P",
+    "typed": 6
+   },
+   "42": {
+    "empty": 2,
+    "first": 1,
+    "formula": 3,
+    "last": 16,
+    "range": "A:P",
+    "typed": 6
+   },
+   "44": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "45": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "5": {
+    "empty": 1,
+    "first": 2,
+    "formula": 2,
+    "last": 16,
+    "range": "B:P",
+    "typed": 7
+   },
+   "50": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "51": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "54": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "56": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "58": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "6": {
+    "empty": 1,
+    "first": 2,
+    "formula": 2,
+    "last": 16,
+    "range": "B:P",
+    "typed": 7
+   },
+   "60": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "62": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "64": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "66": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "68": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "7": {
+    "empty": 1,
+    "first": 1,
+    "formula": 2,
+    "last": 16,
+    "range": "A:P",
+    "typed": 8
+   },
+   "70": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "72": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "74": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "76": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "78": {
+    "empty": 0,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 1
+   },
+   "8": {
+    "empty": 1,
+    "first": 1,
+    "formula": 2,
+    "last": 16,
+    "range": "A:P",
+    "typed": 8
+   },
+   "80": {
+    "empty": 1,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 0
+   },
+   "81": {
+    "empty": 1,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 0
+   },
+   "84": {
+    "empty": 1,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 0
+   },
+   "85": {
+    "empty": 1,
+    "first": 7,
+    "formula": 0,
+    "last": 7,
+    "range": "G:G",
+    "typed": 0
+   },
+   "9": {
+    "empty": 1,
+    "first": 1,
+    "formula": 2,
+    "last": 16,
+    "range": "A:P",
+    "typed": 8
+   }
+  },
+  "typed": 137
+ },
+ "Spend-ROAS Matrix": {
+  "cells": 3,
+  "empty": 0,
+  "formula": 0,
+  "rows": {
+   "3": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "4": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "7": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   }
+  },
+  "typed": 3
+ },
+ "Term Debt Monthly Paydown": {
+  "cells": 1,
+  "empty": 0,
+  "formula": 0,
+  "rows": {
+   "6": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   }
+  },
+  "typed": 1
+ },
+ "Vendor COGS": {
+  "cells": 182,
+  "empty": 160,
+  "formula": 0,
+  "rows": {
+   "10": {
+    "empty": 5,
+    "first": 2,
+    "formula": 0,
+    "last": 8,
+    "range": "B:H",
+    "typed": 0
+   },
+   "11": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "12": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "13": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "14": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "15": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "16": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "17": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "18": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "19": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "20": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "21": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "22": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "23": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "24": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "25": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "26": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "27": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "28": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "29": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "30": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "31": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "32": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "33": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "34": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "35": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "36": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "37": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "38": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "39": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "4": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 8,
+    "range": "B:H",
+    "typed": 5
+   },
+   "40": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "41": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "42": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "43": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "44": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "45": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "46": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "47": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "48": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "49": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "5": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 8,
+    "range": "B:H",
+    "typed": 5
+   },
+   "50": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "51": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "52": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "53": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "54": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "55": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "56": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "57": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "58": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "59": {
+    "empty": 3,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 0
+   },
+   "6": {
+    "empty": 2,
+    "first": 2,
+    "formula": 0,
+    "last": 8,
+    "range": "B:H",
+    "typed": 3
+   },
+   "7": {
+    "empty": 2,
+    "first": 2,
+    "formula": 0,
+    "last": 8,
+    "range": "B:H",
+    "typed": 3
+   },
+   "8": {
+    "empty": 2,
+    "first": 2,
+    "formula": 0,
+    "last": 8,
+    "range": "B:H",
+    "typed": 3
+   },
+   "9": {
+    "empty": 2,
+    "first": 2,
+    "formula": 0,
+    "last": 8,
+    "range": "B:H",
+    "typed": 3
+   }
+  },
+  "typed": 22
+ },
+ "Warehance Fcst Inputs": {
+  "cells": 37,
+  "empty": 0,
+  "formula": 0,
+  "rows": {
+   "19": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "20": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "21": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "22": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "23": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "24": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "25": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "26": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "27": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "28": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "29": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "30": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "35": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 3,
+    "range": "B:C",
+    "typed": 2
+   },
+   "36": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 3,
+    "range": "B:C",
+    "typed": 2
+   },
+   "37": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 3,
+    "range": "B:C",
+    "typed": 2
+   },
+   "38": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 3,
+    "range": "B:C",
+    "typed": 2
+   },
+   "39": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "4": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "44": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 3
+   },
+   "45": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 3
+   },
+   "46": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 3
+   },
+   "47": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 4,
+    "range": "B:D",
+    "typed": 3
+   },
+   "48": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "49": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   },
+   "7": {
+    "empty": 0,
+    "first": 2,
+    "formula": 0,
+    "last": 2,
+    "range": "B:B",
+    "typed": 1
+   }
+  },
+  "typed": 37
+ }
+}
