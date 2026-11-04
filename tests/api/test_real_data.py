@@ -74,14 +74,19 @@ def test_vita_bull_headline_targets(rc):
     assert m["live_now"] == 141
     assert m["spend"] == pytest.approx(4761591.26, abs=1.0) and m["purchases"] == 54960 and m["revenue"] == pytest.approx(4262522.08, abs=1.0)
     assert m["roas"] == pytest.approx(0.8952, abs=0.001) and m["cpa"] == pytest.approx(86.64, abs=0.01)
-    assert m["spend_7d"] == pytest.approx(17727.98, abs=5.0) and m["purchases_7d"] == pytest.approx(168, abs=1) and m["cpa_7d"] == pytest.approx(105.52, abs=1.5)
+    # the fixed 7-day fields are still served, and window=7d must agree with them
+    w7 = get(rc, "/api/products?window=7d")
+    w7 = next(p for p in w7 if p["slug"] == "vita-bull")["m"]
+    assert w7["spend"] == pytest.approx(17727.98, abs=2.0) and w7["purchases"] == pytest.approx(168, abs=1) and w7["cpa"] == pytest.approx(105.52, abs=0.5)
+    assert w7["spend"] == pytest.approx(m["spend_7d"], abs=0.02) and w7["purchases"] == pytest.approx(m["purchases_7d"], abs=0.02)
 
 
 def test_unmatched_vita_bull_7d(rc):
-    u = get(rc, "/api/products/vita-bull/rollup?level=cluster")["unmatched"]
+    u = get(rc, "/api/products/vita-bull/rollup?level=cluster&window=7d")["unmatched"]
     assert u["spend_7d"] == pytest.approx(3997.48, abs=5.0) and u["families"] == 21
     um = get(rc, "/api/products/vita-bull/unmatched?window=7d")
-    assert um["total"]["spend"] == pytest.approx(u["spend_7d"], abs=1.0)
+    assert um["total"]["spend"] == pytest.approx(3997.48, abs=2.0) and um["total"]["families"] == 21
+    assert um["total"]["spend"] == pytest.approx(u["spend_7d"], abs=1.0) == pytest.approx(u["window_spend"], abs=1.0)
     assert any(r["meta_family"].lower().startswith("brief2-2-bull-398") for r in um["rows"])
 
 
@@ -150,6 +155,56 @@ def test_every_rollup_row_matches_the_sheet(rc):
     # rows add up to the total (no family is split across clusters except by design)
     assert sum(r["m"]["spend"] for r in got["rows"]) == pytest.approx(t["spend"], abs=0.02)
     assert sum(r["m"]["spend_share"] for r in got["rows"]) == pytest.approx(1.0, abs=1e-4)
+
+
+def test_window_7d_matches_the_sheets_last_7d_columns_at_every_level(rc):
+    """The UI has no fixed 7d columns any more: window=7d must reproduce the sheet's 'Spend, last 7d' / 'CPA, last 7d' at every level."""
+    cluster, icp, pain, total = snapshot_tables()
+
+    def check7(m, want, label):
+        sp7, cpa7 = want[7], want[8]
+        assert m["spend"] == pytest.approx(sp7, abs=2.0), (label, "7d spend", m["spend"], sp7)
+        if sp7 and cpa7:
+            assert m["cpa"] == pytest.approx(cpa7, abs=0.5), (label, "7d cpa", m["cpa"], cpa7)
+            assert m["purchases"] == pytest.approx(round(sp7 / cpa7), abs=1), (label, "7d purchases")
+        elif not sp7:
+            assert m["purchases"] == 0 or m["spend"] < 2.0, label
+        assert m["spend"] == pytest.approx(m["spend_7d"], abs=0.02), (label, "window=7d equals the fixed 7d field")
+
+    got = get(rc, "/api/products/vita-bull/rollup?level=cluster&window=7d")
+    assert got["window_info"]["label"].endswith("7 days")
+    t = got["total"]["m"]
+    assert t["spend"] == pytest.approx(total[7], abs=2.0) and t["purchases"] == pytest.approx(168, abs=1) and t["cpa"] == pytest.approx(total[8], abs=0.5)
+    for r in got["rows"]:
+        if (r["label"],) in cluster:
+            check7(r["m"], cluster[(r["label"],)], f"cluster {r['label']}")
+    for c in {k[0] for k in icp}:
+        for r in get(rc, f"/api/products/vita-bull/rollup?level=icp&cluster={quote(c)}&window=7d")["rows"]:
+            if (c, r["label"]) in icp:
+                check7(r["m"], icp[(c, r["label"])], f"icp {c}/{r['label']}")
+    n = 0
+    for (c, i) in {(k[0], k[1]) for k in pain}:
+        for r in get(rc, f"/api/products/vita-bull/rollup?level=pain&cluster={quote(c)}&icp={quote(i)}&window=7d")["rows"]:
+            if (c, i, r["label"]) in pain:
+                check7(r["m"], pain[(c, i, r["label"])], f"pain {c}/{i}/{r['label']}")
+                n += 1
+    assert n == len(pain)
+    # families level: the sheet's tag_map has per-ad 7d spend / purchases (cols 'Spend Last 7 Days', 'Purchases Last 7 Days')
+    tag_map = json.load(open(os.path.expanduser("~/lonvera-tag-explorer-data/snapshot-2026-11-03/tag_map.json")))
+    hdr = tag_map[1]
+    ix = {h: i for i, h in enumerate(hdr)}
+    want = {}
+    for r in tag_map[2:]:
+        if len(r) > ix["Purchases Last 7 Days"] and r[ix["Ad Family"]] and isnum(r[ix["Spend Last 7 Days"]]):
+            want[r[ix["Ad Family"]].strip().lower()] = (float(r[ix["Spend Last 7 Days"]]), float(r[ix["Purchases Last 7 Days"]]))
+    fam = {r["family_key"]: r["m"] for r in get(rc, "/api/products/vita-bull/families?window=7d", budget=2000)["rows"] if r["counted_here"]}
+    checked = 0
+    for fk, (sp, pu) in want.items():
+        if sp > 0 and fk in fam:
+            assert fam[fk]["spend"] == pytest.approx(sp, abs=1.0), fk
+            assert fam[fk]["purchases"] == pytest.approx(pu, abs=0.6), fk
+            checked += 1
+    assert checked > 50
 
 
 def test_snapshot_totals_row_matches(rc):

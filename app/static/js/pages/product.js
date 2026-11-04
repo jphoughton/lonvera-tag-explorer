@@ -1,4 +1,4 @@
-import { h, enc, fmt, href, apiWindow, globalParams, navigate, confBadge, empty, thumb, stageBadge, liveDot, pick, setParams, getRowMode, setRowMode, setViewStateProvider, cmpView, onCmpRefresh } from '../util.js';
+import { h, enc, fmt, stageSet, href, apiWindow, globalParams, navigate, confBadge, empty, thumb, stageBadge, liveDot, pick, setParams, getRowMode, setRowMode, setViewStateProvider, cmpView, onCmpRefresh } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { metricColumns, fixTotal } from '../columns.js';
@@ -258,8 +258,10 @@ async function campaignsView(ctx, slug) {
   document.title = `Campaigns · ${product.name} · Tag Explorer`;
 
   // stage cards (A, and B when comparing)
-  const totalSpend = (d.by_stage || []).reduce((a, s) => a + (s.spend || 0), 0);
-  const cards = (d.by_stage || []).map((s) => {
+  const included = stageSet(p);
+  const stageRows = (d.by_stage || []).filter((s) => included.has(s.stage));
+  const totalSpend = stageRows.reduce((a, s) => a + (s.spend || 0), 0);
+  const cards = stageRows.map((s) => {
     const c = h('div', { class: 'stagecard stage-' + s.stage, 'data-stage': s.stage },
       h('div', { class: 'stagecard-head' }, stageBadge(s.stage), h('span', { class: 'muted small' }, `${fmt.int(s.campaigns)} campaigns · ${fmt.int(s.ads)} ads`)),
       h('div', { class: 'stagecard-main' }, h('span', { class: 'big' }, fmt.money(s.spend)), h('span', { class: 'muted' }, totalSpend > 0 ? ` · ${fmt.pct((s.spend || 0) / totalSpend)} of spend` : '')),
@@ -267,15 +269,14 @@ async function campaignsView(ctx, slug) {
       h('div', { class: 'stagecard-sub' },
         h('span', null, 'ROAS ', h('b', null, fmt.roas(s.roas)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.roas(s.cmp.roas)), ' ', deltaSpan(s.delta && s.delta.roas_pct, 'up')] : null),
         h('span', null, 'CPA ', h('b', null, fmt.money(s.cpa)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.money(s.cmp.cpa)), ' ', deltaSpan(s.delta && s.delta.cpa_pct, 'down')] : null),
-        h('span', null, 'Purchases ', h('b', null, fmt.int(s.purchases)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.int(s.cmp.purchases)), ' ', deltaSpan(s.delta && s.delta.purchases_pct, 'up')] : null),
-        h('span', null, 'Spend 7d ', h('b', null, fmt.money(s.spend_7d)))));
+        h('span', null, 'Purchases ', h('b', null, fmt.int(s.purchases)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.int(s.cmp.purchases)), ' ', deltaSpan(s.delta && s.delta.purchases_pct, 'up')] : null)));
     return c;
   });
 
   const canvas = h('canvas', { id: 'stage-chart', role: 'img', 'aria-label': 'Daily spend by stage' });
   const chartBox = h('div', { class: 'chartbox' }, canvas);
 
-  const flat = metricColumns({ getM: (r) => r, getTotalM: (t) => fixTotal(t), keys: ['spend', 'spend_share', 'purchases', 'revenue', 'roas', 'cpa', 'spend_7d'] });
+  const flat = metricColumns({ getM: (r) => r, getTotalM: (t) => fixTotal(t), keys: ['spend', 'spend_share', 'purchases', 'revenue', 'roas', 'cpa'] });
   const cols = [
     { key: 'name', label: 'Campaign', sticky: true, cls: 'labelcol', sort: (r) => r.name, total: () => 'Total', cell: (r) => h('a', { href: href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }), class: 'rowlink', title: r.name }, r.name) },
     { key: 'account', label: 'Account', sort: (r) => r.account, cell: (r) => fmt.text(r.account) },

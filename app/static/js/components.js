@@ -135,7 +135,7 @@ export async function familyAdsNode(slug, p, familyKey, signal, extra = {}) {
 export function unmatchedPanel(slug, p, preloaded, signal) {
   const summary = preloaded && preloaded.total;
   const bits = summary
-    ? ` · ${fmt.money(summary.spend)} spend · ${fmt.money(summary.spend_7d)} last 7d · ${fmt.int(summary.families)} families`
+    ? ` · ${fmt.money(summary.spend)} spend · ${fmt.int(summary.families)} families`
     : '';
   const body = h('div', { class: 'panel-body' });
   const details = h('details', { class: 'panel', id: 'unmatched' },

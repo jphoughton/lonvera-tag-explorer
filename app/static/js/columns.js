@@ -23,9 +23,6 @@ const DEFS = [
   ['revenue', 'Revenue', 'money', 'Meta-reported conversion value in the selected window'],
   ['roas', 'ROAS', 'roas', 'Revenue / spend'],
   ['cpa', 'CPA', 'money', 'Spend / purchases'],
-  ['spend_7d', 'Spend 7d', 'money', 'Spend over the last 7 days of data (ignores the window)'],
-  ['cpa_7d', 'CPA 7d', 'money', 'CPA over the last 7 days of data (ignores the window)'],
-  ['active_ads', 'Active ads', 'int', 'Families with spend > 0 in the selected window'],
   ['testing_spend', 'Testing $', 'money', 'Spend in Testing campaigns (selected window)', 'sep'],
   ['scaling_spend', 'Scaling $', 'money', 'Spend in Scaling campaigns (selected window)'],
   ['testing_pct', 'Testing %', 'pct', 'Testing share of classified spend'],
@@ -101,14 +98,14 @@ export function metricColumns({ getM = (r) => r.m, getTotalM = (t) => t && t.m, 
     };
   });
 }
-export const FLAT_KEYS = ['spend', 'spend_share', 'purchases', 'revenue', 'roas', 'cpa', 'spend_7d'];
+export const FLAT_KEYS = ['spend', 'spend_share', 'purchases', 'revenue', 'roas', 'cpa'];
 
 // ---- helpers for client-side totals of flat rows ----
 const sumK = (rows, f) => rows.reduce((a, r) => a + (f(r) || 0), 0);
 export function pctDelta(a, b) { return isNum(a) && isNum(b) && b !== 0 ? (a - b) / b : null; }
 // totals (with compare) from flat metric rows, recomputed from sums
 export function flatTotal(rows, { days, bdays } = {}) {
-  const t = { spend: sumK(rows, (r) => r.spend), purchases: sumK(rows, (r) => r.purchases), revenue: sumK(rows, (r) => r.revenue), spend_7d: sumK(rows, (r) => r.spend_7d) };
+  const t = { spend: sumK(rows, (r) => r.spend), purchases: sumK(rows, (r) => r.purchases), revenue: sumK(rows, (r) => r.revenue) };
   t.roas = t.spend > 0 ? t.revenue / t.spend : null;
   t.cpa = t.purchases > 0 ? t.spend / t.purchases : null;
   t.spend_share = 1;

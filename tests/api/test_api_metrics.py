@@ -263,3 +263,10 @@ def test_totals_equal_sum_of_rows_everywhere(client, fx):
             assert d["total"]["m"][k] == pytest.approx(sum(r["m"][k] for r in d["rows"]), abs=0.011), (w, k)
         t = d["total"]["m"]
         assert t["roas"] is None or t["roas"] == pytest.approx(t["revenue"] / t["spend"], abs=1e-3)
+
+
+@pytest.mark.parametrize("extra", ["", "window=7d", "window=30d&stage=testing,unclassified", "from=2026-10-10&to=2026-10-20", "window=7d&compare=prev"])
+def test_rollup_unmatched_summary_follows_the_window(client, extra):
+    u = get_ok(client, "/api/products/vita-bull/rollup?" + extra)["unmatched"]
+    panel = get_ok(client, "/api/products/vita-bull/unmatched?" + extra)["total"]
+    assert u["window_spend"] == pytest.approx(panel["spend"], abs=0.006) and u["window_families"] == panel["families"]

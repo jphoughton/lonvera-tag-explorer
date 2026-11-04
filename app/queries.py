@@ -648,7 +648,9 @@ def products_list(conn, meta: DataMeta, w: WindowSpec) -> list[dict]:
     return out
 
 
-def unmatched_summary(conn, product_id: int) -> dict:
+def unmatched_summary(conn, product_id: int, meta: DataMeta | None = None, w: WindowSpec | None = None) -> dict:
+    """Meta spend that is not on the tracker. spend_7d / spend_30d / live_families / families* are fixed windows (from unmatched_meta);
+    window_spend / window_families follow the selected window + stage filter (since launch = every day held)."""
     r = row_of(conn, """
         SELECT COALESCE(sum(spend_7d), 0) AS spend_7d, COALESCE(sum(spend_30d), 0) AS spend_30d,
                count(*) FILTER (WHERE live) AS live_families,
@@ -656,8 +658,19 @@ def unmatched_summary(conn, product_id: int) -> dict:
                count(*) FILTER (WHERE spend_30d > 0) AS families_30d,
                count(*) FILTER (WHERE spend_all > 0) AS families_all
         FROM unmatched_meta WHERE product_id = %s""", (product_id,))
-    return {"spend_7d": f2(r["spend_7d"]), "spend_30d": f2(r["spend_30d"]), "live_families": int(r["live_families"]),
-            "families": int(r["families"]), "families_30d": int(r["families_30d"]), "families_all": int(r["families_all"])}
+    out = {"spend_7d": f2(r["spend_7d"]), "spend_30d": f2(r["spend_30d"]), "live_families": int(r["live_families"]),
+           "families": int(r["families"]), "families_30d": int(r["families_30d"]), "families_all": int(r["families_all"])}
+    if meta is not None and w is not None:
+        wf, wt = w.span(meta)
+        x = row_of(conn, """
+            SELECT COALESCE(sum(ad.spend), 0) AS spend, count(DISTINCT ad.meta_family_key) FILTER (WHERE ad.spend > 0) AS families
+            FROM unmatched_meta um JOIN ad_daily ad ON ad.meta_family_key = um.meta_family_key
+            LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
+            WHERE um.product_id = %(pid)s AND ad.day BETWEEN %(wf)s AND %(wt)s
+              AND (CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END) = ANY(%(stages)s)""",
+                   {"pid": product_id, "wf": wf, "wt": wt, "stages": w.stages})
+        out.update(window_spend=f2(x["spend"]), window_families=int(x["families"]))
+    return out
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -753,7 +766,7 @@ def rollup(conn, meta: DataMeta, w: WindowSpec, product: dict, level: str, clust
     rows.sort(key=lambda r: r["label"] == UNTAGGED)          # stable: (untagged) rows last
     total_m = shape_m(total_row, w)
     apply_shares([r["m"] for r in rows] + [total_m], total_m)
-    return {"rows": rows, "total": {"m": total_m}, "unmatched": unmatched_summary(conn, product["id"])}
+    return {"rows": rows, "total": {"m": total_m}, "unmatched": unmatched_summary(conn, product["id"], meta, w)}
 
 
 # --------------------------------------------------------------------------------------------------------------------
