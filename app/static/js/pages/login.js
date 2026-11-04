@@ -5,7 +5,7 @@ import { showControls, clearStatus } from '../controls.js';
 export async function loginPage(ctx) {
   showControls(false);
   clearStatus();
-  document.title = 'Sign in · Tag Explorer';
+  document.title = 'Sign in · Marketing metrics';
   // no logins on this deployment (AUTH_DISABLED): there is no login page, go to the app
   try {
     const st = await api('/api/status', null, { signal: ctx.signal });
@@ -19,7 +19,7 @@ export async function loginPage(ctx) {
   const pw = h('input', { type: 'password', id: 'password', name: 'password', autocomplete: 'current-password', required: true, autofocus: true });
   const btn = h('button', { type: 'submit', class: 'btn primary' }, 'Sign in');
   const form = h('form', { class: 'login-card' },
-    h('h1', 'Tag Explorer'),
+    h('h1', 'Marketing metrics'),
     h('label', { for: 'username' }, 'Username'),
     user,
     h('label', { for: 'password' }, 'Password'),

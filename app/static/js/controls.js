@@ -1,5 +1,5 @@
 // App header (Back, brand, data-through, logout) and the global range / stage / compare controls. State lives in the URL.
-import { h, navigate, setParams, fmt, isNum, currentParams, stageSet, stageParam, STAGES, hasDateWindow, compareOn, cmpView, applyCompareState, refreshCmp, qs, cleanParams, srcFromParams, applySourceState, srcView } from './util.js';
+import { h, navigate, setParams, href, globalParams, fmt, isNum, currentParams, stageSet, stageParam, STAGES, hasDateWindow, compareOn, cmpView, applyCompareState, refreshCmp, qs, cleanParams, srcFromParams, applySourceState, srcView } from './util.js';
 import { loadTieout } from './tieout.js';
 import { api, AuthError } from './api.js';
 
@@ -12,6 +12,8 @@ let cmpSel, cfromEl, ctoEl, cmpCustomBox, perDayWrap, perDayCb, cerrEl;
 let presetBtns = [], stageBtns = {};
 let activeBtn, activeCountEl;
 let srcBtns = {}, basisBtns = {}, basisCtl, srcBannerEl, srcTextEl, tieBtn, tiePanel;
+let channelBtns = {}, stageCtl;
+const isGoogle = () => /^\/google\/?$/.test(location.pathname);
 let status = null;
 let uncVisible = false;
 let pendingNote = null;
@@ -38,8 +40,8 @@ export function buildShell({ onBack }) {
   backBtn = h('button', { type: 'button', class: 'btn back', id: 'back', title: 'Back to the previous view', onclick: onBack }, '← Back');
   topbar.replaceChildren(h('div', { class: 'topbar-in' },
     backBtn,
-    h('a', { class: 'brand', href: '/' }, 'Tag Explorer'),
-    h('a', { class: 'navlink', href: '/' }, 'Products'),
+    h('a', { class: 'brand', href: '/' }, 'Lonvera'),
+    h('a', { class: 'navlink', href: '/' }, 'Marketing metrics'),
     h('span', { class: 'spacer' }),
     statusEl,
     userEl,
@@ -87,6 +89,12 @@ export function buildShell({ onBack }) {
   perDayCb.addEventListener('change', onPerDay);
   perDayWrap = h('label', { class: 'check', id: 'perday-wrap', hidden: true }, perDayCb, ' Per day');
 
+  channelBtns = {};
+  for (const [key, text] of [['meta', 'Meta'], ['google', 'Google']]) {
+    const b = h('button', { type: 'button', class: 'seg', 'data-channel': key, 'aria-pressed': String(key === 'meta') }, text);
+    b.addEventListener('click', () => goChannel(key));
+    channelBtns[key] = b;
+  }
   srcBtns = {};
   for (const [key, text] of [['meta', 'Meta'], ['upstack', 'Upstack']]) {
     const b = h('button', { type: 'button', class: 'seg', 'data-source': key, 'aria-pressed': String(key === 'meta') }, text);
@@ -123,11 +131,12 @@ export function buildShell({ onBack }) {
 
   controls.replaceChildren(h('div', { class: 'controls-in' },
     h('div', { class: 'ctl-row' },
+      h('div', { class: 'ctl', id: 'channel-ctl' }, h('span', { class: 'ctl-name' }, 'Channel'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Channel' }, Object.values(channelBtns))),
       h('div', { class: 'ctl', id: 'source-ctl' }, h('span', { class: 'ctl-name' }, 'Numbers from'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Data source' }, Object.values(srcBtns))),
       basisCtl,
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Range'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Date range' }, presetBtns)),
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Custom'), fromEl, h('span', { class: 'muted' }, '–'), toEl, apply, errEl),
-      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Stage'), h('span', { class: 'chips', role: 'group', 'aria-label': 'Stage' }, Object.values(stageBtns), activeBtn), activeCountEl),
+      (stageCtl = h('div', { class: 'ctl', id: 'stage-ctl' }, h('span', { class: 'ctl-name' }, 'Stage'), h('span', { class: 'chips', role: 'group', 'aria-label': 'Stage' }, Object.values(stageBtns), activeBtn), activeCountEl)),
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Compare to'), cmpSel, cmpCustomBox, perDayWrap),
     ),
     h('div', { class: 'ctl-row second' }, labelEl),
@@ -238,6 +247,7 @@ export function syncControls(p) {
   const win = custom ? null : (p.window || 'launch');
   presetBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.window === win)));
   syncStageChips(p);
+  syncChannel();
   syncSource(p);
   activeBtn.setAttribute('aria-pressed', String(p.active === '1'));
   activeCountEl.textContent = '';
@@ -260,6 +270,21 @@ export function syncControls(p) {
   }
 }
 
+// Channel switch: Meta pages (/) and Google (/google). The range, comparison and numbers choice carry over; stage, Active only and the chart picks are Meta-only.
+const META_ONLY_KEYS = ['stage', 'active', 'tb', 'tl', 'tg', 'ts'];
+function goChannel(key) {
+  const p = { ...globalParams(currentParams()) };
+  for (const k of META_ONLY_KEYS) delete p[k];
+  navigate(href(key === 'google' ? '/google' : '/', p));
+}
+function syncChannel() {
+  const g = isGoogle();
+  for (const [k, b] of Object.entries(channelBtns)) b.setAttribute('aria-pressed', String(k === (g ? 'google' : 'meta')));
+  if (stageCtl) stageCtl.hidden = g;
+  if (tieBtn) { tieBtn.hidden = g; if (g) { tiePanel.hidden = true; tieBtn.setAttribute('aria-expanded', 'false'); } }
+  if (srcBtns.meta) { srcBtns.meta.textContent = g ? 'Google' : 'Meta'; srcBtns.meta.title = g ? "Google's own reporting, delivered through Upstack's ad-platform feed" : "Meta's own reporting (as the ad platform attributes purchases)"; }
+}
+
 const META_SUMMARY = "Numbers: Meta's own reporting. Purchases and revenue are what Meta attributes to each ad (returning customers included). Switch to Upstack to read the same ads on Upstack's attribution.";
 const sourceUp = () => !!(status && status.sources && status.sources.upstack);
 // the switch, the Count sub-switch (Upstack only) and the one-line statement of what the numbers are; the text is refined by every response's window_info.source
@@ -273,9 +298,8 @@ function syncSource(p) {
   const avail = !sourceUp() || status.sources.upstack.available;
   srcBtns.upstack.disabled = !avail && !up;
   srcBtns.upstack.title = avail ? "Upstack's attribution: new customers or all orders credited to each ad (any-click, 30-day window)" : 'Upstack data is not loaded yet';
-  srcBtns.meta.title = "Meta's own reporting (as the ad platform attributes purchases)";
   srcBannerEl.className = 'source-banner ' + srcView.key + (srcBannerEl.classList.contains('open') ? ' open' : '');
-  setSrcText(up ? srcView.label + '. ' : null, up ? (srcView.summary || '') : META_SUMMARY);
+  setSrcText(up ? srcView.label + '. ' : null, up ? (srcView.summary || '') : (isGoogle() ? (srcView.summary || "Google's own reporting, delivered through Upstack's ad-platform feed.") : META_SUMMARY));
 }
 
 function rangeText(info) {
@@ -289,7 +313,7 @@ function rangeText(info) {
 // a = window_info, b = compare_info (or null). opts.unclassified: the window has unclassified spend (shows that chip)
 export function setRangeInfo(p, a, b, { unclassified = false } = {}) {
   applyCompareState(p, a, b);
-  if (a && a.source) { applySourceState(a); if (srcView.key === 'upstack') setSrcText(srcView.label + '. ', `${srcView.summary || ''} ${srcView.note || ''}`.trim()); else setSrcText(null, META_SUMMARY); }
+  if (a && a.source) { applySourceState(a); if (srcView.key === 'upstack') setSrcText(srcView.label + '. ', `${srcView.summary || ''} ${srcView.note || ''}`.trim()); else setSrcText(null, a.source.summary || META_SUMMARY); }
   const foot = document.getElementById('source');
   if (foot && a && a.source && a.source.key === 'upstack') foot.textContent = `Numbers: Upstack attribution (${a.source.model}), through ${fmt.day(a.source.through)}; spend, clicks and impressions: Meta Marketing API.`;
   else if (foot && status) foot.textContent = 'Source: Meta Marketing API' + (status.last_refresh && status.last_refresh.finished_at ? ', refreshed ' + fmt.dateTime(status.last_refresh.finished_at) : '') + (status.data_through ? ' · data through ' + fmt.day(status.data_through) : '');

@@ -31,7 +31,7 @@ function addShares(list, ta) {
 export async function productsPage(ctx) {
   const { params: p, signal } = ctx;
   const G = globalParams(p);
-  document.title = 'Products · Tag Explorer';
+  document.title = 'Marketing metrics';
   const [data, st] = await Promise.all([api('/api/products', { ...apiWindow(p), envelope: 1 }, { signal }), ensureStatus(signal)]);
   if (!ctx.alive()) return;
   const list = Array.isArray(data) ? data : (data.rows || data.products || []);
@@ -98,7 +98,7 @@ export async function productsPage(ctx) {
   });
   onCmpRefresh(() => t.refresh());
   ctx.mount(h('div', { class: 'page' },
-    h('div', { class: 'pagehead' }, h('h1', 'Products')),
+    h('div', { class: 'pagehead' }, h('h1', 'Marketing metrics'), h('div', { class: 'note-line' }, 'Meta, by product')),
     legendLine(),
     panel.el,
     h('div', { class: 'tablehead' }, columnsChips()),

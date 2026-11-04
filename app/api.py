@@ -6,7 +6,7 @@ import re
 
 from flask import Blueprint, Response, current_app, jsonify, request
 
-from . import auth, db, preview as pv, queries as q
+from . import auth, db, google as gg, preview as pv, queries as q
 
 bp = Blueprint("api", __name__)
 
@@ -226,6 +226,34 @@ def source_tieout():
     res = q.source_tieout(conn, meta, df, dtt)
     res["window_info"] = w.info(meta)
     return jsonify(res)
+
+
+def _google_ctx():
+    """(conn, google data span, window) for the Google endpoints: the window is parsed against Google's own data span, never Meta's."""
+    conn = db.get_conn()
+    meta = q.load_meta(conn)
+    source, _ = q.parse_source(request.args)
+    gmeta = gg.google_meta(meta, source)
+    return conn, gmeta, q.parse_window(request.args, gmeta)
+
+
+@bp.get("/api/google/rollup")
+def google_rollup():
+    """Google campaigns by campaign type (group=type) or by campaign (group=campaign, optional type=). Upstack-fed, campaign grain; see app/google.py."""
+    conn, gmeta, w = _google_ctx()
+    info = gg.window_info(w, gmeta)
+    res = gg.rollup(conn, gmeta, w, (_arg("group") or "type").lower(), _arg("type"))
+    return jsonify({"channel": "google", "window": info, "window_info": info, "compare_info": w.compare_info(gmeta), **res})
+
+
+@bp.get("/api/google/trend")
+def google_trend():
+    conn, gmeta, w = _google_ctx()
+    info = gg.window_info(w, gmeta)
+    res = gg.trend(conn, gmeta, w, (_arg("grain") or "day").lower(), _arg("type"), _arg("campaign"))
+    if w.is_launch:
+        info["note"] = f"Trend covers every day held ({q._fmt_day(gmeta.daily_start, True)} – {q._fmt_day(gmeta.data_through, True)})." + (f" {info['note']}" if info["note"] else "")
+    return jsonify({"channel": "google", "window_info": info, "compare_info": w.compare_info(gmeta), **res})
 
 
 @bp.get("/media/<aint:asset_id>")

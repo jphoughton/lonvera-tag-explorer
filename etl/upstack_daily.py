@@ -17,7 +17,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
 
-from . import db, upstack_api as api, upstack_build
+from . import db, upstack_api as api, upstack_build, upstack_google
 
 PT = ZoneInfo("America/Los_Angeles")
 DEFAULT_DAYS = 7
@@ -148,8 +148,26 @@ def run(since: dt.date, until: dt.date, workers: int = 4, dry_run: bool = False,
 def build_only() -> dict:
     with db.connect() as conn:
         st = upstack_build.build(conn)
+        g = upstack_google.build(conn)
         conn.commit()
-    return {"build": st}
+    return {"build": st, "google": g}
+
+
+def run_google(since: dt.date, until: dt.date, workers: int, dry_run: bool, skip_done: bool, channel_since: dt.date | None = None,
+               client: api.Client | None = None) -> dict:
+    """Google side (own transaction, so a Google failure never rolls back the Meta side and vice versa)."""
+    client = client or api.Client()
+    conn = db.connect()
+    try:
+        st = upstack_google.run(conn, client, since, until, workers, dry_run, skip_done, channel_since)
+        if not dry_run:
+            conn.commit()
+        return st
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def main() -> None:
@@ -161,21 +179,41 @@ def main() -> None:
     ap.add_argument("--skip-done", action="store_true", help="skip days already in upstack_attr_days (resumable backfill)")
     ap.add_argument("--build-only", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--google-since", help="Google backfill start (YYYY-MM-DD): attribution from this day, channel feed from the same day; default = --since")
+    ap.add_argument("--google-only", action="store_true", help="skip the Meta side")
+    ap.add_argument("--no-google", action="store_true", help="skip the Google side")
     a = ap.parse_args()
     until = dt.date.fromisoformat(a.until) if a.until else yesterday_pt()
     since = dt.date.fromisoformat(a.since) if a.since else until - dt.timedelta(days=a.days - 1)
+    g_since = dt.date.fromisoformat(a.google_since) if a.google_since else since
     with db.JobRun("upstack_daily") as run_:
+        res: dict = {}
+        errors: list[Exception] = []
         if a.build_only:
             res = build_only()
         else:
-            res = run(since, until, a.workers, a.dry_run, a.skip_done)
+            if not a.google_only:                                              # Meta side and Google side fail independently; both are attempted
+                try:
+                    res = run(since, until, a.workers, a.dry_run, a.skip_done)
+                except Exception as e:                                         # noqa: BLE001
+                    db.log("upstack (Meta) FAILED:", db.scrub(e))
+                    errors.append(e)
+            if not a.no_google:
+                try:
+                    res["google"] = run_google(g_since, until, a.workers, a.dry_run, a.skip_done)
+                except Exception as e:                                         # noqa: BLE001
+                    db.log("upstack (Google) FAILED:", db.scrub(e))
+                    errors.append(e)
         run_.stats = res
         b = res.get("build") or {}
         run_.rows_written = b.get("ad_daily_rows")
         if b.get("through"):
             run_.data_through = dt.date.fromisoformat(b["through"])
-        db.log("upstack_daily ok:", {k: v for k, v in res.items() if k != "build"}, {k: v for k, v in b.items() if k not in ("derived", "match_rules")})
+        db.log("upstack_daily:", {k: v for k, v in res.items() if k not in ("build", "google")}, {k: v for k, v in b.items() if k not in ("derived", "match_rules")})
         db.log("  match rules:", b.get("match_rules"))
+        db.log("  google:", res.get("google"))
+        if errors:
+            raise errors[0] if isinstance(errors[0], db.JobFailed) else db.JobFailed("; ".join(db.scrub(e)[:200] for e in errors))
 
 
 if __name__ == "__main__":

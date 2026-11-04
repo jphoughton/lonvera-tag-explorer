@@ -8,12 +8,14 @@ import { loginPage } from './js/pages/login.js';
 import { productsPage } from './js/pages/products.js';
 import { productPage } from './js/pages/product.js';
 import { adPage } from './js/pages/ad.js';
+import { googlePage } from './js/pages/google.js';
 
 const routes = [
   { re: /^\/login\/?$/, page: loginPage, public: true },
   { re: /^\/?$/, page: productsPage },
   { re: /^\/p\/([^/]+)\/?$/, page: productPage },
   { re: /^\/ad\/([^/]+)\/?$/, page: adPage },
+  { re: /^\/google\/?$/, page: googlePage },
 ];
 
 let token = 0;
@@ -45,6 +47,7 @@ function parentUrl() {
     if (p.cluster) return href(base, G);
     return href('/', G);
   }
+  if (/^\/google\/?$/.test(path)) return p.type ? href('/google', G) : href('/', G);
   if (/^\/ad\//.test(path)) return getParentHint() || href('/', G);
   return null;
 }
@@ -184,9 +187,9 @@ document.addEventListener('click', (e) => {
 });
 
 buildShell({ onBack: goBack });
-{ // top-level sections: Tags (this app) and Projections (separate page, same bar)
+{ // top-level sections: Marketing metrics (this app) and Projections (separate page, same bar)
   const brand = document.querySelector('#topbar .brand'); if (brand) brand.textContent = 'Lonvera';
-  const tags = document.querySelector('#topbar .navlink'); tags.textContent = 'Tags';
+  const tags = document.querySelector('#topbar .navlink'); tags.textContent = 'Marketing metrics';
   tags.after(h('a', { class: 'navlink', href: '/projection', target: '_self' }, 'Projections'));
 }
 render({ restore: true });

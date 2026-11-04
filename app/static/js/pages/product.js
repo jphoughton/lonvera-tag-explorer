@@ -51,7 +51,7 @@ function pageHead(product, slug, p, active) {
 function tagCrumbs(slug, p, product, extra = []) {
   const G = globalParams(p);
   const path = pagePath(slug);
-  const crumbs = [{ label: 'Products', href: href('/', G) }, { label: product.name, href: href(path, G) }];
+  const crumbs = [{ label: 'Marketing metrics', href: href('/', G) }, { label: product.name, href: href(path, G) }];
   if (p.cluster) crumbs.push({ label: p.cluster, href: href(path, { ...G, cluster: p.cluster }) });
   if (p.icp) crumbs.push({ label: p.icp, href: href(path, { ...G, cluster: p.cluster, icp: p.icp }) });
   if (p.pain) crumbs.push({ label: p.pain, href: href(path, { ...G, cluster: p.cluster, icp: p.icp, pain: p.pain }) });
@@ -81,7 +81,7 @@ async function tagsView(ctx, slug) {
   ]);
   if (!ctx.alive()) return;
   report(p, data, hasUnclassified(data.total && data.total.m));
-  document.title = `${product.name} · Tag Explorer`;
+  document.title = `${product.name} · Marketing metrics`;
 
   const first = ['Market cluster', 'ICP', 'Pain point', 'Creative'][rootLevel];
   const title = rootLevel === 0 ? 'Market clusters' : rootLevel === 1 ? `ICPs in ${p.cluster}` : rootLevel === 2 ? `Pain points in ${p.icp}` : `Creatives in ${p.pain}`;
@@ -121,7 +121,7 @@ async function familiesFlatView(ctx, slug) {
   ]);
   if (!ctx.alive()) return;
   report(p, data, hasUnclassified(data.total && data.total.m));
-  document.title = `${product.name} · Tag Explorer`;
+  document.title = `${product.name} · Marketing metrics`;
   const linemap = product.tag_set === 'linemap';
   const rkey = (r) => r.family_key + '|' + (r.ad_ids || []).join(',');
   let filterUi = null;
@@ -213,9 +213,9 @@ async function adsView(ctx, slug) {
   ]);
   if (!ctx.alive()) return;
   report(p, d, false);
-  document.title = `Ads · ${product.name} · Tag Explorer`;
+  document.title = `Ads · ${product.name} · Marketing metrics`;
 
-  const crumbs = [{ label: 'Products', href: href('/', G) }, { label: product.name, href: href(path, G) }];
+  const crumbs = [{ label: 'Marketing metrics', href: href('/', G) }, { label: product.name, href: href(path, G) }];
   const firstRow = (d.rows || []).find((r) => r.ad_id != null);
   if (p.campaign_id) {
     crumbs.push({ label: 'Campaigns', href: href(path, { ...G, view: 'campaigns' }) });
@@ -283,7 +283,7 @@ async function campaignsView(ctx, slug) {
   ]);
   if (!ctx.alive()) return;
   report(p, d, (daily || []).some((x) => x.unclassified > 0));
-  document.title = `Campaigns · ${product.name} · Tag Explorer`;
+  document.title = `Campaigns · ${product.name} · Marketing metrics`;
 
   // stage cards (A, and B when comparing)
   const included = stageSet(p);
@@ -337,7 +337,7 @@ async function campaignsView(ctx, slug) {
   setViewStateProvider(() => ({ pins: campPins.list(), tscroll: { top: t.wrap.scrollTop, left: t.wrap.scrollLeft } }));
   ctx.mount(h('div', { class: 'page', 'data-level': 'campaigns' },
     pageHead(product, slug, p, 'campaigns'),
-    h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Products', href: href('/', G) }, { label: product.name, href: href(path, G) }, { label: 'Campaigns' }])),
+    h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Marketing metrics', href: href('/', G) }, { label: product.name, href: href(path, G) }, { label: 'Campaigns' }])),
     campPanel.el,
     h('div', { class: 'stagecards' }, cards),
     h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', 'Daily spend by stage'), h('span', { class: 'muted small' }, daily.length ? `${fmt.day(daily[0].day)} – ${fmt.day(daily[daily.length - 1].day)}` : '')), chartBox),

@@ -166,15 +166,19 @@ export const srcView = { key: 'meta', basis: null, label: 'Meta', labels: META_L
 export function applySourceState(info) {
   const s = info && info.source;
   if (!s) { Object.assign(srcView, { key: 'meta', basis: null, label: 'Meta', labels: META_LABELS, summary: null, note: null }); return; }
-  Object.assign(srcView, { key: s.key, basis: s.basis, label: s.label, labels: s.labels || META_LABELS, summary: s.summary || null, note: s.note || null });
+  Object.assign(srcView, { key: s.key, basis: s.basis, label: s.label, labels: s.labels || META_LABELS, summary: s.summary || null, note: s.note || null, channel: s.channel || 'meta' });
 }
 const UP_LABELS = { nc: { purchases: 'New customers', revenue: 'NC revenue', roas: 'NC ROAS', cpa: 'NC CPA' }, all: { purchases: 'Orders', revenue: 'Revenue', roas: 'ROAS', cpa: 'Cost per order' } };
 // URL first (so headers are right before the response arrives), the response's window_info.source refines it
 export function srcFromParams(p) {
+  const key = p && p.source === 'upstack' ? 'upstack' : 'meta';
+  const basis = key === 'upstack' ? (p.basis === 'all' ? 'all' : 'nc') : null;
+  const chan = /^\/google\/?$/.test(location.pathname) ? 'google' : 'meta';
+  if (srcView.key === key && (srcView.basis || null) === basis && srcView.summary && srcView.channel === chan) return;      // already refined by this page's response: do not wipe its wording (syncControls can rerun after it)
   if (p && p.source === 'upstack') {
     const basis = p.basis === 'all' ? 'all' : 'nc';
-    Object.assign(srcView, { key: 'upstack', basis, label: basis === 'nc' ? 'Upstack · new customers' : 'Upstack · all orders', labels: UP_LABELS[basis], summary: null, note: null });
-  } else Object.assign(srcView, { key: 'meta', basis: null, label: 'Meta', labels: META_LABELS, summary: null, note: null });
+    Object.assign(srcView, { key: 'upstack', basis, label: basis === 'nc' ? 'Upstack · new customers' : 'Upstack · all orders', labels: UP_LABELS[basis], summary: null, note: null, channel: chan });
+  } else Object.assign(srcView, { key: 'meta', basis: null, label: chan === 'google' ? 'Google' : 'Meta', labels: META_LABELS, summary: null, note: null, channel: chan });
 }
 export const metricLabel = (key, fallback) => (srcView.labels && srcView.labels[key]) || fallback;
 export const isUpstack = () => srcView.key === 'upstack';
