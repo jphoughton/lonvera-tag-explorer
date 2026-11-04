@@ -87,8 +87,8 @@ main#view { padding: 14px 16px 40px; max-width: 1900px; }
 .crumbs li.current { color: var(--text); font-weight: 600; }
 .crumbs a { color: var(--accent); }
 .tablehead { display: flex; align-items: center; gap: 14px; margin: 10px 0 6px; flex-wrap: wrap; }
-.filterbar { display: flex; align-items: center; gap: 10px; margin-left: auto; }
-.filterbar input[type="search"] { width: 240px; }
+.filterbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-left: auto; max-width: 100%; }
+.filterbar input[type="search"] { width: 240px; max-width: 100%; }
 .check { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-size: 12px; user-select: none; }
 
 /* ---------- badges ---------- */
@@ -169,7 +169,7 @@ table.dt.compact th, table.dt.compact td { padding: 4px 9px; }
 
 /* ---------- sections / cards ---------- */
 .section { margin-top: 18px; }
-.section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.section-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 6px; }
 .panel { margin-top: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
 .panel > summary { cursor: pointer; padding: 8px 12px; font-weight: 650; list-style-position: inside; }
 .panel > summary .muted { font-weight: 400; }
@@ -259,7 +259,7 @@ body.no-controls { }
 /* ---------- v1.2 / v1.3: Back, stage chips, compare, tree ---------- */
 .btn.back { padding: 3px 10px; }
 .btn.back:disabled { color: #9aa3af; cursor: default; background: #f6f7f9; }
-.chips { display: inline-flex; gap: 5px; }
+.chips { display: inline-flex; flex-wrap: wrap; gap: 5px; max-width: 100%; }
 .schip { appearance: none; font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 12px; cursor: pointer; border: 1px solid var(--line); background: #fff; color: var(--muted); }
 .schip[aria-pressed="true"].stage-testing { background: var(--testing-bg); border-color: var(--testing); color: var(--testing); font-weight: 600; }
 .schip[aria-pressed="true"].stage-scaling { background: var(--scaling-bg); border-color: var(--scaling); color: var(--scaling); font-weight: 600; }

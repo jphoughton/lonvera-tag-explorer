@@ -3012,3 +3012,26 @@ def test_ad_detail_copy_only_pick_has_no_dangling_separator_and_ads_table_has_tr
     page.wait_for_selector("[data-testid=ads-table] tbody tr[data-key]")
     idle(page)
     page.wait_for_function("() => document.querySelectorAll('[data-testid=ads-table] tbody tr[data-key] svg.spark').length > 0", timeout=8000)
+
+
+@pytest.mark.parametrize("width", [390, 768, 1024, 1440])
+def test_pages_never_scroll_horizontally_at_page_level(page, width):
+    """phone to desktop: only tables may scroll sideways inside their own box, never the page (/, a product, Campaigns, Ads, compare, the ad page)"""
+    page.set_viewport_size({"width": 1440, "height": 900})
+    ad_path = ad_page_url(page)
+    page.set_viewport_size({"width": width, "height": 800})
+    paths = ["/", f"/p/{SLUG}", f"/p/{SLUG}?view=campaigns&window=30d", f"/p/{SLUG}?view=ads&window=30d", f"/p/{SLUG}?window=7d&compare=prev&stage=testing",
+             f"/p/{SLUG}?all=1&window=30d", f"{ad_path}?window=30d&compare=prev", "/?window=7d&compare=30d"]
+    for path in paths:
+        page.goto(path)
+        page.wait_for_selector(".tablebox, #family-metrics")
+        idle(page)
+        page.wait_for_timeout(250)
+        sw = page.evaluate("() => [document.documentElement.scrollWidth, window.innerWidth]")
+        if sw[0] > sw[1] + 1:  # name the culprit: widest element that is not inside a scrolling box
+            culprit = page.evaluate("""() => { const W = innerWidth, out = [];
+                const clipped = (el) => { for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) { const o = getComputedStyle(a).overflowX; if (o === 'auto' || o === 'scroll' || o === 'hidden') return true; } return false; };
+                for (const el of document.querySelectorAll('body *')) { if (clipped(el)) continue; const r = el.getBoundingClientRect(); if (r.width && r.right > W + 0.5) out.push(el.tagName + '#' + el.id + '.' + String(el.className.baseVal === undefined ? el.className : '') + ' right=' + Math.round(r.right)); }
+                return out.slice(0, 5); }""")
+            pytest.fail(f"{path} at {width}px: page scrollWidth {sw[0]} > {sw[1]}: {culprit}")
+    shot(page, f"48_no_page_scroll_{width}")
