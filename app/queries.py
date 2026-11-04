@@ -2679,6 +2679,7 @@ def source_tieout(conn, meta: DataMeta, df: dt.date, dtt: dt.date) -> dict:
         LEFT JOIN (SELECT day, sum(nc) AS nc, sum(orders) AS orders FROM upstack_campaign_daily WHERE {rng} GROUP BY day) c ON c.day = d.day
         LEFT JOIN (SELECT day, sum(nc_purchases) AS nc, sum(purchases) AS orders FROM ad_daily_upstack WHERE {rng} GROUP BY day) a ON a.day = d.day
         ORDER BY d.day""", p)
+    ff = row_of(conn, "SELECT min(day) AS d FROM upstack_channel_daily WHERE spend > 0")
     ms, mp, mr = _f(m["spend"]), _f(m["purchases"]), _f(m["revenue"])
     um = _vals(mapped, "spend", "nc", "nc_rev", "orders", "rev")
     uc = _vals(camps, "nc", "nc_rev", "orders", "rev")
@@ -2692,7 +2693,8 @@ def source_tieout(conn, meta: DataMeta, df: dt.date, dtt: dt.date) -> dict:
     return {
         "from": df.isoformat(), "to": dtt.isoformat(), "days": (dtt - df).days + 1,
         "meta": {**_vals(m, "spend", "purchases", "revenue", "clicks"), "roas": ratio(mr, ms, 2), "cpa": ratio(ms, mp, 2)},
-        "upstack_feed": {**_vals(feed, "spend", "purchases", "revenue"), "spend_vs_meta_pct": _frac_diff(feed["spend"] if feed else 0, ms),
+        "upstack_feed": {**_vals(feed, "spend", "purchases", "revenue"), "first_day": ff["d"].isoformat() if ff and ff["d"] else None,
+                         "spend_vs_meta_pct": _frac_diff(feed["spend"] if feed else 0, ms),
                          "purchases_vs_meta_pct": _frac_diff(feed["purchases"] if feed else 0, mp)},
         "upstack_campaigns": {**uc, "orders_vs_meta_purchases_pct": _frac_diff(uc["orders"], mp), "rev_vs_meta_revenue_pct": _frac_diff(uc["rev"], mr)},
         "upstack_ads": {**ua, "ads_vs_campaigns_nc": ratio(ua["nc"], uc["nc"], 3), "ads_vs_campaigns_orders": ratio(ua["orders"], uc["orders"], 3)},

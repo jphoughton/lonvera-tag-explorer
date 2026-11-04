@@ -69,7 +69,35 @@ Attribution answers from **2025-05-13** (no Meta Ads orders before; a probe ever
 This app backfills from 2026-05-06 only, because that is where its Meta daily data starts and a day without Meta spend would show orders against no spend. Going earlier is a
 backfill flag away (`--since`), but needs `daily_start` and Meta's own history to go with it.
 
-BACKFILL_RESULTS_PLACEHOLDER
+### Backfill as loaded (2026-11-04)
+
+181 days, 2026-05-06 to 2026-11-02, 27,653 attribution rows, 151,191 ad-day rows. 124 of those days (2026-06-28 to 2026-10-29) were seeded from the sheet job's saved
+pulls (`~/.lonvera/upstack_ads_daily_state.json`, same API, same parameters) instead of re-pulling them: Upstack answers cold queries in 3-30 s each and parallel pulls only
+make it slower. Checked against fresh pulls of 9 of those days: campaign totals identical on all 9, ad rows identical on 6, and on the other 3 the same numbers under one
+ad name Meta renamed since (` - DONE` appended; totals equal). The other 57 days were pulled for this app.
+
+| What | Result |
+|---|---|
+| Orders credited to Meta ads by name | 57,432: **97.1% exact** (campaign + ad name), 1.5% ad name found in another campaign, **1.3% unmapped** (726 `(not set)` / `(ad not identified)`, 37 unknown campaign, 7 no such ad) |
+| New customers | 37,794 at ad level: 98.7% mapped, 498 unmapped |
+| Ad rows vs campaign totals (new customers) | 94% overall; by month May 94%, Jun 91%, Jul 93%, Aug 95%, Sep 97%, Oct 95% (the last two days are still settling at 76%) |
+
+### Meta vs Upstack, every Meta ad (tie-out, `GET /api/source/tieout`)
+
+| Window | Meta spend | Upstack spend feed | Meta purchases | Upstack orders (tied to ads) | vs Meta | Upstack new customers | Meta ROAS | ROAS all orders | NC ROAS | Meta CPA | CPA all orders | NC CPA |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 7d, Oct 27 - Nov 2 | $70,949 | $70,875 (-0.11%) | 731 | 835 | +14.2% | 481 | 0.70 | 0.69 | 0.45 | $97 | $85 | $148 |
+| 30d, Oct 4 - Nov 2 | $340,584 | $340,584 (0.00%) | 3,472 | 4,189 | +20.6% | 2,614 | 0.71 | 0.77 | 0.54 | $98 | $81 | $130 |
+| 90d, Aug 5 - Nov 2 | $1,578,623 | $1,578,623 (0.00%) | 16,981 | 22,863 | +34.6% | 13,881 | 0.72 | 0.87 | 0.60 | $93 | $69 | $114 |
+
+Reading: Upstack's any-click credits **more orders** than Meta reports (+21% over 30 days) at about the same revenue (+8.5%), so ROAS on all orders is a little higher than Meta's, but
+**new-customer ROAS is 0.54 against Meta's 0.71** and new-customer CPA $130 against $98. Meta's purchases count returning customers; the Upstack new-customer count does not.
+Revenue and ROAS are not comparable to the cent between modes (different revenue definitions, see Known limits).
+
+Spend check: Upstack's campaign spend feed equals Meta's to the cent from 2026-08-01 on. It has **no data before 2026-06-05** (May reads 0) and its days are shifted by one day
+between 2026-06-22 and 2026-07-07 (feed day D = Meta day D+1), with 1-4% differences on a few October days (the BackUp account's New York day versus Pacific). That is why Upstack mode takes spend from
+Meta and the feed is only a check; a window that starts before June 5 shows the feed short and the tie-out says so.
+
 
 ## Known limits
 

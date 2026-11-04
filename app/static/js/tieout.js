@@ -28,8 +28,9 @@ function render(d) {
     { cells: ['Upstack · new customers', money(tags.upstack_nc.spend), int(tags.upstack_nc.purchases), money(tags.upstack_nc.revenue), fmt.roas(ratio(tags.upstack_nc.revenue, tags.upstack_nc.spend)), money(ratio(tags.upstack_nc.spend, tags.upstack_nc.purchases))] },
     { cells: ['Upstack · all orders', money(tags.upstack_all.spend), int(tags.upstack_all.purchases), money(tags.upstack_all.revenue), fmt.roas(ratio(tags.upstack_all.revenue, tags.upstack_all.spend)), money(ratio(tags.upstack_all.spend, tags.upstack_all.purchases))] },
   ]);
+  const early = feed.first_day && d.from < feed.first_day;
   const lines = [
-    `Spend: Upstack's feed is ${sgn(feed.spend_vs_meta_pct)} vs Meta (same dollars, two routes). Upstack mode uses Meta's spend per ad.`,
+    `Spend: Upstack's feed is ${sgn(feed.spend_vs_meta_pct)} vs Meta (same dollars, two routes). Upstack mode uses Meta's spend per ad.` + (early ? ` Upstack's own spend feed starts ${fmt.day(feed.first_day)}; days before that are blank in it, so this check covers ${fmt.day(feed.first_day)} on.` : ''),
     `Orders: Upstack tied to Meta ads is ${sgn(map.orders_vs_meta_purchases_pct)} vs Meta purchases; revenue ${sgn(map.rev_vs_meta_revenue_pct)}. Campaign level is ${sgn(camp.orders_vs_meta_purchases_pct)} (any-click credits an order to each ad clicked in the 30 days before it).`,
     `Ad rows carry ${isNum(ads.ads_vs_campaigns_nc) ? (ads.ads_vs_campaigns_nc * 100).toFixed(0) + '%' : '–'} of the campaign-level new customers and ${isNum(ads.ads_vs_campaigns_orders) ? (ads.ads_vs_campaigns_orders * 100).toFixed(0) + '%' : '–'} of the orders; the rest are credited to a campaign but to no identifiable ad. ${int(un.nc)} new customers / ${int(un.orders)} orders have an ad name that matches no Meta ad.`,
   ];
