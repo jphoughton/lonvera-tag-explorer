@@ -174,3 +174,34 @@ def test_overview_meta_rows_follow_the_basis(upstack, client):
         assert by[basis]["m"]["purchases"] == pytest.approx(want["purchases"], abs=0.011) and by[basis]["m"]["revenue"] == pytest.approx(want["revenue"], abs=0.011)
     assert by["reported"]["m"]["spend"] == by["nc"]["m"]["spend"] == by["all"]["m"]["spend"]
     assert by["all"]["m"]["purchases"] >= by["nc"]["m"]["purchases"] > 0
+
+
+@pytest.mark.parametrize("basis", ["nc", "all"])
+def test_platform_campaign_trend_ties_to_the_table_in_upstack_mode(upstack, client, basis):
+    x = f"&source=upstack&basis={basis}"
+    t = get_ok(client, f"/api/campaigns/trend?{W}{x}&grain=day")
+    tab = get_ok(client, f"/api/campaigns?{W}{x}")["total"]
+    for k in ("spend", "purchases", "revenue"):
+        assert round(sum(p[k] for p in t["points"]), 2) == pytest.approx(tab[k], abs=0.02), k
+    assert t["window_info"]["source"]["key"] == "upstack" and t["window_info"]["source"]["basis"] == basis
+    s = get_ok(client, f"/api/campaigns/trend?{W}{x}&split=product")
+    assert round(sum(p["spend"] for g in s["groups"] for p in g["points"]), 2) == pytest.approx(tab["spend"], abs=0.02)
+
+
+def test_platform_trend_meta_group_follows_the_numbers_choice(upstack, client):
+    for numbers in ("own", "nc", "all"):
+        t = get_ok(client, f"/api/platforms/trend?{W}&numbers={numbers}&only=meta")
+        row = next(r for r in next(p for p in get_ok(client, f"/api/platforms/overview?{W}")["platforms"] if p["key"] == "meta")["rows"]
+                   if r["basis"] == {"own": "reported"}.get(numbers, numbers))
+        pts = t["groups"][0]["points"]
+        assert round(sum((p or {}).get("purchases", 0) or 0 for p in pts), 1) == pytest.approx(row["m"]["purchases"], abs=0.11), numbers
+        assert round(sum((p or {}).get("spend", 0) or 0 for p in pts), 2) == pytest.approx(row["m"]["spend"], abs=0.02), numbers
+    assert "Upstack attribution is drawn only where Upstack has it" in " ".join(get_ok(client, f"/api/platforms/trend?{W}&numbers=nc&only=meta")["notes"])
+
+
+def test_platform_trend_names_where_upstack_history_starts(upstack, client):
+    t = get_ok(client, f"/api/platforms/trend?{W}&numbers=nc&only=meta")
+    hist = get_ok(client, "/api/status")["sources"]["upstack"]["history_from"]
+    assert t["groups"][0]["history_from"] == hist and f"Meta from" in " ".join(t["notes"])
+    own = get_ok(client, f"/api/platforms/trend?{W}&numbers=own&only=meta")
+    assert own["notes"] == []

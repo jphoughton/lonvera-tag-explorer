@@ -17,11 +17,12 @@ export function breadcrumbs(items) {
 // "View: Products | Campaigns" (Meta) or "Overview | Campaigns" (Google): the two views of a platform; the range, stage and numbers choice carry over (platform stays in G)
 export function viewSwitch(active, G, platform = 'meta') {
   const first = platform === 'meta' ? 'Products' : 'Overview';
+  const second = platform === 'all' ? 'All campaigns' : 'Campaigns';
   const mk = (label, key, to) => h('a', { class: 'seg', href: to, 'data-platform-view': key, 'aria-current': active === key ? 'page' : null, 'aria-pressed': String(active === key) }, label);
   const g = { ...G };
   delete g.type; delete g.product;
   return h('div', { class: 'ctl', id: 'view-switch' }, h('span', { class: 'ctl-name' }, 'View'),
-    h('span', { class: 'segs', role: 'group', 'aria-label': 'View' }, mk(first, 'home', href('/', g)), mk('Campaigns', 'campaigns', href('/campaigns', g))));
+    h('span', { class: 'segs', role: 'group', 'aria-label': 'View' }, mk(first, 'home', href('/', g)), mk(second, 'campaigns', href('/campaigns', g))));
 }
 
 // "Numbers: Upstack · new customers": which numbers the table beside it shows; text kept current by controls.js (refreshSrcBadges) on every flip

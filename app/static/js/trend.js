@@ -164,6 +164,9 @@ function normalize(d) {
     cmp: d.cmp_points || null,
     byStage: d.by_stage || null,
     children: d.children || null,
+    groups: d.groups || null,                       // generic split: [{key, label, color, points}] (platform pages)
+    labels: d.labels || null,                       // explicit x axis (platform pages: platforms whose series start on different days)
+    notes: d.notes || [],
     grain: d.grain || 'day',
   };
 }
@@ -180,36 +183,48 @@ const SPLIT_HINT = 'Split by Stage applies to additive Bars metrics (Spend, Purc
 
 /*
  Dual-axis trend panel: Bars (left axis) + Line (right axis), each any metric or None. Defaults Bars = Spend, Line = ROAS.
- opts: { slug, p, scope, scopeLabel, pins, mode: 'scope'|'ad'|'landing', products (landing), signal,
-         shadeInfo: {a, b} (ad mode), onSparks(slug -> [values]) (landing) }
+ opts: { slug, p, scope, scopeLabel, pins, mode: 'scope'|'ad'|'landing'|'source', products (landing), signal,
+         shadeInfo: {a, b} (ad mode), onSparks(slug -> [values]) (landing),
+         source (mode 'source': the platform pages, no product behind them) = {
+           fetch({grain, split, basis, signal}) -> API response ({points, groups?, labels?, cmp_points?, notes?, window_info, compare_info}),
+           splits: [[key, label]] (first = default unless defaultSplit), defaultSplit,
+           barsMetrics: [metric keys] limits the Bars choices (metrics that may be added across the groups),
+           alwaysSplit: the server always returns the groups (platform pages): ratio lines are drawn per group even when Bars is None,
+           basis: {param, options: [[key, label]], default} an extra Numbers choice kept in the URL } }
 */
 export function createTrendPanel(opts) {
   const { slug, p, scope = {}, pins, mode = 'scope', signal } = opts;
+  const src = mode === 'source' ? opts.source : null;
+  const splitItems = src ? src.splits : [['none', 'None'], ['stage', 'Stage']];
+  const barsOnly = src && src.barsMetrics ? src.barsMetrics : null;
   const valid = (v, d) => (v === 'none' || METRIC[v] ? v : d);
   const state = {
     bars: valid(p.tb, 'spend'),
     line: valid(p.tl, 'roas'),
     grain: ['week', 'month'].includes(p.tg) ? p.tg : 'day',
-    split: p.ts === 'stage' ? 'stage' : 'none',
+    split: splitItems.some(([k]) => k === p.ts) ? p.ts : (src ? (src.defaultSplit || splitItems[0][0]) : 'none'),
+    basis: src && src.basis ? (src.basis.options.some(([k]) => k === p[src.basis.param]) ? p[src.basis.param] : src.basis.default) : null,
     overlay: true,
     collapsed: trendCollapsed(),
   };
+  if (barsOnly && state.bars !== 'none' && !barsOnly.includes(state.bars)) state.bars = barsOnly[0];
+  const defaultSplit = src ? (src.defaultSplit || splitItems[0][0]) : 'none';
   let chart = null;
   let abort = null;
   let seq = 0;
   let last = null;
   const dayCache = new Map(); // landing: slug -> day-grain response
   const barsAdditive = () => state.bars !== 'none' && ADDITIVE.has(state.bars);
-  const effSplit = () => (barsAdditive() && state.split === 'stage' ? 'stage' : 'none');
+  const effSplit = () => (barsAdditive() && state.split !== 'none' ? state.split : 'none');
 
   // ----- DOM -----
-  const optionsFor = (sel, current) => {
-    sel.replaceChildren(...METRICS.filter((m) => !m.advanced || colPref('advanced') || current === m.key).map((m) => h('option', { value: m.key }, m.label)), h('option', { value: 'none' }, 'None'));
+  const optionsFor = (sel, current, only = null) => {
+    sel.replaceChildren(...METRICS.filter((m) => (!m.advanced || colPref('advanced') || current === m.key) && (!only || only.includes(m.key))).map((m) => h('option', { value: m.key }, m.label)), h('option', { value: 'none' }, 'None'));
     sel.value = current;
   };
   const barsSel = h('select', { id: 'trend-bars', 'aria-label': 'Bars metric (left axis)' });
   const lineSel = h('select', { id: 'trend-line', 'aria-label': 'Line metric (right axis)' });
-  optionsFor(barsSel, state.bars);
+  optionsFor(barsSel, state.bars, barsOnly);
   optionsFor(lineSel, state.line);
   barsSel.addEventListener('change', () => pageNavigate({ tb: barsSel.value })); // bars also drive the sparkline column: re-render the page
   lineSel.addEventListener('change', () => {
@@ -230,7 +245,8 @@ export function createTrendPanel(opts) {
     return b;
   });
   const grainBtns = seg([['day', 'Day'], ['week', 'Week'], ['month', 'Month']], state.grain, 'data-grain', (v) => setState({ grain: v }, 'tg'));
-  const splitBtns = seg([['none', 'None'], ['stage', 'Stage']], state.split, 'data-split', (v) => setState({ split: v }, 'ts'));
+  const splitBtns = seg(splitItems, state.split, 'data-split', (v) => setState({ split: v }, 'ts'));
+  const basisBtns = src && src.basis ? seg(src.basis.options, state.basis, 'data-numbers', (v) => setState({ basis: v }, 'nb')) : [];
   const splitHint = h('span', { class: 'muted small', id: 'trend-split-hint' });
   const overlayCb = h('input', { type: 'checkbox', id: 'trend-overlay', checked: true });
   overlayCb.addEventListener('change', () => { state.overlay = overlayCb.checked; if (last) paint(last); });
@@ -251,6 +267,7 @@ export function createTrendPanel(opts) {
         swapBtn,
         h('span', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Grain'), h('span', { class: 'segs', id: 'trend-grain' }, grainBtns)),
         h('span', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Split bars by'), h('span', { class: 'segs', id: 'trend-split' }, splitBtns), splitHint),
+        basisBtns.length ? h('span', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Numbers'), h('span', { class: 'segs', id: 'trend-numbers' }, basisBtns)) : null,
         overlayWrap, pinInfo, pinHint, status),
       h('span', { class: 'spacer' }),
       toggleBtn),
@@ -261,8 +278,8 @@ export function createTrendPanel(opts) {
     const ok = barsAdditive();
     splitBtns.forEach((b) => { b.disabled = !ok; b.setAttribute('aria-pressed', String(ok && b.dataset.split === state.split)); });
     splitHint.textContent = ok ? '' : (state.bars === 'none' ? 'Split applies to the bars; Bars is None.' : 'Not available for ratio bars.');
-    splitHint.title = SPLIT_HINT;
-    el.querySelector('#trend-split').title = ok ? '' : SPLIT_HINT;
+    splitHint.title = src ? 'Split applies to additive Bars metrics.' : SPLIT_HINT;
+    el.querySelector('#trend-split').title = ok ? '' : (src ? 'Split applies to additive Bars metrics.' : SPLIT_HINT);
   }
   function syncPinLock() {
     if (!pins) return;
@@ -284,7 +301,8 @@ export function createTrendPanel(opts) {
   function setState(patch, urlKey) {
     Object.assign(state, patch);
     if (urlKey === 'tg') { writeUrl('tg', state.grain, 'day'); grainBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.grain === state.grain))); }
-    if (urlKey === 'ts') { writeUrl('ts', state.split, 'none'); syncSplitControl(); }
+    if (urlKey === 'ts') { writeUrl('ts', state.split, defaultSplit); syncSplitControl(); }
+    if (urlKey === 'nb') { writeUrl(src.basis.param, state.basis, src.basis.default); basisBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.numbers === state.basis))); }
     load();
   }
   function setCollapsed(on) {
@@ -317,6 +335,11 @@ export function createTrendPanel(opts) {
       return { ...norm[0], pinned: list.map((pn, i) => ({ key: pn.key, label: pn.label, points: norm[i].points })), cmp: null, byStage: null, children: null };
     }
     const d = await api(trendUrl(slug), params(scope, { grain: state.grain, split: effSplit(), windowed: mode !== 'ad' }), { signal: sig });
+    return normalize(d);
+  }
+
+  async function fetchSource(sig) {
+    const d = await src.fetch({ grain: state.grain, split: effSplit(), basis: state.basis, signal: sig });
     return normalize(d);
   }
 
@@ -368,7 +391,7 @@ export function createTrendPanel(opts) {
     if (signal) signal.addEventListener('abort', () => abort && abort.abort(), { once: true });
     status.textContent = 'Loading…';
     try {
-      const res = mode === 'landing' ? await fetchLanding(abort.signal) : await fetchScope(abort.signal);
+      const res = mode === 'landing' ? await fetchLanding(abort.signal) : mode === 'source' ? await fetchSource(abort.signal) : await fetchScope(abort.signal);
       if (my !== seq) return;
       last = res;
       status.textContent = '';
@@ -388,16 +411,22 @@ export function createTrendPanel(opts) {
     const pts = res.points || [];
     const rows = rowsMode() && res.pinned && res.pinned.length;
     const base = rows ? res.pinned[0].points : pts;
-    const labels = base.map((pt) => (pt ? pt.t : null));
+    const labels = res.labels ? res.labels.slice() : base.map((pt) => (pt ? pt.t : null));
     for (let i = 0; i < labels.length; i++) if (labels[i] == null) labels[i] = pts[i] ? pts[i].t : labels[i - 1] || '';
     const val = (list, m) => list.map((pt) => (pt && isNum(pt[m.key]) ? pt[m.key] : null));
     const partial = base.map((pt) => !!(pt && pt.partial));
     const datasets = [];
     const notes = [];
     const split = effSplit();
-    const stacked = !!bm && split === 'stage' && !!res.byStage;
     const hasData = (list) => list.some((pt) => pt && ((pt.spend || 0) > 0 || (pt.purchases || 0) > 0 || (pt.link_clicks || 0) > 0));
+    // the split series: stage (product pages), or the groups the server sends (platform pages: stage / product / platform)
     const order = ['testing', 'scaling', 'unclassified'].filter((s) => res.byStage && res.byStage[s] && (s !== 'unclassified' || hasData(res.byStage[s])));
+    let groups = null;
+    if (split !== 'none' || (src && src.alwaysSplit && res.groups)) {
+      if (res.groups) groups = res.groups.filter((g) => g.key !== 'unclassified' || hasData(g.points)).map((g, i) => ({ ...g, color: g.color || STAGE_COLOR[g.key] || PALETTE[i % PALETTE.length] }));
+      else if (split === 'stage' && res.byStage) groups = order.map((st) => ({ key: st, label: STAGE_NAME[st], color: STAGE_COLOR[st], points: res.byStage[st] }));
+    }
+    const stacked = !!bm && !!groups;
     if (rows) {
       // pinned rows: one line per row on the right axis (Bars = None)
       if (lm) res.pinned.forEach((pn, i) => datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: pn.label, data: val(pn.points, lm), color: PALETTE[i % PALETTE.length], width: 2, partialDash: true }));
@@ -405,14 +434,14 @@ export function createTrendPanel(opts) {
     } else {
       if (bm) {
         if (stacked) {
-          order.forEach((st) => datasets.push({ axis: 'left', type: 'bar', kind: bm.kind, label: STAGE_NAME[st], data: val(res.byStage[st], bm), color: STAGE_COLOR[st], stack: 'stage', opaque: true }));
+          groups.forEach((g) => datasets.push({ axis: 'left', type: 'bar', kind: bm.kind, label: g.label, data: val(g.points, bm), color: g.color, stack: 'stage', opaque: true }));
         } else {
           datasets.push({ axis: 'left', type: 'bar', kind: bm.kind, label: bm.label, data: val(pts, bm), color: BAR_COLOR });
         }
       }
       if (lm) {
-        if (split === 'stage' && !lm.additive && res.byStage) {
-          order.forEach((st) => datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: `${lm.label} · ${STAGE_NAME[st]}`, data: val(res.byStage[st], lm), color: STAGE_COLOR[st], width: 2, partialDash: true }));
+        if (groups && !lm.additive) {
+          groups.forEach((g) => datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: `${lm.label} · ${g.label}`, data: val(g.points, lm), color: g.color, width: 2, partialDash: true }));
         } else {
           datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: lm.label, data: val(pts, lm), color: LINE_COLOR, width: 2.4, partialDash: true });
         }
@@ -445,6 +474,7 @@ export function createTrendPanel(opts) {
     });
     const wi = res.windowInfo;
     if (wi && wi.note && mode !== 'ad') notes.push(wi.note);
+    for (const n of res.notes || []) notes.push(n);
     if (mode === 'ad' && shades.length) notes.push(shades.length > 1 ? 'Shaded: window A (blue) and window B (orange).' : 'Shaded: selected window.');
     note.replaceChildren(...notes.map((t) => h('span', { class: 'note info' }, t)));
     if (pins && pins.size() > 0) {
@@ -455,7 +485,7 @@ export function createTrendPanel(opts) {
 
   // advanced metrics appear with the Advanced columns chip; pins re-draw the chart
   onCmpRefresh(() => {
-    optionsFor(barsSel, state.bars);
+    optionsFor(barsSel, state.bars, barsOnly);
     optionsFor(lineSel, state.line);
     overlayWrap.hidden = !(cmpView.on && mode !== 'ad');
   });

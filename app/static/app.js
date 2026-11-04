@@ -11,11 +11,12 @@ import { adPage } from './js/pages/ad.js';
 import { googlePage } from './js/pages/google.js';
 import { campaignsPage } from './js/pages/campaigns.js';
 import { allPlatformsPage } from './js/pages/platforms.js';
+import { allCampaignsPage } from './js/pages/all_campaigns.js';
 
 // Platform pages: '/' is the home of the chosen platform (platform=all overview, google, else Meta's products) and '/campaigns' its Campaigns view.
 // Google's campaigns are part of its one page, so its Campaigns view is the same page with the campaigns table first.
 const homePage = (ctx) => { const pl = currentPlatform(); return pl === 'all' ? allPlatformsPage(ctx) : pl === 'google' ? googlePage(ctx) : productsPage(ctx); };
-const campaignsRoute = (ctx) => (currentPlatform() === 'google' ? googlePage(ctx) : campaignsPage(ctx));
+const campaignsRoute = (ctx) => { const pl = currentPlatform(); return pl === 'google' ? googlePage(ctx) : pl === 'all' ? allCampaignsPage(ctx) : campaignsPage(ctx); };
 const routes = [
   { re: /^\/login\/?$/, page: loginPage, public: true },
   { re: /^\/?$/, page: homePage },

@@ -137,8 +137,8 @@ def rollup(conn, gmeta: q.DataMeta, w: q.WindowSpec, group: str, ctype: str | No
 
 
 def trend(conn, gmeta: q.DataMeta, w: q.WindowSpec, grain: str, ctype: str | None, campaign: str | None) -> dict:
-    if grain not in ("day", "week"):
-        raise q.ApiError(400, "grain must be day or week")
+    if grain not in ("day", "week", "month"):
+        raise q.ApiError(400, "grain must be day, week or month")
     if ctype is not None and ctype not in TYPES:
         raise q.ApiError(400, "type must be one of " + ", ".join(TYPES))
     pcol, vcol = _cols(w)
@@ -153,19 +153,21 @@ def trend(conn, gmeta: q.DataMeta, w: q.WindowSpec, grain: str, ctype: str | Non
         params["ck"] = campaign
 
     def series(lo: dt.date, hi: dt.date) -> list[dict]:
-        key = "day" if grain == "day" else "date_trunc('week', day)::date"
+        key = {"day": "day", "week": "date_trunc('week', day)::date", "month": "date_trunc('month', day)::date"}[grain]
         res = q.rows_of(conn, f"""SELECT {key} AS t, sum(spend) AS spend, sum({pcol}) AS purch, sum({vcol}) AS rev, sum(impressions) AS imp, sum(clicks) AS clk
                                   FROM google_daily WHERE {where} AND day BETWEEN %(a)s AND %(b)s GROUP BY 1 ORDER BY 1""", {**params, "a": lo, "b": hi})
         by = {r["t"]: r for r in res}
-        out, t = [], lo if grain == "day" else lo - dt.timedelta(days=lo.weekday())
+        out, t = [], (lo if grain == "day" else lo - dt.timedelta(days=lo.weekday()) if grain == "week" else lo.replace(day=1))
         while t <= hi:
+            nxt = t + dt.timedelta(days=1) if grain == "day" else t + dt.timedelta(days=7) if grain == "week" else (t.replace(day=28) + dt.timedelta(days=4)).replace(day=1)
             r = by.get(t)
             sp, pu, rv, im, cl = (q._f(r[k]) if r else 0.0 for k in ("spend", "purch", "rev", "imp", "clk"))
-            span_lo, span_hi = max(t, lo), min(t + dt.timedelta(days=0 if grain == "day" else 6), hi)
-            out.append({"t": t.isoformat(), "partial": grain == "week" and ((span_hi - span_lo).days + 1) < 7, "spend": q.f2(sp), "purchases": q._num(pu), "revenue": q.f2(rv),
+            span_lo, span_hi = max(t, lo), min(nxt - dt.timedelta(days=1), hi)
+            full = (nxt - t).days
+            out.append({"t": t.isoformat(), "partial": grain != "day" and ((span_hi - span_lo).days + 1) < full, "spend": q.f2(sp), "purchases": q._num(pu), "revenue": q.f2(rv),
                         "roas": q.ratio(rv, sp, 4), "cpa": q.ratio(sp, pu, 2), "impressions": q._num(im), "link_clicks": q._num(cl),
                         "ctr": q.ratio(cl, im, 5), "cpc": q.ratio(sp, cl, 4), "cpm": q.ratio(sp * 1000, im, 4), "conv_rate": q.ratio(pu, cl, 5)})
-            t += dt.timedelta(days=1 if grain == "day" else 7)
+            t = nxt
         return out
     out = {"grain": grain, "scope": {"type": ctype, "campaign": campaign}, "points": series(params["wf"], params["wt"])}
     if cw is not None:

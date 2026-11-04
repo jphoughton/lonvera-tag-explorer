@@ -104,7 +104,7 @@ def test_trend_day_week_and_scope(google, client):
 def test_validation_and_no_leak_into_the_meta_pages(google, client):
     assert client.get("/api/google/rollup?group=nope").status_code == 400
     assert client.get("/api/google/rollup?group=type&type=Banner").status_code == 400
-    assert client.get("/api/google/trend?grain=month").status_code == 400
+    assert client.get("/api/google/trend?grain=year").status_code == 400
     assert client.get("/api/google/rollup?group=type&source=bogus").status_code == 400
     meta = get_ok(client, f"/api/products?envelope=1&{W}")
     assert meta["window_info"]["source"]["key"] == "meta" and "channel" not in meta["window_info"]
@@ -128,3 +128,102 @@ def test_overview_google_rows_are_the_rollup_totals_in_every_basis(google, clien
     assert by["nc"]["window"]["from"] == str(DAYS[0]) and by["nc"]["window"]["to"] == str(DAYS[-1])
     # spend is Google's in all three rows
     assert by["reported"]["m"]["spend"] == by["nc"]["m"]["spend"] == by["all"]["m"]["spend"] == N * 200.0
+
+
+def test_google_trend_month_grain_adds_up(google, client):
+    day = get_ok(client, f"/api/google/trend?grain=day&{W}")["points"]
+    month = get_ok(client, f"/api/google/trend?grain=month&{W}")["points"]
+    assert round(sum(p["spend"] for p in month), 2) == round(sum(p["spend"] for p in day), 2) == N * 200.0
+    assert all(p["t"].endswith("-01") for p in month) and len(month) >= 1
+
+
+# ---- All platforms: the one table of every campaign and its trend
+
+def all_camps(client, extra="", w=W):
+    return get_ok(client, f"/api/campaigns/all?{w}{extra}")
+
+
+def test_all_campaigns_rows_subtotals_and_totals(google, client):
+    d = all_camps(client)
+    meta = get_ok(client, f"/api/campaigns?{W}")["total"]
+    g = get_ok(client, f"/api/google/rollup?group=campaign&{W}")["total"]["m"]
+    assert set(d["subtotals"]) == {"meta", "google"} and d["numbers"] == "own"
+    sm, sg = d["subtotals"]["meta"]["m"], d["subtotals"]["google"]["m"]
+    assert sm["spend"] == meta["spend"] and sm["purchases"] == meta["purchases"] and sm["revenue"] == meta["revenue"]          # the Meta part is the Meta Campaigns total
+    assert sg["spend"] == g["spend"] and sg["purchases"] == g["purchases"] and sg["revenue"] == g["revenue"]
+    plats = {r["platform"] for r in d["rows"]}
+    assert plats == {"meta", "google"}
+    assert round(sum(r["m"]["spend"] for r in d["rows"]), 2) == pytest.approx(d["total"]["spend"], abs=0.02) == pytest.approx(sm["spend"] + sg["spend"], abs=0.02)
+    assert [r["m"]["spend"] for r in d["rows"]] == sorted((r["m"]["spend"] for r in d["rows"]), reverse=True)                       # sorted by spend
+    assert round(sum(r["m"]["spend_share"] for r in d["rows"]), 3) == pytest.approx(1.0, abs=0.003)                                # shares are of the combined spend
+    t = d["total"]
+    assert t["additive"] is False and t["link_clicks"] == (sm["link_clicks"] or 0) + sg["link_clicks"]                              # spend, impressions, clicks are added
+    assert "purchases" not in t and "revenue" not in t and "roas" not in t                                                        # purchases and revenue are not added across platforms
+    by = {r["platform"]: r for r in d["rows"]}
+    assert by["meta"]["basis"] == "Meta's own reporting" and by["google"]["basis"] == "Google's own reporting"
+    assert by["meta"]["group_kind"] == "product" and by["google"]["group_kind"] == "type" and by["google"]["group"] in ("Shopping", "Search", "Performance Max", "Other")
+
+
+def test_all_campaigns_single_platform_is_that_platforms_table(google, client):
+    only_m = all_camps(client, "&only=meta")
+    meta = get_ok(client, f"/api/campaigns?{W}")["total"]
+    assert set(only_m["subtotals"]) == {"meta"} and only_m["total"]["additive"] is True and {r["platform"] for r in only_m["rows"]} == {"meta"}
+    assert only_m["total"]["spend"] == meta["spend"] and only_m["subtotals"]["meta"]["m"]["purchases"] == meta["purchases"]
+    only_g = all_camps(client, "&only=google")
+    assert set(only_g["subtotals"]) == {"google"} and {r["platform"] for r in only_g["rows"]} == {"google"}
+    assert only_g["total"]["spend"] == N * 200.0
+
+
+def test_all_campaigns_product_and_type_filters(google, client):
+    vb = all_camps(client, "&product=vita-bull")
+    assert {r["platform"] for r in vb["rows"]} == {"meta"} and set(vb["subtotals"]) == {"meta"}                                     # Google has no products
+    assert vb["subtotals"]["meta"]["m"]["spend"] == get_ok(client, f"/api/campaigns?{W}&product=vita-bull")["total"]["spend"]
+    ty = all_camps(client, "&type=Search")
+    assert {r["platform"] for r in ty["rows"]} == {"google"} and {r["group"] for r in ty["rows"]} == {"Search"}
+    assert client.get(f"/api/campaigns/all?{W}&product=vita-bull&type=Search").status_code == 400
+    assert client.get(f"/api/campaigns/all?{W}&only=tiktok").status_code == 400
+    assert client.get(f"/api/campaigns/all?{W}&numbers=bad").status_code == 400
+    chips = all_camps(client)
+    assert {p["key"] for p in chips["platforms"]} == {"meta", "google"} and chips["products"] and {t["key"] for t in chips["types"]} >= {"Shopping", "Search"}
+
+
+def test_all_campaigns_since_launch_is_the_days_every_platform_has(google, client):
+    d = get_ok(client, "/api/campaigns/all?window=launch")
+    w = d["platform_windows"]
+    assert w["meta"]["from"] == w["google"]["from"] == str(DAYS[0]) and w["meta"]["to"] == w["google"]["to"] == str(DAYS[-1])
+    assert "every platform has data" in d["window_info"]["note"]
+    o = get_ok(client, "/api/platforms/overview?window=launch")
+    for pf in o["platforms"]:
+        assert all(r["window"]["from"] == str(DAYS[0]) for r in pf["rows"] if r["basis"] == "reported"), pf["key"]
+
+
+def test_platform_trend_adds_up_to_the_all_campaigns_table(google, client):
+    d = all_camps(client)
+    for grain in ("day", "week", "month"):
+        t = get_ok(client, f"/api/platforms/trend?{W}&grain={grain}")
+        g = {x["key"]: x for x in t["groups"]}
+        assert set(g) == {"meta", "google"} and t["numbers"] == "own" and t["grain"] == grain
+        for k in ("meta", "google"):
+            assert round(sum((pt or {}).get("spend", 0) or 0 for pt in g[k]["points"]), 2) == pytest.approx(d["subtotals"][k]["m"]["spend"], abs=0.02), (grain, k)
+            assert round(sum((pt or {}).get("purchases", 0) or 0 for pt in g[k]["points"]), 1) == pytest.approx(d["subtotals"][k]["m"]["purchases"], abs=0.11), (grain, k)
+            assert len(g[k]["points"]) == len(t["labels"])
+        assert round(sum(pt["spend"] or 0 for pt in t["points"]), 2) == pytest.approx(d["total"]["spend"], abs=0.02)                  # the combined series is spend only
+        assert all(pt.get("purchases") is None for pt in t["points"])
+        assert t["labels"] == sorted(t["labels"])
+    one = get_ok(client, f"/api/platforms/trend?{W}&only=google")
+    assert [x["key"] for x in one["groups"]] == ["google"]
+    vb = get_ok(client, f"/api/platforms/trend?{W}&product=vita-bull")
+    assert [x["key"] for x in vb["groups"]] == ["meta"] and round(sum(pt["spend"] for pt in vb["groups"][0]["points"]), 2) == pytest.approx(
+        get_ok(client, f"/api/campaigns?{W}&product=vita-bull")["total"]["spend"], abs=0.02)
+    assert client.get(f"/api/platforms/trend?{W}&grain=year").status_code == 400
+
+
+def test_platform_trend_on_each_basis_ties_to_the_overview(google, client):
+    o = get_ok(client, f"/api/platforms/overview?{W}")
+    for pf in o["platforms"]:
+        for r in pf["rows"]:
+            t = get_ok(client, f"/api/platforms/trend?{W}&numbers={r['basis'] if r['basis'] != 'reported' else 'own'}&only={pf['key']}")
+            pts = t["groups"][0]["points"]
+            assert round(sum((p or {}).get("spend", 0) or 0 for p in pts), 2) == pytest.approx(r["m"]["spend"], abs=0.02), (pf["key"], r["basis"])
+            assert round(sum((p or {}).get("purchases", 0) or 0 for p in pts), 1) == pytest.approx(r["m"]["purchases"], abs=0.11), (pf["key"], r["basis"])
+            assert round(sum((p or {}).get("revenue", 0) or 0 for p in pts), 2) == pytest.approx(r["m"]["revenue"], abs=0.02), (pf["key"], r["basis"])

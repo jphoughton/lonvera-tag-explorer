@@ -15,6 +15,9 @@ let srcBtns = {}, basisBtns = {}, basisCtl, srcBannerEl, srcTextEl, tieBtn, tieP
 let srcCtl, srcBtns2 = {}, basisBtns2 = {}, srcCtl2, basisCtl2;      // the same Numbers-from switch a second time, inside the banner row next to the explanation and the tie-out button
 let platformBtns = {}, stageCtl;
 const isGoogle = () => currentPlatform() === 'google';
+const onCampaignsPage = () => /^\/campaigns\/?$/.test(location.pathname);
+const ALL_CAMPAIGNS_OWN = "Each row is counted by its own platform: Meta's reporting for Meta campaigns, Google's for Google campaigns (see the Numbers column). Spend, impressions and clicks are totalled; purchases and revenue are not added across platforms. Switch to Upstack to read every row on Upstack's attribution.";
+const ALL_CAMPAIGNS_UP = "Every row is read on Upstack's any-click attribution (30-day window); spend, clicks and impressions stay the platform's. An order can be credited to a Meta ad and a Google campaign, so purchases and revenue are given per platform, never added.";
 let status = null;
 let uncVisible = false;
 let pendingNote = null;
@@ -287,7 +290,7 @@ function goPlatform(key) {
   if (key !== 'meta') for (const k of META_ONLY_KEYS) delete p[k];
   p.platform = key === 'meta' ? null : key;
   const onCampaigns = /^\/campaigns\/?$/.test(location.pathname);
-  navigate(href(onCampaigns && key !== 'all' ? '/campaigns' : '/', p));
+  navigate(href(onCampaigns ? '/campaigns' : '/', p));
 }
 function syncPlatform() {
   const pl = currentPlatform();
@@ -297,9 +300,12 @@ function syncPlatform() {
   if (platformBtns.google) { platformBtns.google.disabled = !!(g && !g.available) && pl !== 'google'; platformBtns.google.title = g && !g.available ? 'Google data is not loaded yet' : 'Google: campaign types and campaigns'; }
   if (stageCtl) stageCtl.hidden = pl !== 'meta';
   if (tieBtn) { tieBtn.hidden = pl !== 'meta'; if (pl !== 'meta') { tiePanel.hidden = true; tieBtn.setAttribute('aria-expanded', 'false'); } }
-  const all = pl === 'all';
-  for (const el of [srcCtl, srcCtl2]) if (el) el.hidden = all;
-  for (const set of [srcBtns, srcBtns2]) if (set.meta) { set.meta.textContent = pl === 'google' ? 'Google' : 'Meta'; set.meta.title = pl === 'google' ? "Google's own reporting, delivered through Upstack's ad-platform feed" : "Meta's own reporting (as the ad platform attributes purchases)"; }
+  const overview = pl === 'all' && !onCampaignsPage();                       // the overview shows every basis side by side; All campaigns takes the switch like any table
+  for (const el of [srcCtl, srcCtl2]) if (el) el.hidden = overview;
+  for (const set of [srcBtns, srcBtns2]) if (set.meta) {
+    set.meta.textContent = pl === 'google' ? 'Google' : pl === 'all' ? 'Own' : 'Meta';
+    set.meta.title = pl === 'google' ? "Google's own reporting, delivered through Upstack's ad-platform feed" : pl === 'all' ? "Each platform's own reporting: Meta's for Meta rows, Google's for Google rows" : "Meta's own reporting (as the ad platform attributes purchases)";
+  }
 }
 
 const ALL_SUMMARY = "Every platform side by side: each platform's own reporting, then Upstack's any-click attribution (30-day window) on new customers and on all orders. Spend, clicks and impressions are the platform's in every row. Platforms credit the same order to each ad clicked, so do not add purchases across platforms.";
@@ -336,14 +342,15 @@ function syncSource(p) {
   const pl = currentPlatform();
   for (const set of [srcBtns, srcBtns2]) for (const [k, b] of Object.entries(set)) b.setAttribute('aria-pressed', String(k === srcView.key));
   for (const set of [basisBtns, basisBtns2]) for (const [k, b] of Object.entries(set)) b.setAttribute('aria-pressed', String(k === (srcView.basis || 'nc')));
-  for (const c of [basisCtl, basisCtl2]) c.hidden = !up || pl === 'all';
+  for (const c of [basisCtl, basisCtl2]) c.hidden = !up || (pl === 'all' && !onCampaignsPage());
   const avail = sourceAvailable();
   for (const set of [srcBtns, srcBtns2]) {
     set.upstack.disabled = !avail && !up;
     set.upstack.title = avail ? "Upstack's attribution: new customers or all orders credited to each " + (pl === 'google' ? 'campaign' : 'ad') + ' (any-click, 30-day window)' : 'Upstack data is not loaded yet';
   }
   srcBannerEl.className = 'source-banner ' + (pl === 'all' ? 'meta' : srcView.key) + (srcBannerEl.classList.contains('open') ? ' open' : '');
-  setSrcText(pl === 'all' ? null : (up ? srcView.label + '. ' : null), pl === 'all' ? ALL_SUMMARY : (up ? (srcView.summary || '') : (pl === 'google' ? (srcView.summary || "Google's own reporting, delivered through Upstack's ad-platform feed.") : META_SUMMARY)));
+  const allCamp = pl === 'all' && onCampaignsPage();
+  setSrcText(pl === 'all' && !allCamp ? null : (up ? srcView.label + '. ' : null), pl === 'all' ? (allCamp ? (up ? ALL_CAMPAIGNS_UP : ALL_CAMPAIGNS_OWN) : ALL_SUMMARY) : (up ? (srcView.summary || '') : (pl === 'google' ? (srcView.summary || "Google's own reporting, delivered through Upstack's ad-platform feed.") : META_SUMMARY)));
 }
 
 function rangeText(info) {
