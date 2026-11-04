@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request
 
-from . import auth, db, queries as q
+from . import auth, db, preview as pv, queries as q
 
 bp = Blueprint("api", __name__)
 
@@ -47,12 +48,13 @@ def status():
 @bp.get("/api/products")
 def products():
     # The contract specifies a bare array, so there is no room for window_info here; /rollup and the other endpoints carry it.
-    # `?envelope=1` returns {window_info, compare_info, rows} instead, for clients that need the window labels on the landing page.
+    # `?envelope=1` returns {window_info, compare_info, rows, total:{m, rows, spark?}} instead: the form the landing page uses (labels + the Total row).
     conn, meta, w = _ctx()
-    rows = q.products_list(conn, meta, w)
+    spark = q.parse_spark(request.args)
     if request.args.get("envelope") == "1":
-        return jsonify({"window_info": w.info(meta), "compare_info": w.compare_info(meta), "rows": rows})
-    return jsonify(rows)
+        rows, total = q.products_list(conn, meta, w, spark=spark, with_total=True)
+        return jsonify({"window_info": w.info(meta), "compare_info": w.compare_info(meta), "rows": rows, "total": total})
+    return jsonify(q.products_list(conn, meta, w, spark=spark))
 
 
 @bp.get("/api/products/<slug>/rollup")
@@ -172,3 +174,46 @@ def media(asset_id: int):
     resp.headers["Cache-Control"] = "private, max-age=86400"
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
+
+
+# ---- ad previews (feature-flagged by META_PREVIEW_TOKEN) -----------------------------------------------------------------
+
+
+def _preview_response(ad_id_or_none, conn_lookup):
+    svc: pv.PreviewService = current_app.extensions["preview"]
+    if not svc.enabled:
+        return jsonify(enabled=False)
+    fmt = (request.args.get("format") or pv.DEFAULT_FORMAT).strip().lower()
+    if fmt not in pv.FORMATS:
+        raise q.ApiError(400, f"format must be one of {', '.join(pv.FORMATS)}")
+    ad_id = conn_lookup()
+    wait = svc.rate_check(request.remote_addr or "unknown")
+    if wait:
+        resp = jsonify(error="too many preview requests", retry_after=wait)
+        resp.status_code = 429
+        resp.headers["Retry-After"] = str(wait)
+        return resp
+    return jsonify(svc.get(ad_id, fmt))
+
+
+@bp.get("/api/meta-ads/<ad_id>/preview")
+def meta_ad_preview(ad_id: str):
+    def lookup():
+        if not pv.AD_ID_RE.fullmatch(ad_id) or not q.row_of(db.get_conn(), "SELECT 1 AS x FROM meta_ads WHERE ad_id = %s", (ad_id,)):
+            raise q.ApiError(404, "ad not found")        # only ad ids we hold are ever sent to Meta
+        return ad_id
+    return _preview_response(ad_id, lookup)
+
+
+@bp.get("/api/ads/<int:row_id>/preview")
+def tracker_ad_preview(row_id: int):
+    def lookup():
+        conn = db.get_conn()
+        row = q.row_of(conn, "SELECT family_key FROM tracker_rows WHERE id = %s", (row_id,))
+        if not row:
+            raise q.ApiError(404, "ad not found")
+        ad = q.family_links(conn, [row["family_key"]])[row["family_key"]]["ad_id"]
+        if not ad:
+            raise q.ApiError(404, "no Meta ad for this creative yet")
+        return ad
+    return _preview_response(None, lookup)

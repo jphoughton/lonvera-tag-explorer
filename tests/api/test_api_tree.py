@@ -35,9 +35,10 @@ def test_shape_and_depth_first_order(client):
     assert set(d) >= {"product", "root", "depth", "filters", "window_info", "compare_info", "rows", "total"}
     assert d["root"] == "cluster" and d["depth"] == 3 and d["compare_info"] is None
     fields = {"key", "parent_key", "level", "label", "cluster", "icp", "pain", "family_key", "primary_id", "color", "line_code", "trigger",
-              "confidence", "ad_type", "status", "thumb_asset_id", "has_children", "child_count", "counted_here", "m"}
+              "confidence", "ad_type", "status", "thumb_asset_id", "has_children", "child_count", "counted_here", "ads_manager_url", "story_url", "m"}
+    fields_family = fields | {"ads_count", "ads_live"}
     for r in d["rows"]:
-        assert set(r) == fields
+        assert set(r) == (fields_family if r["level"] == 3 else fields), r["key"]
     keys = [r["key"] for r in d["rows"]]
     assert len(keys) == len(set(keys))
     seen = {}

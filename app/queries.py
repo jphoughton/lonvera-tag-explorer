@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Iterable
 
+from .config import ads_manager_url
+
 # --------------------------------------------------------------------------------------------------------------------
 # errors / constants
 # --------------------------------------------------------------------------------------------------------------------
@@ -724,24 +726,58 @@ def product_brief(p: dict) -> dict:
     return {"slug": p["slug"], "name": p["name"], "tag_set": p["tag_set"], "tag_label": p["tag_label"]}
 
 
-def products_list(conn, meta: DataMeta, w: WindowSpec) -> list[dict]:
+def products_list(conn, meta: DataMeta, w: WindowSpec, spark: tuple[str, int] | None = None, with_total: bool = False):
+    """Product rows (and, with_total, the Total row). The total's `unique_ads` is the sum of the product rows' unique_ads, so a family key that
+    sits under two products counts twice, exactly as in the rows; every other number is the sum of the rows' sums (ratios recomputed)."""
     sql, params = _rm(meta, w)
     aggs = {r["product_id"]: r for r in rows_of(conn, sql + "SELECT product_id, count(*) AS n_rows, " + AGG_COLS + " FROM rm GROUP BY product_id", params)}
     meta_spend = {r["product_id"]: r["spend_all"] for r in rows_of(
         conn, "SELECT product_id, COALESCE(sum(spend_all), 0) AS spend_all FROM unmatched_meta GROUP BY product_id")}
-    out = []
+    out, ids, listed = [], [], []
     for p in rows_of(conn, "SELECT id, slug, name, tag_set, sort_order FROM products WHERE active ORDER BY sort_order, id"):
         a = aggs.get(p["id"])
         n_rows = a["n_rows"] if a else 0
         if n_rows == 0 and _f(meta_spend.get(p["id"])) <= 0:
             continue
+        ids.append(p["id"])
+        listed.append(a or dict(ZERO_AGG))
         out.append({"slug": p["slug"], "name": p["name"], "tag_set": p["tag_set"], "tag_label": tag_label(p["tag_set"]),
                     "rows": n_rows, "m": shape_m(a or ZERO_AGG, w)})
-    total = {"spend": round(sum(o["m"]["spend"] for o in out), 2)}
-    if w.cmp is not None:
-        total["cmp"] = {"spend": round(sum(o["m"]["cmp"]["spend"] for o in out), 2)}
-    apply_shares([o["m"] for o in out], total)           # share of all listed products' spend
-    return out
+    total_m = shape_m(sum_aggs(listed, unique_ads=sum(int(a["unique_ads"]) for a in listed)), w)
+    apply_shares([o["m"] for o in out] + [total_m], total_m)           # share of all listed products' spend; the total is 100%
+    if spark:
+        arrays = _spark_product_arrays(conn, meta, w, spark)
+        for o, pid in zip(out, ids):
+            o["spark"] = arrays.get(str(pid)) or _blank_spark(spark[1], spark[0])
+    if not with_total:
+        return out
+    total = {"m": total_m, "rows": sum(o["rows"] for o in out)}
+    if spark:
+        total["spark"] = arrays.get("") or _blank_spark(spark[1], spark[0])
+    return out, total
+
+
+def _spark_product_arrays(conn, meta: DataMeta, w: WindowSpec, spark: tuple[str, int]) -> dict[str, list]:
+    """Per product (key = product id) and in total (key '') sparkline arrays over the first-row families of every product."""
+    metric, n = spark
+    sf, st = _spark_range(meta, w, n)
+    params: dict[str, Any] = {"stages": w.stages, "sf": sf, "st": st}
+    sql = "WITH " + _tr_cte(None, None, params)
+    sums = ", ".join(f"sum({_FD_SUM_EXPR[k]}) AS {k}" for k in _A_KEYS)
+    sql += f""",
+fs AS (
+  SELECT DISTINCT ON (tr.product_id, tr.family_key) tr.product_id, tr.family_key
+  FROM tr JOIN ad_metrics am ON am.tracker_row_id = tr.id AND am.is_first_row
+  WHERE NOT starts_with(tr.family_key, 'id:')
+  ORDER BY tr.product_id, tr.family_key, tr.sheet_row NULLS LAST, tr.id
+),
+g AS (
+  SELECT COALESCE(fs.product_id::text, '') AS gk, fd.day, {sums}
+  FROM fs JOIN family_daily fd ON fd.family_key = fs.family_key
+  WHERE fd.day BETWEEN %(sf)s AND %(st)s AND fd.stage = ANY(%(stages)s)
+  GROUP BY GROUPING SETS ((fs.product_id, fd.day), (fd.day))
+)"""
+    return _spark_arrays(conn, sql, params, metric)
 
 
 def unmatched_summary(conn, product_id: int, meta: DataMeta | None = None, w: WindowSpec | None = None) -> dict:
@@ -864,8 +900,9 @@ def rollup(conn, meta: DataMeta, w: WindowSpec, product: dict, level: str, clust
     total_m = shape_m(total_row, w)
     apply_shares([r["m"] for r in rows] + [total_m], total_m)
     if spark:
-        attach_spark_rollup(conn, meta, w, product, level, cluster, icp, rows, spark)
-    return {"rows": rows, "total": {"m": total_m}, "unmatched": unmatched_summary(conn, product["id"], meta, w)}
+        total_spark = attach_spark_rollup(conn, meta, w, product, level, cluster, icp, rows, spark)
+    out_total = {"m": total_m, **({"spark": total_spark} if spark else {})}
+    return {"rows": rows, "total": out_total, "unmatched": unmatched_summary(conn, product["id"], meta, w)}
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -917,11 +954,78 @@ ORDER BY g.spend DESC, g.display COLLATE "C", g.family_key COLLATE "C"      -- s
             "cluster": r["cluster"], "icp": r["icp"], "pain": r["pain"], "line_code": r["line_code"],
             "m": shape_m(r, w),
         })
+    counts = family_ad_counts(conn, meta, w, [r["family_key"] for r in out])
+    for r in out:                                                       # creative vs ads: metrics (and so ad counts) belong to the family's first row
+        r["ads_count"], r["ads_live"] = counts[r["family_key"]] if r["counted_here"] else (0, 0)
     total_m = shape_m(sum_aggs(raw, unique_ads=len(raw)), w)
     apply_shares([r["m"] for r in out] + [total_m], total_m)
     if spark:
-        attach_spark_families(conn, meta, w, product, cluster, icp, pain, out, spark)
-    return {"rows": out, "total": {"m": total_m}}
+        total_spark = attach_spark_families(conn, meta, w, product, cluster, icp, pain, out, spark)
+    return {"rows": out, "total": {"m": total_m, **({"spark": total_spark} if spark else {})}}
+
+
+# --------------------------------------------------------------------------------------------------------------------
+# links: "see the ad" (story URL, Ads Manager deep link, representative Meta ad per family)
+# --------------------------------------------------------------------------------------------------------------------
+
+
+def family_links(conn, family_keys: list[str]) -> dict[str, dict]:
+    """{family_key: {ad_id, account, ads_manager_url, story_url}}. The ad that stands for a family is its Meta ad with the latest last_day,
+    ties broken by lifetime spend (then ad id, so the choice is stable). One query for the ads, one for the story URLs."""
+    fks = sorted({k for k in family_keys if k and not k.startswith("id:")})           # blank families have no Meta ads (but may have a story URL)
+    out: dict[str, dict] = {k: {"ad_id": None, "account": None, "ads_manager_url": None, "story_url": None} for k in family_keys}
+    for r in (rows_of(conn, """
+            SELECT DISTINCT ON (m.tracker_family_key) m.tracker_family_key AS fk, ma.ad_id, ma.account
+            FROM meta_ads ma
+            JOIN meta_family_map m ON m.meta_family_key = ma.meta_family_key
+            LEFT JOIN meta_ad_lifetime ml ON ml.ad_id = ma.ad_id
+            WHERE m.tracker_family_key = ANY(%s)
+            ORDER BY m.tracker_family_key, ma.last_day DESC NULLS LAST, COALESCE(ml.spend, 0) DESC, ma.ad_id""", (fks,)) if fks else []):
+        out[r["fk"]].update(ad_id=r["ad_id"], account=r["account"], ads_manager_url=ads_manager_url(r["account"], r["ad_id"]))
+    for r in rows_of(conn, "SELECT family_key, story_url FROM family_content WHERE family_key = ANY(%s)", (sorted({k for k in family_keys if k}),)):
+        out[r["family_key"]]["story_url"] = r["story_url"]
+    return out
+
+
+def family_ad_counts(conn, meta: DataMeta, w: WindowSpec, family_keys: list[str]) -> dict[str, tuple[int, int]]:
+    """{family_key: (ads_count, ads_live)} - a creative (family) versus its ads (Meta ad copies in a campaign / ad set).
+    ads_count = distinct Meta ads with spend in the window and stages; since launch = all of the family's Meta ads (API lifetime; with a stage list
+    that leaves out 'unclassified', the ads that spent in the included stages). ads_live = Meta ads that spent on data_through or the day before
+    (fixed, like live_now: not filtered by window or stage)."""
+    fks = sorted({k for k in family_keys if k and not k.startswith("id:")})
+    out = {k: (0, 0) for k in family_keys}
+    if not fks:
+        return out
+    params: dict[str, Any] = {"fks": fks, "stages": w.stages, "d1": meta.data_through - dt.timedelta(days=1)}
+    stage_expr = "CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END"
+    cnt_all_ads = w.is_launch and "unclassified" in w.stages
+    if w.is_launch:
+        day_cond, lo = "TRUE", meta.daily_start
+    else:
+        params.update(wf=w.date_from, wt=w.date_to)
+        day_cond, lo = "ad.day BETWEEN %(wf)s AND %(wt)s", min(w.date_from, meta.data_through - dt.timedelta(days=1))
+    params["lo"] = lo
+    counts = f"""
+            SELECT m.tracker_family_key AS fk,
+                   count(DISTINCT ad.ad_id) FILTER (WHERE ad.spend > 0 AND {day_cond} AND {stage_expr} = ANY(%(stages)s)) AS n,
+                   count(DISTINCT ad.ad_id) FILTER (WHERE ad.spend > 0 AND ad.day >= %(d1)s) AS live
+            FROM ad_daily ad
+            JOIN meta_family_map m ON m.meta_family_key = ad.meta_family_key
+            LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
+            WHERE m.tracker_family_key = ANY(%(fks)s) AND ad.day >= %(lo)s AND NOT starts_with(ad.ad_id, 'fam:')
+            GROUP BY 1"""
+    for r in rows_of(conn, counts, params):
+        out[r["fk"]] = (int(r["n"]), int(r["live"]))
+    if cnt_all_ads:                                    # since launch: every Meta ad the family has (meta_ads + the API lifetime table)
+        for r in rows_of(conn, """
+                SELECT fk, count(DISTINCT ad_id) AS n FROM (
+                  SELECT m.tracker_family_key AS fk, ma.ad_id FROM meta_ads ma JOIN meta_family_map m ON m.meta_family_key = ma.meta_family_key
+                  UNION
+                  SELECT m.tracker_family_key, ml.ad_id FROM meta_ad_lifetime ml
+                  JOIN meta_family_map m ON m.meta_family_key = COALESCE((SELECT meta_family_key FROM meta_ads WHERE ad_id = ml.ad_id), ml.meta_family_key)
+                ) x WHERE fk = ANY(%s) GROUP BY fk""", (fks,)):
+            out[r["fk"]] = (int(r["n"]), out[r["fk"]][1])
+    return out
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -1063,11 +1167,20 @@ GROUP BY GROUPING SETS ({sets_sql})
     for rk in ordered(root_level, root_parent):
         emit(root_level, rk, None)
 
+    fam_keys = [r["family_key"] for r in out if r["family_key"]]
+    links = family_links(conn, fam_keys)
+    counts = family_ad_counts(conn, meta, w, fam_keys) if fam_keys else {}
+    for r in out:                                                       # "see the ad": family rows link to their representative Meta ad
+        lk = links.get(r["family_key"]) if r["family_key"] else None
+        r["ads_manager_url"] = lk["ads_manager_url"] if lk else None
+        r["story_url"] = lk["story_url"] if lk else None
+        if r["level"] == 3:                                             # creative vs ads
+            r["ads_count"], r["ads_live"] = counts[r["family_key"]] if r["counted_here"] else (0, 0)
     total_m = shape_m(total_row, w)
     apply_shares([r["m"] for r in out] + [total_m], total_m)         # every row relative to the root total of this response
     if spark:
-        attach_spark_tree(conn, meta, w, product, root_level, last, cluster, icp, pain, out, spark)
-    return {"rows": out, "total": {"m": total_m}}
+        total_spark = attach_spark_tree(conn, meta, w, product, root_level, last, cluster, icp, pain, out, spark)
+    return {"rows": out, "total": {"m": total_m, **({"spark": total_spark} if spark else {})}}
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -1261,7 +1374,7 @@ SELECT o.*, {days_expr} AS days_active_final,
        ma.ad_name, ma.campaign_id AS ma_campaign, ma.adset_name, ma.account, ma.status AS ad_status, ma.created_date,
        mc.name AS campaign_name, mc.account AS campaign_account, COALESCE(mc.stage, 'unclassified') AS camp_stage,
        COALESCE(a7.s7, 0) AS spend_7d, COALESCE(a7.s1, 0) > 0 AS live,
-       s.primary_id, s.display, s.cluster, s.icp, s.pain, th.thumb_id
+       s.primary_id, s.display, s.cluster, s.icp, s.pain, th.thumb_id, fc.story_url
 FROM o
 {dact_join}
 LEFT JOIN meta_ads ma ON ma.ad_id = o.aid
@@ -1269,6 +1382,7 @@ LEFT JOIN meta_campaigns mc ON mc.campaign_id = COALESCE(NULLIF(ma.campaign_id, 
 LEFT JOIN ad7 a7 ON a7.ad_id = o.aid
 LEFT JOIN sel s ON s.family_key = o.fk AND o.matched
 LEFT JOIN thumbs th ON th.family_key = o.fk AND o.matched
+LEFT JOIN family_content fc ON fc.family_key = o.fk AND o.matched
 WHERE ({nonzero})
 ORDER BY o.spend DESC, o.c_spend DESC, o.aid NULLS LAST
 """
@@ -1295,6 +1409,7 @@ ORDER BY o.spend DESC, o.c_spend DESC, o.aid NULLS LAST
             "on_tracker": bool(r["matched"]),
             "campaign_id": campaign or None, "campaign_name": r["campaign_name"], "stage": r["camp_stage"] if campaign else "unclassified",
             "adset_name": r["adset_name"], "account": r["account"] or r["campaign_account"], "status": r["ad_status"],
+            "ads_manager_url": ads_manager_url(r["account"] or r["campaign_account"], r["aid"]), "story_url": r["story_url"] if r["matched"] else None,
             "created_date": r["created_date"].isoformat() if r["created_date"] else None,
             "tag": {"cluster": r["cluster"], "icp": r["icp"], "pain": r["pain"]} if r["matched"] else None,
             **window_block(side_a(r), w, side_b(r)),
@@ -1311,6 +1426,7 @@ ORDER BY o.spend DESC, o.c_spend DESC, o.aid NULLS LAST
                 "display": REMAINDER_NAME if on_tracker else REMAINDER_NAME[:-1] + ", not on the tracker)",
                 "primary_id": None, "thumb_asset_id": None, "on_tracker": on_tracker, "campaign_id": None, "campaign_name": None,
                 "stage": "unclassified", "adset_name": None, "account": None, "status": None, "created_date": None, "tag": None,
+                "ads_manager_url": None, "story_url": None,
                 **window_block(side_a(rm_), w, side_b(rm_)),
                 "spend_7d": 0.0, "live": False, "days_active": 0,
             })
@@ -1319,7 +1435,7 @@ ORDER BY o.spend DESC, o.c_spend DESC, o.aid NULLS LAST
              "spend_7d": f2(sum(Decimal(str(a["spend_7d"])) for a in ads)), "live": sum(1 for a in ads if a["live"])}
     apply_shares(ads + [total], total)
     if spark:
-        attach_spark_ads(conn, meta, w, product, ads, spark)
+        total["spark"] = attach_spark_ads(conn, meta, w, product, ads, spark)
     return {"rows": ads, "total": total}
 
 
@@ -1417,7 +1533,7 @@ f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win, {in_cmp} AS in_cmp FR
     apply_shares(by_stage, {"spend": sum(c["spend"] for c in by_stage),
                             **({"cmp": {"spend": sum(c["cmp"]["spend"] for c in by_stage)}} if w.cmp is not None else {})})
     if spark:
-        attach_spark_campaigns(conn, meta, w, product, rows, spark)
+        total["spark"] = attach_spark_campaigns(conn, meta, w, product, rows, spark)
     return {"by_stage": by_stage, "rows": rows, "total": total}
 
 
@@ -1569,6 +1685,8 @@ def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
                     "ingredients": [{"ingredient": i["ingredient"], "attacks": i["attacks"], "supports": i["supports"]} for i in ing]}
 
     content = row_of(conn, "SELECT * FROM family_content WHERE family_key = %s", (fk,)) or {}
+    fl = family_links(conn, [fk])[fk]
+    ac = family_ad_counts(conn, meta, w, [fk])[fk]
     assets = rows_of(conn, "SELECT id, kind, idx FROM creative_assets WHERE family_key = %s ORDER BY kind, idx", (fk,))
     thumb = next((a["id"] for a in assets if a["kind"] == "thumb"), None)
     frames = [a["id"] for a in assets if a["kind"] == "frame"]
@@ -1641,6 +1759,9 @@ def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
         "launch_date": r["launch_date"].isoformat() if r["launch_date"] else None, "concept_name": r["concept_name"],
         "description": r["description"], "hypothesis": r["hypothesis"], "meta_ad_name": r["meta_ad_name"],
         "story_url": content.get("story_url"), "asset_url": r["asset_url"],
+        "links": {k: fl[k] for k in ("story_url", "ads_manager_url", "ad_id", "account")},
+        "creative": {"family_key": fk, "rows": len(siblings) + 1, "ads_count": ac[0], "ads_live": ac[1]},
+        "ads_count": ac[0], "ads_live": ac[1],
         "tag": tag,
         "tracker_tag": {"cluster": r["tracker_cluster"], "icp": r["tracker_icp"], "pain_point": r["tracker_pain"],
                         "emotion": r["tracker_emotion"], "ingredient": r["tracker_ingredient"]},
@@ -1938,7 +2059,8 @@ def _spark_family_arrays(conn, meta: DataMeta, w: WindowSpec, product: dict, spa
     params: dict[str, Any] = {"stages": w.stages, "sf": sf, "st": st}
     sql = "WITH " + _tr_cte(product["id"], family_key, params)
     tagw = _tag_where(cluster, icp, pain, params, prefix="tr.")
-    sets_sql = ", ".join("(" + ", ".join(f"fs.{c}" for c in cols) + ", fd.day)" for cols in sets)
+    sets_sql = ", ".join("(" + ", ".join(f"fs.{c}" for c in cols) + ", fd.day)" for cols in sets) + ", (fd.day)"      # (fd.day) = the scope total, key ''
+
     used = {c for cols in sets for c in cols}                      # a column that is in no grouping set cannot be referenced at all
     gk = "concat_ws('|', " + ", ".join(f"fs.{c}" for c in _TREE_KEY_COLS if c in used) + ")"
     sums = ", ".join(f"sum({_FD_SUM_EXPR[k]}) AS {k}" for k in _A_KEYS)
@@ -1964,12 +2086,14 @@ def attach_spark_rollup(conn, meta, w, product, level, cluster, icp, rows, spark
                                   icp=icp if level == "pain" else None)
     for r in rows:
         r["spark"] = arrays.get("|".join(r[c] for c in cols)) or _blank_spark(spark[1], spark[0])
+    return arrays.get("") or _blank_spark(spark[1], spark[0])
 
 
 def attach_spark_families(conn, meta, w, product, cluster, icp, pain, rows, spark):
     arrays = _spark_family_arrays(conn, meta, w, product, spark, [("family_key",)], cluster=cluster, icp=icp, pain=pain)
     for r in rows:
         r["spark"] = arrays.get(r["family_key"]) or _blank_spark(spark[1], spark[0])
+    return arrays.get("") or _blank_spark(spark[1], spark[0])
 
 
 def attach_spark_tree(conn, meta, w, product, root_level, last, cluster, icp, pain, rows, spark):
@@ -1978,10 +2102,15 @@ def attach_spark_tree(conn, meta, w, product, root_level, last, cluster, icp, pa
                                   icp=icp if root_level >= 2 else None, pain=pain if root_level >= 3 else None)
     for r in rows:
         r["spark"] = arrays.get(r["key"]) or _blank_spark(spark[1], spark[0])
+    return arrays.get("") or _blank_spark(spark[1], spark[0])
+
+
+TOTAL_KEY = "__total__"
 
 
 def _spark_ad_rows(conn, meta, w, product, spark, key_sql: str, where_sql: str, params: dict) -> dict[str, list]:
-    """Sparkline arrays straight from ad_daily rows (campaign / ad grain). key_sql and where_sql are fixed fragments from this module."""
+    """Sparkline arrays straight from ad_daily rows (campaign / ad grain), plus the total of the same rows under TOTAL_KEY.
+    key_sql and where_sql are fixed fragments from this module."""
     metric, n = spark
     sf, st = _spark_range(meta, w, n)
     e = _row_exprs("ad")
@@ -1990,10 +2119,10 @@ def _spark_ad_rows(conn, meta, w, product, spark, key_sql: str, where_sql: str, 
     sql = f"""
         WITH {_PRODUCT_FAMILIES},
         g AS (
-          SELECT ({key_sql}) COLLATE "C" AS gk, ad.day, {sums}
+          SELECT COALESCE(({key_sql}) COLLATE "C", '{TOTAL_KEY}') AS gk, ad.day, {sums}
           FROM ad_daily ad LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
           WHERE ad.day BETWEEN %(sf)s AND %(st)s AND {stage_expr} = ANY(%(stages)s) AND {where_sql}
-          GROUP BY 1, ad.day
+          GROUP BY GROUPING SETS ((({key_sql}) COLLATE "C", ad.day), (ad.day))
         )"""
     return _spark_arrays(conn, sql, {**params, "pid": product["id"], "sf": sf, "st": st, "stages": w.stages}, metric)
 
@@ -2002,6 +2131,7 @@ def attach_spark_campaigns(conn, meta, w, product, rows, spark):
     arrays = _spark_ad_rows(conn, meta, w, product, spark, "ad.campaign_id", "ad.meta_family_key IN (SELECT meta_family_key FROM pf)", {})
     for r in rows:
         r["spark"] = arrays.get(r["campaign_id"]) or _blank_spark(spark[1], spark[0])
+    return arrays.get(TOTAL_KEY) or _blank_spark(spark[1], spark[0])
 
 
 def attach_spark_ads(conn, meta, w, product, rows, spark):
@@ -2009,6 +2139,7 @@ def attach_spark_ads(conn, meta, w, product, rows, spark):
     arrays = _spark_ad_rows(conn, meta, w, product, spark, "ad.ad_id", "ad.ad_id = ANY(%(ids)s)", {"ids": ids}) if ids else {}
     for r in rows:
         r["spark"] = (arrays.get(r["ad_id"]) or _blank_spark(spark[1], spark[0])) if r["ad_id"] else None      # remainder rows have no series
+    return arrays.get(TOTAL_KEY) or _blank_spark(spark[1], spark[0])        # the listed ads' days (family-grain remainder days have no ad id)
 
 
 # --------------------------------------------------------------------------------------------------------------------

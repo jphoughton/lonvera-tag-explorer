@@ -306,13 +306,23 @@ export function colorChip(color) {
   const c = safeColor(color);
   return h('span', { class: 'chip', style: c ? { backgroundColor: c } : null });
 }
-export function thumb(assetId, size = 36) {
-  if (assetId == null) return h('span', { class: 'thumb ph', style: { width: size + 'px', height: size + 'px' } });
+export function thumb(assetId, size = 36, ctx = null) {
+  const ph = () => h('span', { class: 'thumb ph', style: { width: size + 'px', height: size + 'px' } });
+  if (assetId == null) return ph();
+  const name = ctx && ctx.name;
   const img = h('img', {
-    class: 'thumb', loading: 'lazy', alt: '', src: '/media/' + enc(assetId),
+    class: 'thumb zoomable', loading: 'lazy', alt: name ? `${name} — open larger image` : 'Open larger image', src: '/media/' + enc(assetId),
+    role: 'button', tabindex: '0', title: 'Click to enlarge',
     style: { width: size + 'px', height: size + 'px' },
   });
-  img.addEventListener('error', () => img.replaceWith(h('span', { class: 'thumb ph', style: { width: size + 'px', height: size + 'px' } })));
+  const open = (e) => {
+    e.preventDefault();
+    e.stopPropagation(); // do not also drop down / open the row
+    document.dispatchEvent(new CustomEvent('tagexp:lightbox', { detail: { assetId, ...(ctx || {}) } }));
+  };
+  img.addEventListener('click', open);
+  img.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') open(e); });
+  img.addEventListener('error', () => img.replaceWith(ph()));
   return img;
 }
 export function empty(text) { return h('div', { class: 'empty' }, text); }

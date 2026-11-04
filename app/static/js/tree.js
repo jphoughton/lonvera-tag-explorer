@@ -5,6 +5,7 @@ import { h, enc, fmt, href, apiWindow, globalParams, sparkParams, colorChip, thu
 import { api, AuthError } from './api.js';
 import { createTable, compare } from './table.js';
 import { columnsChips } from './components.js';
+import { adActions } from './preview.js';
 import { metricColumns, trendColumn, pinColumn } from './columns.js';
 
 const ROOT = '__root__';
@@ -277,13 +278,13 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
     if (n.level === 4) {
       const a = n.ad;
       body = h('div', { class: 'cell-ad' },
-        a.ad_id == null ? null : thumb(n.thumb_asset_id, 26),
+        a.ad_id == null ? null : thumb(n.thumb_asset_id, 26, { name: n.label, primaryId: n.primary_id, metaAdId: a.ad_id, tag: a.tag, links: a.links }),
         h('div', { class: 'cell-ad-text' },
           h('div', null, h('span', { class: 'adname' + (a.ad_id == null ? ' muted ital' : ''), title: n.label }, n.label), ' ', a.stage ? stageBadge(a.stage) : null, openLink),
-          a.ad_id == null ? null : h('div', { class: 'sub' }, [a.campaign_name, a.adset_name, a.status].filter(Boolean).join(' · '))));
+          a.ad_id == null ? null : h('div', { class: 'sub' }, [a.campaign_name, a.adset_name, a.status].filter(Boolean).join(' · '), ' ', adActions(a))));
     } else if (n.level === 3) {
       body = h('div', { class: 'cell-ad' },
-        thumb(n.thumb_asset_id, 30),
+        thumb(n.thumb_asset_id, 30, { name: n.label, primaryId: n.primary_id }),
         h('div', { class: 'cell-ad-text' },
           h('div', null, h('span', { class: 'adname', title: n.label }, n.label), ' ', n.confidence ? confBadge(n.confidence) : null, openLink),
           h('div', { class: 'sub' }, [n.ad_type, n.status].filter(Boolean).join(' · '), n.counted_here === false ? ' · ' : '',

@@ -353,6 +353,102 @@ def test_auth_disabled_login_page_redirects_to_the_app(noauth_page):
     expect(page.locator("#logout")).to_be_hidden()
 
 
+# ------------------------------------------------------------------ pinned Total row on every table
+def assert_total_row(page, testid, strict=True):
+    d = table_data(page, testid)
+    assert d["foot"] and any(c.startswith("Total") for c in d["foot"][:2]), (testid, d["foot"][:2])  # (a caret column may come first)
+    i = d["heads"].index("spend")
+    shown = len(d["rows"])
+    if strict and shown and shown < 400:  # (long tables render 400 rows at a time)
+        s = sum(num(r[i]) or 0 for r in d["rows"])
+        assert abs(s - num(d["foot"][i])) <= max(2.0, shown * 1.0), (testid, s, d["foot"][i])
+    if "spend_share" in d["heads"]:
+        assert d["foot"][d["heads"].index("spend_share")].split("\n")[0] == "100.0%", (testid, d["foot"])
+    pos = page.evaluate("(t) => getComputedStyle(document.querySelector(`[data-testid=${t}] tfoot td`)).position", testid)
+    assert pos == "sticky"
+    return d
+
+
+def test_total_row_on_every_table_type(page):
+    page.goto("/")
+    page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
+    d = assert_total_row(page, "products-table")
+    for k in ["unique_ads", "live_now", "spend", "spend_share", *TRAFFIC_COLS, "purchases", "revenue", "roas", "cpa", *STAGE_COLS]:
+        assert d["foot"][d["heads"].index(k)] not in ("",), (k, d["foot"])  # every metric column has a total
+    assert d["foot"][d["heads"].index("chart" if "chart" in d["heads"] else "_chart")] == "" and d["foot"][d["heads"].index("_ads")] == ""  # Chart / Ads cells are blank
+    # ratios come from the sums, not from averaging the rows
+    spend, clicks, purchases, revenue = (num(d["foot"][d["heads"].index(k)]) for k in ("spend", "link_clicks", "purchases", "revenue"))
+    if purchases:
+        assert abs(num(d["foot"][d["heads"].index("cpa")]) - spend / purchases) <= 1.0
+    if spend:
+        assert abs(num(d["foot"][d["heads"].index("roas")]) - revenue / spend) <= 0.01
+    shot(page, "37_total_products")
+    cluster, icp, pain = drill_to_families(page)
+    assert_total_row(page, "level-table")  # tree tables keep theirs
+    page.goto(f"/p/{SLUG}?all=1")
+    wait_rows(page)
+    assert_total_row(page, "level-table")
+    page.goto(f"/p/{SLUG}?view=ads")
+    wait_rows(page, "ads-table")
+    assert_total_row(page, "ads-table")
+    page.goto(f"/p/{SLUG}?view=campaigns")
+    page.wait_for_selector("[data-testid=campaign-table]")
+    idle(page)
+    if page.locator("[data-testid=campaign-table] tbody tr[data-key]").count():
+        assert_total_row(page, "campaign-table", strict=IS_MOCK)
+    page.goto(f"/p/{SLUG}")
+    wait_rows(page)
+    page.locator("#unmatched summary").click()
+    page.wait_for_selector("[data-testid=unmatched-table]")
+    assert_total_row(page, "unmatched-table", strict=IS_MOCK)
+    # ad detail: Meta ads in the family + campaigns mini table
+    page.goto(purl(cluster, icp, pain))
+    wait_rows(page)
+    href = first_row(page).get_attribute("data-href")
+    page.goto(href)
+    wait_trend(page)
+    if page.locator("#meta-ads").count():
+        assert_total_row(page, "ads-table")
+    if page.locator("#campaigns").count():
+        assert_total_row(page, "campaigns-mini-table")
+    # the inline Meta ads of a flat family row have one too
+    page.goto(f"/p/{SLUG}?all=1")
+    wait_rows(page)
+    page.locator(f"{BODY_ROWS} td.num").first.click()
+    page.wait_for_selector(f"{TABLE} tr.expandrow table tfoot td", timeout=5000)
+
+
+def test_total_row_with_compare_per_day_and_single_stage(page):
+    page.goto("/?window=7d&compare=30d")
+    page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
+    idle(page)
+    assert page.is_checked("#perday")  # windows differ in length: per-day values
+    d = assert_total_row(page, "products-table")
+    assert page.locator("[data-testid=products-table] tfoot .cmpcell").count() >= 8  # compare sub-lines in the total row
+    i = d["heads"].index("spend")
+    assert "vs " in page.locator(f"[data-testid=products-table] tfoot td:nth-child({i + 1}) .cmpcell .b").inner_text()
+    page.uncheck("#perday")  # raw totals: the total spend is the sum of the raw row spends
+    d = assert_total_row(page, "products-table")
+    page.goto("/?stage=scaling")
+    page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
+    d = assert_total_row(page, "products-table")
+    assert not any(c in d["heads"] for c in STAGE_COLS)  # stage columns (and their totals) only when both stages are on
+
+
+def test_total_row_stays_visible_at_the_bottom_of_a_long_table(page):
+    goto_product(page)
+    page.locator("#expand-to [data-depth='3']").click()
+    page.wait_for_selector(f"{TABLE} tr.lv3", timeout=8000)
+    idle(page)
+    wrap = f"{TABLE} .tablewrap"
+    over = page.evaluate("(w) => { const e = document.querySelector(w); return e.scrollHeight - e.clientHeight; }", wrap)
+    assert over > 100, "the table must be taller than its box for this check"
+    for top in (0, over // 2):
+        page.evaluate("([w, t]) => { document.querySelector(w).scrollTop = t; }", [wrap, top])
+        rect = page.evaluate("(w) => { const e = document.querySelector(w).getBoundingClientRect(); const f = document.querySelector(w + ' tfoot td').getBoundingClientRect(); return {wt: e.top, wb: e.bottom, ft: f.top, fb: f.bottom}; }", wrap)
+        assert rect["ft"] >= rect["wt"] - 1 and rect["fb"] <= rect["wb"] + 1, (top, rect)  # pinned inside the box, no scrolling to the very end
+
+
 # ------------------------------------------------------------------ products landing
 def test_products_landing(page):
     page.goto("/")

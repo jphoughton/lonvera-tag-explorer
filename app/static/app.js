@@ -2,6 +2,8 @@ import { $, h, setRenderer, navigate, currentParams, qs, href, globalParams, has
 import { setUnauthorizedHandler, AuthError } from './js/api.js';
 import { buildShell, showControls, syncControls, loadStatus, setRangeInfo, getStatus, setBackDisabled, setPendingNote, isAuthDisabled } from './js/controls.js';
 import { destroyCharts } from './js/charts.js';
+import './js/lightbox.js';
+import { closeAllModals } from './js/modal.js';
 import { loginPage } from './js/pages/login.js';
 import { productsPage } from './js/pages/products.js';
 import { productPage } from './js/pages/product.js';
@@ -74,6 +76,7 @@ async function render(opts = {}) {
   if (abort) abort.abort();
   abort = new AbortController();
   destroyCharts();
+  closeAllModals();
   clearCmpRefreshers();
   setViewStateProvider(null);
   setParentHint(null);

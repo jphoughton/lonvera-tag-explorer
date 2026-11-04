@@ -722,6 +722,14 @@ def products():
         tot["cmp"] = dict(spend=sum(d["m"]["cmp"]["spend"] for d in out))
         tot["delta"] = {}
     shares([d["m"] for d in out], tot)
+    if request.args.get("envelope"):
+        all_ents = [e for pr in PRODUCTS for e in prod_items(pr["slug"])]
+        tm = make_m(items_for_m(all_ents), win)
+        tm["spend_share"] = 1.0
+        if tm.get("cmp"):
+            tm["cmp"]["spend_share"] = 1.0
+            tm["delta"]["spend_share_pp"] = 0.0
+        return jsonify(window_info=win["info"], compare_info=cinfo(), rows=out, total=dict(m=tm, rows=sum(d["rows"] for d in out)))
     return jsonify(out)
 
 
@@ -922,7 +930,7 @@ def _ad_row(ad, win, launch):
                 stage=cmp["stage"], adset_name=ad["adset"], account=cmp["account"], status=ad["status"], created_date=ad["created"],
                 tag=dict(cluster=first["cluster"], icp=first["icp"], pain=first["pain"]) if first else dict(cluster=None, icp=None, pain=None),
                 spend=round(sp, 2), purchases=int(round(pu)), revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu), spend_7d=round(sp7, 2),
-                live=ad["daily"][N - 1][0] > 0 or ad["daily"][N - 2][0] > 0, days_active=days, **tf)
+                live=ad["daily"][N - 1][0] > 0 or ad["daily"][N - 2][0] > 0, days_active=days, links=ad_links(ad), **tf)
 
 
 def sum_cmp(tot, rows, win):
@@ -1156,7 +1164,8 @@ def ad_detail(rid):
         e["spend"] += r["spend"]; e["purchases"] += r["purchases"]; e["revenue"] += r["revenue"]
     asset_ids = [fam["thumb"]] if fam["thumb"] else []
     frames = [f"f{rid}{k}" for k in range(4)] if is_video else []
-    return jsonify(id=rid, product=dict(slug=p["slug"], name=p["name"]), concept_id=row["concept_id"], ad_family=fam["display"], family_key=fam["key"], sheet_row=row["sheet_row"],
+    links = ad_links(fam_ads[0]) if fam_ads else dict(story_url=None, ads_manager_url=None, ad_id=None, account=None)
+    return jsonify(id=rid, links=links, product=dict(slug=p["slug"], name=p["name"]), concept_id=row["concept_id"], ad_family=fam["display"], family_key=fam["key"], sheet_row=row["sheet_row"],
                    status=fam["status"], ad_type=fam["ad_type"], style="UGC" if is_video else "Static", vendor="Madre", launch_date=fam["launch"].isoformat() if fam["launch"] else None,
                    concept_name="Doctor says no", description="Founder explains the study.", hypothesis="Skeptics respond to cited studies.", meta_ad_name=fam["display"],
                    story_url="https://example.com/story", asset_url="javascript:alert(1)" if xss else "https://drive.example.com/asset",
@@ -1354,6 +1363,49 @@ def trend(slug):
 @app.get("/api/_test/trend_calls")
 def trend_calls():
     return jsonify(TREND_CALLS)
+
+
+
+def ad_links(ad):
+    n = int("".join(c for c in ad["ad_id"] if c.isdigit())[-9:] or 0)
+    fam = FAM_BY_KEY.get(ad["fam"]) if ad.get("fam") else None
+    story = "javascript:alert(1)" if (fam and fam["display"].startswith("XSS")) else f"https://www.facebook.com/lonvera/posts/{n}"
+    return dict(story_url=story, ads_manager_url=f"https://adsmanager.facebook.com/adsmanager/manage/ads?act=12345678&selected_ad_ids={ad['ad_id']}",
+                ad_id=ad["ad_id"], account=CAMPAIGNS[ad["campaign_id"]]["account"])
+
+
+PREVIEW_MODE = os.environ.get("MOCK_PREVIEW", "on")  # on | off
+
+
+def preview_json(name):
+    fmt = request.args.get("format", "mobile_feed")
+    if PREVIEW_MODE == "off":
+        return jsonify(enabled=False, src=None, format=fmt)
+    from urllib.parse import quote
+    return jsonify(enabled=True, src=f"/mock/preview?name={quote(name)}&format={fmt}", format=fmt)
+
+
+@app.get("/api/ads/<int:rid>/preview")
+def ad_preview(rid):
+    row = ROW_BY_ID.get(rid)
+    if not row:
+        return jsonify(error="not found"), 404
+    return preview_json(FAM_BY_KEY[row["fam"]]["display"])
+
+
+@app.get("/api/meta-ads/<ad_id>/preview")
+def meta_ad_preview(ad_id):
+    ad = next((a for a in ADS if a["ad_id"] == ad_id), None)
+    if not ad:
+        return jsonify(error="not found"), 404
+    return preview_json(ad["name"])
+
+
+@app.get("/mock/preview")
+def mock_preview_page():
+    from html import escape
+    name, fmt = request.args.get("name", ""), request.args.get("format", "")
+    return Response(f"<!doctype html><meta charset=utf-8><body style='font:14px sans-serif;margin:0;padding:16px;background:#fafafa'><div id='mock-ad' style='border:1px solid #ccc;border-radius:8px;padding:12px;background:#fff'><b>{escape(name)}</b><div>Mock Meta preview ({escape(fmt)})</div></div></body>", mimetype="text/html")
 
 
 @app.get("/media/<aid>")

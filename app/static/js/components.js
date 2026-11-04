@@ -3,6 +3,7 @@ import { h, enc, fmt, isNum, href, apiWindow, globalParams, debounce, navigate, 
 import { api, AuthError } from './api.js';
 import { createTable } from './table.js';
 import { metricColumns, FLAT_KEYS, fixTotal, trendColumn } from './columns.js';
+import { adActions } from './preview.js';
 
 export function breadcrumbs(items) {
   const last = items.length - 1;
@@ -88,7 +89,7 @@ export function adsColumns(p, { showFamily = true, campaignHref = null, linkAd =
       const hf = adHref(r);
       const sub = [showFamily && r.display && r.display !== r.ad_name ? r.display : null, tagPath(r)].filter(Boolean).join(' · ');
       return h('div', { class: 'cell-ad' },
-        thumb(r.thumb_asset_id, 32),
+        thumb(r.thumb_asset_id, 32, { name: r.ad_name, primaryId: r.primary_id, metaAdId: r.ad_id, tag: r.tag, links: r.links }),
         h('div', { class: 'cell-ad-text' },
           hf ? h('a', { href: hf, class: 'adname', title: r.ad_name }, r.ad_name) : h('span', { class: 'adname', title: r.ad_name }, r.ad_name),
           sub ? h('div', { class: 'sub', title: sub }, sub) : null));
@@ -110,6 +111,7 @@ export function adsColumns(p, { showFamily = true, campaignHref = null, linkAd =
     { key: 'stage', label: 'Stage', sort: (r) => r.stage, cell: (r) => (r.stage ? stageBadge(r.stage) : '') },
     { key: 'adset_name', label: 'Ad set', sort: (r) => r.adset_name, cell: (r) => h('span', { title: r.adset_name || null }, r.adset_name || '') },
     { key: 'status', label: 'Status', sort: (r) => r.status },
+    { key: 'links', label: 'Links', nosort: true, cls: 'linkscol', total: () => '', title: 'Facebook post, Ads Manager, and the live preview (eye)', cell: (r) => (r.ad_id == null ? '' : adActions(r) || '') },
     { key: 'created_date', label: 'Created', sort: (r) => r.created_date, cell: (r) => fmt.text(r.created_date) },
     ...flat,
     { key: 'live', label: 'Live', sort: (r) => (r.live ? 1 : 0), cell: (r) => (r.ad_id == null ? '' : liveDot(r.live)), total: () => '', cls: 'center' },

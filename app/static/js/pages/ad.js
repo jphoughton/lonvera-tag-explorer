@@ -5,6 +5,7 @@ import { setRangeInfo } from '../controls.js';
 import { flatTotal } from '../columns.js';
 import { breadcrumbs, section, adsTable, columnsChips } from '../components.js';
 import { createTrendPanel } from '../trend.js';
+import { createPreview, adLinks } from '../preview.js';
 
 function kv(label, value, cls = '') {
   if (value == null || value === '' || (Array.isArray(value) && !value.length)) return null;
@@ -130,11 +131,14 @@ function mediaCard(d) {
   const ids = [];
   if (a.thumb != null) ids.push({ id: a.thumb, label: 'Thumbnail' });
   for (const f of (a.frames || []).slice(0, 4)) ids.push({ id: f, label: 'Frame' });
+  const title = d.ad_family || d.concept_id;
   const img = (x, big) => {
     const url = '/media/' + enc(x.id);
-    const im = h('img', { src: url, alt: x.label, loading: 'lazy', class: big ? 'media-main' : 'media-frame' });
+    const im = h('img', { src: url, alt: `${title} — ${x.label.toLowerCase()}`, loading: 'lazy', class: big ? 'media-main' : 'media-frame' });
     im.addEventListener('error', () => im.replaceWith(h('div', { class: 'thumb ph media-missing' }, 'no image')));
-    return h('a', { href: url, target: '_blank', rel: 'noopener', class: 'media-link' }, im);
+    const b = h('button', { type: 'button', class: 'media-link', 'aria-label': `Enlarge ${x.label.toLowerCase()}: ${title}` }, im);
+    b.addEventListener('click', () => document.dispatchEvent(new CustomEvent('tagexp:lightbox', { detail: { assetId: x.id, name: title, primaryId: d.id, detail: d, links: d.links } })));
+    return b;
   };
   if (!ids.length) return h('div', { class: 'card media', id: 'media' }, h('div', { class: 'media-missing' }, 'No image or frames stored for this ad.'));
   const main = ids[0];
@@ -197,7 +201,7 @@ function campaignsTable(d, p, slug, G) {
     { key: 'roas', label: 'ROAS', num: true, sort: (r) => r.roas, cell: (r) => fmt.roas(r.roas), total: (t) => fmt.roas(t.roas) },
     { key: 'cpa', label: 'CPA', num: true, sort: (r) => r.cpa, cell: (r) => fmt.money(r.cpa), total: (t) => fmt.money(t.cpa) },
   ];
-  return section('Campaigns', createTable({ columns: cols, rows, total: rows.length > 1 ? tot : null, rowKey: (r) => r.campaign_id, rowHref: (r) => href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }), tableClass: 'compact', testid: 'campaigns-mini-table' }).el, { id: 'campaigns' });
+  return section('Campaigns', createTable({ columns: cols, rows, total: tot, rowKey: (r) => r.campaign_id, rowHref: (r) => href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }), tableClass: 'compact', testid: 'campaigns-mini-table' }).el, { id: 'campaigns' });
 }
 
 export async function adPage(ctx) {
@@ -230,12 +234,13 @@ export async function adPage(ctx) {
   ].filter(Boolean).join(' · ');
 
   // trend panel: full series since the first day of daily data, window A (and B) shaded
+  const preview = createPreview({ endpoint: `/api/ads/${enc(d.id)}/preview`, links: d.links || { story_url: d.story_url }, name: title, signal });
   const panel = createTrendPanel({ slug, p, scope: { family_key: d.family_key }, scopeLabel: title, mode: 'ad', shadeInfo: { a: wi, b: d.compare_info || null }, signal });
 
   const metaAds = d.meta_ads || [];
   const famTotal = flatTotal(metaAds, { days: wi && wi.days, bdays: d.compare_info && d.compare_info.days });
   const adsRows = metaAds.map((r) => (r.spend_share != null ? r : { ...r, spend_share: famTotal.spend > 0 ? r.spend / famTotal.spend : null }));
-  const adsT = metaAds.length ? adsTable({ ...p }, { rows: adsRows, total: metaAds.length > 1 ? famTotal : null }, {
+  const adsT = metaAds.length ? adsTable({ ...p }, { rows: adsRows, total: famTotal }, {
     showFamily: false, linkAd: false, shareLabel: '% of family',
     campaignHref: (r) => href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }),
   }) : null;
@@ -250,9 +255,10 @@ export async function adPage(ctx) {
         d.status ? badge(d.status, 'status') : null,
         d.ad_type ? badge(d.ad_type, 'type') : null,
         h('span', { class: 'spacer' }),
-        extLink('Story', d.story_url), extLink('Asset', d.asset_url),
+        adLinks(d.links || { story_url: d.story_url }), extLink('Asset', d.asset_url),
         h('a', { class: 'btnlink', href: href(path, { ...G, view: 'ads', family_key: d.family_key }) }, 'Meta ads table')),
       h('div', { class: 'note-line' }, meta)),
+    section('See the ad', preview.el, { id: 'see-ad' }),
     h('div', { class: 'adgrid' },
       h('div', { class: 'adcol-left' }, mediaCard(d)),
       h('div', { class: 'adcol-right' }, panel.el, metricsCard(d, wi))),
@@ -268,4 +274,5 @@ export async function adPage(ctx) {
     if (old && nu) old.replaceWith(nu);
   });
   panel.load();
+  preview.load();
 }

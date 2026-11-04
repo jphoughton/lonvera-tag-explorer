@@ -133,7 +133,7 @@ async function familiesFlatView(ctx, slug) {
         const ids = (r.concept_ids || []).slice(0, 2).join(', ') + ((r.concept_ids || []).length > 2 ? ` +${r.concept_ids.length - 2}` : '');
         const hf = r.primary_id != null ? href('/ad/' + enc(r.primary_id), G) : null;
         return h('div', { class: 'cell-ad' },
-          thumb(r.thumb_asset_id, 34),
+          thumb(r.thumb_asset_id, 34, { name: r.display, primaryId: r.primary_id }),
           h('div', { class: 'cell-ad-text' },
             h('div', null, hf ? h('a', { href: hf, class: 'rowlink adname', title: r.display }, r.display) : h('span', { class: 'adname' }, r.display),
               ' ', linemap && r.confidence ? h('span', { title: r.method || null }, confBadge(r.confidence)) : null,

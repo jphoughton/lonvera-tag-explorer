@@ -8,6 +8,21 @@ def _flag(v: str | None) -> bool:
     return str(v or "").strip().lower() in ("1", "true", "yes", "on")
 
 
+# Meta ad accounts by the name stored in meta_ads.account -> numeric account id (used to deep-link into Ads Manager)
+META_ACCOUNT_IDS = {"lonvera main": "1671338033619223", "lonvera backup": "1543579384022317"}
+
+
+def ads_manager_url(account: str | None, ad_id: str | None) -> str | None:
+    """https://adsmanager.facebook.com/adsmanager/manage/ads?act=<account id>&selected_ad_ids=<ad id>; None when the account or ad is unknown."""
+    if not ad_id or not account:
+        return None
+    key = str(account).strip().lower()
+    act = META_ACCOUNT_IDS.get(key)
+    if act is None and key.removeprefix("act_").isdigit():
+        act = key.removeprefix("act_")
+    return f"https://adsmanager.facebook.com/adsmanager/manage/ads?act={act}&selected_ad_ids={ad_id}" if act else None
+
+
 def load_config(overrides: dict | None = None) -> dict:
     env = os.environ
     insecure = _flag(env.get("DEV_INSECURE_COOKIES"))
@@ -21,6 +36,8 @@ def load_config(overrides: dict | None = None) -> dict:
         "DEV_INSECURE_COOKIES": insecure,
         # AUTH_DISABLED=1 opens the whole app (every check passes, user = "guest"). Unset it / set 0 and the APP_USERS logins apply again.
         "AUTH_DISABLED": _flag(env.get("AUTH_DISABLED")),
+        # Ad previews (server-side Graph call). Unset = the preview endpoints answer {"enabled": false}. Never returned or logged.
+        "META_PREVIEW_TOKEN": env.get("META_PREVIEW_TOKEN", ""),
         "SESSION_DAYS": int(env.get("SESSION_DAYS", "30")),
         "LOGIN_MAX_FAILS": int(env.get("LOGIN_MAX_FAILS", "5")),                 # failures per (client IP, username) in the window
         "LOGIN_MAX_FAILS_IP": int(env.get("LOGIN_MAX_FAILS_IP", "20")),          # failures per client IP in the window
