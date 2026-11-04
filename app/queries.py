@@ -9,6 +9,7 @@ Conventions
 """
 from __future__ import annotations
 
+import collections
 import contextvars
 import datetime as dt
 import json
@@ -1140,7 +1141,7 @@ def unmatched_summary(conn, product_id: int, meta: DataMeta | None = None, w: Wi
 
 
 def _taxonomy(conn, product_id: int) -> list[dict]:
-    return rows_of(conn, """SELECT line_code, cluster, icp, pain_point, emotional_trigger, cluster_color, sort_order
+    return rows_of(conn, """SELECT line_code, cluster, icp, pain_point, emotional_trigger, cluster_color, sort_order, added_after_tagging
                             FROM taxonomy_lines WHERE product_id = %s ORDER BY sort_order, id""", (product_id,))
 
 
@@ -1396,8 +1397,13 @@ def _tax_children(lines: list[dict]) -> tuple[dict, dict]:
     children: dict[tuple, list] = {}
     info: dict[tuple, dict] = {}
     seen: set = set()
+    n_lines: dict[tuple, int] = {}
+    n_added: dict[tuple, int] = {}
     for ln in lines:
         k0, k1, k2 = (ln["cluster"],), (ln["cluster"], ln["icp"]), (ln["cluster"], ln["icp"], ln["pain_point"])
+        for key in (k0, k1, k2):
+            n_lines[key] = n_lines.get(key, 0) + 1
+            n_added[key] = n_added.get(key, 0) + (1 if ln.get("added_after_tagging") else 0)
         for parent, key in (((), k0), (k0, k1), (k1, k2)):
             if key not in seen:
                 seen.add(key)
@@ -1406,6 +1412,8 @@ def _tax_children(lines: list[dict]) -> tuple[dict, dict]:
                              "trigger": ln["emotional_trigger"] if len(key) == 3 else None}
             elif len(key) == 3:                                  # same cluster/ICP/pain, another trigger: one combined row
                 _merge_line_info(info[key], ln)
+    for key, i in info.items():
+        i["added_after_tagging"] = n_lines[key] > 0 and n_added[key] == n_lines[key]
     return children, info
 
 
@@ -1537,6 +1545,62 @@ GROUP BY GROUPING SETS ({sets_sql})
     if spark:
         total_spark = attach_spark_tree(conn, meta, w, product, root_level, last, cluster, icp, pain, out, spark)
     return {"rows": out, "total": {"m": total_m, **({"spark": total_spark} if spark else {})}}
+
+
+# --------------------------------------------------------------------------------------------------------------------
+# coverage: which ICPs / pain points have no ads or no spend ("what we have not tested")
+# --------------------------------------------------------------------------------------------------------------------
+
+
+def _cov_state(ads: int, spend: float) -> str:
+    """no_ads = no creative is tagged to the line (tracker based, so it never changes with the date window or the Meta | Upstack source);
+    no_spend = creatives exist but spent $0 in the selected window / stages / source; tested = spent."""
+    return "no_ads" if ads == 0 else ("no_spend" if spend <= 0 else "tested")
+
+
+def coverage(conn, meta: DataMeta, w: WindowSpec, product: dict) -> dict:
+    """Every cluster / ICP / pain point of the Communication Overview with its state. Ads are counted over every tracker creative (the 'Active only'
+    filter and comparison are ignored here: 'not tested' must not shift with them); spend follows the selected window, stage and source.
+    Pain-point rows are the tree's rows, so two lines that differ only by emotional trigger (Boneflex BF36 / BF38) count once. A line added to the
+    sheet after the ads were tagged reads 0 by construction and is reported as added_after_tagging, not as untested."""
+    if product["tag_set"] != "linemap":
+        return {"available": False, "reason": "This product's tags come from the tracker, not the Communication Overview lines, so there is no list of lines to compare against.",
+                "summary": None, "rows": [], "keys": {}}
+    children, info = _tax_children(_taxonomy(conn, product["id"]))
+    w0 = replace(w, active=False, cmp=None)
+    sql, params = _rm(meta, w0, product_id=product["id"])
+    sql += "SELECT cluster, icp, pain, " + AGG_COLS + " FROM rm GROUP BY GROUPING SETS ((cluster, icp, pain), (cluster, icp), (cluster))"
+    data: dict[tuple, tuple[int, float]] = {}
+    for r in rows_of(conn, sql, params):
+        if r["cluster"] is None:
+            continue
+        data[tuple(x for x in (r["cluster"], r["icp"], r["pain"]) if x is not None)] = (int(r["unique_ads"]), _f(r["spend"]))
+    keys: dict[str, dict] = {}
+    rows: list[dict] = []
+    count = {1: collections.Counter(), 2: collections.Counter()}
+    for k0 in children.get((), []):
+        for k1 in children.get(k0, []):
+            for k2 in [k1] + children.get(k1, []):
+                lvl = len(k2) - 1
+                if lvl == 1 and k2 is not k1:
+                    continue
+                ads, spend = data.get(k2, (0, 0.0))
+                st = _cov_state(ads, spend)
+                added = bool(info[k2].get("added_after_tagging")) and st == "no_ads"
+                keys["|".join(k2)] = {"state": st, "added_after_tagging": added}
+                if lvl >= 1:
+                    count[lvl]["total"] += 1
+                    count[lvl]["added_after_tagging" if added else st] += 1
+                if st != "tested" and lvl >= 1:
+                    rows.append({"level": lvl, "key": "|".join(k2), "cluster": k2[0], "icp": k2[1], "pain": k2[2] if lvl == 2 else None,
+                                 "label": k2[-1], "line_code": info[k2].get("line_code"), "trigger": info[k2].get("trigger"),
+                                 "color": info[k2].get("color"), "state": st, "added_after_tagging": added, "unique_ads": ads, "spend": f2(spend)})
+        keys["|".join(k0)] = {"state": _cov_state(*data.get(k0, (0, 0.0))), "added_after_tagging": False}
+
+    def summ(c: collections.Counter) -> dict:
+        return {"total": c["total"], "tested": c["tested"], "no_ads": c["no_ads"], "no_spend": c["no_spend"], "added_after_tagging": c["added_after_tagging"],
+                "not_tested": c["no_ads"] + c["no_spend"]}
+    return {"available": True, "summary": {"icps": summ(count[1]), "pain_points": summ(count[2])}, "rows": rows, "keys": keys}
 
 
 # --------------------------------------------------------------------------------------------------------------------

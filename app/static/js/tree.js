@@ -4,7 +4,7 @@
 import { h, enc, fmt, href, apiWindow, globalParams, sparkParams, colorChip, thumb, confBadge, stageBadge, navigate, cmpView, onCmpRefresh, isNum, getRowMode, setRowMode, debounce, setViewStateProvider } from './util.js';
 import { api, AuthError } from './api.js';
 import { createTable, compare } from './table.js';
-import { columnsChips, creativeMeta } from './components.js';
+import { columnsChips, creativeMeta, coverageBadge } from './components.js';
 import { adActions } from './preview.js';
 import { metricColumns, trendColumn, pinColumn } from './columns.js';
 
@@ -53,7 +53,7 @@ function adNode(r, fam, i) {
   };
 }
 
-export function createTree({ slug, p, signal, rootLevel, filters, first, restore, pins, shareLabel = '% of spend' }) {
+export function createTree({ slug, p, signal, rootLevel, filters, first, restore, pins, shareLabel = '% of spend', coverage = null }) {
   const G = globalParams(p);
   const path = '/p/' + enc(slug);
   const nodes = new Map();
@@ -303,6 +303,7 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
           n.line_code ? h('span', { class: 'linecode' }, n.line_code) : null,
           h('span', { class: 'lvlname' }, n.label),
           n.child_count != null ? h('span', { class: 'muted small childcount' }, ` ${fmt.int(n.child_count)} ${CHILD_WORD[n.level]}${n.child_count === 1 ? '' : 's'}`) : null,
+          coverageBadge(coverage && n.level >= 1 ? coverage[n.key] : null),
           openLink),
         n.trigger ? h('div', { class: 'sub', title: n.trigger }, n.trigger) : null);
     }

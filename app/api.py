@@ -125,6 +125,15 @@ def tree(slug: str):
                     "window": info, "window_info": info, "compare_info": w.compare_info(meta), **res})
 
 
+@bp.get("/api/products/<slug>/coverage")
+def coverage(slug: str):
+    """Which ICPs / pain points have no ads (tracker based) or ads but $0 spend (selected window, stage, source). See queries.coverage."""
+    conn, meta, w = _ctx()
+    product = q.get_product(conn, slug)
+    res = q.coverage(conn, meta, w, product)
+    return jsonify({"product": q.product_brief(product), "scope": SCOPE_TRACKER, "window_info": w.info(meta), "compare_info": None, **res})
+
+
 @bp.get("/api/products/<slug>/ads")
 def ads(slug: str):
     conn, meta, w = _ctx()
