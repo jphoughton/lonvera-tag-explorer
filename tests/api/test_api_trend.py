@@ -289,7 +289,7 @@ def test_launch_trend_covers_every_day_held(client):
     assert tget(client, "vita-bull", "window=launch&grain=week")["points"][0]["partial"] is True        # May 6 is a Wednesday
 
 
-@pytest.mark.parametrize("bad", ["grain=month", "grain=", "split=pie", "window=nope", "stage=zzz", "compare=prev", "compare=bogus&window=7d",
+@pytest.mark.parametrize("bad", ["grain=year", "grain=", "split=pie", "window=nope", "stage=zzz", "compare=prev", "compare=bogus&window=7d",
                                  "children=" + ",".join(f"k{i}" for i in range(13)) + "&split=children", "cfrom=2026-10-01"])
 def test_trend_validation(client, bad):
     r = client.get(f"/api/products/vita-bull/trend?{bad}")
@@ -448,3 +448,69 @@ def test_spark_params_resist_injection(client):
     for ep in ("rollup", "families", "ads", "campaigns", "tree"):
         for bad in ("spark=' OR 1=1;--", "spark=spend&spark_days=1;DROP TABLE x", "spark=%27%3B--", "spark=spend&spark_days=%00"):
             assert client.get(f"/api/products/vita-bull/{ep}?{bad}").status_code == 400, (ep, bad)
+
+
+# ---------------------------------------------------------------------------------------------------------------- monthly grain
+def month_starts(first, last):
+    out, m = [], first.replace(day=1)
+    while m <= last:
+        out.append(m)
+        m = (m.replace(day=28) + dt.timedelta(days=4)).replace(day=1)
+    return out
+
+
+@pytest.mark.parametrize("extra,win", [("window=launch", (F.D0, THROUGH)), ("window=180d", (THROUGH - dt.timedelta(days=179), THROUGH)),
+                                       ("from=2026-07-10&to=2026-09-20", (D(2026, 7, 10), D(2026, 9, 20))), ("window=30d", W30)])
+def test_monthly_buckets_sum_to_the_daily_series_and_the_window_total(client, fx, extra, win):
+    daily = tget(client, "vita-bull", f"{extra}&grain=day")
+    month = tget(client, "vita-bull", f"{extra}&grain=month")
+    assert month["grain"] == "month"
+    starts = month_starts(*win)
+    assert [p["t"] for p in month["points"]] == [x.isoformat() for x in starts]                    # continuous, t = YYYY-MM-01
+    assert all(p["t"].endswith("-01") for p in month["points"])
+    for p, ms in zip(month["points"], starts):
+        nxt = (ms.replace(day=28) + dt.timedelta(days=4)).replace(day=1)
+        days = [q_ for q_ in daily["points"] if max(ms, win[0]) <= D.fromisoformat(q_["t"]) < nxt]
+        for k in ("spend", "purchases", "revenue"):
+            assert p[k] == pytest.approx(sum(x[k] for x in days), abs=0.02), (extra, p["t"], k)
+        assert (p["impressions"] or 0) == sum(x["impressions"] or 0 for x in days) and (p["link_clicks"] or 0) == sum(x["link_clicks"] or 0 for x in days)
+        if p["spend"] and p["revenue"]:
+            assert p["roas"] == pytest.approx(p["revenue"] / p["spend"], abs=2e-4)                    # from the month's sums
+        assert p.get("partial", False) is (ms < win[0] or nxt - dt.timedelta(days=1) > win[1]), (extra, p["t"])
+    # the trend of "since launch" covers the days held, so compare with the same days (lifetime also holds history before May 6)
+    same_days = f"from={win[0]}&to={win[1]}" if extra == "window=launch" else extra
+    roll = get_ok(client, f"/api/products/vita-bull/rollup?level=cluster&{same_days}")["total"]["m"]
+    for k in ("spend", "purchases", "revenue"):
+        assert sum(p[k] for p in month["points"]) == pytest.approx(roll[k], abs=0.05), (extra, k)
+        assert sum(p[k] for p in daily["points"]) == pytest.approx(roll[k], abs=0.05), (extra, k)
+
+
+def test_monthly_partial_flags_at_the_data_edges(client):
+    m = tget(client, "vita-bull", "window=launch&grain=month")["points"]
+    assert [p["t"] for p in m] == [f"2026-{i:02d}-01" for i in range(5, 12)]                          # May .. Nov
+    assert m[0]["partial"] is True and m[-1]["partial"] is True                                       # daily_start is May 6, data_through is Nov 2
+    assert all("partial" not in p for p in m[1:-1])
+    whole = tget(client, "vita-bull", "from=2026-07-01&to=2026-08-31&grain=month")["points"]
+    assert [p["t"] for p in whole] == ["2026-07-01", "2026-08-01"] and all("partial" not in p for p in whole)
+    one = tget(client, "vita-bull", "window=1d&grain=month")["points"]
+    assert len(one) == 1 and one[0]["t"] == "2026-11-01" and one[0]["partial"] is True
+
+
+def test_monthly_split_and_compare_alignment(client):
+    d = tget(client, "vita-bull", "window=180d&grain=month&compare=prev&split=stage")
+    assert len(d["cmp_points"]) == len(d["points"])
+    assert d["cmp_points"][0] is not None and d["cmp_points"][0]["t"] == "2026-05-01"              # B (prev 180d) is cut at daily_start: one day, May 6
+    assert all(c is None or D.fromisoformat(c["t"]).day == 1 for c in d["cmp_points"])
+    for i, p in enumerate(d["points"]):
+        assert sum(d["by_stage"][s][i]["spend"] for s in d["by_stage"]) == pytest.approx(p["spend"], abs=0.02)
+    pad = tget(client, "vita-bull", "window=180d&grain=month&cfrom=2026-09-01&cto=2026-09-30")
+    assert pad["cmp_points"][0]["t"] == "2026-09-01" and all(c is None for c in pad["cmp_points"][1:])
+    kids = tget(client, "vita-bull", "window=180d&grain=month&split=children")
+    for i, p in enumerate(kids["points"]):
+        assert sum(c["points"][i]["spend"] for c in kids["children"]) == pytest.approx(p["spend"], abs=0.02)
+
+
+def test_bad_grain_is_still_400(client):
+    for bad in ("year", "months", "MONTHLY", "quarter", "day;DROP"):
+        assert client.get(f"/api/products/vita-bull/trend?grain={bad}").status_code == 400, bad
+    assert client.get("/api/products/vita-bull/trend?grain=MONTH").status_code == 200              # case-insensitive like day / week

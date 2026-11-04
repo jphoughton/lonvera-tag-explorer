@@ -1613,6 +1613,65 @@ def test_trend_split_stage_only_for_additive_bars(page):
     assert page.locator("#trend-split [data-split=children]").count() == 0
 
 
+def test_trend_month_grain_labels_partial_and_refetch(page):
+    goto_product(page, "?window=180d")
+    wait_trend(page)
+    reqs = trend_requests(page)
+    expect(page.locator("#trend-grain [data-grain=month]")).to_have_text("Month")
+    page.locator("#trend-grain [data-grain=month]").click()
+    expect(page).to_have_url(re.compile(r"tg=month"))
+    wait_trend(page)
+    assert reqs and reqs[-1].get("grain") == "month"  # switching re-fetches
+    info = trend_info(page)
+    assert 6 <= len(info["labels"]) <= 8, info["labels"]  # 180 days = 7 calendar months
+    assert all(re.fullmatch(r"\d{4}-\d{2}-01", t) for t in info["labels"])
+    ticks = page.evaluate("() => Chart.getChart('trend-chart').scales.x.ticks.map(t => t.label)")
+    assert all(re.fullmatch(r"[A-Z][a-z]{2} 20\d\d", t) for t in ticks), ticks  # 'Oct 2026' style
+    # the cut first / last months are flagged partial by the API and shown as such in the tooltip
+    pts = page.context.request.get(f"/api/products/{SLUG}/trend?grain=month&window=180d").json()["points"]
+    assert pts[0].get("partial") and pts[-1].get("partial") and not all(pt.get("partial") for pt in pts)
+    box = page.locator("#trend-chart").bounding_box()
+
+    def hover_bucket(i):
+        pos = page.evaluate("(i) => { const c = Chart.getChart('trend-chart'); const m = c.getDatasetMeta(0).data[i]; return {x: m.x, y: (c.chartArea.top + c.chartArea.bottom) / 2}; }", i)
+        page.mouse.move(box["x"] + pos["x"], box["y"] + pos["y"])
+        page.wait_for_timeout(250)
+        return page.evaluate("() => Chart.getChart('trend-chart').tooltip.title")
+
+    tip = hover_bucket(len(info["labels"]) - 1)  # last bucket
+    assert tip and re.fullmatch(r"[A-Z][a-z]+ 20\d\d \(partial\)", tip[0]), tip  # 'November 2026 (partial)'
+    mid = hover_bucket(len(info["labels"]) // 2)  # a full month in the middle
+    assert mid and re.fullmatch(r"[A-Z][a-z]+ 20\d\d", mid[0]), mid
+    shot(page, "36_trend_month")
+    # compare: B is aligned to A by position (null padded)
+    page.goto(f"/p/{SLUG}?window=60d&compare=prev&tg=month")
+    wait_rows(page)
+    wait_trend(page)
+    info = trend_info(page)
+    b = [d for d in info["ds"] if d["label"].startswith("B ")]
+    assert len(b) == 2 and all(len(d["data"]) == len(info["labels"]) for d in b)
+    # a 7 day window with month grain simply shows one or two partial months
+    page.goto(f"/p/{SLUG}?window=7d&tg=month")
+    wait_rows(page)
+    wait_trend(page)
+    labels = trend_info(page)["labels"]
+    assert 1 <= len(labels) <= 2
+    pts7 = page.context.request.get(f"/api/products/{SLUG}/trend?grain=month&window=7d").json()["points"]
+    assert all(pt.get("partial") for pt in pts7)
+    # back to Day / Week drops the param
+    page.locator("#trend-grain [data-grain=day]").click()
+    wait_trend(page)
+    assert "tg" not in qparams(page) and len(trend_info(page)["labels"]) == 7
+    # state survives a drill
+    page.goto(f"/p/{SLUG}?tg=month")
+    wait_rows(page)
+    open_first_row(page)
+    wait_rows(page)
+    wait_trend(page)
+    assert qparams(page)["tg"] == "month"
+    expect(page.locator("#trend-grain [data-grain=month]")).to_have_attribute("aria-pressed", "true")
+
+
 def test_trend_compare_overlay_bars_and_line(page):
     goto_product(page, "?window=14d")
     wait_trend(page)
@@ -1837,6 +1896,9 @@ def test_landing_trend_dual_axis_pins_products_and_client_side_switches(page):
     wait_trend(page)
     assert {d["label"] for d in bars_ds(trend_info(page))} >= {"Testing", "Scaling"}
     assert not reqs, "the landing page derives grain / split / pins from the per-product series it already has"
+    page.locator("#trend-grain [data-grain=month]").click()  # month bucketing is client-side here as well
+    wait_trend(page)
+    assert 5 <= len(trend_info(page)["labels"]) <= 8 and not reqs
     pick_metric(page, "bars", "none")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     idle(page)

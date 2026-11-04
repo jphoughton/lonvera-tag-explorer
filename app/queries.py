@@ -1665,7 +1665,7 @@ def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
 # trend lines + sparklines (v1.6)
 # --------------------------------------------------------------------------------------------------------------------
 
-TREND_GRAINS = ("day", "week")
+TREND_GRAINS = ("day", "week", "month")
 TREND_SPLITS = ("none", "stage", "children")
 SPARK_METRICS = ("spend", "purchases", "revenue", "roas", "cpa", "impressions", "link_clicks", "ctr", "cpc", "cpm", "conv_rate")
 MAX_SPARK_DAYS = 60
@@ -1702,14 +1702,25 @@ def _point(t: dt.date, vec: dict, partial: bool = False) -> dict:
 
 
 def _buckets(day_vecs: dict, d_from: dt.date, d_to: dt.date, grain: str) -> list[tuple[dt.date, bool, dict]]:
-    """Continuous x-axis: every day (or every ISO week, Monday start) of the range, zeros where nothing happened. A week is partial when the
-    range cuts it (first/last week)."""
+    """Continuous x-axis: every day, ISO week (Monday start) or calendar month of the range, zeros where nothing happened. A week or month is
+    partial when the range (the window, or the edge of the data) cuts it."""
     out: list[tuple[dt.date, bool, dict]] = []
     if grain == "day":
         d = d_from
         while d <= d_to:
             out.append((d, False, day_vecs.get(d) or _vec()))
             d += dt.timedelta(days=1)
+        return out
+    if grain == "month":                       # calendar months, t = first of the month; cut months (window or data edge) are partial
+        first = d_from.replace(day=1)
+        while first <= d_to:
+            nxt = (first.replace(day=28) + dt.timedelta(days=4)).replace(day=1)
+            v = _vec()
+            for day, dv in day_vecs.items():
+                if max(first, d_from) <= day <= min(nxt - dt.timedelta(days=1), d_to):
+                    _vec_add(v, dv)
+            out.append((first, first < d_from or nxt - dt.timedelta(days=1) > d_to, v))
+            first = nxt
         return out
     mon = d_from - dt.timedelta(days=d_from.weekday())
     while mon <= d_to:

@@ -140,16 +140,19 @@ const mondayOf = (iso) => {
   dt.setUTCDate(dt.getUTCDate() - ((dt.getUTCDay() + 6) % 7));
   return dt.toISOString().slice(0, 10);
 };
-export function rebucketWeeks(points) {
+const daysInMonth = (iso) => { const [y, m] = iso.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).getUTCDate(); };
+// day points -> ISO weeks (Monday) or calendar months ('YYYY-MM-01'); buckets missing days of the window are partial
+export function rebucket(points, grain) {
   const by = new Map();
-  for (const p of points) {
-    if (!p) continue;
-    const k = mondayOf(p.t);
+  for (const pt of points) {
+    if (!pt) continue;
+    const k = grain === 'month' ? pt.t.slice(0, 8) + '01' : mondayOf(pt.t);
     if (!by.has(k)) by.set(k, []);
-    by.get(k).push(p);
+    by.get(k).push(pt);
   }
-  return [...by.entries()].sort().map(([k, list]) => combine(list, k, list.length < 7));
+  return [...by.entries()].sort().map(([k, list]) => combine(list, k, list.length < (grain === 'month' ? daysInMonth(k) : 7)));
 }
+export const rebucketWeeks = (points) => rebucket(points, 'week');
 
 // ---------- data source (normalised shape) ----------
 // { windowInfo, compareInfo, labels:[t], points:[pt], cmp:[pt|null]|null, byStage:{stage:[pt]}|null, children:[{key,label,color,points}]|null }
@@ -186,7 +189,7 @@ export function createTrendPanel(opts) {
   const state = {
     bars: valid(p.tb, 'spend'),
     line: valid(p.tl, 'roas'),
-    grain: p.tg === 'week' ? 'week' : 'day',
+    grain: ['week', 'month'].includes(p.tg) ? p.tg : 'day',
     split: p.ts === 'stage' ? 'stage' : 'none',
     overlay: true,
     collapsed: trendCollapsed(),
@@ -226,7 +229,7 @@ export function createTrendPanel(opts) {
     b.addEventListener('click', () => onPick(v));
     return b;
   });
-  const grainBtns = seg([['day', 'Day'], ['week', 'Week']], state.grain, 'data-grain', (v) => setState({ grain: v }, 'tg'));
+  const grainBtns = seg([['day', 'Day'], ['week', 'Week'], ['month', 'Month']], state.grain, 'data-grain', (v) => setState({ grain: v }, 'tg'));
   const splitBtns = seg([['none', 'None'], ['stage', 'Stage']], state.split, 'data-split', (v) => setState({ split: v }, 'ts'));
   const splitHint = h('span', { class: 'muted small', id: 'trend-split-hint' });
   const overlayCb = h('input', { type: 'checkbox', id: 'trend-overlay', checked: true });
@@ -322,7 +325,7 @@ export function createTrendPanel(opts) {
     const need = prods.filter((pr) => !dayCache.has(pr.slug));
     const got = await Promise.all(need.map((pr) => api(trendUrl(pr.slug), { grain: 'day', split: 'stage', ...apiWindow(p) }, { signal: sig })));
     need.forEach((pr, i) => dayCache.set(pr.slug, normalize(got[i])));
-    const wk = (pts) => (state.grain === 'week' ? rebucketWeeks(pts) : pts);
+    const wk = (pts) => (state.grain === 'day' ? pts : rebucket(pts, state.grain));
     const datas = prods.map((pr) => dayCache.get(pr.slug));
     const sumAt = (lists) => {
       const n = Math.max(...lists.map((l) => l.length), 0);

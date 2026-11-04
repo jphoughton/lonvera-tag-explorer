@@ -47,6 +47,12 @@ const tickDay = function (value) {
   const s = this.getLabelForValue(value);
   return s ? fmt.day(s) : s;
 };
+// 'YYYY-MM-01' -> 'Oct 2026' (long: 'October 2026')
+export function monthLabel(t, long = false) {
+  const m = /^(\d{4})-(\d{2})/.exec(t || '');
+  if (!m) return t || '';
+  return new Date(Date.UTC(+m[1], +m[2] - 1, 1)).toLocaleString('en-US', { month: long ? 'long' : 'short', year: 'numeric', timeZone: 'UTC' });
+}
 
 // full daily series; window A (blue) and, when comparing, window B (orange) are shaded. shades = [{from, to, color, name}]
 export function dailyChart(canvas, daily, shades = []) {
@@ -141,11 +147,12 @@ function hexA(hex, a) {
   const n = parseInt(m[1], 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
+const daysInMonth = (iso) => { const [y, m] = iso.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).getUTCDate(); };
 const addDays = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
 
 // category index range [i0, i1] of the buckets overlapping [from, to]
 export function shadeIdx(labels, grain, from, to) {
-  const end = (t) => (grain === 'week' ? addDays(t, 6) : t);
+  const end = (t) => (grain === 'week' ? addDays(t, 6) : grain === 'month' ? addDays(t, daysInMonth(t) - 1) : t);
   let i0 = labels.findIndex((t) => end(t) >= from);
   let i1 = -1;
   labels.forEach((t, i) => { if (t <= to) i1 = i; });
@@ -201,7 +208,7 @@ export function trendChart(canvas, cfg) {
     options: {
       ...baseOptions(),
       scales: {
-        x: { ticks: { maxTicksLimit: 14, maxRotation: 0, callback: tickDay }, grid: { display: false } },
+        x: { ticks: { maxTicksLimit: 14, maxRotation: 0, callback: grain === 'month' ? function (v) { return monthLabel(this.getLabelForValue(v)); } : tickDay }, grid: { display: false } },
         y: axis('left', cfg.left, BAR_COLOR, 'left'),
         y1: axis('right', cfg.right, '#c2610f', 'right'),
       },
@@ -213,12 +220,13 @@ export function trendChart(canvas, cfg) {
             title: (items) => {
               if (!items.length) return '';
               const i = items[0].dataIndex;
-              const base = grain === 'week' ? `Week of ${fmt.day(labels[i])}` : fmt.day(labels[i]);
+              const base = grain === 'week' ? `Week of ${fmt.day(labels[i])}` : grain === 'month' ? monthLabel(labels[i], true) : fmt.day(labels[i]);
               return cfg.partial && cfg.partial[i] ? base + ' (partial)' : base;
             },
             label: (c) => {
               const cd = c.dataset._cmpDates;
-              const name = cd && cd[c.dataIndex] ? `${c.dataset.label} (${fmt.day(cd[c.dataIndex])})` : c.dataset.label;
+              const bd = cd && cd[c.dataIndex] ? (grain === 'month' ? monthLabel(cd[c.dataIndex]) : fmt.day(cd[c.dataIndex])) : null;
+              const name = bd ? `${c.dataset.label} (${bd})` : c.dataset.label;
               return `${name}: ${fmtMetric(c.dataset._kind, c.parsed.y)}`;
             },
           },

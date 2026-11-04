@@ -1211,6 +1211,16 @@ def point_from(t, s, partial=False):
 def series_points(arr, lo, hi, grain):
     if grain == "day":
         return [point_from(DAYS[i].isoformat(), arr[i]) for i in range(lo, hi + 1)]
+    if grain == "month":
+        import calendar
+        mb = {}
+        for i in range(lo, hi + 1):
+            k = DAYS[i].replace(day=1)
+            b = mb.setdefault(k, [list(ZERO8), 0])
+            for j in range(8):
+                b[0][j] += arr[i][j]
+            b[1] += 1
+        return [point_from(k.isoformat(), tuple(b[0]), partial=b[1] < calendar.monthrange(k.year, k.month)[1]) for k, b in sorted(mb.items())]
     buckets = {}
     for i in range(lo, hi + 1):
         mon = DAYS[i] - timedelta(days=DAYS[i].weekday())
@@ -1286,7 +1296,7 @@ def trend(slug):
     prod_meta(slug)
     grain = request.args.get("grain", "day")
     split = request.args.get("split", "none")
-    if grain not in ("day", "week"):
+    if grain not in ("day", "week", "month"):
         raise Bad("bad grain")
     if split not in ("none", "stage", "children"):
         raise Bad("bad split")
