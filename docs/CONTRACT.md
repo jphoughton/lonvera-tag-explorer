@@ -1,0 +1,84 @@
+# Lonvera Tag Explorer — build contract (v1)
+
+Owner of this file: orchestrator. Agents must not edit it; if something here is wrong or ambiguous, write the question + your chosen default in `docs/QUESTIONS_<agent>.md` and keep going.
+
+## What it is
+A Railway web app (Flask JSON API + vanilla-JS single-page UI) on Railway Postgres. Josh drills **product → market cluster → ICP → pain point → ad family → ad detail**. Every level is a sortable table with the same 9 metrics. All numbers are served from Postgres. **All products and all ads** (not only Vita Bull).
+
+## Repo layout and file ownership (one writer per path; nobody else touches it)
+```
+migrations/*.sql            orchestrator (001_init.sql is final; ETL agent may ADD 002+ only if it needs a column, and must say so in its report)
+etl/**                      AGENT A  (ETL / backfill / loaders / metrics build)
+app/__init__.py app/db.py app/auth.py app/api.py app/queries.py app/config.py wsgi.py   AGENT B (API)
+app/static/**               AGENT C  (UI)
+tests/etl/**                AGENT A
+tests/api/**                AGENT B
+tests/ui/**                 AGENT C
+Dockerfile railway.json requirements.txt README.md docs/DEPLOY.md  AGENT D (deploy)  [requirements.txt: others append needed packages via docs/REQUIREMENTS_REQUESTS.md]
+docs/CONTRACT.md docs/PLAN.md   orchestrator
+```
+No agent commits to git (orchestrator commits). No agent writes to Google Sheets or Meta (read-only). Never print or log secrets. Never put secrets in files.
+
+## Environment
+- Repo `~/lonvera-tag-explorer`, venv `.venv` (Python 3.14 locally; Railway image is python 3.12 — keep code 3.12-compatible). Use `.venv/bin/python`.
+- Local Postgres 16: `export PATH=/opt/homebrew/opt/postgresql@16/bin:$PATH`. Databases: `tagexp_dev` (ETL agent's real-data DB), `tagexp_test` (API/UI test fixtures; recreate freely). URL form `postgresql://localhost/tagexp_dev`. Env var for all code: `DATABASE_URL`.
+- Frozen sheet snapshot (taken 2026-11-03, Daily/Windows data through 2026-11-02): `~/lonvera-tag-explorer-data/snapshot-2026-11-03/*.json` (raw `values` arrays). Files: `meta_daily` (row1 caption, row2 header `Date|Ad Family|Spend|Purchases|Conversion Value|Ads|Link Clicks`, data from row3; dates are Sheets serials), `meta_lifetime` (row2 header; `Ad Family|Meta Ad Name|Ad ID|Ad Account|Created|Ad Status|Spend|Purchases|Conversion Value`), `meta_windows` (row2 header; A=Meta family, B=Tracker Family (the sheet's resolver output), C/D/E = 7d spend/purchases/conv value, …), `creative_tracker` (row1 header, 70 cols, FORMATTED strings), `communication_overview`, `overview_metrics`, `rollups`, `tag_breakout`, `tag_map`, `lists`. These are the **QA ground truth** — loaders accept `--snapshot-dir` so dev and QA are reproducible; production loaders can also read the live sheet (`1…` id `12LmoKXLB-fXw9jA5VvfqzVPdgZrVnglowqVbwrKCaNI`) via `sheets._svc()` in `/Users/joshhoughton/Desktop/Google Sheets/sheets.py` (venv python for sheets: `/Users/joshhoughton/lonvera-sync-main/.venv/bin/python`; in the Railway container use `GOOGLE_SA_JSON` env instead).
+- Tagging cycle files (Vita Bull): `/Users/joshhoughton/Desktop/Google Sheets/lonvera_creative_key/cycles/c2026-11-03-vb-linemap/` — `tagmap_rows_v2.json` (1,464 tagged rows), `vb_ads_full.json`, `vb_perf.json`, `catalog.json` (37 lines L01–L37 with cluster/icp/pain/trigger/story), `co_live.json` (pairs + cluster colors), `media/` + `media_index.json` (thumbnails), `frames/`, `video_transcripts.json`, `meta_copy.json`. Read-only.
+- Production secrets (Railway env vars only): `DATABASE_URL`, `APP_PASSWORD`, `SECRET_KEY`, `META_ACCESS_TOKEN`, `GOOGLE_SA_JSON`.
+
+## Metric rules (carry over from the sheet unchanged — do not "improve" silently)
+Definitions of terms: `D0` = first day in `ad_daily` at backfill (2026-05-06, stored `app_meta.daily_start`, never moves). `cutoff` = 2026-09-17 (`app_meta.lifetime_cutoff`). `data_through` = max(`ad_daily.day`) (2026-11-02 after backfill). For tracker family F, *mapped daily series* = rows of `ad_daily` whose `meta_family_key` maps to F through `meta_family_map.tracker_family_key`.
+
+1. **Metrics are Meta-reported** (not Upstack new-customer): spend, purchases (`omni_purchase`→`purchase`→pixel purchase), revenue = conversion value.
+2. **Attributed once per ad family, on its first tracker row.** First row = the row with the smallest `sheet_row` (tie: smallest `id`) within `(product_id, family_key)`. All other rows of the family carry 0 metrics. Rows with a blank ad family (`family_key` starts `id:`) always carry 0 metrics (their spend cannot be matched) but still count as unique ads.
+3. **Since launch** (computed on the first row; `launch_date` is that row's date; NULL ⇒ all launch metrics 0):
+   - if `launch_date >= D0`: sum of mapped daily rows with `day >= launch_date`;
+   - else: `ad_lifetime(F)` + sum of mapped daily rows with `day > cutoff`.
+   Per family: `spend`/`revenue` rounded to 2 dp; `purchases` rounded to integer (the sheet rounds per family before summing).
+4. **7d** = mapped daily rows with `data_through-6 <= day <= data_through`; **30d** = `data_through-29 <= day <= data_through`. Independent of launch date. No rounding beyond 2 dp.
+5. **Live now** = the family has `spend > 0` on `data_through` or `data_through-1` in its mapped series. Counted on the first row.
+6. **Unique ads** at any level = `COUNT(DISTINCT family_key)` over the tracker rows in that group (family key = lower(ad_family) else `id:`+lower(concept_id)). Includes every tracker status (Briefing … Launched), same as the sheet's 1,464 rows / 1,434 unique.
+7. **ROAS** = revenue / spend (null if spend 0). **CPA** = spend / purchases (null if purchases 0). Totals recompute from sums (never average ratios).
+8. Same 9 metrics at every level: `unique_ads, live_now, spend, purchases, revenue, roas, cpa, spend_7d, cpa_7d`. `window` switch (`launch` default | `7d` | `30d`) changes only spend/purchases/revenue/roas/cpa; `spend_7d`/`cpa_7d` always last 7 days.
+9. **Meta→tracker family mapping.** Backfill loads `meta_family_map` from the sheet's `Meta Ads - Windows` tab (A→B, rule `sheet-windows`; blank B ⇒ unmatched). Meta families present in Daily but absent from Windows are resolved with the ported `Resolver` (from `~/lonvera-upstack-sync/meta_history.py`: exact / relaunch-encoded / ad-name / concept-prefix / product+type+version). ETL flag `--mapping sheet|extended` (default `sheet`): `sheet` uses only Windows-derived mappings so numbers tie to the sheet; `extended` adds resolver mappings for the rest. The loader MUST report the dollar delta between the two modes (since-launch spend and 7d spend per product). Going forward the daily ETL resolves new Meta families with the Resolver and retries previously unmatched ones.
+10. **Unmatched Meta spend**: Meta families with `ad_daily` rows and no tracker mapping are assigned to a product by `products.meta_regex` (ordered by `meta_priority`, case-insensitive search on the Meta family name; sheet order bone→liver→bull→belle) else `unassigned`, and listed in `unmatched_meta` (windows 7d/30d/all, live).
+11. **Tags.** `products.tag_set` picks the hierarchy: `linemap` (Vita Bull now) uses `ad_tags(tag_set='linemap', is_current)`; others use the tracker's own columns via `ad_tags(tag_set='tracker')` (cluster = tracker Market Cluster, icp = tracker ICP (persona) column, pain = tracker Pain Point; blank ⇒ literal `(none)`). A tracker row with no current tag in the product's tag_set is grouped as `(untagged)`. The UI must label tracker-tag products "Tracker tags — not line-mapped yet".
+12. **Keys.** `concept_id` is text always (`0510` ≠ `510`). `row_key` = `concept_id` + `#` + ordinal among rows sharing (concept_id, ad_family) in tracker order. Sheet row numbers are never an identity.
+13. **Tie-out target (Vita Bull, data through 2026-11-02):** 1,464 rows; 1,434 unique ads; 141 live; since launch spend $4,761,591 / 54,960 purchases / revenue $4,262,522 (ROAS 0.90, CPA $87); last 7d spend $17,728 / 168 purchases (CPA $105.52); Meta-VitaBull 7d spend not on the tracker $3,997 (21 families, mainly Brief2-2-Bull-398). Every level must equal the same level in the snapshot tabs `rollups` / `overview_metrics` / `tag_breakout` / `tag_map`.
+
+## ETL jobs (Agent A) — all idempotent, all log to `etl_runs`
+`python -m etl.migrate` · `python -m etl.load_taxonomy` · `python -m etl.tracker_sync [--snapshot-dir D]` · `python -m etl.backfill_sheet --snapshot-dir D [--mapping sheet|extended] [--as-of 2026-11-02]` (Daily, Lifetime, Windows map, meta_ads) · `python -m etl.load_tags --file F --tag-set linemap --version V --product vita-bull` · `python -m etl.load_assets --cycle-dir C` · `python -m etl.build_metrics` · `python -m etl.meta_pull [--days 7]` (Graph API, both accounts, trailing window upsert; reconciles per-account spend within 2%) · `python -m etl.assets_pull` (best-effort Meta thumbnails for ads with no asset; rate-limit aware) · `python -m etl.run_daily` (= tracker_sync → meta_pull (fallback `--source sheet` if the token fails) → resolve → build_metrics; exits non-zero on failure; used by the Railway cron).
+
+## HTTP contract (Agent B implements, Agent C consumes)
+All responses JSON unless noted. Everything except `/healthz`, `POST /api/login`, `/login` page, static assets requires the session cookie; unauthenticated `/api/*` and `/media/*` → `401 {"error":"unauthorized"}`. Money = float dollars (2 dp), counts = number. `m` (metrics object) = `{unique_ads, live_now, spend, purchases, revenue, roas, cpa, spend_7d, cpa_7d}`; ratios may be `null`.
+
+- `GET /healthz` → `{"ok":true}` (DB ping).
+- `POST /api/login` body `{"password":"…"}` → `204` + `Set-Cookie` (HttpOnly, SameSite=Lax, Secure in prod) or `401`. Constant-time compare; throttle repeated failures. `POST /api/logout` → `204`.
+- `GET /api/status` → `{data_through:"2026-11-02", daily_start, lifetime_cutoff, last_refresh:{job,finished_at,status}, products:int}`.
+- `GET /api/products?window=` → `[{slug,name,tag_set,tag_label,rows,m}]` (`tag_label` = `"Line-mapped tags"` | `"Tracker tags — not line-mapped yet"`), ordered by `sort_order`, excluding products with 0 tracker rows and no Meta spend.
+- `GET /api/products/<slug>/rollup?level=cluster|icp|pain&cluster=&icp=&window=` →
+  `{product:{slug,name,tag_set,tag_label}, level, filters:{cluster,icp}, window, rows:[{label, cluster, icp, pain, color, line_code, trigger, child_count, m}], total:{m}, unmatched:{spend_7d,spend_30d,live_families,families}}`.
+  `level=cluster` → one row per cluster; `icp` requires `cluster`; `pain` requires `cluster`+`icp` (row has `line_code` and `trigger` for linemap products). Row order = Communication Overview order (taxonomy `sort_order`) for linemap products; otherwise spend desc. `(untagged)` rows last. `total.m` is the total for the filters in force and equals the sum of rows (except ratios, recomputed).
+- `GET /api/products/<slug>/families?cluster=&icp=&pain=&window=` → `{product, filters, window, rows:[{family_key, display, ad_ids:[tracker_row_id…], primary_id, concept_ids:[…], n_rows, ad_type, status, launch_date, thumb_asset_id, confidence, method, counted_here:bool, m}], total:{m}}`. Any filter omitted ⇒ not filtered (no filters = every family of the product; that is the "All ads" table). Rows are (family_key, group) pairs: a family whose tracker rows are tagged to two different lines appears under both; `m` metrics are non-zero only where the family's first tracker row sits (`counted_here`). `display` = ad_family else concept_id. `confidence` = lowest among the rows in the group (`low`<`medium`<`high`). `unique_ads` = 1 per row.
+- `GET /api/products/<slug>/unmatched?window=` → `{rows:[{meta_family, spend_7d, purchases_7d, revenue_7d, spend_30d, …, spend_all, live}], total:{…}}` Meta families with no tracker row, sorted by 7d spend.
+- `GET /api/ads/<tracker_row_id>` → ad detail:
+```
+{id, product:{slug,name}, concept_id, ad_family, family_key, sheet_row, status, ad_type, style, vendor, launch_date, concept_name, description, hypothesis, meta_ad_name, story_url, asset_url,
+ tag:{tag_set, version, line_code, cluster, icp, pain_point, emotional_trigger, confidence, method, seen, why, runner_up, copy_only_line:null|{line_code,label}, reliability_note},   // null if untagged
+ tracker_tag:{cluster, icp, pain_point, emotion, ingredient},
+ line:{line_code, story, emotional_trigger, ingredients:[{ingredient, attacks, supports}]} | null,
+ content:{primary_text:[…], headlines:[…], description, meta_body, meta_title, meta_desc, transcript, is_video},
+ assets:{thumb: asset_id|null, frames:[asset_id…]},
+ siblings:[{id, concept_id, line_code, cluster, icp, pain_point, status}],     // other tracker rows of the same family
+ metrics:{counted_on_this_row:bool, family:{launch:{spend,purchases,revenue,roas,cpa}, d7:{…}, d30:{…}, live:bool}},   // family-level truth, shown even if this row isn't the first
+ daily:[{day, spend, purchases, revenue, link_clicks}]}    // mapped family series, last 180 days ascending, zero-filled
+```
+  `reliability_note` is derived text: for `method` containing "text only" → "Tagged from copy only (no image)"; "thumbnail: …no audio" → "Tagged from a thumbnail only"; confidence `low` → "Low confidence — blind re-tag agreed ~52%"; high → "~93%"; plus the global line "Blind re-tag agreement overall: line 79%, ICP 84%, cluster 88%". (linemap only.)
+- `GET /media/<asset_id>` → image bytes with `Cache-Control: private, max-age=86400`, correct mime.
+- Page routes served by Flask as the SPA shell (`app/static/index.html`): `/`, `/login`, `/p/<slug>`, `/ad/<id>`. SPA state lives in the URL: `/p/<slug>?cluster=&icp=&pain=&window=7d&view=families`. Static assets under `/static/…` need no auth except nothing sensitive is in them.
+
+## UI contract (Agent C)
+Vanilla JS, no build step, Chart.js vendored under `app/static/vendor/`. Pages: login; products landing (card/table per product with `m` and tag label, "Data through …" in header); product page = breadcrumb + level table (cluster → ICP → pain point → ad families) driven by the URL; an "All ads" toggle (all families of the product, searchable); the "Not on the tracker" panel (unmatched Meta spend); ad detail. Every table: click a header to sort (asc/desc toggle, indicator), numeric columns right-aligned, totals row pinned, default order from the API. Window switch (Since launch / Last 7d / Last 30d) in the header, preserved in the URL and across drill-downs. Clickable rows drill down (whole row is a link; keyboard accessible). Ad detail shows thumbnail or 4 frames, transcript, copy (primary text, headlines), tag block with confidence + method badges (colors for high/medium/low and a visible "copy only"/"thumbnail only" badge), what-was-seen / why / runner-up, the Communication Overview block (story, trigger, ingredient / attacks / supports), family metrics (since launch / 7d / 30d), and a daily chart (spend bars, purchases + revenue lines or toggles; Chart.js). Dark-on-light, dense, Josh-style: terse labels, no marketing copy. Money `$1,234`, ROAS `0.90`, CPA `$87`, counts with thousands separators.
+
+## Done means (per agent)
+Each agent ends with a short report: what's done, what was tested (commands + results), open items. Reports go to the orchestrator as your final message; long findings go in `docs/REPORT_<agent>.md`.
