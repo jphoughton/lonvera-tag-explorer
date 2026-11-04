@@ -47,8 +47,12 @@ def status():
 @bp.get("/api/products")
 def products():
     # The contract specifies a bare array, so there is no room for window_info here; /rollup and the other endpoints carry it.
+    # `?envelope=1` returns {window_info, compare_info, rows} instead, for clients that need the window labels on the landing page.
     conn, meta, w = _ctx()
-    return jsonify(q.products_list(conn, meta, w))
+    rows = q.products_list(conn, meta, w)
+    if request.args.get("envelope") == "1":
+        return jsonify({"window_info": w.info(meta), "compare_info": w.compare_info(meta), "rows": rows})
+    return jsonify(rows)
 
 
 @bp.get("/api/products/<slug>/rollup")
@@ -60,7 +64,7 @@ def rollup(slug: str):
     res = q.rollup(conn, meta, w, product, level, cluster, icp)
     info = w.info(meta)
     return jsonify({"product": q.product_brief(product), "level": level, "filters": {"cluster": cluster, "icp": icp},
-                    "window": info, "window_info": info, **res})
+                    "window": info, "window_info": info, "compare_info": w.compare_info(meta), **res})
 
 
 @bp.get("/api/products/<slug>/families")
@@ -71,7 +75,7 @@ def families(slug: str):
     res = q.families(conn, meta, w, product, cluster, icp, pain)
     info = w.info(meta)
     return jsonify({"product": q.product_brief(product), "filters": {"cluster": cluster, "icp": icp, "pain": pain},
-                    "window": info, "window_info": info, **res})
+                    "window": info, "window_info": info, "compare_info": w.compare_info(meta), **res})
 
 
 @bp.get("/api/products/<slug>/ads")
@@ -81,7 +85,8 @@ def ads(slug: str):
     flt = {"cluster": _arg("cluster"), "icp": _arg("icp"), "pain": _arg("pain"),
            "family_key": _arg("family_key"), "campaign_id": _arg("campaign_id")}
     res = q.meta_ads(conn, meta, w, product, **flt)
-    return jsonify({"product": q.product_brief(product), "filters": flt, "window_info": w.info(meta), **res})
+    return jsonify({"product": q.product_brief(product), "filters": flt, "window_info": w.info(meta),
+                    "compare_info": w.compare_info(meta), **res})
 
 
 @bp.get("/api/products/<slug>/campaigns")
@@ -89,7 +94,8 @@ def campaigns(slug: str):
     conn, meta, w = _ctx()
     product = q.get_product(conn, slug)
     res = q.campaigns(conn, meta, w, product)
-    return jsonify({"product": q.product_brief(product), "window_info": _all_days_info(w, meta), **res})
+    return jsonify({"product": q.product_brief(product), "window_info": _all_days_info(w, meta),
+                    "compare_info": w.compare_info(meta), **res})
 
 
 @bp.get("/api/products/<slug>/stage-daily")
@@ -97,7 +103,7 @@ def stage_daily(slug: str):
     conn, meta, _ = _ctx(with_window=False)
     product = q.get_product(conn, slug)
     if any(request.args.get(k) for k in ("window", "from", "to")):
-        w = q.parse_window(request.args, meta)
+        w = q.parse_window({k: v for k, v in request.args.items() if k not in ("compare", "cfrom", "cto")}, meta)   # no comparison here
         df, dtt = w.span(meta)
     else:
         raw = _arg("days") or "90"
@@ -113,7 +119,8 @@ def unmatched(slug: str):
     conn, meta, w = _ctx()
     product = q.get_product(conn, slug)
     res = q.unmatched(conn, meta, w, product)
-    return jsonify({"product": q.product_brief(product), "window_info": _all_days_info(w, meta), **res})
+    return jsonify({"product": q.product_brief(product), "window_info": _all_days_info(w, meta),
+                    "compare_info": w.compare_info(meta), **res})
 
 
 @bp.get("/api/ads/<int:row_id>")
@@ -121,6 +128,7 @@ def ad_detail(row_id: int):
     conn, meta, w = _ctx()
     res = q.ad_detail(conn, meta, w, row_id)
     res["window_info"] = w.info(meta)
+    res["compare_info"] = w.compare_info(meta)
     return jsonify(res)
 
 

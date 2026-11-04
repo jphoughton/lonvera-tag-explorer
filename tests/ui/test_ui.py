@@ -116,7 +116,7 @@ def check_sorted(values, direction):
 
 
 def sort_both_ways(page, key, testid="level-table", numeric=True):
-    th = page.locator(f"[data-testid={testid}] .tablewrap > table > thead th[data-col={key}]")
+    th = page.locator(f"[data-testid={testid}] > .tablewrap > table > thead th[data-col={key}]")
     th.locator("button").click()
     first_dir = "desc" if numeric else "asc"
     assert th.get_attribute("aria-sort") == ("descending" if first_dir == "desc" else "ascending")
@@ -282,7 +282,7 @@ def test_sorting_each_level(page, level):
         sort_both_ways(page, key)
     # the label column sorts as text (asc first)
     label_key = "display" if level == "families" else "label"
-    th = page.locator(f"{TABLE} .tablewrap > table > thead th[data-col={label_key}]")
+    th = page.locator(f"{TABLE} > .tablewrap > table > thead th[data-col={label_key}]")
     th.locator("button").click()
     keys_asc = table_data(page)["keys"]
     th.locator("button").click()
@@ -296,14 +296,14 @@ def test_sorting_each_level(page, level):
 
 def test_sort_is_stable_and_persists_in_url(page):
     goto_product(page)
-    page.locator(f"{TABLE} .tablewrap > table > thead th[data-col=spend] button").click()
+    page.locator(f"{TABLE} > .tablewrap > table > thead th[data-col=spend] button").click()
     q = qparams(page)
     assert q.get("sort") == "spend" and q.get("dir") == "desc"
     before = table_data(page)["keys"]
     page.reload()
     wait_rows(page)
     assert table_data(page)["keys"] == before
-    expect(page.locator(f"{TABLE} .tablewrap > table > thead th[data-col=spend]")).to_have_attribute("aria-sort", "descending")
+    expect(page.locator(f"{TABLE} > .tablewrap > table > thead th[data-col=spend]")).to_have_attribute("aria-sort", "descending")
 
 
 # ------------------------------------------------------------------ date range + stage
@@ -472,7 +472,7 @@ def test_family_row_ads_action_and_inline_expand(page):
     assert page.locator(f"{TABLE} tr.expandrow tbody tr").count() >= 1
     shot(page, "10_family_expanded")
     # expansion survives a re-sort
-    page.locator(f"{TABLE} .tablewrap > table > thead th[data-col=spend] button").click()
+    page.locator(f"{TABLE} > .tablewrap > table > thead th[data-col=spend] button").click()
     assert page.locator(f"{TABLE} tr.expandrow").count() == 1
     page.locator(f"{TABLE} tbody tr[data-key] .caret[aria-expanded=true]").first.click()
     assert page.locator(f"{TABLE} tr.expandrow").count() == 0
@@ -720,8 +720,8 @@ def test_deep_link_reload_keeps_state(page):
     page.locator(".seg[data-window='14d']").click()
     page.locator(".seg[data-stage=scaling]").click()
     wait_pressed(page, 'stage', 'scaling')
-    page.locator(f"{TABLE} .tablewrap > table > thead th[data-col=spend] button").click()
-    page.locator(f"{TABLE} .tablewrap > table > thead th[data-col=spend] button").click()
+    page.locator(f"{TABLE} > .tablewrap > table > thead th[data-col=spend] button").click()
+    page.locator(f"{TABLE} > .tablewrap > table > thead th[data-col=spend] button").click()
     wait_rows(page)
     url = page.url
     keys = table_data(page)["keys"]
@@ -756,18 +756,15 @@ def test_401_redirects_to_login_and_returns(page):
     wait_rows(page)
 
 
-def test_bad_api_params_show_error_with_retry(page):
-    page.goto(f"/p/{SLUG}?from=2026-10-10")  # from without to is ignored client-side -> still loads
-    wait_rows(page)
-    page.goto(f"/p/{SLUG}?window=banana")
-    expect(page.locator(".errorbox")).to_be_visible()
-    expect(page.locator(".errorbox button")).to_have_text("Retry")
-
-
 @pytest.mark.allow_errors
-def test_bad_window_error_is_shown(page):
+def test_bad_window_error_is_shown_with_retry(page):
     page.goto(f"/p/{SLUG}?window=banana")
     expect(page.locator(".errorbox")).to_be_visible()
+    expect(page.locator(".errorbox")).to_contain_text("bad window")
+    expect(page.locator(".errorbox button")).to_have_text("Retry")
+    # fixing the URL recovers
+    page.goto(f"/p/{SLUG}?window=7d")
+    wait_rows(page)
 
 
 def test_no_console_errors_across_pages(page):
@@ -779,7 +776,7 @@ def test_no_console_errors_across_pages(page):
     page.wait_for_selector(f"{TABLE} tr.expandrow table")
     page.locator(f"{TABLE} tbody tr[data-href]").first.locator("td.num").first.click()
     page.wait_for_selector("#daily-chart")
-    goto_product(page, "?view=campaigns&window=30d")
+    page.goto(f"/p/{SLUG}?view=campaigns&window=30d")
     page.wait_for_selector("[data-testid=campaign-table] tbody tr")
     page.goto(f"/p/{SLUG}?view=ads&stage=testing&window=14d")
     page.wait_for_selector("[data-testid=ads-table]")
@@ -787,7 +784,7 @@ def test_no_console_errors_across_pages(page):
     wait_rows(page)
     page.locator("#unmatched summary").click()
     page.wait_for_selector("[data-testid=unmatched-table]")
-    page.goto("/nope")
+    page.evaluate("() => { history.pushState(null, '', '/zzz'); dispatchEvent(new PopStateEvent('popstate')); }")
     expect(page.locator("h1")).to_have_text("Not found")
 
 

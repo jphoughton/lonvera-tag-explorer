@@ -131,10 +131,15 @@ class WindowSpec:
     note: str | None
     label: str
     stage: str = "all"            # all | testing | scaling
+    cmp: "WindowSpec | None" = None   # comparison window B (None = comparison off); A is always a date window then
 
     @property
     def is_launch(self) -> bool:
         return self.kind == "launch"
+
+    @property
+    def is_empty(self) -> bool:
+        return self.days == 0
 
     @property
     def stages(self) -> list[str]:
@@ -148,6 +153,9 @@ class WindowSpec:
             "days": self.days, "clamped": self.clamped, "note": self.note, "stage": self.stage,
             "daily_start": meta.daily_start.isoformat(), "data_through": meta.data_through.isoformat(),
         }
+
+    def compare_info(self, meta: DataMeta) -> dict | None:
+        return self.cmp.info(meta) if self.cmp is not None else None
 
     def span(self, meta: DataMeta) -> tuple[dt.date, dt.date]:
         """Day range for endpoints that have no 'since launch' (campaigns, unmatched, stage-daily): launch = every day held."""
@@ -180,7 +188,60 @@ def _label_for(df: dt.date, dtt: dt.date, meta: DataMeta, suffix: str = "") -> s
 
 
 def parse_window(args, meta: DataMeta) -> WindowSpec:
-    """window=launch|1d|7d|14d|30d|60d|90d|180d|mtd  or  from=YYYY-MM-DD&to=YYYY-MM-DD (custom wins). Plus stage=all|testing|scaling."""
+    """window=launch|1d|7d|14d|30d|60d|90d|180d|mtd  or  from=YYYY-MM-DD&to=YYYY-MM-DD (custom wins). Plus stage=all|testing|scaling,
+    and the optional comparison window B: compare=prev|1d|...|mtd or cfrom/cto."""
+    a = _parse_a(args, meta)
+    a.cmp = parse_compare(args, meta, a)
+    return a
+
+
+COMPARE_NAMES = ("prev",) + tuple(TRAILING_DAYS) + ("mtd",)
+
+
+def parse_compare(args, meta: DataMeta, a: WindowSpec) -> WindowSpec | None:
+    """Window B. prev = same length immediately before A; presets end at data_through like A's; cfrom/cto = custom (wins).
+    B is clamped to the daily data span; if nothing of B is available it comes back empty (days = 0) rather than failing."""
+    cf, ct = (args.get("cfrom") or "").strip(), (args.get("cto") or "").strip()
+    cname = (args.get("compare") or "").strip().lower()
+    if not (cf or ct) and cname in ("", "off", "none"):
+        return None
+    if a.is_launch:
+        raise ApiError(400, "compare needs a date window")
+    ds, dthru = meta.daily_start, meta.data_through
+    if cf or ct:
+        if not (cf and ct):
+            raise ApiError(400, "cfrom and cto are both required for a custom comparison range")
+        f, t = _parse_day(cf, "cfrom"), _parse_day(ct, "cto")
+        if f > t:
+            raise ApiError(400, "cfrom must not be after cto")
+        kind = name = "custom"
+    elif cname == "prev":
+        n = a.days or 1
+        t = a.date_from - dt.timedelta(days=1)
+        f = t - dt.timedelta(days=n - 1)
+        kind = name = "prev"
+    elif cname == "mtd":
+        f, t = dthru.replace(day=1), dthru
+        kind = name = "mtd"
+    elif cname in TRAILING_DAYS:
+        f, t = dthru - dt.timedelta(days=TRAILING_DAYS[cname] - 1), dthru
+        kind, name = "trailing", cname
+    else:
+        raise ApiError(400, f"compare must be one of {', '.join(COMPARE_NAMES)} (or cfrom/cto)")
+    nf, nt = max(f, ds), min(t, dthru)
+    requested = _label_for(f, t, meta, "")
+    if nf > nt:
+        return WindowSpec(kind, name, None, None, 0, True,
+                          f"No daily data for {requested}; data covers {_fmt_day(ds, True)} – {_fmt_day(dthru, True)}.",
+                          requested + " (no data)", a.stage)
+    clamped = (nf, nt) != (f, t)
+    note = (f"Daily data covers {_fmt_day(ds, True)} – {_fmt_day(dthru, True)}; comparison window cut to "
+            f"{_fmt_day(nf, True)} – {_fmt_day(nt, True)}." if clamped else None)
+    suffix = " · MTD" if kind == "mtd" else ""
+    return WindowSpec(kind, name, nf, nt, (nt - nf).days + 1, clamped, note, _label_for(nf, nt, meta, suffix), a.stage)
+
+
+def _parse_a(args, meta: DataMeta) -> WindowSpec:
     stage = parse_stage(args)
     raw_from, raw_to = (args.get("from") or "").strip(), (args.get("to") or "").strip()
     name = (args.get("window") or "launch").strip().lower()
@@ -243,18 +304,74 @@ AGG_COLS = """
   COALESCE(sum(purchases_7d), 0)                     AS purchases_7d,
   COALESCE(sum(t_spend), 0) AS t_spend, COALESCE(sum(t_purch), 0) AS t_purch, COALESCE(sum(t_rev), 0) AS t_rev,
   COALESCE(sum(s_spend), 0) AS s_spend, COALESCE(sum(s_purch), 0) AS s_purch, COALESCE(sum(s_rev), 0) AS s_rev,
-  COALESCE(sum(u_spend), 0) AS u_spend, COALESCE(sum(u_purch), 0) AS u_purch, COALESCE(sum(u_rev), 0) AS u_rev
+  COALESCE(sum(u_spend), 0) AS u_spend, COALESCE(sum(u_purch), 0) AS u_purch, COALESCE(sum(u_rev), 0) AS u_rev,
+  COALESCE(sum(c_spend), 0) AS c_spend, COALESCE(sum(c_purch), 0) AS c_purch, COALESCE(sum(c_rev), 0) AS c_rev,
+  count(*) FILTER (WHERE c_spend > 0)                AS c_active
 """
 
 ZERO_AGG = {k: Decimal(0) for k in (
     "unique_ads", "live_now", "active_ads", "spend", "purchases", "revenue", "spend_7d", "purchases_7d",
-    "t_spend", "t_purch", "t_rev", "s_spend", "s_purch", "s_rev", "u_spend", "u_purch", "u_rev")}
+    "t_spend", "t_purch", "t_rev", "s_spend", "s_purch", "s_rev", "u_spend", "u_purch", "u_rev",
+    "c_spend", "c_purch", "c_rev", "c_active")}
 
 
-def shape_m(a: dict) -> dict:
+# ---- window A / window B (comparison) helpers -----------------------------------------------------------------------
+
+
+def _pd(x: Any, days: int | None) -> float | None:
+    return None if not days else round(_f(x) / days, 2)
+
+
+def _pct(a: Any, b: Any) -> float | None:
+    """(A - B) / B as a fraction; null when B is 0/missing or A is missing."""
+    if a is None or b is None or _f(b) == 0:
+        return None
+    return round((_f(a) - _f(b)) / _f(b), 4)
+
+
+def per_day_fields(spend: Any, purchases: Any, revenue: Any, days: int | None) -> dict:
+    return {"spend_per_day": _pd(spend, days), "purchases_per_day": _pd(purchases, days), "revenue_per_day": _pd(revenue, days)}
+
+
+def cmp_blocks(a: tuple, w: "WindowSpec", b: tuple, b_active: Any = None) -> tuple[dict, dict]:
+    """(cmp, delta) for A=(spend, purchases, revenue) vs B=(...). Everything is recomputed from the sums, never averaged."""
+    (a_sp, a_pu, a_rv), (b_sp, b_pu, b_rv) = a, b
+    da, db = w.days, (w.cmp.days if w.cmp is not None else None)
+    a_roas, b_roas = ratio(a_rv, a_sp, 4), ratio(b_rv, b_sp, 4)
+    a_cpa, b_cpa = ratio(a_sp, a_pu, 2), ratio(b_sp, b_pu, 2)
+    cmp = {"spend": f2(b_sp), "purchases": num(b_pu), "revenue": f2(b_rv), "roas": b_roas, "cpa": b_cpa}
+    if b_active is not None:
+        cmp["active_ads"] = int(b_active)
+    cmp.update(per_day_fields(b_sp, b_pu, b_rv, db))
+
+    def diff(x, y, nd):
+        return None if x is None or y is None else round(x - y, nd)
+
+    delta = {
+        "spend": round(_f(a_sp) - _f(b_sp), 2), "purchases": num(_f(a_pu) - _f(b_pu)), "revenue": round(_f(a_rv) - _f(b_rv), 2),
+        "roas": diff(a_roas, b_roas, 4), "cpa": diff(a_cpa, b_cpa, 2),
+        "spend_pct": _pct(a_sp, b_sp), "purchases_pct": _pct(a_pu, b_pu), "revenue_pct": _pct(a_rv, b_rv),
+        "roas_pct": _pct(a_roas, b_roas), "cpa_pct": _pct(a_cpa, b_cpa),
+    }
+    for k, (x, y) in (("spend", (a_sp, b_sp)), ("purchases", (a_pu, b_pu)), ("revenue", (a_rv, b_rv))):
+        ax, by = (None if not da else _f(x) / da), (None if not db else _f(y) / db)
+        delta[f"{k}_per_day_pct"] = _pct(ax, by)
+    return cmp, delta
+
+
+def window_block(a: tuple, w: "WindowSpec | None", b: tuple | None = None) -> dict:
+    """Row-level metric block: spend/purchases/revenue/roas/cpa for A, per-day fields, and cmp + delta when comparison is on."""
+    out = simple_metrics(*a)
+    out.update(per_day_fields(*a, w.days if w is not None else None))
+    if w is not None and w.cmp is not None:
+        out["cmp"], out["delta"] = cmp_blocks(a, w, b or (0, 0, 0))
+    return out
+
+
+def shape_m(a: dict, w: "WindowSpec | None" = None) -> dict:
     """aggregate row -> the contract's `m` object (ratios always recomputed from sums)."""
     t_sp, s_sp = _f(a["t_spend"]), _f(a["s_spend"])
-    return {
+    out = {
         "unique_ads": int(a["unique_ads"]),
         "live_now": int(a["live_now"]),
         "spend": f2(a["spend"]),
@@ -275,6 +392,11 @@ def shape_m(a: dict) -> dict:
             "unclassified": {"spend": f2(a["u_spend"]), "purchases": num(a["u_purch"]), "revenue": f2(a["u_rev"])},
         },
     }
+    out.update(per_day_fields(a["spend"], a["purchases"], a["revenue"], w.days if w is not None else None))
+    if w is not None and w.cmp is not None:
+        out["cmp"], out["delta"] = cmp_blocks((a["spend"], a["purchases"], a["revenue"]), w,
+                                              (a["c_spend"], a["c_purch"], a["c_rev"]), b_active=a["c_active"])
+    return out
 
 
 def sum_aggs(rows: Iterable[dict], unique_ads: int) -> dict:
@@ -327,14 +449,20 @@ def _tr_cte(product_id: int | None, family_key: str | None, params: dict) -> str
     return _TR % {"where": ("WHERE " + " AND ".join(where)) if where else ""}
 
 
-def _stage_sum_cols(prefix: str) -> str:
-    """f_* (selected stages) and t_/s_/u_* (stage buckets) over the columns spend, purchases, revenue; `prefix` qualifies them."""
+def _stage_sum_cols(prefix: str, day_pred: str = "", with_cmp: bool = False) -> str:
+    """f_* (selected stages) and t_/s_/u_* (stage buckets) over the columns spend, purchases, revenue; `prefix` qualifies them.
+    day_pred limits the A columns to window A's days; with_cmp adds c_* = the selected stages over window B's days (same scan)."""
+    extra = f" AND {day_pred}" if day_pred else ""
     cols = []
     for short, col in (("spend", "spend"), ("purch", "purchases"), ("rev", "revenue")):
-        cols.append(f"COALESCE(sum({prefix}{col}) FILTER (WHERE {prefix}stage = ANY(%(stages)s)), 0) AS f_{short}")
+        cols.append(f"COALESCE(sum({prefix}{col}) FILTER (WHERE {prefix}stage = ANY(%(stages)s){extra}), 0) AS f_{short}")
     for letter, stage in (("t", "testing"), ("s", "scaling"), ("u", "unclassified")):
         for short, col in (("spend", "spend"), ("purch", "purchases"), ("rev", "revenue")):
-            cols.append(f"COALESCE(sum({prefix}{col}) FILTER (WHERE {prefix}stage = '{stage}'), 0) AS {letter}_{short}")
+            cols.append(f"COALESCE(sum({prefix}{col}) FILTER (WHERE {prefix}stage = '{stage}'{extra}), 0) AS {letter}_{short}")
+    if with_cmp:
+        for short, col in (("spend", "spend"), ("purch", "purchases"), ("rev", "revenue")):
+            cols.append(f"COALESCE(sum({prefix}{col}) FILTER (WHERE {prefix}stage = ANY(%(stages)s) "
+                        f"AND {prefix}day BETWEEN %(cf)s AND %(ct)s), 0) AS c_{short}")
     return ",\n    ".join(cols)
 
 
@@ -343,25 +471,32 @@ def _rm(meta: DataMeta, w: WindowSpec, product_id: int | None = None, family_key
          id, product_id, concept_id, ad_family, display, family_key, sheet_row, status, ad_type, tagged, cluster, icp, pain,
          line_code, trig, color, confidence, method, conf_rank, counted (is the family's first row), live,
          spend, purchases, revenue (selected window + stage; 0 unless counted), spend_7d, purchases_7d (fixed; first row only),
-         t_*/s_*/u_* (stage buckets of the selected window; first row only)."""
+         t_*/s_*/u_* (stage buckets of the selected window; first row only),
+         c_spend/c_purch/c_rev (comparison window B, same stages; 0 when comparison is off)."""
     params: dict[str, Any] = {"d0": meta.daily_start, "cutoff": meta.lifetime_cutoff, "dt": meta.data_through, "stages": w.stages}
     sql = "WITH " + _tr_cte(product_id, family_key, params)
     first_row = "(COALESCE(am.is_first_row, false) AND NOT starts_with(tr.family_key, 'id:'))"
 
+    cw = w.cmp if (w.cmp is not None and not w.cmp.is_empty) else None      # comparison window B with at least one day of data
     if not w.is_launch:
-        params.update(wf=w.date_from, wt=w.date_to)
+        lo, hi = w.date_from, w.date_to
+        if cw is not None:
+            lo, hi = min(lo, cw.date_from), max(hi, cw.date_to)
+            params.update(cf=cw.date_from, ct=cw.date_to)
+        params.update(wf=w.date_from, wt=w.date_to, lo=lo, hi=hi)
         sql += f""",
 win AS (
   SELECT family_key,
-    {_stage_sum_cols('')}
+    {_stage_sum_cols('', 'day BETWEEN %(wf)s AND %(wt)s', cw is not None)}
   FROM family_daily
-  WHERE day BETWEEN %(wf)s AND %(wt)s AND family_key IN (SELECT family_key FROM tr)
+  WHERE day BETWEEN %(lo)s AND %(hi)s AND family_key IN (SELECT family_key FROM tr)
   GROUP BY family_key
 ),
 b AS (
-  SELECT tr.*, {first_row} AS counted, COALESCE(am.live, false) AS am_live,
+  SELECT tr.*, {first_row} AS counted, COALESCE(am.is_first_row, false) AS is_first, COALESCE(am.live, false) AS am_live,
          COALESCE(am.spend_7d, 0) AS s7, COALESCE(am.purchases_7d, 0) AS p7,
          w.f_spend, w.f_purch, w.f_rev, w.t_spend, w.t_purch, w.t_rev, w.s_spend, w.s_purch, w.s_rev, w.u_spend, w.u_purch, w.u_rev
+         {", w.c_spend, w.c_purch, w.c_rev" if cw is not None else ""}
   FROM tr
   LEFT JOIN ad_metrics am ON am.tracker_row_id = tr.id
   LEFT JOIN win w ON w.family_key = tr.family_key
@@ -390,7 +525,7 @@ lt AS (
   WHERE fr.launch_date < %(d0)s
 ),
 b AS (
-  SELECT tr.*, {first_row} AS counted, COALESCE(am.live, false) AS am_live,
+  SELECT tr.*, {first_row} AS counted, COALESCE(am.is_first_row, false) AS is_first, COALESCE(am.live, false) AS am_live,
          COALESCE(am.spend_7d, 0) AS s7, COALESCE(am.purchases_7d, 0) AS p7,
          am.launch_date AS am_launch, am.spend_launch, am.purchases_launch, am.revenue_launch,
          w.f_spend, w.f_purch, w.f_rev, w.t_spend, w.t_purch, w.t_rev, w.s_spend, w.s_purch, w.s_rev, w.u_spend, w.u_purch, w.u_rev,
@@ -411,17 +546,21 @@ b AS (
     def only(expr: str) -> str:
         return f"CASE WHEN b.counted THEN {expr} ELSE 0 END"
 
+    c_spend, c_purch, c_rev = (("COALESCE(b.c_spend, 0)", "COALESCE(b.c_purch, 0)", "COALESCE(b.c_rev, 0)") if cw is not None
+                               else ("0", "0", "0"))
+
     sql += f""",
 rm AS (
   SELECT b.id, b.product_id, b.concept_id, b.ad_family, b.display, b.family_key, b.sheet_row, b.status, b.ad_type, b.tagged,
-         b.cluster, b.icp, b.pain, b.line_code, b.trig, b.color, b.confidence, b.method, b.conf_rank, b.counted,
+         b.cluster, b.icp, b.pain, b.line_code, b.trig, b.color, b.confidence, b.method, b.conf_rank, b.counted, b.is_first,
          (b.counted AND b.am_live) AS live,
          {only(spend)} AS spend, {only(purch)} AS purchases, {only(rev)} AS revenue,
          {only('b.s7')} AS spend_7d, {only('b.p7')} AS purchases_7d,
          {only('COALESCE(b.t_spend, 0)')} AS t_spend, {only('COALESCE(b.t_purch, 0)')} AS t_purch, {only('COALESCE(b.t_rev, 0)')} AS t_rev,
          {only('COALESCE(b.s_spend, 0)')} AS s_spend, {only('COALESCE(b.s_purch, 0)')} AS s_purch, {only('COALESCE(b.s_rev, 0)')} AS s_rev,
          {only('COALESCE(b.u_spend, 0)' + u_extra[0])} AS u_spend, {only('COALESCE(b.u_purch, 0)' + u_extra[1])} AS u_purch,
-         {only('COALESCE(b.u_rev, 0)' + u_extra[2])} AS u_rev
+         {only('COALESCE(b.u_rev, 0)' + u_extra[2])} AS u_rev,
+         {only(c_spend)} AS c_spend, {only(c_purch)} AS c_purch, {only(c_rev)} AS c_rev
   FROM b
 )
 """
@@ -467,7 +606,7 @@ def products_list(conn, meta: DataMeta, w: WindowSpec) -> list[dict]:
         if n_rows == 0 and _f(meta_spend.get(p["id"])) <= 0:
             continue
         out.append({"slug": p["slug"], "name": p["name"], "tag_set": p["tag_set"], "tag_label": tag_label(p["tag_set"]),
-                    "rows": n_rows, "m": shape_m(a or ZERO_AGG)})
+                    "rows": n_rows, "m": shape_m(a or ZERO_AGG, w)})
     return out
 
 
@@ -551,7 +690,7 @@ def rollup(conn, meta: DataMeta, w: WindowSpec, product: dict, level: str, clust
     used: set = set()
 
     def make_row(label, key, d, sk):
-        m = shape_m(d) if d else shape_m(ZERO_AGG)
+        m = shape_m(d or ZERO_AGG, w)
         if level == "cluster":
             child = sk["child_count"] if sk and sk["child_count"] is not None else (int(d["n_icp"]) if d else 0)
         elif level == "icp":
@@ -574,7 +713,7 @@ def rollup(conn, meta: DataMeta, w: WindowSpec, product: dict, level: str, clust
     for k in extras:
         rows.append(make_row(k[-1], k, data[k], None))
     rows.sort(key=lambda r: r["label"] == UNTAGGED)          # stable: (untagged) rows last
-    return {"rows": rows, "total": {"m": shape_m(total_row)}, "unmatched": unmatched_summary(conn, product["id"])}
+    return {"rows": rows, "total": {"m": shape_m(total_row, w)}, "unmatched": unmatched_summary(conn, product["id"])}
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -604,7 +743,7 @@ def families(conn, meta: DataMeta, w: WindowSpec, product: dict, cluster: str | 
     (array_agg(rm.line_code {order}))[1] AS line_code,
     min(rm.conf_rank) AS conf_rank,
     (array_agg(rm.method ORDER BY rm.conf_rank NULLS LAST, rm.sheet_row NULLS LAST, rm.id))[1] AS method,
-    bool_or(rm.counted) AS counted_here,
+    bool_or(rm.is_first) AS counted_here,
     {AGG_COLS}
   FROM rm {where}
   GROUP BY rm.family_key
@@ -623,10 +762,10 @@ ORDER BY g.spend DESC, g.display, g.family_key
             "thumb_asset_id": r["thumb_id"], "confidence": CONF_NAME.get(r["conf_rank"]), "method": r["method"],
             "counted_here": bool(r["counted_here"]),
             "cluster": r["cluster"], "icp": r["icp"], "pain": r["pain"], "line_code": r["line_code"],
-            "m": shape_m(r),
+            "m": shape_m(r, w),
         })
     total = sum_aggs(raw, unique_ads=len(raw))
-    return {"rows": out, "total": {"m": shape_m(total)}}
+    return {"rows": out, "total": {"m": shape_m(total, w)}}
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -634,6 +773,37 @@ ORDER BY g.spend DESC, g.display, g.family_key
 # --------------------------------------------------------------------------------------------------------------------
 
 REMAINDER_NAME = "(days without ad-level detail)"
+
+
+def _cmp_window(w: WindowSpec) -> WindowSpec | None:
+    """Window B when comparison is on and B has at least one day of data (else treated as zeros)."""
+    return w.cmp if (w.cmp is not None and not w.cmp.is_empty) else None
+
+
+def _window_params(meta: DataMeta, w: WindowSpec, params: dict) -> WindowSpec | None:
+    """Adds wf/wt (A), cf/ct (B) and lo/hi (the one day range that covers both) for non-launch windows; returns the usable B."""
+    cw = _cmp_window(w)
+    if not w.is_launch:
+        lo, hi = w.date_from, w.date_to
+        if cw is not None:
+            lo, hi = min(lo, cw.date_from), max(hi, cw.date_to)
+            params.update(cf=cw.date_from, ct=cw.date_to)
+        params.update(wf=w.date_from, wt=w.date_to, lo=lo, hi=hi)
+    return cw
+
+
+def _sum_cols(alias: str, w: WindowSpec, cw: WindowSpec | None) -> str:
+    """spend/purchases/revenue over window A, c_* over window B, days_active, from one pass over ad_daily rows aliased `alias`."""
+    fa = "" if w.is_launch else f" FILTER (WHERE {alias}.day BETWEEN %(wf)s AND %(wt)s)"
+    cols = [f"COALESCE(sum({alias}.{c}){fa}, 0) AS {n}" for c, n in (("spend", "spend"), ("purchases", "purchases"), ("conv_value", "revenue"))]
+    if cw is not None:
+        cols += [f"COALESCE(sum({alias}.{c}) FILTER (WHERE {alias}.day BETWEEN %(cf)s AND %(ct)s), 0) AS {n}"
+                 for c, n in (("spend", "c_spend"), ("purchases", "c_purch"), ("conv_value", "c_rev"))]
+    else:
+        cols += ["0::numeric AS c_spend", "0::numeric AS c_purch", "0::numeric AS c_rev"]
+    act = f"{alias}.spend > 0" + ("" if w.is_launch else f" AND {alias}.day BETWEEN %(wf)s AND %(wt)s")
+    cols.append(f"count(*) FILTER (WHERE {act}) AS days_active")
+    return ",\n         ".join(cols)
 
 
 def meta_ads(conn, meta: DataMeta, w: WindowSpec, product: dict, *, cluster: str | None = None, icp: str | None = None,
@@ -646,6 +816,7 @@ def meta_ads(conn, meta: DataMeta, w: WindowSpec, product: dict, *, cluster: str
     sql = "WITH " + _tr_cte(product["id"], family_key, params)
     tagw = _tag_where(cluster, icp, pain, params, prefix="tr.")
     have_tag_filter = any(v is not None for v in (cluster, icp, pain, family_key))
+    cw = _window_params(meta, w, params)
     sql += f""",
 sel AS (
   SELECT DISTINCT ON (tr.family_key) tr.family_key, tr.id AS primary_id, tr.display, tr.cluster, tr.icp, tr.pain, am.launch_date,
@@ -662,14 +833,12 @@ ad7 AS (
   FROM ad_daily WHERE day >= %(d7)s GROUP BY ad_id
 ),
 """
-    day_pred = "ad.day >= s.ls AND ad.day <= %(dt)s" if w.is_launch else "ad.day BETWEEN %(wf)s AND %(wt)s"
-    if not w.is_launch:
-        params.update(wf=w.date_from, wt=w.date_to)
+    day_pred = "ad.day >= s.ls AND ad.day <= %(dt)s" if w.is_launch else "ad.day BETWEEN %(lo)s AND %(hi)s"
+    zc = "0::numeric, 0::numeric, 0::numeric"           # c_spend, c_purch, c_rev for parts that carry no window B
     parts = f"""
   SELECT CASE WHEN starts_with(ad.ad_id, 'fam:') THEN NULL ELSE ad.ad_id END AS aid, s.family_key AS fk, TRUE AS matched,
          max(ad.meta_family) AS mf, max(NULLIF(ad.campaign_id, '')) AS camp,
-         sum(ad.spend) AS spend, sum(ad.purchases) AS purchases, sum(ad.conv_value) AS revenue,
-         count(*) FILTER (WHERE ad.spend > 0) AS days_active
+         {_sum_cols('ad', w, cw)}
   FROM ad_daily ad
   JOIN meta_family_map m ON m.meta_family_key = ad.meta_family_key
   JOIN sel s ON s.family_key = m.tracker_family_key
@@ -679,35 +848,35 @@ ad7 AS (
   GROUP BY 1, 2
 """
     if w.is_launch and w.stage == "all":
-        parts += """
+        parts += f"""
   UNION ALL
-  SELECT ml.ad_id, s.family_key, TRUE, NULL::text, NULL::text, ml.spend, ml.purchases, ml.conv_value, 0::bigint
+  SELECT ml.ad_id, s.family_key, TRUE, NULL::text, NULL::text, ml.spend, ml.purchases, ml.conv_value, {zc}, 0::bigint
   FROM meta_ad_lifetime ml
   JOIN sel s ON s.family_key = ml.tracker_family_key AND s.launch_date < %(d0)s
   LEFT JOIN meta_ads ma ON ma.ad_id = ml.ad_id
   WHERE (%(campaign)s::text IS NULL OR ma.campaign_id = %(campaign)s)
 """
         if campaign_id is None:   # lifetime history the per-ad Lifetime rows do not account for goes to the remainder row
-            parts += """
+            parts += f"""
   UNION ALL
   SELECT NULL::text, s.family_key, TRUE, NULL::text, NULL::text,
-         al.spend - COALESCE(pa.spend, 0), al.purchases - COALESCE(pa.purchases, 0), al.conv_value - COALESCE(pa.revenue, 0), 0::bigint
+         al.spend - COALESCE(pa.spend, 0), al.purchases - COALESCE(pa.purchases, 0), al.conv_value - COALESCE(pa.revenue, 0), {zc}, 0::bigint
   FROM sel s
   JOIN ad_lifetime al ON al.family_key = s.family_key AND s.launch_date < %(d0)s
   LEFT JOIN (SELECT tracker_family_key AS fk, sum(spend) AS spend, sum(purchases) AS purchases, sum(conv_value) AS revenue
              FROM meta_ad_lifetime GROUP BY 1) pa ON pa.fk = s.family_key
 """
     if not have_tag_filter:       # no tag/family selected: "every ad of the product" also covers Meta ads not on the tracker
-        u_from, u_to = ("%(d0)s", "%(dt)s") if w.is_launch else ("%(wf)s", "%(wt)s")
+        u_pred = "ad.day BETWEEN %(d0)s AND %(dt)s" if w.is_launch else "ad.day BETWEEN %(lo)s AND %(hi)s"
         parts += f"""
   UNION ALL
   SELECT CASE WHEN starts_with(ad.ad_id, 'fam:') THEN NULL ELSE ad.ad_id END, um.meta_family_key, FALSE,
          max(ad.meta_family), max(NULLIF(ad.campaign_id, '')),
-         sum(ad.spend), sum(ad.purchases), sum(ad.conv_value), count(*) FILTER (WHERE ad.spend > 0)
+         {_sum_cols('ad', w, cw)}
   FROM ad_daily ad
   JOIN unmatched_meta um ON um.meta_family_key = ad.meta_family_key AND um.product_id = %(pid)s
   LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
-  WHERE ad.day BETWEEN {u_from} AND {u_to} AND COALESCE(mc.stage, 'unclassified') = ANY(%(stages)s)
+  WHERE {u_pred} AND COALESCE(mc.stage, 'unclassified') = ANY(%(stages)s)
     AND (%(campaign)s::text IS NULL OR ad.campaign_id = %(campaign)s)
   GROUP BY 1, 2
 """
@@ -715,10 +884,11 @@ ad7 AS (
 parts AS ({parts}),
 o AS (
   SELECT aid, fk, bool_or(matched) AS matched, max(mf) AS mf, max(camp) AS camp,
-         sum(spend) AS spend, sum(purchases) AS purchases, sum(revenue) AS revenue, sum(days_active) AS days_active
+         sum(spend) AS spend, sum(purchases) AS purchases, sum(revenue) AS revenue,
+         sum(c_spend) AS c_spend, sum(c_purch) AS c_purch, sum(c_rev) AS c_rev, sum(days_active) AS days_active
   FROM parts GROUP BY aid, fk
 )
-SELECT o.aid, o.fk, o.matched, o.mf, o.camp, o.spend, o.purchases, o.revenue, o.days_active,
+SELECT o.aid, o.fk, o.matched, o.mf, o.camp, o.spend, o.purchases, o.revenue, o.c_spend, o.c_purch, o.c_rev, o.days_active,
        ma.ad_name, ma.campaign_id AS ma_campaign, ma.adset_name, ma.account, ma.status AS ad_status, ma.created_date,
        mc.name AS campaign_name, mc.account AS campaign_account, COALESCE(mc.stage, 'unclassified') AS camp_stage,
        COALESCE(a7.s7, 0) AS spend_7d, COALESCE(a7.s1, 0) > 0 AS live,
@@ -729,14 +899,17 @@ LEFT JOIN meta_campaigns mc ON mc.campaign_id = COALESCE(NULLIF(ma.campaign_id, 
 LEFT JOIN ad7 a7 ON a7.ad_id = o.aid
 LEFT JOIN sel s ON s.family_key = o.fk AND o.matched
 LEFT JOIN thumbs th ON th.family_key = o.fk AND o.matched
-WHERE (o.spend <> 0 OR o.purchases <> 0 OR o.revenue <> 0)
-ORDER BY o.spend DESC, o.aid NULLS LAST
+WHERE (o.spend <> 0 OR o.purchases <> 0 OR o.revenue <> 0 OR o.c_spend <> 0 OR o.c_purch <> 0 OR o.c_rev <> 0)
+ORDER BY o.spend DESC, o.c_spend DESC, o.aid NULLS LAST
 """
     raw = rows_of(conn, sql, params)
 
-    rem = {"spend": Decimal(0), "purchases": Decimal(0), "revenue": Decimal(0)}
+    rem = {k: Decimal(0) for k in ("spend", "purchases", "revenue", "c_spend", "c_purch", "c_rev")}
     ads: list[dict] = []
+    tot = dict(rem)
     for r in raw:
+        for k in tot:
+            tot[k] += r[k]
         if r["aid"] is None:
             for k in rem:
                 rem[k] += r[k]
@@ -753,7 +926,7 @@ ORDER BY o.spend DESC, o.aid NULLS LAST
             "adset_name": r["adset_name"], "account": r["account"] or r["campaign_account"], "status": r["ad_status"],
             "created_date": r["created_date"].isoformat() if r["created_date"] else None,
             "tag": {"cluster": r["cluster"], "icp": r["icp"], "pain": r["pain"]} if r["matched"] else None,
-            **simple_metrics(r["spend"], r["purchases"], r["revenue"]),
+            **window_block((r["spend"], r["purchases"], r["revenue"]), w, (r["c_spend"], r["c_purch"], r["c_rev"])),
             "spend_7d": f2(r["spend_7d"]), "live": bool(r["live"]), "days_active": int(r["days_active"] or 0),
         })
 
@@ -762,14 +935,12 @@ ORDER BY o.spend DESC, o.aid NULLS LAST
             "ad_id": None, "ad_name": REMAINDER_NAME, "family_key": family_key, "display": REMAINDER_NAME, "primary_id": None,
             "thumb_asset_id": None, "on_tracker": True, "campaign_id": None, "campaign_name": None, "stage": "unclassified",
             "adset_name": None, "account": None, "status": None, "created_date": None, "tag": None,
-            **simple_metrics(rem["spend"], rem["purchases"], rem["revenue"]),
+            **window_block((rem["spend"], rem["purchases"], rem["revenue"]), w, (rem["c_spend"], rem["c_purch"], rem["c_rev"])),
             "spend_7d": 0.0, "live": False, "days_active": 0,
         })
 
-    tot_sp = sum(Decimal(str(a["spend"])) for a in ads)
-    tot_pu = sum(Decimal(str(a["purchases"])) for a in ads)
-    tot_rv = sum(Decimal(str(a["revenue"])) for a in ads)
-    total = {"ads": sum(1 for a in ads if a["ad_id"]), **simple_metrics(tot_sp, tot_pu, tot_rv),
+    total = {"ads": sum(1 for a in ads if a["ad_id"]),
+             **window_block((tot["spend"], tot["purchases"], tot["revenue"]), w, (tot["c_spend"], tot["c_purch"], tot["c_rev"])),
              "spend_7d": f2(sum(Decimal(str(a["spend_7d"])) for a in ads)), "live": sum(1 for a in ads if a["live"])}
     return {"rows": ads, "total": total}
 
@@ -791,9 +962,13 @@ pf AS (
 
 def campaigns(conn, meta: DataMeta, w: WindowSpec, product: dict) -> dict:
     wf, wt = w.span(meta)
+    cw = _cmp_window(w)
     d7 = meta.data_through - dt.timedelta(days=6)
     d1 = meta.data_through - dt.timedelta(days=1)
-    params = {"pid": product["id"], "wf": wf, "wt": wt, "d7": d7, "d1": d1, "stages": w.stages, "lo": min(wf, d7)}
+    params = {"pid": product["id"], "wf": wf, "wt": wt, "d7": d7, "d1": d1, "stages": w.stages,
+              "lo": min(wf, d7, cw.date_from) if cw is not None else min(wf, d7),
+              "cf": cw.date_from if cw is not None else wf, "ct": cw.date_to if cw is not None else wt}
+    in_cmp = "(day BETWEEN %(cf)s AND %(ct)s)" if cw is not None else "FALSE"
     base = f"""
 WITH {_PRODUCT_FAMILIES},
 r AS (
@@ -804,7 +979,7 @@ r AS (
   LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
   WHERE ad.day >= %(lo)s
 ),
-f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win FROM r)
+f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win, {in_cmp} AS in_cmp FROM r)
 """
     stage_rows = rows_of(conn, base + """
         SELECT stage,
@@ -812,6 +987,8 @@ f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win FROM r)
                count(DISTINCT ad_id) FILTER (WHERE in_win AND NOT is_fam AND spend > 0) AS ads,
                COALESCE(sum(spend) FILTER (WHERE in_win), 0) AS spend, COALESCE(sum(purchases) FILTER (WHERE in_win), 0) AS purchases,
                COALESCE(sum(conv_value) FILTER (WHERE in_win), 0) AS revenue,
+               COALESCE(sum(spend) FILTER (WHERE in_cmp), 0) AS c_spend, COALESCE(sum(purchases) FILTER (WHERE in_cmp), 0) AS c_purch,
+               COALESCE(sum(conv_value) FILTER (WHERE in_cmp), 0) AS c_rev,
                COALESCE(sum(spend) FILTER (WHERE day >= %(d7)s), 0) AS spend_7d
         FROM f GROUP BY stage""", params)
     by = {r["stage"]: r for r in stage_rows}
@@ -820,28 +997,34 @@ f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win FROM r)
         r = by.get(st)
         if r is None and st == "unclassified":
             continue
-        r = r or {"campaigns": 0, "ads": 0, "spend": 0, "purchases": 0, "revenue": 0, "spend_7d": 0}
+        r = r or {"campaigns": 0, "ads": 0, "spend": 0, "purchases": 0, "revenue": 0, "c_spend": 0, "c_purch": 0, "c_rev": 0, "spend_7d": 0}
         by_stage.append({"stage": st, "campaigns": int(r["campaigns"]), "ads": int(r["ads"]),
-                         **simple_metrics(r["spend"], r["purchases"], r["revenue"]), "spend_7d": f2(r["spend_7d"])})
+                         **window_block((r["spend"], r["purchases"], r["revenue"]), w, (r["c_spend"], r["c_purch"], r["c_rev"])),
+                         "spend_7d": f2(r["spend_7d"])})
 
-    crow = rows_of(conn, base + """
+    sel = "f.stage = ANY(%(stages)s)"
+    crow = rows_of(conn, base + f"""
         SELECT f.campaign_id, mc.name, mc.account, COALESCE(mc.stage, 'unclassified') AS stage,
-               count(DISTINCT f.ad_id) FILTER (WHERE in_win AND NOT is_fam AND f.stage = ANY(%(stages)s) AND f.spend > 0) AS ads,
-               count(DISTINCT f.meta_family_key) FILTER (WHERE in_win AND f.stage = ANY(%(stages)s) AND f.spend > 0) AS families,
-               COALESCE(sum(f.spend) FILTER (WHERE in_win AND f.stage = ANY(%(stages)s)), 0) AS spend,
-               COALESCE(sum(f.purchases) FILTER (WHERE in_win AND f.stage = ANY(%(stages)s)), 0) AS purchases,
-               COALESCE(sum(f.conv_value) FILTER (WHERE in_win AND f.stage = ANY(%(stages)s)), 0) AS revenue,
+               count(DISTINCT f.ad_id) FILTER (WHERE in_win AND NOT is_fam AND {sel} AND f.spend > 0) AS ads,
+               count(DISTINCT f.meta_family_key) FILTER (WHERE in_win AND {sel} AND f.spend > 0) AS families,
+               COALESCE(sum(f.spend) FILTER (WHERE in_win AND {sel}), 0) AS spend,
+               COALESCE(sum(f.purchases) FILTER (WHERE in_win AND {sel}), 0) AS purchases,
+               COALESCE(sum(f.conv_value) FILTER (WHERE in_win AND {sel}), 0) AS revenue,
+               COALESCE(sum(f.spend) FILTER (WHERE in_cmp AND {sel}), 0) AS c_spend,
+               COALESCE(sum(f.purchases) FILTER (WHERE in_cmp AND {sel}), 0) AS c_purch,
+               COALESCE(sum(f.conv_value) FILTER (WHERE in_cmp AND {sel}), 0) AS c_rev,
                COALESCE(sum(f.spend) FILTER (WHERE f.day >= %(d7)s), 0) AS spend_7d,
                COALESCE(sum(f.spend) FILTER (WHERE f.day >= %(d1)s), 0) > 0 AS live,
                max(f.day) FILTER (WHERE f.spend > 0) AS last_day
         FROM f LEFT JOIN meta_campaigns mc ON mc.campaign_id = f.campaign_id
         WHERE f.campaign_id <> ''
         GROUP BY f.campaign_id, mc.name, mc.account, mc.stage
-        HAVING COALESCE(sum(f.spend) FILTER (WHERE in_win AND f.stage = ANY(%(stages)s)), 0) <> 0
-            OR COALESCE(sum(f.purchases) FILTER (WHERE in_win AND f.stage = ANY(%(stages)s)), 0) <> 0
-        ORDER BY spend DESC, f.campaign_id""", params)
+        HAVING COALESCE(sum(f.spend) FILTER (WHERE (in_win OR in_cmp) AND {sel}), 0) <> 0
+            OR COALESCE(sum(f.purchases) FILTER (WHERE (in_win OR in_cmp) AND {sel}), 0) <> 0
+        ORDER BY spend DESC, c_spend DESC, f.campaign_id""", params)
     rows = [{"campaign_id": r["campaign_id"], "name": r["name"] or r["campaign_id"], "account": r["account"], "stage": r["stage"],
-             "ads": int(r["ads"]), "families": int(r["families"]), **simple_metrics(r["spend"], r["purchases"], r["revenue"]),
+             "ads": int(r["ads"]), "families": int(r["families"]),
+             **window_block((r["spend"], r["purchases"], r["revenue"]), w, (r["c_spend"], r["c_purch"], r["c_rev"])),
              "spend_7d": f2(r["spend_7d"]), "live": bool(r["live"]),
              "last_day": r["last_day"].isoformat() if r["last_day"] else None} for r in crow]
 
@@ -851,9 +1034,13 @@ f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win FROM r)
                COALESCE(sum(spend) FILTER (WHERE in_win AND stage = ANY(%(stages)s)), 0) AS spend,
                COALESCE(sum(purchases) FILTER (WHERE in_win AND stage = ANY(%(stages)s)), 0) AS purchases,
                COALESCE(sum(conv_value) FILTER (WHERE in_win AND stage = ANY(%(stages)s)), 0) AS revenue,
+               COALESCE(sum(spend) FILTER (WHERE in_cmp AND stage = ANY(%(stages)s)), 0) AS c_spend,
+               COALESCE(sum(purchases) FILTER (WHERE in_cmp AND stage = ANY(%(stages)s)), 0) AS c_purch,
+               COALESCE(sum(conv_value) FILTER (WHERE in_cmp AND stage = ANY(%(stages)s)), 0) AS c_rev,
                COALESCE(sum(spend) FILTER (WHERE day >= %(d7)s AND stage = ANY(%(stages)s)), 0) AS spend_7d
         FROM f""", params)
-    total = {"campaigns": int(tr_["campaigns"]), "ads": int(tr_["ads"]), **simple_metrics(tr_["spend"], tr_["purchases"], tr_["revenue"]),
+    total = {"campaigns": int(tr_["campaigns"]), "ads": int(tr_["ads"]),
+             **window_block((tr_["spend"], tr_["purchases"], tr_["revenue"]), w, (tr_["c_spend"], tr_["c_purch"], tr_["c_rev"])),
              "spend_7d": f2(tr_["spend_7d"])}
     return {"by_stage": by_stage, "rows": rows, "total": total}
 
@@ -883,24 +1070,35 @@ def stage_daily(conn, meta: DataMeta, product: dict, df: dt.date, dtt: dt.date) 
 
 def unmatched(conn, meta: DataMeta, w: WindowSpec, product: dict) -> dict:
     wf, wt = w.span(meta)
-    raw = rows_of(conn, """
+    cw = _cmp_window(w)
+    params = {"pid": product["id"], "wf": wf, "wt": wt, "stages": w.stages,
+              "lo": min(wf, cw.date_from) if cw is not None else wf, "hi": max(wt, cw.date_to) if cw is not None else wt,
+              "cf": cw.date_from if cw is not None else wf, "ct": cw.date_to if cw is not None else wt}
+    c_cols = ("COALESCE(sum(ad.spend) FILTER (WHERE ad.day BETWEEN %(cf)s AND %(ct)s), 0) AS c_spend, "
+              "COALESCE(sum(ad.purchases) FILTER (WHERE ad.day BETWEEN %(cf)s AND %(ct)s), 0) AS c_purch, "
+              "COALESCE(sum(ad.conv_value) FILTER (WHERE ad.day BETWEEN %(cf)s AND %(ct)s), 0) AS c_rev"
+              if cw is not None else "0::numeric AS c_spend, 0::numeric AS c_purch, 0::numeric AS c_rev")
+    raw = rows_of(conn, f"""
         SELECT um.meta_family_key, um.meta_family, um.spend_7d, um.live,
-               sum(ad.spend) AS spend, sum(ad.purchases) AS purchases, sum(ad.conv_value) AS revenue
+               COALESCE(sum(ad.spend) FILTER (WHERE ad.day BETWEEN %(wf)s AND %(wt)s), 0) AS spend,
+               COALESCE(sum(ad.purchases) FILTER (WHERE ad.day BETWEEN %(wf)s AND %(wt)s), 0) AS purchases,
+               COALESCE(sum(ad.conv_value) FILTER (WHERE ad.day BETWEEN %(wf)s AND %(wt)s), 0) AS revenue,
+               {c_cols}
         FROM unmatched_meta um
         JOIN ad_daily ad ON ad.meta_family_key = um.meta_family_key
         LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
-        WHERE um.product_id = %(pid)s AND ad.day BETWEEN %(wf)s AND %(wt)s
+        WHERE um.product_id = %(pid)s AND ad.day BETWEEN %(lo)s AND %(hi)s
           AND (CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END) = ANY(%(stages)s)
         GROUP BY um.meta_family_key, um.meta_family, um.spend_7d, um.live
         HAVING sum(ad.spend) <> 0 OR sum(ad.purchases) <> 0
-        ORDER BY spend DESC, um.meta_family""", {"pid": product["id"], "wf": wf, "wt": wt, "stages": w.stages})
+        ORDER BY spend DESC, c_spend DESC, um.meta_family""", params)
+    raw = [r for r in raw if r["spend"] != 0 or r["purchases"] != 0 or r["c_spend"] != 0 or r["c_purch"] != 0]
     rows = [{"meta_family": r["meta_family"], "meta_family_key": r["meta_family_key"],
-             **simple_metrics(r["spend"], r["purchases"], r["revenue"]), "spend_7d": f2(r["spend_7d"]), "live": bool(r["live"])}
-            for r in raw]
-    sp = sum((r["spend"] for r in raw), Decimal(0))
-    pu = sum((r["purchases"] for r in raw), Decimal(0))
-    rv = sum((r["revenue"] for r in raw), Decimal(0))
-    total = {**simple_metrics(sp, pu, rv), "spend_7d": f2(sum((r["spend_7d"] for r in raw), Decimal(0))), "families": len(rows)}
+             **window_block((r["spend"], r["purchases"], r["revenue"]), w, (r["c_spend"], r["c_purch"], r["c_rev"])),
+             "spend_7d": f2(r["spend_7d"]), "live": bool(r["live"])} for r in raw]
+    tot = {k: sum((r[k] for r in raw), Decimal(0)) for k in ("spend", "purchases", "revenue", "c_spend", "c_purch", "c_rev")}
+    total = {**window_block((tot["spend"], tot["purchases"], tot["revenue"]), w, (tot["c_spend"], tot["c_purch"], tot["c_rev"])),
+             "spend_7d": f2(sum((r["spend_7d"] for r in raw), Decimal(0))), "families": len(rows)}
     return {"rows": rows, "total": total}
 
 
@@ -940,10 +1138,16 @@ def _copy_only(text: str | None, lines: list[dict]) -> dict | None:
     return {"line_code": best[1] if best else None, "label": t}
 
 
-def _fam_window_metrics(conn, meta: DataMeta, w: WindowSpec, product_id: int, family_key: str) -> dict:
+def _fam_window_metrics(conn, meta: DataMeta, w: WindowSpec, product_id: int, family_key: str) -> tuple[dict, dict | None, dict | None]:
+    """(window A block, window B block | None, delta | None) for one family."""
     sql, params = _rm(meta, w, product_id=product_id, family_key=family_key)
     a = row_of(conn, sql + "SELECT " + AGG_COLS + " FROM rm", params)
-    return simple_metrics(a["spend"], a["purchases"], a["revenue"])
+    av = (a["spend"], a["purchases"], a["revenue"])
+    block = {**simple_metrics(*av), **per_day_fields(*av, w.days)}
+    if w.cmp is None:
+        return block, None, None
+    cmp, delta = cmp_blocks(av, w, (a["c_spend"], a["c_purch"], a["c_rev"]), b_active=a["c_active"])
+    return block, {**simple_metrics(a["c_spend"], a["c_purch"], a["c_rev"]), **cmp}, delta
 
 
 def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
@@ -1004,7 +1208,17 @@ def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
     else:
         z = simple_metrics(0, 0, 0)
         family_metrics = {"launch": z, "d7": z, "d30": z, "live": False}
-    family_metrics["window"] = _fam_window_metrics(conn, meta, w, pid, fk) if not blank else simple_metrics(0, 0, 0)
+    if not blank:
+        family_metrics["window"], cmp_block, delta_block = _fam_window_metrics(conn, meta, w, pid, fk)
+    else:
+        family_metrics["window"] = {**simple_metrics(0, 0, 0), **per_day_fields(0, 0, 0, w.days)}
+        cmp_block = delta_block = None
+        if w.cmp is not None:
+            cmp_block, delta_block = cmp_blocks((0, 0, 0), w, (0, 0, 0), b_active=0)
+            cmp_block = {**simple_metrics(0, 0, 0), **cmp_block}
+    if w.cmp is not None:
+        family_metrics["compare"] = cmp_block
+        family_metrics["delta"] = delta_block
 
     daily_rows = {d["day"]: d for d in rows_of(conn, """
         SELECT day, sum(spend) AS spend, sum(purchases) AS purchases, sum(revenue) AS revenue, sum(link_clicks) AS link_clicks

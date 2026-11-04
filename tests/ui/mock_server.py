@@ -15,7 +15,7 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, request, send_from_directory
+from flask import Flask, Response, g, jsonify, request, send_from_directory
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "app" / "static"
@@ -186,13 +186,11 @@ def build():
                             daily=daily_for(rng, date(2026, 8, 20), live, rng.choice([5, 15, 40])), life=(0, 0, 0), detail_cut=0))
     # first live vita-bull family has ad-level detail only for the last 60 days
     fam_by_key = {f["key"]: f for f in fams}
-    for f in fams:
-        if f["product"] == "vita-bull" and f["live"]:
-            for ad in ads:
-                if ad["fam"] == f["key"]:
-                    ad["detail_cut"] = N - 60
-            f["has_remainder"] = True
-            break
+    f = sorted((x for x in fams if x["product"] == "vita-bull" and x["live"] and x["launch"] >= DAILY_START + timedelta(days=10)), key=lambda x: x["launch"])[0]
+    for ad in ads:
+        if ad["fam"] == f["key"]:
+            ad["detail_cut"] = N - 60
+    f["has_remainder"] = True
     # copy / content per row
     for r in rows:
         r["emotion"] = random.Random(r["id"]).choice(["Shame", "Fear", "Frustration", "Distrust", "Pride"])
@@ -214,14 +212,36 @@ def lab(d):
     return f"{MON[d.month - 1]} {d.day}"
 
 
+def build_window(fd, td, kind, stage):
+    """clamp [fd, td] to the daily span and build the window dict + window_info"""
+    cf, ct = max(fd, DAILY_START), min(td, DATA_THROUGH)
+    if cf > ct:
+        cf = ct = DATA_THROUGH if fd > DATA_THROUGH else DAILY_START
+    clamped = (cf, ct) != (fd, td)
+    n = (ct - cf).days + 1
+    info = dict(kind=kind, label=f"{lab(cf)} · 1 day" if n == 1 else f"{lab(cf)} – {lab(ct)} · {n} days",
+                **{"from": cf.isoformat(), "to": ct.isoformat()}, days=n, clamped=clamped,
+                note=f"Daily data runs {DAILY_START.isoformat()} to {DATA_THROUGH.isoformat()}; range clamped." if clamped else None,
+                daily_start=DAILY_START.isoformat(), data_through=DATA_THROUGH.isoformat())
+    i0, i1 = (cf - DAILY_START).days, (ct - DAILY_START).days
+    return dict(info=info, i0=i0, i1=i1, stage=stage, key=(i0, i1, stage), launch=False)
+
+
+def trailing(w, stage):
+    if w == "mtd":
+        return build_window(DATA_THROUGH.replace(day=1), DATA_THROUGH, "mtd", stage)
+    m = re.fullmatch(r"(\d+)d", w or "")
+    if not m or int(m.group(1)) not in (1, 7, 14, 30, 60, 90, 180):
+        raise Bad("bad window")
+    n = int(m.group(1))
+    return build_window(DATA_THROUGH - timedelta(days=n - 1), DATA_THROUGH, "trailing", stage)
+
+
 def parse_win(args):
     stage = args.get("stage", "all")
     if stage not in ("all", "testing", "scaling"):
         raise Bad("bad stage")
     f, t = args.get("from"), args.get("to")
-    info = dict(kind="launch", label="Since launch", **{"from": None, "to": None}, days=None, clamped=False, note=None,
-                daily_start=DAILY_START.isoformat(), data_through=DATA_THROUGH.isoformat())
-    i0 = i1 = None
     if f or t:
         if not (f and t):
             raise Bad("from and to are both required")
@@ -231,34 +251,43 @@ def parse_win(args):
             raise Bad("bad date")
         if fd > td:
             raise Bad("from is after to")
-        cf, ct = max(fd, DAILY_START), min(td, DATA_THROUGH)
-        if cf > ct:
-            cf = ct = DATA_THROUGH if fd > DATA_THROUGH else DAILY_START
-        clamped = (cf, ct) != (fd, td)
-        info.update(kind="custom", clamped=clamped,
-                    note=f"Daily data runs {DAILY_START.isoformat()} to {DATA_THROUGH.isoformat()}; range clamped." if clamped else None)
-        fd, td = cf, ct
-        info.update({"from": fd.isoformat(), "to": td.isoformat()})
-    else:
-        w = args.get("window", "launch")
-        if w == "launch":
-            if stage != "all":
-                info["note"] = "With a stage filter only days with a campaign (classified days) count."
-            return dict(info=info, i0=None, i1=None, stage=stage, key=("launch", stage), launch=True)
-        if w == "mtd":
-            fd, td, info["kind"] = DATA_THROUGH.replace(day=1), DATA_THROUGH, "mtd"
-        else:
-            m = re.fullmatch(r"(\d+)d", w)
-            if not m or int(m.group(1)) not in (1, 7, 14, 30, 60, 90, 180):
-                raise Bad("bad window")
-            n = int(m.group(1))
-            fd, td, info["kind"] = DATA_THROUGH - timedelta(days=n - 1), DATA_THROUGH, "trailing"
-        info.update({"from": fd.isoformat(), "to": td.isoformat()})
-    n = (td - fd).days + 1
-    info["days"] = n
-    info["label"] = f"{lab(fd)} · 1 day" if n == 1 else f"{lab(fd)} – {lab(td)} · {n} days"
-    i0, i1 = (fd - DAILY_START).days, (td - DAILY_START).days
-    return dict(info=info, i0=i0, i1=i1, stage=stage, key=(i0, i1, stage), launch=False)
+        return build_window(fd, td, "custom", stage)
+    w = args.get("window", "launch")
+    if w == "launch":
+        info = dict(kind="launch", label="Since launch", **{"from": None, "to": None}, days=None, clamped=False,
+                    note="With a stage filter only days with a campaign (classified days) count." if stage != "all" else None,
+                    daily_start=DAILY_START.isoformat(), data_through=DATA_THROUGH.isoformat())
+        return dict(info=info, i0=None, i1=None, stage=stage, key=("launch", stage), launch=True)
+    return trailing(w, stage)
+
+
+def parse_cmp(args, win):
+    """window B from compare=prev|Nd|mtd or cfrom/cto; None when comparison is off"""
+    c, cf, ct = args.get("compare"), args.get("cfrom"), args.get("cto")
+    if not (c or cf or ct):
+        return None
+    if win["launch"]:
+        raise Bad("compare needs a date window")
+    stage = win["stage"]
+    if cf or ct:
+        if not (cf and ct):
+            raise Bad("cfrom and cto are both required")
+        try:
+            fd, td = date.fromisoformat(cf), date.fromisoformat(ct)
+        except ValueError:
+            raise Bad("bad date")
+        if fd > td:
+            raise Bad("cfrom is after cto")
+        return build_window(fd, td, "custom", stage)
+    if c == "prev":
+        n = win["info"]["days"]
+        a0 = date.fromisoformat(win["info"]["from"])
+        return build_window(a0 - timedelta(days=n), a0 - timedelta(days=1), "prev", stage)
+    return trailing(c, stage)
+
+
+def cinfo():
+    return g.cmp["info"] if getattr(g, "cmp", None) else None
 
 
 # ----------------------------------------------------------------------------------------------- metrics
@@ -345,7 +374,49 @@ def fam_split(fam_key, win, ads_filter=None):
     return _FM[ck]
 
 
+KEYS5 = ("spend", "purchases", "revenue", "roas", "cpa")
+
+
+def per_day(obj, win):
+    n = win["info"]["days"] if win and not win.get("launch") else None
+    return {f"{k}_per_day": (round(obj[k] / n, 4) if n else None) for k in ("spend", "purchases", "revenue")}
+
+
+def delta_block(a, b, wa, wb):
+    da, db = wa["info"]["days"], wb["info"]["days"]
+    d = {}
+    for k in KEYS5:
+        av, bv = a.get(k), b.get(k)
+        d[k] = None if av is None or bv is None else round(av - bv, 4)
+        d[k + "_pct"] = None if av is None or not bv else round((av - bv) / bv, 4)
+    for k in ("spend", "purchases", "revenue"):
+        ap, bp = a[k] / da, b[k] / db
+        d[k + "_per_day_pct"] = None if not bp else round((ap - bp) / bp, 4)
+    return d
+
+
+def cmp_block(b, wb):
+    out = {k: b.get(k) for k in KEYS5 + ("active_ads",) if k in b}
+    out.update(per_day(b, wb))
+    return out
+
+
+def decorate(obj, objb, win):
+    """add per-day fields (always) and cmp/delta (when comparing) to a metrics object or flat row"""
+    obj.update(per_day(obj, win))
+    if getattr(g, "cmp", None) and objb is not None:
+        obj["cmp"] = cmp_block(objb, g.cmp)
+        obj["delta"] = delta_block(obj, objb, win, g.cmp)
+    return obj
+
+
 def make_m(items, win, unique_ads=None):
+    m = _make_m(items, win, unique_ads)
+    mb = _make_m(items, g.cmp, unique_ads) if getattr(g, "cmp", None) else None
+    return decorate(m, mb, win)
+
+
+def _make_m(items, win, unique_ads=None):
     """items: [(fam, counted_here)] -> metrics object"""
     m_sp = m_pu = m_rv = 0.0
     sp7 = pu7 = 0.0
@@ -415,11 +486,15 @@ def unmatched_rows(slug, win):
     for ad in ADS:
         if ad["product"] != slug or ad["fam"] is not None:
             continue
-        e = by.setdefault(ad["meta_family"], dict(meta_family=ad["meta_family"], spend=0.0, purchases=0, revenue=0.0, spend_7d=0.0, live=False))
+        e = by.setdefault(ad["meta_family"], dict(meta_family=ad["meta_family"], spend=0.0, purchases=0, revenue=0.0, spend_7d=0.0, live=False, _b=[0.0, 0, 0.0]))
         if win["launch"] or win["i0"] is None:
             sp, pu, rv = sums(ad["daily"], 0, N - 1)
         else:
             sp, pu, rv = sums(ad["daily"], win["i0"], win["i1"])
+        if getattr(g, "cmp", None):
+            bs = sums(ad["daily"], g.cmp["i0"], g.cmp["i1"])
+            for j in range(3):
+                e["_b"][j] += bs[j]
         e["spend"] += sp; e["purchases"] += pu; e["revenue"] += rv
         e["spend_7d"] += sums(ad["daily"], N - 7, N - 1)[0]
         e["live"] = e["live"] or ad["daily"][N - 1][0] > 0 or ad["daily"][N - 2][0] > 0
@@ -427,6 +502,9 @@ def unmatched_rows(slug, win):
     for e in by.values():
         e["spend"] = round(e["spend"], 2); e["revenue"] = round(e["revenue"], 2); e["spend_7d"] = round(e["spend_7d"], 2)
         e["roas"] = _roas(e["spend"], e["revenue"]); e["cpa"] = _cpa(e["spend"], e["purchases"])
+        b = e.pop("_b")
+        eb = dict(spend=round(b[0], 2), purchases=int(round(b[1])), revenue=round(b[2], 2), roas=_roas(b[0], b[2]), cpa=_cpa(b[0], b[1]))
+        decorate(e, eb if getattr(g, "cmp", None) else None, win if not win["launch"] else None)
         rows.append(e)
     rows.sort(key=lambda r: -r["spend"])
     return rows
@@ -444,6 +522,9 @@ def guard():
     if (p.startswith("/api/") and p != "/api/login") or p.startswith("/media/"):
         if request.cookies.get("sid") != "ok":
             return jsonify(error="unauthorized"), 401
+    g.cmp = None
+    if p.startswith("/api/") and any(k in request.args for k in ("compare", "cfrom", "cto")):
+        g.cmp = parse_cmp(request.args, parse_win(request.args))
     if p.startswith("/api/") and request.args.get("__delay"):
         import time
         time.sleep(float(request.args["__delay"]))
@@ -528,7 +609,7 @@ def rollup(slug):
     um = unmatched_rows(slug, parse_win({}))
     um7 = sum(u["spend_7d"] for u in um)
     return jsonify(product=product_json(p), level=level, filters=dict(cluster=request.args.get("cluster"), icp=request.args.get("icp")),
-                   window=win["info"], window_info=win["info"], rows=rows, total=dict(m=make_m(items_for_m(ents), win)),
+                   window=win["info"], window_info=win["info"], compare_info=cinfo(), rows=rows, total=dict(m=make_m(items_for_m(ents), win)),
                    unmatched=dict(spend_7d=round(um7, 2), spend_30d=round(um7 * 4.1, 2), live_families=sum(1 for u in um if u["live"]), families=len(um)))
 
 
@@ -551,7 +632,7 @@ def families(slug):
                          confidence=min((r["conf"] for _, r, _ in es), key={"low": 0, "medium": 1, "high": 2}.get) if p["tag_set"] == "linemap" else None,
                          method=es[0][1]["method"] if p["tag_set"] == "linemap" else None, counted_here=counted, m=m))
     rows.sort(key=lambda r: -r["m"]["spend"])
-    return jsonify(product=product_json(p), filters={k: request.args.get(k) for k in ("cluster", "icp", "pain")}, window=win["info"], window_info=win["info"],
+    return jsonify(product=product_json(p), filters={k: request.args.get(k) for k in ("cluster", "icp", "pain")}, window=win["info"], window_info=win["info"], compare_info=cinfo(),
                    rows=rows, total=dict(m=make_m(items_for_m(ents), win)))
 
 
@@ -561,10 +642,18 @@ def unmatched(slug):
     rows = unmatched_rows(slug, win)
     tot = dict(spend=round(sum(r["spend"] for r in rows), 2), purchases=sum(r["purchases"] for r in rows), revenue=round(sum(r["revenue"] for r in rows), 2),
                spend_7d=round(sum(r["spend_7d"] for r in rows), 2), families=len(rows))
-    return jsonify(window_info=win["info"], rows=rows, total=tot)
+    tot["roas"] = _roas(tot["spend"], tot["revenue"]); tot["cpa"] = _cpa(tot["spend"], tot["purchases"])
+    sum_cmp(tot, rows, win)
+    return jsonify(window_info=win["info"], compare_info=cinfo(), rows=rows, total=tot)
 
 
 def ad_row(ad, win, launch):
+    r = _ad_row(ad, win, launch)
+    rb = _ad_row(ad, g.cmp, launch) if getattr(g, "cmp", None) else None
+    return decorate(r, rb, win if not win["launch"] else None)
+
+
+def _ad_row(ad, win, launch):
     split = ad_metrics(ad, win, launch)
     sp, pu, rv = metrics_of(split, win)
     cmp = CAMPAIGNS[ad["campaign_id"]]
@@ -584,9 +673,22 @@ def ad_row(ad, win, launch):
                 live=ad["daily"][N - 1][0] > 0 or ad["daily"][N - 2][0] > 0, days_active=days)
 
 
-def total_of(rows):
+def sum_cmp(tot, rows, win):
+    """tot: flat total dict (A already set). add per-day, and cmp/delta from the rows' cmp blocks (recomputed from sums)"""
+    tb = None
+    if getattr(g, "cmp", None) and rows and all("cmp" in r for r in rows):
+        sp = sum(r["cmp"]["spend"] for r in rows); pu = sum(r["cmp"]["purchases"] for r in rows); rv = sum(r["cmp"]["revenue"] for r in rows)
+        tb = dict(spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu))
+    elif getattr(g, "cmp", None):
+        tb = dict(spend=0, purchases=0, revenue=0, roas=None, cpa=None)
+    decorate(tot, tb, win if not win["launch"] else None)
+    return tot
+
+
+def total_of(rows, win):
     sp = sum(r["spend"] for r in rows); pu = sum(r["purchases"] for r in rows); rv = sum(r["revenue"] for r in rows)
-    return dict(spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu), spend_7d=round(sum(r["spend_7d"] for r in rows), 2))
+    tot = dict(spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu), spend_7d=round(sum(r["spend_7d"] for r in rows), 2))
+    return sum_cmp(tot, rows, win)
 
 
 def ads_for(slug, args, win):
@@ -620,11 +722,16 @@ def ads_for(slug, args, win):
             have_pu = sum(r["purchases"] for r in rows if r["family_key"] == f["key"])
             have_rv = sum(r["revenue"] for r in rows if r["family_key"] == f["key"])
             if sp - have_sp > 0.5:
+                rem_b = None
+                if getattr(g, "cmp", None):
+                    bsp, bpu, brv = metrics_of(fam_split(f["key"], g.cmp)[0], g.cmp)
+                    hb = [sum(r["cmp"][k] for r in rows if r["family_key"] == f["key"]) for k in ("spend", "purchases", "revenue")]
+                    rem_b = dict(spend=round(bsp - hb[0], 2), purchases=int(round(bpu - hb[1])), revenue=round(brv - hb[2], 2), roas=_roas(bsp - hb[0], brv - hb[2]), cpa=_cpa(bsp - hb[0], bpu - hb[1]))
                 rem = dict(ad_id=None, ad_name="(days without ad-level detail)", family_key=f["key"], display=f["display"], primary_id=f["rows"][0]["id"], thumb_asset_id=None,
                            campaign_id=None, campaign_name=None, stage=None, adset_name=None, account=None, status=None, created_date=None, tag=None,
                            spend=round(sp - have_sp, 2), purchases=int(round(pu - have_pu)), revenue=round(rv - have_rv, 2), roas=_roas(sp - have_sp, rv - have_rv),
                            cpa=_cpa(sp - have_sp, pu - have_pu), spend_7d=0, live=False, days_active=0)
-                remainders.append(rem)
+                remainders.append(decorate(rem, rem_b, win if not win["launch"] else None))
     rows = rows + remainders
     rows.sort(key=lambda r: -(r["spend"] or 0))
     return rows
@@ -635,7 +742,7 @@ def ads(slug):
     win = parse_win(request.args)
     prod_meta(slug)
     rows = ads_for(slug, request.args, win)
-    return jsonify(window_info=win["info"], rows=rows, total=total_of(rows))
+    return jsonify(window_info=win["info"], compare_info=cinfo(), rows=rows, total=total_of(rows, win))
 
 
 @app.get("/api/products/<slug>/campaigns")
@@ -652,6 +759,9 @@ def campaigns(slug):
         e = out.setdefault(c["campaign_id"], dict(campaign_id=c["campaign_id"], name=c["name"], account=c["account"], stage=c["stage"], ads=0, fams=set(), spend=0.0, purchases=0, revenue=0.0, spend_7d=0.0, live=False, last_day=None))
         e["ads"] += 1; e["fams"].add(ad["fam"] or ad["meta_family"])
         e["spend"] += r["spend"]; e["purchases"] += r["purchases"]; e["revenue"] += r["revenue"]; e["spend_7d"] += r["spend_7d"]
+        if "cmp" in r:
+            b = e.setdefault("_b", [0.0, 0, 0.0])
+            b[0] += r["cmp"]["spend"]; b[1] += r["cmp"]["purchases"]; b[2] += r["cmp"]["revenue"]
         e["live"] = e["live"] or r["live"]
         last = max((i for i in range(N) if ad["daily"][i][0] > 0), default=None)
         if last is not None:
@@ -664,16 +774,20 @@ def campaigns(slug):
         e["families"] = len(e.pop("fams"))
         e["spend"] = round(e["spend"], 2); e["revenue"] = round(e["revenue"], 2); e["spend_7d"] = round(e["spend_7d"], 2)
         e["roas"] = _roas(e["spend"], e["revenue"]); e["cpa"] = _cpa(e["spend"], e["purchases"])
+        b = e.pop("_b", None)
+        eb = dict(spend=round(b[0], 2), purchases=int(round(b[1])), revenue=round(b[2], 2), roas=_roas(b[0], b[2]), cpa=_cpa(b[0], b[1])) if b else None
+        decorate(e, eb, win if not win["launch"] else None)
         rows.append(e)
     rows.sort(key=lambda r: -r["spend"])
     by_stage = []
     for st in ("testing", "scaling"):
         rs = [r for r in rows if r["stage"] == st]
         sp = sum(r["spend"] for r in rs); pu = sum(r["purchases"] for r in rs); rv = sum(r["revenue"] for r in rs)
-        by_stage.append(dict(stage=st, campaigns=len(rs), ads=sum(r["ads"] for r in rs), spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu), spend_7d=round(sum(r["spend_7d"] for r in rs), 2)))
-    tot = total_of(rows)
+        card = dict(stage=st, campaigns=len(rs), ads=sum(r["ads"] for r in rs), spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu), spend_7d=round(sum(r["spend_7d"] for r in rs), 2))
+        by_stage.append(sum_cmp(card, rs, win))
+    tot = total_of(rows, win)
     tot["ads"] = sum(r["ads"] for r in rows)
-    return jsonify(window_info=win["info"], by_stage=by_stage, rows=rows, total=tot)
+    return jsonify(window_info=win["info"], compare_info=cinfo(), by_stage=by_stage, rows=rows, total=tot)
 
 
 @app.get("/api/products/<slug>/stage-daily")
@@ -740,6 +854,10 @@ def ad_detail(rid):
         sp, pu, rv = metrics_of(fam_split(fam["key"], w)[0], w)
         return dict(spend=round(sp, 2), purchases=int(round(pu)), revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu))
     live = fam_split(fam["key"], L)[2]
+    cmp_fam = {}
+    if getattr(g, "cmp", None):
+        fa, fb = fm(win), fm(g.cmp)
+        cmp_fam = dict(compare=fb, delta=delta_block(fa, fb, win, g.cmp))
     series = [0, 0, 0]
     daily = []
     fam_ads = [a for a in ADS if a["fam"] == fam["key"]]
@@ -760,8 +878,8 @@ def ad_detail(rid):
                    tag=tag, tracker_tag=dict(cluster=row["cluster"], icp=row["icp"], pain_point=row["pain"], emotion=row["emotion"], ingredient=row["ingredient"]),
                    line=line, content=content, assets=dict(thumb=fam["thumb"], frames=frames),
                    siblings=[dict(id=r["id"], concept_id=r["concept_id"], line_code=r["line"][0] if r["line"] else None, cluster=r["cluster"], icp=r["icp"], pain_point=r["pain"], status=fam["status"]) for r in nxt],
-                   metrics=dict(counted_on_this_row=row["ordinal"] == 0, family=dict(launch=fm(L), d7=fm(D7), d30=fm(D30), window=fm(win), live=live)),
-                   window_info=win["info"], daily=daily, meta_ads=meta_ads,
+                   metrics=dict(counted_on_this_row=row["ordinal"] == 0, family=dict(launch=fm(L), d7=fm(D7), d30=fm(D30), window=fm(win), live=live, **cmp_fam)),
+                   window_info=win["info"], compare_info=cinfo(), daily=daily, meta_ads=meta_ads,
                    campaigns=[dict(e, spend=round(e["spend"], 2), revenue=round(e["revenue"], 2)) for e in camps.values()])
 
 

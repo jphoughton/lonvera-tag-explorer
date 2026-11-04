@@ -97,7 +97,7 @@ export function adsTable(p, data, { sortKey, sortDir, onSort, onCount, ...colOpt
     total: data.total || null,
     sortKey, sortDir, onSort, onCount,
     rowKey: (r, i) => (r.ad_id != null ? r.ad_id : 'rem' + i),
-    rowHref: (r) => (colOpts.linkAd === false || r.primary_id == null ? null : href('/ad/' + enc(r.primary_id), globalParams(p))),
+    rowHref: (r) => (colOpts.linkAd === false || r.primary_id == null || r.ad_id == null ? null : href('/ad/' + enc(r.primary_id), globalParams(p))),
     emptyText: 'No Meta ads for this selection.',
     testid: 'ads-table',
     tableClass: 'ads',

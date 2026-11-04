@@ -48,7 +48,10 @@ def get_conn() -> psycopg.Connection:
 def _release(_exc) -> None:
     conn = g.pop("_conn", None)
     if conn is not None:
-        current_app.extensions["pool"].putconn(conn)     # putconn rolls back the open transaction
+        try:
+            conn.rollback()                                  # read-only snapshot transaction: nothing to keep
+        finally:
+            current_app.extensions["pool"].putconn(conn)
 
 
 def ping(timeout: float = 3.0) -> bool:
