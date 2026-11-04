@@ -92,10 +92,19 @@ def ratio_or_none(a, b):
     return None if not b else float(a) / float(b)
 
 
+def exp_imp(agg):
+    """unknown (activity but no impression data) is null, never 0"""
+    return None if agg["imp"] == 0 and (agg["clk"] > 0 or agg["spend"] > 0) else agg["imp"]
+
+
+def exp_clk(agg):
+    return None if agg["clk"] == 0 and agg["imp"] == 0 and agg["spend"] > 0 else agg["clk"]
+
+
 def check_traffic(m: dict, agg: dict, ctx: str = "") -> None:
     """impressions / link clicks / CTR / CPC / CPM / conv rate against the oracle's sums (null when the denominator is 0)."""
-    assert m["impressions"] == agg["imp"], f"{ctx} impressions {m['impressions']} != {agg['imp']}"
-    assert m["link_clicks"] == agg["clk"], f"{ctx} link_clicks {m['link_clicks']} != {agg['clk']}"
+    assert m["impressions"] == exp_imp(agg), f"{ctx} impressions {m['impressions']} != {exp_imp(agg)}"
+    assert m["link_clicks"] == exp_clk(agg), f"{ctx} link_clicks {m['link_clicks']} != {exp_clk(agg)}"
     for key, num_, den, scale, tol in (("ctr", agg["clk_tr"], agg["imp"], 1, 1e-5), ("cpc", agg["sp_tr"], agg["clk"], 1, 1e-3),
                                        ("cpm", agg["sp_tr"], agg["imp"], 1000, 1e-2), ("conv_rate", agg["purch_t"], agg["clk"], 1, 1e-5)):
         want = ratio_or_none(num_, den)

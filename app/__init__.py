@@ -120,6 +120,8 @@ def _register_headers(app: Flask) -> None:
         resp.headers.setdefault("Referrer-Policy", "same-origin")
         if request.path.startswith("/api/"):
             resp.headers["Cache-Control"] = "no-store"
+        elif request.path.startswith("/static/") and resp.status_code in (200, 304):
+            resp.headers["Cache-Control"] = "no-cache"          # ES modules are not content-hashed: always revalidate (ETag / Last-Modified still apply)
         if not app.config.get("DEV_INSECURE_COOKIES") and request.is_secure:
             resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         return _maybe_gzip(resp)

@@ -41,22 +41,23 @@ def test_unknown_impressions_give_null_ratios_not_zero_or_errors(client, fx):
     """BL-Fam-2 only has sheet-grain days: link clicks 0 (= unknown) and impressions NULL. Spend is real, traffic ratios must be null."""
     w = "from=2026-08-15&to=2026-08-20"
     f = fams(client, "beef-liver", w)["bl-fam-2"]
-    assert f["spend"] > 0 and f["impressions"] == 0 and f["link_clicks"] == 0
+    assert f["spend"] > 0 and f["impressions"] is None and f["link_clicks"] is None          # unknown is null, not 0
+    assert f["impressions_per_day"] is None and f["link_clicks_per_day"] is None
     assert f["ctr"] is None and f["cpc"] is None and f["cpm"] is None and f["conv_rate"] is None
     for blk in (get_ok(client, f"/api/products/beef-liver/rollup?{w}")["total"]["m"], get_ok(client, f"/api/products/beef-liver/tree?root=cluster&depth=3&{w}")["rows"][0]["m"]):
         assert blk["ctr"] is None and blk["cpc"] is None
     # a product with no spend at all is not an error either
     bf = get_ok(client, "/api/products/boneflex/rollup?window=7d")["total"]["m"]
-    assert bf["impressions"] == 0 and bf["link_clicks"] == 0 and all(bf[k] is None for k in ("ctr", "cpc", "cpm", "conv_rate"))
+    assert bf["spend"] == 0 and bf["impressions"] == 0 and bf["link_clicks"] == 0 and all(bf[k] is None for k in ("ctr", "cpc", "cpm", "conv_rate"))      # no activity: a real 0
     z = get_ok(client, "/api/products/vita-bull/rollup?level=pain&cluster=Beta Cluster&icp=ICP Three")["rows"][1]["m"]      # taxonomy line with no ads
-    assert z["impressions"] == 0 and all(z[k] is None for k in ("ctr", "cpc", "cpm", "conv_rate"))
+    assert z["impressions"] == 0 and all(z[k] is None for k in ("ctr", "cpc", "cpm", "conv_rate"))      # nothing delivered: 0, not unknown
 
 
 def test_sheet_days_have_clicks_but_no_impressions(client, fx):
     """Sheet-grain days know link clicks (so CPC works) but have no impressions (so CTR and CPM stay null for them)."""
     w = "from=2026-08-05&to=2026-08-20"
     f = fams(client, "vita-bull", w)["vb-fam-a"]
-    assert f["spend"] > 0 and f["link_clicks"] > 0 and f["impressions"] == 0
+    assert f["spend"] > 0 and f["link_clicks"] > 0 and f["impressions"] is None            # clicks known, impressions unknown -> null
     assert f["ctr"] is None and f["cpm"] is None
     assert f["cpc"] == pytest.approx(f["spend"] / f["link_clicks"], rel=1e-3)
     assert f["conv_rate"] == pytest.approx(f["purchases"] / f["link_clicks"], rel=1e-3)
@@ -105,9 +106,10 @@ def test_compare_deltas_for_ctr_cpc(client, fx):
     assert d["impressions_per_day"] == pytest.approx(a["imp"] / 14, abs=0.01) and d["cmp"]["link_clicks_per_day"] == pytest.approx(b["clk"] / 14, abs=0.01)
     # when window B has no traffic data at all the deltas are null (not 0, not an error)
     sheet = get_ok(client, "/api/products/beef-liver/rollup?window=7d&cfrom=2026-08-15&cto=2026-08-20")["total"]["m"]
-    assert sheet["cmp"]["spend"] > 0 and sheet["cmp"]["impressions"] == 0
+    assert sheet["cmp"]["spend"] > 0 and sheet["cmp"]["impressions"] is None and sheet["cmp"]["link_clicks"] is None
     assert sheet["cmp"]["ctr"] is None and sheet["delta"]["ctr"] is None and sheet["delta"]["ctr_pp"] is None and sheet["delta"]["ctr_pct"] is None
-    assert sheet["delta"]["impressions_pct"] is None and sheet["delta"]["cpm"] is None
+    assert sheet["delta"]["impressions_pct"] is None and sheet["delta"]["cpm"] is None and sheet["delta"]["impressions"] is None
+    assert sheet["delta"]["link_clicks"] is None and sheet["delta"]["conv_rate_pp"] is None
     # every row of a compared table has the same keys
     for r in get_ok(client, "/api/products/vita-bull/families?window=7d&compare=prev")["rows"][:5]:
         assert "ctr_pp" in r["m"]["delta"] and "ctr" in r["m"]["cmp"]
@@ -138,3 +140,25 @@ def test_launch_traffic_comes_from_the_lifetime_sums(client, fx):
     assert vb["impressions"] > 0 and vb["ctr"] == pytest.approx(vb["link_clicks"] / vb["impressions"], abs=1e-5)       # all lifetime clicks have impressions
     assert vb["cpc"] == pytest.approx(vb["spend"] / vb["link_clicks"], abs=2e-3)                                         # spend base = lifetime spend
     assert vb["cpm"] == pytest.approx(vb["spend"] * 1000 / vb["impressions"], abs=2e-2)
+
+
+def test_cpc_is_null_not_zero_when_the_traffic_spend_base_is_missing():
+    """family_daily.spend_tr not filled yet (0) while clicks exist: CPC / CPM are unknown (null), never $0."""
+    from app import queries as q
+    side = {"spend": 111340, "purchases": 900, "revenue": 90000, "imp": 0, "clk": 50560, "clk_tr": 0, "sp_tr": 0, "purch_t": 900}
+    f = q.side_fields(side, 30)
+    assert f["cpc"] is None and f["cpm"] is None and f["ctr"] is None and f["impressions"] is None and f["link_clicks"] == 50560
+    assert f["conv_rate"] == pytest.approx(900 / 50560, abs=1e-5)
+    ok = q.side_fields(dict(side, sp_tr=111340), 30)
+    assert ok["cpc"] == pytest.approx(111340 / 50560, abs=1e-3)
+    # a genuine free click is a real $0 CPC
+    free = q.side_fields({"spend": 0, "purchases": 0, "revenue": 0, "imp": 100, "clk": 5, "clk_tr": 5, "sp_tr": 0, "purch_t": 0}, 7)
+    assert free["cpc"] == 0 and free["impressions"] == 100
+
+
+def test_percentage_point_fields_are_points_not_fractions(client):
+    d = get_ok(client, "/api/products/vita-bull/rollup?window=14d&compare=prev")["total"]["m"]
+    dl = d["delta"]
+    assert dl["ctr_pp"] == pytest.approx(dl["ctr"] * 100, abs=2e-3) and dl["conv_rate_pp"] == pytest.approx(dl["conv_rate"] * 100, abs=2e-3)
+    assert dl["spend_share_pp"] == pytest.approx((d["spend_share"] - d["cmp"]["spend_share"]) * 100, abs=1e-3)
+    assert 0 <= d["testing_pct"] <= 1 and 0 <= d["spend_share"] <= 1                       # fractions

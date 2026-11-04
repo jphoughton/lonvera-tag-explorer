@@ -137,7 +137,7 @@ def delta_report(a: dict, b: dict, label_a="sheet", label_b="extended"):
     return "\n".join(lines)
 
 
-def run(conn, snapshot_dir, mapping="sheet", as_of=None, delta=True) -> dict:
+def run(conn, snapshot_dir, mapping="extended", as_of=None, delta=True) -> dict:
     daily = parse_daily(sheets_io.read_tab("meta_daily", snapshot_dir), as_of)
     life_rows = sheets_io.read_tab("meta_lifetime", snapshot_dir)
     win_rows = sheets_io.read_tab("meta_windows", snapshot_dir)
@@ -162,7 +162,7 @@ def run(conn, snapshot_dir, mapping="sheet", as_of=None, delta=True) -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--snapshot-dir")
-    ap.add_argument("--mapping", choices=["sheet", "extended"], default="sheet")
+    ap.add_argument("--mapping", choices=["sheet", "extended"], default="extended")
     ap.add_argument("--as-of", help="ignore sheet Daily rows after this date (YYYY-MM-DD)")
     ap.add_argument("--no-delta", action="store_true")
     a = ap.parse_args()

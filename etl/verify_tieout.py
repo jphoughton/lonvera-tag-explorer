@@ -1,5 +1,7 @@
-"""Tie-out: compares tagexp_dev (Vita Bull) with the frozen sheet snapshot tabs rollups / overview_metrics / tag_breakout / tag_map plus headline totals.
-Prints every mismatch; exit code 1 if any. Usage: python -m etl.verify_tieout --snapshot-dir D"""
+"""FYI only (v1.5): compares tagexp_dev (Vita Bull) with the frozen SHEET snapshot tabs rollups / overview_metrics / tag_breakout / tag_map plus headline totals.
+The app is API-driven and no longer ties to the sheet, so this prints differences and exits 0 (use --strict for the old pass/fail behavior; that was only
+valid when ad_metrics was built with the sheet's lifetime-cutoff rule + Windows mapping). QA lives in etl.verify_api.
+Usage: python -m etl.verify_tieout --snapshot-dir D [--strict]"""
 from __future__ import annotations
 
 import argparse
@@ -227,24 +229,50 @@ def verify_tag_map(conn, rep, rows):
         rep.mism("tag_map", "row count", 1464, n)
 
 
+def run_sections(conn, snapshot_dir) -> Report:
+    rep = Report()
+    rd = lambda t: sheets_io.read_tab(t, snapshot_dir)
+    print("== headline totals =="); verify_totals(conn, rep)
+    print("== rollups (3 tables) =="); verify_rollups(conn, rep, rd("rollups"))
+    print("== overview_metrics =="); verify_overview_metrics(conn, rep, rd("overview_metrics"))
+    print("== tag_breakout =="); verify_tag_breakout(conn, rep, rd("tag_breakout"))
+    print("== tag_map (per row) =="); verify_tag_map(conn, rep, rd("tag_map"))
+    print("\nchecked:", dict(rep.checked))
+    for n in sorted(set(rep.notes))[:12]:
+        print("  NOTE", n)
+    return rep
+
+
+def fyi(conn, snapshot_dir) -> int:
+    """Print the sheet comparison; never fails. Returns the number of differing cells."""
+    import io
+    import contextlib
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rep = run_sections(conn, snapshot_dir)
+    lines = buf.getvalue().splitlines()
+    mism = [l for l in lines if "MISMATCH" in l]
+    print(f"sheet comparison (FYI): {rep.bad} differing cells out of {sum(rep.checked.values())} compared")
+    for l in mism[:8]:
+        print(l)
+    if len(mism) > 8:
+        print(f"  ... {len(mism) - 8} more")
+    for l in lines:
+        if l.startswith("headline:"):
+            print(" ", l)
+    return rep.bad
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--snapshot-dir", required=True)
+    ap.add_argument("--strict", action="store_true")
     a = ap.parse_args()
-    rep = Report()
     with db.JobRun("verify_tieout") as run, db.connect() as conn:
-        rd = lambda s: sheets_io.read_tab(s, a.snapshot_dir)
-        print("== headline totals =="); verify_totals(conn, rep)
-        print("== rollups (3 tables) =="); verify_rollups(conn, rep, rd("rollups"))
-        print("== overview_metrics =="); verify_overview_metrics(conn, rep, rd("overview_metrics"))
-        print("== tag_breakout =="); verify_tag_breakout(conn, rep, rd("tag_breakout"))
-        print("== tag_map (per row) =="); verify_tag_map(conn, rep, rd("tag_map"))
-        print("\nchecked:", dict(rep.checked))
-        for n in sorted(set(rep.notes))[:12]:
-            print("  NOTE", n)
-        run.stats = {"mismatches": rep.bad, "checked": dict(rep.checked), "notes": sorted(set(rep.notes))[:20]}
-        print(f"\nRESULT: {rep.bad} mismatches")
-    sys.exit(1 if rep.bad else 0)
+        rep = run_sections(conn, a.snapshot_dir)
+        run.stats = {"mismatches": rep.bad, "checked": dict(rep.checked), "notes": sorted(set(rep.notes))[:20], "strict": a.strict}
+        print(f"\nRESULT (FYI): {rep.bad} differences vs the sheet snapshot")
+    sys.exit(1 if (rep.bad and a.strict) else 0)
 
 
 if __name__ == "__main__":

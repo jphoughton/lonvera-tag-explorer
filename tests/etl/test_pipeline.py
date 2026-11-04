@@ -69,31 +69,52 @@ def metrics_for(conn, concept):
                            JOIN tracker_rows t ON t.id=m.tracker_row_id WHERE t.concept_id=%s ORDER BY t.sheet_row""", (concept,)).fetchall()
 
 
-def test_launch_rule_branches_first_row_and_blank_family(conn, tmp_path):
-    # D0 = 2026-05-06 (first day in daily), cutoff 2026-09-17, data_through = 2026-11-02
-    daily = [("2026-05-06", "seed", 1, 0, 0, 0)]
-    for fam_, days in {"new": ["2026-10-01", "2026-10-30", "2026-11-02"], "old": ["2026-09-10", "2026-09-17", "2026-09-18", "2026-11-01", "2026-11-02"]}.items():
-        daily += [(d, fam_, 10.0, 1, 20.0, 5) for d in days]
-    trs = [trow("N1", "new", "VitaBull", launch="10/30/2026"),                 # launch >= D0: daily from launch (10-30, 11-02)
-           trow("O1", "old", "VitaBull", launch="1/15/2026"),                  # launch < D0: lifetime + daily after cutoff (09-18, 11-01, 11-02)
-           trow("O2", "old", "VitaBull", launch="1/16/2026"),                  # second row of the family: all zero
-           trow("NL", "nolaunch", "VitaBull"),                                  # NULL launch -> launch metrics 0
-           trow("BLANK-CONCEPT", "", "VitaBull", launch="5/7/2026")]            # blank family -> 0
-    snap = make(tmp_path, trs, daily, lifetime=[("old", "old", "1", 500.0, 50, 900.0)], windows=[("new", "new"), ("old", "old"), ("nolaunch", "nolaunch")])
+def seed_life(conn, rows):
+    """rows: (ad_id, meta_family_key, spend, purchases, revenue, impressions, clicks, source)"""
+    for r in rows:
+        conn.execute("INSERT INTO meta_ad_lifetime (ad_id, meta_family_key, spend, purchases, conv_value, impressions, link_clicks, source, pulled_at) "
+                     "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,now())", r)
+    conn.commit()
+
+
+def test_since_launch_is_api_lifetime_first_row_no_cutoff_no_launch_gate(conn, tmp_path):
+    daily = [("2026-05-06", "seed", 1, 0, 0, 0), ("2026-10-30", "fam a", 10.0, 1, 20.0, 5)]
+    trs = [trow("N1", "fam a", "VitaBull", launch="10/30/2026"),
+           trow("O1", "fam b", "VitaBull", launch="1/15/2026"),
+           trow("O2", "fam b", "VitaBull", launch="1/16/2026"),                  # second row of the family: all zero
+           trow("NL", "fam c", "VitaBull"),                                      # NO launch date: still gets lifetime (no launch gate)
+           trow("BLANK-CONCEPT", "", "VitaBull", launch="5/7/2026")]             # blank family: nothing to match -> 0
+    snap = make(tmp_path, trs, daily, windows=[("fam a", "fam a"), ("fam b", "fam b"), ("fam c", "fam c")])
     sync(conn, snap)
     backfill_sheet.run(conn, snap, "sheet", delta=False)
-    n = metrics_for(conn, "N1")[0]
-    assert (n[0], float(n[1]), float(n[2]), float(n[3])) == (True, 20.0, 2.0, 40.0)
-    assert n[4:] == (pytest.approx(20.0), True) or (float(n[4]), n[5]) == (20.0, True)     # 7d window 10-27..11-02 -> 10-30 + 11-02; live (11-02)
-    o1, = metrics_for(conn, "O1")
-    assert (o1[0], float(o1[1]), float(o1[2]), float(o1[3])) == (True, 530.0, 53.0, 960.0)   # 500 + 3*10 ; 50 + 3 ; 900 + 3*20
-    assert metrics_for(conn, "O2") == [(False, 0, 0, 0, 0, False)] or float(metrics_for(conn, "O2")[0][1]) == 0
-    o2 = metrics_for(conn, "O2")[0]
-    assert o2[0] is False and float(o2[1]) == 0 and not o2[5]
-    nl = metrics_for(conn, "NL")[0]
-    assert nl[0] is True and float(nl[1]) == 0
-    bl = metrics_for(conn, "BLANK-CONCEPT")[0]
-    assert float(bl[1]) == 0 and not bl[5]
+    seed_life(conn, [("1", "fam a", 100.0, 4, 300.0, 10000, 200, "meta_api"), ("2", "fam b", 500.0, 50, 900.0, 40000, 800, "meta_api"),
+                     ("3", "fam b", 30.0, 3, 60.0, 3000, 60, "meta_api"),            # second Meta ad of the same tracker family: summed
+                     ("4", "fam c", 7.0, 0, 0.0, 700, 7, "meta_api"),
+                     ("5", "fam a", 999.0, 99, 999.0, 99, 99, "sheet")])             # sheet-era row: must be ignored
+    build_metrics.rebuild(conn)
+    q = lambda c: conn.execute("""SELECT m.is_first_row, m.spend_launch, m.purchases_launch, m.revenue_launch, m.impressions_launch, m.clicks_launch
+                                  FROM ad_metrics m JOIN tracker_rows t ON t.id=m.tracker_row_id WHERE t.concept_id=%s ORDER BY t.sheet_row""", (c,)).fetchall()
+    n = q("N1")[0]
+    assert (n[0], float(n[1]), float(n[2]), float(n[3]), float(n[4]), float(n[5])) == (True, 100.0, 4.0, 300.0, 10000.0, 200.0)     # lifetime, NOT daily-from-launch
+    o1 = q("O1")[0]
+    assert (float(o1[1]), float(o1[2]), float(o1[3]), float(o1[4]), float(o1[5])) == (530.0, 53.0, 960.0, 43000.0, 860.0)
+    o2 = q("O2")[0]
+    assert o2[0] is False and float(o2[1]) == 0 and float(o2[4]) == 0
+    assert float(q("NL")[0][1]) == 7.0
+    assert float(q("BLANK-CONCEPT")[0][1]) == 0
+
+
+def test_traffic_columns_only_from_rows_with_impressions(conn, tmp_path):
+    snap = make(tmp_path, [trow("T", "fam t", "VitaBull")], [("2026-05-06", "fam t", 4.0, 0, 0, 2)], windows=[("fam t", "fam t")])
+    sync(conn, snap)
+    backfill_sheet.run(conn, snap, "sheet", delta=False)            # sheet row: link clicks 2, impressions NULL
+    conn.execute("INSERT INTO ad_daily (ad_id, day, meta_family_key, meta_family, campaign_id, spend, purchases, conv_value, link_clicks, impressions, source) VALUES "
+                 "('9','2026-05-07','fam t','fam t','',10,1,30,5,1000,'meta_api'),('8','2026-05-07','fam t','fam t','',6,0,0,3,400,'meta_api')")
+    build_metrics.rebuild(conn)
+    r = conn.execute("SELECT day::text, spend, link_clicks, impressions, clicks_tr, spend_tr FROM family_daily WHERE family_key='fam t' ORDER BY day").fetchall()
+    assert [tuple(float(x) if i else x for i, x in enumerate(row)) for row in r] == [("2026-05-06", 4.0, 2.0, 0.0, 0.0, 0.0), ("2026-05-07", 16.0, 8.0, 1400.0, 8.0, 16.0)]
+    # CTR = clicks_tr / impressions = 8/1400 ; CPC = spend_tr / clicks_tr = 2.00
+    assert abs(8 / 1400 - 0.005714) < 1e-5 and 16 / 8 == 2.0
 
 
 def test_first_row_follows_sheet_row_not_insert_order(conn, tmp_path):
@@ -105,6 +126,8 @@ def test_first_row_follows_sheet_row_not_insert_order(conn, tmp_path):
     conn.execute("UPDATE tracker_rows SET sheet_row = CASE concept_id WHEN 'R1' THEN 9 ELSE 3 END")
     conn.commit()
     backfill_sheet.run(conn, snap, "sheet", delta=False)
+    seed_life(conn, [("1", "f", 10.0, 1, 7.0, 100, 10, "meta_api")])
+    build_metrics.rebuild(conn)
     assert metrics_for(conn, "R2")[0][1] == 10 and metrics_for(conn, "R1")[0][1] == 0
 
 

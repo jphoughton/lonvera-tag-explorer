@@ -5,7 +5,7 @@ import itertools
 import pytest
 
 from . import fixture_data as F
-from .helpers import STAGE_PARAMS, THROUGH, check_m, get_ok, qs, ratio_or_none, rows_by_product
+from .helpers import STAGE_PARAMS, THROUGH, check_m, exp_clk, exp_imp, get_ok, qs, ratio_or_none, rows_by_product
 
 D = dt.date
 A7 = (D(2026, 10, 27), THROUGH)
@@ -88,7 +88,7 @@ def check_cmp(m, rows, fx, a, b, so, ctx, unique_override=None):
 def check_cmp_traffic(m, agg_a, agg_b, da, db, ctx):
     """Traffic metrics inside cmp / delta: B sums, A - B, ctr_pp, percent changes (null when B is 0 / unknown)."""
     c, dlt = m["cmp"], m["delta"]
-    assert c["impressions"] == agg_b["imp"] and c["link_clicks"] == agg_b["clk"], ctx
+    assert c["impressions"] == exp_imp(agg_b) and c["link_clicks"] == exp_clk(agg_b), ctx
     def ratios(agg):
         return {"ctr": ratio_or_none(agg["clk_tr"], agg["imp"]), "cpc": ratio_or_none(agg["sp_tr"], agg["clk"]),
                 "cpm": None if not agg["imp"] else float(agg["sp_tr"]) * 1000 / agg["imp"], "conv_rate": ratio_or_none(agg["purch_t"], agg["clk"])}
@@ -103,16 +103,26 @@ def check_cmp_traffic(m, agg_a, agg_b, da, db, ctx):
             assert dlt[k] == pytest.approx(ra[k] - rb[k], abs=2 * tol), (ctx, k)
             if rb[k]:
                 assert dlt[f"{k}_pct"] == pytest.approx((ra[k] - rb[k]) / rb[k], abs=2e-3), (ctx, k)
-    assert dlt["impressions"] == agg_a["imp"] - agg_b["imp"] and dlt["link_clicks"] == agg_a["clk"] - agg_b["clk"], ctx
+    for key, fn, rk in (("impressions", exp_imp, "imp"), ("link_clicks", exp_clk, "clk")):
+        if fn(agg_a) is None or fn(agg_b) is None:                      # unknown on either side: null delta, never a fake 0
+            assert dlt[key] is None and dlt[f"{key}_pct"] is None and dlt[f"{key}_per_day_pct"] is None, (ctx, key)
+        else:
+            assert dlt[key] == agg_a[rk] - agg_b[rk], (ctx, key)
     assert (dlt["ctr_pp"] is None) == (dlt["ctr"] is None), ctx
+    assert (dlt["conv_rate_pp"] is None) == (dlt["conv_rate"] is None), ctx
+    if dlt["conv_rate"] is not None:
+        assert dlt["conv_rate_pp"] == pytest.approx(dlt["conv_rate"] * 100, abs=2e-3), ctx
     if dlt["ctr"] is not None:
         assert dlt["ctr_pp"] == pytest.approx(dlt["ctr"] * 100, abs=2e-3), ctx           # percentage points
-    for key, a_, b_ in (("impressions", agg_a["imp"], agg_b["imp"]), ("link_clicks", agg_a["clk"], agg_b["clk"])):
-        assert (dlt[f"{key}_pct"] is None) == (b_ == 0), (ctx, key)
-        if b_:
-            assert dlt[f"{key}_pct"] == pytest.approx((a_ - b_) / b_, abs=2e-4), (ctx, key)
-        assert m[f"{key}_per_day"] == pytest.approx(a_ / da, abs=0.006), (ctx, key)
-        if db:
+    for key, fn, a_, b_ in (("impressions", exp_imp, agg_a["imp"], agg_b["imp"]), ("link_clicks", exp_clk, agg_a["clk"], agg_b["clk"])):
+        if fn(agg_a) is not None and fn(agg_b) is not None:
+            assert (dlt[f"{key}_pct"] is None) == (b_ == 0), (ctx, key)
+            if b_:
+                assert dlt[f"{key}_pct"] == pytest.approx((a_ - b_) / b_, abs=2e-4), (ctx, key)
+        assert (m[f"{key}_per_day"] is None) == (fn(agg_a) is None), (ctx, key)
+        if fn(agg_a) is not None:
+            assert m[f"{key}_per_day"] == pytest.approx(a_ / da, abs=0.006), (ctx, key)
+        if db and fn(agg_b) is not None:
             assert c[f"{key}_per_day"] == pytest.approx(b_ / db, abs=0.006), (ctx, key)
         else:
             assert c[f"{key}_per_day"] is None, (ctx, key)
@@ -229,7 +239,7 @@ def test_non_windowed_fields_carry_no_cmp(client):
     assert set(m["delta"]) == {"spend", "purchases", "revenue", "roas", "cpa", "spend_pct", "purchases_pct", "revenue_pct", "roas_pct", "cpa_pct",
                                "spend_per_day_pct", "purchases_per_day_pct", "revenue_per_day_pct",
                                "spend_share_pp", "impressions", "link_clicks", "ctr", "ctr_pp", "cpc", "cpm", "conv_rate", "impressions_pct", "link_clicks_pct",
-                               "ctr_pct", "cpc_pct", "cpm_pct", "conv_rate_pct", "impressions_per_day_pct", "link_clicks_per_day_pct"}
+                               "ctr_pct", "cpc_pct", "cpm_pct", "conv_rate_pct", "conv_rate_pp", "impressions_per_day_pct", "link_clicks_per_day_pct"}
     assert "cmp" not in m["stage"]["testing"]
 
 

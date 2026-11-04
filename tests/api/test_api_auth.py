@@ -132,3 +132,20 @@ def test_large_json_is_gzipped_when_accepted(client):
     assert json.loads(gzip.decompress(z.data)) == plain.get_json()
     small = client.get("/api/status", headers={"Accept-Encoding": "gzip"})
     assert "Content-Encoding" not in small.headers and small.get_json()["data_through"] == "2026-11-02"
+
+
+def test_static_is_revalidated_and_media_is_cacheable(anon, client):
+    import os
+    from app import STATIC_DIR
+    names = [n for n in ("app.js", "app.css", "index.html") if os.path.isfile(os.path.join(STATIC_DIR, n))]
+    assert names, "no static files to check"
+    for n in names:
+        r = anon.get(f"/static/{n}")
+        assert r.status_code == 200 and r.headers["Cache-Control"] == "no-cache", n          # ES modules are not hashed -> always revalidate
+        etag = r.headers.get("ETag")
+        if etag:
+            again = anon.get(f"/static/{n}", headers={"If-None-Match": etag})
+            assert again.status_code == 304 and again.headers["Cache-Control"] == "no-cache"
+    assert anon.get("/static/definitely-missing.js").status_code == 404
+    thumb = client.get("/api/ads/1000").get_json()["assets"]["thumb"]
+    assert client.get(f"/media/{thumb}").headers["Cache-Control"] == "private, max-age=86400"

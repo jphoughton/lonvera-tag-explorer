@@ -381,18 +381,28 @@ _DELTA_ND = {"spend": 2, "purchases": 2, "revenue": 2, "roas": 4, "cpa": 2, "imp
 
 def side_fields(side: dict, days: int | None) -> dict:
     """spend / purchases / revenue / roas / cpa, the traffic metrics (impressions, link_clicks, ctr, cpc, cpm, conv_rate) and per-day
-    values for one window. CTR = link clicks / impressions over rows with impressions; CPC and CPM use the spend of rows with traffic data
-    (spend_tr) so lifetime or unknown-traffic spend never pollutes them; conv rate = purchases / link clicks. All null when the
-    denominator is 0 or unknown."""
+    values for one window.
+
+    Traffic bases: CTR = link clicks / impressions over rows with impressions; CPC = spend_tr / link clicks and CPM = spend_tr * 1000 /
+    impressions, where spend_tr is the spend of rows with traffic data (so lifetime or unknown-traffic spend never pollutes them);
+    conv rate = purchases / link clicks.
+
+    UNKNOWN is null, never 0: impressions is null when there is activity (spend or link clicks) but no impression data; link_clicks is null
+    when there is spend but neither impressions nor clicks; every ratio is null when its denominator is 0 or its numerator base is missing
+    (e.g. spend_tr = 0 while spend > 0, which means 'traffic spend not recorded', not a CPC of $0)."""
     sp, pu, rv, imp, clk = side["spend"], side["purchases"], side["revenue"], side["imp"], side["clk"]
+    f_sp, f_imp, f_clk = _f(sp), _f(imp), _f(clk)
+    imp_v = None if f_imp == 0 and (f_clk > 0 or f_sp > 0) else num(imp)
+    clk_v = None if f_clk == 0 and f_imp == 0 and f_sp > 0 else num(clk)
+    base_missing = _f(side["sp_tr"]) == 0 and f_sp > 0
     return {
         "spend": f2(sp), "purchases": num(pu), "revenue": f2(rv), "roas": ratio(rv, sp, 4), "cpa": ratio(sp, pu, 2),
-        "impressions": num(imp), "link_clicks": num(clk),
-        "ctr": ratio(side["clk_tr"], imp, 5), "cpc": ratio(side["sp_tr"], clk, 4),
-        "cpm": None if _f(imp) == 0 else round(_f(side["sp_tr"]) * 1000 / _f(imp), 4),
+        "impressions": imp_v, "link_clicks": clk_v,
+        "ctr": ratio(side["clk_tr"], imp, 5), "cpc": None if base_missing else ratio(side["sp_tr"], clk, 4),
+        "cpm": None if f_imp == 0 or base_missing else round(_f(side["sp_tr"]) * 1000 / f_imp, 4),
         "conv_rate": ratio(side["purch_t"], clk, 5),
         "spend_per_day": _pd(sp, days), "purchases_per_day": _pd(pu, days), "revenue_per_day": _pd(rv, days),
-        "impressions_per_day": _pd(imp, days), "link_clicks_per_day": _pd(clk, days),
+        "impressions_per_day": None if imp_v is None else _pd(imp, days), "link_clicks_per_day": None if clk_v is None else _pd(clk, days),
     }
 
 
@@ -400,9 +410,10 @@ def _raw_ratios(side: dict) -> dict:
     """Unrounded ratios of a side (None when the denominator is 0), so differences and percent changes are not distorted by display rounding."""
     def r(n, d, k=1.0):
         return None if _f(d) == 0 else _f(n) * k / _f(d)
+    base_missing = _f(side["sp_tr"]) == 0 and _f(side["spend"]) > 0
     return {"roas": r(side["revenue"], side["spend"]), "cpa": r(side["spend"], side["purchases"]),
-            "ctr": r(side["clk_tr"], side["imp"]), "cpc": r(side["sp_tr"], side["clk"]), "cpm": r(side["sp_tr"], side["imp"], 1000.0),
-            "conv_rate": r(side["purch_t"], side["clk"])}
+            "ctr": r(side["clk_tr"], side["imp"]), "cpc": None if base_missing else r(side["sp_tr"], side["clk"]),
+            "cpm": None if base_missing else r(side["sp_tr"], side["imp"], 1000.0), "conv_rate": r(side["purch_t"], side["clk"])}
 
 
 def cmp_blocks(a: dict, w: "WindowSpec", b: dict, b_active: Any = None) -> tuple[dict, dict]:
@@ -418,14 +429,22 @@ def cmp_blocks(a: dict, w: "WindowSpec", b: dict, b_active: Any = None) -> tuple
     for k, nd in _DELTA_ND.items():
         if k in additive:
             x, y = _f(a[additive[k]]), _f(b[additive[k]])
+            if fa[k] is None or fb[k] is None:                       # unknown on either side (impressions / link clicks): no delta
+                delta[k] = delta[f"{k}_pct"] = None
+                continue
             delta[k] = num(x - y) if k == "purchases" else round(x - y, nd)
             delta[f"{k}_pct"] = _pct(x, y)
         else:
             x, y = ra[k], rb[k]
             delta[k] = None if x is None or y is None else round(x - y, nd)
             delta[f"{k}_pct"] = _pct(x, y)
+    # percentage points (0.5 = 0.5 pp), not fractions: ctr_pp, conv_rate_pp (and spend_share_pp, added by apply_shares)
     delta["ctr_pp"] = None if delta["ctr"] is None else round((ra["ctr"] - rb["ctr"]) * 100, 3)
+    delta["conv_rate_pp"] = None if delta["conv_rate"] is None else round((ra["conv_rate"] - rb["conv_rate"]) * 100, 3)
     for k, key in (("spend", "spend"), ("purchases", "purchases"), ("revenue", "revenue"), ("impressions", "imp"), ("link_clicks", "clk")):
+        if fa[k] is None or fb[k] is None:
+            delta[f"{k}_per_day_pct"] = None
+            continue
         ax, by = (None if not da else _f(a[key]) / da), (None if not db else _f(b[key]) / db)
         delta[f"{k}_per_day_pct"] = _pct(ax, by)
     return cmp, delta
@@ -1045,6 +1064,7 @@ GROUP BY GROUPING SETS ({sets_sql})
 # --------------------------------------------------------------------------------------------------------------------
 
 REMAINDER_NAME = "(days without ad-level detail)"
+NO_CAMPAIGN_NAME = "(no campaign data)"
 
 
 def _cmp_window(w: WindowSpec) -> WindowSpec | None:
@@ -1343,12 +1363,12 @@ f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win, {in_cmp} AS in_cmp FR
                COALESCE(sum(f.spend) FILTER (WHERE f.day >= %(d1)s), 0) > 0 AS live,
                max(f.day) FILTER (WHERE f.spend > 0) AS last_day
         FROM f LEFT JOIN meta_campaigns mc ON mc.campaign_id = f.campaign_id
-        WHERE f.campaign_id <> ''
         GROUP BY f.campaign_id, mc.name, mc.account, mc.stage
         HAVING COALESCE(sum(f.spend) FILTER (WHERE (f.in_win OR f.in_cmp) AND {sel}), 0) <> 0
             OR COALESCE(sum(f.purchases) FILTER (WHERE (f.in_win OR f.in_cmp) AND {sel}), 0) <> 0
         ORDER BY spend DESC, c_spend DESC, f.campaign_id""", params)
-    rows = [{"campaign_id": r["campaign_id"], "name": r["name"] or r["campaign_id"], "account": r["account"], "stage": r["stage"],
+    rows = [{"campaign_id": r["campaign_id"], "name": NO_CAMPAIGN_NAME if r["campaign_id"] == "" else (r["name"] or r["campaign_id"]),
+             "account": r["account"], "stage": "unclassified" if r["campaign_id"] == "" else r["stage"],
              "ads": int(r["ads"]), "families": int(r["families"]), **window_block(side_a(r), w, side_b(r)),
              "spend_7d": f2(r["spend_7d"]), "live": bool(r["live"]),
              "last_day": r["last_day"].isoformat() if r["last_day"] else None} for r in crow]

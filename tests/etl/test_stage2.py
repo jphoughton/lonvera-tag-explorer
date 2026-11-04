@@ -174,3 +174,58 @@ def test_token_error_codes_are_never_retried(monkeypatch):
         with pytest.raises(meta_api.TokenRejected):
             meta_api.graph_get("http://x", {"access_token": "EAAxxxxxxxxxxxxxxxxxxxxxxxxx"}, "t", sleep=slept.append)
         assert slept == []
+
+
+def test_meta_pull_stores_impressions(conn, tmp_path):
+    seed(conn, tmp_path)
+    rows = [dict(row("2026-10-30", "111", "Fam A"), impressions=1500.0), dict(row("2026-10-30", "222", "Fam A"), impressions=500.0)]
+    agg = meta_pull.aggregate(rows)
+    meta_pull.load_chunk(conn, agg, D(2026, 10, 30), D(2026, 10, 30))
+    assert float(conn.execute("SELECT sum(impressions) FROM ad_daily WHERE day='2026-10-30' AND source='meta_api'").fetchone()[0]) == 2000.0
+    # sheet rows keep NULL impressions
+    assert conn.execute("SELECT impressions FROM ad_daily WHERE source='sheet' LIMIT 1").fetchone()[0] is None
+
+
+def test_insight_rows_carry_impressions():
+    r = meta_api.rows_from([{"ad_id": 1, "ad_name": "x", "date_start": "2026-10-30", "spend": "3", "impressions": "250", "inline_link_clicks": "4",
+                             "actions": [{"action_type": "omni_purchase", "value": "2"}], "action_values": [{"action_type": "omni_purchase", "value": "55.5"}]}])[0]
+    assert r["impressions"] == 250.0 and r["clicks"] == 4.0 and r["purchases"] == 2.0 and r["value"] == 55.5
+    assert "impressions" in meta_api.INSIGHT_FIELDS.split(",")
+
+
+def test_resolve_rebuild_replaces_sheet_mapping_with_resolver(conn, tmp_path):
+    trs = [trow("Bull-9", "Bull-9", "VitaBull"), trow("Other", "Other", "VitaBull")]
+    daily = [("2026-05-06", "x", 1, 0, 0, 0), ("2026-10-30", "Bull-9", 5, 0, 0, 0), ("2026-10-30", "Bull-9_VID_new", 4, 0, 0, 0)]
+    snap = write_snapshot(tmp_path, trs, daily, windows=[("Bull-9", "Other")])        # the sheet's Windows mapping is deliberately "wrong"
+    tracker_sync.sync(conn, sheets_io.read_tab("creative_tracker", snap))
+    backfill_sheet.run(conn, snap, "sheet", delta=False)
+    assert conn.execute("SELECT tracker_family_key FROM meta_family_map WHERE meta_family_key='bull-9'").fetchone()[0] == "other"
+    resolve_families.resolve(conn, rebuild=True)
+    got = dict(conn.execute("SELECT meta_family_key, rule FROM meta_family_map WHERE tracker_family_key IS NOT NULL").fetchall())
+    assert got == {"bull-9": "exact", "bull-9_vid_new": "relaunch"}
+
+
+def test_lifetime_load_replaces_everything_and_reconcile_flags(conn, tmp_path):
+    from etl import lifetime_pull
+    seed(conn, tmp_path)
+    conn.execute("INSERT INTO meta_ad_lifetime (ad_id, meta_family_key, spend, source) VALUES ('old','fam a',5,'sheet')")
+    rows = [dict(row("2026-10-30", "111", "Fam A - Copy", spend=60.0, pur=3, val=90.0, clicks=30.0), impressions=3000.0),
+            dict(row("2026-10-30", "222", "Fam B", spend=40.0, pur=1, val=10.0, clicks=10.0), impressions=1000.0)]
+    agg = lifetime_pull.aggregate(rows)
+    lifetime_pull.load(conn, agg)
+    got = {r[0]: (r[1], float(r[2]), r[3]) for r in conn.execute("SELECT ad_id, meta_family_key, spend, source FROM meta_ad_lifetime").fetchall()}
+    assert got == {"111": ("fam a", 60.0, "meta_api"), "222": ("fam b", 40.0, "meta_api")}          # sheet-era row gone
+    assert conn.execute("SELECT count(*) FROM meta_ads WHERE ad_id IN ('111','222')").fetchone()[0] == 2
+
+
+def test_verify_api_sql_checks_pass_on_consistent_data(conn, tmp_path):
+    from etl import verify_api
+    snap = seed(conn, tmp_path)
+    conn.execute("INSERT INTO meta_ad_lifetime (ad_id, meta_family_key, spend, purchases, conv_value, impressions, link_clicks, source, pulled_at) "
+                 "VALUES ('1','fam a',100,5,200,1000,50,'meta_api',now())")
+    conn.execute("INSERT INTO meta_ads (ad_id, account, ad_name, meta_family_key) VALUES ('1','Lonvera Main','Fam A','fam a') ON CONFLICT DO NOTHING")
+    conn.commit()
+    build_metrics.rebuild(conn)
+    ck = verify_api.Checks()
+    verify_api.check_consistency(conn, ck)
+    assert not ck.failed, ck.rows

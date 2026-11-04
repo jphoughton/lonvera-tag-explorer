@@ -1,4 +1,4 @@
-"""Daily refresh (Railway cron): tracker_sync -> meta_pull (trailing 7 days) -> resolve new/unmatched Meta families -> build_metrics.
+"""Daily refresh (Railway cron): tracker_sync -> meta_pull (trailing 7 days) -> lifetime_pull (all-time per ad) -> resolve new/unmatched Meta families -> build_metrics.
 Every step logs to etl_runs (and the umbrella 'run_daily' row); exits non-zero if any step failed. If the Meta pull fails (token, rate limit)
 and --source auto|sheet allows it, ad_daily's trailing days are refreshed from the sheet's Daily tab instead (family grain).
 Usage: python -m etl.run_daily [--days 7] [--source auto|meta|sheet] [--snapshot-dir D]"""
@@ -8,7 +8,7 @@ import argparse
 import datetime as dt
 import sys
 
-from . import backfill_sheet, build_metrics, db, meta_api, meta_pull, resolve_families, sheets_io, tracker_sync
+from . import backfill_sheet, build_metrics, db, lifetime_pull, meta_api, meta_pull, resolve_families, sheets_io, tracker_sync
 
 
 def refresh_from_sheet(conn, snapshot_dir=None, days: int = 7) -> dict:
@@ -87,6 +87,23 @@ def run(days=7, source="auto", snapshot_dir=None, until=None) -> dict:
                     raise db.JobFailed(meta_error) from None
                 db.log(f"  {meta_error}; falling back to the sheet's Daily tab (run will still be marked failed)")
                 step("meta_fallback", lambda: _sheet_refresh(conn, snapshot_dir, days), results)
+
+        def s_lifetime():
+            with db.JobRun("lifetime_pull") as r:
+                try:
+                    st = lifetime_pull.run(conn)
+                except meta_api.TokenRejected:
+                    raise db.JobFailed("meta token rejected") from None
+                r.stats = st
+                r.rows_written = st["inserted"]
+            return {"ads": st["ads"], "spend": st["spend"]}
+        if source != "sheet" and meta_error != "meta token rejected":       # a rejected token already failed the daily pull; don't retry the heavy call
+            try:
+                step("lifetime", s_lifetime, results)
+            except Exception as e:                                          # noqa: BLE001
+                conn.rollback()
+                meta_error = meta_error or ("meta token rejected" if "token rejected" in str(e) else "lifetime pull failed: " + db.scrub(e)[:200])
+                db.log(f"  {meta_error}; keeping the previous lifetime rows (run will be marked failed)")
 
         def s_resolve():
             st = resolve_families.resolve(conn)

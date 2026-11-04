@@ -55,6 +55,11 @@ def q(s):
     return quote(s, safe="")
 
 
+def n0(x):
+    """unknown traffic is null in the API; sums treat it as nothing"""
+    return x or 0
+
+
 def strip_share(m):
     import copy
     m = copy.deepcopy(m)
@@ -138,7 +143,7 @@ def test_totals_are_sums_of_rows_and_shares_add_up(rc, extra):
         d = get(rc, f"/api/products/{slug}/rollup?level=cluster&{extra}")
         t, rows = d["total"]["m"], [r["m"] for r in d["rows"]]
         for k in ("spend", "purchases", "revenue", "impressions", "link_clicks", "live_now", "active_ads"):
-            assert t[k] == pytest.approx(sum(r[k] for r in rows), abs=0.02 + 0.005 * len(rows)), (slug, k)
+            assert n0(t[k]) == pytest.approx(sum(n0(r[k]) for r in rows), abs=0.02 + 0.005 * len(rows)), (slug, k)
         if t["spend"]:
             assert sum(r["spend_share"] for r in rows) == pytest.approx(1.0, abs=1e-4)
             assert t["spend_share"] == 1.0
@@ -159,7 +164,7 @@ def test_stage_lists_partition_the_unfiltered_total(rc, window):
     whole = get(rc, f"/api/products/vita-bull/rollup?{window}")["total"]["m"]
     parts = [get(rc, f"/api/products/vita-bull/rollup?{window}&stage={s}")["total"]["m"] for s in ("testing", "scaling", "unclassified")]
     for k in ("spend", "revenue", "impressions", "link_clicks"):
-        assert sum(p[k] for p in parts) == pytest.approx(whole[k], abs=0.05), (window, k)
+        assert sum(n0(p[k]) for p in parts) == pytest.approx(n0(whole[k]), abs=0.05), (window, k)
     assert sum(p["purchases"] for p in parts) == pytest.approx(whole["purchases"], abs=2 + 0.5 * whole["unique_ads"]), window     # per-family rounding
     pair = get(rc, f"/api/products/vita-bull/rollup?{window}&stage=testing,scaling")["total"]["m"]
     assert pair["spend"] == pytest.approx(parts[0]["spend"] + parts[1]["spend"], abs=0.05)
@@ -181,8 +186,10 @@ def test_compare_math_and_traffic_sanity(rc):
         m = r["m"]
         assert m["delta"]["spend"] == pytest.approx(m["spend"] - m["cmp"]["spend"], abs=0.011)
         assert (m["delta"]["spend_pct"] is None) == (m["cmp"]["spend"] == 0)
+        if m["impressions"] is None:
+            assert m["ctr"] is None and m["cpm"] is None                            # unknown impressions -> every ratio derived from them is null
         if m["ctr"] is not None:
-            assert 0 <= m["ctr"] <= 1 and m["impressions"] >= m["link_clicks"] * 0.999
+            assert 0 <= m["ctr"] <= 1 and m["impressions"] >= n0(m["link_clicks"]) * 0.999
         if m["cpc"] is not None:
             assert m["cpc"] >= 0
         if m["ctr"] is not None and m["cmp"]["ctr"] is not None:
@@ -207,8 +214,8 @@ def test_ad_rows_add_up_to_family_figures(rc, window):
     assert sum(r["spend"] for r in tracker_side) == pytest.approx(f["spend"], abs=1.0)
     assert sum(r["revenue"] for r in tracker_side) == pytest.approx(f["revenue"], abs=1.0)
     assert sum(r["purchases"] for r in tracker_side) == pytest.approx(f["purchases"], abs=tol)
-    assert sum(r["impressions"] for r in tracker_side) == pytest.approx(f["impressions"], abs=1)
-    assert sum(r["link_clicks"] for r in tracker_side) == pytest.approx(f["link_clicks"], abs=1)
+    assert sum(n0(r["impressions"]) for r in tracker_side) == pytest.approx(n0(f["impressions"]), abs=1)
+    assert sum(n0(r["link_clicks"]) for r in tracker_side) == pytest.approx(n0(f["link_clicks"]), abs=1)
     if "compare" in window:
         assert sum(r["cmp"]["spend"] for r in tracker_side) == pytest.approx(f["cmp"]["spend"], abs=1.0)
     rng = random.Random(3)
@@ -216,8 +223,8 @@ def test_ad_rows_add_up_to_family_figures(rc, window):
     for r in rng.sample(counted, min(25, len(counted))):                       # families drilled the way the UI does (tree row -> /ads)
         one = get(rc, f"/api/products/vita-bull/ads?family_key={q(r['family_key'])}&cluster={q(r['cluster'])}&icp={q(r['icp'])}&pain={q(r['pain'])}&{window}")
         assert one["total"]["spend"] == pytest.approx(r["m"]["spend"], abs=0.02), r["family_key"]
-        assert one["total"]["impressions"] == pytest.approx(r["m"]["impressions"], abs=1), r["family_key"]
-        assert one["total"]["link_clicks"] == pytest.approx(r["m"]["link_clicks"], abs=1), r["family_key"]
+        assert n0(one["total"]["impressions"]) == pytest.approx(n0(r["m"]["impressions"]), abs=1), r["family_key"]
+        assert n0(one["total"]["link_clicks"]) == pytest.approx(n0(r["m"]["link_clicks"]), abs=1), r["family_key"]
         assert sum(a["spend_share"] or 0 for a in one["rows"]) == pytest.approx(1.0, abs=1e-3)
 
 

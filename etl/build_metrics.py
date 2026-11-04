@@ -1,5 +1,5 @@
-"""Rebuild derived tables in ONE transaction: meta_campaigns.stage, family_daily, ad_metrics, unmatched_meta, app_meta.data_through.
-Implements CONTRACT.md "Metric rules" exactly. Usage: python -m etl.build_metrics"""
+"""Rebuild derived tables in ONE transaction: meta_campaigns.stage, family_daily (+traffic sums), ad_metrics (since-launch = API lifetime, v1.5), unmatched_meta,
+app_meta.data_through. Implements CONTRACT.md "Metric rules" as amended by v1.4/v1.5. Usage: python -m etl.build_metrics"""
 from __future__ import annotations
 
 import datetime as dt
@@ -10,46 +10,51 @@ SQL_STAGE = """UPDATE meta_campaigns SET stage = CASE WHEN lower(name) LIKE '%te
                WHERE stage IS DISTINCT FROM CASE WHEN lower(name) LIKE '%test%' THEN 'testing' ELSE 'scaling' END"""
 
 SQL_FAMILY_DAILY = """
-INSERT INTO family_daily (family_key, day, stage, spend, purchases, revenue, link_clicks)
+INSERT INTO family_daily (family_key, day, stage, spend, purchases, revenue, link_clicks, impressions, clicks_tr, spend_tr)
 SELECT m.tracker_family_key, d.day,
        CASE WHEN d.campaign_id = '' THEN 'unclassified' ELSE coalesce(c.stage, 'unclassified') END,
-       sum(d.spend), sum(d.purchases), sum(d.conv_value), sum(d.link_clicks)
+       sum(d.spend), sum(d.purchases), sum(d.conv_value), sum(d.link_clicks),
+       -- traffic base = rows that carry impressions (API rows). CTR = clicks_tr / impressions, CPC = spend_tr / clicks_tr, CPM = spend_tr / impressions * 1000.
+       coalesce(sum(d.impressions), 0),
+       coalesce(sum(d.link_clicks) FILTER (WHERE d.impressions IS NOT NULL), 0),
+       coalesce(sum(d.spend) FILTER (WHERE d.impressions IS NOT NULL), 0)
 FROM ad_daily d
 JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key AND m.tracker_family_key IS NOT NULL
 LEFT JOIN meta_campaigns c ON c.campaign_id = d.campaign_id
 GROUP BY 1, 2, 3
 """
 
-# first row of a (product, family) = smallest sheet_row (tie: smallest id). Only first rows carry metrics.
+# SINCE LAUNCH = the Meta API's all-time ad-level totals (meta_ad_lifetime, source='meta_api') summed over the family's Meta ads through meta_family_map.
+# No cutoff rule, no launch-date gate. First row of a (product, family) = smallest sheet_row (tie: smallest id); only first rows carry metrics.
 SQL_AD_METRICS = """
 INSERT INTO ad_metrics (tracker_row_id, product_id, family_key, is_first_row, launch_date,
-   spend_launch, purchases_launch, revenue_launch, spend_7d, purchases_7d, revenue_7d, spend_30d, purchases_30d, revenue_30d, live)
+   spend_launch, purchases_launch, revenue_launch, impressions_launch, clicks_launch,
+   spend_7d, purchases_7d, revenue_7d, spend_30d, purchases_30d, revenue_30d, live)
 WITH ranked AS (
   SELECT t.id, t.product_id, t.family_key, t.launch_date,
          (row_number() OVER (PARTITION BY t.product_id, t.family_key ORDER BY t.sheet_row NULLS LAST, t.id) = 1) AS is_first
   FROM tracker_rows t
-), post AS (          -- mapped daily after the lifetime cutoff + fixed windows, per tracker family
+), life AS (
+  SELECT m.tracker_family_key AS family_key, sum(l.spend) AS sp, sum(l.purchases) AS pu, sum(l.conv_value) AS rv,
+         sum(l.impressions) AS im, sum(l.link_clicks) AS cl
+  FROM meta_ad_lifetime l JOIN meta_family_map m ON m.meta_family_key = l.meta_family_key
+  WHERE l.source = 'meta_api' AND m.tracker_family_key IS NOT NULL GROUP BY 1
+), win AS (
   SELECT family_key,
-         sum(spend) FILTER (WHERE day > %(cut)s) AS sp_post, sum(purchases) FILTER (WHERE day > %(cut)s) AS pu_post, sum(revenue) FILTER (WHERE day > %(cut)s) AS rv_post,
          sum(spend) FILTER (WHERE day >= %(d7)s) AS sp7, sum(purchases) FILTER (WHERE day >= %(d7)s) AS pu7, sum(revenue) FILTER (WHERE day >= %(d7)s) AS rv7,
          sum(spend) FILTER (WHERE day >= %(d30)s) AS sp30, sum(purchases) FILTER (WHERE day >= %(d30)s) AS pu30, sum(revenue) FILTER (WHERE day >= %(d30)s) AS rv30,
          sum(spend) FILTER (WHERE day >= %(d1)s) AS sp_live
   FROM family_daily GROUP BY family_key
 )
 SELECT r.id, r.product_id, r.family_key, r.is_first, r.launch_date,
-  CASE WHEN r.is_first AND r.launch_date IS NOT NULL THEN round(CASE WHEN r.launch_date >= %(d0)s THEN coalesce(fl.sp, 0) ELSE coalesce(lt.spend, 0) + coalesce(p.sp_post, 0) END, 2) ELSE 0 END,
-  CASE WHEN r.is_first AND r.launch_date IS NOT NULL THEN round(CASE WHEN r.launch_date >= %(d0)s THEN coalesce(fl.pu, 0) ELSE coalesce(lt.purchases, 0) + coalesce(p.pu_post, 0) END, 0) ELSE 0 END,
-  CASE WHEN r.is_first AND r.launch_date IS NOT NULL THEN round(CASE WHEN r.launch_date >= %(d0)s THEN coalesce(fl.rv, 0) ELSE coalesce(lt.conv_value, 0) + coalesce(p.rv_post, 0) END, 2) ELSE 0 END,
-  CASE WHEN r.is_first THEN round(coalesce(p.sp7, 0), 2) ELSE 0 END, CASE WHEN r.is_first THEN round(coalesce(p.pu7, 0), 2) ELSE 0 END, CASE WHEN r.is_first THEN round(coalesce(p.rv7, 0), 2) ELSE 0 END,
-  CASE WHEN r.is_first THEN round(coalesce(p.sp30, 0), 2) ELSE 0 END, CASE WHEN r.is_first THEN round(coalesce(p.pu30, 0), 2) ELSE 0 END, CASE WHEN r.is_first THEN round(coalesce(p.rv30, 0), 2) ELSE 0 END,
-  (r.is_first AND coalesce(p.sp_live, 0) > 0)
+  CASE WHEN r.is_first THEN round(coalesce(l.sp, 0), 2) ELSE 0 END, CASE WHEN r.is_first THEN round(coalesce(l.pu, 0), 0) ELSE 0 END,
+  CASE WHEN r.is_first THEN round(coalesce(l.rv, 0), 2) ELSE 0 END, CASE WHEN r.is_first THEN coalesce(l.im, 0) ELSE 0 END, CASE WHEN r.is_first THEN coalesce(l.cl, 0) ELSE 0 END,
+  CASE WHEN r.is_first THEN round(coalesce(w.sp7, 0), 2) ELSE 0 END, CASE WHEN r.is_first THEN round(coalesce(w.pu7, 0), 2) ELSE 0 END, CASE WHEN r.is_first THEN round(coalesce(w.rv7, 0), 2) ELSE 0 END,
+  CASE WHEN r.is_first THEN round(coalesce(w.sp30, 0), 2) ELSE 0 END, CASE WHEN r.is_first THEN round(coalesce(w.pu30, 0), 2) ELSE 0 END, CASE WHEN r.is_first THEN round(coalesce(w.rv30, 0), 2) ELSE 0 END,
+  (r.is_first AND coalesce(w.sp_live, 0) > 0)
 FROM ranked r
-LEFT JOIN post p ON p.family_key = r.family_key
-LEFT JOIN ad_lifetime lt ON lt.family_key = r.family_key
-LEFT JOIN LATERAL (
-  SELECT sum(spend) sp, sum(purchases) pu, sum(revenue) rv FROM family_daily f
-  WHERE r.is_first AND r.launch_date IS NOT NULL AND r.launch_date >= %(d0)s AND f.family_key = r.family_key AND f.day >= r.launch_date
-) fl ON true
+LEFT JOIN life l ON l.family_key = r.family_key
+LEFT JOIN win w ON w.family_key = r.family_key
 """
 
 SQL_UNMATCHED = """
@@ -80,8 +85,7 @@ def rebuild(conn, commit: bool = True) -> dict:
     if dthru is None:
         raise RuntimeError("ad_daily is empty; run backfill_sheet first")
     d0 = dt.date.fromisoformat(db.get_meta(conn, "daily_start") or conn.execute("SELECT min(day) FROM ad_daily").fetchone()[0].isoformat())
-    cut = dt.date.fromisoformat(db.get_meta(conn, "lifetime_cutoff", "2026-09-17"))
-    P = {"d0": d0, "cut": cut, "d7": dthru - dt.timedelta(days=6), "d30": dthru - dt.timedelta(days=29), "d1": dthru - dt.timedelta(days=1)}
+    P = {"d7": dthru - dt.timedelta(days=6), "d30": dthru - dt.timedelta(days=29), "d1": dthru - dt.timedelta(days=1)}
     conn.execute(SQL_STAGE)
     conn.execute("TRUNCATE family_daily")
     conn.execute(SQL_FAMILY_DAILY)
@@ -92,14 +96,19 @@ def rebuild(conn, commit: bool = True) -> dict:
     db.set_meta(conn, "data_through", dthru.isoformat())
     db.set_meta(conn, "metrics_built_at", dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
     db.set_meta(conn, "daily_start", d0.isoformat(), only_if_missing=True)
+    lp = conn.execute("SELECT max(pulled_at), count(*) FILTER (WHERE source='meta_api'), count(*) FILTER (WHERE source<>'meta_api') FROM meta_ad_lifetime").fetchone()
+    if lp[0]:
+        db.set_meta(conn, "lifetime_pulled_at", lp[0].isoformat(timespec="seconds"))
+    stats["lifetime_ads_api"] = lp[1]
     stats["data_through"] = dthru.isoformat()
     stats["family_daily_rows"] = conn.execute("SELECT count(*) FROM family_daily").fetchone()[0]
     stats["ad_metrics_rows"] = conn.execute("SELECT count(*) FROM ad_metrics").fetchone()[0]
     stats["unmatched_families"] = conn.execute("SELECT count(*) FROM unmatched_meta").fetchone()[0]
     stats["by_product"] = {r[0]: {"rows": r[1], "unique_ads": r[2], "live": r[3], "spend_launch": float(r[4]), "purchases_launch": float(r[5]),
-                                  "revenue_launch": float(r[6]), "spend_7d": float(r[7]), "purchases_7d": float(r[8])}
+                                  "revenue_launch": float(r[6]), "spend_7d": float(r[7]), "purchases_7d": float(r[8]),
+                                  "impressions_launch": float(r[9]), "clicks_launch": float(r[10])}
                            for r in conn.execute("""SELECT p.slug, count(*), count(DISTINCT m.family_key), count(*) FILTER (WHERE m.live), sum(m.spend_launch),
-                                  sum(m.purchases_launch), sum(m.revenue_launch), sum(m.spend_7d), sum(m.purchases_7d)
+                                  sum(m.purchases_launch), sum(m.revenue_launch), sum(m.spend_7d), sum(m.purchases_7d), sum(m.impressions_launch), sum(m.clicks_launch)
                                   FROM ad_metrics m JOIN products p ON p.id = m.product_id GROUP BY p.slug ORDER BY p.slug""").fetchall()}
     stats["unmatched_by_product"] = {r[0]: {"families": r[1], "spend_7d": float(r[2]), "spend_all": float(r[3])}
                                      for r in conn.execute("""SELECT p.slug, count(*), sum(u.spend_7d), sum(u.spend_all) FROM unmatched_meta u

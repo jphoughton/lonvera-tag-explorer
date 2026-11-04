@@ -181,9 +181,14 @@ def test_campaigns(client, fx, w, wo, s, so):
     assert d["total"]["spend"] == pytest.approx(float(want_total), abs=0.006)
     by_camp = {}
     for r in rows_all:
-        if r["campaign_id"]:
-            by_camp.setdefault(r["campaign_id"], []).append(r)
+        by_camp.setdefault(r["campaign_id"], []).append(r)             # '' = spend with no campaign (sheet-grain days)
     assert {c["campaign_id"] for c in d["rows"]} == {k for k, v in by_camp.items() if sum(x["spend"] for x in v)}
+    # campaign rows (including the explicit no-campaign row) add up to the total, so shares add up to 100%
+    assert sum(c["spend"] for c in d["rows"]) == pytest.approx(d["total"]["spend"], abs=0.02)
+    if d["total"]["spend"]:
+        assert sum(c["spend_share"] for c in d["rows"]) == pytest.approx(1.0, abs=1e-4)
+    nc = [c for c in d["rows"] if c["campaign_id"] == ""]
+    assert all(c["name"] == "(no campaign data)" and c["stage"] == "unclassified" for c in nc)
     for c in d["rows"]:
         v = by_camp[c["campaign_id"]]
         assert c["spend"] == pytest.approx(float(sum(x["spend"] for x in v)), abs=0.006)
@@ -196,7 +201,7 @@ def test_campaigns(client, fx, w, wo, s, so):
         every_day = [x["day"] for x in product_rows(fx, pid, "all", F.STAGES, c["campaign_id"]) if x["spend"] > 0]
         assert c["last_day"] == max(every_day).isoformat()          # last day the campaign spent, whatever the window
         assert c["stage"] == fx.camp_stage.get(c["campaign_id"], "unclassified")
-        assert c["name"] == next((n for cid, _a, n in F.CAMPAIGNS if cid == c["campaign_id"]), c["campaign_id"])
+        assert c["name"] == next((n for cid, _a, n in F.CAMPAIGNS if cid == c["campaign_id"]), "(no campaign data)" if c["campaign_id"] == "" else c["campaign_id"])
     spends = [c["spend"] for c in d["rows"]]
     assert spends == sorted(spends, reverse=True)
     # stage cards always show the full split of the window, ignoring the stage filter
@@ -261,3 +266,24 @@ def test_unmatched_other_products_and_empty(client, fx):
     assert [r["meta_family"] for r in get_ok(client, "/api/products/unassigned/unmatched")["rows"]] == ["Orphan-Zzz"]
     assert get_ok(client, "/api/products/beef-liver/unmatched")["rows"] == []
     assert get_ok(client, "/api/products/vita-bull/unmatched")["total"]["spend"] > 0
+
+
+def test_campaigns_have_an_explicit_no_campaign_row(client, fx):
+    d = get_ok(client, "/api/products/vita-bull/campaigns")
+    nc = [c for c in d["rows"] if c["campaign_id"] == ""]
+    assert len(nc) == 1 and nc[0]["name"] == "(no campaign data)" and nc[0]["stage"] == "unclassified" and nc[0]["spend"] > 0
+    assert nc[0]["account"] is None and nc[0]["live"] is False
+    assert sum(c["spend"] for c in d["rows"]) == pytest.approx(d["total"]["spend"], abs=0.02)
+    assert sum(c["spend_share"] for c in d["rows"]) == pytest.approx(1.0, abs=1e-4)
+    cards = {c["stage"]: c for c in d["by_stage"]}
+    # the unclassified card = the no-campaign row + campaigns the campaign table does not know (C999)
+    c999 = next(c for c in d["rows"] if c["campaign_id"] == "C999")
+    assert cards["unclassified"]["spend"] == pytest.approx(nc[0]["spend"] + c999["spend"], abs=0.02)
+    assert sum(c["spend"] for c in d["by_stage"]) == pytest.approx(d["total"]["spend"], abs=0.02)
+    assert d["total"]["campaigns"] == len([c for c in d["rows"] if c["campaign_id"]])           # the no-campaign row is not a campaign
+    # with a stage filter the no-campaign row only shows when 'unclassified' is included
+    t = get_ok(client, "/api/products/vita-bull/campaigns?stage=testing,scaling")
+    assert not [c for c in t["rows"] if c["campaign_id"] == ""]
+    assert sum(c["spend_share"] for c in t["rows"]) == pytest.approx(1.0, abs=1e-4)
+    cmp = get_ok(client, "/api/products/vita-bull/campaigns?window=30d&compare=prev")
+    assert sum(c["cmp"]["spend_share"] for c in cmp["rows"]) == pytest.approx(1.0, abs=1e-4)
