@@ -86,7 +86,7 @@ def noauth_url():
         proc.terminate()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")      # one Playwright per process at a time: a session-wide one blocks every later module that starts its own
 def browser():
     with sync_playwright() as pw:
         b = pw.chromium.launch()

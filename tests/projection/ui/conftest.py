@@ -58,7 +58,7 @@ def mock_state(base_url):
         return json.loads(r.read())
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")      # one Playwright per process at a time: a session-wide one blocks every later module that starts its own
 def browser():
     with sync_playwright() as pw:
         b = pw.chromium.launch()
