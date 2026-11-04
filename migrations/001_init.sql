@@ -99,21 +99,36 @@ CREATE TABLE ad_tags (
 CREATE UNIQUE INDEX ad_tags_current ON ad_tags (tracker_row_id, tag_set) WHERE is_current;
 CREATE INDEX ad_tags_group ON ad_tags (tag_set, cluster, icp, pain_point) WHERE is_current;
 
--- Meta daily results, one row per (Meta ad family, day), both ad accounts summed. Kept forever (the sheet only keeps 180d).
+-- Meta daily results at AD grain. One row per (Meta ad, day). ad_id = real Meta ad id for API-pulled rows;
+-- 'fam:'||meta_family_key for rows backfilled from the sheet (family grain, both ad accounts summed; campaign unknown).
+-- When the Meta API pull covers a day, ALL rows for that day are replaced by ad-grain rows (source='meta_api').
 CREATE TABLE ad_daily (
-  meta_family_key text NOT NULL,                      -- lower(family(ad_name)); family() strips ' - Copy N' suffixes
+  ad_id           text NOT NULL,
   day             date NOT NULL,
+  meta_family_key text NOT NULL,                      -- lower(family(ad_name)); family() strips ' - Copy N' suffixes
   meta_family     text NOT NULL,                      -- display name (original case)
+  campaign_id     text NOT NULL DEFAULT '',           -- '' = unknown (sheet-backfilled)
   spend           numeric(14,2) NOT NULL DEFAULT 0,
   purchases       numeric(12,2) NOT NULL DEFAULT 0,
   conv_value      numeric(14,2) NOT NULL DEFAULT 0,
   link_clicks     numeric(12,0) NOT NULL DEFAULT 0,
-  ads             int NOT NULL DEFAULT 0,
-  source          text NOT NULL,                      -- 'sheet' (backfill) | 'meta_api'
+  source          text NOT NULL,                      -- 'sheet' | 'meta_api'
   loaded_at       timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (meta_family_key, day)
+  PRIMARY KEY (ad_id, day)
 );
 CREATE INDEX ad_daily_day ON ad_daily (day);
+CREATE INDEX ad_daily_family_day ON ad_daily (meta_family_key, day);
+CREATE INDEX ad_daily_campaign_day ON ad_daily (campaign_id, day);
+
+-- Campaigns. stage = 'testing' if lower(name) contains 'test' else 'scaling' (the sheet's rule, meta_campaign_history.classify_stage). Recomputed on every pull.
+CREATE TABLE meta_campaigns (
+  campaign_id text PRIMARY KEY,
+  account     text,
+  name        text NOT NULL,
+  stage       text NOT NULL,                          -- 'testing' | 'scaling'
+  first_day   date,
+  last_day    date
+);
 
 -- Lifetime snapshot (Meta Ads - Lifetime, through lifetime_cutoff), keyed by TRACKER family key.
 CREATE TABLE ad_lifetime (
@@ -132,16 +147,32 @@ CREATE TABLE meta_family_map (
   resolved_at        timestamptz NOT NULL DEFAULT now()
 );
 
--- Individual Meta ads (ids/names/status), used for assets and ad-count context.
+-- Individual Meta ads (one per ad_id): name, family, campaign, ad set, status. Filled by the Meta pull (and the Lifetime tab for older ads).
 CREATE TABLE meta_ads (
   ad_id           text PRIMARY KEY,
   account         text,
   ad_name         text,
   meta_family_key text,
+  campaign_id     text,
+  adset_id        text,
+  adset_name      text,
   created_date    date,
-  status          text
+  status          text,
+  first_day       date,
+  last_day        date
 );
 CREATE INDEX meta_ads_family ON meta_ads (meta_family_key);
+CREATE INDEX meta_ads_campaign ON meta_ads (campaign_id);
+
+-- Per-ad lifetime through lifetime_cutoff (Meta Ads - Lifetime tab, one row per Meta ad).
+CREATE TABLE meta_ad_lifetime (
+  ad_id       text PRIMARY KEY,
+  meta_family_key text,
+  tracker_family_key text,                            -- the tab's 'Ad Family' column (lower)
+  spend       numeric(14,2) NOT NULL DEFAULT 0,
+  purchases   numeric(12,2) NOT NULL DEFAULT 0,
+  conv_value  numeric(14,2) NOT NULL DEFAULT 0
+);
 
 -- Per tracker-family content: Meta copy, transcript, post link. Keyed by tracker family_key.
 CREATE TABLE family_content (

@@ -84,3 +84,37 @@ Vanilla JS, no build step, Chart.js vendored under `app/static/vendor/`. Pages: 
 
 ## Done means (per agent)
 Each agent ends with a short report: what's done, what was tested (commands + results), open items. Reports go to the orchestrator as your final message; long findings go in `docs/REPORT_<agent>.md`.
+
+---
+# v1.1 additions (SUPERSEDE earlier text where they conflict): ad-level grain, campaigns, Testing vs Scaling
+
+## Grain
+`ad_daily` is **Meta ad × day** (see migration 001). Two sources:
+- **Stage 1 (tie-out baseline):** sheet backfill, family grain: `ad_id = 'fam:'||meta_family_key`, `campaign_id=''`, `source='sheet'`. These numbers tie to the sheet.
+- **Stage 2 (ad level):** `etl.meta_pull --days 185` pulls Graph insights at `level=ad` with `ad_id, ad_name, campaign_id, campaign_name, adset_id, adset_name, spend, actions, action_values, inline_link_clicks` (reuse `meta_history.py` pull/chunk/async logic; `date_start` is the account-timezone day), for both accounts, and **replaces every `ad_daily` row of each covered day** with ad-grain rows (`source='meta_api'`), upserting `meta_ads` and `meta_campaigns`. After the replace, family×day totals must reconcile with the sheet's Daily tab (report max |diff| per day; ~0 expected except the last ~3 days Meta restates). If the pull cannot complete for some days (rate limit), those days keep their `sheet` rows; the app then shows ad-level detail only where it exists and says so (a remainder row, see /ads). Daily runs re-pull the trailing 7 days.
+- Per-ad lifetime (`meta_ad_lifetime`) comes from the Lifetime tab (it has Ad ID).
+
+## Stage
+`meta_campaigns.stage = 'testing'` if `lower(campaign name) contains 'test'` else `'scaling'` (identical to `meta_campaign_history.classify_stage`); recomputed on every pull. `family_daily.stage` is the stage of the campaign the day's spend ran in; sheet-backfilled days with no campaign are `unclassified`. Stage totals must reconcile with the snapshot `meta_campaign_history.json` (Lonvera Projections sheet `1qA0iRJkWp1fbY5b6N860eM88Vs0JRe_8VfPQciMaLKI`, tab `Meta Campaign - History`, row 2 header `Date|Account|Campaign ID|Campaign Name|Product|Stage|Spend|Impressions|Link Clicks|Purchases|Purchase Value`, data from row 3, dates are Sheets serials): per day, all-product Testing and Scaling spend from `ad_daily` must match that tab within 1% (campaign-level vs ad-level pulls come from the same API; larger gaps are reported).
+
+## Query params and metric additions (all metrics endpoints)
+- `stage=all|testing|scaling` (default all). With `testing|scaling`, `spend/purchases/revenue/roas/cpa/active_ads` count only that stage's days. For `window=launch` with a stage filter only classified days count (`window_info.note` says so).
+- `m` gains `testing_pct` (testing share of classified spend, null if none) and `stage:{testing:{spend,purchases,revenue,roas,cpa}, scaling:{…}, unclassified:{spend,purchases,revenue}}` (always the full split for the selected window, ignoring the `stage` filter).
+
+## New / changed endpoints
+- `GET /api/products/<slug>/ads?cluster=&icp=&pain=&family_key=&campaign_id=&stage=&window=` (+ `from/to`) → individual **Meta ads** (ad_id grain) that make up whatever is selected:
+  `{window_info, rows:[{ad_id, ad_name, family_key, display, primary_id, thumb_asset_id, campaign_id, campaign_name, stage, adset_name, account, status, created_date, tag:{cluster,icp,pain}, spend, purchases, revenue, roas, cpa, spend_7d, live, days_active}], total:{…}}`. Filters are ANDed; none = every ad of the product. `primary_id` = the tracker row id to open the ad detail page for that ad's family (null when the Meta ad's family is not on the tracker). Where days in the window exist only at family grain (`fam:` rows) a remainder row `{ad_id:null, ad_name:"(days without ad-level detail)", spend,…}` is appended so the rows sum to the family/group total. `window=launch` = the family launch rule applied per ad (per-ad lifetime + daily), so ad rows sum to the family's since-launch figure; ads of unmatched families have no launch window (use `all` days).
+- `GET /api/products/<slug>/campaigns?window=&stage=` → `{window_info, by_stage:[{stage, campaigns, ads, spend, purchases, revenue, roas, cpa, spend_7d}], rows:[{campaign_id, name, account, stage, ads, families, spend, purchases, revenue, roas, cpa, spend_7d, live, last_day}], total:{…}}`. A campaign's figures for a product = its ad_daily rows whose Meta family maps to that product's tracker families, plus unmatched families assigned to the product by `meta_regex`. `launch` window is treated as "all days held".
+- `GET /api/products/<slug>/stage-daily?days=90` (or window params) → `[{day, testing, scaling, unclassified}]` spend per day for the product.
+- Ad detail (`/api/ads/<id>`) gains `meta_ads:[…same rows as /ads for this family, current window…]` and `campaigns:[{campaign_id, name, stage, spend, purchases, revenue}]` (window).
+- The families table rows and the rollup rows are unchanged but each `m` now has the stage fields above.
+
+## UI additions (Agent C)
+- Header: stage filter (All / Testing / Scaling) next to the date-range control; preserved in the URL (`stage=`), like the window.
+- Tag-hierarchy tables show extra columns **Testing $, Scaling $, Testing %** (right of the 9 metrics).
+- Every row of every level table (cluster / ICP / pain / family) has a "Ads" action (and the table header has "All ads in view") that opens the flat **Meta ads table** for that selection (`/ads` endpoint; sortable; columns: thumbnail, ad name, campaign, stage badge, ad set, status, created, spend, purchases, revenue, ROAS, CPA, spend 7d, live). A family row also expands inline (caret) to show its Meta ads. Each Meta ad row links to the ad detail of its family.
+- Product page "View by": **Tags** | **Campaigns**. Campaigns view = two stage cards (Testing / Scaling: campaigns, ads, spend, share, ROAS, CPA) + a stacked daily spend chart (`stage-daily`) + a sortable campaign table grouped/filterable by stage; a campaign row drills to the Meta ads table (`campaign_id=`), and an ad row to the ad detail. Breadcrumb works for both paths (Product › Campaigns › <campaign> › ads).
+- Ad detail: "Meta ads in this family" table (all copies, each with campaign + stage + status) and a campaigns mini-table.
+
+## ETL job list changes (Agent A)
+`etl.meta_pull` implements Stage 2 above (flags `--days N`, `--since D --until D`, `--dry-run`, `--no-replace` for a scratch compare); `etl.build_metrics` also (re)builds `family_daily` (with stage) and `meta_campaigns.stage`; `etl.backfill_sheet` also fills `meta_ad_lifetime` and `ad_lifetime` (family sums) from the Lifetime tab and `meta_ads` from its Ad ID/name/account/created/status columns. `etl.run_daily` = tracker_sync → meta_pull(--days 7) → map new families → build_metrics.
