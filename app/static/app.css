@@ -327,3 +327,6 @@ table.dt td.pincol, table.dt th.pincol { width: 44px; min-width: 44px; text-alig
 .tsel.bars select { border-color: #1a5fb4; }
 .tsel.line select { border-color: #d9822b; }
 .segs .seg:disabled { color: #9aa3af; cursor: not-allowed; background: #f6f7f9; }
+
+.whoami { font-weight: 600; font-size: 12px; margin-right: 2px; }
+.whoami::before { content: '● '; color: #1d9a55; font-size: 9px; vertical-align: 1px; }

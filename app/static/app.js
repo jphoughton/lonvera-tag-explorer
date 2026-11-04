@@ -1,6 +1,6 @@
 import { $, h, setRenderer, navigate, currentParams, qs, href, globalParams, hasDateWindow, compareOn, cleanParams, setViewStateProvider, clearCmpRefreshers, loadViewState, navIndex, getParentHint, setParentHint } from './js/util.js';
 import { setUnauthorizedHandler, AuthError } from './js/api.js';
-import { buildShell, showControls, syncControls, loadStatus, setRangeInfo, getStatus, setBackDisabled, setPendingNote } from './js/controls.js';
+import { buildShell, showControls, syncControls, loadStatus, setRangeInfo, getStatus, setBackDisabled, setPendingNote, isAuthDisabled } from './js/controls.js';
 import { destroyCharts } from './js/charts.js';
 import { loginPage } from './js/pages/login.js';
 import { productsPage } from './js/pages/products.js';
@@ -19,7 +19,7 @@ let abort = null;
 const view = () => $('#view');
 
 setUnauthorizedHandler(() => {
-  if (location.pathname.startsWith('/login')) return;
+  if (location.pathname.startsWith('/login') || isAuthDisabled()) return;
   const next = location.pathname + location.search;
   navigate('/login' + qs({ next }), { replace: true, scroll: false });
 });

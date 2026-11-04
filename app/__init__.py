@@ -7,7 +7,7 @@ import os
 from decimal import Decimal
 
 import psycopg
-from flask import Flask, Response, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, redirect, request, send_from_directory
 from flask.json.provider import DefaultJSONProvider
 from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -65,7 +65,13 @@ def _register_pages(app: Flask) -> None:
         ok = db.ping()
         return (jsonify(ok=True), 200) if ok else (jsonify(ok=False), 503)
 
+    @app.get("/robots.txt")
+    def robots():
+        return Response("User-agent: *\nDisallow: /", mimetype="text/plain")
+
     def shell(*_a, **_k):
+        if request.path == "/login" and app.config.get("AUTH_DISABLED"):
+            return redirect("/", code=302)             # no login while the app is open
         index = os.path.join(STATIC_DIR, "index.html")
         if os.path.isfile(index):
             resp = send_from_directory(STATIC_DIR, "index.html", max_age=0)
@@ -116,6 +122,7 @@ def _register_errors(app: Flask) -> None:
 def _register_headers(app: Flask) -> None:
     @app.after_request
     def headers(resp: Response):
+        resp.headers["X-Robots-Tag"] = "noindex, nofollow"
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers.setdefault("Referrer-Policy", "same-origin")

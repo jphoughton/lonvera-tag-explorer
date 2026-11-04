@@ -13,6 +13,7 @@ SHOTS = HERE / "shots"
 SHOTS.mkdir(exist_ok=True)
 IS_MOCK = "UI_BASE_URL" not in os.environ
 PASSWORD = os.environ.get("UI_PASSWORD", "test")
+USERNAME = os.environ.get("UI_USERNAME", "JoshHoughton")
 
 
 def pytest_configure(config):
@@ -60,6 +61,32 @@ def base_url():
 
 
 @pytest.fixture(scope="session")
+def noauth_url():
+    """a server with logins disabled (mock started with MOCK_AUTH=disabled on :5097, or UI_NOAUTH_BASE_URL for a real AUTH_DISABLED=1 server)"""
+    env = os.environ.get("UI_NOAUTH_BASE_URL")
+    if env:
+        yield env.rstrip("/")
+        return
+    if not IS_MOCK:
+        pytest.skip("set UI_NOAUTH_BASE_URL to test an AUTH_DISABLED=1 server")
+    port = 5097
+    url = f"http://127.0.0.1:{port}"
+    proc = None
+    if not _up(url):
+        proc = subprocess.Popen([sys.executable, str(HERE / "mock_server.py"), str(port)], env={**os.environ, "MOCK_AUTH": "disabled"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(60):
+            if _up(url):
+                break
+            time.sleep(0.25)
+        else:
+            proc.terminate()
+            raise RuntimeError("no-auth mock server did not start")
+    yield url
+    if proc:
+        proc.terminate()
+
+
+@pytest.fixture(scope="session")
 def browser():
     with sync_playwright() as pw:
         b = pw.chromium.launch()
@@ -90,6 +117,21 @@ def anon_page(ctx, request):
 
 @pytest.fixture
 def page(ctx, anon_page, base_url):
-    r = ctx.request.post(base_url + "/api/login", data={"password": PASSWORD})
+    r = ctx.request.post(base_url + "/api/login", data={"username": USERNAME, "password": PASSWORD})
     assert r.status == 204, f"login failed: {r.status}"
     return anon_page
+
+
+@pytest.fixture
+def noauth_page(browser, noauth_url):
+    """a visitor with no cookie on a server with logins disabled; any console error fails the test"""
+    c = browser.new_context(viewport={"width": 1440, "height": 900}, base_url=noauth_url)
+    page = c.new_page()
+    page.errors = []
+    page.on("console", lambda m: page.errors.append(m.text) if m.type == "error" else None)
+    page.on("pageerror", lambda e: page.errors.append("pageerror: " + str(e)))
+    page.ctx = c
+    yield page
+    errs = page.errors
+    c.close()
+    assert not errs, f"console errors: {errs}"

@@ -5,7 +5,7 @@ import datetime as dt
 
 from flask import Blueprint, Response, jsonify, request
 
-from . import db, queries as q
+from . import auth, db, queries as q
 
 bp = Blueprint("api", __name__)
 
@@ -41,7 +41,7 @@ def status():
     n = len(q.rows_of(conn, """SELECT p.id FROM products p WHERE p.active AND (
             EXISTS (SELECT 1 FROM tracker_rows r WHERE r.product_id = p.id)
             OR EXISTS (SELECT 1 FROM unmatched_meta u WHERE u.product_id = p.id AND u.spend_all > 0))"""))
-    return jsonify(q.status(conn, meta, n))
+    return jsonify({**q.status(conn, meta, n), "auth": "disabled" if auth.auth_disabled() else "enabled", "user": auth.current_user()})
 
 
 @bp.get("/api/products")
