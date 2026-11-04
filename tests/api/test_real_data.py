@@ -203,3 +203,26 @@ def test_all_products_listed_with_sane_numbers(rc):
         m = p["m"]
         assert m["spend"] >= 0 and (m["roas"] is None or m["roas"] >= 0)
     assert sum(p["m"]["spend_share"] or 0 for p in prods) == pytest.approx(1.0, abs=1e-4)
+
+
+@pytest.mark.parametrize("window", ["window=launch", "window=30d", "window=7d&compare=prev"])
+def test_ad_rows_add_up_to_family_totals_on_real_data(rc, window):
+    with psycopg.connect(REAL_URL) as c:       # /ads reads ad_daily, /families reads family_daily: they only agree once build_metrics ran after the last pull
+        fd = c.execute("SELECT COALESCE(sum(spend), 0) FROM family_daily").fetchone()[0]
+        ad = c.execute("""SELECT COALESCE(sum(d.spend), 0) FROM ad_daily d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key
+                          WHERE m.tracker_family_key IS NOT NULL""").fetchone()[0]
+    if abs(fd - ad) > 1:
+        pytest.skip(f"ETL pull in progress: family_daily {fd} != mapped ad_daily {ad} (rebuild with `python -m etl.build_metrics`)")
+    ads = get(rc, f"/api/products/vita-bull/ads?{window}", budget=2000)
+    fams = get(rc, f"/api/products/vita-bull/families?{window}", budget=2000)
+    tracker_side = [r for r in ads["rows"] if r["on_tracker"]]
+    assert sum(r["spend"] for r in tracker_side) == pytest.approx(fams["total"]["m"]["spend"], abs=1.0)
+    assert sum(r["revenue"] for r in tracker_side) == pytest.approx(fams["total"]["m"]["revenue"], abs=1.0)
+    off = [r for r in ads["rows"] if not r["on_tracker"]]
+    assert off, "Meta ads that are not on the tracker are part of the unfiltered view"
+    if "compare" in window:
+        assert sum(r["cmp"]["spend"] for r in tracker_side) == pytest.approx(fams["total"]["m"]["cmp"]["spend"], abs=1.0)
+    # one family drilled the way the UI does it (tree row -> /ads with the same filters)
+    top = max((r for r in fams["rows"] if r["counted_here"]), key=lambda r: r["m"]["spend"])
+    one = get(rc, f"/api/products/vita-bull/ads?family_key={quote(top['family_key'])}&{window}")
+    assert one["total"]["spend"] == pytest.approx(top["m"]["spend"], abs=0.02)

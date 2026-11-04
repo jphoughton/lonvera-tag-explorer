@@ -165,3 +165,6 @@ Every `m` gains `spend_share` = row spend ÷ the response's total spend (`total.
 
 ## Stage columns (Josh feedback 2026-11-04)
 The Testing $, Scaling $, Testing % columns are shown ONLY when both Testing and Scaling are included in the stage filter. With a single stage included they are hidden (they would be redundant: all spend is that stage). Applies to every table including the products landing and campaigns view cards.
+
+## Drop the fixed 7d columns (Josh feedback 2026-11-04)
+The UI no longer shows "Spend 7d" / "CPA 7d" columns anywhere (the date range + Compare-to replace them). Visible metric columns at every level: Unique ads, Live now, Spend, % of spend, Purchases, Revenue, ROAS, CPA, (Testing $, Scaling $, Testing % only when both stages are included). The API may keep `spend_7d` / `cpa_7d` in `m` (harmless; ad_metrics still stores them) but nothing in the UI depends on them. The 7-day tie-out ($17,728 / 168 purchases / CPA $105.52 for Vita Bull; the sheet's "Spend, last 7d" columns) is verified through `window=7d` instead, and the "Not on the tracker" panel uses the selected window.

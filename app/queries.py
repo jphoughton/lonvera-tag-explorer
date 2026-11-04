@@ -1089,15 +1089,16 @@ ORDER BY o.spend DESC, o.c_spend DESC, o.aid NULLS LAST
 """
     raw = rows_of(conn, sql, params)
 
-    rem = {k: Decimal(0) for k in ("spend", "purchases", "revenue", "c_spend", "c_purch", "c_rev")}
+    zero = lambda: {k: Decimal(0) for k in ("spend", "purchases", "revenue", "c_spend", "c_purch", "c_rev")}   # noqa: E731
+    rem = {True: zero(), False: zero()}          # family-grain (no ad id) days: tracker families / Meta families not on the tracker
     ads: list[dict] = []
-    tot = dict(rem)
+    tot = zero()
     for r in raw:
         for k in tot:
             tot[k] += r[k]
         if r["aid"] is None:
-            for k in rem:
-                rem[k] += r[k]
+            for k in tot:
+                rem[bool(r["matched"])][k] += r[k]
             continue
         campaign = r["ma_campaign"] or r["camp"]
         ads.append({
@@ -1115,14 +1116,17 @@ ORDER BY o.spend DESC, o.c_spend DESC, o.aid NULLS LAST
             "spend_7d": f2(r["spend_7d"]), "live": bool(r["live"]), "days_active": int(r["days_active"] or 0),
         })
 
-    if any(abs(_f(v)) >= 0.005 for v in rem.values()):
-        ads.append({
-            "ad_id": None, "ad_name": REMAINDER_NAME, "family_key": family_key, "display": REMAINDER_NAME, "primary_id": None,
-            "thumb_asset_id": None, "on_tracker": True, "campaign_id": None, "campaign_name": None, "stage": "unclassified",
-            "adset_name": None, "account": None, "status": None, "created_date": None, "tag": None,
-            **window_block((rem["spend"], rem["purchases"], rem["revenue"]), w, (rem["c_spend"], rem["c_purch"], rem["c_rev"])),
-            "spend_7d": 0.0, "live": False, "days_active": 0,
-        })
+    for on_tracker in (True, False):             # the remainder keeps tracker and non-tracker days apart so each side still adds up
+        rm_ = rem[on_tracker]
+        if any(abs(_f(v)) >= 0.005 for v in rm_.values()):
+            ads.append({
+                "ad_id": None, "ad_name": REMAINDER_NAME, "family_key": family_key,
+                "display": REMAINDER_NAME if on_tracker else REMAINDER_NAME[:-1] + ", not on the tracker)",
+                "primary_id": None, "thumb_asset_id": None, "on_tracker": on_tracker, "campaign_id": None, "campaign_name": None,
+                "stage": "unclassified", "adset_name": None, "account": None, "status": None, "created_date": None, "tag": None,
+                **window_block((rm_["spend"], rm_["purchases"], rm_["revenue"]), w, (rm_["c_spend"], rm_["c_purch"], rm_["c_rev"])),
+                "spend_7d": 0.0, "live": False, "days_active": 0,
+            })
 
     total = {"ads": sum(1 for a in ads if a["ad_id"]),
              **window_block((tot["spend"], tot["purchases"], tot["revenue"]), w, (tot["c_spend"], tot["c_purch"], tot["c_rev"])),

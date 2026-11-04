@@ -133,7 +133,7 @@ table.dt thead th.sticky { z-index: 5; background: var(--head-bg); }
 table.dt td.labelcol, table.dt th.labelcol { min-width: 230px; max-width: 420px; }
 table.dt td.adcol, table.dt th.adcol { min-width: 260px; max-width: 420px; }
 table.dt td.sep, table.dt th.sep { border-left: 1px solid var(--line); }
-table.dt td.actioncol, table.dt th.actioncol { white-space: normal; width: 88px; text-align: center; }
+table.dt td.actioncol, table.dt th.actioncol { white-space: normal; width: 100px; min-width: 100px; text-align: center; }
 table.dt th.actioncol .btnlink { white-space: normal; display: inline-block; text-align: center; line-height: 1.15; padding: 2px 6px; }
 table.dt th.caretcell, table.dt td.caretcell { width: 26px; padding: 5px 2px 5px 6px; }
 table.dt tbody tr.clickable { cursor: pointer; }

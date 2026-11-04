@@ -39,7 +39,9 @@ export function createTable(opts) {
   const foot = h('div', { class: 'tablefoot' });
   const root = h('div', { class: 'tablebox', 'data-testid': opts.testid || null }, wrap, foot);
 
-  const colCount = columns.length + (opts.expand ? 1 : 0);
+  // columns may hide themselves (c.hidden()): the Testing/Scaling columns only make sense when both stages are included
+  let visCols = columns;
+  let colCount = columns.length + (opts.expand ? 1 : 0);
 
   const labelOf = (c) => (typeof c.label === 'function' ? c.label() : c.label);
 
@@ -100,6 +102,7 @@ export function createTable(opts) {
       class: [clickable ? 'clickable' : '', opts.rowClass ? opts.rowClass(r) : ''].join(' ').trim(),
       tabindex: clickable ? '0' : null,
       'data-key': key,
+      'data-label': opts.rowLabel ? opts.rowLabel(r) : null,
       'data-href': href || null,
     });
     if (opts.expand) {
@@ -108,7 +111,7 @@ export function createTable(opts) {
       btn.addEventListener('click', (e) => { e.stopPropagation(); toggle(key, r); });
       tr.append(h('td', { class: 'caretcell' }, btn));
     }
-    for (const c of columns) {
+    for (const c of visCols) {
       tr.append(h('td', {
         class: [c.num ? 'num' : '', c.sticky ? 'sticky' : '', c.cls || ''].join(' ').trim(),
         title: c.cellTitle ? c.cellTitle(r) : null,
@@ -147,7 +150,7 @@ export function createTable(opts) {
   function totalRow() {
     const tr = h('tr', { class: 'total' });
     if (opts.expand) tr.append(h('td', { class: 'caretcell' }));
-    columns.forEach((c, i) => {
+    visCols.forEach((c, i) => {
       const v = c.total ? c.total(total) : (i === 0 ? 'Total' : '');
       tr.append(h('td', { class: [c.num ? 'num' : '', c.sticky ? 'sticky' : '', c.cls || ''].join(' ').trim() }, v == null ? '' : v));
     });
@@ -155,12 +158,14 @@ export function createTable(opts) {
   }
 
   function render() {
+    visCols = columns.filter((c) => !(c.hidden && c.hidden()));
+    colCount = visCols.length + (opts.expand ? 1 : 0);
     const list = view();
     const shown = list.slice(0, limit);
     const table = h('table', { class: 'dt ' + (opts.tableClass || '') });
     const headRow = h('tr');
     if (opts.expand) headRow.append(h('th', { class: 'caretcell' }));
-    columns.forEach((c) => headRow.append(headerCell(c)));
+    visCols.forEach((c) => headRow.append(headerCell(c)));
     table.append(h('thead', headRow));
     const tbody = h('tbody');
     shown.forEach((r, i) => {

@@ -136,12 +136,12 @@ def test_ads_with_stage_lists(client, fx, w, wo, s, so):
     for r in sorted(fx.tracker, key=lambda r: (r["sheet_row"], r["id"])):
         if r["product"] == "vita-bull" and not r["family_key"].startswith("id:"):
             fams.setdefault(r["family_key"], r["launch"])
-    ads, rem = F.ad_oracle(fx, fams, wo, so, unmatched_pid=fx.product_ids["vita-bull"])
+    ads, rem, rem_u = F.ad_oracle(fx, fams, wo, so, unmatched_pid=fx.product_ids["vita-bull"])
     got = {(r["ad_id"], r["family_key"]): r for r in d["rows"] if r["ad_id"]}
     assert set(got) == set(ads)
     for key, v in ads.items():
         assert got[key]["spend"] == pytest.approx(float(v[0]), abs=0.006) and got[key]["revenue"] == pytest.approx(float(v[2]), abs=0.006)
-    remainder = next((r for r in d["rows"] if r["ad_id"] is None), None)
+    remainder = next((r for r in d["rows"] if r["ad_id"] is None and r["on_tracker"]), None)
     if any(rem):
         assert remainder is not None and remainder["spend"] == pytest.approx(float(rem[0]), abs=0.006)
     assert d["window_info"]["stage"] == q.parse_stage({"stage": s.split("=")[1].replace("%20", "")}) if s else True
@@ -157,7 +157,10 @@ def test_campaigns_unmatched_stage_lists(client, fx):
     u = get_ok(client, "/api/products/vita-bull/unmatched?window=30d&stage=scaling")
     ufull = get_ok(client, "/api/products/vita-bull/unmatched?window=30d")
     assert u["total"]["spend"] <= ufull["total"]["spend"]
-    assert get_ok(client, "/api/products/vita-bull/unmatched?window=30d&stage=testing,unclassified")["total"]["spend"] == 0   # u1 runs in a scaling campaign
+    sheet_days = sum(r["spend"] for r in fx.ad_daily if r["ad_id"] == "fam:brief2-2-bull-398" and r["day"] >= THROUGH - dt.timedelta(days=29))
+    assert sheet_days > 0
+    got = get_ok(client, "/api/products/vita-bull/unmatched?window=30d&stage=testing,unclassified")["total"]["spend"]
+    assert got == pytest.approx(float(sheet_days), abs=0.006)         # u1 runs in a scaling campaign; only its sheet-grain (unclassified) days remain
 
 
 def test_detail_daily_chart_honors_stage(client, fx):

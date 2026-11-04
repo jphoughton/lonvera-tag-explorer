@@ -132,7 +132,8 @@ AD_RANGES = {
     "u4": (D(2026, 10, 30), D(2026, 11, 1)),
 }
 # family-grain sheet rows: meta family display -> (start, end)
-FAM_RANGES = {"VB-Fam-A": (D(2026, 8, 1), D(2026, 9, 30)), "VB-Fam-F": (D(2026, 7, 1), D(2026, 9, 29)), "BL-Fam-2": (D(2026, 8, 10), D(2026, 9, 30))}
+FAM_RANGES = {"VB-Fam-A": (D(2026, 8, 1), D(2026, 9, 30)), "VB-Fam-F": (D(2026, 7, 1), D(2026, 9, 29)), "BL-Fam-2": (D(2026, 8, 10), D(2026, 9, 30)),
+              "Brief2-2-Bull-398": (D(2026, 10, 10), D(2026, 10, 15))}      # unmatched family with sheet-grain days
 
 # meta family key -> (tracker family key | None, rule)
 MAPPING = {
@@ -394,11 +395,13 @@ def aggregate(fx: Fx, rows: list[dict], window, stage: str) -> dict:
 def ad_oracle(fx: Fx, fams: dict, window, stage: str, campaign: str | None = None, unmatched_pid: int | None = None):
     """Per-Meta-ad sums for a selection. fams: tracker family key -> launch date of its first tracker row.
     window: 'launch' (per-ad launch rule) or (from, to). unmatched_pid: also include Meta families with no tracker row assigned to that product.
-    Returns ({(ad_id, family): [spend, purchases, revenue]}, remainder [spend, purchases, revenue]) - the remainder holds family-grain
-    ('fam:') days and Lifetime history no ad row accounts for."""
+    Returns ({(ad_id, family): [spend, purchases, revenue]}, remainder, remainder_unmatched) - the remainder holds family-grain
+    ('fam:') days of tracker families and Lifetime history no ad row accounts for; remainder_unmatched the family-grain days of
+    Meta families that are not on the tracker."""
     stages = stages_of(stage)
     ads: dict = defaultdict(lambda: [Z, Z, Z])
     rem = [Z, Z, Z]
+    rem_u = [Z, Z, Z]
 
     def add(target, r):
         target[0] += r["spend"]
@@ -425,7 +428,10 @@ def ad_oracle(fx: Fx, fams: dict, window, stage: str, campaign: str | None = Non
             continue
         if campaign is not None and r["campaign_id"] != campaign:
             continue
-        add(rem if r["ad_id"].startswith("fam:") else ads[(r["ad_id"], key_fam)], r)
+        if r["ad_id"].startswith("fam:"):
+            add(rem_u if tfam is None else rem, r)
+        else:
+            add(ads[(r["ad_id"], key_fam)], r)
     if window == "launch" and "unclassified" in stages:
         for tfam, launch in fams.items():
             if launch is None or launch >= D0:
@@ -443,4 +449,4 @@ def ad_oracle(fx: Fx, fams: dict, window, stage: str, campaign: str | None = Non
                 lt = fx.lifetime.get(tfam, (Z, Z, Z))
                 for i in range(3):
                     rem[i] += lt[i] - per_ad[i]
-    return {k: v for k, v in ads.items() if any(v)}, rem
+    return {k: v for k, v in ads.items() if any(v)}, rem, rem_u

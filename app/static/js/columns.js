@@ -1,6 +1,13 @@
 // Shared metric columns. The same 9 sheet metrics + % of spend + active ads + stage split appear at every level.
 // With comparison on, Spend / % of spend / Purchases / Revenue / ROAS / CPA cells get a second line "vs <B> ▲12%".
-import { h, fmt, isNum, cmpView } from './util.js';
+import { h, fmt, isNum, cmpView, stageSet, currentParams } from './util.js';
+
+// Testing $ / Scaling $ / Testing % only make sense when both stages are included in the stage filter
+const STAGE_COLS = new Set(['testing_spend', 'scaling_spend', 'testing_pct']);
+export function bothStagesIncluded() {
+  const s = stageSet(currentParams());
+  return s.has('testing') && s.has('scaling');
+}
 
 const PERDAY = new Set(['spend', 'purchases', 'revenue']);
 const KINDS = { int: fmt.int, money: fmt.money, roas: fmt.roas, pct: fmt.pct, share: fmt.share };
@@ -85,6 +92,7 @@ export function metricColumns({ getM = (r) => r.m, getTotalM = (t) => t && t.m, 
         return cmpView.perDay && PERDAY.has(key) ? base + '/day' : base;
       },
       num: true, title, cls: cls || '',
+      hidden: STAGE_COLS.has(key) ? () => !bothStagesIncluded() : null,
       sort: val,
       deltaSort: comparable ? (r) => deltaPct(getM(r), key) : null,
       cell: (r) => metricCell(getM(r), key, kind),

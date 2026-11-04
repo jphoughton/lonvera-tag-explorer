@@ -376,6 +376,7 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
       table.setRows(flatten());
     },
     rowKey: (n) => n.key,
+    rowLabel: (n) => (n.pseudo ? null : n.label),
     rowHref: (n) => (n.pseudo ? null : hrefFor(n)),
     rowClickable: (n) => !n.pseudo,
     onRowClick,

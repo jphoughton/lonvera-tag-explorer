@@ -437,6 +437,23 @@ def decorate(obj, objb, win):
     return obj
 
 
+def shares(objs, tot):
+    """spend_share of each metrics dict / flat row vs the response total (and for B + delta in pp when comparing)"""
+    ts = tot["spend"]
+    tb = tot["cmp"]["spend"] if tot.get("cmp") else None
+    for o in objs:
+        o["spend_share"] = round(o["spend"] / ts, 6) if ts else None
+        if o.get("cmp"):
+            o["cmp"]["spend_share"] = round(o["cmp"]["spend"] / tb, 6) if tb else None
+            a, b = o["spend_share"], o["cmp"]["spend_share"]
+            o["delta"]["spend_share_pp"] = None if a is None or b is None else round((a - b) * 100, 4)
+    tot["spend_share"] = 1.0
+    if tot.get("cmp"):
+        tot["cmp"]["spend_share"] = 1.0
+        tot["delta"]["spend_share_pp"] = 0.0
+    return objs
+
+
 def make_m(items, win, unique_ads=None):
     m = _make_m(items, win, unique_ads)
     mb = _make_m(items, g.cmp, unique_ads) if getattr(g, "cmp", None) else None
@@ -596,19 +613,25 @@ def products():
         d["rows"] = len(ents)
         d["m"] = make_m(items_for_m(ents), win)
         out.append(d)
+    tot = dict(spend=sum(d["m"]["spend"] for d in out))
+    if g.cmp:
+        tot["cmp"] = dict(spend=sum(d["m"]["cmp"]["spend"] for d in out))
+        tot["delta"] = {}
+    shares([d["m"] for d in out], tot)
     return jsonify(out)
 
 
-@app.get("/api/products/<slug>/rollup")
-def rollup(slug):
-    win = parse_win(request.args)
+LEVEL_NAMES = ("cluster", "icp", "pain")
+
+
+def rollup_rows(slug, level, flt, win):
+    """one row per label at `level` under the filters flt (cluster/icp/pain); returns (rows, filtered entries)"""
     p = prod_meta(slug)
-    level = request.args.get("level", "cluster")
-    ents = filt(prod_items(slug), request.args)
-    idx = {"cluster": 0, "icp": 1, "pain": 2}[level]
-    if level == "icp" and not request.args.get("cluster"):
+    ents = filt(prod_items(slug), flt)
+    idx = LEVEL_NAMES.index(level)
+    if level == "icp" and not flt.get("cluster"):
         raise Bad("icp requires cluster")
-    if level == "pain" and not (request.args.get("cluster") and request.args.get("icp")):
+    if level == "pain" and not (flt.get("cluster") and flt.get("icp")):
         raise Bad("pain requires cluster and icp")
     groups = {}
     for f, r, ch in ents:
@@ -620,34 +643,24 @@ def rollup(slug):
     rows = []
     for label, es in groups.items():
         m = make_m(items_for_m(es), win)
-        child = None
         if level == "pain":
             child = len({f["key"] for f, _, _ in es})
         else:
             child = len({group_of(p, r)[idx + 1] for _, r, _ in es})
-        row = dict(label=label, cluster=es[0][1]["cluster"], icp=es[0][1]["icp"] if idx >= 1 else None, pain=es[0][1]["pain"] if idx >= 2 else None,
-                   color=CLUSTER_COLORS.get(es[0][1]["cluster"]) if p["tag_set"] == "linemap" else None,
-                   line_code=es[0][1]["line"][0] if level == "pain" and es[0][1]["line"] else None,
-                   trigger=es[0][1]["line"][4] if level == "pain" and es[0][1]["line"] else None, child_count=child, m=m)
-        rows.append(row)
+        rows.append(dict(label=label, cluster=es[0][1]["cluster"], icp=es[0][1]["icp"] if idx >= 1 else None, pain=es[0][1]["pain"] if idx >= 2 else None,
+                         color=CLUSTER_COLORS.get(es[0][1]["cluster"]) if p["tag_set"] == "linemap" else None,
+                         line_code=es[0][1]["line"][0] if level == "pain" and es[0][1]["line"] else None,
+                         trigger=es[0][1]["line"][4] if level == "pain" and es[0][1]["line"] else None, child_count=child, m=m))
     if p["tag_set"] == "linemap":
         rows.sort(key=lambda r: (r["label"] == "(untagged)", order.get(r["label"], 99)))
     else:
         rows.sort(key=lambda r: (r["label"] in ("(untagged)", "(none)"), -r["m"]["spend"]))
-    saved, g.cmp = g.cmp, None
-    um = unmatched_rows(slug, parse_win({}))
-    g.cmp = saved
-    um7 = sum(u["spend_7d"] for u in um)
-    return jsonify(product=product_json(p), level=level, filters=dict(cluster=request.args.get("cluster"), icp=request.args.get("icp")),
-                   window=win["info"], window_info=win["info"], compare_info=cinfo(), rows=rows, total=dict(m=make_m(items_for_m(ents), win)),
-                   unmatched=dict(spend_7d=round(um7, 2), spend_30d=round(um7 * 4.1, 2), live_families=sum(1 for u in um if u["live"]), families=len(um)))
+    return rows, ents
 
 
-@app.get("/api/products/<slug>/families")
-def families(slug):
-    win = parse_win(request.args)
+def family_rows(slug, flt, win):
     p = prod_meta(slug)
-    ents = filt(prod_items(slug), request.args)
+    ents = filt(prod_items(slug), flt)
     groups = {}
     for f, r, ch in ents:
         groups.setdefault((f["key"], group_of(p, r)), []).append((f, r, ch))
@@ -656,14 +669,106 @@ def families(slug):
         f = FAM_BY_KEY[key]
         counted = any(ch for _, _, ch in es)
         m = make_m([(f, counted)], win, unique_ads=1)
-        rows.append(dict(family_key=key, display=f["display"], ad_ids=[r["id"] for _, r, _ in es], primary_id=es[0][1]["id"],
+        rows.append(dict(family_key=key, display=f["display"], ad_ids=[r["id"] for _, r, _ in es], primary_id=es[0][1]["id"], group=grp,
                          concept_ids=[r["concept_id"] for _, r, _ in es], n_rows=len(f["rows"]), ad_type=f["ad_type"], status=f["status"],
                          launch_date=f["launch"].isoformat() if f["launch"] else None, thumb_asset_id=f["thumb"],
                          confidence=min((r["conf"] for _, r, _ in es), key={"low": 0, "medium": 1, "high": 2}.get) if p["tag_set"] == "linemap" else None,
                          method=es[0][1]["method"] if p["tag_set"] == "linemap" else None, counted_here=counted, m=m))
     rows.sort(key=lambda r: -r["m"]["spend"])
+    return rows, ents
+
+
+@app.get("/api/products/<slug>/rollup")
+def rollup(slug):
+    win = parse_win(request.args)
+    p = prod_meta(slug)
+    level = request.args.get("level", "cluster")
+    if level not in LEVEL_NAMES:
+        raise Bad("bad level")
+    flt = {k: request.args.get(k) for k in ("cluster", "icp") if request.args.get(k)}
+    rows, ents = rollup_rows(slug, level, flt, win)
+    total = dict(m=make_m(items_for_m(ents), win))
+    shares([r["m"] for r in rows], total["m"])
+    saved, g.cmp = g.cmp, None
+    um = unmatched_rows(slug, parse_win({}))
+    g.cmp = saved
+    um7 = sum(u["spend_7d"] for u in um)
+    return jsonify(product=product_json(p), level=level, filters=dict(cluster=request.args.get("cluster"), icp=request.args.get("icp")),
+                   window=win["info"], window_info=win["info"], compare_info=cinfo(), rows=rows, total=total,
+                   unmatched=dict(spend_7d=round(um7, 2), spend_30d=round(um7 * 4.1, 2), live_families=sum(1 for u in um if u["live"]), families=len(um)))
+
+
+@app.get("/api/products/<slug>/families")
+def families(slug):
+    win = parse_win(request.args)
+    p = prod_meta(slug)
+    flt = {k: request.args.get(k) for k in ("cluster", "icp", "pain") if request.args.get(k)}
+    rows, ents = family_rows(slug, flt, win)
+    total = dict(m=make_m(items_for_m(ents), win))
+    shares([r["m"] for r in rows], total["m"])
+    for r in rows:
+        r.pop("group", None)
     return jsonify(product=product_json(p), filters={k: request.args.get(k) for k in ("cluster", "icp", "pain")}, window=win["info"], window_info=win["info"], compare_info=cinfo(),
-                   rows=rows, total=dict(m=make_m(items_for_m(ents), win)))
+                   rows=rows, total=total)
+
+
+@app.get("/api/products/<slug>/tree")
+def tree(slug):
+    win = parse_win(request.args)
+    p = prod_meta(slug)
+    root = request.args.get("root", "cluster")
+    levels = {"cluster": 0, "icp": 1, "pain": 2, "family": 3}
+    if root not in levels:
+        raise Bad("bad root")
+    r0 = levels[root]
+    try:
+        depth = int(request.args.get("depth", 0))
+    except ValueError:
+        raise Bad("bad depth")
+    if not 0 <= depth <= 3:
+        raise Bad("bad depth")
+    base = {k: request.args.get(k) for k in ("cluster", "icp", "pain") if request.args.get(k)}
+    need = ("cluster", "icp", "pain")[:r0]
+    if any(k not in base for k in need):
+        raise Bad(f"root={root} needs " + "+".join(need))
+    out = []
+
+    def key_of(level, flt, label=None, fam=None):
+        parts = [flt.get("cluster"), flt.get("icp"), flt.get("pain")][:level]
+        if level < 3 and label is not None:
+            parts.append(label)
+        if level == 3:
+            parts.append(fam)
+        return "|".join(parts)
+
+    def emit(level, flt, parent_key):
+        if level < 3:
+            rows, _ = rollup_rows(slug, LEVEL_NAMES[level], flt, win)
+        else:
+            rows, _ = family_rows(slug, flt, win)
+        for row in rows:
+            if level < 3:
+                label = row["label"]
+                node = dict(key=key_of(level, flt, label), parent_key=parent_key, level=level, label=label, cluster=row["cluster"] if level >= 0 else None,
+                            icp=row["icp"], pain=row["pain"], family_key=None, primary_id=None, color=row["color"], line_code=row["line_code"], trigger=row["trigger"],
+                            confidence=None, ad_type=None, status=None, thumb_asset_id=None, has_children=True, child_count=row["child_count"], counted_here=True, m=row["m"])
+                child_flt = {**flt, LEVEL_NAMES[level]: label}
+            else:
+                grp = row["group"]
+                node = dict(key=key_of(3, dict(cluster=grp[0], icp=grp[1], pain=grp[2]), fam=row["family_key"]), parent_key=parent_key, level=3, label=row["display"],
+                            cluster=grp[0], icp=grp[1], pain=grp[2], family_key=row["family_key"], primary_id=row["primary_id"], color=None, line_code=None, trigger=None,
+                            confidence=row["confidence"], ad_type=row["ad_type"], status=row["status"], thumb_asset_id=row["thumb_asset_id"], has_children=True,
+                            child_count=sum(1 for a in ADS if a["fam"] == row["family_key"]), counted_here=row["counted_here"], m=row["m"])
+            out.append(node)
+            if level - r0 < depth and level < 3:
+                emit(level + 1, child_flt, node["key"])
+
+    parent0 = key_of(r0 - 1, base) if r0 > 0 else None
+    emit(r0, base, parent0)
+    ents = filt(prod_items(slug), base)
+    total = dict(m=make_m(items_for_m(ents), win))
+    shares([n["m"] for n in out], total["m"])
+    return jsonify(window_info=win["info"], compare_info=cinfo(), rows=out, total=total)
 
 
 @app.get("/api/products/<slug>/unmatched")
@@ -674,6 +779,7 @@ def unmatched(slug):
                spend_7d=round(sum(r["spend_7d"] for r in rows), 2), families=len(rows))
     tot["roas"] = _roas(tot["spend"], tot["revenue"]); tot["cpa"] = _cpa(tot["spend"], tot["purchases"])
     sum_cmp(tot, rows, win)
+    shares(rows, tot)
     return jsonify(window_info=win["info"], compare_info=cinfo(), rows=rows, total=tot)
 
 
@@ -773,7 +879,9 @@ def ads(slug):
     win = parse_win(request.args)
     prod_meta(slug)
     rows = ads_for(slug, request.args, win)
-    return jsonify(window_info=win["info"], compare_info=cinfo(), rows=rows, total=total_of(rows, win))
+    tot = total_of(rows, win)
+    shares(rows, tot)
+    return jsonify(window_info=win["info"], compare_info=cinfo(), rows=rows, total=tot)
 
 
 @app.get("/api/products/<slug>/campaigns")
@@ -818,6 +926,7 @@ def campaigns(slug):
         by_stage.append(sum_cmp(card, rs, win))
     tot = total_of(rows, win)
     tot["ads"] = sum(r["ads"] for r in rows)
+    shares(rows, tot)
     return jsonify(window_info=win["info"], compare_info=cinfo(), by_stage=by_stage, rows=rows, total=tot)
 
 
@@ -835,7 +944,7 @@ def stage_daily(slug):
         d = dict(day=DAYS[i].isoformat(), testing=0.0, scaling=0.0, unclassified=0.0)
         for ad in ADS:
             if ad["product"] == slug:
-                d[ad_stage(ad)] += ad["daily"][i][0]
+                d["unclassified" if i < UNC_DAYS else ad_stage(ad)] += ad["daily"][i][0]
         d = {k: (round(v, 2) if k != "day" else v) for k, v in d.items()}
         out.append(d)
     return jsonify(out)
@@ -896,6 +1005,7 @@ def ad_detail(rid):
         sp = sum(a["daily"][i][0] for a in fam_ads); pu = sum(a["daily"][i][1] for a in fam_ads); rv = sum(a["daily"][i][2] for a in fam_ads)
         daily.append(dict(day=DAYS[i].isoformat(), spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), link_clicks=int(sp * 0.7)))
     meta_ads = [ad_row(a, win, fam["launch"]) for a in fam_ads]
+    shares(meta_ads, total_of(meta_ads, win))
     camps = {}
     for r in meta_ads:
         e = camps.setdefault(r["campaign_id"], dict(campaign_id=r["campaign_id"], name=r["campaign_name"], stage=r["stage"], spend=0.0, purchases=0, revenue=0.0))

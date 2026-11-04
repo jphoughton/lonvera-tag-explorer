@@ -1,6 +1,7 @@
 """Lonvera Tag Explorer: Flask app factory."""
 from __future__ import annotations
 
+import gzip
 import logging
 import os
 from decimal import Decimal
@@ -121,4 +122,19 @@ def _register_headers(app: Flask) -> None:
             resp.headers["Cache-Control"] = "no-store"
         if not app.config.get("DEV_INSECURE_COOKIES") and request.is_secure:
             resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+        return _maybe_gzip(resp)
+
+
+def _maybe_gzip(resp: Response) -> Response:
+    """The tree / families payloads are 1-2 MB of repetitive JSON; gzip them for clients that accept it."""
+    if (resp.status_code != 200 or resp.mimetype != "application/json" or resp.direct_passthrough or "Content-Encoding" in resp.headers
+            or "gzip" not in request.headers.get("Accept-Encoding", "").lower()):
         return resp
+    body = resp.get_data()
+    if len(body) < 2048:
+        return resp
+    resp.set_data(gzip.compress(body, compresslevel=5))
+    resp.headers["Content-Encoding"] = "gzip"
+    resp.headers["Content-Length"] = str(len(resp.get_data()))
+    resp.headers.add("Vary", "Accept-Encoding")
+    return resp

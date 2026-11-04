@@ -41,20 +41,21 @@ WIN_STAGE = [pytest.param(w, wo, s, so, id=f"{w or 'default'}|{s or 'all'}") for
 def test_ads_all_rows_match_oracle(client, fx, w, wo, s, so):
     d = get_ok(client, "/api/products/vita-bull/ads?" + qs(w, s))
     fams = groups_for(fx)
-    ads, rem = F.ad_oracle(fx, fams, wo, so, unmatched_pid=fx.product_ids["vita-bull"])
+    ads, rem, rem_u = F.ad_oracle(fx, fams, wo, so, unmatched_pid=fx.product_ids["vita-bull"])
     got = {(r["ad_id"], r["family_key"]): r for r in d["rows"] if r["ad_id"]}
     assert set(got) == set(ads), (w, s)
     for key, v in ads.items():
         r = got[key]
         assert close(r["spend"], v[0]) and close(r["purchases"], v[1]) and close(r["revenue"], v[2]), (key, w, s)
         assert r["roas"] == (round(float(v[2] / v[0]), 4) if v[0] else None)
-    remainder = [r for r in d["rows"] if r["ad_id"] is None]
-    if any(abs(x) >= F.Decimal("0.005") for x in rem):
-        assert len(remainder) == 1 and remainder[0]["ad_name"] == "(days without ad-level detail)"
-        assert close(remainder[0]["spend"], rem[0]) and close(remainder[0]["purchases"], rem[1]) and close(remainder[0]["revenue"], rem[2])
-    else:
-        assert not remainder
-    assert d["total"]["spend"] == pytest.approx(float(sum(v[0] for v in ads.values()) + rem[0]), abs=0.02)
+    for on_tracker, want in ((True, rem), (False, rem_u)):            # family-grain days: tracker families / Meta families not on the tracker
+        remainder = [r for r in d["rows"] if r["ad_id"] is None and r["on_tracker"] is on_tracker]
+        if any(abs(x) >= F.Decimal("0.005") for x in want):
+            assert len(remainder) == 1 and remainder[0]["ad_name"] == "(days without ad-level detail)"
+            assert close(remainder[0]["spend"], want[0]) and close(remainder[0]["purchases"], want[1]) and close(remainder[0]["revenue"], want[2])
+        else:
+            assert not remainder
+    assert d["total"]["spend"] == pytest.approx(float(sum(v[0] for v in ads.values()) + rem[0] + rem_u[0]), abs=0.02)
     assert d["total"]["ads"] == len(ads)
     assert [r["spend"] for r in d["rows"] if r["ad_id"]] == sorted((r["spend"] for r in d["rows"] if r["ad_id"]), reverse=True)
 
@@ -123,7 +124,7 @@ def test_ads_campaign_filter(client, fx, camp, stage):
     for w, wo in (("window=30d", (THROUGH - dt.timedelta(days=29), THROUGH)), ("window=launch", "launch"), ("", "launch")):
         d = get_ok(client, "/api/products/vita-bull/ads?" + qs(f"campaign_id={camp}", w))
         fams = groups_for(fx)
-        ads, rem = F.ad_oracle(fx, fams, wo, "all", campaign=camp, unmatched_pid=fx.product_ids["vita-bull"])
+        ads, rem, rem_u = F.ad_oracle(fx, fams, wo, "all", campaign=camp, unmatched_pid=fx.product_ids["vita-bull"])
         got = {(r["ad_id"], r["family_key"]): r for r in d["rows"] if r["ad_id"]}
         assert set(got) == set(ads), (camp, w)
         for key, v in ads.items():

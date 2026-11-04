@@ -256,8 +256,8 @@ def test_ads_cmp(client, fx, q_, a, b, s, so):
     d = get_ok(client, "/api/products/vita-bull/ads?" + qs(q_, s))
     fams = vb_family_launches(fx)
     pid = fx.product_ids["vita-bull"]
-    ads_a, rem_a = F.ad_oracle(fx, fams, a, so, unmatched_pid=pid)
-    ads_b, rem_b = F.ad_oracle(fx, fams, b, so, unmatched_pid=pid) if b else ({}, [F.Z] * 3)
+    ads_a, rem_a, rem_au = F.ad_oracle(fx, fams, a, so, unmatched_pid=pid)
+    ads_b, rem_b, rem_bu = F.ad_oracle(fx, fams, b, so, unmatched_pid=pid) if b else ({}, [F.Z] * 3, [F.Z] * 3)
     by = {(r["ad_id"], r["family_key"]): r for r in d["rows"] if r["ad_id"]}
     keys = set(k for k, v in ads_a.items() if any(v)) | set(k for k, v in ads_b.items() if any(v))
     assert set(by) == {(ad, f) for ad, f in keys}, (q_, s)
@@ -269,10 +269,10 @@ def test_ads_cmp(client, fx, q_, a, b, s, so):
         assert r["delta"]["spend"] == pytest.approx(float(va[0] - vb[0]), abs=0.011)
         assert (r["delta"]["spend_pct"] is None) == (vb[0] == 0)
         assert r["spend_per_day"] == pytest.approx(float(va[0]) / n_days(a), abs=0.006)
-    rem = next((r for r in d["rows"] if r["ad_id"] is None), None)
-    want_rem_a, want_rem_b = sum(rem_a), sum(rem_b)
-    if want_rem_a or want_rem_b:
-        assert rem is not None and rem["spend"] == pytest.approx(float(rem_a[0]), abs=0.006) and rem["cmp"]["spend"] == pytest.approx(float(rem_b[0]), abs=0.006)
+    for on_tracker, ra, rb in ((True, rem_a, rem_b), (False, rem_au, rem_bu)):
+        rem = next((r for r in d["rows"] if r["ad_id"] is None and r["on_tracker"] is on_tracker), None)
+        if sum(ra) or sum(rb):
+            assert rem is not None and rem["spend"] == pytest.approx(float(ra[0]), abs=0.006) and rem["cmp"]["spend"] == pytest.approx(float(rb[0]), abs=0.006)
     # totals = sum of rows (A and B), ratios recomputed
     t = d["total"]
     assert t["spend"] == pytest.approx(sum(r["spend"] for r in d["rows"]), abs=0.02)
@@ -291,8 +291,8 @@ def test_ads_cmp(client, fx, q_, a, b, s, so):
 def test_ads_family_selection_and_campaign_filter_cmp(client, fx):
     d = get_ok(client, "/api/products/vita-bull/ads?family_key=vb-fam-a&window=14d&compare=prev")
     fams = {"vb-fam-a": F.D(2026, 8, 1)}
-    a_, _ = F.ad_oracle(fx, fams, (F.THROUGH - dt.timedelta(days=13), F.THROUGH), "all")
-    b_, _ = F.ad_oracle(fx, fams, (F.THROUGH - dt.timedelta(days=27), F.THROUGH - dt.timedelta(days=14)), "all")
+    a_, *_ = F.ad_oracle(fx, fams, (F.THROUGH - dt.timedelta(days=13), F.THROUGH), "all")
+    b_, *_ = F.ad_oracle(fx, fams, (F.THROUGH - dt.timedelta(days=27), F.THROUGH - dt.timedelta(days=14)), "all")
     for r in d["rows"]:
         assert r["spend"] == pytest.approx(float(a_.get((r["ad_id"], "vb-fam-a"), [F.Z])[0]), abs=0.006)
         assert r["cmp"]["spend"] == pytest.approx(float(b_.get((r["ad_id"], "vb-fam-a"), [F.Z])[0]), abs=0.006)

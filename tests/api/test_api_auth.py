@@ -118,3 +118,17 @@ def test_healthz_reports_db_failure(app_factory):
     a = app_factory(DATABASE_URL="postgresql://localhost:1/nothing", DB_POOL_MIN=1)
     r = a.test_client().get("/healthz")
     assert r.status_code == 503 and r.get_json() == {"ok": False}
+
+
+def test_large_json_is_gzipped_when_accepted(client):
+    import gzip
+    import json
+    url = "/api/products/vita-bull/families"
+    plain = client.get(url)
+    assert "Content-Encoding" not in plain.headers
+    z = client.get(url, headers={"Accept-Encoding": "gzip, deflate"})
+    assert z.headers["Content-Encoding"] == "gzip" and "Accept-Encoding" in z.headers["Vary"]
+    assert int(z.headers["Content-Length"]) == len(z.data) < len(plain.data)
+    assert json.loads(gzip.decompress(z.data)) == plain.get_json()
+    small = client.get("/api/status", headers={"Accept-Encoding": "gzip"})
+    assert "Content-Encoding" not in small.headers and small.get_json()["data_through"] == "2026-11-02"
