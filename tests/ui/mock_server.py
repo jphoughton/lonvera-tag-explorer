@@ -991,6 +991,30 @@ def tree(slug):
     return jsonify(window_info=win["info"], compare_info=cinfo(), rows=out, total=total)
 
 
+@app.get("/api/products/<slug>/coverage")
+def coverage(slug):
+    """Synthetic coverage for the UI tests: the real per-line numbers of the mock, with L02 forced to 'no ads', L03 to '$0 spend' and L04 to 'added after tagging'
+    so every section of the Not tested panel has a row."""
+    win = parse_win(request.args)
+    p = prod_meta(slug)
+    if p["tag_set"] != "linemap":
+        return jsonify(available=False, reason="Tracker tags, no line list.", summary=None, rows=[], keys={}, window_info=win["info"], compare_info=None)
+    force = {"L02": "no_ads", "L03": "no_spend", "L04": "added"}
+    keys, rows, cnt = {}, [], {"total": 0, "no_ads": 0, "no_spend": 0, "added_after_tagging": 0, "tested": 0}
+    for code, cluster, icp, pain, trig in VB_LINES:
+        st = {"no_ads": "no_ads", "no_spend": "no_spend", "added": "no_ads"}.get(force.get(code), "tested")
+        added = force.get(code) == "added"
+        keys["|".join([cluster, icp, pain])] = {"state": st, "added_after_tagging": added}
+        cnt["total"] += 1
+        cnt["added_after_tagging" if added else st] += 1
+        if st != "tested":
+            rows.append(dict(level=2, key="|".join([cluster, icp, pain]), cluster=cluster, icp=icp, pain=pain, label=pain, line_code=code, trigger=trig, color=None,
+                             state=st, added_after_tagging=added, unique_ads=0 if st == "no_ads" else 2, spend=0.0))
+    summ = dict(cnt, not_tested=cnt["no_ads"] + cnt["no_spend"] - 0)
+    icps = dict(total=1, tested=1, no_ads=0, no_spend=0, added_after_tagging=0, not_tested=0)
+    return jsonify(available=True, summary=dict(pain_points=summ, icps=icps), rows=rows, keys=keys, window_info=win["info"], compare_info=None)
+
+
 @app.get("/api/products/<slug>/unmatched")
 def unmatched(slug):
     win = parse_win(request.args)

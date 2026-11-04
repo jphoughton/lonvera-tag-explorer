@@ -3068,3 +3068,33 @@ def test_source_switch_meta_upstack(page):
     assert "basis" not in qparams(page)
     expect(page.locator(f"{HEAD} th[data-col=purchases]")).to_contain_text("Purchases")
     shot(page, "09_source_switch")
+
+
+# ------------------------------------------------------------------ coverage: what has not been tested
+@pytest.mark.mock_only
+def test_not_tested_bar_toggle_and_panel(page):
+    goto_product(page, "?window=14d")
+    bar = page.locator("[data-testid=coverage-bar]")
+    expect(bar).to_be_visible()
+    expect(page.locator("#coverage-text")).to_contain_text("pain points not tested")
+    expect(page.locator("#coverage-text")).to_contain_text("added after tagging")           # the zero-by-construction lines are named, not hidden
+    assert "untested" not in qparams(page)
+    page.locator("#untested-toggle").click()
+    expect(page).to_have_url(re.compile(r"untested=1"))
+    panel = page.locator("[data-testid=untested-panel]")
+    expect(panel).to_be_visible()
+    expect(page.locator("[data-testid=untested-no-ads]")).to_be_visible()
+    expect(page.locator("[data-testid=untested-no-spend]")).to_be_visible()
+    expect(page.locator("[data-testid=untested-added]")).to_be_visible()
+    expect(panel).to_contain_text("neighbouring line")                                       # the one-line-per-ad caveat is shown
+    expect(page.locator("#untested-toggle")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#untested-no-ads tbody tr")).to_have_count(1)
+    page.locator("#untested-no-ads tbody tr").first.click()                                  # a row opens that line's own page and leaves the filter
+    expect(page).to_have_url(re.compile(r"pain="))
+    assert "untested" not in qparams(page)
+    page.go_back()
+    expect(page).to_have_url(re.compile(r"untested=1"))
+    page.locator("#untested-toggle").click()                                                  # off again: back to the tree
+    page.wait_for_function("() => !new URL(location.href).searchParams.has('untested')")
+    expect(page.locator("[data-testid=level-table]")).to_be_visible()
+    shot(page, "10_not_tested")

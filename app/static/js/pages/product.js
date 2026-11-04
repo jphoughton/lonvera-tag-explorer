@@ -3,7 +3,7 @@ import { api, AuthError } from '../api.js';
 import { createTable } from '../table.js';
 import { metricColumns, fixTotal, FLAT_KEYS, trendColumn, pinColumn } from '../columns.js';
 import { setRangeInfo } from '../controls.js';
-import { breadcrumbs, legendLine, creativeMeta, columnsChips, filterBar, saveFilterToUrl, makeFilter, adsTable, familyAdsNode, unmatchedPanel, saveSortToUrl, sortFromUrl, campaignHrefFor } from '../components.js';
+import { breadcrumbs, legendLine, creativeMeta, columnsChips, filterBar, saveFilterToUrl, makeFilter, adsTable, familyAdsNode, unmatchedPanel, saveSortToUrl, sortFromUrl, campaignHrefFor, coverageBar, untestedPanel } from '../components.js';
 import { stageChart } from '../charts.js';
 import { createTree } from '../tree.js';
 import { createTrendPanel, createPins } from '../trend.js';
@@ -73,10 +73,11 @@ async function tagsView(ctx, slug) {
   if (p.pain) filters.pain = p.pain;
   const wp = apiWindow(p);
   const base = `/api/products/${enc(slug)}/`;
-  const [data, product, um] = await Promise.all([
+  const [data, product, um, cov] = await Promise.all([
     api(base + 'tree', { root: rootName, ...filters, depth: 0, ...wp, ...sparkParams(p) }, { signal }),
     getProduct(slug, signal),
     api(base + 'unmatched', wp, { signal }).catch(() => null),
+    api(base + 'coverage', wp, { signal }).catch(() => null),
   ]);
   if (!ctx.alive()) return;
   report(p, data, hasUnclassified(data.total && data.total.m));
@@ -84,10 +85,11 @@ async function tagsView(ctx, slug) {
 
   const first = ['Market cluster', 'ICP', 'Pain point', 'Creative'][rootLevel];
   const title = rootLevel === 0 ? 'Market clusters' : rootLevel === 1 ? `ICPs in ${p.cluster}` : rootLevel === 2 ? `Pain points in ${p.icp}` : `Creatives in ${p.pain}`;
+  const untestedOn = p.untested === '1' && rootLevel === 0 && !!(cov && cov.available);     // "Not tested only": the flat list of ICPs / pain points with no ads or no spend
   const pins = createPins(ctx.restore && ctx.restore.pins);
   // the panel first: it locks / unlocks the Chart checkboxes before the table renders them
   const panel = createTrendPanel({ slug, p, scope: filters, scopeLabel: [p.pain, p.icp, p.cluster].find(Boolean) || product.name, pins, mode: 'scope', signal });
-  const tree = createTree({ slug, p, signal, rootLevel, filters, first, restore: ctx.restore, pins });
+  const tree = createTree({ slug, p, signal, rootLevel, filters, first, restore: ctx.restore, pins, coverage: cov && cov.available ? cov.keys : null });
   await tree.init(data.rows, data.total);
   if (!ctx.alive()) return;
 
@@ -95,14 +97,14 @@ async function tagsView(ctx, slug) {
     pageHead(product, slug, p, 'tags'),
     h('div', { class: 'crumbrow' }, breadcrumbs(tagCrumbs(slug, p, product)), h('span', { class: 'spacer' }),
       h('a', { class: 'btnlink', id: 'toggle-all', href: href(path, { ...G, all: 1 }) }, 'All creatives')),
-    panel.el,
-    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, title)),
-    legendLine(),
-    tree.el,
+    rootLevel === 0 ? coverageBar(cov, { path, G, on: untestedOn, windowLabel: data.window_info && data.window_info.label, sourceLabel: data.window_info && data.window_info.source && data.window_info.source.label }) : null,
+    untestedOn ? null : panel.el,
+    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, untestedOn ? 'Not tested' : title)),
+    untestedOn ? null : legendLine(),
+    untestedOn ? untestedPanel(cov, { path, G, windowLabel: data.window_info && data.window_info.label }) : tree.el,
     unmatchedPanel(slug, p, um, signal),
   ));
-  panel.load();
-  tree.afterMount(ctx.restore);
+  if (!untestedOn) { panel.load(); tree.afterMount(ctx.restore); }
 }
 
 // ============================ All creatives (flat, no tree root) ============================

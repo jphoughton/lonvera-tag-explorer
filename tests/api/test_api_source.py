@@ -140,3 +140,10 @@ def test_tieout(upstack, client, pg):
 def test_status_reports_the_sources(upstack, client):
     s = get_ok(client, "/api/status")["sources"]
     assert s["default"] == "meta" and s["upstack"]["available"] is True and s["upstack"]["through"] == THROUGH.isoformat()
+
+
+def test_coverage_follows_the_source(upstack, client):
+    d = get_ok(client, f"/api/products/vita-bull/coverage?{W}&source=upstack&basis=all")
+    assert d["window_info"]["source"]["key"] == "upstack" and d["available"] is True
+    meta = get_ok(client, f"/api/products/vita-bull/coverage?{W}")
+    assert {r["key"] for r in d["rows"] if r["state"] == "no_ads"} == {r["key"] for r in meta["rows"] if r["state"] == "no_ads"}      # no ads: never source-dependent

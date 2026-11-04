@@ -157,6 +157,9 @@ def load(conn, rows: list[list], cycle_dir: Path = DEFAULT_CYCLE, bl_cycle_dir: 
         existing = [(r[0], r[1], r[2], r[3], r[4], r[5]) for r in conn.execute(
             "SELECT id, cluster, icp, pain_point, emotional_trigger, line_code FROM taxonomy_lines WHERE product_id=%s ORDER BY sort_order, id", (pid,)).fetchall()]
         catalog = vb_codes if slug == "vita-bull" else other_codes.get(slug, {})
+        # a line first inserted once the product already has line-map tags reads 0 ads by construction (shown as "added after tagging", not "untested")
+        has_tags = bool(conn.execute("""SELECT EXISTS (SELECT 1 FROM ad_tags t JOIN tracker_rows r ON r.id = t.tracker_row_id
+                                        WHERE r.product_id = %s AND t.tag_set = 'linemap' AND t.is_current)""", (pid,)).fetchone()[0])
         cl_order: dict[str, int] = {}
         for ln in sheet_lines:
             cl_order.setdefault(ln["cluster"], len(cl_order))
@@ -189,9 +192,9 @@ def load(conn, rows: list[list], cycle_dir: Path = DEFAULT_CYCLE, bl_cycle_dir: 
                              (ln["trigger"], ln["story"], color, ln["pos"] + 1, lid))
             else:
                 lid = conn.execute(
-                    "INSERT INTO taxonomy_lines (product_id, line_code, cluster, icp, pain_point, emotional_trigger, story, cluster_color, sort_order) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
-                    (pid, code, ln["cluster"], ln["icp"], ln["pain"], ln["trigger"], ln["story"], color, ln["pos"] + 1)).fetchone()[0]
+                    "INSERT INTO taxonomy_lines (product_id, line_code, cluster, icp, pain_point, emotional_trigger, story, cluster_color, sort_order, added_after_tagging) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                    (pid, code, ln["cluster"], ln["icp"], ln["pain"], ln["trigger"], ln["story"], color, ln["pos"] + 1, has_tags)).fetchone()[0]
                 n_new += 1
             conn.execute("DELETE FROM line_ingredients WHERE line_id=%s", (lid,))
             for j, ing in enumerate(ln["ingredients"]):
