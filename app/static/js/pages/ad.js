@@ -1,10 +1,11 @@
-import { h, enc, fmt, href, apiWindow, sparkParams, globalParams, badge, confBadge, stageBadge, liveDot, methodFlags, safeUrl, empty, isNum, colorChip, safeColor, cmpView, onCmpRefresh, setParentHint } from '../util.js';
+import { h, enc, fmt, href, apiWindow, sparkParams, globalParams, badge, confBadge, stageBadge, liveDot, methodFlags, safeUrl, empty, isNum, colorChip, safeColor, cmpView, onCmpRefresh, setParentHint, stageSet, STAGES, currentParams, metricLabel } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { setRangeInfo } from '../controls.js';
 import { flatTotal } from '../columns.js';
-import { breadcrumbs, section, adsTable, columnsChips } from '../components.js';
+import { breadcrumbs, section, adsTable, columnsChips, legendLine } from '../components.js';
 import { createTrendPanel } from '../trend.js';
+import { createPreview, adLinks } from '../preview.js';
 
 function kv(label, value, cls = '') {
   if (value == null || value === '' || (Array.isArray(value) && !value.length)) return null;
@@ -33,10 +34,10 @@ function compareTable(d, wi) {
   const val = (m, k, days) => (perDay && ['spend', 'purchases', 'revenue'].includes(k) && days ? m[k] / days : m[k]);
   const rows = [
     ['spend', perDay ? 'Spend / day' : 'Spend', fmt.money, 'neutral'],
-    ['purchases', perDay ? 'Purchases / day' : 'Purchases', perDay ? fmt.dec1 : fmt.int, 'up'],
-    ['revenue', perDay ? 'Revenue / day' : 'Revenue', fmt.money, 'up'],
-    ['roas', 'ROAS', fmt.roas, 'up'],
-    ['cpa', 'CPA', fmt.money, 'down'],
+    ['purchases', metricLabel('purchases', 'Purchases') + (perDay ? ' / day' : ''), perDay ? fmt.dec1 : fmt.int, 'up'],
+    ['revenue', metricLabel('revenue', 'Revenue') + (perDay ? ' / day' : ''), fmt.money, 'up'],
+    ['roas', metricLabel('roas', 'ROAS'), fmt.roas, 'up'],
+    ['cpa', metricLabel('cpa', 'CPA'), fmt.money, 'down'],
   ];
   const tr = rows.map(([k, label, ff, dir]) => {
     const a = val(f.window, k, da), b = val(f.compare, k, db);
@@ -62,8 +63,11 @@ function metricsCard(d, wi) {
   if (!f) return null;
   const rows = [['Since launch', f.launch, 'launch'], ['Last 7d', f.d7, 'd7'], ['Last 30d', f.d30, 'd30']];
   if (wi && wi.kind !== 'launch' && f.window) rows.push([wi.label || 'Selected window', f.window, 'window']);
+  // the fixed rows (since launch / 7d / 30d) are not cut by the Stage filter; the selected-window row is
+  const stageCut = stageSet(currentParams()).size < STAGES.length;
   const tr = rows.map(([label, m, key]) => h('tr', { 'data-row': key },
-    h('th', { scope: 'row' }, label),
+    h('th', { scope: 'row' }, label, stageCut && key !== 'window'
+      ? h('span', { class: 'muted small all-stages', title: 'This row ignores the Stage filter.' }, ' · all stages') : null),
     h('td', { class: 'num', title: m ? fmt.money2(m.spend) : null }, fmt.money(m && m.spend)),
     h('td', { class: 'num' }, fmt.int(m && m.purchases)),
     h('td', { class: 'num', title: m ? fmt.money2(m.revenue) : null }, fmt.money(m && m.revenue)),
@@ -71,14 +75,14 @@ function metricsCard(d, wi) {
     h('td', { class: 'num' }, fmt.money(m && m.cpa))));
   const cmpBlock = compareTable(d, wi);
   return h('div', { class: 'card', id: 'family-metrics' },
-    h('div', { class: 'card-head' }, h('h3', 'Family metrics'), h('span', { class: 'live-flag' }, liveDot(f.live), f.live ? ' Live now' : ' Not live')),
+    h('div', { class: 'card-head' }, h('h3', 'Creative metrics'), h('span', { class: 'live-flag' }, liveDot(f.live), f.live ? ' Live now' : ' Not live')),
     h('table', { class: 'mini' },
-      h('thead', h('tr', h('th'), ['Spend', 'Purchases', 'Revenue', 'ROAS', 'CPA'].map((x) => h('th', { class: 'num' }, x)))),
+      h('thead', h('tr', h('th'), ['Spend', metricLabel('purchases', 'Purchases'), metricLabel('revenue', 'Revenue'), metricLabel('roas', 'ROAS'), metricLabel('cpa', 'CPA')].map((x) => h('th', { class: 'num' }, x)))),
       h('tbody', tr)),
     cmpBlock,
     h('div', { class: 'muted small' }, d.metrics.counted_on_this_row
-      ? 'Metrics are counted on this tracker row (first row of the ad family).'
-      : 'Family-level numbers. In the tables they are counted once, on the family’s first tracker row, which is not this one.'));
+      ? 'Metrics are counted on this tracker row (first row of the creative).'
+      : 'Creative-level numbers. In the tables they are counted once, on the creative’s first tracker row, which is not this one.'));
 }
 
 function tagBlock(d) {
@@ -100,7 +104,7 @@ function tagBlock(d) {
       kv('What was seen', t.seen),
       kv('Why', t.why),
       kv('Runner-up', t.runner_up),
-      t.copy_only_line ? kv('Copy-only pick', `${t.copy_only_line.line_code || ''}${t.copy_only_line.label ? ' · ' + t.copy_only_line.label : ''}`) : null,
+      t.copy_only_line ? kv('Copy-only pick', [t.copy_only_line.line_code, t.copy_only_line.label].filter((x) => x != null && String(x).trim() !== '').join(' · ') || null) : null,
       h('div', { class: 'muted small' }, `Tag set ${t.tag_set}${t.version ? ' · ' + t.version : ''}`));
   } else {
     body.push(h('div', { class: 'muted' }, 'Not line-mapped. Tracker tags below.'));
@@ -130,11 +134,14 @@ function mediaCard(d) {
   const ids = [];
   if (a.thumb != null) ids.push({ id: a.thumb, label: 'Thumbnail' });
   for (const f of (a.frames || []).slice(0, 4)) ids.push({ id: f, label: 'Frame' });
+  const title = d.ad_family || d.concept_id;
   const img = (x, big) => {
     const url = '/media/' + enc(x.id);
-    const im = h('img', { src: url, alt: x.label, loading: 'lazy', class: big ? 'media-main' : 'media-frame' });
+    const im = h('img', { src: url, alt: `${title} — ${x.label.toLowerCase()}`, loading: 'lazy', class: big ? 'media-main' : 'media-frame' });
     im.addEventListener('error', () => im.replaceWith(h('div', { class: 'thumb ph media-missing' }, 'no image')));
-    return h('a', { href: url, target: '_blank', rel: 'noopener', class: 'media-link' }, im);
+    const b = h('button', { type: 'button', class: 'media-link', 'aria-label': `Enlarge ${x.label.toLowerCase()}: ${title}` }, im);
+    b.addEventListener('click', () => document.dispatchEvent(new CustomEvent('tagexp:lightbox', { detail: { assetId: x.id, name: title, primaryId: d.id, detail: d, links: d.links } })));
+    return b;
   };
   if (!ids.length) return h('div', { class: 'card media', id: 'media' }, h('div', { class: 'media-missing' }, 'No image or frames stored for this ad.'));
   const main = ids[0];
@@ -149,7 +156,7 @@ function copyBlock(d) {
   const parts = [];
   if (d.concept_name || d.description || d.hypothesis) {
     parts.push(h('div', { class: 'subblock' },
-      kv('Concept', d.concept_name), kv('Description', d.description), kv('Hypothesis', d.hypothesis), kv('Meta ad name', d.meta_ad_name)));
+      kv('Concept', d.concept_name), kv('Description', d.description), kv('Hypothesis', d.hypothesis), kv('Ad name', d.meta_ad_name)));
   }
   if ((c.primary_text || []).length) parts.push(h('div', { class: 'subblock' }, h('div', { class: 'subtle-head' }, 'Primary text'), c.primary_text.map((t, i) => h('div', { class: 'copy-item' }, c.primary_text.length > 1 ? h('span', { class: 'idx' }, i + 1) : null, textBlock(t)))));
   if ((c.headlines || []).length) parts.push(h('div', { class: 'subblock' }, h('div', { class: 'subtle-head' }, 'Headlines'), h('ul', { class: 'headlines' }, c.headlines.map((t) => h('li', t)))));
@@ -174,7 +181,7 @@ function siblingsTable(d, G) {
     { key: 'pain_point', label: 'Pain point', sort: (r) => r.pain_point },
     { key: 'status', label: 'Status', sort: (r) => r.status },
   ];
-  return section('Other tracker rows in this family', createTable({ columns: cols, rows, rowKey: (r) => String(r.id), rowHref: (r) => href('/ad/' + enc(r.id), G), tableClass: 'compact', testid: 'siblings-table' }).el, { id: 'siblings' });
+  return section('Other tracker rows of this creative', createTable({ columns: cols, rows, rowKey: (r) => String(r.id), rowHref: (r) => href('/ad/' + enc(r.id), G), tableClass: 'compact', testid: 'siblings-table' }).el, { id: 'siblings' });
 }
 
 function campaignsTable(d, p, slug, G) {
@@ -192,12 +199,12 @@ function campaignsTable(d, p, slug, G) {
     { key: 'stage', label: 'Stage', sort: (r) => r.stage, cell: (r) => stageBadge(r.stage) },
     { key: 'spend', label: 'Spend', num: true, sort: (r) => r.spend, cell: (r) => fmt.money(r.spend), total: (t) => fmt.money(t.spend) },
     { key: 'spend_share', label: '% of spend', num: true, sort: (r) => r.spend_share, cell: (r) => fmt.share(r.spend_share), total: () => '100.0%' },
-    { key: 'purchases', label: 'Purchases', num: true, sort: (r) => r.purchases, cell: (r) => fmt.int(r.purchases), total: (t) => fmt.int(t.purchases) },
-    { key: 'revenue', label: 'Revenue', num: true, sort: (r) => r.revenue, cell: (r) => fmt.money(r.revenue), total: (t) => fmt.money(t.revenue) },
-    { key: 'roas', label: 'ROAS', num: true, sort: (r) => r.roas, cell: (r) => fmt.roas(r.roas), total: (t) => fmt.roas(t.roas) },
-    { key: 'cpa', label: 'CPA', num: true, sort: (r) => r.cpa, cell: (r) => fmt.money(r.cpa), total: (t) => fmt.money(t.cpa) },
+    { key: 'purchases', label: () => metricLabel('purchases', 'Purchases'), num: true, sort: (r) => r.purchases, cell: (r) => fmt.int(r.purchases), total: (t) => fmt.int(t.purchases) },
+    { key: 'revenue', label: () => metricLabel('revenue', 'Revenue'), num: true, sort: (r) => r.revenue, cell: (r) => fmt.money(r.revenue), total: (t) => fmt.money(t.revenue) },
+    { key: 'roas', label: () => metricLabel('roas', 'ROAS'), num: true, sort: (r) => r.roas, cell: (r) => fmt.roas(r.roas), total: (t) => fmt.roas(t.roas) },
+    { key: 'cpa', label: () => metricLabel('cpa', 'CPA'), num: true, sort: (r) => r.cpa, cell: (r) => fmt.money(r.cpa), total: (t) => fmt.money(t.cpa) },
   ];
-  return section('Campaigns', createTable({ columns: cols, rows, total: rows.length > 1 ? tot : null, rowKey: (r) => r.campaign_id, rowHref: (r) => href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }), tableClass: 'compact', testid: 'campaigns-mini-table' }).el, { id: 'campaigns' });
+  return section('Campaigns', createTable({ columns: cols, rows, total: tot, rowKey: (r) => r.campaign_id, rowHref: (r) => href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }), tableClass: 'compact', testid: 'campaigns-mini-table' }).el, { id: 'campaigns' });
 }
 
 export async function adPage(ctx) {
@@ -211,7 +218,7 @@ export async function adPage(ctx) {
   const slug = d.product.slug;
   const path = '/p/' + enc(slug);
   const title = d.ad_family || d.concept_id;
-  document.title = `${title} · Tag Explorer`;
+  document.title = `Creative: ${title} · Tag Explorer`;
 
   const tg = d.tag || {};
   const tt = d.tracker_tag || {};
@@ -230,36 +237,38 @@ export async function adPage(ctx) {
   ].filter(Boolean).join(' · ');
 
   // trend panel: full series since the first day of daily data, window A (and B) shaded
+  const preview = createPreview({ endpoint: `/api/ads/${enc(d.id)}/preview`, links: d.links || { story_url: d.story_url }, name: title, signal });
   const panel = createTrendPanel({ slug, p, scope: { family_key: d.family_key }, scopeLabel: title, mode: 'ad', shadeInfo: { a: wi, b: d.compare_info || null }, signal });
 
   const metaAds = d.meta_ads || [];
   const famTotal = flatTotal(metaAds, { days: wi && wi.days, bdays: d.compare_info && d.compare_info.days });
   const adsRows = metaAds.map((r) => (r.spend_share != null ? r : { ...r, spend_share: famTotal.spend > 0 ? r.spend / famTotal.spend : null }));
-  const adsT = metaAds.length ? adsTable({ ...p }, { rows: adsRows, total: metaAds.length > 1 ? famTotal : null }, {
-    showFamily: false, linkAd: false, shareLabel: '% of family',
+  const adsT = metaAds.length ? adsTable({ ...p }, { rows: adsRows, total: famTotal }, {
+    showFamily: false, linkAd: false, shareLabel: '% of creative',
     campaignHref: (r) => href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }),
   }) : null;
   if (adsT) onCmpRefresh(() => adsT.refresh());
   setParentHint(href(path, { ...G, cluster, icp, pain }));
 
-  ctx.mount(h('div', { class: 'page ad-detail' },
+  ctx.mount(h('div', { class: 'page creative-detail' },
     h('div', { class: 'crumbrow' }, breadcrumbs(crumbs)),
     h('div', { class: 'pagehead' },
       h('div', { class: 'titleline' },
-        h('h1', { id: 'ad-title' }, title),
+        h('h1', { id: 'ad-title' }, h('span', { class: 'muted' }, 'Creative: '), title),
         d.status ? badge(d.status, 'status') : null,
         d.ad_type ? badge(d.ad_type, 'type') : null,
         h('span', { class: 'spacer' }),
-        extLink('Story', d.story_url), extLink('Asset', d.asset_url),
-        h('a', { class: 'btnlink', href: href(path, { ...G, view: 'ads', family_key: d.family_key }) }, 'Meta ads table')),
+        adLinks(d.links || { story_url: d.story_url }), extLink('Asset', d.asset_url),
+        h('a', { class: 'btnlink', href: href(path, { ...G, view: 'ads', family_key: d.family_key }) }, 'Ads table')),
       h('div', { class: 'note-line' }, meta)),
+    section('See the ad', preview.el, { id: 'see-ad' }),
     h('div', { class: 'adgrid' },
       h('div', { class: 'adcol-left' }, mediaCard(d)),
       h('div', { class: 'adcol-right' }, panel.el, metricsCard(d, wi))),
     h('div', { class: 'twocol' }, tagBlock(d), lineBlock(d)),
     copyBlock(d),
     siblingsTable(d, G),
-    adsT ? section('Meta ads in this family', adsT.el, { id: 'meta-ads', aside: columnsChips() }) : null,
+    adsT ? section('Ads · copies of this creative', h('div', null, legendLine(), adsT.el), { id: 'meta-ads', aside: columnsChips() }) : null,
     campaignsTable(d, p, slug, G),
   ));
   onCmpRefresh(() => {
@@ -268,4 +277,14 @@ export async function adPage(ctx) {
     if (old && nu) old.replaceWith(nu);
   });
   panel.load();
+  preview.load();
+  // the creative's own endpoint carries no sparklines for its ads: take them from the ads endpoint (same rows, same window)
+  if (adsT && adsRows.length && adsRows.some((r) => r.spark == null)) {
+    api(`/api/products/${enc(slug)}/ads`, { family_key: d.family_key, ...apiWindow(p), ...sparkParams(p) }, { signal }).then((x) => {
+      if (!ctx.alive() || !x || !Array.isArray(x.rows)) return;
+      const by = new Map(x.rows.filter((r) => r.ad_id != null).map((r) => [r.ad_id, r.spark]));
+      for (const r of adsRows) if (r.spark == null && by.has(r.ad_id)) r.spark = by.get(r.ad_id);
+      adsT.refresh();
+    }).catch(() => { /* sparklines are optional */ });
+  }
 }

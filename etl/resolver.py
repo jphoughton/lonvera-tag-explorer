@@ -5,9 +5,18 @@ from __future__ import annotations
 import re
 
 
+MERGE_SUFFIX = re.compile(r"\s*\|\s*[A-Za-z0-9]+-merge-\d{4}-\d{2}-\d{2}\s*$", re.I)
+COPY_SUFFIX = re.compile(r"(\s*-\s*Copy(\s*\d+)?)+\s*$", re.I)
+
+
 def fam(n) -> str:
-    """Meta ad name -> ad family: strip trailing ' - Copy' / ' - Copy 2' suffixes."""
-    return re.sub(r"(\s*-\s*Copy(\s*\d+)?)+\s*$", "", str(n)).strip()
+    """Meta ad name -> ad family: strip trailing ' - Copy' / ' - Copy 2' and a merge tag ' | <word>-merge-<date>' (e.g. ' | vb-merge-2026-10-22'), in any order."""
+    s = str(n)
+    while True:
+        t = COPY_SUFFIX.sub("", MERGE_SUFFIX.sub("", s)).strip()
+        if t == s:
+            return t
+        s = t
 
 
 def norm(x) -> str:

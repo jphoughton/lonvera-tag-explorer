@@ -87,10 +87,20 @@ TRACKER = [
          tag=("tracker", "Joints", "BF1 Won't Sit It Out", "Joint Pain")),
 ]
 
-CAMPAIGNS = [  # id, account, name
-    ("C100", "Main", "VB_Scaling_US"), ("C200", "Main", "VB_Testing_Cambium"),
-    ("C300", "Main", "BL_Scaling"), ("C400", "Main", "BL test campaign"),
+# tracker rows removed from the tracker (tracker_rows.deleted_at set): seeded into the database only, never part of the oracle. Every query must leave
+# them out, so any endpoint that forgets shows an extra row / creative / count against the oracle. One shares a creative with a live row and
+# sits before it in sheet order; the other is a creative of its own.
+DELETED_TRACKER = [
+    dict(id=2000, product="vita-bull", concept="VB-DEL-1", family="VB-Fam-A", sheet_row=1, tag=("tracker", "Alpha Cluster", "ICP One", "Pain A")),
+    dict(id=2001, product="vita-bull", concept="VB-DEL-2", family="VB-Fam-Deleted", sheet_row=2, tag=("tracker", "Beta Cluster", "ICP Three", "Pain D")),
+    dict(id=2002, product="beef-liver", concept="BL-DEL-1", family="BL-Fam-1", sheet_row=1, tag=None),
 ]
+
+CAMPAIGNS = [  # id, account, name
+    ("C100", "Lonvera Main", "VB_Scaling_US"), ("C200", "Lonvera Main", "VB_Testing_Cambium"),
+    ("C300", "Lonvera Main", "BL_Scaling"), ("C400", "Lonvera Main", "BL test campaign"),
+]
+AD_ACCOUNT = {"a3": "Lonvera BackUp"}          # every other ad is in Lonvera Main
 # note campaign "C999" is deliberately NOT in meta_campaigns (-> unclassified)
 
 # meta ads: ad_id -> (meta family display, campaign, adset, status, created)
@@ -113,6 +123,8 @@ ADS = {
     "u2": ("Weird-Bone-1", "C300", "BL scale set", "ACTIVE", D(2026, 10, 24)),
     "u3": ("Orphan-Zzz", "C100", "VB scale set", "ACTIVE", D(2026, 10, 29)),
     "u4": ("Vital Flow Test 1", "C200", "VB test set", "ACTIVE", D(2026, 10, 29)),
+    "u5": ("Bull-Lifetime-Only", "C100", "VB scale set", "ACTIVE", D(2026, 5, 2)),     # lifetime row only: no daily rows (v1.9 unmatched lifetime)
+    "u6": ("Bull-Lifetime-Paused", "C100", "VB scale set", "PAUSED", D(2026, 5, 2)),
 }
 
 
@@ -143,6 +155,7 @@ MAPPING = {
     "vb-fam-f": ("vb-fam-f", "sheet-windows"), "bl-fam-1": ("bl-fam-1", "sheet-windows"), "bl-fam-2": ("bl-fam-2", "sheet-windows"),
     "bl-fam-3": ("bl-fam-3", "sheet-windows"),
     "brief2-2-bull-398": (None, None), "weird-bone-1": (None, None), "orphan-zzz": (None, None), "vital flow test 1": (None, None),
+    "bull-lifetime-only": (None, None), "bull-lifetime-paused": (None, None),
 }
 META_REGEX = {"boneflex": ("bone", 10), "beef-liver": ("liver", 20), "vita-bull": ("bull", 30), "vita-belle": ("belle", 40),
               "vital-flow": (r"vital[-_ ]?flow", 50)}
@@ -150,7 +163,8 @@ META_REGEX = {"boneflex": ("bone", 10), "beef-liver": ("liver", 20), "vita-bull"
 # --- API lifetime (v1.5) -------------------------------------------------------------------------------------------------------------
 # history an ad has from before the daily range (spend, purchases, revenue, link clicks)
 PRE_HISTORY = {"b1": (dec("1000.50"), dec(20), dec("900.00"), 800), "b2": (dec("500.25"), dec(9), dec("400.00"), 400),
-               "a1": (dec("40.00"), dec(1), dec("60.00"), 30)}
+               "a1": (dec("40.00"), dec(1), dec("60.00"), 30),
+               "u5": (dec("123.45"), dec(3), dec("150.00"), 90), "u6": (dec("77.70"), dec(2), dec("90.00"), 50)}
 LIFETIME_RESTATE = {"e1": (dec("-3.00"), dec(0), dec("-5.00"), 0)}      # Meta restated: lifetime is a little below the sum of our daily rows
 NO_LIFETIME = {"c1"}                                                       # an ad the lifetime pull has not seen (yet)
 # lifetime impressions a family has that no ad row accounts for (so the family total is more than the sum of its ads' rows)
@@ -169,6 +183,9 @@ class Fx:
     family_daily: dict = field(default_factory=dict)         # (family_key, day, stage) -> [spend, purch, rev, clicks, imp, clicks_tr, spend_tr]
     ad_metrics: dict = field(default_factory=dict)           # tracker row id -> dict
     unmatched: dict = field(default_factory=dict)            # meta_family_key -> dict
+    family_extra: dict = field(default_factory=lambda: dict(FAMILY_EXTRA))      # lifetime no ad accounts for (none in the active view)
+    n_active: dict = field(default_factory=dict)             # tracker family key -> ACTIVE Meta ads (active view only)
+    active_view: "Fx | None" = None                          # the same data seen through active=1 (v1.9); None on the active view itself
 
 
 def stage_of_campaign(name: str) -> str:
@@ -233,7 +250,24 @@ def build_fixture(product_ids: dict) -> Fx:
         fx.ad_lifetime[ad_id] = dict(spend=sp, purchases=pu, revenue=rv, imp=clk * IMP_PER_CLICK, clk=clk, mfk=mfk, tfam=MAPPING[mfk][0],
                                      camp=ADS[ad_id][1])
     build_derived(fx)
+    fx.active_view = build_active(fx)
     return fx
+
+
+def build_active(fx: Fx) -> Fx:
+    """The oracle for active=1 (CONTRACT v1.9): only ACTIVE Meta ads (current status, whole window). Family-grain sheet rows ('fam:') belong to no
+    ad, so they drop out; a creative stays only if at least one of its Meta ads is ACTIVE; lifetime is the active ads' lifetime."""
+    act_ads = {a for a, v in ADS.items() if v[3] == "ACTIVE"}
+    fa = Fx(product_ids=dict(fx.product_ids), camp_stage=dict(fx.camp_stage), family_extra={})
+    fa.ad_daily = [r for r in fx.ad_daily if r["ad_id"] in act_ads]
+    fa.ad_lifetime = {k: v for k, v in fx.ad_lifetime.items() if k in act_ads}
+    for a in act_ads:
+        tfam = MAPPING[meta_family_key(ADS[a][0])][0]
+        if tfam is not None:
+            fa.n_active[tfam] = fa.n_active.get(tfam, 0) + 1
+    fa.tracker = [r for r in fx.tracker if r["family_key"] in fa.n_active]
+    build_derived(fa)
+    return fa
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------
@@ -295,8 +329,12 @@ def build_derived(fx: Fx) -> None:
     for r in fx.ad_daily:
         if MAPPING.get(r["meta_family_key"], (None, None))[0] is None:
             by[r["meta_family_key"]].append(r)
+    for lt in fx.ad_lifetime.values():          # Meta families off the tracker that only have a lifetime row (no daily rows)
+        if lt["tfam"] is None:
+            by.setdefault(lt["mfk"], [])
+    display = {meta_family_key(v[0]): v[0] for v in ADS.values()}
     for k, rows in by.items():
-        name = rows[-1]["meta_family"]
+        name = rows[-1]["meta_family"] if rows else display[k]
         pid = None
         for slug, (rx, prio) in sorted(META_REGEX.items(), key=lambda kv: kv[1][1]):
             if re.search(rx, name, re.I):
@@ -308,7 +346,11 @@ def build_derived(fx: Fx) -> None:
             sel = [x for x in rows if d_from <= x["day"] <= d_to]
             return (sum((x["spend"] for x in sel), Z), sum((x["purchases"] for x in sel), Z), sum((x["conv_value"] for x in sel), Z))
         s7, s30, sa = sums(THROUGH - dt.timedelta(days=6)), sums(THROUGH - dt.timedelta(days=29)), sums(D(2000, 1, 1))
+        lts = [lt for lt in fx.ad_lifetime.values() if lt["mfk"] == k and lt["tfam"] is None]
         fx.unmatched[k] = dict(meta_family_key=k, meta_family=name, product_id=pid,
+                               spend_launch=sum((lt["spend"] for lt in lts), Z), purchases_launch=sum((lt["purchases"] for lt in lts), Z),
+                               revenue_launch=sum((lt["revenue"] for lt in lts), Z),
+                               impressions_launch=sum((lt["imp"] for lt in lts), 0), clicks_launch=sum((lt["clk"] for lt in lts), 0),
                                spend_7d=s7[0], purchases_7d=s7[1], revenue_7d=s7[2], spend_30d=s30[0], purchases_30d=s30[1],
                                revenue_30d=s30[2], spend_all=sa[0], purchases_all=sa[1], revenue_all=sa[2],
                                live=sums(THROUGH - dt.timedelta(days=1))[0] > 0)
@@ -324,7 +366,7 @@ def family_lifetime(fx: Fx, tfam: str) -> dict:
             out["revenue"] += lt["revenue"]
             out["imp"] += lt["imp"]
             out["clk"] += lt["clk"]
-    ex = FAMILY_EXTRA.get(tfam)
+    ex = fx.family_extra.get(tfam)
     if ex:
         out["spend"] += ex[0]
         out["purchases"] += ex[1]

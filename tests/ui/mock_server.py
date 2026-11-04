@@ -72,6 +72,13 @@ INGREDIENTS = [("Zinc", "Low testosterone signalling", "Libido, recovery"), ("Ch
 XSS = "<img src=x onerror=window.__xss=1>Bull <b>bold</b> & <script>window.__xss=2</script>"
 
 
+def cur_ads():
+    """ads in play for this request: every ad, or only ACTIVE ones with ?active=1"""
+    if getattr(g, "active", False):
+        return [a for a in ADS if a["status"] == "ACTIVE"]
+    return ADS
+
+
 def stage_of(name):
     return "testing" if "test" in name.lower() else "scaling"
 
@@ -232,6 +239,27 @@ def lab(d):
     return f"{MON[d.month - 1]} {d.day}"
 
 
+STAGE_NOTE = "Testing / Scaling follow the campaign name; days without campaign data count as Unclassified and only appear when Unclassified is included."
+
+
+def active_info(info, stage=None):
+    """stage_note when the stage filter is not both Testing and Scaling; active=1: what the numbers mean and how many ads are active"""
+    st = stage if stage is not None else info.get("_stage")
+    info = dict(info)
+    info.pop("_stage", None)
+    if st is not None and not {"testing", "scaling"} <= set(st):
+        info["stage_note"] = STAGE_NOTE
+    if not getattr(g, "active", False):
+        return info
+    from flask import request as _rq
+    slug = (_rq.view_args or {}).get("slug")
+    n = sum(1 for a in ADS if a["status"] == "ACTIVE" and (slug is None or a["product"] == slug))
+    note = "Active ads only: creatives with at least one ACTIVE ad; numbers are the sums over their active ads (current status applied to the whole window; status as of Nov 2, 10:12 PM)."
+    info["active_ads"] = n
+    info["note"] = (info["note"] + " " + note) if info.get("note") else note
+    return info
+
+
 def build_window(fd, td, kind, stage):
     """clamp [fd, td] to the daily span and build the window dict + window_info"""
     cf, ct = max(fd, DAILY_START), min(td, DATA_THROUGH)
@@ -250,7 +278,7 @@ def build_window(fd, td, kind, stage):
                 note=" ".join(notes) or None,
                 daily_start=DAILY_START.isoformat(), data_through=DATA_THROUGH.isoformat())
     i0, i1 = (cf - DAILY_START).days, (ct - DAILY_START).days
-    return dict(info=info, i0=i0, i1=i1, stage=stage, key=(i0, i1, stage), launch=False)
+    return dict(info=active_info(info, stage), i0=i0, i1=i1, stage=stage, key=(i0, i1, stage, getattr(g, "active", False)), launch=False)
 
 
 def trailing(w, stage):
@@ -291,13 +319,15 @@ def parse_win(args):
             raise Bad("bad date")
         if fd > td:
             raise Bad("from is after to")
+        if td < DAILY_START or fd > DATA_THROUGH:   # wholly outside the held data: the real API answers 400 too
+            raise Bad(f"no daily data in that range (data covers {lab(DAILY_START)}, {DAILY_START.year} – {lab(DATA_THROUGH)}, {DATA_THROUGH.year})")
         return build_window(fd, td, "custom", stage)
     w = args.get("window", "launch")
     if w == "launch":
         info = dict(kind="launch", label="Since launch", **{"from": None, "to": None}, days=None, clamped=False,
                     note="With a stage filter only days with a campaign (classified days) count." if len(stage) < 3 else None,
                     daily_start=DAILY_START.isoformat(), data_through=DATA_THROUGH.isoformat())
-        return dict(info=info, i0=None, i1=None, stage=stage, key=("launch", stage), launch=True)
+        return dict(info=active_info(info, stage), i0=None, i1=None, stage=stage, key=("launch", stage, getattr(g, "active", False)), launch=True)
     return trailing(w, stage)
 
 
@@ -423,7 +453,7 @@ def fam_traffic(fam_key, win):
     ck = (fam_key, win["key"])
     if ck not in _FT:
         t = [0, 0, 0, 0]
-        for ad in ADS:
+        for ad in cur_ads():
             if ad["fam"] == fam_key:
                 for j, v in enumerate(ad_traffic(ad, win, FAM_BY_KEY[fam_key]["launch"], cut=False)):
                     t[j] += v
@@ -460,14 +490,14 @@ _FM = {}
 
 def fam_split(fam_key, win, ads_filter=None):
     """by-stage (spend, purchases, revenue) for a tracker family over its ads"""
-    ck = (fam_key, win["key"][:2] if not win["launch"] else "launch")
+    ck = (fam_key, win["key"][:2] if not win["launch"] else "launch", getattr(g, "active", False))
     if ck in _FM:
         return _FM[ck]
     fam = FAM_BY_KEY[fam_key]
     tot = {"testing": [0, 0, 0], "scaling": [0, 0, 0], "unclassified": [0, 0, 0]}
     last7 = [0, 0, 0]
     live = False
-    for ad in ADS:
+    for ad in cur_ads():
         if ad["fam"] != fam_key:
             continue
         for st, v in ad_metrics(ad, win, fam["launch"], cut=False).items():
@@ -583,9 +613,12 @@ def _make_m(items, win, unique_ads=None):
 def prod_items(slug):
     """every (fam, row, counted_here) of a product"""
     out = []
+    live = {a["fam"] for a in cur_ads()} if getattr(g, "active", False) else None
     for f in FAMS:
         if f["product"] != slug:
             continue
+        if live is not None and f["key"] not in live:
+            continue  # active only: a creative needs at least one active ad
         for r in f["rows"]:
             out.append((f, r, r["ordinal"] == 0))
     return out
@@ -620,7 +653,7 @@ def product_json(p):
 
 def unmatched_rows(slug, win):
     by = {}
-    for ad in ADS:
+    for ad in cur_ads():
         if ad["product"] != slug or ad["fam"] is not None:
             continue
         e = by.setdefault(ad["meta_family"], dict(meta_family=ad["meta_family"], spend=0.0, purchases=0, revenue=0.0, spend_7d=0.0, live=False, _b=[0.0, 0, 0.0], _t=[0, 0, 0, 0], _tb=[0, 0, 0, 0]))
@@ -668,6 +701,7 @@ def guard():
     if (p.startswith("/api/") and p != "/api/login") or p.startswith("/media/"):
         if not AUTH_DISABLED and request.cookies.get("sid") != "ok":
             return jsonify(error="unauthorized"), 401
+    g.active = request.args.get("active") == "1"
     g.cmp = None
     if p.startswith("/api/") and any(k in request.args for k in ("compare", "cfrom", "cto")):
         g.cmp = parse_cmp(request.args, parse_win(request.args))
@@ -703,8 +737,57 @@ def logout():
 @app.get("/api/status")
 def status():
     extra = dict(auth="disabled", user="guest") if AUTH_DISABLED else dict(user=request.cookies.get("user"))
+    extra["stale"] = dict(is_stale=os.environ.get("MOCK_STALE") == "1", reason="the last Meta pull failed (token rejected)" if os.environ.get("MOCK_STALE") == "1" else None)
+    extra["last_ok_at"] = "2026-11-02T22:12:00+00:00"
     return jsonify(**extra, data_through=DATA_THROUGH.isoformat(), daily_start=DAILY_START.isoformat(), lifetime_cutoff=CUTOFF.isoformat(),
                    last_refresh=dict(job="run_daily", finished_at="2026-11-03T06:12:00+00:00", status="ok"), products=len(PRODUCTS))
+
+
+
+def unmatched_total_m(win):
+    """the 'Not on the tracker' row of the landing page: every product's unmatched Meta spend, as one metrics object"""
+    rows = []
+    for pr in PRODUCTS:
+        rows += unmatched_rows(pr["slug"], win)
+    tot = total_of(rows, win)
+    m = {k: v for k, v in tot.items() if k != "spend_7d"}
+    m["unique_ads"] = len(rows)
+    m["live_now"] = sum(1 for r in rows if r["live"])
+    stage = {"testing": [0.0, 0, 0.0], "scaling": [0.0, 0, 0.0], "unclassified": [0.0, 0, 0.0]}
+    for ad in cur_ads():
+        if ad["fam"] is None:
+            for st, v in ad_metrics(ad, win, None).items():
+                for j in range(3):
+                    stage[st][j] += v[j]
+    m["stage"] = {k: dict(spend=round(v[0], 2), purchases=int(round(v[1])), revenue=round(v[2], 2)) for k, v in stage.items()}
+    cls = stage["testing"][0] + stage["scaling"][0]
+    m["testing_pct"] = round(stage["testing"][0] / cls, 4) if cls > 0 else None
+    return m
+
+
+def _comb(a, b, ka, kb=None):
+    return (a.get(ka) or 0) + ((b.get(kb or ka)) or 0)
+
+
+def merge_m(a, b, win):
+    """a + b as one metrics object (ratios recomputed from the sums); also for the compare block"""
+    def one(x, y, win_days=None):
+        sp, pu, rv = _comb(x, y, "spend"), _comb(x, y, "purchases"), _comb(x, y, "revenue")
+        imp = (x.get("impressions") or 0) + (y.get("impressions") or 0)
+        clk = (x.get("link_clicks") or 0) + (y.get("link_clicks") or 0)
+        ctr_n = (x.get("ctr") or 0) * (x.get("impressions") or 0) + (y.get("ctr") or 0) * (y.get("impressions") or 0)
+        cpm_n = (x.get("cpm") or 0) * (x.get("impressions") or 0) + (y.get("cpm") or 0) * (y.get("impressions") or 0)
+        return dict(spend=round(sp, 2), purchases=int(pu), revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu), impressions=int(imp) if imp else None,
+                    link_clicks=int(clk), ctr=round(ctr_n / imp, 6) if imp else None, cpc=round(sp / clk, 4) if clk else None,
+                    cpm=round(cpm_n / imp, 4) if imp else None, conv_rate=round(pu / clk, 6) if clk else None)
+    out = one(a, b)
+    out["unique_ads"] = (a.get("unique_ads") or 0) + (b.get("unique_ads") or 0)
+    out["live_now"] = (a.get("live_now") or 0) + (b.get("live_now") or 0)
+    out["stage"] = {k: dict(spend=round(((a.get("stage") or {}).get(k) or {}).get("spend", 0) + ((b.get("stage") or {}).get(k) or {}).get("spend", 0), 2)) for k in ("testing", "scaling", "unclassified")}
+    t, sc = out["stage"]["testing"]["spend"], out["stage"]["scaling"]["spend"]
+    out["testing_pct"] = round(t / (t + sc), 4) if t + sc > 0 else None
+    outb = one(a["cmp"], b["cmp"]) if a.get("cmp") and b.get("cmp") else None
+    return decorate(out, outb, win if not win["launch"] else None)
 
 
 @app.get("/api/products")
@@ -722,6 +805,23 @@ def products():
         tot["cmp"] = dict(spend=sum(d["m"]["cmp"]["spend"] for d in out))
         tot["delta"] = {}
     shares([d["m"] for d in out], tot)
+    if request.args.get("envelope"):
+        all_ents = [e for pr in PRODUCTS for e in prod_items(pr["slug"])]
+        tm = make_m(items_for_m(all_ents), win)
+        um = unmatched_total_m(win)
+        ta = merge_m(tm, um, win)
+        # % of spend on the landing is relative to the Meta account total (tracker products + not on the tracker)
+        for obj in [d["m"] for d in out] + [tm, um]:
+            obj["spend_share"] = round(obj["spend"] / ta["spend"], 6) if ta["spend"] else None
+            if obj.get("cmp"):
+                obj["cmp"]["spend_share"] = round(obj["cmp"]["spend"] / ta["cmp"]["spend"], 6) if ta["cmp"]["spend"] else None
+                obj["delta"]["spend_share_pp"] = None if obj["spend_share"] is None or obj["cmp"]["spend_share"] is None else round((obj["spend_share"] - obj["cmp"]["spend_share"]) * 100, 4)
+        ta["spend_share"] = 1.0
+        if ta.get("cmp"):
+            ta["cmp"]["spend_share"] = 1.0
+            ta["delta"]["spend_share_pp"] = 0.0
+        return jsonify(window_info=win["info"], compare_info=cinfo(), rows=out, total=dict(m=tm, rows=sum(d["rows"] for d in out)),
+                       unmatched=dict(m=um), total_all=dict(m=ta))
     return jsonify(out)
 
 
@@ -763,6 +863,11 @@ def rollup_rows(slug, level, flt, win):
     return rows, ents
 
 
+def ad_counts(fam_key):
+    ads_f = [a for a in cur_ads() if a["fam"] == fam_key]
+    return len(ads_f), sum(1 for a in ads_f if a["daily"][N - 1][0] > 0 or a["daily"][N - 2][0] > 0)
+
+
 def family_rows(slug, flt, win):
     p = prod_meta(slug)
     ents = filt(prod_items(slug), flt)
@@ -779,7 +884,7 @@ def family_rows(slug, flt, win):
                          launch_date=f["launch"].isoformat() if f["launch"] else None, thumb_asset_id=f["thumb"],
                          confidence=min((r["conf"] for _, r, _ in es), key={"low": 0, "medium": 1, "high": 2}.get) if p["tag_set"] == "linemap" else None,
                          method=es[0][1]["method"] if p["tag_set"] == "linemap" else None, counted_here=counted, m=m,
-                         _fams=[key] if counted else []))
+                         ads_count=ad_counts(key)[0], ads_live=ad_counts(key)[1], _fams=[key] if counted else []))
     rows.sort(key=lambda r: -r["m"]["spend"])
     return rows, ents
 
@@ -870,7 +975,8 @@ def tree(slug):
                 node = dict(key=key_of(3, dict(cluster=grp[0], icp=grp[1], pain=grp[2]), fam=row["family_key"]), parent_key=parent_key, level=3, label=row["display"],
                             cluster=grp[0], icp=grp[1], pain=grp[2], family_key=row["family_key"], primary_id=row["primary_id"], color=None, line_code=None, trigger=None,
                             confidence=row["confidence"], ad_type=row["ad_type"], status=row["status"], thumb_asset_id=row["thumb_asset_id"], has_children=True,
-                            child_count=sum(1 for a in ADS if a["fam"] == row["family_key"]), counted_here=row["counted_here"], m=row["m"])
+                            launch_date=row["launch_date"], ads_count=row["ads_count"], ads_live=row["ads_live"],
+                            child_count=sum(1 for a in cur_ads() if a["fam"] == row["family_key"]), counted_here=row["counted_here"], m=row["m"])
             if spark_spec:
                 node["spark"] = spark_for(fams_ads(row["_fams"]), win, spark_spec)
             out.append(node)
@@ -883,6 +989,30 @@ def tree(slug):
     total = dict(m=make_m(items_for_m(ents), win))
     shares([n["m"] for n in out], total["m"])
     return jsonify(window_info=win["info"], compare_info=cinfo(), rows=out, total=total)
+
+
+@app.get("/api/products/<slug>/coverage")
+def coverage(slug):
+    """Synthetic coverage for the UI tests: the real per-line numbers of the mock, with L02 forced to 'no ads', L03 to '$0 spend' and L04 to 'added after tagging'
+    so every section of the Not tested panel has a row."""
+    win = parse_win(request.args)
+    p = prod_meta(slug)
+    if p["tag_set"] != "linemap":
+        return jsonify(available=False, reason="Tracker tags, no line list.", summary=None, rows=[], keys={}, window_info=win["info"], compare_info=None)
+    force = {"L02": "no_ads", "L03": "no_spend", "L04": "added"}
+    keys, rows, cnt = {}, [], {"total": 0, "no_ads": 0, "no_spend": 0, "added_after_tagging": 0, "tested": 0}
+    for code, cluster, icp, pain, trig in VB_LINES:
+        st = {"no_ads": "no_ads", "no_spend": "no_spend", "added": "no_ads"}.get(force.get(code), "tested")
+        added = force.get(code) == "added"
+        keys["|".join([cluster, icp, pain])] = {"state": st, "added_after_tagging": added}
+        cnt["total"] += 1
+        cnt["added_after_tagging" if added else st] += 1
+        if st != "tested":
+            rows.append(dict(level=2, key="|".join([cluster, icp, pain]), cluster=cluster, icp=icp, pain=pain, label=pain, line_code=code, trigger=trig, color=None,
+                             state=st, added_after_tagging=added, unique_ads=0 if st == "no_ads" else 2, spend=0.0))
+    summ = dict(cnt, not_tested=cnt["no_ads"] + cnt["no_spend"] - 0)
+    icps = dict(total=1, tested=1, no_ads=0, no_spend=0, added_after_tagging=0, not_tested=0)
+    return jsonify(available=True, summary=dict(pain_points=summ, icps=icps), rows=rows, keys=keys, window_info=win["info"], compare_info=None)
 
 
 @app.get("/api/products/<slug>/unmatched")
@@ -922,7 +1052,7 @@ def _ad_row(ad, win, launch):
                 stage=cmp["stage"], adset_name=ad["adset"], account=cmp["account"], status=ad["status"], created_date=ad["created"],
                 tag=dict(cluster=first["cluster"], icp=first["icp"], pain=first["pain"]) if first else dict(cluster=None, icp=None, pain=None),
                 spend=round(sp, 2), purchases=int(round(pu)), revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu), spend_7d=round(sp7, 2),
-                live=ad["daily"][N - 1][0] > 0 or ad["daily"][N - 2][0] > 0, days_active=days, **tf)
+                live=ad["daily"][N - 1][0] > 0 or ad["daily"][N - 2][0] > 0, days_active=days, links=ad_links(ad), **tf)
 
 
 def sum_cmp(tot, rows, win):
@@ -961,7 +1091,7 @@ def ads_for(slug, args, win):
         fam_filter = {f["key"] for f, r, ch in ents if ch}
     rows = []
     remainders = []
-    for ad in ADS:
+    for ad in cur_ads():
         if ad["product"] != slug:
             continue
         if fam_filter is not None and ad["fam"] not in fam_filter:
@@ -1006,7 +1136,7 @@ def ads(slug):
     rows = ads_for(slug, request.args, win)
     spec = spark_request()
     if spec:
-        by_id = {a["ad_id"]: a for a in ADS}
+        by_id = {a["ad_id"]: a for a in cur_ads()}
         for r in rows:
             r["spark"] = spark_for([by_id[r["ad_id"]]], win, spec) if r["ad_id"] in by_id else None
     tot = total_of(rows, win)
@@ -1019,7 +1149,7 @@ def campaigns(slug):
     win = parse_win(request.args)
     prod_meta(slug)
     out = {}
-    for ad in ADS:
+    for ad in cur_ads():
         if ad["product"] != slug:
             continue
         fam = FAM_BY_KEY.get(ad["fam"]) if ad["fam"] else None
@@ -1080,7 +1210,7 @@ def stage_daily(slug):
     out = []
     for i in range(lo, hi + 1):
         d = dict(day=DAYS[i].isoformat(), testing=0.0, scaling=0.0, unclassified=0.0)
-        for ad in ADS:
+        for ad in cur_ads():
             if ad["product"] == slug:
                 d["unclassified" if i < UNC_DAYS else ad_stage(ad)] += ad["daily"][i][0]
         d = {k: (round(v, 2) if k != "day" else v) for k, v in d.items()}
@@ -1138,7 +1268,7 @@ def ad_detail(rid):
         cmp_fam = dict(compare=fb, delta=delta_block(fa, fb, win, g.cmp))
     series = [0, 0, 0]
     daily = []
-    fam_ads = [a for a in ADS if a["fam"] == fam["key"]]
+    fam_ads = [a for a in cur_ads() if a["fam"] == fam["key"]]
     for i in range(N):
         sp = sum(a["daily"][i][0] for a in fam_ads); pu = sum(a["daily"][i][1] for a in fam_ads); rv = sum(a["daily"][i][2] for a in fam_ads)
         known = [a["tr"][i][0] for a in fam_ads if a["tr"][i][0] is not None]
@@ -1156,7 +1286,8 @@ def ad_detail(rid):
         e["spend"] += r["spend"]; e["purchases"] += r["purchases"]; e["revenue"] += r["revenue"]
     asset_ids = [fam["thumb"]] if fam["thumb"] else []
     frames = [f"f{rid}{k}" for k in range(4)] if is_video else []
-    return jsonify(id=rid, product=dict(slug=p["slug"], name=p["name"]), concept_id=row["concept_id"], ad_family=fam["display"], family_key=fam["key"], sheet_row=row["sheet_row"],
+    links = ad_links(fam_ads[0]) if fam_ads else dict(story_url=None, ads_manager_url=None, ad_id=None, account=None)
+    return jsonify(id=rid, links=links, product=dict(slug=p["slug"], name=p["name"]), concept_id=row["concept_id"], ad_family=fam["display"], family_key=fam["key"], sheet_row=row["sheet_row"],
                    status=fam["status"], ad_type=fam["ad_type"], style="UGC" if is_video else "Static", vendor="Madre", launch_date=fam["launch"].isoformat() if fam["launch"] else None,
                    concept_name="Doctor says no", description="Founder explains the study.", hypothesis="Skeptics respond to cited studies.", meta_ad_name=fam["display"],
                    story_url="https://example.com/story", asset_url="javascript:alert(1)" if xss else "https://drive.example.com/asset",
@@ -1243,7 +1374,7 @@ def align_points(pts, n):
 
 
 def scope_ads(slug, scope):
-    ads_in = [a for a in ADS if a["product"] == slug]
+    ads_in = [a for a in cur_ads() if a["product"] == slug]
     flt = {k: scope[k] for k in ("cluster", "icp", "pain") if scope.get(k)}
     if flt:
         fams = {f["key"] for f, r, ch in filt(prod_items(slug), flt) if ch}
@@ -1284,7 +1415,7 @@ def spark_for(ads_list, win, spec):
 
 def fams_ads(fam_keys):
     keys = set(fam_keys)
-    return [a for a in ADS if a["fam"] in keys]
+    return [a for a in cur_ads() if a["fam"] in keys]
 
 
 def attach_sparks(rows, win, ads_of):
@@ -1354,6 +1485,49 @@ def trend(slug):
 @app.get("/api/_test/trend_calls")
 def trend_calls():
     return jsonify(TREND_CALLS)
+
+
+
+def ad_links(ad):
+    n = int("".join(c for c in ad["ad_id"] if c.isdigit())[-9:] or 0)
+    fam = FAM_BY_KEY.get(ad["fam"]) if ad.get("fam") else None
+    story = "javascript:alert(1)" if (fam and fam["display"].startswith("XSS")) else f"https://www.facebook.com/lonvera/posts/{n}"
+    return dict(story_url=story, ads_manager_url=f"https://adsmanager.facebook.com/adsmanager/manage/ads?act=12345678&selected_ad_ids={ad['ad_id']}",
+                ad_id=ad["ad_id"], account=CAMPAIGNS[ad["campaign_id"]]["account"])
+
+
+PREVIEW_MODE = os.environ.get("MOCK_PREVIEW", "on")  # on | off
+
+
+def preview_json(name):
+    fmt = request.args.get("format", "mobile_feed")
+    if PREVIEW_MODE == "off":
+        return jsonify(enabled=False, src=None, format=fmt)
+    from urllib.parse import quote
+    return jsonify(enabled=True, src=f"/mock/preview?name={quote(name)}&format={fmt}", format=fmt)
+
+
+@app.get("/api/ads/<int:rid>/preview")
+def ad_preview(rid):
+    row = ROW_BY_ID.get(rid)
+    if not row:
+        return jsonify(error="not found"), 404
+    return preview_json(FAM_BY_KEY[row["fam"]]["display"])
+
+
+@app.get("/api/meta-ads/<ad_id>/preview")
+def meta_ad_preview(ad_id):
+    ad = next((a for a in cur_ads() if a["ad_id"] == ad_id), None)
+    if not ad:
+        return jsonify(error="not found"), 404
+    return preview_json(ad["name"])
+
+
+@app.get("/mock/preview")
+def mock_preview_page():
+    from html import escape
+    name, fmt = request.args.get("name", ""), request.args.get("format", "")
+    return Response(f"<!doctype html><meta charset=utf-8><body style='font:14px sans-serif;margin:0;padding:16px;background:#fafafa'><div id='mock-ad' style='border:1px solid #ccc;border-radius:8px;padding:12px;background:#fff'><b>{escape(name)}</b><div>Mock Meta preview ({escape(fmt)})</div></div></body>", mimetype="text/html")
 
 
 @app.get("/media/<aid>")

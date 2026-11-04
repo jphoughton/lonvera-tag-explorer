@@ -31,7 +31,7 @@ def recreate_db(admin_url: str, name: str) -> None:
 
 
 def apply_migrations(conn) -> None:
-    for path in sorted(glob.glob(os.path.join(ROOT, "migrations", "*.sql"))):
+    for path in sorted(glob.glob(os.path.join(ROOT, "migrations", "*.sql")) + [os.path.join(os.path.dirname(__file__), "schema_shim.sql")]):
         with open(path) as f:
             conn.execute(f.read())
     conn.commit()
@@ -84,6 +84,16 @@ def seed(conn) -> F.Fx:
             conn.execute(
                 """INSERT INTO ad_tags (tracker_row_id, tag_set, version, is_current, cluster, icp, pain_point, tagger)
                    VALUES (%s,'tracker','tracker-live',true,%s,%s,%s,'tracker')""", (r["id"], tag[1], tag[2], tag[3]))
+    for r in F.DELETED_TRACKER:               # removed from the tracker: present in the table, deleted_at set (see fixture_data.DELETED_TRACKER)
+        tag = r["tag"]
+        conn.execute(
+            """INSERT INTO tracker_rows (id, product_id, row_key, concept_id, ad_family, family_key, sheet_row, status, ad_type, launch_date, raw, deleted_at)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,'8 - Launched','IMG',%s,%s, now())""",
+            (r["id"], pids[r["product"]], r["concept"] + "#1", r["concept"], r["family"], F.fkey(r["family"], r["concept"]), r["sheet_row"],
+             F.D(2026, 8, 1), json.dumps({})))
+        if tag:
+            conn.execute("""INSERT INTO ad_tags (tracker_row_id, tag_set, version, is_current, cluster, icp, pain_point, tagger)
+                            VALUES (%s,'tracker','tracker-live',true,%s,%s,%s,'tracker')""", (r["id"], tag[1], tag[2], tag[3]))
     conn.execute("SELECT setval(pg_get_serial_sequence('tracker_rows','id'), (SELECT max(id) FROM tracker_rows))")
 
     # meta side
@@ -98,8 +108,8 @@ def seed(conn) -> F.Fx:
         days = sorted(r["day"] for r in fx.ad_daily if r["ad_id"] == ad_id)
         conn.execute(
             """INSERT INTO meta_ads (ad_id, account, ad_name, meta_family_key, campaign_id, adset_id, adset_name, created_date, status, first_day, last_day)
-               VALUES (%s,'Main',%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (ad_id, f"{disp} ({ad_id})", F.meta_family_key(disp), camp, "S" + ad_id, adset, created, status,
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (ad_id, F.AD_ACCOUNT.get(ad_id, "Lonvera Main"), f"{disp} ({ad_id})", F.meta_family_key(disp), camp, "S" + ad_id, adset, created, status,
              days[0] if days else None, days[-1] if days else None))
     for ad_id, lt in fx.ad_lifetime.items():          # API lifetime per Meta ad (CONTRACT v1.5)
         conn.execute(
@@ -123,10 +133,28 @@ def seed(conn) -> F.Fx:
             list(fx.ad_metrics.values()))
         cur.executemany(
             """INSERT INTO unmatched_meta (meta_family_key, meta_family, product_id, spend_7d, purchases_7d, revenue_7d, spend_30d, purchases_30d,
-                   revenue_30d, spend_all, purchases_all, revenue_all, live)
+                   revenue_30d, spend_all, purchases_all, revenue_all, live, spend_launch, purchases_launch, revenue_launch, impressions_launch, clicks_launch)
                VALUES (%(meta_family_key)s,%(meta_family)s,%(product_id)s,%(spend_7d)s,%(purchases_7d)s,%(revenue_7d)s,%(spend_30d)s,%(purchases_30d)s,
-                   %(revenue_30d)s,%(spend_all)s,%(purchases_all)s,%(revenue_all)s,%(live)s)""",
+                   %(revenue_30d)s,%(spend_all)s,%(purchases_all)s,%(revenue_all)s,%(live)s,%(spend_launch)s,%(purchases_launch)s,%(revenue_launch)s,
+                   %(impressions_launch)s,%(clicks_launch)s)""",
             list(fx.unmatched.values()))
+
+    # 'active ads only' data (v1.9), built by the active-view oracle
+    fa = fx.active_view
+    with conn.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO family_daily_active (family_key, day, stage, spend, purchases, revenue, link_clicks, impressions, clicks_tr, spend_tr) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            [(f, d, st, *v) for (f, d, st), v in fa.family_daily.items()])
+        for r in fx.tracker:
+            am = fa.ad_metrics.get(r["id"])
+            n_act = fa.n_active.get(r["family_key"], 0)
+            if am is None or not am["is_first_row"]:          # carried by the first row only; ads_active_count sits on every row of the creative
+                cur.execute("UPDATE ad_metrics SET ads_active_count = %s WHERE tracker_row_id = %s", (n_act, r["id"]))
+                continue
+            cur.execute(
+                """UPDATE ad_metrics SET spend_launch_active=%s, purchases_launch_active=%s, revenue_launch_active=%s, impressions_launch_active=%s,
+                       clicks_launch_active=%s, ads_active_count=%s, live_active=%s WHERE tracker_row_id=%s""",
+                (am["spend_launch"], am["purchases_launch"], am["revenue_launch"], am["impressions_launch"], am["clicks_launch"], n_act, am["live"], r["id"]))
 
     # content + assets (family vb-fam-a gets a thumb, two frames and Meta copy)
     conn.execute("""INSERT INTO family_content (family_key, meta_body, meta_title, meta_desc, transcript, transcript_seconds, story_url, is_video, ad_id)

@@ -1,10 +1,14 @@
 """Load a tagging cycle's results (e.g. tagmap_rows_v2.json, tagmap_rows.json) as ad_tags(tag_set, version) for one product.
 Rows are matched to tracker_rows by (concept_id, family) + ordinal among rows sharing that pair (ordered by the file's `row`), never by sheet row.
+The tracker keeps growing after a cycle, so the match is NOT strict: tracker rows without a tag stay '(untagged)' until a later cycle tags them, tags whose key
+is no longer in the tracker are skipped (listed as a warning); the load fails only when the matched coverage of the product's real tracker rows is below
+--min-coverage (default 0.90) or when the matches are inconsistent (the file's ad type disagrees with the tracker on more than 2% of matched rows).
 `family` = the tracker's Ad Family, or the Concept ID when the family is blank (the Beef Liver export writes the concept id into blank families,
 the tracker keeps them blank; both sides are normalised the same way).
 Accepts both cycle file shapes: Vita Bull (`seen`, `method`, text_* copy-only fields) and Beef Liver (`saw` -> seen, `media` -> method,
 `heard` / `gap` / `media_note` -> ad_tags.extra). A new version marks the previous current tags not-current; re-running the same version
-replaces it. After a linemap load that covers every tracker row of the product, products.tag_set is flipped to the tag set (idempotent).
+replaces it (tracker rows the new file does not cover keep their current tag). After a linemap load that leaves >= min-coverage of the product's tracker
+rows tagged, products.tag_set is flipped to the tag set (idempotent) and the coverage % is reported.
 Also stores the blind re-tag agreement numbers behind the ad-detail reliability note in app_meta (`reliability:<slug>`).
 Usage: python -m etl.load_tags --file F --tag-set linemap --version V --product vita-bull
        python -m etl.load_tags --file F --tag-set linemap --version linemap-v2-2026-11-04 --product beef-liver --qa-cycle-dir C
@@ -53,11 +57,23 @@ def _fam(cid, af) -> tuple[str, str]:
     return cid, (str(af).strip() if af is not None and str(af).strip() else cid)
 
 
+def _live(conn) -> str:
+    """' AND deleted_at IS NULL' once migration 007 (soft delete) is applied, else ''."""
+    has = conn.execute("SELECT 1 FROM information_schema.columns WHERE table_name='tracker_rows' AND column_name='deleted_at'").fetchone()
+    return " AND deleted_at IS NULL" if has else ""
+
+
+# a tracker row with a blank Concept ID is a placeholder, not an ad: the tagging cycles skip it, so it is neither matched nor required
+_REAL = " AND btrim(concept_id) <> ''"
+
+
 def match_rows(conn, product_id: int, tags: list[dict]):
-    """-> (matches [(tag, tracker_row_id)], problems dict). Multisets of (concept_id, family) must be equal."""
+    """-> (matches [(tag, tracker_row_id)], problems dict). Placeholder rows (blank Concept ID) and soft-deleted rows are not part of the tracker side.
+    problems: tags_without_tracker_row (keys of tags with no tracker row left), tracker_rows_without_tag (keys of tracker rows nobody tagged: new since the
+    cycle), count_mismatch (key, tags, rows) for groups whose sizes differ. None of them is an error by itself; `load` decides."""
     by_key: dict[tuple, list] = collections.defaultdict(list)
-    for tid, cid, af in conn.execute("SELECT id, concept_id, ad_family FROM tracker_rows WHERE product_id=%s ORDER BY sheet_row NULLS LAST, id",
-                                     (product_id,)).fetchall():
+    for tid, cid, af in conn.execute("SELECT id, concept_id, ad_family FROM tracker_rows WHERE product_id=%s" + _live(conn) + _REAL +
+                                     " ORDER BY sheet_row NULLS LAST, id", (product_id,)).fetchall():
         by_key[_fam(cid, af)].append(tid)
     tag_by_key: dict[tuple, list] = collections.defaultdict(list)
     for t in sorted(tags, key=lambda t: t["row"]):
@@ -89,20 +105,32 @@ def _tag_row(t: dict, rid: int, tag_set: str, version: str, line_id) -> tuple:
             t.get("method"), t.get("seen"), t.get("why"), t.get("runner_up"), copy_only, version.split("-")[0], db.jsonb(extra))
 
 
-def load(conn, product_slug: str, tag_set: str, version: str, tags: list[dict], allow_mismatch: bool = False, flip: bool = True) -> dict:
+def _fmt_keys(keys, n=20) -> list[str]:
+    return [" | ".join(k) if isinstance(k, tuple) else str(k) for k in keys[:n]]
+
+
+def load(conn, product_slug: str, tag_set: str, version: str, tags: list[dict], allow_mismatch: bool = False, flip: bool = True,
+         min_coverage: float = 0.90) -> dict:
     pid = conn.execute("SELECT id FROM products WHERE slug=%s", (product_slug,)).fetchone()[0]
     tags = [normalize(t) for t in tags]
-    lines = {(c, i, p): (lid, code) for lid, c, i, p, code in conn.execute(
-        "SELECT id, cluster, icp, pain_point, line_code FROM taxonomy_lines WHERE product_id=%s", (pid,)).fetchall()}
+    tax = conn.execute("SELECT id, cluster, icp, pain_point, emotional_trigger, line_code FROM taxonomy_lines WHERE product_id=%s", (pid,)).fetchall()
+    lines = {(c, i, p, t or ""): (lid, code) for lid, c, i, p, t, code in tax}                  # a line = cluster x ICP x pain x trigger (migration 006)
+    by3: dict[tuple, list] = collections.defaultdict(list)
+    for lid, c, i, p, t, code in tax:
+        by3[(c, i, p)].append((lid, code))
     matches, problems = match_rows(conn, pid, tags)
-    bad = sum(len(v) for v in problems.values())
-    if bad and not allow_mismatch:
-        raise RuntimeError(f"tag file does not match the tracker: { {k: v[:5] for k, v in problems.items() if v} }")
+    n_real = conn.execute("SELECT count(*) FROM tracker_rows WHERE product_id=%s" + _live(conn) + _REAL, (pid,)).fetchone()[0]
+    coverage = len(matches) / n_real if n_real else 0.0
+    if coverage < min_coverage and not allow_mismatch:
+        raise RuntimeError(f"tag file does not match the tracker: {len(matches)} of {n_real} tracker rows matched ({coverage:.1%}) < min coverage {min_coverage:.0%}; "
+                           f"{ {k: _fmt_keys(v, 5) if k != 'count_mismatch' else v[:5] for k, v in problems.items() if v} }")
     ids = [m[1] for m in matches]
     rows, missing_lines, code_mismatch = [], collections.Counter(), collections.Counter()
     for t, rid in matches:
-        lk = (t["cluster"], t["icp"], t["pain"])
+        lk = (t["cluster"], t["icp"], t["pain"], t.get("trigger") or "")
         ln = lines.get(lk)
+        if ln is None and len(by3.get(lk[:3], [])) == 1:                                       # trigger edited since the cycle: the only line with this key
+            ln = by3[lk[:3]][0]
         if ln is None:
             missing_lines[lk] += 1
         elif t.get("line") and t["line"] != ln[1]:
@@ -122,29 +150,41 @@ def load(conn, product_slug: str, tag_set: str, version: str, tags: list[dict], 
             info["type_mismatch"] += bool(t.get("type")) and (ty or "") != t["type"]
             info["status_mismatch"] += bool(t.get("status")) and (st or "") != t["status"]
             info["sheet_row_differs"] += sr != t["row"]
+    if info["type_mismatch"] > 0.02 * max(1, len(matches)) and not allow_mismatch:       # matched pairs that disagree on VID/IMG: the file is not this tracker's
+        raise RuntimeError(f"tag file is inconsistent with the tracker: ad type differs on {info['type_mismatch']} of {len(matches)} matched rows")
+    placeholders = conn.execute("SELECT count(*) FROM tracker_rows WHERE product_id=%s" + _live(conn) + " AND btrim(concept_id) = ''", (pid,)).fetchone()[0]
     with conn.transaction():
-        prod_rows = [r[0] for r in conn.execute("SELECT id FROM tracker_rows WHERE product_id=%s", (pid,)).fetchall()]
+        prod_rows = [r[0] for r in conn.execute("SELECT id FROM tracker_rows WHERE product_id=%s" + _live(conn) + _REAL, (pid,)).fetchall()]
+        all_prod_rows = [r[0] for r in conn.execute("SELECT id FROM tracker_rows WHERE product_id=%s", (pid,)).fetchall()]
+        # a row that changed product in the tracker can still carry the old product's line-map tag: retire any current tag whose line belongs to another product
+        foreign = conn.execute("""UPDATE ad_tags SET is_current=false WHERE tag_set=%s AND is_current AND tracker_row_id = ANY(%s) AND line_id IS NOT NULL
+                                  AND line_id NOT IN (SELECT id FROM taxonomy_lines WHERE product_id=%s)""", (tag_set, all_prod_rows, pid)).rowcount
+        # only the rows this file tags move to the new version; rows it does not cover keep whatever tag they have
         prev = conn.execute("UPDATE ad_tags SET is_current=false WHERE tag_set=%s AND is_current AND tracker_row_id = ANY(%s) AND version <> %s",
-                            (tag_set, prod_rows, version)).rowcount
-        conn.execute("DELETE FROM ad_tags WHERE tag_set=%s AND version=%s AND tracker_row_id = ANY(%s)", (tag_set, version, prod_rows))
+                            (tag_set, ids, version)).rowcount
+        conn.execute("DELETE FROM ad_tags WHERE tag_set=%s AND version=%s AND tracker_row_id = ANY(%s)", (tag_set, version, all_prod_rows))
         db.execmany(conn, """INSERT INTO ad_tags (tracker_row_id, tag_set, version, is_current, line_id, cluster, icp, pain_point, emotional_trigger,
                              confidence, method, seen, why, runner_up, copy_only_line, tagger, extra)
                              VALUES (%s,%s,%s,true,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", rows)
+        covered = conn.execute("SELECT count(*) FROM ad_tags WHERE tag_set=%s AND is_current AND tracker_row_id = ANY(%s)", (tag_set, prod_rows)).fetchone()[0]
+        tagged_pct = covered / len(prod_rows) if prod_rows else 0.0
         flipped = None
         if flip and tag_set == "linemap":
-            covered = conn.execute("SELECT count(*) FROM ad_tags WHERE tag_set=%s AND is_current AND tracker_row_id = ANY(%s)", (tag_set, prod_rows)).fetchone()[0]
-            if covered == len(prod_rows):
+            if tagged_pct >= min_coverage:
                 flipped = conn.execute("UPDATE products SET tag_set=%s WHERE id=%s AND tag_set <> %s", (tag_set, pid, tag_set)).rowcount
             else:
-                flipped = f"skipped: {covered} of {len(prod_rows)} tracker rows tagged"
+                flipped = f"skipped: {covered} of {len(prod_rows)} tracker rows tagged ({tagged_pct:.1%} < {min_coverage:.0%})"
     used = collections.Counter(t.get("line") for t, _ in matches)
     return {"product": product_slug, "tag_set": tag_set, "version": version, "tags_in_file": len(tags), "matched": len(matches),
-            "tracker_rows": len(prod_rows), "unique_families": len({r[0] for r in conn.execute(
+            "tracker_rows": len(prod_rows), "tagged_rows": covered, "coverage_pct": round(100 * coverage, 1), "tagged_pct": round(100 * tagged_pct, 1),
+            "tracker_rows_untagged": len(prod_rows) - covered, "untagged_keys": _fmt_keys(problems["tracker_rows_without_tag"]),
+            "tags_skipped_not_in_tracker": len(problems["tags_without_tracker_row"]), "skipped_tag_keys": _fmt_keys(problems["tags_without_tracker_row"]),
+            "unique_families": len({r[0] for r in conn.execute(
                 "SELECT family_key FROM tracker_rows WHERE id = ANY(%s)", (ids,)).fetchall()}),
-            "previous_marked_not_current": prev, "problems": {k: len(v) for k, v in problems.items()}, "line_code_mismatch": sum(code_mismatch.values()),
+            "previous_marked_not_current": prev, "foreign_line_tags_retired": foreign, "ignored_blank_concept_rows": placeholders, "problems": {k: len(v) for k, v in problems.items()}, "line_code_mismatch": sum(code_mismatch.values()),
             "confidence": dict(collections.Counter(t.get("confidence") for t, _ in matches)),
             "method": dict(collections.Counter(t.get("method") for t, _ in matches)),
-            "lines_used": len([c for c in used if c]), "lines_in_taxonomy": len(lines),
+            "lines_used": len([c for c in used if c]), "lines_in_taxonomy": len(tax),
             "unused_line_codes": sorted(v[1] for v in lines.values() if v[1] not in used),
             "tracker_vs_file": info, "product_tag_set_flipped": flipped}
 
@@ -186,7 +226,8 @@ def main():
     ap.add_argument("--tag-set", default="linemap")
     ap.add_argument("--version")
     ap.add_argument("--product", required=True)
-    ap.add_argument("--allow-mismatch", action="store_true")
+    ap.add_argument("--allow-mismatch", action="store_true", help="do not fail on low coverage / inconsistent matches / line-code disagreements")
+    ap.add_argument("--min-coverage", type=float, default=0.90, help="fail below this share of the product's tracker rows matched; flip tag_set at or above it (default 0.90)")
     ap.add_argument("--no-flip", action="store_true", help="do not set products.tag_set to this tag set after a full-coverage load")
     ap.add_argument("--qa-cycle-dir", help="compute blind re-tag agreement from this unit-based cycle dir and store app_meta reliability:<product>")
     ap.add_argument("--vb-defaults", action="store_true", help="store the Vita Bull blind re-tag numbers as reliability:<product>")
@@ -197,8 +238,13 @@ def main():
     with db.JobRun("load_tags") as run, db.connect() as conn:
         stats: dict = {}
         if not a.reliability_only:
-            stats = load(conn, a.product, a.tag_set, a.version, load_file(a.file), a.allow_mismatch, flip=not a.no_flip)
+            stats = load(conn, a.product, a.tag_set, a.version, load_file(a.file), a.allow_mismatch, flip=not a.no_flip, min_coverage=a.min_coverage)
             run.rows_written = stats["matched"]
+            db.log(f"  {a.product}: matched {stats['matched']} of {stats['tracker_rows']} tracker rows ({stats['coverage_pct']}%), "
+                   f"{stats['tracker_rows_untagged']} untagged, {stats['tags_skipped_not_in_tracker']} tag(s) skipped (key not in tracker), "
+                   f"tagged {stats['tagged_pct']}% after load, tag_set flip: {stats['product_tag_set_flipped']}")
+            if stats["skipped_tag_keys"]:
+                db.log(f"  WARN tags skipped, not in the tracker: {stats['skipped_tag_keys']}")
         rel = None
         if a.qa_cycle_dir:
             rel = compute_reliability(Path(a.qa_cycle_dir))

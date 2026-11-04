@@ -102,10 +102,10 @@ def test_http_window_info_shape(client):
     assert wi["kind"] == "custom" and wi["clamped"] is True and wi["from"] == "2026-05-06" and wi["note"]
     d = get_ok(client, "/api/products/vita-bull/ads?window=mtd&stage=testing")
     assert d["window_info"]["kind"] == "mtd" and d["window_info"]["stage"] == "testing"
-    for ep in ("campaigns", "unmatched"):          # launch is treated as every day held
-        d = get_ok(client, f"/api/products/vita-bull/{ep}")
-        assert d["window_info"]["kind"] == "launch" and "every day held" in d["window_info"]["note"]
-        assert d["window_info"]["from"] is None
+    d = get_ok(client, "/api/products/vita-bull/campaigns")          # campaigns has no since launch: every day held
+    assert d["window_info"]["kind"] == "launch" and "every day held" in d["window_info"]["note"] and d["window_info"]["from"] is None
+    d = get_ok(client, "/api/products/vita-bull/unmatched")          # unmatched since launch is Meta's lifetime
+    assert d["window_info"]["kind"] == "launch" and "lifetime" in d["window_info"]["note"] and d["window_info"]["from"] is None
 
 
 def test_status(client):

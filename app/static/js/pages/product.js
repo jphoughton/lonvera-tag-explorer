@@ -1,9 +1,9 @@
-import { h, enc, fmt, stageSet, href, apiWindow, sparkParams, globalParams, navigate, confBadge, empty, thumb, stageBadge, liveDot, pick, setParams, getRowMode, setRowMode, setViewStateProvider, cmpView, onCmpRefresh } from '../util.js';
-import { api } from '../api.js';
+import { h, enc, fmt, stageSet, href, apiWindow, sparkParams, globalParams, navigate, confBadge, empty, thumb, stageBadge, liveDot, pick, setParams, getRowMode, setRowMode, setViewStateProvider, cmpView, onCmpRefresh, metricLabel } from '../util.js';
+import { api, AuthError } from '../api.js';
 import { createTable } from '../table.js';
 import { metricColumns, fixTotal, FLAT_KEYS, trendColumn, pinColumn } from '../columns.js';
 import { setRangeInfo } from '../controls.js';
-import { breadcrumbs, columnsChips, filterBar, saveFilterToUrl, makeFilter, adsTable, familyAdsNode, unmatchedPanel, saveSortToUrl, sortFromUrl, campaignHrefFor } from '../components.js';
+import { breadcrumbs, legendLine, creativeMeta, columnsChips, filterBar, saveFilterToUrl, makeFilter, adsTable, familyAdsNode, unmatchedPanel, saveSortToUrl, sortFromUrl, campaignHrefFor, coverageBar, untestedPanel } from '../components.js';
 import { stageChart } from '../charts.js';
 import { createTree } from '../tree.js';
 import { createTrendPanel, createPins } from '../trend.js';
@@ -73,38 +73,41 @@ async function tagsView(ctx, slug) {
   if (p.pain) filters.pain = p.pain;
   const wp = apiWindow(p);
   const base = `/api/products/${enc(slug)}/`;
-  const [data, product, um] = await Promise.all([
+  const [data, product, um, cov] = await Promise.all([
     api(base + 'tree', { root: rootName, ...filters, depth: 0, ...wp, ...sparkParams(p) }, { signal }),
     getProduct(slug, signal),
     api(base + 'unmatched', wp, { signal }).catch(() => null),
+    api(base + 'coverage', wp, { signal }).catch(() => null),
   ]);
   if (!ctx.alive()) return;
   report(p, data, hasUnclassified(data.total && data.total.m));
   document.title = `${product.name} · Tag Explorer`;
 
-  const first = ['Market cluster', 'ICP', 'Pain point', 'Ad family'][rootLevel];
-  const title = rootLevel === 0 ? 'Market clusters' : rootLevel === 1 ? `ICPs in ${p.cluster}` : rootLevel === 2 ? `Pain points in ${p.icp}` : `Ad families in ${p.pain}`;
+  const first = ['Market cluster', 'ICP', 'Pain point', 'Creative'][rootLevel];
+  const title = rootLevel === 0 ? 'Market clusters' : rootLevel === 1 ? `ICPs in ${p.cluster}` : rootLevel === 2 ? `Pain points in ${p.icp}` : `Creatives in ${p.pain}`;
+  const untestedOn = p.untested === '1' && rootLevel === 0 && !!(cov && cov.available);     // "Not tested only": the flat list of ICPs / pain points with no ads or no spend
   const pins = createPins(ctx.restore && ctx.restore.pins);
   // the panel first: it locks / unlocks the Chart checkboxes before the table renders them
   const panel = createTrendPanel({ slug, p, scope: filters, scopeLabel: [p.pain, p.icp, p.cluster].find(Boolean) || product.name, pins, mode: 'scope', signal });
-  const tree = createTree({ slug, p, signal, rootLevel, filters, first, restore: ctx.restore, pins });
+  const tree = createTree({ slug, p, signal, rootLevel, filters, first, restore: ctx.restore, pins, coverage: cov && cov.available ? cov.keys : null });
   await tree.init(data.rows, data.total);
   if (!ctx.alive()) return;
 
   ctx.mount(h('div', { class: 'page', 'data-level': ['cluster', 'icp', 'pain', 'families'][rootLevel] },
     pageHead(product, slug, p, 'tags'),
     h('div', { class: 'crumbrow' }, breadcrumbs(tagCrumbs(slug, p, product)), h('span', { class: 'spacer' }),
-      h('a', { class: 'btnlink', id: 'toggle-all', href: href(path, { ...G, all: 1 }) }, 'All ad families')),
-    panel.el,
-    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, title)),
-    tree.el,
+      h('a', { class: 'btnlink', id: 'toggle-all', href: href(path, { ...G, all: 1 }) }, 'All creatives')),
+    rootLevel === 0 ? coverageBar(cov, { path, G, on: untestedOn, windowLabel: data.window_info && data.window_info.label, sourceLabel: data.window_info && data.window_info.source && data.window_info.source.label }) : null,
+    untestedOn ? null : panel.el,
+    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, untestedOn ? 'Not tested' : title)),
+    untestedOn ? null : legendLine(),
+    untestedOn ? untestedPanel(cov, { path, G, windowLabel: data.window_info && data.window_info.label }) : tree.el,
     unmatchedPanel(slug, p, um, signal),
   ));
-  panel.load();
-  tree.afterMount(ctx.restore);
+  if (!untestedOn) { panel.load(); tree.afterMount(ctx.restore); }
 }
 
-// ============================ All ad families (flat, no tree root) ============================
+// ============================ All creatives (flat, no tree root) ============================
 async function familiesFlatView(ctx, slug) {
   const { params: p, signal } = ctx;
   const G = globalParams(p);
@@ -125,22 +128,21 @@ async function familiesFlatView(ctx, slug) {
   let rowMode = getRowMode();
   const flatPins = createPins(ctx.restore && ctx.restore.pins);
   const flatPanel = createTrendPanel({ slug, p, scope: pick(p, ['cluster', 'icp', 'pain']), scopeLabel: product.name, pins: flatPins, mode: 'scope', signal });
-  const allAdsHeader = h('a', { href: href(path, { ...G, view: 'ads', cluster: p.cluster, icp: p.icp, pain: p.pain }), class: 'btnlink small', id: 'all-ads', title: 'Open the Meta ads table for everything in view' }, 'All ads in view');
+  const allAdsHeader = h('a', { href: href(path, { ...G, view: 'ads', cluster: p.cluster, icp: p.icp, pain: p.pain }), class: 'btnlink small', id: 'all-ads', title: 'Open the ads table for everything in view' }, 'All creatives in view');
   const cols = [
     {
-      key: 'display', label: 'Ad family', sticky: true, cls: 'labelcol', sort: (r) => r.display, total: () => 'Total',
+      key: 'display', label: 'Creative', sticky: true, cls: 'labelcol', sort: (r) => r.display, total: () => 'Total',
       cell: (r) => {
-        const ids = (r.concept_ids || []).slice(0, 2).join(', ') + ((r.concept_ids || []).length > 2 ? ` +${r.concept_ids.length - 2}` : '');
         const hf = r.primary_id != null ? href('/ad/' + enc(r.primary_id), G) : null;
         return h('div', { class: 'cell-ad' },
-          thumb(r.thumb_asset_id, 34),
+          thumb(r.thumb_asset_id, 34, { name: r.display, primaryId: r.primary_id }),
           h('div', { class: 'cell-ad-text' },
-            h('div', null, hf ? h('a', { href: hf, class: 'rowlink adname', title: r.display }, r.display) : h('span', { class: 'adname' }, r.display),
-              ' ', linemap && r.confidence ? h('span', { title: r.method || null }, confBadge(r.confidence)) : null,
-              hf ? h('a', { href: hf, class: 'opn row-open' }, 'Open ›') : null),
-            h('div', { class: 'sub' }, [ids, (r.n_rows || 0) > 1 ? `${r.n_rows} rows` : null, r.ad_type, r.status, r.launch_date].filter(Boolean).join(' · '),
-              r.counted_here === false ? ' · ' : '',
-              r.counted_here === false ? h('span', { class: 'badge muted-badge', title: 'This family’s metrics are counted on its first tracker row, which sits in another group' }, 'counted elsewhere') : null)));
+            h('div', { class: 'nm' }, hf ? h('a', { href: hf, class: 'rowlink rowname', title: r.display }, r.display) : h('span', { class: 'rowname' }, r.display)),
+            h('div', { class: 'meta' }, linemap && r.confidence ? h('span', { title: r.method || null }, confBadge(r.confidence)) : null,
+              hf ? h('a', { href: hf, class: 'opn row-open' }, 'Open ›') : null,
+              creativeMeta({ adType: r.ad_type, status: r.status, launch: r.launch_date, adsCount: r.ads_count, adsLive: r.ads_live }),
+              (r.n_rows || 0) > 1 ? h('span', { class: 'muted' }, `${r.n_rows} tracker rows`) : null,
+              r.counted_here === false ? h('span', { class: 'badge muted-badge', title: 'This creative’s metrics are counted on its first tracker row, which sits in another group' }, 'counted elsewhere') : null)));
       },
     },
     pinColumn({ pins: flatPins, keyOf: rkey, labelOf: (r) => r.display, scopeOf: (r) => ({ family_key: r.family_key, ...pick(p, ['cluster', 'icp', 'pain']) }) }),
@@ -158,14 +160,14 @@ async function familiesFlatView(ctx, slug) {
     onRowClick: (r, e, c) => { if (rowMode === 'expand') c.toggle(); else if (c.href) navigate(c.href); },
     rowClass: (r) => (r.counted_here === false ? 'not-counted' : ''),
     expand: { render: (r) => familyAdsNode(slug, p, r.family_key, signal, pick(p, ['cluster', 'icp', 'pain'])) },
-    emptyText: 'No ad families here.',
+    emptyText: 'No creatives here.',
     testid: 'level-table',
     onCount: (n, tot) => filterUi && filterUi.setCount(n, tot),
   });
   onCmpRefresh(() => table.refresh());
   const apply = (st) => table.setFilter(makeFilter(st, (r) => r.m && r.m.spend, (r) => [r.display, ...(r.concept_ids || []), r.ad_type, r.status]));
   filterUi = filterBar({
-    spend: p.spend === '1', q: p.q, placeholder: 'Search ad family, concept id…',
+    spend: p.spend === '1', q: p.q, placeholder: 'Search creative, concept id…',
     onChange: (st) => { saveFilterToUrl(st); apply(st); },
   });
   if (p.spend === '1' || p.q) apply({ spend: p.spend === '1', q: p.q });
@@ -179,11 +181,12 @@ async function familiesFlatView(ctx, slug) {
   setViewStateProvider(() => ({ pins: flatPins.list(), tscroll: { top: table.wrap.scrollTop, left: table.wrap.scrollLeft } }));
   ctx.mount(h('div', { class: 'page', 'data-level': 'families' },
     pageHead(product, slug, p, 'tags'),
-    h('div', { class: 'crumbrow' }, breadcrumbs(tagCrumbs(slug, p, product, [{ label: 'All ad families' }])), h('span', { class: 'spacer' }),
+    h('div', { class: 'crumbrow' }, breadcrumbs(tagCrumbs(slug, p, product, [{ label: 'All creatives' }])), h('span', { class: 'spacer' }),
       h('a', { class: 'btnlink', id: 'toggle-all', href: href(path, { ...G, cluster: p.cluster, icp: p.icp, pain: p.pain }) }, '← Back to hierarchy')),
     flatPanel.el,
-    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'All ad families'),
+    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'All creatives'),
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Clicking a row'), h('span', { class: 'segs', id: 'row-mode' }, modeBtns)), columnsChips(), filterUi.el),
+    legendLine(),
     table.el,
     unmatchedPanel(slug, p, um, signal),
   ));
@@ -192,7 +195,7 @@ async function familiesFlatView(ctx, slug) {
   if (vs) { window.scrollTo(0, vs.scrollY || 0); if (vs.tscroll) { table.wrap.scrollTop = vs.tscroll.top || 0; table.wrap.scrollLeft = vs.tscroll.left || 0; } }
 }
 
-// ============================ Ads view (flat Meta ads) ============================
+// ============================ Ads view (flat table, one ad per row) ============================
 async function adsView(ctx, slug) {
   const { params: p, signal } = ctx;
   const G = globalParams(p);
@@ -204,7 +207,7 @@ async function adsView(ctx, slug) {
   ]);
   if (!ctx.alive()) return;
   report(p, d, false);
-  document.title = `Meta ads · ${product.name} · Tag Explorer`;
+  document.title = `Ads · ${product.name} · Tag Explorer`;
 
   const crumbs = [{ label: 'Products', href: href('/', G) }, { label: product.name, href: href(path, G) }];
   const firstRow = (d.rows || []).find((r) => r.ad_id != null);
@@ -222,12 +225,13 @@ async function adsView(ctx, slug) {
   }
   crumbs.push({ label: 'Ads' });
 
+  const adsTitle = p.family_key ? `Ads running ${(firstRow && firstRow.display) || p.family_key}` : 'Ads';
   let filterUi;
   const t = adsTable(p, d, {
     ...sortFromUrl(p), onSort: saveSortToUrl,
     onCount: (n, tot) => filterUi && filterUi.setCount(n, tot),
     showFamily: !p.family_key,
-    shareLabel: p.family_key ? '% of family' : '% of spend',
+    shareLabel: p.family_key ? '% of creative' : '% of spend',
     campaignHref: (r) => href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }),
   });
   onCmpRefresh(() => t.refresh());
@@ -245,7 +249,8 @@ async function adsView(ctx, slug) {
     pageHead(product, slug, p, p.campaign_id ? 'campaigns' : 'tags'),
     h('div', { class: 'crumbrow' }, breadcrumbs(crumbs)),
     adsPanel.el,
-    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Meta ads'), columnsChips(), filterUi.el),
+    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, adsTitle), columnsChips(), filterUi.el),
+    legendLine(),
     t.el,
   ));
   adsPanel.load();
@@ -263,10 +268,12 @@ async function campaignsView(ctx, slug) {
   const dailyParams = { ...wp };
   delete dailyParams.stage; delete dailyParams.compare; delete dailyParams.cfrom; delete dailyParams.cto;
   if (!dailyParams.window && !dailyParams.from) dailyParams.days = 90;
-  const [d, daily, product] = await Promise.all([
+  const [d, daily, product, unm] = await Promise.all([
     api(base + 'campaigns', { ...wp, ...sparkParams(p) }, { signal }),
     api(base + 'stage-daily', dailyParams, { signal }),
     getProduct(slug, signal),
+    // spend that is in the campaign total but not on the tracker (the Tags view leaves it out); a failure only drops the note
+    api(base + 'unmatched', wp, { signal }).catch((e) => { if (e instanceof AuthError || (e && e.name === 'AbortError')) throw e; return null; }),
   ]);
   if (!ctx.alive()) return;
   report(p, d, (daily || []).some((x) => x.unclassified > 0));
@@ -282,9 +289,9 @@ async function campaignsView(ctx, slug) {
       h('div', { class: 'stagecard-main' }, h('span', { class: 'big' }, fmt.money(s.spend)), h('span', { class: 'muted' }, totalSpend > 0 ? ` · ${fmt.pct((s.spend || 0) / totalSpend)} of spend` : '')),
       (s.cmp && cmpView.on) ? h('div', { class: 'stagecard-cmp' }, 'vs ', fmt.money(s.cmp.spend), ' ', deltaSpan(s.delta && s.delta.spend_pct, 'neutral')) : null,
       h('div', { class: 'stagecard-sub' },
-        h('span', null, 'ROAS ', h('b', null, fmt.roas(s.roas)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.roas(s.cmp.roas)), ' ', deltaSpan(s.delta && s.delta.roas_pct, 'up')] : null),
-        h('span', null, 'CPA ', h('b', null, fmt.money(s.cpa)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.money(s.cmp.cpa)), ' ', deltaSpan(s.delta && s.delta.cpa_pct, 'down')] : null),
-        h('span', null, 'Purchases ', h('b', null, fmt.int(s.purchases)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.int(s.cmp.purchases)), ' ', deltaSpan(s.delta && s.delta.purchases_pct, 'up')] : null)));
+        h('span', null, metricLabel('roas', 'ROAS') + ' ', h('b', null, fmt.roas(s.roas)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.roas(s.cmp.roas)), ' ', deltaSpan(s.delta && s.delta.roas_pct, 'up')] : null),
+        h('span', null, metricLabel('cpa', 'CPA') + ' ', h('b', null, fmt.money(s.cpa)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.money(s.cmp.cpa)), ' ', deltaSpan(s.delta && s.delta.cpa_pct, 'down')] : null),
+        h('span', null, metricLabel('purchases', 'Purchases') + ' ', h('b', null, fmt.int(s.purchases)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.int(s.cmp.purchases)), ' ', deltaSpan(s.delta && s.delta.purchases_pct, 'up')] : null)));
     return c;
   });
 
@@ -300,7 +307,7 @@ async function campaignsView(ctx, slug) {
     { key: 'account', label: 'Account', sort: (r) => r.account, cell: (r) => fmt.text(r.account) },
     { key: 'stage', label: 'Stage', sort: (r) => r.stage, cell: (r) => stageBadge(r.stage) },
     { key: 'ads', label: 'Ads', num: true, sort: (r) => r.ads, cell: (r) => fmt.int(r.ads), total: (t) => (t && t.ads != null ? fmt.int(t.ads) : '') },
-    { key: 'families', label: 'Families', num: true, sort: (r) => r.families, cell: (r) => fmt.int(r.families), total: (t) => (t && t.families != null ? fmt.int(t.families) : '') },
+    { key: 'families', label: 'Creatives', num: true, sort: (r) => r.families, cell: (r) => fmt.int(r.families), total: (t) => (t && t.families != null ? fmt.int(t.families) : '') },
     ...flat,
     { key: 'live', label: 'Live', sort: (r) => (r.live ? 1 : 0), cell: (r) => liveDot(r.live), total: () => '', cls: 'center' },
     { key: 'last_day', label: 'Last day', sort: (r) => r.last_day, cell: (r) => fmt.text(r.last_day), total: () => '' },
@@ -329,10 +336,15 @@ async function campaignsView(ctx, slug) {
     h('div', { class: 'stagecards' }, cards),
     h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', 'Daily spend by stage'), h('span', { class: 'muted small' }, daily.length ? `${fmt.day(daily[0].day)} – ${fmt.day(daily[daily.length - 1].day)}` : '')), chartBox),
     h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Campaigns'), columnsChips(), filterUi.el),
+    legendLine(),
     t.el,
-    unmatchedPanel(slug, p, null, signal),
+    unm && unm.total && unm.total.spend > 0
+      ? h('div', { class: 'muted small total-note', 'data-testid': 'campaign-total-note' },
+        `Total includes spend not on the tracker: ${fmt.money(unm.total.spend)}${unm.total.families ? ` (${fmt.int(unm.total.families)} creatives, listed under “Not on the tracker” below)` : ''}. The Tags view leaves it out.`)
+      : null,
+    unmatchedPanel(slug, p, unm, signal),
   ));
-  stageChart(canvas, Array.isArray(daily) ? daily : (daily.rows || []));
+  stageChart(canvas, Array.isArray(daily) ? daily : (daily.rows || []), included);
   campPanel.load();
   const vs = ctx.restore;
   if (vs) { window.scrollTo(0, vs.scrollY || 0); if (vs.tscroll) { t.wrap.scrollTop = vs.tscroll.top || 0; t.wrap.scrollLeft = vs.tscroll.left || 0; } }

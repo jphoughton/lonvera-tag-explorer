@@ -11,13 +11,18 @@ from flask import Flask, Response, jsonify, redirect, request, send_from_directo
 from flask.json.provider import DefaultJSONProvider
 from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.routing import IntegerConverter
 
-from . import api, auth, db, projection
+from . import api, auth, db, preview, projection, respcache
 from .config import load_config
 from .queries import ApiError
 
 log = logging.getLogger("tagexp")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+
+# The HTML shell: scripts only from this origin (Chart.js is vendored), ad previews may be framed from Meta, images from here or data: URIs.
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; "
+       "frame-src https://*.facebook.com https://*.fbcdn.net https://*.fb.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
 
 PLACEHOLDER = """<!doctype html><meta charset="utf-8"><title>Lonvera Tag Explorer</title>
 <body style="font:14px system-ui;padding:2rem"><h1>Lonvera Tag Explorer</h1><p>UI not built yet (app/static/index.html missing). The API is live under /api.</p></body>"""
@@ -38,6 +43,11 @@ class ApiJSONProvider(DefaultJSONProvider):
         return DefaultJSONProvider.default(o)
 
 
+class AsciiInt(IntegerConverter):
+    """<aint:x>: ASCII digits only (werkzeug's <int:x> matches any Unicode decimal digit)."""
+    regex = r"[0-9]{1,18}"
+
+
 def create_app(config: dict | None = None) -> Flask:
     app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
     app.config.update(load_config(config))
@@ -49,8 +59,13 @@ def create_app(config: dict | None = None) -> Flask:
     if app.config["TRUST_PROXY"]:
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)       # one trusted hop (Railway edge)
 
+    app.url_map.converters["aint"] = AsciiInt          # must be registered before the blueprints that use it
     db.init_app(app)
     auth.init_auth(app)
+    app.extensions["preview"] = preview.PreviewService(app.config.get("META_PREVIEW_TOKEN"))
+    cache = respcache.ResponseCache(int(app.config.get("RESPONSE_CACHE_MB", 0)) * 1024 * 1024, float(app.config.get("RESPONSE_CACHE_TTL_SEC", 600)))
+    app.extensions["response_cache"] = cache
+    app.before_request(lambda: respcache.lookup(cache))         # after the auth guard (registered in init_auth): a cached answer is never served unauthenticated
     app.register_blueprint(api.bp)
     projection.register(app)
     _register_pages(app)
@@ -76,8 +91,10 @@ def _register_pages(app: Flask) -> None:
         if os.path.isfile(index):
             resp = send_from_directory(STATIC_DIR, "index.html", max_age=0)
             resp.headers["Cache-Control"] = "no-cache"
-            return resp
-        return Response(PLACEHOLDER, mimetype="text/html")
+        else:
+            resp = Response(PLACEHOLDER, mimetype="text/html")
+        resp.headers["Content-Security-Policy"] = CSP
+        return resp
 
     for rule in ("/", "/login", "/p/<slug>", "/ad/<id>"):
         app.add_url_rule(rule, endpoint="shell:" + rule, view_func=shell)
@@ -132,7 +149,7 @@ def _register_headers(app: Flask) -> None:
             resp.headers["Cache-Control"] = "no-cache"          # ES modules are not content-hashed: always revalidate (ETag / Last-Modified still apply)
         if not app.config.get("DEV_INSECURE_COOKIES") and request.is_secure:
             resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
-        return _maybe_gzip(resp)
+        return respcache.store(app.extensions["response_cache"], _maybe_gzip(resp))
 
 
 def _maybe_gzip(resp: Response) -> Response:

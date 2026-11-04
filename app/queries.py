@@ -9,12 +9,17 @@ Conventions
 """
 from __future__ import annotations
 
+import collections
+import contextvars
 import datetime as dt
 import json
 import re
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Any, Iterable
+
+from .config import ads_manager_url
 
 # --------------------------------------------------------------------------------------------------------------------
 # errors / constants
@@ -34,6 +39,8 @@ class NotLoaded(ApiError):
 
 
 STAGES = ("testing", "scaling", "unclassified")
+STAGE_NOTE = ("Stage follows each campaign's current name: 'test' in the name = Testing, everything else = Scaling; "
+              "renaming a campaign reclassifies its history.")
 WINDOW_NAMES = ("launch", "1d", "7d", "14d", "30d", "60d", "90d", "180d", "mtd")
 TRAILING_DAYS = {"1d": 1, "7d": 7, "14d": 14, "30d": 30, "60d": 60, "90d": 90, "180d": 180}
 LEVELS = ("cluster", "icp", "pain")
@@ -76,12 +83,96 @@ def tag_label(tag_set: str) -> str:
     return TAG_LABELS.get(tag_set, TAG_LABELS["tracker"])
 
 
+# "Active ads only" (v1.9). Ad-grain SQL reads Meta ads whose current status is ACTIVE; family-grain SQL reads family_daily_active (same columns as
+# family_daily, built by the ETL) and the *_launch_active / ads_active_count / live_active columns of ad_metrics. act() rewrites this module's own
+# fragments (every ad_daily use is aliased `ad`); it is idempotent.
+_AD_DAILY_ACTIVE = "(SELECT d_a.* FROM ad_daily d_a JOIN meta_ads m_a ON m_a.ad_id = d_a.ad_id AND m_a.status = 'ACTIVE')"
+_RX_FAMILY_DAILY = re.compile(r"\bfamily_daily\b")
+_RX_AD_DAILY = re.compile(r"\bad_daily\b(\s+ad\b)")
+
+
+def act(sql: str, active: bool) -> str:
+    if not active:
+        return sql
+    return _RX_AD_DAILY.sub(lambda m: _AD_DAILY_ACTIVE + m.group(1), _RX_FAMILY_DAILY.sub("family_daily_active", sql))
+
+
+# Source flip (Meta | Upstack). `source=upstack` re-points every read of a Meta-derived table at its Upstack twin: <table>_upstack_<basis> (migration 008),
+# with basis nc = new customers, all = every attributed order. The swap is applied to the SQL text inside rows_of / row_of, per request (the API sets it
+# in a before_request hook, always, so a worker thread never carries a previous request's source). Table names are whole tokens, so family_daily is
+# never rewritten inside family_daily_active, and the raw ad_daily_upstack is untouched.
+SOURCES = ("meta", "upstack")
+BASES = ("nc", "all")
+DEFAULT_BASIS = "nc"
+_SRC_TABLES = ("family_daily_active", "family_daily", "ad_metrics", "unmatched_meta", "meta_ad_lifetime", "ad_daily")
+_RX_SRC_TABLES = re.compile(r"\b(" + "|".join(_SRC_TABLES) + r")\b")
+_SRC_SFX: contextvars.ContextVar[str] = contextvars.ContextVar("tagexp_source_suffix", default="")
+UPSTACK_MODEL = "Upstack any-click attribution, 30-day window, Meta Ads source"
+UPSTACK_LABELS = {
+    "nc": {"purchases": "New customers", "revenue": "NC revenue", "roas": "NC ROAS", "cpa": "NC CPA"},
+    "all": {"purchases": "Orders", "revenue": "Revenue", "roas": "ROAS", "cpa": "Cost per order"},
+}
+META_LABELS = {"purchases": "Purchases", "revenue": "Revenue", "roas": "ROAS", "cpa": "CPA"}
+
+
+def source_sql(sql: str, suffix: str | None = None) -> str:
+    sfx = _SRC_SFX.get() if suffix is None else suffix
+    return _RX_SRC_TABLES.sub(lambda m: m.group(1) + sfx, sql) if sfx else sql
+
+
+def set_source(source: str = "meta", basis: str = DEFAULT_BASIS) -> None:
+    """Make every query of the current request read `source`'s tables (see above). Called by the API's before_request hook."""
+    _SRC_SFX.set("" if source == "meta" else f"_upstack_{basis}")
+
+
+def parse_source(args) -> tuple[str, str]:
+    """source=meta|upstack (default meta), basis=nc|all (default nc; only used with upstack, but validated always). Unknown values are a 400."""
+    source = str(args.get("source") or "meta").strip().lower()
+    basis = str(args.get("basis") or DEFAULT_BASIS).strip().lower()
+    if source not in SOURCES:
+        raise ApiError(400, "source must be meta or upstack")
+    if basis not in BASES:
+        raise ApiError(400, "basis must be nc (new customers) or all (all orders)")
+    return source, basis
+
+
+# Schema features the v1.9 / v1.10 data layer adds (migration 007). Probed on a short TTL so the API keeps serving before the migration is
+# applied: without them tracker rows are not filtered by deleted_at, active=1 answers 503 and /unmatched since launch uses the daily rows.
+_CAPS: dict[str, bool] = {"deleted": False, "active": False, "unm_launch": False, "unm_traffic": False}
+_CAPS_AT = 0.0
+_CAPS_TTL = 15.0
+
+
+def refresh_caps(conn, force: bool = False) -> dict[str, bool]:
+    global _CAPS_AT
+    if not force and time.monotonic() - _CAPS_AT < _CAPS_TTL:
+        return _CAPS
+    have = {(r["table_name"], r["column_name"]) for r in conn.execute(
+        """SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = current_schema()
+           AND ((table_name = 'tracker_rows' AND column_name = 'deleted_at')
+             OR (table_name = 'ad_metrics' AND column_name IN ('ads_active_count', 'live_active', 'spend_launch_active'))
+             OR (table_name = 'family_daily_active' AND column_name = 'family_key')
+             OR (table_name = 'unmatched_meta' AND column_name IN ('spend_launch', 'impressions_launch', 'clicks_launch')))""").fetchall()}
+    _CAPS["deleted"] = ("tracker_rows", "deleted_at") in have
+    _CAPS["active"] = all(k in have for k in (("ad_metrics", "ads_active_count"), ("ad_metrics", "live_active"), ("ad_metrics", "spend_launch_active"),
+                                              ("family_daily_active", "family_key")))
+    _CAPS["unm_launch"] = ("unmatched_meta", "spend_launch") in have
+    _CAPS["unm_traffic"] = _CAPS["unm_launch"] and ("unmatched_meta", "impressions_launch") in have and ("unmatched_meta", "clicks_launch") in have
+    _CAPS_AT = time.monotonic()
+    return _CAPS
+
+
+def alive(alias: str) -> str:
+    """' AND <alias>.deleted_at IS NULL' - tracker rows removed from the tracker never count (when the column exists)."""
+    return f" AND {alias}.deleted_at IS NULL" if _CAPS["deleted"] else ""
+
+
 def rows_of(conn, sql: str, params: Any = None) -> list[dict]:
-    return conn.execute(sql, params).fetchall()
+    return conn.execute(source_sql(sql), params).fetchall()
 
 
 def row_of(conn, sql: str, params: Any = None) -> dict | None:
-    return conn.execute(sql, params).fetchone()
+    return conn.execute(source_sql(sql), params).fetchone()
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -95,11 +186,19 @@ class DataMeta:
     data_through: dt.date
     lifetime_cutoff: dt.date | None = None        # legacy (sheet-era) value, unused since v1.5
     impressions_from: dt.date | None = None      # first day with impression data (None = none loaded yet)
+    status_as_of: str | None = None              # when meta_ads.status was last refreshed (app_meta ad_status_as_of), None = not recorded
+    active_built_at: str | None = None           # when the 'active ads only' tables were last rebuilt
+    upstack_through: dt.date | None = None       # last complete day of the Upstack source (None = the Upstack source is not loaded)
+    upstack_first_day: dt.date | None = None     # first day of Upstack history held
+    upstack_built_at: str | None = None
 
 
 def load_meta(conn) -> DataMeta:
+    refresh_caps(conn)
     kv = {r["key"]: r["value"] for r in rows_of(
-        conn, "SELECT key, value FROM app_meta WHERE key = ANY(%s)", (["daily_start", "lifetime_cutoff", "data_through"],))}
+        conn, "SELECT key, value FROM app_meta WHERE key = ANY(%s)",
+        (["daily_start", "lifetime_cutoff", "data_through", "ad_status_as_of", "active_built_at",
+          "upstack_through", "upstack_first_day", "upstack_built_at"],))}
     through = kv.get("data_through")
     start = kv.get("daily_start")
     if not through or not start:
@@ -114,7 +213,20 @@ def load_meta(conn) -> DataMeta:
         lifetime_cutoff=dt.date.fromisoformat(kv["lifetime_cutoff"]) if kv.get("lifetime_cutoff") else None,
         data_through=dt.date.fromisoformat(through),
         impressions_from=first_imp["d"] if first_imp else None,
+        status_as_of=kv.get("ad_status_as_of"), active_built_at=kv.get("active_built_at"),
+        upstack_through=dt.date.fromisoformat(kv["upstack_through"]) if kv.get("upstack_through") else None,
+        upstack_first_day=dt.date.fromisoformat(kv["upstack_first_day"]) if kv.get("upstack_first_day") else None,
+        upstack_built_at=kv.get("upstack_built_at"),
     )
+
+
+def meta_for_source(meta: DataMeta, source: str) -> DataMeta:
+    """The data span of the chosen source: Upstack answers only for the days it has pulled (never past Meta's own data_through)."""
+    if source != "upstack":
+        return meta
+    if meta.upstack_through is None or meta.upstack_first_day is None:
+        raise ApiError(503, "Upstack data is not loaded yet")
+    return replace(meta, data_through=min(meta.data_through, meta.upstack_through), daily_start=max(meta.daily_start, meta.upstack_first_day))
 
 
 def _fmt_day(d: dt.date, with_year: bool) -> str:
@@ -137,6 +249,9 @@ class WindowSpec:
     label: str
     stage: str = "all"            # 'all' or the included stages, comma-separated in canonical order (see parse_stage)
     cmp: "WindowSpec | None" = None   # comparison window B (None = comparison off); A is always a date window then
+    active: bool = False          # v1.9: only ACTIVE Meta ads count (see act())
+    source: str = "meta"          # 'meta' | 'upstack' (see source_sql); the page labels follow window_info.source
+    basis: str = DEFAULT_BASIS    # Upstack only: 'nc' new customers | 'all' every attributed order
 
     @property
     def is_launch(self) -> bool:
@@ -160,14 +275,50 @@ class WindowSpec:
             return f"Impressions only from {_fmt_day(meta.impressions_from, False)}."
         return None
 
+    def active_note(self, meta: DataMeta) -> str | None:
+        """What `active=1` means, spelled out (status source + snapshot time)."""
+        if not self.active:
+            return None
+        when = (f"status as of {meta.status_as_of[:10]}" if meta.status_as_of
+                else "Meta status as last recorded; its refresh time is not stored")
+        scope = "since-launch figures are the active ads' lifetime" if self.is_launch else "their numbers over the whole window"
+        return (f"Active ads only: a creative is listed only if it has at least one ACTIVE Meta ad ({when}); every number is for those active "
+                f"ads alone (current status applied to the whole period; {scope}); totals and shares are within this set.")
+
+    def source_info(self, meta: DataMeta) -> dict:
+        """Which numbers the page shows, in words, plus the metric labels the UI should use (so Upstack's are never mistaken for Meta's)."""
+        if self.source != "upstack":
+            return {"key": "meta", "basis": None, "label": "Meta", "labels": META_LABELS, "model": None, "note": None,
+                    "summary": "Meta's own reporting: purchases and revenue as Meta attributes them (returning customers included)."}
+        first = meta.upstack_first_day or meta.daily_start
+        if self.basis == "nc":
+            what = "First orders only (new customers) and their revenue"
+            label = "Upstack · new customers"
+        else:
+            what = "Every order credited to the ad (new and returning customers) and its revenue"
+            label = "Upstack · all orders"
+        summary = (f"{what}, credited to the ads clicked in the 30 days before the order ({UPSTACK_MODEL}). "
+                   f"Spend, clicks and impressions are Meta's, unchanged. Revenue is Upstack's order total (tax included, before refunds).")
+        note = (f"History starts {_fmt_day(first, True)}, so 'since launch' means since then (Meta's is all-time). "
+                "Some orders are credited to no identifiable ad and sit in no row (see the tie-out).")
+        return {"key": "upstack", "basis": self.basis, "label": label, "labels": UPSTACK_LABELS[self.basis], "model": UPSTACK_MODEL,
+                "summary": summary, "note": note, "history_from": first.isoformat(),
+                "through": (meta.upstack_through or meta.data_through).isoformat(),
+                "built_at": meta.upstack_built_at}
+
     def info(self, meta: DataMeta) -> dict:
-        note = " ".join(x for x in (self.note, self.traffic_note(meta)) if x) or None
+        note = " ".join(x for x in (self.note, self.traffic_note(meta), self.active_note(meta)) if x) or None
+        src = self.source_info(meta)
+        if self.source == "upstack" and self.is_launch:
+            note = " ".join(x for x in (src["note"], note) if x)
         return {
-            "kind": self.kind, "name": self.name, "label": self.label,
+            "source": src,
+            "kind": self.kind, "name": self.name, "label": (self.label if not (self.source == "upstack" and self.is_launch)
+                                                              else f"Since launch · Upstack history from {_fmt_day(meta.upstack_first_day or meta.daily_start, True)}"),
             "from": self.date_from.isoformat() if self.date_from else None,
             "to": self.date_to.isoformat() if self.date_to else None,
             "days": self.days, "clamped": self.clamped, "note": note, "stage": self.stage, "stages": self.stages,
-            "daily_start": meta.daily_start.isoformat(), "data_through": meta.data_through.isoformat(),
+            "active": self.active, "stage_note": STAGE_NOTE, "daily_start": meta.daily_start.isoformat(), "data_through": meta.data_through.isoformat(),
         }
 
     def compare_info(self, meta: DataMeta) -> dict | None:
@@ -202,8 +353,32 @@ def parse_stage(args) -> str:
     return "all" if len(inc) == len(STAGES) else ",".join(inc)
 
 
+_RX_UINT = re.compile(r"[0-9]{1,4}")
+
+
+def parse_uint(raw: str | None, lo: int, hi: int, message: str) -> int:
+    """A small non-negative integer from the query string: ASCII digits only (str.isdigit() also accepts '²' or '①', which int() rejects), at most four,
+    within lo..hi; anything else is a 400 with `message`."""
+    if raw is None or not _RX_UINT.fullmatch(raw) or not lo <= int(raw) <= hi:
+        raise ApiError(400, message)
+    return int(raw)
+
+
+def parse_active(args) -> bool:
+    """active=1 (also true/yes/on) turns the 'active ads only' filter on; 0/false/no/off or absent = off; anything else is a 400."""
+    raw = args.get("active")
+    if raw is None:
+        return False
+    v = str(raw).strip().lower()
+    if v in ("", "0", "false", "no", "off"):
+        return False
+    if v in ("1", "true", "yes", "on"):
+        return True
+    raise ApiError(400, "active must be 1 or 0")
+
+
 def _parse_day(s: str, field: str) -> dt.date:
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", s or ""):
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", s or ""):
         raise ApiError(400, f"{field} must be YYYY-MM-DD")
     try:
         return dt.date.fromisoformat(s)
@@ -222,6 +397,8 @@ def parse_window(args, meta: DataMeta) -> WindowSpec:
     """window=launch|1d|7d|14d|30d|60d|90d|180d|mtd  or  from=YYYY-MM-DD&to=YYYY-MM-DD (custom wins). Plus stage=all|testing|scaling,
     and the optional comparison window B: compare=prev|1d|...|mtd or cfrom/cto."""
     a = _parse_a(args, meta)
+    a.active = parse_active(args)
+    a.source, a.basis = parse_source(args)
     a.cmp = parse_compare(args, meta, a)
     return a
 
@@ -392,37 +569,49 @@ def side_fields(side: dict, days: int | None) -> dict:
 
     UNKNOWN is null, never 0: impressions is null when there is activity (spend or link clicks) but no impression data; link_clicks is null
     when there is spend but neither impressions nor clicks; every ratio is null when its denominator is 0 or its numerator base is missing
-    (e.g. spend_tr = 0 while spend > 0, which means 'traffic spend not recorded', not a CPC of $0)."""
-    sp, pu, rv, imp, clk = side["spend"], side["purchases"], side["revenue"], side["imp"], side["clk"]
-    f_sp, f_imp, f_clk = _f(sp), _f(imp), _f(clk)
-    imp_v = None if f_imp == 0 and (f_clk > 0 or f_sp > 0) else num(imp)
-    clk_v = None if f_clk == 0 and f_imp == 0 and f_sp > 0 else num(clk)
-    base_missing = _f(side["sp_tr"]) == 0 and f_sp > 0
+    (e.g. spend_tr = 0 while spend > 0, which means 'traffic spend not recorded', not a CPC of $0).
+
+    (Hot path: a few thousand ad rows per response, so every value is converted to float once.)"""
+    sp, pu, rv, imp, clk = _f(side["spend"]), _f(side["purchases"]), _f(side["revenue"]), _f(side["imp"]), _f(side["clk"])
+    sp_tr, clk_tr, purch_t = _f(side["sp_tr"]), _f(side["clk_tr"]), _f(side["purch_t"])
+    imp_v = None if imp == 0 and (clk > 0 or sp > 0) else _num(imp)
+    clk_v = None if clk == 0 and imp == 0 and sp > 0 else _num(clk)
+    base_missing = sp_tr == 0 and sp > 0
+    d = days or 0
     return {
-        "spend": f2(sp), "purchases": num(pu), "revenue": f2(rv), "roas": ratio(rv, sp, 4), "cpa": ratio(sp, pu, 2),
+        "spend": round(sp, 2), "purchases": _num(pu), "revenue": round(rv, 2),
+        "roas": round(rv / sp, 4) if sp else None, "cpa": round(sp / pu, 2) if pu else None,
         "impressions": imp_v, "link_clicks": clk_v,
-        "ctr": ratio(side["clk_tr"], imp, 5), "cpc": None if base_missing else ratio(side["sp_tr"], clk, 4),
-        "cpm": None if f_imp == 0 or base_missing else round(_f(side["sp_tr"]) * 1000 / f_imp, 4),
-        "conv_rate": ratio(side["purch_t"], clk, 5),
-        "spend_per_day": _pd(sp, days), "purchases_per_day": _pd(pu, days), "revenue_per_day": _pd(rv, days),
-        "impressions_per_day": None if imp_v is None else _pd(imp, days), "link_clicks_per_day": None if clk_v is None else _pd(clk, days),
+        "ctr": round(clk_tr / imp, 5) if imp else None, "cpc": None if base_missing or not clk else round(sp_tr / clk, 4),
+        "cpm": None if imp == 0 or base_missing else round(sp_tr * 1000 / imp, 4),
+        "conv_rate": round(purch_t / clk, 5) if clk else None,
+        "spend_per_day": round(sp / d, 2) if d else None, "purchases_per_day": round(pu / d, 2) if d else None,
+        "revenue_per_day": round(rv / d, 2) if d else None,
+        "impressions_per_day": None if imp_v is None or not d else round(imp / d, 2),
+        "link_clicks_per_day": None if clk_v is None or not d else round(clk / d, 2),
     }
+
+
+def _num(f: float) -> int | float:
+    """num() for an already-float value."""
+    v = round(f, 2)
+    return int(v) if v == int(v) else v
 
 
 def _raw_ratios(side: dict) -> dict:
     """Unrounded ratios of a side (None when the denominator is 0), so differences and percent changes are not distorted by display rounding."""
-    def r(n, d, k=1.0):
-        return None if _f(d) == 0 else _f(n) * k / _f(d)
-    base_missing = _f(side["sp_tr"]) == 0 and _f(side["spend"]) > 0
-    return {"roas": r(side["revenue"], side["spend"]), "cpa": r(side["spend"], side["purchases"]),
-            "ctr": r(side["clk_tr"], side["imp"]), "cpc": None if base_missing else r(side["sp_tr"], side["clk"]),
-            "cpm": None if base_missing else r(side["sp_tr"], side["imp"], 1000.0), "conv_rate": r(side["purch_t"], side["clk"])}
+    sp, pu, rv, imp, clk = _f(side["spend"]), _f(side["purchases"]), _f(side["revenue"]), _f(side["imp"]), _f(side["clk"])
+    sp_tr, clk_tr, purch_t = _f(side["sp_tr"]), _f(side["clk_tr"]), _f(side["purch_t"])
+    base_missing = sp_tr == 0 and sp > 0
+    return {"roas": rv / sp if sp else None, "cpa": sp / pu if pu else None,
+            "ctr": clk_tr / imp if imp else None, "cpc": None if base_missing or not clk else sp_tr / clk,
+            "cpm": None if base_missing or not imp else sp_tr * 1000.0 / imp, "conv_rate": purch_t / clk if clk else None}
 
 
-def cmp_blocks(a: dict, w: "WindowSpec", b: dict, b_active: Any = None) -> tuple[dict, dict]:
-    """(cmp, delta) for window A vs window B sides. Everything is recomputed from the sums, never averaged."""
+def cmp_blocks(a: dict, w: "WindowSpec", b: dict, b_active: Any = None, fa: dict | None = None) -> tuple[dict, dict]:
+    """(cmp, delta) for window A vs window B sides. Everything is recomputed from the sums, never averaged. fa = side_fields(a) when the caller has it."""
     da, db = w.days, (w.cmp.days if w.cmp is not None else None)
-    fa, fb = side_fields(a, da), side_fields(b, db)
+    fa, fb = (fa if fa is not None else side_fields(a, da)), side_fields(b, db)
     cmp = dict(fb)
     if b_active is not None:
         cmp["active_ads"] = int(b_active)
@@ -435,7 +624,7 @@ def cmp_blocks(a: dict, w: "WindowSpec", b: dict, b_active: Any = None) -> tuple
             if fa[k] is None or fb[k] is None:                       # unknown on either side (impressions / link clicks): no delta
                 delta[k] = delta[f"{k}_pct"] = None
                 continue
-            delta[k] = num(x - y) if k == "purchases" else round(x - y, nd)
+            delta[k] = _num(x - y) if k == "purchases" else round(x - y, nd)
             delta[f"{k}_pct"] = _pct(x, y)
         else:
             x, y = ra[k], rb[k]
@@ -457,7 +646,7 @@ def window_block(a: dict, w: "WindowSpec | None", b: dict | None = None) -> dict
     """Row-level metric block for window A (+ cmp and delta when comparison is on). a / b are 'sides' (see side_a / side_b)."""
     out = side_fields(a, w.days if w is not None else None)
     if w is not None and w.cmp is not None:
-        out["cmp"], out["delta"] = cmp_blocks(a, w, b or ZERO_SIDE)
+        out["cmp"], out["delta"] = cmp_blocks(a, w, b or ZERO_SIDE, fa=out)
     return out
 
 
@@ -523,7 +712,7 @@ def simple_metrics(spend: Any, purchases: Any, revenue: Any) -> dict:
 # --------------------------------------------------------------------------------------------------------------------
 
 _TR = """
-tr AS (
+tr AS MATERIALIZED (
   SELECT r.id, r.product_id, r.concept_id, r.ad_family, r.family_key, r.sheet_row, r.status, r.ad_type,
          COALESCE(NULLIF(btrim(r.ad_family), ''), r.concept_id) AS display,
          (t.id IS NOT NULL) AS tagged,
@@ -542,8 +731,12 @@ tr AS (
 """
 
 
-def _tr_cte(product_id: int | None, family_key: str | None, params: dict) -> str:
+def _tr_cte(product_id: int | None, family_key: str | None, params: dict, active: bool = False) -> str:
     where = []
+    if _CAPS["deleted"]:           # tracker rows removed from the tracker never count
+        where.append("r.deleted_at IS NULL")
+    if active:       # a creative is in the set only if it has at least one ACTIVE Meta ad (ads_active_count sits on the creative's rows)
+        where.append("EXISTS (SELECT 1 FROM ad_metrics xa WHERE xa.product_id = r.product_id AND xa.family_key = r.family_key AND xa.ads_active_count > 0)")
     if product_id is not None:
         where.append("r.product_id = %(pid)s")
         params["pid"] = product_id
@@ -594,7 +787,21 @@ def _rm(meta: DataMeta, w: WindowSpec, product_id: int | None = None, family_key
     daily rows: history before the daily range, restatements) counts as 'unclassified'. All three stages together therefore add up to the
     lifetime total."""
     params: dict[str, Any] = {"d0": meta.daily_start, "dt": meta.data_through, "stages": w.stages}
-    sql = "WITH " + _tr_cte(product_id, family_key, params)
+    sql = "WITH " + _tr_cte(product_id, family_key, params, w.active)
+    if w.active:       # active ads only: the fixed 7-day figures and "live" come from the active data; since launch = the active ads' lifetime
+        params["d7"] = meta.data_through - dt.timedelta(days=6)
+        sql += """,
+a7 AS MATERIALIZED (
+  SELECT family_key, sum(spend) AS s7, sum(purchases) AS p7 FROM family_daily
+  WHERE day >= %(d7)s AND family_key IN (SELECT family_key FROM tr) GROUP BY family_key
+)"""
+        am_live, am_s7, am_p7, a7_join = "COALESCE(am.live_active, false)", "COALESCE(a7.s7, 0)", "COALESCE(a7.p7, 0)", "LEFT JOIN a7 ON a7.family_key = tr.family_key"
+        life_cols = ("am.spend_launch_active AS l_spend, am.purchases_launch_active AS l_purch, am.revenue_launch_active AS l_rev,\n"
+                     "         am.impressions_launch_active AS l_imp, am.clicks_launch_active AS l_clk")
+    else:
+        am_live, am_s7, am_p7, a7_join = "COALESCE(am.live, false)", "COALESCE(am.spend_7d, 0)", "COALESCE(am.purchases_7d, 0)", ""
+        life_cols = ("am.spend_launch AS l_spend, am.purchases_launch AS l_purch, am.revenue_launch AS l_rev,\n"
+                     "         am.impressions_launch AS l_imp, am.clicks_launch AS l_clk")
     first_row = "(COALESCE(am.is_first_row, false) AND NOT starts_with(tr.family_key, 'id:'))"
     cw = w.cmp if (w.cmp is not None and not w.cmp.is_empty) else None      # comparison window B with at least one day of data
     zero = "0"
@@ -608,7 +815,7 @@ def _rm(meta: DataMeta, w: WindowSpec, product_id: int | None = None, family_key
         params.update(wf=w.date_from, wt=w.date_to, lo=lo, hi=hi)
         cmp_cols = ", w.c_spend, w.c_purch, w.c_rev, w.c_imp, w.c_clk, w.c_clk_tr, w.c_sp_tr" if cw is not None else ""
         sql += f""",
-win AS (
+win AS MATERIALIZED (      -- MATERIALIZED: an inlined `win` would be re-run for every tracker row of a nested loop
   SELECT family_key,
     {_stage_sum_cols('', 'day BETWEEN %(wf)s AND %(wt)s', cw is not None)}
   FROM family_daily
@@ -616,12 +823,13 @@ win AS (
   GROUP BY family_key
 ),
 b AS (
-  SELECT tr.*, {first_row} AS counted, COALESCE(am.is_first_row, false) AS is_first, COALESCE(am.live, false) AS am_live,
-         COALESCE(am.spend_7d, 0) AS s7, COALESCE(am.purchases_7d, 0) AS p7,
+  SELECT tr.*, {first_row} AS counted, COALESCE(am.is_first_row, false) AS is_first, {am_live} AS am_live,
+         {am_s7} AS s7, {am_p7} AS p7,
          w.f_spend, w.f_purch, w.f_rev, w.t_spend, w.t_purch, w.t_rev, w.s_spend, w.s_purch, w.s_rev, w.u_spend, w.u_purch, w.u_rev,
          w.f_imp, w.f_clk, w.f_clk_tr, w.f_sp_tr, w.f_purch_t {cmp_cols}
   FROM tr
   LEFT JOIN ad_metrics am ON am.tracker_row_id = tr.id
+  {a7_join}
   LEFT JOIN win w ON w.family_key = tr.family_key
 )"""
         spend, purch, rev = ("COALESCE(b.f_spend, 0)", "COALESCE(b.f_purch, 0)", "COALESCE(b.f_rev, 0)")
@@ -632,27 +840,27 @@ b AS (
             c_imp, c_clk, c_clk_tr, c_sp_tr = ("COALESCE(b.c_imp, 0)", "COALESCE(b.c_clk, 0)", "COALESCE(b.c_clk_tr, 0)", "COALESCE(b.c_sp_tr, 0)")
     else:
         sql += f""",
-fr AS (
+fr AS MATERIALIZED (
   SELECT am.tracker_row_id, am.family_key
   FROM ad_metrics am
   WHERE am.is_first_row AND NOT starts_with(am.family_key, 'id:') AND am.tracker_row_id IN (SELECT id FROM tr)
 ),
-win AS (
+win AS MATERIALIZED (
   SELECT fr.tracker_row_id,
     {_stage_sum_cols('fd.', '', False, launch=True)}
   FROM fr JOIN family_daily fd ON fd.family_key = fr.family_key AND fd.day <= %(dt)s
   GROUP BY fr.tracker_row_id
 ),
 b AS (
-  SELECT tr.*, {first_row} AS counted, COALESCE(am.is_first_row, false) AS is_first, COALESCE(am.live, false) AS am_live,
-         COALESCE(am.spend_7d, 0) AS s7, COALESCE(am.purchases_7d, 0) AS p7,
-         am.spend_launch AS l_spend, am.purchases_launch AS l_purch, am.revenue_launch AS l_rev,
-         am.impressions_launch AS l_imp, am.clicks_launch AS l_clk,
+  SELECT tr.*, {first_row} AS counted, COALESCE(am.is_first_row, false) AS is_first, {am_live} AS am_live,
+         {am_s7} AS s7, {am_p7} AS p7,
+         {life_cols},
          w.f_spend, w.f_purch, w.f_rev, w.t_spend, w.t_purch, w.t_rev, w.s_spend, w.s_purch, w.s_rev, w.u_spend, w.u_purch, w.u_rev,
          w.f_imp, w.f_clk, w.f_clk_tr, w.f_sp_tr, w.f_purch_t,
          w.d_spend, w.d_purch, w.d_rev, w.d_imp, w.d_clk, w.d_clk_tr, w.d_sp_tr
   FROM tr
   LEFT JOIN ad_metrics am ON am.tracker_row_id = tr.id
+  {a7_join}
   LEFT JOIN win w ON w.tracker_row_id = tr.id
 )"""
         # residual = lifetime - every daily row we hold (history before the daily range, restatements): belongs to 'unclassified'
@@ -694,7 +902,7 @@ rm AS (
   FROM b
 )
 """
-    return sql, params
+    return act(sql, w.active), params
 
 
 def _tag_where(cluster: str | None, icp: str | None, pain: str | None, params: dict, prefix: str = "") -> str:
@@ -724,48 +932,206 @@ def product_brief(p: dict) -> dict:
     return {"slug": p["slug"], "name": p["name"], "tag_set": p["tag_set"], "tag_label": p["tag_label"]}
 
 
-def products_list(conn, meta: DataMeta, w: WindowSpec) -> list[dict]:
+def products_list(conn, meta: DataMeta, w: WindowSpec, spark: tuple[str, int] | None = None, with_total: bool = False,
+                  extras: dict | None = None):
+    """Product rows (and, with_total, the Total row). The total's `unique_ads` is the sum of the product rows' unique_ads, so a family key that
+    sits under two products counts twice, exactly as in the rows; every other number is the sum of the rows' sums (ratios recomputed)."""
     sql, params = _rm(meta, w)
     aggs = {r["product_id"]: r for r in rows_of(conn, sql + "SELECT product_id, count(*) AS n_rows, " + AGG_COLS + " FROM rm GROUP BY product_id", params)}
     meta_spend = {r["product_id"]: r["spend_all"] for r in rows_of(
-        conn, "SELECT product_id, COALESCE(sum(spend_all), 0) AS spend_all FROM unmatched_meta GROUP BY product_id")}
-    out = []
+        conn, act(f"WITH {_um_cte(w.active, False)} SELECT product_id, COALESCE(sum(GREATEST(spend_all, spend_launch)), 0) AS spend_all FROM um GROUP BY product_id",
+                  w.active), _um_params(meta))}
+    out, ids, listed = [], [], []
     for p in rows_of(conn, "SELECT id, slug, name, tag_set, sort_order FROM products WHERE active ORDER BY sort_order, id"):
         a = aggs.get(p["id"])
         n_rows = a["n_rows"] if a else 0
         if n_rows == 0 and _f(meta_spend.get(p["id"])) <= 0:
             continue
+        ids.append(p["id"])
+        listed.append(a or dict(ZERO_AGG))
         out.append({"slug": p["slug"], "name": p["name"], "tag_set": p["tag_set"], "tag_label": tag_label(p["tag_set"]),
                     "rows": n_rows, "m": shape_m(a or ZERO_AGG, w)})
-    total = {"spend": round(sum(o["m"]["spend"] for o in out), 2)}
-    if w.cmp is not None:
-        total["cmp"] = {"spend": round(sum(o["m"]["cmp"]["spend"] for o in out), 2)}
-    apply_shares([o["m"] for o in out], total)           # share of all listed products' spend
+    total_agg = sum_aggs(listed, unique_ads=sum(int(a["unique_ads"]) for a in listed))
+    total_m = shape_m(total_agg, w)
+    apply_shares([o["m"] for o in out] + [total_m], total_m)           # share of all listed products' spend; the total is 100%
+    if extras is not None:        # all Meta spend that is on no tracker family, and tracker + that = the whole Meta account
+        fams = _fold_unmatched(conn, meta, w, None)
+        um_agg = sum_aggs(fams, unique_ads=sum(1 for x in fams if x["spend"] != 0 or x["purchases"] != 0 or x["c_spend"] != 0 or x["c_purch"] != 0))
+        um_m, all_m = shape_m(um_agg, w), shape_m(sum_aggs([total_agg, um_agg], unique_ads=int(total_agg["unique_ads"]) + int(um_agg["unique_ads"])), w)
+        apply_shares([um_m, all_m], all_m)                                # shares of the whole account
+        extras["unmatched"] = {"m": um_m}
+        extras["total_all"] = {"m": all_m}
+    if spark:
+        arrays = _spark_product_arrays(conn, meta, w, spark)
+        for o, pid in zip(out, ids):
+            o["spark"] = arrays.get(str(pid)) or _blank_spark(spark[1], spark[0])
+    if not with_total:
+        return out
+    total = {"m": total_m, "rows": sum(o["rows"] for o in out)}
+    if spark:
+        total["spark"] = arrays.get("") or _blank_spark(spark[1], spark[0])
+    return out, total
+
+
+def _spark_product_arrays(conn, meta: DataMeta, w: WindowSpec, spark: tuple[str, int]) -> dict[str, list]:
+    """Per product (key = product id) and in total (key '') sparkline arrays over the first-row families of every product."""
+    metric, n = spark
+    sf, st = _spark_range(meta, w, n)
+    params: dict[str, Any] = {"stages": w.stages, "sf": sf, "st": st}
+    sql = "WITH " + _tr_cte(None, None, params, w.active)
+    sums = ", ".join(f"sum({_FD_SUM_EXPR[k]}) AS {k}" for k in _A_KEYS)
+    sql += f""",
+fs AS MATERIALIZED (
+  SELECT DISTINCT ON (tr.product_id, tr.family_key) tr.product_id, tr.family_key
+  FROM tr JOIN ad_metrics am ON am.tracker_row_id = tr.id AND am.is_first_row
+  WHERE NOT starts_with(tr.family_key, 'id:')
+  ORDER BY tr.product_id, tr.family_key, tr.sheet_row NULLS LAST, tr.id
+),
+g AS (
+  SELECT COALESCE(fs.product_id::text, '') AS gk, fd.day, {sums}
+  FROM fs JOIN family_daily fd ON fd.family_key = fs.family_key
+  WHERE fd.day BETWEEN %(sf)s AND %(st)s AND fd.stage = ANY(%(stages)s)
+  GROUP BY GROUPING SETS ((fs.product_id, fd.day), (fd.day))
+)"""
+    return _spark_arrays(conn, sql, params, metric, w.active)
+
+
+# ---- Meta families that are not on the tracker ("unmatched") --------------------------------------------------------
+
+
+def _um_params(meta: DataMeta) -> dict:
+    return {"u7": meta.data_through - dt.timedelta(days=6), "u30": meta.data_through - dt.timedelta(days=29), "u1": meta.data_through - dt.timedelta(days=1)}
+
+
+def _um_cte(active: bool, by_product: bool) -> str:
+    """CTE `um`, one row per Meta family that is not on the tracker: meta_family_key, meta_family, product_id, spend_7d, purchases_7d, spend_30d,
+    spend_all (daily rows), spend_launch / purchases_launch / revenue_launch / impressions_launch / clicks_launch (Meta API lifetime, lifetime-only
+    families included) and live.
+    Active ads only: the same columns computed from the ACTIVE ads of those families (a family without an ACTIVE ad is left out)."""
+    if not active:
+        life = ("spend_launch, purchases_launch, revenue_launch" if _CAPS["unm_launch"]
+                else "0::numeric AS spend_launch, 0::numeric AS purchases_launch, 0::numeric AS revenue_launch")
+        life += (", impressions_launch, clicks_launch" if _CAPS["unm_traffic"] else ", 0::numeric AS impressions_launch, 0::numeric AS clicks_launch")
+        where = "WHERE product_id = %(pid)s" if by_product else ""
+        return (f"um AS (SELECT meta_family_key, meta_family, product_id, spend_7d, purchases_7d, spend_30d, spend_all, {life}, live "
+                f"FROM unmatched_meta {where})")
+    where = "WHERE u.product_id = %(pid)s" if by_product else ""
+    return f"""um AS (
+  SELECT u.meta_family_key, u.meta_family, u.product_id,
+         COALESCE(sum(ad.spend) FILTER (WHERE ad.day >= %(u7)s), 0) AS spend_7d, COALESCE(sum(ad.purchases) FILTER (WHERE ad.day >= %(u7)s), 0) AS purchases_7d,
+         COALESCE(sum(ad.spend) FILTER (WHERE ad.day >= %(u30)s), 0) AS spend_30d, COALESCE(sum(ad.spend), 0) AS spend_all,
+         COALESCE(max(ul.sp), 0) AS spend_launch, COALESCE(max(ul.pu), 0) AS purchases_launch, COALESCE(max(ul.rv), 0) AS revenue_launch,
+         COALESCE(max(ul.im), 0) AS impressions_launch, COALESCE(max(ul.cl), 0) AS clicks_launch,
+         COALESCE(sum(ad.spend) FILTER (WHERE ad.day >= %(u1)s), 0) > 0 AS live
+  FROM unmatched_meta u
+  LEFT JOIN ad_daily ad ON ad.meta_family_key = u.meta_family_key
+  LEFT JOIN (SELECT l.meta_family_key AS mfk, sum(l.spend) AS sp, sum(l.purchases) AS pu, sum(l.conv_value) AS rv,
+                    sum(l.impressions) AS im, sum(l.link_clicks) AS cl
+             FROM meta_ad_lifetime l JOIN meta_ads m2 ON m2.ad_id = l.ad_id AND m2.status = 'ACTIVE'
+             WHERE l.source = 'meta_api' GROUP BY 1) ul ON ul.mfk = u.meta_family_key
+  {where}
+  GROUP BY u.meta_family_key, u.meta_family, u.product_id
+  HAVING count(ad.meta_family_key) > 0 OR max(ul.sp) IS NOT NULL
+)"""
+
+
+def _fold_unmatched(conn, meta: DataMeta, w: WindowSpec, product_id: int | None) -> list[dict]:
+    """Per off-tracker Meta family (of one product, or all of them) the window figures of `w` as dicts that carry every ZERO_AGG key plus
+    spend_7d / purchases_7d / live. Date windows sum the daily rows of the included stages. Since launch = Meta's lifetime spend, purchases and
+    revenue (impressions and clicks are not part of it: unknown); with a stage list the included stages' daily rows are used and what the daily rows
+    do not explain (lifetime minus all daily rows) counts as 'unclassified', the same partition the tracker families use."""
+    wf, wt = w.span(meta)
+    cw = _cmp_window(w)
+    by_product = product_id is not None
+    params: dict[str, Any] = {"wf": wf, "wt": wt, **_um_params(meta),
+                              "lo": min(wf, cw.date_from) if cw is not None else wf, "hi": max(wt, cw.date_to) if cw is not None else wt,
+                              "cf": cw.date_from if cw is not None else wf, "ct": cw.date_to if cw is not None else wt}
+    if by_product:
+        params["pid"] = product_id
+    cte = _um_cte(w.active, by_product)
+    fams = rows_of(conn, act(f"WITH {cte} SELECT * FROM um", w.active), params)
+    in_cmp = "(ad.day BETWEEN %(cf)s AND %(ct)s)" if cw is not None else "FALSE"
+    sums = _filtered_sums('ad', 'ad.day BETWEEN %(wf)s AND %(wt)s', in_cmp)
+    groups = rows_of(conn, act(f"""
+        WITH {cte}
+        SELECT um.meta_family_key,
+               CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END AS stage,
+               {sums}
+        FROM um JOIN ad_daily ad ON ad.meta_family_key = um.meta_family_key
+        LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
+        WHERE ad.day BETWEEN %(lo)s AND %(hi)s
+        GROUP BY 1, 2""", w.active), params)
+    by_fam: dict[str, dict[str, dict]] = {}
+    for g in groups:
+        by_fam.setdefault(g["meta_family_key"], {})[g["stage"]] = g
+    keep = set(w.stages)
+    use_life = w.is_launch and (w.active or _CAPS["unm_launch"])
+    life_traffic = use_life and (w.active or _CAPS["unm_traffic"])       # impressions / clicks of the lifetime, when the data layer carries them
+    out = []
+    for f in fams:
+        row = {k: Decimal(0) for k in ZERO_AGG}
+        row.update(meta_family_key=f["meta_family_key"], meta_family=f["meta_family"], product_id=f["product_id"],
+                   spend_7d=f["spend_7d"], purchases_7d=f["purchases_7d"], live=bool(f["live"]))
+        daily = {k: Decimal(0) for k in ("spend", "purchases", "revenue", "imp", "clk", "clk_tr", "sp_tr")}
+        for st, g in by_fam.get(f["meta_family_key"], {}).items():
+            for k in daily:
+                daily[k] += g[k]
+            letter = {"testing": "t", "scaling": "s", "unclassified": "u"}[st]
+            for short, col in (("spend", "spend"), ("purch", "purchases"), ("rev", "revenue")):
+                row[f"{letter}_{short}"] += g[col]
+            if st in keep:
+                for k in _ALL_KEYS:
+                    row[k] += g.get(k, 0)
+        if use_life:
+            res = {"spend": f["spend_launch"] - daily["spend"], "purchases": f["purchases_launch"] - daily["purchases"],
+                   "revenue": f["revenue_launch"] - daily["revenue"]}
+            row["u_spend"] += res["spend"]
+            row["u_purch"] += res["purchases"]
+            row["u_rev"] += res["revenue"]
+            if "unclassified" in keep:
+                row["spend"] += res["spend"]
+                row["purchases"] += res["purchases"]
+                row["revenue"] += res["revenue"]
+            if life_traffic:      # lifetime impressions / clicks; a spend base for CPC / CPM exists for all of it (like a family's lifetime)
+                res_t = {"imp": f["impressions_launch"] - daily["imp"], "clk": f["clicks_launch"] - daily["clk"],
+                         "clk_tr": f["clicks_launch"] - daily["clk_tr"], "sp_tr": f["spend_launch"] - daily["sp_tr"]}
+                if keep == set(STAGES):
+                    row.update(imp=f["impressions_launch"], clk=f["clicks_launch"], clk_tr=f["clicks_launch"], sp_tr=f["spend_launch"])
+                elif "unclassified" in keep:
+                    for k, v in res_t.items():
+                        row[k] += v
+            else:                 # no lifetime traffic in the data: unknown, not the partial daily figure
+                for k in ("imp", "clk", "clk_tr", "sp_tr"):
+                    row[k] = Decimal(0)
+            row["purch_t"] = row["purchases"]
+        row["unique_ads"] = 1
+        row["live_now"] = int(row["live"])
+        row["active_ads"] = int(row["spend"] > 0)
+        row["c_active"] = int(row["c_spend"] > 0)
+        out.append(row)
     return out
 
 
-def unmatched_summary(conn, product_id: int, meta: DataMeta | None = None, w: WindowSpec | None = None) -> dict:
-    """Meta spend that is not on the tracker. spend_7d / spend_30d / live_families / families* are fixed windows (from unmatched_meta);
-    window_spend / window_families follow the selected window + stage filter (since launch = every day held)."""
-    r = row_of(conn, """
+def unmatched_summary(conn, product_id: int, meta: DataMeta | None = None, w: WindowSpec | None = None, active: bool | None = None) -> dict:
+    """Meta spend that is not on the tracker. spend_7d / spend_30d / live_families / families* are fixed windows;
+    window_spend / window_families follow the selected window + stage filter (since launch = Meta's lifetime, like the /unmatched panel)."""
+    if active is None:
+        active = bool(w.active) if w is not None else False
+    through = meta.data_through if meta is not None else dt.date.today()
+    params = {"pid": product_id, **_um_params(DataMeta(through, through))}
+    r = row_of(conn, act(f"""
+        WITH {_um_cte(active, True)}
         SELECT COALESCE(sum(spend_7d), 0) AS spend_7d, COALESCE(sum(spend_30d), 0) AS spend_30d,
                count(*) FILTER (WHERE live) AS live_families,
                count(*) FILTER (WHERE spend_7d > 0) AS families,
                count(*) FILTER (WHERE spend_30d > 0) AS families_30d,
-               count(*) FILTER (WHERE spend_all > 0) AS families_all
-        FROM unmatched_meta WHERE product_id = %s""", (product_id,))
+               count(*) FILTER (WHERE GREATEST(spend_all, spend_launch) > 0) AS families_all
+        FROM um""", active), params)
     out = {"spend_7d": f2(r["spend_7d"]), "spend_30d": f2(r["spend_30d"]), "live_families": int(r["live_families"]),
            "families": int(r["families"]), "families_30d": int(r["families_30d"]), "families_all": int(r["families_all"])}
     if meta is not None and w is not None:
-        wf, wt = w.span(meta)
-        x = row_of(conn, """
-            SELECT COALESCE(sum(ad.spend), 0) AS spend, count(DISTINCT ad.meta_family_key) FILTER (WHERE ad.spend > 0) AS families
-            FROM unmatched_meta um JOIN ad_daily ad ON ad.meta_family_key = um.meta_family_key
-            LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
-            WHERE um.product_id = %(pid)s AND ad.day BETWEEN %(wf)s AND %(wt)s
-              AND (CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END) = ANY(%(stages)s)""",
-                   {"pid": product_id, "wf": wf, "wt": wt, "stages": w.stages})
-        out.update(window_spend=f2(x["spend"]), window_families=int(x["families"]))
+        fam = _fold_unmatched(conn, meta, w, product_id)
+        out.update(window_spend=f2(sum((x["spend"] for x in fam), Decimal(0))), window_families=sum(1 for x in fam if x["spend"] > 0))
     return out
 
 
@@ -775,14 +1141,28 @@ def unmatched_summary(conn, product_id: int, meta: DataMeta | None = None, w: Wi
 
 
 def _taxonomy(conn, product_id: int) -> list[dict]:
-    return rows_of(conn, """SELECT line_code, cluster, icp, pain_point, emotional_trigger, cluster_color, sort_order
+    return rows_of(conn, """SELECT line_code, cluster, icp, pain_point, emotional_trigger, cluster_color, sort_order, added_after_tagging
                             FROM taxonomy_lines WHERE product_id = %s ORDER BY sort_order, id""", (product_id,))
+
+
+def _merge_line_info(info: dict, ln: dict) -> None:
+    """Two taxonomy lines can share cluster + ICP + pain point and differ only by emotional trigger (Boneflex BF36 Shame / BF38 Desire). The pain
+    level groups by cluster/ICP/pain, so such a group is ONE combined row: its line_code reads 'BF36 / BF38' and its trigger 'Shame / Desire'."""
+    codes = [c for c in str(info.get("line_code") or "").split(" / ") if c]
+    trigs = [t for t in str(info.get("trigger") or "").split(" / ") if t]
+    if ln["line_code"] not in codes:
+        codes.append(ln["line_code"])
+    if ln["emotional_trigger"] and ln["emotional_trigger"] not in trigs:
+        trigs.append(ln["emotional_trigger"])
+    info["line_code"] = " / ".join(codes)
+    info["trigger"] = " / ".join(trigs) or None
 
 
 def _skeleton(lines: list[dict], level: str, cluster: str | None, icp: str | None) -> list[dict]:
     """Ordered rows the Communication Overview defines for this level/filters (so lines with no ads still show)."""
     out: list[dict] = []
     seen: set = set()
+    by_key: dict = {}
     for ln in lines:
         if cluster is not None and ln["cluster"] != cluster:
             continue
@@ -798,12 +1178,15 @@ def _skeleton(lines: list[dict], level: str, cluster: str | None, icp: str | Non
             key = (ln["cluster"], ln["icp"], ln["pain_point"])
             label = ln["pain_point"]
         if key in seen:
+            if level == "pain":                                  # same cluster/ICP/pain, another trigger: one combined row
+                _merge_line_info(by_key[key], ln)
             continue
         seen.add(key)
-        out.append({"key": key, "label": label, "cluster": ln["cluster"], "icp": ln["icp"] if level != "cluster" else None,
-                    "pain": ln["pain_point"] if level == "pain" else None, "color": ln["cluster_color"],
-                    "line_code": ln["line_code"] if level == "pain" else None,
-                    "trigger": ln["emotional_trigger"] if level == "pain" else None})
+        by_key[key] = {"key": key, "label": label, "cluster": ln["cluster"], "icp": ln["icp"] if level != "cluster" else None,
+                       "pain": ln["pain_point"] if level == "pain" else None, "color": ln["cluster_color"],
+                       "line_code": ln["line_code"] if level == "pain" else None,
+                       "trigger": ln["emotional_trigger"] if level == "pain" else None}
+        out.append(by_key[key])
     # child counts straight from the taxonomy
     for s in out:
         if level == "cluster":
@@ -864,8 +1247,9 @@ def rollup(conn, meta: DataMeta, w: WindowSpec, product: dict, level: str, clust
     total_m = shape_m(total_row, w)
     apply_shares([r["m"] for r in rows] + [total_m], total_m)
     if spark:
-        attach_spark_rollup(conn, meta, w, product, level, cluster, icp, rows, spark)
-    return {"rows": rows, "total": {"m": total_m}, "unmatched": unmatched_summary(conn, product["id"], meta, w)}
+        total_spark = attach_spark_rollup(conn, meta, w, product, level, cluster, icp, rows, spark)
+    out_total = {"m": total_m, **({"spark": total_spark} if spark else {})}
+    return {"rows": rows, "total": out_total, "unmatched": unmatched_summary(conn, product["id"], meta, w)}
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -879,7 +1263,7 @@ def families(conn, meta: DataMeta, w: WindowSpec, product: dict, cluster: str | 
     where = "WHERE TRUE" + _tag_where(cluster, icp, pain, params)
     order = "ORDER BY rm.sheet_row NULLS LAST, rm.id"
     sql += f"""
-, thumbs AS (
+, thumbs AS MATERIALIZED (
   SELECT DISTINCT ON (family_key) family_key, id AS thumb_id FROM creative_assets WHERE kind = 'thumb' ORDER BY family_key, idx
 ), fl AS (
   SELECT family_key, launch_date FROM ad_metrics WHERE product_id = %(pid)s AND is_first_row
@@ -905,7 +1289,7 @@ SELECT g.*, th.thumb_id, fl.launch_date FROM g LEFT JOIN thumbs th ON th.family_
 LEFT JOIN fl ON fl.family_key = g.family_key
 ORDER BY g.spend DESC, g.display COLLATE "C", g.family_key COLLATE "C"      -- same order as the tree (codepoint order)
 """
-    raw = rows_of(conn, sql, params)
+    raw = rows_of(conn, act(sql, w.active), params)
     out = []
     for r in raw:
         out.append({
@@ -917,11 +1301,86 @@ ORDER BY g.spend DESC, g.display COLLATE "C", g.family_key COLLATE "C"      -- s
             "cluster": r["cluster"], "icp": r["icp"], "pain": r["pain"], "line_code": r["line_code"],
             "m": shape_m(r, w),
         })
+    counts = family_ad_counts(conn, meta, w, [r["family_key"] for r in out])
+    for r in out:                                                       # creative vs ads: metrics (and so ad counts) belong to the family's first row
+        r["ads_count"], r["ads_live"] = counts[r["family_key"]] if r["counted_here"] else (0, 0)
     total_m = shape_m(sum_aggs(raw, unique_ads=len(raw)), w)
     apply_shares([r["m"] for r in out] + [total_m], total_m)
     if spark:
-        attach_spark_families(conn, meta, w, product, cluster, icp, pain, out, spark)
-    return {"rows": out, "total": {"m": total_m}}
+        total_spark = attach_spark_families(conn, meta, w, product, cluster, icp, pain, out, spark)
+    return {"rows": out, "total": {"m": total_m, **({"spark": total_spark} if spark else {})}}
+
+
+# --------------------------------------------------------------------------------------------------------------------
+# links: "see the ad" (story URL, Ads Manager deep link, representative Meta ad per family)
+# --------------------------------------------------------------------------------------------------------------------
+
+
+def family_links(conn, family_keys: list[str], active: bool = False) -> dict[str, dict]:
+    """{family_key: {ad_id, account, ads_manager_url, story_url}}. The ad that stands for a family is its Meta ad with the latest last_day,
+    ties broken by lifetime spend (then ad id, so the choice is stable). One query for the ads, one for the story URLs."""
+    fks = sorted({k for k in family_keys if k and not k.startswith("id:")})           # blank families have no Meta ads (but may have a story URL)
+    out: dict[str, dict] = {k: {"ad_id": None, "account": None, "ads_manager_url": None, "story_url": None} for k in family_keys}
+    only_active = " AND ma.status = 'ACTIVE'" if active else ""       # the ad that stands for a creative is one of its ACTIVE ads
+    for r in (rows_of(conn, f"""
+            SELECT DISTINCT ON (m.tracker_family_key) m.tracker_family_key AS fk, ma.ad_id, ma.account
+            FROM meta_ads ma
+            JOIN meta_family_map m ON m.meta_family_key = ma.meta_family_key
+            LEFT JOIN meta_ad_lifetime ml ON ml.ad_id = ma.ad_id
+            WHERE m.tracker_family_key = ANY(%s){only_active}
+            ORDER BY m.tracker_family_key, ma.last_day DESC NULLS LAST, COALESCE(ml.spend, 0) DESC, ma.ad_id""", (fks,)) if fks else []):
+        out[r["fk"]].update(ad_id=r["ad_id"], account=r["account"], ads_manager_url=ads_manager_url(r["account"], r["ad_id"]))
+    for r in rows_of(conn, "SELECT family_key, story_url FROM family_content WHERE family_key = ANY(%s)", (sorted({k for k in family_keys if k}),)):
+        out[r["family_key"]]["story_url"] = r["story_url"]
+    return out
+
+
+def family_ad_counts(conn, meta: DataMeta, w: WindowSpec, family_keys: list[str]) -> dict[str, tuple[int, int]]:
+    """{family_key: (ads_count, ads_live)} - a creative (family) versus its ads (Meta ad copies in a campaign / ad set).
+    ads_count = distinct Meta ads with spend in the window and stages; since launch = all of the family's Meta ads (API lifetime; with a stage list
+    that leaves out 'unclassified', the ads that spent in the included stages). ads_live = Meta ads that spent on data_through or the day before
+    (fixed, like live_now: not filtered by window or stage)."""
+    fks = sorted({k for k in family_keys if k and not k.startswith("id:")})
+    out = {k: (0, 0) for k in family_keys}
+    if not fks:
+        return out
+    params: dict[str, Any] = {"fks": fks, "stages": w.stages, "d1": meta.data_through - dt.timedelta(days=1)}
+    stage_expr = "CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END"
+    cnt_all_ads = w.is_launch and "unclassified" in w.stages
+    if w.is_launch:
+        day_cond, lo = "TRUE", meta.daily_start
+    else:
+        params.update(wf=w.date_from, wt=w.date_to)
+        day_cond, lo = "ad.day BETWEEN %(wf)s AND %(wt)s", min(w.date_from, meta.data_through - dt.timedelta(days=1))
+    if cnt_all_ads:        # since launch the ad count comes from meta_ads + lifetime below; the daily rows only decide "live" (the last two days)
+        lo = meta.data_through - dt.timedelta(days=1)
+    params["lo"] = lo
+    counts = f"""
+            WITH m AS MATERIALIZED (SELECT meta_family_key, tracker_family_key FROM meta_family_map WHERE tracker_family_key = ANY(%(fks)s))
+            SELECT m.tracker_family_key AS fk,
+                   count(DISTINCT ad.ad_id) FILTER (WHERE ad.spend > 0 AND {day_cond} AND {stage_expr} = ANY(%(stages)s)) AS n,
+                   count(DISTINCT ad.ad_id) FILTER (WHERE ad.spend > 0 AND ad.day >= %(d1)s) AS live
+            FROM m
+            JOIN ad_daily ad ON ad.meta_family_key = m.meta_family_key
+            LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
+            WHERE ad.day >= %(lo)s AND NOT starts_with(ad.ad_id, 'fam:')
+            GROUP BY 1"""
+    for r in rows_of(conn, act(counts, w.active), params):
+        out[r["fk"]] = (int(r["n"]), int(r["live"]))
+    if cnt_all_ads:                                    # since launch: every Meta ad the family has (meta_ads + the API lifetime table)
+        # every Meta ad of the family: its meta_ads rows, plus (all ads mode) lifetime rows of ads that have no meta_ads row; an ad without one is not active
+        ma_on = " AND ma.status = 'ACTIVE'" if w.active else ""
+        orphans = "" if w.active else """
+                  UNION ALL
+                  SELECT m.tracker_family_key FROM m JOIN meta_ad_lifetime ml ON ml.meta_family_key = m.meta_family_key
+                  WHERE NOT EXISTS (SELECT 1 FROM meta_ads a2 WHERE a2.ad_id = ml.ad_id)"""
+        for r in rows_of(conn, f"""
+                WITH m AS MATERIALIZED (SELECT meta_family_key, tracker_family_key FROM meta_family_map WHERE tracker_family_key = ANY(%(fks)s))
+                SELECT fk, count(*) AS n FROM (
+                  SELECT m.tracker_family_key AS fk FROM m JOIN meta_ads ma ON ma.meta_family_key = m.meta_family_key WHERE TRUE{ma_on}{orphans}
+                ) x GROUP BY fk""", {"fks": fks}):
+            out[r["fk"]] = (int(r["n"]), out[r["fk"]][1])
+    return out
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -938,14 +1397,23 @@ def _tax_children(lines: list[dict]) -> tuple[dict, dict]:
     children: dict[tuple, list] = {}
     info: dict[tuple, dict] = {}
     seen: set = set()
+    n_lines: dict[tuple, int] = {}
+    n_added: dict[tuple, int] = {}
     for ln in lines:
         k0, k1, k2 = (ln["cluster"],), (ln["cluster"], ln["icp"]), (ln["cluster"], ln["icp"], ln["pain_point"])
+        for key in (k0, k1, k2):
+            n_lines[key] = n_lines.get(key, 0) + 1
+            n_added[key] = n_added.get(key, 0) + (1 if ln.get("added_after_tagging") else 0)
         for parent, key in (((), k0), (k0, k1), (k1, k2)):
             if key not in seen:
                 seen.add(key)
                 children.setdefault(parent, []).append(key)
                 info[key] = {"color": ln["cluster_color"], "line_code": ln["line_code"] if len(key) == 3 else None,
                              "trigger": ln["emotional_trigger"] if len(key) == 3 else None}
+            elif len(key) == 3:                                  # same cluster/ICP/pain, another trigger: one combined row
+                _merge_line_info(info[key], ln)
+    for key, i in info.items():
+        i["added_after_tagging"] = n_lines[key] > 0 and n_added[key] == n_lines[key]
     return children, info
 
 
@@ -1015,10 +1483,10 @@ GROUP BY GROUPING SETS ({sets_sql})
         thumbs = {r["family_key"]: r["id"] for r in rows_of(conn, """
             SELECT DISTINCT ON (family_key) family_key, id FROM creative_assets
             WHERE kind = 'thumb' AND family_key = ANY(%s) ORDER BY family_key, idx""", (fam_keys,))}
-        ad_counts = {r["fk"]: int(r["n"]) for r in rows_of(conn, """
+        ad_counts = {r["fk"]: int(r["n"]) for r in rows_of(conn, f"""
             SELECT m.tracker_family_key AS fk, count(DISTINCT ma.ad_id) AS n
             FROM meta_ads ma JOIN meta_family_map m ON m.meta_family_key = ma.meta_family_key
-            WHERE m.tracker_family_key = ANY(%s) GROUP BY 1""", (fam_keys,))}
+            WHERE m.tracker_family_key = ANY(%s){" AND ma.status = 'ACTIVE'" if w.active else ""} GROUP BY 1""", (fam_keys,))}
 
     out: list[dict] = []
 
@@ -1063,11 +1531,76 @@ GROUP BY GROUPING SETS ({sets_sql})
     for rk in ordered(root_level, root_parent):
         emit(root_level, rk, None)
 
+    fam_keys = [r["family_key"] for r in out if r["family_key"]]
+    links = family_links(conn, fam_keys, w.active)
+    counts = family_ad_counts(conn, meta, w, fam_keys) if fam_keys else {}
+    for r in out:                                                       # "see the ad": family rows link to their representative Meta ad
+        lk = links.get(r["family_key"]) if r["family_key"] else None
+        r["ads_manager_url"] = lk["ads_manager_url"] if lk else None
+        r["story_url"] = lk["story_url"] if lk else None
+        if r["level"] == 3:                                             # creative vs ads
+            r["ads_count"], r["ads_live"] = counts[r["family_key"]] if r["counted_here"] else (0, 0)
     total_m = shape_m(total_row, w)
     apply_shares([r["m"] for r in out] + [total_m], total_m)         # every row relative to the root total of this response
     if spark:
-        attach_spark_tree(conn, meta, w, product, root_level, last, cluster, icp, pain, out, spark)
-    return {"rows": out, "total": {"m": total_m}}
+        total_spark = attach_spark_tree(conn, meta, w, product, root_level, last, cluster, icp, pain, out, spark)
+    return {"rows": out, "total": {"m": total_m, **({"spark": total_spark} if spark else {})}}
+
+
+# --------------------------------------------------------------------------------------------------------------------
+# coverage: which ICPs / pain points have no ads or no spend ("what we have not tested")
+# --------------------------------------------------------------------------------------------------------------------
+
+
+def _cov_state(ads: int, spend: float) -> str:
+    """no_ads = no creative is tagged to the line (tracker based, so it never changes with the date window or the Meta | Upstack source);
+    no_spend = creatives exist but spent $0 in the selected window / stages / source; tested = spent."""
+    return "no_ads" if ads == 0 else ("no_spend" if spend <= 0 else "tested")
+
+
+def coverage(conn, meta: DataMeta, w: WindowSpec, product: dict) -> dict:
+    """Every cluster / ICP / pain point of the Communication Overview with its state. Ads are counted over every tracker creative (the 'Active only'
+    filter and comparison are ignored here: 'not tested' must not shift with them); spend follows the selected window, stage and source.
+    Pain-point rows are the tree's rows, so two lines that differ only by emotional trigger (Boneflex BF36 / BF38) count once. A line added to the
+    sheet after the ads were tagged reads 0 by construction and is reported as added_after_tagging, not as untested."""
+    if product["tag_set"] != "linemap":
+        return {"available": False, "reason": "This product's tags come from the tracker, not the Communication Overview lines, so there is no list of lines to compare against.",
+                "summary": None, "rows": [], "keys": {}}
+    children, info = _tax_children(_taxonomy(conn, product["id"]))
+    w0 = replace(w, active=False, cmp=None)
+    sql, params = _rm(meta, w0, product_id=product["id"])
+    sql += "SELECT cluster, icp, pain, " + AGG_COLS + " FROM rm GROUP BY GROUPING SETS ((cluster, icp, pain), (cluster, icp), (cluster))"
+    data: dict[tuple, tuple[int, float]] = {}
+    for r in rows_of(conn, sql, params):
+        if r["cluster"] is None:
+            continue
+        data[tuple(x for x in (r["cluster"], r["icp"], r["pain"]) if x is not None)] = (int(r["unique_ads"]), _f(r["spend"]))
+    keys: dict[str, dict] = {}
+    rows: list[dict] = []
+    count = {1: collections.Counter(), 2: collections.Counter()}
+    for k0 in children.get((), []):
+        for k1 in children.get(k0, []):
+            for k2 in [k1] + children.get(k1, []):
+                lvl = len(k2) - 1
+                if lvl == 1 and k2 is not k1:
+                    continue
+                ads, spend = data.get(k2, (0, 0.0))
+                st = _cov_state(ads, spend)
+                added = bool(info[k2].get("added_after_tagging")) and st == "no_ads"
+                keys["|".join(k2)] = {"state": st, "added_after_tagging": added}
+                if lvl >= 1:
+                    count[lvl]["total"] += 1
+                    count[lvl]["added_after_tagging" if added else st] += 1
+                if st != "tested" and lvl >= 1:
+                    rows.append({"level": lvl, "key": "|".join(k2), "cluster": k2[0], "icp": k2[1], "pain": k2[2] if lvl == 2 else None,
+                                 "label": k2[-1], "line_code": info[k2].get("line_code"), "trigger": info[k2].get("trigger"),
+                                 "color": info[k2].get("color"), "state": st, "added_after_tagging": added, "unique_ads": ads, "spend": f2(spend)})
+        keys["|".join(k0)] = {"state": _cov_state(*data.get(k0, (0, 0.0))), "added_after_tagging": False}
+
+    def summ(c: collections.Counter) -> dict:
+        return {"total": c["total"], "tested": c["tested"], "no_ads": c["no_ads"], "no_spend": c["no_spend"], "added_after_tagging": c["added_after_tagging"],
+                "not_tested": c["no_ads"] + c["no_spend"]}
+    return {"available": True, "summary": {"icps": summ(count[1]), "pain_points": summ(count[2])}, "rows": rows, "keys": keys}
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -1151,27 +1684,35 @@ def meta_ads(conn, meta: DataMeta, w: WindowSpec, product: dict, *, cluster: str
     (lifetime - all daily rows of the ad) is added when 'unclassified' is included - the same partition the family totals use."""
     params: dict[str, Any] = {"d0": meta.daily_start, "dt": meta.data_through, "stages": w.stages, "campaign": campaign_id,
                               "d7": meta.data_through - dt.timedelta(days=6), "d1": meta.data_through - dt.timedelta(days=1)}
-    sql = "WITH " + _tr_cte(product["id"], family_key, params)
-    tagw = _tag_where(cluster, icp, pain, params, prefix="tr.")
     have_tag_filter = any(v is not None for v in (cluster, icp, pain, family_key))
     cw = _window_params(meta, w, params)
     launch = w.is_launch
     incl_uncl = "unclassified" in w.stages
-    sql += f""",
+    lc = "_active" if w.active else ""          # column suffix of the active-ads lifetime on ad_metrics
+    # 1. the selected creatives (one row per family: its first tracker row, tags and since-launch totals)
+    sel_params: dict[str, Any] = {}
+    sel_sql = "WITH " + _tr_cte(product["id"], family_key, sel_params, w.active)
+    tagw = _tag_where(cluster, icp, pain, sel_params, prefix="tr.")
+    sel_sql += f""",
 sel AS (
   SELECT DISTINCT ON (tr.family_key) tr.family_key, tr.id AS primary_id, tr.display, tr.cluster, tr.icp, tr.pain,
-         am.spend_launch AS l_spend, am.purchases_launch AS l_purch, am.revenue_launch AS l_rev,
-         am.impressions_launch AS l_imp, am.clicks_launch AS l_clk
+         am.spend_launch{lc} AS l_spend, am.purchases_launch{lc} AS l_purch, am.revenue_launch{lc} AS l_rev,
+         am.impressions_launch{lc} AS l_imp, am.clicks_launch{lc} AS l_clk
   FROM tr JOIN ad_metrics am ON am.tracker_row_id = tr.id AND am.is_first_row
   WHERE NOT starts_with(tr.family_key, 'id:') {tagw}
   ORDER BY tr.family_key, tr.sheet_row NULLS LAST, tr.id
-),
-thumbs AS (
-  SELECT DISTINCT ON (family_key) family_key, id AS thumb_id FROM creative_assets WHERE kind = 'thumb' ORDER BY family_key, idx
-),
-ad7 AS (
-  SELECT ad_id, sum(spend) FILTER (WHERE day >= %(d7)s) AS s7, sum(spend) FILTER (WHERE day >= %(d1)s) AS s1
-  FROM ad_daily WHERE day >= %(d7)s GROUP BY ad_id
+)
+SELECT * FROM sel"""
+    sel_rows = rows_of(conn, act(sel_sql, w.active), sel_params)
+    sel_by = {r["family_key"]: r for r in sel_rows}
+    params["fks"] = list(sel_by)
+    params["pid"] = product["id"]
+    fkeys_unmatched = "" if have_tag_filter else "\n  UNION ALL SELECT meta_family_key, NULL::text FROM unmatched_meta WHERE product_id = %(pid)s"
+    # 2. the ads. Everything is read for the selection's Meta families only, through the (meta_family_key, day) and ad_id indexes. The small per-family and
+    # per-ad extras (tags, thumbnails, 7-day spend, days active) are attached in Python afterwards: joined in SQL they became nested loops over CTE scans
+    # (quadratic) whenever the planner under-estimated the number of ads. MATERIALIZED stops a CTE from being inlined and re-run per outer row.
+    sql = f"""WITH fkeys AS MATERIALIZED (       -- (Meta family, tracker family) of the selection; off-tracker families carry a NULL tracker family
+  SELECT m.meta_family_key, m.tracker_family_key FROM meta_family_map m WHERE m.tracker_family_key = ANY(%(fks)s){fkeys_unmatched}
 ),
 """
     camp_pred = "(%(campaign)s::text IS NULL OR ad.campaign_id = %(campaign)s)"
@@ -1180,9 +1721,7 @@ ad7 AS (
     day_pred = "ad.day <= %(dt)s" if launch else "ad.day BETWEEN %(lo)s AND %(hi)s"
     aid_expr = "CASE WHEN starts_with(da.ad_id, 'fam:') THEN NULL ELSE da.ad_id END"
     # one pass over ad_daily for tracker families AND (when nothing is selected by tag/family) Meta families that are not on the tracker
-    um_join = "" if have_tag_filter else "LEFT JOIN unmatched_meta um ON um.meta_family_key = da.meta_family_key AND um.product_id = %(pid)s"
-    fk_expr = "s.family_key" if have_tag_filter else "COALESCE(s.family_key, um.meta_family_key)"
-    member = "s.family_key IS NOT NULL" if have_tag_filter else "(s.family_key IS NOT NULL OR um.meta_family_key IS NOT NULL)"
+    fk_expr = "COALESCE(m.tracker_family_key, m.meta_family_key)"
     # since launch: the lifetime row carries the all-stage total, so with every stage included the daily rows only matter for days_active
     names = ", ".join(f"0::numeric AS {k}" for k in _ALL_KEYS)
     parts: list[str] = [f"""
@@ -1192,31 +1731,31 @@ ad7 AS (
         signed = stage_in if (launch and incl_uncl) else None
         where_stage = "" if signed else f"AND {stage_in}"
         sql += f"""
-da AS (   -- one pass over ad_daily, grouped to (ad, Meta family, campaign): a few thousand groups instead of tens of thousands of days
+da AS MATERIALIZED (   -- one pass over the selected families' ad_daily rows, grouped to (ad, Meta family, campaign)
   SELECT ad.ad_id COLLATE "C" AS ad_id, ad.meta_family_key COLLATE "C" AS meta_family_key, ad.campaign_id COLLATE "C" AS campaign_id,
          max(ad.meta_family) AS mf, {_pre_cols(w, cw)}
   FROM ad_daily ad
-  WHERE {day_pred} AND {camp_pred}
+  WHERE ad.meta_family_key IN (SELECT meta_family_key FROM fkeys) AND {day_pred} AND {camp_pred}
   GROUP BY 1, 2, 3
 ),
 """
         parts.append(f"""
-  SELECT {aid_expr} AS aid, {fk_expr} AS fk, (s.family_key IS NOT NULL) AS matched, max(da.mf) AS mf, max(NULLIF(da.campaign_id, '')) AS camp,
+  SELECT {aid_expr} AS aid, {fk_expr} AS fk, (m.tracker_family_key IS NOT NULL) AS matched, max(da.mf) AS mf, max(NULLIF(da.campaign_id, '')) AS camp,
          {_post_cols(w, signed)}
   FROM da
-  LEFT JOIN meta_family_map m ON m.meta_family_key = da.meta_family_key
-  LEFT JOIN sel s ON s.family_key = m.tracker_family_key
-  {um_join}
+  JOIN fkeys m ON m.meta_family_key = da.meta_family_key
   LEFT JOIN meta_campaigns mc ON mc.campaign_id = da.campaign_id
-  WHERE {member} {where_stage}
+  WHERE TRUE {where_stage}
   GROUP BY 1, 2, 3""")
+    only_active = " AND ma.status = 'ACTIVE'" if w.active else ""     # active ads only: lifetime of ACTIVE ads (an ad with no meta_ads row is not active)
     if launch and incl_uncl:
-        sql += """
-mlf AS (   -- API lifetime per Meta ad of the selected families (no cutoff, no launch-date gating)
+        sql += f"""
+mlf AS MATERIALIZED (   -- API lifetime per Meta ad of the selected families (no cutoff, no launch-date gating)
   SELECT ml.ad_id, m.tracker_family_key AS fk, ml.spend, ml.purchases, ml.conv_value, ml.impressions, ml.link_clicks, ma.campaign_id AS camp
-  FROM meta_ad_lifetime ml LEFT JOIN meta_ads ma ON ma.ad_id = ml.ad_id
-  JOIN meta_family_map m ON m.meta_family_key = COALESCE(ma.meta_family_key, ml.meta_family_key)
-  WHERE m.tracker_family_key IN (SELECT family_key FROM sel)
+  FROM meta_family_map m
+  JOIN meta_ad_lifetime ml ON ml.meta_family_key = m.meta_family_key
+  LEFT JOIN meta_ads ma ON ma.ad_id = ml.ad_id
+  WHERE m.tracker_family_key = ANY(%(fks)s){only_active}
 ),
 """
         parts.append("""
@@ -1225,54 +1764,77 @@ mlf AS (   -- API lifetime per Meta ad of the selected families (no cutoff, no l
          mlf.spend, mlf.purchases, 0::numeric, 0::numeric, 0::numeric, 0::numeric, 0::numeric, 0::numeric, 0::numeric, 0::bigint
   FROM mlf WHERE (%(campaign)s::text IS NULL OR mlf.camp = %(campaign)s)""")
         if campaign_id is None:      # what the family total holds beyond its ads' lifetime rows goes to the remainder row
+            params.update(sel_fk=list(sel_by), sel_sp=[r["l_spend"] for r in sel_rows], sel_pu=[r["l_purch"] for r in sel_rows],
+                          sel_rv=[r["l_rev"] for r in sel_rows], sel_im=[r["l_imp"] for r in sel_rows], sel_cl=[r["l_clk"] for r in sel_rows])
+            sql += """
+selv AS MATERIALIZED (
+  SELECT * FROM unnest(%(sel_fk)s::text[], %(sel_sp)s::numeric[], %(sel_pu)s::numeric[], %(sel_rv)s::numeric[], %(sel_im)s::numeric[], %(sel_cl)s::numeric[])
+         AS t(family_key, l_spend, l_purch, l_rev, l_imp, l_clk)
+),
+"""
             parts.append("""
   SELECT NULL::text, s.family_key, TRUE, NULL::text, NULL::text,
          COALESCE(s.l_spend, 0) - COALESCE(x.spend, 0), COALESCE(s.l_purch, 0) - COALESCE(x.purchases, 0), COALESCE(s.l_rev, 0) - COALESCE(x.revenue, 0),
          COALESCE(s.l_imp, 0) - COALESCE(x.imp, 0), COALESCE(s.l_clk, 0) - COALESCE(x.clk, 0), COALESCE(s.l_clk, 0) - COALESCE(x.clk, 0),
          COALESCE(s.l_spend, 0) - COALESCE(x.spend, 0), COALESCE(s.l_purch, 0) - COALESCE(x.purchases, 0),
          0::numeric, 0::numeric, 0::numeric, 0::numeric, 0::numeric, 0::numeric, 0::numeric, 0::bigint
-  FROM sel s LEFT JOIN (SELECT fk, sum(spend) AS spend, sum(purchases) AS purchases, sum(conv_value) AS revenue,
+  FROM selv s LEFT JOIN (SELECT fk, sum(spend) AS spend, sum(purchases) AS purchases, sum(conv_value) AS revenue,
                                sum(COALESCE(impressions, 0)) AS imp, sum(COALESCE(link_clicks, 0)) AS clk FROM mlf GROUP BY fk) x ON x.fk = s.family_key""")
     if not have_tag_filter:       # no tag/family selected: "every ad of the product" also covers Meta ads not on the tracker
         if launch and incl_uncl:
-            parts.append("""
+            parts.append(f"""
   SELECT ml.ad_id, um.meta_family_key, FALSE, max(um.meta_family), NULL::text,
          ml.spend, ml.purchases, ml.conv_value, COALESCE(ml.impressions, 0), COALESCE(ml.link_clicks, 0), COALESCE(ml.link_clicks, 0),
          ml.spend, ml.purchases, 0::numeric, 0::numeric, 0::numeric, 0::numeric, 0::numeric, 0::numeric, 0::numeric, 0::bigint
-  FROM meta_ad_lifetime ml LEFT JOIN meta_ads ma ON ma.ad_id = ml.ad_id
-  JOIN unmatched_meta um ON um.meta_family_key = COALESCE(ma.meta_family_key, ml.meta_family_key) AND um.product_id = %(pid)s
-  WHERE (%(campaign)s::text IS NULL OR ma.campaign_id = %(campaign)s)
+  FROM unmatched_meta um
+  JOIN meta_ad_lifetime ml ON ml.meta_family_key = um.meta_family_key
+  LEFT JOIN meta_ads ma ON ma.ad_id = ml.ad_id
+  WHERE um.product_id = %(pid)s AND (%(campaign)s::text IS NULL OR ma.campaign_id = %(campaign)s){only_active}
   GROUP BY ml.ad_id, um.meta_family_key, ml.spend, ml.purchases, ml.conv_value, ml.impressions, ml.link_clicks""")
     sums = ", ".join(f"sum({k}) AS {k}" for k in _ALL_KEYS)
     nonzero = " OR ".join(f"o.{k} <> 0" for k in _ALL_KEYS)
-    # days_active since launch = days with spend among the daily rows we hold (one cheap indexed count for just these ads)
-    dact_cte = (""",
-dact AS (SELECT ad_id, count(*) FILTER (WHERE spend > 0) AS n FROM ad_daily WHERE ad_id IN (SELECT aid FROM o WHERE aid IS NOT NULL) GROUP BY ad_id)"""
-                if launch else "")
-    days_expr = "COALESCE(dact.n, 0)" if launch else "o.days_active"
-    dact_join = "LEFT JOIN dact ON dact.ad_id = o.aid" if launch else ""
     sql += f"""
 parts AS ({" UNION ALL ".join(parts)}),
-o AS (
+o AS MATERIALIZED (
   SELECT aid, fk, bool_or(matched) AS matched, max(mf) AS mf, max(camp) AS camp, {sums}, sum(days_active) AS days_active
   FROM parts GROUP BY aid, fk
-){dact_cte}
-SELECT o.*, {days_expr} AS days_active_final,
-       ma.ad_name, ma.campaign_id AS ma_campaign, ma.adset_name, ma.account, ma.status AS ad_status, ma.created_date,
-       mc.name AS campaign_name, mc.account AS campaign_account, COALESCE(mc.stage, 'unclassified') AS camp_stage,
-       COALESCE(a7.s7, 0) AS spend_7d, COALESCE(a7.s1, 0) > 0 AS live,
-       s.primary_id, s.display, s.cluster, s.icp, s.pain, th.thumb_id
+)
+SELECT o.*, ma.ad_name, ma.campaign_id AS ma_campaign, ma.adset_name, ma.account, ma.status AS ad_status, ma.created_date,
+       mc.name AS campaign_name, mc.account AS campaign_account, COALESCE(mc.stage, 'unclassified') AS camp_stage, fc.story_url
 FROM o
-{dact_join}
 LEFT JOIN meta_ads ma ON ma.ad_id = o.aid
 LEFT JOIN meta_campaigns mc ON mc.campaign_id = COALESCE(NULLIF(ma.campaign_id, ''), o.camp)
-LEFT JOIN ad7 a7 ON a7.ad_id = o.aid
-LEFT JOIN sel s ON s.family_key = o.fk AND o.matched
-LEFT JOIN thumbs th ON th.family_key = o.fk AND o.matched
+LEFT JOIN family_content fc ON fc.family_key = o.fk AND o.matched
 WHERE ({nonzero})
 ORDER BY o.spend DESC, o.c_spend DESC, o.aid NULLS LAST
 """
-    raw = rows_of(conn, sql, params)
+    raw = rows_of(conn, act(sql, w.active), params)
+
+    # per-ad / per-family extras, keyed lookups on indexes: 7-day spend and "live", days active (since launch: every day held), thumbnails
+    aids = sorted({r["aid"] for r in raw if r["aid"]})
+    ad7: dict[str, dict] = {}
+    dact: dict[str, Any] = {}
+    if aids:
+        ad7 = {r["ad_id"]: r for r in rows_of(conn, act(
+            """SELECT ad_id, sum(spend) FILTER (WHERE day >= %(d7)s) AS s7, sum(spend) FILTER (WHERE day >= %(d1)s) AS s1
+               FROM ad_daily ad WHERE ad_id = ANY(%(aids)s) AND day >= %(d7)s GROUP BY ad_id""", w.active),
+            {"aids": aids, "d7": params["d7"], "d1": params["d1"]})}
+        if launch:
+            dact = {r["ad_id"]: r["n"] for r in rows_of(conn, act(
+                "SELECT ad_id, count(*) FILTER (WHERE spend > 0) AS n FROM ad_daily ad WHERE ad_id = ANY(%(aids)s) GROUP BY ad_id", w.active), {"aids": aids})}
+    matched_fams = sorted({r["fk"] for r in raw if r["matched"] and r["fk"]})
+    thumbs = {r["family_key"]: r["id"] for r in rows_of(conn, """
+        SELECT DISTINCT ON (family_key) family_key, id FROM creative_assets WHERE kind = 'thumb' AND family_key = ANY(%s) ORDER BY family_key, idx""",
+        (matched_fams,))} if matched_fams else {}
+    for r in raw:
+        sel_row = sel_by.get(r["fk"]) if r["matched"] else None
+        a = ad7.get(r["aid"]) if r["aid"] else None
+        r["display"], r["primary_id"] = (sel_row["display"], sel_row["primary_id"]) if sel_row else (None, None)
+        r["cluster"], r["icp"], r["pain"] = (sel_row["cluster"], sel_row["icp"], sel_row["pain"]) if sel_row else (None, None, None)
+        r["thumb_id"] = thumbs.get(r["fk"]) if r["matched"] else None
+        r["spend_7d"] = (a["s7"] or 0) if a else 0
+        r["live"] = bool(a and (a["s1"] or 0) > 0)
+        r["days_active_final"] = dact.get(r["aid"], 0) if launch else r["days_active"]
 
     zero = lambda: {k: Decimal(0) for k in _ALL_KEYS}   # noqa: E731
     rem = {True: zero(), False: zero()}          # family-grain (no ad id) days: tracker families / Meta families not on the tracker
@@ -1295,6 +1857,7 @@ ORDER BY o.spend DESC, o.c_spend DESC, o.aid NULLS LAST
             "on_tracker": bool(r["matched"]),
             "campaign_id": campaign or None, "campaign_name": r["campaign_name"], "stage": r["camp_stage"] if campaign else "unclassified",
             "adset_name": r["adset_name"], "account": r["account"] or r["campaign_account"], "status": r["ad_status"],
+            "ads_manager_url": ads_manager_url(r["account"] or r["campaign_account"], r["aid"]), "story_url": r["story_url"] if r["matched"] else None,
             "created_date": r["created_date"].isoformat() if r["created_date"] else None,
             "tag": {"cluster": r["cluster"], "icp": r["icp"], "pain": r["pain"]} if r["matched"] else None,
             **window_block(side_a(r), w, side_b(r)),
@@ -1311,6 +1874,7 @@ ORDER BY o.spend DESC, o.c_spend DESC, o.aid NULLS LAST
                 "display": REMAINDER_NAME if on_tracker else REMAINDER_NAME[:-1] + ", not on the tracker)",
                 "primary_id": None, "thumb_asset_id": None, "on_tracker": on_tracker, "campaign_id": None, "campaign_name": None,
                 "stage": "unclassified", "adset_name": None, "account": None, "status": None, "created_date": None, "tag": None,
+                "ads_manager_url": None, "story_url": None,
                 **window_block(side_a(rm_), w, side_b(rm_)),
                 "spend_7d": 0.0, "live": False, "days_active": 0,
             })
@@ -1319,7 +1883,7 @@ ORDER BY o.spend DESC, o.c_spend DESC, o.aid NULLS LAST
              "spend_7d": f2(sum(Decimal(str(a["spend_7d"])) for a in ads)), "live": sum(1 for a in ads if a["live"])}
     apply_shares(ads + [total], total)
     if spark:
-        attach_spark_ads(conn, meta, w, product, ads, spark)
+        total["spark"] = attach_spark_ads(conn, meta, w, product, ads, spark)
     return {"rows": ads, "total": total}
 
 
@@ -1327,11 +1891,13 @@ ORDER BY o.spend DESC, o.c_spend DESC, o.aid NULLS LAST
 # campaigns + stage-daily (a product's ad_daily rows = mapped tracker families + unmatched families assigned by regex)
 # --------------------------------------------------------------------------------------------------------------------
 
-_PRODUCT_FAMILIES = """
+def _pf() -> str:
+    """CTE `pf`: the Meta families of a product (mapped to one of its live tracker families, or assigned to it off the tracker)."""
+    return f"""
 pf AS (
   SELECT m.meta_family_key
   FROM meta_family_map m
-  WHERE m.tracker_family_key IN (SELECT family_key FROM tracker_rows WHERE product_id = %(pid)s)
+  WHERE m.tracker_family_key IN (SELECT family_key FROM tracker_rows WHERE product_id = %(pid)s{alive('tracker_rows')})
   UNION
   SELECT meta_family_key FROM unmatched_meta WHERE product_id = %(pid)s
 )
@@ -1357,7 +1923,7 @@ def campaigns(conn, meta: DataMeta, w: WindowSpec, product: dict, spark: tuple[s
               "cf": cw.date_from if cw is not None else wf, "ct": cw.date_to if cw is not None else wt}
     in_cmp = "(day BETWEEN %(cf)s AND %(ct)s)" if cw is not None else "FALSE"
     base = f"""
-WITH {_PRODUCT_FAMILIES},
+WITH {_pf()},
 r AS (
   SELECT ad.ad_id, ad.meta_family_key, ad.campaign_id, ad.day, ad.spend, ad.purchases, ad.conv_value, ad.impressions, ad.link_clicks,
          CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END AS stage,
@@ -1370,7 +1936,7 @@ f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win, {in_cmp} AS in_cmp FR
 """
     # ONE scan of the product's ad_daily rows, grouped by (campaign, stage); the stage cards, the campaign rows and the total are all derived
     # from those few groups in Python (a campaign has a single stage, so the stage filter simply keeps or drops whole groups)
-    groups = rows_of(conn, base + f"""
+    groups = rows_of(conn, act(base + f"""
         SELECT f.campaign_id, f.stage, mc.name, mc.account,
                count(DISTINCT f.ad_id) FILTER (WHERE f.in_win AND NOT f.is_fam AND f.spend > 0) AS ads,
                count(DISTINCT f.meta_family_key) FILTER (WHERE f.in_win AND f.spend > 0) AS families,
@@ -1379,7 +1945,7 @@ f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win, {in_cmp} AS in_cmp FR
                COALESCE(sum(f.spend) FILTER (WHERE f.day >= %(d1)s), 0) > 0 AS live,
                max(f.day) FILTER (WHERE f.spend > 0) AS last_day
         FROM f LEFT JOIN meta_campaigns mc ON mc.campaign_id = f.campaign_id
-        GROUP BY f.campaign_id, f.stage, mc.name, mc.account""", params)
+        GROUP BY f.campaign_id, f.stage, mc.name, mc.account""", w.active), params)
     keep = set(w.stages)
 
     def fold(gs, with_counts=True):
@@ -1417,21 +1983,21 @@ f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win, {in_cmp} AS in_cmp FR
     apply_shares(by_stage, {"spend": sum(c["spend"] for c in by_stage),
                             **({"cmp": {"spend": sum(c["cmp"]["spend"] for c in by_stage)}} if w.cmp is not None else {})})
     if spark:
-        attach_spark_campaigns(conn, meta, w, product, rows, spark)
+        total["spark"] = attach_spark_campaigns(conn, meta, w, product, rows, spark)
     return {"by_stage": by_stage, "rows": rows, "total": total}
 
 
-def stage_daily(conn, meta: DataMeta, product: dict, df: dt.date, dtt: dt.date, stages: list[str] | None = None) -> list[dict]:
+def stage_daily(conn, meta: DataMeta, product: dict, df: dt.date, dtt: dt.date, stages: list[str] | None = None, active: bool = False) -> list[dict]:
     """Spend per day split by stage; stages outside the include list are reported as 0."""
     inc = set(stages or STAGES)
-    got = rows_of(conn, f"""
-        WITH {_PRODUCT_FAMILIES}
+    got = rows_of(conn, act(f"""
+        WITH {_pf()}
         SELECT ad.day,
                CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END AS stage,
                sum(ad.spend) AS spend
         FROM ad_daily ad JOIN pf ON pf.meta_family_key = ad.meta_family_key
         LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
-        WHERE ad.day BETWEEN %(f)s AND %(t)s GROUP BY 1, 2""", {"pid": product["id"], "f": df, "t": dtt})
+        WHERE ad.day BETWEEN %(f)s AND %(t)s GROUP BY 1, 2""", active), {"pid": product["id"], "f": df, "t": dtt})
     by: dict[tuple, Decimal] = {(r["day"], r["stage"]): r["spend"] for r in got}
     out, d = [], df
     while d <= dtt:
@@ -1446,24 +2012,11 @@ def stage_daily(conn, meta: DataMeta, product: dict, df: dt.date, dtt: dt.date, 
 
 
 def unmatched(conn, meta: DataMeta, w: WindowSpec, product: dict) -> dict:
-    """Meta families that are not on the tracker. A window (or, for since launch, every day held) of daily rows."""
-    wf, wt = w.span(meta)
-    cw = _cmp_window(w)
-    params = {"pid": product["id"], "wf": wf, "wt": wt, "stages": w.stages,
-              "lo": min(wf, cw.date_from) if cw is not None else wf, "hi": max(wt, cw.date_to) if cw is not None else wt,
-              "cf": cw.date_from if cw is not None else wf, "ct": cw.date_to if cw is not None else wt}
-    in_cmp = "(ad.day BETWEEN %(cf)s AND %(ct)s)" if cw is not None else "FALSE"
-    raw = rows_of(conn, f"""
-        SELECT um.meta_family_key, um.meta_family, um.spend_7d, um.live,
-               {_filtered_sums('ad', 'ad.day BETWEEN %(wf)s AND %(wt)s', in_cmp)}
-        FROM unmatched_meta um
-        JOIN ad_daily ad ON ad.meta_family_key = um.meta_family_key
-        LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
-        WHERE um.product_id = %(pid)s AND ad.day BETWEEN %(lo)s AND %(hi)s
-          AND (CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END) = ANY(%(stages)s)
-        GROUP BY um.meta_family_key, um.meta_family, um.spend_7d, um.live
-        ORDER BY spend DESC, c_spend DESC, um.meta_family""", params)
-    raw = [r for r in raw if r["spend"] != 0 or r["purchases"] != 0 or r["c_spend"] != 0 or r["c_purch"] != 0]
+    """Meta families that are not on the tracker. A date window sums their daily rows; since launch is Meta's lifetime (lifetime-only families
+    included). The total is the sum of the rows."""
+    raw = [r for r in _fold_unmatched(conn, meta, w, product["id"])
+           if r["spend"] != 0 or r["purchases"] != 0 or r["c_spend"] != 0 or r["c_purch"] != 0]
+    raw.sort(key=lambda r: (-r["spend"], -r["c_spend"], r["meta_family"]))
     rows = [{"meta_family": r["meta_family"], "meta_family_key": r["meta_family_key"], **window_block(side_a(r), w, side_b(r)),
              "spend_7d": f2(r["spend_7d"]), "live": bool(r["live"])} for r in raw]
     tot = {k: sum((r[k] for r in raw), Decimal(0)) for k in _ALL_KEYS}
@@ -1512,11 +2065,20 @@ def reliability_note(method: str | None, confidence: str | None, stats: dict | N
     return " ".join(parts)
 
 
+def _line_label(ln: dict) -> str:
+    return f"{ln['icp']} - {ln['pain_point']}" + (f" ({ln['emotional_trigger']})" if ln.get("emotional_trigger") else "")
+
+
 def _copy_only(text: str | None, lines: list[dict]) -> dict | None:
-    """Copy-only pick is stored as 'ICP - Pain point (Trigger)'. Resolve it to a taxonomy line when we can."""
+    """Copy-only pick: {line_code, label}. It is stored either as a taxonomy line code ('L27') or as 'ICP - Pain point (Trigger)'; either way
+    line_code is the code (null when the text names no known line) and label the full 'ICP - pain (trigger)' text."""
     if not text or not text.strip():
         return None
     t = text.strip()
+    by_code = {ln["line_code"].upper(): ln for ln in lines if ln.get("line_code")}
+    if t.upper() in by_code:
+        ln = by_code[t.upper()]
+        return {"line_code": ln["line_code"], "label": _line_label(ln)}
     best = None
     for ln in lines:
         key = f"{ln['icp']} - {ln['pain_point']}"
@@ -1540,7 +2102,7 @@ def _fam_window_metrics(conn, meta: DataMeta, w: WindowSpec, product_id: int, fa
 def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
     r = row_of(conn, """
         SELECT t.*, p.slug, p.name AS product_name, p.tag_set, p.id AS pid
-        FROM tracker_rows t JOIN products p ON p.id = t.product_id WHERE t.id = %s""", (row_id,))
+        FROM tracker_rows t JOIN products p ON p.id = t.product_id WHERE t.id = %s""" + alive("t"), (row_id,))
     if not r:
         raise ApiError(404, "ad not found")
     fk, pid = r["family_key"], r["pid"]
@@ -1569,6 +2131,8 @@ def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
                     "ingredients": [{"ingredient": i["ingredient"], "attacks": i["attacks"], "supports": i["supports"]} for i in ing]}
 
     content = row_of(conn, "SELECT * FROM family_content WHERE family_key = %s", (fk,)) or {}
+    fl = family_links(conn, [fk], w.active)[fk]
+    ac = family_ad_counts(conn, meta, w, [fk])[fk]
     assets = rows_of(conn, "SELECT id, kind, idx FROM creative_assets WHERE family_key = %s ORDER BY kind, idx", (fk,))
     thumb = next((a["id"] for a in assets if a["kind"] == "thumb"), None)
     frames = [a["id"] for a in assets if a["kind"] == "frame"]
@@ -1580,19 +2144,31 @@ def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
         JOIN products p ON p.id = t.product_id
         LEFT JOIN ad_tags a ON a.tracker_row_id = t.id AND a.is_current AND a.tag_set = p.tag_set
         LEFT JOIN taxonomy_lines tl ON tl.id = a.line_id
-        WHERE t.product_id = %s AND t.family_key = %s AND t.id <> %s
+        WHERE t.product_id = %s AND t.family_key = %s AND t.id <> %s""" + alive("t") + """
         ORDER BY t.sheet_row NULLS LAST, t.id""", (pid, fk, row_id))
 
     first = row_of(conn, "SELECT * FROM ad_metrics WHERE product_id = %s AND family_key = %s AND is_first_row", (pid, fk))
+    n_active_ads = int(row_of(conn, "SELECT COALESCE(max(ads_active_count), 0) AS n FROM ad_metrics WHERE product_id = %s AND family_key = %s",
+                              (pid, fk))["n"]) if _CAPS["active"] else 0
     blank = fk.startswith("id:")
     if first and not blank:
+        lc = "_active" if w.active else ""
+        if w.active:       # the active ads' fixed 7 / 30 day figures come from the active daily rows
+            x = row_of(conn, """
+                SELECT COALESCE(sum(spend) FILTER (WHERE day >= %(d7)s), 0) AS s7, COALESCE(sum(purchases) FILTER (WHERE day >= %(d7)s), 0) AS p7,
+                       COALESCE(sum(revenue) FILTER (WHERE day >= %(d7)s), 0) AS r7, COALESCE(sum(spend), 0) AS s30, COALESCE(sum(purchases), 0) AS p30,
+                       COALESCE(sum(revenue), 0) AS r30
+                FROM family_daily_active WHERE family_key = %(fk)s AND day >= %(d30)s""",
+                       {"fk": fk, "d7": meta.data_through - dt.timedelta(days=6), "d30": meta.data_through - dt.timedelta(days=29)})
+            fixed = {"d7": simple_metrics(x["s7"], x["p7"], x["r7"]), "d30": simple_metrics(x["s30"], x["p30"], x["r30"]), "live": bool(first["live_active"])}
+        else:
+            fixed = {"d7": simple_metrics(first["spend_7d"], first["purchases_7d"], first["revenue_7d"]),
+                     "d30": simple_metrics(first["spend_30d"], first["purchases_30d"], first["revenue_30d"]), "live": bool(first["live"])}
         family_metrics = {
-            "launch": side_fields({"spend": first["spend_launch"], "purchases": first["purchases_launch"], "revenue": first["revenue_launch"],
-                                   "imp": first["impressions_launch"], "clk": first["clicks_launch"], "clk_tr": first["clicks_launch"],
-                                   "sp_tr": first["spend_launch"], "purch_t": first["purchases_launch"]}, None),
-            "d7": simple_metrics(first["spend_7d"], first["purchases_7d"], first["revenue_7d"]),
-            "d30": simple_metrics(first["spend_30d"], first["purchases_30d"], first["revenue_30d"]),
-            "live": bool(first["live"]),
+            "launch": side_fields({"spend": first[f"spend_launch{lc}"], "purchases": first[f"purchases_launch{lc}"], "revenue": first[f"revenue_launch{lc}"],
+                                   "imp": first[f"impressions_launch{lc}"], "clk": first[f"clicks_launch{lc}"], "clk_tr": first[f"clicks_launch{lc}"],
+                                   "sp_tr": first[f"spend_launch{lc}"], "purch_t": first[f"purchases_launch{lc}"]}, None),
+            **fixed,
         }
     else:
         z = simple_metrics(0, 0, 0)
@@ -1608,10 +2184,10 @@ def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
         family_metrics["compare"] = cmp_block
         family_metrics["delta"] = delta_block
 
-    daily_rows = {d["day"]: d for d in rows_of(conn, """
+    daily_rows = {d["day"]: d for d in rows_of(conn, act("""
         SELECT day, sum(spend) AS spend, sum(purchases) AS purchases, sum(revenue) AS revenue, sum(link_clicks) AS link_clicks,
                sum(impressions) AS impressions
-        FROM family_daily WHERE family_key = %s AND day BETWEEN %s AND %s AND stage = ANY(%s) GROUP BY day""",
+        FROM family_daily WHERE family_key = %s AND day BETWEEN %s AND %s AND stage = ANY(%s) GROUP BY day""", w.active),
         (fk, meta.daily_start, meta.data_through, w.stages))}
     daily, d = [], meta.daily_start
     while d <= meta.data_through:
@@ -1641,6 +2217,10 @@ def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
         "launch_date": r["launch_date"].isoformat() if r["launch_date"] else None, "concept_name": r["concept_name"],
         "description": r["description"], "hypothesis": r["hypothesis"], "meta_ad_name": r["meta_ad_name"],
         "story_url": content.get("story_url"), "asset_url": r["asset_url"],
+        "links": {k: fl[k] for k in ("story_url", "ads_manager_url", "ad_id", "account")},
+        "creative": {"family_key": fk, "rows": len(siblings) + 1, "ads_count": ac[0], "ads_live": ac[1], "active_ads": n_active_ads},
+        "in_active_set": n_active_ads > 0,
+        "ads_count": ac[0], "ads_live": ac[1],
         "tag": tag,
         "tracker_tag": {"cluster": r["tracker_cluster"], "icp": r["tracker_icp"], "pain_point": r["tracker_pain"],
                         "emotion": r["tracker_emotion"], "ingredient": r["tracker_ingredient"]},
@@ -1772,11 +2352,11 @@ def trend(conn, meta: DataMeta, w: WindowSpec, product: dict, *, cluster: str | 
 
     params: dict[str, Any] = {"pid": product["id"], "stages": w.stages, "lo": lo, "hi": hi, "wf": df, "wt": dtt, "campaign": campaign_id,
                               "other": OTHER_KEY}
-    sql = "WITH " + _tr_cte(product["id"], family_key, params)
+    sql = "WITH " + _tr_cte(product["id"], family_key, params, w.active)
     tagw = _tag_where(cluster, icp, pain, params, prefix="tr.")
     ckey_sql, label_sql = _CKEY_SQL[level] if want_children else ("''::text", "''::text")
     sql += f""",
-sel AS (
+sel AS MATERIALIZED (
   SELECT DISTINCT ON (tr.family_key) tr.family_key, {ckey_sql} AS ckey, {label_sql} AS clabel, tr.color AS color
   FROM tr JOIN ad_metrics am ON am.tracker_row_id = tr.id AND am.is_first_row
   WHERE NOT starts_with(tr.family_key, 'id:') {tagw}
@@ -1799,11 +2379,13 @@ d AS (
         stage_expr = "CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END"
         off_tracker = f"'{NOT_ON_TRACKER}'" if want_children else "''"
         sql += f"""
+smap AS MATERIALIZED (        -- Meta family -> selected tracker family: a small keyed table, so the daily rows hash-join it instead of re-running a nested loop
+  SELECT m.meta_family_key, s.family_key, s.ckey, s.clabel, s.color FROM meta_family_map m JOIN sel s ON s.family_key = m.tracker_family_key
+),
 d AS (
   SELECT COALESCE(s.ckey, {off_tracker}) AS ckey, COALESCE(s.clabel, {off_tracker}) AS clabel, s.color, ad.day, {stage_expr} AS stage, {sums}
   FROM ad_daily ad
-  LEFT JOIN meta_family_map m ON m.meta_family_key = ad.meta_family_key
-  LEFT JOIN sel s ON s.family_key = m.tracker_family_key
+  LEFT JOIN smap s ON s.meta_family_key = ad.meta_family_key
   {um_join}
   LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
   WHERE ad.campaign_id = %(campaign)s AND ad.day BETWEEN %(lo)s AND %(hi)s AND {member} AND {stage_expr} = ANY(%(stages)s)
@@ -1825,7 +2407,7 @@ FROM dg GROUP BY 1, day, stage"""
     else:
         sql += f"""
 SELECT ''::text AS gkey, NULL::text AS clabel, NULL::text AS color, day, stage, {agg} FROM dg GROUP BY day, stage"""
-    raw = rows_of(conn, sql, params)
+    raw = rows_of(conn, act(sql, w.active), params)
 
     total: dict[dt.date, dict] = {}
     by_stage: dict[str, dict[dt.date, dict]] = {st: {} for st in w.stages}
@@ -1880,10 +2462,8 @@ def parse_spark(args) -> tuple[str, int] | None:
         return None
     if metric not in SPARK_METRICS:
         raise ApiError(400, f"spark must be one of {', '.join(SPARK_METRICS)}")
-    raw = (args.get("spark_days") or "30").strip()
-    if not raw.isdigit() or not 1 <= int(raw) <= MAX_SPARK_DAYS:
-        raise ApiError(400, f"spark_days must be an integer from 1 to {MAX_SPARK_DAYS}")
-    return metric, int(raw)
+    n = parse_uint((args.get("spark_days") or "30").strip(), 1, MAX_SPARK_DAYS, f"spark_days must be an integer from 1 to {MAX_SPARK_DAYS}")
+    return metric, n
 
 
 def _spark_range(meta: DataMeta, w: WindowSpec, n: int) -> tuple[dt.date, dt.date]:
@@ -1917,8 +2497,8 @@ dense AS (SELECT k.gk, dy.day, {cols} FROM keys k CROSS JOIN days dy LEFT JOIN g
 SELECT gk, array_agg(({_SPARK_SQL[metric]})::float8 ORDER BY day) AS vals FROM dense GROUP BY gk"""
 
 
-def _spark_arrays(conn, sql: str, params: dict, metric: str) -> dict[str, list]:
-    return {r["gk"]: list(r["vals"]) for r in rows_of(conn, sql + _spark_tail(metric), params)}
+def _spark_arrays(conn, sql: str, params: dict, metric: str, active: bool = False) -> dict[str, list]:
+    return {r["gk"]: list(r["vals"]) for r in rows_of(conn, act(sql + _spark_tail(metric), active), params)}
 
 
 def _blank_spark(n: int, metric: str) -> list:
@@ -1936,14 +2516,15 @@ def _spark_family_arrays(conn, meta: DataMeta, w: WindowSpec, product: dict, spa
     metric, n = spark
     sf, st = _spark_range(meta, w, n)
     params: dict[str, Any] = {"stages": w.stages, "sf": sf, "st": st}
-    sql = "WITH " + _tr_cte(product["id"], family_key, params)
+    sql = "WITH " + _tr_cte(product["id"], family_key, params, w.active)
     tagw = _tag_where(cluster, icp, pain, params, prefix="tr.")
-    sets_sql = ", ".join("(" + ", ".join(f"fs.{c}" for c in cols) + ", fd.day)" for cols in sets)
+    sets_sql = ", ".join("(" + ", ".join(f"fs.{c}" for c in cols) + ", fd.day)" for cols in sets) + ", (fd.day)"      # (fd.day) = the scope total, key ''
+
     used = {c for cols in sets for c in cols}                      # a column that is in no grouping set cannot be referenced at all
     gk = "concat_ws('|', " + ", ".join(f"fs.{c}" for c in _TREE_KEY_COLS if c in used) + ")"
     sums = ", ".join(f"sum({_FD_SUM_EXPR[k]}) AS {k}" for k in _A_KEYS)
     sql += f""",
-fs AS (
+fs AS MATERIALIZED (
   SELECT DISTINCT ON (tr.family_key) tr.family_key, tr.cluster, tr.icp, tr.pain
   FROM tr JOIN ad_metrics am ON am.tracker_row_id = tr.id AND am.is_first_row
   WHERE NOT starts_with(tr.family_key, 'id:') {tagw}
@@ -1955,7 +2536,7 @@ g AS (
   WHERE fd.day BETWEEN %(sf)s AND %(st)s AND fd.stage = ANY(%(stages)s)
   GROUP BY GROUPING SETS ({sets_sql})
 )"""
-    return _spark_arrays(conn, sql, params, metric)
+    return _spark_arrays(conn, sql, params, metric, w.active)
 
 
 def attach_spark_rollup(conn, meta, w, product, level, cluster, icp, rows, spark):
@@ -1964,12 +2545,14 @@ def attach_spark_rollup(conn, meta, w, product, level, cluster, icp, rows, spark
                                   icp=icp if level == "pain" else None)
     for r in rows:
         r["spark"] = arrays.get("|".join(r[c] for c in cols)) or _blank_spark(spark[1], spark[0])
+    return arrays.get("") or _blank_spark(spark[1], spark[0])
 
 
 def attach_spark_families(conn, meta, w, product, cluster, icp, pain, rows, spark):
     arrays = _spark_family_arrays(conn, meta, w, product, spark, [("family_key",)], cluster=cluster, icp=icp, pain=pain)
     for r in rows:
         r["spark"] = arrays.get(r["family_key"]) or _blank_spark(spark[1], spark[0])
+    return arrays.get("") or _blank_spark(spark[1], spark[0])
 
 
 def attach_spark_tree(conn, meta, w, product, root_level, last, cluster, icp, pain, rows, spark):
@@ -1978,30 +2561,36 @@ def attach_spark_tree(conn, meta, w, product, root_level, last, cluster, icp, pa
                                   icp=icp if root_level >= 2 else None, pain=pain if root_level >= 3 else None)
     for r in rows:
         r["spark"] = arrays.get(r["key"]) or _blank_spark(spark[1], spark[0])
+    return arrays.get("") or _blank_spark(spark[1], spark[0])
+
+
+TOTAL_KEY = "__total__"
 
 
 def _spark_ad_rows(conn, meta, w, product, spark, key_sql: str, where_sql: str, params: dict) -> dict[str, list]:
-    """Sparkline arrays straight from ad_daily rows (campaign / ad grain). key_sql and where_sql are fixed fragments from this module."""
+    """Sparkline arrays straight from ad_daily rows (campaign / ad grain), plus the total of the same rows under TOTAL_KEY.
+    key_sql and where_sql are fixed fragments from this module."""
     metric, n = spark
     sf, st = _spark_range(meta, w, n)
     e = _row_exprs("ad")
     sums = ", ".join(f"sum({e[k]}) AS {k}" for k in _A_KEYS)
     stage_expr = "CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END"
     sql = f"""
-        WITH {_PRODUCT_FAMILIES},
+        WITH {_pf()},
         g AS (
-          SELECT ({key_sql}) COLLATE "C" AS gk, ad.day, {sums}
+          SELECT COALESCE(({key_sql}) COLLATE "C", '{TOTAL_KEY}') AS gk, ad.day, {sums}
           FROM ad_daily ad LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
           WHERE ad.day BETWEEN %(sf)s AND %(st)s AND {stage_expr} = ANY(%(stages)s) AND {where_sql}
-          GROUP BY 1, ad.day
+          GROUP BY GROUPING SETS ((({key_sql}) COLLATE "C", ad.day), (ad.day))
         )"""
-    return _spark_arrays(conn, sql, {**params, "pid": product["id"], "sf": sf, "st": st, "stages": w.stages}, metric)
+    return _spark_arrays(conn, sql, {**params, "pid": product["id"], "sf": sf, "st": st, "stages": w.stages}, metric, w.active)
 
 
 def attach_spark_campaigns(conn, meta, w, product, rows, spark):
     arrays = _spark_ad_rows(conn, meta, w, product, spark, "ad.campaign_id", "ad.meta_family_key IN (SELECT meta_family_key FROM pf)", {})
     for r in rows:
         r["spark"] = arrays.get(r["campaign_id"]) or _blank_spark(spark[1], spark[0])
+    return arrays.get(TOTAL_KEY) or _blank_spark(spark[1], spark[0])
 
 
 def attach_spark_ads(conn, meta, w, product, rows, spark):
@@ -2009,11 +2598,82 @@ def attach_spark_ads(conn, meta, w, product, rows, spark):
     arrays = _spark_ad_rows(conn, meta, w, product, spark, "ad.ad_id", "ad.ad_id = ANY(%(ids)s)", {"ids": ids}) if ids else {}
     for r in rows:
         r["spark"] = (arrays.get(r["ad_id"]) or _blank_spark(spark[1], spark[0])) if r["ad_id"] else None      # remainder rows have no series
+    return arrays.get(TOTAL_KEY) or _blank_spark(spark[1], spark[0])        # the listed ads' days (family-grain remainder days have no ad id)
 
 
 # --------------------------------------------------------------------------------------------------------------------
 # status / media
 # --------------------------------------------------------------------------------------------------------------------
+
+
+def active_summary(conn, meta: DataMeta) -> dict:
+    """Counts behind the 'Active only' chip. ads = Meta ads whose recorded status is ACTIVE (Meta effective status); ads_live = those that also spent on
+    data_through or the day before; creatives = tracker creatives (product + family) with at least one ACTIVE ad (null until the data layer has them).
+    status_as_of = when the statuses were last refreshed (null = not recorded: statuses are first-seen values unless the ETL refreshes them);
+    built_at = when the active tables were built; available = active=1 can be served."""
+    d1 = meta.data_through - dt.timedelta(days=1)
+    r = row_of(conn, """
+        SELECT (SELECT count(*) FROM meta_ads WHERE status = 'ACTIVE') AS ads,
+               (SELECT count(DISTINCT ad.ad_id) FROM ad_daily ad JOIN meta_ads m ON m.ad_id = ad.ad_id AND m.status = 'ACTIVE'
+                 WHERE ad.spend > 0 AND ad.day >= %s) AS ads_live""", (d1,))
+    creatives = None
+    if _CAPS["active"]:
+        creatives = int(row_of(conn, "SELECT count(*) AS n FROM ad_metrics am JOIN tracker_rows r ON r.id = am.tracker_row_id "
+                                     "WHERE am.is_first_row AND am.ads_active_count > 0" + alive("r"))["n"])
+    return {"available": _CAPS["active"], "ads": int(r["ads"]), "ads_live": int(r["ads_live"]), "creatives": creatives,
+            "source": "Meta effective status", "status_as_of": meta.status_as_of, "built_at": meta.active_built_at}
+
+
+def _now() -> dt.datetime:
+    return dt.datetime.now(dt.timezone.utc)
+
+
+STALE_DATA_DAYS = 2           # data_through older than today (Los Angeles) minus this many days is stale
+STALE_OK_HOURS = 36           # a last fully successful refresh older than this is stale
+
+
+def _la_today(now: dt.datetime) -> dt.date:
+    try:
+        from zoneinfo import ZoneInfo
+        return now.astimezone(ZoneInfo("America/Los_Angeles")).date()
+    except Exception:                              # no tz database on the host: Pacific standard time, an hour off for part of the year
+        return now.astimezone(dt.timezone(dt.timedelta(hours=-8))).date()
+
+
+def _parse_ts(v: Any) -> dt.datetime | None:
+    if v is None:
+        return None
+    try:
+        t = v if isinstance(v, dt.datetime) else dt.datetime.fromisoformat(str(v))
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+
+
+def staleness(conn, meta: DataMeta) -> dict:
+    """{is_stale, reason, last_ok_at, data_through, age_hours, refresh_status}. Stale when data_through is more than STALE_DATA_DAYS behind today in
+    Los Angeles, or the last FULLY successful refresh (app_meta last_ok_at; before the ETL records it, the last successful etl_runs row) is older than
+    STALE_OK_HOURS, or app_meta refresh_status is 'failed'. reason is a plain sentence (null when fresh)."""
+    kv = {r["key"]: r["value"] for r in rows_of(conn, "SELECT key, value FROM app_meta WHERE key = ANY(%s)", (["last_ok_at", "refresh_status"],))}
+    last_ok = _parse_ts(kv.get("last_ok_at"))
+    if last_ok is None:
+        ok = row_of(conn, "SELECT finished_at FROM etl_runs WHERE finished_at IS NOT NULL AND status = 'ok' ORDER BY finished_at DESC, id DESC LIMIT 1")
+        last_ok = _parse_ts(ok["finished_at"]) if ok else None
+    now = _now()
+    today = _la_today(now)
+    age = round((now - last_ok).total_seconds() / 3600, 1) if last_ok else None
+    refresh_status = kv.get("refresh_status")
+    reasons = []
+    if meta.data_through < today - dt.timedelta(days=STALE_DATA_DAYS):
+        reasons.append(f"Data runs through {_fmt_day(meta.data_through, True)}, more than {STALE_DATA_DAYS} days behind today ({_fmt_day(today, True)}, Los Angeles).")
+    if last_ok is None:
+        reasons.append("No successful refresh is recorded.")
+    elif age is not None and age > STALE_OK_HOURS:
+        reasons.append(f"The last fully successful refresh finished {age:g} hours ago (more than {STALE_OK_HOURS} hours).")
+    if (refresh_status or "").lower() == "failed":
+        reasons.append("The latest refresh failed, so these numbers come from the last good run.")
+    return {"is_stale": bool(reasons), "reason": " ".join(reasons) or None, "last_ok_at": last_ok.isoformat() if last_ok else None,
+            "data_through": meta.data_through.isoformat(), "age_hours": age, "refresh_status": refresh_status}
 
 
 def status(conn, meta: DataMeta, n_products: int) -> dict:
@@ -2025,7 +2685,97 @@ def status(conn, meta: DataMeta, n_products: int) -> dict:
         "last_refresh": ({"job": last["job"], "finished_at": last["finished_at"].isoformat(), "status": last["status"]} if last else None),
         "last_ok_at": ok["finished_at"].isoformat() if ok else None,
         "products": n_products,
+        "active": active_summary(conn, meta),
+        "stale": staleness(conn, meta),
+        "sources": sources_summary(meta),
     }
+
+
+def sources_summary(meta: DataMeta) -> dict:
+    """What the source switch can offer: Upstack is available once its tables are built; `lag_days` > 1 means it is behind Meta's data."""
+    up = meta.upstack_through
+    return {"default": "meta", "meta": {"available": True, "through": meta.data_through.isoformat()},
+            "upstack": {"available": up is not None and meta.upstack_first_day is not None, "through": up.isoformat() if up else None,
+                        "history_from": meta.upstack_first_day.isoformat() if meta.upstack_first_day else None,
+                        "built_at": meta.upstack_built_at, "bases": list(BASES), "default_basis": DEFAULT_BASIS, "model": UPSTACK_MODEL,
+                        "lag_days": (meta.data_through - up).days if up else None}}
+
+
+def _vals(r: dict | None, *keys: str) -> dict:
+    return {k: (f2(r[k]) if r and r.get(k) is not None else 0.0) for k in keys}
+
+
+def _frac_diff(a: Any, b: Any) -> float | None:
+    """(a - b) / b as a fraction, None when b is 0."""
+    return ratio(_f(a) - _f(b), b, 4)
+
+
+def source_tieout(conn, meta: DataMeta, df: dt.date, dtt: dt.date) -> dict:
+    """Meta vs Upstack over [df, dtt] (every product, every ad). Always reads the raw tables by explicit name, whatever source the request asked for.
+      meta           Meta Graph API, ad grain (ad_daily): what the Meta source shows.
+      upstack_feed   Upstack's ad-platform feed (channel.*) at campaign grain, Meta campaigns only: an independent copy of Meta's spend and of Meta's own
+                     purchases; the spend check.
+      upstack_campaigns / upstack_ads   Upstack's attribution as pulled (campaign totals; ad rows). Ad rows overlap under any-click and may not
+                     add up to the campaigns: some orders are credited to a campaign but to no identifiable ad.
+      mapped         the ad rows tied to Meta ads, spend included: exactly what the Upstack source shows on every page (all ads, tracker or not).
+      unmapped       ad rows tied to no Meta ad ('(not set)', truncated ids, deleted ads): in no ad, family or tag total.
+      tags_pages     what the Tags pages total (ads on a tracker creative) in each mode: Meta, Upstack new customers, Upstack all orders."""
+    set_source("meta")
+    p = {"a": df, "b": dtt}
+    rng = "day BETWEEN %(a)s AND %(b)s"
+    m = row_of(conn, f"SELECT sum(spend) AS spend, sum(purchases) AS purchases, sum(conv_value) AS revenue, sum(link_clicks) AS clicks FROM ad_daily WHERE {rng}", p)
+    feed = row_of(conn, f"SELECT sum(spend) AS spend, sum(purchases) AS purchases, sum(purchases_value) AS revenue FROM upstack_channel_daily WHERE {rng}", p)
+    camps = row_of(conn, f"SELECT sum(nc) AS nc, sum(nc_rev) AS nc_rev, sum(orders) AS orders, sum(rev) AS rev FROM upstack_campaign_daily WHERE {rng}", p)
+    ads = row_of(conn, f"SELECT sum(nc) AS nc, sum(nc_rev) AS nc_rev, sum(orders) AS orders, sum(rev) AS rev FROM upstack_attr_daily WHERE {rng}", p)
+    mapped = row_of(conn, f"""SELECT sum(spend) AS spend, sum(nc_purchases) AS nc, sum(nc_conv_value) AS nc_rev, sum(purchases) AS orders, sum(conv_value) AS rev
+                              FROM ad_daily_upstack WHERE {rng}""", p)
+    unm = rows_of(conn, f"""SELECT reason, sum(nc) AS nc, sum(nc_rev) AS nc_rev, sum(orders) AS orders, sum(rev) AS rev FROM upstack_unmapped_daily
+                            WHERE {rng} GROUP BY reason ORDER BY reason""", p)
+    tags = {}
+    for key, tbl in (("meta", "family_daily"), ("upstack_nc", "family_daily_upstack_nc"), ("upstack_all", "family_daily_upstack_all")):
+        tags[key] = _vals(row_of(conn, f"SELECT sum(spend) AS spend, sum(purchases) AS purchases, sum(revenue) AS revenue FROM {tbl} WHERE {rng}", p),
+                          "spend", "purchases", "revenue")
+    daily = rows_of(conn, f"""
+        SELECT d.day, d.spend AS meta_spend, coalesce(f.spend, 0) AS feed_spend, coalesce(c.nc, 0) AS camp_nc, coalesce(c.orders, 0) AS camp_orders,
+               coalesce(a.nc, 0) AS mapped_nc, coalesce(a.orders, 0) AS mapped_orders
+        FROM (SELECT day, sum(spend) AS spend FROM ad_daily WHERE {rng} GROUP BY day) d
+        LEFT JOIN (SELECT day, sum(spend) AS spend FROM upstack_channel_daily WHERE {rng} GROUP BY day) f ON f.day = d.day
+        LEFT JOIN (SELECT day, sum(nc) AS nc, sum(orders) AS orders FROM upstack_campaign_daily WHERE {rng} GROUP BY day) c ON c.day = d.day
+        LEFT JOIN (SELECT day, sum(nc_purchases) AS nc, sum(purchases) AS orders FROM ad_daily_upstack WHERE {rng} GROUP BY day) a ON a.day = d.day
+        ORDER BY d.day""", p)
+    ff = row_of(conn, "SELECT min(day) AS d FROM upstack_channel_daily WHERE spend > 0")
+    ms, mp, mr = _f(m["spend"]), _f(m["purchases"]), _f(m["revenue"])
+    um = _vals(mapped, "spend", "nc", "nc_rev", "orders", "rev")
+    uc = _vals(camps, "nc", "nc_rev", "orders", "rev")
+    ua = _vals(ads, "nc", "nc_rev", "orders", "rev")
+    un = {"nc": 0.0, "nc_rev": 0.0, "orders": 0.0, "rev": 0.0, "by_reason": []}
+    for r in unm:
+        v = _vals(r, "nc", "nc_rev", "orders", "rev")
+        un["by_reason"].append({"reason": r["reason"], **v})
+        for k in ("nc", "nc_rev", "orders", "rev"):
+            un[k] = round(un[k] + v[k], 2)
+    return {
+        "from": df.isoformat(), "to": dtt.isoformat(), "days": (dtt - df).days + 1,
+        "meta": {**_vals(m, "spend", "purchases", "revenue", "clicks"), "roas": ratio(mr, ms, 2), "cpa": ratio(ms, mp, 2)},
+        "upstack_feed": {**_vals(feed, "spend", "purchases", "revenue"), "first_day": ff["d"].isoformat() if ff and ff["d"] else None,
+                         "spend_vs_meta_pct": _frac_diff(feed["spend"] if feed else 0, ms),
+                         "purchases_vs_meta_pct": _frac_diff(feed["purchases"] if feed else 0, mp)},
+        "upstack_campaigns": {**uc, "orders_vs_meta_purchases_pct": _frac_diff(uc["orders"], mp), "rev_vs_meta_revenue_pct": _frac_diff(uc["rev"], mr)},
+        "upstack_ads": {**ua, "ads_vs_campaigns_nc": ratio(ua["nc"], uc["nc"], 3), "ads_vs_campaigns_orders": ratio(ua["orders"], uc["orders"], 3)},
+        "mapped": {**um, "spend_vs_meta_pct": _frac_diff(um["spend"], ms), "orders_vs_meta_purchases_pct": _frac_diff(um["orders"], mp),
+                   "rev_vs_meta_revenue_pct": _frac_diff(um["rev"], mr), "roas_all": ratio(um["rev"], um["spend"], 2), "cpa_all": ratio(um["spend"], um["orders"], 2),
+                   "roas_nc": ratio(um["nc_rev"], um["spend"], 2), "cpa_nc": ratio(um["spend"], um["nc"], 2)},
+        "unmapped": un,
+        "tags_pages": tags,
+        "daily": [{"day": r["day"].isoformat(), "meta_spend": f2(r["meta_spend"]), "feed_spend": f2(r["feed_spend"]), "campaign_nc": num(r["camp_nc"]),
+                   "campaign_orders": num(r["camp_orders"]), "mapped_nc": num(r["mapped_nc"]), "mapped_orders": num(r["mapped_orders"])} for r in daily],
+        "model": UPSTACK_MODEL,
+    }
+
+
+def media_meta(conn, asset_id: int) -> dict | None:
+    """{mime, etag, size} of an asset without transferring its bytes (the ETag is the content hash, so a replaced asset gets a new one)."""
+    return row_of(conn, "SELECT mime, md5(bytes) AS etag, length(bytes) AS size FROM creative_assets WHERE id = %s", (asset_id,))
 
 
 def media(conn, asset_id: int) -> tuple[bytes, str] | None:

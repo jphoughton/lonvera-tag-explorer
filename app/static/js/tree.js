@@ -1,15 +1,16 @@
-// Dropdown tree table for the product page: cluster > ICP > pain point > ad family > Meta ad.
+// Dropdown tree table for the product page: cluster > ICP > pain point > creative > ad.
 // A caret (and, in "Drops down" mode, a click on the row) expands children in place; "Open ›" navigates into that level.
 // Children load lazily from /tree (tag levels) and /ads (Meta ads under a family).
 import { h, enc, fmt, href, apiWindow, globalParams, sparkParams, colorChip, thumb, confBadge, stageBadge, navigate, cmpView, onCmpRefresh, isNum, getRowMode, setRowMode, debounce, setViewStateProvider } from './util.js';
 import { api, AuthError } from './api.js';
 import { createTable, compare } from './table.js';
-import { columnsChips } from './components.js';
+import { columnsChips, creativeMeta, coverageBadge } from './components.js';
+import { adActions } from './preview.js';
 import { metricColumns, trendColumn, pinColumn } from './columns.js';
 
 const ROOT = '__root__';
 const LEVEL_NAME = ['cluster', 'icp', 'pain', 'family'];
-const CHILD_WORD = ['ICP', 'pain point', 'ad', 'Meta ad'];
+const CHILD_WORD = ['ICP', 'pain point', 'creative', 'ad'];
 
 function scaleM(m, parentM) {
   // child response total == parent's total, so child's table share = parent share x child share
@@ -29,14 +30,15 @@ function scaleM(m, parentM) {
 // Meta ad row (/ads) -> tree node with an `m` like every other row
 function adNode(r, fam, i) {
   const share = fam && fam.m && isNum(fam.m.spend_share) && isNum(r.spend_share) ? fam.m.spend_share * r.spend_share : null;
+  // copy every metric field of the /ads row (traffic metrics, per-day values, ...), then override the tree-specific ones
   const m = {
+    ...r,
     unique_ads: null, live_now: r.ad_id == null ? null : (r.live ? 1 : 0),
-    spend: r.spend, spend_share: share, purchases: r.purchases, revenue: r.revenue, roas: r.roas, cpa: r.cpa,
-    spend_7d: r.spend_7d, cpa_7d: null, active_ads: r.spend > 0 ? 1 : 0,
-    spend_per_day: r.spend_per_day, purchases_per_day: r.purchases_per_day, revenue_per_day: r.revenue_per_day,
+    spend_share: share, cpa_7d: null, active_ads: r.spend > 0 ? 1 : 0,
     stage: { testing: { spend: r.stage ? (r.stage === 'testing' ? r.spend : 0) : null }, scaling: { spend: r.stage ? (r.stage === 'scaling' ? r.spend : 0) : null } },
     testing_pct: null,
   };
+  delete m.cmp; delete m.delta; delete m.spark;
   if (r.cmp) {
     m.cmp = { ...r.cmp };
     const famCmpShare = fam && fam.m && fam.m.cmp ? fam.m.cmp.spend_share : null;
@@ -51,7 +53,7 @@ function adNode(r, fam, i) {
   };
 }
 
-export function createTree({ slug, p, signal, rootLevel, filters, first, restore, pins, shareLabel = '% of spend' }) {
+export function createTree({ slug, p, signal, rootLevel, filters, first, restore, pins, shareLabel = '% of spend', coverage = null }) {
   const G = globalParams(p);
   const path = '/p/' + enc(slug);
   const nodes = new Map();
@@ -118,8 +120,9 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
     }
   }
 
-  async function loadDepth(depth) {
+  async function loadDepth(depth, mySeq) {
     const d = await fetchTree(rootLevel, filters, depth);
+    if (mySeq != null && mySeq !== expandSeq) return null; // a later click superseded this one: drop the response
     // keep already-loaded Meta ads
     const keep = [...kids].filter(([k]) => nodes.get(k) && nodes.get(k).level === 3).map(([k, list]) => [k, list, list.map((x) => nodes.get(x))]);
     nodes.clear(); kids.clear(); loaded.clear();
@@ -187,7 +190,7 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
           if (loading.has(n.key)) out.push({ key: '~loading:' + n.key, pseudo: 'Loading…', level: n.level + 1 });
           else if (loaded.has(n.key)) {
             if (n.error) out.push({ key: '~err:' + n.key, pseudo: 'Failed to load: ' + n.error, level: n.level + 1 });
-            else if (!(kids.get(n.key) || []).length) out.push({ key: '~empty:' + n.key, pseudo: n.level === 3 ? 'No Meta ads in this window.' : 'No children.', level: n.level + 1 });
+            else if (!(kids.get(n.key) || []).length) out.push({ key: '~empty:' + n.key, pseudo: n.level === 3 ? 'No ads in this window.' : 'No children.', level: n.level + 1 });
             else walk(n.key, depth + 1);
           }
         }
@@ -216,14 +219,18 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
     rebuild();
     if (!loaded.has(n.key)) await loadChildren(n);
   }
-  function collapseAll() { expanded.clear(); rebuild(); }
+  // sequence guard: only the latest Expand / Collapse click may change the tree when its response arrives
+  let expandSeq = 0;
+  function collapseAll() { expandSeq++; setBusy(false); expanded.clear(); rebuild(); }
   async function expandTo(k) {
     if (k <= 0) { collapseAll(); return; }
+    const mySeq = ++expandSeq;
     setBusy(true);
     try {
       if (rootLevel === 3) {
         // families -> Meta ads: one /ads call for the whole filter, grouped by family
         const d = await api(`/api/products/${enc(slug)}/ads`, { cluster: filters.cluster, icp: filters.icp, pain: filters.pain, ...windowParams, ...sparkParams(p) }, { signal });
+        if (mySeq !== expandSeq) return;
         const by = new Map();
         d.rows.forEach((r, i) => { if (!by.has(r.family_key)) by.set(r.family_key, []); by.get(r.family_key).push([r, i]); });
         for (const n of nodes.values()) {
@@ -234,15 +241,15 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
           expanded.add(n.key);
         }
       } else {
-        if (fullDepth < k) await loadDepth(k);
+        if (fullDepth < k && (await loadDepth(k, mySeq)) === null) return;
+        if (mySeq !== expandSeq) return;
         expanded.clear();
         for (const n of nodes.values()) if (n.level - rootLevel < k && n.level < 3) expanded.add(n.key);
       }
     } catch (e) {
       if (!(e instanceof AuthError) && !(e && e.name === 'AbortError')) console.warn('expand failed', e);
     } finally {
-      setBusy(false);
-      rebuild();
+      if (mySeq === expandSeq) { setBusy(false); rebuild(); }
     }
   }
   function expandAll() {
@@ -277,23 +284,26 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
     if (n.level === 4) {
       const a = n.ad;
       body = h('div', { class: 'cell-ad' },
-        a.ad_id == null ? null : thumb(n.thumb_asset_id, 26),
+        a.ad_id == null ? null : thumb(n.thumb_asset_id, 26, { name: n.label, primaryId: n.primary_id, metaAdId: a.ad_id, tag: a.tag, links: a.links }),
         h('div', { class: 'cell-ad-text' },
-          h('div', null, h('span', { class: 'adname' + (a.ad_id == null ? ' muted ital' : ''), title: n.label }, n.label), ' ', a.stage ? stageBadge(a.stage) : null, openLink),
-          a.ad_id == null ? null : h('div', { class: 'sub' }, [a.campaign_name, a.adset_name, a.status].filter(Boolean).join(' · '))));
+          h('div', { class: 'nm' }, h('span', { class: 'rowname' + (a.ad_id == null ? ' muted ital' : ''), title: n.label }, n.label)),
+          h('div', { class: 'meta' }, a.stage ? stageBadge(a.stage) : null, openLink,
+            a.ad_id == null ? null : [a.campaign_name, a.adset_name, a.status].filter(Boolean).join(' · '), a.ad_id == null ? null : adActions(a))));
     } else if (n.level === 3) {
       body = h('div', { class: 'cell-ad' },
-        thumb(n.thumb_asset_id, 30),
+        thumb(n.thumb_asset_id, 30, { name: n.label, primaryId: n.primary_id }),
         h('div', { class: 'cell-ad-text' },
-          h('div', null, h('span', { class: 'adname', title: n.label }, n.label), ' ', n.confidence ? confBadge(n.confidence) : null, openLink),
-          h('div', { class: 'sub' }, [n.ad_type, n.status].filter(Boolean).join(' · '), n.counted_here === false ? ' · ' : '',
-            n.counted_here === false ? h('span', { class: 'badge muted-badge', title: 'This family’s metrics are counted on its first tracker row, which sits in another group' }, 'counted elsewhere') : null)));
+          h('div', { class: 'nm' }, h('span', { class: 'rowname', title: n.label }, n.label)),
+          h('div', { class: 'meta' }, n.confidence ? confBadge(n.confidence) : null, openLink,
+            creativeMeta({ adType: n.ad_type, status: n.status, launch: n.launch_date, adsCount: n.ads_count, adsLive: n.ads_live }),
+            n.counted_here === false ? h('span', { class: 'badge muted-badge', title: 'This creative’s metrics are counted on its first tracker row, which sits in another group' }, 'counted elsewhere') : null)));
     } else {
       body = h('div', { class: 'cell-label-text' },
-        h('div', null,
+        h('div', { class: 'nm' },
           n.line_code ? h('span', { class: 'linecode' }, n.line_code) : null,
           h('span', { class: 'lvlname' }, n.label),
           n.child_count != null ? h('span', { class: 'muted small childcount' }, ` ${fmt.int(n.child_count)} ${CHILD_WORD[n.level]}${n.child_count === 1 ? '' : 's'}`) : null,
+          coverageBadge(coverage && n.level >= 1 ? coverage[n.key] : null),
           openLink),
         n.trigger ? h('div', { class: 'sub', title: n.trigger }, n.trigger) : null);
     }
@@ -303,7 +313,7 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
   const labelCol = {
     key: 'label', label: first, sticky: true, cls: 'labelcol', sort: labelSort, total: () => 'Total', cell: labelCell,
   };
-  const allAdsLink = h('a', { href: href(path, { ...G, view: 'ads', ...filters }), class: 'btnlink small', id: 'all-ads', title: 'Open the Meta ads table for everything in view' }, 'All ads in view');
+  const allAdsLink = h('a', { href: href(path, { ...G, view: 'ads', ...filters }), class: 'btnlink small', id: 'all-ads', title: 'Open the ads table for everything in view' }, 'All creatives in view');
   const actionCol = {
     key: '_ads', label: '', nosort: true, cls: 'actioncol', header: allAdsLink,
     cell: (n) => (n.pseudo ? '' : h('a', { href: adsHref(n), class: 'btnlink small row-ads' }, 'Ads')),

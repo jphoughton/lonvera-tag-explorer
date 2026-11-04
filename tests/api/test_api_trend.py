@@ -346,7 +346,8 @@ METRICS = ["spend", "purchases", "revenue", "roas", "cpa", "ctr", "cpc"]
 def test_rollup_spark_values_equal_per_day_sums(client, fx, metric):
     n = 12
     d = get_ok(client, f"/api/products/vita-bull/rollup?level=cluster&window=30d&spark={metric}&spark_days={n}")
-    assert "spark" not in d["total"]["m"] and "spark" not in d["total"]
+    assert "spark" not in d["total"]["m"]                                               # the series sits next to m, like on the rows
+    assert_spark(d["total"]["spark"], spark_oracle(fx, first_families(fx), metric, n, THROUGH))      # the total's own per-day series
     for r in d["rows"]:
         fams = first_families(fx, cluster=r["label"])
         assert_spark(r["spark"], spark_oracle(fx, fams, metric, n, THROUGH))
@@ -399,6 +400,7 @@ def test_families_tree_spark_equal_the_family_series(client, fx):
         assert_spark(r["spark"], want)
     t = get_ok(client, f"/api/products/vita-bull/tree?root=cluster&depth=3&window=30d&spark=spend&spark_days={n}")
     assert all(len(r["spark"]) == n for r in t["rows"]) and "spark" not in t["total"]["m"]
+    assert_spark(t["total"]["spark"], spark_oracle(fx, first_families(fx), "spend", n, THROUGH), tol=0.01)
     by = {r["key"]: r for r in t["rows"]}
     for key, r in by.items():
         parts = key.split("|")
@@ -417,7 +419,7 @@ def test_families_tree_spark_equal_the_family_series(client, fx):
 def test_campaigns_and_ads_spark(client, fx):
     n = 8
     c = get_ok(client, f"/api/products/vita-bull/campaigns?window=30d&spark=spend&spark_days={n}")
-    assert "spark" not in c["total"]
+    assert len(c["total"]["spark"]) == n and sum(r["spark"][-1] for r in c["rows"]) == pytest.approx(c["total"]["spark"][-1], abs=0.02)      # rows add up to the total's day
     for row in c["rows"]:
         want = defaultdict(float)
         for r in fx.ad_daily:
@@ -428,7 +430,8 @@ def test_campaigns_and_ads_spark(client, fx):
                 want[(THROUGH - r["day"]).days] += float(r["spend"])
         assert_spark(row["spark"], [want.get(n - 1 - i, 0.0) for i in range(n)], tol=0.01)
     a = get_ok(client, f"/api/products/vita-bull/ads?family_key=vb-fam-a&window=30d&spark=purchases&spark_days={n}")
-    assert "spark" not in a["total"]
+    assert len(a["total"]["spark"]) == n
+    assert sum(r["spark"][i] for r in a["rows"] if r["spark"] for i in [n - 1]) >= 0
     for r in a["rows"]:
         if r["ad_id"] is None:
             assert r["spark"] is None

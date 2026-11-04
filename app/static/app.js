@@ -1,7 +1,9 @@
-import { $, h, setRenderer, navigate, currentParams, qs, href, globalParams, hasDateWindow, compareOn, cleanParams, setViewStateProvider, clearCmpRefreshers, loadViewState, navIndex, getParentHint, setParentHint } from './js/util.js';
-import { setUnauthorizedHandler, AuthError } from './js/api.js';
+import { $, h, fmt, setRenderer, navigate, currentParams, qs, href, globalParams, hasDateWindow, compareOn, cleanParams, setViewStateProvider, clearCmpRefreshers, loadViewState, navIndex, getParentHint, setParentHint } from './js/util.js';
+import { setUnauthorizedHandler, AuthError, ApiError } from './js/api.js';
 import { buildShell, showControls, syncControls, loadStatus, setRangeInfo, getStatus, setBackDisabled, setPendingNote, isAuthDisabled } from './js/controls.js';
 import { destroyCharts } from './js/charts.js';
+import './js/lightbox.js';
+import { closeAllModals } from './js/modal.js';
 import { loginPage } from './js/pages/login.js';
 import { productsPage } from './js/pages/products.js';
 import { productPage } from './js/pages/product.js';
@@ -69,12 +71,47 @@ function normalize(params) {
   return params;
 }
 
+// the window (A) of the last page that rendered; "Reset" on the empty-range state goes back to it
+let lastValid = null;
+const isEmptyRange = (e) => e instanceof ApiError && e.status === 400 && /no daily data in that range/i.test(e.message || '');
+const fullDay = (s) => (s ? `${fmt.day(s)}, ${String(s).slice(0, 4)}` : '–');
+
+async function showEmptyRange(params, root, my) {
+  let st = getStatus();
+  if (!st) { try { st = await loadStatus(abort.signal); } catch { st = getStatus(); } }
+  if (token !== my) return;
+  st = st || getStatus();
+  setRangeInfo(params, null, null);
+  root.removeAttribute('aria-busy');
+  const covers = st && st.daily_start && st.data_through ? ` Data covers ${fullDay(st.daily_start)} to ${fullDay(st.data_through)}.` : '';
+  const reset = () => {
+    const back = { ...params, window: undefined, from: undefined, to: undefined, ...(lastValid || {}) };
+    navigate(location.pathname + qs(cleanParams(back)));
+  };
+  root.replaceChildren(h('div', { class: 'page' },
+    h('div', { class: 'empty-range', role: 'status', 'data-testid': 'empty-range' },
+      h('strong', 'No data in this range.'),
+      h('span', null, covers),
+      h('div', null, h('button', { type: 'button', class: 'btn', 'data-testid': 'reset-range', onclick: reset },
+        'Back to the last valid range')))));
+}
+
+function showBlank(root, why) {
+  root.removeAttribute('aria-busy');
+  root.replaceChildren(h('div', { class: 'page' },
+    h('div', { class: 'errorbox', role: 'alert', 'data-testid': 'blank-page' },
+      h('strong', 'This page did not render. '),
+      h('span', null, why),
+      h('div', null, h('button', { type: 'button', class: 'btn', onclick: () => render({ restore: true }) }, 'Retry')))));
+}
+
 async function render(opts = {}) {
   if (/^\/projection(\/|$)/.test(location.pathname)) { location.replace(location.pathname + location.search); return; }   // Projections is a separate page (e.g. returning from /login)
   const my = ++token;
   if (abort) abort.abort();
   abort = new AbortController();
   destroyCharts();
+  closeAllModals();
   clearCmpRefreshers();
   setViewStateProvider(null);
   setParentHint(null);
@@ -94,7 +131,15 @@ async function render(opts = {}) {
     signal: abort.signal,
     alive: () => token === my,
     restore: opts.restore ? loadViewState() : null,
-    mount(node) { if (token === my) { root.replaceChildren(node); root.removeAttribute('aria-busy'); } },
+    mount(node) {
+      if (token !== my) return;
+      root.replaceChildren(node);
+      root.removeAttribute('aria-busy');
+      // an extension's cosmetic filter can hide a mounted page by class name (display:none leaves no layout boxes): say so, never a blank page
+      requestAnimationFrame(() => {
+        if (token === my && node.isConnected && !node.getClientRects().length) showBlank(root, 'The browser is hiding it. An ad blocker or extension may be matching a class name on this page.');
+      });
+    },
   };
   root.setAttribute('aria-busy', 'true');
   if (!route.public) {
@@ -106,8 +151,11 @@ async function render(opts = {}) {
   if (opts.scroll !== false) window.scrollTo(0, 0);
   try {
     await route.page(ctx);
+    if (token === my && root.getAttribute('aria-busy') === 'true') showBlank(root, 'The page finished loading but had nothing to show.');
+    if (token === my && !route.public) lastValid = { window: params.window, from: params.from, to: params.to };
   } catch (e) {
     if (e instanceof AuthError || (e && e.name === 'AbortError') || token !== my) return;
+    if (isEmptyRange(e)) { await showEmptyRange(params, root, my); if (token === my) updateBack(); return; }
     console.warn('render failed', e);
     setRangeInfo(params, null, null);
     root.removeAttribute('aria-busy');

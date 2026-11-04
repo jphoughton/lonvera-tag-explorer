@@ -122,60 +122,6 @@ def test_resolve_families_new_and_retry(conn, tmp_path):
     assert resolve_families.resolve(conn)["newly_matched"] == 0                                                              # idempotent
 
 
-def test_sheet_fallback_refreshes_trailing_days_only(conn, tmp_path):
-    snap = seed(conn, tmp_path)
-    conn.execute("UPDATE ad_daily SET spend = 999 WHERE day = '2026-10-31'")
-    conn.commit()
-    out = run_daily.refresh_from_sheet(conn, str(snap), days=2)
-    assert out["from"] == "2026-10-30" and out["to"] == "2026-10-31" and out["rows"] == 2
-    assert float(conn.execute("SELECT spend FROM ad_daily WHERE day='2026-10-31'").fetchone()[0]) == 8.0
-
-
-def test_run_daily_sheet_source_end_to_end(conn, tmp_path):
-    snap = seed(conn, tmp_path)
-    res = run_daily.run(days=2, source="sheet", snapshot_dir=str(snap))
-    assert res["tracker_sync"]["ok"] and res["meta"]["ok"] and res["resolve"]["ok"] and res["build_metrics"]["ok"]
-    assert res["build_metrics"]["data_through"] == "2026-10-31"
-    jobs = [r[0] for r in conn.execute("SELECT job FROM etl_runs WHERE status='ok' ORDER BY id").fetchall()]
-    assert {"tracker_sync", "build_metrics", "run_daily"} <= set(jobs)
-
-
-def test_run_daily_token_rejected_falls_back_but_fails_loudly(conn, tmp_path, monkeypatch):
-    snap = seed(conn, tmp_path)
-
-    def rejected(*a, **k):
-        raise meta_api.TokenRejected("Meta rejected the access token (code 190)")
-    monkeypatch.setattr(meta_pull, "pull_into_db", rejected)
-    with pytest.raises(db_mod.JobFailed, match="meta token rejected"):
-        run_daily.run(days=2, source="auto", snapshot_dir=str(snap))
-    # data was still refreshed from the sheet and metrics rebuilt
-    assert conn.execute("SELECT value FROM app_meta WHERE key='data_through'").fetchone()[0] == "2026-10-31"
-    top = conn.execute("SELECT status, error FROM etl_runs WHERE job='run_daily' ORDER BY id DESC LIMIT 1").fetchone()
-    assert top == ("failed", "meta token rejected")
-    mp = conn.execute("SELECT status, error FROM etl_runs WHERE job='meta_pull' ORDER BY id DESC LIMIT 1").fetchone()
-    assert mp == ("failed", "meta token rejected")
-
-
-def test_run_daily_other_meta_failure_also_loud(conn, tmp_path, monkeypatch):
-    snap = seed(conn, tmp_path)
-    monkeypatch.setattr(meta_pull, "pull_into_db", lambda *a, **k: (_ for _ in ()).throw(meta_api.RateLimited("80004 gave up")))
-    with pytest.raises(db_mod.JobFailed, match="meta pull failed"):
-        run_daily.run(days=2, source="auto", snapshot_dir=str(snap))
-    assert conn.execute("SELECT status FROM etl_runs WHERE job='run_daily' ORDER BY id DESC LIMIT 1").fetchone()[0] == "failed"
-    with pytest.raises(db_mod.JobFailed):
-        run_daily.run(days=2, source="meta", snapshot_dir=str(snap))
-
-
-def test_token_error_codes_are_never_retried(monkeypatch):
-    import requests
-    for code in (190, 102, 463, 467):
-        monkeypatch.setattr(requests, "get", lambda *a, _c=code, **k: FakeResp(400, {"error": {"code": _c, "message": "Invalid OAuth access token."}}))
-        slept = []
-        with pytest.raises(meta_api.TokenRejected):
-            meta_api.graph_get("http://x", {"access_token": "EAAxxxxxxxxxxxxxxxxxxxxxxxxx"}, "t", sleep=slept.append)
-        assert slept == []
-
-
 def test_meta_pull_stores_impressions(conn, tmp_path):
     seed(conn, tmp_path)
     rows = [dict(row("2026-10-30", "111", "Fam A"), impressions=1500.0), dict(row("2026-10-30", "222", "Fam A"), impressions=500.0)]
@@ -229,20 +175,3 @@ def test_verify_api_sql_checks_pass_on_consistent_data(conn, tmp_path):
     ck = verify_api.Checks()
     verify_api.check_consistency(conn, ck)
     assert not ck.failed, ck.rows
-
-
-def test_run_daily_runs_lifetime_after_meta_and_fails_loudly_if_it_breaks(conn, tmp_path, monkeypatch):
-    from etl import lifetime_pull
-    snap = seed(conn, tmp_path)
-    order = []
-    monkeypatch.setattr(meta_pull, "pull_into_db", lambda *a, **k: order.append("meta") or {"chunks_failed": [], "chunks_loaded": 1, "rows_inserted": 0, "_pulled": {}})
-    monkeypatch.setattr(lifetime_pull, "run", lambda c, **k: order.append("lifetime") or {"ads": 0, "spend": 0, "inserted": 0})
-    res = run_daily.run(days=2, source="auto", snapshot_dir=str(snap), until=D(2026, 10, 31))
-    assert order == ["meta", "lifetime"] and res["lifetime"]["ok"] and res["build_metrics"]["ok"]
-
-    def broken(c, **k):
-        raise meta_api.RateLimited("80004 gave up")
-    monkeypatch.setattr(lifetime_pull, "run", broken)
-    with pytest.raises(db_mod.JobFailed, match="lifetime pull failed"):
-        run_daily.run(days=2, source="auto", snapshot_dir=str(snap), until=D(2026, 10, 31))
-    assert conn.execute("SELECT status FROM etl_runs WHERE job='build_metrics' ORDER BY id DESC LIMIT 1").fetchone()[0] == "ok"      # metrics still rebuilt

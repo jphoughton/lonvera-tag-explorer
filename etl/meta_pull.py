@@ -20,6 +20,8 @@ TOL = 0.02
 
 
 def default_until() -> dt.date:
+    # Timezones: Graph buckets days by each ad ACCOUNT's own timezone (Lonvera Main = America/Los_Angeles, Lonvera BackUp = America/New_York); date_start values
+    # are kept as returned and never re-based (see app_meta 'tz_note'). "Last complete day" is yesterday in Pacific, the later of the two zones.
     return dt.datetime.now(PT).date() - dt.timedelta(days=1)
 
 
@@ -56,9 +58,10 @@ def load_chunk(conn, agg: dict[tuple, dict], since: dt.date, until: dt.date, rep
                          ON CONFLICT (campaign_id) DO UPDATE SET account=EXCLUDED.account, name=EXCLUDED.name, stage=EXCLUDED.stage""", camps.values())
     ads = {}
     for a in agg.values():
-        ads[a["ad_id"]] = (a["ad_id"], a["account"], a["ad_name"], a["famkey"], a["campaign_id"] or None, a["adset_id"] or None, a["adset_name"] or None)
-    db.execmany(conn, """INSERT INTO meta_ads (ad_id, account, ad_name, meta_family_key, campaign_id, adset_id, adset_name) VALUES (%s,%s,%s,%s,%s,%s,%s)
+        ads[a["ad_id"]] = (a["ad_id"], a["account"], a["ad_name"], a["famkey"], a["fam"], a["campaign_id"] or None, a["adset_id"] or None, a["adset_name"] or None)
+    db.execmany(conn, """INSERT INTO meta_ads (ad_id, account, ad_name, meta_family_key, family_name, campaign_id, adset_id, adset_name) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                          ON CONFLICT (ad_id) DO UPDATE SET account=EXCLUDED.account, ad_name=EXCLUDED.ad_name, meta_family_key=EXCLUDED.meta_family_key,
+                         family_name=EXCLUDED.family_name,
                          campaign_id=EXCLUDED.campaign_id, adset_id=EXCLUDED.adset_id, adset_name=EXCLUDED.adset_name""", ads.values())
     n = 0
     if replace:
@@ -79,13 +82,13 @@ def refresh_spans(conn):
 
 
 def fill_ad_meta(conn, tok, limit: int = 3000) -> int:
-    """Created date / status for Meta ads we only know from the API pull (best effort, never fatal)."""
-    ids = [r[0] for r in conn.execute("SELECT ad_id FROM meta_ads WHERE (created_date IS NULL OR status IS NULL) AND ad_id NOT LIKE 'fam:%%' ORDER BY last_day DESC NULLS LAST LIMIT %s", (limit,)).fetchall()]
+    """Best effort (never fatal): created_at / Pacific created_date / status / name for ads that have none yet. The daily run uses etl.status_refresh instead."""
+    ids = [r[0] for r in conn.execute("SELECT ad_id FROM meta_ads WHERE (created_at IS NULL OR status IS NULL) AND ad_id NOT LIKE 'fam:%%' ORDER BY last_day DESC NULLS LAST LIMIT %s", (limit,)).fetchall()]
     if not ids:
         return 0
     got = meta_api.fetch_ad_meta(tok, ids)
-    db.execmany(conn, "UPDATE meta_ads SET created_date=coalesce(%s::date, created_date), status=coalesce(%s, status) WHERE ad_id=%s",
-                [(v["created"], v["status"], k) for k, v in got.items()])
+    db.execmany(conn, "UPDATE meta_ads SET created_at=coalesce(%s, created_at), created_date=coalesce(%s::date, created_date), status=coalesce(%s, status) WHERE ad_id=%s",
+                [(v["created_at"], v["created"], v["status"], k) for k, v in got.items() if "error" not in v])
     return len(got)
 
 
@@ -159,11 +162,22 @@ def pull_task(tok, acct, an, since, until):
     return an, rows, total, acct_total
 
 
-def run_pull(conn, since, until, dry_run=False, replace=True, snapshot_dir=None, workers=2, tok=None):
+def apply_pending(conn, pending, stats, replace=True):
+    for agg, cs, ce in pending:
+        r = load_chunk(conn, agg, cs, ce, replace=replace)
+        stats["rows_inserted"] += r["inserted"]; stats["rows_deleted"] += r["deleted"]
+    refresh_spans(conn)
+
+
+def run_pull(conn, since, until, dry_run=False, replace=True, snapshot_dir=None, workers=2, tok=None, atomic=False, load=True):
+    """Pull [since, until] chunk by chunk. atomic=False (backfill): each clean chunk is committed as it arrives, failed chunks keep their old rows.
+    atomic=True (daily run): NOTHING is written unless every chunk pulled cleanly and reconciled; then all chunks are replaced in one transaction.
+    A rejected token always raises TokenRejected."""
     tok = tok or meta_api.get_token()
     chunks = meta_api.date_chunks(since, until)
     stats = {"chunks": len(chunks), "chunks_loaded": 0, "chunks_failed": [], "rows_inserted": 0, "rows_deleted": 0, "recon": []}
     pulled_all: dict = {}
+    pending: list = []
     consecutive_fail = 0
     for ci, (cs, ce) in enumerate(chunks):
         db.log(f"chunk {ci + 1}/{len(chunks)}: {cs}..{ce}")
@@ -175,7 +189,9 @@ def run_pull(conn, since, until, dry_run=False, replace=True, snapshot_dir=None,
             raise
         except meta_api.GraphError as e:
             stats["chunks_failed"].append({"chunk": f"{cs}..{ce}", "error": db.scrub(e)[:200]})
-            db.log(f"  chunk FAILED (existing rows for these days are kept): {db.scrub(e)[:160]}")
+            db.log(f"  chunk FAILED: {db.scrub(e)[:160]}")
+            if atomic:
+                break
             consecutive_fail += 1
             if consecutive_fail >= 2:
                 db.log("  two chunks failed in a row (rate limit?); stopping the pull early")
@@ -194,22 +210,33 @@ def run_pull(conn, since, until, dry_run=False, replace=True, snapshot_dir=None,
         if not ok:
             stats["chunks_failed"].append({"chunk": f"{cs}..{ce}", "error": "per-account spend does not reconcile within 2%"})
             db.log("  chunk NOT loaded: spend does not reconcile with account totals")
+            if atomic:
+                break
             continue
         agg = aggregate(rows)
         for k, v in famday(agg).items():
             pulled_all[k] = v
-        if not dry_run:
+        if atomic:
+            pending.append((agg, cs, ce))
+        elif not dry_run:
             r = load_chunk(conn, agg, cs, ce, replace=replace)
             conn.commit()
             stats["rows_inserted"] += r["inserted"]; stats["rows_deleted"] += r["deleted"]
         stats["chunks_loaded"] += 1
+    if atomic and not stats["chunks_failed"] and not dry_run and load:
+        apply_pending(conn, pending, stats, replace)
+        conn.commit()
+    elif atomic and not stats["chunks_failed"] and not load:
+        stats["_pending"] = pending                         # caller applies it (run_daily: one transaction with everything else)
+    elif atomic and stats["chunks_failed"]:
+        stats["chunks_loaded"] = 0                          # nothing was written
     return stats, pulled_all
 
 
-def pull_into_db(conn, since, until, replace=True, snapshot_dir=None, workers=2, ad_meta=True) -> dict:
-    """Run the pull for [since, until] and load it (chunk by chunk). Returns stats; raises only if nothing could be loaded safely is NOT the case:
-    failed chunks are reported in stats['chunks_failed'] and the caller decides whether that is fatal."""
-    stats, pulled = run_pull(conn, since, until, replace=replace, snapshot_dir=snapshot_dir, workers=workers)
+def pull_into_db(conn, since, until, replace=True, snapshot_dir=None, workers=2, ad_meta=False, atomic=True) -> dict:
+    """Pull [since, until] and load it. atomic=True (daily run): nothing is written unless every chunk pulled cleanly. atomic=False: clean chunks are
+    committed one by one. Failed chunks are reported in stats['chunks_failed']; the caller decides whether that is fatal."""
+    stats, pulled = run_pull(conn, since, until, replace=replace, snapshot_dir=snapshot_dir, workers=workers, atomic=atomic)
     refresh_spans(conn)
     if ad_meta:
         try:
@@ -230,7 +257,8 @@ def main(argv=None):
     ap.add_argument("--no-replace", action="store_true", help="write ads/campaigns metadata but leave ad_daily untouched")
     ap.add_argument("--snapshot-dir", help="sheet snapshot for comparisons (Daily tab, Meta Campaign - History)")
     ap.add_argument("--workers", type=int, default=2)
-    ap.add_argument("--no-ad-meta", action="store_true")
+    ap.add_argument("--ad-meta", action="store_true", help="also fill created date / status for ads that have none (best effort)")
+    ap.add_argument("--atomic", action="store_true", help="write nothing unless every chunk pulled cleanly (the daily run always does this)")
     a = ap.parse_args(argv)
     until = dt.date.fromisoformat(a.until) if a.until else default_until()
     since = dt.date.fromisoformat(a.since) if a.since else until - dt.timedelta(days=a.days - 1)
@@ -249,7 +277,7 @@ def main(argv=None):
             print(f"  chunks loaded(dry) {stats['chunks_loaded']}/{stats['chunks']}, failed {stats['chunks_failed']}")
             sys.exit(1 if stats["chunks_failed"] else 0)
         with db.JobRun("meta_pull") as run:
-            stats = pull_into_db(conn, since, until, replace=not a.no_replace, snapshot_dir=a.snapshot_dir, workers=a.workers, ad_meta=not a.no_ad_meta)
+            stats = pull_into_db(conn, since, until, replace=not a.no_replace, snapshot_dir=a.snapshot_dir, workers=a.workers, ad_meta=a.ad_meta, atomic=a.atomic)
             pulled = stats.pop("_pulled")
             sheet, src = sheet_famday(conn, since, until, a.snapshot_dir)
             if sheet and not a.no_replace:

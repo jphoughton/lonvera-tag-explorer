@@ -114,7 +114,7 @@ def test_bl_shape_mapping_matching_and_idempotency(conn, tmp_path, bl_cycle):
     # the cycle export writes the concept id into blank families (c2); the tracker keeps them blank. File rows are stale (50/20/21): order decides ordinals.
     tags = [tag(50, "c1", "fam1", line="B02", pain="P2", conf="low", gap="no persona"),
             tag(20, "c1", "fam1", line="B01"),
-            tag(21, "c2", "c2", line="B03", cluster="C2", icp="I3", pain="P3", conf="medium", media="no picture (copy only)", saw="no picture", heard="")]
+            tag(21, "c2", "c2", line="B03", cluster="C2", icp="I3", pain="P3", conf="medium", media="no picture (copy only)", saw="no picture", heard="", type="IMG")]
     st = load_tags.load(conn, "beef-liver", "linemap", "linemap-v2-2026-11-04", tags)
     assert st["matched"] == 3 and st["tracker_rows"] == 3 and st["line_code_mismatch"] == 0 and st["unique_families"] == 2
     assert st["tracker_vs_file"]["blank_family_rows"] == 1 and st["product_tag_set_flipped"] == 1
@@ -144,25 +144,52 @@ def test_vita_bull_file_shape_is_unchanged():
     assert load_tags.normalize({"saw": "", "media": ""})["seen"] == ""
 
 
-def test_count_and_code_mismatches_fail_loudly(conn, tmp_path, bl_cycle):
+def test_inconsistent_matches_and_low_coverage_fail_loudly(conn, tmp_path, bl_cycle):
     seed(conn, tmp_path, bl_cycle)
-    ok = [tag(1, "c1", "fam1"), tag(2, "c1", "fam1"), tag(3, "c2", "c2", line="B03", cluster="C2", icp="I3", pain="P3")]
-    with pytest.raises(RuntimeError, match="does not match the tracker"):
-        load_tags.load(conn, "beef-liver", "linemap", "v-short", ok[:2])
-    with pytest.raises(RuntimeError, match="does not match the tracker"):
-        load_tags.load(conn, "beef-liver", "linemap", "v-extra", ok + [tag(4, "zzz", "zzz")])
+    ok = [tag(1, "c1", "fam1"), tag(2, "c1", "fam1"), tag(3, "c2", "c2", line="B03", cluster="C2", icp="I3", pain="P3", type="IMG")]
+    with pytest.raises(RuntimeError, match="does not match the tracker.*2 of 3 tracker rows matched"):
+        load_tags.load(conn, "beef-liver", "linemap", "v-short", ok[:2])                                  # 66.7% < the default 90%
     bad = [dict(ok[0], line="B09")] + ok[1:]                                                              # (C1, I1, P1) is B01 in the taxonomy, not B09
     with pytest.raises(RuntimeError, match="line codes disagree"):
         load_tags.load(conn, "beef-liver", "linemap", "v-code", bad)
     unknown = [dict(ok[0], pain="Nope")] + ok[1:]
     with pytest.raises(RuntimeError, match="missing from taxonomy"):
         load_tags.load(conn, "beef-liver", "linemap", "v-line", unknown)
+    wrong_type = [dict(t, type="IMG" if t["type"] == "VID" else "VID") for t in ok]                       # every matched pair disagrees on VID/IMG
+    with pytest.raises(RuntimeError, match="inconsistent with the tracker.*ad type differs"):
+        load_tags.load(conn, "beef-liver", "linemap", "v-type", wrong_type)
     assert conn.execute("SELECT count(*) FROM ad_tags WHERE tag_set='linemap'").fetchone()[0] == 0
+
+
+def test_tracker_growth_is_not_an_error(conn, tmp_path, bl_cycle):
+    """Tracker rows added after the cycle stay untagged; tags whose key left the tracker are skipped with a warning; coverage decides."""
+    seed(conn, tmp_path, bl_cycle)                                                                        # 3 tracker rows: c1#1, c1#2, c2#1
+    ok = [tag(1, "c1", "fam1"), tag(2, "c1", "fam1"), tag(3, "c2", "c2", line="B03", cluster="C2", icp="I3", pain="P3", type="IMG")]
+    extra = tag(4, "gone-from-tracker", "gone", line="B02", pain="P2")
+    st = load_tags.load(conn, "beef-liver", "linemap", "v1", ok + [extra])                                  # a tag with no tracker row: skipped, 3 of 3 rows matched
+    assert st["matched"] == 3 and st["coverage_pct"] == 100.0 and st["tags_skipped_not_in_tracker"] == 1 and st["skipped_tag_keys"] == ["gone-from-tracker | gone"]
+    assert st["tracker_rows_untagged"] == 0 and st["product_tag_set_flipped"] == 1
+    # the tracker grows by two rows: 3 of 5 = 60% matched -> fails at the default, passes with a lower floor, rows stay untagged
+    sync(conn, tmp_path, [trow("c1", "fam1", "BeefLiver", Type="VID"), trow("c1", "fam1", "BeefLiver", Type="VID"), trow("c2", "", "BeefLiver", Type="IMG"),
+                          trow("new1", "n1", "BeefLiver", Type="VID"), trow("new2", "n2", "BeefLiver", Type="IMG")])
+    with pytest.raises(RuntimeError, match="3 of 5 tracker rows matched"):
+        load_tags.load(conn, "beef-liver", "linemap", "v2", ok)
+    conn.execute("UPDATE products SET tag_set='tracker' WHERE slug='beef-liver'")
+    st = load_tags.load(conn, "beef-liver", "linemap", "v2", ok, min_coverage=0.6)
+    assert (st["matched"], st["tracker_rows"], st["tracker_rows_untagged"], st["coverage_pct"], st["tagged_pct"]) == (3, 5, 2, 60.0, 60.0)
+    assert sorted(st["untagged_keys"]) == ["new1 | n1", "new2 | n2"] and st["product_tag_set_flipped"] == 1                                   # 60% >= 60%
+    assert conn.execute("SELECT count(*) FROM ad_tags a JOIN tracker_rows t ON t.id=a.tracker_row_id WHERE a.tag_set='linemap' AND t.concept_id LIKE 'new%'").fetchone()[0] == 0
+    # below the floor: allowed only with allow_mismatch, and then the product is not flipped
+    conn.execute("UPDATE products SET tag_set='tracker' WHERE slug='beef-liver'")
+    st = load_tags.load(conn, "beef-liver", "linemap", "v3", ok[:2], allow_mismatch=True, min_coverage=0.9)
+    assert st["matched"] == 2 and st["product_tag_set_flipped"].startswith("skipped") and conn.execute("SELECT tag_set FROM products WHERE slug='beef-liver'").fetchone()[0] == "tracker"
+    # rows a newer file does not cover keep their current tag (v2's tag of c2#1 survives v3, which only tags c1#1 and c1#2)
+    assert conn.execute("SELECT version, count(*) FROM ad_tags WHERE tag_set='linemap' AND is_current GROUP BY 1 ORDER BY 1").fetchall() == [("v2", 1), ("v3", 2)]
 
 
 def test_tag_set_flips_only_on_full_coverage_and_versions_roll(conn, tmp_path, bl_cycle):
     seed(conn, tmp_path, bl_cycle)
-    ok = [tag(1, "c1", "fam1"), tag(2, "c1", "fam1"), tag(3, "c2", "c2", line="B03", cluster="C2", icp="I3", pain="P3")]
+    ok = [tag(1, "c1", "fam1"), tag(2, "c1", "fam1"), tag(3, "c2", "c2", line="B03", cluster="C2", icp="I3", pain="P3", type="IMG")]
     assert conn.execute("SELECT tag_set FROM products WHERE slug='beef-liver'").fetchone()[0] == "tracker"
     st = load_tags.load(conn, "beef-liver", "linemap", "linemap-v1", ok[:2], allow_mismatch=True)
     assert st["product_tag_set_flipped"].startswith("skipped") and conn.execute("SELECT tag_set FROM products WHERE slug='beef-liver'").fetchone()[0] == "tracker"
@@ -230,3 +257,146 @@ def test_reliability_vita_bull_falls_back_without_app_meta(conn, dburl):
         db.set_meta(conn, "reliability:beef-liver", "not json")
         conn.commit()
         assert queries.reliability_stats(c, "beef-liver") is None
+
+
+# ---- Boneflex: two lines that differ only by emotional trigger (migration 006), BF codes, placeholder rows ----------------------------------
+
+BF_OVERVIEW = [HDR,
+               ["Boneflex", "K1", "J1", "Q1", "Chondroitin", "a", "s", "Shame", "story shame"],
+               ["", "", "", "Q2", "Zinc", "a", "s", "Fear", "story fear"],
+               ["", "", "", "Q1", "Chondroitin", "a", "s", "Desire", "story desire"],            # same cluster / ICP / pain as the first line, other trigger
+               ["", "K2", "J2", "Q3", "Zinc", "a", "s", "Pride", "story pride"]]
+BF_CATALOG = [{"line": "BF01", "cluster": "K1", "icp": "J1", "pain": "Q1", "trigger": "Shame"}, {"line": "BF02", "cluster": "K1", "icp": "J1", "pain": "Q2", "trigger": "Fear"},
+              {"line": "BF03", "cluster": "K1", "icp": "J1", "pain": "Q1", "trigger": "Desire"}, {"line": "BF04", "cluster": "K2", "icp": "J2", "pain": "Q3", "trigger": "Pride"}]
+
+
+@pytest.fixture
+def bf_cycle(tmp_path):
+    d = tmp_path / "bf-cycle"
+    d.mkdir()
+    (d / "catalog.json").write_text(json.dumps(BF_CATALOG))
+    return d
+
+
+def bf_codes(conn):
+    return conn.execute("""SELECT t.line_code, t.cluster, t.icp, t.pain_point, t.emotional_trigger FROM taxonomy_lines t JOIN products p ON p.id=t.product_id
+                           WHERE p.slug='boneflex' ORDER BY t.sort_order""").fetchall()
+
+
+def test_migration_006_unique_key_includes_the_trigger(conn):
+    pid = conn.execute("SELECT id FROM products WHERE slug='boneflex'").fetchone()[0]
+    ins = "INSERT INTO taxonomy_lines (product_id, line_code, cluster, icp, pain_point, emotional_trigger) VALUES (%s,%s,'c','i','p',%s)"
+    conn.execute(ins, (pid, "X1", "Shame"))
+    conn.execute(ins, (pid, "X2", "Desire"))                                                      # same cluster / ICP / pain, other trigger: allowed now
+    for code, trig in (("X3", "Shame"), ("X4", None)):
+        if trig is None:
+            conn.execute(ins, (pid, "X5", None))                                                  # a line without a trigger is allowed once ...
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            with conn.transaction():
+                conn.execute(ins, (pid, code, trig))                                              # ... and the full key (NULL read as '') stays unique
+    with pytest.raises(psycopg.errors.UniqueViolation):
+        with conn.transaction():
+            conn.execute(ins, (pid, "X1", "Pride"))                                               # (product_id, line_code) stays unique
+    conn.rollback()
+
+
+def test_two_lines_sharing_a_pain_point_are_kept_apart(conn, tmp_path, bf_cycle):
+    # state before this cycle: the old loader folded the Desire line into the Shame line, which sat under a legacy L code with its ingredient rows
+    pid = conn.execute("SELECT id FROM products WHERE slug='boneflex'").fetchone()[0]
+    first = conn.execute("""INSERT INTO taxonomy_lines (product_id, line_code, cluster, icp, pain_point, emotional_trigger, story, sort_order) VALUES (%s,'L01','K1','J1','Q1','Shame','old',1)
+                            RETURNING id""", (pid,)).fetchone()[0]
+    conn.execute("INSERT INTO line_ingredients (line_id, ingredient, sort_order) VALUES (%s,'Chondroitin',0),(%s,'Merged from the Desire line',1000)", (first, first))
+    st = load_taxonomy.load(conn, BF_OVERVIEW, cycle_dir=load_taxonomy.Path("/nonexistent"), bl_cycle_dir=None, bf_cycle_dir=bf_cycle, only={"boneflex"})
+    assert bf_codes(conn) == [("BF01", "K1", "J1", "Q1", "Shame"), ("BF02", "K1", "J1", "Q2", "Fear"), ("BF03", "K1", "J1", "Q1", "Desire"), ("BF04", "K2", "J2", "Q3", "Pride")]
+    assert conn.execute("SELECT id FROM taxonomy_lines WHERE line_code='BF01' AND product_id=%s", (pid,)).fetchone()[0] == first                 # same row, same id
+    assert st["products"]["boneflex"] == {"lines": 4, "clusters": 2, "ingredient_rows": 4, "recoded": 1, "inserted": 3, "not_in_tagging_catalog": 0, "lines_sharing_a_pain_point": 2}
+    ing = conn.execute("""SELECT t.line_code, i.ingredient FROM line_ingredients i JOIN taxonomy_lines t ON t.id=i.line_id WHERE t.product_id=%s ORDER BY t.sort_order, i.sort_order""", (pid,)).fetchall()
+    assert ing == [("BF01", "Chondroitin"), ("BF02", "Zinc"), ("BF03", "Chondroitin"), ("BF04", "Zinc")]                                    # rebuilt from the sheet, merged row gone
+    snap = conn.execute("SELECT id, line_code, sort_order, story FROM taxonomy_lines ORDER BY id").fetchall()
+    load_taxonomy.load(conn, BF_OVERVIEW, cycle_dir=load_taxonomy.Path("/nonexistent"), bl_cycle_dir=None, bf_cycle_dir=bf_cycle, only={"boneflex"})   # idempotent
+    assert conn.execute("SELECT id, line_code, sort_order, story FROM taxonomy_lines ORDER BY id").fetchall() == snap
+
+
+def test_edited_trigger_keeps_row_and_code(conn, bf_cycle):
+    load_taxonomy.load(conn, BF_OVERVIEW, cycle_dir=load_taxonomy.Path("/nonexistent"), bl_cycle_dir=None, bf_cycle_dir=bf_cycle, only={"boneflex"})
+    ids = dict(conn.execute("SELECT line_code, id FROM taxonomy_lines WHERE line_code LIKE 'BF%'").fetchall())
+    edited = [list(r) for r in BF_OVERVIEW]
+    edited[2][7] = "Frustration"                                                                  # Q2 line: Fear -> Frustration (the only line with this cluster/ICP/pain)
+    st = load_taxonomy.load(conn, edited, cycle_dir=load_taxonomy.Path("/nonexistent"), bl_cycle_dir=None, bf_cycle_dir=bf_cycle, only={"boneflex"})
+    assert st["products"]["boneflex"]["inserted"] == 0 and st["products"]["boneflex"]["recoded"] == 0 and st["products"]["boneflex"]["not_in_tagging_catalog"] == 0
+    assert dict(conn.execute("SELECT line_code, id FROM taxonomy_lines WHERE line_code LIKE 'BF%'").fetchall()) == ids
+    assert conn.execute("SELECT emotional_trigger FROM taxonomy_lines WHERE line_code='BF02'").fetchone()[0] == "Frustration"
+
+
+def test_plan_codes_and_matching_helpers():
+    L = lambda c, i, p, t: {"cluster": c, "icp": i, "pain": p, "trigger": t}
+    catalog = {("K1", "J1", "Q1", "Shame"): "BF01", ("K1", "J1", "Q1", "Desire"): "BF03"}
+    assert load_taxonomy.lookup_code(catalog, "K1", "J1", "Q1", "Desire") == "BF03"
+    assert load_taxonomy.lookup_code(catalog, "K1", "J1", "Q1", "Pride") is None                  # two catalog lines share the key: no guessing
+    assert load_taxonomy.lookup_code({("K", "J", "P", "Shame"): "BF09"}, "K", "J", "P", "Fear") == "BF09"      # one catalog line: trigger drift tolerated
+    lines = [L("K1", "J1", "Q1", "Shame"), L("K1", "J1", "Q1", "Desire"), L("K9", "J9", "Q9", "Fear"), L("K8", "J8", "Q8", None)]
+    assert load_taxonomy.plan_codes("boneflex", lines, [None, None, "BF40", None], catalog) == ["BF01", "BF03", "BF40", "BF41"]
+    existing = [(1, "K1", "J1", "Q1", "Shame", "L01"), (2, "K1", "J1", "Q1", "Desire", "L02")]
+    assert [m[0] for m in load_taxonomy.match_existing(lines[:2], existing)] == [1, 2]
+    assert [m[0] for m in load_taxonomy.match_existing(list(reversed(lines[:2])), existing)] == [2, 1]          # exact trigger first
+    assert load_taxonomy.match_existing([L("K1", "J1", "Q1", "Fear")], existing[:1])[0][0] == 1                 # edited trigger: same cluster/ICP/pain still matches
+
+
+def test_tags_map_to_lines_by_trigger_and_placeholder_rows_are_ignored(conn, tmp_path, bf_cycle):
+    load_taxonomy.load(conn, BF_OVERVIEW, cycle_dir=load_taxonomy.Path("/nonexistent"), bl_cycle_dir=None, bf_cycle_dir=bf_cycle, only={"boneflex"})
+    sync(conn, tmp_path, [trow("a", "fam-a", "Boneflex", Type="VID"), trow("b", "fam-b", "Boneflex", Type="IMG"), trow("c", "fam-c", "Boneflex", Type="IMG")])
+    pid = conn.execute("SELECT id FROM products WHERE slug='boneflex'").fetchone()[0]
+    conn.execute("INSERT INTO tracker_rows (product_id, row_key, concept_id, ad_family, family_key, sheet_row, status) VALUES (%s,'#ph','','','id:',36,'3 - Briefing')", (pid,))
+    mk = lambda row, cid, line, pain, trig: tag(row, cid, "fam-" + cid, line=line, cluster="K1", icp="J1", pain=pain, trigger=trig, type="VID" if cid == "a" else "IMG")
+    tags = [mk(1, "a", "BF01", "Q1", "Shame"), mk(2, "b", "BF03", "Q1", "Desire"), mk(3, "c", "BF02", "Q2", "Fear")]
+    st = load_tags.load(conn, "boneflex", "linemap", "linemap-v2-2026-11-05", tags)
+    assert st["matched"] == 3 and st["tracker_rows"] == 3 and st["ignored_blank_concept_rows"] == 1 and st["product_tag_set_flipped"] == 1 and st["line_code_mismatch"] == 0
+    got = dict(conn.execute("""SELECT t.concept_id, tl.line_code FROM ad_tags a JOIN tracker_rows t ON t.id=a.tracker_row_id JOIN taxonomy_lines tl ON tl.id=a.line_id
+                               WHERE a.tag_set='linemap' AND t.product_id=%s""", (pid,)).fetchall())
+    assert got == {"a": "BF01", "b": "BF03", "c": "BF02"}                                           # same cluster/ICP/pain, told apart by the trigger
+    assert conn.execute("SELECT count(*) FROM ad_tags a JOIN tracker_rows t ON t.id=a.tracker_row_id WHERE t.concept_id='' AND a.tag_set='linemap'").fetchone()[0] == 0
+    # a tag whose trigger no longer exists is mapped only when the cluster/ICP/pain is unambiguous
+    bad = [dict(tags[0], trigger="Pride")] + tags[1:]                                                # Q1 has two lines: ambiguous -> error
+    with pytest.raises(RuntimeError, match="missing from taxonomy"):
+        load_tags.load(conn, "boneflex", "linemap", "v-bad", bad)
+    ok = tags[:2] + [dict(tags[2], trigger="Pride")]                                                 # Q2 has one line: trigger drift tolerated
+    assert load_tags.load(conn, "boneflex", "linemap", "v-drift", ok)["line_code_mismatch"] == 0
+
+
+def test_soft_deleted_rows_are_not_part_of_the_match(conn, tmp_path, bf_cycle):
+    if not conn.execute("SELECT 1 FROM information_schema.columns WHERE table_name='tracker_rows' AND column_name='deleted_at'").fetchone():
+        pytest.skip("migration 007 (soft delete) not applied")
+    load_taxonomy.load(conn, BF_OVERVIEW, cycle_dir=load_taxonomy.Path("/nonexistent"), bl_cycle_dir=None, bf_cycle_dir=bf_cycle, only={"boneflex"})
+    sync(conn, tmp_path, [trow("a", "fam-a", "Boneflex", Type="VID"), trow("gone", "fam-gone", "Boneflex", Type="IMG")])
+    conn.execute("UPDATE tracker_rows SET deleted_at=now() WHERE concept_id='gone'")
+    st = load_tags.load(conn, "boneflex", "linemap", "v1", [tag(1, "a", "fam-a", line="BF01", cluster="K1", icp="J1", pain="Q1", trigger="Shame")])
+    assert st["matched"] == 1 and st["tracker_rows"] == 1 and st["product_tag_set_flipped"] == 1
+
+
+def test_pain_level_row_shows_both_lines_of_a_shared_pain_point():
+    from app import queries
+    lines = [{"line_code": "BF36", "cluster": "A", "icp": "I", "pain_point": "P", "emotional_trigger": "Shame", "cluster_color": "#fff", "sort_order": 1},
+             {"line_code": "BF37", "cluster": "A", "icp": "I", "pain_point": "Q", "emotional_trigger": "Fear", "cluster_color": "#fff", "sort_order": 2},
+             {"line_code": "BF38", "cluster": "A", "icp": "I", "pain_point": "P", "emotional_trigger": "Desire", "cluster_color": "#fff", "sort_order": 3}]
+    sk = queries._skeleton(lines, "pain", "A", "I")
+    assert [(s["label"], s["line_code"], s["trigger"]) for s in sk] == [("P", "BF36 / BF38", "Shame / Desire"), ("Q", "BF37", "Fear")]
+    assert [s["label"] for s in queries._skeleton(lines, "icp", "A", None)] == ["I"]                  # upper levels unchanged
+    children, info = queries._tax_children(lines)
+    assert info[("A", "I", "P")]["line_code"] == "BF36 / BF38" and info[("A", "I", "P")]["trigger"] == "Shame / Desire" and info[("A", "I", "Q")]["line_code"] == "BF37"
+    assert children[("A", "I")] == [("A", "I", "P"), ("A", "I", "Q")]
+
+
+def test_tag_of_another_products_line_on_a_moved_row_is_retired(conn, tmp_path, bl_cycle, bf_cycle):
+    """A tracker row that moved from Beef Liver to Boneflex keeps its old current tag (a Beef Liver line); loading Boneflex tags retires it, even when the
+    Boneflex file does not cover that row."""
+    load_taxonomy.load(conn, OVERVIEW + BF_OVERVIEW[1:], cycle_dir=load_taxonomy.Path("/nonexistent"), bl_cycle_dir=bl_cycle, bf_cycle_dir=bf_cycle)
+    sync(conn, tmp_path, [trow("a", "fam-a", "BeefLiver", Type="VID"), trow("b", "fam-b", "Boneflex", Type="IMG"), trow("c", "fam-c", "Boneflex", Type="IMG")])
+    bl_line = conn.execute("SELECT id FROM taxonomy_lines WHERE line_code='B01'").fetchone()[0]
+    rid = conn.execute("SELECT id FROM tracker_rows WHERE concept_id='c'").fetchone()[0]
+    conn.execute("INSERT INTO ad_tags (tracker_row_id, tag_set, version, is_current, line_id, cluster, icp, pain_point) VALUES (%s,'linemap','linemap-v2-2026-11-04',true,%s,'C1','I1','P1')", (rid, bl_line))
+    tags = [tag(1, "a", "fam-a", line="BF01", cluster="K1", icp="J1", pain="Q1", trigger="Shame"), tag(2, "b", "fam-b", line="BF02", cluster="K1", icp="J1", pain="Q2", trigger="Fear")]
+    tags[0]["concept_id"], tags[0]["ad_family"], tags[0]["type"] = "b", "fam-b", "IMG"
+    tags = tags[:1]                                                                                  # the Boneflex file tags only b; c is not covered
+    st = load_tags.load(conn, "boneflex", "linemap", "linemap-v2-2026-11-05", tags, min_coverage=0.5)
+    assert st["foreign_line_tags_retired"] == 1 and st["matched"] == 1
+    assert conn.execute("SELECT count(*) FROM ad_tags WHERE tracker_row_id=%s AND is_current AND tag_set='linemap'", (rid,)).fetchone()[0] == 0

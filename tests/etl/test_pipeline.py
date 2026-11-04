@@ -40,7 +40,7 @@ def test_row_keys_ordinals_and_leading_zero(conn, tmp_path):
     snap = make(tmp_path, trs, [("2026-05-06", "x", 1, 0, 0, 0)])
     sync(conn, snap)
     keys = [r[0] for r in conn.execute("SELECT row_key FROM tracker_rows ORDER BY sheet_row").fetchall()]
-    assert keys == ["0510#1", "510#1", "Bull-1#1", "Bull-1#2", "Bull-1#1~Other", "Solo#1", "X#1"]   # same concept under another family is disambiguated
+    assert keys == ["0510#1", "510#1", "Bull-1#1", "Bull-1#2", "Bull-1#3", "Solo#1", "X#1"]   # same concept under another family takes the next free ordinal
     assert len(set(keys)) == 7
     r = dict(conn.execute("SELECT concept_id, family_key FROM tracker_rows WHERE concept_id IN ('0510','510','Solo')").fetchall())
     assert r["0510"] == "0510" and r["510"] == "510" and r["Solo"] == "id:solo"
@@ -155,13 +155,17 @@ def test_backfill_idempotent_and_api_days_protected(conn, tmp_path):
 
 
 def test_stage_split_and_unmatched_product(conn, tmp_path):
-    daily = [("2026-05-06", "BoneFlex Thing", 3.0, 0, 0, 0), ("2026-11-02", "Beef Liver unknown", 9.0, 1, 5.0, 1)]
-    snap = make(tmp_path, [trow("T", "tfam", "Boneflex", launch="5/6/2026")], daily, windows=[])
+    snap = make(tmp_path, [trow("T", "tfam", "Boneflex", launch="5/6/2026")], [("2026-05-06", "seed", 1, 0, 0, 0)], windows=[])
     sync(conn, snap)
     backfill_sheet.run(conn, snap, "sheet", delta=False)
+    conn.execute("DELETE FROM ad_daily")
     conn.execute("INSERT INTO meta_family_map (meta_family_key, meta_family, tracker_family_key, rule) VALUES ('mx','mx','tfam','exact')")
     conn.execute("INSERT INTO meta_campaigns (campaign_id, name, stage) VALUES ('c1','Boneflex TEST x','scaling'),('c2','Boneflex Scale','testing')")
-    conn.execute("INSERT INTO ad_daily (ad_id, day, meta_family_key, meta_family, campaign_id, spend, source) VALUES ('1','2026-11-02','mx','mx','c1',4,'meta_api'),('2','2026-11-02','mx','mx','c2',6,'meta_api')")
+    for ad, key, name in (("1", "mx", "mx"), ("2", "mx", "mx"), ("3", "boneflex thing", "BoneFlex Thing"), ("4", "beef liver unknown", "Beef Liver unknown")):
+        conn.execute("INSERT INTO meta_ads (ad_id, account, ad_name, meta_family_key, family_name, campaign_id) VALUES (%s,'Lonvera Main',%s,%s,%s,'c1')", (ad, name, key, name))
+    conn.execute("""INSERT INTO ad_daily (ad_id, day, meta_family_key, meta_family, campaign_id, spend, impressions, source) VALUES
+        ('1','2026-11-02','mx','mx','c1',4,10,'meta_api'),('2','2026-11-02','mx','mx','c2',6,10,'meta_api'),
+        ('3','2026-11-02','boneflex thing','BoneFlex Thing','c1',3,10,'meta_api'),('4','2026-11-02','beef liver unknown','Beef Liver unknown','c1',9,10,'meta_api')""")
     build_metrics.rebuild(conn)
     st = dict(((r[0], r[1]), float(r[2])) for r in conn.execute("SELECT day::text, stage, spend FROM family_daily").fetchall())
     assert st[("2026-11-02", "testing")] == 4.0 and st[("2026-11-02", "scaling")] == 6.0       # stage recomputed from the name, not the stored value

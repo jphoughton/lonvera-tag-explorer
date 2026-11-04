@@ -1,5 +1,6 @@
 // App header (Back, brand, data-through, logout) and the global range / stage / compare controls. State lives in the URL.
-import { h, navigate, setParams, fmt, currentParams, stageSet, stageParam, STAGES, hasDateWindow, compareOn, cmpView, applyCompareState, refreshCmp, qs, cleanParams } from './util.js';
+import { h, navigate, setParams, fmt, isNum, currentParams, stageSet, stageParam, STAGES, hasDateWindow, compareOn, cmpView, applyCompareState, refreshCmp, qs, cleanParams, srcFromParams, applySourceState, srcView } from './util.js';
+import { loadTieout } from './tieout.js';
 import { api, AuthError } from './api.js';
 
 const PRESETS = [['launch', 'Since launch'], ['1d', '1d'], ['7d', '7d'], ['14d', '14d'], ['30d', '30d'], ['60d', '60d'], ['90d', '90d'], ['180d', '180d'], ['mtd', 'MTD']];
@@ -9,10 +10,14 @@ const STAGE_LABELS = { testing: 'Testing', scaling: 'Scaling', unclassified: 'Un
 let topbar, controls, statusEl, userEl, labelEl, noteEl, fromEl, toEl, errEl, backBtn;
 let cmpSel, cfromEl, ctoEl, cmpCustomBox, perDayWrap, perDayCb, cerrEl;
 let presetBtns = [], stageBtns = {};
+let activeBtn, activeCountEl;
+let srcBtns = {}, basisBtns = {}, basisCtl, srcBannerEl, srcTextEl, tieBtn, tiePanel;
 let status = null;
 let uncVisible = false;
 let pendingNote = null;
 let authDisabled = false;
+let stageNote = '';
+export const getStageNote = () => stageNote;
 let controlsOn = false;
 export const isAuthDisabled = () => authDisabled;
 // Log out + user name only exist when the deployment has logins (status.auth !== 'disabled')
@@ -66,6 +71,9 @@ export function buildShell({ onBack }) {
     stageBtns[st] = b;
   }
 
+  activeBtn = h('button', { type: 'button', class: 'schip active-chip', id: 'active-chip', 'aria-pressed': 'false', title: 'Only creatives with active ads; numbers are for their active ads' }, 'Active only');
+  activeBtn.addEventListener('click', () => setParams({ active: currentParams().active === '1' ? null : '1' }));
+  activeCountEl = h('span', { class: 'muted small', id: 'active-count' });
   cmpSel = h('select', { id: 'cmp', 'aria-label': 'Compare to' }, COMPARES.map(([v, t]) => h('option', { value: v }, t)));
   cmpSel.addEventListener('change', onCompareChange);
   cfromEl = h('input', { type: 'date', id: 'cmp-from', 'aria-label': 'Compare from date' });
@@ -79,18 +87,53 @@ export function buildShell({ onBack }) {
   perDayCb.addEventListener('change', onPerDay);
   perDayWrap = h('label', { class: 'check', id: 'perday-wrap', hidden: true }, perDayCb, ' Per day');
 
+  srcBtns = {};
+  for (const [key, text] of [['meta', 'Meta'], ['upstack', 'Upstack']]) {
+    const b = h('button', { type: 'button', class: 'seg', 'data-source': key, 'aria-pressed': String(key === 'meta') }, text);
+    b.addEventListener('click', () => setParams({ source: key === 'upstack' ? 'upstack' : null, basis: null }));
+    srcBtns[key] = b;
+  }
+  basisBtns = {};
+  for (const [key, text] of [['nc', 'New customers'], ['all', 'All orders']]) {
+    const b = h('button', { type: 'button', class: 'seg', 'data-basis': key, 'aria-pressed': String(key === 'nc') }, text);
+    b.addEventListener('click', () => setParams({ basis: key === 'all' ? 'all' : null }));
+    basisBtns[key] = b;
+  }
+  basisCtl = h('div', { class: 'ctl', id: 'basis-ctl', hidden: true }, h('span', { class: 'ctl-name' }, 'Count'), h('span', { class: 'segs', role: 'group', 'aria-label': 'What Upstack counts' }, Object.values(basisBtns)));
+  srcTextEl = h('span', { class: 'src-text', id: 'src-text' });
+  tieBtn = h('button', { type: 'button', class: 'btn small', id: 'tieout-btn', 'aria-expanded': 'false' }, 'Meta vs Upstack tie-out');
+  tiePanel = h('div', { class: 'tieout', id: 'tieout-panel', hidden: true });
+  tieBtn.addEventListener('click', () => {
+    const open = tiePanel.hidden;
+    tiePanel.hidden = !open;
+    tieBtn.setAttribute('aria-expanded', String(open));
+    if (open) loadTieout(tiePanel);
+  });
+  const moreBtn = h('button', { type: 'button', class: 'btn small src-more', id: 'src-more', 'aria-expanded': 'false' }, 'More');
+  moreBtn.addEventListener('click', () => {
+    const open = !srcBannerEl.classList.contains('open');
+    srcBannerEl.classList.toggle('open', open);
+    moreBtn.textContent = open ? 'Less' : 'More';
+    moreBtn.setAttribute('aria-expanded', String(open));
+  });
+  srcBannerEl = h('div', { class: 'source-banner meta', id: 'source-banner' }, srcTextEl, moreBtn, tieBtn);
+
   labelEl = h('strong', { class: 'range-label', id: 'range-label' });
   noteEl = h('div', { class: 'range-note', id: 'range-note' });
 
   controls.replaceChildren(h('div', { class: 'controls-in' },
     h('div', { class: 'ctl-row' },
+      h('div', { class: 'ctl', id: 'source-ctl' }, h('span', { class: 'ctl-name' }, 'Numbers from'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Data source' }, Object.values(srcBtns))),
+      basisCtl,
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Range'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Date range' }, presetBtns)),
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Custom'), fromEl, h('span', { class: 'muted' }, '–'), toEl, apply, errEl),
-      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Stage'), h('span', { class: 'chips', role: 'group', 'aria-label': 'Stage' }, Object.values(stageBtns))),
+      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Stage'), h('span', { class: 'chips', role: 'group', 'aria-label': 'Stage' }, Object.values(stageBtns), activeBtn), activeCountEl),
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Compare to'), cmpSel, cmpCustomBox, perDayWrap),
     ),
     h('div', { class: 'ctl-row second' }, labelEl),
     noteEl,
+    srcBannerEl,
+    tiePanel,
   ));
 }
 
@@ -157,6 +200,17 @@ async function logout() {
 }
 
 // ---------- state ----------
+// yellow strip under the header when the data is stale (not dismissible, hidden when fresh)
+function renderStaleBanner(st) {
+  const el = document.getElementById('stale-banner');
+  if (!el) return;
+  const stale = st && st.stale && st.stale.is_stale;
+  if (!stale || !controlsOn) { el.hidden = true; el.textContent = ''; return; }
+  const when = st.last_ok_at ? fmt.dateTime(st.last_ok_at) : 'unknown';
+  el.textContent = `Data may be out of date: ${st.stale.reason || 'the last refresh did not complete'}. Last successful refresh ${when}; data through ${fmt.day(st.data_through)}.`;
+  el.hidden = false;
+}
+
 export function showControls(on) {
   controls.hidden = !on;
   const src = document.getElementById('source');
@@ -164,6 +218,7 @@ export function showControls(on) {
   document.body.classList.toggle('no-controls', !on);
   controlsOn = on;
   applyAuthUi();
+  renderStaleBanner(status);
 }
 export function setBackDisabled(disabled) {
   if (backBtn) backBtn.disabled = !!disabled;
@@ -183,6 +238,9 @@ export function syncControls(p) {
   const win = custom ? null : (p.window || 'launch');
   presetBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.window === win)));
   syncStageChips(p);
+  syncSource(p);
+  activeBtn.setAttribute('aria-pressed', String(p.active === '1'));
+  activeCountEl.textContent = '';
   fromEl.value = custom ? p.from : '';
   toEl.value = custom ? p.to : '';
   errEl.textContent = '';
@@ -202,6 +260,24 @@ export function syncControls(p) {
   }
 }
 
+const META_SUMMARY = "Numbers: Meta's own reporting. Purchases and revenue are what Meta attributes to each ad (returning customers included). Switch to Upstack to read the same ads on Upstack's attribution.";
+const sourceUp = () => !!(status && status.sources && status.sources.upstack);
+// the switch, the Count sub-switch (Upstack only) and the one-line statement of what the numbers are; the text is refined by every response's window_info.source
+function setSrcText(strong, text) { srcTextEl.replaceChildren(...[strong ? h('strong', null, strong) : null, text].filter(Boolean)); }
+function syncSource(p) {
+  srcFromParams(p);
+  const up = srcView.key === 'upstack';
+  for (const [k, b] of Object.entries(srcBtns)) b.setAttribute('aria-pressed', String(k === srcView.key));
+  for (const [k, b] of Object.entries(basisBtns)) b.setAttribute('aria-pressed', String(k === (srcView.basis || 'nc')));
+  basisCtl.hidden = !up;
+  const avail = !sourceUp() || status.sources.upstack.available;
+  srcBtns.upstack.disabled = !avail && !up;
+  srcBtns.upstack.title = avail ? "Upstack's attribution: new customers or all orders credited to each ad (any-click, 30-day window)" : 'Upstack data is not loaded yet';
+  srcBtns.meta.title = "Meta's own reporting (as the ad platform attributes purchases)";
+  srcBannerEl.className = 'source-banner ' + srcView.key + (srcBannerEl.classList.contains('open') ? ' open' : '');
+  setSrcText(up ? srcView.label + '. ' : null, up ? (srcView.summary || '') : META_SUMMARY);
+}
+
 function rangeText(info) {
   if (!info) return '';
   if (info.kind === 'launch' || !info.from) return info.label || '';
@@ -213,9 +289,17 @@ function rangeText(info) {
 // a = window_info, b = compare_info (or null). opts.unclassified: the window has unclassified spend (shows that chip)
 export function setRangeInfo(p, a, b, { unclassified = false } = {}) {
   applyCompareState(p, a, b);
+  if (a && a.source) { applySourceState(a); if (srcView.key === 'upstack') setSrcText(srcView.label + '. ', `${srcView.summary || ''} ${srcView.note || ''}`.trim()); else setSrcText(null, META_SUMMARY); }
+  const foot = document.getElementById('source');
+  if (foot && a && a.source && a.source.key === 'upstack') foot.textContent = `Numbers: Upstack attribution (${a.source.model}), through ${fmt.day(a.source.through)}; spend, clicks and impressions: Meta Marketing API.`;
+  else if (foot && status) foot.textContent = 'Source: Meta Marketing API' + (status.last_refresh && status.last_refresh.finished_at ? ', refreshed ' + fmt.dateTime(status.last_refresh.finished_at) : '') + (status.data_through ? ' · data through ' + fmt.day(status.data_through) : '');
   if (unclassified !== uncVisible) { uncVisible = unclassified; syncStageChips(p); }
   perDayWrap.hidden = !cmpView.on;
   perDayCb.checked = cmpView.perDay;
+  stageNote = (a && a.stage_note) || '';
+  for (const st of STAGES) { if (stageNote) stageBtns[st].title = stageNote; else stageBtns[st].removeAttribute('title'); }
+  activeBtn.setAttribute('aria-pressed', String(p.active === '1'));
+  activeCountEl.textContent = p.active === '1' && a && isNum(a.active_ads) ? `${fmt.int(a.active_ads)} active ads` : '';
   if (!a) { labelEl.textContent = ''; noteEl.replaceChildren(); return; }
   labelEl.textContent = b ? `${rangeText(a)} vs ${rangeText(b)}` : (a.label || '');
   const notes = [];
@@ -267,8 +351,9 @@ export async function loadStatus(signal) {
     const lr = status.last_refresh;
     statusEl.replaceChildren(
       h('span', { id: 'data-through' }, 'Data through ' + fmt.day(status.data_through)),
-      lr && lr.finished_at ? h('span', { class: 'muted' }, ` · refreshed ${fmt.dateTime(lr.finished_at)}${lr.status && lr.status !== 'ok' && lr.status !== 'success' ? ' (' + lr.status + ')' : ''}`) : null,
+      lr && lr.finished_at ? h('span', { class: 'muted' }, ` · refreshed ${fmt.dateTime(lr.finished_at)}`) : null,
     );
+    renderStaleBanner(status);
     for (const el of [fromEl, toEl, cfromEl, ctoEl]) { el.min = status.daily_start || ''; el.max = status.data_through || ''; }
     const src = document.getElementById('source');
     if (src) {
@@ -284,5 +369,5 @@ export async function loadStatus(signal) {
 }
 export function getStatus() { return status; }
 export async function ensureStatus(signal) { return status || loadStatus(signal); }
-export function clearStatus() { status = null; if (statusEl) statusEl.textContent = ''; if (userEl) { userEl.textContent = ''; userEl.hidden = true; } const src = document.getElementById('source'); if (src) src.hidden = true; }
+export function clearStatus() { status = null; renderStaleBanner(null); if (statusEl) statusEl.textContent = ''; if (userEl) { userEl.textContent = ''; userEl.hidden = true; } const src = document.getElementById('source'); if (src) src.hidden = true; }
 export { cleanParams, qs };
