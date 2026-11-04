@@ -2,12 +2,14 @@
 
 What it replaced: nothing in the sheet directly. It is the shared plumbing every module sits on: scenarios, monthly series, loaded actuals, audit and undo, the module registry, the engine that runs the modules in order, and the reconcile harness.
 
-Auth: projection has none of its own. `/api/projection/*` sits under the app's `/api/*` guard (`app/auth.py`): login on gives 401 without a session, the app's `AUTH_DISABLED` makes it open. Nothing in `app/projection/` reads a password or issues a cookie.
+Auth: projection has none of its own. `/api/projection/*` sits under the app's `/api/*` guard (`app/auth.py`, named users): login on gives 401 without a session, the app's `AUTH_DISABLED` makes it open. Nothing in `app/projection/` reads a password or issues a cookie.
 
 ## Files
 
 ```
 migrations/100_proj_core.sql                  tables below + seed 'current'
+migrations/105_proj_refresh.sql               proj_refresh_runs
+etl/projection_daily.py                       daily refresh runner (python -m etl.projection_daily)
 app/projection/__init__.py                    register(app): guard rails, core API, module blueprints, /projection pages
 app/projection/interfaces.py                  Month/Series, MONTHS, Scenario, result dataclasses, Row/Table (grid payload), Module
 app/projection/rwdb.py                        read-write pool (get_rw)
@@ -15,12 +17,13 @@ app/projection/scenarios.py                   CRUD, clone, params merge, history
 app/projection/series.py                      get_series / get / apply_items / actuals helpers
 app/projection/audit.py                       proj_audit writer and reader, current_actor()
 app/projection/limits.py                      in-memory per-IP rate limits
+app/projection/freshness.py                   feed freshness: hook loading, evaluation, GET /freshness payload
 app/projection/registry.py                    module discovery + blueprint mounting
 app/projection/engine.py                      run(): modules in order, stubs for unbuilt ones
 app/projection/stubs.py                       fixture stubs read from the sheet snapshot
 app/projection/api.py                         /api/projection blueprint + install_guards()
 scripts/projection/reconcile.py               engine vs sheet, per cell
-tests/projection/core/                        160 tests
+tests/projection/core/                        193 tests
 ```
 
 `app/__init__.py` has two changed lines: `from . import api, auth, db, projection` and `projection.register(app)` right after `app.register_blueprint(api.bp)`.
@@ -52,6 +55,7 @@ tests/projection/core/                        160 tests
 | `GET /series?scenario=&keys=a,b` or `&prefix=drivers.` `&from=&to=&detail=1` | | `{scenario, version, series:{key:{iso:value}}, detail?:{key:{iso:{kind,note,origin}}}}`; scenario -> base -> base's base fallback per cell; `origin` = the scenario that holds the cell |
 | `PUT /series` | `{scenario, items:[{line_key,month,value\|null,kind,note}], expected_version?}` | `{version, changed}`; `null` deletes the cell (reverts to the base's value); max 500 items; unchanged cells are not written, audited or versioned |
 | `GET /audit?scenario=&line_key=&limit=` | | `{audit:[...]}` newest first, limit <= 1000 |
+| `GET /freshness` | | `{generated_at, feeds:[{module,feed,label,cadence,data_through,age_days,stale_after_days,status,message,last_run:{status,finished_at,rows,error}\|null}], summary:{fresh,stale,unknown}}`; see Daily refresh |
 | `GET /run?scenario=` | | `{scenario, version, actual_through, modules:{key:{built,stub,ms,error?}}, headline:{fy,ev,lifetime_multiple,lowest_ending_cash}}` |
 
 Validation: `line_key` `^[a-z0-9_.]{1,120}$`; `month` ISO date, first of month, inside 2025-01..2029-12; `value` finite number below 1e13 (never a string); `kind` input/override; `note` <= 500 chars; duplicate (line_key, month) in one request, unknown item fields and non-object items are 400 naming `items[i]`. Errors are `{error}`.
@@ -63,10 +67,10 @@ Pages: `/projection` and `/projection/<module>` serve `app/static/projection.htm
 One set of app-level hooks, installed by `api.install_guards(app)` from `projection.register(app)`; `app.before_request` is registered after `auth.init_auth`, so the app's guard runs first (anonymous requests get 401 before any projection check when the app's login is on).
 
 - `_write_guard` (before_request, acts only on non-GET/HEAD/OPTIONS under `/api/projection/`, so every module blueprint is covered with no code in the module): Origin must match `request.host` when present (403 `origin_mismatch`; `Origin: null` is rejected); per-IP sliding window 120 writes/minute (429 `{error:"rate_limited"}` + `Retry-After`); paths with a segment starting `upload` also count against 20/hour; body must be `application/json` (415 `json_required`) except `multipart/form-data` on an `upload*` path; request cap set per request to 1 MB (8 MB for multipart; the app-wide 64 KB cap is overridden for projection only, 413 above). Config: `PROJ_RATE_MUTATIONS_PER_MIN`, `PROJ_RATE_UPLOADS_PER_HOUR` (app config or env). Limits are per process: with N gunicorn workers the effective ceiling is N times higher.
-- after_request: `X-Robots-Tag: noindex, nofollow` on `/projection*` and `/api/projection*`; `/robots.txt` fallback (Disallow `/projection`, `/api/projection`) served only when the app has no `/robots.txt` route (it replaces a 404 only, never an existing route).
-- Audit: every mutation writes `proj_audit` with old and new; actor = the app's signed-in user (`auth.current_user()` when the app exposes it, else a `user`/`u` session value), `anonymous` otherwise (`guest` from AUTH_DISABLED counts as anonymous), `system` outside a request.
+- Noindex is the app's: `create_app` sends `X-Robots-Tag: noindex, nofollow` on every response and serves `/robots.txt` with `Disallow: /`; projection adds nothing of its own and a test checks the header on `/projection*` and `/api/projection/*`.
+- Audit: every mutation writes `proj_audit` with old and new; actor = the app's signed-in username (`auth.current_user()`, e.g. `JoshHoughton`), `anonymous` when the app is open (`guest` from AUTH_DISABLED), `system` outside a request.
 - Undo: every version bump snapshots the scenario; the state before the first API change is captured as a baseline, so data a loader wrote straight to `proj_series` is restorable too.
-- Tests for auth: login on gives 401 for every route including a module endpoint added with no guard code; open mode is tested through the app's `AUTH_DISABLED` when `app/auth.py` has it, and by stubbing `auth.is_authenticated` on this branch (which predates the flag).
+- Tests for auth: login on gives 401 for every route including a module endpoint added with no guard code; with `AUTH_DISABLED` the same routes work without a cookie (`test_api_projection_is_open_with_auth_disabled_and_401_with_it_off`, `test_open_when_the_apps_auth_is_off`).
 
 ## How a module plugs in
 
@@ -134,6 +138,29 @@ MAP = [
 
 `result` is a dotted path into the EngineResult (`drivers.nc_rev`, `pnl.lines.noi`, `demand.units.revamp|bull`; dict keys may contain dots, `a|b` addresses a tuple key). A cell passes when abs diff <= `--abs` or relative diff <= `--tolerance` (relative = |engine - sheet| / max(|engine|, |sheet|)). Blank sheet cells count as 0; text and error cells are skipped and counted. Output per line: cells, skipped, max abs diff (and month), max rel diff, count over tolerance, status; lines on a stub show `stub` and `--module <key>` on an unbuilt module exits 2. Exit 0 all pass, 1 over tolerance or unresolved path, 2 usage. `--live` re-reads the sheet read-only (one `values.get` per tab through `Desktop/Google Sheets/sheets.py`, env `SHEETS_PY_DIR`); not exercised in the tests.
 
+## Daily refresh
+
+Railway's `etl` service (cron 13:00 UTC, start command `scripts/deploy/run_etl.sh`) now runs `etl.migrate`, then `etl.run_daily` (ad data), then `etl.projection_daily`. Both always run; the script exits non-zero if either failed, so the deployment shows Failed and the dashboard notification fires. One-offs are unchanged: `run_etl.sh projection_daily --dry-run`, `run_etl.sh meta_pull --days 185`.
+
+Module hooks, in `etl/projection_<module>.py` (one per module key; conn rows are dicts; either hook may be missing, a module without `refresh` is recorded as skipped):
+
+```python
+def refresh(conn, days=14) -> {"rows": int, "data_through": "YYYY-MM-DD", ...}   # idempotent, incremental (upsert of the trailing days), no secrets in the output
+def freshness(conn) -> [{"feed": "ad_daily", "label": "Ad spend (Meta)", "cadence": "daily" | "monthly-upload",
+                         "data_through": date | None, "stale_after_days": 2}]
+```
+
+`python -m etl.projection_daily [--only a,b] [--days 14] [--dry-run]`:
+- each `refresh` runs on its own connection in its own try/except under a time cap (`PROJECTION_REFRESH_TIMEOUT_SEC`, default 600, SIGALRM so the running code is interrupted); its work is committed on success and rolled back on failure; one module failing never stops the others;
+- every module is recorded in `proj_refresh_runs(module, started_at, finished_at, status ok|failed|skipped, rows, data_through, error)`; `error` is scrubbed (credentials in URLs, bearer/token values, known secret env values) and capped at 300 characters by the code and by a CHECK constraint; skipped rows say `no etl module` or `no refresh hook`;
+- afterwards each module's `freshness` is evaluated against today (Pacific): `fresh` (age <= stale_after_days), `stale`, or `unknown` (no data yet; reported, not fatal);
+- exit 1 when any refresh failed, any run could not be recorded, any freshness hook raised or returned a malformed entry, or any `daily` feed is stale. Stale `monthly-upload` feeds and `unknown` feeds are printed but never fail the run. Message form: `feed ad_daily last data 2026-11-01, 3 days old (stale after 2 days)`;
+- `--dry-run` lists what would run, shows freshness, refreshes and records nothing, exits 0. `--only` limits both the refreshes and the freshness check to those modules.
+
+`GET /api/projection/freshness` returns the same evaluation live (modules' `freshness(conn)` on the app's read-only connection) plus each module's latest ok/failed run as `last_run`; a module whose hook raises appears as one `unknown` feed named `(module)` with the error text.
+
+Timing: the cron runs at 13:00 UTC (05:00-06:00 Pacific). Feeds that Josh's desktop routine writes to the sheet (about 07:00 local) are not there yet at that hour, so a `daily` feed backed by them needs `stale_after_days` >= 2 or it will fail every morning; a failure that persists means the routine did not run.
+
 ## Commands
 
 ```
@@ -164,5 +191,4 @@ Test pattern for a module: copy the `core_db` / `app` / `client` / `clean` fixtu
 - Delete is not restorable (history cascades with the scenario); the audit row keeps the name, params and series row count only.
 - `proj_audit` and `proj_scenario_history` have no age-based pruning (history keeps the last 200 versions per scenario; a 500-cell PUT is 500 audit rows).
 - Rate limits and the login-free write path are per process; the public deployment's protection is the app's `AUTH_DISABLED` choice plus these rails.
-- The `AUTH_DISABLED` flag is not in this worktree's `app/auth.py`; re-run `tests/projection/core/test_core_guards.py::test_open_when_the_apps_auth_is_off` after merging the parent (it switches to the real flag by itself).
 - `--live` reconcile and the Python 3.12 run were not executed here (syntax checked against 3.12; tests ran on 3.14).

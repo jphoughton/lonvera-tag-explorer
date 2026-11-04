@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import login
 from core_helpers import P, audit_rows, create, get_series, item, put, scenario
 
 
@@ -27,7 +28,7 @@ def test_every_mutation_writes_an_audit_row_with_old_and_new(client, pg):
     assert by["scenario.params"]["old"] == {"params": {}} and by["scenario.params"]["new"] == {"params": {"drivers": {"k": 1}}}
     assert by["scenario.restore"]["new"]["restored_from"] == 1 and by["scenario.restore"]["old"]["params"] == {"drivers": {"k": 1}}
     assert by["scenario.clone"]["new"]["base_slug"] == "alpha"
-    assert all(r["actor"] == "anonymous" for r in audit_rows(pg))
+    assert all(r["actor"] == "JoshHoughton" for r in audit_rows(pg))                # the named session user
     assert all(r["at"] is not None for r in audit_rows(pg))
 
 
@@ -55,15 +56,14 @@ def test_audit_endpoint_filters_and_limits(client):
     assert len(client.get(f"{P}/audit?limit=99999").get_json()["audit"]) == 5                       # capped, not an error
 
 
-def test_actor_comes_from_the_session_user_when_there_is_one(app, client, pg, monkeypatch):
-    from app import auth
-    monkeypatch.setattr(auth, "current_user", lambda: "lazer", raising=False)
-    create(client, "ByLazer")
-    monkeypatch.setattr(auth, "current_user", lambda: "guest", raising=False)                       # AUTH_DISABLED reports 'guest'
-    create(client, "ByGuest")
-    monkeypatch.setattr(auth, "current_user", lambda: None, raising=False)
-    create(client, "ByNobody")
-    assert [r["actor"] for r in audit_rows(pg, "scenario.create")] == ["lazer", "anonymous", "anonymous"]
+def test_actor_is_the_named_session_user_and_anonymous_when_the_app_is_open(app_factory, pg):
+    a = app_factory()
+    jc, lc = login(a.test_client(), "JoshHoughton"), login(a.test_client(), "Lazer")
+    create(jc, "ByJosh")
+    create(lc, "ByLazer")
+    open_client = app_factory(AUTH_DISABLED=True).test_client()                                     # no login at all; auth reports the user as 'guest'
+    create(open_client, "ByNobody")
+    assert [r["actor"] for r in audit_rows(pg, "scenario.create")] == ["JoshHoughton", "Lazer", "anonymous"]
 
 
 def test_actor_outside_a_request_is_system():

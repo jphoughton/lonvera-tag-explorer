@@ -49,19 +49,24 @@ def test_logged_in_reaches_every_route(client):
         assert getattr(client, method)(P + path, json={}).status_code != 401
 
 
-def test_open_when_the_apps_auth_is_off(app_factory, monkeypatch):
-    """Projection has no auth of its own: with the app's guard off the same requests work without a cookie.
-    The AUTH_DISABLED flag lives in newer app/auth.py; on this branch the guard is stubbed, which is the same code path (is_authenticated)."""
-    from app import auth
-    if hasattr(auth, "auth_disabled"):
-        a = app_factory(AUTH_DISABLED=True)
-    else:
-        a = app_factory()
-        monkeypatch.setattr(auth, "is_authenticated", lambda: True)
-    c = a.test_client()
+def test_open_when_the_apps_auth_is_off(app_factory):
+    """Projection has no auth of its own: with the app's AUTH_DISABLED on, reads and writes work without a cookie."""
+    c = app_factory(AUTH_DISABLED=True).test_client()
     assert c.get(f"{P}/modules").status_code == 200
     assert c.post(f"{P}/scenarios", json={"name": "Open"}).status_code == 201
     assert put(c, "open", item()).status_code == 200
+    assert c.get(f"{P}/run?scenario=open").status_code == 200
+
+
+def test_api_projection_is_open_with_auth_disabled_and_401_with_it_off(app_factory):
+    on, off = app_factory().test_client(), app_factory(AUTH_DISABLED=True).test_client()          # `on` = the app's named-user login is on
+    for method, path in ROUTES:
+        closed = getattr(on, method)(P + path, json={})
+        opened = getattr(off, method)(P + path, json={})
+        assert closed.status_code == 401 and closed.get_json() == {"error": "unauthorized"}, (method, path)
+        assert opened.status_code != 401, (method, path)
+    # and a logged-in user gets the same access as the open app
+    assert login(on).get(f"{P}/modules").status_code == 200
 
 
 def test_no_login_logout_or_session_endpoints_of_its_own(client):
@@ -147,7 +152,7 @@ def test_rate_limit_counts_per_client_ip(app_factory):
     assert c.post(f"{P}/scenarios", json={"name": "B"}).status_code == 201
     assert c.post(f"{P}/scenarios", json={"name": "C"}).status_code == 429
     other = a.test_client()
-    other.post("/api/login", json={"password": "throwaway-test-password"})
+    other.post("/api/login", json={"username": "JoshHoughton", "password": "throwaway-test-password"})
     assert other.post(f"{P}/scenarios", json={"name": "C"}, environ_overrides={"REMOTE_ADDR": "10.9.9.9"}).status_code == 201
 
 
@@ -179,12 +184,11 @@ def test_upload_body_cap_is_8mb(app_factory, pkg_factory):
 
 # ------------------------------------------------------------------------------------------------------------ noindex
 
-def test_noindex_headers_on_pages_and_api(client, anon):
-    for c, path in ((client, f"{P}/modules"), (anon, f"{P}/modules"), (client, "/projection"), (client, "/projection/cohorts"), (anon, "/projection")):
-        r = c.get(path)
-        assert r.headers.get("X-Robots-Tag") == "noindex, nofollow", path
-    assert "X-Robots-Tag" not in client.get("/healthz").headers
-    assert "X-Robots-Tag" not in client.get("/api/status").headers
+def test_noindex_on_projection_pages_and_api(client, anon):
+    """The app sends X-Robots-Tag on every response; projection relies on it, so this guards against that ever becoming path-limited."""
+    for c, path in ((client, f"{P}/modules"), (anon, f"{P}/modules"), (client, "/projection"), (client, "/projection/cohorts"), (anon, "/projection"),
+                    (client, f"{P}/good/missing")):
+        assert c.get(path).headers.get("X-Robots-Tag") == "noindex, nofollow", path
 
 
 def test_pages_serve_the_spa_shell_without_login(anon):
@@ -193,9 +197,6 @@ def test_pages_serve_the_spa_shell_without_login(anon):
         assert r.status_code == 200 and r.mimetype == "text/html" and b"<title>" in r.data
 
 
-def test_robots_txt_fallback_only_when_the_app_has_no_route(anon, app_factory):
-    r = anon.get("/robots.txt")
-    assert r.status_code == 200 and "Disallow: /projection" in r.get_data(as_text=True) and "Disallow: /api/projection" in r.get_data(as_text=True)
-    a = app_factory()
-    a.add_url_rule("/robots.txt", endpoint="robots_own", view_func=lambda: ("User-agent: *\nDisallow: /", 200, {"Content-Type": "text/plain"}))
-    assert a.test_client().get("/robots.txt").get_data(as_text=True) == "User-agent: *\nDisallow: /"       # an existing route is left alone
+def test_robots_txt_disallows_projection(anon):
+    body = anon.get("/robots.txt").get_data(as_text=True)                      # the app's own file: everything is disallowed
+    assert "User-agent: *" in body and "Disallow: /" in body.splitlines()

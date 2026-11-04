@@ -30,7 +30,7 @@ def test_sql_applies_twice_without_error_or_duplicate_seed(core_db):
 
 def test_tables_and_constraints(pg):
     names = {r["table_name"] for r in pg.execute("SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'proj\\_%'").fetchall()}
-    assert names == {"proj_scenarios", "proj_series", "proj_actuals", "proj_audit", "proj_scenario_history"}
+    assert names == {"proj_scenarios", "proj_series", "proj_actuals", "proj_audit", "proj_scenario_history", "proj_refresh_runs"}
     sid = pg.execute("SELECT id FROM proj_scenarios WHERE slug = 'current'").fetchone()["id"]
     with pytest.raises(psycopg.errors.CheckViolation):          # kind
         pg.execute("INSERT INTO proj_series (scenario_id, line_key, month, value, kind) VALUES (%s,'a','2026-01-01',1,'guess')", (sid,))

@@ -24,11 +24,13 @@ PG_BASE = os.environ.get("TEST_PG_BASE", "postgresql://localhost")
 DB_NAME = os.environ.get("TEST_PROJ_CORE_DB", "tagexp_proj_core")
 DB_URL = f"{PG_BASE}/{DB_NAME}"
 PASSWORD = "throwaway-test-password"
-BASE_MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql")
+from werkzeug.security import generate_password_hash                # noqa: E402
+USERS = {name: generate_password_hash(PASSWORD, method="scrypt:1024:8:1") for name in ("JoshHoughton", "Lazer")}   # cheap scrypt params keep test logins fast
+BASE_MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "105_proj_refresh.sql")
 
 
 def make_app(**overrides):
-    cfg = {"DATABASE_URL": DB_URL, "APP_PASSWORD": PASSWORD, "SECRET_KEY": "test-secret-key", "DEV_INSECURE_COOKIES": True,
+    cfg = {"DATABASE_URL": DB_URL, "APP_USERS": dict(USERS), "SECRET_KEY": "test-secret-key", "DEV_INSECURE_COOKIES": True,
            "DB_POOL_MAX": 4, "PROJ_RATE_MUTATIONS_PER_MIN": 100000, "PROJ_RATE_UPLOADS_PER_HOUR": 100000}
     cfg.update(overrides)
     return create_app(cfg)
@@ -75,8 +77,8 @@ def app_factory(core_db):
         a.extensions["pool"].close()
 
 
-def login(client):
-    r = client.post("/api/login", json={"password": PASSWORD})
+def login(client, username: str = "JoshHoughton"):
+    r = client.post("/api/login", json={"username": username, "password": PASSWORD})
     assert r.status_code == 204
     return client
 
@@ -104,6 +106,7 @@ def clean(core_db):
     """Every test starts from the seeded database: only 'current', no series, no audit, no actuals."""
     with psycopg.connect(core_db) as c:                       # one transaction: a single commit (fsync) per test
         c.execute("DELETE FROM proj_audit")
+        c.execute("DELETE FROM proj_refresh_runs")
         c.execute("DELETE FROM proj_actuals")
         c.execute("DELETE FROM proj_scenario_history")
         c.execute("DELETE FROM proj_series")

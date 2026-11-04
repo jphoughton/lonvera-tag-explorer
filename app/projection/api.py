@@ -3,6 +3,7 @@
 Auth is not handled here: the app's own /api/* guard covers /api/projection/* (login on = 401 without a session, AUTH_DISABLED = open).
 `install_guards(app)` adds ONE app-level before_request for the /api/projection/ prefix, so a module blueprint added later is covered with no
 code of its own: Origin check, per-IP rate limits, JSON-only bodies and the request size cap for every non-GET method.
+Noindex is the app's: it sends `X-Robots-Tag: noindex, nofollow` on every response and serves `/robots.txt` with `Disallow: /`.
 """
 from __future__ import annotations
 
@@ -10,11 +11,11 @@ from datetime import date
 from typing import Any
 from urllib.parse import urlsplit
 
-from flask import Blueprint, Response, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from .. import db
 from ..queries import ApiError
-from . import audit, engine, registry, rwdb, scenarios, series
+from . import audit, engine, freshness, registry, rwdb, scenarios, series
 from .interfaces import AXIS_END, AXIS_START, parse_month
 from .limits import Limits
 
@@ -69,25 +70,9 @@ def _write_guard():
     return None
 
 
-def _robots_headers(resp: Response) -> Response:
-    p = request.path
-    if p == "/projection" or p.startswith("/projection/") or p == PREFIX or p.startswith(PREFIX + "/"):
-        resp.headers["X-Robots-Tag"] = "noindex, nofollow"
-    return resp
-
-
-def _robots_fallback(resp: Response) -> Response:
-    """If the app has no /robots.txt route, serve one that keeps projection out of search engines (an existing route is left alone)."""
-    if request.path == "/robots.txt" and resp.status_code == 404:
-        return Response("User-agent: *\nDisallow: /projection\nDisallow: /api/projection\n", mimetype="text/plain")
-    return resp
-
-
 def install_guards(app) -> None:
     app.extensions["proj_limits"] = Limits.from_config(app.config)
     app.before_request(_write_guard)
-    app.after_request(_robots_headers)
-    app.after_request(_robots_fallback)
 
 
 # ------------------------------------------------------------------------------------------------------------------ helpers
@@ -249,6 +234,11 @@ def audit_list():
     if not limit.isdigit() or int(limit) < 1:
         raise ApiError(400, "limit must be a positive integer")
     return jsonify({"audit": audit.list_rows(db.get_conn(), scenario=_arg("scenario"), line_key=_arg("line_key"), limit=int(limit))})
+
+
+@bp.get("/freshness")
+def freshness_get():
+    return jsonify(freshness.report(db.get_conn()))
 
 
 @bp.get("/run")
