@@ -35,6 +35,9 @@ DEFAULT_POSTURE_BAND = 0.10                                 # next-window spend 
 DEFAULT_SUMMARY_MONTHS = 12                                 # length of the headline windows (app default)
 DEFAULT_REFERENCE_DAYS = 28                                 # window of the read-only feed references (realized CPA, Amazon run-rate)
 DEFAULT_REFERENCE_TOLERANCE = 0.05                          # a typed plan this far from its feed reference gets a note
+DEFAULT_REFERENCE_GAP_DAYS = 2                              # feed days that may be missing from the reference window before the number is withheld
+DEFAULT_REFERENCE_CPA_RANGE = (20.0, 500.0)                 # a realized CPA outside this is a feed problem, not a price
+DEFAULT_REFERENCE_AOV_RANGE = (15.0, 400.0)
 MONTH_STATUSES = ("books", "feeds", "projected")
 
 PLAN_KEYS = ("spend_total", "nc_cpa", "nc_aov", "amazon_rev", "tiktok_rev")        # typed plan inputs (proj_series 'drivers.<key>', kind input)
@@ -84,6 +87,11 @@ class Levers:
     summary_months: int = DEFAULT_SUMMARY_MONTHS
     reference_days: int = DEFAULT_REFERENCE_DAYS
     reference_tolerance: float = DEFAULT_REFERENCE_TOLERANCE
+    reference_gap_days: int = DEFAULT_REFERENCE_GAP_DAYS
+    reference_cpa_min: float = DEFAULT_REFERENCE_CPA_RANGE[0]
+    reference_cpa_max: float = DEFAULT_REFERENCE_CPA_RANGE[1]
+    reference_aov_min: float = DEFAULT_REFERENCE_AOV_RANGE[0]
+    reference_aov_max: float = DEFAULT_REFERENCE_AOV_RANGE[1]
 
     def to_dict(self) -> dict:
         rs = self.roas_slide
@@ -91,7 +99,9 @@ class Levers:
                 "roas_slide": {"enabled": rs.enabled, "from": rs.start_month.isoformat() if rs.start_month else None,
                                "to": rs.end_month.isoformat() if rs.end_month else None, "start": rs.start, "end": rs.end},
                 "payback": dict(self.payback), "ad_spend_channels": list(self.ad_channels), "posture_band": self.posture_band,
-                "summary_months": self.summary_months, "reference_days": self.reference_days, "reference_tolerance": self.reference_tolerance}
+                "summary_months": self.summary_months, "reference_days": self.reference_days, "reference_tolerance": self.reference_tolerance,
+                "reference_gap_days": self.reference_gap_days, "reference_cpa_min": self.reference_cpa_min, "reference_cpa_max": self.reference_cpa_max,
+                "reference_aov_min": self.reference_aov_min, "reference_aov_max": self.reference_aov_max}
 
 
 def _num(v: Any) -> float | None:
@@ -155,6 +165,15 @@ def parse_levers(params: dict | None) -> Levers:
     rt = _num(p.get("reference_tolerance"))
     if rt is not None and 0 < rt <= 1:
         lv.reference_tolerance = rt
+    gap = _num(p.get("reference_gap_days"))
+    if gap is not None and 0 <= gap <= 14 and gap == int(gap):
+        lv.reference_gap_days = int(gap)
+    for lo_key, hi_key, attr_lo, attr_hi in (("reference_cpa_min", "reference_cpa_max", "reference_cpa_min", "reference_cpa_max"),
+                                             ("reference_aov_min", "reference_aov_max", "reference_aov_min", "reference_aov_max")):
+        lo, hi = _num(p.get(lo_key)), _num(p.get(hi_key))
+        if lo is not None and hi is not None and 0 < lo < hi <= 100_000:
+            setattr(lv, attr_lo, lo)
+            setattr(lv, attr_hi, hi)
     return lv
 
 

@@ -157,10 +157,10 @@ def test_payback_shows_both_readings_in_plain_words_and_the_headline_leads_with_
     panel = page.locator(".pg-section").nth(2)
     text = panel.inner_text()
     assert "On product margin" in text and "After all variable costs" in text
-    assert text.count("Pays back in month") == 2
+    assert text.count("Pays back in month") == 4                                         # the headline inputs and the plan inputs, each on both bases
     assert "What counts as variable cost" in text
     labels = panel.locator(".pg-card strong").all_inner_texts()
-    assert labels == ["On product margin", "After all variable costs"]
+    assert labels == ["On product margin", "After all variable costs"] * 2
     months = [int(t.rsplit(" ", 1)[1]) for t in panel.locator(".pg-chip", has_text="Pays back in month").all_inner_texts()]
     assert months[0] == 10 and months[1] > months[0]
     assert [m for m in msgs if "favicon" not in m] == [], msgs
@@ -183,3 +183,24 @@ def test_headline_shows_the_top_up_and_what_drives_the_low_point(browser, server
     assert t.startswith("Through ") and "the plan earns" in t and "term-loan interest" in t and t.endswith("to stay at zero.")
     assert "plus $288K at close" in page.locator(".pg-tldr-kpis").inner_text()                     # -$400K opening + $150K - $37.5K interest in Sep-26: the first month sets the top-up
     assert [m for m in msgs if "favicon" not in m] == [], msgs
+
+
+def test_payback_panel_shows_the_realized_headline_row_and_the_plan_row_on_both_bases(browser, server, feeds, cost_lines):
+    page, msgs = open_page(browser, server)
+    panel = page.locator(".pg-section").nth(2)
+    headings = [t for t in panel.locator("h4").all_inner_texts()]
+    assert headings[0].startswith("At last 28 days realized (average order value $70.00, acquisition cost $100.00)")
+    assert headings[1].startswith("At plan inputs (average order value $") and "cost per acquisition $" in headings[1]
+    assert "last 28 days (Oct 5 to Nov 1), Meta + Google + Shopify feeds" in panel.inner_text()
+    cards = panel.locator(".pg-card strong").all_inner_texts()
+    assert cards == ["On product margin", "After all variable costs", "On product margin", "After all variable costs"]
+    assert "payback after all costs" in page.locator(".pg-tldr-kpis").inner_text().lower()
+    assert [m for m in msgs if "favicon" not in m] == [], msgs
+
+
+def test_the_panel_says_why_it_fell_back_to_the_closed_month(browser, server, pg, feeds):
+    pg.execute("DELETE FROM ad_daily WHERE day < '2026-10-24'")
+    page, _ = open_page(browser, server)
+    text = page.locator(".pg-section").nth(2).inner_text()
+    assert "Acquisition cost is not read from the last 28 days" in text and "9 of 28 days" in text and "It uses the last closed month" in text
+    assert "Average order value is not read" not in text

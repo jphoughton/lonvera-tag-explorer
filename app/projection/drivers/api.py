@@ -83,7 +83,7 @@ def get_table():
     _drivers(res)
     today = loaders.current_date()
     d = _drivers(res)
-    ref = reference.load_reference(conn, d.levers.ad_channels, d.levers.reference_days, today)
+    ref = reference.load_reference(conn, d.levers.ad_channels, d.levers.reference_days, today, d.levers)
     return jsonify(table.build(res, res.scenario.name, res.scenario.slug, res.scenario.version, today, ref))
 
 
@@ -101,7 +101,8 @@ def _check_levers(raw: Any) -> dict:
     """Validate a levers patch; returns the params['drivers'] merge patch."""
     if not isinstance(raw, dict) or not raw:
         raise ApiError(400, "levers must be a non-empty object")
-    extra = set(raw) - {"channel_share", "sales_tax_rate", "roas_slide", "payback", "ad_spend_channels", "posture_band", "summary_months", "reference_days", "reference_tolerance"}
+    extra = set(raw) - {"channel_share", "sales_tax_rate", "roas_slide", "payback", "ad_spend_channels", "posture_band", "summary_months", "reference_days", "reference_tolerance", "reference_gap_days",
+                         "reference_cpa_min", "reference_cpa_max", "reference_aov_min", "reference_aov_max"}
     if extra:
         raise ApiError(400, f"unknown lever {sorted(extra)[0]!r}")
     patch: dict[str, Any] = {}
@@ -170,6 +171,19 @@ def _check_levers(raw: Any) -> dict:
         if v is None or not 0 < v <= 1:
             raise ApiError(400, "reference_tolerance must be a fraction above 0 and up to 1")
         patch["reference_tolerance"] = v
+    if "reference_gap_days" in raw:
+        v = model._num(raw["reference_gap_days"])
+        if v is None or v != int(v) or not 0 <= v <= 14:
+            raise ApiError(400, "reference_gap_days must be a whole number of days from 0 to 14")
+        patch["reference_gap_days"] = int(v)
+    for pair in (("reference_cpa_min", "reference_cpa_max"), ("reference_aov_min", "reference_aov_max")):
+        if pair[0] in raw or pair[1] in raw:
+            if pair[0] not in raw or pair[1] not in raw:
+                raise ApiError(400, f"send {pair[0]} and {pair[1]} together")
+            lo, hi = model._num(raw[pair[0]]), model._num(raw[pair[1]])
+            if lo is None or hi is None or not 0 < lo < hi <= 100_000:
+                raise ApiError(400, f"{pair[0]} must be above 0 and below {pair[1]}, which is at most 100,000")
+            patch[pair[0]], patch[pair[1]] = lo, hi
     if "roas_slide" in raw:
         patch["roas_slide"] = _check_slide(raw["roas_slide"])
     return patch

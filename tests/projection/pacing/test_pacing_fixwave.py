@@ -15,7 +15,8 @@ BASE = "/api/projection/pacing"
 def nov(conn, pnl, cohorts, params=None, actual_through=None):
     fr = feeds.load_frame(conn, dt.date(2026, 10, 1), dt.date(2026, 11, 2))
     book = TargetBook(pnl, None, cohorts, row_map=ROW_MAP, levers=lv.parse(params or {}))
-    return M.pacing_month(fr, dt.date(2026, 11, 1), SNAPSHOT_DAY, book, cohorts, params or {}, actual_through), book
+    ref = feeds.cpa_reference(conn, params or {}, lv.parse(params or {}).cpa_window_days, SNAPSHOT_DAY)
+    return M.pacing_month(fr, dt.date(2026, 11, 1), SNAPSHOT_DAY, book, cohorts, params or {}, actual_through, ref), book
 
 
 # ---------------------------------------------------------------------------------------------------------------- payback two ways
@@ -78,22 +79,83 @@ def test_payback_edges_follow_financings_calculator():
 
 # ---------------------------------------------------------------------------------------------------------------- cost-per-customer context
 
-def test_28_day_cost_per_customer_sits_beside_the_months(conn, pnl, cohorts):
-    res, _ = nov(conn, pnl, cohorts)
+@pytest.fixture()
+def fed(clean_conn):
+    """ad_daily filled from the snapshot's Meta days (the Spend plan page reads Meta spend there); rolled back after the test."""
+    clean_conn.execute("INSERT INTO ad_daily (ad_id, day, meta_family_key, meta_family, campaign_id, spend, source) "
+                       "SELECT 'seed-' || day, day, 'seed', 'seed', '', sum(spend), 'meta_api' FROM proj_feed_meta_day GROUP BY day")
+    return clean_conn
+
+
+def _window_cpa(conn, first, last):
+    """Independent read of the same window: Meta (ad_daily) + Google spend over new customers in the orders feed."""
+    meta = conn.execute("SELECT sum(spend) AS v FROM ad_daily WHERE day BETWEEN %s AND %s", (first, last)).fetchone()["v"]
+    google = conn.execute("SELECT sum(spend) AS v FROM proj_feed_platform WHERE platform = 'Google Ads' AND day BETWEEN %s AND %s", (first, last)).fetchone()["v"]
+    nc = conn.execute("SELECT sum(nc_orders) AS v FROM proj_feed_orders WHERE day BETWEEN %s AND %s", (first, last)).fetchone()["v"]
+    return float(meta + google) / float(nc)
+
+
+def test_28_day_cost_per_customer_sits_beside_the_months(fed, pnl, cohorts):
+    res, _ = nov(fed, pnl, cohorts)
     by = {r["key"]: r for r in res["rows"]}
     c = by["nc_cpa"]["context"]
-    assert c["label"] == "Last 28 days" and c["days"] == 28 and c["value"] == pytest.approx(111.17, abs=0.01) and c["status"] == "bad"
+    first, last = dt.date(2026, 10, 5), dt.date(2026, 11, 1)                                                  # 28 complete days ending the day before the newest orders day
+    assert c["label"] == "Last 28 days" and c["days"] == 28 and (c["from"], c["to"]) == (first.isoformat(), last.isoformat())
+    assert c["value"] == pytest.approx(_window_cpa(fed, first, last), rel=1e-6) and c["status"] in ("bad", "warn", "good")
     assert c["pacing"] == pytest.approx(c["value"] / by["nc_cpa"]["goal"]) and by["nc_cpa2"]["context"] == c
     assert "context" not in by["nc_roas"] and by["nc_cpa"]["mtd"] != pytest.approx(c["value"])                  # the month's own figure is untouched
 
 
-def test_cpa_window_lever_and_closed_months(conn, pnl, cohorts):
-    short, _ = nov(conn, pnl, cohorts, {"pacing": {"cpa_window_days": 14}})
-    assert {r["key"]: r for r in short["rows"]}["nc_cpa"]["context"]["label"] == "Last 14 days"
-    assert {r["key"]: r for r in short["rows"]}["nc_cpa"]["context"]["value"] != pytest.approx(111.17, abs=0.01)
-    fr = feeds.load_frame(conn, dt.date(2026, 10, 1), dt.date(2026, 10, 31))
+def test_28_day_cost_per_customer_is_the_spend_plan_pages_number(fed, pnl, cohorts):
+    from app.projection.drivers import model as dm, reference as dref
+    ref = dref.load_reference(fed, dm.parse_levers({}).ad_channels, 28, SNAPSHOT_DAY, dm.parse_levers({}))
+    res, _ = nov(fed, pnl, cohorts)
+    assert {r["key"]: r for r in res["rows"]}["nc_cpa"]["context"]["value"] == ref.cpa_window["cpa"]
+
+
+def test_28_day_cost_is_withheld_with_the_reason_when_a_spend_feed_has_gaps(fed, pnl, cohorts):
+    fed.execute("DELETE FROM ad_daily WHERE day BETWEEN '2026-10-10' AND '2026-10-18'")                         # 9 of the 28 days gone
+    res, _ = nov(fed, pnl, cohorts)
+    by = {r["key"]: r for r in res["rows"]}
+    c = by["nc_cpa"]["context"]
+    assert c["value"] is None and c["pacing"] is None and c["unavailable"] == "Meta spend feed has 19 of 28 days"
+    assert by["nc_cpa"]["mtd"] and by["nc_cpa"]["goal"]                                                         # the month's own figure and goal still show
+
+
+def test_28_day_cost_gap_tolerance_is_the_drivers_lever(fed, pnl, cohorts):
+    fed.execute("DELETE FROM ad_daily WHERE day BETWEEN '2026-10-10' AND '2026-10-11'")                         # 2 missing: inside the default tolerance
+    assert {r["key"]: r for r in nov(fed, pnl, cohorts)[0]["rows"]}["nc_cpa"]["context"]["value"] is not None
+    fed.execute("DELETE FROM ad_daily WHERE day = '2026-10-12'")                                                # 3 missing: outside it
+    assert {r["key"]: r for r in nov(fed, pnl, cohorts)[0]["rows"]}["nc_cpa"]["context"]["unavailable"] == "Meta spend feed has 25 of 28 days"
+    wide = nov(fed, pnl, cohorts, {"drivers": {"reference_gap_days": 4}})[0]
+    assert {r["key"]: r for r in wide["rows"]}["nc_cpa"]["context"]["value"] is not None
+
+
+def test_28_day_cost_outside_the_believable_range_is_withheld(fed, pnl, cohorts):
+    res, _ = nov(fed, pnl, cohorts, {"drivers": {"reference_cpa_min": 20, "reference_cpa_max": 60}})
+    c = {r["key"]: r for r in res["rows"]}["nc_cpa"]["context"]
+    assert c["value"] is None and c["unavailable"].startswith("Realized CPA $") and c["unavailable"].endswith("is outside the $20 to $60 a real feed gives")
+
+
+def test_28_day_cost_needs_the_new_customer_feed_and_a_read_reference(fed, pnl, cohorts):
+    fed.execute("DELETE FROM proj_feed_orders WHERE day BETWEEN '2026-10-20' AND '2026-10-30'")
+    c = {r["key"]: r for r in nov(fed, pnl, cohorts)[0]["rows"]}["nc_cpa"]["context"]
+    assert c["value"] is None and c["unavailable"].startswith("Shopify new-customer feed has ") and c["unavailable"].endswith(" of 28 days")
+    fr = feeds.load_frame(fed, dt.date(2026, 10, 1), dt.date(2026, 11, 2))
     book = TargetBook(pnl, None, cohorts, row_map=ROW_MAP)
-    closed = M.pacing_month(fr, dt.date(2026, 10, 1), SNAPSHOT_DAY, book, cohorts, {})
+    unread = M.pacing_month(fr, dt.date(2026, 11, 1), SNAPSHOT_DAY, book, cohorts, {}, None, None)
+    assert all("context" not in r for r in unread["rows"])                                                    # no reference, no figure: it is never shown unguarded
+
+
+def test_cpa_window_lever_and_closed_months(fed, pnl, cohorts):
+    short, _ = nov(fed, pnl, cohorts, {"pacing": {"cpa_window_days": 14}})
+    c14 = {r["key"]: r for r in short["rows"]}["nc_cpa"]["context"]
+    assert c14["label"] == "Last 14 days" and c14["value"] != pytest.approx(_window_cpa(fed, dt.date(2026, 10, 5), dt.date(2026, 11, 1)), abs=0.01)
+    assert c14["value"] == pytest.approx(_window_cpa(fed, dt.date(2026, 10, 19), dt.date(2026, 11, 1)), rel=1e-6)
+    fr = feeds.load_frame(fed, dt.date(2026, 10, 1), dt.date(2026, 10, 31))
+    book = TargetBook(pnl, None, cohorts, row_map=ROW_MAP)
+    ref = feeds.cpa_reference(fed, {}, 28, SNAPSHOT_DAY)
+    closed = M.pacing_month(fr, dt.date(2026, 10, 1), SNAPSHOT_DAY, book, cohorts, {}, None, ref)
     assert all("context" not in r for r in closed["rows"])                                                    # "last 28 days" is about now, not about a closed month
 
 

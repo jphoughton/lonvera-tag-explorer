@@ -46,9 +46,10 @@ def at(t, key, month):
     return row(t, key)["values"][t["months"].index(month.isoformat())]
 
 
-def test_without_feeds_there_are_no_reference_rows_and_no_chip(client, world):
+def test_without_feeds_there_are_no_reference_rows_and_the_chip_says_why(client, world):
     t = table(client)
-    assert row(t, "ref_cpa") is None and row(t, "ref_amazon") is None and t["reference"]["cpa"] is None and t["reference"]["amazon"] is None
+    assert row(t, "ref_cpa") is None and row(t, "ref_amazon") is None and t["reference"]["amazon"] is None
+    assert t["reference"]["cpa"]["chip"] == "Realized CPA unavailable: Shopify new-customer feed has no data" and t["reference"]["cpa"]["realized"] is None
 
 
 def test_realized_cpa_by_month_and_the_last_28_days(client, world, pg):
@@ -127,10 +128,11 @@ def test_the_newest_feed_day_is_dropped_and_today_is_never_used(pg):
 
 
 def test_missing_feed_tables_give_an_empty_reference_not_an_error(pg):
+    feeds(pg)
     pg.execute("DROP TABLE proj_feed_platform")
     try:
         ref = reference.load_reference(pg, ("meta", "google"), 28, TODAY)
-        assert ref.cpa_by_month == {} and ref.cpa_window is None
+        assert ref.cpa_by_month == {} and ref.cpa_window is None and ref.unavailable["cpa"] == "Google spend feed is not loaded"
     finally:
         pg.execute("CREATE TABLE proj_feed_platform (day date NOT NULL, platform text NOT NULL, spend numeric(18,2) NOT NULL DEFAULT 0, "
                    "purchases numeric(18,2) NOT NULL DEFAULT 0, purchase_value numeric(18,2) NOT NULL DEFAULT 0, nc_purchases numeric(18,2) NOT NULL DEFAULT 0, "
@@ -141,5 +143,84 @@ def test_missing_feed_tables_give_an_empty_reference_not_an_error(pg):
 @pytest.mark.parametrize("levers,fragment", [({"reference_days": 3}, "reference_days"), ({"reference_days": 91}, "reference_days"), ({"reference_days": 28.5}, "reference_days"),
                                              ({"reference_tolerance": 0}, "reference_tolerance"), ({"reference_tolerance": 2}, "reference_tolerance")])
 def test_reference_levers_are_validated(client, world, levers, fragment):
+    r = client.put(f"{BASE}/levers", json={"scenario": "current", "levers": levers})
+    assert r.status_code == 400 and fragment in r.get_json()["error"]
+
+
+# ---------------------------------------------------------------------------------------------------------------- guards: coverage and sanity
+
+def test_an_empty_meta_feed_never_gives_a_cpa(client, world, pg):
+    feeds(pg)
+    pg.execute("DELETE FROM ad_daily")                                          # the case that produced $5.51: Google only, Meta missing
+    ref = reference.load_reference(pg, ("meta", "google"), 28, TODAY)
+    assert ref.cpa_window is None and ref.cpa_by_month == {} and ref.unavailable["cpa"] == "Meta spend feed has 0 of 28 days"
+    t = table(client)
+    c = t["reference"]["cpa"]
+    assert c["unavailable"] == "Meta spend feed has 0 of 28 days" and c["chip"] == "Realized CPA unavailable: Meta spend feed has 0 of 28 days" and c["tone"] == "warn"
+    assert row(t, "ref_cpa") is None
+
+
+def test_a_partial_feed_names_how_many_days_it_has(pg):
+    feeds(pg)
+    pg.execute("DELETE FROM ad_daily WHERE day < '2026-10-24'")                 # window Oct 5 to Nov 1 keeps 9 of its 28 days
+    ref = reference.load_reference(pg, ("meta", "google"), 28, TODAY)
+    assert ref.unavailable["cpa"] == "Meta spend feed has 9 of 28 days" and ref.cpa_window is None
+
+
+def test_a_feed_missing_up_to_the_allowed_gap_still_counts_and_one_more_does_not(pg):
+    feeds(pg)
+    pg.execute("DELETE FROM ad_daily WHERE day IN ('2026-10-10', '2026-10-11')")      # 26 of 28: inside the default gap of 2
+    assert reference.load_reference(pg, ("meta", "google"), 28, TODAY).cpa_window is not None
+    pg.execute("DELETE FROM ad_daily WHERE day = '2026-10-12'")                       # 25 of 28
+    assert reference.load_reference(pg, ("meta", "google"), 28, TODAY).unavailable["cpa"] == "Meta spend feed has 25 of 28 days"
+
+
+def test_the_orders_feed_needs_the_same_coverage(pg):
+    feeds(pg)
+    pg.execute("DELETE FROM proj_feed_orders WHERE day < '2026-10-20'")
+    ref = reference.load_reference(pg, ("meta", "google"), 28, TODAY)
+    assert ref.unavailable["cpa"] == "Shopify new-customer feed has 13 of 28 days" and ref.unavailable["aov"] == "Shopify new-customer feed has 13 of 28 days"
+
+
+def test_a_cpa_outside_the_believable_range_is_withheld_with_the_reason(pg):
+    feeds(pg, nc=2000.0)                                                        # $4.50 a customer: a feed problem, not a price
+    ref = reference.load_reference(pg, ("meta", "google"), 28, TODAY)
+    assert ref.cpa_window is None and ref.unavailable["cpa"] == "Realized CPA $4.50 is outside the $20 to $500 a real feed gives"
+    pg.execute("DELETE FROM proj_feed_orders"); pg.execute("DELETE FROM proj_feed_orders")
+    feeds_nc = [(d, 1.0) for d in days(date(2026, 8, 1), date(2026, 11, 2))]
+    with pg.cursor() as cur:
+        cur.executemany("INSERT INTO proj_feed_orders (day, nc_orders) VALUES (%s,%s)", feeds_nc)
+    assert reference.load_reference(pg, ("meta", "google"), 28, TODAY).unavailable["cpa"] == "Realized CPA $9,000.00 is outside the $20 to $500 a real feed gives"
+
+
+def test_aov_is_offered_inside_its_range_and_withheld_outside(pg):
+    feeds(pg)
+    pg.execute("UPDATE proj_feed_orders SET nc_rev = nc_orders * 70")
+    ref = reference.load_reference(pg, ("meta", "google"), 28, TODAY)
+    assert ref.aov_window["aov"] == pytest.approx(70.0) and "aov" not in ref.unavailable
+    pg.execute("UPDATE proj_feed_orders SET nc_rev = nc_orders * 7")
+    ref = reference.load_reference(pg, ("meta", "google"), 28, TODAY)
+    assert ref.aov_window is None and ref.unavailable["aov"] == "Realized AOV $7.00 is outside the $15 to $400 a real feed gives"
+    pg.execute("UPDATE proj_feed_orders SET nc_rev = 0")
+    assert reference.load_reference(pg, ("meta", "google"), 28, TODAY).unavailable["aov"] == "The orders feed holds no new-customer revenue in the window"
+
+
+def test_the_guard_bounds_are_levers_in_plan_settings(client, world, pg):
+    feeds(pg, nc=2000.0)
+    assert table(client)["reference"]["cpa"]["unavailable"].startswith("Realized CPA $4.50 is outside")
+    r = client.put(f"{BASE}/levers", json={"scenario": "current", "levers": {"reference_cpa_min": 2, "reference_cpa_max": 500}})
+    assert r.status_code == 200
+    c = table(client)["reference"]["cpa"]
+    assert c.get("unavailable") is None and c["realized"] == pytest.approx(4.5)               # the lever moved the guard; the number is offered now
+    r = client.put(f"{BASE}/levers", json={"scenario": "current", "levers": {"reference_gap_days": 0}})
+    assert r.status_code == 200
+    pg.execute("DELETE FROM ad_daily WHERE day = '2026-10-20'")
+    assert table(client)["reference"]["cpa"]["unavailable"] == "Meta spend feed has 27 of 28 days"
+
+
+@pytest.mark.parametrize("levers,fragment", [({"reference_gap_days": 15}, "reference_gap_days"), ({"reference_gap_days": -1}, "reference_gap_days"),
+                                             ({"reference_cpa_min": 20}, "together"), ({"reference_cpa_min": 500, "reference_cpa_max": 20}, "reference_cpa_min"),
+                                             ({"reference_aov_min": 0, "reference_aov_max": 400}, "reference_aov_min"), ({"reference_aov_min": 15, "reference_aov_max": 1e9}, "reference_aov_min")])
+def test_guard_levers_are_validated(client, world, levers, fragment):
     r = client.put(f"{BASE}/levers", json={"scenario": "current", "levers": levers})
     assert r.status_code == 400 and fragment in r.get_json()["error"]

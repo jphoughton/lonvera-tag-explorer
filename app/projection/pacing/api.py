@@ -122,7 +122,7 @@ def get_month():
     fr = _load_month_frame(conn, month, today, L)
     cohorts = res.results.get("cohorts")
     scn = res.scenario
-    out = month_mod.pacing_month(fr, month, today, book, cohorts, scn.params, res.actual_through)
+    out = month_mod.pacing_month(fr, month, today, book, cohorts, scn.params, res.actual_through, feeds.cpa_reference(conn, scn.params, L.cpa_window_days, today))
     out["scenario"] = {"slug": scn.slug, "name": scn.name, "version": scn.version}
     out["months"] = _month_options(today, L)
     out["freshness"] = _fresh_chips(conn, today, L)

@@ -17,3 +17,15 @@ Written by proj-variables. Variable ids refer to `docs/projection/VARIABLES.md`.
 - **Effect:** correct for the Spend plan page, which edits the five together. The Variables page edits one at a time, so it rebalances the other four in proportion and writes all five (`access._rebalance_shares`).
 - **Fix (optional):** accept a partial `channel_share` patch and rebalance on the server, so every editor behaves the same.
 - **Test:** `PUT /drivers/levers {channel_share: {meta: 0.8}}` returns shares that sum to 1.
+
+### reference-guards: bounds and coverage of the realized CPA and AOV (added by proj-drivers)
+
+New levers, all in `params.drivers`, set with `PUT /drivers/levers` (Plan settings card on the Spend plan page), please list them on the Variables page:
+
+| key | unit | default | sheet cell | set where | proof |
+|---|---|---|---|---|---|
+| `reference_gap_days` | days | 2 | none (app default: feed days that may be missing from the window) | levers | `test_drivers_reference::test_a_feed_missing_up_to_the_allowed_gap_still_counts_and_one_more_does_not` |
+| `reference_cpa_min` / `reference_cpa_max` | dollars | 20 / 500 | none | levers (sent together) | `test_a_cpa_outside_the_believable_range_is_withheld_with_the_reason`, `test_the_guard_bounds_are_levers_in_plan_settings` |
+| `reference_aov_min` / `reference_aov_max` | dollars | 15 / 400 | none | levers (sent together) | `test_aov_is_offered_inside_its_range_and_withheld_outside` |
+
+Rule: `drivers.reference.load_reference(conn, channels, window_days, today, levers)` offers a realized CPA or AOV only when every counted spend feed and the orders feed have at least window days minus `reference_gap_days` distinct days in the window and the value sits inside its bounds; otherwise the value is None and `Reference.unavailable['cpa' | 'aov' | 'amazon']` holds the plain reason ("Meta spend feed has 9 of 28 days"). Pass `levers` so the scenario's bounds apply.

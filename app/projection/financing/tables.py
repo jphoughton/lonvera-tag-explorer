@@ -149,11 +149,14 @@ def _pb_dict(pb: calc.Payback) -> dict:
 
 
 def payback_payload(res: FinancingDetail, pb: calc.Payback | None, inputs: dict, curve_kind: str, loaded: calc.Payback | None = None,
-                    loaded_info: dict | None = None, unavailable: str | None = None) -> dict:
-    """`result` = on product margin (the sheet's Payback tab); `loaded.result` = after all variable costs (the P&L's own rates, `loaded.info`)."""
+                    loaded_info: dict | None = None, unavailable: str | None = None, plan: calc.Payback | None = None,
+                    plan_loaded: calc.Payback | None = None) -> dict:
+    """`result` = on product margin (the sheet's Payback tab) at the headline inputs (typed, else the last 28 days realized, else the last closed month);
+    `loaded.result` = after all variable costs (the P&L's own rates, `loaded.info`); `plan` = both readings at the spend plan's own inputs."""
     out: dict[str, Any] = {"inputs": inputs, "curve": curve_kind, "result": _pb_dict(pb) if pb else None, "unavailable": unavailable}
     info = loaded_info or res.loaded_info
     out["loaded"] = {"result": _pb_dict(loaded) if loaded else None, "info": info}
+    out["plan"] = {"inputs": inputs.get("plan"), "result": _pb_dict(plan) if plan else None, "loaded": {"result": _pb_dict(plan_loaded) if plan_loaded else None}}
     return out
 
 

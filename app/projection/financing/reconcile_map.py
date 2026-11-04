@@ -1,5 +1,10 @@
 """Reconcile map for the financing module (frozen sheet snapshot 2026-11-03). Cash rows run from the close month, so month0 is 2026-09-01 at column W.
 
+Payback lines (Payback tab section 1) compare at the sheet's own typed values: the sheet reads its average order value and cost per customer from the
+pacing month-to-date (69.156 / 105.49 on the snapshot date), while the app's default is the last 28 days realized from the feeds (else the last closed
+month), so the harness types those two numbers as the scenario's `financing.payback.aov|cac` (tests/projection/financing/fin_helpers.py SHEET_PAYBACK)
+before it compares. Against an untouched plan these lines differ by design.
+
 Not mapped: the Spend-ROAS Matrix tab (its target-month input reads a deleted tab and shows #REF!, so it has no values to compare) and P&L
 rows 108-131 before Sep-26 (row 128 is #REF! there and the close month starts the buyer's cash).
 """

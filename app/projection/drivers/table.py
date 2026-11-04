@@ -141,7 +141,10 @@ def reference_payload(d: DriversResult, ref: "ref_mod.Reference | None", plan_mo
     n, tol = ref.window_days, d.levers.reference_tolerance
     plan_cpa = d.plan_cpa.get(plan_month)
     w = ref.cpa_window
-    if w and plan_cpa:
+    if ref.unavailable.get("cpa") and plan_cpa:
+        out["cpa"] = {"plan": plan_cpa, "plan_month": plan_month.isoformat(), "realized": None, "diff": None, "window": None, "unavailable": ref.unavailable["cpa"],
+                      "chip": f"Realized CPA unavailable: {ref.unavailable['cpa']}", "tone": "warn"}
+    elif w and plan_cpa:
         diff = plan_cpa / w["cpa"] - 1.0
         out["cpa"] = {"plan": plan_cpa, "plan_month": plan_month.isoformat(), "realized": w["cpa"], "diff": diff, "window": {"from": w["from"], "to": w["to"]},
                       "chip": f"Plan ${plan_cpa:,.0f} vs last {n} days ${w['cpa']:,.0f}", "tone": "warn" if abs(diff) > tol else "info"}
@@ -166,7 +169,9 @@ def reference_payload(d: DriversResult, ref: "ref_mod.Reference | None", plan_mo
                 bits.append(f"{planned[0][0]:%b %Y}{' on' if len(planned) > 1 else ''} {planned[0][1]:+.0%} (last {n} days)")
             note = "Typed Amazon revenue against the feed: " + ", ".join(bits) + "."
         w2 = ref.amazon_window
-        out["amazon"] = {"run_rate_month": (w2["daily"] * ref_mod.AVG_DAYS_PER_MONTH) if w2 else None, "note": note,
+        if note is None and ref.unavailable.get("amazon"):
+            note = f"Amazon feed unavailable: {ref.unavailable['amazon']}."
+        out["amazon"] = {"run_rate_month": (w2["daily"] * ref_mod.AVG_DAYS_PER_MONTH) if w2 else None, "note": note, "unavailable": ref.unavailable.get("amazon"),
                          "window": {"from": w2["from"], "to": w2["to"]} if w2 else None}
     return out
 

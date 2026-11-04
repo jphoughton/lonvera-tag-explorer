@@ -36,6 +36,7 @@ class PacingInputs:
     month: date
     frame: feeds.Frame
     full: bool = False
+    cpa_ref: Any = None          # drivers.reference.Reference for the 28-day cost per new customer (None: not read)
 
 
 @dataclass
@@ -60,7 +61,7 @@ def load_inputs(conn, scn=None) -> PacingInputs:
     full = os.environ.get(FULL_ENV, "") not in ("", "0")
     if full:
         start = date(2024, 12, 30)
-    return PacingInputs(today, month, feeds.load_frame(conn, start, thr), full)
+    return PacingInputs(today, month, feeds.load_frame(conn, start, thr), full, feeds.cpa_reference(conn, getattr(scn, "params", None), L.cpa_window_days, today))
 
 
 def automated_columns(summary: dict) -> dict[str, list]:
@@ -86,7 +87,7 @@ def compute(scn, inputs: PacingInputs, pnl, drivers=None, cohorts=None) -> Pacin
     params = getattr(scn, "params", None) or {}
     L = lv.parse(params)
     book = TargetBook(pnl, drivers, cohorts, levers=L)
-    summary = month_mod.pacing_month(inputs.frame, inputs.month, inputs.today, book, cohorts, params, getattr(drivers, "actual_through", None))
+    summary = month_mod.pacing_month(inputs.frame, inputs.month, inputs.today, book, cohorts, params, getattr(drivers, "actual_through", None), inputs.cpa_ref)
     res = PacingResult(inputs.today, periods.data_through(inputs.today, L.data_lag_days), inputs.month, summary, automated_columns(summary))
     if inputs.full:
         _reconcile_extras(res, inputs, book, cohorts, params)

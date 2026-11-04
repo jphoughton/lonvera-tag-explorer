@@ -144,3 +144,36 @@ def sheet_payback(fin_db):
         c.execute("UPDATE proj_scenarios SET params = jsonb_set(params, '{financing,payback}', coalesce(params #> '{financing,payback}', '{}'::jsonb) "
                   "|| jsonb_build_object('aov', %s::float8, 'cac', %s::float8)) WHERE slug = 'current'", (SHEET_AOV, SHEET_CAC))
     yield
+
+
+@pytest.fixture()
+def feeds(pg, monkeypatch):
+    """With today = 2026-11-03: Meta ad spend by day and Shopify new customers by day: Oct 1 .. Nov 2 at $1,000 a day, 10 new customers of $70 each, except Sep/early Oct (cheaper)."""
+    from datetime import date as _date
+    from app.projection.drivers import loaders as _drv
+    monkeypatch.setattr(_drv, "current_date", lambda: _date(2026, 11, 3))
+    pg.execute("CREATE TABLE IF NOT EXISTS proj_feed_orders (day date PRIMARY KEY, nc_rev numeric(18,2) NOT NULL DEFAULT 0, rc_rev numeric(18,2) NOT NULL DEFAULT 0, "
+               "nc_orders numeric(18,2) NOT NULL DEFAULT 0, total_rev numeric(18,2) NOT NULL DEFAULT 0, total_orders numeric(18,2) NOT NULL DEFAULT 0, "
+               "tax numeric(18,2) NOT NULL DEFAULT 0, refunds numeric(18,2) NOT NULL DEFAULT 0, loaded_at timestamptz NOT NULL DEFAULT now())")
+    pg.execute("DELETE FROM proj_feed_orders")
+    pg.execute("DELETE FROM ad_daily")
+    pg.execute("CREATE TABLE IF NOT EXISTS proj_feed_platform (day date NOT NULL, platform text NOT NULL, spend numeric(18,2) NOT NULL DEFAULT 0, "
+               "purchases numeric(18,2) NOT NULL DEFAULT 0, purchase_value numeric(18,2) NOT NULL DEFAULT 0, nc_purchases numeric(18,2) NOT NULL DEFAULT 0, "
+               "nc_purchase_value numeric(18,2) NOT NULL DEFAULT 0, link_clicks numeric(18,2) NOT NULL DEFAULT 0, clicks numeric(18,2) NOT NULL DEFAULT 0, "
+               "loaded_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (day, platform))")
+    pg.execute("DELETE FROM proj_feed_platform")
+    from datetime import timedelta as _td
+    d = _date(2026, 9, 1)
+    while d <= _date(2026, 11, 2):
+        old = d < _date(2026, 10, 5)                                   # before the 28-day window (Oct 5 .. Nov 1): $50 per customer, $90 order value
+        spend, nc, rev = (500.0, 10, 900.0) if old else (1000.0, 10, 700.0)
+        pg.execute("INSERT INTO ad_daily (ad_id, day, meta_family_key, meta_family, spend, source) VALUES ('a', %s, 'f', 'F', %s, 'meta_api')", (d, spend))
+        pg.execute("INSERT INTO proj_feed_orders (day, nc_rev, nc_orders) VALUES (%s, %s, %s)", (d, rev, nc))
+        pg.execute("INSERT INTO proj_feed_platform (day, platform, spend) VALUES (%s, 'Google Ads', 0)", (d,))
+        d += _td(days=1)
+    yield
+    pg.execute("DELETE FROM proj_feed_orders")
+    pg.execute("DELETE FROM proj_feed_platform")
+    pg.execute("DELETE FROM ad_daily")
+
+

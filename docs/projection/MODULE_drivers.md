@@ -19,7 +19,7 @@ app/projection/drivers/api.py               blueprint at /api/projection/drivers
 app/projection/drivers/reconcile_map.py     P&L rows 11-16, 18-22, 51-56
 etl/projection_drivers.py                   seed from the sheet snapshot, freshness(conn), refresh(conn, days)
 app/static/js/projection/drivers.js         the page
-tests/projection/drivers/                   227 tests
+tests/projection/drivers/                   240 tests
 ```
 
 ## How it works
@@ -108,7 +108,7 @@ One table of bounds (`validation.BOUNDS`): marketing spend 0 to 50,000,000; CPA 
 
 ## Feed references (read only)
 
-Beside the CPA input row: "Realized CPA" by closed month (ad spend of the channels chosen in Plan settings, from the Meta feed `ad_daily`, the ad-platform feed and the Amazon feed, over Shopify new customers from the orders feed; complete months only) and a chip "Plan $95 vs last 28 days $111" (warn when beyond the reference band). Beneath the Amazon plan row: "Amazon feed run-rate (last 28 days)": the feed's own monthly total for closed months it covers, then one flat run-rate (daily average of the window times the average month length) from the open month on, and a one-line note when a typed Amazon value differs from it by more than the band ("Typed Amazon revenue against the feed: Aug 2026 +5%, Sep 2026 +17%, Oct 2026 +18%, Nov 2026 on +8% (last 28 days)"). The window drops the newest feed day (usually partial) and never reaches today. Nothing is written and no plan value changes. Missing feed tables or empty feeds give no rows and no chip. Tests: `test_drivers_reference.py` (12).
+Beside the CPA input row: "Realized CPA" by closed month (ad spend of the channels chosen in Plan settings, from the Meta feed `ad_daily`, the ad-platform feed and the Amazon feed, over Shopify new customers from the orders feed; complete months only) and a chip "Plan $95 vs last 28 days $111" (warn when beyond the reference band). Beneath the Amazon plan row: "Amazon feed run-rate (last 28 days)": the feed's own monthly total for closed months it covers, then one flat run-rate (daily average of the window times the average month length) from the open month on, and a one-line note when a typed Amazon value differs from it by more than the band ("Typed Amazon revenue against the feed: Aug 2026 +5%, Sep 2026 +17%, Oct 2026 +18%, Nov 2026 on +8% (last 28 days)"). The window drops the newest feed day (usually partial) and never reaches today. Nothing is written and no plan value changes. **Guards:** a realized CPA, AOV or Amazon run-rate is offered only when every counted feed covers the window (at least window days minus `reference_gap_days`, default 2) and, for CPA and AOV, the value sits inside its believable range (CPA $20 to $500, AOV $15 to $400, levers `reference_cpa_min/max`, `reference_aov_min/max`). Otherwise `Reference.unavailable` holds the plain reason ("Meta spend feed has 9 of 28 days", "Realized CPA $5.51 is outside the $20 to $500 a real feed gives"), the page shows it in the chip, and callers fall back to their own default. A missing or empty feed gives the reason, not a number. Tests: `test_drivers_reference.py` (23).
 
 ## Daily refresh
 

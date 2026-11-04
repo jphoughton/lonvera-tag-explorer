@@ -115,6 +115,7 @@ def _payback_overrides(inp: dict) -> dict:
             inp[k] = v
             if k in ("aov", "cac"):
                 inp[k + "_source"] = "query"
+                inp[k + "_source_label"] = "entered on this page"
     ma = _int_arg("max_age", 1, 60)
     if ma is not None:
         inp["max_age"] = ma
@@ -145,7 +146,11 @@ def payback():
     info = model.loaded_rate_info(fin.params, res.results.get("pnl"), _float_arg("loaded_rate", 0.0, 0.99))
     pb = model.run_payback(inp, curve)
     loaded = model.run_payback(inp, curve, info["rate"], fully_loaded=True)
-    return jsonify(tables.payback_payload(fin, pb, inp, curve_kind, loaded, info, None if pb else "Enter the average order value and customer acquisition cost."))
+    plan = inp.get("plan")
+    at_plan = {**inp, "aov": plan["aov"], "cac": plan["cac"]} if plan else None
+    return jsonify(tables.payback_payload(fin, pb, inp, curve_kind, loaded, info, None if pb else "Enter the average order value and customer acquisition cost.",
+                                          model.run_payback(at_plan, curve) if at_plan else None,
+                                          model.run_payback(at_plan, curve, info["rate"], fully_loaded=True) if at_plan else None))
 
 
 @bp.get("/matrix")

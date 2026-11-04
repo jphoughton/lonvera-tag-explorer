@@ -196,7 +196,9 @@ export async function render(el, ctx) {
       h('span', null, 'Clear a yellow cell to remove the value you typed.'));
     const r = state.payload.reference || {};
     const kids = [];
-    if (r.cpa) kids.push(h('div', { class: 'dr-ref' }, ui.chip(r.cpa.chip, r.cpa.tone), h('span', { class: 'dr-legend' }, `Realized CPA from the feeds, ${mon(r.cpa.window.from)} to ${mon(r.cpa.window.to)}; plan CPA for ${mon(r.cpa.plan_month)}.`)));
+    if (r.cpa) kids.push(h('div', { class: 'dr-ref' }, ui.chip(r.cpa.chip, r.cpa.tone), h('span', { class: 'dr-legend' }, r.cpa.window
+      ? `Realized CPA from the feeds, ${mon(r.cpa.window.from)} to ${mon(r.cpa.window.to)}; plan CPA for ${mon(r.cpa.plan_month)}.`
+      : `Plan CPA for ${mon(r.cpa.plan_month)} stands until the feeds cover the window.`)));
     if (r.amazon && r.amazon.note) kids.push(h('div', { class: 'dr-ref' }, ui.chip('Amazon feed', 'warn'), h('span', { class: 'dr-legend' }, r.amazon.note)));
     refHost.replaceChildren(...kids);
   }
@@ -440,6 +442,10 @@ export async function render(el, ctx) {
     const winInput = h('input', { type: 'number', id: 'dr-win', min: 1, max: 36, step: 1, value: String(lv.summary_months), inputmode: 'numeric' });
     const refDaysInput = h('input', { type: 'number', id: 'dr-refd', min: 7, max: 90, step: 1, value: String(lv.reference_days), inputmode: 'numeric' });
     const refTolInput = h('input', { type: 'number', id: 'dr-reft', min: 1, max: 100, step: 1, value: String(Math.round(lv.reference_tolerance * 100)), inputmode: 'numeric' });
+    const num = (id, v, min, max, step) => h('input', { type: 'number', id, min, max, step, value: String(v), inputmode: 'decimal' });
+    const gapInput = num('dr-gap', lv.reference_gap_days, 0, 14, 1);
+    const cpaLo = num('dr-cpalo', lv.reference_cpa_min, 1, 100000, 1), cpaHi = num('dr-cpahi', lv.reference_cpa_max, 1, 100000, 1);
+    const aovLo = num('dr-aovlo', lv.reference_aov_min, 1, 100000, 1), aovHi = num('dr-aovhi', lv.reference_aov_max, 1, 100000, 1);
     const adBoxes = Object.fromEntries(SHARE_LABELS.map(([k, label]) => {
       const box = h('input', { type: 'checkbox', id: 'dr-ad-' + k, checked: lv.ad_spend_channels.includes(k) });
       return [k, { box, label }];
@@ -451,17 +457,21 @@ export async function render(el, ctx) {
     const desired = () => ({ channel_share: shares(), sales_tax_rate: (parseFloat(taxInput.value) || 0) / 100,
       payback: { product_cost_pct: (parseFloat(costInput.value) || 0) / 100, fulfillment_per_order: parseFloat(fulInput.value) || 0, horizon_months: parseInt(horizonInput.value, 10) || 0 },
       ad_spend_channels: adSel(), posture_band: (parseFloat(bandInput.value) || 0) / 100, summary_months: parseInt(winInput.value, 10) || 0,
-      reference_days: parseInt(refDaysInput.value, 10) || 0, reference_tolerance: (parseFloat(refTolInput.value) || 0) / 100 });
+      reference_days: parseInt(refDaysInput.value, 10) || 0, reference_tolerance: (parseFloat(refTolInput.value) || 0) / 100,
+      reference_gap_days: parseInt(gapInput.value, 10) || 0, reference_cpa_min: parseFloat(cpaLo.value) || 0, reference_cpa_max: parseFloat(cpaHi.value) || 0,
+      reference_aov_min: parseFloat(aovLo.value) || 0, reference_aov_max: parseFloat(aovHi.value) || 0 });
     const differs = () => {
       const d = desired();
       return SHARE_LABELS.some(([k]) => Math.abs(d.channel_share[k] - lv.channel_share[k]) > 1e-6) || Math.abs(d.sales_tax_rate - lv.sales_tax_rate) > 1e-6
         || Math.abs(d.payback.product_cost_pct - lv.payback.product_cost_pct) > 1e-6 || Math.abs(d.payback.fulfillment_per_order - lv.payback.fulfillment_per_order) > 1e-6
         || d.payback.horizon_months !== lv.payback.horizon_months || Math.abs(d.posture_band - lv.posture_band) > 1e-6 || d.summary_months !== lv.summary_months
-        || d.reference_days !== lv.reference_days || Math.abs(d.reference_tolerance - lv.reference_tolerance) > 1e-6
+        || d.reference_days !== lv.reference_days || Math.abs(d.reference_tolerance - lv.reference_tolerance) > 1e-6 || d.reference_gap_days !== lv.reference_gap_days
+        || d.reference_cpa_min !== lv.reference_cpa_min || d.reference_cpa_max !== lv.reference_cpa_max || d.reference_aov_min !== lv.reference_aov_min || d.reference_aov_max !== lv.reference_aov_max
         || d.ad_spend_channels.join() !== SHARE_LABELS.map(([k]) => k).filter((k) => lv.ad_spend_channels.includes(k)).join();
     };
     const d0Valid = () => { const d = desired(); return d.payback.horizon_months >= 1 && d.payback.horizon_months <= 60 && d.summary_months >= 1 && d.summary_months <= 36 && d.posture_band > 0 && d.posture_band <= 1
-      && d.reference_days >= 7 && d.reference_days <= 90 && d.reference_tolerance > 0 && d.reference_tolerance <= 1; };
+      && d.reference_days >= 7 && d.reference_days <= 90 && d.reference_tolerance > 0 && d.reference_tolerance <= 1
+      && d.reference_gap_days >= 0 && d.reference_gap_days <= 14 && d.reference_cpa_min > 0 && d.reference_cpa_min < d.reference_cpa_max && d.reference_aov_min > 0 && d.reference_aov_min < d.reference_aov_max; };
     const refresh = () => {
       const sum = SHARE_LABELS.reduce((a, [k]) => a + shares()[k], 0);
       const ok = Math.abs(sum - 1) <= SHARE_TOTAL_TOLERANCE;
@@ -471,7 +481,7 @@ export async function render(el, ctx) {
       save.disabled = !valid || !differs();
       status.textContent = '';
     };
-    [...Object.values(shareInputs), taxInput, costInput, fulInput, horizonInput, bandInput, winInput, refDaysInput, refTolInput, ...Object.values(adBoxes).map((a) => a.box)].forEach((i) => i.addEventListener('input', refresh));
+    [...Object.values(shareInputs), taxInput, costInput, fulInput, horizonInput, bandInput, winInput, refDaysInput, refTolInput, gapInput, cpaLo, cpaHi, aovLo, aovHi, ...Object.values(adBoxes).map((a) => a.box)].forEach((i) => i.addEventListener('input', refresh));
     save.addEventListener('click', async () => {
       save.disabled = true;
       status.className = 'status';
@@ -504,7 +514,10 @@ export async function render(el, ctx) {
         h('div', { class: 'dr-field' }, h('label', { for: 'dr-win' }, 'Headline window (months)'), winInput),
         h('div', { class: 'dr-field' }, h('label', { for: 'dr-band' }, 'Growth or harvest band (% change)'), bandInput, h('span', { class: 'hint' }, 'Beyond this the plan reads as growth or harvest')),
         h('div', { class: 'dr-field' }, h('label', { for: 'dr-refd' }, 'Feed reference window (days)'), refDaysInput, h('span', { class: 'hint' }, 'Realized CPA and the Amazon run-rate')),
-        h('div', { class: 'dr-field' }, h('label', { for: 'dr-reft' }, 'Feed reference band (% difference)'), refTolInput, h('span', { class: 'hint' }, 'A typed plan beyond this gets a note'))),
+        h('div', { class: 'dr-field' }, h('label', { for: 'dr-reft' }, 'Feed reference band (% difference)'), refTolInput, h('span', { class: 'hint' }, 'A typed plan beyond this gets a note')),
+        h('div', { class: 'dr-field' }, h('label', { for: 'dr-gap' }, 'Feed days that may be missing'), gapInput, h('span', { class: 'hint' }, 'More than this and the realized numbers are withheld')),
+        h('div', { class: 'dr-field' }, h('label', { for: 'dr-cpalo' }, 'Believable realized CPA ($)'), h('div', { class: 'dr-row' }, cpaLo, cpaHi), h('span', { class: 'hint' }, 'Lowest and highest')),
+        h('div', { class: 'dr-field' }, h('label', { for: 'dr-aovlo' }, 'Believable realized AOV ($)'), h('div', { class: 'dr-row' }, aovLo, aovHi), h('span', { class: 'hint' }, 'Lowest and highest'))),
       h('div', { class: 'dr-field' }, h('span', { class: 'lbl' }, 'Channels counted as ad spend (the new-customer cost denominator)'),
         h('div', { class: 'dr-row' }, SHARE_LABELS.map(([k, label]) => h('label', { class: 'dr-check', for: 'dr-ad-' + k }, adBoxes[k].box, ' ' + label)))),
       slideRow,

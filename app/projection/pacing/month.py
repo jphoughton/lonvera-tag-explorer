@@ -359,36 +359,32 @@ def month_state(month: date, actual_through: date | None, elapsed: int, dim: int
     return "feeds" if elapsed >= dim else "projected"
 
 
-def cpa_context(fr: Frame, c: Ctx, today: date, rows_by_key: dict) -> dict | None:
-    """Realized cost per new customer over the last `cpa_window_days` days (ending at the last complete day), beside the month's. Only for the month that holds those days."""
+def cpa_context(c: Ctx, today: date, rows_by_key: dict, ref: Any = None) -> dict | None:
+    """Realized cost per new customer over the last `cpa_window_days` days beside the month's, for the month that holds those days.
+
+    The number is the Spend plan page's: it comes from `drivers.reference.load_reference` (a feed with fewer than window-2 days, or a result outside the sanity range,
+    is not offered; the reason says why). Without a reference nothing is shown, so this figure is never unguarded."""
     L = c.levers
     thr = dthru(today, L.data_lag_days)
-    if month_start(thr) != c.month or not c.elapsed:
+    if ref is None or month_start(thr) != c.month or not c.elapsed:
         return None
-    spend = nc = 0.0
-    days = 0
-    for k in range(L.cpa_window_days):
-        row = fr.days.get(thr - timedelta(days=k))
-        if row is None:
-            continue
-        days += 1
-        spend += row["m_spend"] + row["g_spend"]
-        nc += row["o_nc_orders"]
-    if not nc or days < min(L.cpa_window_days, 7):
-        return None
-    value = spend / nc
+    label = f"Last {L.cpa_window_days} days"
+    w = getattr(ref, "cpa_window", None)
+    if not w:
+        return {"label": label, "value": None, "days": 0, "pacing": None, "status": NONE, "unavailable": (getattr(ref, "unavailable", {}) or {}).get("cpa") or "The feeds do not cover the window"}
+    value = w["cpa"]
     goal = rows_by_key.get("nc_cpa", {}).get("goal")
-    return {"label": f"Last {L.cpa_window_days} days", "days": days, "value": value, "pacing": (value / goal) if goal else None,
+    return {"label": label, "days": w["days"], "from": w["from"], "to": w["to"], "value": value, "pacing": (value / goal) if goal else None,
             "status": _status(value / goal, "down", L) if goal else NONE}
 
 
 def pacing_month(fr: Frame, month: date, today: date, book: TargetBook, cohorts: Any = None, scn_params: dict | None = None,
-                 actual_through: date | None = None) -> dict:
+                 actual_through: date | None = None, cpa_ref: Any = None) -> dict:
     c = month_context(fr, month, today, book)
     L = book.levers
     rows = build_rows(c) if c.elapsed else []
     by = {r["key"]: r for r in rows}
-    ctx28 = cpa_context(fr, c, today, by) if rows else None
+    ctx28 = cpa_context(c, today, by, cpa_ref) if rows else None
     if ctx28:
         for k in ("nc_cpa", "nc_cpa2"):
             if k in by:

@@ -54,6 +54,7 @@ def test_page_renders_with_header_cards_tables_and_a_clean_console(browser, base
     assert page.locator(".pacing-feed").count() == 12
     # every status carries a word, not just a color
     assert page.locator(".pacing-table .pg-chip").first.inner_text().strip() in ("On pace", "Within plan", "Behind", "Over plan", "Well behind", "Well over plan")
+    assert "Last 28 days unavailable: Meta spend feed has 0 of 28 days" in page.locator("table.pacing-table[aria-label='Month pacing against the plan']").inner_text()
     assert errors == []
     ctx.close()
 

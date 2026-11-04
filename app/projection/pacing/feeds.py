@@ -158,3 +158,19 @@ def apply_reach(bases: dict, fr: Frame, grain: str, key: str) -> None:
     for slug in PRODUCT_FEED:
         v = fr.preach.get((grain, key, slug))
         bases[f"pu_{slug}"] = v if v else None
+
+
+def cpa_reference(conn, scn_params: dict | None, window_days: int, today: date):
+    """The Spend plan page's realized cost per new customer over the last `window_days` complete days (drivers.reference.load_reference): offered only when
+    each spend feed and the new-customer feed have at least window - reference_gap_days days and the result lies in the believable range; otherwise
+    `unavailable['cpa']` carries the plain reason. None when the reference itself cannot be read (the pacing page then shows no 28-day figure)."""
+    from ..drivers import model as drivers_model, reference as drivers_reference
+    try:
+        dl = drivers_model.parse_levers(scn_params or {})
+        return drivers_reference.load_reference(conn, dl.ad_channels, window_days, today, dl)
+    except Exception:                                                        # noqa: BLE001  (a reference must never take the pacing page down)
+        try:
+            conn.rollback()
+        except Exception:                                                    # noqa: BLE001
+            pass
+        return None

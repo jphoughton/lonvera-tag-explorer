@@ -282,7 +282,7 @@ export async function render(el, ctx) {
     }) }, 'Save to scenario');
     const ref = inputs.reference || {};
     const useRef = ref.aov && ref.cac ? h('button', { type: 'button', class: 'btn', onclick: () => { aov.value = ref.aov.toFixed(2); cac.value = ref.cac.toFixed(2); apply(); } },
-      `Use ${monthName(ref.month)} actuals`) : null;
+      `Use ${monthName(ref.month)} figures`) : null;
     const controls = rowFlex(field('Average order value (AOV)', aov), field('Customer acquisition cost (CAC)', cac), field('Product cost (% of order value)', cost),
       field('Fulfillment per order', ful), field('All variable costs (% of order value)', loadedPct, 'Leave blank to read the P&L cost rates'), field('Repeat curve', curve),
       h('button', { type: 'button', class: 'btn', onclick: apply }, 'Recalculate'), save, useRef);
@@ -293,17 +293,30 @@ export async function render(el, ctx) {
       return;
     }
     const horizon = r.ages.length - 1;
-    const card = (title, res, missingText) => h('div', { style: { flex: '1 1 300px', minWidth: '0', border: '1px solid var(--lv-line)', borderRadius: 'var(--lv-r-sm)', padding: 'var(--lv-sp-3)', display: 'flex', flexDirection: 'column', gap: '6px' } },
+    const card = (title, res, missingText, small) => h('div', { style: { flex: '1 1 300px', minWidth: '0', border: '1px solid var(--lv-line)', borderRadius: 'var(--lv-r-sm)', padding: 'var(--lv-sp-3)', display: 'flex', flexDirection: 'column', gap: '6px' } },
       h('strong', null, title),
       res ? [
         chip(res.months == null ? `Does not pay back in ${horizon} months` : `Pays back in month ${res.months}`, res.months == null ? 'bad' : 'good'),
         chip(`First-order margin ${money2(res.cm_first)} (${fmt.pct(res.cm_pct, 1)} of order value)`, 'info'),
-        chip(`Gap after the first order ${money2(res.gap)}`, res.gap > 0 ? 'warn' : 'good'),
-        chip(`${horizon}-month surplus ${money2(res.surplus)}`, res.surplus >= 0 ? 'good' : 'bad'),
+        ...(small ? [] : [chip(`Gap after the first order ${money2(res.gap)}`, res.gap > 0 ? 'warn' : 'good'), chip(`${horizon}-month surplus ${money2(res.surplus)}`, res.surplus >= 0 ? 'good' : 'bad')]),
       ] : h('p', { class: 'muted', style: { margin: 0 } }, missingText));
     const missingText = info.missing && info.missing.length ? `The P&L has no result for: ${info.missing.join(', ')}.` : 'The P&L cost rates are not available.';
-    kids.push(h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 'var(--lv-sp-3)', margin: 'var(--lv-sp-3) 0' } },
-      card('On product margin', r), card('After all variable costs', L, missingText)),
+    const LEAD = { scenario: 'At typed inputs', query: 'At the inputs entered above', 'last closed month': 'At last closed month' };
+    const same = inputs.aov_source === inputs.cac_source;
+    const lead = same ? (LEAD[inputs.aov_source] || `At ${inputs.aov_source} realized`) : 'At the inputs above';
+    const srcLines = same ? [inputs.aov_source_label] : [`Average order value: ${inputs.aov_source_label}`, `Acquisition cost: ${inputs.cac_source_label}`];
+    const plan = S.payback.plan || {};
+    const pl = plan.inputs;
+    kids.push(
+      h('h4', { style: { margin: 'var(--lv-sp-3) 0 4px', fontSize: 'var(--lv-fs-md)' } }, `${lead} (average order value ${money2(r.aov)}, acquisition cost ${money2(r.cac)})`),
+      h('p', { class: 'pg-source', style: { margin: '0 0 6px' } }, `Inputs: ${srcLines.filter(Boolean).join('; ')}.`),
+      ...[['Average order value', inputs.aov_fallback_reason], ['Acquisition cost', inputs.cac_fallback_reason]].filter(([, why]) => why).map(([what, why]) =>
+        h('div', { style: { marginBottom: '6px' } }, chip(`${what} is not read from the last ${(inputs.realized && inputs.realized.days) || 28} days: ${why}. It uses the last closed month.`, 'warn'))),
+      h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 'var(--lv-sp-3)', marginBottom: 'var(--lv-sp-3)' } }, card('On product margin', r), card('After all variable costs', L, missingText)),
+      ...(pl && plan.result ? [
+        h('h4', { style: { margin: 'var(--lv-sp-3) 0 4px', fontSize: 'var(--lv-fs-md)' } }, `At plan inputs (average order value ${money2(pl.aov)}, cost per acquisition ${money2(pl.cac)}, ${monthName(pl.month)})`),
+        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 'var(--lv-sp-3)', marginBottom: 'var(--lv-sp-3)' } }, card('On product margin', plan.result, '', true), card('After all variable costs', plan.loaded && plan.loaded.result, missingText, true)),
+      ] : []),
       h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: 'var(--lv-sp-3)' } }, chip(`New-customer return on ad spend ${fmt.x(r.roas, 2)}`, 'info')));
     if (L && info.parts && info.parts.length) {
       const parts = info.parts.map((x) => h('tr', null, h('td', null, x.label), h('td', { style: { textAlign: 'right' } }, fmt.pct(x.rate, 1))));

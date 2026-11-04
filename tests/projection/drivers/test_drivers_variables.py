@@ -94,10 +94,12 @@ def test_new_levers_are_validated(client, world, levers, fragment):
 
 def test_every_lever_has_a_default_and_round_trips():
     d = Levers().to_dict()
-    assert set(d) == {"channel_share", "sales_tax_rate", "roas_slide", "payback", "ad_spend_channels", "posture_band", "summary_months", "reference_days", "reference_tolerance"}
+    assert set(d) == {"channel_share", "sales_tax_rate", "roas_slide", "payback", "ad_spend_channels", "posture_band", "summary_months", "reference_days", "reference_tolerance", "reference_gap_days",
+                    "reference_cpa_min", "reference_cpa_max", "reference_aov_min", "reference_aov_max"}
     assert d["channel_share"] == DEFAULT_SHARES and d["sales_tax_rate"] == 0.07 and d["ad_spend_channels"] == ["meta", "google"]
     assert d["payback"] == {"product_cost_pct": 0.1726, "fulfillment_per_order": 5.53, "horizon_months": 36}
-    assert d["reference_days"] == 28 and d["reference_tolerance"] == 0.05
+    assert d["reference_days"] == 28 and d["reference_tolerance"] == 0.05 and d["reference_gap_days"] == 2
+    assert (d["reference_cpa_min"], d["reference_cpa_max"], d["reference_aov_min"], d["reference_aov_max"]) == (20.0, 500.0, 15.0, 400.0)
     assert parse_levers({"drivers": d}).to_dict() == d
 
 

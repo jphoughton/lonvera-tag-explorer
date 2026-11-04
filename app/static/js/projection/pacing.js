@@ -163,7 +163,8 @@ export async function render(el, ctx) {
     if (d.blank) return h('td', { class: cls });
     const c = opts.context;
     return h('td', { class: cls }, d.text, opts.star && !d.zero ? h('span', { class: 'pacing-ast' }, '*') : null,
-      c && c.value != null ? h('div', { class: 'pacing-ctx', title: `${c.days} days of spend and new customers ending at the last complete day` }, `${c.label} ${fd(c.value, row.fmt).text}`) : null);
+      c && c.value != null ? h('div', { class: 'pacing-ctx', title: `${c.days} complete days, ${c.from} to ${c.to}` }, `${c.label} ${fd(c.value, row.fmt).text}`) : null,
+      c && c.value == null && c.unavailable ? h('div', { class: 'pacing-ctx' }, `${c.label} unavailable: ${c.unavailable}`) : null);
   }
   function monthTable(rows) {
     const head = h('tr', null,
@@ -204,6 +205,7 @@ export async function render(el, ctx) {
         h('div', { class: 'v' }, fd(r.projection, r.fmt).text, r.kind === 'ratio' ? null : h('span', { class: 'pacing-ast' }, '*')),
         h('div', { class: 'g' }, `Goal ${fd(r.goal, r.fmt).text} · ${r.pacing == null ? 'no pace' : Math.round(r.pacing * 100) + '%'}`),
         r.context && r.context.value != null ? h('div', { class: 'pacing-ctx' }, `${r.context.label} ${fd(r.context.value, r.fmt).text}${r.context.pacing != null ? ` · ${Math.round(r.context.pacing * 100)}% of goal` : ''}`) : null,
+        r.context && r.context.value == null && r.context.unavailable ? h('div', { class: 'pacing-ctx' }, `${r.context.label} unavailable: ${r.context.unavailable}`) : null,
         h('div', { class: 'row' }, h('div', { class: 'pacing-bar ' + (tone || ''), role: 'img', 'aria-label': r.pacing == null ? 'No goal' : `${Math.round(r.pacing * 100)}% of goal` },
           h('span', { class: 'fill', style: { width: width + '%' } }), h('span', { class: 'tick', style: { left: (100 / 150 * 100) + '%' } })),
         tone ? ui.chip(wordFor(r), tone) : null));

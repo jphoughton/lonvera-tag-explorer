@@ -69,6 +69,8 @@ def test_month_endpoint_payload(api):
     by = {x["key"]: x for x in j["rows"]}
     assert by["total_rev"]["status"] == "good" and by["advertising"]["direction"] == "down"
     assert j["payback"]["available"] and j["payback"]["months"]["mtd"] == 10
+    ctx = by["nc_cpa"]["context"]                                                      # the 28-day figure is the Spend plan page's: withheld, with the reason, when ad_daily is empty
+    assert ctx["value"] is None and ctx["unavailable"] == "Meta spend feed has 0 of 28 days" and by["nc_cpa"]["mtd"]
 
 
 def test_month_endpoint_other_month_and_validation(api):

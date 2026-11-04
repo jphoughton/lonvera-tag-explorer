@@ -11,11 +11,16 @@ from datetime import date
 from typing import Any
 
 from .. import series as series_mod
+import logging
+
 from ...queries import ApiError
-from ..interfaces import MONTHS, FinancingResult, Month, Series, add_months
+from ..drivers import loaders as drivers_loaders, model as drivers_model, reference as drivers_reference
+from ..interfaces import MONTHS, FinancingResult, Month, Series, add_months, month_floor
 from . import calc
 from . import params as P
 
+log = logging.getLogger("tagexp.projection")
+CHANNEL_NAMES = {"meta": "Meta", "google": "Google", "tiktok": "TikTok", "amazon": "Amazon ads"}
 NOI_KEYS = ("noi", "net_operating_income")
 CHINA_COGS_KEYS = ("china_cogs", "cogs_china", "cogs")          # P&L row 32; the stub pnl only has row 31 (the same amount to the cent)
 DEFAULT_CLOSE = date(2026, 9, 1)
@@ -26,6 +31,8 @@ class FinancingInputs:
     params: dict = field(default_factory=dict)                  # effective `financing` params (defaults overlaid)
     series: dict[str, Series] = field(default_factory=dict)     # financing.* monthly cells
     cells: dict[str, dict[Month, dict]] = field(default_factory=dict)   # key -> month -> {kind, note, origin}
+    realized: dict | None = None                                # what new customers really cost lately, from the feeds (None when they hold nothing)
+    today: date | None = None
 
 
 @dataclass
@@ -39,6 +46,8 @@ class FinancingDetail(FinancingResult):
     cash: calc.Cash = field(default_factory=calc.Cash)
     payback: calc.Payback | None = None                          # on product margin (the sheet's Payback tab)
     payback_loaded: calc.Payback | None = None                   # after all variable costs (the P&L's own rates)
+    payback_plan: calc.Payback | None = None                     # the same two readings at the spend plan's own inputs (AOV, CPA of the plan month)
+    payback_plan_loaded: calc.Payback | None = None
     loaded_info: dict = field(default_factory=dict)              # the P&L rate behind payback_loaded and its parts
     unavailable: dict[str, str] = field(default_factory=dict)    # section -> why it cannot be computed (payback / matrix / payout)
     top_up: dict = field(default_factory=dict)                   # monthly cash that keeps ending cash at zero, and what drives the low point
@@ -60,10 +69,38 @@ def load_inputs(conn, scn) -> FinancingInputs:
     for c in series_mod.fetch_cells(conn, scn, prefix="financing."):
         out.series.setdefault(c["line_key"], {})[c["month"]] = c["value"]
         out.cells.setdefault(c["line_key"], {})[c["month"]] = {"kind": c["kind"], "note": c["note"], "origin": c["origin"]}
+    out.today = drivers_loaders.current_date()
+    out.realized = realized_inputs(conn, scn, out.today)
     return out
 
 
-# ------------------------------------------------------------------------------------------------------------------ helpers
+def realized_inputs(conn, scn, today: date) -> dict | None:
+    """What a new customer really costs and spends lately: the Spend plan page's "last 28 days" reference (drivers.reference with the scenario's bounds:
+    the chosen channels' ad spend over Shopify new customers, and the average order value of the same days). Each number is offered only when its feeds cover the
+    window and it is believable; otherwise it is absent and `unavailable` says why in plain words. None when the reference cannot be read at all."""
+    try:
+        lv = drivers_model.parse_levers(getattr(scn, "params", None) or {})
+        ref = drivers_reference.load_reference(conn, lv.ad_channels, lv.reference_days, today, levers=lv)
+        w, a = ref.cpa_window, ref.aov_window
+        win = w or a
+        out: dict = {"cac": w["cpa"] if w else None, "aov": a["aov"] if a else None, "days": lv.reference_days, "channels": list(lv.ad_channels),
+                     "unavailable": dict(ref.unavailable)}
+        if win:
+            out.update({"from": win["from"], "to": win["to"]})
+            d0, d1 = date.fromisoformat(win["from"]), date.fromisoformat(win["to"])
+            names = [CHANNEL_NAMES.get(c, str(c)) for c in lv.ad_channels]
+            out["label"] = f"last {lv.reference_days} days ({d0:%b} {d0.day} to {d1:%b} {d1.day}), {' + '.join(names)} + Shopify feeds"
+        if w:
+            out.update({"spend": w["spend"], "new_customers": w["new_customers"]})
+        return out if (w or a or ref.unavailable) else None
+    except Exception:                                           # the feeds are a reference: a failure here must not take cash and debt down
+        log.exception("financing: realized payback inputs unavailable")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return None
+
 
 def _pick(lines: dict[str, Series] | None, keys: tuple[str, ...]) -> Series:
     for k in keys:
@@ -86,17 +123,48 @@ def _last_actual(s: Series, through: Month | None) -> float | None:
     return None
 
 
-def payback_inputs(prm: dict, drivers: Any) -> dict:
-    """AOV and CAC for the payback calculator: the scenario's typed value, else the drivers' last closed month."""
+def plan_inputs(drivers: Any, today: date | None) -> dict | None:
+    """The spend plan's average order value and cost per new customer for the first plan-driven month from the open month on (the Spend plan page's chip)."""
+    pa = getattr(drivers, "plan_aov", None) or getattr(drivers, "nc_aov", None) or {}
+    pc = getattr(drivers, "plan_cpa", None) or getattr(drivers, "nc_cpa", None) or {}
+    basis = getattr(drivers, "nc_basis", None) or {}
+    start = month_floor(today or date.today())
+    cands = [m for m in MONTHS if m >= start and pc.get(m) and pa.get(m)]
+    m = next((x for x in cands if basis.get(x) == "plan"), cands[0] if cands else None)
+    return {"month": m.isoformat(), "aov": pa[m], "cac": pc[m]} if m else None
+
+
+def payback_inputs(prm: dict, drivers: Any, realized: dict | None = None, today: date | None = None) -> dict:
+    """AOV and CAC for the payback calculator, in this order: the scenario's typed value, what new customers really cost and spent over the last
+    28 days (the feeds), the drivers' last closed month. The plan's own inputs are carried alongside (`plan`) so the page shows both."""
     pb = prm["payback"]
     through = getattr(drivers, "actual_through", None)
     ref_aov = _last_actual(getattr(drivers, "nc_aov", {}) or {}, through)
     ref_cac = _last_actual(getattr(drivers, "nc_cpa", {}) or {}, through)
-    aov = P.opt_num(pb.get("aov"))
-    cac = P.opt_num(pb.get("cac"))
-    return {"aov": aov if aov is not None else ref_aov, "cac": cac if cac is not None else ref_cac,
-            "aov_source": "scenario" if aov is not None else ("last closed month" if ref_aov is not None else None),
-            "cac_source": "scenario" if cac is not None else ("last closed month" if ref_cac is not None else None),
+    typed_aov, typed_cac = P.opt_num(pb.get("aov")), P.opt_num(pb.get("cac"))
+    rz = realized or {}
+    window = f"last {rz['days']} days" if rz.get("days") else None
+
+    def pick(typed, real, closed):
+        if typed is not None:
+            return typed, "scenario"
+        if real:
+            return real, window
+        if closed is not None:
+            return closed, "last closed month"
+        return None, None
+
+    aov, aov_src = pick(typed_aov, rz.get("aov"), ref_aov)
+    cac, cac_src = pick(typed_cac, rz.get("cac"), ref_cac)
+    labels = {"scenario": "typed in this scenario", "last closed month": f"last closed month ({through:%b %Y})" if through else "last closed month"}
+    if window and rz.get("label"):
+        labels[window] = rz["label"]
+    unavailable = rz.get("unavailable") or {}
+    why = {"aov": unavailable.get("aov") if aov_src == "last closed month" else None, "cac": unavailable.get("cpa") if cac_src == "last closed month" else None}
+    return {"aov": aov, "cac": cac, "aov_source": aov_src, "cac_source": cac_src,
+            "aov_source_label": labels.get(aov_src), "cac_source_label": labels.get(cac_src),
+            "aov_fallback_reason": why["aov"], "cac_fallback_reason": why["cac"],
+            "realized": rz or None, "plan": plan_inputs(drivers, today),
             "reference": {"aov": ref_aov, "cac": ref_cac, "month": through.isoformat() if through else None},
             "product_cost_pct": P.num(pb.get("product_cost_pct")), "fulfillment": P.num(pb.get("fulfillment")),
             "max_age": int(P.num(pb.get("max_age"), 36)), "curve": pb.get("curve") or "live"}
@@ -257,7 +325,7 @@ def compute(scn, inputs: FinancingInputs | None, pnl, inventory, cohorts=None, d
     out.top_up = cash_drivers(out, c, wf, tax, interest, principal, inv, seller)
 
     # payback, grid, payout (need the retention curve from the cohorts module)
-    pbi = payback_inputs(prm, drivers)
+    pbi = payback_inputs(prm, drivers, inputs.realized, inputs.today)
     curve = _curve(cohorts, pbi["curve"])
     pbi["shared_sources"] = P.payback_sources(getattr(scn, "params", None))
     out.payback_inputs = pbi
@@ -267,6 +335,10 @@ def compute(scn, inputs: FinancingInputs | None, pnl, inventory, cohorts=None, d
     else:
         out.payback = run_payback(pbi, curve)
         out.payback_loaded = run_payback(pbi, curve, out.loaded_info["rate"], fully_loaded=True)
+        if pbi["plan"]:
+            at_plan = {**pbi, "aov": pbi["plan"]["aov"], "cac": pbi["plan"]["cac"]}
+            out.payback_plan = run_payback(at_plan, curve)
+            out.payback_plan_loaded = run_payback(at_plan, curve, out.loaded_info["rate"], fully_loaded=True)
         out.matrix = run_matrix(prm, out.payback, curve, out.payback_loaded)
         repeat, src = payout_repeat(prm, cohorts)
         out.payout, out.payout_repeat_source = run_payout(prm, repeat), src
@@ -345,6 +417,9 @@ def summarize(r: FinancingDetail, *, inventory_present: bool = True) -> dict:
         "payback_interpolated": r.payback.months_interpolated if r.payback else None,
         "payback_months_loaded": r.payback_loaded.months if r.payback_loaded else None,
         "payback_loaded_available": r.payback_loaded is not None,
+        "payback_basis": (r.payback_inputs.get("aov_source_label") or None) if r.payback else None,
+        "payback_months_plan": r.payback_plan.months if r.payback_plan else None,
+        "payback_months_plan_loaded": r.payback_plan_loaded.months if r.payback_plan_loaded else None,
         "payback_horizon": r.payback.ages[-1] if r.payback else None,
         "monthly_top_up": r.top_up.get("monthly_top_up", 0.0),
         "close_funding": r.top_up.get("close_funding", 0.0),
