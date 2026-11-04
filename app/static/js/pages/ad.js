@@ -1,7 +1,8 @@
-import { h, enc, fmt, href, apiWindow, globalParams, badge, confBadge, stageBadge, liveDot, methodFlags, safeUrl, empty, isNum, colorChip, safeColor } from '../util.js';
+import { h, enc, fmt, href, apiWindow, globalParams, badge, confBadge, stageBadge, liveDot, methodFlags, safeUrl, empty, isNum, colorChip, safeColor, cmpView, onCmpRefresh, setParentHint } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
-import { setWindowInfo } from '../controls.js';
+import { setRangeInfo } from '../controls.js';
+import { flatTotal } from '../columns.js';
 import { breadcrumbs, section, adsTable } from '../components.js';
 import { dailyChart } from '../charts.js';
 
@@ -15,6 +16,47 @@ function extLink(label, url) {
 }
 function textBlock(t) { return h('div', { class: 'copyblock' }, t); }
 
+function pctSpan(pct, dir) {
+  if (!isNum(pct)) return '–';
+  let cls = 'neutral';
+  if (pct !== 0 && dir !== 'neutral') cls = (dir === 'up') === (pct > 0) ? 'good' : 'bad';
+  return h('span', { class: 'delta ' + cls }, fmt.pctChange(pct));
+}
+
+// window A | window B | delta table (only when comparing)
+function compareTable(d, wi) {
+  const f = d.metrics && d.metrics.family;
+  const ci = d.compare_info;
+  if (!f || !f.compare || !ci || !cmpView.on) return null;
+  const perDay = cmpView.perDay;
+  const da = wi && wi.days, db = ci.days;
+  const val = (m, k, days) => (perDay && ['spend', 'purchases', 'revenue'].includes(k) && days ? m[k] / days : m[k]);
+  const rows = [
+    ['spend', perDay ? 'Spend / day' : 'Spend', fmt.money, 'neutral'],
+    ['purchases', perDay ? 'Purchases / day' : 'Purchases', perDay ? fmt.dec1 : fmt.int, 'up'],
+    ['revenue', perDay ? 'Revenue / day' : 'Revenue', fmt.money, 'up'],
+    ['roas', 'ROAS', fmt.roas, 'up'],
+    ['cpa', 'CPA', fmt.money, 'down'],
+  ];
+  const tr = rows.map(([k, label, ff, dir]) => {
+    const a = val(f.window, k, da), b = val(f.compare, k, db);
+    let pct = f.delta ? f.delta[(perDay && ['spend', 'purchases', 'revenue'].includes(k) ? k + '_per_day' : k) + '_pct'] : null;
+    if (pct == null && isNum(a) && isNum(b) && b !== 0) pct = (a - b) / b;
+    const diff = isNum(a) && isNum(b) ? a - b : null;
+    return h('tr', { 'data-metric': k },
+      h('th', { scope: 'row' }, label),
+      h('td', { class: 'num a' }, ff(a)),
+      h('td', { class: 'num b' }, ff(b)),
+      h('td', { class: 'num d' }, diff == null ? '–' : (diff > 0 ? '+' : diff < 0 ? '-' : '') + ff(Math.abs(diff))),
+      h('td', { class: 'num p' }, pctSpan(pct, dir)));
+  });
+  return h('div', { class: 'cmp-table', id: 'compare-table' },
+    h('div', { class: 'subtle-head' }, 'Window A vs B'),
+    h('table', { class: 'mini' },
+      h('thead', h('tr', h('th'), h('th', { class: 'num' }, 'A · ' + (wi && wi.label || '')), h('th', { class: 'num' }, 'B · ' + (ci.label || '')), h('th', { class: 'num' }, 'Δ'), h('th', { class: 'num' }, 'Δ %'))),
+      h('tbody', tr)));
+}
+
 function metricsCard(d, wi) {
   const f = d.metrics && d.metrics.family;
   if (!f) return null;
@@ -27,11 +69,13 @@ function metricsCard(d, wi) {
     h('td', { class: 'num', title: m ? fmt.money2(m.revenue) : null }, fmt.money(m && m.revenue)),
     h('td', { class: 'num' }, fmt.roas(m && m.roas)),
     h('td', { class: 'num' }, fmt.money(m && m.cpa))));
+  const cmpBlock = compareTable(d, wi);
   return h('div', { class: 'card', id: 'family-metrics' },
     h('div', { class: 'card-head' }, h('h3', 'Family metrics'), h('span', { class: 'live-flag' }, liveDot(f.live), f.live ? ' Live now' : ' Not live')),
     h('table', { class: 'mini' },
       h('thead', h('tr', h('th'), ['Spend', 'Purchases', 'Revenue', 'ROAS', 'CPA'].map((x) => h('th', { class: 'num' }, x)))),
       h('tbody', tr)),
+    cmpBlock,
     h('div', { class: 'muted small' }, d.metrics.counted_on_this_row
       ? 'Metrics are counted on this tracker row (first row of the ad family).'
       : 'Family-level numbers. In the tables they are counted once, on the family’s first tracker row, which is not this one.'));
@@ -134,7 +178,9 @@ function siblingsTable(d, G) {
 }
 
 function campaignsTable(d, p, slug, G) {
-  const rows = (d.campaigns || []).map((c) => ({ ...c, roas: c.spend > 0 ? c.revenue / c.spend : null, cpa: c.purchases > 0 ? c.spend / c.purchases : null }));
+  const raw = d.campaigns || [];
+  const totSpend = raw.reduce((a, c) => a + (c.spend || 0), 0);
+  const rows = raw.map((c) => ({ ...c, roas: c.spend > 0 ? c.revenue / c.spend : null, cpa: c.purchases > 0 ? c.spend / c.purchases : null, spend_share: c.spend_share != null ? c.spend_share : (totSpend > 0 ? c.spend / totSpend : null) }));
   if (!rows.length) return null;
   const sum = (k) => rows.reduce((a, r) => a + (r[k] || 0), 0);
   const tot = { spend: sum('spend'), purchases: sum('purchases'), revenue: sum('revenue') };
@@ -145,20 +191,13 @@ function campaignsTable(d, p, slug, G) {
     { key: 'name', label: 'Campaign', sticky: true, sort: (r) => r.name, total: () => 'Total', cell: (r) => h('a', { href: href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }), class: 'rowlink' }, r.name) },
     { key: 'stage', label: 'Stage', sort: (r) => r.stage, cell: (r) => stageBadge(r.stage) },
     { key: 'spend', label: 'Spend', num: true, sort: (r) => r.spend, cell: (r) => fmt.money(r.spend), total: (t) => fmt.money(t.spend) },
+    { key: 'spend_share', label: '% of spend', num: true, sort: (r) => r.spend_share, cell: (r) => fmt.share(r.spend_share), total: () => '100.0%' },
     { key: 'purchases', label: 'Purchases', num: true, sort: (r) => r.purchases, cell: (r) => fmt.int(r.purchases), total: (t) => fmt.int(t.purchases) },
     { key: 'revenue', label: 'Revenue', num: true, sort: (r) => r.revenue, cell: (r) => fmt.money(r.revenue), total: (t) => fmt.money(t.revenue) },
     { key: 'roas', label: 'ROAS', num: true, sort: (r) => r.roas, cell: (r) => fmt.roas(r.roas), total: (t) => fmt.roas(t.roas) },
     { key: 'cpa', label: 'CPA', num: true, sort: (r) => r.cpa, cell: (r) => fmt.money(r.cpa), total: (t) => fmt.money(t.cpa) },
   ];
   return section('Campaigns', createTable({ columns: cols, rows, total: rows.length > 1 ? tot : null, rowKey: (r) => r.campaign_id, rowHref: (r) => href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }), tableClass: 'compact', testid: 'campaigns-mini-table' }).el, { id: 'campaigns' });
-}
-
-function metaAdsTotal(rows) {
-  const s = (k) => rows.reduce((a, r) => a + (r[k] || 0), 0);
-  const t = { spend: s('spend'), purchases: s('purchases'), revenue: s('revenue'), spend_7d: s('spend_7d') };
-  t.roas = t.spend > 0 ? t.revenue / t.spend : null;
-  t.cpa = t.purchases > 0 ? t.spend / t.purchases : null;
-  return t;
 }
 
 export async function adPage(ctx) {
@@ -168,7 +207,7 @@ export async function adPage(ctx) {
   const d = await api('/api/ads/' + enc(id), apiWindow(p), { signal });
   if (!ctx.alive()) return;
   const wi = d.window_info;
-  setWindowInfo(wi);
+  setRangeInfo(p, wi, d.compare_info || null);
   const slug = d.product.slug;
   const path = '/p/' + enc(slug);
   const title = d.ad_family || d.concept_id;
@@ -194,9 +233,10 @@ export async function adPage(ctx) {
   // chart
   const daily = d.daily || [];
   const canvas = h('canvas', { id: 'daily-chart', role: 'img', 'aria-label': 'Daily spend, revenue and purchases for this ad family' });
-  let shade = null;
-  if (wi && wi.from && wi.to) shade = { from: wi.from, to: wi.to };
-  else if (daily.length && d.launch_date && d.launch_date >= daily[0].day) shade = { from: d.launch_date, to: daily[daily.length - 1].day };
+  const shades = [];
+  if (wi && wi.from && wi.to) shades.push({ from: wi.from, to: wi.to, color: 'rgba(26,95,180,0.14)', name: 'A' });
+  else if (daily.length && d.launch_date && d.launch_date >= daily[0].day) shades.push({ from: d.launch_date, to: daily[daily.length - 1].day, color: 'rgba(26,95,180,0.14)', name: 'A' });
+  if (d.compare_info && d.compare_info.from && cmpView.on) shades.push({ from: d.compare_info.from, to: d.compare_info.to, color: 'rgba(217,130,43,0.20)', name: 'B' });
   let chart = null;
   const toggles = ['Spend', 'Revenue', 'Purchases'].map((name, i) => {
     const cb = h('input', { type: 'checkbox', checked: true, 'data-series': name.toLowerCase(), id: 'toggle-' + name.toLowerCase() });
@@ -205,14 +245,18 @@ export async function adPage(ctx) {
   });
   const chartCard = h('div', { class: 'card', id: 'daily-card' },
     h('div', { class: 'card-head' }, h('h3', 'Daily'), h('span', { class: 'toggles' }, toggles),
-      h('span', { class: 'muted small shade-note' }, shade ? `Shaded: ${wi && wi.kind !== 'launch' && wi.label ? wi.label : 'since launch'}` : (daily.length ? `${fmt.day(daily[0].day)} – ${fmt.day(daily[daily.length - 1].day)}` : ''))),
+      h('span', { class: 'muted small shade-note' }, shades.length ? (shades.length > 1 ? 'Shaded: A (blue) and B (orange)' : `Shaded: ${wi && wi.kind !== 'launch' && wi.label ? wi.label : 'since launch'}`) : (daily.length ? `${fmt.day(daily[0].day)} – ${fmt.day(daily[daily.length - 1].day)}` : ''))),
     daily.length ? h('div', { class: 'chartbox' }, canvas) : empty('No daily data.'));
 
   const metaAds = d.meta_ads || [];
-  const adsT = metaAds.length ? adsTable({ ...p }, { rows: metaAds, total: metaAds.length > 1 ? metaAdsTotal(metaAds) : null }, {
-    showFamily: false, linkAd: false,
+  const famTotal = flatTotal(metaAds, { days: wi && wi.days, bdays: d.compare_info && d.compare_info.days });
+  const adsRows = metaAds.map((r) => (r.spend_share != null ? r : { ...r, spend_share: famTotal.spend > 0 ? r.spend / famTotal.spend : null }));
+  const adsT = metaAds.length ? adsTable({ ...p }, { rows: adsRows, total: metaAds.length > 1 ? famTotal : null }, {
+    showFamily: false, linkAd: false, shareLabel: '% of family',
     campaignHref: (r) => href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }),
   }) : null;
+  if (adsT) onCmpRefresh(() => adsT.refresh());
+  setParentHint(href(path, { ...G, cluster, icp, pain }));
 
   ctx.mount(h('div', { class: 'page ad-detail' },
     h('div', { class: 'crumbrow' }, breadcrumbs(crumbs)),
@@ -234,7 +278,12 @@ export async function adPage(ctx) {
     adsT ? section('Meta ads in this family', adsT.el, { id: 'meta-ads' }) : null,
     campaignsTable(d, p, slug, G),
   ));
+  onCmpRefresh(() => {
+    const old = document.getElementById('compare-table');
+    const nu = compareTable(d, wi);
+    if (old && nu) old.replaceWith(nu);
+  });
   if (daily.length) {
-    chart = dailyChart(canvas, daily, shade);
+    chart = dailyChart(canvas, daily, shades);
   }
 }

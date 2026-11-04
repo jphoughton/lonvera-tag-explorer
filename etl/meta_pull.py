@@ -170,6 +170,8 @@ def run_pull(conn, since, until, dry_run=False, replace=True, snapshot_dir=None,
             with ThreadPoolExecutor(max_workers=min(workers, len(meta_api.ACCOUNTS))) as ex:
                 futs = [ex.submit(pull_task, tok, acct, an, cs, ce) for acct, an in meta_api.ACCOUNTS]
                 results = [f.result() for f in futs]
+        except meta_api.TokenRejected:
+            raise
         except meta_api.GraphError as e:
             stats["chunks_failed"].append({"chunk": f"{cs}..{ce}", "error": db.scrub(e)[:200]})
             db.log(f"  chunk FAILED (existing rows for these days are kept): {db.scrub(e)[:160]}")

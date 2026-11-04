@@ -237,10 +237,24 @@ def trailing(w, stage):
     return build_window(DATA_THROUGH - timedelta(days=n - 1), DATA_THROUGH, "trailing", stage)
 
 
-def parse_win(args):
-    stage = args.get("stage", "all")
-    if stage not in ("all", "testing", "scaling"):
+ALL_STAGES = ("testing", "scaling", "unclassified")
+
+
+def parse_stage(args):
+    """stage = comma-separated include list (omitted / 'all' = all three); empty or unknown -> 400"""
+    raw = args.get("stage")
+    if raw is None or raw == "all":
+        return frozenset(ALL_STAGES)
+    parts = [x.strip() for x in raw.split(",") if x.strip()]
+    if not parts:
+        raise Bad("at least one stage must be included")
+    if any(x not in ALL_STAGES for x in parts):
         raise Bad("bad stage")
+    return frozenset(parts)
+
+
+def parse_win(args):
+    stage = parse_stage(args)
     f, t = args.get("from"), args.get("to")
     if f or t:
         if not (f and t):
@@ -255,7 +269,7 @@ def parse_win(args):
     w = args.get("window", "launch")
     if w == "launch":
         info = dict(kind="launch", label="Since launch", **{"from": None, "to": None}, days=None, clamped=False,
-                    note="With a stage filter only days with a campaign (classified days) count." if stage != "all" else None,
+                    note="With a stage filter only days with a campaign (classified days) count." if len(stage) < 3 else None,
                     daily_start=DAILY_START.isoformat(), data_through=DATA_THROUGH.isoformat())
         return dict(info=info, i0=None, i1=None, stage=stage, key=("launch", stage), launch=True)
     return trailing(w, stage)
@@ -307,28 +321,49 @@ def launch_idx(launch):
     return (launch - DAILY_START).days if launch else None
 
 
+UNC_DAYS = 30  # the first 30 daily rows come from the sheet backfill: no campaign, so "unclassified"
+
+
+def _add(a, b):
+    return (a[0] + b[0], a[1] + b[1], a[2] + b[2])
+
+
+def day_split(daily, lo, hi, stg):
+    out = {"testing": (0, 0, 0), "scaling": (0, 0, 0), "unclassified": (0, 0, 0)}
+    if hi < lo:
+        return out
+    u_hi = min(hi, UNC_DAYS - 1)
+    if lo <= u_hi:
+        out["unclassified"] = sums(daily, lo, u_hi)
+    c_lo = max(lo, UNC_DAYS)
+    if c_lo <= hi:
+        out[stg] = sums(daily, c_lo, hi)
+    return out
+
+
 def ad_metrics(ad, win, launch, cut=True):
     """(spend, purchases, revenue) for one ad in the window, by stage: dict stage -> tuple"""
     stg = ad_stage(ad)
     daily = ad["daily"]
     start = ad["detail_cut"] if cut else 0
-    out = {"testing": (0, 0, 0), "scaling": (0, 0, 0), "unclassified": (0, 0, 0)}
     if win["launch"]:
         if launch is None and ad["fam"] is not None:
-            return out
+            return {"testing": (0, 0, 0), "scaling": (0, 0, 0), "unclassified": (0, 0, 0)}
         if launch is None or launch >= DAILY_START:
             li = 0 if launch is None else (launch - DAILY_START).days
-            sp, pu, rv = sums(daily, max(li, start), N - 1)
-            out[stg] = (sp, pu, rv)
-        else:
-            ci = (CUTOFF - DAILY_START).days
-            sp, pu, rv = sums(daily, max(ci + 1, start), N - 1)
-            out[stg] = (sp, pu, rv)
-            out["unclassified"] = ad["life"]
-    else:
-        sp, pu, rv = sums(daily, max(win["i0"], start), win["i1"])
-        out[stg] = (sp, pu, rv)
-    return out
+            return day_split(daily, max(li, start), N - 1, stg)
+        ci = (CUTOFF - DAILY_START).days
+        out = day_split(daily, max(ci + 1, start), N - 1, stg)
+        out["unclassified"] = _add(out["unclassified"], ad["life"])
+        return out
+    return day_split(daily, max(win["i0"], start), win["i1"], stg)
+
+
+def metrics_of(split, win):
+    """apply the stage include list to a by-stage split -> spend, purchases, revenue"""
+    keys = [k for k in ALL_STAGES if k in win["stage"]]
+    sp = sum(split[k][0] for k in keys); pu = sum(split[k][1] for k in keys); rv = sum(split[k][2] for k in keys)
+    return sp, pu, rv
 
 
 def _roas(s, r):
@@ -337,14 +372,6 @@ def _roas(s, r):
 
 def _cpa(s, p):
     return round(s / p, 2) if p > 0 else None
-
-
-def metrics_of(split, win):
-    """apply the stage filter to a by-stage split -> spend, purchases, revenue"""
-    stage = win["stage"]
-    keys = ["testing", "scaling", "unclassified"] if stage == "all" else [stage]
-    sp = sum(split[k][0] for k in keys); pu = sum(split[k][1] for k in keys); rv = sum(split[k][2] for k in keys)
-    return sp, pu, rv
 
 
 _FM = {}
@@ -501,6 +528,7 @@ def unmatched_rows(slug, win):
     rows = []
     for e in by.values():
         e["spend"] = round(e["spend"], 2); e["revenue"] = round(e["revenue"], 2); e["spend_7d"] = round(e["spend_7d"], 2)
+        e["purchases"] = int(round(e["purchases"]))
         e["roas"] = _roas(e["spend"], e["revenue"]); e["cpa"] = _cpa(e["spend"], e["purchases"])
         b = e.pop("_b")
         eb = dict(spend=round(b[0], 2), purchases=int(round(b[1])), revenue=round(b[2], 2), roas=_roas(b[0], b[2]), cpa=_cpa(b[0], b[1]))
@@ -606,7 +634,9 @@ def rollup(slug):
         rows.sort(key=lambda r: (r["label"] == "(untagged)", order.get(r["label"], 99)))
     else:
         rows.sort(key=lambda r: (r["label"] in ("(untagged)", "(none)"), -r["m"]["spend"]))
+    saved, g.cmp = g.cmp, None
     um = unmatched_rows(slug, parse_win({}))
+    g.cmp = saved
     um7 = sum(u["spend_7d"] for u in um)
     return jsonify(product=product_json(p), level=level, filters=dict(cluster=request.args.get("cluster"), icp=request.args.get("icp")),
                    window=win["info"], window_info=win["info"], compare_info=cinfo(), rows=rows, total=dict(m=make_m(items_for_m(ents), win)),
@@ -709,10 +739,11 @@ def ads_for(slug, args, win):
             continue
         if cid and ad["campaign_id"] != cid:
             continue
-        if win["stage"] != "all" and ad_stage(ad) != win["stage"]:
-            continue
         fam = FAM_BY_KEY.get(ad["fam"]) if ad["fam"] else None
-        rows.append(ad_row(ad, win, fam["launch"] if fam else None))
+        row = ad_row(ad, win, fam["launch"] if fam else None)
+        if len(win["stage"]) < 3 and not row["spend"] and not (row.get("cmp") or {}).get("spend"):
+            continue
+        rows.append(row)
     # remainder row for the family with partial ad-level detail
     for f in FAMS:
         if f.get("has_remainder") and f["product"] == slug and (fk in (None, f["key"])) and (fam_filter is None or f["key"] in fam_filter) and not cid:
@@ -769,7 +800,7 @@ def campaigns(slug):
             e["last_day"] = ld if e["last_day"] is None or ld > e["last_day"] else e["last_day"]
     rows = []
     for e in out.values():
-        if win["stage"] != "all" and e["stage"] != win["stage"]:
+        if len(win["stage"]) < 3 and not e["spend"] and not (e.get("_b") and e["_b"][0]):
             continue
         e["families"] = len(e.pop("fams"))
         e["spend"] = round(e["spend"], 2); e["revenue"] = round(e["revenue"], 2); e["spend_7d"] = round(e["spend_7d"], 2)

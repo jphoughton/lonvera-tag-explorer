@@ -39,10 +39,13 @@ def step(name, fn, results, fatal=True):
 
 
 def run(days=7, source="auto", snapshot_dir=None, until=None) -> dict:
+    """tracker -> Meta -> resolve -> metrics. Any Meta failure still lets the sheet fallback + metrics finish (data stays fresh) but the run
+    is then FAILED loudly: etl_runs.status='failed' and error='meta token rejected' (Graph codes 190/102/463/467) or 'meta pull failed: ...'."""
     results: dict = {}
+    meta_error = None
     with db.JobRun("run_daily") as top, db.connect() as conn:
         top.stats = results
-        # 1. tracker
+
         def s_tracker():
             with db.JobRun("tracker_sync") as r:
                 st = tracker_sync.sync(conn, sheets_io.read_tab("creative_tracker", snapshot_dir))
@@ -52,7 +55,6 @@ def run(days=7, source="auto", snapshot_dir=None, until=None) -> dict:
             return {"rows": st["rows_in_sheet"], "inserted": st["inserted"]}
         step("tracker_sync", s_tracker, results)
 
-        # 2. Meta (API first; sheet fallback)
         def s_meta():
             u = until or meta_pull.default_until()
             since = u - dt.timedelta(days=days - 1)
@@ -60,28 +62,32 @@ def run(days=7, source="auto", snapshot_dir=None, until=None) -> dict:
             if d0:
                 since = max(since, dt.date.fromisoformat(d0))
             with db.JobRun("meta_pull") as r:
-                st = meta_pull.pull_into_db(conn, since, u, snapshot_dir=snapshot_dir)
+                try:
+                    st = meta_pull.pull_into_db(conn, since, u, snapshot_dir=snapshot_dir)
+                except meta_api.TokenRejected:
+                    raise db.JobFailed("meta token rejected") from None
                 st.pop("_pulled", None)
                 r.stats = st
                 r.rows_written = st["rows_inserted"]
                 r.data_through = u
-            if st["chunks_failed"] or st["chunks_loaded"] == 0:
-                raise RuntimeError(f"meta pull incomplete: {st['chunks_failed'][:2]}")
+                if st["chunks_failed"] or st["chunks_loaded"] == 0:
+                    raise db.JobFailed("meta pull incomplete: " + db.scrub(st["chunks_failed"][:2]))
             return {"source": "meta_api", "days": days, "rows": st["rows_inserted"]}
+
         if source == "sheet":
             step("meta", lambda: _sheet_refresh(conn, snapshot_dir, days), results)
         else:
             try:
                 step("meta", s_meta, results)
-            except Exception:                                               # noqa: BLE001
+            except Exception as e:                                          # noqa: BLE001
                 conn.rollback()
+                meta_error = "meta token rejected" if isinstance(e, (db.JobFailed, meta_api.TokenRejected)) and "token rejected" in str(e) \
+                    else "meta pull failed: " + db.scrub(e)[:200]
                 if source == "meta":
-                    raise
-                db.log("  Meta pull failed; falling back to the sheet's Daily tab")
-                results["meta_fallback"] = {}
+                    raise db.JobFailed(meta_error) from None
+                db.log(f"  {meta_error}; falling back to the sheet's Daily tab (run will still be marked failed)")
                 step("meta_fallback", lambda: _sheet_refresh(conn, snapshot_dir, days), results)
 
-        # 3. resolve + 4. metrics
         def s_resolve():
             st = resolve_families.resolve(conn)
             conn.commit()
@@ -96,6 +102,10 @@ def run(days=7, source="auto", snapshot_dir=None, until=None) -> dict:
             top.data_through = dt.date.fromisoformat(st["data_through"])
             return {"data_through": st["data_through"], "unmatched_families": st["unmatched_families"]}
         step("build_metrics", s_metrics, results)
+
+        if meta_error:                                                      # loud failure AFTER the data was kept fresh from the sheet
+            results["failure"] = meta_error
+            raise db.JobFailed(meta_error)
     return results
 
 

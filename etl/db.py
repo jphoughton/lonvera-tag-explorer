@@ -84,6 +84,10 @@ def set_meta(conn, key: str, value: str, only_if_missing: bool = False):
                      "ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()", (key, str(value)))
 
 
+class JobFailed(Exception):
+    """Raise to fail a job LOUDLY with a short, exact error text in etl_runs.error (no traceback), e.g. JobFailed('meta token rejected')."""
+
+
 class JobRun:
     """etl_runs bookkeeping on its OWN autocommit connection so a failed / rolled-back job still leaves a 'failed' row."""
 
@@ -109,7 +113,7 @@ class JobRun:
                                 (self.data_through, self.rows_written, Jsonb(self.stats), self.run_id))
                 log(f"[{self.job}] run #{self.run_id} ok rows={self.rows_written} stats={json.dumps(self.stats, default=str)[:400]}")
             else:
-                err = scrub("".join(traceback.format_exception(et, ev, tb))[-3000:])
+                err = scrub(str(ev)) if issubclass(et, JobFailed) else scrub("".join(traceback.format_exception(et, ev, tb))[-3000:])
                 self._c.execute("UPDATE etl_runs SET finished_at=now(), status='failed', data_through=%s, rows_written=%s, stats=%s, error=%s WHERE id=%s",
                                 (self.data_through, self.rows_written, Jsonb(self.stats), err, self.run_id))
                 log(f"[{self.job}] run #{self.run_id} FAILED: {scrub(ev)}")

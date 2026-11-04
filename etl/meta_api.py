@@ -32,6 +32,13 @@ class RateLimited(GraphError):
     pass
 
 
+class TokenRejected(GraphError):
+    """Meta rejected the access token (OAuth/session errors); never retried."""
+
+
+TOKEN_CODES = {190, 102, 463, 467}
+
+
 def get_token() -> str:
     t = os.environ.get("META_ACCESS_TOKEN")
     if t:
@@ -60,6 +67,8 @@ def graph_get(url: str, params: dict | None, what: str, max_retries: int = 7, sl
         err = j["error"]
         msg = db.scrub(err.get("message", ""))
         ecode = err.get("code")
+        if ecode in TOKEN_CODES:
+            raise TokenRejected(f"{what}: Meta rejected the access token (code {ecode})")
         if "reduce the amount of data" in msg.lower() or ecode == 1:
             raise TooBig(msg)
         rate = code == 429 or ecode in RATE_CODES or "too many calls" in msg.lower() or "rate limit" in msg.lower()

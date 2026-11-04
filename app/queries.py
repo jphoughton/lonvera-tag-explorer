@@ -33,7 +33,6 @@ class NotLoaded(ApiError):
 
 
 STAGES = ("testing", "scaling", "unclassified")
-STAGE_FILTERS = ("all", "testing", "scaling")
 WINDOW_NAMES = ("launch", "1d", "7d", "14d", "30d", "60d", "90d", "180d", "mtd")
 TRAILING_DAYS = {"1d": 1, "7d": 7, "14d": 14, "30d": 30, "60d": 60, "90d": 90, "180d": 180}
 LEVELS = ("cluster", "icp", "pain")
@@ -130,7 +129,7 @@ class WindowSpec:
     clamped: bool
     note: str | None
     label: str
-    stage: str = "all"            # all | testing | scaling
+    stage: str = "all"            # 'all' or the included stages, comma-separated in canonical order (see parse_stage)
     cmp: "WindowSpec | None" = None   # comparison window B (None = comparison off); A is always a date window then
 
     @property
@@ -143,14 +142,14 @@ class WindowSpec:
 
     @property
     def stages(self) -> list[str]:
-        return list(STAGES) if self.stage == "all" else [self.stage]
+        return list(STAGES) if self.stage == "all" else self.stage.split(",")
 
     def info(self, meta: DataMeta) -> dict:
         return {
             "kind": self.kind, "name": self.name, "label": self.label,
             "from": self.date_from.isoformat() if self.date_from else None,
             "to": self.date_to.isoformat() if self.date_to else None,
-            "days": self.days, "clamped": self.clamped, "note": self.note, "stage": self.stage,
+            "days": self.days, "clamped": self.clamped, "note": self.note, "stage": self.stage, "stages": self.stages,
             "daily_start": meta.daily_start.isoformat(), "data_through": meta.data_through.isoformat(),
         }
 
@@ -164,11 +163,26 @@ class WindowSpec:
         return self.date_from, self.date_to        # type: ignore[return-value]
 
 
+def stage_list(stage: str) -> list[str]:
+    return list(STAGES) if stage == "all" else stage.split(",")
+
+
 def parse_stage(args) -> str:
-    stage = (args.get("stage") or "all").strip().lower()
-    if stage not in STAGE_FILTERS:
-        raise ApiError(400, f"stage must be one of {', '.join(STAGE_FILTERS)}")
-    return stage
+    """stage = comma-separated include list from testing,scaling,unclassified (omitted or 'all' = all three). Returns the canonical
+    string: 'all' or the included stages in canonical order joined by commas. Unknown or empty -> 400."""
+    raw = args.get("stage")
+    if raw is None:
+        return "all"
+    parts = [p.strip().lower() for p in str(raw).split(",") if p.strip()]
+    if not parts:
+        raise ApiError(400, "stage must include at least one of testing, scaling, unclassified (or all)")
+    for p in parts:
+        if p != "all" and p not in STAGES:
+            raise ApiError(400, f"unknown stage {p[:40]!r}: use a comma-separated list from testing, scaling, unclassified (or all)")
+    if "all" in parts:
+        return "all"
+    inc = [st for st in STAGES if st in parts]
+    return "all" if len(inc) == len(STAGES) else ",".join(inc)
 
 
 def _parse_day(s: str, field: str) -> dt.date:
@@ -263,9 +277,9 @@ def _parse_a(args, meta: DataMeta) -> WindowSpec:
 
     if name == "launch":
         note = None
-        if stage != "all":
-            note = ("Since launch with a stage filter counts only days with a campaign (classified days); "
-                    "history before the lifetime cutoff has no stage and is excluded.")
+        if stage != "all" and "unclassified" not in stage.split(","):
+            note = ("Since launch with this stage filter counts only days with a campaign (classified days); "
+                    "history before the lifetime cutoff and sheet-only days have no stage and are excluded.")
         return WindowSpec("launch", "launch", None, None, None, False, note, "Since launch", stage)
 
     if name == "mtd":
@@ -366,6 +380,23 @@ def window_block(a: tuple, w: "WindowSpec | None", b: tuple | None = None) -> di
     if w is not None and w.cmp is not None:
         out["cmp"], out["delta"] = cmp_blocks(a, w, b or (0, 0, 0))
     return out
+
+
+def share(x: Any, total: Any) -> float | None:
+    return None if total is None or _f(total) == 0 else round(_f(x) / _f(total), 6)
+
+
+def apply_shares(blocks: Iterable[dict], total: dict) -> None:
+    """spend_share on every block (a metric dict or a row with spend/cmp/delta keys) relative to `total`'s spend. With comparison on,
+    also cmp.spend_share (relative to total.cmp.spend) and delta.spend_share_pp (A - B in percentage points)."""
+    ta = total["spend"]
+    tb = total["cmp"]["spend"] if "cmp" in total else None
+    for b in blocks:
+        b["spend_share"] = share(b["spend"], ta)
+        if "cmp" in b:
+            sb = share(b["cmp"]["spend"], tb)
+            b["cmp"]["spend_share"] = sb
+            b["delta"]["spend_share_pp"] = None if b["spend_share"] is None or sb is None else round((b["spend_share"] - sb) * 100, 4)
 
 
 def shape_m(a: dict, w: "WindowSpec | None" = None) -> dict:
@@ -539,8 +570,11 @@ b AS (
             spend = "CASE WHEN b.am_launch IS NOT NULL THEN b.spend_launch ELSE 0 END"
             purch = "CASE WHEN b.am_launch IS NOT NULL THEN b.purchases_launch ELSE 0 END"
             rev = "CASE WHEN b.am_launch IS NOT NULL THEN b.revenue_launch ELSE 0 END"
-        else:                      # only classified days: lifetime (no stage) is excluded; same per-family rounding as ETL
-            spend, purch, rev = ("round(COALESCE(b.f_spend, 0), 2)", "round(COALESCE(b.f_purch, 0), 0)", "round(COALESCE(b.f_rev, 0), 2)")
+        else:                      # stage list: daily rows of the included stages; lifetime history is 'unclassified'; same per-family rounding as ETL
+            lt = ("b.lt_spend", "b.lt_purch", "b.lt_rev") if "unclassified" in w.stages else ("0", "0", "0")
+            spend = f"round(COALESCE(b.f_spend, 0) + {lt[0]}, 2)"
+            purch = f"round(COALESCE(b.f_purch, 0) + {lt[1]}, 0)"
+            rev = f"round(COALESCE(b.f_rev, 0) + {lt[2]}, 2)"
         u_extra = (" + b.lt_spend", " + b.lt_purch", " + b.lt_rev")    # lifetime history is unclassified
 
     def only(expr: str) -> str:
@@ -607,6 +641,10 @@ def products_list(conn, meta: DataMeta, w: WindowSpec) -> list[dict]:
             continue
         out.append({"slug": p["slug"], "name": p["name"], "tag_set": p["tag_set"], "tag_label": tag_label(p["tag_set"]),
                     "rows": n_rows, "m": shape_m(a or ZERO_AGG, w)})
+    total = {"spend": round(sum(o["m"]["spend"] for o in out), 2)}
+    if w.cmp is not None:
+        total["cmp"] = {"spend": round(sum(o["m"]["cmp"]["spend"] for o in out), 2)}
+    apply_shares([o["m"] for o in out], total)           # share of all listed products' spend
     return out
 
 
@@ -713,7 +751,9 @@ def rollup(conn, meta: DataMeta, w: WindowSpec, product: dict, level: str, clust
     for k in extras:
         rows.append(make_row(k[-1], k, data[k], None))
     rows.sort(key=lambda r: r["label"] == UNTAGGED)          # stable: (untagged) rows last
-    return {"rows": rows, "total": {"m": shape_m(total_row, w)}, "unmatched": unmatched_summary(conn, product["id"])}
+    total_m = shape_m(total_row, w)
+    apply_shares([r["m"] for r in rows] + [total_m], total_m)
+    return {"rows": rows, "total": {"m": total_m}, "unmatched": unmatched_summary(conn, product["id"])}
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -764,8 +804,153 @@ ORDER BY g.spend DESC, g.display, g.family_key
             "cluster": r["cluster"], "icp": r["icp"], "pain": r["pain"], "line_code": r["line_code"],
             "m": shape_m(r, w),
         })
-    total = sum_aggs(raw, unique_ads=len(raw))
-    return {"rows": out, "total": {"m": shape_m(total, w)}}
+    total_m = shape_m(sum_aggs(raw, unique_ads=len(raw)), w)
+    apply_shares([r["m"] for r in out] + [total_m], total_m)
+    return {"rows": out, "total": {"m": total_m}}
+
+
+# --------------------------------------------------------------------------------------------------------------------
+# tree (dropdown table): cluster -> icp -> pain -> family in ONE query, depth-first rows
+# --------------------------------------------------------------------------------------------------------------------
+
+TREE_ROOTS = ("cluster", "icp", "pain", "family")
+_TREE_COLS = (("cluster",), ("cluster", "icp"), ("cluster", "icp", "pain"), ("cluster", "icp", "pain", "family_key"))   # whitelist
+_ALL_TREE_COLS = ("cluster", "icp", "pain", "family_key")
+
+
+def _tax_children(lines: list[dict]) -> tuple[dict, dict]:
+    """Taxonomy skeleton: parent key tuple -> ordered child key tuples, and key tuple -> {color, line_code, trigger}."""
+    children: dict[tuple, list] = {}
+    info: dict[tuple, dict] = {}
+    seen: set = set()
+    for ln in lines:
+        k0, k1, k2 = (ln["cluster"],), (ln["cluster"], ln["icp"]), (ln["cluster"], ln["icp"], ln["pain_point"])
+        for parent, key in (((), k0), (k0, k1), (k1, k2)):
+            if key not in seen:
+                seen.add(key)
+                children.setdefault(parent, []).append(key)
+                info[key] = {"color": ln["cluster_color"], "line_code": ln["line_code"] if len(key) == 3 else None,
+                             "trigger": ln["emotional_trigger"] if len(key) == 3 else None}
+    return children, info
+
+
+def tree(conn, meta: DataMeta, w: WindowSpec, product: dict, root: str, cluster: str | None, icp: str | None, pain: str | None,
+         depth: int) -> dict:
+    if root not in TREE_ROOTS:
+        raise ApiError(400, f"root must be one of {', '.join(TREE_ROOTS)}")
+    if not 0 <= depth <= 3:
+        raise ApiError(400, "depth must be 0, 1, 2 or 3")
+    root_level = TREE_ROOTS.index(root)
+    for need, name, val in ((1, "cluster", cluster), (2, "icp", icp), (3, "pain", pain)):
+        if root_level >= need and val is None:
+            raise ApiError(400, f"root={root} requires " + ", ".join(n for lvl, n, _v in ((1, "cluster", cluster), (2, "icp", icp), (3, "pain", pain)) if lvl <= root_level))
+    last = min(3, root_level + depth)
+    sets_sql = ", ".join("(" + ", ".join(_TREE_COLS[lv]) + ")" for lv in range(root_level, last + 1)) + ", ()"
+    deepest = _TREE_COLS[last]
+    select_cols = ", ".join(c if c in deepest else f"NULL::text AS {c}" for c in _ALL_TREE_COLS)
+    sql, params = _rm(meta, w, product_id=product["id"])
+    where = "WHERE TRUE" + _tag_where(cluster if root_level >= 1 else None, icp if root_level >= 2 else None,
+                                       pain if root_level >= 3 else None, params)
+    order = "ORDER BY sheet_row NULLS LAST, id"
+    sql += f"""
+SELECT {select_cols},
+  count(DISTINCT icp) AS n_icp, count(DISTINCT pain) AS n_pain, max(line_code) AS line_code, max(trig) AS trig, max(color) AS color,
+  (array_agg(id {order}))[1] AS primary_id, (array_agg(display {order}))[1] AS display,
+  (array_agg(ad_type {order}))[1] AS ad_type, (array_agg(status {order}))[1] AS status,
+  min(conf_rank) AS conf_rank, bool_or(is_first) AS counted_here,
+  {AGG_COLS}
+FROM rm {where}
+GROUP BY GROUPING SETS ({sets_sql})
+"""
+    raw = rows_of(conn, sql, params)
+
+    groups: list[dict[tuple, dict]] = [{}, {}, {}, {}]
+    total_row = dict(ZERO_AGG, n_icp=0, n_pain=0)
+    for r in raw:
+        if r["cluster"] is None and r["family_key"] is None:
+            total_row = r
+            continue
+        lv = 3 if r["family_key"] is not None else 2 if r["pain"] is not None else 1 if r["icp"] is not None else 0
+        key = tuple(r[c] for c in _TREE_COLS[lv])
+        groups[lv][key] = r
+    by_parent: list[dict[tuple, list]] = [{}, {}, {}, {}]
+    for lv in range(4):
+        for key in groups[lv]:
+            by_parent[lv].setdefault(key[:-1], []).append(key)
+
+    sk_children, sk_info = _tax_children(_taxonomy(conn, product["id"])) if product["tag_set"] == "linemap" else ({}, {})
+
+    def ordered(lv: int, parent: tuple) -> list[tuple]:
+        data_keys = by_parent[lv].get(parent, [])
+        if lv == 3:
+            return sorted(data_keys, key=lambda k: (-_f(groups[3][k]["spend"]), groups[3][k]["display"] or "", k[-1]))
+        sk = sk_children.get(parent, [])
+        skset = set(sk)
+        extras = sorted((k for k in data_keys if k not in skset), key=lambda k: (k[-1] == UNTAGGED, -_f(groups[lv][k]["spend"]), k))
+        out = sk + extras
+        out.sort(key=lambda k: k[-1] == UNTAGGED)                      # stable: (untagged) last
+        return out
+
+    # root rows = the root level under the parent the filters imply: () for clusters, (cluster,) for icps, (cluster, icp) for pains ...
+    root_parent = tuple([cluster, icp, pain][:root_level])
+
+    fam_keys = [k[-1] for k in groups[3]]
+    thumbs, ad_counts = {}, {}
+    if fam_keys:
+        thumbs = {r["family_key"]: r["id"] for r in rows_of(conn, """
+            SELECT DISTINCT ON (family_key) family_key, id FROM creative_assets
+            WHERE kind = 'thumb' AND family_key = ANY(%s) ORDER BY family_key, idx""", (fam_keys,))}
+        ad_counts = {r["fk"]: int(r["n"]) for r in rows_of(conn, """
+            SELECT m.tracker_family_key AS fk, count(DISTINCT ma.ad_id) AS n
+            FROM meta_ads ma JOIN meta_family_map m ON m.meta_family_key = ma.meta_family_key
+            WHERE m.tracker_family_key = ANY(%s) GROUP BY 1""", (fam_keys,))}
+
+    out: list[dict] = []
+
+    def key_str(key: tuple) -> str:
+        return "|".join(key)
+
+    def emit(lv: int, key: tuple, parent_key: str | None) -> None:
+        r = groups[lv].get(key)
+        d = r if r is not None else dict(ZERO_AGG, n_icp=0, n_pain=0)
+        m = shape_m(d, w)
+        info = sk_info.get(key) if lv < 3 else None
+        if lv == 0:
+            child = len(sk_children.get(key, [])) if key in sk_info else int(d["n_icp"])
+        elif lv == 1:
+            child = len(sk_children.get(key, [])) if key in sk_info else int(d["n_pain"])
+        elif lv == 2:
+            child = m["unique_ads"]
+        else:
+            child = ad_counts.get(key[-1], 0) if (r is not None and r["counted_here"]) else 0
+        row = {
+            "key": key_str(key), "parent_key": parent_key, "level": lv,
+            "label": (r["display"] if lv == 3 and r is not None else key[-1]),
+            "cluster": key[0], "icp": key[1] if lv >= 1 else None, "pain": key[2] if lv >= 2 else None,
+            "family_key": key[3] if lv == 3 else None,
+            "primary_id": r["primary_id"] if lv == 3 and r is not None else None,
+            "color": (info or {}).get("color") or (r["color"] if r is not None and lv < 3 else None),
+            "line_code": ((info or {}).get("line_code") or (r["line_code"] if r is not None else None)) if lv == 2 else None,
+            "trigger": ((info or {}).get("trigger") or (r["trig"] if r is not None else None)) if lv == 2 else None,
+            "confidence": CONF_NAME.get(r["conf_rank"]) if lv == 3 and r is not None else None,
+            "ad_type": r["ad_type"] if lv == 3 and r is not None else None,
+            "status": r["status"] if lv == 3 and r is not None else None,
+            "thumb_asset_id": thumbs.get(key[3]) if lv == 3 else None,
+            "has_children": child > 0, "child_count": child,
+            "counted_here": bool(r["counted_here"]) if lv == 3 and r is not None else None,
+            "m": m,
+        }
+        out.append(row)
+        if lv < last:
+            for ck in ordered(lv + 1, key):
+                emit(lv + 1, ck, row["key"])
+
+    for rk in ordered(root_level, root_parent):
+        emit(root_level, rk, None)
+
+    total_m = shape_m(total_row, w)
+    apply_shares([r["m"] for r in out] + [total_m], total_m)         # every row relative to the root total of this response
+    return {"rows": out, "total": {"m": total_m}}
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -847,7 +1032,7 @@ ad7 AS (
     AND (%(campaign)s::text IS NULL OR ad.campaign_id = %(campaign)s)
   GROUP BY 1, 2
 """
-    if w.is_launch and w.stage == "all":
+    if w.is_launch and "unclassified" in w.stages:
         parts += f"""
   UNION ALL
   SELECT ml.ad_id, s.family_key, TRUE, NULL::text, NULL::text, ml.spend, ml.purchases, ml.conv_value, {zc}, 0::bigint
@@ -942,6 +1127,7 @@ ORDER BY o.spend DESC, o.c_spend DESC, o.aid NULLS LAST
     total = {"ads": sum(1 for a in ads if a["ad_id"]),
              **window_block((tot["spend"], tot["purchases"], tot["revenue"]), w, (tot["c_spend"], tot["c_purch"], tot["c_rev"])),
              "spend_7d": f2(sum(Decimal(str(a["spend_7d"])) for a in ads)), "live": sum(1 for a in ads if a["live"])}
+    apply_shares(ads + [total], total)
     return {"rows": ads, "total": total}
 
 
@@ -1042,10 +1228,15 @@ f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win, {in_cmp} AS in_cmp FR
     total = {"campaigns": int(tr_["campaigns"]), "ads": int(tr_["ads"]),
              **window_block((tr_["spend"], tr_["purchases"], tr_["revenue"]), w, (tr_["c_spend"], tr_["c_purch"], tr_["c_rev"])),
              "spend_7d": f2(tr_["spend_7d"])}
+    apply_shares(rows + [total], total)
+    apply_shares(by_stage, {"spend": sum(c["spend"] for c in by_stage),
+                            **({"cmp": {"spend": sum(c["cmp"]["spend"] for c in by_stage)}} if w.cmp is not None else {})})
     return {"by_stage": by_stage, "rows": rows, "total": total}
 
 
-def stage_daily(conn, meta: DataMeta, product: dict, df: dt.date, dtt: dt.date) -> list[dict]:
+def stage_daily(conn, meta: DataMeta, product: dict, df: dt.date, dtt: dt.date, stages: list[str] | None = None) -> list[dict]:
+    """Spend per day split by stage; stages outside the include list are reported as 0."""
+    inc = set(stages or STAGES)
     got = rows_of(conn, f"""
         WITH {_PRODUCT_FAMILIES}
         SELECT ad.day,
@@ -1057,8 +1248,7 @@ def stage_daily(conn, meta: DataMeta, product: dict, df: dt.date, dtt: dt.date) 
     by: dict[tuple, Decimal] = {(r["day"], r["stage"]): r["spend"] for r in got}
     out, d = [], df
     while d <= dtt:
-        out.append({"day": d.isoformat(), "testing": f2(by.get((d, "testing"))), "scaling": f2(by.get((d, "scaling"))),
-                    "unclassified": f2(by.get((d, "unclassified")))})
+        out.append({"day": d.isoformat(), **{st: (f2(by.get((d, st))) if st in inc else 0.0) for st in STAGES}})
         d += dt.timedelta(days=1)
     return out
 
@@ -1099,6 +1289,7 @@ def unmatched(conn, meta: DataMeta, w: WindowSpec, product: dict) -> dict:
     tot = {k: sum((r[k] for r in raw), Decimal(0)) for k in ("spend", "purchases", "revenue", "c_spend", "c_purch", "c_rev")}
     total = {**window_block((tot["spend"], tot["purchases"], tot["revenue"]), w, (tot["c_spend"], tot["c_purch"], tot["c_rev"])),
              "spend_7d": f2(sum((r["spend_7d"] for r in raw), Decimal(0))), "families": len(rows)}
+    apply_shares(rows + [total], total)
     return {"rows": rows, "total": total}
 
 
@@ -1222,7 +1413,8 @@ def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
 
     daily_rows = {d["day"]: d for d in rows_of(conn, """
         SELECT day, sum(spend) AS spend, sum(purchases) AS purchases, sum(revenue) AS revenue, sum(link_clicks) AS link_clicks
-        FROM family_daily WHERE family_key = %s AND day BETWEEN %s AND %s GROUP BY day""", (fk, meta.daily_start, meta.data_through))}
+        FROM family_daily WHERE family_key = %s AND day BETWEEN %s AND %s AND stage = ANY(%s) GROUP BY day""",
+        (fk, meta.daily_start, meta.data_through, w.stages))}
     daily, d = [], meta.daily_start
     while d <= meta.data_through:
         x = daily_rows.get(d)
@@ -1242,6 +1434,7 @@ def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
         c["revenue"] += Decimal(str(a["revenue"]))
     campaigns_out = sorted(({**c, "spend": f2(c["spend"]), "purchases": num(c["purchases"]), "revenue": f2(c["revenue"])} for c in camp.values()),
                            key=lambda c: -c["spend"])
+    apply_shares(campaigns_out, {"spend": round(sum(c["spend"] for c in campaigns_out), 2)})
 
     return {
         "id": r["id"], "product": {"slug": r["slug"], "name": r["product_name"]}, "concept_id": r["concept_id"], "ad_family": r["ad_family"],

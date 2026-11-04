@@ -2,7 +2,7 @@
 import { h, enc, fmt, isNum, href, apiWindow, globalParams, debounce, navigate, stageBadge, liveDot, thumb, empty } from './util.js';
 import { api, AuthError } from './api.js';
 import { createTable } from './table.js';
-import { metricColumns, FLAT_KEYS } from './columns.js';
+import { metricColumns, FLAT_KEYS, fixTotal } from './columns.js';
 
 export function breadcrumbs(items) {
   const last = items.length - 1;
@@ -17,6 +17,15 @@ export function section(title, body, { id, aside } = {}) {
     h('div', { class: 'section-head' }, h('h2', title), aside || null),
     body);
 }
+
+// sort state in the URL (replaceState: sorting never adds history entries)
+export function saveSortToUrl(k, d, by) {
+  const u = new URL(location.href);
+  u.searchParams.set('sort', k); u.searchParams.set('dir', d);
+  if (by === 'delta') u.searchParams.set('by', 'delta'); else u.searchParams.delete('by');
+  navigate(u.pathname + u.search, { replace: true, render: false });
+}
+export const sortFromUrl = (p) => ({ sortKey: p.sort || null, sortDir: p.dir === 'asc' || p.dir === 'desc' ? p.dir : null, sortBy: p.by === 'delta' ? 'delta' : 'value' });
 
 // "With spend only" + search. onChange({spend,q}) is called on every change.
 export function filterBar({ spend, q, placeholder = 'Search…', onChange }) {
@@ -48,11 +57,11 @@ export function makeFilter({ spend, q }, spendOf, fieldsOf) {
 }
 
 // ---------- Meta ads table (ad_id grain) ----------
-export function adsColumns(p, { showFamily = true, campaignHref = null, linkAd = true } = {}) {
+export function adsColumns(p, { showFamily = true, campaignHref = null, linkAd = true, shareLabel = '% of spend' } = {}) {
   const G = globalParams(p);
   const adHref = (r) => (linkAd && r.primary_id != null ? href('/ad/' + enc(r.primary_id), G) : null);
   const tagPath = (r) => (r.tag ? [r.tag.cluster, r.tag.icp, r.tag.pain].filter(Boolean).join(' › ') : '');
-  const flat = metricColumns({ getM: (r) => r, getTotalM: (t) => t, keys: FLAT_KEYS });
+  const flat = metricColumns({ getM: (r) => r, getTotalM: (t) => fixTotal(t), keys: FLAT_KEYS, shareLabel });
   const nameCol = {
     key: 'ad_name', label: 'Ad', sticky: true, cls: 'adcol',
     sort: (r) => r.ad_name,
@@ -90,12 +99,12 @@ export function adsColumns(p, { showFamily = true, campaignHref = null, linkAd =
   ];
 }
 
-export function adsTable(p, data, { sortKey, sortDir, onSort, onCount, ...colOpts } = {}) {
+export function adsTable(p, data, { sortKey, sortDir, sortBy, onSort, onCount, ...colOpts } = {}) {
   return createTable({
     columns: adsColumns(p, colOpts),
     rows: data.rows || [],
     total: data.total || null,
-    sortKey, sortDir, onSort, onCount,
+    sortKey, sortDir, sortBy, onSort, onCount,
     rowKey: (r, i) => (r.ad_id != null ? r.ad_id : 'rem' + i),
     rowHref: (r) => (colOpts.linkAd === false || r.primary_id == null || r.ad_id == null ? null : href('/ad/' + enc(r.primary_id), globalParams(p))),
     emptyText: 'No Meta ads for this selection.',
@@ -109,12 +118,12 @@ export function campaignHrefFor(slug, p) {
   return (r) => href('/p/' + enc(slug), { ...G, view: 'ads', campaign_id: r.campaign_id });
 }
 
-// compact table of a family's Meta ads (inline expansion)
-export async function familyAdsNode(slug, p, familyKey, signal) {
-  const d = await api(`/api/products/${enc(slug)}/ads`, { family_key: familyKey, ...apiWindow(p) }, { signal });
+// compact table of a family's Meta ads (inline expansion in the flat family table)
+export async function familyAdsNode(slug, p, familyKey, signal, extra = {}) {
+  const d = await api(`/api/products/${enc(slug)}/ads`, { family_key: familyKey, ...extra, ...apiWindow(p) }, { signal });
   if (!d.rows.length) return empty('No Meta ads found.');
   const t = createTable({
-    columns: adsColumns(p, { showFamily: false, linkAd: false, campaignHref: campaignHrefFor(slug, p) }).filter((c) => !['days_active'].includes(c.key)),
+    columns: adsColumns(p, { showFamily: false, linkAd: false, campaignHref: campaignHrefFor(slug, p), shareLabel: '% of family' }).filter((c) => !['days_active'].includes(c.key)),
     rows: d.rows, total: d.total,
     rowKey: (r, i) => (r.ad_id != null ? r.ad_id : 'rem' + i),
     tableClass: 'ads nested', pageSize: 100,
@@ -123,9 +132,10 @@ export async function familyAdsNode(slug, p, familyKey, signal) {
 }
 
 // ---------- unmatched Meta spend ----------
-export function unmatchedPanel(slug, p, summary, signal) {
+export function unmatchedPanel(slug, p, preloaded, signal) {
+  const summary = preloaded && preloaded.total;
   const bits = summary
-    ? ` · ${fmt.money(summary.spend_7d)} last 7d · ${fmt.money(summary.spend_30d)} last 30d · ${fmt.int(summary.families)} families · ${fmt.int(summary.live_families)} live`
+    ? ` · ${fmt.money(summary.spend)} spend · ${fmt.money(summary.spend_7d)} last 7d · ${fmt.int(summary.families)} families`
     : '';
   const body = h('div', { class: 'panel-body' });
   const details = h('details', { class: 'panel', id: 'unmatched' },
@@ -134,6 +144,7 @@ export function unmatchedPanel(slug, p, summary, signal) {
   details.addEventListener('toggle', async () => {
     if (!details.open || loaded) return;
     loaded = true;
+    if (preloaded) { body.replaceChildren(unmatchedTable(preloaded)); return; }
     body.replaceChildren(h('span', { class: 'muted' }, 'Loading…'));
     try {
       const d = await api(`/api/products/${enc(slug)}/unmatched`, apiWindow(p), { signal });
@@ -149,21 +160,16 @@ export function unmatchedPanel(slug, p, summary, signal) {
 
 function unmatchedTable(d) {
   const t = d.total || {};
-  const roas = (s, r) => (s > 0 ? r / s : null);
-  const cpa = (s, n) => (n > 0 ? s / n : null);
-  const money = (k) => ({ cell: (r) => fmt.money(r[k]), cellTitle: (r) => (isNum(r[k]) ? fmt.money2(r[k]) : null), total: (tt) => fmt.money(tt[k]) });
+  const total = fixTotal({ ...t, roas: t.roas != null ? t.roas : (t.spend > 0 ? t.revenue / t.spend : null), cpa: t.cpa != null ? t.cpa : (t.purchases > 0 ? t.spend / t.purchases : null) });
+  const flat = metricColumns({ getM: (r) => r, getTotalM: (x) => x, keys: FLAT_KEYS });
   const cols = [
     { key: 'meta_family', label: 'Meta family', sticky: true, total: () => `Total · ${fmt.int(t.families)} families`, cell: (r) => h('span', { title: r.meta_family }, r.meta_family) },
-    { key: 'spend', label: 'Spend', num: true, ...money('spend') },
-    { key: 'purchases', label: 'Purchases', num: true, cell: (r) => fmt.int(r.purchases), total: (tt) => fmt.int(tt.purchases) },
-    { key: 'revenue', label: 'Revenue', num: true, ...money('revenue') },
-    { key: 'roas', label: 'ROAS', num: true, sort: (r) => r.roas, cell: (r) => fmt.roas(r.roas), total: (tt) => fmt.roas(roas(tt.spend, tt.revenue)) },
-    { key: 'cpa', label: 'CPA', num: true, sort: (r) => r.cpa, cell: (r) => fmt.money(r.cpa), total: (tt) => fmt.money(cpa(tt.spend, tt.purchases)) },
-    { key: 'spend_7d', label: 'Spend 7d', num: true, ...money('spend_7d') },
+    ...flat,
     { key: 'live', label: 'Live', sort: (r) => (r.live ? 1 : 0), cell: (r) => liveDot(r.live), total: () => '', cls: 'center' },
   ];
   const wi = d.window_info;
+  const rows = d.rows.map((r) => r);
   return h('div', null,
     wi ? h('div', { class: 'muted small' }, 'Window: ' + (wi.kind === 'launch' ? 'all days held' : wi.label)) : null,
-    createTable({ columns: cols, rows: d.rows, total: t, rowKey: (r) => r.meta_family, emptyText: 'Nothing unmatched.', testid: 'unmatched-table' }).el);
+    createTable({ columns: cols, rows, total, rowKey: (r) => r.meta_family, emptyText: 'Nothing unmatched.', testid: 'unmatched-table' }).el);
 }

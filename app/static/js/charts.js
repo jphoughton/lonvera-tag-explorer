@@ -12,21 +12,24 @@ const COLORS = {
   testing: '#7a5ad8', scaling: '#1b9a96', unclassified: '#b4bcc8',
 };
 
-// shades [i0, i1] (inclusive) of the category axis
+// shades category ranges: opts.shades = [{i0, i1, color}]
 const windowShade = {
   id: 'windowShade',
   beforeDatasetsDraw(chart, _args, opts) {
-    if (!opts || opts.i0 == null || opts.i1 == null) return;
+    if (!opts || !opts.shades || !opts.shades.length) return;
     const { ctx, chartArea, scales } = chart;
     const x = scales.x;
     if (!x || !chartArea) return;
     const step = chart.data.labels.length > 1 ? x.getPixelForValue(1) - x.getPixelForValue(0) : chartArea.width;
-    const x0 = Math.max(chartArea.left, x.getPixelForValue(opts.i0) - step / 2);
-    const x1 = Math.min(chartArea.right, x.getPixelForValue(opts.i1) + step / 2);
-    ctx.save();
-    ctx.fillStyle = opts.color || 'rgba(26,95,180,0.10)';
-    ctx.fillRect(x0, chartArea.top, Math.max(1, x1 - x0), chartArea.bottom - chartArea.top);
-    ctx.restore();
+    for (const sh of opts.shades) {
+      if (sh.i0 == null || sh.i1 == null) continue;
+      const x0 = Math.max(chartArea.left, x.getPixelForValue(sh.i0) - step / 2);
+      const x1 = Math.min(chartArea.right, x.getPixelForValue(sh.i1) + step / 2);
+      ctx.save();
+      ctx.fillStyle = sh.color || 'rgba(26,95,180,0.10)';
+      ctx.fillRect(x0, chartArea.top, Math.max(1, x1 - x0), chartArea.bottom - chartArea.top);
+      ctx.restore();
+    }
   },
 };
 
@@ -44,13 +47,12 @@ const tickDay = function (value) {
   return s ? fmt.day(s) : s;
 };
 
-// full daily series; the selected window is shaded
-export function dailyChart(canvas, daily, shade) {
+// full daily series; window A (blue) and, when comparing, window B (orange) are shaded. shades = [{from, to, color, name}]
+export function dailyChart(canvas, daily, shades = []) {
   const labels = daily.map((d) => d.day);
   const idxGE = (day) => { const i = labels.findIndex((l) => l >= day); return i < 0 ? labels.length - 1 : i; };
   const idxLE = (day) => { let r = -1; labels.forEach((l, i) => { if (l <= day) r = i; }); return r < 0 ? 0 : r; };
-  const i0 = shade && shade.from ? idxGE(shade.from) : null;
-  const i1 = shade && shade.to ? idxLE(shade.to) : null;
+  const sh = (shades || []).filter((x) => x && x.from && x.to).map((x) => ({ i0: idxGE(x.from), i1: idxLE(x.to), color: x.color, name: x.name }));
   const chart = new Chart(canvas, {
     data: {
       labels,
@@ -69,7 +71,7 @@ export function dailyChart(canvas, daily, shade) {
       },
       plugins: {
         legend: { display: false },
-        windowShade: { i0, i1, color: 'rgba(26,95,180,0.12)' },
+        windowShade: { shades: sh },
         tooltip: {
           callbacks: {
             label: (c) => `${c.dataset.label}: ${c.dataset.label === 'Purchases' ? fmt.int(c.parsed.y) : fmt.money2(c.parsed.y)}`,

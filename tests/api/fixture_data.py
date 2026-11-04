@@ -294,6 +294,13 @@ def window_sums(fx: Fx, tfam: str, d_from: dt.date, d_to: dt.date, stages) -> tu
     return s, p, v
 
 
+def stages_of(stage) -> tuple:
+    """'all' | 'testing' | ('testing', 'scaling') ... -> tuple of included stages."""
+    if stage == "all":
+        return STAGES
+    return (stage,) if isinstance(stage, str) else tuple(stage)
+
+
 def launch_start(launch: dt.date | None) -> dt.date | None:
     if launch is None:
         return None
@@ -304,9 +311,10 @@ def launch_metrics(fx: Fx, tfam: str, launch: dt.date | None, stage: str) -> tup
     """Contract rule 3 (+ stage filter: classified days only, no lifetime). Per family: money 2dp, purchases integer."""
     if launch is None or tfam.startswith("id:"):
         return Z, Z, Z
-    stages = STAGES if stage == "all" else (stage,)
+    stages = stages_of(stage)
     s, p, v = window_sums(fx, tfam, launch_start(launch), THROUGH, stages)
-    if stage == "all" and launch < D0:
+    if "unclassified" in stages and launch < D0:       # lifetime history carries no stage -> it is 'unclassified'
+        # (all three stages together reproduce the contract's since-launch total)
         ls, lp, lv = fx.lifetime.get(tfam, (Z, Z, Z))
         s, p, v = s + ls, p + lp, v + lv
     return rnd2(s), rnd0(p), rnd2(v)
@@ -332,7 +340,7 @@ def stage_buckets(fx: Fx, tfam: str, launch: dt.date | None, window) -> dict:
 
 def family_metrics(fx: Fx, tfam: str, launch: dt.date | None, window, stage: str) -> dict:
     """What the first tracker row of family `tfam` carries for the selected window + stage."""
-    stages = STAGES if stage == "all" else (stage,)
+    stages = stages_of(stage)
     if tfam.startswith("id:"):
         z = (Z, Z, Z)
         return dict(spend=Z, purchases=Z, revenue=Z, buckets={st: z for st in STAGES}, s7=Z, p7=Z, live=False)
@@ -376,3 +384,63 @@ def aggregate(fx: Fx, rows: list[dict], window, stage: str) -> dict:
             for i in range(3):
                 out[key][i] += fm["buckets"][st][i]
     return out
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------
+# oracle: ad-level (Meta ad grain) rows
+# ---------------------------------------------------------------------------------------------------------------------------------
+
+
+def ad_oracle(fx: Fx, fams: dict, window, stage: str, campaign: str | None = None, unmatched_pid: int | None = None):
+    """Per-Meta-ad sums for a selection. fams: tracker family key -> launch date of its first tracker row.
+    window: 'launch' (per-ad launch rule) or (from, to). unmatched_pid: also include Meta families with no tracker row assigned to that product.
+    Returns ({(ad_id, family): [spend, purchases, revenue]}, remainder [spend, purchases, revenue]) - the remainder holds family-grain
+    ('fam:') days and Lifetime history no ad row accounts for."""
+    stages = stages_of(stage)
+    ads: dict = defaultdict(lambda: [Z, Z, Z])
+    rem = [Z, Z, Z]
+
+    def add(target, r):
+        target[0] += r["spend"]
+        target[1] += r["purchases"]
+        target[2] += r["conv_value"]
+
+    for r in fx.ad_daily:
+        tfam = MAPPING[r["meta_family_key"]][0]
+        if tfam is not None and tfam in fams:
+            if window == "launch":
+                ls = launch_start(fams[tfam])
+                if ls is None or not (ls <= r["day"] <= THROUGH):
+                    continue
+            elif not (window[0] <= r["day"] <= window[1]):
+                continue
+            key_fam = tfam
+        elif tfam is None and unmatched_pid is not None and fx.unmatched[r["meta_family_key"]]["product_id"] == unmatched_pid:
+            if window != "launch" and not (window[0] <= r["day"] <= window[1]):
+                continue
+            key_fam = r["meta_family_key"]
+        else:
+            continue
+        if stage_of_row(fx, r["campaign_id"]) not in stages:
+            continue
+        if campaign is not None and r["campaign_id"] != campaign:
+            continue
+        add(rem if r["ad_id"].startswith("fam:") else ads[(r["ad_id"], key_fam)], r)
+    if window == "launch" and "unclassified" in stages:
+        for tfam, launch in fams.items():
+            if launch is None or launch >= D0:
+                continue
+            per_ad = [Z, Z, Z]
+            for ad_id, (sp, pu, rv) in META_AD_LIFETIME.items():
+                if MAPPING[meta_family_key(ADS[ad_id][0])][0] != tfam:
+                    continue
+                if campaign is not None and ADS[ad_id][1] != campaign:
+                    continue
+                for i, v in enumerate((sp, pu, rv)):
+                    per_ad[i] += v
+                    ads[(ad_id, tfam)][i] += v
+            if campaign is None:
+                lt = fx.lifetime.get(tfam, (Z, Z, Z))
+                for i in range(3):
+                    rem[i] += lt[i] - per_ad[i]
+    return {k: v for k, v in ads.items() if any(v)}, rem

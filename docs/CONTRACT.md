@@ -161,3 +161,7 @@ Every `m` gains `spend_share` = row spend ÷ the response's total spend (`total.
 
 ## ETL (Agent A) additions
 `etl.run_daily`: if Meta rejects the token (Graph error codes 190, 102, 463, 467) it may fall back to `--source sheet` to keep data fresh but MUST still exit non-zero and write `etl_runs.status='failed'` with `error='meta token rejected'` so the failure is visible (Josh wants loud failures). The Railway cron service `etl` runs `python -m etl.run_daily` with env `DATABASE_URL`, `META_ACCESS_TOKEN`, `GOOGLE_SA_JSON`; the live sheet reader must work from `GOOGLE_SA_JSON` (JSON string) when set, else the local key file.
+
+
+## Stage columns (Josh feedback 2026-11-04)
+The Testing $, Scaling $, Testing % columns are shown ONLY when both Testing and Scaling are included in the stage filter. With a single stage included they are hidden (they would be redundant: all spend is that stage). Applies to every table including the products landing and campaigns view cards.

@@ -2,7 +2,7 @@ import datetime as dt
 
 import pytest
 
-from etl import backfill_sheet, build_metrics, meta_api, meta_pull, resolve_families, sheets_io, tracker_sync, run_daily
+from etl import db as db_mod, backfill_sheet, build_metrics, meta_api, meta_pull, resolve_families, sheets_io, tracker_sync, run_daily
 from conftest import trow, write_snapshot
 
 D = dt.date
@@ -140,14 +140,37 @@ def test_run_daily_sheet_source_end_to_end(conn, tmp_path):
     assert {"tracker_sync", "build_metrics", "run_daily"} <= set(jobs)
 
 
-def test_run_daily_auto_falls_back_to_sheet_when_meta_fails(conn, tmp_path, monkeypatch):
+def test_run_daily_token_rejected_falls_back_but_fails_loudly(conn, tmp_path, monkeypatch):
     snap = seed(conn, tmp_path)
 
-    def boom(*a, **k):
-        raise meta_api.GraphError("no token")
-    monkeypatch.setattr(meta_pull, "pull_into_db", boom)
-    res = run_daily.run(days=2, source="auto", snapshot_dir=str(snap))
-    assert res["meta"]["ok"] is False and res["meta_fallback"]["ok"] and res["build_metrics"]["ok"]
-    assert conn.execute("SELECT count(*) FROM etl_runs WHERE job='meta_pull' AND status='failed'").fetchone()[0] == 1
-    with pytest.raises(Exception):
+    def rejected(*a, **k):
+        raise meta_api.TokenRejected("Meta rejected the access token (code 190)")
+    monkeypatch.setattr(meta_pull, "pull_into_db", rejected)
+    with pytest.raises(db_mod.JobFailed, match="meta token rejected"):
+        run_daily.run(days=2, source="auto", snapshot_dir=str(snap))
+    # data was still refreshed from the sheet and metrics rebuilt
+    assert conn.execute("SELECT value FROM app_meta WHERE key='data_through'").fetchone()[0] == "2026-10-31"
+    top = conn.execute("SELECT status, error FROM etl_runs WHERE job='run_daily' ORDER BY id DESC LIMIT 1").fetchone()
+    assert top == ("failed", "meta token rejected")
+    mp = conn.execute("SELECT status, error FROM etl_runs WHERE job='meta_pull' ORDER BY id DESC LIMIT 1").fetchone()
+    assert mp == ("failed", "meta token rejected")
+
+
+def test_run_daily_other_meta_failure_also_loud(conn, tmp_path, monkeypatch):
+    snap = seed(conn, tmp_path)
+    monkeypatch.setattr(meta_pull, "pull_into_db", lambda *a, **k: (_ for _ in ()).throw(meta_api.RateLimited("80004 gave up")))
+    with pytest.raises(db_mod.JobFailed, match="meta pull failed"):
+        run_daily.run(days=2, source="auto", snapshot_dir=str(snap))
+    assert conn.execute("SELECT status FROM etl_runs WHERE job='run_daily' ORDER BY id DESC LIMIT 1").fetchone()[0] == "failed"
+    with pytest.raises(db_mod.JobFailed):
         run_daily.run(days=2, source="meta", snapshot_dir=str(snap))
+
+
+def test_token_error_codes_are_never_retried(monkeypatch):
+    import requests
+    for code in (190, 102, 463, 467):
+        monkeypatch.setattr(requests, "get", lambda *a, _c=code, **k: FakeResp(400, {"error": {"code": _c, "message": "Invalid OAuth access token."}}))
+        slept = []
+        with pytest.raises(meta_api.TokenRejected):
+            meta_api.graph_get("http://x", {"access_token": "EAAxxxxxxxxxxxxxxxxxxxxxxxxx"}, "t", sleep=slept.append)
+        assert slept == []

@@ -78,6 +78,21 @@ def families(slug: str):
                     "window": info, "window_info": info, "compare_info": w.compare_info(meta), **res})
 
 
+@bp.get("/api/products/<slug>/tree")
+def tree(slug: str):
+    conn, meta, w = _ctx()
+    product = q.get_product(conn, slug)
+    root = (_arg("root") or "cluster").lower()
+    raw_depth = _arg("depth") or "0"
+    if not raw_depth.isdigit() or int(raw_depth) > 3:
+        raise q.ApiError(400, "depth must be 0, 1, 2 or 3")
+    flt = {"cluster": _arg("cluster"), "icp": _arg("icp"), "pain": _arg("pain")}
+    res = q.tree(conn, meta, w, product, root, flt["cluster"], flt["icp"], flt["pain"], int(raw_depth))
+    info = w.info(meta)
+    return jsonify({"product": q.product_brief(product), "root": root, "depth": int(raw_depth), "filters": flt,
+                    "window": info, "window_info": info, "compare_info": w.compare_info(meta), **res})
+
+
 @bp.get("/api/products/<slug>/ads")
 def ads(slug: str):
     conn, meta, w = _ctx()
@@ -111,7 +126,7 @@ def stage_daily(slug: str):
             raise q.ApiError(400, "days must be an integer from 1 to 366")
         dtt = meta.data_through
         df = max(meta.daily_start, dtt - dt.timedelta(days=int(raw) - 1))
-    return jsonify(q.stage_daily(conn, meta, product, df, dtt))
+    return jsonify(q.stage_daily(conn, meta, product, df, dtt, q.stage_list(q.parse_stage(request.args))))
 
 
 @bp.get("/api/products/<slug>/unmatched")

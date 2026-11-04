@@ -46,6 +46,22 @@ export const fmt = {
   roas(v) { return isNum(v) ? nf2.format(v) : '–'; },
   int(v) { return isNum(v) ? nf0.format(Math.round(v)) : '–'; },
   pct(v) { return isNum(v) ? nf0.format(v * 100) + '%' : '–'; },
+  dec1(v) { return isNum(v) ? (Math.round(v * 10) / 10).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 1 }) : '–'; },
+  // (A - B) / B as '▲12%' / '▼3%' / '0%'
+  pctChange(v) {
+    if (!isNum(v)) return '';
+    const p = Math.abs(v) * 100;
+    const r = p >= 10 ? Math.round(p) : Math.round(p * 10) / 10;
+    if (r === 0) return '0%';
+    return (v > 0 ? '▲' : '▼') + nf0.format(r) + '%';
+  },
+  share(v) { return isNum(v) ? (v * 100).toFixed(1) + '%' : '–'; },
+  // percentage-point change, value already in points: '▲1.2pp'
+  pp(v) {
+    if (!isNum(v)) return '';
+    const r = Math.round(Math.abs(v) * 10) / 10;
+    return r === 0 ? '0pp' : (v > 0 ? '▲' : '▼') + r.toFixed(1) + 'pp';
+  },
   text(v) { return v == null || v === '' ? '–' : String(v); },
   // 'YYYY-MM-DD' -> 'Nov 2' (no Date object: avoids timezone drift)
   day(s) {
@@ -75,7 +91,7 @@ export function debounce(fn, ms = 200) {
 }
 
 // ---------- URL state ----------
-export const GLOBAL_KEYS = ['window', 'from', 'to', 'stage'];
+export const GLOBAL_KEYS = ['window', 'from', 'to', 'stage', 'compare', 'cfrom', 'cto', 'perday'];
 
 export function qs(params) {
   const sp = new URLSearchParams();
@@ -98,20 +114,67 @@ export function pick(obj, keys) {
 export function globalParams(p) {
   return pick(p, GLOBAL_KEYS);
 }
-// params for the API: custom range wins over window; stage only when not "all"
+// ---------- stage include list ----------
+export const STAGES = ['testing', 'scaling', 'unclassified'];
+export function stageSet(p) {
+  const v = p.stage;
+  if (!v || v === 'all') return new Set(STAGES);
+  const set = new Set(String(v).split(',').map((x) => x.trim()).filter((x) => STAGES.includes(x)));
+  return set.size ? set : new Set(STAGES);
+}
+// serialise the chip state; hidden Unclassified chip never matters, so Testing + Scaling = "all"
+export function stageParam(set, uncVisible) {
+  if (uncVisible) {
+    if (STAGES.every((x) => set.has(x))) return null;
+    return STAGES.filter((x) => set.has(x)).join(',');
+  }
+  if (set.has('testing') && set.has('scaling')) return null;
+  return ['testing', 'scaling'].filter((x) => set.has(x)).join(',') || null;
+}
+
+// does window A have a date range (comparison needs one)?
+export function hasDateWindow(p) {
+  return !!((p.from && p.to) || (p.window && p.window !== 'launch'));
+}
+export function compareOn(p) {
+  return !!(p.compare || (p.cfrom && p.cto));
+}
+// params for the API: custom range wins over window; stage only when not "all"; compare only with a date window A
 export function apiWindow(p) {
   const o = {};
   if (p.from && p.to) { o.from = p.from; o.to = p.to; }
   else if (p.window && p.window !== 'launch') o.window = p.window;
-  if (p.stage && p.stage !== 'all') o.stage = p.stage;
+  if (p.stage && p.stage !== 'all') {
+    const set = stageSet(p);
+    if (!STAGES.every((x) => set.has(x))) o.stage = STAGES.filter((x) => set.has(x)).join(',');
+  }
+  if (hasDateWindow(p)) {
+    if (p.cfrom && p.cto) { o.cfrom = p.cfrom; o.cto = p.cto; }
+    else if (p.compare) o.compare = p.compare;
+  }
   return o;
+}
+
+// comparison view state shared by tables/cards (set by each page from the response)
+export const cmpView = { on: false, perDay: false, a: null, b: null };
+let refreshers = [];
+export function onCmpRefresh(fn) { refreshers.push(fn); }
+export function clearCmpRefreshers() { refreshers = []; }
+export function refreshCmp() { refreshers.forEach((f) => f()); }
+export function applyCompareState(p, a, b) {
+  cmpView.on = !!(a && b);
+  cmpView.a = a || null;
+  cmpView.b = b || null;
+  cmpView.perDay = cmpView.on && (p.perday != null && p.perday !== '' ? p.perday === '1' : (a.days !== b.days));
 }
 // drop defaults so URLs stay clean
 export function cleanParams(p) {
   const o = { ...p };
-  if (o.stage === 'all') delete o.stage;
+  if (o.stage === 'all' || o.stage === STAGES.join(',')) delete o.stage;
   if (o.window === 'launch') delete o.window;
   if (o.from && o.to) delete o.window;
+  if (o.cfrom && o.cto) delete o.compare;
+  if (!o.compare && !(o.cfrom && o.cto)) { delete o.perday; delete o.cfrom; delete o.cto; }
   for (const k of Object.keys(o)) if (o[k] == null || o[k] === '' || o[k] === false) delete o[k];
   return o;
 }
@@ -119,16 +182,56 @@ export function href(path, params) { return path + qs(cleanParams(params || {}))
 
 let renderer = () => {};
 export function setRenderer(fn) { renderer = fn; }
-export function rerender() { renderer(); }
-export function navigate(url, { replace = false, render = true, scroll = true } = {}) {
-  if (replace) history.replaceState(null, '', url);
-  else history.pushState(null, '', url);
-  if (render) renderer({ scroll });
+export function rerender() { renderer({ restore: true }); }
+
+// ----- view state (expanded rows, sort, scroll) kept in history.state with a sessionStorage fallback -----
+let vsProvider = null;
+export function setViewStateProvider(fn) { vsProvider = fn; }
+const vsKey = (url) => 'tagexp.vs:' + url;
+export function saveViewState() {
+  let vs = null;
+  try { vs = vsProvider ? vsProvider() : null; } catch { vs = null; }
+  if (!vs) return;
+  vs.scrollY = window.scrollY;
+  try { history.replaceState({ ...(history.state || {}), vs }, ''); } catch { /* ignore */ }
+  try { sessionStorage.setItem(vsKey(location.pathname + location.search), JSON.stringify(vs)); } catch { /* ignore */ }
 }
-// merge into the current query string
+export function loadViewState() {
+  const st = history.state && history.state.vs;
+  if (st) return st;
+  try {
+    const raw = sessionStorage.getItem(vsKey(location.pathname + location.search));
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+export function navIndex() { return (history.state && history.state.idx) || 0; }
+
+// pushState = a drill (Back returns here); replace = a filter change (Back is not an undo for filters)
+export function navigate(url, { replace = false, render = true, scroll = true } = {}) {
+  saveViewState();
+  const idx = navIndex();
+  if (replace) history.replaceState({ ...(history.state || {}), idx }, '', url);
+  else history.pushState({ idx: idx + 1 }, '', url);
+  if (render) renderer({ scroll: scroll && !replace, restore: replace });
+}
+// merge into the current query string. Filters (date range, stage, compare, per-day) replace the history entry.
 export function setParams(changes, opts = {}) {
   const p = cleanParams({ ...currentParams(), ...changes });
-  navigate(location.pathname + qs(p), { scroll: false, ...opts });
+  navigate(location.pathname + qs(p), { scroll: false, replace: true, ...opts });
+}
+
+// where Back goes when there is no in-app history (set by pages that know their parent, e.g. the ad detail page)
+let parentHint = null;
+export function setParentHint(u) { parentHint = u; }
+export function getParentHint() { return parentHint; }
+
+// "Clicking a row": 'expand' (drops down, default) or 'open' (navigates). Persisted in localStorage.
+const ROWMODE_KEY = 'tagexp.rowmode';
+export function getRowMode() {
+  try { return localStorage.getItem(ROWMODE_KEY) === 'open' ? 'open' : 'expand'; } catch { return 'expand'; }
+}
+export function setRowMode(m) {
+  try { localStorage.setItem(ROWMODE_KEY, m === 'open' ? 'open' : 'expand'); } catch { /* ignore */ }
 }
 
 // ---------- small components ----------

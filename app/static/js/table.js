@@ -1,6 +1,6 @@
 // Generic sortable table: header click toggles asc/desc, numeric-aware compare, nulls last, stable,
 // pinned total row, clickable rows (mouse + Enter), optional inline row expansion, progressive rendering.
-import { h, navigate } from './util.js';
+import { h, navigate, cmpView } from './util.js';
 
 const collator = new Intl.Collator('en-US', { numeric: true, sensitivity: 'base' });
 const isNil = (v) => v == null || v === '' || (typeof v === 'number' && !Number.isFinite(v));
@@ -15,7 +15,7 @@ export function compare(a, b, dir) {
 /*
  opts: {
    columns: [{key,label,num,sort(row),cell(row)->Node|string,total(totalObj)->Node|string,title,cls,sticky,nosort,header(Node),firstDir}],
-   rows, total, sortKey, sortDir, onSort(key,dir),
+   rows, total, sortKey, sortDir, sortBy ('value'|'delta'), onSort(key,dir,by),
    rowHref(row)->string|null, rowKey(row)->string, rowClass(row)->string,
    expand: {render(row)->Promise<Node>|Node}   // adds a caret column
    pageSize, emptyText, tableClass, testid
@@ -27,6 +27,7 @@ export function createTable(opts) {
   let filter = null;
   let sortKey = opts.sortKey || null;
   let sortDir = opts.sortDir || null;
+  let sortBy = opts.sortBy === 'delta' ? 'delta' : 'value';
   const pageSize = opts.pageSize || 400;
   let limit = pageSize;
   const expanded = new Set();
@@ -40,35 +41,49 @@ export function createTable(opts) {
 
   const colCount = columns.length + (opts.expand ? 1 : 0);
 
+  const labelOf = (c) => (typeof c.label === 'function' ? c.label() : c.label);
+
   function view() {
     const list = filter ? rows.filter(filter) : rows.slice();
+    if (opts.externalSort) return list;
     if (!sortKey) return list;
     const col = columns.find((c) => c.key === sortKey);
     if (!col || col.nosort) return list;
-    const get = col.sort || ((r) => r[col.key]);
+    const byDelta = sortBy === 'delta' && cmpView.on && col.deltaSort;
+    const get = byDelta ? col.deltaSort : (col.sort || ((r) => r[col.key]));
     return list
       .map((r, i) => ({ r, i, v: get(r) }))
       .sort((x, y) => compare(x.v, y.v, sortDir) || x.i - y.i)
       .map((x) => x.r);
   }
 
+  function setSort(c, by) {
+    const first = by === 'delta' ? 'desc' : (c.firstDir || (c.num ? 'desc' : 'asc'));
+    if (sortKey === c.key && sortBy === by) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    else { sortKey = c.key; sortBy = by; sortDir = first; }
+    if (opts.onSort) opts.onSort(sortKey, sortDir, sortBy);
+    render();
+  }
+
   function headerCell(c) {
     const th = h('th', { class: [c.num ? 'num' : '', c.sticky ? 'sticky' : '', c.cls || ''].join(' ').trim(), title: c.title || null, 'data-col': c.key });
     if (c.header) { th.append(c.header); return th; }
-    if (c.nosort) { th.append(c.label); return th; }
+    if (c.nosort) { th.append(labelOf(c)); return th; }
     const active = sortKey === c.key;
+    const effBy = active && sortBy === 'delta' && cmpView.on && c.deltaSort ? 'delta' : 'value';
     th.setAttribute('aria-sort', active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
-    const btn = h('button', { type: 'button', class: 'thbtn' + (active ? ' active' : '') },
-      h('span', c.label),
-      h('span', { class: 'arrow' }, active ? (sortDir === 'asc' ? '▲' : '▼') : ''));
-    btn.addEventListener('click', () => {
-      const first = c.firstDir || (c.num ? 'desc' : 'asc');
-      if (sortKey === c.key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-      else { sortKey = c.key; sortDir = first; }
-      if (opts.onSort) opts.onSort(sortKey, sortDir);
-      render();
-    });
+    th.dataset.sortby = active ? effBy : '';
+    const btn = h('button', { type: 'button', class: 'thbtn' + (active && effBy === 'value' ? ' active' : '') },
+      h('span', labelOf(c)),
+      h('span', { class: 'arrow' }, active && effBy === 'value' ? (sortDir === 'asc' ? '▲' : '▼') : ''));
+    btn.addEventListener('click', (e) => setSort(c, e.shiftKey && c.deltaSort && cmpView.on ? 'delta' : 'value'));
     th.append(btn);
+    if (cmpView.on && c.deltaSort) {
+      const d = h('button', { type: 'button', class: 'deltabtn' + (active && effBy === 'delta' ? ' active' : ''), title: 'Sort by % change (A vs B)', 'aria-label': 'Sort ' + labelOf(c) + ' by change' },
+        'Δ' + (active && effBy === 'delta' ? (sortDir === 'asc' ? '▲' : '▼') : ''));
+      d.addEventListener('click', () => setSort(c, 'delta'));
+      th.append(d);
+    }
     return th;
   }
 
@@ -80,9 +95,10 @@ export function createTable(opts) {
   function rowEl(r, i) {
     const href = opts.rowHref ? opts.rowHref(r) : null;
     const key = rowKey(r, i);
+    const clickable = opts.onRowClick ? (opts.rowClickable ? opts.rowClickable(r) : !!href) : !!href;
     const tr = h('tr', {
-      class: [href ? 'clickable' : '', opts.rowClass ? opts.rowClass(r) : ''].join(' ').trim(),
-      tabindex: href ? '0' : null,
+      class: [clickable ? 'clickable' : '', opts.rowClass ? opts.rowClass(r) : ''].join(' ').trim(),
+      tabindex: clickable ? '0' : null,
       'data-key': key,
       'data-href': href || null,
     });
@@ -98,13 +114,14 @@ export function createTable(opts) {
         title: c.cellTitle ? c.cellTitle(r) : null,
       }, cellContent(c, r)));
     }
-    if (href) {
+    if (clickable) {
+      const act = (e) => { if (opts.onRowClick) opts.onRowClick(r, e, { key, href, toggle: () => toggle(key, r) }); else navigate(href); };
       tr.addEventListener('click', (e) => {
         if (e.target.closest('a,button,input,select,label,summary,textarea')) return;
-        navigate(href);
+        act(e);
       });
       tr.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && e.target === tr) navigate(href);
+        if (e.key === 'Enter' && e.target === tr) act(e);
       });
     }
     return tr;
@@ -174,8 +191,11 @@ export function createTable(opts) {
   render();
   return {
     el: root,
+    wrap,
+    refresh: render,
+    toggle: (key, r) => toggle(key, r),
     setRows(r, t) { rows = r; if (t !== undefined) total = t; limit = pageSize; render(); },
     setFilter(fn) { filter = fn; limit = pageSize; render(); },
-    sortState: () => ({ key: sortKey, dir: sortDir }),
+    sortState: () => ({ key: sortKey, dir: sortDir, by: sortBy }),
   };
 }

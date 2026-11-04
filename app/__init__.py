@@ -90,6 +90,10 @@ def _register_errors(app: Flask) -> None:
             return jsonify(error=(e.name or "error").lower().replace(" ", "_") if e.code != 404 else "not_found"), e.code
         return e
 
+    @app.errorhandler(psycopg.DataError)
+    def bad_value(_e):                      # e.g. a NUL byte or an out-of-range number in a query parameter
+        return jsonify(error="invalid parameter value"), 400
+
     @app.errorhandler(psycopg.errors.QueryCanceled)
     def timeout(_e):
         return jsonify(error="query timed out"), 503
