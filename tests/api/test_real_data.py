@@ -16,6 +16,8 @@ import pytest
 
 from app import create_app
 
+from .conftest import PASSWORD, USERS
+
 REAL_URL = os.environ.get("TAGEXP_REAL_DB", "postgresql://localhost/tagexp_dev")
 BUDGET_MS = 300
 
@@ -36,9 +38,9 @@ pytestmark = pytest.mark.skipif(not _usable(), reason="real database empty, unre
 
 @pytest.fixture(scope="module")
 def rc():
-    app = create_app({"DATABASE_URL": REAL_URL, "APP_PASSWORD": "pw", "SECRET_KEY": "k", "DEV_INSECURE_COOKIES": True, "DB_POOL_MAX": 4})
+    app = create_app({"DATABASE_URL": REAL_URL, "APP_USERS": USERS, "SECRET_KEY": "k", "DEV_INSECURE_COOKIES": True, "DB_POOL_MAX": 4})
     c = app.test_client()
-    assert c.post("/api/login", json={"password": "pw"}).status_code == 204
+    assert c.post("/api/login", json={"username": "JoshHoughton", "password": PASSWORD}).status_code == 204
     yield c
     app.extensions["pool"].close()
 

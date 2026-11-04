@@ -5,6 +5,7 @@ import os
 
 import psycopg
 import pytest
+from werkzeug.security import generate_password_hash
 
 from app import create_app
 
@@ -13,7 +14,10 @@ from . import seed_fixture as S
 PG_BASE = os.environ.get("TEST_PG_BASE", "postgresql://localhost")
 DB_NAME = os.environ.get("TEST_API_DB", "tagexp_apitest")
 DB_URL = f"{PG_BASE}/{DB_NAME}"
-PASSWORD = "correct horse battery"
+USERS_PLAIN = {"JoshHoughton": "correct horse battery", "Lazer": "staple battery horse"}
+PASSWORD = USERS_PLAIN["JoshHoughton"]
+# cheap scrypt parameters keep ~700 test logins fast; production hashes use werkzeug's default scrypt (scripts/auth/hash_password.py)
+USERS = {u: generate_password_hash(pw, method="scrypt:1024:8:1") for u, pw in USERS_PLAIN.items()}
 
 
 @pytest.fixture(scope="session")
@@ -28,7 +32,7 @@ def fx():
 
 
 def make_app(**overrides):
-    cfg = {"DATABASE_URL": DB_URL, "APP_PASSWORD": PASSWORD, "SECRET_KEY": "test-secret-key", "DEV_INSECURE_COOKIES": True,
+    cfg = {"DATABASE_URL": DB_URL, "APP_USERS": dict(USERS), "SECRET_KEY": "test-secret-key", "DEV_INSECURE_COOKIES": True,
            "LOGIN_MAX_FAILS": 5, "DB_POOL_MAX": 4}
     cfg.update(overrides)
     return create_app(cfg)
@@ -64,7 +68,7 @@ def anon(app):
 @pytest.fixture()
 def client(app):
     c = app.test_client()
-    r = c.post("/api/login", json={"password": PASSWORD})
+    r = c.post("/api/login", json={"username": "JoshHoughton", "password": PASSWORD})
     assert r.status_code == 204
     return c
 

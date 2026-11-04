@@ -6,12 +6,21 @@ const PRESETS = [['launch', 'Since launch'], ['1d', '1d'], ['7d', '7d'], ['14d',
 const COMPARES = [['off', 'Off'], ['prev', 'Previous period'], ['7d', '7d'], ['14d', '14d'], ['30d', '30d'], ['60d', '60d'], ['90d', '90d'], ['custom', 'Custom range']];
 const STAGE_LABELS = { testing: 'Testing', scaling: 'Scaling', unclassified: 'Unclassified' };
 
-let topbar, controls, statusEl, labelEl, noteEl, fromEl, toEl, errEl, backBtn;
+let topbar, controls, statusEl, userEl, labelEl, noteEl, fromEl, toEl, errEl, backBtn;
 let cmpSel, cfromEl, ctoEl, cmpCustomBox, perDayWrap, perDayCb, cerrEl;
 let presetBtns = [], stageBtns = {};
 let status = null;
 let uncVisible = false;
 let pendingNote = null;
+let authDisabled = false;
+let controlsOn = false;
+export const isAuthDisabled = () => authDisabled;
+// Log out + user name only exist when the deployment has logins (status.auth !== 'disabled')
+function applyAuthUi() {
+  const lo = topbar && topbar.querySelector('#logout');
+  if (lo) lo.hidden = !controlsOn || authDisabled;
+  if (userEl) userEl.hidden = !controlsOn || authDisabled || !userEl.textContent;
+}
 
 export function setPendingNote(t) { pendingNote = t; }
 
@@ -20,6 +29,7 @@ export function buildShell({ onBack }) {
   controls = document.getElementById('controls');
 
   statusEl = h('span', { class: 'status', id: 'status' });
+  userEl = h('span', { class: 'whoami', id: 'whoami', hidden: true });
   backBtn = h('button', { type: 'button', class: 'btn back', id: 'back', title: 'Back to the previous view', onclick: onBack }, '← Back');
   topbar.replaceChildren(h('div', { class: 'topbar-in' },
     backBtn,
@@ -27,6 +37,7 @@ export function buildShell({ onBack }) {
     h('a', { class: 'navlink', href: '/' }, 'Products'),
     h('span', { class: 'spacer' }),
     statusEl,
+    userEl,
     h('button', { type: 'button', class: 'btn small', id: 'logout', onclick: logout }, 'Log out'),
   ));
 
@@ -151,7 +162,8 @@ export function showControls(on) {
   const src = document.getElementById('source');
   if (src && !on) src.hidden = true;
   document.body.classList.toggle('no-controls', !on);
-  topbar.querySelector('#logout').hidden = !on;
+  controlsOn = on;
+  applyAuthUi();
 }
 export function setBackDisabled(disabled) {
   if (backBtn) backBtn.disabled = !!disabled;
@@ -249,6 +261,9 @@ export function windowInfoFallback(p, st) {
 export async function loadStatus(signal) {
   try {
     status = await api('/api/status', null, { signal });
+    authDisabled = status.auth === 'disabled';
+    if (userEl) userEl.textContent = status.user || '';
+    applyAuthUi();
     const lr = status.last_refresh;
     statusEl.replaceChildren(
       h('span', { id: 'data-through' }, 'Data through ' + fmt.day(status.data_through)),
@@ -269,5 +284,5 @@ export async function loadStatus(signal) {
 }
 export function getStatus() { return status; }
 export async function ensureStatus(signal) { return status || loadStatus(signal); }
-export function clearStatus() { status = null; if (statusEl) statusEl.textContent = ''; const src = document.getElementById('source'); if (src) src.hidden = true; }
+export function clearStatus() { status = null; if (statusEl) statusEl.textContent = ''; if (userEl) { userEl.textContent = ''; userEl.hidden = true; } const src = document.getElementById('source'); if (src) src.hidden = true; }
 export { cleanParams, qs };

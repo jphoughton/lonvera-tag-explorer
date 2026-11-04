@@ -13,13 +13,17 @@ def load_config(overrides: dict | None = None) -> dict:
     insecure = _flag(env.get("DEV_INSECURE_COOKIES"))
     cfg = {
         "DATABASE_URL": env.get("DATABASE_URL", ""),
-        "APP_PASSWORD": env.get("APP_PASSWORD", ""),
+        # JSON object {"JoshHoughton": "<werkzeug scrypt hash>", "Lazer": "<hash>"}. Missing / empty / invalid = nobody can log in (fail closed).
+        "APP_USERS": env.get("APP_USERS", ""),
         # A missing SECRET_KEY is only tolerated in local dev (DEV_INSECURE_COOKIES=1): sessions would otherwise
         # differ per gunicorn worker.
         "SECRET_KEY": env.get("SECRET_KEY", "") or ("dev-only-secret-key" if insecure else ""),
         "DEV_INSECURE_COOKIES": insecure,
+        # AUTH_DISABLED=1 opens the whole app (every check passes, user = "guest"). Unset it / set 0 and the APP_USERS logins apply again.
+        "AUTH_DISABLED": _flag(env.get("AUTH_DISABLED")),
         "SESSION_DAYS": int(env.get("SESSION_DAYS", "30")),
-        "LOGIN_MAX_FAILS": int(env.get("LOGIN_MAX_FAILS", "5")),
+        "LOGIN_MAX_FAILS": int(env.get("LOGIN_MAX_FAILS", "5")),                 # failures per (client IP, username) in the window
+        "LOGIN_MAX_FAILS_IP": int(env.get("LOGIN_MAX_FAILS_IP", "20")),          # failures per client IP in the window
         "LOGIN_FAIL_WINDOW_SEC": int(env.get("LOGIN_FAIL_WINDOW_SEC", "600")),
         "DB_POOL_MIN": int(env.get("DB_POOL_MIN", "1")),
         "DB_POOL_MAX": int(env.get("DB_POOL_MAX", "8")),

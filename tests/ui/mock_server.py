@@ -9,6 +9,7 @@ change the figures. Login password: `test`.
 """
 import io
 import json
+import os
 import random
 import re
 import sys
@@ -28,6 +29,8 @@ N = len(DAYS)
 IMP_START = 45
 MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 PASSWORD = "test"
+USERS = {"JoshHoughton", "Lazer"}
+AUTH_DISABLED = os.environ.get("MOCK_AUTH") == "disabled"  # MOCK_AUTH=disabled: no login, every /api and /media call works without a cookie
 
 app = Flask(__name__, static_folder=str(STATIC), static_url_path="/static")
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
@@ -663,7 +666,7 @@ def _bad(e):
 def guard():
     p = request.path
     if (p.startswith("/api/") and p != "/api/login") or p.startswith("/media/"):
-        if request.cookies.get("sid") != "ok":
+        if not AUTH_DISABLED and request.cookies.get("sid") != "ok":
             return jsonify(error="unauthorized"), 401
     g.cmp = None
     if p.startswith("/api/") and any(k in request.args for k in ("compare", "cfrom", "cto")):
@@ -681,10 +684,11 @@ def healthz():
 @app.post("/api/login")
 def login():
     body = request.get_json(silent=True) or {}
-    if body.get("password") != PASSWORD:
-        return jsonify(error="bad password"), 401
+    if body.get("username") not in USERS or body.get("password") != PASSWORD:
+        return jsonify(error="invalid username or password"), 401
     r = Response(status=204)
     r.set_cookie("sid", "ok", httponly=True, samesite="Lax")
+    r.set_cookie("user", body["username"], httponly=True, samesite="Lax")
     return r
 
 
@@ -692,12 +696,14 @@ def login():
 def logout():
     r = Response(status=204)
     r.delete_cookie("sid")
+    r.delete_cookie("user")
     return r
 
 
 @app.get("/api/status")
 def status():
-    return jsonify(data_through=DATA_THROUGH.isoformat(), daily_start=DAILY_START.isoformat(), lifetime_cutoff=CUTOFF.isoformat(),
+    extra = dict(auth="disabled", user="guest") if AUTH_DISABLED else dict(user=request.cookies.get("user"))
+    return jsonify(**extra, data_through=DATA_THROUGH.isoformat(), daily_start=DAILY_START.isoformat(), lifetime_cutoff=CUTOFF.isoformat(),
                    last_refresh=dict(job="run_daily", finished_at="2026-11-03T06:12:00+00:00", status="ok"), products=len(PRODUCTS))
 
 
