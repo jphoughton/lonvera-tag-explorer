@@ -135,7 +135,7 @@ async function familiesFlatView(ctx, slug) {
         return h('div', { class: 'cell-ad' },
           thumb(r.thumb_asset_id, 34, { name: r.display, primaryId: r.primary_id }),
           h('div', { class: 'cell-ad-text' },
-            h('div', { class: 'nm' }, hf ? h('a', { href: hf, class: 'rowlink adname', title: r.display }, r.display) : h('span', { class: 'adname' }, r.display)),
+            h('div', { class: 'nm' }, hf ? h('a', { href: hf, class: 'rowlink rowname', title: r.display }, r.display) : h('span', { class: 'rowname' }, r.display)),
             h('div', { class: 'meta' }, linemap && r.confidence ? h('span', { title: r.method || null }, confBadge(r.confidence)) : null,
               hf ? h('a', { href: hf, class: 'opn row-open' }, 'Open ›') : null,
               creativeMeta({ adType: r.ad_type, status: r.status, launch: r.launch_date, adsCount: r.ads_count, adsLive: r.ads_live }),

@@ -286,14 +286,14 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
       body = h('div', { class: 'cell-ad' },
         a.ad_id == null ? null : thumb(n.thumb_asset_id, 26, { name: n.label, primaryId: n.primary_id, metaAdId: a.ad_id, tag: a.tag, links: a.links }),
         h('div', { class: 'cell-ad-text' },
-          h('div', { class: 'nm' }, h('span', { class: 'adname' + (a.ad_id == null ? ' muted ital' : ''), title: n.label }, n.label)),
+          h('div', { class: 'nm' }, h('span', { class: 'rowname' + (a.ad_id == null ? ' muted ital' : ''), title: n.label }, n.label)),
           h('div', { class: 'meta' }, a.stage ? stageBadge(a.stage) : null, openLink,
             a.ad_id == null ? null : [a.campaign_name, a.adset_name, a.status].filter(Boolean).join(' · '), a.ad_id == null ? null : adActions(a))));
     } else if (n.level === 3) {
       body = h('div', { class: 'cell-ad' },
         thumb(n.thumb_asset_id, 30, { name: n.label, primaryId: n.primary_id }),
         h('div', { class: 'cell-ad-text' },
-          h('div', { class: 'nm' }, h('span', { class: 'adname', title: n.label }, n.label)),
+          h('div', { class: 'nm' }, h('span', { class: 'rowname', title: n.label }, n.label)),
           h('div', { class: 'meta' }, n.confidence ? confBadge(n.confidence) : null, openLink,
             creativeMeta({ adType: n.ad_type, status: n.status, launch: n.launch_date, adsCount: n.ads_count, adsLive: n.ads_live }),
             n.counted_here === false ? h('span', { class: 'badge muted-badge', title: 'This creative’s metrics are counted on its first tracker row, which sits in another group' }, 'counted elsewhere') : null)));

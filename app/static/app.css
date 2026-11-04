@@ -155,7 +155,7 @@ table.dt tfoot td.sticky { z-index: 5; }
 .cell-label-text, .cell-ad-text { min-width: 0; overflow: hidden; }
 .cell-ad { gap: 8px; }
 .cell-prod { flex-direction: column; align-items: flex-start; gap: 2px; }
-.adname, .cell-label-text a { overflow: hidden; text-overflow: ellipsis; display: inline-block; max-width: 100%; vertical-align: bottom; font-weight: 550; }
+.rowname, .cell-label-text a { overflow: hidden; text-overflow: ellipsis; display: inline-block; max-width: 100%; vertical-align: bottom; font-weight: 550; }
 .prodname { font-weight: 650; font-size: 13.5px; }
 .rowlink:hover { color: var(--accent); }
 .sub { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; max-width: 380px; }
@@ -289,7 +289,7 @@ table.dt th.num .deltabtn { float: none; }
 .tools input[type="search"] { width: 160px; }
 .treebox { display: block; }
 .cell-label.tl0 { font-weight: 600; }
-.cell-label.tl4 .adname { font-weight: 450; }
+.cell-label.tl4 .rowname { font-weight: 450; }
 .cell-label .lvlname { font-weight: inherit; }
 .caret { appearance: none; border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 13px; padding: 0; line-height: 1; width: 18px; text-align: center; flex: 0 0 auto; }
 .caret.ph { cursor: default; display: inline-block; }
@@ -398,7 +398,7 @@ table.dt td.labelcol, table.dt td.adcol { overflow-wrap: anywhere; }
 .cell-ad > .thumb { flex: 0 0 auto; }
 .cell-ad-text { min-width: 0; flex: 1 1 auto; overflow: visible; }
 .nm { white-space: normal; overflow-wrap: anywhere; word-break: break-word; min-width: 0; font-weight: 550; line-height: 1.3; }
-.nm .adname, .nm .lvlname { display: inline; overflow: visible; text-overflow: clip; max-width: none; white-space: normal; flex-shrink: 0; }
+.nm .rowname, .nm .lvlname { display: inline; overflow: visible; text-overflow: clip; max-width: none; white-space: normal; flex-shrink: 0; }
 .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 11.5px; color: var(--muted); margin-top: 1px; max-width: none; white-space: normal; }
 .meta.sub { overflow: visible; }
 .cell-label { align-items: flex-start; }

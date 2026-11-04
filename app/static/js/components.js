@@ -115,7 +115,7 @@ export function adsColumns(p, { showFamily = true, campaignHref = null, linkAd =
       return h('div', { class: 'cell-ad' },
         thumb(r.thumb_asset_id, 32, { name: r.ad_name, primaryId: r.primary_id, metaAdId: r.ad_id, tag: r.tag, links: r.links }),
         h('div', { class: 'cell-ad-text' },
-          h('div', { class: 'nm' }, hf ? h('a', { href: hf, class: 'adname', title: r.ad_name }, r.ad_name) : h('span', { class: 'adname', title: r.ad_name }, r.ad_name)),
+          h('div', { class: 'nm' }, hf ? h('a', { href: hf, class: 'rowname', title: r.ad_name }, r.ad_name) : h('span', { class: 'rowname', title: r.ad_name }, r.ad_name)),
           sub ? h('div', { class: 'meta sub', title: sub }, sub) : null));
     },
   };
