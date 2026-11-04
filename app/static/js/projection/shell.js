@@ -9,7 +9,16 @@ import { Grid, createGrid } from './lib/grid.js';
 import * as F from './lib/format.js';
 import * as charts from './lib/charts.js';
 
-const GROUP_NAMES = { P1: 'P1 · Engine', P2: 'P2 · Supply and cash', P3: 'P3 · Pacing' };
+const GROUP_NAMES = { P1: 'Plan', P2: 'Supply and cash', P3: 'Track' };
+const PURPOSE = {
+  cohorts: 'Repeat-purchase curves and repeat revenue by month.',
+  drivers: 'Ad spend plan, new-customer revenue and Amazon.',
+  pnl: 'Profit and loss, margins and implied value.',
+  inventory_demand: 'Units shipped per day and the demand forecast.',
+  inventory_supply: 'Purchase orders, stock burn and when to reorder.',
+  financing: 'Debt, cash after inventory, payback and payouts.',
+  pacing: 'This month against plan, and Meta spend by product.',
+};
 const DEMO = { key: '_demo', label: 'Library demo', group: 'Demo', built: true, ui: '_demo.js' };
 const view = $('#view');
 
@@ -43,33 +52,74 @@ function syncUrlScenario() {
   history.replaceState(history.state, '', u.pathname + u.search);
 }
 
-// ------------------------------------------------------------------ top bar, scenario bar, nav
-function buildTopbar() {
-  $('#topbar').replaceChildren(h('div', { class: 'topbar-in' },
-    h('a', { class: 'brand', href: '/' }, 'Tag Explorer'),
-    h('a', { class: 'navlink', href: '/' }, 'Products'),
-    h('a', { class: 'navlink pg-brandnow', href: '/projection', 'data-pg': '' }, 'Projections'),
-    h('span', { class: 'spacer' })));
+// ------------------------------------------------------------------ one bar: Lonvera | Tags | Projections | module tabs | scenario control
+// The static part of the bar (brand, Tags, Projections) is in projection.html and mirrors the Tags pages. This file fills the module tabs and the scenario control.
+
+// small popup menu (role=menu): click or Enter opens, arrows move, Esc and outside click close
+let openMenu = null;
+function closeMenu(restoreFocus = false) {
+  if (!openMenu) return;
+  const { btn, pop } = openMenu;
+  pop.hidden = true;
+  btn.setAttribute('aria-expanded', 'false');
+  openMenu = null;
+  if (restoreFocus) btn.focus();
 }
+function wireMenu(btn, pop) {
+  btn.setAttribute('aria-haspopup', 'menu');
+  btn.setAttribute('aria-expanded', 'false');
+  pop.setAttribute('role', 'menu');
+  pop.hidden = true;
+  const items = () => [...pop.querySelectorAll('[role="menuitem"]')].filter((x) => !x.hidden && !x.disabled);
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (openMenu && openMenu.btn === btn) { closeMenu(true); return; }
+    closeMenu();
+    pop.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    openMenu = { btn, pop };
+    const cur = pop.querySelector('[aria-current="page"]') || items()[0];
+    if (cur) cur.focus();
+  });
+  pop.addEventListener('click', (e) => { if (e.target.closest('[role="menuitem"]')) closeMenu(); });
+  pop.addEventListener('keydown', (e) => {
+    const list = items();
+    const i = list.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); (list[i + 1] || list[0]).focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); (list[i - 1] || list[list.length - 1]).focus(); }
+    else if (e.key === 'Home') { e.preventDefault(); list[0].focus(); }
+    else if (e.key === 'End') { e.preventDefault(); list[list.length - 1].focus(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeMenu(true); }
+    else if (e.key === 'Tab') closeMenu();
+  });
+}
+document.addEventListener('click', (e) => { if (openMenu && !openMenu.pop.contains(e.target) && !openMenu.btn.contains(e.target)) closeMenu(); });
 
 const bar = $('#pg-bar');
 function buildBar() {
+  closeMenu();
   const cur = scenarios.current;
   const sel = h('select', { id: 'pg-scenario', 'aria-label': 'Scenario' },
-    scenarios.list.map((s) => h('option', { value: s.slug, selected: s.slug === scenarios.slug }, s.name + (s.is_default ? ' (default)' : ''))));
+    scenarios.list.map((s) => h('option', { value: s.slug, selected: s.slug === scenarios.slug }, s.name)));
   sel.addEventListener('change', () => scenarios.select(sel.value));
-  const btn = (act, text, extra = {}) => h('button', { type: 'button', class: 'btn small', 'data-act': act, onclick: () => actions[act](), ...extra }, text);
   const isDefault = !!cur && (cur.is_default || cur.slug === 'current');
+  const item = (act, text, extra = {}) => h('button', { type: 'button', role: 'menuitem', class: 'pg-mitem' + (extra.danger ? ' danger' : ''), 'data-act': act, onclick: () => actions[act](), disabled: extra.disabled, hidden: extra.hidden, title: extra.title }, text);
+  const pop = h('div', { class: 'pg-menu-pop', id: 'pg-menu-pop', 'aria-label': 'Scenario actions' },
+    item('new', 'New scenario'),
+    item('clone', 'Clone this scenario', { disabled: !cur }),
+    item('rename', 'Rename', { disabled: !cur }),
+    item('history', 'History and restore', { disabled: !cur, title: 'Versions of this scenario' }),
+    isDefault ? null : h('div', { class: 'pg-msep', role: 'separator' }),
+    isDefault ? null : item('delete', 'Delete this scenario', { danger: true, disabled: !cur, title: 'Delete this scenario' }));
+  const mbtn = h('button', { type: 'button', class: 'btn small pg-menubtn', id: 'pg-menu-btn', 'aria-label': 'Scenario actions', title: 'New, clone, rename, history' },
+    h('span', { 'aria-hidden': 'true' }, '⋯'));
+  wireMenu(mbtn, pop);
   bar.replaceChildren(
-    h('span', { class: 'ctl-name' }, 'Scenario'),
     sel,
     h('span', { class: 'pg-ver', id: 'pg-version', title: cur && cur.updated_at ? 'Updated ' + F.dateTime(cur.updated_at) : null }, cur ? 'v' + cur.version : ''),
-    btn('new', 'New'),
-    btn('clone', 'Clone', { disabled: !cur }),
-    btn('rename', 'Rename', { disabled: !cur }),
-    btn('delete', 'Delete', { disabled: !cur || isDefault, hidden: isDefault, title: 'Delete this scenario' }),
-    h('span', { class: 'spacer' }),
-    btn('history', 'History', { disabled: !cur, title: 'Versions of this scenario' }));
+    h('span', { class: 'pg-mode', id: 'pg-mode', title: 'You are in a copy. Edits here do not change the plan of record.' }, 'Copy'),
+    h('div', { class: 'pg-menu' }, mbtn, pop));
+  document.body.dataset.pgScenario = isDefault ? 'default' : 'copy';
   bar.hidden = false;
 }
 function updateVersionChip() {
@@ -100,7 +150,7 @@ const actions = {
       message: 'This removes the scenario and all of its inputs. Other scenarios are not affected.',
       expect: cur.slug,
       confirmText: 'Delete scenario',
-      onConfirm: () => scenarios.remove(cur.slug, cur.slug),
+      onConfirm: () => { refreshHeadlineSoon.cancel(); headlineGen++; return scenarios.remove(cur.slug, cur.slug); },   // no headline request for a scenario that is going away
     });
     if (ok) toast(`Deleted ${cur.name}`, 'ok');
   },
@@ -108,6 +158,7 @@ const actions = {
 };
 
 const nav = $('#pg-nav');
+const navMenu = $('#pg-navmenu');
 function buildNav() {
   const { seg } = parseLoc();
   const groups = [];
@@ -117,23 +168,39 @@ function buildNav() {
     g.items.push(m);
   }
   groups.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  // wide screens: tabs inline in the bar (groups are thin dividers, no labels)
   setChildren(nav,
     h('div', { class: 'pg-ngroup' }, h('a', { class: 'pg-tab', href: homeHref(), 'data-pg': '', 'data-key': '', 'aria-current': !seg ? 'page' : null }, 'Overview')),
     groups.map((g) => h('div', { class: 'pg-ngroup', 'data-group': g.name },
-      h('span', { class: 'pg-ghead' }, GROUP_NAMES[g.name] || g.name),
       g.items.map((m) => h('a', {
         class: 'pg-tab', href: moduleHref(m), 'data-pg': '', 'data-key': m.key, 'data-built': String(!!m.built),
         'aria-current': seg && dash(m.key) === dash(seg) ? 'page' : null, title: m.built ? null : 'Not built yet',
       }, m.label, m.built ? null : h('span', { class: 'soon' }, 'soon'))))));
   nav.hidden = false;
+  // narrow screens: one "Projections" menu in the bar lists the same pages, grouped
+  const pop = h('div', { class: 'pg-menu-pop pg-nav-pop', id: 'pg-nav-pop', 'aria-label': 'Projection pages' },
+    h('a', { class: 'pg-mitem', role: 'menuitem', href: homeHref(), 'data-pg': '', 'data-key': '' }, 'Overview'),
+    groups.map((g) => [
+      h('div', { class: 'pg-mhead', role: 'presentation' }, GROUP_NAMES[g.name] || g.name),
+      g.items.map((m) => h('a', { class: 'pg-mitem' + (m.built ? '' : ' quiet'), role: 'menuitem', href: moduleHref(m), 'data-pg': '', 'data-key': m.key }, m.label, m.built ? null : h('span', { class: 'soon' }, 'soon'))),
+    ]));
+  const btn = h('button', { type: 'button', class: 'btn small pg-navbtn', id: 'pg-navbtn', 'aria-label': 'Projection pages' },
+    h('span', { class: 'pg-navbtn-label', id: 'pg-navbtn-label' }, 'Projections'), h('span', { 'aria-hidden': 'true', class: 'pg-chev' }, '▾'));
+  wireMenu(btn, pop);
+  setChildren(navMenu, btn, pop);
+  navMenu.hidden = false;
 }
 function markNav() {
   const { seg } = parseLoc();
-  for (const a of nav.querySelectorAll('a.pg-tab')) {
+  let label = 'Overview';
+  for (const a of document.querySelectorAll('#pg-nav a[data-key], #pg-navmenu a[data-key]')) {
     const on = seg ? dash(a.dataset.key) === dash(seg) : a.dataset.key === '';
-    if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    if (on) { a.setAttribute('aria-current', 'page'); label = a.dataset.key === '' ? 'Overview' : (modules.find((m) => dash(m.key) === dash(a.dataset.key)) || {}).label || label; }
+    else a.removeAttribute('aria-current');
     if (a.dataset.key !== undefined) a.href = a.dataset.key === '' ? homeHref() : moduleHref({ key: a.dataset.key });
   }
+  const nb = $('#pg-navbtn');
+  if (nb) nb.title = `Projections: ${label}`;
 }
 
 // ------------------------------------------------------------------ headline strip
@@ -172,7 +239,7 @@ function headlineItems(r) {
     if (raw.ev && typeof raw.ev === 'object') {
       done.add('ev');
       const vals = Object.entries(raw.ev).filter(([k, v]) => typeof v === 'number' && /^\d+(\.\d+)?x?$/i.test(k)).map(([, v]) => v);
-      if (vals.length >= 2) items.push({ label: 'Implied EV', value: `${F.compact(Math.min(...vals))} to ${F.compact(Math.max(...vals))}`, fmt: 'text' });
+      if (vals.length >= 2) items.push({ label: 'Implied EV', value: `${F.compact(Math.min(...vals))} to ${F.compact(Math.max(...vals))}`, fmt: 'text', zero: Math.min(...vals) === 0 && Math.max(...vals) === 0 });
     }
     if (typeof raw.lifetime_multiple === 'number') { done.add('lifetime_multiple'); items.push({ label: 'Lifetime repeat', value: raw.lifetime_multiple, fmt: 'x' }); }
     const low = raw.lowest_ending_cash;
@@ -182,7 +249,7 @@ function headlineItems(r) {
     }
     for (const [k, v] of Object.entries(raw)) if (!done.has(k) && typeof v === 'number') items.push({ label: title(k), value: v, fmt: guessFmt(k, v) });
   }
-  return items.filter((x) => x.value != null).slice(0, 6);
+  return items.filter((x) => x.value != null).map((x) => ({ ...x, zero: x.zero ?? x.value === 0 })).slice(0, 6);
 }
 const kpiText = (it) => (typeof it.value !== 'number' ? String(it.value) : (it.fmt === 'usd0' || it.fmt === 'usd') ? F.compact(it.value) : F.display(it.value, it.fmt).text);
 async function refreshHeadline() {
@@ -193,7 +260,8 @@ async function refreshHeadline() {
   if (gen !== headlineGen) return;
   const through = r && (r.actual_through || r.actualThrough);
   const items = headlineItems(r);
-  if (!through && !items.length) { strip.hidden = true; strip.replaceChildren(); return; }
+  // nothing real to show (no module built, or every figure is zero): hide the strip rather than print $0
+  if (!modules.some((m) => m.built) || !items.length || items.every((it) => it.zero)) { strip.hidden = true; strip.replaceChildren(); return; }
   setChildren(strip,
     through ? h('span', { class: 'pg-actual', id: 'pg-actual-through' }, 'Actual through ' + F.monthLabel(through)) : null,
     items.map((it) => h('div', { class: 'pg-kpi' }, h('span', { class: 'k' }, it.label), h('span', { class: 'v' + (it.value < 0 ? ' neg' : '') }, kpiText(it)))));
@@ -328,11 +396,11 @@ function renderHome() {
   groups.sort((a, b) => String(a.name).localeCompare(String(b.name)));
   const cur = scenarios.current;
   view.replaceChildren(h('div', { class: 'pg-page' },
-    pageHead('Projections', cur ? `Scenario: ${cur.name}` : null),
+    ui.pageHeader({ title: 'Projections', purpose: cur ? `Where Lonvera lands, by scenario. You are in "${cur.name}". Pick a page to see numbers or change inputs.` : 'Where Lonvera lands, by scenario. Pick a page to see numbers or change inputs.' }),
     groups.map((g) => h('section', { 'data-group': g.name },
       h('div', { class: 'pg-group-head' }, GROUP_NAMES[g.name] || g.name),
       h('div', { class: 'pg-cards' }, g.items.map((m) => {
-        const kids = [h('span', { class: 't' }, m.label), h('span', { class: 's' }, m.built ? 'Open' : 'Not built yet')];
+        const kids = [h('span', { class: 't' }, m.label), PURPOSE[m.key] ? h('span', { class: 's' }, PURPOSE[m.key]) : null, m.built ? null : h('span', { class: 's' }, 'Not built yet')];
         return m.built
           ? h('a', { class: 'pg-mcard', href: moduleHref(m), 'data-pg': '', 'data-key': m.key, 'data-built': 'true' }, kids)
           : h('div', { class: 'pg-mcard', 'data-key': m.key, 'data-built': 'false' }, kids);
@@ -361,10 +429,10 @@ async function route({ scroll = true } = {}) {
   markNav();
   if (scroll) window.scrollTo(0, 0);
 
-  if (!seg) { document.title = 'Projections · Tag Explorer'; renderHome(); document.body.dataset.pgState = 'ready'; return; }
+  if (!seg) { document.title = 'Projections · Lonvera'; renderHome(); document.body.dataset.pgState = 'ready'; return; }
   const mod = findModule(seg, params);
   if (!mod) { renderNotFound(seg); document.body.dataset.pgState = 'ready'; return; }
-  document.title = `${mod.label} · Projections`;
+  document.title = `${mod.label} · Projections · Lonvera`;
   if (!mod.built) { renderNotBuilt(mod); document.body.dataset.pgState = 'ready'; return; }
   if (!scenarios.slug) { view.replaceChildren(h('div', { class: 'empty' }, 'No scenario yet. Create one with New.')); document.body.dataset.pgState = 'ready'; return; }
   if (!mod.ui || !/^[A-Za-z0-9_-]+\.js$/.test(mod.ui)) {
@@ -414,12 +482,11 @@ window.addEventListener('popstate', () => route({ scroll: false }));
 window.addEventListener('pagehide', () => { api.flushSeries(); });
 
 async function boot() {
-  buildTopbar();
   try {
     const [m] = await Promise.all([api.get('/modules'), scenarios.load(parseLoc().params.scenario)]);
     modules = (m && m.modules) || [];
   } catch (e) {
-    if (e && e.name === 'AuthError') return;                    // redirected to the Tag Explorer login
+    if (e && e.name === 'AuthError') return;                    // redirected to the Tags login
     view.replaceChildren(h('div', { class: 'errorbox', role: 'alert' }, h('strong', null, 'Could not load Projections. '), h('span', null, e.message || String(e)),
       h('div', null, h('button', { type: 'button', class: 'btn', onclick: () => location.reload() }, 'Retry'))));
     document.body.dataset.pgState = 'error';
@@ -428,7 +495,7 @@ async function boot() {
   buildNav();
   scenarios.on('list', () => buildBar());
   scenarios.on('version', () => { updateVersionChip(); refreshHeadlineSoon(); });
-  scenarios.on('change', () => { syncUrlScenario(); buildBar(); route({ scroll: false }); refreshHeadline(); });
+  scenarios.on('change', () => { refreshHeadlineSoon.cancel(); syncUrlScenario(); buildBar(); route({ scroll: false }); refreshHeadline(); });
   refreshHeadline();
   await route();
 }

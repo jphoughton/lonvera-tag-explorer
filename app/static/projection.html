@@ -4,16 +4,30 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Projections · Tag Explorer</title>
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FBF8F3">
+<title>Projections · Lonvera</title>
 <link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/projection/brand.css">
 <link rel="stylesheet" href="/static/js/projection/shell.css">
 <link rel="stylesheet" href="/static/js/projection/lib/grid.css">
-<link rel="icon" href="data:,">
+<link rel="icon" type="image/svg+xml" href="/static/projection/assets/favicon.svg">
 </head>
 <body class="pg-body">
-<div id="topbar"></div>
-<div id="pg-bar" class="pg-bar" hidden></div>
-<nav id="pg-nav" class="pg-nav" aria-label="Projection modules" hidden></nav>
+<a class="lv-skip" href="#view">Skip to content</a>
+<!-- One bar, the same bar as the Tags pages: Lonvera | Tags | Projections, then the module tabs, then the scenario control at the right end. -->
+<header class="pg-chrome" id="pg-chrome">
+  <div id="topbar">
+    <div class="topbar-in">
+      <a class="brand" href="/">Lonvera</a>
+      <a class="navlink" href="/">Tags</a>
+      <a class="navlink pg-brandnow" href="/projection" data-pg>Projections</a>
+      <nav id="pg-nav" class="pg-nav" aria-label="Projection modules" hidden></nav>
+      <div id="pg-navmenu" class="pg-menu pg-navmenu" hidden></div>
+      <div id="pg-bar" class="pg-bar" role="group" aria-label="Scenario" hidden></div>
+    </div>
+  </div>
+</header>
 <section id="pg-headline" class="pg-headline" aria-label="Headline numbers" hidden></section>
 <main id="view" aria-live="polite"><div class="loading">Loading…</div></main>
 <aside id="pg-drawer" class="pg-drawer" role="dialog" aria-label="Scenario history" hidden></aside>

@@ -60,14 +60,23 @@ function payload(inp) {
 }
 
 export async function render(el, ctx) {
-  const { h, fmt, charts } = ctx;
+  const { h, fmt, charts, ui } = ctx;
   const inputs = { spend: [...seed.spend], cpa: [...seed.cpa], aov: [...seed.aov], amazon: [...seed.amazon] };
   const keyOf = { spend: 'spend', nc_cpa: 'cpa', nc_aov: 'aov', amazon_rev: 'amazon' };
   const gridHost = h('div', { id: 'demo-grid' });
   const canvas = h('canvas', { id: 'demo-chart', 'aria-label': 'New-customer revenue and NOI by month' });
   const cmpCanvas = h('canvas', { id: 'demo-compare', 'aria-label': 'NOI by scenario' });
   el.replaceChildren(h('div', { class: 'pg-page', 'data-testid': 'demo' },
-    h('div', { class: 'pg-title' }, h('h1', 'Library demo'), h('span', { class: 'sub' }, 'Sample data. Nothing here is saved.')),
+    ui.pageHeader({
+      title: 'Library demo',
+      purpose: 'Every shared component on one page, with sample data. Nothing here is saved.',
+      tldr: { line: 'Spend falls to $350K a month in November, so NOI loses money for the rest of the plan.', kpis: [
+        { label: 'FY27 NOI', value: '-$3.0M', tone: 'bad', note: 'vs $0.9M in FY26' },
+        { label: 'Spend from Nov 2026*', value: '$350K', note: 'per month' },
+        { label: 'New-customer ROAS', value: '0.73x*', tone: 'warn' },
+        { label: 'Lowest cover', value: '0.3 mo', tone: 'bad', note: 'Vital Bull, Mar 2027*' },
+      ] },
+    }),
     h('section', { class: 'pg-section' }, h('h2', 'Monthly grid'), gridHost),
     h('section', { class: 'pg-section' }, h('h2', 'Charts'),
       h('div', { class: 'pg-card' }, h('div', { class: 'pg-chartbox' }, canvas)),
@@ -80,9 +89,9 @@ export async function render(el, ctx) {
     charts.comboChart(canvas, {
       months, status, yFmt: 'usd0', y1Fmt: 'pct',
       series: [
-        { label: 'New-customer revenue', values: by('nc_rev'), type: 'bar', color: '#9db7e0' },
-        { label: 'NOI', values: by('noi'), type: 'line', color: '#1d8a56' },
-        { label: 'NOI margin', values: by('noi_margin'), type: 'line', axis: 'y1', color: '#d9822b', fmt: 'pct' },
+        { label: 'New-customer revenue', values: by('nc_rev'), type: 'bar', color: charts.PALETTE[1] },
+        { label: 'NOI', values: by('noi'), type: 'line', color: charts.PALETTE[2] },
+        { label: 'NOI margin', values: by('noi_margin'), type: 'line', axis: 'y1', color: charts.PALETTE[4], fmt: 'pct' },
       ],
     });
     const hi = { ...inputs, spend: inputs.spend.map((v, i) => (i > ACTUAL_THROUGH ? v * 1.4 : v)) };

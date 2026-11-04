@@ -201,4 +201,27 @@ export function errorBox(el, err, onRetry) {
 export function empty(el, msg) {
   el.replaceChildren(h('div', { class: 'empty' }, msg));
 }
-export const ui = { loading, error: errorBox, empty };
+// ---------- page anatomy (docs/projection/DESIGN.md) ----------
+// chip(text, tone): status chip with icon + word. tone = good | warn | bad | info | neutral; opts.solid, opts.estimate.
+export function chip(text, tone = 'neutral', opts = {}) {
+  return h('span', { class: ['pg-chip', tone, opts.solid ? 'solid' : '', opts.estimate ? 'estimate' : ''].filter(Boolean).join(' ') }, text);
+}
+// tldr({line, kpis:[{label, value, tone?, note?}]}): the strip that answers "so what". 3 to 5 kpis; value is already formatted text.
+export function tldr({ line, kpis = [] } = {}) {
+  return h('section', { class: 'pg-tldr', 'aria-label': 'Headline' },
+    line ? h('p', { class: 'pg-tldr-line' }, line) : null,
+    kpis.length ? h('dl', { class: 'pg-tldr-kpis' }, kpis.slice(0, 5).map((k) => h('div', { class: 'pg-kpi' + (k.tone ? ' ' + k.tone : '') },
+      h('dt', { class: 'k' }, k.label), h('dd', { class: 'v' }, k.value), k.note ? h('dd', { class: 'n' }, k.note) : null))) : null);
+}
+// pageHeader({title, purpose, tldr:{line,kpis}, actions:[Node]}): title, one-line purpose, optional actions, TLDR strip.
+export function pageHeader({ title, purpose, tldr: t, actions } = {}) {
+  return h('header', { class: 'pg-head' },
+    h('div', { class: 'pg-head-top' },
+      h('div', null, h('h1', { class: 'pg-h1' }, title), purpose ? h('p', { class: 'pg-purpose' }, purpose) : null),
+      actions && actions.length ? h('div', { class: 'pg-head-actions' }, actions) : null),
+    t ? tldr(t) : null);
+}
+// source(text): the one short source caption under a table or chart.
+export const source = (text) => h('p', { class: 'pg-source' }, text);
+
+export const ui = { loading, error: errorBox, empty, chip, tldr, pageHeader, source };

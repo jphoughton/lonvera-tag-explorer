@@ -1,0 +1,399 @@
+/* Lonvera brand tokens for the Projections pages. Custom properties plus a few base rules; components live in shell.css / grid.css.
+   Link after /static/app.css: the block "Tag Explorer names" maps the existing tokens (--bg --panel --line --text --muted --accent --good --warn --bad ...) onto the brand.
+   Sources (details in docs/projection/DESIGN.md): "Vital Bull PDP R2" prototype (bone, sand, card, parch, ink, ember, night, radii, focus ring, Plus Jakarta Sans);
+   Lonvera Brand Guidelines 2026 (Boneflex blue, personality); lonvera.com theme (mountain mark, product palettes). No external requests: fonts are local or self-hosted.
+   Rules: ember = actions, brand, focus. Never numbers, alerts or status. Crimson = negative and bad. Every status also carries an icon and a word.
+   Dark mode follows the OS (prefers-color-scheme) and can be forced with <html data-theme="light|dark">. The two dark blocks below must stay identical (a test checks). */
+
+/* Plus Jakarta Sans 5.3.0 (@fontsource, SIL OFL 1.1; license in assets/fonts/OFL-LICENSE.txt). Latin subset, self-hosted, no runtime font requests. */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/fonts/plus-jakarta-sans-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("assets/fonts/plus-jakarta-sans-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("assets/fonts/plus-jakarta-sans-latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("assets/fonts/plus-jakarta-sans-latin-700-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("assets/fonts/plus-jakarta-sans-latin-800-normal.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: light;
+
+  /* ---------- brand palette (same in both modes; use the role tokens below in components) ---------- */
+  --lv-bone: #F6F2EB;
+  --lv-sand: #EEE7DA;
+  --lv-card: #FBF8F3;
+  --lv-parch: #EFE6D7;
+  --lv-ink-raw: #1C1915;
+  --lv-ember: #C75123;
+  --lv-ember-deep: #9E3E19;
+  --lv-ember-tint: #F6E3D9;
+  --lv-night: #161310;
+  --lv-night-2: #221D18;
+  --lv-amber: #F4B43C;
+  --lv-mist: #E8E8E8;
+
+  /* ---------- surfaces ---------- */
+  --lv-bg: #F6F2EB;
+  --lv-surface: #FBF8F3;
+  --lv-surface-2: #EEE7DA;
+  --lv-surface-3: #E6DDCB;
+  --lv-hover: #F3EDE1;
+  --lv-inverse: #161310;
+  --lv-on-inverse: #F6F2EB;
+  --lv-on-inverse-2: #BDB3A5;
+
+  /* ---------- ink and lines ---------- */
+  --lv-ink: #1C1915;
+  --lv-ink-2: #3D372F;
+  --lv-muted: #665D53;
+  --lv-line: #DCD3C3;
+  --lv-line-soft: #E9E2D5;
+  --lv-line-strong: #8C8375;
+
+  /* ---------- action (ember): buttons, active nav, selection, focus ---------- */
+  --lv-action: #C75123;
+  --lv-action-hover: #9E3E19;
+  --lv-action-active: #7E2F10;
+  --lv-on-action: #FFFFFF;
+  --lv-action-tint: #F6E3D9;
+  --lv-on-action-tint: #7E2F10;
+  --lv-link: #9E3E19;
+  --lv-link-hover: #7E2F10;
+  --lv-focus: #C75123;
+  --lv-focus-gap: #FBF8F3;
+  --lv-select-bg: rgba(199, 81, 35, 0.10);
+  --lv-scrim: rgba(22, 19, 16, 0.55);
+
+  /* ---------- status: text on tint pairs, plus solid chips (OUT, OVERDUE) ---------- */
+  --lv-good: #17683A;
+  --lv-good-bg: #DCEFE0;
+  --lv-warn: #7A4F00;
+  --lv-warn-bg: #F8E8B8;
+  --lv-bad: #A3173C;
+  --lv-bad-bg: #F9DEE4;
+  --lv-info: #1E5A9E;
+  --lv-info-bg: #DCE8F5;
+  --lv-neutral: #5F564B;
+  --lv-neutral-bg: #EAE3D5;
+  --lv-good-solid: #17683A;
+  --lv-bad-solid: #A3173C;
+  --lv-warn-solid: #F4B43C;
+  --lv-on-solid: #FFFFFF;
+  --lv-on-warn-solid: #1C1915;
+  --lv-inv-good: #7FD39C;
+  --lv-inv-warn: #F0C25A;
+  --lv-inv-bad: #FF92AB;
+
+  /* ---------- data cells and month headers ---------- */
+  --lv-input-bg: #FAEBC0;
+  --lv-input-edge: #DDB650;
+  --lv-input-hover: #F6E0A0;
+  --lv-input-ink: #1C1915;
+  --lv-editor-bg: #FFFFFF;
+  --lv-calc-ink: #3D372F;
+  --lv-neg: #A3173C;
+  --lv-total-bg: #EEE7DA;
+  --lv-total-rule: #1C1915;
+  --lv-subtotal-bg: #F4EFE5;
+  --lv-band-bg: #E9E1D1;
+  --lv-hl-bg: #F4EBD9;
+  --lv-actual-head: #EEE7DA;
+  --lv-actual-ink: #1C1915;
+  --lv-proj-head: #C6DAF0;
+  --lv-proj-ink: #15406F;
+  --lv-proj-cell: #F6F8F8;
+  --lv-proj-rule: #2863AB;
+  --lv-proj-band: rgba(40, 99, 171, 0.08);
+
+  /* ---------- charts: six categorical slots, fixed order, never cycled (slots 1-3 are the products) ---------- */
+  --lv-viz-1: #A63D02;
+  --lv-viz-2: #2863AB;
+  --lv-viz-3: #5F983A;
+  --lv-viz-4: #8166C3;
+  --lv-viz-5: #9D7200;
+  --lv-viz-6: #009394;
+  --lv-viz-ink: #1C1915;
+  --lv-viz-neutral: #6B6258;
+  --lv-viz-grid: #E9E2D5;
+  --lv-viz-axis: #665D53;
+  --lv-viz-proj-alpha: 0.45;
+  --lv-viz-dash: 6 4;
+  --lv-product-bull: var(--lv-viz-1);
+  --lv-product-liver: var(--lv-viz-3);
+  --lv-product-bone: var(--lv-viz-2);
+
+  /* ---------- type ---------- */
+  --lv-font: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --lv-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --lv-fs-2xs: 10.5px;
+  --lv-fs-xs: 11.5px;
+  --lv-fs-sm: 12px;
+  --lv-fs-base: 13px;
+  --lv-fs-md: 14px;
+  --lv-fs-lg: 16px;
+  --lv-fs-xl: 20px;
+  --lv-fs-2xl: 28px;
+  --lv-fs-hero: 40px;
+  --lv-lh: 1.45;
+  --lv-fw-regular: 400;
+  --lv-fw-medium: 500;
+  --lv-fw-semi: 600;
+  --lv-fw-bold: 700;
+  --lv-fw-heavy: 800;
+  --lv-track-kicker: 0.08em;
+
+  /* ---------- space, radius, elevation, motion ---------- */
+  --lv-sp-1: 4px;
+  --lv-sp-2: 8px;
+  --lv-sp-3: 12px;
+  --lv-sp-4: 16px;
+  --lv-sp-5: 20px;
+  --lv-sp-6: 24px;
+  --lv-sp-7: 32px;
+  --lv-sp-8: 40px;
+  --lv-r-xs: 4px;
+  --lv-r-sm: 8px;
+  --lv-r-md: 14px;
+  --lv-r-lg: 20px;
+  --lv-r-pill: 999px;
+  --lv-shadow-1: 0 1px 2px rgba(28, 25, 21, 0.06);
+  --lv-shadow-2: 0 6px 18px rgba(28, 25, 21, 0.14);
+  --lv-shadow-3: 0 18px 48px rgba(22, 19, 16, 0.28);
+  --lv-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --lv-dur: 150ms;
+
+  /* ---------- density: compact is the default; set data-density="comfortable" on <html> or the grid ---------- */
+  --lv-row-h: 26px;
+  --lv-cell-px: 8px;
+  --lv-col-w: 92px;
+  --lv-label-w: 250px;
+  --lv-hit: 28px;
+
+  /* ---------- Tag Explorer names (app.css and the shared components read these) ---------- */
+  --bg: var(--lv-bg);
+  --panel: var(--lv-surface);
+  --line: var(--lv-line);
+  --line-soft: var(--lv-line-soft);
+  --head-bg: var(--lv-surface-2);
+  --text: var(--lv-ink);
+  --muted: var(--lv-muted);
+  --accent: var(--lv-link);
+  --accent-bg: var(--lv-action-tint);
+  --good: var(--lv-good);
+  --good-bg: var(--lv-good-bg);
+  --warn: var(--lv-warn);
+  --warn-bg: var(--lv-warn-bg);
+  --bad: var(--lv-bad);
+  --bad-bg: var(--lv-bad-bg);
+  --testing: var(--lv-info);
+  --testing-bg: var(--lv-info-bg);
+  --scaling: var(--lv-viz-4);
+  --scaling-bg: var(--lv-surface-2);
+  --unc: var(--lv-neutral);
+  --unc-bg: var(--lv-neutral-bg);
+  --font: var(--lv-font);
+  --mono: var(--lv-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --lv-bg: #161310;
+    --lv-surface: #221D18;
+    --lv-surface-2: #2B251F;
+    --lv-surface-3: #342D26;
+    --lv-hover: #292320;
+    --lv-inverse: #0F0D0B;
+    --lv-on-inverse: #F6F2EB;
+    --lv-on-inverse-2: #B9AFA1;
+    --lv-ink: #F3EEE6;
+    --lv-ink-2: #D8D0C4;
+    --lv-muted: #B0A698;
+    --lv-line: #3A332B;
+    --lv-line-soft: #2F2923;
+    --lv-line-strong: #7A7060;
+    --lv-action: #C75123;
+    --lv-action-hover: #B0461C;
+    --lv-action-active: #96391A;
+    --lv-on-action: #FFFFFF;
+    --lv-action-tint: #3A2218;
+    --lv-on-action-tint: #F7B796;
+    --lv-link: #F59E74;
+    --lv-link-hover: #FFB690;
+    --lv-focus: #F08A5B;
+    --lv-focus-gap: #221D18;
+    --lv-select-bg: rgba(240, 138, 91, 0.16);
+    --lv-good: #7FD39C;
+    --lv-good-bg: #17301F;
+    --lv-warn: #F0C25A;
+    --lv-warn-bg: #3A2D0C;
+    --lv-bad: #FF92AB;
+    --lv-bad-bg: #45131F;
+    --lv-info: #92BEF0;
+    --lv-info-bg: #14283F;
+    --lv-neutral: #BDB3A4;
+    --lv-neutral-bg: #302A23;
+    --lv-good-solid: #1A7F47;
+    --lv-bad-solid: #C42650;
+    --lv-warn-solid: #F4B43C;
+    --lv-on-solid: #FFFFFF;
+    --lv-on-warn-solid: #1C1915;
+    --lv-input-bg: #3A3011;
+    --lv-input-edge: #8F7020;
+    --lv-input-hover: #4A3C14;
+    --lv-input-ink: #F8F1DF;
+    --lv-editor-bg: #120F0C;
+    --lv-calc-ink: #D8D0C4;
+    --lv-neg: #FF92AB;
+    --lv-total-bg: #2F2822;
+    --lv-total-rule: #F3EEE6;
+    --lv-subtotal-bg: #27211C;
+    --lv-band-bg: #2B251F;
+    --lv-hl-bg: #2E2720;
+    --lv-actual-head: #2B251F;
+    --lv-actual-ink: #F3EEE6;
+    --lv-proj-head: #1B3350;
+    --lv-proj-ink: #A9CBF2;
+    --lv-proj-cell: #1E2126;
+    --lv-proj-rule: #5C9BE0;
+    --lv-proj-band: rgba(92, 155, 224, 0.10);
+    --lv-viz-1: #B85207;
+    --lv-viz-2: #3A75BF;
+    --lv-viz-3: #5BA84A;
+    --lv-viz-4: #7C60BD;
+    --lv-viz-5: #976C00;
+    --lv-viz-6: #18A5A5;
+    --lv-viz-ink: #F3EEE6;
+    --lv-viz-neutral: #A59A8C;
+    --lv-viz-grid: #2F2923;
+    --lv-viz-axis: #B0A698;
+    --lv-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --lv-shadow-2: 0 6px 18px rgba(0, 0, 0, 0.5);
+    --lv-shadow-3: 0 18px 48px rgba(0, 0, 0, 0.6);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --lv-bg: #161310;
+  --lv-surface: #221D18;
+  --lv-surface-2: #2B251F;
+  --lv-surface-3: #342D26;
+  --lv-hover: #292320;
+  --lv-inverse: #0F0D0B;
+  --lv-on-inverse: #F6F2EB;
+  --lv-on-inverse-2: #B9AFA1;
+  --lv-ink: #F3EEE6;
+  --lv-ink-2: #D8D0C4;
+  --lv-muted: #B0A698;
+  --lv-line: #3A332B;
+  --lv-line-soft: #2F2923;
+  --lv-line-strong: #7A7060;
+  --lv-action: #C75123;
+  --lv-action-hover: #B0461C;
+  --lv-action-active: #96391A;
+  --lv-on-action: #FFFFFF;
+  --lv-action-tint: #3A2218;
+  --lv-on-action-tint: #F7B796;
+  --lv-link: #F59E74;
+  --lv-link-hover: #FFB690;
+  --lv-focus: #F08A5B;
+  --lv-focus-gap: #221D18;
+  --lv-select-bg: rgba(240, 138, 91, 0.16);
+  --lv-good: #7FD39C;
+  --lv-good-bg: #17301F;
+  --lv-warn: #F0C25A;
+  --lv-warn-bg: #3A2D0C;
+  --lv-bad: #FF92AB;
+  --lv-bad-bg: #45131F;
+  --lv-info: #92BEF0;
+  --lv-info-bg: #14283F;
+  --lv-neutral: #BDB3A4;
+  --lv-neutral-bg: #302A23;
+  --lv-good-solid: #1A7F47;
+  --lv-bad-solid: #C42650;
+  --lv-warn-solid: #F4B43C;
+  --lv-on-solid: #FFFFFF;
+  --lv-on-warn-solid: #1C1915;
+  --lv-input-bg: #3A3011;
+  --lv-input-edge: #8F7020;
+  --lv-input-hover: #4A3C14;
+  --lv-input-ink: #F8F1DF;
+  --lv-editor-bg: #120F0C;
+  --lv-calc-ink: #D8D0C4;
+  --lv-neg: #FF92AB;
+  --lv-total-bg: #2F2822;
+  --lv-total-rule: #F3EEE6;
+  --lv-subtotal-bg: #27211C;
+  --lv-band-bg: #2B251F;
+  --lv-hl-bg: #2E2720;
+  --lv-actual-head: #2B251F;
+  --lv-actual-ink: #F3EEE6;
+  --lv-proj-head: #1B3350;
+  --lv-proj-ink: #A9CBF2;
+  --lv-proj-cell: #1E2126;
+  --lv-proj-rule: #5C9BE0;
+  --lv-proj-band: rgba(92, 155, 224, 0.10);
+  --lv-viz-1: #B85207;
+  --lv-viz-2: #3A75BF;
+  --lv-viz-3: #5BA84A;
+  --lv-viz-4: #7C60BD;
+  --lv-viz-5: #976C00;
+  --lv-viz-6: #18A5A5;
+  --lv-viz-ink: #F3EEE6;
+  --lv-viz-neutral: #A59A8C;
+  --lv-viz-grid: #2F2923;
+  --lv-viz-axis: #B0A698;
+  --lv-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --lv-shadow-2: 0 6px 18px rgba(0, 0, 0, 0.5);
+  --lv-shadow-3: 0 18px 48px rgba(0, 0, 0, 0.6);
+}
+
+/* ---------- density ---------- */
+:root[data-density="comfortable"], [data-density="comfortable"] {
+  --lv-row-h: 34px;
+  --lv-cell-px: 10px;
+  --lv-col-w: 100px;
+  --lv-hit: 36px;
+}
+@media (pointer: coarse), (max-width: 640px) {
+  :root { --lv-hit: 44px; }
+}
+
+/* ---------- base rules ---------- */
+.lv-num { font-variant-numeric: tabular-nums; }
+.lv-skip { position: absolute; left: 8px; top: -48px; z-index: 200; padding: 8px 14px; border-radius: var(--lv-r-sm); background: var(--lv-action); color: var(--lv-on-action); font-weight: var(--lv-fw-bold); }
+.lv-skip:focus { top: 8px; color: var(--lv-on-action); }
+.lv-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.lv-app, .pg-body { font-family: var(--lv-font); font-size: var(--lv-fs-base); line-height: var(--lv-lh); -webkit-font-smoothing: antialiased; }
+.lv-app :focus-visible, .pg-body :focus-visible { outline: 2px solid var(--lv-focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .lv-app *, .pg-body * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}

@@ -1,0 +1,10 @@
+# Questions and assumptions (cohorts)
+
+Each default below is one line to change.
+
+1. **Grid vocabulary.** `app/projection/interfaces.py` (`Row`/`Table`) accepts row kinds `line|subtotal|total|header|memo` and formats `money|money2|int|num2|pct|pct1|x|text|date`, while the shell grid (`lib/grid.js`, `lib/format.js`) reads `calc|input|subtotal|total|header|ratio` and `usd|usd0|pct|num|x|text|date`; a `memo` or `money` row is not styled by the shell. The cohorts payloads are built as plain dicts in the shell's vocabulary (`views.py`, `_row`), as the drivers and pnl modules do. Suggest foundation either maps one set to the other in `Table.to_payload` or replaces `KINDS`/`FMTS`; then `views.py` can move to `Table`.
+2. **Non-strict engine in the API.** The cohorts endpoints call `engine.run(...)` without `strict`, so a failing or half-built module (missing tables) falls back to its stub and this page still loads; only a failure of the cohorts module itself is a 500. `reconcile.py` runs strict, so it needs every module's tables present (applied here with all migrations to the cohorts database only).
+3. **Date seam.** Month-closed rules use today in Pacific time (`app.projection.freshness.today_pacific`), through one function, `app.projection.cohorts.model.today()`. The engine's own `today=` argument is passed for the stubs only.
+4. **Default `n_cohorts` = 3.** The snapshot says "Last 3 Cohorts Avg"; `context/ma-calano.md` says 6 from 2026-11-03. Reconciled against the snapshot, so 3 (a lever). Josh to confirm.
+5. **Per-customer precision.** `numeric(18,6)` for per-customer dollars and `numeric(12,6)` for payback instead of the money default `(18,2)`, so the curve and a re-upload diff are not distorted by rounding.
+6. **`curve_live` vs the curve in use.** `CohortResult.curve_live` is always Live (the drivers module's payback reads it); the curve applied to repeat revenue is the extra attribute `curve_used`. If a scenario selects Goal, the drivers payback still uses Live; say if it should follow `curve_used`.

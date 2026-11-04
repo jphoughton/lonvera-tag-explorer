@@ -12,3 +12,4 @@ snapshots/
 playwright-report/
 test-results/
 tests/ui/shots/
+tests/projection/design/shots/

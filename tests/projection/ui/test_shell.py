@@ -10,6 +10,13 @@ BUILT = {"cohorts", "drivers"}
 ALL = ["cohorts", "drivers", "pnl", "inventory_demand", "inventory_supply", "financing", "pacing"]
 
 
+
+def act(page, name):
+    """Scenario actions live in the "..." menu at the right end of the bar: open it, then pick the item."""
+    page.click("#pg-menu-btn")
+    page.click(f'#pg-menu-pop [data-act="{name}"]')
+
+
 def test_nav_renders_seven_modules_with_built_state(page):
     page.goto("/projection")
     page.wait_for_selector("a.pg-tab[data-key]")
@@ -89,7 +96,7 @@ def test_scenario_new_clone_rename_delete(page, base_url):
     assert page.locator('[data-act="delete"]').is_hidden()          # default scenario cannot be deleted
 
     # New
-    page.click('[data-act="new"]')
+    act(page, "new")
     page.fill("dialog input", "Bear case")
     page.click("dialog button[type=submit]")
     page.wait_for_function("document.querySelector('#pg-scenario').value === 'bear-case'")
@@ -106,7 +113,7 @@ def test_scenario_new_clone_rename_delete(page, base_url):
     expect(page.locator(".pg-gstatus")).to_contain_text("Saved 1 cell")
 
     # Clone
-    page.click('[data-act="clone"]')
+    act(page, "clone")
     assert page.locator("dialog input").input_value() == "Bear case copy"
     page.fill("dialog input", "Bear case B")
     page.click("dialog button[type=submit]")
@@ -117,13 +124,13 @@ def test_scenario_new_clone_rename_delete(page, base_url):
     assert scn["bear-case-b"]["base_slug"] == "bear-case"
 
     # Rename
-    page.click('[data-act="rename"]')
+    act(page, "rename")
     page.fill("dialog input", "Bear case B2")
     page.click("dialog button[type=submit]")
     page.wait_for_function("[...document.querySelectorAll('#pg-scenario option')].some(o => o.textContent === 'Bear case B2')")
 
     # Delete needs the slug typed back
-    page.click('[data-act="delete"]')
+    act(page, "delete")
     ok = page.locator("dialog button.danger")
     assert ok.is_disabled()
     page.fill("dialog input", "wrong")
@@ -141,7 +148,7 @@ def test_scenario_new_clone_rename_delete(page, base_url):
 @pytest.mark.allow_errors
 def test_scenario_duplicate_name_error_stays_in_dialog(page):
     open_module(page, "drivers")
-    page.click('[data-act="new"]')
+    act(page, "new")
     page.fill("dialog input", "current plan")
     page.click("dialog button[type=submit]")
     expect(page.locator("dialog .pg-dialog-err")).to_contain_text("already exists")
@@ -156,7 +163,7 @@ def test_scenario_switch_rerenders_module(page):
     page.keyboard.type("500k")
     page.keyboard.press("Enter")
     expect(page.locator(".pg-gstatus")).to_contain_text("Saved")
-    page.click('[data-act="clone"]')
+    act(page, "clone")
     page.click("dialog button[type=submit]")
     page.wait_for_function("document.querySelector('#pg-scenario').value === 'current-plan-copy'")
     page.wait_for_selector(".pg-grid .pg-table")
@@ -171,7 +178,7 @@ def test_history_drawer_and_restore(page, base_url):
     page.keyboard.type("400k")
     page.keyboard.press("Enter")
     expect(page.locator("#pg-version")).to_have_text("v2")
-    page.click('[data-act="history"]')
+    act(page, "history")
     page.wait_for_selector("#pg-hist li")
     items = page.locator("#pg-hist li")
     assert items.count() == 2
@@ -200,7 +207,7 @@ def test_history_restore_cancel_sends_nothing(page, base_url):
     page.keyboard.type("400k")
     page.keyboard.press("Enter")
     expect(page.locator("#pg-version")).to_have_text("v2")
-    page.click('[data-act="history"]')
+    act(page, "history")
     page.locator("#pg-hist li").nth(1).locator("button:has-text('Restore')").click()
     page.click("dialog button:has-text('Cancel')")
     expect(page.locator("#pg-version")).to_have_text("v2")
@@ -274,3 +281,93 @@ def test_mobile_390_no_page_overflow_table_scrolls_inside(mobile_page):
     p.goto("/projection/_demo?demo=1")
     p.wait_for_selector(".pg-grid .pg-table")
     assert p.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+
+
+# ---------------------------------------------------------------- one bar (Lonvera | Tags | Projections | module tabs | scenario control)
+def test_single_bar_structure(page):
+    open_module(page, "drivers")
+    bar = page.locator("#topbar .topbar-in")
+    assert page.locator("#topbar .brand").inner_text() == "Lonvera"
+    assert page.locator("#topbar a.navlink").all_inner_texts() == ["Tags", "Projections"]
+    # tabs and the scenario control live inside the same bar, in that order
+    assert bar.locator("#pg-nav").count() == 1 and bar.locator("#pg-bar").count() == 1
+    order = page.evaluate("[...document.querySelectorAll('#topbar .topbar-in > *')].map(e => e.id || e.className.split(' ')[0])")
+    assert order[:3] == ["brand", "navlink", "navlink"] and order.index("pg-nav") < order.index("pg-bar")
+    assert page.locator(".pg-ghead").count() == 0                                  # group labels are gone from the bar
+    assert page.locator("#pg-chrome").evaluate("e => e.getBoundingClientRect().height") <= 48
+    assert page.locator("#topbar").evaluate("e => getComputedStyle(e).position") in ("static", "sticky")
+    assert page.locator("#pg-chrome").evaluate("e => getComputedStyle(e).position") == "sticky"
+    expect(page.locator("a.pg-tab[aria-current=page]")).to_have_text("Drivers")
+
+
+def test_unbuilt_tabs_are_quiet_and_tagged(page):
+    open_module(page, "drivers")
+    built = page.locator('a.pg-tab[data-built="true"]:not([data-key=""])')
+    assert built.count() == 2 and built.locator(".soon").count() == 0
+    assert page.locator('a.pg-tab[data-built="false"] .soon').count() == 5
+
+
+def test_scenario_menu_keyboard_and_copy_cue(page):
+    open_module(page, "drivers")
+    assert page.locator("body").get_attribute("data-pg-scenario") == "default"
+    assert page.locator("#pg-mode").is_hidden()                                    # no cue on the plan of record
+    page.focus("#pg-menu-btn")
+    page.keyboard.press("Enter")
+    expect(page.locator("#pg-menu-pop")).to_be_visible()
+    assert page.evaluate("document.activeElement.dataset.act") == "new"           # focus moves into the menu
+    page.keyboard.press("ArrowDown")
+    assert page.evaluate("document.activeElement.dataset.act") == "clone"
+    page.keyboard.press("Escape")
+    expect(page.locator("#pg-menu-pop")).to_be_hidden()
+    assert page.evaluate("document.activeElement.id") == "pg-menu-btn"             # focus returns to the button
+    act(page, "new")
+    page.fill(".pg-dialog input", "Cue test")
+    page.click(".pg-dialog .btn.primary")
+    page.wait_for_function("document.body.dataset.pgScenario === 'copy'")
+    expect(page.locator("#pg-mode")).to_be_visible()
+    expect(page.locator("#pg-mode")).to_have_text("Copy")
+
+
+@pytest.mark.parametrize("width", [1440, 1024, 768, 390])
+def test_bar_is_one_row_at_every_width(browser, base_url, width):
+    ctx = browser.new_context(viewport={"width": width, "height": 800}, base_url=base_url, is_mobile=width < 500, has_touch=width < 500)
+    p = ctx.new_page()
+    try:
+        p.goto("/projection/drivers")
+        p.wait_for_selector(".pg-grid .pg-table")
+        assert p.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+        h = p.locator("#pg-chrome").evaluate("e => e.getBoundingClientRect().height")
+        assert h <= 48, f"bar is {h}px tall at {width}px"
+        # the scenario control stays reachable and inside the viewport
+        box = p.locator("#pg-menu-btn").bounding_box()
+        assert box and box["x"] + box["width"] <= width and box["y"] >= 0
+        sel = p.locator("#pg-scenario").bounding_box()
+        assert sel and sel["x"] + sel["width"] <= width
+        if width <= 900:
+            assert p.locator("#pg-nav").is_hidden()
+            p.click("#pg-navbtn")
+            assert p.locator('#pg-nav-pop a[data-key="drivers"]').is_visible()
+            p.click('#pg-nav-pop a[data-key="cohorts"]')
+            p.wait_for_function("location.pathname === '/projection/cohorts'")
+            assert p.locator("#pg-nav-pop").is_hidden()
+        else:
+            assert p.locator("#pg-nav").is_visible() and p.locator("#pg-navmenu").is_hidden()
+    finally:
+        ctx.close()
+
+
+def test_headline_hidden_when_all_zero(page):
+    body = '{"actual_through":"2026-10-01","headline":{"fy":{"2027":{"revenue":0,"noi":0}},"ev":{"3x":0,"8x":0},"lifetime_multiple":0}}'
+    page.route("**/api/projection/run*", lambda r: r.fulfill(status=200, content_type="application/json", body=body))
+    open_module(page, "drivers")
+    page.wait_for_timeout(300)
+    assert page.locator("#pg-headline").is_hidden()
+    assert page.locator(".pg-kpi").count() == 0
+
+
+def test_document_titles(page):
+    page.goto("/projection")
+    page.wait_for_selector(".pg-mcard")
+    assert page.title() == "Projections · Lonvera"
+    open_module(page, "drivers")
+    assert page.title() == "Drivers · Projections · Lonvera"
