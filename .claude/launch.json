@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "projection-ui",
+      "runtimeExecutable": "/Users/joshhoughton/lonvera-tag-explorer/.venv/bin/python",
+      "runtimeArgs": ["tests/projection/ui/mock_server.py", "5191"],
+      "port": 5191
+    }
+  ]
+}

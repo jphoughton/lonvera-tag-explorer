@@ -12,7 +12,7 @@ from flask.json.provider import DefaultJSONProvider
 from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from . import api, auth, db
+from . import api, auth, db, projection
 from .config import load_config
 from .queries import ApiError
 
@@ -52,6 +52,7 @@ def create_app(config: dict | None = None) -> Flask:
     db.init_app(app)
     auth.init_auth(app)
     app.register_blueprint(api.bp)
+    projection.register(app)
     _register_pages(app)
     _register_errors(app)
     _register_headers(app)

@@ -1,0 +1,22 @@
+# Module brief: cohorts (P1) — migration 110, `app/projection/cohorts/`, page `cohorts.js`
+
+Replaces tabs: `Cohort Data - Unified`, `Curves`, `Hist Waterfall - Last 4 Months Curve`. Output feeds P&L row 17 (Repeat Revenue). Read the snapshot formulas for all three tabs before designing; the facts below are a map, not a substitute.
+
+## What the sheet does
+- `Cohort Data - Unified` (rows 2–34 = cohorts Feb-24…Oct-26, row 35 `Avg`, row 36 `Last 3 Cohorts Avg`, rows 39–44 comparisons; cols A month, B new customers, C 90-day repeat rate, D CAC, E payback, F first order (realized), G first order, H..AQ = M1..M36 cumulative $/customer, then Inc1.. = month-over-month increments). Row 36 formula = weighted average of the most recent cohorts that have reached each age (check whether it is 3 or 6 in the live formula; ma-calano.md says the live curve moved to the last 6 cohorts on 2026-11-03 — make N a lever, default = the live formula's N). Weighted by new customers; zeros/blanks excluded.
+- `Curves`: col B = Goal curve (static snapshot 2026-09-29, ages 1–60), col C = Live curve (ages 1–27 pull `'Cohort Data - Unified'!CD36…DD36`, i.e. the Inc columns' row-36 averages divided by first order; ages 28+ = prior × `$C$2` tail decay 0.95/mo), col D live vs goal, rows 65/66 = lifetime sum (ages 1–60) and 12-month sum. Store the Goal curve as data (`proj_curve_goal`), seeded from the snapshot.
+- `Hist Waterfall - Last 4 Months Curve`: layer 1 age grid (DATEDIF months since acquisition, cohort × month), layer 2 curve value by age (age>60 → 0), layer 3 repeat $ = cohort NC-Rev (col B) × curve(age), row 228 = total repeat revenue by month, layer 4 = NC-Rev in acquisition month + repeat, layer 5 = ACTUAL repeat per cohort from the Inc-$ columns (real cohorts only). Cohort rows run Feb-24 … Dec-29 (71): past cohorts' NC-Rev = new customers × first-order $; forward cohorts' NC-Rev = P&L row 12 (the drivers module's `nc_rev`).
+- P&L row 17 = row 228 (with some months typed by hand; those become overrides owned by the drivers/pnl modules, not you).
+
+## Build
+1. Tables: `proj_cohorts` (cohort_month pk, new_customers, first_order_per_customer, first_order_realized, repeat_90d, cac, payback_months, source, loaded_at), `proj_cohort_cum` (cohort_month, age 1..36, cum_per_customer; null = not yet observed), `proj_curve_goal` (age, value, snapshot_date). Seed from the snapshot through `etl/projection_cohorts.py` (idempotent).
+2. Upload: `POST /api/projection/cohorts/upload` (multipart CSV, the layout of the sheet tab or a Shopify/Upstack "cohorts-revenue" export: month, months since, customers, amount spent per customer). Standing rule: never include a month that is not over — blank any M-column that lands in the current or a future month, exclude the in-progress cohort, drop CSV zeros as "no data". Return a dry-run preview (cells added, cells changed, cells blanked) before commit (`?commit=1`).
+3. Engine `compute(nc_rev, scn) -> CohortResult`: live curve (lever `n_cohorts`, `min_cohorts_per_age` default as the sheet, `tail_decay` 0.95, `tail_from_age` 28, `max_age` 60), goal curve, curve choice lever (`live`|`goal`|`blend:<w>`), waterfall by month (all cohorts incl. forward from `nc_rev`), modeled vs actual repeat, lifetime multiple, 12-month sum. Pure functions; no DB inside the math.
+4. API (`/api/projection/cohorts/…`): `table` (grid payload: repeat revenue by month, split by cohort year), `curves` (live vs goal, ages 1–60), `cohorts` (heatmap data), `upload`, `levers` (GET/PUT through scenario params namespace `cohorts`).
+5. Page `app/static/js/projection/cohorts.js`: cohort heatmap (cumulative $/customer by age, last-N highlighted), curve chart live vs goal with lifetime and 12-month numbers, repeat revenue by month stacked by cohort vintage (actual vs projected styling), upload button with preview.
+6. Reconcile map `reconcile_map.py`: `Curves!C4:C63` (live), `Curves!B4:B63` (goal), `Curves!C65/C66`, `Hist Waterfall…!C228:…` row 228 (match month columns by the date in row 5), P&L row 17. Expect differences only where the sheet hand-types a month; list them.
+
+## Gotchas
+- Waterfall applies the live curve to HISTORICAL cohorts too, so row 228 for closed months is modeled; keep that and also expose actual repeat (layer 5) side by side.
+- Cohort weights: the sheet excludes zeros and blanks from both numerator and denominator per age; replicate exactly.
+- `DATEDIF(...,"M")` semantics = whole months between first-of-month dates.
