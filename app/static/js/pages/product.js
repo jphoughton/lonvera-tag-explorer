@@ -1,11 +1,12 @@
-import { h, enc, fmt, stageSet, href, apiWindow, globalParams, navigate, confBadge, empty, thumb, stageBadge, liveDot, pick, setParams, getRowMode, setRowMode, setViewStateProvider, cmpView, onCmpRefresh } from '../util.js';
+import { h, enc, fmt, stageSet, href, apiWindow, sparkParams, globalParams, navigate, confBadge, empty, thumb, stageBadge, liveDot, pick, setParams, getRowMode, setRowMode, setViewStateProvider, cmpView, onCmpRefresh } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
-import { metricColumns, fixTotal, FLAT_KEYS } from '../columns.js';
+import { metricColumns, fixTotal, FLAT_KEYS, trendColumn, pinColumn } from '../columns.js';
 import { setRangeInfo } from '../controls.js';
 import { breadcrumbs, columnsChips, filterBar, saveFilterToUrl, makeFilter, adsTable, familyAdsNode, unmatchedPanel, saveSortToUrl, sortFromUrl, campaignHrefFor } from '../components.js';
 import { stageChart } from '../charts.js';
 import { createTree } from '../tree.js';
+import { createTrendPanel, createPins } from '../trend.js';
 import { tagBadge } from './products.js';
 
 const CONF_RANK = { low: 1, medium: 2, high: 3 };
@@ -73,7 +74,7 @@ async function tagsView(ctx, slug) {
   const wp = apiWindow(p);
   const base = `/api/products/${enc(slug)}/`;
   const [data, product, um] = await Promise.all([
-    api(base + 'tree', { root: rootName, ...filters, depth: 0, ...wp }, { signal }),
+    api(base + 'tree', { root: rootName, ...filters, depth: 0, ...wp, ...sparkParams(p) }, { signal }),
     getProduct(slug, signal),
     api(base + 'unmatched', wp, { signal }).catch(() => null),
   ]);
@@ -83,18 +84,22 @@ async function tagsView(ctx, slug) {
 
   const first = ['Market cluster', 'ICP', 'Pain point', 'Ad family'][rootLevel];
   const title = rootLevel === 0 ? 'Market clusters' : rootLevel === 1 ? `ICPs in ${p.cluster}` : rootLevel === 2 ? `Pain points in ${p.icp}` : `Ad families in ${p.pain}`;
-  const tree = createTree({ slug, p, signal, rootLevel, filters, first, restore: ctx.restore });
+  const pins = createPins(ctx.restore && ctx.restore.pins);
+  const tree = createTree({ slug, p, signal, rootLevel, filters, first, restore: ctx.restore, pins });
   await tree.init(data.rows, data.total);
   if (!ctx.alive()) return;
+  const panel = createTrendPanel({ slug, p, scope: filters, scopeLabel: [p.pain, p.icp, p.cluster].find(Boolean) || product.name, pins, mode: 'scope', signal });
 
   ctx.mount(h('div', { class: 'page', 'data-level': ['cluster', 'icp', 'pain', 'families'][rootLevel] },
     pageHead(product, slug, p, 'tags'),
     h('div', { class: 'crumbrow' }, breadcrumbs(tagCrumbs(slug, p, product)), h('span', { class: 'spacer' }),
       h('a', { class: 'btnlink', id: 'toggle-all', href: href(path, { ...G, all: 1 }) }, 'All ad families')),
+    panel.el,
     h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, title)),
     tree.el,
     unmatchedPanel(slug, p, um, signal),
   ));
+  panel.load();
   tree.afterMount(ctx.restore);
 }
 
@@ -106,7 +111,7 @@ async function familiesFlatView(ctx, slug) {
   const wp = apiWindow(p);
   const base = `/api/products/${enc(slug)}/`;
   const [data, product, um] = await Promise.all([
-    api(base + 'families', { cluster: p.cluster, icp: p.icp, pain: p.pain, ...wp }, { signal }),
+    api(base + 'families', { cluster: p.cluster, icp: p.icp, pain: p.pain, ...wp, ...sparkParams(p) }, { signal }),
     getProduct(slug, signal),
     api(base + 'unmatched', wp, { signal }).catch(() => null),
   ]);
@@ -117,6 +122,8 @@ async function familiesFlatView(ctx, slug) {
   const rkey = (r) => r.family_key + '|' + (r.ad_ids || []).join(',');
   let filterUi = null;
   let rowMode = getRowMode();
+  const flatPins = createPins(ctx.restore && ctx.restore.pins);
+  const flatPanel = createTrendPanel({ slug, p, scope: pick(p, ['cluster', 'icp', 'pain']), scopeLabel: product.name, pins: flatPins, mode: 'scope', signal });
   const allAdsHeader = h('a', { href: href(path, { ...G, view: 'ads', cluster: p.cluster, icp: p.icp, pain: p.pain }), class: 'btnlink small', id: 'all-ads', title: 'Open the Meta ads table for everything in view' }, 'All ads in view');
   const cols = [
     {
@@ -135,10 +142,12 @@ async function familiesFlatView(ctx, slug) {
               r.counted_here === false ? h('span', { class: 'badge muted-badge', title: 'This family’s metrics are counted on its first tracker row, which sits in another group' }, 'counted elsewhere') : null)));
       },
     },
+    pinColumn({ pins: flatPins, keyOf: rkey, labelOf: (r) => r.display, scopeOf: (r) => ({ family_key: r.family_key, ...pick(p, ['cluster', 'icp', 'pain']) }) }),
     {
       key: '_ads', label: '', nosort: true, cls: 'actioncol', header: allAdsHeader,
       cell: (r) => h('a', { href: href(path, { ...G, view: 'ads', family_key: r.family_key, cluster: p.cluster, icp: p.icp, pain: p.pain }), class: 'btnlink small row-ads' }, 'Ads'),
     },
+    trendColumn(),
     ...metricColumns(),
   ];
   const table = createTable({
@@ -166,16 +175,18 @@ async function familiesFlatView(ctx, slug) {
     return b;
   });
 
-  setViewStateProvider(() => ({ tscroll: { top: table.wrap.scrollTop, left: table.wrap.scrollLeft } }));
+  setViewStateProvider(() => ({ pins: flatPins.list(), tscroll: { top: table.wrap.scrollTop, left: table.wrap.scrollLeft } }));
   ctx.mount(h('div', { class: 'page', 'data-level': 'families' },
     pageHead(product, slug, p, 'tags'),
     h('div', { class: 'crumbrow' }, breadcrumbs(tagCrumbs(slug, p, product, [{ label: 'All ad families' }])), h('span', { class: 'spacer' }),
       h('a', { class: 'btnlink', id: 'toggle-all', href: href(path, { ...G, cluster: p.cluster, icp: p.icp, pain: p.pain }) }, '← Back to hierarchy')),
+    flatPanel.el,
     h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'All ad families'),
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Clicking a row'), h('span', { class: 'segs', id: 'row-mode' }, modeBtns)), columnsChips(), filterUi.el),
     table.el,
     unmatchedPanel(slug, p, um, signal),
   ));
+  flatPanel.load();
   const vs = ctx.restore;
   if (vs) { window.scrollTo(0, vs.scrollY || 0); if (vs.tscroll) { table.wrap.scrollTop = vs.tscroll.top || 0; table.wrap.scrollLeft = vs.tscroll.left || 0; } }
 }
@@ -187,7 +198,7 @@ async function adsView(ctx, slug) {
   const path = pagePath(slug);
   const base = `/api/products/${enc(slug)}/`;
   const [d, product] = await Promise.all([
-    api(base + 'ads', { ...pick(p, ['cluster', 'icp', 'pain', 'family_key', 'campaign_id']), ...apiWindow(p) }, { signal }),
+    api(base + 'ads', { ...pick(p, ['cluster', 'icp', 'pain', 'family_key', 'campaign_id']), ...apiWindow(p), ...sparkParams(p) }, { signal }),
     getProduct(slug, signal),
   ]);
   if (!ctx.alive()) return;
@@ -227,13 +238,16 @@ async function adsView(ctx, slug) {
   if (p.spend === '1' || p.q) apply({ spend: p.spend === '1', q: p.q });
   filterUi.setCount(d.rows.length, d.rows.length);
 
+  const adsPanel = createTrendPanel({ slug, p, scope: pick(p, ['cluster', 'icp', 'pain', 'family_key', 'campaign_id']), scopeLabel: (firstRow && (p.family_key ? firstRow.display : p.campaign_id ? firstRow.campaign_name : null)) || p.pain || p.icp || p.cluster || product.name, mode: 'scope', signal });
   setViewStateProvider(() => ({ tscroll: { top: t.wrap.scrollTop, left: t.wrap.scrollLeft } }));
   ctx.mount(h('div', { class: 'page', 'data-level': 'ads' },
     pageHead(product, slug, p, p.campaign_id ? 'campaigns' : 'tags'),
     h('div', { class: 'crumbrow' }, breadcrumbs(crumbs)),
+    adsPanel.el,
     h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Meta ads'), columnsChips(), filterUi.el),
     t.el,
   ));
+  adsPanel.load();
   const vs = ctx.restore;
   if (vs) { window.scrollTo(0, vs.scrollY || 0); if (vs.tscroll) { t.wrap.scrollTop = vs.tscroll.top || 0; t.wrap.scrollLeft = vs.tscroll.left || 0; } }
 }
@@ -249,7 +263,7 @@ async function campaignsView(ctx, slug) {
   delete dailyParams.stage; delete dailyParams.compare; delete dailyParams.cfrom; delete dailyParams.cto;
   if (!dailyParams.window && !dailyParams.from) dailyParams.days = 90;
   const [d, daily, product] = await Promise.all([
-    api(base + 'campaigns', wp, { signal }),
+    api(base + 'campaigns', { ...wp, ...sparkParams(p) }, { signal }),
     api(base + 'stage-daily', dailyParams, { signal }),
     getProduct(slug, signal),
   ]);
@@ -276,9 +290,12 @@ async function campaignsView(ctx, slug) {
   const canvas = h('canvas', { id: 'stage-chart', role: 'img', 'aria-label': 'Daily spend by stage' });
   const chartBox = h('div', { class: 'chartbox' }, canvas);
 
+  const campPins = createPins(ctx.restore && ctx.restore.pins);
   const flat = metricColumns({ getM: (r) => r, getTotalM: (t) => fixTotal(t), keys: FLAT_KEYS });
   const cols = [
     { key: 'name', label: 'Campaign', sticky: true, cls: 'labelcol', sort: (r) => r.name, total: () => 'Total', cell: (r) => h('a', { href: href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }), class: 'rowlink', title: r.name }, r.name) },
+    pinColumn({ pins: campPins, keyOf: (r) => r.campaign_id, labelOf: (r) => r.name, scopeOf: (r) => ({ campaign_id: r.campaign_id }) }),
+    trendColumn(),
     { key: 'account', label: 'Account', sort: (r) => r.account, cell: (r) => fmt.text(r.account) },
     { key: 'stage', label: 'Stage', sort: (r) => r.stage, cell: (r) => stageBadge(r.stage) },
     { key: 'ads', label: 'Ads', num: true, sort: (r) => r.ads, cell: (r) => fmt.int(r.ads), total: (t) => (t && t.ads != null ? fmt.int(t.ads) : '') },
@@ -288,6 +305,7 @@ async function campaignsView(ctx, slug) {
     { key: 'last_day', label: 'Last day', sort: (r) => r.last_day, cell: (r) => fmt.text(r.last_day), total: () => '' },
   ];
   let filterUi;
+  const campPanel = createTrendPanel({ slug, p, scope: {}, scopeLabel: product.name, pins: campPins, mode: 'scope', signal });
   const t = createTable({
     columns: cols, rows: d.rows, total: d.total, ...sortFromUrl(p), onSort: saveSortToUrl,
     rowKey: (r) => r.campaign_id,
@@ -302,10 +320,11 @@ async function campaignsView(ctx, slug) {
   if (p.spend === '1' || p.q) apply({ spend: p.spend === '1', q: p.q });
   else filterUi.setCount(d.rows.length, d.rows.length);
 
-  setViewStateProvider(() => ({ tscroll: { top: t.wrap.scrollTop, left: t.wrap.scrollLeft } }));
+  setViewStateProvider(() => ({ pins: campPins.list(), tscroll: { top: t.wrap.scrollTop, left: t.wrap.scrollLeft } }));
   ctx.mount(h('div', { class: 'page', 'data-level': 'campaigns' },
     pageHead(product, slug, p, 'campaigns'),
     h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Products', href: href('/', G) }, { label: product.name, href: href(path, G) }, { label: 'Campaigns' }])),
+    campPanel.el,
     h('div', { class: 'stagecards' }, cards),
     h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', 'Daily spend by stage'), h('span', { class: 'muted small' }, daily.length ? `${fmt.day(daily[0].day)} – ${fmt.day(daily[daily.length - 1].day)}` : '')), chartBox),
     h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Campaigns'), columnsChips(), filterUi.el),
@@ -313,6 +332,7 @@ async function campaignsView(ctx, slug) {
     unmatchedPanel(slug, p, null, signal),
   ));
   stageChart(canvas, Array.isArray(daily) ? daily : (daily.rows || []));
+  campPanel.load();
   const vs = ctx.restore;
   if (vs) { window.scrollTo(0, vs.scrollY || 0); if (vs.tscroll) { t.wrap.scrollTop = vs.tscroll.top || 0; t.wrap.scrollLeft = vs.tscroll.left || 0; } }
 }

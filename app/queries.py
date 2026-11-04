@@ -815,7 +815,8 @@ def _skeleton(lines: list[dict], level: str, cluster: str | None, icp: str | Non
     return out
 
 
-def rollup(conn, meta: DataMeta, w: WindowSpec, product: dict, level: str, cluster: str | None, icp: str | None) -> dict:
+def rollup(conn, meta: DataMeta, w: WindowSpec, product: dict, level: str, cluster: str | None, icp: str | None,
+           spark: tuple[str, int] | None = None) -> dict:
     if level not in LEVELS:
         raise ApiError(400, f"level must be one of {', '.join(LEVELS)}")
     if level in ("icp", "pain") and cluster is None:
@@ -862,6 +863,8 @@ def rollup(conn, meta: DataMeta, w: WindowSpec, product: dict, level: str, clust
     rows.sort(key=lambda r: r["label"] == UNTAGGED)          # stable: (untagged) rows last
     total_m = shape_m(total_row, w)
     apply_shares([r["m"] for r in rows] + [total_m], total_m)
+    if spark:
+        attach_spark_rollup(conn, meta, w, product, level, cluster, icp, rows, spark)
     return {"rows": rows, "total": {"m": total_m}, "unmatched": unmatched_summary(conn, product["id"], meta, w)}
 
 
@@ -870,7 +873,8 @@ def rollup(conn, meta: DataMeta, w: WindowSpec, product: dict, level: str, clust
 # --------------------------------------------------------------------------------------------------------------------
 
 
-def families(conn, meta: DataMeta, w: WindowSpec, product: dict, cluster: str | None, icp: str | None, pain: str | None) -> dict:
+def families(conn, meta: DataMeta, w: WindowSpec, product: dict, cluster: str | None, icp: str | None, pain: str | None,
+             spark: tuple[str, int] | None = None) -> dict:
     sql, params = _rm(meta, w, product_id=product["id"])
     where = "WHERE TRUE" + _tag_where(cluster, icp, pain, params)
     order = "ORDER BY rm.sheet_row NULLS LAST, rm.id"
@@ -915,6 +919,8 @@ ORDER BY g.spend DESC, g.display COLLATE "C", g.family_key COLLATE "C"      -- s
         })
     total_m = shape_m(sum_aggs(raw, unique_ads=len(raw)), w)
     apply_shares([r["m"] for r in out] + [total_m], total_m)
+    if spark:
+        attach_spark_families(conn, meta, w, product, cluster, icp, pain, out, spark)
     return {"rows": out, "total": {"m": total_m}}
 
 
@@ -944,7 +950,7 @@ def _tax_children(lines: list[dict]) -> tuple[dict, dict]:
 
 
 def tree(conn, meta: DataMeta, w: WindowSpec, product: dict, root: str, cluster: str | None, icp: str | None, pain: str | None,
-         depth: int) -> dict:
+         depth: int, spark: tuple[str, int] | None = None) -> dict:
     if root not in TREE_ROOTS:
         raise ApiError(400, f"root must be one of {', '.join(TREE_ROOTS)}")
     if not 0 <= depth <= 3:
@@ -1059,6 +1065,8 @@ GROUP BY GROUPING SETS ({sets_sql})
 
     total_m = shape_m(total_row, w)
     apply_shares([r["m"] for r in out] + [total_m], total_m)         # every row relative to the root total of this response
+    if spark:
+        attach_spark_tree(conn, meta, w, product, root_level, last, cluster, icp, pain, out, spark)
     return {"rows": out, "total": {"m": total_m}}
 
 
@@ -1105,27 +1113,37 @@ def _row_exprs(alias: str) -> dict:
     }
 
 
-def _sum_cols(alias: str, w: WindowSpec, cw: WindowSpec | None, signed_stage: str | None = None) -> str:
-    """Window A sums (all days for since-launch), window B sums, and days_active over ad_daily rows aliased `alias`.
-    signed_stage (since launch with a stage list that includes 'unclassified'): sum(included stages) - sum(every stage), i.e. the daily rows
-    count for their stage and are taken out of the lifetime row that is added separately (so the residual lands in 'unclassified')."""
-    e = _row_exprs(alias)
-    fa = "" if w.is_launch else f" FILTER (WHERE {alias}.day BETWEEN %(wf)s AND %(wt)s)"
-    if signed_stage:
-        cols = [f"COALESCE(sum({e[k]}) FILTER (WHERE {signed_stage}), 0) - COALESCE(sum({e[k]}), 0) AS {k}" for k in _A_KEYS]
-    else:
-        cols = [f"COALESCE(sum({e[k]}){fa}, 0) AS {k}" for k in _A_KEYS]
+def _pre_cols(w: WindowSpec, cw: WindowSpec | None) -> str:
+    """First pass over ad_daily rows (alias ad), already grouped per (ad, Meta family, campaign): window A sums (all days for since-launch),
+    window B sums, days_active. Stage logic is applied afterwards on the few groups instead of on every daily row."""
+    e = _row_exprs("ad")
+    fa = "" if w.is_launch else f" FILTER (WHERE ad.day BETWEEN %(wf)s AND %(wt)s)"
+    cols = [f"COALESCE(sum({e[k]}){fa}, 0) AS {k}" for k in _A_KEYS]
     b_src = dict(zip(_B_KEYS, ("spend", "purchases", "revenue", "imp", "clk", "clk_tr", "sp_tr")))
     for k in _B_KEYS:
-        cols.append(f"COALESCE(sum({e[b_src[k]]}) FILTER (WHERE {alias}.day BETWEEN %(cf)s AND %(ct)s), 0) AS {k}"
+        cols.append(f"COALESCE(sum({e[b_src[k]]}) FILTER (WHERE ad.day BETWEEN %(cf)s AND %(ct)s), 0) AS {k}"
                     if cw is not None else f"0::numeric AS {k}")
-    act = f"{alias}.spend > 0" + ("" if w.is_launch else f" AND {alias}.day BETWEEN %(wf)s AND %(wt)s")
-    cols.append(("0::bigint" if w.is_launch else f"count(*) FILTER (WHERE {act})") + " AS days_active")      # since launch: see dact in meta_ads
+    act = "ad.spend > 0" + ("" if w.is_launch else " AND ad.day BETWEEN %(wf)s AND %(wt)s")
+    cols.append(f"count(*) FILTER (WHERE {act}) AS days_active")
+    return ",\n         ".join(cols)
+
+
+def _post_cols(w: WindowSpec, signed_stage: str | None = None) -> str:
+    """Second pass over the pre-aggregated groups `da`. signed_stage (since launch with a stage list that includes 'unclassified'):
+    sum(included stages) - sum(every stage), i.e. the daily rows count for their stage and are taken out of the lifetime row that is added
+    separately (so the residual lands in 'unclassified')."""
+    if signed_stage:
+        cols = [f"COALESCE(sum(da.{k}) FILTER (WHERE {signed_stage}), 0) - COALESCE(sum(da.{k}), 0) AS {k}" for k in _A_KEYS]
+        cols += [f"0::numeric AS {k}" for k in _B_KEYS]
+    else:
+        cols = [f"COALESCE(sum(da.{k}), 0) AS {k}" for k in _ALL_KEYS]
+    cols.append("0::bigint AS days_active" if w.is_launch else "COALESCE(sum(da.days_active), 0)::bigint AS days_active")      # since launch: see dact
     return ",\n         ".join(cols)
 
 
 def meta_ads(conn, meta: DataMeta, w: WindowSpec, product: dict, *, cluster: str | None = None, icp: str | None = None,
-             pain: str | None = None, family_key: str | None = None, campaign_id: str | None = None) -> dict:
+             pain: str | None = None, family_key: str | None = None, campaign_id: str | None = None,
+             spark: tuple[str, int] | None = None) -> dict:
     """Individual Meta ads that make up the selection. Families are included where their first tracker row is in the selection, so the ad
     rows (plus the remainder rows) sum to the same totals the rollup / families tables show.
 
@@ -1157,12 +1175,12 @@ ad7 AS (
 ),
 """
     camp_pred = "(%(campaign)s::text IS NULL OR ad.campaign_id = %(campaign)s)"
-    stage_expr = "CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END"
+    stage_expr = "CASE WHEN da.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END"
     stage_in = f"{stage_expr} = ANY(%(stages)s)"
     day_pred = "ad.day <= %(dt)s" if launch else "ad.day BETWEEN %(lo)s AND %(hi)s"
-    aid_expr = "CASE WHEN starts_with(ad.ad_id, 'fam:') THEN NULL ELSE ad.ad_id END"
+    aid_expr = "CASE WHEN starts_with(da.ad_id, 'fam:') THEN NULL ELSE da.ad_id END"
     # one pass over ad_daily for tracker families AND (when nothing is selected by tag/family) Meta families that are not on the tracker
-    um_join = "" if have_tag_filter else "LEFT JOIN unmatched_meta um ON um.meta_family_key = ad.meta_family_key AND um.product_id = %(pid)s"
+    um_join = "" if have_tag_filter else "LEFT JOIN unmatched_meta um ON um.meta_family_key = da.meta_family_key AND um.product_id = %(pid)s"
     fk_expr = "s.family_key" if have_tag_filter else "COALESCE(s.family_key, um.meta_family_key)"
     member = "s.family_key IS NOT NULL" if have_tag_filter else "(s.family_key IS NOT NULL OR um.meta_family_key IS NOT NULL)"
     # since launch: the lifetime row carries the all-stage total, so with every stage included the daily rows only matter for days_active
@@ -1173,15 +1191,24 @@ ad7 AS (
     if not launch or not (incl_uncl and w.stage == "all"):
         signed = stage_in if (launch and incl_uncl) else None
         where_stage = "" if signed else f"AND {stage_in}"
-        parts.append(f"""
-  SELECT {aid_expr} AS aid, {fk_expr} AS fk, (s.family_key IS NOT NULL) AS matched, max(ad.meta_family) AS mf, max(NULLIF(ad.campaign_id, '')) AS camp,
-         {_sum_cols('ad', w, cw, signed)}
+        sql += f"""
+da AS (   -- one pass over ad_daily, grouped to (ad, Meta family, campaign): a few thousand groups instead of tens of thousands of days
+  SELECT ad.ad_id COLLATE "C" AS ad_id, ad.meta_family_key COLLATE "C" AS meta_family_key, ad.campaign_id COLLATE "C" AS campaign_id,
+         max(ad.meta_family) AS mf, {_pre_cols(w, cw)}
   FROM ad_daily ad
-  LEFT JOIN meta_family_map m ON m.meta_family_key = ad.meta_family_key
+  WHERE {day_pred} AND {camp_pred}
+  GROUP BY 1, 2, 3
+),
+"""
+        parts.append(f"""
+  SELECT {aid_expr} AS aid, {fk_expr} AS fk, (s.family_key IS NOT NULL) AS matched, max(da.mf) AS mf, max(NULLIF(da.campaign_id, '')) AS camp,
+         {_post_cols(w, signed)}
+  FROM da
+  LEFT JOIN meta_family_map m ON m.meta_family_key = da.meta_family_key
   LEFT JOIN sel s ON s.family_key = m.tracker_family_key
   {um_join}
-  LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
-  WHERE {day_pred} AND {member} {where_stage} AND {camp_pred}
+  LEFT JOIN meta_campaigns mc ON mc.campaign_id = da.campaign_id
+  WHERE {member} {where_stage}
   GROUP BY 1, 2, 3""")
     if launch and incl_uncl:
         sql += """
@@ -1291,6 +1318,8 @@ ORDER BY o.spend DESC, o.c_spend DESC, o.aid NULLS LAST
     total = {"ads": sum(1 for a in ads if a["ad_id"]), **window_block(side_a(tot), w, side_b(tot)),
              "spend_7d": f2(sum(Decimal(str(a["spend_7d"])) for a in ads)), "live": sum(1 for a in ads if a["live"])}
     apply_shares(ads + [total], total)
+    if spark:
+        attach_spark_ads(conn, meta, w, product, ads, spark)
     return {"rows": ads, "total": total}
 
 
@@ -1318,7 +1347,7 @@ def _filtered_sums(alias: str, pred_a: str, pred_b: str) -> str:
     return ",\n               ".join(cols)
 
 
-def campaigns(conn, meta: DataMeta, w: WindowSpec, product: dict) -> dict:
+def campaigns(conn, meta: DataMeta, w: WindowSpec, product: dict, spark: tuple[str, int] | None = None) -> dict:
     wf, wt = w.span(meta)
     cw = _cmp_window(w)
     d7 = meta.data_through - dt.timedelta(days=6)
@@ -1339,54 +1368,56 @@ r AS (
 ),
 f AS (SELECT *, (day BETWEEN %(wf)s AND %(wt)s) AS in_win, {in_cmp} AS in_cmp FROM r)
 """
-    sel = "f.stage = ANY(%(stages)s)"
-    stage_rows = rows_of(conn, base + f"""
-        SELECT f.stage,
-               count(DISTINCT f.campaign_id) FILTER (WHERE f.in_win AND f.campaign_id <> '' AND f.spend > 0) AS campaigns,
+    # ONE scan of the product's ad_daily rows, grouped by (campaign, stage); the stage cards, the campaign rows and the total are all derived
+    # from those few groups in Python (a campaign has a single stage, so the stage filter simply keeps or drops whole groups)
+    groups = rows_of(conn, base + f"""
+        SELECT f.campaign_id, f.stage, mc.name, mc.account,
                count(DISTINCT f.ad_id) FILTER (WHERE f.in_win AND NOT f.is_fam AND f.spend > 0) AS ads,
+               count(DISTINCT f.meta_family_key) FILTER (WHERE f.in_win AND f.spend > 0) AS families,
                {_filtered_sums('f', 'f.in_win', 'f.in_cmp')},
-               COALESCE(sum(f.spend) FILTER (WHERE f.day >= %(d7)s), 0) AS spend_7d
-        FROM f GROUP BY f.stage""", params)
-    by = {r["stage"]: r for r in stage_rows}
-    by_stage = []
-    for st in STAGES:
-        r = by.get(st)
-        if r is None and st == "unclassified":
-            continue
-        r = r or {**{k: 0 for k in _ALL_KEYS}, "campaigns": 0, "ads": 0, "spend_7d": 0}
-        by_stage.append({"stage": st, "campaigns": int(r["campaigns"]), "ads": int(r["ads"]), **window_block(side_a(r), w, side_b(r)),
-                         "spend_7d": f2(r["spend_7d"])})
-
-    crow = rows_of(conn, base + f"""
-        SELECT f.campaign_id, mc.name, mc.account, COALESCE(mc.stage, 'unclassified') AS stage,
-               count(DISTINCT f.ad_id) FILTER (WHERE f.in_win AND NOT f.is_fam AND {sel} AND f.spend > 0) AS ads,
-               count(DISTINCT f.meta_family_key) FILTER (WHERE f.in_win AND {sel} AND f.spend > 0) AS families,
-               {_filtered_sums('f', f'f.in_win AND {sel}', f'f.in_cmp AND {sel}')},
                COALESCE(sum(f.spend) FILTER (WHERE f.day >= %(d7)s), 0) AS spend_7d,
                COALESCE(sum(f.spend) FILTER (WHERE f.day >= %(d1)s), 0) > 0 AS live,
                max(f.day) FILTER (WHERE f.spend > 0) AS last_day
         FROM f LEFT JOIN meta_campaigns mc ON mc.campaign_id = f.campaign_id
-        GROUP BY f.campaign_id, mc.name, mc.account, mc.stage
-        HAVING COALESCE(sum(f.spend) FILTER (WHERE (f.in_win OR f.in_cmp) AND {sel}), 0) <> 0
-            OR COALESCE(sum(f.purchases) FILTER (WHERE (f.in_win OR f.in_cmp) AND {sel}), 0) <> 0
-        ORDER BY spend DESC, c_spend DESC, f.campaign_id""", params)
-    rows = [{"campaign_id": r["campaign_id"], "name": NO_CAMPAIGN_NAME if r["campaign_id"] == "" else (r["name"] or r["campaign_id"]),
-             "account": r["account"], "stage": "unclassified" if r["campaign_id"] == "" else r["stage"],
-             "ads": int(r["ads"]), "families": int(r["families"]), **window_block(side_a(r), w, side_b(r)),
-             "spend_7d": f2(r["spend_7d"]), "live": bool(r["live"]),
-             "last_day": r["last_day"].isoformat() if r["last_day"] else None} for r in crow]
+        GROUP BY f.campaign_id, f.stage, mc.name, mc.account""", params)
+    keep = set(w.stages)
 
-    tr_ = row_of(conn, base + f"""
-        SELECT count(DISTINCT f.campaign_id) FILTER (WHERE f.in_win AND f.campaign_id <> '' AND {sel} AND f.spend > 0) AS campaigns,
-               count(DISTINCT f.ad_id) FILTER (WHERE f.in_win AND NOT f.is_fam AND {sel} AND f.spend > 0) AS ads,
-               {_filtered_sums('f', f'f.in_win AND {sel}', f'f.in_cmp AND {sel}')},
-               COALESCE(sum(f.spend) FILTER (WHERE f.day >= %(d7)s AND {sel}), 0) AS spend_7d
-        FROM f""", params)
-    total = {"campaigns": int(tr_["campaigns"]), "ads": int(tr_["ads"]), **window_block(side_a(tr_), w, side_b(tr_)),
-             "spend_7d": f2(tr_["spend_7d"])}
+    def fold(gs, with_counts=True):
+        acc = {k: Decimal(0) for k in _ALL_KEYS}
+        acc.update(spend_7d=Decimal(0), ads=0, campaigns=0)
+        for g in gs:
+            for k in _ALL_KEYS:
+                acc[k] += g[k]
+            acc["spend_7d"] += g["spend_7d"]
+            acc["ads"] += int(g["ads"])
+            if g["campaign_id"] != "" and g["spend"] > 0:
+                acc["campaigns"] += 1
+        return acc
+
+    by_stage = []
+    for st in STAGES:
+        gs = [g for g in groups if g["stage"] == st]
+        if not gs and st == "unclassified":
+            continue
+        acc = fold(gs)
+        by_stage.append({"stage": st, "campaigns": acc["campaigns"], "ads": acc["ads"], **window_block(side_a(acc), w, side_b(acc)),
+                         "spend_7d": f2(acc["spend_7d"])})
+
+    shown = [g for g in groups if g["stage"] in keep and any(g[k] != 0 for k in ("spend", "purchases", "c_spend", "c_purch"))]
+    shown.sort(key=lambda g: (-g["spend"], -g["c_spend"], g["campaign_id"]))
+    rows = [{"campaign_id": g["campaign_id"], "name": NO_CAMPAIGN_NAME if g["campaign_id"] == "" else (g["name"] or g["campaign_id"]),
+             "account": g["account"], "stage": "unclassified" if g["campaign_id"] == "" else g["stage"],
+             "ads": int(g["ads"]), "families": int(g["families"]), **window_block(side_a(g), w, side_b(g)),
+             "spend_7d": f2(g["spend_7d"]), "live": bool(g["live"]),
+             "last_day": g["last_day"].isoformat() if g["last_day"] else None} for g in shown]
+
+    tr_ = fold([g for g in groups if g["stage"] in keep])
+    total = {"campaigns": tr_["campaigns"], "ads": tr_["ads"], **window_block(side_a(tr_), w, side_b(tr_)), "spend_7d": f2(tr_["spend_7d"])}
     apply_shares(rows + [total], total)
     apply_shares(by_stage, {"spend": sum(c["spend"] for c in by_stage),
                             **({"cmp": {"spend": sum(c["cmp"]["spend"] for c in by_stage)}} if w.cmp is not None else {})})
+    if spark:
+        attach_spark_campaigns(conn, meta, w, product, rows, spark)
     return {"by_stage": by_stage, "rows": rows, "total": total}
 
 
@@ -1628,6 +1659,345 @@ def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
         "campaigns": campaigns_out,
         "daily": daily,
     }
+
+
+# --------------------------------------------------------------------------------------------------------------------
+# trend lines + sparklines (v1.6)
+# --------------------------------------------------------------------------------------------------------------------
+
+TREND_GRAINS = ("day", "week")
+TREND_SPLITS = ("none", "stage", "children")
+SPARK_METRICS = ("spend", "purchases", "revenue", "roas", "cpa", "impressions", "link_clicks", "ctr", "cpc", "cpm", "conv_rate")
+MAX_SPARK_DAYS = 60
+POINT_KEYS = ("spend", "purchases", "revenue", "roas", "cpa", "impressions", "link_clicks", "ctr", "cpc", "cpm", "conv_rate")
+OTHER_KEY = "__other__"
+NOT_ON_TRACKER = "(not on tracker)"
+MAX_TREND_CHILDREN = 8
+
+_FD_SUM_EXPR = {"spend": "fd.spend", "purchases": "fd.purchases", "revenue": "fd.revenue", "imp": "fd.impressions", "clk": "fd.link_clicks",
+                "clk_tr": "fd.clicks_tr", "sp_tr": "fd.spend_tr", "purch_t": "fd.purchases"}
+
+
+def _vec() -> dict:
+    return {k: Decimal(0) for k in _A_KEYS}
+
+
+def _vec_add(a: dict, b: dict) -> None:
+    for k in _A_KEYS:
+        a[k] += b[k]
+
+
+def _vec_of(r: dict) -> dict:
+    return {k: r[k] if r[k] is not None else Decimal(0) for k in _A_KEYS}
+
+
+def _point(t: dt.date, vec: dict, partial: bool = False) -> dict:
+    """One chart point. Ratios come from the bucket's sums (never averaged); unknown / zero denominators are null."""
+    f = side_fields(vec, None)
+    p: dict[str, Any] = {"t": t.isoformat()}
+    if partial:
+        p["partial"] = True
+    p.update({k: f[k] for k in POINT_KEYS})
+    return p
+
+
+def _buckets(day_vecs: dict, d_from: dt.date, d_to: dt.date, grain: str) -> list[tuple[dt.date, bool, dict]]:
+    """Continuous x-axis: every day (or every ISO week, Monday start) of the range, zeros where nothing happened. A week is partial when the
+    range cuts it (first/last week)."""
+    out: list[tuple[dt.date, bool, dict]] = []
+    if grain == "day":
+        d = d_from
+        while d <= d_to:
+            out.append((d, False, day_vecs.get(d) or _vec()))
+            d += dt.timedelta(days=1)
+        return out
+    mon = d_from - dt.timedelta(days=d_from.weekday())
+    while mon <= d_to:
+        v = _vec()
+        for i in range(7):
+            day = mon + dt.timedelta(days=i)
+            if d_from <= day <= d_to and day in day_vecs:
+                _vec_add(v, day_vecs[day])
+        out.append((mon, mon < d_from or mon + dt.timedelta(days=6) > d_to, v))
+        mon += dt.timedelta(days=7)
+    return out
+
+
+def _points(day_vecs: dict, d_from: dt.date, d_to: dt.date, grain: str) -> list[dict]:
+    return [_point(t, v, partial) for t, partial, v in _buckets(day_vecs, d_from, d_to, grain)]
+
+
+def _child_level(cluster, icp, pain, family_key) -> int | None:
+    """Level of the rows that split=children draws: clusters for the whole product, then ICPs, pain points, families; none below a family."""
+    if family_key is not None:
+        return None
+    return 3 if pain is not None else 2 if icp is not None else 1 if cluster is not None else 0
+
+
+_CKEY_SQL = {
+    0: ("tr.cluster", "tr.cluster"),
+    1: ("tr.cluster || '|' || tr.icp", "tr.icp"),
+    2: ("tr.cluster || '|' || tr.icp || '|' || tr.pain", "tr.pain"),
+    3: ("tr.cluster || '|' || tr.icp || '|' || tr.pain || '|' || tr.family_key", "tr.display"),
+}
+
+
+def trend(conn, meta: DataMeta, w: WindowSpec, product: dict, *, cluster: str | None = None, icp: str | None = None, pain: str | None = None,
+          family_key: str | None = None, campaign_id: str | None = None, grain: str = "day", split: str = "none",
+          children_keys: list[str] | None = None) -> dict:
+    """Time series for a scope (tag filters + family + campaign), window A and (compare) window B, in one pass over family_daily
+    (or ad_daily when a campaign is selected, since campaigns only exist at ad grain)."""
+    if grain not in TREND_GRAINS:
+        raise ApiError(400, f"grain must be one of {', '.join(TREND_GRAINS)}")
+    if split not in TREND_SPLITS:
+        raise ApiError(400, f"split must be one of {', '.join(TREND_SPLITS)}")
+    if children_keys is not None and len(children_keys) > 12:
+        raise ApiError(400, "children takes at most 12 keys")
+    df, dtt = (meta.daily_start, meta.data_through) if w.is_launch else (w.date_from, w.date_to)
+    cw = _cmp_window(w)
+    lo, hi = (min(df, cw.date_from), max(dtt, cw.date_to)) if cw is not None else (df, dtt)
+    level = _child_level(cluster, icp, pain, family_key) if split == "children" else None
+    want_children = split == "children" and level is not None
+
+    params: dict[str, Any] = {"pid": product["id"], "stages": w.stages, "lo": lo, "hi": hi, "wf": df, "wt": dtt, "campaign": campaign_id,
+                              "other": OTHER_KEY}
+    sql = "WITH " + _tr_cte(product["id"], family_key, params)
+    tagw = _tag_where(cluster, icp, pain, params, prefix="tr.")
+    ckey_sql, label_sql = _CKEY_SQL[level] if want_children else ("''::text", "''::text")
+    sql += f""",
+sel AS (
+  SELECT DISTINCT ON (tr.family_key) tr.family_key, {ckey_sql} AS ckey, {label_sql} AS clabel, tr.color AS color
+  FROM tr JOIN ad_metrics am ON am.tracker_row_id = tr.id AND am.is_first_row
+  WHERE NOT starts_with(tr.family_key, 'id:') {tagw}
+  ORDER BY tr.family_key, tr.sheet_row NULLS LAST, tr.id
+),"""
+    if campaign_id is None:
+        sums = ", ".join(f"{_FD_SUM_EXPR[k]} AS {k}" for k in _A_KEYS)
+        sql += f"""
+d AS (
+  SELECT s.ckey, s.clabel, s.color, fd.day, fd.stage, {sums}
+  FROM family_daily fd JOIN sel s ON s.family_key = fd.family_key
+  WHERE fd.day BETWEEN %(lo)s AND %(hi)s AND fd.stage = ANY(%(stages)s)
+),"""
+    else:
+        no_tags = all(v is None for v in (cluster, icp, pain, family_key))
+        e = _row_exprs("ad")
+        sums = ", ".join(f"{e[k]} AS {k}" for k in _A_KEYS)
+        um_join = "LEFT JOIN unmatched_meta um ON um.meta_family_key = ad.meta_family_key AND um.product_id = %(pid)s" if no_tags else ""
+        member = "(s.family_key IS NOT NULL OR um.meta_family_key IS NOT NULL)" if no_tags else "s.family_key IS NOT NULL"
+        stage_expr = "CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END"
+        off_tracker = f"'{NOT_ON_TRACKER}'" if want_children else "''"
+        sql += f"""
+d AS (
+  SELECT COALESCE(s.ckey, {off_tracker}) AS ckey, COALESCE(s.clabel, {off_tracker}) AS clabel, s.color, ad.day, {stage_expr} AS stage, {sums}
+  FROM ad_daily ad
+  LEFT JOIN meta_family_map m ON m.meta_family_key = ad.meta_family_key
+  LEFT JOIN sel s ON s.family_key = m.tracker_family_key
+  {um_join}
+  LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
+  WHERE ad.campaign_id = %(campaign)s AND ad.day BETWEEN %(lo)s AND %(hi)s AND {member} AND {stage_expr} = ANY(%(stages)s)
+),"""
+    agg = ", ".join(f"sum({k}) AS {k}" for k in _A_KEYS)
+    sql += f"""
+dg AS (SELECT ckey, max(clabel) AS clabel, max(color) AS color, day, stage, {agg} FROM d GROUP BY ckey, day, stage)"""
+    if want_children:
+        if children_keys:
+            params["keys"] = children_keys
+            top = "SELECT unnest(%(keys)s::text[]) AS ckey"
+        else:
+            top = (f"SELECT ckey FROM (SELECT ckey, sum(spend) FILTER (WHERE day BETWEEN %(wf)s AND %(wt)s) AS s FROM dg GROUP BY ckey) t "
+                   f"ORDER BY s DESC NULLS LAST, ckey LIMIT {MAX_TREND_CHILDREN}")
+        sql += f""",
+top AS ({top})
+SELECT CASE WHEN ckey IN (SELECT ckey FROM top) THEN ckey ELSE %(other)s END AS gkey, max(clabel) AS clabel, max(color) AS color, day, stage, {agg}
+FROM dg GROUP BY 1, day, stage"""
+    else:
+        sql += f"""
+SELECT ''::text AS gkey, NULL::text AS clabel, NULL::text AS color, day, stage, {agg} FROM dg GROUP BY day, stage"""
+    raw = rows_of(conn, sql, params)
+
+    total: dict[dt.date, dict] = {}
+    by_stage: dict[str, dict[dt.date, dict]] = {st: {} for st in w.stages}
+    by_child: dict[str, dict[dt.date, dict]] = {}
+    child_meta: dict[str, tuple] = {}
+    child_spend: dict[str, Decimal] = {}
+    for r in raw:
+        v = _vec_of(r)
+        day = r["day"]
+        _vec_add(total.setdefault(day, _vec()), v)
+        _vec_add(by_stage.setdefault(r["stage"], {}).setdefault(day, _vec()), v)
+        if want_children:
+            g = r["gkey"]
+            _vec_add(by_child.setdefault(g, {}).setdefault(day, _vec()), v)
+            child_meta.setdefault(g, (r["clabel"], r["color"]))
+            if df <= day <= dtt:
+                child_spend[g] = child_spend.get(g, Decimal(0)) + v["spend"]
+
+    out: dict[str, Any] = {"grain": grain, "scope": {"cluster": cluster, "icp": icp, "pain": pain, "family_key": family_key, "campaign_id": campaign_id},
+                           "points": _points(total, df, dtt, grain)}
+    if cw is not None or w.cmp is not None:
+        n = len(out["points"])
+        cmp_pts: list[dict | None] = _points(_day_slice(total, cw), cw.date_from, cw.date_to, grain) if cw is not None else []
+        out["cmp_points"] = (cmp_pts + [None] * n)[:n]                       # aligned to A by position, null-padded
+    if split == "stage":
+        out["by_stage"] = {st: _points(by_stage.get(st, {}), df, dtt, grain) for st in w.stages}
+    if split == "children":
+        kids = []
+        order = sorted((g for g in by_child if g != OTHER_KEY), key=lambda g: (-child_spend.get(g, Decimal(0)), g))
+        if children_keys:                                                       # explicit keys keep the caller's order
+            order = [k for k in children_keys if k in by_child and k != OTHER_KEY]
+        for g in order:
+            label, color = child_meta[g]
+            kids.append({"key": g, "label": label, "color": color, "points": _points(by_child[g], df, dtt, grain)})
+        if OTHER_KEY in by_child:
+            kids.append({"key": OTHER_KEY, "label": "Other", "color": None, "points": _points(by_child[OTHER_KEY], df, dtt, grain)})
+        out["children"] = kids
+    return out
+
+
+def _day_slice(day_vecs: dict, win: WindowSpec) -> dict:
+    return {d: v for d, v in day_vecs.items() if win.date_from <= d <= win.date_to}
+
+
+# ---- sparklines -----------------------------------------------------------------------------------------------------
+
+
+def parse_spark(args) -> tuple[str, int] | None:
+    """spark=<metric>&spark_days=N (1..60, default 30). Absent spark -> None."""
+    metric = (args.get("spark") or "").strip().lower()
+    if not metric:
+        return None
+    if metric not in SPARK_METRICS:
+        raise ApiError(400, f"spark must be one of {', '.join(SPARK_METRICS)}")
+    raw = (args.get("spark_days") or "30").strip()
+    if not raw.isdigit() or not 1 <= int(raw) <= MAX_SPARK_DAYS:
+        raise ApiError(400, f"spark_days must be an integer from 1 to {MAX_SPARK_DAYS}")
+    return metric, int(raw)
+
+
+def _spark_range(meta: DataMeta, w: WindowSpec, n: int) -> tuple[dt.date, dt.date]:
+    end = meta.data_through if w.is_launch else w.date_to
+    return end - dt.timedelta(days=n - 1), end
+
+
+# metric -> SQL over the dense per-day sums (spend, purchases, revenue, imp, clk, clk_tr, sp_tr, purch_t; zeros on empty days). These mirror
+# side_fields(): unknown traffic is null, ratios come from the day's own sums and are null when the denominator is 0.
+_SPARK_SQL = {
+    "spend": "round(spend, 2)", "purchases": "round(purchases, 2)", "revenue": "round(revenue, 2)",
+    "roas": "CASE WHEN spend = 0 THEN NULL ELSE round(revenue / spend, 4) END",
+    "cpa": "CASE WHEN purchases = 0 THEN NULL ELSE round(spend / purchases, 2) END",
+    "impressions": "CASE WHEN imp = 0 AND (clk > 0 OR spend > 0) THEN NULL ELSE imp END",
+    "link_clicks": "CASE WHEN clk = 0 AND imp = 0 AND spend > 0 THEN NULL ELSE clk END",
+    "ctr": "CASE WHEN imp = 0 THEN NULL ELSE round(clk_tr / imp, 5) END",
+    "cpc": "CASE WHEN clk = 0 OR (sp_tr = 0 AND spend > 0) THEN NULL ELSE round(sp_tr / clk, 4) END",
+    "cpm": "CASE WHEN imp = 0 OR (sp_tr = 0 AND spend > 0) THEN NULL ELSE round(sp_tr * 1000 / imp, 4) END",
+    "conv_rate": "CASE WHEN clk = 0 THEN NULL ELSE round(purch_t / clk, 5) END",
+}
+
+
+def _spark_tail(metric: str) -> str:
+    """SQL appended after a CTE `g(gk, day, spend, ..., purch_t)` of per-group-day sums: one dense row per group with a float8[] of n days
+    (zero / null filled) computed from the day's sums, all in the same statement."""
+    cols = ", ".join(f"COALESCE(g.{k}, 0) AS {k}" for k in _A_KEYS)
+    return f""",
+keys AS (SELECT DISTINCT gk COLLATE "C" AS gk FROM g),
+days AS (SELECT d::date AS day FROM generate_series(%(sf)s::date, %(st)s::date, interval '1 day') d),
+dense AS (SELECT k.gk, dy.day, {cols} FROM keys k CROSS JOIN days dy LEFT JOIN g ON g.gk COLLATE "C" = k.gk AND g.day = dy.day)
+SELECT gk, array_agg(({_SPARK_SQL[metric]})::float8 ORDER BY day) AS vals FROM dense GROUP BY gk"""
+
+
+def _spark_arrays(conn, sql: str, params: dict, metric: str) -> dict[str, list]:
+    return {r["gk"]: list(r["vals"]) for r in rows_of(conn, sql + _spark_tail(metric), params)}
+
+
+def _blank_spark(n: int, metric: str) -> list:
+    """What a group with no data in the range shows: zeros for additive metrics (and unknown-free traffic counts), null for ratios."""
+    zero = side_fields(_vec(), None)[metric]
+    return [zero] * n
+
+
+_TREE_KEY_COLS = ("cluster", "icp", "pain", "family_key")
+
+
+def _spark_family_arrays(conn, meta: DataMeta, w: WindowSpec, product: dict, spark: tuple[str, int], sets: list[tuple], *,
+                         cluster=None, icp=None, pain=None, family_key=None) -> dict[str, list]:
+    """Sparkline arrays of first-row families grouped by each of `sets` (tuples of whitelisted column names), keyed by '|'-joined key."""
+    metric, n = spark
+    sf, st = _spark_range(meta, w, n)
+    params: dict[str, Any] = {"stages": w.stages, "sf": sf, "st": st}
+    sql = "WITH " + _tr_cte(product["id"], family_key, params)
+    tagw = _tag_where(cluster, icp, pain, params, prefix="tr.")
+    sets_sql = ", ".join("(" + ", ".join(f"fs.{c}" for c in cols) + ", fd.day)" for cols in sets)
+    used = {c for cols in sets for c in cols}                      # a column that is in no grouping set cannot be referenced at all
+    gk = "concat_ws('|', " + ", ".join(f"fs.{c}" for c in _TREE_KEY_COLS if c in used) + ")"
+    sums = ", ".join(f"sum({_FD_SUM_EXPR[k]}) AS {k}" for k in _A_KEYS)
+    sql += f""",
+fs AS (
+  SELECT DISTINCT ON (tr.family_key) tr.family_key, tr.cluster, tr.icp, tr.pain
+  FROM tr JOIN ad_metrics am ON am.tracker_row_id = tr.id AND am.is_first_row
+  WHERE NOT starts_with(tr.family_key, 'id:') {tagw}
+  ORDER BY tr.family_key, tr.sheet_row NULLS LAST, tr.id
+),
+g AS (
+  SELECT {gk} AS gk, fd.day, {sums}
+  FROM fs JOIN family_daily fd ON fd.family_key = fs.family_key
+  WHERE fd.day BETWEEN %(sf)s AND %(st)s AND fd.stage = ANY(%(stages)s)
+  GROUP BY GROUPING SETS ({sets_sql})
+)"""
+    return _spark_arrays(conn, sql, params, metric)
+
+
+def attach_spark_rollup(conn, meta, w, product, level, cluster, icp, rows, spark):
+    cols = GROUP_COLS[level]
+    arrays = _spark_family_arrays(conn, meta, w, product, spark, [cols], cluster=cluster if level != "cluster" else None,
+                                  icp=icp if level == "pain" else None)
+    for r in rows:
+        r["spark"] = arrays.get("|".join(r[c] for c in cols)) or _blank_spark(spark[1], spark[0])
+
+
+def attach_spark_families(conn, meta, w, product, cluster, icp, pain, rows, spark):
+    arrays = _spark_family_arrays(conn, meta, w, product, spark, [("family_key",)], cluster=cluster, icp=icp, pain=pain)
+    for r in rows:
+        r["spark"] = arrays.get(r["family_key"]) or _blank_spark(spark[1], spark[0])
+
+
+def attach_spark_tree(conn, meta, w, product, root_level, last, cluster, icp, pain, rows, spark):
+    sets = [_TREE_COLS[lv] for lv in range(root_level, last + 1)]
+    arrays = _spark_family_arrays(conn, meta, w, product, spark, sets, cluster=cluster if root_level >= 1 else None,
+                                  icp=icp if root_level >= 2 else None, pain=pain if root_level >= 3 else None)
+    for r in rows:
+        r["spark"] = arrays.get(r["key"]) or _blank_spark(spark[1], spark[0])
+
+
+def _spark_ad_rows(conn, meta, w, product, spark, key_sql: str, where_sql: str, params: dict) -> dict[str, list]:
+    """Sparkline arrays straight from ad_daily rows (campaign / ad grain). key_sql and where_sql are fixed fragments from this module."""
+    metric, n = spark
+    sf, st = _spark_range(meta, w, n)
+    e = _row_exprs("ad")
+    sums = ", ".join(f"sum({e[k]}) AS {k}" for k in _A_KEYS)
+    stage_expr = "CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END"
+    sql = f"""
+        WITH {_PRODUCT_FAMILIES},
+        g AS (
+          SELECT ({key_sql}) COLLATE "C" AS gk, ad.day, {sums}
+          FROM ad_daily ad LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
+          WHERE ad.day BETWEEN %(sf)s AND %(st)s AND {stage_expr} = ANY(%(stages)s) AND {where_sql}
+          GROUP BY 1, ad.day
+        )"""
+    return _spark_arrays(conn, sql, {**params, "pid": product["id"], "sf": sf, "st": st, "stages": w.stages}, metric)
+
+
+def attach_spark_campaigns(conn, meta, w, product, rows, spark):
+    arrays = _spark_ad_rows(conn, meta, w, product, spark, "ad.campaign_id", "ad.meta_family_key IN (SELECT meta_family_key FROM pf)", {})
+    for r in rows:
+        r["spark"] = arrays.get(r["campaign_id"]) or _blank_spark(spark[1], spark[0])
+
+
+def attach_spark_ads(conn, meta, w, product, rows, spark):
+    ids = sorted({r["ad_id"] for r in rows if r["ad_id"]})
+    arrays = _spark_ad_rows(conn, meta, w, product, spark, "ad.ad_id", "ad.ad_id = ANY(%(ids)s)", {"ids": ids}) if ids else {}
+    for r in rows:
+        r["spark"] = (arrays.get(r["ad_id"]) or _blank_spark(spark[1], spark[0])) if r["ad_id"] else None      # remainder rows have no series
 
 
 # --------------------------------------------------------------------------------------------------------------------

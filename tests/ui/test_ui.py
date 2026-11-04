@@ -168,6 +168,26 @@ def delta_pct(cell_text):
     return v if m.group(1) == "▲" else -v
 
 
+def trend_info(page):
+    """state of the trend chart (Chart.js instance #trend-chart)"""
+    return page.evaluate("""() => { const c = window.Chart && Chart.getChart('trend-chart'); if (!c) return null;
+        return {n: c.data.datasets.length, labels: c.data.labels.slice(), stacked: !!c.options.scales.y.stacked,
+                ds: c.data.datasets.map((d, i) => ({label: d.label, fill: !!d.fill, dash: d.borderDash || null, stack: d.stack || null, hidden: !c.isDatasetVisible(i), data: d.data.slice(), color: d.borderColor})),
+                shades: c.options.plugins.windowShade.shades, kind: c.data.datasets.length ? null : null}; }""")
+
+
+def wait_trend(page):
+    """the trend chart exists, has data and is not loading"""
+    page.wait_for_function("() => { const c = window.Chart && Chart.getChart('trend-chart'); const s = document.querySelector('#trend-status'); return !!c && c.data.datasets.length > 0 && s && s.textContent === ''; }")
+
+
+def trend_requests(page):
+    """collect /trend API requests; returns the (mutable) list of parsed query dicts"""
+    reqs = []
+    page.on("request", lambda r: reqs.append({k: v[0] for k, v in parse_qs(urlparse(r.url).query).items()}) if "/trend" in r.url and "/api/" in r.url else None)
+    return reqs
+
+
 def chip(page, stage):
     return page.locator(f".schip[data-stage={stage}]")
 
@@ -969,7 +989,7 @@ def open_first_ad(page, params=""):
     href = first_row(page).get_attribute("data-href")
     page.goto(href + (("&" if "?" in href else "?") + params.lstrip("?&") if params else ""))
     expect(page.locator("#ad-title")).to_be_visible()
-    page.wait_for_selector("#daily-chart")
+    wait_trend(page)
 
 
 def test_ad_detail_sections(page):
@@ -991,17 +1011,15 @@ def test_ad_detail_sections(page):
     if page.locator("#meta-ads").count():
         expect(page.locator("#meta-ads")).to_be_visible()
         expect(page.locator("#meta-ads th[data-col=spend_share]")).to_contain_text("% of family")
-    info = page.evaluate("""() => { const c = Chart.getChart('daily-chart');
-        return {n: c.data.datasets.length, days: c.data.labels.length, shades: c.options.plugins.windowShade.shades, first: c.data.labels[0], last: c.data.labels[c.data.labels.length-1]}; }""")
-    assert info["n"] == 5 and info["days"] >= 100  # spend, revenue, purchases + impressions, clicks (hidden by default)
+    # trend panel on the ad page: full series since daily_start, the selected window shaded (window A)
+    expect(page.locator("#trend-panel")).to_be_visible()
+    info = trend_info(page)
+    assert info["n"] == 1 and len(info["labels"]) >= 100
     sh = info["shades"]
-    assert len(sh) == 1 and sh[0]["i1"] == info["days"] - 1 and sh[0]["i1"] - sh[0]["i0"] == 6, info
+    assert len(sh) == 1 and sh[0]["i1"] == len(info["labels"]) - 1 and sh[0]["i1"] - sh[0]["i0"] == 6, sh
     if IS_MOCK:
-        assert info["days"] == 181 and info["first"] == "2026-05-06" and info["last"] == "2026-11-02"
-    page.uncheck("#toggle-revenue")
-    assert page.evaluate("() => Chart.getChart('daily-chart').isDatasetVisible(1)") is False
-    page.check("#toggle-revenue")
-    assert page.evaluate("() => Chart.getChart('daily-chart').isDatasetVisible(1)") is True
+        assert len(info["labels"]) == 181 and info["labels"][0] == "2026-05-06" and info["labels"][-1] == "2026-11-02"
+    assert page.locator("#trend-split").count() == 0  # the ad page has no "Split by"
     expect(page.locator("#family-metrics")).to_contain_text("days")
 
 
@@ -1276,9 +1294,9 @@ def test_compare_ad_detail_table_and_two_shades(page):
         assert page.locator(f"#compare-table tr[data-metric={metric}] td").count() == 4  # A | B | Δ | Δ %
     head = page.locator("#compare-table thead").inner_text()
     assert "A" in head and "B" in head and "Δ" in head
-    sh = page.evaluate("() => Chart.getChart('daily-chart').options.plugins.windowShade.shades")
+    sh = trend_info(page)["shades"]
     assert len(sh) == 2 and sh[0]["i0"] > sh[1]["i0"], sh  # A (recent) and B (earlier), two tints
-    expect(page.locator("#daily-card .shade-note")).to_contain_text("A")
+    expect(page.locator("#trend-note")).to_contain_text("window A")
     if page.locator("#meta-ads").count():
         assert page.locator("#meta-ads .cmpcell").count() >= 1
     page.select_option("#cmp", "30d")
@@ -1390,23 +1408,17 @@ def test_traffic_null_days_show_dash_and_the_api_note(page):
     assert "Impressions" not in page.locator("#range-note").inner_text()
 
 
-def test_ad_detail_chart_has_impressions_and_clicks_toggles(page):
+def test_ad_trend_panel_metric_chips_include_traffic(page):
     open_first_ad(page, "window=14d")
-    for name in ("impressions", "clicks"):
-        expect(page.locator(f"#toggle-{name}")).to_be_visible()
-        assert not page.is_checked(f"#toggle-{name}")  # off by default
-    labels = page.evaluate("() => Chart.getChart('daily-chart').data.datasets.map(d => d.label)")
-    assert labels == ["Spend", "Revenue", "Purchases", "Impressions", "Clicks"]
-    assert page.evaluate("() => Chart.getChart('daily-chart').isDatasetVisible(3)") is False
-    page.check("#toggle-impressions")
-    page.check("#toggle-clicks")
-    assert page.evaluate("() => [3, 4].map(i => Chart.getChart('daily-chart').isDatasetVisible(i))") == [True, True]
-    page.uncheck("#toggle-impressions")
-    assert page.evaluate("() => Chart.getChart('daily-chart').isDatasetVisible(3)") is False
+    chips = page.locator("#trend-metrics .mchip:visible").all_inner_texts()
+    assert chips == ["Spend", "Purchases", "Revenue", "ROAS", "CPA", "Impressions", "Link clicks", "CTR", "CPC"], chips
+    page.locator("#trend-metrics .mchip[data-metric=impressions]").click()
+    expect(page).to_have_url(re.compile(r"tm=impressions"))
+    wait_trend(page)
+    expect(page.locator("#trend-metrics .mchip[data-metric=impressions]")).to_have_attribute("aria-pressed", "true")
     if IS_MOCK:  # days without impressions are gaps (null), never zero
-        first = page.evaluate("() => Chart.getChart('daily-chart').data.datasets[3].data[0]")
-        assert first is None
-    shot(page, "27_chart_traffic")
+        assert trend_info(page)["ds"][0]["data"][0] is None
+    shot(page, "27_ad_trend_impressions")
 
 
 def test_source_line_and_no_sheet_wording(page):
@@ -1423,6 +1435,315 @@ def test_source_line_and_no_sheet_wording(page):
     text = page.locator("body").inner_text().lower()
     assert not re.search(r"\bsheets?\b|\btabs?\b|ties to|google", text)
     assert page.locator("#source").inner_text().startswith("Source: Meta Marketing API")
+
+
+# ------------------------------------------------------------------ trend panel, sparklines, pins (v1.6)
+def test_trend_panel_renders_at_every_level(page):
+    cluster, icp, pain = drill_to_families(page)
+    urls = ["/", f"/p/{SLUG}", purl(cluster), purl(cluster, icp), purl(cluster, icp, pain), f"/p/{SLUG}?all=1",
+            f"/p/{SLUG}?view=ads", f"/p/{SLUG}?view=campaigns", f"/p/{SLUG}?window=14d&compare=prev"]
+    for u in urls:
+        page.goto(u)
+        page.wait_for_selector(".tablebox")
+        wait_trend(page)
+        info = trend_info(page)
+        assert info["n"] >= 1 and len(info["labels"]) >= 5, (u, info)
+        expect(page.locator("#trend-panel")).to_be_visible()
+        # metric chips: CPM / Conv rate only appear with the Advanced columns chip
+        shown = page.locator("#trend-metrics .mchip:visible").all_inner_texts()
+        assert shown[:9] == ["Spend", "Purchases", "Revenue", "ROAS", "CPA", "Impressions", "Link clicks", "CTR", "CPC"], shown
+        assert "CPM" not in shown
+    shot(page, "28_trend_every_level")
+    page.goto(f"/p/{SLUG}")
+    wait_trend(page)
+    page.locator(".cchip[data-cols=advanced]").click()
+    assert page.locator("#trend-metrics .mchip:visible").all_inner_texts()[-2:] == ["CPM", "Conv rate"]
+
+
+def test_trend_metric_chips_drive_chart_url_and_sparklines(page):
+    goto_product(page)
+    wait_trend(page)
+    expect(page.locator("#trend-metrics .mchip[data-metric=spend]")).to_have_attribute("aria-pressed", "true")
+    assert "tm" not in qparams(page)
+    first_spend = trend_info(page)["ds"][0]["data"]
+    reqs = []
+    page.on("request", lambda r: reqs.append(r.url) if "/api/products/" in r.url else None)
+    page.locator("#trend-metrics .mchip[data-metric=cpc]").click()
+    expect(page).to_have_url(re.compile(r"tm=cpc"))
+    wait_rows(page)
+    wait_trend(page)
+    expect(page.locator("#trend-metrics .mchip[data-metric=cpc]")).to_have_attribute("aria-pressed", "true")
+    assert any("/trend" in u for u in reqs), "a metric switch re-fetches the trend"
+    assert any("/tree" in u and "spark=cpc" in u for u in reqs), "the table asks for the new sparkline metric"
+    assert trend_info(page)["ds"][0]["data"] != first_spend
+    title = page.locator(f"{BODY_ROWS} svg.spark title").first.text_content()
+    assert "CPC" in title, title
+    # the metric is carried into the next level and survives a reload
+    open_first_row(page)
+    wait_rows(page)
+    assert qparams(page)["tm"] == "cpc"
+    page.reload()
+    wait_rows(page)
+    wait_trend(page)
+    expect(page.locator("#trend-metrics .mchip[data-metric=cpc]")).to_have_attribute("aria-pressed", "true")
+    shot(page, "29_trend_metric_cpc")
+
+
+def test_trend_grain_and_split_switches_refetch(page):
+    goto_product(page, "?window=60d")
+    wait_trend(page)
+    reqs = trend_requests(page)
+    day_labels = len(trend_info(page)["labels"])
+    page.locator("#trend-grain [data-grain=week]").click()
+    expect(page).to_have_url(re.compile(r"tg=week"))
+    wait_trend(page)
+    assert reqs and reqs[-1].get("grain") == "week"
+    wk = trend_info(page)
+    assert 8 <= len(wk["labels"]) <= 11 and len(wk["labels"]) < day_labels  # 60 days -> about 9 ISO weeks
+    page.locator("#trend-grain [data-grain=day]").click()
+    wait_trend(page)
+    assert reqs[-1].get("grain") == "day" and "tg" not in qparams(page)
+    # split by stage: additive metric = stacked areas, one per included stage (Testing teal, Scaling indigo)
+    n = len(reqs)
+    page.locator("#trend-split [data-split=stage]").click()
+    expect(page).to_have_url(re.compile(r"ts=stage"))
+    wait_trend(page)
+    assert len(reqs) == n + 1 and reqs[-1].get("split") == "stage"
+    st = trend_info(page)
+    names = [d["label"] for d in st["ds"]]
+    assert "Testing" in names and "Scaling" in names, names
+    assert st["stacked"] is True and all(d["fill"] for d in st["ds"] if d["label"] in ("Testing", "Scaling"))
+    colors = {d["label"]: d["color"] for d in st["ds"]}
+    assert colors["Testing"] != colors["Scaling"]
+    shot(page, "30_trend_split_stage")
+    # a ratio metric draws one line per stage instead (not stacked)
+    page.locator("#trend-metrics .mchip[data-metric=roas]").click()
+    wait_trend(page)
+    st = trend_info(page)
+    assert st["stacked"] is False and not any(d["fill"] for d in st["ds"]) and "Testing" in [d["label"] for d in st["ds"]]
+    # split by top rows: one line per child row of the current table (+ Other)
+    page.locator("#trend-split [data-split=children]").click()
+    wait_trend(page)
+    assert reqs[-1].get("split") == "children"
+    kids = trend_info(page)
+    assert kids["n"] >= 2
+    tbl_labels = set(table_data(page)["labels"])
+    assert set(d["label"] for d in kids["ds"]) - {"Other"} <= tbl_labels | set(d["label"] for d in kids["ds"])
+    assert qparams(page)["ts"] == "children" and qparams(page)["tm"] == "roas"
+    shot(page, "31_trend_split_rows")
+    # state survives a reload and a drill
+    page.reload()
+    wait_trend(page)
+    expect(page.locator("#trend-split [data-split=children]")).to_have_attribute("aria-pressed", "true")
+    open_first_row(page)
+    wait_rows(page)
+    wait_trend(page)
+    assert qparams(page)["ts"] == "children"
+
+
+def test_trend_compare_overlay_only_when_compare_is_on(page):
+    goto_product(page, "?window=14d")
+    wait_trend(page)
+    expect(page.locator("#trend-overlay-wrap")).to_be_hidden()
+    assert not any(d["label"].startswith("B") for d in trend_info(page)["ds"])
+    page.select_option("#cmp", "prev")
+    expect(page).to_have_url(re.compile(r"compare=prev"))
+    wait_rows(page)
+    wait_trend(page)
+    expect(page.locator("#trend-overlay-wrap")).to_be_visible()
+    info = trend_info(page)
+    b = [d for d in info["ds"] if d["label"].startswith("B")]
+    assert len(b) == 1 and b[0]["dash"] and len(b[0]["data"]) == len(info["labels"])  # dashed gray line aligned to A by position
+    assert b[0]["color"] in ("#8b949e", "rgb(139, 148, 158)")
+    reqs = trend_requests(page)
+    page.uncheck("#trend-overlay")  # the overlay is a client-side toggle
+    assert not any(d["label"].startswith("B") for d in trend_info(page)["ds"]) and not reqs
+    page.check("#trend-overlay")
+    assert any(d["label"].startswith("B") for d in trend_info(page)["ds"])
+    # the request carried the compare window
+    page.locator("#trend-grain [data-grain=week]").click()
+    wait_trend(page)
+    assert reqs[-1].get("compare") == "prev" and reqs[-1].get("window") == "14d"
+    page.select_option("#cmp", "off")
+    wait_rows(page)
+    wait_trend(page)
+    expect(page.locator("#trend-overlay-wrap")).to_be_hidden()
+    assert not any(d["label"].startswith("B") for d in trend_info(page)["ds"])
+    shot(page, "32_trend_compare_overlay")
+
+
+def test_trend_hover_tooltip_and_legend_toggle(page):
+    goto_product(page, "?window=30d&ts=stage")
+    wait_trend(page)
+    box = page.locator("#trend-chart").bounding_box()
+    page.mouse.move(box["x"] + box["width"] * 0.55, box["y"] + box["height"] * 0.5)
+    page.wait_for_timeout(250)
+    tip = page.evaluate("""() => { const t = Chart.getChart('trend-chart').tooltip; return {n: t.getActiveElements().length, title: t.title, lines: (t.body || []).map(b => b.lines.join(' '))}; }""")
+    assert tip["n"] >= 1 and tip["title"], tip
+    assert re.search(r"[A-Z][a-z]{2} \d{1,2}", tip["title"][0]), tip  # the date
+    assert any(re.search(r"\$[\d,]+", ln) for ln in tip["lines"]) and any("Testing" in ln or "Scaling" in ln for ln in tip["lines"]), tip  # every plotted value, formatted like the tables
+    shot(page, "33_trend_tooltip")
+    # clicking a legend entry hides that series
+    before = trend_info(page)
+    idx = next(i for i, d in enumerate(before["ds"]) if d["label"] == "Testing")
+    assert before["ds"][idx]["hidden"] is False
+    hb = page.evaluate("(i) => { const lg = Chart.getChart('trend-chart').legend.legendHitBoxes[i]; return {x: lg.left + lg.width / 2, y: lg.top + lg.height / 2}; }", idx)
+    def click_legend():
+        page.mouse.move(box["x"] + hb["x"], box["y"] + hb["y"])  # Chart.js legends need a hover before the click
+        page.wait_for_timeout(150)
+        page.mouse.click(box["x"] + hb["x"], box["y"] + hb["y"])
+        page.wait_for_timeout(150)
+    click_legend()
+    assert trend_info(page)["ds"][idx]["hidden"] is True
+    click_legend()
+    assert trend_info(page)["ds"][idx]["hidden"] is False
+
+
+def test_trend_collapse_stops_requests(page):
+    goto_product(page)
+    wait_trend(page)
+    reqs = trend_requests(page)
+    page.click("#trend-toggle")
+    expect(page.locator("#trend-panel")).to_have_attribute("data-collapsed", "true")
+    expect(page.locator("#trend-chart")).to_be_hidden()
+    assert page.evaluate("() => localStorage.getItem('tagexp.trend.collapsed')") == "1"
+    page.wait_for_timeout(200)
+    n = len(reqs)
+    page.locator(".seg[data-window='7d']").click()  # a global filter change re-renders the page...
+    wait_rows(page)
+    page.wait_for_timeout(300)
+    assert len(reqs) == n, "...but a collapsed panel makes no /trend request"
+    page.locator("#unmatched summary").click()
+    page.reload()  # collapsed state is remembered: no /trend call on load either
+    wait_rows(page)
+    page.wait_for_timeout(400)
+    assert len(reqs) == n
+    expect(page.locator(f"{BODY_ROWS} svg.spark").first).to_be_visible()  # sparklines come with the table queries
+    page.click("#trend-toggle")  # expand: requests resume
+    wait_trend(page)
+    assert len(reqs) > n
+    assert page.evaluate("() => localStorage.getItem('tagexp.trend.collapsed')") == "0"
+
+
+def test_sparkline_column_every_table_unsortable_totals_empty(page):
+    goto_product(page)
+    d = table_data(page)
+    assert "trend" in d["heads"]
+    ti = d["heads"].index("trend")
+    th = page.locator(f"{HEAD} th[data-col=trend]")
+    assert th.locator("button").count() == 0 and th.get_attribute("aria-sort") is None  # not sortable
+    keys = table_data(page)["keys"]
+    th.click()
+    assert table_data(page)["keys"] == keys and "sort" not in qparams(page)
+    n_rows = len(d["rows"])
+    assert page.locator(f"{BODY_ROWS} td:nth-child({ti + 1}) svg.spark").count() == n_rows
+    assert d["foot"][ti] == ""  # totals row has none
+    w, h_ = page.evaluate("() => { const s = document.querySelector('svg.spark'); return [s.getAttribute('width'), s.getAttribute('height')]; }")
+    assert (int(w), int(h_)) == (70, 20)
+    # the Columns chip group has "Trend" (default on), persisted
+    chip_t = page.locator(".cchip[data-cols=trend]")
+    expect(chip_t).to_have_attribute("aria-pressed", "true")
+    chip_t.click()
+    assert not has_col(page, "trend") and page.evaluate("() => localStorage.getItem('tagexp.cols.trend')") == "0"
+    page.reload()
+    wait_rows(page)
+    assert not has_col(page, "trend")
+    page.locator(".cchip[data-cols=trend]").click()
+    assert has_col(page, "trend")
+    # every other table type has it too
+    page.goto("/")
+    page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
+    page.wait_for_selector("[data-testid=products-table] svg.spark")
+    assert has_col(page, "trend", "products-table") and page.locator("[data-testid=products-table] tbody svg.spark").count() >= 1
+    page.goto(f"/p/{SLUG}?view=ads")
+    wait_rows(page, "ads-table")
+    assert has_col(page, "trend", "ads-table") and page.locator("[data-testid=ads-table] tbody svg.spark").count() >= 1
+    page.goto(f"/p/{SLUG}?view=campaigns")
+    page.wait_for_selector("[data-testid=campaign-table]")
+    idle(page)
+    if page.locator("[data-testid=campaign-table] tbody tr[data-key]").count():
+        assert has_col(page, "trend", "campaign-table") and page.locator("[data-testid=campaign-table] tbody svg.spark").count() >= 1
+    page.goto(f"/p/{SLUG}?all=1")
+    wait_rows(page)
+    assert has_col(page, "trend") and page.locator(f"{BODY_ROWS} svg.spark").count() >= 1
+    # sparklines inside the dropdown tree (children and Meta ads) as well
+    goto_product(page)
+    page.locator("#expand-to [data-depth='3']").click()
+    page.wait_for_selector(f"{TABLE} tr.lv3", timeout=8000)
+    idle(page)
+    assert page.locator(f"{TABLE} tr.lv3 svg.spark").count() >= 1 and page.locator(f"{TABLE} tr.lv2 svg.spark").count() >= 1
+    shot(page, "34_sparklines")
+
+
+def test_pin_rows_into_the_chart_max_8(page):
+    goto_product(page)
+    wait_trend(page)
+    assert page.locator(f"{BODY_ROWS} input.pin-cb").count() == len(table_data(page)["rows"])  # a "Chart" checkbox on every row
+    assert has_col(page, "_chart")
+    reqs = trend_requests(page)
+    rows = page.locator(BODY_ROWS)
+    labels = [rows.nth(i).get_attribute("data-label") for i in range(2)]
+    for i in range(2):
+        rows.nth(i).locator("input.pin-cb").check()
+        wait_trend(page)
+    info = trend_info(page)
+    assert [d["label"] for d in info["ds"]] == labels  # pinned rows appear as their own lines
+    expect(page.locator("#trend-pins")).to_contain_text("Pinned 2/8")
+    scopes = [r for r in reqs if r.get("cluster") in labels]
+    assert len(scopes) >= 2, reqs  # each pinned row is a /trend request with the row's scope
+    shot(page, "35_trend_pinned")
+    page.locator(f"{BODY_ROWS}").nth(0).locator("input.pin-cb").uncheck()
+    wait_trend(page)
+    assert [d["label"] for d in trend_info(page)["ds"]] == labels[1:]
+    page.click("#trend-clear")
+    wait_trend(page)
+    assert page.locator("input.pin-cb:checked").count() == 0 and trend_info(page)["ds"][0]["label"] not in labels
+    expect(page.locator("#trend-pins")).to_be_hidden()
+    # at most 8: the 9th checkbox is disabled
+    drill_to_families(page)
+    page.click("#toggle-all")
+    wait_rows(page)
+    boxes = page.locator(f"{BODY_ROWS} input.pin-cb")
+    if boxes.count() >= 9:
+        for i in range(8):
+            boxes.nth(i).check()
+        wait_trend(page)
+        assert page.locator("input.pin-cb:checked").count() == 8
+        assert boxes.nth(8).is_disabled()
+        assert trend_info(page)["n"] == 8
+        boxes.nth(0).uncheck()
+        assert not boxes.nth(8).is_disabled()
+    # pins survive a drill and Back
+    goto_product(page)
+    first = first_row(page)
+    lab = first.get_attribute("data-label")
+    first.locator("input.pin-cb").check()
+    wait_trend(page)
+    first_row(page).locator("a.row-open").click()
+    wait_rows(page)
+    page.click("#back")
+    wait_rows(page)
+    wait_trend(page)
+    assert page.locator(f"{BODY_ROWS} input.pin-cb:checked").count() == 1
+    assert [d["label"] for d in trend_info(page)["ds"]] == [lab]
+
+
+def test_landing_trend_pins_products_and_split_rows(page):
+    page.goto("/")
+    page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
+    wait_trend(page)
+    reqs = trend_requests(page)
+    page.locator("#trend-split [data-split=children]").click()
+    wait_trend(page)
+    n_products = len(table_data(page, "products-table")["rows"])
+    assert trend_info(page)["n"] == n_products  # one line per product
+    page.locator("[data-testid=products-table] tbody tr[data-key]").first.locator("input.pin-cb").check()
+    wait_trend(page)
+    assert trend_info(page)["n"] == 1
+    page.locator("#trend-grain [data-grain=week]").click()
+    wait_trend(page)
+    assert len(trend_info(page)["labels"]) < 40
+    assert not reqs, "the landing page derives grain / split / pins from the per-product series it already has"
 
 
 # ------------------------------------------------------------------ deep links, 401, layout
@@ -1487,7 +1808,7 @@ def test_no_console_errors_across_pages(page):
     page.locator(f"{BODY_ROWS} button.caret").first.click()
     page.wait_for_selector(f"{TABLE} tr.lv4", timeout=8000)
     first_row(page).locator("a.row-open").click()
-    page.wait_for_selector("#daily-chart")
+    wait_trend(page)
     page.go_back()
     wait_rows(page)
     page.goto(f"/p/{SLUG}?view=campaigns&window=30d&compare=prev")

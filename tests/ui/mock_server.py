@@ -748,7 +748,8 @@ def rollup_rows(slug, level, flt, win):
         rows.append(dict(label=label, cluster=es[0][1]["cluster"], icp=es[0][1]["icp"] if idx >= 1 else None, pain=es[0][1]["pain"] if idx >= 2 else None,
                          color=CLUSTER_COLORS.get(es[0][1]["cluster"]) if p["tag_set"] == "linemap" else None,
                          line_code=es[0][1]["line"][0] if level == "pain" and es[0][1]["line"] else None,
-                         trigger=es[0][1]["line"][4] if level == "pain" and es[0][1]["line"] else None, child_count=child, m=m))
+                         trigger=es[0][1]["line"][4] if level == "pain" and es[0][1]["line"] else None, child_count=child, m=m,
+                         _fams=[f["key"] for f, _, ch in es if ch]))
     if p["tag_set"] == "linemap":
         rows.sort(key=lambda r: (r["label"] == "(untagged)", order.get(r["label"], 99)))
     else:
@@ -771,7 +772,8 @@ def family_rows(slug, flt, win):
                          concept_ids=[r["concept_id"] for _, r, _ in es], n_rows=len(f["rows"]), ad_type=f["ad_type"], status=f["status"],
                          launch_date=f["launch"].isoformat() if f["launch"] else None, thumb_asset_id=f["thumb"],
                          confidence=min((r["conf"] for _, r, _ in es), key={"low": 0, "medium": 1, "high": 2}.get) if p["tag_set"] == "linemap" else None,
-                         method=es[0][1]["method"] if p["tag_set"] == "linemap" else None, counted_here=counted, m=m))
+                         method=es[0][1]["method"] if p["tag_set"] == "linemap" else None, counted_here=counted, m=m,
+                         _fams=[key] if counted else []))
     rows.sort(key=lambda r: -r["m"]["spend"])
     return rows, ents
 
@@ -787,6 +789,9 @@ def rollup(slug):
     rows, ents = rollup_rows(slug, level, flt, win)
     total = dict(m=make_m(items_for_m(ents), win))
     shares([r["m"] for r in rows], total["m"])
+    attach_sparks(rows, win, lambda r: fams_ads(r["_fams"]))
+    for r in rows:
+        r.pop("_fams", None)
     saved, g.cmp = g.cmp, None
     um = unmatched_rows(slug, parse_win({}))
     g.cmp = saved
@@ -804,8 +809,10 @@ def families(slug):
     rows, ents = family_rows(slug, flt, win)
     total = dict(m=make_m(items_for_m(ents), win))
     shares([r["m"] for r in rows], total["m"])
+    attach_sparks(rows, win, lambda r: fams_ads(r["_fams"]))
     for r in rows:
         r.pop("group", None)
+        r.pop("_fams", None)
     return jsonify(product=product_json(p), filters={k: request.args.get(k) for k in ("cluster", "icp", "pain")}, window=win["info"], window_info=win["info"], compare_info=cinfo(),
                    rows=rows, total=total)
 
@@ -830,6 +837,7 @@ def tree(slug):
     if any(k not in base for k in need):
         raise Bad(f"root={root} needs " + "+".join(need))
     out = []
+    spark_spec = spark_request()
 
     def key_of(level, flt, label=None, fam=None):
         parts = [flt.get("cluster"), flt.get("icp"), flt.get("pain")][:level]
@@ -857,6 +865,8 @@ def tree(slug):
                             cluster=grp[0], icp=grp[1], pain=grp[2], family_key=row["family_key"], primary_id=row["primary_id"], color=None, line_code=None, trigger=None,
                             confidence=row["confidence"], ad_type=row["ad_type"], status=row["status"], thumb_asset_id=row["thumb_asset_id"], has_children=True,
                             child_count=sum(1 for a in ADS if a["fam"] == row["family_key"]), counted_here=row["counted_here"], m=row["m"])
+            if spark_spec:
+                node["spark"] = spark_for(fams_ads(row["_fams"]), win, spark_spec)
             out.append(node)
             if level - r0 < depth and level < 3:
                 emit(level + 1, child_flt, node["key"])
@@ -988,6 +998,11 @@ def ads(slug):
     win = parse_win(request.args)
     prod_meta(slug)
     rows = ads_for(slug, request.args, win)
+    spec = spark_request()
+    if spec:
+        by_id = {a["ad_id"]: a for a in ADS}
+        for r in rows:
+            r["spark"] = spark_for([by_id[r["ad_id"]]], win, spec) if r["ad_id"] in by_id else None
     tot = total_of(rows, win)
     shares(rows, tot)
     return jsonify(window_info=win["info"], compare_info=cinfo(), rows=rows, total=tot)
@@ -1005,7 +1020,7 @@ def campaigns(slug):
         r = ad_row(ad, win, fam["launch"] if fam else None)
         c = CAMPAIGNS[ad["campaign_id"]]
         e = out.setdefault(c["campaign_id"], dict(campaign_id=c["campaign_id"], name=c["name"], account=c["account"], stage=c["stage"], ads=0, fams=set(), spend=0.0, purchases=0, revenue=0.0, spend_7d=0.0, live=False, last_day=None))
-        e["ads"] += 1; e["fams"].add(ad["fam"] or ad["meta_family"])
+        e["ads"] += 1; e["fams"].add(ad["fam"] or ad["meta_family"]); e.setdefault("_ads", []).append(ad)
         e["spend"] += r["spend"]; e["purchases"] += r["purchases"]; e["revenue"] += r["revenue"]; e["spend_7d"] += r["spend_7d"]
         e.setdefault("_rows", []).append(r)
         if "cmp" in r:
@@ -1025,6 +1040,10 @@ def campaigns(slug):
         e["roas"] = _roas(e["spend"], e["revenue"]); e["cpa"] = _cpa(e["spend"], e["purchases"])
         b = e.pop("_b", None)
         crow = e.pop("_rows", [])
+        camp_ads = e.pop("_ads", [])
+        spec = spark_request()
+        if spec:
+            e["spark"] = spark_for(camp_ads, win, spec)
         e.update(flat_traffic(crow, e["spend"], e["purchases"]))
         eb = dict(spend=round(b[0], 2), purchases=int(round(b[1])), revenue=round(b[2], 2), roas=_roas(b[0], b[2]), cpa=_cpa(b[0], b[1]),
                   **flat_traffic([r["cmp"] for r in crow], b[0], b[1])) if b else None
@@ -1120,6 +1139,10 @@ def ad_detail(rid):
         daily.append(dict(day=DAYS[i].isoformat(), spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), link_clicks=sum(a["tr"][i][1] for a in fam_ads),
                           impressions=sum(known) if known else None))
     meta_ads = [ad_row(a, win, fam["launch"]) for a in fam_ads]
+    spec = spark_request()
+    if spec:
+        for r, a in zip(meta_ads, fam_ads):
+            r["spark"] = spark_for([a], win, spec)
     shares(meta_ads, total_of(meta_ads, win))
     camps = {}
     for r in meta_ads:
@@ -1137,6 +1160,184 @@ def ad_detail(rid):
                    metrics=dict(counted_on_this_row=row["ordinal"] == 0, family=dict(launch=fm(L), d7=fm(D7), d30=fm(D30), window=fm(win), live=live, **cmp_fam)),
                    window_info=win["info"], compare_info=cinfo(), daily=daily, meta_ads=meta_ads,
                    campaigns=[dict(e, spend=round(e["spend"], 2), revenue=round(e["revenue"], 2)) for e in camps.values()])
+
+
+
+# ----------------------------------------------------------------------------------------------- trend (v1.6)
+TREND_METRICS = ("spend", "purchases", "revenue", "roas", "cpa", "impressions", "link_clicks", "ctr", "cpc", "cpm", "conv_rate")
+ZERO8 = (0, 0, 0, 0, 0, 0, 0, 0)
+_AS = {}
+TREND_CALLS = {"n": 0}
+
+
+def ad_series(ad, stages):
+    """per day 8-tuple (spend, purchases, revenue, impressions, clicks, clicks_on_known_days, spend_on_known_days, impressions_known)"""
+    ck = (ad["ad_id"], stages)
+    if ck not in _AS:
+        out = []
+        stg = ad_stage(ad)
+        for i in range(N):
+            if ("unclassified" if i < UNC_DAYS else stg) not in stages:
+                out.append(ZERO8)
+                continue
+            sp, pu, rv = ad["daily"][i]
+            im, cl = ad["tr"][i]
+            known = im is not None
+            out.append((sp, pu, rv, im or 0, cl, cl if known else 0, sp if known else 0, 1 if known else 0))
+        _AS[ck] = out
+    return _AS[ck]
+
+
+def sum_series(ads_list, stages):
+    tot = [list(ZERO8) for _ in range(N)]
+    for ad in ads_list:
+        for i, t in enumerate(ad_series(ad, stages)):
+            row = tot[i]
+            for j in range(8):
+                row[j] += t[j]
+    return [tuple(r) for r in tot]
+
+
+def point_from(t, s, partial=False):
+    sp, pu, rv, im, ck, ck_tr, sp_tr, known = s
+    pt = dict(t=t, spend=round(sp, 2), purchases=int(pu), revenue=round(rv, 2), roas=round(rv / sp, 4) if sp else None, cpa=round(sp / pu, 2) if pu else None,
+              impressions=int(im) if known else None, link_clicks=int(ck), ctr=round(ck_tr / im, 6) if im else None, cpc=round(sp / ck, 4) if ck else None,
+              cpm=round(sp_tr / im * 1000, 4) if im else None, conv_rate=round(pu / ck, 6) if ck else None)
+    if partial:
+        pt["partial"] = True
+    return pt
+
+
+def series_points(arr, lo, hi, grain):
+    if grain == "day":
+        return [point_from(DAYS[i].isoformat(), arr[i]) for i in range(lo, hi + 1)]
+    buckets = {}
+    for i in range(lo, hi + 1):
+        mon = DAYS[i] - timedelta(days=DAYS[i].weekday())
+        b = buckets.setdefault(mon, [list(ZERO8), 0])
+        for j in range(8):
+            b[0][j] += arr[i][j]
+        b[1] += 1
+    return [point_from(m.isoformat(), tuple(b[0]), partial=b[1] < 7) for m, b in sorted(buckets.items())]
+
+
+def align_points(pts, n):
+    pts = list(pts)[:n]
+    return pts + [None] * (n - len(pts))
+
+
+def scope_ads(slug, scope):
+    ads_in = [a for a in ADS if a["product"] == slug]
+    flt = {k: scope[k] for k in ("cluster", "icp", "pain") if scope.get(k)}
+    if flt:
+        fams = {f["key"] for f, r, ch in filt(prod_items(slug), flt) if ch}
+        ads_in = [a for a in ads_in if a["fam"] in fams]
+    if scope.get("family_key"):
+        ads_in = [a for a in ads_in if (a["fam"] or "meta:" + a["meta_family"].lower()) == scope["family_key"]]
+    if scope.get("campaign_id"):
+        ads_in = [a for a in ads_in if a["campaign_id"] == scope["campaign_id"]]
+    return ads_in
+
+
+def spark_request():
+    m = request.args.get("spark")
+    if not m:
+        return None
+    if m not in TREND_METRICS:
+        raise Bad("bad spark metric")
+    try:
+        n = int(request.args.get("spark_days", 30))
+    except ValueError:
+        raise Bad("bad spark_days")
+    return m, max(1, min(n, 60))
+
+
+def spark_for(ads_list, win, spec):
+    m, n = spec
+    end = N - 1 if win["launch"] else win["i1"]
+    arr = sum_series(ads_list, win["stage"])
+    out = []
+    for i in range(end - n + 1, end + 1):
+        if i < 0:
+            out.append(0)
+            continue
+        v = point_from("", arr[i])[m]
+        out.append(v if v is not None else None)
+    return out
+
+
+def fams_ads(fam_keys):
+    keys = set(fam_keys)
+    return [a for a in ADS if a["fam"] in keys]
+
+
+def attach_sparks(rows, win, ads_of):
+    spec = spark_request()
+    for r in rows:
+        if spec:
+            r["spark"] = spark_for(ads_of(r), win, spec)
+    return rows
+
+
+@app.get("/api/products/<slug>/trend")
+def trend(slug):
+    TREND_CALLS["n"] += 1
+    win = parse_win(request.args)
+    prod_meta(slug)
+    grain = request.args.get("grain", "day")
+    split = request.args.get("split", "none")
+    if grain not in ("day", "week"):
+        raise Bad("bad grain")
+    if split not in ("none", "stage", "children"):
+        raise Bad("bad split")
+    scope = {k: request.args.get(k) for k in ("cluster", "icp", "pain", "family_key", "campaign_id")}
+    ads_in = scope_ads(slug, scope)
+    lo, hi = (0, N - 1) if win["launch"] else (win["i0"], win["i1"])
+    info = dict(win["info"])
+    if win["launch"]:
+        info["note"] = " ".join(x for x in (info.get("note"), f"Trend covers {lab(DAYS[0])} to {lab(DAYS[-1])} (daily data).") if x)
+    arr = sum_series(ads_in, win["stage"])
+    points = series_points(arr, lo, hi, grain)
+    out = dict(window_info=info, compare_info=cinfo(), grain=grain, scope={k: v for k, v in scope.items()}, points=points)
+    if g.cmp:
+        b = series_points(sum_series(ads_in, win["stage"]), g.cmp["i0"], g.cmp["i1"], grain)
+        out["cmp_points"] = align_points(b, len(points))
+    if split == "stage":
+        out["by_stage"] = {st: series_points(sum_series(ads_in, frozenset({st})), lo, hi, grain) for st in ALL_STAGES if st in win["stage"]}
+    if split == "children":
+        flt = {k: scope[k] for k in ("cluster", "icp", "pain") if scope.get(k)}
+        groups = []
+        if scope.get("family_key") or scope.get("campaign_id") or scope.get("pain"):
+            if scope.get("pain") and not (scope.get("family_key") or scope.get("campaign_id")):
+                fam_rows, _ = family_rows(slug, flt, parse_win({}))
+                for fr in fam_rows:
+                    groups.append((fr["family_key"], fr["display"], None, fams_ads([fr["family_key"]]) if fr["counted_here"] else []))
+            else:
+                for a in ads_in:
+                    groups.append((a["ad_id"], a["name"], None, [a]))
+        else:
+            level = "cluster" if not scope.get("cluster") else ("icp" if not scope.get("icp") else "pain")
+            rows, _ = rollup_rows(slug, level, flt, parse_win({}))
+            for r in rows:
+                fams = [f["key"] for f, rr, ch in filt(prod_items(slug), {**flt, level: r["label"]}) if ch]
+                groups.append((r["label"], r["label"], r["color"], fams_ads(fams)))
+        scored = []
+        for key, label, color, ads_g in groups:
+            a_ = sum_series(ads_g, win["stage"])
+            scored.append((sum(a_[i][0] for i in range(lo, hi + 1)), key, label, color, ads_g))
+        scored.sort(key=lambda x: -x[0])
+        top, rest = scored[:8], scored[8:]
+        kids = [dict(key=k, label=lb, color=c, points=series_points(sum_series(ag, win["stage"]), lo, hi, grain)) for _, k, lb, c, ag in top]
+        if rest:
+            other_ads = [a for _, _, _, _, ag in rest for a in ag]
+            kids.append(dict(key="__other__", label="Other", color=None, points=series_points(sum_series(other_ads, win["stage"]), lo, hi, grain)))
+        out["children"] = kids
+    return jsonify(out)
+
+
+@app.get("/api/_test/trend_calls")
+def trend_calls():
+    return jsonify(TREND_CALLS)
 
 
 @app.get("/media/<aid>")

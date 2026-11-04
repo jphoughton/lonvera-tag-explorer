@@ -1,11 +1,11 @@
 // Dropdown tree table for the product page: cluster > ICP > pain point > ad family > Meta ad.
 // A caret (and, in "Drops down" mode, a click on the row) expands children in place; "Open ›" navigates into that level.
 // Children load lazily from /tree (tag levels) and /ads (Meta ads under a family).
-import { h, enc, fmt, href, apiWindow, globalParams, colorChip, thumb, confBadge, stageBadge, navigate, cmpView, onCmpRefresh, isNum, getRowMode, setRowMode, debounce, setViewStateProvider } from './util.js';
+import { h, enc, fmt, href, apiWindow, globalParams, sparkParams, colorChip, thumb, confBadge, stageBadge, navigate, cmpView, onCmpRefresh, isNum, getRowMode, setRowMode, debounce, setViewStateProvider } from './util.js';
 import { api, AuthError } from './api.js';
 import { createTable, compare } from './table.js';
 import { columnsChips } from './components.js';
-import { metricColumns } from './columns.js';
+import { metricColumns, trendColumn, pinColumn } from './columns.js';
 
 const ROOT = '__root__';
 const LEVEL_NAME = ['cluster', 'icp', 'pain', 'family'];
@@ -47,11 +47,11 @@ function adNode(r, fam, i) {
   return {
     key: `ad:${fam.key}:${r.ad_id != null ? r.ad_id : 'rem' + i}`, parent_key: fam.key, level: 4,
     label: r.ad_name, ad: r, primary_id: r.primary_id, thumb_asset_id: fam.thumb_asset_id,
-    has_children: false, m,
+    has_children: false, m, spark: r.spark,
   };
 }
 
-export function createTree({ slug, p, signal, rootLevel, filters, first, restore, shareLabel = '% of spend' }) {
+export function createTree({ slug, p, signal, rootLevel, filters, first, restore, pins, shareLabel = '% of spend' }) {
   const G = globalParams(p);
   const path = '/p/' + enc(slug);
   const nodes = new Map();
@@ -89,7 +89,7 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
   }
 
   async function fetchTree(rootL, extra, depth) {
-    const d = await api(`/api/products/${enc(slug)}/tree`, { root: LEVEL_NAME[rootL], ...extra, depth, ...windowParams }, { signal });
+    const d = await api(`/api/products/${enc(slug)}/tree`, { root: LEVEL_NAME[rootL], ...extra, depth, ...windowParams, ...sparkParams(p) }, { signal });
     return d;
   }
 
@@ -99,7 +99,7 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
     rebuild();
     try {
       if (node.level === 3) {
-        const d = await api(`/api/products/${enc(slug)}/ads`, { family_key: node.family_key, cluster: node.cluster, icp: node.icp, pain: node.pain, ...windowParams }, { signal });
+        const d = await api(`/api/products/${enc(slug)}/ads`, { family_key: node.family_key, cluster: node.cluster, icp: node.icp, pain: node.pain, ...windowParams, ...sparkParams(p) }, { signal });
         const rows = d.rows.map((r, i) => adNode(r, node, i));
         for (const n of rows) nodes.set(n.key, n);
         kids.set(node.key, rows.map((n) => n.key));
@@ -223,7 +223,7 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
     try {
       if (rootLevel === 3) {
         // families -> Meta ads: one /ads call for the whole filter, grouped by family
-        const d = await api(`/api/products/${enc(slug)}/ads`, { cluster: filters.cluster, icp: filters.icp, pain: filters.pain, ...windowParams }, { signal });
+        const d = await api(`/api/products/${enc(slug)}/ads`, { cluster: filters.cluster, icp: filters.icp, pain: filters.pain, ...windowParams, ...sparkParams(p) }, { signal });
         const by = new Map();
         d.rows.forEach((r, i) => { if (!by.has(r.family_key)) by.set(r.family_key, []); by.get(r.family_key).push([r, i]); });
         for (const n of nodes.values()) {
@@ -309,7 +309,17 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
     cell: (n) => (n.pseudo ? '' : h('a', { href: adsHref(n), class: 'btnlink small row-ads' }, 'Ads')),
   };
   const metricCols = metricColumns({ getM: (n) => n.m, getTotalM: (t) => t && t.m, shareLabel });
-  cols.push(labelCol, actionCol, ...metricCols);
+  const pinScope = (n) => {
+    const sc = {};
+    if (n.level >= 0) sc.cluster = n.level === 0 ? n.label : n.cluster;
+    if (n.level >= 1) sc.icp = n.level === 1 ? n.label : n.icp;
+    if (n.level >= 2) sc.pain = n.level === 2 ? n.label : n.pain;
+    if (n.level >= 3) sc.family_key = n.family_key;
+    return sc;
+  };
+  const extraCols = [];
+  if (pins) extraCols.push(pinColumn({ pins, canPin: (n) => !n.pseudo && n.level < 4, keyOf: (n) => n.key, labelOf: (n) => n.label, scopeOf: pinScope }));
+  cols.push(labelCol, ...extraCols, actionCol, trendColumn({ getSpark: (n) => n.spark }), ...metricCols);
   // metric columns skip pseudo rows (they carry no `m`)
 
   // ---------- toolbar ----------
@@ -392,7 +402,7 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
   setViewStateProvider(() => {
     let deepest = 0;
     for (const k of expanded) { const n = nodes.get(k); if (n && n.level < 4) deepest = Math.max(deepest, n.level - rootLevel + 1); }
-    return { exp: [...expanded], depth: Math.min(deepest, maxTagDepth), tscroll: { top: table.wrap.scrollTop, left: table.wrap.scrollLeft } };
+    return { exp: [...expanded], pins: pins ? pins.list() : [], depth: Math.min(deepest, maxTagDepth), tscroll: { top: table.wrap.scrollTop, left: table.wrap.scrollLeft } };
   });
 
   // ---------- init ----------

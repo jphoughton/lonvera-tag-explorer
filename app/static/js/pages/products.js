@@ -2,7 +2,8 @@ import { h, enc, fmt, href, apiWindow, globalParams, badge, empty, isNum, onCmpR
 import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { columnsChips } from '../components.js';
-import { metricColumns } from '../columns.js';
+import { createTrendPanel, createPins } from '../trend.js';
+import { metricColumns, trendColumn, pinColumn } from '../columns.js';
 import { setRangeInfo, ensureStatus, windowInfoFallback } from '../controls.js';
 
 export function tagBadge(product) {
@@ -39,17 +40,25 @@ export async function productsPage(ctx) {
   if (!a) { const fb = windowInfoFallback(p, st); a = fb && fb.a; b = fb && fb.b; }
   const unc = list.some((r) => r.m && r.m.stage && r.m.stage.unclassified && r.m.stage.unclassified.spend > 0);
   setRangeInfo(p, a, b, { unclassified: unc });
+  const pins = createPins();
+  let t = null;
+  const panel = createTrendPanel({
+    slug: null, p, pins, mode: 'landing', scopeLabel: 'All products', products: list, signal,
+    onSparks: (map) => { for (const r of list) r.spark = map[r.slug]; if (t) t.refresh(); },
+  });
   const cols = [
     {
       key: 'name', label: 'Product', sticky: true, sort: (r) => r.name,
       cell: (r) => h('div', { class: 'cell-prod' }, h('a', { href: href('/p/' + enc(r.slug), G), class: 'prodname' }, r.name), tagBadge(r)),
       total: () => '',
     },
+    pinColumn({ pins, keyOf: (r) => r.slug, labelOf: (r) => r.name, scopeOf: (r) => ({ slug: r.slug }) }),
     { key: '_ads', label: '', nosort: true, header: h('span', { class: 'muted small' }, 'Ads'), cell: (r) => h('a', { href: href('/p/' + enc(r.slug), { ...G, view: 'ads' }), class: 'btnlink small' }, 'Ads') },
+    trendColumn(),
     { key: 'rows', label: 'Tracker rows', num: true, sort: (r) => r.rows, cell: (r) => fmt.int(r.rows), title: 'Creative Tracker rows (every status)' },
     ...metricColumns(),
   ];
-  const t = createTable({
+  t = createTable({
     columns: cols, rows: list,
     rowKey: (r) => r.slug,
     rowHref: (r) => href('/p/' + enc(r.slug), G),
@@ -59,7 +68,9 @@ export async function productsPage(ctx) {
   onCmpRefresh(() => t.refresh());
   ctx.mount(h('div', { class: 'page' },
     h('div', { class: 'pagehead' }, h('h1', 'Products')),
+    panel.el,
     h('div', { class: 'tablehead' }, columnsChips()),
     list.length ? t.el : empty('No products with tracker rows or Meta spend.'),
   ));
+  if (panel.state.collapsed) panel.sparksOnly(); else panel.load();
 }

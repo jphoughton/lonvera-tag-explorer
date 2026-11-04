@@ -1,10 +1,10 @@
-import { h, enc, fmt, href, apiWindow, globalParams, badge, confBadge, stageBadge, liveDot, methodFlags, safeUrl, empty, isNum, colorChip, safeColor, cmpView, onCmpRefresh, setParentHint } from '../util.js';
+import { h, enc, fmt, href, apiWindow, sparkParams, globalParams, badge, confBadge, stageBadge, liveDot, methodFlags, safeUrl, empty, isNum, colorChip, safeColor, cmpView, onCmpRefresh, setParentHint } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { setRangeInfo } from '../controls.js';
 import { flatTotal } from '../columns.js';
 import { breadcrumbs, section, adsTable, columnsChips } from '../components.js';
-import { dailyChart } from '../charts.js';
+import { createTrendPanel } from '../trend.js';
 
 function kv(label, value, cls = '') {
   if (value == null || value === '' || (Array.isArray(value) && !value.length)) return null;
@@ -204,7 +204,7 @@ export async function adPage(ctx) {
   const { params: p, signal } = ctx;
   const G = globalParams(p);
   const id = ctx.match[1];
-  const d = await api('/api/ads/' + enc(id), apiWindow(p), { signal });
+  const d = await api('/api/ads/' + enc(id), { ...apiWindow(p), ...sparkParams(p) }, { signal });
   if (!ctx.alive()) return;
   const wi = d.window_info;
   setRangeInfo(p, wi, d.compare_info || null);
@@ -229,23 +229,8 @@ export async function adPage(ctx) {
     d.vendor ? `Vendor ${d.vendor}` : null,
   ].filter(Boolean).join(' · ');
 
-  // chart
-  const daily = d.daily || [];
-  const canvas = h('canvas', { id: 'daily-chart', role: 'img', 'aria-label': 'Daily spend, revenue and purchases for this ad family' });
-  const shades = [];
-  if (wi && wi.from && wi.to) shades.push({ from: wi.from, to: wi.to, color: 'rgba(26,95,180,0.14)', name: 'A' });
-  else if (daily.length && d.launch_date && d.launch_date >= daily[0].day) shades.push({ from: d.launch_date, to: daily[daily.length - 1].day, color: 'rgba(26,95,180,0.14)', name: 'A' });
-  if (d.compare_info && d.compare_info.from && cmpView.on) shades.push({ from: d.compare_info.from, to: d.compare_info.to, color: 'rgba(217,130,43,0.20)', name: 'B' });
-  let chart = null;
-  const toggles = ['Spend', 'Revenue', 'Purchases', 'Impressions', 'Clicks'].map((name, i) => {
-    const cb = h('input', { type: 'checkbox', checked: i < 3, 'data-series': name.toLowerCase(), id: 'toggle-' + name.toLowerCase() });
-    cb.addEventListener('change', () => { if (chart) { chart.setDatasetVisibility(i, cb.checked); chart.update(); } });
-    return h('label', { class: 'check' }, cb, ' ' + name);
-  });
-  const chartCard = h('div', { class: 'card', id: 'daily-card' },
-    h('div', { class: 'card-head' }, h('h3', 'Daily'), h('span', { class: 'toggles' }, toggles),
-      h('span', { class: 'muted small shade-note' }, shades.length ? (shades.length > 1 ? 'Shaded: A (blue) and B (orange)' : `Shaded: ${wi && wi.kind !== 'launch' && wi.label ? wi.label : 'since launch'}`) : (daily.length ? `${fmt.day(daily[0].day)} – ${fmt.day(daily[daily.length - 1].day)}` : ''))),
-    daily.length ? h('div', { class: 'chartbox' }, canvas) : empty('No daily data.'));
+  // trend panel: full series since the first day of daily data, window A (and B) shaded
+  const panel = createTrendPanel({ slug, p, scope: { family_key: d.family_key }, scopeLabel: title, mode: 'ad', shadeInfo: { a: wi, b: d.compare_info || null }, signal });
 
   const metaAds = d.meta_ads || [];
   const famTotal = flatTotal(metaAds, { days: wi && wi.days, bdays: d.compare_info && d.compare_info.days });
@@ -270,7 +255,7 @@ export async function adPage(ctx) {
       h('div', { class: 'note-line' }, meta)),
     h('div', { class: 'adgrid' },
       h('div', { class: 'adcol-left' }, mediaCard(d)),
-      h('div', { class: 'adcol-right' }, chartCard, metricsCard(d, wi))),
+      h('div', { class: 'adcol-right' }, panel.el, metricsCard(d, wi))),
     h('div', { class: 'twocol' }, tagBlock(d), lineBlock(d)),
     copyBlock(d),
     siblingsTable(d, G),
@@ -282,7 +267,5 @@ export async function adPage(ctx) {
     const nu = compareTable(d, wi);
     if (old && nu) old.replaceWith(nu);
   });
-  if (daily.length) {
-    chart = dailyChart(canvas, daily, shades);
-  }
+  panel.load();
 }

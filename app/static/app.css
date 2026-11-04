@@ -11,8 +11,8 @@
   --good: #14693b; --good-bg: #dff3e8;
   --warn: #7f5200; --warn-bg: #fff0cc;
   --bad: #a02323; --bad-bg: #fde6e6;
-  --testing: #5a3dc2; --testing-bg: #ebe7fa;
-  --scaling: #0b6a68; --scaling-bg: #d9f1f0;
+  --testing: #0b7a75; --testing-bg: #dff4f2;
+  --scaling: #4b3fc4; --scaling-bg: #e9e7fb;
   --unc: #5b6676; --unc-bg: #eceff3;
   --topbar-h: 42px;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -296,3 +296,27 @@ tr.lv4 td { font-size: 12px; }
 .adcol-right { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 #family-metrics table.mini { width: auto; min-width: 60%; }
 #compare-table table.mini { width: 100%; max-width: 640px; }
+
+/* ---------- v1.6 trend panel, sparklines, pins ---------- */
+.trend { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px 10px; margin: 8px 0 12px; }
+.trend-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.trend-head h2 { font-size: 13px; }
+.trend-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; }
+.trend-controls[hidden] { display: none; }
+.mchip { appearance: none; font: inherit; font-size: 12px; padding: 2px 9px; border-radius: 12px; cursor: pointer; border: 1px solid var(--line); background: #fff; color: var(--muted); }
+.mchip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.mchip:hover:not([aria-pressed="true"]) { background: var(--head-bg); }
+.trendbox { height: 230px; margin-top: 6px; }
+.trend-note { min-height: 0; display: flex; gap: 4px 12px; flex-wrap: wrap; }
+.trend-note .note { font-size: 11.5px; color: var(--muted); }
+.trend[data-collapsed="true"] { padding-bottom: 8px; }
+.trend-pins { font-size: 12px; color: var(--muted); }
+.adcol-right > .trend { margin: 0; }
+svg.spark { display: block; overflow: visible; }
+.spark-line { fill: none; stroke: #1a5fb4; stroke-width: 1.3; stroke-linejoin: round; stroke-linecap: round; }
+.spark-dot { fill: #1a5fb4; }
+.spark-empty { stroke: #c8cfd9; stroke-width: 1; stroke-dasharray: 2 2; }
+table.dt td.trendcol, table.dt th.trendcol { width: 82px; min-width: 82px; padding-top: 2px; padding-bottom: 2px; text-align: center; }
+table.dt td.pincol, table.dt th.pincol { width: 44px; min-width: 44px; text-align: center; }
+.pin-cb { cursor: pointer; }
+.pin-cb:disabled { cursor: not-allowed; opacity: 0.45; }

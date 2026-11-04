@@ -93,7 +93,7 @@ export function debounce(fn, ms = 200) {
 }
 
 // ---------- URL state ----------
-export const GLOBAL_KEYS = ['window', 'from', 'to', 'stage', 'compare', 'cfrom', 'cto', 'perday'];
+export const GLOBAL_KEYS = ['window', 'from', 'to', 'stage', 'compare', 'cfrom', 'cto', 'perday', 'tm', 'tg', 'ts'];
 
 export function qs(params) {
   const sp = new URLSearchParams();
@@ -175,6 +175,9 @@ export function cleanParams(p) {
   if (o.stage === 'all' || o.stage === STAGES.join(',')) delete o.stage;
   if (o.window === 'launch') delete o.window;
   if (o.from && o.to) delete o.window;
+  if (o.tm === 'spend') delete o.tm;
+  if (o.tg === 'day') delete o.tg;
+  if (o.ts === 'none') delete o.ts;
   if (o.cfrom && o.cto) delete o.compare;
   if (!o.compare && !(o.cfrom && o.cto)) { delete o.perday; delete o.cfrom; delete o.cto; }
   for (const k of Object.keys(o)) if (o[k] == null || o[k] === '' || o[k] === false) delete o[k];
@@ -237,15 +240,28 @@ export function setParentHint(u) { parentHint = u; }
 export function getParentHint() { return parentHint; }
 
 // "Columns" chip groups: Traffic (default on) and Advanced (default off), persisted in localStorage
-const COLPREF = { traffic: 'tagexp.cols.traffic', advanced: 'tagexp.cols.advanced' };
+const COLPREF = { traffic: 'tagexp.cols.traffic', advanced: 'tagexp.cols.advanced', trend: 'tagexp.cols.trend' };
 export function colPref(group) {
   try {
     const v = localStorage.getItem(COLPREF[group]);
-    return v == null ? group === 'traffic' : v === '1';
-  } catch { return group === 'traffic'; }
+    return v == null ? group !== 'advanced' : v === '1';
+  } catch { return group !== 'advanced'; }
 }
 export function setColPref(group, on) {
   try { localStorage.setItem(COLPREF[group], on ? '1' : '0'); } catch { /* ignore */ }
+}
+
+// trend panel metric drives the sparkline column: tables ask the API for that metric's last 30 days per row
+export function sparkParams(p) {
+  return { spark: p.tm || 'spend', spark_days: 30 };
+}
+export const TREND_METRIC_KEYS = ['spend', 'purchases', 'revenue', 'roas', 'cpa', 'impressions', 'link_clicks', 'ctr', 'cpc', 'cpm', 'conv_rate'];
+const TREND_COLLAPSE_KEY = 'tagexp.trend.collapsed';
+export function trendCollapsed() {
+  try { return localStorage.getItem(TREND_COLLAPSE_KEY) === '1'; } catch { return false; }
+}
+export function setTrendCollapsed(on) {
+  try { localStorage.setItem(TREND_COLLAPSE_KEY, on ? '1' : '0'); } catch { /* ignore */ }
 }
 
 // "Clicking a row": 'expand' (drops down, default) or 'open' (navigates). Persisted in localStorage.

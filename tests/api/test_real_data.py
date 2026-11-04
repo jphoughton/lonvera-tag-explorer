@@ -5,6 +5,7 @@ with itself at every level (tree == rollup == families == ads), that totals are 
 unfiltered total, and that latency stays inside the budget. Nothing here hardcodes a business figure; the only structural counts are the
 Vita Bull tracker rows (1,464) and unique ads (1,434, or 1,435 while a blank-family row shares a name with a real family).
 """
+import datetime as _dt
 import os
 import random
 import time
@@ -254,3 +255,67 @@ URLS = [
 def test_latency_budget(rc, url):
     get(rc, url, budget=5000)         # warm
     get(rc, url, budget=BUDGET_MS)    # < 300 ms
+
+
+# ------------------------------------------------------------------------------------------------------ v1.6 trend + sparklines
+@pytest.mark.parametrize("extra", ["window=30d", "window=90d&stage=testing,scaling", "window=14d&compare=prev"])
+def test_trend_sums_equal_the_rollup_total(rc, extra):
+    t = get(rc, f"/api/products/vita-bull/trend?{extra}")
+    roll = get(rc, f"/api/products/vita-bull/rollup?level=cluster&{extra}")["total"]["m"]
+    for k in ("spend", "purchases", "revenue"):
+        assert sum(p[k] for p in t["points"]) == pytest.approx(roll[k], abs=0.05 + 0.005 * len(t["points"])), k
+    assert sum(n0(p["impressions"]) for p in t["points"]) == n0(roll["impressions"])
+    assert len(t["points"]) == t["window_info"]["days"]
+    if "compare" in extra:
+        assert len(t["cmp_points"]) == len(t["points"])
+        assert sum(p["spend"] for p in t["cmp_points"] if p) == pytest.approx(roll["cmp"]["spend"], abs=0.05 + 0.005 * len(t["points"]))
+
+
+def test_trend_weeks_split_and_children_are_consistent(rc):
+    day = get(rc, "/api/products/vita-bull/trend?window=90d&grain=day")
+    week = get(rc, "/api/products/vita-bull/trend?window=90d&grain=week")
+    assert sum(p["spend"] for p in week["points"]) == pytest.approx(sum(p["spend"] for p in day["points"]), abs=0.1)
+    assert all(_dt.date.fromisoformat(p["t"]).weekday() == 0 for p in week["points"])
+    st = get(rc, "/api/products/vita-bull/trend?window=90d&split=stage")
+    for i, p in enumerate(st["points"]):
+        assert sum(st["by_stage"][s][i]["spend"] for s in st["by_stage"]) == pytest.approx(p["spend"], abs=0.02)
+    kids = get(rc, "/api/products/vita-bull/trend?window=90d&split=children")
+    assert [c["key"] for c in kids["children"]][:1] and len(kids["children"]) <= 9
+    for i, p in enumerate(kids["points"]):
+        assert sum(c["points"][i]["spend"] for c in kids["children"]) == pytest.approx(p["spend"], abs=0.02)
+    # a pain point with more than 8 families: top 8 + Other, still adding up
+    tree = get(rc, "/api/products/vita-bull/tree?root=cluster&depth=2&window=90d", budget=900)
+    big = next((r for r in tree["rows"] if r["level"] == 2 and r["child_count"] > 8), None)
+    if big:
+        d = get(rc, f"/api/products/vita-bull/trend?window=90d&split=children&cluster={q(big['cluster'])}&icp={q(big['icp'])}&pain={q(big['pain'])}")
+        assert len(d["children"]) == 9 and d["children"][-1]["key"] == "__other__"
+        for i, p in enumerate(d["points"]):
+            assert sum(c["points"][i]["spend"] for c in d["children"]) == pytest.approx(p["spend"], abs=0.02)
+
+
+def test_spark_on_every_table_has_the_right_shape(rc):
+    for ep, extra in (("rollup", "level=cluster"), ("families", ""), ("campaigns", ""), ("ads", "window=30d"), ("tree", "root=cluster&depth=3")):
+        d = get(rc, f"/api/products/vita-bull/{ep}?{extra}&spark=spend&spark_days=30", budget=3000)
+        rows = d["rows"]
+        assert rows and all(r["spark"] is None or len(r["spark"]) == 30 for r in rows), ep
+    roll = get(rc, "/api/products/vita-bull/rollup?level=cluster&window=30d&spark=spend&spark_days=30")
+    # the clusters' series add up to the product's per-day series
+    tr = get(rc, "/api/products/vita-bull/trend?window=30d")
+    for i, p in enumerate(tr["points"]):
+        assert sum(r["spark"][i] for r in roll["rows"]) == pytest.approx(p["spend"], abs=0.05)
+
+
+TREND_URLS = [
+    "/api/products/vita-bull/trend?window=30d", "/api/products/vita-bull/trend?window=180d&grain=week",
+    "/api/products/vita-bull/trend?window=90d&split=stage&stage=testing,scaling", "/api/products/vita-bull/trend?window=90d&split=children&compare=prev",
+    "/api/products/vita-bull/trend?window=launch&grain=week&split=children", "/api/products/vita-bull/trend?window=30d&campaign_id=NOPE",
+    "/api/products/vita-bull/rollup?level=cluster&spark=spend", "/api/products/vita-bull/families?spark=roas&spark_days=60",
+    "/api/products/vita-bull/campaigns?spark=spend", "/api/products/vita-bull/tree?root=cluster&depth=3&spark=ctr&window=30d",
+    "/api/products/beef-liver/trend?window=30d&split=children",
+]
+
+
+@pytest.mark.parametrize("url", TREND_URLS)
+def test_trend_and_spark_latency_budget(rc, url):
+    get(rc, url, budget=5000)
+    get(rc, url, budget=BUDGET_MS)

@@ -1,6 +1,7 @@
 // Shared metric columns. The same metrics appear at every level: Spend, % of spend, traffic (impressions, link clicks, CTR, CPC), purchases, revenue, ROAS, CPA.
 // With comparison on, Spend / % of spend / Purchases / Revenue / ROAS / CPA cells get a second line "vs <B> ▲12%".
 import { h, fmt, isNum, cmpView, stageSet, currentParams, colPref } from './util.js';
+import { sparkSvg, sparkTitle, MAX_PINS } from './trend.js';
 
 // Testing $ / Scaling $ / Testing % only make sense when both stages are included in the stage filter
 const STAGE_COLS = new Set(['testing_spend', 'scaling_spend', 'testing_pct']);
@@ -180,4 +181,33 @@ export function fixTotal(t) {
   if (o.cmp) { o.cmp = { ...o.cmp }; if (o.cmp.spend_share == null) o.cmp.spend_share = 1; }
   if (o.delta) { o.delta = { ...o.delta }; if (o.delta.spend_share_pp == null) o.delta.spend_share_pp = 0; }
   return o;
+}
+
+// ---- Trend sparkline column (follows the trend panel metric) and the "Chart" pin column ----
+export function trendColumn({ getSpark = (r) => r.spark } = {}) {
+  return {
+    key: 'trend', label: 'Trend', nosort: true, cls: 'trendcol', total: () => '',
+    title: 'Last 30 days of the metric selected in the trend panel',
+    hidden: () => !colPref('trend'),
+    cell: (r) => {
+      const sp = getSpark(r);
+      if (!Array.isArray(sp)) return '';
+      return sparkSvg(sp, { title: sparkTitle(sp) });
+    },
+  };
+}
+
+export function pinColumn({ pins, canPin = () => true, keyOf, labelOf, scopeOf }) {
+  return {
+    key: '_chart', label: 'Chart', nosort: true, cls: 'pincol', total: () => '',
+    title: `Add this row to the trend chart (max ${MAX_PINS})`,
+    cell: (r) => {
+      if (!canPin(r)) return '';
+      const key = keyOf(r);
+      const on = pins.has(key);
+      const cb = h('input', { type: 'checkbox', class: 'pin-cb', 'data-key': key, checked: on, disabled: !on && pins.full(), 'aria-label': 'Show ' + labelOf(r) + ' in the chart', title: on || !pins.full() ? 'Show in the trend chart' : `Max ${MAX_PINS} rows in the chart` });
+      cb.addEventListener('change', () => { if (!pins.toggle(key, labelOf(r), scopeOf(r))) cb.checked = false; });
+      return cb;
+    },
+  };
 }

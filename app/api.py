@@ -61,7 +61,7 @@ def rollup(slug: str):
     product = q.get_product(conn, slug)
     level = (_arg("level") or "cluster").lower()
     cluster, icp = _arg("cluster"), _arg("icp")
-    res = q.rollup(conn, meta, w, product, level, cluster, icp)
+    res = q.rollup(conn, meta, w, product, level, cluster, icp, spark=q.parse_spark(request.args))
     info = w.info(meta)
     return jsonify({"product": q.product_brief(product), "level": level, "filters": {"cluster": cluster, "icp": icp},
                     "window": info, "window_info": info, "compare_info": w.compare_info(meta), **res})
@@ -72,7 +72,7 @@ def families(slug: str):
     conn, meta, w = _ctx()
     product = q.get_product(conn, slug)
     cluster, icp, pain = _arg("cluster"), _arg("icp"), _arg("pain")
-    res = q.families(conn, meta, w, product, cluster, icp, pain)
+    res = q.families(conn, meta, w, product, cluster, icp, pain, spark=q.parse_spark(request.args))
     info = w.info(meta)
     return jsonify({"product": q.product_brief(product), "filters": {"cluster": cluster, "icp": icp, "pain": pain},
                     "window": info, "window_info": info, "compare_info": w.compare_info(meta), **res})
@@ -87,7 +87,7 @@ def tree(slug: str):
     if not raw_depth.isdigit() or int(raw_depth) > 3:
         raise q.ApiError(400, "depth must be 0, 1, 2 or 3")
     flt = {"cluster": _arg("cluster"), "icp": _arg("icp"), "pain": _arg("pain")}
-    res = q.tree(conn, meta, w, product, root, flt["cluster"], flt["icp"], flt["pain"], int(raw_depth))
+    res = q.tree(conn, meta, w, product, root, flt["cluster"], flt["icp"], flt["pain"], int(raw_depth), spark=q.parse_spark(request.args))
     info = w.info(meta)
     return jsonify({"product": q.product_brief(product), "root": root, "depth": int(raw_depth), "filters": flt,
                     "window": info, "window_info": info, "compare_info": w.compare_info(meta), **res})
@@ -99,7 +99,7 @@ def ads(slug: str):
     product = q.get_product(conn, slug)
     flt = {"cluster": _arg("cluster"), "icp": _arg("icp"), "pain": _arg("pain"),
            "family_key": _arg("family_key"), "campaign_id": _arg("campaign_id")}
-    res = q.meta_ads(conn, meta, w, product, **flt)
+    res = q.meta_ads(conn, meta, w, product, spark=q.parse_spark(request.args), **flt)
     return jsonify({"product": q.product_brief(product), "filters": flt, "window_info": w.info(meta),
                     "compare_info": w.compare_info(meta), **res})
 
@@ -108,9 +108,23 @@ def ads(slug: str):
 def campaigns(slug: str):
     conn, meta, w = _ctx()
     product = q.get_product(conn, slug)
-    res = q.campaigns(conn, meta, w, product)
+    res = q.campaigns(conn, meta, w, product, spark=q.parse_spark(request.args))
     return jsonify({"product": q.product_brief(product), "window_info": _all_days_info(w, meta),
                     "compare_info": w.compare_info(meta), **res})
+
+
+@bp.get("/api/products/<slug>/trend")
+def trend(slug: str):
+    conn, meta, w = _ctx()
+    product = q.get_product(conn, slug)
+    flt = {"cluster": _arg("cluster"), "icp": _arg("icp"), "pain": _arg("pain"), "family_key": _arg("family_key"), "campaign_id": _arg("campaign_id")}
+    kids = [k.strip() for k in (_arg("children") or "").split(",") if k.strip()] or None
+    res = q.trend(conn, meta, w, product, grain=(_arg("grain") or "day").lower(), split=(_arg("split") or "none").lower(), children_keys=kids, **flt)
+    info = w.info(meta)
+    if w.is_launch:
+        info["note"] = ("Trend covers every day held "
+                        f"({q._fmt_day(meta.daily_start, True)} – {q._fmt_day(meta.data_through, True)}).") + (f" {info['note']}" if info["note"] else "")
+    return jsonify({"product": q.product_brief(product), "window_info": info, "compare_info": w.compare_info(meta), **res})
 
 
 @bp.get("/api/products/<slug>/stage-daily")

@@ -2,7 +2,7 @@
 import { h, enc, fmt, isNum, href, apiWindow, globalParams, debounce, navigate, stageBadge, liveDot, thumb, empty, colPref, setColPref, refreshCmp } from './util.js';
 import { api, AuthError } from './api.js';
 import { createTable } from './table.js';
-import { metricColumns, FLAT_KEYS, fixTotal } from './columns.js';
+import { metricColumns, FLAT_KEYS, fixTotal, trendColumn } from './columns.js';
 
 export function breadcrumbs(items) {
   const last = items.length - 1;
@@ -26,7 +26,7 @@ export function columnsChips() {
   };
   return h('div', { class: 'ctl colchips' },
     h('span', { class: 'ctl-name' }, 'Columns'),
-    h('span', { class: 'chips', role: 'group', 'aria-label': 'Columns' }, mk('traffic', 'Traffic', 'Impressions, Link clicks, CTR, CPC'), mk('advanced', 'Advanced', 'CPM, Conv rate')));
+    h('span', { class: 'chips', role: 'group', 'aria-label': 'Columns' }, mk('traffic', 'Traffic', 'Impressions, Link clicks, CTR, CPC'), mk('advanced', 'Advanced', 'CPM, Conv rate'), mk('trend', 'Trend', 'Sparkline per row')));
 }
 
 export function section(title, body, { id, aside } = {}) {
@@ -96,6 +96,7 @@ export function adsColumns(p, { showFamily = true, campaignHref = null, linkAd =
   };
   return [
     nameCol,
+    trendColumn(),
     {
       key: 'campaign_name', label: 'Campaign', sort: (r) => r.campaign_name,
       cell: (r) => {
