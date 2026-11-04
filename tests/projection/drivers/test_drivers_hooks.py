@@ -68,13 +68,14 @@ def test_refresh_with_no_ad_data(pg):
     assert hooks.refresh(pg, today=TODAY) == {"rows": 0, "data_through": None}
 
 
-def test_a_refreshed_month_becomes_an_actual_month_in_the_engine(pg, rw):
+def test_a_refreshed_month_becomes_a_feeds_month_in_the_engine(pg, rw):
     fill_ad_daily(pg, date(2026, 10, 1), date(2026, 10, 31), per_day=10000.0)
     hooks.refresh(pg, today=TODAY)
     rw.commit()
     inp = loaders.load_inputs(rw, scenarios.get_scenario(rw, "current"), TODAY)
     d = model.compute_drivers({}, inp)
-    assert d.actual_through == M(2026, 10) and d.source[M(2026, 10)] == "meta_feed" and d.spend_meta[M(2026, 10)] == 310000.0
+    assert d.source[M(2026, 10)] == "meta_feed" and d.spend_meta[M(2026, 10)] == 310000.0
+    assert d.month_status[M(2026, 10)] == "feeds" and d.feeds_through == M(2026, 10) and d.books_through is None and d.actual_through is None
 
 
 def test_freshness_reports_the_daily_feed_and_the_monthly_books(pg):

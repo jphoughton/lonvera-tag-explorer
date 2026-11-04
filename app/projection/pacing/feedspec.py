@@ -57,4 +57,7 @@ def freshness(conn) -> list[dict]:
     last = r[0] if not isinstance(r, dict) else next(iter(r.values()))
     out.append({"feed": "meta_ad_daily", "label": "Meta spend, clicks and purchases (ad_daily)", "cadence": "daily", "data_through": last,
                 "stale_after_days": STALE_AFTER_DAYS})
+    r = conn.execute("SELECT max(updated_at)::date AS d FROM proj_pacing_hourly").fetchone()
+    last = r["d"] if isinstance(r, dict) else (r[0] if r else None)
+    out.append({"feed": "hourly_curve", "label": "Meta hourly spend curve (typed in the sheet)", "cadence": "monthly-upload", "data_through": last, "stale_after_days": 45})
     return out

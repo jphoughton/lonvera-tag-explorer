@@ -6,6 +6,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any
 
 from ..interfaces import MONTHS, Month, Series, add_months
 
@@ -141,9 +142,10 @@ class Cash:
 
 def cash_waterfall(months, *, close: Month, noi_before_inventory: Series, loan_interest: Series, loan_principal: Series,
                    seller_principal: Series, seller_interest: Series, tax: Series, equity: Series, inventory: Series,
-                   opening_first: float = 0.0, opening_override: Series | None = None, floor: float = 0.0) -> Cash:
+                   opening_first: float = 0.0, opening_override: Series | None = None, floor: float = 0.0, injection: float = 0.0, close_funding: float = 0.0) -> Cash:
     """Ending cash = starting cash + NOI before inventory - loan payment - seller note - tax - equity payback - inventory buys.
-    Starting cash is the previous month's ending cash (the first month starts from `opening_first`); an override replaces it for one month."""
+    Starting cash is the previous month's ending cash (the first month starts from `opening_first`); an override replaces it for one month.
+    `close_funding` is cash added in the close month and `injection` cash added in every month after it (used to find the top-up that keeps cash at zero or above)."""
     keys = ("noi_before_inventory", "opening_cash", "loan_interest", "loan_principal", "loan_payment", "seller_principal", "seller_interest",
             "tax", "equity_payback", "inventory_buys", "net_cash_flow", "cash_after_inventory", "ending_cash", "headroom")
     lines: dict[str, Series] = {k: {} for k in keys}
@@ -162,7 +164,7 @@ def cash_waterfall(months, *, close: Month, noi_before_inventory: Series, loan_i
         li, lp = loan_interest.get(m, 0.0), loan_principal.get(m, 0.0)
         sp, si = seller_principal.get(m, 0.0), seller_interest.get(m, 0.0)
         tx, eq, inv = tax.get(m, 0.0), equity.get(m, 0.0), inventory.get(m, 0.0)
-        net = noi_bi - li - lp - sp - si - tx - eq - inv
+        net = noi_bi - li - lp - sp - si - tx - eq - inv + (close_funding if prev is None else injection)
         end = opening + net
         for k, v in (("noi_before_inventory", noi_bi), ("opening_cash", opening), ("loan_interest", li), ("loan_principal", lp),
                      ("loan_payment", li + lp), ("seller_principal", sp), ("seller_interest", si), ("tax", tx), ("equity_payback", eq),
@@ -183,6 +185,37 @@ def cash_waterfall(months, *, close: Month, noi_before_inventory: Series, loan_i
                 below_floor_months=below)
 
 
+def top_up_to_zero(months, **waterfall: Any) -> tuple[float, float]:
+    """(funding at close, monthly top-up after close) that keep ending cash at zero or above in every month; (0, 0) when it already does.
+    The close month's shortfall is funded once at close (cash there ends at zero); the monthly top-up is the smallest constant cash added in each
+    later month on top of that. The waterfall is monotone in both, so a bisection on the exact waterfall (typed starting-cash overrides included)
+    is exact to the cent."""
+    waterfall = {k: v for k, v in waterfall.items() if k not in ("floor", "injection", "close_funding")}
+    base = cash_waterfall(months, floor=0.0, **waterfall)
+    if base.lowest_value is None or base.lowest_value >= 0:
+        return 0.0, 0.0
+    first = base.lines["ending_cash"][min(base.lines["ending_cash"])]
+    funding = max(0.0, -first)
+
+    def lowest(x: float) -> float:
+        c = cash_waterfall(months, injection=x, close_funding=funding, floor=0.0, **waterfall)
+        return c.lowest_value if c.lowest_value is not None else 0.0
+
+    if lowest(0.0) >= 0:
+        return funding, 0.0
+    hi = 1.0
+    while lowest(hi) < 0 and hi < 1e12:
+        hi *= 2
+    lo = 0.0
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        if lowest(mid) < 0:
+            lo = mid
+        else:
+            hi = mid
+    return funding, hi
+
+
 # ------------------------------------------------------------------------------------------------------------------ payback
 
 @dataclass
@@ -194,6 +227,8 @@ class Payback:
     total_variable: float = 0.0
     cm_first: float = 0.0                           # contribution margin (CM) of the first order
     cm_pct: float = 0.0
+    basis: str = "product margin"                   # 'product margin' (product cost + fulfillment) or 'all variable costs' (the P&L's own cost rates)
+    cost_pct: float = 0.0                           # variable cost per order as a share of AOV on that basis
     roas: float = 0.0                               # first-order revenue per ad dollar = AOV / CAC
     gap: float = 0.0                                # CAC minus first-order CM
     ages: list[int] = field(default_factory=list)
@@ -207,21 +242,31 @@ class Payback:
     surplus: float = 0.0                            # final cumulative CM minus CAC
 
 
-def payback(aov: float, cac: float, product_cost_pct: float, fulfillment: float, curve: list[float], max_age: int = 36) -> Payback:
-    """CM per first order = AOV - product cost % x AOV - fulfillment. Month by month, repeat CM = first-order CM x the retention ratio of that age
+def payback(aov: float, cac: float, product_cost_pct: float, fulfillment: float, curve: list[float], max_age: int = 36, *,
+            fully_loaded: bool = False, loaded_rate: float | None = None) -> Payback:
+    """CM per first order = AOV - product cost % x AOV - fulfillment ('product margin'). With fully_loaded=True the cost per order is
+    `loaded_rate` x AOV instead ('all variable costs': the P&L's own product, fulfillment, shipping, payment and chargeback rates), and
+    product_cost_pct / fulfillment are not used. Month by month, repeat CM = first-order CM x the retention ratio of that age
     (the curve is repeat revenue per $1 of first-order revenue); cumulative CM per customer vs CAC gives the payback month."""
     if not (isinstance(aov, (int, float)) and math.isfinite(aov) and aov > 0):
         raise ValueError("AOV must be a positive number")
     if not (isinstance(cac, (int, float)) and math.isfinite(cac) and cac >= 0):
         raise ValueError("CAC must be zero or more")
-    if not 0 <= product_cost_pct <= 1:
-        raise ValueError("product cost percent must be between 0 and 1")
-    if fulfillment < 0:
-        raise ValueError("fulfillment cost must be zero or more")
     max_age = max(1, int(max_age))
-    p = Payback(aov=aov, cac=cac, fulfillment=fulfillment)
-    p.product_cost = product_cost_pct * aov
-    p.total_variable = p.product_cost + fulfillment
+    if fully_loaded:
+        if not (isinstance(loaded_rate, (int, float)) and math.isfinite(loaded_rate) and 0 <= loaded_rate < 1):
+            raise ValueError("fully loaded payback needs the variable cost rate (a share of AOV between 0 and 1)")
+        p = Payback(aov=aov, cac=cac, basis="all variable costs", cost_pct=float(loaded_rate))
+        p.total_variable = loaded_rate * aov
+    else:
+        if not 0 <= product_cost_pct <= 1:
+            raise ValueError("product cost percent must be between 0 and 1")
+        if fulfillment < 0:
+            raise ValueError("fulfillment cost must be zero or more")
+        p = Payback(aov=aov, cac=cac, fulfillment=fulfillment)
+        p.product_cost = product_cost_pct * aov
+        p.total_variable = p.product_cost + fulfillment
+        p.cost_pct = p.total_variable / aov
     p.cm_first = aov - p.total_variable
     p.cm_pct = p.cm_first / aov
     p.roas = aov / cac if cac > 0 else math.inf
@@ -250,10 +295,19 @@ def payback(aov: float, cac: float, product_cost_pct: float, fulfillment: float,
 
 # ------------------------------------------------------------------------------------------------------------------ spend x ROAS grid
 
+def payback_pair(aov: float, cac: float, product_cost_pct: float, fulfillment: float, curve: list[float], loaded_rate: float | None,
+                 max_age: int = 36) -> dict[str, Payback | None]:
+    """Both readings for one set of inputs: {'product_margin': ..., 'fully_loaded': ... or None when no loaded rate is known}."""
+    return {"product_margin": payback(aov, cac, product_cost_pct, fulfillment, curve, max_age),
+            "fully_loaded": payback(aov, cac, product_cost_pct, fulfillment, curve, max_age, fully_loaded=True, loaded_rate=loaded_rate)
+            if loaded_rate is not None else None}
+
+
 @dataclass
 class Matrix:
     target_month: int = 0
     basis: str = "cm"
+    margin: str = "product"                         # whose margin rate: 'product' (product cost + fulfillment) or 'loaded' (all variable costs)
     cm_rate: float = 0.0
     cum_retention: float = 0.0                      # revenue multiple of a first order by the target month = 1 + sum of the curve to that age
     fixed_cost: float = 0.0

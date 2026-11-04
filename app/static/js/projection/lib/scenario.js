@@ -48,7 +48,7 @@ export const scenarios = {
   },
 
   // create a scenario (blank per the server's rules) or clone one; returns the new slug
-  async create(name, cloneFrom = null) {
+  async create(name, cloneFrom = null, { silent = false } = {}) {
     let res;
     try {
       res = await api.post('/scenarios', cloneFrom ? { name, clone_from: cloneFrom } : { name });
@@ -59,7 +59,7 @@ export const scenarios = {
     const made = (res && (res.scenario || res)) || {};
     await this.refresh();
     const slug = made.slug && this.has(made.slug) ? made.slug : (this.list.find((s) => s.name === name) || {}).slug;
-    if (slug) this.select(slug);
+    if (slug) this.select(slug, { silent });
     return slug || null;
   },
   async rename(slug, name) {
@@ -73,6 +73,27 @@ export const scenarios = {
     const was = this.slug;
     await this.refresh();
     if (was === slug || !this.has(was)) { this.slug = this.defaultSlug; lsSet(this.slug); emitter.emit('change', this.current); }
+  },
+
+  // deleted scenarios stay restorable for 30 days: GET /scenarios/archived -> [{slug, name, archived_at, days_left}]
+  async archived() {
+    const r = await api.get('/scenarios/archived');
+    return Array.isArray(r) ? r : (r && Array.isArray(r.archived) ? r.archived : []);
+  },
+  async undelete(slug) {
+    const res = await api.post(`/scenarios/${encodeURIComponent(slug)}/undelete`, {});
+    await this.refresh();
+    const made = (res && (res.scenario || res)) || {};
+    const back = made.slug && this.has(made.slug) ? made.slug : slug;
+    if (this.has(back)) this.select(back, { silent: true });
+    emitter.emit('change', this.current);
+    return back;
+  },
+  // a clone made before copies were frozen still reads its base; detach makes it stand on its own
+  async detach(slug) {
+    await api.post(`/scenarios/${encodeURIComponent(slug)}/detach`, {});
+    await this.refresh();
+    emitter.emit('change', this.current);
   },
 
   // History drawer: restorable versions (GET /scenarios/<slug>/history) and the audit rows that explain them (GET /audit?scenario=)
@@ -93,10 +114,22 @@ export const scenarios = {
 
   setVersion(version) {
     const c = this.current;
-    if (c && version != null && c.version !== version) { c.version = version; emitter.emit('version', version); }
+    if (c && version != null && c.version !== version) { c.version = version; c.updated_at = new Date().toISOString(); emitter.emit('version', version); }
   },
+  notifyChange() { emitter.emit('change', this.current); },       // re-render after a silent select
 };
 
 api.events.on('saved', ({ scenario, version }) => {
-  if (scenario === scenarios.slug) scenarios.setVersion(version);
+  const s = scenarios.list.find((x) => x.slug === scenario);
+  if (!s || version == null || s.version === version) return;
+  s.version = version;
+  s.updated_at = new Date().toISOString();
+  if (scenario === scenarios.slug) emitter.emit('version', version);
+});
+
+// the version a versioned write expects: the one this tab last saw (fresh = ask the server first, after a write that did not report one)
+api.setVersionSource(async (slug, fresh) => {
+  if (fresh) { try { await scenarios.refresh(); } catch { /* use what we know */ } }
+  const s = scenarios.list.find((x) => x.slug === slug);
+  return s ? s.version : null;
 });

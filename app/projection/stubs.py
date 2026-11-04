@@ -2,7 +2,8 @@
 
 `engine.run` calls `stub_for(key, ...)` for any module whose package is missing, so every module can be developed against a complete
 upstream. Values come from `scripts/projection/snapshot_read.py` (env PROJECTION_SNAPSHOT_DIR overrides the snapshot folder). If the
-snapshot is unreadable every series is zero, so the engine never crashes. Stub line keys are NOT the real pnl LINE_KEYS.
+snapshot is unreadable (production) there is no stub: `stub_for` returns None, because a zero-filled result would look like data.
+A module that is built but fails is never replaced by a stub. Stub line keys are NOT the real pnl LINE_KEYS.
 """
 from __future__ import annotations
 
@@ -145,6 +146,14 @@ STUBS: dict[str, Callable[..., Any]] = {
 }
 
 
-def stub_for(key: str, conn, scn: Scenario, today: date, **upstream) -> Any:
+def snapshot_available() -> bool:
+    """True when the sheet snapshot can be read (development machines). In production it cannot, and no stub is produced."""
+    return _sr_call("load", PNL) is not None
+
+
+def stub_for(key: str, conn, scn: Scenario, today: date, **upstream) -> Any | None:
+    """The fixture stub for an unbuilt module, or None when there is no snapshot to build it from (zeros would look like data)."""
+    if not snapshot_available():
+        return None
     fn = STUBS[key]
     return fn(conn, scn, today, **({"drivers": upstream.get("drivers")} if key == "cohorts" else {}))

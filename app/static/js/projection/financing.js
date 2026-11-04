@@ -114,13 +114,20 @@ export async function render(el, ctx) {
       : (neg ? `Cash bottoms at ${fmt.compact(low.value)} in ${monthName(low.month)}; ${neg} of ${monthsWithCash} months are negative.`
         : `Cash never falls below ${fmt.compact(low.value)}, in ${monthName(low.month)}.`);
     const horizon = pb ? pb.ages.length - 1 : 36;
+    const monthsText = (n) => (n == null ? `Over ${horizon} months` : n + (n === 1 ? ' month' : ' months'));
+    function paybackKpi() {
+      if (!pb) return { label: 'Payback on a new customer', value: 'Needs inputs', note: S.payback.unavailable ? 'see payback panel' : 'Enter order value' };
+      const lp = S.payback.loaded && S.payback.loaded.result;
+      if (lp) return { label: 'Payback after all costs', value: monthsText(lp.months), note: `${pb.months == null ? 'Over ' + horizon : pb.months} on product margin`, tone: lp.months == null ? 'bad' : undefined };
+      return { label: 'Payback on product margin', value: monthsText(pb.months), note: `Acquisition cost ${money2(pb.cac)}`, tone: pb.months == null ? 'bad' : undefined };
+    }
     const kpis = [
       { label: 'Lowest ending cash', value: money(low.value), note: monthName(low.month), tone: low.value != null && low.value < 0 ? 'bad' : 'good' },
       { label: 'Months below zero', value: String(neg), note: neg ? `first ${monthName(s.first_negative_month)}` : 'none', tone: neg ? 'bad' : 'good' },
-      { label: 'Payback on a new customer', value: pb ? (pb.months == null ? `Over ${horizon} months` : pb.months + (pb.months === 1 ? ' month' : ' months')) : 'Needs inputs',
-        note: pb ? `Acquisition cost ${money2(pb.cac)}` : 'Enter order value', tone: pb && pb.months == null ? 'bad' : undefined },
+      paybackKpi(),
       pick ? { label: `Term loan, ${monthName(pick.month)}`, value: money(pick.balance), note: after ? `${monthName(after.month)} ${fmt.compact(after.balance)}` : '' } : null,
-      { label: 'Term loan interest', value: money(s.total_interest) + (isProjected(S.cash.close_month) ? '*' : ''), note: s.residual_balance > 0.5 ? `${money(s.residual_balance)} unpaid` : (s.payoff_month ? `paid off ${monthName(s.payoff_month)}` : '') },
+      { label: 'Monthly top-up to stay at zero', value: money(s.monthly_top_up || 0),
+        note: s.close_funding > 0.5 ? `plus ${fmt.compact(s.close_funding)} at close` : (s.monthly_top_up > 0 ? 'a month' : 'cash stays positive'), tone: s.monthly_top_up > 0 || s.close_funding > 0.5 ? 'warn' : 'good' },
     ].filter(Boolean);
     headerHost.replaceChildren(ui.pageHeader({
       title: 'Cash & debt',
@@ -136,7 +143,10 @@ export async function render(el, ctx) {
   const cashGridHost = h('div');
   let cashChartObj = null;
   function drawWarnings() {
-    warnHost.replaceChildren(...S.cash.summary.warnings.filter((w) => !w.startsWith('Term loan')).map((w) => h('div', null, chip(w, w.startsWith('Ending cash') ? 'bad' : 'warn'))));
+    const kids = S.cash.summary.warnings.filter((w) => !w.startsWith('Term loan')).map((w) => h('div', null, chip(w, w.startsWith('Ending cash') ? 'bad' : 'warn')));
+    const d = S.cash.summary.low_driver;
+    if (d) kids.push(h('p', { class: 'pg-purpose', style: { margin: '2px 0 0' } }, d.sentence));
+    warnHost.replaceChildren(...kids);
   }
   function drawCashChart() {
     charts.destroy(cashChartObj);
@@ -251,60 +261,79 @@ export async function render(el, ctx) {
   const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   function drawPayback() {
     const { inputs, result: r } = S.payback;
+    const lo = S.payback.loaded || {};
+    const L = lo.result;
+    const info = lo.info || {};
     const aov = numberInput(r ? +r.aov.toFixed(2) : inputs.aov, { step: 0.01, min: 0.01 });
     const cac = numberInput(r ? +r.cac.toFixed(2) : inputs.cac, { step: 0.01, min: 0 });
     const cost = numberInput(+(inputs.product_cost_pct * 100).toFixed(2), { step: 0.1, min: 0, max: 100 });
     const ful = numberInput(inputs.fulfillment, { step: 0.01, min: 0 });
+    const loadedPct = numberInput(info.source === 'typed' && info.rate != null ? +(info.rate * 100).toFixed(2) : '', { step: 0.1, min: 0, max: 99 });
+    loadedPct.placeholder = info.rate != null ? `${(info.rate * 100).toFixed(1)} (P&L rates)` : 'P&L rates';
     const curve = selectInput([['live', 'Live curve (recent cohorts)'], ['goal', 'Goal curve (snapshot)']], S.payback.curve);
     const apply = guard(async () => {
-      view.whatIf = q({ aov: val(aov), cac: val(cac), product_cost_pct: val(cost) == null ? null : val(cost) / 100, fulfillment: val(ful), curve: curve.value });
+      view.whatIf = q({ aov: val(aov), cac: val(cac), product_cost_pct: val(cost) == null ? null : val(cost) / 100, fulfillment: val(ful), curve: curve.value,
+        loaded_rate: val(loadedPct) == null ? null : val(loadedPct) / 100 });
       await refresh();
     });
     const save = h('button', { type: 'button', class: 'btn primary', onclick: guard(async () => {
-      await saveInputs({ payback: { aov: val(aov), cac: val(cac), product_cost_pct: val(cost) / 100, fulfillment: val(ful), curve: curve.value } }, 'Payback inputs saved');
+      await saveInputs({ payback: { aov: val(aov), cac: val(cac), product_cost_pct: val(cost) / 100, fulfillment: val(ful), curve: curve.value,
+        loaded_rate: val(loadedPct) == null ? null : val(loadedPct) / 100 } }, 'Payback inputs saved');
     }) }, 'Save to scenario');
     const ref = inputs.reference || {};
     const useRef = ref.aov && ref.cac ? h('button', { type: 'button', class: 'btn', onclick: () => { aov.value = ref.aov.toFixed(2); cac.value = ref.cac.toFixed(2); apply(); } },
       `Use ${monthName(ref.month)} actuals`) : null;
     const controls = rowFlex(field('Average order value (AOV)', aov), field('Customer acquisition cost (CAC)', cac), field('Product cost (% of order value)', cost),
-      field('Fulfillment per order', ful), field('Repeat curve', curve),
+      field('Fulfillment per order', ful), field('All variable costs (% of order value)', loadedPct, 'Leave blank to read the P&L cost rates'), field('Repeat curve', curve),
       h('button', { type: 'button', class: 'btn', onclick: apply }, 'Recalculate'), save, useRef);
     const kids = [h('h3', { class: 'pg-h2' }, 'Payback on a new customer'), controls];
     if (!r) {
-      kids.push(h('p', { class: 'muted' }, 'Enter the average order value and customer acquisition cost to see the payback.'));
+      kids.push(h('p', { class: 'muted' }, S.payback.unavailable || 'Enter the average order value and customer acquisition cost to see the payback.'));
       paybackHost.replaceChildren(...kids);
       return;
     }
-    const chips = h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', margin: 'var(--lv-sp-3) 0' } },
-      chip(r.months == null ? `Does not pay back in ${r.ages.length - 1} months` : `Pays back in month ${r.months}`, r.months == null ? 'bad' : 'good'),
-      chip(`First-order margin ${money2(r.cm_first)} (${fmt.pct(r.cm_pct, 1)} of order value)`, 'info'),
-      chip(`Gap after the first order ${money2(r.gap)}`, r.gap > 0 ? 'warn' : 'good'),
-      chip(`New-customer return on ad spend ${fmt.x(r.roas, 2)}`, 'info'),
-      chip(`${r.ages.length - 1}-month surplus ${money2(r.surplus)}`, r.surplus >= 0 ? 'good' : 'bad'));
-    kids.push(chips, h('div', { class: 'pg-chartbox' }, paybackCanvas));
+    const horizon = r.ages.length - 1;
+    const card = (title, res, missingText) => h('div', { style: { flex: '1 1 300px', minWidth: '0', border: '1px solid var(--lv-line)', borderRadius: 'var(--lv-r-sm)', padding: 'var(--lv-sp-3)', display: 'flex', flexDirection: 'column', gap: '6px' } },
+      h('strong', null, title),
+      res ? [
+        chip(res.months == null ? `Does not pay back in ${horizon} months` : `Pays back in month ${res.months}`, res.months == null ? 'bad' : 'good'),
+        chip(`First-order margin ${money2(res.cm_first)} (${fmt.pct(res.cm_pct, 1)} of order value)`, 'info'),
+        chip(`Gap after the first order ${money2(res.gap)}`, res.gap > 0 ? 'warn' : 'good'),
+        chip(`${horizon}-month surplus ${money2(res.surplus)}`, res.surplus >= 0 ? 'good' : 'bad'),
+      ] : h('p', { class: 'muted', style: { margin: 0 } }, missingText));
+    const missingText = info.missing && info.missing.length ? `The P&L has no result for: ${info.missing.join(', ')}.` : 'The P&L cost rates are not available.';
+    kids.push(h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 'var(--lv-sp-3)', margin: 'var(--lv-sp-3) 0' } },
+      card('On product margin', r), card('After all variable costs', L, missingText)),
+      h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: 'var(--lv-sp-3)' } }, chip(`New-customer return on ad spend ${fmt.x(r.roas, 2)}`, 'info')));
+    if (L && info.parts && info.parts.length) {
+      const parts = info.parts.map((x) => h('tr', null, h('td', null, x.label), h('td', { style: { textAlign: 'right' } }, fmt.pct(x.rate, 1))));
+      parts.push(h('tr', null, h('th', { style: { textAlign: 'left' } }, 'Variable cost, all lines'), h('th', { style: { textAlign: 'right' } }, fmt.pct(info.rate, 1))));
+      kids.push(h('details', { style: { marginBottom: 'var(--lv-sp-3)' } }, h('summary', null, `What counts as variable cost: ${fmt.pct(info.rate, 1)} of order value`),
+        h('div', { style: { overflowX: 'auto' } }, h('table', { class: 'pg-mini', style: { maxWidth: '420px' } }, h('tbody', null, parts))),
+        h('p', { class: 'pg-source' }, info.source === 'typed' ? 'Typed rate.' : `The P&L's own cost lines as a share of DTC revenue, ${monthName(info.months[0])} to ${monthName(info.months[1])}.`)));
+    }
+    kids.push(h('div', { class: 'pg-chartbox' }, paybackCanvas));
     const rows = r.ages.map((a, i) => h('tr', null,
       h('td', null, String(a)), h('td', { style: { textAlign: 'right' } }, r.retention[i] == null ? '—' : fmt.pct(r.retention[i], 1)),
-      h('td', { style: { textAlign: 'right' } }, money2(r.cm[i])), h('td', { style: { textAlign: 'right' } }, money2(r.cumulative[i])),
-      h('td', null, r.paid[i] ? chip('Paid back', 'good') : '')));
+      h('td', { style: { textAlign: 'right' } }, money2(r.cumulative[i])), h('td', { style: { textAlign: 'right' } }, L ? money2(L.cumulative[i]) : '—'),
+      h('td', null, (L ? L.paid[i] : r.paid[i]) ? chip('Paid back', 'good') : '')));
     kids.push(h('details', { style: { marginTop: 'var(--lv-sp-3)' } }, h('summary', null, 'Month by month'),
       h('div', { style: { overflow: 'auto', maxHeight: '320px' } }, h('table', { class: 'pg-mini' },
-        h('thead', null, h('tr', null, ['Month after first order', 'Repeat revenue per $1 of first order', 'Margin earned', 'Cumulative margin', ''].map((c, i) => h('th', { style: { textAlign: i && i < 4 ? 'right' : 'left' } }, c)))),
+        h('thead', null, h('tr', null, ['Month after first order', 'Repeat revenue per $1 of first order', 'Cumulative margin, product', 'Cumulative margin, all variable costs', ''].map((c, i) => h('th', { style: { textAlign: i && i < 4 ? 'right' : 'left' } }, c)))),
         h('tbody', null, rows)))));
-    kids.push(sourceLine('Margin per order = order value − product cost − fulfillment; repeat margin = first-order margin × the curve for that month.'));
+    kids.push(sourceLine('Margin per order = order value − variable costs; repeat margin = first-order margin × the curve for that month. Product margin counts product cost and fulfillment only.'));
     paybackHost.replaceChildren(...kids);
     charts.destroy(paybackChartObj);
     const ink = css('--lv-viz-ink') || css('--lv-ink');
     const accent = css('--lv-viz-1') || css('--lv-action');
+    const second = css('--lv-viz-2') || css('--lv-info');
     const muted = css('--lv-viz-axis') || css('--lv-muted');
+    const datasets = [{ label: 'Cumulative margin, product', data: r.cumulative, borderColor: accent, backgroundColor: accent, borderWidth: 2, pointRadius: 0, tension: 0.15 }];
+    if (L) datasets.push({ label: 'Cumulative margin, all variable costs', data: L.cumulative, borderColor: second, backgroundColor: second, borderWidth: 2, pointRadius: 0, tension: 0.15 });
+    datasets.push({ label: 'Customer acquisition cost', data: r.ages.map(() => r.cac), borderColor: ink, backgroundColor: ink, borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0 });
     paybackChartObj = new Chart(paybackCanvas, {
       type: 'line',
-      data: {
-        labels: r.ages.map((a) => (a === 0 ? 'First order' : 'Month ' + a)),
-        datasets: [
-          { label: 'Cumulative margin per customer', data: r.cumulative, borderColor: accent, backgroundColor: accent, borderWidth: 2, pointRadius: 0, tension: 0.15 },
-          { label: 'Customer acquisition cost', data: r.ages.map(() => r.cac), borderColor: ink, backgroundColor: ink, borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0 },
-        ],
-      },
+      data: { labels: r.ages.map((a) => (a === 0 ? 'First order' : 'Month ' + a)), datasets },
       options: {
         responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false },
         scales: { x: { grid: { display: false }, ticks: { color: muted, maxTicksLimit: 10, maxRotation: 0 } }, y: { ticks: { color: muted, callback: (v) => fmt.money(v) }, beginAtZero: true } },
@@ -325,16 +354,18 @@ export async function render(el, ctx) {
   }
   function drawMatrix() {
     const r = S.matrix.result;
-    if (!r) { matrixHost.replaceChildren(h('h3', { class: 'pg-h2' }, 'Profit by spend and return'), h('p', { class: 'muted' }, 'Needs the order value and acquisition cost from the payback inputs.')); return; }
+    if (!r) { matrixHost.replaceChildren(h('h3', { class: 'pg-h2' }, 'Profit by spend and return'), h('p', { class: 'muted' }, S.matrix.unavailable || 'Needs the order value and acquisition cost from the payback inputs.')); return; }
     const target = numberInput(r.target_month, { step: 1, min: 0, max: 60 });
     const basis = selectInput([['cm', 'Contribution margin only'], ['loaded', 'Fully loaded (less fixed cost)']], r.basis);
+    const hasLoaded = !!(S.payback.loaded && S.payback.loaded.result);
+    const margin = selectInput([['product', 'On product margin'], ...(hasLoaded ? [['loaded', 'After all variable costs']] : [])], hasLoaded ? r.margin : 'product');
     const fixed = numberInput(r.fixed_cost, { step: 1000, min: 0 });
     const apply = guard(async () => {
-      view.matrixOver = q({ target_month: val(target), basis: basis.value, fixed_cost: val(fixed) });
+      view.matrixOver = q({ target_month: val(target), basis: basis.value, margin: margin.value, fixed_cost: val(fixed) });
       await refresh();
     });
     const save = h('button', { type: 'button', class: 'btn', onclick: guard(async () => {
-      await saveInputs({ matrix: { target_month: val(target), basis: basis.value, fixed_cost: val(fixed) } }, 'Grid inputs saved');
+      await saveInputs({ matrix: { target_month: val(target), basis: basis.value, margin: margin.value, fixed_cost: val(fixed) } }, 'Grid inputs saved');
     }) }, 'Save to scenario');
     const max = Math.max(...r.profit.flat().map((v) => Math.abs(v)));
     const cur = S.payback.result ? S.payback.result.roas : null;
@@ -347,10 +378,10 @@ export async function render(el, ctx) {
       : chip(`Return on ad spend (ROAS) ${fmt.x(cur, 2)} vs break-even ${fmt.x(r.breakeven_roas, 2)} for payback by month ${r.target_month}`, cur >= r.breakeven_roas ? 'good' : 'bad');
     matrixHost.replaceChildren(
       h('h3', { class: 'pg-h2' }, `Profit at month ${r.target_month} by spend and return on ad spend`),
-      rowFlex(field('Target payback month', target), field('Basis', basis), field('Fixed cost per month', fixed, 'Fully loaded basis only'),
+      rowFlex(field('Target payback month', target), field('Margin rate', margin), field('Basis', basis), field('Fixed cost per month', fixed, 'Fully loaded basis only'),
         h('button', { type: 'button', class: 'btn', onclick: apply }, 'Recalculate'), save),
       h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', margin: 'var(--lv-sp-3) 0' } }, verdict,
-        chip(`Margin rate ${fmt.pct(r.cm_rate, 1)} · revenue multiple by month ${r.target_month}: ${fmt.x(r.cum_retention, 2)}`, 'info')),
+        chip(`Margin rate ${fmt.pct(r.cm_rate, 1)} ${r.margin === 'loaded' ? 'after all variable costs' : 'on product margin'} · revenue multiple by month ${r.target_month}: ${fmt.x(r.cum_retention, 2)}`, 'info')),
       h('div', { style: { overflowX: 'auto' } }, h('table', { class: 'pg-mini' }, h('thead', null, head), h('tbody', null, body), h('tfoot', null, be))),
       sourceLine('Profit = spend × return on ad spend × margin rate × revenue multiple − spend; the multiple is 1 plus the repeat curve through the target month.'));
   }
@@ -360,6 +391,7 @@ export async function render(el, ctx) {
   function drawPayout() {
     const r = S.payout.result;
     const inp = S.inputs.params.payout;
+    if (!r) { payoutHost.replaceChildren(h('h3', { class: 'pg-h2' }, 'Scale-payback payout schedule'), h('p', { class: 'muted' }, S.payout.unavailable || 'The payout schedule is not available.')); return; }
     const spend = numberInput(r.media_spend, { step: 10000, min: 0 });
     const cpa = numberInput(r.cpa, { step: 1, min: 0.01 });
     const aov = numberInput(r.aov, { step: 1, min: 0.01 });

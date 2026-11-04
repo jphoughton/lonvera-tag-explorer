@@ -86,7 +86,9 @@ def test_freshness_values_and_shape(conn):
     assert fresh["meta_reach"]["data_through"] == dt.date(2026, 11, 3)
     assert "meta_ad_daily" in fresh
     for f in fresh.values():
-        assert f["cadence"] == "daily" and f["stale_after_days"] == 2 and f["label"]
+        assert f["label"] and f["cadence"] in ("daily", "monthly-upload")
+        assert f["stale_after_days"] == (45 if f["feed"] == "hourly_curve" else 2) and f["cadence"] == ("monthly-upload" if f["feed"] == "hourly_curve" else "daily")
+    assert fresh["hourly_curve"]["data_through"] is not None
 
 
 def _seed_ad_daily(conn):

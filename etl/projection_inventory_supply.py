@@ -243,7 +243,8 @@ def refresh(conn, days: int = 14, *, today: date | None = None, reader: Callable
     The sheet holds one current count (rows 35-38 for Vital Bull, Beef Liver, Boneflex, Vital Belle; snapshot date in B39). A count older than `days` is not
     loaded. A row for that day that already exists with the same values is skipped; the same day with different values is replaced (the sync rewrites
     the cells during the day). Returns {"rows": rows written, "data_through": the snapshot date}."""
-    today = today or date.today()
+    from app.projection import clock
+    today = today or clock.today_pt()
     grid = (reader or read_revamp_cells)()
     by_label = {}
     for line in grid:

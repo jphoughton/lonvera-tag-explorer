@@ -13,6 +13,15 @@ from zoneinfo import ZoneInfo
 PACIFIC = ZoneInfo("America/Los_Angeles")
 ENV_AS_OF = "PROJECTION_AS_OF"
 
+try:                                                  # proj-core's single clock, when it exists; every pacing path reads the Pacific date from here
+    from ..clock import today_pt as _core_today
+except ImportError:                                   # pragma: no cover
+    _core_today = None
+
+
+def today_pacific() -> date:
+    return _core_today() if _core_today is not None else datetime.now(PACIFIC).date()
+
 
 def as_of(override: date | str | None = None) -> date:
     """The pacing "today": override, else PROJECTION_AS_OF, else the Pacific calendar date now."""
@@ -21,7 +30,7 @@ def as_of(override: date | str | None = None) -> date:
     raw = override or os.environ.get(ENV_AS_OF)
     if raw:
         return date.fromisoformat(str(raw))
-    return datetime.now(PACIFIC).date()
+    return today_pacific()
 
 
 def data_through(today: date, lag: int = 1) -> date:

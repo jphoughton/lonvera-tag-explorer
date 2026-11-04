@@ -1,8 +1,9 @@
 """Pacing variables: every number or rule that drives the pacing outputs, as a named, scenario-aware lever with the sheet's value as its default.
 
 Pacing owns the levers in `params['pacing']`. Four inputs belong to other modules and are read through (and edited through) the namespace that owns them:
-the sales-tax estimate (`drivers.sales_tax_rate`, P&L row 21) and the Payback box inputs (`financing.payback.*`, Payback tab; `drivers.payback.*` is
-read as a fallback). A lever set to its default is never stored: PUT with null removes the key. Validation lives here, one rule per lever.
+the sales-tax estimate (`drivers.sales_tax_rate`, P&L row 21) and the Payback box inputs, which have ONE store, `params['drivers']['payback']`
+(product_cost_pct, fulfillment_per_order, horizon_months; shared with the Spend plan and Cash & debt pages). `financing.payback.*` is read only as a legacy
+fallback for scenarios restored from an older version. A lever set to its default is never stored: PUT with null removes the key. Validation lives here, one rule per lever.
 
 Feed classification rules (product patterns, the testing keyword) apply when the ETL loads a day, not per scenario: they are global settings stored in
 `proj_pacing_setting` (see etl/projection_pacing.py) and listed here as `scope: feed`.
@@ -45,6 +46,8 @@ SPECS: tuple[Spec, ...] = (
          help="Costs and cost per customer above this share of goal read as well over plan."),
     Spec("early_days", "Early-month notice, days", "days", 5, "Automated Pacing: the projection runs hot in the first days (renewals land on day 1)", (NS, "early_days"), lo=0, hi=15,
          integer=True, help="With fewer full days than this the page says projections swing."),
+    Spec("cpa_window_days", "Cost-per-customer context window, days", "days", 28, "Skeptic review: 28-day realized cost per new customer shown beside the month's (no sheet cell)", (NS, "cpa_window_days"),
+         lo=7, hi=90, integer=True, help="Days behind the 'last N days' cost per new customer shown beside the month-to-date figure."),
     Spec("last_days", "Recent-average window, days", "days", 7, "Automated Pacing column D: TODAY()-7 to TODAY()-1", (NS, "last_days"), lo=1, hi=31, integer=True,
          help="Days in the 'last 7-day average' column."),
     Spec("data_lag_days", "Days between today and the last complete day", "days", 1, "Automated Pacing B54: DAY(TODAY())-1 (feeds run through yesterday)", (NS, "data_lag_days"),
@@ -64,12 +67,12 @@ SPECS: tuple[Spec, ...] = (
          help="Weeks shown by default on the week grain."),
     Spec("sales_tax_rate", "Sales-tax estimate, share of DTC revenue", "fraction", 0.07, "P&L row 21: =-(DTC revenue x 0.07); edited with the spend plan", ("drivers", "sales_tax_rate"),
          owner="drivers", lo=0.0, hi=0.5, help="Deducted from DTC revenue in revenue pacing and the plan-basis revenue."),
-    Spec("product_cost_pct", "Product cost, share of order value", "fraction", 0.1726, "Payback!D11 (typed)", ("financing", "payback", "product_cost_pct"), owner="financing", lo=0.0, hi=0.99,
-         fallbacks=(("drivers", "payback", "product_cost_pct"),), help="Payback box: first-order margin = order value x (1 - this) - fulfillment."),
-    Spec("fulfillment_per_order", "Fulfillment per order", "dollars", 5.53, "Payback!B12 (typed)", ("financing", "payback", "fulfillment"), owner="financing", lo=0.0, hi=1000.0,
-         fallbacks=(("drivers", "payback", "fulfillment_per_order"),), help="Payback box: dollars of fulfillment cost per first order."),
-    Spec("payback_horizon", "Payback horizon, months", "months", 36, "Automated Pacing M9: SCAN over Curves rows 4-39 (36 ages)", ("financing", "payback", "max_age"), owner="financing", lo=1, hi=60,
-         integer=True, fallbacks=(("drivers", "payback", "horizon_months"),), help="Months of repeat curve counted before the payback reads 'n+'."),
+    Spec("product_cost_pct", "Product cost, share of order value", "fraction", 0.1726, "Payback!D11 (typed)", ("drivers", "payback", "product_cost_pct"), owner="drivers", lo=0.0, hi=0.99,
+         fallbacks=(("financing", "payback", "product_cost_pct"),), help="Payback box: first-order margin = order value x (1 - this) - fulfillment."),
+    Spec("fulfillment_per_order", "Fulfillment per order", "dollars", 5.53, "Payback!B12 (typed)", ("drivers", "payback", "fulfillment_per_order"), owner="drivers", lo=0.0, hi=1000.0,
+         fallbacks=(("financing", "payback", "fulfillment"),), help="Payback box: dollars of fulfillment cost per first order."),
+    Spec("payback_horizon", "Payback horizon, months", "months", 36, "Automated Pacing M9: SCAN over Curves rows 4-39 (36 ages)", ("drivers", "payback", "horizon_months"), owner="drivers", lo=1, hi=60,
+         integer=True, fallbacks=(("financing", "payback", "max_age"),), help="Months of repeat curve counted before the payback reads 'n+'."),
 )
 BY_KEY = {s.key: s for s in SPECS}
 
@@ -81,6 +84,7 @@ class Levers:
     cost_warn: float = 1.10
     early_days: int = 5
     last_days: int = 7
+    cpa_window_days: int = 28
     data_lag_days: int = 1
     rates_month: date | None = None
     below_ebitda_rows: tuple[int, ...] = (62, 94)
@@ -218,3 +222,17 @@ def cross_check(values: dict[str, Any]) -> None:
 def rates_month(L: Levers, today: date) -> date:
     """The month whose plan rates price every day of the EBITDA estimate: the lever, else the month being paced (today's)."""
     return L.rates_month or today.replace(day=1)
+
+
+def validate_params(params: dict | None) -> None:
+    """Core hook for PATCH /scenarios: the `pacing` group may hold only pacing variables with valid values (the same rules as PUT /levers)."""
+    known = {s.key: s for s in SPECS if s.path[0] == NS}
+    values = {}
+    for key, v in (params or {}).items():
+        spec = known.get(key)
+        if spec is None:
+            raise ApiError(400, f"pacing.{key} is not a pacing variable")
+        if v is not None:
+            values[key] = _check(spec, v)
+    eff = {**{k: s.default for k, s in known.items()}, **values}
+    cross_check({"pace_good": eff["pace_good"], "pace_warn": eff["pace_warn"]})

@@ -103,16 +103,16 @@ def test_cohort_with_no_customers_never_feeds_the_curve():
 def test_choose_curve_live_goal_blend_and_max_age_cap():
     live = [0.1] * 60
     goal = [0.3] * 60
-    assert eng.choose_curve(live, goal, eng.Levers(curve="live"))[0] == live
-    assert eng.choose_curve(live, goal, eng.Levers(curve="goal"))[0] == goal
-    blended, warn = eng.choose_curve(live, goal, eng.Levers(curve="blend:0.25"))
+    assert eng.choose_curve(live, goal, eng.Levers(curve_source="live"))[0] == live
+    assert eng.choose_curve(live, goal, eng.Levers(curve_source="goal"))[0] == goal
+    blended, warn = eng.choose_curve(live, goal, eng.Levers(curve_source="blend:0.25"))
     assert warn is None and blended[0] == pytest.approx(0.25 * 0.3 + 0.75 * 0.1)
-    capped, _ = eng.choose_curve(live, goal, eng.Levers(curve="live", max_age=12))
+    capped, _ = eng.choose_curve(live, goal, eng.Levers(curve_source="live", max_age=12))
     assert capped[:12] == live[:12] and set(capped[12:]) == {0.0}
 
 
 def test_goal_choice_without_a_goal_curve_falls_back_to_live_and_says_so():
-    used, warn = eng.choose_curve([0.1] * 60, [0.0] * 60, eng.Levers(curve="goal"))
+    used, warn = eng.choose_curve([0.1] * 60, [0.0] * 60, eng.Levers(curve_source="goal"))
     assert used == [0.1] * 60 and "Goal curve" in warn
 
 
@@ -195,16 +195,16 @@ def test_actual_repeat_sums_cohorts_landing_in_the_same_month():
 
 def test_levers_default_and_validation():
     assert eng.parse_levers(None) == eng.DEFAULT_LEVERS
-    lv = eng.parse_levers({"n_cohorts": 6, "tail_decay": 0.9, "curve": "BLEND:0.4"})
-    assert lv.n_cohorts == 6 and lv.curve == "blend:0.4" and lv.blend_weight == pytest.approx(0.4)
-    for bad in ({"n_cohorts": 0}, {"n_cohorts": 2.5}, {"tail_decay": 1.5}, {"curve": "median"}, {"curve": "blend:2"}, {"nope": 1},
+    lv = eng.parse_levers({"n_cohorts": 6, "tail_decay": 0.9, "curve_source": "BLEND:0.4"})
+    assert lv.n_cohorts == 6 and lv.curve_source == "blend:0.4" and lv.curve == "blend:0.4" and lv.blend_weight == pytest.approx(0.4)
+    for bad in ({"n_cohorts": 0}, {"n_cohorts": 2.5}, {"tail_decay": 1.5}, {"curve_source": "median"}, {"curve_source": "blend:2"}, {"curve_source": "asof"}, {"asof_month": "2026-08-15"}, {"asof_month": "soon"}, {"nope": 1},
                 {"n_cohorts": True}, {"n_cohorts": 2, "min_cohorts_per_age": 3}, {"max_age": 61}, {"tail_from_age": 1}):
         with pytest.raises(ValueError):
             eng.parse_levers(bad)
 
 
 def test_non_strict_levers_ignore_bad_cells_instead_of_stopping_the_engine():
-    lv = eng.parse_levers({"n_cohorts": 999, "tail_decay": "x", "unknown": 1, "curve": "live"}, strict=False)
+    lv = eng.parse_levers({"n_cohorts": 999, "tail_decay": "x", "unknown": 1, "curve_source": "live"}, strict=False)
     assert lv == eng.DEFAULT_LEVERS
     lv2 = eng.parse_levers({"n_cohorts": 2, "min_cohorts_per_age": 5}, strict=False)
     assert lv2.n_cohorts == 2 and lv2.min_cohorts_per_age == 2

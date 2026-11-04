@@ -18,8 +18,9 @@ from datetime import date, timedelta
 from typing import Any
 
 from .feeds import Frame
-from .periods import data_through as dthru, days_elapsed as dels, days_in_month, month_end
+from .periods import data_through as dthru, days_elapsed as dels, days_in_month, month_end, month_start
 from .rollup import Period, aggregate, project
+from ..financing import calc as fin_calc, model as fin_model, params as fin_params
 from . import levers as lv
 from .levers import Levers
 from .targets import TargetBook
@@ -245,25 +246,26 @@ def _proj_only(c: Ctx, spec: Spec, a: Amt) -> dict:
 
 # ---------------------------------------------------------------------------------------------------------------- payback
 
-def payback_months(aov: float | None, cac: float | None, product_cost_pct: float, fulfillment: float, curve: list[float], horizon: int = 36) -> dict:
-    """Month in which cumulative contribution per customer reaches the acquisition cost.
-
-    First-order margin cm = aov x (1 - product cost %) - fulfillment. After k months the cumulative margin is cm x (1 + the curve summed over ages 1..k).
-    months = 0 when the first order already pays for the customer; None ('36+') when the horizon is not enough.
-    """
-    if not aov or not cac:
+def fin_payback(aov: float | None, cac: float | None, product_cost_pct: float, fulfillment: float, curve: list[float], horizon: int = 36,
+                loaded_rate: float | None = None) -> dict:
+    """The financing module's payback, so Pacing and Cash & debt show the same numbers: on product margin (product cost share and fulfillment per order, the
+    sheet's Payback tab), or after all variable costs when `loaded_rate` (variable cost as a share of order value) is given. months is None past the horizon."""
+    if not aov or aov <= 0 or cac is None or cac < 0 or not curve:
         return {"first_order_margin": None, "months": None, "label": "n/a"}
-    cm = aov * (1 - product_cost_pct) - fulfillment
-    if cm >= cac:
-        return {"first_order_margin": cm, "months": 0, "label": "0"}
-    cum, s = [], 0.0
-    for x in curve[:horizon]:
-        s += x
-        cum.append(cm * (1 + s))
-    for k, v in enumerate(cum, start=1):
-        if v >= cac:
-            return {"first_order_margin": cm, "months": k, "label": str(k)}
-    return {"first_order_margin": cm, "months": None, "label": f"{horizon}+"}
+    p = fin_calc.payback(aov, cac, product_cost_pct, fulfillment, curve, horizon, fully_loaded=loaded_rate is not None, loaded_rate=loaded_rate)
+    return {"first_order_margin": p.cm_first, "months": p.months, "label": str(p.months) if p.months is not None else f"{horizon}+"}
+
+
+def payback_months(aov: float | None, cac: float | None, product_cost_pct: float, fulfillment: float, curve: list[float], horizon: int = 36) -> dict:
+    """Payback on product margin: first-order margin = aov x (1 - product cost share) - fulfillment per order."""
+    return fin_payback(aov, cac, product_cost_pct, fulfillment, curve, horizon)
+
+
+def loaded_rate(book: TargetBook | None, scn_params: dict | None) -> dict:
+    """Variable cost per order as a share of order value from the P&L's own rates, as the financing module reads it (`financing.payback.loaded_*` levers)."""
+    if book is None or book.pnl is None:
+        return {"rate": None, "missing": ["pnl"], "parts": [], "source": None}
+    return fin_model.loaded_rate_info(fin_params.effective(scn_params), book.pnl)
 
 
 def payback_params(scn_params: dict | None) -> tuple[float, float, int]:
@@ -279,12 +281,14 @@ def payback_status(diff: int | None, L: Levers) -> str:
     return GOOD if diff <= 0 else WARN if diff < L.payback_bad_months else BAD
 
 
-def payback_box(rows: list[dict], cohorts: Any, scn_params: dict | None) -> dict | None:
+def payback_box(rows: list[dict], cohorts: Any, scn_params: dict | None, book: TargetBook | None = None) -> dict | None:
+    """Payback two ways: on product margin (product cost and fulfillment only, the sheet's Payback tab) and after all variable costs (every rate-type cost line of the plan)."""
     by = {r["key"]: r for r in rows}
     aov, cpa = by.get("nc_aov"), by.get("nc_cpa2")
     if aov is None or cpa is None:
         return None
     pc, ful, hz = payback_params(scn_params)
+    L = lv.parse(scn_params)
     live = list(getattr(cohorts, "curve_live", None) or [])
     goal = list(getattr(cohorts, "curve_goal", None) or [])
     if not live and not goal:
@@ -292,12 +296,23 @@ def payback_box(rows: list[dict], cohorts: Any, scn_params: dict | None) -> dict
     now = payback_months(aov["mtd"], cpa["mtd"], pc, ful, live or goal, hz)
     plan = payback_months(aov["goal"], cpa["goal"], pc, ful, goal or live, hz)
     diff = None if now["months"] is None or plan["months"] is None else now["months"] - plan["months"]
-    return {"available": True, "product_cost_pct": pc, "fulfillment_per_order": ful, "horizon_months": hz,
-            "aov": {"mtd": aov["mtd"], "goal": aov["goal"]}, "cpa": {"mtd": cpa["mtd"], "goal": cpa["goal"]},
-            "first_order_margin": {"mtd": now["first_order_margin"], "goal": plan["first_order_margin"]},
-            "months": {"mtd": now["months"], "mtd_label": now["label"], "goal": plan["months"], "goal_label": plan["label"], "diff": diff,
-                       "status": payback_status(diff, lv.parse(scn_params))},
-            "note": "Month-to-date AOV and CPA on the live curve versus the plan's AOV and CPA on the goal curve."}
+    out = {"available": True, "product_cost_pct": pc, "fulfillment_per_order": ful, "horizon_months": hz,
+           "aov": {"mtd": aov["mtd"], "goal": aov["goal"]}, "cpa": {"mtd": cpa["mtd"], "goal": cpa["goal"]},
+           "first_order_margin": {"mtd": now["first_order_margin"], "goal": plan["first_order_margin"]},
+           "months": {"mtd": now["months"], "mtd_label": now["label"], "goal": plan["months"], "goal_label": plan["label"], "diff": diff, "status": payback_status(diff, L)},
+           "note": "Month-to-date AOV and CPA on the live curve versus the plan's AOV and CPA on the goal curve."}
+    info = loaded_rate(book, scn_params)
+    if info["rate"] is not None:
+        lnow = fin_payback(aov["mtd"], cpa["mtd"], pc, ful, live or goal, hz, info["rate"])
+        lplan = fin_payback(aov["goal"], cpa["goal"], pc, ful, goal or live, hz, info["rate"])
+        ldiff = None if lnow["months"] is None or lplan["months"] is None else lnow["months"] - lplan["months"]
+        out["loaded"] = {"variable_cost_rate": info["rate"], "source": info["source"], "parts": info["parts"], "window": info["months"],
+                         "first_order_margin": {"mtd": lnow["first_order_margin"], "goal": lplan["first_order_margin"]},
+                         "months": {"mtd": lnow["months"], "mtd_label": lnow["label"], "goal": lplan["months"], "goal_label": lplan["label"], "diff": ldiff,
+                                    "status": payback_status(ldiff, L)}}
+    else:
+        out["loaded_unavailable"] = "The P&L lines for the variable costs are missing: " + ", ".join(info["missing"] or ["no rate"]) + "."
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------------------- intraday
@@ -337,16 +352,52 @@ def month_context(fr: Frame, month: date, today: date, book: TargetBook) -> Ctx:
     return Ctx(month, book, mtd, l7, elapsed, dim, elapsed / dim if dim else 0.0, L)
 
 
-def pacing_month(fr: Frame, month: date, today: date, book: TargetBook, cohorts: Any = None, scn_params: dict | None = None) -> dict:
+def month_state(month: date, actual_through: date | None, elapsed: int, dim: int) -> str:
+    """books: the books (QuickBooks) hold the month; feeds: the month is complete in the daily feeds but not in the books; projected: the month is still running or ahead."""
+    if actual_through is not None and month <= actual_through:
+        return "books"
+    return "feeds" if elapsed >= dim else "projected"
+
+
+def cpa_context(fr: Frame, c: Ctx, today: date, rows_by_key: dict) -> dict | None:
+    """Realized cost per new customer over the last `cpa_window_days` days (ending at the last complete day), beside the month's. Only for the month that holds those days."""
+    L = c.levers
+    thr = dthru(today, L.data_lag_days)
+    if month_start(thr) != c.month or not c.elapsed:
+        return None
+    spend = nc = 0.0
+    days = 0
+    for k in range(L.cpa_window_days):
+        row = fr.days.get(thr - timedelta(days=k))
+        if row is None:
+            continue
+        days += 1
+        spend += row["m_spend"] + row["g_spend"]
+        nc += row["o_nc_orders"]
+    if not nc or days < min(L.cpa_window_days, 7):
+        return None
+    value = spend / nc
+    goal = rows_by_key.get("nc_cpa", {}).get("goal")
+    return {"label": f"Last {L.cpa_window_days} days", "days": days, "value": value, "pacing": (value / goal) if goal else None,
+            "status": _status(value / goal, "down", L) if goal else NONE}
+
+
+def pacing_month(fr: Frame, month: date, today: date, book: TargetBook, cohorts: Any = None, scn_params: dict | None = None,
+                 actual_through: date | None = None) -> dict:
     c = month_context(fr, month, today, book)
     L = book.levers
     rows = build_rows(c) if c.elapsed else []
     by = {r["key"]: r for r in rows}
-
+    ctx28 = cpa_context(fr, c, today, by) if rows else None
+    if ctx28:
+        for k in ("nc_cpa", "nc_cpa2"):
+            if k in by:
+                by[k]["context"] = ctx28
     tl = tldr(by) if rows else []
-    return {"month": month.isoformat(), "as_of": today.isoformat(), "data_through": dthru(today, L.data_lag_days).isoformat(), "days_in_month": c.dim,
+    return {"month": month.isoformat(), "state": month_state(month, actual_through, c.elapsed, c.dim), "as_of": today.isoformat(),
+            "data_through": dthru(today, L.data_lag_days).isoformat(), "days_in_month": c.dim,
             "days_elapsed": c.elapsed, "days_remaining": c.remaining, "share_elapsed": c.frac, "early": 0 < c.elapsed < L.early_days,
-            "rows": rows, "tldr": tl, "payback": payback_box(rows, cohorts, scn_params) if rows else None,
+            "rows": rows, "tldr": tl, "payback": payback_box(rows, cohorts, scn_params, book) if rows else None,
             "missing_goal_rows": book.missing_rows()}
 
 
@@ -398,7 +449,8 @@ SNAPSHOT_ROWS = (
 )
 
 
-def snapshot_month(fr: Frame, month: date, today: date, book: TargetBook, cohorts: Any = None, scn_params: dict | None = None) -> dict:
+def snapshot_month(fr: Frame, month: date, today: date, book: TargetBook, cohorts: Any = None, scn_params: dict | None = None,
+                   actual_through: date | None = None) -> dict:
     """Month Snapshot: Actual / Projected* / Target / Diff / Diff % for any month. A running month projects at its run-rate; a closed month is its own projection."""
     L = book.levers
     elapsed = dels(month, today, L.data_lag_days)
@@ -428,6 +480,12 @@ def snapshot_month(fr: Frame, month: date, today: date, book: TargetBook, cohort
             plan = payback_months(vals["nc_aov"]["target"], vals["nc_cpa"]["target"], pc, ful, goal_curve or live, hz)
             pb = {"first_order_margin": {"actual": now["first_order_margin"], "target": plan["first_order_margin"]},
                   "months": {"actual": now["months"], "actual_label": now["label"], "target": plan["months"], "target_label": plan["label"]}}
-    return {"month": month.isoformat(), "partial": partial, "days_elapsed": elapsed, "days_in_month": dim, "scale": (dim / elapsed) if partial else 1.0,
+            info = loaded_rate(book, scn_params)
+            if info["rate"] is not None:
+                ln = fin_payback(vals["nc_aov"]["actual"], vals["nc_cpa"]["actual"], pc, ful, live or goal_curve, hz, info["rate"])
+                lp = fin_payback(vals["nc_aov"]["target"], vals["nc_cpa"]["target"], pc, ful, goal_curve or live, hz, info["rate"])
+                pb["loaded"] = {"variable_cost_rate": info["rate"], "first_order_margin": {"actual": ln["first_order_margin"], "target": lp["first_order_margin"]},
+                                "months": {"actual": ln["months"], "actual_label": ln["label"], "target": lp["months"], "target_label": lp["label"]}}
+    return {"month": month.isoformat(), "state": month_state(month, actual_through, elapsed, dim), "partial": partial, "days_elapsed": elapsed, "days_in_month": dim, "scale": (dim / elapsed) if partial else 1.0,
             "rows": out, "payback": pb,
             "status_text": ("Month to date: %d of %d days" % (elapsed, dim)) if partial else ("Closed month" if elapsed else "No data for this month yet")}

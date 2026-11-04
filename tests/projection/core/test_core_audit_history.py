@@ -23,7 +23,7 @@ def test_every_mutation_writes_an_audit_row_with_old_and_new(client, pg):
     assert by["series.set"]["old"] is None and by["series.set"]["new"] == {"value": 1.0, "kind": "input", "note": "n1"}
     assert by["series.update"]["old"]["value"] == 1.0 and by["series.update"]["new"]["value"] == 2.0
     assert by["series.delete"]["old"]["value"] == 2.0 and by["series.delete"]["new"] is None
-    assert str(by["series.set"]["month"]) == "2026-11-01" and by["series.set"]["line_key"] == "drivers.spend" and by["series.set"]["scenario_slug"] == "alpha"
+    assert str(by["series.set"]["month"]) == "2026-11-01" and by["series.set"]["line_key"] == "pnl.margin_adj" and by["series.set"]["scenario_slug"] == "alpha"
     assert by["scenario.rename"]["old"] == {"name": "Alpha"} and by["scenario.rename"]["new"] == {"name": "Alpha 2"}
     assert by["scenario.params"]["old"] == {"params": {}} and by["scenario.params"]["new"] == {"params": {"drivers": {"k": 1}}}
     assert by["scenario.restore"]["new"]["restored_from"] == 1 and by["scenario.restore"]["old"]["params"] == {"drivers": {"k": 1}}
@@ -85,14 +85,14 @@ def test_restore_round_trip_and_undo(client):
     r = client.post(f"{P}/scenarios/plan/restore", json={"version": 2})
     assert r.status_code == 200 and r.get_json()["scenario"]["version"] == 5
     assert r.get_json()["scenario"]["params"] == {}                              # v2 predates the params patch
-    s = get_series(client, "plan", "drivers.spend,other.k")["series"]
-    assert s == {"drivers.spend": {"2026-11-01": 10.0, "2026-12-01": 20.0}, "other.k": {}}
+    s = get_series(client, "plan", "pnl.margin_adj,other.k")["series"]
+    assert s == {"pnl.margin_adj": {"2026-11-01": 10.0, "2026-12-01": 20.0}, "other.k": {}}
     assert client.get(f"{P}/scenarios/plan/history").get_json()["history"][0]["action"] == "restore"
 
     r = client.post(f"{P}/scenarios/plan/restore", json={"version": 4})          # undo the restore
     assert r.get_json()["scenario"]["version"] == 6 and r.get_json()["scenario"]["params"] == {"drivers": {"g": 0.1}}
-    s = get_series(client, "plan", "drivers.spend,other.k")["series"]
-    assert s == {"drivers.spend": {"2026-11-01": 11.0, "2026-12-01": 20.0}, "other.k": {"2026-11-01": 5.0}}
+    s = get_series(client, "plan", "pnl.margin_adj,other.k")["series"]
+    assert s == {"pnl.margin_adj": {"2026-11-01": 11.0, "2026-12-01": 20.0}, "other.k": {"2026-11-01": 5.0}}
 
 
 def test_restore_of_a_scenario_seeded_outside_the_api_keeps_the_seed(client, pg):
@@ -147,5 +147,5 @@ def test_audit_rows_carry_the_version_they_produced_and_it_is_restorable(client)
         ("scenario.create", 1), ("series.set", 2), ("scenario.rename", 3), ("scenario.params", 3), ("series.update", 4)]
     restore_to = next(r["version"] for r in rows if r["action"] == "series.set")
     assert client.post(f"{P}/scenarios/hist/restore", json={"version": restore_to}).status_code == 200
-    assert get_series(client, "hist", "drivers.spend")["series"]["drivers.spend"] == {"2026-11-01": 1.0}
+    assert get_series(client, "hist", "pnl.margin_adj")["series"]["pnl.margin_adj"] == {"2026-11-01": 1.0}
     assert client.get(f"{P}/audit?scenario=hist&limit=1").get_json()["audit"][0]["version"] == 5            # the restore itself

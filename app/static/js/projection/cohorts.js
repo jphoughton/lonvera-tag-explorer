@@ -4,6 +4,8 @@
 // Edits: curve settings (scenario levers, PUT /cohorts/levers, saved as you change them) and the monthly cohort export (POST /cohorts/upload:
 // choose file, review changes, commit). Layout, copy and colors follow docs/projection/DESIGN.md; every color comes from brand.css tokens.
 import { events } from './lib/api.js';
+import { curveControls, leversFor, activeCurveLine } from './cohorts_curve_picker.js';
+import { confirmBox } from './lib/util.js';
 
 const STYLE_ID = 'co-style';
 const CSS = `
@@ -15,8 +17,15 @@ const CSS = `
 .co-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lv-sp-2) var(--lv-sp-3); margin-top: var(--lv-sp-3); font-size: var(--lv-fs-sm); color: var(--lv-muted); }
 .co-bar .state.err { color: var(--lv-bad); font-weight: var(--lv-fw-semi); }
 .co-two { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--lv-sp-4); align-items: start; }
+.co-two > * { min-width: 0; }
+.co-compare-wrap { overflow-x: auto; }
+.co-goal-tbl { table-layout: fixed; }
+.co-goal-tbl th, .co-goal-tbl td { white-space: normal; }
+.co-goal-tbl th:first-child, .co-goal-tbl td:first-child { width: 38%; padding-right: var(--lv-sp-3); overflow-wrap: anywhere; }
+.co-goal-tbl th:not(:first-child), .co-goal-tbl td:not(:first-child) { width: 31%; }
 .co-compare { width: 100%; border-collapse: collapse; font-size: var(--lv-fs-sm); font-variant-numeric: tabular-nums; }
 .co-compare th, .co-compare td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--lv-line-soft); white-space: nowrap; }
+.co-compare thead th { white-space: normal; }
 .co-compare th:first-child, .co-compare td:first-child { text-align: left; }
 .co-compare thead th { font-size: var(--lv-fs-2xs); text-transform: uppercase; letter-spacing: var(--lv-track-kicker); color: var(--lv-muted); font-weight: var(--lv-fw-bold); }
 .co-compare td.good { color: var(--lv-good); font-weight: var(--lv-fw-semi); }
@@ -105,10 +114,11 @@ export async function render(el, ctx) {
   el.replaceChildren(root);
   ui.loading(root, 'Loading cohorts');
 
-  let summary, curves, table, heat, lev;
+  let summary, curves, table, heat, lev, copts;
   try {
-    [summary, curves, table, heat, lev] = await Promise.all([
+    [summary, curves, table, heat, lev, copts] = await Promise.all([
       ctx.api.get('cohorts/summary'), ctx.api.get('cohorts/curves'), ctx.api.table('cohorts'), ctx.api.get('cohorts/cohorts'), ctx.api.get('cohorts/levers'),
+      ctx.api.get('cohorts/curve-options'),
     ]);
   } catch (e) { ui.error(root, e, ctx.reload); return undefined; }
   if (!ctx.alive()) return undefined;
@@ -120,10 +130,10 @@ export async function render(el, ctx) {
   const cs = curves.summary;
   const fresh = summary.freshness || {};
   const freshTone = !fresh.data_through || fresh.stale ? 'bad' : fresh.behind ? 'warn' : 'good';
-  const vsGoal = cs.lifetime_goal ? `, ${Math.abs(cs.live_vs_goal * 100).toFixed(0)}% ${cs.live_vs_goal < 0 ? 'below' : 'above'} Goal` : '';
-  const curveWord = cs.curve === 'goal' ? 'on the Goal curve' : cs.curve === 'live' ? '' : 'on a blended curve';
+  const usedVsGoal = cs.lifetime_goal ? summary.lifetime_multiple / cs.lifetime_goal - 1 : null;
+  const vsGoal = usedVsGoal != null && cs.curve !== 'goal' ? `, ${Math.abs(usedVsGoal * 100).toFixed(0)}% ${usedVsGoal < 0 ? 'below' : 'above'} Goal` : '';
   const line = summary.cohorts_loaded
-    ? `Each first-order dollar brings back ${fmt.money(summary.lifetime_multiple, { digits: 2 })} of repeat revenue over five years${curveWord ? ' ' + curveWord : ''}${vsGoal}.`
+    ? `Each first-order dollar brings back ${fmt.money(summary.lifetime_multiple, { digits: 2 })} of repeat revenue over five years${vsGoal}.`
     : 'No cohorts are loaded yet. Upload a cohort export to build the retention curve.';
   const bt = summary.backtest || {};
   const gapTone = bt.gap == null ? undefined : Math.abs(bt.gap) <= 0.05 ? 'good' : Math.abs(bt.gap) <= 0.1 ? 'warn' : 'bad';
@@ -136,15 +146,18 @@ export async function render(el, ctx) {
   ].filter((k) => k.value !== '');
 
   const uploadBtn = h('button', { type: 'button', class: 'btn primary', 'aria-expanded': 'false', onclick: () => toggleUpload() }, 'Upload cohort export');
-  const goalBtn = h('button', { type: 'button', class: 'btn', title: 'Save the Live curve as the Goal curve', onclick: () => snapshotGoal() }, 'Save Live as Goal');
+  const last = summary.last_upload;
+  const undoBtn = last && last.undoable ? h('button', { type: 'button', class: 'btn', title: `${last.filename || 'The last upload'}: ${last.cohorts_added} new and ${last.cohorts_changed} changed cohorts, loaded ${fmt.dateTime(last.at)}`,
+    onclick: () => undoUpload(last) }, 'Undo last upload') : null;
   const header = ui.pageHeader({
     title: 'Cohorts and curves',
     purpose: 'How much each month of new customers keeps spending, and the retention curve that turns first orders into repeat revenue.',
-    actions: [goalBtn, uploadBtn],
+    actions: [undoBtn, uploadBtn].filter(Boolean),
     tldr: { line, kpis },
   });
   const tldrLine = header.querySelector('.pg-tldr-line');
   if (tldrLine) tldrLine.append(h('div', { style: { marginTop: 'var(--lv-sp-2)' } }, ui.chip(summary.freshness_line, freshTone)));
+  activeCurveLine(ctx, summary.curve_label, header);
 
   // ---------------------------------------------------------------- upload: choose file, review changes, commit
   const uploadCard = h('section', { class: 'pg-card', hidden: true, 'aria-label': 'Upload cohort export' });
@@ -187,6 +200,7 @@ export async function render(el, ctx) {
     setStep(1);
     const s = res.summary;
     const affected = s.cohorts_added + s.cohorts_changed;
+    const blocked = res.committable === false && (res.errors || []).length > 0;
     const nothing = affected === 0;
     const parts = [
       h('p', { style: { margin: 0, color: 'var(--lv-muted)' } }, `${res.filename}: ${plural(res.rows_read, 'row')} read as the ${res.layout === 'wide' ? 'sheet layout' : 'cohort export layout'}. Only months that are over are used, through ${mon(res.through)}.`),
@@ -195,6 +209,15 @@ export async function render(el, ctx) {
         ui.chip(`Changed: ${plural(s.cohorts_changed, 'cohort')}, ${plural(s.cells_changed, 'cell')}`, s.cohorts_changed ? 'info' : 'neutral'),
         ui.chip(`Blanked: ${plural(s.cells_blanked_open_month, 'cell')} in months not over`, 'neutral')),
     ];
+    if (blocked) {
+      parts.push(h('div', null, ui.chip('Cannot be loaded', 'bad'), h('ul', { style: { marginTop: 'var(--lv-sp-2)' } }, res.errors.map((e) => h('li', e)))));
+    }
+    const imp = res.impact || {};
+    const mult = (label, m) => (m && Number.isFinite(m.after)
+      ? h('li', null, ui.chip(m.after < m.min || m.after > m.max ? 'Outside the allowed range' : 'Within the allowed range', m.after < m.min || m.after > m.max ? 'bad' : 'good'),
+        `${label}: ${Number.isFinite(m.before) ? fmt.x(m.before, 2) + ' now, ' : ''}${fmt.x(m.after, 2)} after this file (allowed ${m.min}x to ${m.max}x)`) : null);
+    const impactRows = [mult('Repeat per first-order dollar, 60 months', imp.lifetime), mult('First 12 months', imp.twelve)].filter(Boolean);
+    if (impactRows.length) parts.push(h('ul', null, impactRows));
     if (s.changes.length) {
       parts.push(h('div', null, h('div', { class: 'pg-group-head', style: { margin: '0 0 4px' } }, `Largest changes (${Math.min(12, s.changes.length)} of ${s.changes_total})`),
         h('table', null,
@@ -212,8 +235,9 @@ export async function render(el, ctx) {
     if (left.length) parts.push(h('ul', null, left));
     if (res.warnings.length) parts.push(h('div', null, ui.chip('Check these', 'warn'), h('ul', { style: { marginTop: 'var(--lv-sp-2)' } }, res.warnings.map((w) => h('li', w)))));
     parts.push(h('p', { style: { margin: 0, color: 'var(--lv-muted)', fontSize: 'var(--lv-fs-sm)' } },
-      nothing ? 'This file adds nothing new to the cohort table.' : 'Stored values are added or revised, never erased.'));
-    const commit = h('button', { type: 'button', class: 'btn primary', disabled: nothing, onclick: () => commitUpload(commit) }, nothing ? 'Nothing to commit' : `Commit ${plural(affected, 'cohort')}`);
+      blocked ? 'Fix the file and choose it again. Nothing was saved.' : nothing ? 'This file adds nothing new to the cohort table.' : 'Stored values are added or revised, never erased. You can undo this upload afterwards.'));
+    const commit = h('button', { type: 'button', class: 'btn primary', disabled: nothing || blocked, onclick: () => commitUpload(commit) },
+      blocked ? 'Cannot be loaded' : nothing ? 'Nothing to commit' : `Commit ${plural(affected, 'cohort')}`);
     parts.push(h('div', { class: 'co-actions' }, commit, h('button', { type: 'button', class: 'btn', onclick: () => closeUpload() }, 'Cancel'),
       h('button', { type: 'button', class: 'btn', onclick: () => { upErr.textContent = ''; showChoose().focus(); } }, 'Choose another file')));
     pane.replaceChildren(h('div', { class: 'co-review' }, parts));
@@ -228,7 +252,7 @@ export async function render(el, ctx) {
     btn.textContent = 'Committing';
     try {
       const res = await postUpload(pending.file, { commit: true, sha: pending.res.sha256 });
-      toast(`Saved ${plural(res.loaded.cohorts, 'cohort')} to ${mon(res.through)}`, 'ok');
+      toast(`Saved ${plural(res.loaded.cohorts, 'cohort')} to ${mon(res.through)}. Undo last upload puts them back.`, 'ok');
       ctx.refreshHeadline();
       ctx.reload();
     } catch (e) { upErr.textContent = e.message; setStep(1); btn.disabled = false; btn.textContent = label; }
@@ -254,18 +278,11 @@ export async function render(el, ctx) {
     h('div', { class: 'pg-card' }, h('div', { class: 'pg-chartbox' }, revCanvas)),
     h('div', { style: { marginTop: 'var(--lv-sp-3)' } }, gridHost));
 
-  const mixToward = (fromColor, toColor, weight) => {
-    const parse = (c) => { const m = /^#([0-9a-f]{6})$/i.exec(c); const n = m ? parseInt(m[1], 16) : null; return n == null ? null : [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
-    const a = parse(fromColor); const b = parse(toColor);
-    if (!a || !b) return fromColor;
-    return '#' + a.map((v, i) => Math.round(v * weight + b[i] * (1 - weight)).toString(16).padStart(2, '0')).join('');
-  };
   function drawRevenue() {
     const rows = table.rows.filter((r) => /^repeat_20\d\d$/.test(r.key));
-    const base = cssVar('--lv-viz-2');
-    const surface = cssVar('--lv-surface');
     const actual = table.rows.find((r) => r.key === 'repeat_actual');
-    const series = rows.map((r, i) => ({ label: r.label, values: r.values, type: 'bar', color: mixToward(base, surface, 0.35 + 0.65 * (rows.length === 1 ? 1 : i / (rows.length - 1))) }));
+    const shades = charts.ramp(rows.length, 2);                      // every vintage keeps 3:1 or better against the card in light and dark (design vet, 2026-11-03)
+    const series = rows.map((r, i) => ({ label: r.label, values: r.values, type: 'bar', color: shades[i] }));
     const compare = actual ? [{ name: 'Actual repeat revenue', values: actual.values, color: cssVar('--lv-viz-ink') }] : [];
     charts.barChart(revCanvas, { months: table.months, status: table.status, series, stacked: true, yFmt: 'usd0', compare });
   }
@@ -284,10 +301,10 @@ export async function render(el, ctx) {
     setState('Saving');
     try {
       const res = await ctx.api.put('cohorts/levers', { scenario: slug, levers });
-      events.emit('saved', { scenario: slug, version: res.version });
+      events.emit('saved', { scenario: res.scenario || slug, version: res.version });
       toast('Curve setting saved', 'ok');
       ctx.reload();
-    } catch (e) { setState(e.message, true); throw e; }
+    } catch (e) { setState(e.message, !(e && e.name === 'EditCancelled')); throw e; }
   }
   const numField = (key, label, hint, { min, max, step = 1, scale = 1 }) => {
     const shown = Math.round(cur[key] * scale * 1000) / 1000;
@@ -299,21 +316,15 @@ export async function render(el, ctx) {
     });
     return h('div', { class: 'co-field' }, h('label', { for: 'co-' + key }, label), input, hint ? h('span', { class: 'hint' }, hint) : null);
   };
-  const mode = cur.curve.startsWith('blend') ? 'blend' : cur.curve;
-  const blendPct = cur.curve.startsWith('blend:') ? Math.round(parseFloat(cur.curve.split(':')[1]) * 100) : 50;
-  const segBtns = [['live', 'Live'], ['goal', 'Goal'], ['blend', 'Blend']].map(([m, label]) => h('button', { type: 'button', class: 'seg', 'aria-pressed': String(mode === m),
-    onclick: () => { if (m !== mode) putLevers({ curve: m === 'blend' ? `blend:${blendPct / 100}` : m }).catch(() => {}); } }, label));
-  const blendInput = h('input', { type: 'number', id: 'co-blend', min: 0, max: 100, step: 5, value: String(blendPct), inputmode: 'numeric' });
-  blendInput.addEventListener('change', () => {
-    const v = parseFloat(blendInput.value);
-    if (!Number.isFinite(v) || v < 0 || v > 100) { blendInput.value = String(blendPct); setState('Enter a weight from 0 to 100.', true); return; }
-    putLevers({ curve: `blend:${v / 100}` }).catch(() => { blendInput.value = String(blendPct); });
+  const curveCtl = curveControls(ctx, {
+    options: copts, showN: false,
+    state: { source: cur.curve_source, asof: cur.asof_month || copts.default_asof, n: cur.n_cohorts },
+    onChange: (st) => { putLevers(leversFor(st)).catch(() => {}); },
   });
   const resetBtn = h('button', { type: 'button', class: 'btn small', disabled: Object.keys(own).length === 0,
     onclick: () => putLevers(Object.fromEntries(Object.keys(own).map((k) => [k, null]))).catch(() => {}) }, 'Reset to defaults');
   const settings = h('div', { class: 'co-settings' },
-    h('div', { class: 'co-field' }, h('span', { class: 'lbl', id: 'co-curve-lbl' }, 'Curve used for projections'), h('div', { class: 'segs', role: 'group', 'aria-labelledby': 'co-curve-lbl' }, segBtns)),
-    mode === 'blend' ? h('div', { class: 'co-field' }, h('label', { for: 'co-blend' }, 'Weight on Goal (%)'), blendInput) : null,
+    h('div', { class: 'co-field', style: { gridColumn: '1 / -1' } }, h('span', { class: 'lbl' }, 'Curve used for repeat revenue'), curveCtl.el),
     numField('n_cohorts', 'Cohorts averaged at each month', 'Most recent cohorts that reached that month', { min: 1, max: 36 }),
     numField('min_cohorts_per_age', 'Fewest cohorts to trust a month', 'Fewer than this falls back to decay', { min: 1, max: 36 }),
     numField('tail_from_age', 'Decay starts at month', 'Later months decay from the one before', { min: 2, max: 60 }),
@@ -325,19 +336,24 @@ export async function render(el, ctx) {
   const curveCanvas = h('canvas', { role: 'img', 'aria-label': 'Repeat revenue per first-order dollar by month after the first order, Live and Goal curves' });
   const perBtn = h('button', { type: 'button', class: 'seg', 'aria-pressed': 'true', onclick: () => setCum(false) }, 'Per month');
   const cumBtn = h('button', { type: 'button', class: 'seg', 'aria-pressed': 'false', onclick: () => setCum(true) }, 'Cumulative');
+  const gl = summary.goal || {};
+  const goalBtn = h('button', { type: 'button', class: 'btn', title: 'Replace the Goal curve with the current curve', onclick: () => saveGoalFlow() }, 'Save current as Goal');
+  const restoreBtn = h('button', { type: 'button', class: 'btn', disabled: !gl.previous,
+    title: gl.previous ? `Put back the Goal saved ${fmt.date(gl.previous.snapshot_date)} (${x(gl.previous.lifetime)})` : 'There is no earlier Goal curve', onclick: () => restoreGoalFlow() }, 'Restore previous Goal');
   const cmpTable = (() => {
     const row = (label, live, goal, gap) => h('tr', null, h('td', label), h('td', x(live)), h('td', goal ? x(goal) : ''), h('td', { class: gap == null ? '' : gap < 0 ? 'bad' : 'good' }, signed(gap)));
     return h('table', { class: 'co-compare' },
-      h('thead', null, h('tr', null, h('th', 'Repeat per $1'), h('th', 'Live'), h('th', 'Goal'), h('th', 'Live vs Goal'))),
+      h('thead', null, h('tr', null, h('th', 'Repeat per $1'), h('th', 'Current'), h('th', 'Goal'), h('th', 'Current vs Goal'))),
       h('tbody', null, row('First 12 months', cs.twelve_live, cs.twelve_goal, cs.twelve_live_vs_goal), row('60 months', cs.lifetime_live, cs.lifetime_goal, cs.live_vs_goal)),
-      cs.curve !== 'live' ? h('tfoot', null, h('tr', null, h('td', { colspan: 4, style: { color: 'var(--lv-muted)' } }, `Projections use the ${cs.curve === 'goal' ? 'Goal' : 'blended'} curve: ${x(cs.lifetime_used)} over 60 months.`))) : null);
+      cs.curve !== 'live' ? h('tfoot', null, h('tr', null, h('td', { colspan: 4, style: { color: 'var(--lv-muted)' } }, `Repeat revenue uses: ${cs.label}, ${x(cs.lifetime_used)} over 60 months.`))) : null);
   })();
   const curveSection = h('section', { class: 'pg-section' },
     h('div', { class: 'co-head' }, h('h2', 'Retention curve'), h('div', { class: 'segs', role: 'group', 'aria-label': 'Curve view' }, perBtn, cumBtn)),
     h('div', { class: 'pg-card' }, settings, h('div', { class: 'co-bar' }, state, resetBtn)),
     h('div', { class: 'co-two', style: { marginTop: 'var(--lv-sp-3)' } },
       h('div', { class: 'pg-card' }, h('div', { class: 'pg-chartbox' }, curveCanvas)),
-      h('div', { class: 'pg-card' }, h('div', { class: 'pg-group-head', style: { margin: '0 0 6px' } }, 'Live against Goal'), cmpTable,
+      h('div', { class: 'pg-card' }, h('div', { class: 'pg-group-head', style: { margin: '0 0 6px' } }, 'Current against Goal'), h('div', { class: 'co-compare-wrap' }, cmpTable),
+        h('div', { class: 'co-actions', style: { marginTop: 'var(--lv-sp-3)' } }, goalBtn, restoreBtn),
         (curves.warnings || []).map((w) => h('div', { style: { marginTop: 'var(--lv-sp-3)' } }, ui.chip(w, 'warn'))))),
     ui.source(`${curves.caption} Decay starts at month ${cur.tail_from_age}, keeping ${(cur.tail_decay * 100).toFixed(0)}% each month.`));
 
@@ -357,10 +373,10 @@ export async function render(el, ctx) {
     const used = cumulative ? curves.cumulative.used : curves.used;
     const active = cs.curve;
     const sets = [
-      { label: active === 'live' ? 'Live (used)' : 'Live', data: live, borderColor: ink, backgroundColor: ink, borderWidth: active === 'live' ? 2.5 : 1.5, pointRadius: 0, tension: 0.15 },
+      { label: active === 'live' ? 'Current (used)' : 'Current', data: live, borderColor: ink, backgroundColor: ink, borderWidth: active === 'live' ? 2.5 : 1.5, pointRadius: 0, tension: 0.15 },
       { label: active === 'goal' ? 'Goal (used)' : 'Goal', data: goal, borderColor: slot(2), backgroundColor: slot(2), borderWidth: active === 'goal' ? 2.5 : 1.5, pointRadius: 0, tension: 0.15 },
     ];
-    if (active !== 'live' && active !== 'goal') sets.push({ label: 'Blend (used)', data: used, borderColor: slot(6), backgroundColor: slot(6), borderWidth: 2.5, pointRadius: 0, tension: 0.15, borderDash: [6, 4] });
+    if (active !== 'live' && active !== 'goal') sets.push({ label: `${cs.label} (used)`, data: used, borderColor: slot(6), backgroundColor: slot(6), borderWidth: 2.5, pointRadius: 0, tension: 0.15, borderDash: [6, 4] });
     const tailShade = {
       id: 'tailShade',
       beforeDatasetsDraw(chart) {
@@ -426,7 +442,7 @@ export async function render(el, ctx) {
           return h('td', {
             class: 'cell' + (feed.has(a) ? ' feed' : '') + (a >= tailAge ? ' tail' : ''),
             style: layers ? { backgroundImage: Array(layers).fill(LAYER).join(',') } : null,
-            title: `${mon(c.month)}, month ${a}: ${fmt.money(v, { digits: 2 })} per customer in total` + (inc != null ? `; month ${a} alone is ${(inc * 100).toFixed(1)}% of the first order` : '') + (feed.has(a) ? '; feeds the Live curve' : ''),
+            title: `${mon(c.month)}, month ${a}: ${fmt.money(v, { digits: 2 })} per customer in total` + (inc != null ? `; month ${a} alone is ${(inc * 100).toFixed(1)}% of the first order` : '') + (feed.has(a) ? '; feeds the current curve' : ''),
           }, fmt.money(v, { digits: 0 }));
         }));
     });
@@ -435,18 +451,79 @@ export async function render(el, ctx) {
   const heatSection = h('section', { class: 'pg-section' },
     h('div', { class: 'co-head' }, h('h2', 'Cohort table'),
       h('span', { class: 'co-legend' },
-        h('span', null, h('span', { class: 'sw feed' }), `Outlined cells feed the Live curve (latest ${heat.n_cohorts} cohorts at each month)`),
+        h('span', null, h('span', { class: 'sw feed' }), `Outlined cells feed the current curve (latest ${heat.n_cohorts} cohorts at each month)`),
         h('span', null, 'Darker means more repeat spend'))),
     heatHost, ui.source(heat.caption));
 
-  // ---------------------------------------------------------------- goal snapshot
-  async function snapshotGoal() {
+  // ---------------------------------------------------------------- undo
+  async function undoUpload(u) {
+    const when = fmt.dateTime(u.at);
+    await confirmBox({
+      title: 'Undo the last upload',
+      message: `${u.filename || 'The last upload'} (${when}) added ${plural(u.cohorts_added, 'cohort')} and changed ${plural(u.cohorts_changed, 'cohort')}. Undoing puts every one of them back exactly as it was before. Nothing else changes.`,
+      confirmText: 'Undo upload', danger: true,
+      onConfirm: async () => {
+        const res = await ctx.api.post('cohorts/upload/undo', { upload_id: u.id });
+        toast(`Undid the upload: ${plural(res.cohorts_restored, 'cohort')} restored, ${plural(res.cohorts_removed, 'cohort')} removed`, 'ok');
+        ctx.refreshHeadline();
+        ctx.reload();
+      },
+    });
+  }
+
+  // ---------------------------------------------------------------- Goal curve: save, restore
+  const FY = (o) => `FY${String(o.fy.year).slice(2)}`;
+  const moneyM = (v) => (Number.isFinite(v) ? `${v < 0 ? '-' : ''}$${(Math.abs(v) >= 1e6 ? (Math.abs(v) / 1e6).toFixed(2) + 'M' : Math.round(Math.abs(v) / 1e3) + 'K')}` : '');
+  async function restoreGoal(snapshotId) {
+    const res = await ctx.api.post('cohorts/goal/restore', snapshotId ? { snapshot_id: snapshotId } : {});
+    toast(`Goal curve restored to the one saved ${fmt.date(res.snapshot_date)} (${x(res.lifetime)})`, 'ok');
+    ctx.refreshHeadline();
+    ctx.reload();
+    return res;
+  }
+  async function saveGoalFlow() {
     goalBtn.disabled = true;
-    try {
-      await ctx.api.post('cohorts/goal', { scenario: slug, from: 'live' });
-      toast('Live curve saved as the Goal curve', 'ok');
-      ctx.reload();
-    } catch (e) { toast(e.message, 'error'); goalBtn.disabled = false; }
+    let cmpData = null;
+    try { cmpData = await ctx.api.get('cohorts/curve-compare', { n: cur.n_cohorts }); } catch { /* no as-of month yet: the comparison still has Current and Goal below */ }
+    goalBtn.disabled = false;
+    const now = cmpData ? cmpData.options.find((o) => o.key === 'current') : null;
+    const old = cmpData ? cmpData.options.find((o) => o.key === 'goal') : null;
+    const oldGoal = gl.active;
+    const rows = [['Goal now' + (oldGoal ? `, saved ${fmt.date(oldGoal.snapshot_date)}` : ''), oldGoal ? oldGoal.lifetime : null, old ? old.fy.noi : null],
+                  ['Current, becomes the Goal', summary.lifetime_live, now ? now.fy.noi : null]];
+    const delta = (a, b) => (Number.isFinite(a) && Number.isFinite(b) ? b - a : null);
+    const dLife = delta(rows[0][1], rows[1][1]);
+    const dNoi = delta(rows[0][2], rows[1][2]);
+    const yr = now ? FY(now) : 'FY27';
+    const sign = (v, f) => (v == null ? '' : `${v > 0 ? '+' : v < 0 ? '-' : ''}${f(Math.abs(v))}`);
+    const tbl = h('table', { class: 'co-compare co-goal-tbl', style: { margin: 'var(--lv-sp-2) 0' } },
+      h('thead', null, h('tr', null, h('th', ''), h('th', 'Repeat per first-order dollar'), h('th', `${yr} net operating income`))),
+      h('tbody', null,
+        rows.map((r) => h('tr', null, h('td', r[0]), h('td', Number.isFinite(r[1]) ? x(r[1]) : 'none'), h('td', Number.isFinite(r[2]) ? moneyM(r[2]) + '*' : ''))),
+        oldGoal ? h('tr', null, h('td', 'Change'), h('td', { class: dLife < 0 ? 'bad' : 'good' }, sign(dLife, (v) => v.toFixed(2) + 'x')),
+          h('td', { class: dNoi == null ? '' : dNoi < 0 ? 'bad' : 'good' }, dNoi == null ? '' : sign(dNoi, moneyM) + '*')) : null));
+    const message = h('div', null,
+      h('p', { style: { margin: 0 } }, oldGoal ? 'The Goal curve is replaced by the current curve. Everything that uses the Goal curve moves with it.' : 'There is no Goal curve yet. This saves the current curve as the Goal curve.'),
+      tbl,
+      h('p', { style: { margin: 0 } }, oldGoal ? 'The old Goal stays in history: Restore previous Goal puts it back.' : ''));
+    await confirmBox({
+      title: 'Replace the Goal curve?', message, confirmText: oldGoal ? 'Replace Goal' : 'Save as Goal', danger: false,
+      onConfirm: async () => {
+        const res = await ctx.api.post('cohorts/goal', { scenario: slug, from: 'live' });
+        toast(`Goal curve replaced by the current curve (${x(res.lifetime)})`, { kind: 'ok', action: res.replaced ? { label: 'Undo', onClick: () => restoreGoal().catch((e) => toast(e.message, 'error')) } : null });
+        ctx.refreshHeadline();
+        ctx.reload();
+      },
+    });
+  }
+  async function restoreGoalFlow() {
+    const prev = gl.previous;
+    if (!prev) return;
+    await confirmBox({
+      title: 'Restore the previous Goal curve?',
+      message: `The Goal saved ${fmt.date(prev.snapshot_date)} (${x(prev.lifetime)} over 60 months) goes back in use. The Goal in use now (${x(gl.active.lifetime)}, saved ${fmt.date(gl.active.snapshot_date)}) stays in history.`,
+      confirmText: 'Restore Goal', danger: false, onConfirm: () => restoreGoal(prev.id),
+    });
   }
 
   root.replaceChildren(header, uploadCard, revenue, curveSection, heatSection);

@@ -13,7 +13,7 @@ from flask import Blueprint, jsonify, request
 
 from ... import db
 from ...queries import ApiError
-from .. import audit, engine, rwdb, scenarios, series
+from .. import audit, degraded, engine, rwdb, scenarios, series
 from ..interfaces import parse_month
 from . import model, tables
 from . import params as P
@@ -36,9 +36,10 @@ def _slug(conn) -> str:
 def _run(conn):
     slug = _slug(conn)
     res = engine.run(slug, conn)
+    degraded.ensure_ok(res, "financing")                    # 503 upstream_degraded {modules:[{module,error}]}: never cash built on zeros
     fin = res.results.get("financing")
-    if res.stubbed.get("financing") or not isinstance(fin, model.FinancingDetail):
-        raise ApiError(500, "financing failed to compute: " + res.errors.get("financing", "unknown error"))
+    if not isinstance(fin, model.FinancingDetail):
+        raise ApiError(503, "financing is not available")
     return slug, res, fin
 
 
@@ -105,12 +106,9 @@ def debt():
     return jsonify(tables.debt_table(fin, res.actual_through))
 
 
-@bp.get("/payback")
-def payback():
-    """Payback for today's economics. Query overrides (not saved): aov, cac, product_cost_pct, fulfillment, curve=live|goal, max_age."""
-    conn = db.get_conn()
-    _, res, fin = _run(conn)
-    inp = dict(fin.payback_inputs)
+def _payback_overrides(inp: dict) -> dict:
+    """Apply the what-if query overrides (aov, cac, product_cost_pct, fulfillment, max_age, curve) to a copy of the payback inputs."""
+    inp = dict(inp)
     for k, lo, hi in (("aov", 0.01, 1e6), ("cac", 0.0, 1e6), ("product_cost_pct", 0.0, 1.0), ("fulfillment", 0.0, 1e6)):
         v = _float_arg(k, lo, hi)
         if v is not None:
@@ -124,28 +122,57 @@ def payback():
     if curve_kind not in ("live", "goal"):
         raise ApiError(400, "curve must be live or goal")
     inp["curve"] = curve_kind
-    pb = model.run_payback(inp, _curve(res, fin, curve_kind))
-    return jsonify(tables.payback_payload(fin, pb, inp, curve_kind))
+    return inp
+
+
+def _no_curve(res) -> str | None:
+    c = res.results.get("cohorts")
+    return None if c is not None and (getattr(c, "curve_live", None) or getattr(c, "curve_goal", None)) else "The retention curve is not available: the cohorts module has no result."
+
+
+@bp.get("/payback")
+def payback():
+    """Payback for today's economics, on product margin and after all variable costs. Query overrides (not saved): aov, cac, product_cost_pct,
+    fulfillment, curve=live|goal, max_age, loaded_rate (variable cost as a share of AOV)."""
+    conn = db.get_conn()
+    _, res, fin = _run(conn)
+    inp = _payback_overrides(fin.payback_inputs)
+    curve_kind = inp["curve"]
+    reason = _no_curve(res)
+    if reason:
+        return jsonify(tables.payback_payload(fin, None, inp, curve_kind, None, fin.loaded_info, reason))
+    curve = _curve(res, fin, curve_kind)
+    info = model.loaded_rate_info(fin.params, res.results.get("pnl"), _float_arg("loaded_rate", 0.0, 0.99))
+    pb = model.run_payback(inp, curve)
+    loaded = model.run_payback(inp, curve, info["rate"], fully_loaded=True)
+    return jsonify(tables.payback_payload(fin, pb, inp, curve_kind, loaded, info, None if pb else "Enter the average order value and customer acquisition cost."))
 
 
 @bp.get("/matrix")
 def matrix():
-    """Profit at the target cohort age by monthly spend x NC-ROAS. Query overrides: target_month, basis=cm|loaded, fixed_cost, spends, roas, plus the payback overrides."""
+    """Profit at the target cohort age by monthly spend x NC-ROAS. Query overrides: target_month, basis=cm|loaded, margin=product|loaded, fixed_cost,
+    spends, roas, plus the payback overrides."""
     conn = db.get_conn()
     _, res, fin = _run(conn)
-    inp = dict(fin.payback_inputs)
-    for k, lo, hi in (("aov", 0.01, 1e6), ("cac", 0.0, 1e6), ("product_cost_pct", 0.0, 1.0), ("fulfillment", 0.0, 1e6)):
-        v = _float_arg(k, lo, hi)
-        if v is not None:
-            inp[k] = v
+    inp = _payback_overrides(fin.payback_inputs)
+    reason = _no_curve(res)
+    if reason:
+        return jsonify({"result": None, "unavailable": reason})
     curve = _curve(res, fin, inp["curve"])
     basis = request.args.get("basis")
     if basis is not None and basis not in ("cm", "loaded"):
         raise ApiError(400, "basis must be cm or loaded")
+    margin = request.args.get("margin")
+    if margin is not None and margin not in ("product", "loaded"):
+        raise ApiError(400, "margin must be product or loaded")
     pb = model.run_payback(inp, curve)
-    m = model.run_matrix(fin.params, pb, curve, target_month=_int_arg("target_month", 0, 60), basis=basis,
+    info = model.loaded_rate_info(fin.params, res.results.get("pnl"), _float_arg("loaded_rate", 0.0, 0.99))
+    loaded = model.run_payback(inp, curve, info["rate"], fully_loaded=True)
+    m = model.run_matrix(fin.params, pb, curve, loaded, target_month=_int_arg("target_month", 0, 60), basis=basis, margin=margin,
                          fixed_cost=_float_arg("fixed_cost", 0, 1e10), spends=_list_arg("spends", 1, 1e10), roas=_list_arg("roas", 0.01, 100))
-    return jsonify(tables.matrix_payload(m))
+    out = tables.matrix_payload(m)
+    out["unavailable"] = None if m else "Enter the average order value and customer acquisition cost."
+    return jsonify(out)
 
 
 @bp.get("/payout")
@@ -163,8 +190,13 @@ def payout():
         if src not in ("goal", "live", "typed"):
             raise ApiError(400, "repeat_source must be goal, live or typed")
         prm["payout"]["repeat_source"] = src
+    reason = _no_curve(res) if prm["payout"]["repeat_source"] != "typed" else None
+    if reason:
+        return jsonify({"repeat_source": prm["payout"]["repeat_source"], "result": None, "unavailable": reason})
     repeat, used = model.payout_repeat(prm, res.results.get("cohorts"))
-    return jsonify(tables.payout_payload(model.run_payout(prm, repeat), used))
+    out = tables.payout_payload(model.run_payout(prm, repeat), used)
+    out["unavailable"] = None
+    return jsonify(out)
 
 
 @bp.get("/inputs")
@@ -176,7 +208,7 @@ def inputs():
     cells = series.fetch_cells(conn, scn, prefix="financing.")
     return jsonify({
         "scenario": slug, "version": scn.version, "params": P.effective(scn.params), "scenario_params": own, "defaults": P.DEFAULTS,
-        "sources": P.SOURCES,
+        "sources": P.SOURCES, "payback_sources": P.payback_sources(scn.params),
         "series": [{"line_key": c["line_key"], "month": c["month"].isoformat(), "value": c["value"], "kind": c["kind"], "note": c["note"],
                     "origin": c["origin"]} for c in sorted(cells, key=lambda c: (c["line_key"], c["month"]))],
     })
@@ -197,8 +229,12 @@ def inputs_put():
     ev = data.get("expected_version")
     if ev is not None and (isinstance(ev, bool) or not isinstance(ev, int)):
         raise ApiError(400, "expected_version must be an integer")
+    fin_patch, drivers_patch = P.split_payback_patch(patch)        # product cost, fulfillment and horizon live in params['drivers']['payback'] (one store)
+    params: dict = {P.NS: fin_patch}
+    if drivers_patch:
+        params["drivers"] = drivers_patch
     with rwdb.get_rw() as conn:
-        row = scenarios.update(conn, slug, params={P.NS: patch}, expected_version=ev, actor=audit.current_actor())
+        row = scenarios.update(conn, slug, params=params, expected_version=ev, actor=audit.current_actor())
     return jsonify({"scenario": row})
 
 

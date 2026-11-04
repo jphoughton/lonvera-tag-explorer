@@ -9,7 +9,9 @@ from decimal import Decimal
 from typing import Any
 
 from ...queries import ApiError
-from .. import audit
+from .. import clock, scenarios
+from . import history
+from .model import Settings
 from ..interfaces import AXIS_END, AXIS_START
 from .model import (LOCATIONS, PO_STATUSES, PRODUCTS, SOURCES, TRANSFER_STATUSES, WAREHOUSES, normalize_location, normalize_product)
 
@@ -135,8 +137,17 @@ def _row(conn, table: str, id_: int, lock: bool = False) -> dict:
 
 
 def _audit(conn, action: str, kind: str, id_: int, old: dict | None, new: dict | None, when: date | None, note: str | None = None) -> None:
-    audit.record(conn, actor=None, scenario=None, action=action, line_key=f"inventory_supply.{kind}:{id_}",
-                 month=when.replace(day=1) if when else None, old=jsonable(old) if old else None, new=jsonable(new) if new else None, note=note)
+    """Log one changed record onto the change in progress (history row + audit row, written together when the change completes)."""
+    history.log(kind, id_, old, new, audit_action=action, when=when, note=note)
+
+
+def _settings(conn) -> Settings:
+    """The plan of record's variables (defaults for rows created without a value)."""
+    return Settings.from_params(scenarios.get_scenario(conn).params)
+
+
+def _changed(old: dict | None, new: dict) -> bool:
+    return old is None or any(old[k] != new[k] for k in new if k not in ("updated_at", "created_at"))
 
 
 # ---------------------------------------------------------------------------------------------------------------- purchase orders
@@ -172,6 +183,7 @@ _PO_COLS = ("po_number", "product", "vendor", "warehouse", "units", "order_date"
             "balance_paid", "deposit_pct", "unit_cost", "link", "note")
 
 
+@history.tracked_op("po.create")
 def insert_po(conn, data: dict, *, source: str = "manual", note: str | None = None) -> dict:
     v = clean_po(data, source_ok=False)
     cols = list(_PO_COLS) + ["source"]
@@ -181,6 +193,7 @@ def insert_po(conn, data: dict, *, source: str = "manual", note: str | None = No
     return row
 
 
+@history.tracked_op("po.update")
 def update_po(conn, id_: int, patch: dict) -> dict:
     old = _row(conn, "proj_po", id_, lock=True)
     v = clean_po(patch, base=old)
@@ -193,6 +206,7 @@ def update_po(conn, id_: int, patch: dict) -> dict:
     return row
 
 
+@history.tracked_op("po.delete")
 def delete_po(conn, id_: int) -> dict:
     old = _row(conn, "proj_po", id_, lock=True)
     conn.execute("DELETE FROM proj_po WHERE id = %s", (id_,))
@@ -219,6 +233,7 @@ def clean_transfer(data: dict, base: dict | None = None, *, source_ok: bool = Fa
 _TR_COLS = TRANSFER_FIELDS
 
 
+@history.tracked_op("transfer.create")
 def insert_transfer(conn, data: dict, *, source: str = "manual", note: str | None = None) -> dict:
     v = clean_transfer(data)
     cols = list(_TR_COLS) + ["source"]
@@ -228,6 +243,7 @@ def insert_transfer(conn, data: dict, *, source: str = "manual", note: str | Non
     return row
 
 
+@history.tracked_op("transfer.update")
 def update_transfer(conn, id_: int, patch: dict) -> dict:
     old = _row(conn, "proj_fba_transfer", id_, lock=True)
     v = clean_transfer(patch, base=old)
@@ -240,6 +256,7 @@ def update_transfer(conn, id_: int, patch: dict) -> dict:
     return row
 
 
+@history.tracked_op("transfer.delete")
 def delete_transfer(conn, id_: int) -> dict:
     old = _row(conn, "proj_fba_transfer", id_, lock=True)
     conn.execute("DELETE FROM proj_fba_transfer WHERE id = %s", (id_,))
@@ -249,6 +266,7 @@ def delete_transfer(conn, id_: int) -> dict:
 
 # ---------------------------------------------------------------------------------------------------------------- plan accept
 
+@history.tracked_op("plan.accept")
 def accept_plan(conn, body: dict) -> dict:
     """Write an accepted plan: optionally replace the auto-plan rows, insert the proposed rows (source auto-plan). One transaction, all audited.
 
@@ -288,14 +306,15 @@ def accept_plan(conn, body: dict) -> dict:
         _audit(conn, "inventory_supply.transfer.delete", "transfer", r["id"], r, None, r["ship_date"], "plan accept: replaced auto-plan row")
     new_pos = [insert_po(conn, p, source="auto-plan", note="plan accept") for p in cleaned_pos]
     new_tr = [insert_transfer(conn, t, source="auto-plan", note="plan accept") for t in cleaned_tr]
-    audit.record(conn, actor=None, scenario=None, action="inventory_supply.plan.accept", line_key="inventory_supply.plan",
-                 new={"added_pos": len(new_pos), "added_transfers": len(new_tr), "removed_pos": len(removed_pos), "removed_transfers": len(removed_tr)})
+    history.current().audit_only("inventory_supply.plan.accept", "inventory_supply.plan",
+                                 {"added_pos": len(new_pos), "added_transfers": len(new_tr), "removed_pos": len(removed_pos), "removed_transfers": len(removed_tr)})
     return {"added_pos": [r["id"] for r in new_pos], "added_transfers": [r["id"] for r in new_tr],
             "removed_pos": len(removed_pos), "removed_transfers": len(removed_tr)}
 
 
 # ---------------------------------------------------------------------------------------------------------------- stock snapshots and price lists
 
+@history.tracked_op("stock.put")
 def put_stock(conn, data: dict, *, actor_note: str | None = None, today: date | None = None) -> dict:
     """Append a stock count (location, product, as_of); a second count for the same day replaces that day's row. Returns the stored row."""
     if not isinstance(data, dict):
@@ -306,7 +325,7 @@ def put_stock(conn, data: dict, *, actor_note: str | None = None, today: date | 
         raise ApiError(400, f"location must be one of {', '.join(LOCATIONS)}")
     prod = _product(data)
     as_of = _date(data, "as_of", required=True, window=False)
-    if as_of > (today or date.today()) + timedelta(days=31):
+    if as_of > (today or clock.today_pt()) + timedelta(days=31):
         raise ApiError(400, "as_of is too far in the future")
     on_hand = _number(data, "on_hand", required=True, lo=-1e8, hi=1e9)
     allocated = _number(data, "allocated", lo=0, hi=1e9) or 0.0
@@ -322,11 +341,12 @@ def put_stock(conn, data: dict, *, actor_note: str | None = None, today: date | 
         "inbound_per_3pl = EXCLUDED.inbound_per_3pl, estimate = EXCLUDED.estimate, note = EXCLUDED.note RETURNING *",
         (loc, prod, as_of, on_hand, allocated, inbound, est, note)).fetchone()
     if old is None or any(old[k] != row[k] for k in ("on_hand", "allocated", "inbound_per_3pl", "estimate", "note")):
-        audit.record(conn, actor=None, scenario=None, action="inventory_supply.stock.put", line_key=f"inventory_supply.stock:{loc}.{prod}",
-                     month=as_of.replace(day=1), old=jsonable(old) if old else None, new=jsonable(row), note=actor_note)
+        history.log("stock", f"{loc}|{prod}|{as_of.isoformat()}", old, row, audit_action="inventory_supply.stock.put", line_key=f"inventory_supply.stock:{loc}.{prod}",
+                    when=as_of, op="put", note=actor_note)
     return row
 
 
+@history.tracked_op("vendor.put")
 def put_vendor(conn, vendor: str, data: dict) -> dict:
     if not isinstance(vendor, str) or not vendor.strip() or len(vendor) > 60:
         raise ApiError(400, "vendor must be 1-60 characters")
@@ -341,11 +361,12 @@ def put_vendor(conn, vendor: str, data: dict) -> dict:
         "default_warehouse = EXCLUDED.default_warehouse, note = EXCLUDED.note, updated_at = now() RETURNING *",
         (vendor, lead if lead is not None else float(old["lead_weeks"]), moq if moq is not None else (float(old["moq_units"]) if old else 0.0), wh,
          _text(data, "note", 500) if "note" in data else (old["note"] if old else None))).fetchone()
-    audit.record(conn, actor=None, scenario=None, action="inventory_supply.vendor.put", line_key=f"inventory_supply.vendor:{vendor}",
-                 old=jsonable(old) if old else None, new=jsonable(row))
+    if _changed(old, row):
+        history.log("vendor", vendor, old, row, audit_action="inventory_supply.vendor.put", line_key=f"inventory_supply.vendor:{vendor}", op="put")
     return row
 
 
+@history.tracked_op("vendor_cost.put")
 def put_vendor_cost(conn, data: dict) -> dict:
     _unknown(data, ("vendor", "product", "unit_cost", "deposit_pct", "note"))
     vendor = _text(data, "vendor", 60, required=True)
@@ -359,11 +380,12 @@ def put_vendor_cost(conn, data: dict) -> dict:
         "INSERT INTO proj_vendor_cogs (vendor, product, unit_cost, deposit_pct, note) VALUES (%s,%s,%s,%s,%s) "
         "ON CONFLICT (vendor, product) DO UPDATE SET unit_cost = EXCLUDED.unit_cost, deposit_pct = EXCLUDED.deposit_pct, note = EXCLUDED.note, "
         "updated_at = now() RETURNING *", (vendor, prod, cost, dep, _text(data, "note", 500))).fetchone()
-    audit.record(conn, actor=None, scenario=None, action="inventory_supply.vendor_cost.put", line_key=f"inventory_supply.vendor_cost:{vendor}.{prod}",
-                 old=jsonable(old) if old else None, new=jsonable(row))
+    if _changed(old, row):
+        history.log("vendor_cost", f"{vendor}|{prod}", old, row, audit_action="inventory_supply.vendor_cost.put", line_key=f"inventory_supply.vendor_cost:{vendor}.{prod}", op="put")
     return row
 
 
+@history.tracked_op("reorder_param.put")
 def put_reorder_param(conn, data: dict) -> dict:
     _unknown(data, ("location", "product", "lead_days", "safety_days", "moq_units"))
     loc = normalize_location(data.get("location")) if data.get("location") else None
@@ -378,13 +400,14 @@ def put_reorder_param(conn, data: dict) -> dict:
         "INSERT INTO proj_reorder_param (location, product, lead_days, safety_days, moq_units) VALUES (%s,%s,%s,%s,%s) "
         "ON CONFLICT (location, product) DO UPDATE SET lead_days = EXCLUDED.lead_days, safety_days = EXCLUDED.safety_days, "
         "moq_units = EXCLUDED.moq_units, updated_at = now() RETURNING *",
-        (loc, prod, int(lead if lead is not None else old["lead_days"]), int(safety if safety is not None else (old["safety_days"] if old else 14)),
+        (loc, prod, int(lead if lead is not None else old["lead_days"]), int(safety if safety is not None else (old["safety_days"] if old else round(_settings(conn).default_safety_days))),
          moq if moq is not None else (float(old["moq_units"]) if old else 0.0))).fetchone()
-    audit.record(conn, actor=None, scenario=None, action="inventory_supply.reorder_param.put", line_key=f"inventory_supply.reorder:{loc}.{prod}",
-                 old=jsonable(old) if old else None, new=jsonable(row))
+    if _changed(old, row):
+        history.log("reorder_param", f"{loc}|{prod}", old, row, audit_action="inventory_supply.reorder_param.put", line_key=f"inventory_supply.reorder:{loc}.{prod}", op="put")
     return row
 
 
+@history.tracked_op("product_cost.put")
 def put_product_cost(conn, data: dict) -> dict:
     _unknown(data, ("product", "china_unit_cost", "us_unit_cost", "sku", "note"))
     prod = _product(data)
@@ -396,6 +419,6 @@ def put_product_cost(conn, data: dict) -> dict:
         "ON CONFLICT (product) DO UPDATE SET sku = EXCLUDED.sku, china_unit_cost = EXCLUDED.china_unit_cost, us_unit_cost = EXCLUDED.us_unit_cost, "
         "note = EXCLUDED.note, updated_at = now() RETURNING *",
         (prod, _text(data, "sku", 60) or (old["sku"] if old else None), cost, us, _text(data, "note", 500))).fetchone()
-    audit.record(conn, actor=None, scenario=None, action="inventory_supply.product_cost.put", line_key=f"inventory_supply.product_cost:{prod}",
-                 old=jsonable(old) if old else None, new=jsonable(row))
+    if _changed(old, row):
+        history.log("product_cost", prod, old, row, audit_action="inventory_supply.product_cost.put", line_key=f"inventory_supply.product_cost:{prod}", op="put")
     return row

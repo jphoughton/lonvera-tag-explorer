@@ -76,8 +76,24 @@ def _reset(base_url):
 @pytest.fixture
 def ctx(browser, base_url):
     c = browser.new_context(viewport={"width": 1440, "height": 900}, base_url=base_url, permissions=["clipboard-read", "clipboard-write"])
+    # the first edit of a tab session on the plan of record asks "make a copy or edit it"; the older tests edit the plan directly, so they start with that answered
+    c.add_init_script("try { sessionStorage.setItem('projection.por.edit', '1'); } catch (e) {}")
     yield c
     c.close()
+
+
+@pytest.fixture
+def fresh_page(browser, base_url, request):
+    """A page whose tab session has NOT answered the plan-of-record question (for the tests of that question)."""
+    c = browser.new_context(viewport={"width": 1440, "height": 900}, base_url=base_url)
+    p = c.new_page()
+    p.errors = []
+    p.on("console", lambda m: p.errors.append(m.text) if m.type == "error" else None)
+    p.on("pageerror", lambda e: p.errors.append("pageerror: " + str(e)))
+    yield p
+    c.close()
+    if request.node.get_closest_marker("allow_errors") is None:
+        assert not p.errors, f"console errors: {p.errors}"
 
 
 @pytest.fixture

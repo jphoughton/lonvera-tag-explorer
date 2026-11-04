@@ -10,6 +10,7 @@ const CSS = `
 .pacing-card { display: flex; flex-direction: column; gap: 6px; background: var(--lv-surface); border: 1px solid var(--lv-line); border-radius: var(--lv-r-md); padding: var(--lv-sp-3) var(--lv-sp-4); }
 .pacing-card .t { color: var(--lv-muted); font-size: var(--lv-fs-xs); font-weight: var(--lv-fw-bold); letter-spacing: var(--lv-track-kicker); text-transform: uppercase; }
 .pacing-card .v { font-size: var(--lv-fs-xl); font-weight: var(--lv-fw-heavy); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.pacing-ctx { color: var(--lv-muted); font-size: var(--lv-fs-xs); font-weight: var(--lv-fw-medium); }
 .pacing-card .g { color: var(--lv-muted); font-size: var(--lv-fs-sm); font-variant-numeric: tabular-nums; }
 .pacing-card .row { display: flex; align-items: center; justify-content: space-between; gap: var(--lv-sp-2); }
 .pacing-bar { position: relative; height: 8px; border-radius: var(--lv-r-pill); background: var(--lv-surface-3); overflow: visible; min-width: 70px; flex: 1 1 70px; }
@@ -38,7 +39,7 @@ table.pacing-table { border-collapse: separate; border-spacing: 0; width: 100%; 
 .pacing-table td.pace .pct { min-width: 46px; text-align: right; font-weight: var(--lv-fw-semi); }
 .pacing-table td.proj { background: var(--lv-proj-cell); }
 .pacing-table abbr { text-decoration: underline dotted var(--lv-line-strong); text-underline-offset: 2px; cursor: help; }
-.pacing-ast { opacity: 0.7; margin-left: 1px; }
+.pacing-ast { margin-left: 1px; font-weight: var(--lv-fw-bold); }
 .pacing-two { display: grid; grid-template-columns: 1fr; gap: var(--lv-sp-3); }
 @media (min-width: 1100px) { .pacing-two { grid-template-columns: 1fr 1fr; } }
 .pacing-kv { display: grid; grid-template-columns: 1fr auto auto; gap: 4px var(--lv-sp-4); font-size: var(--lv-fs-base); font-variant-numeric: tabular-nums; }
@@ -134,8 +135,17 @@ export async function render(el, ctx) {
 
   const monthSelect = h('select', { 'aria-label': 'Month', onchange: () => { state.month = monthSelect.value; ctx.setParams({ month: state.month }); loadMonth(); } });
   const feedSummary = h('span');
+  const stateChip = h('span');
 
   // ---- month pacing
+  function monthStateChip(state) {
+    const words = { books: ['Books', 'neutral', 'The books (QuickBooks) hold this month.'], feeds: ['Feeds', 'neutral', 'Complete in the daily feeds; not yet in the books.'],
+      projected: ['Projected*', 'info', 'Still running: the figures to date are projected to month end.'] }[state];
+    if (!words) return '';
+    const c = ui.chip(words[0], words[1]);
+    c.title = words[2];
+    return c;
+  }
   function paceCell(row) {
     if (row.pacing == null) return h('td', { class: 'pace' }, row.direction == null ? '' : '—');
     const pct = row.pacing * 100;
@@ -151,7 +161,9 @@ export async function render(el, ctx) {
     const d = fd(v, row.fmt);
     const cls = [d.neg ? 'neg' : '', d.zero ? 'zero' : '', opts.proj ? 'proj' : ''].filter(Boolean).join(' ');
     if (d.blank) return h('td', { class: cls });
-    return h('td', { class: cls }, d.text, opts.star && !d.zero ? h('span', { class: 'pacing-ast' }, '*') : null);
+    const c = opts.context;
+    return h('td', { class: cls }, d.text, opts.star && !d.zero ? h('span', { class: 'pacing-ast' }, '*') : null,
+      c && c.value != null ? h('div', { class: 'pacing-ctx', title: `${c.days} days of spend and new customers ending at the last complete day` }, `${c.label} ${fd(c.value, row.fmt).text}`) : null);
   }
   function monthTable(rows) {
     const head = h('tr', null,
@@ -173,7 +185,7 @@ export async function render(el, ctx) {
       body.append(h('tr', { class: r.kind },
         h('th', { class: 'lab', scope: 'row', style: { paddingLeft: `calc(var(--lv-sp-3) + ${r.indent * 14}px)` }, title: r.note || null },
           abbr(r.label), r.note ? h('span', { class: 'pg-note', title: r.note, 'aria-label': r.note }, 'i') : null),
-        paceCell(r), numCell(r, r.mtd), numCell(r, r.last7), numCell(r, r.daily_needed), numCell(r, r.should_be), numCell(r, r.goal),
+        paceCell(r), numCell(r, r.mtd, { context: r.context }), numCell(r, r.last7), numCell(r, r.daily_needed), numCell(r, r.should_be), numCell(r, r.goal),
         numCell(r, r.projection, { proj: true, star: r.fmt !== 'pct1' && r.kind !== 'ratio' })));
     }
     return h('div', { class: 'pacing-table-wrap' }, h('table', { class: 'pacing-table', 'aria-label': 'Month pacing against the plan' },
@@ -191,19 +203,20 @@ export async function render(el, ctx) {
         h('div', { class: 't' }, label),
         h('div', { class: 'v' }, fd(r.projection, r.fmt).text, r.kind === 'ratio' ? null : h('span', { class: 'pacing-ast' }, '*')),
         h('div', { class: 'g' }, `Goal ${fd(r.goal, r.fmt).text} · ${r.pacing == null ? 'no pace' : Math.round(r.pacing * 100) + '%'}`),
+        r.context && r.context.value != null ? h('div', { class: 'pacing-ctx' }, `${r.context.label} ${fd(r.context.value, r.fmt).text}${r.context.pacing != null ? ` · ${Math.round(r.context.pacing * 100)}% of goal` : ''}`) : null,
         h('div', { class: 'row' }, h('div', { class: 'pacing-bar ' + (tone || ''), role: 'img', 'aria-label': r.pacing == null ? 'No goal' : `${Math.round(r.pacing * 100)}% of goal` },
           h('span', { class: 'fill', style: { width: width + '%' } }), h('span', { class: 'tick', style: { left: (100 / 150 * 100) + '%' } })),
         tone ? ui.chip(wordFor(r), tone) : null));
     });
     const pb = data.payback && data.payback.available ? data.payback : null;
     if (pb) {
-      const tone = pb.months.status === 'none' ? null : pb.months.status;
-      const behind = tone === 'warn' || tone === 'bad';
+      const m = pb.loaded ? pb.loaded.months : pb.months;
+      const tone = m.status === 'none' ? null : m.status;
       out.push(h('div', { class: 'pacing-card', 'data-key': 'payback' },
-        h('div', { class: 't' }, 'Payback'),
-        h('div', { class: 'v' }, `${pb.months.mtd_label} months`),
-        h('div', { class: 'g' }, `Goal ${pb.months.goal_label} months`),
-        h('div', { class: 'row' }, tone ? ui.chip(behind ? (tone === 'bad' ? 'Well behind' : 'Behind') : 'On pace', tone) : null)));
+        h('div', { class: 't' }, pb.loaded ? 'Payback after all variable costs' : 'Payback on product margin'),
+        h('div', { class: 'v' }, `${m.mtd_label} months`),
+        h('div', { class: 'g' }, `Goal ${m.goal_label} months${pb.loaded ? ` · ${pb.months.mtd_label} on product margin` : ''}`),
+        h('div', { class: 'row' }, tone ? ui.chip(tone === 'good' ? 'On pace' : tone === 'warn' ? 'Behind' : 'Well behind', tone) : null)));
     }
     return h('div', { class: 'pacing-cards' }, out);
   }
@@ -220,7 +233,11 @@ export async function render(el, ctx) {
       kp('nc_roas', 'New-customer ROAS', by.nc_roas ? `${fd(by.nc_roas.mtd, 'x').text} vs ${fd(by.nc_roas.goal, 'x').text}` : ''),
       kp('advertising', 'Ad spend pace', fmt.compact(by.advertising && by.advertising.projection) + '*')].filter(Boolean);
     const pb = data.payback && data.payback.available ? data.payback : null;
-    if (pb) kpis.push({ label: 'Payback, months', value: String(pb.months.mtd_label), tone: pb.months.status === 'none' ? null : pb.months.status, note: `goal ${pb.months.goal_label}` });
+    if (pb) {
+      const m = pb.loaded ? pb.loaded.months : pb.months;
+      kpis.push({ label: pb.loaded ? 'Payback after all costs, months' : 'Payback, months', value: String(m.mtd_label), tone: m.status === 'none' ? null : m.status,
+        note: pb.loaded ? `${pb.months.mtd_label} on product margin · goal ${m.goal_label}` : `goal ${m.goal_label}` });
+    }
     return kpis;
   }
 
@@ -246,15 +263,20 @@ export async function render(el, ctx) {
     const pb = data.payback;
     if (!pb || !pb.available) return h('div', { class: 'pg-card' }, h('h2', { class: 'pg-h2' }, 'Payback'), h('p', { class: 'muted' }, pb ? pb.reason : 'Payback needs the month to have data and the cohort curve.'));
     const d = (v, f) => fd(v, f).text || '—';
+    const ld = pb.loaded;
     return h('div', { class: 'pg-card', 'data-box': 'payback' },
       h('h2', { class: 'pg-h2' }, 'Payback'),
       h('div', { class: 'pacing-kv' },
         h('span', { class: 'h' }), h('span', { class: 'h' }, 'Month to date'), h('span', { class: 'h' }, 'Goal'),
         h('span', null, abbr('NC AOV')), h('span', { class: 'n' }, d(pb.aov.mtd, 'money2')), h('span', { class: 'n' }, d(pb.aov.goal, 'money2')),
         h('span', null, abbr('NC CPA')), h('span', { class: 'n' }, d(pb.cpa.mtd, 'money2')), h('span', { class: 'n' }, d(pb.cpa.goal, 'money2')),
-        h('span', null, 'First-order margin'), h('span', { class: 'n' }, d(pb.first_order_margin.mtd, 'money2')), h('span', { class: 'n' }, d(pb.first_order_margin.goal, 'money2')),
-        h('span', null, 'Payback, months'), h('span', { class: 'n' }, pb.months.mtd_label), h('span', { class: 'n' }, pb.months.goal_label)),
-      ui.source(`Month-to-date order value and cost per customer on the live curve, against the plan on the goal curve. Product cost ${fmt.pct(pb.product_cost_pct, 2)} of order value, fulfillment ${fmt.money(pb.fulfillment_per_order, { digits: 2 })} per order.`));
+        h('span', null, 'First-order margin on product margin'), h('span', { class: 'n' }, d(pb.first_order_margin.mtd, 'money2')), h('span', { class: 'n' }, d(pb.first_order_margin.goal, 'money2')),
+        h('span', { title: 'Product cost and fulfillment only' }, 'Payback on product margin, months'), h('span', { class: 'n' }, pb.months.mtd_label), h('span', { class: 'n' }, pb.months.goal_label),
+        ld ? h('span', null, 'First-order margin after all variable costs') : null, ld ? h('span', { class: 'n' }, d(ld.first_order_margin.mtd, 'money2')) : null, ld ? h('span', { class: 'n' }, d(ld.first_order_margin.goal, 'money2')) : null,
+        ld ? h('span', { title: 'Also payment processing, chargebacks, inbound shipping and software' }, 'Payback after all variable costs, months') : null, ld ? h('span', { class: 'n' }, ld.months.mtd_label) : null, ld ? h('span', { class: 'n' }, ld.months.goal_label) : null),
+      ui.source(`Month-to-date order value and cost per customer on the live curve, against the plan on the goal curve. On product margin: product cost ${fmt.pct(pb.product_cost_pct, 2)} of order value and fulfillment ${fmt.money(pb.fulfillment_per_order, { digits: 2 })} per order.`
+        + (ld ? ` After all variable costs: the plan's cost rates take ${fmt.pct(ld.variable_cost_rate, 1)} of each order (the same figure as Cash and debt).` : '')),
+      !ld && pb.loaded_unavailable ? h('p', { class: 'pacing-note' }, ui.chip('Unavailable', 'warn'), `Payback after all variable costs: ${pb.loaded_unavailable}`) : null);
   }
 
   function intradayBox() {
@@ -270,10 +292,9 @@ export async function render(el, ctx) {
         try {
           const r = await ctx.api.get('pacing/intraday', { spent: spent.value, time: time.value });
           if (!ctx.alive()) return;
-          if (!r.loaded) { out.textContent = r.message; return; }
-          out.textContent = r.projected_eod == null
-            ? 'Too early in the day to project.'
-            : `Projected end-of-day Meta spend ${fmt.money(r.projected_eod)}*, ${fmt.money(r.to_go)} still to go (${fmt.pct(r.share_of_day, 0)} of a typical day's spend is out by ${time.value}).`;
+          const note = r.estimate ? [ui.chip('Estimate', 'info', { estimate: true }), ' '] : [];
+          if (r.projected_eod == null) { out.replaceChildren(...note, r.message || 'Too early in the day to project.'); return; }
+          out.replaceChildren(...note, `Projected end-of-day Meta spend ${fmt.money(r.projected_eod)}*, ${fmt.money(r.to_go)} still to go (${fmt.pct(r.share_of_day, 0)} of a typical day's spend is out by ${time.value}). `, r.message || '');
         } catch (e) { out.textContent = e.message; }
       }, 250);
     };
@@ -364,6 +385,7 @@ export async function render(el, ctx) {
     state.month = data.month;
     monthSelect.replaceChildren(...data.months.map((m) => h('option', { value: m.month, selected: m.month === data.month }, m.label)));
     monthSelect.value = data.month;
+    stateChip.replaceChildren(monthStateChip(data.state));
     const chips = data.freshness || [];
     const behind = chips.filter((c) => c.status !== 'good').length;
     feedSummary.replaceChildren(behind ? ui.chip(`${behind} ${behind === 1 ? 'feed' : 'feeds'} behind`, chips.some((c) => c.status === 'bad') ? 'bad' : 'warn') : ui.chip(`Data through ${fmt.date(data.data_through).replace(/, \d{4}$/, '')}`, 'good'));
@@ -371,7 +393,7 @@ export async function render(el, ctx) {
     headHost.replaceChildren(ui.pageHeader({
       title: 'Pacing',
       purpose: 'Where the month is landing against the plan, by day, week and month. NC = new customer, ROAS = return on ad spend, CPA = cost per acquisition.',
-      actions: [h('div', { class: 'pacing-controls' }, h('label', { for: 'pacing-month' }, 'Month'), Object.assign(monthSelect, { id: 'pacing-month' }), feedSummary)],
+      actions: [h('div', { class: 'pacing-controls' }, h('label', { for: 'pacing-month' }, 'Month'), Object.assign(monthSelect, { id: 'pacing-month' }), stateChip, feedSummary)],
       tldr: { line: tldrLine(data), kpis: tldrPart(data) },
     }));
     cardsHost.replaceChildren(data.rows.length ? cards(data) : '');
@@ -411,14 +433,18 @@ export async function render(el, ctx) {
     if (data.payback) {
       const pb = data.payback;
       body.append(h('tr', { class: 'grp' }, h('td', { class: 'lab' }, 'PAYBACK (DTC)'), h('td', { colspan: 5 })));
+      if (pb.loaded) {
+        body.append(h('tr', null, h('th', { class: 'lab', scope: 'row' }, 'Payback after all variable costs, months'), h('td', null, pb.loaded.months.actual_label), h('td', { class: 'proj' }, pb.loaded.months.actual_label),
+          h('td', null, pb.loaded.months.target_label), h('td'), h('td')));
+      }
       body.append(h('tr', null, h('th', { class: 'lab', scope: 'row' }, 'First-order margin'), h('td', null, fd(pb.first_order_margin.actual, 'money2').text), h('td', { class: 'proj' }, fd(pb.first_order_margin.actual, 'money2').text),
         h('td', null, fd(pb.first_order_margin.target, 'money2').text), h('td'), h('td')));
-      body.append(h('tr', null, h('th', { class: 'lab', scope: 'row' }, 'Payback, months'), h('td', null, pb.months.actual_label), h('td', { class: 'proj' }, pb.months.actual_label),
+      body.append(h('tr', null, h('th', { class: 'lab', scope: 'row' }, 'Payback on product margin, months'), h('td', null, pb.months.actual_label), h('td', { class: 'proj' }, pb.months.actual_label),
         h('td', null, pb.months.target_label), h('td', null, pb.months.actual != null && pb.months.target != null ? String(pb.months.actual - pb.months.target) : ''), h('td')));
     }
     const table = h('div', { class: 'pacing-table-wrap' }, h('table', { class: 'pacing-table', style: { minWidth: '640px' }, 'aria-label': 'Month snapshot' },
       h('thead', null, h('tr', null, h('th', { class: 'lab', scope: 'col' }, 'Metric'), h('th', null, 'Actual'), h('th', { class: 'proj' }, data.partial ? 'Projected*' : 'Month total'), h('th', null, 'Plan'), h('th', null, 'Difference'), h('th', null, 'Difference %'))), body));
-    snapHost.replaceChildren(h('section', { class: 'pg-section' }, h('h2', { class: 'pg-h2' }, `Month snapshot, ${fmt.monthLabel(data.month, true)}`), h('p', { class: 'pacing-note' }, data.status_text), table,
+    snapHost.replaceChildren(h('section', { class: 'pg-section' }, h('h2', { class: 'pg-h2' }, `Month snapshot, ${fmt.monthLabel(data.month, true)}`), h('p', { class: 'pacing-note' }, monthStateChip(data.state), data.status_text), table,
       ui.source('Actuals through yesterday. Revenue is on the plan\'s basis (Shopify less the estimated sales tax, plus Amazon). EBITDA and net operating income are estimates from the plan\'s cost rates.')));
   }
 

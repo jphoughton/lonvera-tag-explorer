@@ -136,14 +136,15 @@ class ProductCost:
     china_unit_cost: float = 0.0
     sku: str | None = None
     us_unit_cost: float | None = None
+    source: str = "table"                    # 'pnl' when params.pnl.cogs.china_cost.<sku> supplies the value, 'table' for the stored seed
 
 
 @dataclass
 class ReorderParam:
     location: str
     product: str
-    lead_days: int = 90
-    safety_days: int = 14
+    lead_days: int                           # no default here: the defaults are variables (default_lead_days_*, default_safety_days)
+    safety_days: int
     moq_units: float = 0.0
 
 

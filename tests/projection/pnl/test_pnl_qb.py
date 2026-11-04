@@ -16,7 +16,8 @@ from pnl_helpers import make_xlsx, qb_rows, to_csv                        # noqa
 
 TODAY = date(2026, 11, 3)
 MAP = {"shopify sales": "dtc_rev", "amazon sales": "amazon_rev", "amazon fba fees": "amazon_fba_fees", "china cogs": "china_cogs",
-       "other business expenses": "other_direct", "bank fees": "bank_fees", "accounting": "accounting"}
+       "other business expenses": "other_direct", "bank fees": "bank_fees", "accounting": "accounting", "fulfillment services": "fulfillment_services",
+       "facebook ads": "mkt_facebook_ads"}
 
 
 def test_csv_and_xlsx_parse_to_the_same_accounts():

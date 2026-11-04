@@ -145,7 +145,9 @@ def build_settings(sr) -> list[tuple[str, dict, str]]:
             ("cogs", cogs, "COGS tab: China/US split N24, forward price per bottle L38 (old average), current price L37"),
             ("ev", {"multiples": [3, 4, 5, 6, 7, 8], "year": 2027, "loi": 7_500_000.0}, "P&L rows 159-162; LOI per the sheet note"),
             ("trend", trend, "P&L!H145: months in the growth-rate averages (rows 145, 147, 150, 152, 155, 157)"),
-            ("freshness", {"stale_after_days": 45}, "QuickBooks is late when the first month not loaded closed more than this many days ago")]
+            ("freshness", {"stale_after_days": 45}, "QuickBooks is late when the first month not loaded closed more than this many days ago"),
+            ("upload", {"low_ratio": 0.5, "high_ratio": 2.0, "required_families": ["revenue", "cost_of_goods", "fulfillment", "marketing_spend", "operating_expenses"]},
+             "Not in the sheet: account families a QuickBooks month needs to become books, and how far from its neighbours it may stray before it needs a confirmation")]
 
 
 def build_cogs_sku(sr) -> list[dict]:

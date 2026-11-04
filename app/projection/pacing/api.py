@@ -23,7 +23,7 @@ from psycopg.types.json import Jsonb
 
 from ... import db
 from ...queries import ApiError
-from .. import audit, engine, rwdb, scenarios
+from .. import audit, degraded, engine, rwdb, scenarios
 from . import catalog, feeds, levers as lv, month as month_mod, periods, views
 from .feedspec import freshness as feed_freshness
 from .targets import TargetBook
@@ -60,9 +60,12 @@ def _date_arg(name: str) -> date | None:
 
 def _today() -> date:
     try:
-        return periods.as_of(_arg("as_of"))
+        d = periods.as_of(_arg("as_of"))
     except ValueError:
         raise ApiError(400, "as_of must be a date (YYYY-MM-DD)") from None
+    if not (FIRST_MONTH <= d <= date(2029, 12, 31)):
+        raise ApiError(400, "as_of must lie between 2025-01-01 and 2029-12-31")
+    return d
 
 
 def _setup():
@@ -70,6 +73,7 @@ def _setup():
     today = _today()
     conn = db.get_conn()
     res = engine.run(_arg("scenario"), conn, today=today)
+    degraded.ensure_ok(res, "pacing")                      # 503 upstream_degraded when the P&L, drivers or cohorts failed: never goals of zero
     L = lv.parse(res.scenario.params)
     book = TargetBook(res.results.get("pnl"), res.results.get("drivers"), res.results.get("cohorts"), levers=L)
     return today, res, book, conn
@@ -104,7 +108,8 @@ def _fresh_chips(conn, today: date, L: lv.Levers) -> list[dict]:
 
 def _load_month_frame(conn, month: date, today: date, L: lv.Levers):
     thr = periods.data_through(today, L.data_lag_days)
-    return feeds.load_frame(conn, min(month, thr - timedelta(days=max(L.last_days, 7) - 1)), max(min(periods.month_end(month), thr), min(month, thr)))
+    back = max(L.last_days, L.cpa_window_days, 7) - 1
+    return feeds.load_frame(conn, min(month, thr - timedelta(days=back)), max(min(periods.month_end(month), thr), min(month, thr)))
 
 
 # ---------------------------------------------------------------------------------------------------------------- routes
@@ -117,7 +122,7 @@ def get_month():
     fr = _load_month_frame(conn, month, today, L)
     cohorts = res.results.get("cohorts")
     scn = res.scenario
-    out = month_mod.pacing_month(fr, month, today, book, cohorts, scn.params)
+    out = month_mod.pacing_month(fr, month, today, book, cohorts, scn.params, res.actual_through)
     out["scenario"] = {"slug": scn.slug, "name": scn.name, "version": scn.version}
     out["months"] = _month_options(today, L)
     out["freshness"] = _fresh_chips(conn, today, L)
@@ -133,7 +138,7 @@ def get_snapshot():
     L = book.levers
     month = _month_arg(today, L)
     fr = _load_month_frame(conn, month, today, L)
-    out = month_mod.snapshot_month(fr, month, today, book, res.results.get("cohorts"), res.scenario.params)
+    out = month_mod.snapshot_month(fr, month, today, book, res.results.get("cohorts"), res.scenario.params, res.actual_through)
     out["months"] = _month_options(today, L)
     out["missing_goal_rows"] = book.missing_rows()
     return jsonify(out)
@@ -148,9 +153,16 @@ def get_rollup():
     if view not in ("rollup", "meta"):
         raise ApiError(400, "view must be rollup or meta")
     bands = [b for b in (_arg("bands") or "").split(",") if b] or None
+    valid = {b.lower() for b in catalog.bands_for(view)} | {"projection against the plan"}
+    unknown = [b for b in bands or [] if b.lower() not in valid and b.lower().split(":")[0] not in valid]
+    if unknown:
+        raise ApiError(400, f"unknown band {unknown[0]!r}: choose from {', '.join(catalog.bands_for(view))}")
+    frm, to = _date_arg("from"), _date_arg("to")
+    if frm and to and frm > to:
+        raise ApiError(400, "from must not be after to")
     today, res, book, conn = _setup()
     try:
-        out = views.rollup_payload(conn, grain, _date_arg("from"), _date_arg("to"), today, book, view, bands, _arg("delta") in ("1", "true"))
+        out = views.rollup_payload(conn, grain, frm, to, today, book, view, bands, _arg("delta") in ("1", "true"))
     except ValueError as e:
         raise ApiError(400, str(e)) from None
     out["freshness"] = _fresh_chips(conn, today, book.levers)
@@ -160,6 +172,8 @@ def get_rollup():
 @bp.get("/catalog")
 def get_catalog():
     view = _arg("view") or "rollup"
+    if view not in ("rollup", "meta"):
+        raise ApiError(400, "view must be rollup or meta")
     return jsonify({"view": view, "bands": catalog.bands_for(view),
                     "metrics": [{"key": m.key, "label": m.short or m.label, "band": m.band, "sub": m.sub, "fmt": m.fmt, "note": m.note} for m in catalog.metrics_for(view)]})
 
@@ -194,11 +208,16 @@ def get_intraday():
     else:
         now = datetime.now(periods.PACIFIC)
         hours = now.hour + now.minute / 60
-    if len(rows) != 24:
-        return jsonify({"loaded": False, "message": "The hourly spend curve is not loaded."})
+    even = len(rows) != 24 or not sum(hourly)
+    if even:                                                                 # no curve: assume spend is even through the day, and say so
+        hourly = [1.0] * 24
     out = month_mod.intraday_projection(hourly, spent or 0.0, hours) if spent is not None else {"share": None, "projected_eod": None, "to_go": None}
     share_now = month_mod.intraday_projection(hourly, 1.0, hours).get("share")
-    out.update({"loaded": True, "hour": round(hours, 2), "share_of_day": share_now, "spent": spent})
+    out.update({"loaded": not even, "estimate": even, "hour": round(hours, 2), "share_of_day": share_now, "spent": spent})
+    if even:
+        out["message"] = ("The hourly spend curve is not loaded, so this assumes spend is even through the day. "
+                          "Load the curve with `python -m etl.projection_pacing seed-hourly` (it reads the sheet's Automated Pacing L23:M46); "
+                          "the daily refresh also loads it the next time it runs.")
     return jsonify(out)
 
 

@@ -34,42 +34,15 @@ def test_clone_copies_series_and_params_and_stays_independent(client):
     assert put(client, "current", item(value=100), item(month="2026-12-01", value=200, kind="override", note="why")).status_code == 200
     c = create(client, "Copy", clone_from="current")
     assert c["params"] == {"drivers": {"spend_growth": 0.02}}
-    got = get_series(client, "copy", "drivers.spend", detail=1)
-    assert got["series"]["drivers.spend"] == {"2026-11-01": 100.0, "2026-12-01": 200.0}
-    assert got["detail"]["drivers.spend"]["2026-12-01"] == {"kind": "override", "note": "why", "origin": "copy"}     # copied, so owned by the clone
+    got = get_series(client, "copy", "pnl.margin_adj", detail=1)
+    assert got["series"]["pnl.margin_adj"] == {"2026-11-01": 100.0, "2026-12-01": 200.0}
+    assert got["detail"]["pnl.margin_adj"]["2026-12-01"] == {"kind": "override", "note": "why", "origin": "copy"}     # copied, so owned by the clone
     assert put(client, "copy", item(value=111)).status_code == 200
-    assert get_series(client, "current", "drivers.spend")["series"]["drivers.spend"]["2026-11-01"] == 100.0       # source unchanged
-    assert get_series(client, "copy", "drivers.spend")["series"]["drivers.spend"]["2026-11-01"] == 111.0
+    assert get_series(client, "current", "pnl.margin_adj")["series"]["pnl.margin_adj"]["2026-11-01"] == 100.0       # source unchanged
+    assert get_series(client, "copy", "pnl.margin_adj")["series"]["pnl.margin_adj"]["2026-11-01"] == 111.0
     # the clone endpoint alias
     r = client.post(f"{P}/scenarios/copy/clone", json={"name": "Copy of copy"})
     assert r.status_code == 201 and r.get_json()["scenario"]["base_slug"] == "copy"
-
-
-def test_base_fallback_for_cells_the_clone_does_not_hold(client):
-    put(client, "current", item(value=100))
-    create(client, "Child")
-    put(client, "current", item(month="2027-01-01", value=7))                   # added to the base AFTER the clone
-    got = get_series(client, "child", "drivers.spend", detail=1)
-    assert got["series"]["drivers.spend"]["2027-01-01"] == 7.0
-    assert got["detail"]["drivers.spend"]["2027-01-01"]["origin"] == "current"
-    assert got["detail"]["drivers.spend"]["2026-11-01"]["origin"] == "child"
-    # deleting the clone's own cell reverts the month to the base value
-    assert put(client, "child", item(value=None)).status_code == 200
-    got = get_series(client, "child", "drivers.spend", detail=1)
-    assert got["series"]["drivers.spend"]["2026-11-01"] == 100.0 and got["detail"]["drivers.spend"]["2026-11-01"]["origin"] == "current"
-
-
-def test_fallback_chain_depth_and_cycle_safety(client, pg):
-    put(client, "current", item(value=1))
-    create(client, "A", "current")
-    create(client, "B", "a")
-    create(client, "C", "b")
-    pg.execute("DELETE FROM proj_series WHERE scenario_id IN (SELECT id FROM proj_scenarios WHERE slug <> 'current')")
-    got = get_series(client, "c", "drivers.spend", detail=1)
-    assert got["detail"]["drivers.spend"]["2026-11-01"]["origin"] == "current"        # three levels down
-    pg.execute("UPDATE proj_scenarios SET base_slug = 'c' WHERE slug = 'a'")           # a -> c -> b -> a: a cycle
-    assert client.get(f"{P}/series?scenario=c&keys=drivers.spend").status_code == 200
-    assert client.get(f"{P}/run?scenario=c").status_code == 200
 
 
 def test_patch_params_deep_merge_per_namespace(client):
@@ -127,17 +100,9 @@ def test_delete_rules(client, pg):
     assert scenario(client, "temp")
     r = client.delete(f"{P}/scenarios/temp", json={"confirm": "temp"})
     assert r.status_code == 200 and r.get_json() == {"deleted": "temp"}
-    assert scenario(client, "kid")["base_slug"] == "current"                                                  # dependents re-pointed
+    assert scenario(client, "kid")["base_slug"] == "temp"                                                     # lineage only: still says where it came from
     assert [s["slug"] for s in client.get(f"{P}/scenarios").get_json()["scenarios"]] == ["current", "kid"]
     rows = audit_rows(pg, "scenario.delete")
     assert len(rows) == 1 and rows[0]["scenario_slug"] == "temp" and rows[0]["old"]["name"] == "Temp"
 
 
-def test_effective_params_inherit_from_base(client):
-    client.patch(f"{P}/scenarios/current", json={"params": {"drivers": {"a": 1, "b": 2}}})
-    create(client, "Kid")
-    client.patch(f"{P}/scenarios/kid", json={"params": {"drivers": {"b": 20}}})
-    client.patch(f"{P}/scenarios/current", json={"params": {"drivers": {"c": 3}}})
-    kid = scenario(client, "kid")
-    assert kid["params"] == {"drivers": {"a": 1, "b": 20}}
-    assert kid["effective_params"] == {"drivers": {"a": 1, "b": 20, "c": 3}}

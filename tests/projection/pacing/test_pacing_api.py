@@ -26,9 +26,9 @@ def test_compute_through_the_module_contract(conn, pnl, cohorts, book):
     res = compute(scn, inputs, pnl=pnl, cohorts=cohorts)                    # row map of the real pnl module is not used by the double: keys are row_<n>
     assert isinstance(res, PacingResult) and res.month == dt.date(2026, 11, 1) and res.data_through == dt.date(2026, 11, 2)
     assert res.summary["days_elapsed"] == 2 and len(res.automated["C"]) == 47
-    # without a plan the module still computes: actuals only, goals missing
-    bare = compute(scn, inputs)
-    assert {r["key"]: r for r in bare.summary["rows"]}["dtc_rev"]["mtd"] == 67568.12
+    # the P&L is required: without it the engine marks pacing degraded instead of pacing against goals of zero
+    with pytest.raises(TypeError):
+        compute(scn, inputs)
 
 
 def _engine_result(res):
@@ -63,7 +63,8 @@ def test_month_endpoint_payload(api):
     assert j["scenario"]["slug"] == "current" and j["tldr_line"].startswith("Revenue tracking")
     assert j["months"][0]["month"] == "2026-11-01" and j["months"][-1]["month"] == "2025-01-01"
     fresh = {f["feed"]: f["status"] for f in j["freshness"]}
-    assert len(fresh) == 11 and fresh.pop("meta_ad_daily") == "bad"                  # ad_daily is empty in the test database: no data is shown as such
+    assert len(fresh) == 12 and fresh.pop("meta_ad_daily") == "bad"                  # ad_daily is empty in the test database: no data is shown as such
+    assert fresh.pop("hourly_curve") == "good"
     assert set(fresh.values()) == {"good"}
     by = {x["key"]: x for x in j["rows"]}
     assert by["total_rev"]["status"] == "good" and by["advertising"]["direction"] == "down"

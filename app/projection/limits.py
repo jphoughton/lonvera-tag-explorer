@@ -8,6 +8,7 @@ import time
 
 DEFAULT_MUTATIONS_PER_MIN = 120
 DEFAULT_UPLOADS_PER_HOUR = 20
+DEFAULT_PREVIEWS_PER_MIN = 600
 
 
 class SlidingWindow:
@@ -36,15 +37,18 @@ class SlidingWindow:
 
 
 class Limits:
-    """The two limiters of one app. Limits come from app config or env at construction: PROJ_RATE_MUTATIONS_PER_MIN (120), PROJ_RATE_UPLOADS_PER_HOUR (20)."""
+    """The two limiters of one app. Limits come from app config or env at construction: PROJ_RATE_MUTATIONS_PER_MIN (120), PROJ_RATE_UPLOADS_PER_HOUR (20), PROJ_RATE_PREVIEWS_PER_MIN (600)."""
 
-    def __init__(self, mutations_per_min: int = DEFAULT_MUTATIONS_PER_MIN, uploads_per_hour: int = DEFAULT_UPLOADS_PER_HOUR):
+    def __init__(self, mutations_per_min: int = DEFAULT_MUTATIONS_PER_MIN, uploads_per_hour: int = DEFAULT_UPLOADS_PER_HOUR,
+                 previews_per_min: int = DEFAULT_PREVIEWS_PER_MIN):
         self.mutations = SlidingWindow(mutations_per_min, 60)
         self.uploads = SlidingWindow(uploads_per_hour, 3600)
+        self.previews = SlidingWindow(previews_per_min, 60)          # POSTs that compute and write nothing (a path ending /preview): a burst of edits needs one each
 
     @classmethod
     def from_config(cls, cfg) -> "Limits":
         def pick(name: str, default: int) -> int:                      # app config first (create_app overrides), then the environment
             return int(cfg.get(name) or os.environ.get(name) or default)
 
-        return cls(pick("PROJ_RATE_MUTATIONS_PER_MIN", DEFAULT_MUTATIONS_PER_MIN), pick("PROJ_RATE_UPLOADS_PER_HOUR", DEFAULT_UPLOADS_PER_HOUR))
+        return cls(pick("PROJ_RATE_MUTATIONS_PER_MIN", DEFAULT_MUTATIONS_PER_MIN), pick("PROJ_RATE_UPLOADS_PER_HOUR", DEFAULT_UPLOADS_PER_HOUR),
+                   pick("PROJ_RATE_PREVIEWS_PER_MIN", DEFAULT_PREVIEWS_PER_MIN))

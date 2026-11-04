@@ -24,7 +24,16 @@ def pnl_from_snapshot() -> PnlResult:
             if m is not None and isinstance(v, (int, float)) and not isinstance(v, bool):
                 s[m] = float(v)
         lines[f"row_{n}"] = s
-    return PnlResult(lines=lines)
+    try:                                                              # the same series under the pnl module's real line keys (financing reads china_cogs, dtc_rev ...)
+        from app.projection.pnl.lines import ROW_TO_KEY
+        for n, key in ROW_TO_KEY.items():
+            if f"row_{n}" in lines:
+                lines.setdefault(key, lines[f"row_{n}"])
+    except Exception:                                                 # noqa: BLE001
+        pass
+    res = PnlResult(lines=lines)
+    res.actual_through = date(2026, 7, 1)                             # the books' last month: the loaded rate reads the P&L's forward months
+    return res
 
 
 def cohorts_from_snapshot() -> CohortResult:

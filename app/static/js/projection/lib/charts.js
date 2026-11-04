@@ -19,6 +19,19 @@ export function refreshPalette() {
 refreshPalette();
 const instances = new Set();
 
+// ramp(n, slot = 2, strength = 0.5): n colors for an ordered series (vintages, tiers), from the slot color toward the ink color
+// (darker in light mode, lighter in dark mode), so every step keeps at least the slot's contrast with the card (3:1 or better).
+export function ramp(n, slot = 2, strength = 0.5) {
+  const cs = getComputedStyle(document.documentElement);
+  const rgb = (v) => { const m = /^#([0-9a-f]{6})$/i.exec((v || '').trim()); const k = m ? parseInt(m[1], 16) : 0; return [(k >> 16) & 255, (k >> 8) & 255, k & 255]; };
+  const a = rgb(cs.getPropertyValue(`--lv-viz-${slot}`) || FALLBACK[slot - 1]);
+  const b = rgb(cs.getPropertyValue('--lv-viz-ink') || '#1C1915');
+  return Array.from({ length: n }, (_, i) => {
+    const w = n === 1 ? 0 : (strength * i) / (n - 1);
+    return '#' + a.map((v, j) => Math.round(v * (1 - w) + b[j] * w).toString(16).padStart(2, '0')).join('');
+  });
+}
+
 export function destroyAll() {
   for (const c of instances) c.destroy();
   instances.clear();

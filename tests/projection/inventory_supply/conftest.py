@@ -23,8 +23,8 @@ DB_URL = f"{PG_BASE}/{DB_NAME}"
 PASSWORD = "throwaway-test-password"
 from werkzeug.security import generate_password_hash                # noqa: E402
 USERS = {name: generate_password_hash(PASSWORD, method="scrypt:1024:8:1") for name in ("JoshHoughton", "Lazer")}
-MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "150_proj_inventory_supply.sql")
-MODULE_TABLES = ("proj_po", "proj_fba_transfer", "proj_vendor_cogs", "proj_vendor_lead", "proj_product_cost", "proj_reorder_param", "proj_stock_snapshot")
+MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "106_proj_scenario_lifecycle.sql", "140_proj_inventory_demand.sql", "150_proj_inventory_supply.sql", "151_proj_inventory_supply_history.sql")
+MODULE_TABLES = ("proj_supply_history", "proj_po", "proj_fba_transfer", "proj_vendor_cogs", "proj_vendor_lead", "proj_product_cost", "proj_reorder_param", "proj_stock_snapshot")
 
 
 def make_app(**overrides):

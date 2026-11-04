@@ -7,7 +7,7 @@ edits made in the grid change the calculated rows. No auth (Josh's decision: pro
 
     ~/lonvera-tag-explorer/.venv/bin/python tests/projection/ui/mock_server.py [port]      # default 5191
 
-Test hooks (mock only): GET /__mock/state, POST /__mock/reset, POST /__mock/app_auth {on}, POST /__mock/rate_limit {n},
+Test hooks (mock only): GET /__mock/state, POST /__mock/reset, POST /__mock/built {keys}, POST /__mock/degraded {modules, table_503}, POST /__mock/bump {scenario}, POST /__mock/app_auth {on}, POST /__mock/rate_limit {n},
 POST /__mock/fail_next {n}.
 """
 import copy
@@ -60,7 +60,7 @@ def fresh_state():
     inputs = defaults()
     s = {"slug": "current", "name": "Current plan", "base_slug": None, "version": 1, "is_default": True, "updated_at": now(), "inputs": inputs, "history": []}
     s["history"].append({"version": 1, "at": s["updated_at"], "action": "seed", "summary": "Seeded from the sheet", "inputs": copy.deepcopy(inputs)})
-    return {"scenarios": {"current": s}, "puts": [], "app_auth": False, "rate_limit": 0, "fail_next": 0, "audit": [], "audit_id": 0}
+    return {"scenarios": {"current": s}, "puts": [], "app_auth": False, "rate_limit": 0, "fail_next": 0, "audit": [], "audit_id": 0, "degraded": [], "table_503": False, "archived": {}}
 
 
 STATE = fresh_state()
@@ -194,7 +194,7 @@ def app_login():
 
 # ------------------------------------------------------------------------------------------------- API
 def public(s):
-    return {k: s[k] for k in ("slug", "name", "base_slug", "version", "is_default", "updated_at")}
+    return {**{k: s[k] for k in ("slug", "name", "base_slug", "version", "is_default", "updated_at")}, "frozen": s.get("frozen", True)}
 
 
 def get_scn(slug):
@@ -225,7 +225,8 @@ def bump(scn, action, summary, rows=()):
 
 @app.get("/api/projection/modules")
 def modules():
-    return jsonify(modules=MODULES)
+    built = set(STATE.get("built", []))
+    return jsonify(modules=[dict(m, built=True, ui="_mockpage.js") if m["key"] in built else m for m in MODULES])
 
 
 @app.get("/api/projection/scenarios")
@@ -295,8 +296,40 @@ def scenarios_delete(slug):
             return err("the current scenario cannot be deleted", 409)
         if b.get("confirm") != slug:
             return err(f'send {{"confirm": "{slug}"}} to delete this scenario', 400)
-        del STATE["scenarios"][slug]
+        STATE["archived"][slug] = STATE["scenarios"].pop(slug)             # archived for 30 days, not removed
+        STATE["archived"][slug]["archived_at"] = now()
         return jsonify(deleted=slug)
+
+
+@app.get("/api/projection/scenarios/archived")
+def scenarios_archived():
+    with LOCK:
+        return jsonify(archived=[{**public(s), "archived_at": s["archived_at"], "days_left": 30} for s in STATE["archived"].values()])
+
+
+@app.post("/api/projection/scenarios/<slug>/undelete")
+def scenarios_undelete(slug):
+    with LOCK:
+        s = STATE["archived"].pop(slug, None)
+        if not s:
+            return err("no deleted scenario with that slug", 404)
+        STATE["scenarios"][slug] = s
+        return jsonify(scenario=public(s))
+
+
+@app.post("/api/projection/scenarios/<slug>/detach")
+def scenarios_detach(slug):
+    b = request.get_json(silent=True) or {}
+    with LOCK:
+        s = get_scn(slug)
+        if not s:
+            return err("not_found", 404)
+        ev = b.get("expected_version")
+        if ev is not None and ev != s["version"]:
+            return err(f"version conflict: the scenario is at version {s['version']}", 409)
+        s["frozen"] = True
+        bump(s, "update", "Detached from its base", [dict(action="scenario.detach")])
+        return jsonify(scenario=public(s))
 
 
 @app.post("/api/projection/scenarios/<slug>/restore")
@@ -306,6 +339,9 @@ def scenarios_restore(slug):
         s = get_scn(slug)
         if not s:
             return err("not_found", 404)
+        ev = b.get("expected_version")
+        if ev is not None and ev != s["version"]:
+            return err(f"version conflict: the scenario is at version {s['version']}", 409)
         snap = next((h for h in s["history"] if h["version"] == b.get("version")), None)
         if not snap:
             return err("version_not_found", 404)
@@ -326,6 +362,9 @@ def series_put():
         s = get_scn(b.get("scenario"))
         if not s:
             return err("not_found", 404)
+        ev = b.get("expected_version")
+        if ev is not None and ev != s["version"]:
+            return err(f"version conflict: the scenario is at version {s['version']}", 409)
         if not isinstance(items, list) or not items:
             return err("items must be a non-empty list", 400)
         if len(items) > 500:
@@ -341,6 +380,10 @@ def series_put():
                 return err(f"items[{n}]: bad month {it.get('month')}", 400)
             if "value" not in it or (it["value"] is not None and (isinstance(it["value"], bool) or not isinstance(it["value"], (int, float)))):
                 return err(f"items[{n}]: value must be a number or null", 400)
+            if it["line_key"] == "spend" and isinstance(it.get("value"), (int, float)) and not (0 <= it["value"] <= 10_000_000):
+                return err("value must be between 0 and 10,000,000", 400)
+            if it["line_key"] == "amazon_rev" and isinstance(it.get("value"), (int, float)) and it["value"] > 5_000_000:
+                return err("value must be at most 5,000,000", 400)          # a limit the page cannot know ahead of time
             if (it["line_key"], it["month"]) in seen:
                 return err(f"items[{n}]: duplicate cell", 400)
             seen.add((it["line_key"], it["month"]))
@@ -362,7 +405,8 @@ def run():
         return err("not_found", 404)
     c = compute(s["inputs"])
     fy_rows = {str(y): {"revenue": fy(c["total"], y), "noi": fy(c["noi"], y)} for y in range(2025, 2030)}
-    return jsonify(scenario=s["slug"], version=s["version"], actual_through=MONTHS[ACTUAL_THROUGH], modules={},
+    return jsonify(scenario=s["slug"], version=s["version"], actual_through=MONTHS[ACTUAL_THROUGH], modules={}, degraded=STATE.get("degraded", []),
+                   books_through=MONTHS[ACTUAL_THROUGH], feeds_through="2026-11-02",
                    headline={"fy": fy_rows, "ev": {"3x": fy(c["noi"], 2027) * 3, "8x": fy(c["noi"], 2027) * 8}, "lifetime_multiple": 1.86,
                              "lowest_ending_cash": {"month": "2027-03-01", "value": 154000.0}})
 
@@ -388,8 +432,10 @@ def module_table(module):
     s = get_scn(request.args.get("scenario"))
     if not s:
         return err("not_found", 404)
-    if module not in ("cohorts", "drivers"):
+    if module not in ("cohorts", "drivers", "pacing"):
         return err("not_found", 404)
+    if STATE.get("table_503"):
+        return make_response(jsonify(error="upstream_degraded", modules=[{"module": "pnl", "error": "The P&L refresh failed at 21:30"}]), 503)
     return jsonify(table_payload(s))
 
 
@@ -398,6 +444,48 @@ def module_table(module):
 def hook_state():
     with LOCK:
         return jsonify(puts=STATE["puts"], scenarios=[public(s) for s in STATE["scenarios"].values()])
+
+
+@app.post("/__mock/built")
+def hook_built():
+    """Mark modules as built (they render the mock page). Body {keys:["pacing"]}. Cleared by /__mock/reset."""
+    with LOCK:
+        STATE["built"] = list((request.get_json(silent=True) or {}).get("keys", []))
+    return jsonify(ok=True)
+
+
+@app.post("/__mock/degraded")
+def hook_degraded():
+    """Body {modules:[{module, error}], table_503: bool}: what /run reports as degraded, and whether module tables answer 503 upstream_degraded."""
+    b = request.get_json(silent=True) or {}
+    with LOCK:
+        STATE["degraded"] = list(b.get("modules", []))
+        STATE["table_503"] = bool(b.get("table_503"))
+    return jsonify(ok=True)
+
+
+@app.post("/__mock/bump")
+def hook_bump():
+    """Simulate a change from another tab: bump a scenario's version without telling this client. Body {scenario}."""
+    b = request.get_json(silent=True) or {}
+    with LOCK:
+        s = get_scn(b.get("scenario"))
+        if not s:
+            return err("not_found", 404)
+        bump(s, "series", "Edited 1 cell (another tab)", [dict(action="series.set", line_key="spend", month=MONTHS[0], old={"value": 1}, new={"value": 2})])
+        return jsonify(version=s["version"])
+
+
+@app.post("/__mock/legacy_clone")
+def hook_legacy_clone():
+    """A clone made before copies were frozen: it still reads its base. Body {name, base}."""
+    b = request.get_json(silent=True) or {}
+    res = create_scenario(b.get("name"), b.get("base") or "current")
+    with LOCK:
+        for s in STATE["scenarios"].values():
+            if s["name"] == b.get("name"):
+                s["frozen"] = False
+    return res
 
 
 @app.post("/__mock/reset")

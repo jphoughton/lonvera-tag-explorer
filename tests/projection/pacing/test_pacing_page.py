@@ -51,7 +51,7 @@ def test_page_renders_with_header_cards_tables_and_a_clean_console(browser, base
     assert page.locator(".pacing-card").count() == 6
     assert page.locator("table.pacing-table[aria-label='Month pacing against the plan'] tbody tr").count() > 40
     assert page.locator("#pacing-month option").count() >= 22
-    assert page.locator(".pacing-feed").count() == 11
+    assert page.locator(".pacing-feed").count() == 12
     # every status carries a word, not just a color
     assert page.locator(".pacing-table .pg-chip").first.inner_text().strip() in ("On pace", "Within plan", "Behind", "Over plan", "Well behind", "Well over plan")
     assert errors == []
@@ -121,10 +121,11 @@ def test_variables_panel_edits_a_lever_and_the_page_follows(browser, base_url, c
     page.locator("[data-box='variables'] summary").click()
     row = page.locator("[data-lever='pace_good'] input")
     row.wait_for()
-    assert row.input_value() == "100%" and page.locator("[data-lever]").count() == 17
-    assert page.locator("[data-lever='product_cost_pct'] .pg-chip").inner_text() == "financing"           # edited here, stored with the owning module
+    assert row.input_value() == "100%" and page.locator("[data-lever]").count() == 18
+    assert page.locator("[data-lever='product_cost_pct'] .pg-chip").inner_text() == "drivers"           # edited here, stored in the one payback store
     page.locator("[data-lever='pace_good']").locator("input").fill("150%")
     page.locator("[data-lever='pace_good'] input").press("Tab")
+    page.locator("[data-choice='edit']").click()                                                                  # the shell asks once before the plan of record is edited
     page.wait_for_selector("[data-lever='pace_good'] button:has-text('Reset')")
     page.wait_for_function("document.querySelector(\".pacing-card[data-key='total_rev'] .pg-chip\").innerText.trim() === 'Behind'")        # 106% is below the new 150% bar
     assert before == "On pace"
@@ -142,5 +143,6 @@ def test_a_bad_value_is_refused_in_place(browser, base_url, clean_levers):
     inp.wait_for()
     inp.fill("2.5")
     inp.press("Tab")
+    page.locator("[data-choice='edit']").click()
     page.wait_for_selector("[data-lever='last_days'] input.bad")
     ctx.close()

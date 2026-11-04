@@ -26,7 +26,7 @@ DB_URL = f"{PG_BASE}/{DB_NAME}"
 PASSWORD = "throwaway-test-password"
 from werkzeug.security import generate_password_hash                # noqa: E402
 USERS = {name: generate_password_hash(PASSWORD, method="scrypt:1024:8:1") for name in ("JoshHoughton", "Lazer")}   # cheap scrypt params keep test logins fast
-BASE_MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "105_proj_refresh.sql")
+BASE_MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "105_proj_refresh.sql", "106_proj_scenario_lifecycle.sql")
 
 
 def make_app(**overrides):
@@ -54,6 +54,28 @@ def core_db(tmp_path_factory):
         migrate.migrate(conn, d)
     yield DB_URL
     rwdb.close_all()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _test_series_prefixes():
+    """The core tests write series under made-up prefixes; production accepts only module keys (validators.register_prefix adds one)."""
+    from app.projection import validators
+    extra = {"a", "x", "y", "seed", "other", "one", "new", "never", "loader", "late", "pnl_x", "t"}
+    validators.EXTRA_PREFIXES.update(extra)
+    yield
+    validators.EXTRA_PREFIXES.difference_update(extra)
+
+
+@pytest.fixture(scope="session")
+def _no_modules_pkg(tmp_path_factory):
+    return write_pkg(tmp_path_factory.mktemp("nomods"), {})
+
+
+@pytest.fixture(autouse=True)
+def _core_tests_see_no_modules(_no_modules_pkg, monkeypatch):
+    """The core tests exercise the core: module hooks (validators, restore) of the real modules would need their tables, so the registry starts
+    empty for every test; tests that need modules build them with pkg_factory (fake packages) or point the registry at the real package themselves."""
+    monkeypatch.setattr(registry, "PACKAGE", _no_modules_pkg)
 
 
 @pytest.fixture(scope="session")

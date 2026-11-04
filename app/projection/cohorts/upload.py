@@ -254,7 +254,7 @@ def apply_rules(parsed: Parsed, through: date, min_customers: float = MIN_CUSTOM
         if c.month > through:
             skipped.append({"month": label, "reason": "month not over"})
             continue
-        if not c.new_customers or c.new_customers < min_customers:
+        if c.new_customers is None or 0 <= c.new_customers < min_customers:           # a negative count is not "small": the checks block it
             skipped.append({"month": label, "reason": f"fewer than {min_customers:g} new customers"})
             continue
         cum: dict[int, float] = {}
@@ -268,15 +268,7 @@ def apply_rules(parsed: Parsed, through: date, min_customers: float = MIN_CUSTOM
                 blanked += 1                                         # lands in a month that is not over
                 continue
             cum[age] = v
-        fo = c.first_order if c.first_order else None
-        if fo is None:
-            warnings.append(f"{c.month:%Y-%m}: no first-order value; the cohort cannot feed the curve")
-        prev = fo
-        for age in sorted(cum):
-            if prev is not None and cum[age] < prev - 1e-6 and len(warnings) < 20:
-                warnings.append(f"{c.month:%Y-%m}: cumulative $ per customer falls at month {age}")
-                break
-            prev = cum[age]
+        fo = c.first_order if c.first_order else None                          # zero = no value
         newest = c.month == through                                  # just closed: its 90-day repeat and CAC are not final yet
         if newest and (c.repeat_90d is not None or c.cac):
             held.append({"month": label, "fields": [f for f, v in (("repeat_90d", c.repeat_90d), ("cac", c.cac)) if v is not None and v != 0]})

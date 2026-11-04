@@ -54,6 +54,7 @@ Totals: amazon fees = 25+26+27+28; cost of goods = China + US COGS; payment proc
 | `GET /drivers`, `PUT /drivers` | driver table with resolved rates and the trailing window; `PUT {scenario, key, segments}` replaces a line's driver in that scenario (`segments: null` returns it to the default) |
 | `PUT /settings` | `{scenario, settings:{engine?, headcount?, cogs?, ev?}}`, validated, null removes a scenario value |
 | `GET /qb-map`, `PUT /qb-map`, `DELETE /qb-map` | QuickBooks account name to line key |
+| `POST /upload`, `POST /upload?commit=1`, `GET /uploads`, `POST /upload/undo`, `PUT /upload-checks`, `GET /checks` | (see Fix wave) |
 | `POST /upload`, `POST /upload?commit=1` | multipart `file` (.xlsx or .csv, QuickBooks "Profit and Loss by Month"). Preview returns months (new / changed / unchanged), mapped and unmapped accounts, ignored computed rows, skipped months with reasons, changed values old to new, and `diff_sha256`. Commit needs that hash in the form; a different hash is 409 |
 | `GET /freshness`, `PUT /freshness` | the QuickBooks feed entry evaluated against today; the lateness threshold (global setting, audited) |
 
@@ -121,6 +122,17 @@ Default per driven line (all editable per scenario; first step shown, later step
 | samples | $549.71 | P&L!W90 |
 
 Each seeded row keeps its sheet cell in `proj_pnl_drivers.source`; `GET /pnl/drivers` returns it with the resolved rate or amount and the months a trailing rate reads.
+
+## Fix wave (QA H2 and M5, skeptic S1 and S5)
+
+- **Upload guard.** The preview computes coverage per month: a month becomes books only when revenue and every required account family (cost of goods, fulfillment and shipping, ad spend, operating expenses; settings `upload.required_families`, revenue always) are present once the file is applied. Otherwise `committable:false` with plain reasons in `blockers` and commit is refused (400). A month whose income or cost is below `upload.low_ratio` (50%) or above `upload.high_ratio` (200%) of the median of its neighbouring months and the plan's own figure is listed under `review` and needs `confirm_review=1` on commit. Each month shows income, cost, net operating income in the file and the plan's figure. Both ratios and the families are global settings (`PUT /pnl/upload-checks`, audited), editable in Settings.
+- **Undo.** Every commit stores what it replaced and created in `proj_upload_history` (migration 131); `POST /pnl/upload/undo` restores exactly (values and sources) and removes what the upload added, only for the latest applied upload and only if nothing changed those cells since (409 otherwise); audited as `pnl.upload.undo`; `GET /pnl/uploads` lists history; the page has a QuickBooks uploads card with "Undo last upload". Uploads are scenario-independent facts, so they have their own history rather than a scenario version.
+- **One month status.** `PnlOutput.month_status` (`books` | `feeds` | `projected`), `books_through`, `feeds_through` (read from `drivers.feeds_through`); the grid stays two-state (books = actual) and the legend, TLDR and caption use the three words: "Books through Jul 2026. Feeds only, no books yet: Aug-Oct 2026. Projected from Nov 2026." `/run` reads the same attributes (core).
+- **Clock.** `store.today()` uses `app/projection/clock.today_pt` (Pacific); nothing in the module calls `date.today()` any more.
+- **Data checks card.** `GET /pnl/checks` and the page card show, for the months the P&L uses a typed figure, new-customer revenue used vs the cohort table and repeat revenue used / typed / Cohorts model / cohort export, with the gaps. Nothing there changes a number.
+- **Implied value.** Each scenario row also shows the offer as a multiple of the basis year, the year after and the year after that (4.9x, 7.1x, 8.4x today).
+- **Sales tax.** Settings shows the rate (the drivers lever, edited through `PUT /drivers/levers`) with "History months carry no deduction; projected months deduct this."
+- **Write rules.** `validate_series` (only lines with a driver, marketing spend and its channels can be typed over; not a books month; not negative except uncategorized) and `validate_params` (the settings limits) are exposed on MODULE for the core's generic endpoints. Tickets from the variables audit: `other_business_expenses` driver is now editable (fixed); the China cost has one source, the scenario param `pnl.cogs.china_cost.<sku>` (inventory_supply reads it and writes its product-cost edits to it; `proj_pnl_cogs_sku` and `proj_product_cost` are only seed and fallback; tests `test_pnl_shared_cost.py` both ways); vendor retainers are Josh's decision, left open.
 
 ## Freshness
 

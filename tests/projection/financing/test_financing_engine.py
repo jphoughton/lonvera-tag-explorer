@@ -159,25 +159,32 @@ def test_bare_scenario_uses_the_code_defaults(bare, dconn):
 
 
 def test_compute_without_any_upstream_or_inputs():
-    fin = compute(Scenario(id=1, slug="x", name="x"), None)
+    fin = compute(Scenario(id=1, slug="x", name="x"), None, pnl=PnlResult(), inventory=InventoryResult())
     assert fin.lines["ending_cash"][m(2026, 9)] == pytest.approx(-37_500)                        # only the interest
     assert fin.payback is None and fin.matrix is None
     assert any("Inventory buys read zero" in w for w in fin.warnings)
 
 
-def test_garbage_in_params_does_not_crash():
-    scn = Scenario(id=1, slug="x", name="x", params={"financing": {"debt": {"principal": "lots", "rate": None}, "tax": {"payments": [{"month": "bad"}]},
-                                                                     "close_month": "nope"}})
-    fin = compute(scn, None, pnl=PnlResult(lines={"noi": {m(2026, 9): 10.0}}))
-    assert fin.close_month == date(2026, 9, 1)
-    assert fin.tax_detail == []
+@pytest.mark.parametrize("financing,needle", [
+    ({"debt": {"principal": "lots"}}, "financing.debt.principal"),
+    ({"tax": {"rate": 7}}, "financing.tax.rate"),
+    ({"tax": {"payments": [{"month": "bad"}]}}, "financing.tax.payments[0]"),
+    ({"close_month": "nope"}, "financing.close_month"),
+    ({"payback": {"loaded_lines": []}}, "financing.payback.loaded_lines"),
+])
+def test_a_stored_value_the_validators_refuse_never_computes(financing, needle):
+    """Whatever reaches params (for example through the generic scenario PATCH) is validated again at compute: the module degrades with the reason."""
+    scn = Scenario(id=1, slug="x", name="x", params={"financing": financing})
+    with pytest.raises(ValueError) as e:
+        compute(scn, None, pnl=PnlResult(lines={"noi": {m(2026, 10): 10.0}}), inventory=InventoryResult())
+    assert needle in str(e.value) and str(e.value).startswith("invalid financing input")
 
 
 def test_payback_inputs_fall_back_to_the_last_closed_month(bare, dconn):
     scn = scenarios.get_scenario(dconn, "current")
     drivers = DriverResult(nc_aov={m(2026, 5): 70.0, m(2026, 6): 72.0, m(2026, 7): 99.0}, nc_cpa={m(2026, 5): 90.0, m(2026, 6): 95.0, m(2026, 7): 1.0},
                            actual_through=m(2026, 6))
-    fin = compute(scn, load_inputs(dconn, scn), cohorts=H.snapshot_cohorts(), drivers=drivers)
+    fin = compute(scn, load_inputs(dconn, scn), pnl=H.snapshot_pnl(), inventory=H.snapshot_inventory(), cohorts=H.snapshot_cohorts(), drivers=drivers)
     assert fin.payback_inputs["aov"] == 72.0 and fin.payback_inputs["cac"] == 95.0                  # July is not closed
     assert fin.payback_inputs["aov_source"] == "last closed month"
     assert fin.payback is not None and fin.matrix is not None
@@ -200,7 +207,7 @@ def test_payout_repeat_source_and_fallback():
 def test_the_stub_pnl_line_key_for_cogs_is_accepted(dconn):
     scn = scenarios.get_scenario(dconn, "current")
     lines = {"noi": {m(2026, 10): 100.0}, "cogs": {m(2026, 10): 40.0}}
-    fin = compute(scn, load_inputs(dconn, scn), pnl=PnlResult(lines=lines))
+    fin = compute(scn, load_inputs(dconn, scn), pnl=PnlResult(lines=lines), inventory=InventoryResult())
     assert fin.lines["noi_before_inventory"][m(2026, 10)] == 140.0
 
 

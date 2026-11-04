@@ -148,7 +148,7 @@ def test_books_month_is_actual_and_sets_actual_through():
 def test_feed_only_month_uses_meta_exactly_and_estimates_the_rest_from_the_mix():
     d = compute_drivers({}, inputs(meta_feed={M(2026, 10): 314002.33}))
     m = M(2026, 10)
-    assert d.source[m] == "meta_feed" and d.actual_through == m
+    assert d.source[m] == "meta_feed" and d.month_status[m] == "feeds" and d.feeds_through == m and d.actual_through is None       # feeds are not books
     assert d.spend_meta[m] == 314002.33
     assert d.spend_total[m] == pytest.approx(314002.33 / DEFAULT_SHARES["meta"])
     assert d.spend_google[m] == pytest.approx(d.spend_total[m] * DEFAULT_SHARES["google"])
@@ -169,7 +169,7 @@ def test_the_open_month_is_never_actual_even_with_data():
 def test_month_boundary_follows_today(today, closed):
     feed = {M(2026, 10): 100.0, M(2026, 11): 200.0}
     d = compute_drivers({}, DriverInputs(today=today, meta_feed=feed))
-    assert d.actual_through == closed
+    assert d.feeds_through == closed
 
 
 def test_zero_denominators_never_raise():

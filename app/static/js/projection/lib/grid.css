@@ -2,6 +2,9 @@
    Row kinds: input (amber, editable), calc (quiet), subtotal, total, ratio (italic), header (section band). Projected months: blue header, asterisk, boundary rule. */
 .pg-grid { --pg-label-w: var(--lv-label-w); --pg-col-w: var(--lv-col-w); --pg-row-h: var(--lv-row-h); --pg-yr-h: 24px; --pg-pad: 10px; --pg-cell-px: var(--lv-cell-px); font-size: var(--lv-fs-base); color: var(--lv-ink); }
 .pg-grid[data-density="comfortable"] { --lv-row-h: 34px; --lv-col-w: 100px; --lv-cell-px: 10px; }
+.pg-por { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lv-sp-2) var(--lv-sp-3); margin-bottom: 6px; padding: 5px 10px; background: var(--lv-surface-2); border: 1px solid var(--lv-line); border-radius: var(--lv-r-sm); color: var(--lv-ink-2); font-size: var(--lv-fs-sm); }
+.pg-por::before { content: ""; flex: 0 0 auto; width: 14px; height: 14px; background: var(--lv-muted); -webkit-mask: var(--pg-ic-info) center / contain no-repeat; mask: var(--pg-ic-info) center / contain no-repeat; }
+.pg-por-t { flex: 1 1 260px; min-width: 0; }
 .pg-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
 .pg-gtitle { font-size: var(--lv-fs-md); font-weight: var(--lv-fw-heavy); }
 .pg-gstatus { font-size: var(--lv-fs-xs); color: var(--lv-muted); min-height: 1em; font-weight: var(--lv-fw-medium); }
@@ -17,6 +20,18 @@
 .pg-th { position: sticky; top: 0; z-index: 4; background: var(--lv-actual-head); border-bottom: 1px solid var(--lv-line); border-right: 1px solid var(--lv-line-soft); padding: 0 var(--pg-cell-px); height: var(--pg-row-h); font-weight: var(--lv-fw-bold); font-size: var(--lv-fs-xs); color: var(--lv-actual-ink); text-align: right; white-space: nowrap; overflow: hidden; }
 .pg-yearrow .pg-th { height: var(--pg-yr-h); text-align: center; font-size: var(--lv-fs-2xs); letter-spacing: var(--lv-track-kicker); text-transform: uppercase; }
 .pg-yearrow + .pg-monthrow .pg-th { top: var(--pg-yr-h); }
+.pg-grid { --pg-st-h: 22px; }
+/* three-state month header (Books | Feeds | Projected*): only drawn when a payload says books or feeds */
+.pg-staterow .pg-th { height: var(--pg-st-h); text-align: center; padding: 0 4px; }
+.pg-grid[data-states] .pg-yearrow .pg-th { top: var(--pg-st-h); }
+.pg-grid[data-states] .pg-yearrow + .pg-monthrow .pg-th { top: calc(var(--pg-st-h) + var(--pg-yr-h)); }
+.pg-grid[data-states] .pg-staterow + .pg-monthrow .pg-th { top: var(--pg-st-h); }
+.pg-th.pg-sh { border-bottom: 1px solid var(--lv-line-soft); }
+.pg-th.pg-sh.st-books { background: var(--lv-actual-head); color: var(--lv-actual-ink); }
+.pg-th.pg-sh.st-feeds { background: var(--lv-surface); color: var(--lv-ink-2); border-bottom: 2px dashed var(--lv-line-strong); }
+.pg-th.pg-sh.st-projected { background: var(--lv-proj-head); color: var(--lv-proj-ink); }
+.pg-stchip { font-size: var(--lv-fs-2xs); font-weight: var(--lv-fw-bold); text-transform: uppercase; letter-spacing: var(--lv-track-kicker); }
+.pg-th.pg-mh.st-feeds { border-bottom: 2px dashed var(--lv-line-strong); }
 .pg-th.pg-corner { left: 0; z-index: 7; text-align: left; padding-left: var(--pg-pad); border-right: 1px solid var(--lv-line); }
 .pg-th.pg-mh.s-projected, .pg-th.pg-yh.s-projected { background: var(--lv-proj-head); color: var(--lv-proj-ink); }
 .pg-th.pg-mh.s-mixed { background: linear-gradient(90deg, var(--lv-actual-head), var(--lv-proj-head)); }
@@ -30,7 +45,7 @@
 .pg-lt { overflow: hidden; text-overflow: ellipsis; }
 .pg-caret { appearance: none; border: 0; background: none; cursor: pointer; color: var(--lv-muted); font-size: var(--lv-fs-sm); padding: 0 4px 0 0; width: 16px; line-height: 1; margin-left: -4px; }
 .pg-caret:hover { color: var(--lv-link); }
-.pg-note { display: inline-block; margin-left: 6px; width: 14px; height: 14px; line-height: 14px; border-radius: 50%; text-align: center; font: italic 700 9px Georgia, serif; background: var(--lv-surface-2); color: var(--lv-muted); border: 1px solid var(--lv-line); cursor: help; vertical-align: 1px; }
+.pg-note { display: inline-block; margin-left: 6px; width: 16px; height: 16px; line-height: 14px; border-radius: 50%; text-align: center; font: italic 700 11px Georgia, serif; background: var(--lv-surface-2); color: var(--lv-muted); border: 1px solid var(--lv-line); cursor: help; vertical-align: 1px; }
 
 /* cells */
 .pg-cell { height: var(--pg-row-h); padding: 0 var(--pg-cell-px); text-align: right; white-space: nowrap; overflow: hidden; background: var(--lv-surface); color: var(--lv-calc-ink); border-bottom: 1px solid var(--lv-line-soft); border-right: 1px solid var(--lv-line-soft); cursor: default; }
@@ -38,11 +53,11 @@
 .pg-cell.s-projected, .pg-cell.s-mixed { background: var(--lv-proj-cell); }
 .pg-cell.pg-fy { border-left: 1px solid var(--lv-line); background: var(--lv-surface-2); font-weight: var(--lv-fw-bold); color: var(--lv-ink); }
 .pg-cell.pg-frozen { position: sticky; z-index: 2; }
-.pg-cell.pg-in { background: var(--lv-input-bg); color: var(--lv-input-ink); font-weight: var(--lv-fw-semi); cursor: text; border-right-color: var(--lv-input-edge); border-bottom-color: var(--lv-input-edge); }
+.pg-cell.pg-in { background: var(--lv-input-bg); color: var(--lv-input-ink); font-weight: var(--lv-fw-semi); cursor: text; border-right-color: var(--lv-input-grid); border-bottom-color: var(--lv-input-grid); }
 .pg-cell.pg-in:hover { background: var(--lv-input-hover); }
 .pg-row .pg-cell.neg { color: var(--lv-neg); }
 .pg-cell.zero { color: var(--lv-muted); }
-.pg-ast { opacity: 0.75; margin-left: 1px; }
+.pg-ast { margin-left: 1px; font-weight: var(--lv-fw-bold); }
 .pg-cell.pg-colhover:not(.pg-in) { background-image: linear-gradient(var(--lv-select-bg), var(--lv-select-bg)); }
 .pg-cell.pg-colhover.pg-in { background-image: linear-gradient(var(--lv-select-bg), var(--lv-select-bg)); }
 .pg-cell.pg-range { box-shadow: inset 0 0 0 100px var(--lv-select-bg); }
@@ -80,8 +95,9 @@
   .pg-scroll { max-height: 75vh; }
   .pg-toolbar .btn { padding: 0 8px; }
 }
-@media (pointer: coarse) {
+@media (pointer: coarse), (max-width: 640px) {
   .pg-grid { --pg-row-h: 36px; }
+  .pg-caret { height: var(--pg-row-h); width: 32px; margin-left: -12px; padding: 0 8px 0 0; }      /* the whole row-label end is the tap area */
 }
 @media print {
   .pg-toolbar { display: none; }

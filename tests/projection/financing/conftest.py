@@ -26,7 +26,8 @@ DB_NAME = os.environ.get("TEST_PROJ_FINANCING_DB", "tagexp_proj_financing")
 DB_URL = f"{PG_BASE}/{DB_NAME}"
 PASSWORD = "throwaway-test-password"
 USERS = {name: generate_password_hash(PASSWORD, method="scrypt:1024:8:1") for name in ("JoshHoughton", "Lazer")}
-MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "160_proj_financing.sql")
+MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "105_proj_refresh.sql",
+              "106_proj_scenario_lifecycle.sql", "160_proj_financing.sql", "161_proj_financing_payback_store.sql")
 
 
 def make_app(**overrides):
@@ -107,7 +108,7 @@ def reset(db_url: str, seed: bool = True) -> None:
         c.execute("DELETE FROM proj_scenario_history")
         c.execute("DELETE FROM proj_series")
         c.execute("DELETE FROM proj_scenarios WHERE slug <> 'current'")
-        c.execute("UPDATE proj_scenarios SET name = 'Current plan', base_slug = NULL, params = '{}', version = 1, is_default = true")
+        c.execute("UPDATE proj_scenarios SET name = 'Current plan', base_slug = NULL, params = '{}', version = 1, is_default = true, frozen = false, archived_at = NULL")
         if seed:
             apply_seed(c)
 
@@ -131,3 +132,15 @@ def dconn(fin_db):
     from psycopg.rows import dict_row
     with psycopg.connect(fin_db, row_factory=dict_row) as conn:
         yield conn
+
+
+SHEET_AOV, SHEET_CAC = 69.15600858369098, 105.4916738197425          # Payback!B7 / B8 on the 2026-11-03 snapshot (month-to-date pacing figures)
+
+
+@pytest.fixture()
+def sheet_payback(fin_db):
+    """Type the sheet's average order value and cost per new customer into the Current plan (it holds none: they follow the last closed month)."""
+    with psycopg.connect(fin_db) as c:
+        c.execute("UPDATE proj_scenarios SET params = jsonb_set(params, '{financing,payback}', coalesce(params #> '{financing,payback}', '{}'::jsonb) "
+                  "|| jsonb_build_object('aov', %s::float8, 'cac', %s::float8)) WHERE slug = 'current'", (SHEET_AOV, SHEET_CAC))
+    yield

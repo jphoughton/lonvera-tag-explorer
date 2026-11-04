@@ -4,7 +4,7 @@ from __future__ import annotations
 P = "/api/projection"
 
 
-def item(key="drivers.spend", month="2026-11-01", value=100.0, kind="input", note=None):
+def item(key="pnl.margin_adj", month="2026-11-01", value=100.0, kind="input", note=None):
     d = {"line_key": key, "month": month, "value": value, "kind": kind}
     if note is not None:
         d["note"] = note

@@ -8,6 +8,7 @@ It answers: which product runs out where and when, when the order has to be plac
 
 ```
 migrations/150_proj_inventory_supply.sql               tables below
+migrations/151_proj_inventory_supply_history.sql       proj_supply_history
 app/projection/inventory_supply/__init__.py            MODULE (key inventory_supply, ui inventory_supply.js)
   model.py        vocabulary, Inputs, Settings (levers), SupplyResult
   calc.py         burn, reorder, value, purchase-order cash, warnings, headline (pure functions, no database, no clock)
@@ -17,11 +18,12 @@ app/projection/inventory_supply/__init__.py            MODULE (key inventory_sup
   freshness.py    freshness of the manual inputs
   tables.py       grid payloads
   api.py          /api/projection/inventory-supply/*
+  history.py      versioned, revertible plan-of-record writes (proj_supply_history), restore to a version or time, core restore hook
   overlay.py      scenario overlay: variables a scenario changes (levers, vendors, prices, reorder, costs, orders, transfers), change lists, catalog
   reconcile_map.py   274 lines against the sheet
 etl/projection_inventory_supply.py                     seed, refresh (daily Revamp stock), freshness
 app/static/js/projection/inventory_supply.js           the page
-tests/projection/inventory_supply/                     183 tests
+tests/projection/inventory_supply/                     211 tests
 ```
 
 ## Tables (migration 150, scenario-independent facts)
@@ -32,8 +34,9 @@ tests/projection/inventory_supply/                     183 tests
 | `proj_fba_transfer` | Revamp to Amazon FBA: units, ship date (leaves Revamp stock that month), receive date (arrives in FBA stock that month), status (`planned`, `shipped`, `received`, `cancelled`), source |
 | `proj_vendor_lead` | vendor: lead weeks, minimum order, default ship-to (which location the planner buys it for) |
 | `proj_vendor_cogs` | vendor x product unit cost and default deposit % |
-| `proj_product_cost` | China landed unit cost per product (values stock) |
+| `proj_product_cost` | seed and fallback for the China landed unit cost per product (values stock); the live value is the P&L cost model's `params.pnl.cogs.china_cost.<sku>` when it is set (see Shared China cost) |
 | `proj_reorder_param` | per location x product: lead days (order placed to landed), safety days, minimum order |
+| `proj_supply_history` | one row per changed record of a plan-of-record write: kind, record, before, after, the scenario version it produced, who, when, and whether a later revert undid it |
 | `proj_stock_snapshot` | stock on hand per location x product x count date (append-only by date; the burn opens from the latest) |
 
 Products are `bull`, `liver`, `boneflex`, `belle`, `flow`; locations `revamp`, `amazon`, `intl`. Sheet names ("Vital Bull", "International 3PL") are accepted on input and normalised.
@@ -69,9 +72,9 @@ Rules carried from the sheet: inbound at Revamp / the international 3PL = open o
 
 ## API (`/api/projection/inventory-supply`)
 
-Reads: `summary` (headline, reorder, stats, warnings, freshness), `variables` (every variable with value, default, origin, source, and the scenario's own changes), `table` (all-locations burn; the shell's default), `burn?location=revamp|amazon|intl|total`, `value`, `outlay`, `reorder`, `warnings`, `freshness`, `po`, `transfers`, `stock`, `vendors`, `plan/suggest?replace_auto=`. Grid payloads follow the shell's grid (`fmt` usd/usd0/num/x/text, `kind` header/calc/subtotal/ratio/total), one caption each.
+Reads: `summary` (headline, reorder, stats, warnings, freshness), `variables` (every variable with value, default, origin, source, and the scenario's own changes), `table` (all-locations burn; the shell's default), `burn?location=revamp|amazon|intl|total` (the demand row reads "Demand still to ship after today's count": the current month is the forecast minus units already shipped, so it is lower than the Inventory demand page; one caption says so), `value`, `outlay`, `reorder`, `warnings`, `freshness`, `po`, `transfers`, `stock`, `vendors`, `plan/suggest?replace_auto=`. Grid payloads follow the shell's grid (`fmt` usd/usd0/num/x/text, `kind` header/calc/subtotal/ratio/total), one caption each.
 
-Writes (all audited in `proj_audit`, action `inventory_supply.*`, `line_key` `inventory_supply.<kind>:<id>`, old and new values; validated, 400 with `{error}`): `POST /po`, `PATCH /po/<id>`, `DELETE /po/<id>`, `POST /transfers`, `PATCH|DELETE /transfers/<id>`, `POST /stock` (a second count for the same day replaces that day's row), `PUT /vendors/<vendor>`, `PUT /vendor-costs`, `PUT /reorder-params`, `PUT /product-costs`, `POST /plan/accept`, and `PUT /variables` (`{scenario?, items:[{kind: lever|vendor|price|reorder|product_cost|po|transfer, ..., value}], expected_version?}`; `value: null` goes back to the default; all items validated together, one scenario version). Every write endpoint takes `?scenario=<slug>`: for the plan of record (or no scenario) it edits the stored rows, for any other scenario it records the change as a scenario variable. Validation: units > 0; status, warehouse and product enums; dates ISO and inside the model window (Jan 2025 to Dec 2029); land date on or after order date; receive date on or after ship date; deposit % a fraction 0 to 1; unknown fields rejected; at most 200 rows per plan. Auth, origin, rate limits and JSON-only are the core's app-level guards (tests: 401 with the app's login on, open with `AUTH_DISABLED`).
+Writes (all audited in `proj_audit`, action `inventory_supply.*`, `line_key` `inventory_supply.<kind>:<id>`, old and new values; validated, 400 with `{error}`): `POST /po`, `PATCH /po/<id>`, `DELETE /po/<id>`, `POST /transfers`, `PATCH|DELETE /transfers/<id>`, `POST /stock` (a second count for the same day replaces that day's row), `PUT /vendors/<vendor>`, `PUT /vendor-costs`, `PUT /reorder-params`, `PUT /product-costs`, `POST /plan/accept`, and `history`, `POST /history/revert`, `POST /history/restore` (see History, revert and restore), `PUT /variables` (`{scenario?, items:[{kind: lever|vendor|price|reorder|product_cost|po|transfer, ..., value}], expected_version?}`; `value: null` goes back to the default; all items validated together, one scenario version). Every write endpoint takes `?scenario=<slug>`: for the plan of record (or no scenario) it edits the stored rows, for any other scenario it records the change as a scenario variable. Validation: units > 0; status, warehouse and product enums; dates ISO and inside the model window (Jan 2025 to Dec 2029); land date on or after order date; receive date on or after ship date; deposit % a fraction 0 to 1; unknown fields rejected; at most 200 rows per plan. Auth, origin, rate limits and JSON-only are the core's app-level guards (tests: 401 with the app's login on, open with `AUTH_DISABLED`).
 
 ## Page
 
@@ -86,6 +89,30 @@ Writes (all audited in `proj_audit`, action `inventory_supply.*`, `line_key` `in
 ## Freshness
 
 `freshness(conn)` returns four feeds for the runner and the page: `purchase_orders` (monthly upload, data through = last edit of any order or transfer, stale after 30 days), `stock_revamp` (daily, 2), `stock_fba` (manual, 14), `stock_intl` (manual, 14, labelled estimate while the count is one). The runner only accepts `daily` and `monthly-upload` cadences, so the two manual counts report `monthly-upload` (reported, never fatal) with `input: "manual"` for the page. At the snapshot date: Revamp fresh, FBA and international 3PL stale at 21 days (the sheet's own count dates are 2026-10-13, the international one an estimate). The TLDR names the oldest count. Landed-but-still-inbound orders are a warning (below).
+
+## History, revert and restore (plan of record)
+
+Every write to the plan of record's orders, transfers, stock counts and price lists (and an accepted plan) is **one change**: it bumps the default scenario's version once, stores one `proj_supply_history` row per changed record with before and after, and writes the usual `proj_audit` rows carrying that version and the scenario slug, so the History drawer lists it ("supply: po.create") with who, what and old to new. A write that changes nothing or fails leaves the version alone. The daily Revamp stock refresh and scenario-copy edits are not written here (the feed is not a user edit; a copy's changes are versioned by the core).
+
+- `GET /history` lists changes newest first with a plain-words summary, who, when, whether it was reverted or is itself a revert.
+- `POST /history/revert {version}` undoes that change (every record in it, newest first) as a new version. 409 when a record changed again since ("revert the later change first"), when it was already reverted, or 400 for a revert (a revert is not reverted; make the change again).
+- `POST /history/restore {to_version}` or `{at}` ("Restore supply to <time>", ISO date-time with a zone) undoes every change after that version or time that is still in force, newest first, as one new version. A change that was already reverted stays reverted; nothing is ever deleted from history.
+- Page: "History of orders and stock" lists the changes with Revert and "Restore to here" per row and a "Restore supply to" date-time control; both ask to confirm.
+- Core hook: the core's scenario restore calls `app.projection.inventory_supply.on_restore(conn, slug, to_version, new_version, actor)`, which takes the supply data back with the scenario for the default scenario (no second version bump; the restore response lists it under `restore.modules.inventory_supply`). The History drawer's Restore on the plan of record therefore restores orders, transfers, counts and price lists too (`test_the_cores_scenario_restore_takes_the_supply_data_back_with_it`).
+
+## Degraded upstream, clock, validators
+
+- Demand degraded (or this module): every computed GET (`summary`, `burn`, `reorder`, `po`, `transfers`, `outlay`, `value`, `warnings`, `table`, `plan/suggest`) answers 503 `upstream_degraded` with the failing modules (`degraded.ensure_ok`, plus the core's response gate); never zeros. Writes, `history`, `variables`, `stock`, `vendors` and `freshness` still answer, so data can be corrected while demand is down.
+- The reference day is `app.projection.clock.today_pt()` (Pacific; `PROJECTION_TODAY` pins it). The freshness feeds, stock count dates and the daily refresh use the same clock; `date.today()` is not used.
+- `validate_params(params, conn=None)` (package level) is registered with the core's validator hook, which passes the module's whole group: scalar variables in range and typed, no unknown keys, table overlays well formed and, with a connection, valid against the stored rows. The module has no monthly series, so there is nothing to register for `validate_series`. `PUT /variables` and the write endpoints already validate with the same code.
+
+## Shared China cost (one source with the P&L)
+
+The China landed unit cost per SKU has one source: the scenario param `params.pnl.cogs.china_cost.<sku>` (SKUs LV-VBULL, LV-BLC180, DPCD1-GN187001, LV-VBELLE, DPCD1-GN179001). The stored `proj_product_cost` row is only the seed and the fallback.
+
+- Reading: a product whose SKU has a value there is valued at it, whatever this module's own overlay says; otherwise the overlay, then the stored row. `GET /vendors` and `GET /summary` list each product's cost with `source` (`P&L cost model` or `table`) and the stored value as `default`; the Stock valuation table shows the same in its Source column. Only scenario params are read; the P&L engine is not imported.
+- Writing: `PUT /product-costs?scenario=<slug>` with `{product, china_unit_cost}` and the matching `product_cost` item of `PUT /variables` write that key through the scenario params patch (one scenario version, `scenario.params` audit row, restorable by the core). `null` removes the key (back to the stored seed); the range is 0 to 1000. A product without a SKU keeps this module's own storage (stored row on the plan of record, overlay on a copy). The vendor price list (what a purchase order costs) is a different number and does not move.
+- Effect: stock value, the value chart and the inventory-value headline move with the shared cost; order cash does not.
 
 ## Variables
 
@@ -128,7 +155,7 @@ Test for the class: `test_each_scalar_variable_moves_an_output[<key>]` (one case
 | Vendor minimum order, supplied location | `vendors[<vendor>].moq_units`, `.default_warehouse` | units, location | rebalance script (5,000 China to the international 3PL, 20,000 KeyStone to Revamp) | same panel | `test_vendor_minimum_order_override_moves_the_plan` |
 | Price and deposit | `prices["<vendor>|<product>"].unit_cost`, `.deposit_pct` | dollars per unit, fraction | `Vendor COGS` D4:D9; `Purchase Orders` P (0.3 to 0.5) | same panel; per order in the Unit cost and Deposit columns | `test_price_unit_cost_and_deposit_overrides_move_value_and_cash` |
 | Reorder timing per SKU | `reorder["<location>|<product>"].lead_days`, `.safety_days`, `.moq_units` | days, days, units | `Warehance Fcst Inputs` B44:D47 (90, 14, 0); `Intl Fcst Inputs` B45:D48 (60, 14, 0) | same panel | `test_reorder_parameter_overrides_move_the_order_by_date_and_the_suggested_order` |
-| Landed unit cost for stock value | `product_costs[<product>].china_unit_cost` | dollars per unit | `COGS` D4:D13 | same panel | `test_product_cost_override_moves_inventory_value` |
+| Landed unit cost for stock value | `pnl.cogs.china_cost.<sku>` (one key shared with the P&L; products without a SKU keep `product_costs[<product>].china_unit_cost`) | dollars per unit | `COGS` D4:D13 | Stock valuation table on the same panel (Source column), or the P&L Settings card | `test_product_cost_override_moves_inventory_value`, `test_editing_the_cost_in_the_pnl_moves_the_supply_cost_and_stock_value`, `test_editing_the_cost_on_the_supply_page_writes_the_pnl_key_versioned_and_audited` |
 | Purchase order rows | `pos["<id>"]` override of any column, `deleted`, or a scenario-only row `pos["new:<n>"]` | order columns | `Purchase Orders` A2:R78 (74 rows) | Purchase orders table (edits, add row, delete; accepted plans) | `test_po_row_override_moves_inbound_cash_and_marks_the_changed_fields`, `test_po_row_can_be_removed_and_scenario_only_rows_can_be_added`, `test_a_po_edit_in_a_copy_is_an_override_and_the_plan_of_record_keeps_its_value`, `test_burn_and_cash_follow_the_copy_while_the_plan_of_record_does_not_move` |
 | FBA transfer rows | `transfers[...]` same shape | transfer columns | `FBA Transfers` A4:G47 (44 rows) | Transfers table | `test_transfer_overrides_move_the_fba_inbound_and_revamp_outflow`, `test_transfers_follow_the_same_rules_in_a_copy` |
 | Accepted plan | the plan's rows as scenario-only orders and transfers, replacing the scenario's auto-planned rows | rows | n/a (planner output) | Suggested plan | `test_a_plan_accepted_into_a_copy_lives_in_the_copy_only` |
@@ -200,6 +227,7 @@ Cover and units-to-send are compared for the first 35 columns (see difference 2)
 
 - financing: `inventory.outlay` (Series over all 60 months, dollars); it includes history months and cancelled orders are excluded.
 - Anything wanting stock: `inventory.burn[(location, product, 'closing')]` and `inventory.value`; reorder urgency: `inventory.reorder`.
+- P&L: the China landed cost per SKU is `params.pnl.cogs.china_cost.<sku>`, read and written by both modules (see Shared China cost); `proj_product_cost` is the seed only.
 - The module needs `demand` only for burn and reorder; `outlay` does not depend on it. Without demand the module still runs and adds a `demand_missing` check.
 
 ## Run

@@ -28,7 +28,8 @@ from pnl_support import DB_NAME as _DB_NAME, DB_URL as _DB_URL, PASSWORD as _PAS
 from pnl_support import login as _login                                                                                      # noqa: E402
 from werkzeug.security import generate_password_hash                # noqa: E402
 USERS = {name: generate_password_hash(_PASSWORD, method="scrypt:1024:8:1") for name in ("JoshHoughton", "Lazer")}
-MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "130_proj_pnl.sql")
+MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "106_proj_scenario_lifecycle.sql", "130_proj_pnl.sql", "131_proj_pnl_upload_history.sql", "150_proj_inventory_supply.sql",
+              "151_proj_inventory_supply_history.sql")
 
 
 def _pnl_make_app(**overrides):
@@ -77,6 +78,11 @@ class DriversResult(DriverResult):
 
 def compute(scn, inputs):
     d = DriversResult(actual_through=date(2026, 7, 1))
+    d.feeds_through = date(2026, 10, 1)
+    d.sales_tax_rate = 0.07
+    d.repeat_override = {date(2026, 8, 1): 984_286.67}
+    d.nc_basis = {date(2026, 8, 1): "override"}
+    d.nc_rev_cohort = {date(2026, 8, 1): 534_185.0}
     for m in MONTHS:
         d.nc_rev[m] = 300_000.0 if m >= date(2026, 8, 1) else 0.0
         d.amazon_rev[m] = 100_000.0
@@ -94,10 +100,11 @@ def compute(scn, inputs):
 MODULE = Module(key="drivers", compute=compute, ui="drivers.js")
 '''
 FAKE_COHORTS = '''
+from datetime import date
 from app.projection.interfaces import CohortResult, Module, MONTHS
 
 def compute(scn, inputs, drivers=None):
-    return CohortResult(repeat_rev={m: 500_000.0 for m in MONTHS}, lifetime_multiple=1.9)
+    return CohortResult(repeat_rev={m: 500_000.0 for m in MONTHS}, repeat_rev_actual={date(2026, 8, 1): 839_643.0}, lifetime_multiple=1.9)
 
 MODULE = Module(key="cohorts", compute=compute, ui="cohorts.js")
 '''
@@ -165,7 +172,7 @@ def pg(pnl_db):
 def clean(pnl_db):
     with psycopg.connect(pnl_db) as c:
         for t in ("proj_audit", "proj_actuals", "proj_scenario_history", "proj_series", "proj_pnl_drivers", "proj_pnl_settings", "proj_pnl_cogs_sku",
-                  "proj_pnl_qb_map", "proj_pnl_vendors"):
+                  "proj_pnl_qb_map", "proj_pnl_vendors", "proj_upload_history", "proj_product_cost"):
             c.execute(f"DELETE FROM {t}")
         c.execute("DELETE FROM proj_scenarios WHERE slug <> 'current'")
         c.execute("UPDATE proj_scenarios SET name = 'Current plan', base_slug = NULL, params = '{}', version = 1, is_default = true")

@@ -13,6 +13,13 @@ from app.projection.interfaces import MONTHS, PnlResult
 CLOSE = date(2026, 9, 1)
 
 
+@pytest.fixture(autouse=True)
+def only_financing(monkeypatch):
+    """This module real, every other module on its fixture stub, so the numbers do not move as other modules land."""
+    real = registry.discover
+    monkeypatch.setattr(registry, "discover", lambda package=None, refresh=False: {k: v for k, v in real(package, refresh).items() if k == "financing"})
+
+
 def m(y, mo):
     return date(y, mo, 1)
 

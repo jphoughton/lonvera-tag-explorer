@@ -1,25 +1,25 @@
 """Read-only loaders: the module's tables -> `Inputs`. Also the reference-day rule shared by the engine and the API."""
 from __future__ import annotations
 
-import os
 from datetime import date, datetime
 from typing import Any
 
 import psycopg
 
+from .. import clock
+
 from .model import PO, Inputs, ProductCost, ReorderParam, Stock, Transfer, Vendor, VendorCost, num
 
 
 def resolve_today(params: dict | None = None) -> date:
-    """Reference day: scenario param inventory_supply.as_of, else env PROJECTION_TODAY (ISO date, used for the frozen-sheet reconcile), else today."""
-    p = ((params or {}).get("inventory_supply") or {}).get("as_of")
-    for raw in (p, os.environ.get("PROJECTION_TODAY")):
-        if isinstance(raw, str) and raw.strip():
-            try:
-                return date.fromisoformat(raw.strip()[:10])
-            except ValueError:
-                continue
-    return date.today()
+    """Reference day: scenario param inventory_supply.as_of, else the projection clock (Pacific today; env PROJECTION_TODAY pins it, used for the frozen-sheet reconcile)."""
+    raw = ((params or {}).get("inventory_supply") or {}).get("as_of")
+    if isinstance(raw, str) and raw.strip():
+        try:
+            return date.fromisoformat(raw.strip()[:10])
+        except ValueError:
+            pass
+    return clock.today_pt()
 
 
 def _d(v: Any) -> date | None:

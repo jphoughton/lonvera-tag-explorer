@@ -32,11 +32,11 @@ USERS = {name: generate_password_hash(PASSWORD, method="scrypt:1024:8:1") for na
 
 
 def _migration_names() -> list[str]:
-    """Tag Explorer base (00x), projection core (100-109) and this module (110): never another module's migration."""
+    """Tag Explorer base (00x), projection core (100-109) and this module (110-119): never another module's migration."""
     names = []
     for p in sorted((ROOT / "migrations").glob("*.sql")):
         n = int(re.match(r"(\d+)_", p.name).group(1))
-        if n < 100 or 100 <= n < 110 or n == 110:
+        if n < 100 or 100 <= n < 110 or 110 <= n < 120:
             names.append(p.name)
     return names
 
@@ -115,7 +115,7 @@ def pg(cohorts_db):
 def clean(cohorts_db):
     """Every test starts empty: no cohorts, no goal curve, only the 'current' scenario, no audit rows."""
     with psycopg.connect(cohorts_db) as c:
-        for t in ("proj_audit", "proj_actuals", "proj_scenario_history", "proj_series", "proj_cohort_cum", "proj_cohorts", "proj_curve_goal"):
+        for t in ("proj_audit", "proj_actuals", "proj_scenario_history", "proj_series", "proj_cohort_cum", "proj_cohorts", "proj_curve_goal", "proj_cohort_uploads"):
             c.execute(f"DELETE FROM {t}")
         c.execute("DELETE FROM proj_scenarios WHERE slug <> 'current'")
         c.execute("UPDATE proj_scenarios SET name = 'Current plan', base_slug = NULL, params = '{}', version = 1, is_default = true")

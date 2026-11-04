@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from psycopg.types.json import Jsonb                         # noqa: E402
 from app.projection.pnl import lines as L, store            # noqa: E402
 from pnl_support import TODAY, login, seed_basic                # noqa: E402
 from pnl_helpers import make_xlsx, qb_rows, to_csv          # noqa: E402
@@ -18,6 +19,7 @@ from pnl_helpers import make_xlsx, qb_rows, to_csv          # noqa: E402
 P = "/api/projection/pnl"
 S = "/api/projection"
 
+REQUIRED = ["revenue", "cost_of_goods", "fulfillment", "marketing_spend", "operating_expenses"]
 DRIVERS = [
     ("amazon_fba_fees", [{"from": None, "mode": "rate", "base": "amazon_rev", "rate_kind": "window"}]),
     ("china_cogs", [{"from": None, "mode": "rate", "base": "total_revenue", "rate_kind": "typed", "rate": 0.1}]),
@@ -35,7 +37,9 @@ def data(pg):
     store.upsert_driver_defaults(pg, [(k, s, "n", "test") for k, s in DRIVERS])
     store.upsert_qb_map(pg, [("shopify sales", "dtc_rev", None), ("amazon sales", "amazon_rev", None), ("amazon fba fees", "amazon_fba_fees", None),
                              ("china cogs", "china_cogs", None), ("other business expenses", "other_direct", None), ("bank fees", "bank_fees", None),
-                             ("accounting", "accounting", None)])
+                             ("accounting", "accounting", None), ("fulfillment services", "fulfillment_services", None), ("facebook ads", "mkt_facebook_ads", None)])
+    pg.execute("INSERT INTO proj_pnl_settings (key, value) VALUES ('upload', %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+               (Jsonb({"low_ratio": 0.001, "high_ratio": 1000.0, "required_families": REQUIRED}),))      # the tests' tiny files are not about plausibility
     return pg
 
 
@@ -59,6 +63,9 @@ def test_table_payload_shape(client, data):
     assert all(len(r["values"]) == 60 for r in t["rows"])
     assert t["fy"]["years"] == [2025, 2026, 2027, 2028, 2029] and len(t["fy"]["rows"]["noi"]) == 5
     assert "QuickBooks through Jul 2026" in t["captions"][0]
+    ms = t["month_status"]
+    assert ms[t["months"].index("2026-07-01")] == "books" and ms[t["months"].index("2026-08-01")] == "feeds" and ms[t["months"].index("2026-10-01")] == "feeds"
+    assert ms[t["months"].index("2026-11-01")] == "projected" and t["status"][t["months"].index("2026-08-01")] == "projected"      # the grid stays two-state
     assert "note" in rows["amazon_fba_fees"] and "Projected months" in rows["amazon_fba_fees"]["note"]
 
 
@@ -70,14 +77,15 @@ def test_every_value_is_json_safe_and_projected_months_are_numbers(client, data)
 
 def test_summary_headline_and_quickbooks_text(client, data):
     s = client.get(f"{P}/summary").get_json()
-    assert s["quickbooks_text"] == "QuickBooks loaded through Jul 2026; Aug-Oct are projected"
+    assert s["quickbooks_text"] == "Books through Jul 2026. Feeds only, no books yet: Aug-Oct 2026. Projected from Nov 2026."
+    assert s["status"]["books_through"] == "2026-07-01" and s["status"]["feeds_through"] == "2026-10-01" and s["status"]["feeds_span"] == "Aug-Oct 2026"
     assert s["basis_year"] == 2027 and s["noi"] is not None and s["ev_low"] <= s["ev_high"] and s["loi"] == 7_500_000.0
     assert s["freshness"]["feed"] == "quickbooks_pnl" and s["freshness"]["status"] == "stale"          # Aug (closed 8/31) was due by Oct 15
 
 
 def test_summary_with_nothing_loaded_says_so(client, pg):
     s = client.get(f"{P}/summary").get_json()
-    assert s["quickbooks_text"] == "No QuickBooks history is loaded" and s["freshness"]["status"] == "unknown"
+    assert s["quickbooks_text"].startswith("No books loaded") and s["freshness"]["status"] == "unknown" and s["status"]["books_through"] is None
 
 
 def test_metrics_table(client, data):
@@ -224,18 +232,18 @@ def test_upload_preview_then_commit_loads_actuals_and_audits_the_file(client, da
     pv = post_file(client, raw)
     assert pv.status_code == 200
     j = pv.get_json()
-    assert j["committed"] is False and j["cells"]["new"] == 3 * 7 and j["cells"]["changed"] == 0
+    assert j["committed"] is False and j["cells"]["new"] == 3 * 9 and j["cells"]["changed"] == 0
     assert [u["account"] for u in j["unmapped"]] == [] and {m["month"] for m in j["months"]} == {"2026-01-01", "2026-02-01", "2026-03-01"}
     assert data.execute("SELECT count(*) AS n FROM proj_actuals").fetchone()["n"] == 0                       # a preview writes nothing
     # no token / wrong token
     assert post_file(client, raw, commit=True).status_code == 400
     assert post_file(client, raw, commit=True, token="0" * 64).status_code == 409
     ok = post_file(client, raw, commit=True, token=j["diff_sha256"])
-    assert ok.status_code == 200 and ok.get_json()["committed"] is True and ok.get_json()["cells_written"] == 21
+    assert ok.status_code == 200 and ok.get_json()["committed"] is True and ok.get_json()["cells_written"] == 27
     v = data.execute("SELECT value FROM proj_actuals WHERE line_key = 'pnl.dtc_rev' AND month = '2026-02-01'").fetchone()["value"]
     assert float(v) == 2000.0
     a = audit_rows(data, "pnl.upload")
-    assert len(a) == 1 and len(a[0]["new"]["sha256"]) == 64 and a[0]["new"]["cells"] == 21 and a[0]["note"] == "export.csv"
+    assert len(a) == 1 and len(a[0]["new"]["sha256"]) == 64 and a[0]["new"]["cells"] == 27 and a[0]["note"] == "export.csv"
     assert a[0]["actor"] == "JoshHoughton"
     t = client.get(f"{P}/table").get_json()
     assert t["actual_through"] == "2026-03-01"
@@ -248,7 +256,7 @@ def test_upload_shows_the_diff_before_overwriting_a_loaded_month(client, data):
     post_file(client, raw, commit=True, token=j["diff_sha256"])
     edited = to_csv(qb_rows()).replace(b"2000.0", b"2500.0")
     pv = post_file(client, edited, "edited.csv").get_json()
-    assert pv["cells"]["changed"] == 1 and pv["cells"]["same"] == 20
+    assert pv["cells"]["changed"] == 1 and pv["cells"]["same"] == 26
     assert pv["changes"] == [{"line_key": "dtc_rev", "month": "2026-02-01", "old": 2000.0, "new": 2500.0}]
     assert any("would be replaced" in n for n in pv["notes"])
     # a token from the OTHER file does not commit this one

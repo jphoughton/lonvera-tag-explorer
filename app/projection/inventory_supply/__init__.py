@@ -6,7 +6,7 @@ Inventory Value and Inventory Cash Outlay. See docs/projection/MODULE_inventory_
 from __future__ import annotations
 
 from ..interfaces import DemandResult, Module
-from . import calc, loaders
+from . import calc, history, loaders, overlay
 from .api import bp
 from .model import Inputs, Settings, SupplyResult
 
@@ -24,3 +24,13 @@ def compute(scn, inputs: Inputs, demand: DemandResult | None = None) -> SupplyRe
 
 MODULE = Module(key="inventory_supply", label="Inventory supply", group="P2", load_inputs=load_inputs, compute=compute, blueprint=bp,
                 ui="inventory_supply.js")
+
+
+def on_restore(conn, slug: str, to_version: int, new_version: int, actor: str | None = None) -> dict:
+    """Restore hook the core calls after a restore of the plan of record: the supply data (orders, transfers, counts, prices) goes back with it."""
+    return history.on_restore(conn, slug, to_version, new_version, actor)
+
+
+def validate_params(params: dict, conn=None) -> None:
+    """Validation hook the core calls for every change to params["inventory_supply"] (`params` = the module's whole group after the patch); raises ApiError(400)."""
+    overlay.validate_params({overlay.NS: params or {}}, conn)

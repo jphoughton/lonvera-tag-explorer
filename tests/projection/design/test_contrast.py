@@ -166,6 +166,8 @@ PAIRS = [
     ("line-strong", "surface", UI, "input and control borders"), ("line-strong", "bg", UI, "input borders on the page"),
     ("focus", "bg", UI, "focus ring on page"), ("focus", "surface", UI, "focus ring on panel"), ("focus", "input-bg", UI, "focus ring on input cell"),
     ("focus", "inverse", UI, "focus ring on TLDR strip"), ("focus", "proj-head", UI, "focus ring on projected header"),
+    ("input-edge", "surface", UI, "border of a standalone amber input"), ("input-edge", "bg", UI, "border of a standalone amber input on the page"),
+    ("muted", "surface-2", TEXT, "disabled button label"),
     ("action", "bg", UI, "button fill vs page"), ("action", "surface", UI, "button fill vs panel"),
     ("proj-rule", "surface", UI, "projected boundary rule"), ("total-rule", "surface", UI, "total rule"),
     ("viz-neutral", "surface", UI, "neutral series"),
@@ -247,7 +249,7 @@ def test_input_cells_are_unmistakable():
     for mode in ("light", "dark"):
         surface, inp = color(mode, "surface"), color(mode, "input-bg")
         assert delta_e(surface, inp) >= 5.0, f"{mode}: input cell fill vs calculated cell too close ({delta_e(surface, inp):.1f})"
-        assert contrast(color(mode, "input-edge"), surface) >= 1.4, f"{mode}: input edge too faint"
+        assert contrast(color(mode, "input-grid"), surface) >= 1.4, f"{mode}: input gridline too faint"
     # but not loud: the fill stays a tint (light mode: contrast with the panel under 1.35)
     assert contrast(color("light", "input-bg"), color("light", "surface")) < 1.35
 
@@ -309,3 +311,17 @@ def test_logo_assets(name, fill):
         assert fill in p.read_text()
         assert p.stat().st_size < 12_000, f"{p.name} is {p.stat().st_size} bytes"
     assert (BRAND.parent / "assets" / "favicon.svg").exists()
+
+
+# --------------------------------------------------------------------------- type scale: nothing below 12px for reading text, 11px only for bold caps labels
+def _px(name):
+    m = re.fullmatch(r"([\d.]+)px", LIGHT[name])
+    assert m, f"{name} is not a px value"
+    return float(m.group(1))
+
+
+def test_type_scale_floor():
+    assert _px("--lv-fs-xs") >= 12, "reading text (captions, table headers, chips) must be 12px or larger"
+    assert _px("--lv-fs-sm") >= _px("--lv-fs-xs")
+    assert _px("--lv-fs-2xs") >= 11, "the smallest size is for bold uppercase labels only and never below 11px"
+    assert _px("--lv-fs-base") >= 13

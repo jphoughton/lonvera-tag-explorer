@@ -75,7 +75,7 @@ def test_table_values_are_the_engine_values(client, world):
     assert at(t, "nc_roas", m) == pytest.approx(70 / 95)
     assert at(t, "spend_meta", m) == pytest.approx(300000 * s["meta"])
     assert at(t, "drivers.spend_total", M(2026, 3)) == 442000.0                       # an actual month shows the loaded total
-    assert at(t, "source", M(2026, 3)) == "Books" and at(t, "source", m) == "Plan"
+    assert at(t, "month_status", M(2026, 3)) == "Books" and at(t, "month_status", m) == "Projected"
     assert at(t, "sales_tax", M(2026, 3)) == 0 and at(t, "sales_tax", m) < 0            # books months carry no tax estimate
     assert at(t, "total_revenue", m) == pytest.approx(at(t, "dtc_rev", m) + at(t, "rev_amazon", m) + at(t, "rev_tiktok", m) + at(t, "sales_tax", m))
 

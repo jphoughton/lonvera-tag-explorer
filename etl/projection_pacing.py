@@ -11,7 +11,7 @@ A feed tab that is missing, unreadable or yields no rows raises FeedError naming
 
 CLI:  python -m etl.projection_pacing refresh [--days 14] [--snapshot-dir DIR]
       python -m etl.projection_pacing backfill [--snapshot-dir DIR]      full reload of every feed + Meta history before ad_daily begins
-      python -m etl.projection_pacing seed-hourly [--snapshot-dir DIR]   Meta time-of-day curve (typed input of the sheet)
+      python -m etl.projection_pacing seed-hourly [--snapshot-dir DIR]   Meta time-of-day curve (typed input of the sheet; refresh also loads it when the table is empty)
 Live reads use GOOGLE_SA_JSON (or the local key file) through etl.sheets_io; --snapshot-dir reads the frozen snapshot instead.
 
 Feed tabs and columns relied on (sheet 1qA0iRJkWp1fbY5b6N860eM88Vs0JRe_8VfPQciMaLKI) are listed in docs/projection/MODULE_pacing.md.
@@ -474,6 +474,11 @@ def refresh(conn, days: int = 14, snapshot_dir: str | os.PathLike | None = None,
     elif backfill:                                                       # ad_daily is empty: nothing of the app's may linger
         conn.execute("DELETE FROM proj_feed_meta_day WHERE source = 'app'")
         conn.execute("DELETE FROM proj_feed_meta_product WHERE source = 'app'")
+    if _scalar(conn, "SELECT count(*) FROM proj_pacing_hourly") == 0:           # first run: load the typed hourly Meta curve once (no manual seed needed)
+        try:
+            out["hourly_curve"] = {"rows": seed_hourly(conn, read_grid("Automated Pacing ", snapshot_dir))}
+        except FeedError as e:                                                 # a missing curve must not stop the daily feeds: the page says what is missing
+            out["hourly_curve"] = {"rows": 0, "warning": db.scrub(e)[:200]}
     conn.commit()
     thr = [dt.date.fromisoformat(v["data_through"]) for k, v in out.items() if isinstance(v, dict) and v.get("data_through") and k != "meta_sheet_history"]
     return {"rows": total, "data_through": min(thr).isoformat() if thr else None, "feeds": out}

@@ -21,7 +21,14 @@ def load(rw, slug="current"):
 def test_scenario_cells_split_into_plan_and_overrides_with_their_origin(rw):
     put_cells(rw, "drivers.spend_total", {M(2026, 12): 350000.0}, note="typed")
     put_cells(rw, "drivers.nc_rev", {M(2026, 10): 240354.88}, kind="override")
-    put_cells(rw, "drivers.something_else", {M(2026, 10): 1.0})
+    import pytest
+    from app.queries import ApiError
+    with pytest.raises(ApiError, match="not a Spend plan line"):                   # the hook rejects unknown drivers.* names on every write path
+        put_cells(rw, "drivers.something_else", {M(2026, 10): 1.0})
+    rw.rollback()
+    rw.execute("INSERT INTO proj_series (scenario_id, line_key, month, value, kind) SELECT id, 'drivers.something_else', '2026-10-01', 1, 'input' "
+               "FROM proj_scenarios WHERE slug = 'current'")                       # a stray row written some other way is ignored by the loader
+    rw.commit()
     inp = load(rw)
     assert inp.plan["spend_total"] == {M(2026, 12): 350000.0} and inp.overrides["nc_rev"] == {M(2026, 10): 240354.88}
     assert inp.cell_info["spend_total"][M(2026, 12)] == {"kind": "input", "note": "typed", "origin": "current"}
@@ -29,7 +36,7 @@ def test_scenario_cells_split_into_plan_and_overrides_with_their_origin(rw):
     assert "something_else" not in inp.plan and "something_else" not in inp.overrides
 
 
-def test_a_clone_reads_its_own_cells_and_falls_back_to_the_base(rw):
+def test_a_clone_holds_its_own_copy_and_reads_nothing_from_its_base_afterwards(rw):
     put_cells(rw, "drivers.spend_total", {M(2026, 12): 350000.0, M(2027, 1): 350000.0})
     scenarios.create(rw, "Growth", "current", actor="test")
     rw.commit()
@@ -37,7 +44,7 @@ def test_a_clone_reads_its_own_cells_and_falls_back_to_the_base(rw):
     put_cells(rw, "drivers.spend_total", {M(2027, 2): 111.0}, slug="current")        # added to the base after the clone
     grown = load(rw, "growth")
     assert grown.plan["spend_total"][M(2027, 1)] == 900000.0 and grown.plan["spend_total"][M(2026, 12)] == 350000.0
-    assert grown.plan["spend_total"][M(2027, 2)] == 111.0 and grown.cell_info["spend_total"][M(2027, 2)]["origin"] == "current"
+    assert M(2027, 2) not in grown.plan["spend_total"] and grown.cell_info["spend_total"][M(2026, 12)]["origin"] == "growth"
     assert load(rw, "current").plan["spend_total"][M(2027, 1)] == 350000.0
 
 

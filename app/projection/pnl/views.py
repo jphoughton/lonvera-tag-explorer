@@ -103,9 +103,40 @@ def _driver_note(key: str, out: PnlOutput) -> str | None:
     return "Projected months: " + txt
 
 
+def span_text(months: list[date]) -> str:
+    """'Aug-Oct 2026', 'Dec 2026-Feb 2027', 'Aug 2026'."""
+    if not months:
+        return ""
+    a, b = months[0], months[-1]
+    if a == b:
+        return f"{MONTH_NAMES[a.month - 1]} {a.year}"
+    if a.year == b.year:
+        return f"{MONTH_NAMES[a.month - 1]}-{MONTH_NAMES[b.month - 1]} {b.year}"
+    return f"{MONTH_NAMES[a.month - 1]} {a.year}-{MONTH_NAMES[b.month - 1]} {b.year}"
+
+
+def status_summary(out: PnlOutput) -> dict:
+    """The three-state boundary in words, the same on every page: books (QuickBooks loaded), feeds (closed month with cohort / ad-feed actuals, no books),
+    projected."""
+    feeds = [m for m in MONTHS if out.month_status.get(m) == "feeds"]
+    last_real = max([d for d in (out.books_through, out.feeds_through) if d], default=None)
+    first_proj = next((m for m in MONTHS if out.month_status.get(m) == "projected"), None)
+    parts = [f"Books through {month_label(out.books_through.isoformat())}" if out.books_through else "No books loaded"]
+    if feeds:
+        parts.append(f"Feeds only, no books yet: {span_text(feeds)}")
+    if first_proj:
+        parts.append(f"Projected from {month_label(first_proj.isoformat())}")
+    return {"text": ". ".join(parts) + ".", "books_through": out.books_through.isoformat() if out.books_through else None,
+            "feeds_through": out.feeds_through.isoformat() if out.feeds_through else None, "feeds_span": span_text(feeds),
+            "feeds_months": [m.isoformat() for m in feeds], "projected_from": first_proj.isoformat() if first_proj else None,
+            "last_real": last_real.isoformat() if last_real else None}
+
+
 def table_payload(out: PnlOutput, *, sources: dict[date, str] | None = None) -> dict:
-    """The P&L grid in the shared grid's vocabulary (kind input/calc/subtotal/total/header/ratio, fmt usd0/pct)."""
-    through = out.actual_through
+    """The P&L grid in the shared grid's vocabulary (kind input/calc/subtotal/total/header/ratio, fmt usd0/pct). The grid knows two month states
+    (actual / projected): books months are actual, feeds and projected months are projected (their cost lines are). `month_status` carries the three
+    words for the legend."""
+    through = out.books_through
     status = ["actual" if through and m <= through else "projected" for m in MONTHS]
     rows: list[dict] = []
     fy_rows: dict[str, list] = {}
@@ -131,7 +162,8 @@ def table_payload(out: PnlOutput, *, sources: dict[date, str] | None = None) -> 
             rows.append(row)
             fy_rows[k] = [out.fy[y].get(k) for y in years]
     cap = "Source: QuickBooks through " + (month_label(through.isoformat()) if through else "(none loaded)") + "; later months projected from the drivers"
-    return {"months": [m.isoformat() for m in MONTHS], "status": status, "rows": rows, "captions": [cap],
+    return {"months": [m.isoformat() for m in MONTHS], "status": status, "month_status": [out.month_status.get(m, "projected") for m in MONTHS],
+            "status_summary": status_summary(out), "rows": rows, "captions": [cap],
             "fy": {"years": years, "rows": fy_rows}, "actual_through": through.isoformat() if through else None,
             "sources": {m.isoformat(): s for m, s in (sources or {}).items()}}
 
@@ -150,6 +182,7 @@ def metrics_payload(out: PnlOutput) -> dict:
 # ---------------------------------------------------------------------------------------------------------------- summary
 
 def summary(out: PnlOutput, freshness: dict | None = None, today: date | None = None, stale_days: int | None = None) -> dict:
+    ss = status_summary(out)
     ev = out.ev or {}
     year = ev["basis_year"]
     fy = out.fy.get(year) or {}
@@ -158,16 +191,7 @@ def summary(out: PnlOutput, freshness: dict | None = None, today: date | None = 
     valid = [v for v in mults.values() if v is not None]
     through = out.actual_through
     next_month = None
-    qb_text = "No QuickBooks history is loaded"
-    if through:
-        qb_text = f"QuickBooks loaded through {month_label(through.isoformat())}"
-        projected = [m for m in MONTHS if m > through and m < (today or date.today()).replace(day=1)]
-        if projected:
-            a, b = projected[0], projected[-1]
-            span = month_label(a.isoformat()) if a == b else f"{MONTH_NAMES[a.month - 1]}-{MONTH_NAMES[b.month - 1]}"
-            qb_text += f"; {span} {'is' if a == b else 'are'} projected"
-        else:
-            qb_text += "; later months are projected"
+    qb_text = ss["text"]
     due = None
     if through and stale_days is not None:
         nxt = add_months(through, 1)
@@ -178,7 +202,7 @@ def summary(out: PnlOutput, freshness: dict | None = None, today: date | None = 
     return {"next_due": due, "multiple_range": multiple_range, "basis_year": year, "revenue": fy.get("total_revenue"), "noi": fy.get("noi"), "noi_margin": fy.get("noi_margin"),
             "gross_profit_pct": fy.get("gross_profit_pct"), "ev": mults, "ev_low": min(valid) if valid else None, "ev_high": max(valid) if valid else None,
             "loi": ev.get("loi"), "ttm_noi": (out.ttm.get(out.actual_through) if out.actual_through else None),
-            "actual_through": through.isoformat() if through else None, "actual_year": actual_year, "quickbooks_text": qb_text,
+            "actual_through": through.isoformat() if through else None, "actual_year": actual_year, "quickbooks_text": qb_text, "status": ss,
             "freshness": freshness, "cogs_rate": out.cogs_model.get("rate"), "cogs_rate_at_current_price": out.cogs_model.get("rate_at_current_price"),
             "warnings": out.warnings}
 
@@ -209,3 +233,32 @@ def drivers_payload(out: PnlOutput, defaults: dict[str, list[dict]], scenario_ov
     return {"groups": groups, "settings": out.settings, "cogs_model": out.cogs_model,
             "window": [m.isoformat() for m in out.window], "window_text": window_text([m.isoformat() for m in out.window]),
             "actual_through": out.actual_through.isoformat() if out.actual_through else None}
+
+
+# ---------------------------------------------------------------------------------------------------------------- data checks
+
+def data_checks_payload(out: PnlOutput) -> dict:
+    """Typed figures next to the cohort figures, month by month. The P&L uses the typed ones; the rest are for comparison only."""
+    d = out.data_checks
+    note = "The typed figures drive the P&L today. The cohort figures are shown for comparison; nothing here changes a number. Which source should drive is your call."
+    if not d:
+        return {"months": [], "rows": [], "note": note}
+    months = d["months"]
+
+    def vals(key):
+        return [d[key].get(m) for m in months]
+
+    def gap(a, b):
+        return [((x - y) / y) if (x is not None and y) else None for x, y in zip(vals(a), vals(b))]
+
+    rows = [
+        {"key": "nc_used", "label": "New-customer revenue used in the P&L", "fmt": "usd0", "values": vals("nc_used")},
+        {"key": "nc_cohort", "label": "New-customer revenue in the cohort table", "fmt": "usd0", "values": vals("nc_cohort")},
+        {"key": "nc_gap", "label": "Used compared with the cohort table", "fmt": "pct", "values": gap("nc_used", "nc_cohort")},
+        {"key": "repeat_used", "label": "Repeat revenue used in the P&L", "fmt": "usd0", "values": vals("repeat_used")},
+        {"key": "repeat_typed", "label": "Repeat revenue typed in the sheet", "fmt": "usd0", "values": vals("repeat_typed")},
+        {"key": "repeat_model", "label": "Repeat revenue, Cohorts model", "fmt": "usd0", "values": vals("repeat_model")},
+        {"key": "repeat_export", "label": "Repeat revenue, cohort export", "fmt": "usd0", "values": vals("repeat_export")},
+        {"key": "repeat_gap", "label": "Used compared with the cohort export", "fmt": "pct", "values": gap("repeat_used", "repeat_export")},
+    ]
+    return {"months": [m.isoformat() for m in months], "rows": rows, "note": note}

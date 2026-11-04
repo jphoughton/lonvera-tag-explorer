@@ -22,7 +22,12 @@ let seq = 0;
 
 function normalize(p) {
   const months = (p && p.months) || [];
-  const status = months.map((_, i) => (p.status && p.status[i]) || 'actual');
+  const raw = months.map((_, i) => (p.status && p.status[i]) || 'actual');
+  // three-state month status: 'books' (closed in QuickBooks), 'feeds' (actual from the daily feeds, not yet in the books), 'projected'.
+  // Older payloads say 'actual' / 'projected'; both spellings keep working. Books and feeds months are actual months everywhere else.
+  const status = raw.map((s) => (s === 'projected' ? 'projected' : 'actual'));
+  const state = raw.map((s) => (s === 'books' || s === 'feeds' || s === 'projected' ? s : null));
+  const hasStates = raw.some((s) => s === 'books' || s === 'feeds');
   const rows = ((p && p.rows) || []).map((r) => ({
     ...r,
     kind: r.kind || 'calc',
@@ -33,8 +38,32 @@ function normalize(p) {
   for (const r of rows) {
     if (r.kind === 'header') { cur = r.group ?? r.key; r._gid = cur; } else r._gid = r.group ?? cur;
   }
-  return { months, status, rows, captions: (p && p.captions) || [], fy: (p && p.fy) || null };
+  return { months, status, state, hasStates, rows, captions: (p && p.captions) || [], fy: (p && p.fy) || null };
 }
+// Input limits. A payload row may carry `min` / `max`; limits the server enforces are also learned from its 400 message (below), so the next
+// out-of-range entry is stopped in the cell with a plain message instead of a round trip: (500000) and -350k in a non-negative input.
+const num = (t) => { const n = Number(String(t).replace(/[$,\s]/g, '')); return Number.isFinite(n) ? n : null; };
+export function parseLimit(message) {
+  const m = String(message || '');
+  let r;
+  if ((r = /between\s+(-?[$\d.,]+)\s*(?:and|to)\s+(-?[$\d.,]+)/i.exec(m))) return { min: num(r[1]), max: num(r[2]) };
+  const out = {};
+  if ((r = /(?:at least|>=|no less than|not be less than|minimum of)\s*(-?[$\d.,]+)/i.exec(m))) out.min = num(r[1]);
+  else if (/(?:non-?negative|not be negative|cannot be negative|zero or more|must be positive)/i.test(m)) out.min = 0;
+  if ((r = /(?:at most|<=|no more than|not be more than|maximum of|up to)\s*(-?[$\d.,]+)/i.exec(m))) out.max = num(r[1]);
+  return out.min != null || out.max != null ? out : null;
+}
+function limitMessage(lim, fmt) {
+  const f = (v) => F.value(v, fmt);
+  if (lim.min != null && lim.max != null) return `Enter a value from ${f(lim.min)} to ${f(lim.max)}.`;
+  if (lim.min != null) return lim.min === 0 ? 'Enter 0 or more. This line cannot be negative.' : `Enter ${f(lim.min)} or more.`;
+  return `Enter ${f(lim.max)} or less.`;
+}
+// Lines that cannot be negative (spend, units, orders, loan principal, cost per new customer, order value) and the server's ceiling for any value.
+// The server enforces both too; this stops (500000) and -350k in the cell, before anything is sent.
+const NONNEG = new Set(['spend', 'units', 'orders', 'principal', 'cpa', 'aov']);
+const isNonNegativeKey = (key) => String(key || '').toLowerCase().split(/[^a-z0-9]+/).some((t) => NONNEG.has(t));
+const MAX_VALUE = 99999999999;
 const same = (a, b) => (a == null && b == null) || (typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) < 1e-9) || a === b;
 
 export class Grid {
@@ -46,6 +75,7 @@ export class Grid {
     this.showFY = !!this.opts.fy;
     this.cellState = new Map();
     this.undoStack = [];
+    this.limits = new Map();                       // line_key -> {min, max} learned from the server's validation messages
     this.sel = null;
     this.editing = null;
     this.pendingPayload = null;
@@ -65,9 +95,11 @@ export class Grid {
   update(payload) {
     if (this.editing) { this.pendingPayload = payload; return; }
     const keep = this._selKeys();
+    const hadFocus = !!this.table && this.table.isConnected && this.table.contains(document.activeElement);   // a re-render must not drop the keyboard (Ctrl+Z, arrows, typing the next value)
     this.payload = normalize(payload);
     this._render();
     if (keep) this._restoreSel(keep);
+    if (hadFocus || (this.sel && document.activeElement === document.body)) this.focus();
   }
   setOptions(o) {
     Object.assign(this.opts, o);
@@ -162,7 +194,12 @@ export class Grid {
       this.statusEl, this.btnCollapse, this.btnExpand, this.btnFY, this.btnUndo, this.btnCopy);
     this.scroll = h('div', { class: 'pg-scroll' });
     this.captionEl = h('div', { class: 'pg-captions' });
-    this.root = h('div', { class: 'pg-grid', 'data-density': this.opts.density }, this.toolbar, this.scroll, this.captionEl);
+    // an editable grid on the plan of record says so, right above the cells (the shell sets body[data-pg-scenario])
+    const por = document.body.dataset.pgScenario === 'default' && this.opts.onEdit && !this.opts.readOnly;
+    this.porEl = por ? h('div', { class: 'pg-por', role: 'note' },
+      h('span', { class: 'pg-por-t' }, h('strong', null, 'Plan of record. '), 'It drives the pacing goals and the default view of every page.'),
+      h('button', { type: 'button', class: 'btn small', onclick: () => window.dispatchEvent(new CustomEvent('pg:scenario-action', { detail: 'clone' })) }, 'Make a copy to try changes')) : null;
+    this.root = h('div', { class: 'pg-grid', 'data-density': this.opts.density }, this.porEl, this.toolbar, this.scroll, this.captionEl);
     this.host.replaceChildren(this.root);
   }
   _syncToolbar() {
@@ -189,7 +226,7 @@ export class Grid {
     const years = [];
     months.forEach((iso, i) => {
       const y = F.yearOf(iso);
-      cols.push({ id: iso, type: 'month', i, iso, year: y, status: status[i], label: F.monthLabel(iso), short: F.shortMonth(iso) });
+      cols.push({ id: iso, type: 'month', i, iso, year: y, status: status[i], state: this.payload.state ? this.payload.state[i] : null, label: F.monthLabel(iso), short: F.shortMonth(iso) });
       const nextY = i + 1 < months.length ? F.yearOf(months[i + 1]) : null;
       let yr = years[years.length - 1];
       if (!yr || yr.year !== y) { yr = { year: y, from: cols.length - 1, n: 0 }; years.push(yr); }
@@ -268,7 +305,7 @@ export class Grid {
     const corner = (rowspan) => h('th', { class: 'pg-th pg-corner', scope: 'col', rowspan: rowspan > 1 ? rowspan : null }, this.opts.rowHeader || '');
     const monthTh = (c, k) => {
       const th = h('th', {
-        class: `pg-th pg-mh s-${c.status}` + (c.type === 'fy' ? ' pg-fy' : '') + (k === this.firstProj ? ' pg-bound' : '') + (c.type === 'month' && c.i < frozen ? ' pg-frozen' : ''),
+        class: `pg-th pg-mh s-${c.status}` + (c.state === 'feeds' ? ' st-feeds' : '') + (c.type === 'fy' ? ' pg-fy' : '') + (k === this.firstProj ? ' pg-bound' : '') + (c.type === 'month' && c.i < frozen ? ' pg-frozen' : ''),
         scope: 'col', 'data-c': k, title: c.type === 'fy' ? `${c.year} total` + (c.status !== 'actual' ? ' (includes projected months)' : '') : c.label + (c.status === 'projected' ? ' (projected)' : ''),
         style: c.type === 'month' && c.i < frozen ? { left: `calc(var(--pg-label-w) + ${c.i} * var(--pg-col-w))` } : null,
       }, yb || c.type === 'fy' ? (c.type === 'fy' ? c.label : c.short) : c.label);
@@ -276,15 +313,29 @@ export class Grid {
       return th;
     };
     const thead = h('thead', null);
+    const stRow = this.payload.hasStates;
+    if (stRow) {
+      // one chip per run of months with the same state: Books | Feeds | Projected*
+      const WORDS = { books: ['Books', 'Closed in QuickBooks'], feeds: ['Feeds', 'Actual from the daily feeds, not yet in the books'], projected: ['Projected*', 'Projected'] };
+      const cells = [];
+      for (const c of cols) {
+        const st = c.type === 'month' ? (c.state || (c.status === 'projected' ? 'projected' : 'books')) : null;
+        const last = cells[cells.length - 1];
+        if (last && last.st === st && st) last.n++; else cells.push({ st, n: 1 });
+      }
+      thead.append(h('tr', { class: 'pg-staterow' }, corner(yb ? 3 : 2), cells.map((c) => h('th', { class: 'pg-th pg-sh' + (c.st ? ` st-${c.st}` : ''), colspan: c.n, scope: 'colgroup', title: c.st ? WORDS[c.st][1] : null },
+        c.st ? h('span', { class: 'pg-stchip' }, WORDS[c.st][0]) : null))));
+      this.root.dataset.states = '1';
+    } else { delete this.root.dataset.states; }
     if (yb) {
-      thead.append(h('tr', { class: 'pg-yearrow' }, corner(2), this.years.map((y) => {
+      thead.append(h('tr', { class: 'pg-yearrow' }, stRow ? null : corner(2), this.years.map((y) => {
         const slice = cols.slice(y.from, y.from + y.n);
         const proj = slice.every((c) => c.status === 'projected');
         return h('th', { class: 'pg-th pg-yh' + (proj ? ' s-projected' : ''), colspan: y.n, scope: 'colgroup' }, String(y.year));
       })));
       thead.append(h('tr', { class: 'pg-monthrow' }, cols.map((c, k) => monthTh(c, k))));
     } else {
-      thead.append(h('tr', { class: 'pg-monthrow' }, corner(1), cols.map((c, k) => monthTh(c, k))));
+      thead.append(h('tr', { class: 'pg-monthrow' }, stRow ? null : corner(1), cols.map((c, k) => monthTh(c, k))));
     }
 
     const hlFn = typeof this.opts.highlight === 'function' ? this.opts.highlight : null;
@@ -597,11 +648,12 @@ export class Grid {
     const row = this.payload.rows[ed.r];
     let change = null;
     if (commit) {
-      const p = F.parse(ed.input.value, row.fmt);
+      let p = F.parse(ed.input.value, row.fmt);
+      if (p.ok) { const bad = this._limitError(row, p.value); if (bad) p = { ok: false, error: bad }; }
       if (!p.ok) {
         if (keepOpen) { ed.input.classList.add('invalid'); this._setStatus(p.error, 'error'); ed.input.title = p.error; return; }
         this._setStatus(`Not saved: ${p.error}`, 'error');
-      } else change = { r: ed.r, c: ed.c, value: p.value };
+      } else { change = { r: ed.r, c: ed.c, value: p.value }; if (this.statusEl.classList.contains('error')) this._setStatus('', ''); }      // an accepted value clears the last complaint
     }
     ed.done = true;
     this.editing = null;
@@ -611,6 +663,15 @@ export class Grid {
     if (this.pendingPayload) { const p = this.pendingPayload; this.pendingPayload = null; this.update(p); }
     if (keepOpen && (dr || dc)) this._move(dr, dc); else if (keepOpen) this.focus();
     else if (document.activeElement === document.body) this.focus();
+  }
+
+  _limitError(row, value) {
+    if (typeof value !== 'number') return null;
+    const l = this.limits.get(row.key) || {};
+    const lim = { min: row.min ?? l.min ?? (isNonNegativeKey(row.key) ? 0 : null), max: row.max ?? l.max ?? null };
+    if ((lim.min != null && value < lim.min) || (lim.max != null && value > lim.max)) return limitMessage(lim, row.fmt);
+    if (Math.abs(value) > MAX_VALUE) return limitMessage({ max: MAX_VALUE }, row.fmt);
+    return null;
   }
 
   async _commit(changes, { undo = false } = {}) {
@@ -638,6 +699,11 @@ export class Grid {
     } catch (err) {
       if (err && err.name === 'AuthError') return;
       this._applyValues(edits, 'previous', null);
+      if (err && err.name === 'EditCancelled') { this._setStatus('No change made', ''); return; }       // the plan-of-record choice was cancelled: quiet revert
+      if (err && err.status === 400) {                                                                    // remember what the server just said about these lines
+        const lim = parseLimit(err.message);
+        if (lim) for (const e of edits) this.limits.set(e.line_key, { ...(this.limits.get(e.line_key) || {}), ...lim });
+      }
       this._markState(edits, 'error', err && err.message ? err.message : 'Not saved');
       this._setStatus(`Not saved: ${err && err.message ? err.message : 'error'}`, 'error');
       toast(`Not saved: ${err && err.message ? err.message : 'error'}`, 'error');
@@ -686,7 +752,7 @@ export class Grid {
       for (const [r, c] of this._rangeCells()) {
         if (!this._editable(r, c)) { skipped++; continue; }
         const p = F.parse(lines[0][0], this.payload.rows[r].fmt);
-        if (p.ok) changes.push({ r, c, value: p.value }); else skipped++;
+        if (p.ok && !this._limitError(this.payload.rows[r], p.value)) changes.push({ r, c, value: p.value }); else skipped++;
       }
     } else {
       const nav = this._navRows();
@@ -703,7 +769,7 @@ export class Grid {
           if (f.trim() === '') return;
           if (!this._editable(r, c)) { skipped++; return; }
           const p = F.parse(f, this.payload.rows[r].fmt);
-          if (p.ok) changes.push({ r, c, value: p.value }); else skipped++;
+          if (p.ok && !this._limitError(this.payload.rows[r], p.value)) changes.push({ r, c, value: p.value }); else skipped++;
         });
       });
     }

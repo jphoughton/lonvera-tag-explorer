@@ -177,14 +177,17 @@ def test_variable_request_shape_limits_and_version_conflicts(client, pg, seeded)
     assert own_params(pg, "current") == {"fba_target_months": 2.0}
 
 
-def test_a_copy_inherits_the_plan_of_records_variables_until_it_changes_them(client, pg, seeded):
-    bear = clone(client)
+def test_a_new_copy_starts_with_the_plan_of_records_variables_and_then_stands_alone(client, pg, seeded):
     put_vars(client, "current", lever("order_soon_days", 30), lever("transfer_lag_months", 2))
+    bear = clone(client)                                                                          # copies are frozen: values are copied at clone time
+    levers = {x["key"]: x for x in client.get(f"{B}/variables?scenario={bear}").get_json()["levers"]}
+    assert (levers["order_soon_days"]["value"], levers["transfer_lag_months"]["value"]) == (30, 2)
+    put_vars(client, "current", lever("order_soon_days", 45))                                      # a later change to the plan of record does not flow in
     put_vars(client, bear, lever("transfer_lag_months", 3))
     levers = {x["key"]: x for x in client.get(f"{B}/variables?scenario={bear}").get_json()["levers"]}
-    assert (levers["order_soon_days"]["value"], levers["order_soon_days"]["origin"]) == (30, "inherited")
-    assert (levers["transfer_lag_months"]["value"], levers["transfer_lag_months"]["origin"]) == (3, "scenario")
-    assert {x["key"]: x["value"] for x in client.get(f"{B}/variables?scenario=current").get_json()["levers"]}["transfer_lag_months"] == 2
+    assert (levers["order_soon_days"]["value"], levers["transfer_lag_months"]["value"], levers["transfer_lag_months"]["origin"]) == (30, 3, "scenario")
+    cur = {x["key"]: x["value"] for x in client.get(f"{B}/variables?scenario=current").get_json()["levers"]}
+    assert (cur["order_soon_days"], cur["transfer_lag_months"]) == (45, 2)
 
 
 def test_variable_endpoints_need_the_apps_login_when_it_is_on(anon):

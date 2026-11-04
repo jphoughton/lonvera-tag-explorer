@@ -17,13 +17,18 @@ app/projection/scenarios.py                   CRUD, clone, params merge, history
 app/projection/series.py                      get_series / get / apply_items / actuals helpers
 app/projection/audit.py                       proj_audit writer and reader, current_actor()
 app/projection/limits.py                      in-memory per-IP rate limits
+app/projection/clock.py                       today_pt(): the Pacific date, PROJECTION_TODAY pin
+app/projection/degraded.py                    module dependencies, ensure_ok, the 503 response
+app/projection/validators.py                  series and params validation, module hooks
+migrations/106_proj_scenario_lifecycle.sql    frozen, archived_at
 app/projection/freshness.py                   feed freshness: hook loading, evaluation, GET /freshness payload
 app/projection/registry.py                    module discovery + blueprint mounting
 app/projection/engine.py                      run(): modules in order, stubs for unbuilt ones
 app/projection/stubs.py                       fixture stubs read from the sheet snapshot
 app/projection/api.py                         /api/projection blueprint + install_guards()
 scripts/projection/reconcile.py               engine vs sheet, per cell
-tests/projection/core/                        193 tests
+tests/projection/core/                        300 tests
+tests/projection/conftest.py                  makes `pytest tests/projection` work as one run (see Running the tests)
 ```
 
 `app/__init__.py` has two changed lines: `from . import api, auth, db, projection` and `projection.register(app)` right after `app.register_blueprint(api.bp)`.
@@ -46,17 +51,20 @@ tests/projection/core/                        193 tests
 |---|---|---|
 | `GET /modules` | | `{modules:[{key,label,group,built,ui}]}` for the 7 catalog modules in nav order; `built` = package imports and exports MODULE |
 | `GET /scenarios` | | `{scenarios:[{id,slug,name,base_slug,is_default,params,effective_params,version,created_at,updated_at}]}` |
-| `POST /scenarios` | `{name, clone_from?}` | 201 `{scenario}`; a copy of `clone_from` (default: the default scenario): params and own series copied, `base_slug` = source |
+| `POST /scenarios` | `{name, clone_from?}` | 201 `{scenario}`; a FROZEN COPY of `clone_from` (default: the default scenario): its effective params and series are materialized now; `base_slug` only records where it came from |
 | `POST /scenarios/<slug>/clone` | `{name}` | same, alias of the above |
 | `PATCH /scenarios/<slug>` | `{name?, params?, expected_version?}` | `{scenario}`; params are a merge patch per namespace: objects merge, `null` removes a key, lists replace |
-| `DELETE /scenarios/<slug>` | `{confirm:"<slug>"}` | `{deleted}`; `current`/default is 409, missing or wrong confirm is 400 |
-| `POST /scenarios/<slug>/restore` | `{version, expected_version?}` | `{scenario}`; params and series go back to that version; itself a new version, audited, undoable |
+| `DELETE /scenarios/<slug>` | `{confirm:"<slug>"}` | `{deleted}`; archives the scenario for 30 days (see Lifecycle); `current`/default is 409, missing or wrong confirm is 400 |
+| `POST /scenarios/<slug>/restore` | `{version, expected_version?}` | `{scenario, restore:{cells_changed, kept}}`; goes back to that version by the rule in Restore; itself a new version, audited cell by cell, undoable |
 | `GET /scenarios/<slug>/history?limit=` | | `{history:[{version,at,action}]}` newest first |
+| `GET /scenarios/archived` | | `{archived:[{...scenario, archived_at, days_left}]}`: deleted scenarios still inside the 30-day archive |
+| `POST /scenarios/<slug>/undelete` | `{}` | `{scenario}`: brings a deleted scenario back whole (a name now taken gets ' (restored)'); 410 after 30 days |
+| `POST /scenarios/<slug>/detach` | `{expected_version?}` | `{scenario}`: freezes a clone made before copies were frozen (copies what it inherited, stops reading its base) |
 | `GET /series?scenario=&keys=a,b` or `&prefix=drivers.` `&from=&to=&detail=1` | | `{scenario, version, series:{key:{iso:value}}, detail?:{key:{iso:{kind,note,origin}}}}`; scenario -> base -> base's base fallback per cell; `origin` = the scenario that holds the cell |
 | `PUT /series` | `{scenario, items:[{line_key,month,value\|null,kind,note}], expected_version?}` | `{version, changed}`; `null` deletes the cell (reverts to the base's value); max 500 items; unchanged cells are not written, audited or versioned |
 | `GET /audit?scenario=&line_key=&limit=` | | `{audit:[...]}` newest first, limit <= 1000 |
-| `GET /freshness` | | `{generated_at, feeds:[{module,feed,label,cadence,data_through,age_days,stale_after_days,status,message,last_run:{status,finished_at,rows,error}\|null}], summary:{fresh,stale,unknown}}`; see Daily refresh |
-| `GET /run?scenario=` | | `{scenario, version, actual_through, modules:{key:{built,stub,ms,error?}}, headline:{fy,ev,lifetime_multiple,lowest_ending_cash}}` |
+| `GET /freshness` | | `{generated_at, feeds:[{module,feed,label,cadence,cadence_label,data_through,age_days,stale_after_days,status,message,last_run:{status,finished_at,rows,error}\|null}], summary:{fresh,stale,unknown}, degraded:[{module,error}]}`; see Daily refresh |
+| `GET /run?scenario=` | | `{scenario, version, actual_through, books_through?, feeds_through?, month_status?, modules:{key:{built,stub,ms,error?}}, degraded:[{module,error}], headline:{fy,ev,lifetime_multiple,lowest_ending_cash}}`; see Degraded modules |
 
 Validation: `line_key` `^[a-z0-9_.]{1,120}$`; `month` ISO date, first of month, inside 2025-01..2029-12; `value` finite number below 1e13 (never a string); `kind` input/override; `note` <= 500 chars; duplicate (line_key, month) in one request, unknown item fields and non-object items are 400 naming `items[i]`. Errors are `{error}`.
 
@@ -66,7 +74,7 @@ Pages: `/projection` and `/projection/<module>` serve `app/static/projection.htm
 
 One set of app-level hooks, installed by `api.install_guards(app)` from `projection.register(app)`; `app.before_request` is registered after `auth.init_auth`, so the app's guard runs first (anonymous requests get 401 before any projection check when the app's login is on).
 
-- `_write_guard` (before_request, acts only on non-GET/HEAD/OPTIONS under `/api/projection/`, so every module blueprint is covered with no code in the module): Origin must match `request.host` when present (403 `origin_mismatch`; `Origin: null` is rejected); per-IP sliding window 120 writes/minute (429 `{error:"rate_limited"}` + `Retry-After`); paths with a segment starting `upload` also count against 20/hour; body must be `application/json` (415 `json_required`) except `multipart/form-data` on an `upload*` path; request cap set per request to 1 MB (8 MB for multipart; the app-wide 64 KB cap is overridden for projection only, 413 above). Config: `PROJ_RATE_MUTATIONS_PER_MIN`, `PROJ_RATE_UPLOADS_PER_HOUR` (app config or env). Limits are per process: with N gunicorn workers the effective ceiling is N times higher.
+- `_write_guard` (before_request, acts only on non-GET/HEAD/OPTIONS under `/api/projection/`, so every module blueprint is covered with no code in the module): Origin must match `request.host` when present (403 `origin_mismatch`; `Origin: null` is rejected); per-IP sliding window 120 writes/minute (429 `{error:"rate_limited"}` + `Retry-After`); a POST whose path ends `/preview` (computes, writes nothing) has its own budget of 600/minute, `PROJ_RATE_PREVIEWS_PER_MIN`, and keeps the Origin and JSON checks; paths with a segment starting `upload` also count against 20/hour; body must be `application/json` (415 `json_required`) except `multipart/form-data` on an `upload*` path; request cap set per request to 1 MB (8 MB for multipart; the app-wide 64 KB cap is overridden for projection only, 413 above). Config: `PROJ_RATE_MUTATIONS_PER_MIN`, `PROJ_RATE_UPLOADS_PER_HOUR` (app config or env). Limits are per process: with N gunicorn workers the effective ceiling is N times higher.
 - Noindex is the app's: `create_app` sends `X-Robots-Tag: noindex, nofollow` on every response and serves `/robots.txt` with `Disallow: /`; projection adds nothing of its own and a test checks the header on `/projection*` and `/api/projection/*`.
 - Audit: every mutation writes `proj_audit` with old and new; actor = the app's signed-in username (`auth.current_user()`, e.g. `JoshHoughton`), `anonymous` when the app is open (`guest` from AUTH_DISABLED), `system` outside a request.
 - Undo: every version bump snapshots the scenario; the state before the first API change is captured as a baseline, so data a loader wrote straight to `proj_series` is restorable too.
@@ -110,14 +118,64 @@ MODULE = Module(key="drivers", load_inputs=load_inputs, compute=compute, bluepri
 3. Schema: your migration number (cohorts 110, drivers 120, pnl 130, inventory_demand 140, inventory_supply 150, financing 160, pacing 170), tables prefixed `proj_`, additive and idempotent. Scenario-independent facts have no `scenario_id`; anything a scenario can change is a lever in `params[<key>]` or a series in `proj_series` (`line_key` prefixed with your module, e.g. `drivers.spend_total`).
 4. Writes: edits go through the core `PUT /series` and `PATCH /scenarios` (audited, versioned, undoable). Loaders (`etl/projection_<module>.py`) use `rwdb.get_rw()` and `series.upsert_actuals(conn, rows, source)`. Upload endpoints must have a path segment starting `upload` (e.g. `/api/projection/pnl/upload`) to get the multipart/8 MB allowance and the upload rate limit; do preview-then-commit (`?commit=1`).
 5. Reads inside a request use `db.get_conn()` (read-only snapshot); never write from it.
-6. Grid payloads: `Table.for_axis(actual_through)`, `Table.add(key, label, series_or_list, kind=line|subtotal|total|header|memo, fmt=money|money2|int|num2|pct|pct1|x|text|date, input=bool, missing=0.0|None)`, `to_payload()`; NaN/Infinity become null.
+6. Grid payloads: see Table vocabulary below.
 7. Add `app/projection/<key>/reconcile_map.py` (below) and `MODULE_<key>.md`.
 
 Registry: a package that is missing, raises on import, exports no `MODULE`, has a `MODULE.key` that differs from the package name, or was built with positional arguments is logged and listed `built:false`; nothing else is affected.
 
-## Fixture stubs
+## Degraded modules are loud
 
-Until a module is built the engine uses `stubs.py`: values from `scripts/projection/snapshot_read.py` (env `PROJECTION_SNAPSHOT_DIR`), P&L rows 11-22, 24, 31, 46, 47, 51-56, 95, 100, Curves B/C 4:63 and C65; `actual_through` from `proj_actuals` if any, else the snapshot's last "Actual" column. Stub pnl line keys (`total_revenue`, `noi`, ...) are not the real `LINE_KEYS`. Demand, inventory and financing stubs are empty/zero. If the snapshot cannot be read every series is zero and the engine still runs.
+`degraded.DEPENDS` (cohorts<-drivers, pnl<-drivers+cohorts, inventory_supply<-inventory_demand, financing<-pnl+inventory_supply, pacing<-pnl+drivers+cohorts) says which modules read which. When a module fails, every module that reads it, directly or through another, is degraded too (`upstream degraded: pnl`), whether or not its own code could have run on a missing upstream: its result is `None`. Then:
+
+- `/run` carries `degraded:[{module,error}]` (root cause first) and no headline numbers that rest on a degraded module.
+- Any GET under `/api/projection/<module>/...` whose module or upstream the engine degraded during that request is answered **503** `{error:"upstream_degraded", modules:[{module,error}]}` by an app-level `after_request`, replacing whatever the module returned (a 200 built on nothing, or its own 500). No module code is needed. Writes (POST/PUT/PATCH/DELETE) are never rewritten: the change was already committed. Core endpoints (`/run`, `/freshness`, `/scenarios`, `/series`, `/audit`) and page-only modules are not gated.
+- Explicit form: `degraded.ensure_ok(res, "<key>")` after `engine.run` raises `UpstreamDegraded`, answered 503 the same way.
+- With no snapshot (production) an unbuilt module's result is `None`, never zeros.
+
+## Draft overlays
+
+`with series.with_overlay(fn): engine.run(...)` lets a what-if run (the scenario modeler) see a read-only draft laid over the scenario's series: `fn(conn, scn, cells, keys, prefix, from_, to)` receives the winning cells and returns the cells the run sees. It is a ContextVar, so another request's thread never sees it, and nothing is written.
+
+## Table vocabulary
+
+`interfaces.Table` / `Row` speak the shared grid's names and emit them, so a module can return `Table(...).to_payload()` instead of hand-building rows:
+
+- `kind`: `input` (yellow; editable when `input=True`), `calc`, `subtotal`, `total`, `ratio`, `header` (section band, no values). Default: `input` when `input=True`, else `calc`. Aliases (accepted, emitted as the grid name): `line` -> `calc`, `memo` -> `ratio`.
+- `fmt`: `usd` ($1,234.50), `usd0` ($1,235; default), `pct` (fraction), `num`, `x`, `text`, `date`. Aliases: `money` -> `usd0`, `money2` -> `usd`, `int` -> `num` with `digits=0`, `num2` -> `num` with `digits=2`, `pct1` -> `pct` with `digits=1` (an explicit `digits` wins).
+- Optional per row, emitted only when set: `group` (owning header key), `note` (tooltip, put the source of an input here), `agg` (`sum`|`avg`|`last`|`none`, how the FY column combines months), `digits` (0-6), `indent` (0-6). `Table.fy = {years, rows}` adds the grid's `fy` block.
+- `Table.for_axis(actual_through)`, `Table.add(key, label, series_or_list, kind=, fmt=, input=, missing=0.0|None, group=, note=, agg=, digits=, indent=)`, `to_payload()`; NaN/Infinity become null. Unknown names raise `ValueError`; `interfaces.normalize_kind` / `normalize_fmt` expose the mapping.
+
+## Fixture stubs and degraded modules
+
+A module that is not built uses the fixture stub in `stubs.py` when the sheet snapshot is readable (development): values from `scripts/projection/snapshot_read.py` (env `PROJECTION_SNAPSHOT_DIR`), P&L rows 11-22, 24, 31, 46, 47, 51-56, 95, 100, Curves B/C 4:63 and C65; `actual_through` from `proj_actuals` if any, else the snapshot's last "Actual" column. Stub pnl line keys (`total_revenue`, `noi`, ...) are not the real `LINE_KEYS`. Demand, inventory and financing stubs are empty/zero. **With no snapshot (production) there is no stub: the result is `None`**, never zeros.
+
+A module that is built but fails is **degraded**: its result is `None` and nothing stands in for it (not the stub, not zeros). Causes: the module raised (`ValueError: ...`), it returned nothing (`the module returned no result`), or a required upstream result is missing (`upstream unavailable: drivers`; a compute parameter named like an upstream result and given no default is required, one with a default such as `pnl=None` is optional). `EngineResult.errors` / `.degraded` and the `/run` summary (`degraded:[{module,error}]`; a degraded module's entry also carries `error`) carry the reasons; `GET /freshness` carries `degraded` for modules whose latest refresh failed or whose freshness check failed. `strict=True` raises instead. A module API that needs its own result checks for `None` and answers with its error (all of them already do).
+
+## Validation
+
+Every write is checked in `validators.py` before it is saved, so no endpoint can bypass a rule; one bad cell rejects the whole request (400, `items[i] <key> <Mon YYYY>: <reason>`). The core enforces generic sanity by explicit lists and never guesses from a name (a key called `rate` can be a percentage or units per day); a key or group a module has no rule for is accepted.
+
+- Series, core rules: the key must start with a module key or a prefix added with `validators.register_prefix`; calculated P&L lines (`pnl.noi`, `total_*`, `gross_profit*`, `ttm_*`, `ftm_*`, `*_pct`, `*_mom`, `*_yoy`) are read-only; values of 1e11 or more are refused (a stray paste such as 500000350000); keys under `NON_NEGATIVE_PREFIXES` (`drivers.`, `inventory_demand.`, `inventory_supply.`) or in `NON_NEGATIVE_KEYS` (`financing.principal_paid`, `financing.equity_payback`) cannot be negative; `RANGES` bounds explicit keys (`drivers.spend_total` and `drivers.ad_spend` 0..50,000,000; `drivers.nc_cpa` and `drivers.nc_aov` above 0, at most 1,000); a spend-plan input (kind `input`, `drivers.*`) cannot be typed on a closed month (before the current Pacific month), kind `override` can. Deleting a cell is always allowed. Add rules with `register_range(regex, low, high)` and `register_non_negative(prefix_or_key)`.
+- Params, core rules (on `PATCH /scenarios`): the group must be a module key; numbers finite and below 1e12.
+- Module rules are hooks, found by name on `MODULE`, on the package `app.projection.<key>`, or on its `params` / `validation` submodule, and called with the values their parameters are named for: `validate_series(conn, scenario, items)` on every series write, `validate_params(params, conn=None)` for the changed group (the whole group after the patch). They raise `ApiError(400, plain message)`. A module whose tables are not installed in the database is skipped with a note. Adoption status is in TICKETS_validation.md (financing and inventory_supply `validate_params`, drivers `validate_series` are live).
+
+## Lifecycle: copies, detach, delete
+
+- **A clone is a frozen copy.** Creating a scenario from another materializes the source's effective params and series into it at that moment (`proj_scenarios.frozen = true`). `base_slug` is lineage only; later edits to the source never reach the copy and deleting a cell of the copy never surfaces the source's value.
+- **Detach** (`POST /scenarios/<slug>/detach`) does the same for a scenario made before copies were frozen (`frozen = false`, it still reads its base for cells and params it does not hold): the inherited params and cells are copied into it, then it stops reading the base. Audited, versioned, shown in History.
+- **Delete archives** for 30 days (`archived_at`). An archived scenario is gone from the list, 404 for reads and edits, its name can be reused, and `POST /scenarios/<slug>/undelete` brings it back whole (a taken name gets " (restored)"). The daily run and every later delete purge scenarios archived more than 30 days ago, except one that a not-yet-detached clone still reads.
+- **Restore calls module hooks.** After a restore of the plan of record, every built module with an `on_restore(conn, slug, to_version, new_version, actor)` hook is called in the same transaction (supply puts its orders, transfers and counts back); their return values are in the response (`restore.modules`) and the audit row, and a failing hook rolls the whole restore back.
+- The Pacific clock: `clock.today_pt()` (honors `PROJECTION_TODAY`) is the one source of today; see TICKETS_clock.md.
+
+## Restore
+
+`POST /scenarios/<slug>/restore {version}` writes back what the scenario held at that version, and never deletes what was seeded outside the audited path:
+
+- Snapshots: the state at version N is stored when N is produced, and the snapshot of the current version is taken (or refreshed, when loaders wrote since) from the live state at the next audited write, so it contains seeded data.
+- Every series cell and every param value in the snapshot is written back.
+- A cell that is not in the snapshot is deleted only if the audited path created it after that version (its first audit row after the version is `series.set`). A cell with no audit row after the version, or whose first audit row is `series.update` or `series.delete`, was loaded outside the audited path and is left as it is (`restore.kept` counts them). Param keys follow the same rule: keys changed through audited param edits since the version and absent from the snapshot are removed (emptied namespaces are pruned), others stay.
+- The restore writes `series.set` / `series.update` / `series.delete` audit rows for the cells it changes, so restoring again (including to undo) treats them as audited.
+- Cloning copies every cell, seeded or not.
 
 ## reconcile
 
@@ -146,7 +204,7 @@ Module hooks, in `etl/projection_<module>.py` (one per module key; conn rows are
 
 ```python
 def refresh(conn, days=14) -> {"rows": int, "data_through": "YYYY-MM-DD", ...}   # idempotent, incremental (upsert of the trailing days), no secrets in the output
-def freshness(conn) -> [{"feed": "ad_daily", "label": "Ad spend (Meta)", "cadence": "daily" | "monthly-upload",
+def freshness(conn) -> [{"feed": "ad_daily", "label": "Ad spend (Meta)", "cadence": "daily" | "monthly-upload" | "manual",
                          "data_through": date | None, "stale_after_days": 2}]
 ```
 
@@ -154,7 +212,7 @@ def freshness(conn) -> [{"feed": "ad_daily", "label": "Ad spend (Meta)", "cadenc
 - each `refresh` runs on its own connection in its own try/except under a time cap (`PROJECTION_REFRESH_TIMEOUT_SEC`, default 600, SIGALRM so the running code is interrupted); its work is committed on success and rolled back on failure; one module failing never stops the others;
 - every module is recorded in `proj_refresh_runs(module, started_at, finished_at, status ok|failed|skipped, rows, data_through, error)`; `error` is scrubbed (credentials in URLs, bearer/token values, known secret env values) and capped at 300 characters by the code and by a CHECK constraint; skipped rows say `no etl module` or `no refresh hook`;
 - afterwards each module's `freshness` is evaluated against today (Pacific): `fresh` (age <= stale_after_days), `stale`, or `unknown` (no data yet; reported, not fatal);
-- exit 1 when any refresh failed, any run could not be recorded, any freshness hook raised or returned a malformed entry, or any `daily` feed is stale. Stale `monthly-upload` feeds and `unknown` feeds are printed but never fail the run. Message form: `feed ad_daily last data 2026-11-01, 3 days old (stale after 2 days)`;
+- exit 1 when any refresh failed, any run could not be recorded, any freshness hook raised or returned a malformed entry, or any `daily` feed is stale. Stale `monthly-upload` and `manual` feeds (a hand-refreshed source such as a typed or uploaded count) and `unknown` feeds are printed but never fail the run; `/freshness` shows them as `stale` with `cadence_label` `Monthly upload` / `Manual`. Message form: `feed ad_daily last data 2026-11-01, 3 days old (stale after 2 days)`;
 - `--dry-run` lists what would run, shows freshness, refreshes and records nothing, exits 0. `--only` limits both the refreshes and the freshness check to those modules.
 
 `GET /api/projection/freshness` returns the same evaluation live (modules' `freshness(conn)` on the app's read-only connection) plus each module's latest ok/failed run as `last_run`; a module whose hook raises appears as one `unknown` feed named `(module)` with the error text.
@@ -174,6 +232,15 @@ DATABASE_URL=postgresql://localhost/tagexp_proj_<module> APP_PASSWORD=<local val
 curl -c jar.txt -H 'Content-Type: application/json' -d '{"password":"<local value>"}' http://127.0.0.1:<port>/api/login    # login-on mode on this branch
 curl -b jar.txt http://127.0.0.1:<port>/api/projection/modules
 ```
+
+### Running the tests
+
+```
+PYTHONPATH=. $PY -m pytest tests/projection -q                  # the whole tree in one run (each directory builds its own database)
+PYTHONPATH=. $PY -m pytest tests/projection/<dir> -q            # one directory; same result
+```
+
+`tests/projection/conftest.py` is what lets the directories share a process: (0) the UI tests run last, because they hold one Playwright session for the whole run and the sync API cannot start a second one while it is open; (1) several directories keep helpers in their own `conftest.py` and import them as `from conftest import ...`; a router takes over the name `conftest` and answers each import from the conftest.py of the importing file's own directory; (2) a `pytest_runtest_setup` hook, which runs before any fixture of the test, puts `registry.PACKAGE` back to the real package for every test that does not opt in, so a directory's lazily created app fixtures always mount the real modules (a directory that needs a fake package patches it per test with `monkeypatch`, or for its session through a fixture named `only_this_module`, whose package is restored for the tests that use it). Concurrent runs by several people share the databases named in each conftest; override with `TEST_PROJ_<DIR>_DB` (for example `TEST_PROJ_CORE_DB=my_core`) to keep a run isolated.
 
 Test pattern for a module: copy the `core_db` / `app` / `client` / `clean` fixtures from `tests/projection/core/conftest.py` (own database, base migrations plus your own, `synchronous_commit=off`), keep test file names unique (`test_<module>_*.py`) because the test directories are not packages.
 

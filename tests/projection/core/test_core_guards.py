@@ -87,7 +87,7 @@ def test_module_endpoint_is_guarded_with_no_code_in_the_module(app_factory, pkg_
     assert c.post(f"{P}/good/echo", json={"x": 1}, headers={"Origin": "https://evil.example"}).status_code == 403
     assert c.post(f"{P}/good/echo", data="x=1", content_type="application/x-www-form-urlencoded").status_code == 415
     assert c.get(f"{P}/good/ping").headers["X-Robots-Tag"] == "noindex, nofollow"
-    assert [m["key"] for m in c.get(f"{P}/modules").get_json()["modules"]] == list(MODULE_CATALOG)       # the listing is the seven catalog modules only
+    assert [m["key"] for m in c.get(f"{P}/modules").get_json()["modules"]] == list(MODULE_CATALOG)       # the listing is the catalog modules only (seven calculating modules and the Variables page)
 
 
 # ------------------------------------------------------------------------------------------------------------ Origin / content type / size
@@ -200,3 +200,45 @@ def test_pages_serve_the_spa_shell_without_login(anon):
 def test_robots_txt_disallows_projection(anon):
     body = anon.get("/robots.txt").get_data(as_text=True)                      # the app's own file: everything is disallowed
     assert "User-agent: *" in body and "Disallow: /" in body.splitlines()
+
+
+def test_a_preview_post_has_its_own_budget_and_leaves_the_write_budget_alone(app_factory, pkg_factory):
+    pkg_factory({"good/__init__.py": """
+        from flask import Blueprint, jsonify
+        from app.projection.interfaces import Module
+        bp = Blueprint("fake_preview", __name__)
+
+        @bp.post("/preview")
+        def preview():
+            return jsonify(ok=True)
+
+        @bp.post("/save")
+        def save():
+            return jsonify(ok=True)
+
+        MODULE = Module(key="good", blueprint=bp)
+    """})
+    c = login(app_factory(PROJ_RATE_MUTATIONS_PER_MIN=3, PROJ_RATE_PREVIEWS_PER_MIN=5).test_client())
+    assert [c.post(f"{P}/good/preview", json={}).status_code for _ in range(7)] == [200] * 5 + [429] * 2
+    assert [c.post(f"{P}/good/save", json={}).status_code for _ in range(4)] == [200] * 3 + [429]                   # three writes were still available
+
+
+def test_200_previews_a_minute_do_not_429_but_the_121st_write_does(app_factory, pkg_factory):
+    pkg_factory({"good/__init__.py": """
+        from flask import Blueprint, jsonify
+        from app.projection.interfaces import Module
+        bp = Blueprint("fake_preview2", __name__)
+
+        @bp.post("/preview")
+        def preview():
+            return jsonify(ok=True)
+
+        MODULE = Module(key="good", blueprint=bp)
+    """})
+    c = login(app_factory(PROJ_RATE_MUTATIONS_PER_MIN=120, PROJ_RATE_PREVIEWS_PER_MIN=600).test_client())
+    assert {c.post(f"{P}/good/preview", json={}).status_code for _ in range(200)} == {200}
+    codes = [c.post(f"{P}/scenarios", json={"name": f"Scn {i}"}).status_code for i in range(121)]
+    assert codes[:120] == [201] * 120 and codes[120] == 429
+    # the guards still apply to a preview: wrong content type and a cross-site Origin are refused
+    assert c.post(f"{P}/good/preview", data="x", content_type="text/plain").status_code == 415
+    assert c.post(f"{P}/good/preview", json={}, headers={"Origin": "https://evil.example"}).status_code == 403

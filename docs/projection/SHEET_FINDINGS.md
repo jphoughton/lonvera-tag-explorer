@@ -6,8 +6,8 @@ Compiled 2026-11-04 from the module reports (frozen snapshot 2026-11-03). "App" 
 
 | # | Where in the sheet | Finding | Impact | App behavior | Decision |
 |---|---|---|---|---|---|
-| 1 | `COGS!L44` ("Forward COGS % Rev") | Forward cost per bottle $3.53 is divided by the OLD average sale price $29.22 (`L36`), not the current $21.62 (`L37`). 12.08% vs 16.33% | about $0.44M of FY27 cost, 29% of FY27 net operating income ($1.50M) | Reproduces the sheet's 12.08%; both prices are settings | Which price should forward COGS use? |
-| 2 | `P&L!AI120` (Sep-27 tax) | `((BM100/12)*4)*0.21` re-applies 4/12 to a figure that is already the Sep-Dec 2026 total. Tax $63,927 vs $191,782 | Cash overstated by a constant $127,855 from Sep-27; lowest ending cash -$1.226M (Dec-28) vs -$1.098M in the sheet | Uses the correct tax; the sheet value is available as an override | Confirm the correct tax |
+| 1 | `COGS!L44` ("Forward COGS % Rev") | **Superseded by the skeptic pass (2026-11-04): the sheet's 12.08% is supported.** It divides forward cost per bottle ($3.53) by $29.22; realized net revenue per unit shipped is $29.08-$29.89, the purchase-order plan lands units at $3.40, and books show 9.5-9.8% in May-Jul. The 16.33% ($21.62 current price) is rejected as a blended rate. Untested: bottles per first order. | none (earlier $0.44M claim is void) | Keeps the sheet's 12.08%; both prices stay settings | Closed unless bottles-per-first-order says otherwise |
+| 2 | `P&L!AI120` (Sep-27 tax) | `((BM100/12)*4)*0.21` re-applies 4/12 to a figure that is already the Sep-Dec 2026 total. Tax $63,927 vs $191,782 | Cash overstated by a constant $127,855 from Sep-27; lowest ending cash -$1.226M (Dec-28) on the sheet's own NOI inputs, -$1.174M with the app's integrated NOI, vs -$1.098M in the sheet | Uses the correct tax; the sheet value is available as an override | Confirm the correct tax |
 | 3 | `P&L!X110` | Oct-26 starting cash typed 0, dropping the Sep-26 shortfall of -$85,475 from every later month | Cash overstated $85K throughout | Seeded as an override, clearable | Keep or clear |
 | 4 | `Hist Waterfall!B6:B35` | Typed new-customer revenue is stale: -4.2% to +5.5% vs new customers x first order per cohort (29 months) | Repeat revenue up to 1.9% off; FY27 NOI $1.526M (app) vs $1.502M (sheet) | Uses the cohort table | none |
 | 5 | `Hist Waterfall` layer 5, rows 336-339 | Point at the Jul-26 cohort's row; show $426,701 of repeat revenue for Nov-26 that no cohort has earned | Actual-repeat view wrong after Aug-26 | Reads each cohort's own increments | none |
@@ -17,6 +17,21 @@ Compiled 2026-11-04 from the module reports (frozen snapshot 2026-11-03). "App" 
 | 9 | Stock counts | FBA and international stock counts are dated 2026-10-13 (21 days old; international is an estimate) | App shows Vital Bull at the international 3PL out Nov 4, order was due Aug 22 | Flags as stale | Enter fresh counts |
 | 10 | `Purchase Orders` | Rows 7-9 (45,000 units) past land date, not marked landed; rows 2, 4, 5, 6 (41,000 units) landed before this month and in neither stock nor inbound; rows 2-3 possible duplicate 5,000 Vital Bull; rows 13-15 order dates already past | Inventory and cash timing | Shown as warnings, not changed | Review each |
 | 11 | July 2026 ad spend | Typed $794,965 vs QuickBooks Meta + Google $888,015 | $93K | Uses books where loaded | Which is right? |
+
+## Added by the skeptic pass (2026-11-04), decision-relevant
+
+| # | Finding | Impact | Test that settles it |
+|---|---|---|---|
+| S1 | **7% sales-tax deduction.** History months carry no deduction (`P&L` row 21 is 0 before Jul-26) and the model's DTC revenue is 96.6% of QuickBooks DTC over Jan-25 to Jul-26 (97.8-98.3% recently), so the cohort table is not tax-inflated; from Jul-26 the formula deducts 7% on top. Skeptic backcast Jan-Jul-26: with the deduction NOI is $728K below books, without it $31K above | Removing it: FY27 NOI +$535K (to about $2.06M), value +$2.7M at 5x, lowest cash -$85K instead of -$1.17M | Aug QuickBooks close (model net about $1.36M vs typed $1.499M); or set `drivers.sales_tax_rate` to 0 |
+| S2 | **CPA drift.** Plan $95; measured $111 (last 28 days), $108 Oct, $97 Sep, $96 Aug, $88 Jul; Q4 ran +12% to +19% over Oct last year | At $105-111: FY27 NOI -$426K, FY28 -$510K, value -$2.1M | Weekly CPA through Nov 30 |
+| S3 | **Cash.** Typed term-loan schedule pays $2.999M by Dec-28; cash negative Sep-26 and 25 months (Jan-28 to Dec-29), -$1.17M at Dec-28 (-$1.39M with quarterly tax); needs about +$45K/month | Size equity / seller note / amortization before close | Depends on S1 |
+| S4 | **Repeat revenue.** Curve method backtests +5.5% over at 1 month, +15% at 3, +45% at 6; October +11% over the cohort table in-sample | Each -5% repeat = -$185K FY27 NOI | Nov 30 repeat vs $684,038 |
+| S5 | **Valuation basis.** $7.5M is 4.9x FY27, 7.1x FY28, 8.4x FY29 NOI (NOI falls 31% then 16%); zero spend gives FY27 NOI $2.35M, so FY27 rewards cutting spend | Value on FY28 or a through-cycle number | n/a |
+| S6 | **Payback chip.** 10 months is payback on product margin; fully loaded with the P&L's own cost rates it is 19 months (23 at $111 CPA) | Mislabelled | Relabel, show both |
+| S7 | Amazon revenue $175K flat vs $158.7K feed run-rate; typed Aug-Oct run +5/+17/+18% above the feed | -$118K NOI | Resolve the typed figures |
+| S8 | App flaws: clones silently inherit later edits to the base (a base COGS-price edit moved a clone's FY27 NOI from $1.526M to $1.086M); CPA 0, negative and closed-month edits accepted silently (CPA 0 cut FY27 NOI $306K); the plan of record is editable by anyone | Fix: clone = frozen copy; validation; plan-of-record guard (in progress) | Post-vet fixes |
+
+Engine arithmetic verified exact by independent code: FY27 revenue $10,379,147 / NOI $1,526,273, FY28 NOI $1,057,565, FY29 $889,262, 3x-8x values $4.58M-$12.21M, payback 10 months (product margin), Nov goal $1,034,625 revenue / $239,485 NOI. The 3 vs 6 cohort question is immaterial (+$72K, 0.4% of lifetime): stay at 3.
 
 ## Formula bugs and stale constants (fixed or flagged in the app)
 

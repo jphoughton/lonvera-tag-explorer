@@ -28,7 +28,7 @@ from pacing_support import PASSWORD, SNAP, SNAPSHOT_DAY, make_app          # noq
 PG_BASE = os.environ.get("TEST_PG_BASE", "postgresql://localhost")
 DB_NAME = os.environ.get("TEST_PROJ_PACING_DB", "tagexp_proj_pacing_t")
 DB_URL = f"{PG_BASE}/{DB_NAME}"
-MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "105_proj_refresh.sql", "170_proj_pacing.sql")
+MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "105_proj_refresh.sql", "106_proj_scenario_lifecycle.sql", "160_proj_financing.sql", "161_proj_financing_payback_store.sql", "170_proj_pacing.sql")
 
 
 @pytest.fixture(scope="session")
@@ -96,6 +96,7 @@ class FakeRun:
         self.results = {"pnl": pnl, "cohorts": cohorts, "drivers": None}
         self.scenario = scenario
         self.errors = {}
+        self.actual_through = dt.date(2026, 7, 1)                              # the last month the books hold
 
     def summary(self):                                                       # what GET /run (the shell's headline strip) asks for
         return {"scenario": self.scenario.slug, "version": self.scenario.version, "actual_through": "2026-10-01", "modules": {}, "headline": {}}

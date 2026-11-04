@@ -120,16 +120,6 @@ def test_rules_skip_open_and_tiny_cohorts_blank_open_month_cells_and_drop_zeros(
     assert a.zeros_dropped >= 1                                                  # the explicit zero at Aug M4, plus the file's padding zeros
 
 
-def test_cumulative_that_falls_is_a_warning_not_an_error():
-    a = up.apply_rules(up.parse_csv(wide(wide_line("2026-01", 500, 60, [70, 65]))), D(2026, 10, 1))
-    assert a.rows[0].cum == {1: 70, 2: 65} and any("falls at month 2" in w for w in a.warnings)
-
-
-def test_first_order_missing_warns():
-    a = up.apply_rules(up.parse_csv(wide(wide_line("2026-01", 500, 0, [70]))), D(2026, 10, 1))
-    assert a.rows[0].first_order is None and any("no first-order" in w for w in a.warnings)
-
-
 # ---------------------------------------------------------------------------------------------------------------- diff
 
 def existing(month=D(2026, 8, 1), n=8417, first=63.47, ratios=(0.2, 0.3)) -> Cohort:

@@ -281,3 +281,43 @@ def test_the_ui_file_the_module_declares_exists_and_is_served(client):
     assert page == "inventory_supply.js"
     r = client.get(f"/static/js/projection/{page}")
     assert r.status_code == 200 and b"export async function render(el, ctx)" in r.data
+
+
+def test_the_burn_demand_row_is_labelled_for_what_it_counts(client, seeded, with_demand):
+    for loc in ("revamp", "amazon", "intl", "total"):
+        t = client.get(f"{B}/burn?location={loc}").get_json()
+        demand_rows = [r for r in t["rows"] if r["key"].endswith(".demand")]
+        assert demand_rows and {r["label"] for r in demand_rows} == {"Demand still to ship after today's count"}
+        assert t["captions"] == ["Demand is what is still to ship after today's count: this month's forecast minus units already shipped."]
+    row = {r["key"]: r for r in client.get(f"{B}/burn?location=revamp").get_json()["rows"]}["revamp.bull.demand"]
+    assert row["values"][0] == 6292.0 and row["values"][1] == pytest.approx(6966.142857142858)               # 6,996 forecast minus 704 already shipped
+
+
+def test_a_degraded_demand_is_a_503_not_zeros_but_edits_still_work(client, pg, seeded, monkeypatch):
+    from app.projection.inventory_demand import store as demand_store
+
+    def boom(conn):
+        raise RuntimeError("warehouse feed unreadable")
+
+    monkeypatch.setattr(demand_store, "read_inputs", boom)
+    for path in ("summary", "burn?location=revamp", "reorder", "po", "outlay", "value", "warnings", "table", "plan/suggest", "transfers"):
+        r = client.get(f"{B}/{path}")
+        assert r.status_code == 503, (path, r.status_code)
+        body = r.get_json()
+        assert body["error"] == "upstream_degraded" and {m["module"] for m in body["modules"]} >= {"inventory_demand"}
+    assert client.get(f"{B}/history").status_code == 200 and client.get(f"{B}/variables").status_code == 200       # no engine needed
+    assert client.post(f"{B}/po", json=po_body()).status_code == 201                                             # the data can still be corrected
+
+
+def test_defaults_for_a_new_reorder_row_come_from_the_default_variables(client, pg):
+    from app.projection.inventory_supply.model import ReorderParam
+    with pytest.raises(TypeError):
+        ReorderParam("revamp", "bull")                                                                           # no literal default left in the model
+    client.put(f"{B}/variables", json={"scenario": "current", "items": [{"kind": "lever", "name": "default_safety_days", "value": 21}]})
+    r = client.put(f"{B}/reorder-params", json={"location": "revamp", "product": "belle", "lead_days": 40})
+    assert r.status_code == 200 and r.get_json()["reorder_param"]["safety_days"] == 21
+    bear = client.post(f"{P}/scenarios", json={"name": "Bear", "clone_from": "current"}).get_json()["scenario"]["slug"]
+    client.put(f"{B}/variables", json={"scenario": bear, "items": [{"kind": "lever", "name": "default_safety_days", "value": 9}]})
+    assert client.put(f"{B}/reorder-params?scenario={bear}", json={"location": "intl", "product": "flow", "lead_days": 30}).status_code == 200
+    rp = next(x for x in client.get(f"{B}/vendors?scenario={bear}").get_json()["reorder_params"] if x["product"] == "flow")
+    assert rp["safety_days"] == 9 and rp["lead_days"] == 30

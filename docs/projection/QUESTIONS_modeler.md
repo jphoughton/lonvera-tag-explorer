@@ -1,0 +1,14 @@
+# Questions and assumptions (modeler)
+
+Each default is already built; change the line named.
+
+1. **Which EBITDA.** The P&L has no EBITDA line. Default: net operating income before interest expense (`noi + interest_expense`), stated on the page. The Pacing page's EBITDA goal is net operating income plus marketing influencers plus uncategorized expense (sheet `Automated Pacing!G31:G32`), so the two pages differ by those two lines (FY2026 actual: $4,712 and -$5,714; projected years: $0). The page offers "Same as Pacing" (setting `modeler.ebitda_addbacks`). If Josh wants one definition everywhere, the pnl module should own an `ebitda` line and both pages read it.
+2. **Ad spend means all channels.** The row is the Spend plan's marketing spend (Meta, Google, Amazon ads, TikTok, Bing). New customers come from the Meta and Google share of it (94.5% today) divided by CPA, as in the sheet (`P&L` rows 11 to 15). "$550K a month at $90 CPA" therefore buys about 5,780 customers a month. If Josh thinks of the input as Meta plus Google only, the row would be `drivers.ad_spend` (a typed override today) instead.
+3. **The working scenario is found by name.** "Modeler" (any slug). If Josh renames it, the next visit creates a new "Modeler" as a copy of the plan of record. Alternative: remember its slug in a setting.
+4. **Arriving on the plan of record opens the copy.** Choosing the plan of record on purpose from the bar (within three seconds of the pick) is kept; the shell's copy-first guard then asks on the first edit. A deep link `?scenario=current` arrives like a bar pick only if it follows one; otherwise it also opens "Modeler".
+5. **Closed months without books.** Aug to Oct 2026 are closed with cohort counts and Meta feed spend but no QuickBooks months, so their CPA and AOV cells are locked (the new-customer figures are measured) and spend stays editable (it moves marketing cost). The yearly table treats them as projected (the P&L's boundary).
+6. **Compare shows saved scenarios.** Other scenarios are as last saved and use their own EBITDA setting; the first row follows the draft. Up to three others.
+7. **Quick edits skip closed months and say so.** A direct edit of a closed cell is refused; an instruction over a mixed range changes the planned months and reports the skipped ones (an instruction over closed months only is an error).
+8. **Save as scenario is a frozen copy** (the core's copy semantics). It keeps today's numbers whatever happens to "Modeler" afterwards.
+9. **Reset to plan of record resets what this page edits**: the three plan rows and the retention model. Every other lever stays. Two versions are written (cells, then params) and both are restorable from History.
+10. **Drag selection** is not in the shared grid (Shift-click and Shift-arrows are). The quick-edit form follows whatever range is selected.

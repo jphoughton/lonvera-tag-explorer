@@ -130,9 +130,13 @@ def ev():
         base_ev = base_ev or e
         loi = e.get("loi") or 0.0
         mults = [m for m in e.get("multiples", [])]
+        years = [y for y in range(e["basis_year"], e["basis_year"] + 3) if y in out.fy]
+        offer = {str(y): (loi / out.fy[y]["noi"] if loi and out.fy[y].get("noi", 0) > 0 else None) for y in years}      # the offer as a multiple of that year's NOI
         rows.append({"slug": s, "name": res.scenario.name, "basis_noi": e.get("basis_noi"), "values": {f"{m:g}x": e.get(f"{m:g}x") for m in mults},
-                     "vs_loi": {f"{m:g}x": (None if e.get(f"{m:g}x") is None else e[f"{m:g}x"] - loi) for m in mults}})
+                     "vs_loi": {f"{m:g}x": (None if e.get(f"{m:g}x") is None else e[f"{m:g}x"] - loi) for m in mults},
+                     "offer_multiple": offer, "year_noi": {str(y): out.fy[y].get("noi") for y in years}})
     return jsonify({"year": base_ev.get("basis_year"), "multiples": base_ev.get("multiples", []), "loi": base_ev.get("loi"), "rows": rows,
+                    "offer_years": sorted({int(y) for r in rows for y in r["offer_multiple"]}),
                     "caption": "Full-year net operating income x multiple. Not an add-back-adjusted earnings figure."})
 
 
@@ -162,7 +166,10 @@ def _drivers_payload(conn, slug: str) -> dict:
     for g in payload["groups"]:
         for it in g["items"]:
             it["overrides"] = overrides.get(it["key"], [])
-    payload.update(scenario=slug, version=row["version"], vendors=store.load_vendors(conn), late_after_days=store.stale_after_days(conn), first_projected=first_projected.isoformat() if first_projected else None,
+    rate = getattr(res.results.get("drivers"), "sales_tax_rate", None)
+    payload.update(scenario=slug, version=row["version"], vendors=store.load_vendors(conn), late_after_days=store.stale_after_days(conn),
+                   upload_checks=store.upload_checks(conn),
+                   sales_tax={"rate": rate, "text": "History months carry no deduction; projected months deduct this."}, first_projected=first_projected.isoformat() if first_projected else None,
                    own_settings={k: v for k, v in own.items() if k != "drivers"})
     return payload
 
@@ -335,9 +342,25 @@ def _upload_file() -> tuple[bytes, str]:
     return data, f.filename
 
 
+def _estimates(conn, slug: str, months: list[date]) -> dict[date, dict]:
+    """The model's own income, cost and net operating income for each month (what the plan says today), to set next to what a file claims."""
+    try:
+        _, out = _run(conn, slug)
+    except ApiError:
+        return {}
+    L_ = out.lines
+    return {m: {"income": sum(L_[k].get(m, 0.0) for k in L.REVENUE_KEYS), "cost": L_["total_cogs"].get(m, 0.0) + L_["total_expenses"].get(m, 0.0),
+                "noi": L_["noi"].get(m, 0.0)} for m in months}
+
+
+def _file_months(parsed) -> list[date]:
+    return list(parsed.months)
+
+
 @bp.post("/upload")
 def upload():
-    """Preview (default) or commit (?commit=1 with the preview's diff_sha256 in the form)."""
+    """Preview (default) or commit (?commit=1 with the preview's diff_sha256 in the form). A month becomes books only when its account families are all
+    present; a month whose totals sit far from its neighbours needs `confirm_review=1`. Every commit keeps what it replaced (proj_upload_history)."""
     data, name = _upload_file()
     commit = request.args.get("commit") in ("1", "true")
     today = _today()
@@ -345,24 +368,93 @@ def upload():
         parsed = qb.parse(data, name)
     except qb.UploadError as e:
         raise ApiError(400, str(e)) from None
+    rconn = db.get_conn()
+    slug = _slug(rconn)
+    est = _estimates(rconn, slug, _file_months(parsed))
+    checks = store.upload_checks(rconn)
     if not commit:
-        conn = db.get_conn()
-        pv, _ = qb.preview(parsed, store.load_qb_map(conn), _existing(conn), today)
+        pv, _ = qb.preview(parsed, store.load_qb_map(rconn), _existing(rconn), today, est, checks)
         return jsonify({**pv, "committed": False})
     token = (request.form.get("diff_sha256") or "").strip()
     if not token:
         raise ApiError(400, "diff_sha256 is required: preview the file first and send the hash it returned")
     with rwdb.get_rw() as conn:
-        pv, cells = qb.preview(parsed, store.load_qb_map(conn), _existing(conn), today)
+        existing = _existing(conn)
+        pv, cells = qb.preview(parsed, store.load_qb_map(conn), existing, today, est, checks)
         if token != pv["diff_sha256"]:
             raise ApiError(409, "the loaded data changed since the preview: preview the file again")
         if not cells:
             raise ApiError(400, "nothing to load: no mapped account has a closed month")
+        if pv["blockers"]:
+            raise ApiError(400, "this file cannot become books: " + "; ".join(pv["blockers"]))
+        if pv["needs_confirmation"] and request.form.get("confirm_review") != "1":
+            raise ApiError(400, "some months look unusual: review them and confirm before committing")
+        who = audit.current_actor()
+        replaced = [{"line_key": k, "month": m.isoformat(), "old": existing[k][m], "new": v,
+                     "source": (conn.execute("SELECT source FROM proj_actuals WHERE line_key = %s AND month = %s", (L.actuals_key(k), m)).fetchone() or {}).get("source")}
+                    for (k, m), v in cells.items() if k in existing and m in existing[k] and abs(existing[k][m] - v) > qb.TOL]
+        created = [{"line_key": k, "month": m.isoformat(), "value": v} for (k, m), v in cells.items() if not (k in existing and m in existing[k])]
         rows = [(L.actuals_key(k), m, v) for (k, m), v in cells.items()]
         src = f"QuickBooks upload {name[:80]} (sha256 {parsed.sha256[:12]})"
-        n = series.upsert_actuals(conn, rows, src, actor=audit.current_actor())
-        audit.record(conn, actor=audit.current_actor(), scenario=None, action="pnl.upload", note=name[:200],
+        n = series.upsert_actuals(conn, rows, src, actor=who)
+        hist_id = store.record_upload(conn, actor=who, filename=name, sha256=parsed.sha256, size=parsed.bytes, file_rows=parsed.rows,
+                                      months=[m["month"] for m in pv["months"]], replaced=replaced, created=created)
+        audit.record(conn, actor=who, scenario=None, action="pnl.upload", note=name[:200],
                      old={"changed": pv["changes"], "changes_truncated": pv["changes_truncated"]},
-                     new={"sha256": parsed.sha256, "bytes": parsed.bytes, "file_rows": parsed.rows, "cells": n, "new": pv["cells"]["new"],
+                     new={"upload_id": hist_id, "sha256": parsed.sha256, "bytes": parsed.bytes, "file_rows": parsed.rows, "cells": n, "new": pv["cells"]["new"],
                           "changed": pv["cells"]["changed"], "months": [m["month"] for m in pv["months"]]})
-    return jsonify({**pv, "committed": True, "cells_written": n})
+    return jsonify({**pv, "committed": True, "cells_written": n, "upload_id": hist_id})
+
+
+@bp.get("/uploads")
+def uploads_list():
+    """The last QuickBooks uploads; only the newest applied one can be undone."""
+    rows = store.list_uploads(db.get_conn(), int(request.args.get("limit") or 10))
+    return jsonify({"uploads": [{**r, "at": r["at"].isoformat(), "undone_at": r["undone_at"].isoformat() if r["undone_at"] else None} for r in rows]})
+
+
+@bp.post("/upload/undo")
+def upload_undo():
+    """Undo the latest applied upload: restore exactly the values it replaced and remove the cells it created. Audited as `pnl.upload.undo`."""
+    data = request.get_json(silent=True) or {}
+    uid = data.get("upload_id")
+    if uid is not None and (isinstance(uid, bool) or not isinstance(uid, int)):
+        raise ApiError(400, "upload_id must be an integer")
+    with rwdb.get_rw() as conn:
+        res = store.undo_upload(conn, uid, actor=audit.current_actor())
+    return jsonify(res)
+
+
+@bp.put("/upload-checks")
+def upload_checks_put():
+    """The coverage rules for a QuickBooks upload (global): families a month must carry, and how far from its neighbours it may stray before it needs a
+    confirmation."""
+    data = _body()
+    cur_ = None
+    with rwdb.get_rw() as conn:
+        cur_ = store.upload_checks(conn)
+        new = dict(cur_)
+        if "low_ratio" in data:
+            new["low_ratio"] = _num(data["low_ratio"], "low_ratio", 0.01, 1.0)
+        if "high_ratio" in data:
+            new["high_ratio"] = _num(data["high_ratio"], "high_ratio", 1.0, 100.0)
+        if "required_families" in data:
+            fams = data["required_families"]
+            if not isinstance(fams, list) or not fams or any(f not in qb.FAMILIES for f in fams) or len(set(fams)) != len(fams):
+                raise ApiError(400, f"required_families must list some of: {', '.join(qb.FAMILIES)}")
+            if "revenue" not in fams:
+                raise ApiError(400, "revenue must stay required: a month without revenue cannot become books")
+            new["required_families"] = fams
+        if new != cur_:
+            conn.execute("INSERT INTO proj_pnl_settings (key, value, note) VALUES ('upload', %s, 'QuickBooks upload coverage rules') "
+                         "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()", (Jsonb(new),))
+            audit.record(conn, actor=audit.current_actor(), scenario=None, action="pnl.setting", line_key="pnl.upload", old=cur_, new=new)
+    return jsonify(new)
+
+
+@bp.get("/checks")
+def data_checks():
+    """Typed values next to the cohort figures for the months where the P&L uses a typed number. Nothing here changes a number."""
+    conn = db.get_conn()
+    _, out = _run(conn, _slug(conn))
+    return jsonify(views.data_checks_payload(out))

@@ -68,7 +68,7 @@ def test_debt_payload(client):
     assert any("$1,000 is still outstanding" in w for w in j["warnings"])
 
 
-def test_payback_defaults_and_query_overrides(client):
+def test_payback_defaults_and_query_overrides(client, sheet_payback):
     j = client.get(f"{F}/payback").get_json()
     r = j["result"]
     assert r["months"] == 10 and r["aov"] == pytest.approx(69.156, abs=1e-3) and r["cac"] == pytest.approx(105.4917, abs=1e-3)
@@ -112,7 +112,7 @@ def test_payout_defaults_and_what_if(client):
     assert client.get(f"{F}/payout?repeat_source=nope").status_code == 400
 
 
-def test_inputs_lists_effective_params_defaults_and_series(client):
+def test_inputs_lists_effective_params_defaults_and_series(client, sheet_payback):
     j = client.get(f"{F}/inputs").get_json()
     assert j["params"]["debt"]["rate"] == 0.15 and j["scenario_params"]["debt"]["principal"] == 3_000_000
     assert j["defaults"]["payback"]["aov"] is None and j["params"]["payback"]["aov"] == pytest.approx(69.156, abs=1e-3)

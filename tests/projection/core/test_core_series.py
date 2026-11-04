@@ -8,21 +8,21 @@ from core_helpers import P, audit_rows, create, get_series, item, put, scenario
 def test_put_get_round_trip(client):
     r = put(client, "current", item(value=1234.5, note="from sheet"), item(month="2026-12-01", value=-5), item(key="pnl.rate", value=0.0425, kind="override"))
     assert r.status_code == 200 and r.get_json() == {"version": 2, "changed": 3}
-    got = get_series(client, "current", "drivers.spend,pnl.rate,missing.key")
+    got = get_series(client, "current", "pnl.margin_adj,pnl.rate,missing.key")
     assert got["version"] == 2 and got["scenario"] == "current"
-    assert got["series"] == {"drivers.spend": {"2026-11-01": 1234.5, "2026-12-01": -5.0}, "pnl.rate": {"2026-11-01": 0.0425}, "missing.key": {}}
-    g = get_series(client, "current", "drivers.spend", **{"from": "2026-12-01", "to": "2027-01-01"})
-    assert g["series"]["drivers.spend"] == {"2026-12-01": -5.0}
+    assert got["series"] == {"pnl.margin_adj": {"2026-11-01": 1234.5, "2026-12-01": -5.0}, "pnl.rate": {"2026-11-01": 0.0425}, "missing.key": {}}
+    g = get_series(client, "current", "pnl.margin_adj", **{"from": "2026-12-01", "to": "2027-01-01"})
+    assert g["series"]["pnl.margin_adj"] == {"2026-12-01": -5.0}
 
 
 def test_prefix_query_and_exactly_one_selector(client):
-    put(client, "current", item(key="drivers.a"), item(key="drivers.b"), item(key="drivers_x.c"), item(key="pnl.a"))
-    r = client.get(f"{P}/series?scenario=current&prefix=drivers.")
-    assert sorted(r.get_json()["series"]) == ["drivers.a", "drivers.b"]           # literal prefix: '_' is not a wildcard
+    put(client, "current", item(key="pnl.a"), item(key="pnl.b"), item(key="pnl_x.c"), item(key="cohorts.a"))
+    r = client.get(f"{P}/series?scenario=current&prefix=pnl.")
+    assert sorted(r.get_json()["series"]) == ["pnl.a", "pnl.b"]                    # literal prefix: '_' is not a wildcard
     assert client.get(f"{P}/series?scenario=current").status_code == 400
     assert client.get(f"{P}/series?scenario=current&keys=a&prefix=b").status_code == 400
     assert client.get(f"{P}/series?scenario=nope&keys=a").status_code == 404
-    assert client.get(f"{P}/series?keys=drivers.a").get_json()["scenario"] == "current"       # default scenario
+    assert client.get(f"{P}/series?keys=pnl.a").get_json()["scenario"] == "current"       # default scenario
 
 
 def test_update_delete_and_noop(client, pg):
@@ -34,14 +34,14 @@ def test_update_delete_and_noop(client, pg):
     assert put(client, "current", item(value=11, note="b")).get_json()["version"] == v + 2                         # note change
     assert put(client, "current", item(value=11, note="b", kind="override")).get_json()["version"] == v + 3        # kind change
     assert put(client, "current", item(value=None)).get_json()["version"] == v + 4                                  # null deletes
-    assert get_series(client, "current", "drivers.spend")["series"]["drivers.spend"] == {}
+    assert get_series(client, "current", "pnl.margin_adj")["series"]["pnl.margin_adj"] == {}
     assert [r["action"] for r in audit_rows(pg, scenario="current") if r["action"].startswith("series")] == \
         ["series.set", "series.update", "series.update", "series.update", "series.delete"]
 
 
 def test_value_precision_and_range(client):
     assert put(client, "current", item(value=0.123456789), item(month="2026-12-01", value=99999999999.9999)).status_code == 200
-    s = get_series(client, "current", "drivers.spend")["series"]["drivers.spend"]
+    s = get_series(client, "current", "pnl.margin_adj")["series"]["pnl.margin_adj"]
     assert s["2026-11-01"] == 0.1235 and s["2026-12-01"] == 99999999999.9999
     assert put(client, "current", item(value=1e13)).status_code == 400
 
@@ -61,7 +61,7 @@ def test_item_validation(client, name, bad):
     r = client.put(f"{P}/series", json={"scenario": "current", "items": [item(month="2026-10-01"), bad]})
     assert r.status_code == 400, name
     assert "items[1]" in r.get_json()["error"] or "error" in r.get_json()
-    assert get_series(client, "current", "drivers.spend")["series"]["drivers.spend"] == {}        # nothing from the request was applied
+    assert get_series(client, "current", "pnl.margin_adj")["series"]["pnl.margin_adj"] == {}        # nothing from the request was applied
 
 
 def test_request_level_validation(client):
@@ -81,7 +81,7 @@ def test_request_level_validation(client):
 
 def test_item_count_limit(client):
     months = [f"{y}-{m:02d}-01" for y in range(2025, 2030) for m in range(1, 13)]
-    five_hundred = [item(key=f"k{i}", month=months[i % 60]) for i in range(500)]
+    five_hundred = [item(key=f"pnl.k{i}", month=months[i % 60]) for i in range(500)]
     assert put(client, "current", *five_hundred).get_json()["changed"] == 500
     r = put(client, "current", *five_hundred, item(key="one.more"))
     assert r.status_code == 400 and "500" in r.get_json()["error"]
@@ -89,13 +89,13 @@ def test_item_count_limit(client):
 
 def test_a_500_item_body_larger_than_the_app_wide_64kb_cap_is_accepted(client):
     months = [f"{y}-{m:02d}-01" for y in range(2025, 2030) for m in range(1, 13)]
-    items = [item(key=f"k{i}", month=months[i % 60], note="n" * 300) for i in range(500)]
+    items = [item(key=f"pnl.k{i}", month=months[i % 60], note="n" * 300) for i in range(500)]
     r = client.put(f"{P}/series", json={"scenario": "current", "items": items})
     assert r.status_code == 200 and r.get_json()["changed"] == 500
 
 
 def test_unknown_get_params_and_key_limits(client):
-    keys = ",".join(f"k{i}" for i in range(201))
+    keys = ",".join(f"pnl.k{i}" for i in range(201))
     assert client.get(f"{P}/series?keys={keys}").status_code == 400
     assert client.get(f"{P}/series?keys=Bad Key").status_code == 400
     assert client.get(f"{P}/series?keys=a&from=2026-11-15").status_code == 400
@@ -109,10 +109,10 @@ def test_series_module_functions(core_db):
         series.apply_items(conn, "current", series.parse_items([item(value=5), item(month="2026-12-01", value=6)]), actor="t")
     with rwdb.get_rw(core_db) as conn:
         scn = scenarios.get_scenario(conn, "current")
-        assert series.get(conn, scn, "drivers.spend", date(2026, 11, 1)) == 5.0
-        assert series.get(conn, "current", "drivers.spend", date(2027, 5, 1)) is None
-        assert series.get_series(conn, scn, ["drivers.spend", "x.y"], from_=date(2026, 12, 1)) == {"drivers.spend": {date(2026, 12, 1): 6.0}, "x.y": {}}
-        assert series.get_series(conn, None, prefix="drivers.") == {"drivers.spend": {date(2026, 11, 1): 5.0, date(2026, 12, 1): 6.0}}
+        assert series.get(conn, scn, "pnl.margin_adj", date(2026, 11, 1)) == 5.0
+        assert series.get(conn, "current", "pnl.margin_adj", date(2027, 5, 1)) is None
+        assert series.get_series(conn, scn, ["pnl.margin_adj", "x.y"], from_=date(2026, 12, 1)) == {"pnl.margin_adj": {date(2026, 12, 1): 6.0}, "x.y": {}}
+        assert series.get_series(conn, None, prefix="pnl.") == {"pnl.margin_adj": {date(2026, 11, 1): 5.0, date(2026, 12, 1): 6.0}}
 
 
 def test_actuals_helpers_and_actual_through(core_db, pg):
@@ -142,3 +142,22 @@ def test_actuals_helpers_and_actual_through(core_db, pg):
     with pytest.raises(Exception):
         with rwdb.get_rw(core_db) as conn:
             series.upsert_actuals(conn, [("qb.x", date(2026, 6, 1), float("nan"))], "bad")
+
+
+def test_with_overlay_changes_what_reads_see_inside_the_context_only(core_db):
+    from datetime import date
+    from app.projection import rwdb, series
+    with rwdb.get_rw(core_db) as conn:
+        series.apply_items(conn, "current", series.parse_items([item(value=5)]), actor="t")
+    seen = []
+
+    def overlay(conn, scn, cells, keys, prefix, from_, to):
+        seen.append((keys, prefix))
+        return [{**c, "value": c["value"] * 10, "note": "draft"} for c in cells] + [{"line_key": "pnl.draft_only", "month": date(2026, 11, 1), "value": 1.0, "kind": "input", "note": "draft", "origin": "draft"}]
+
+    with rwdb.get_rw(core_db) as conn:
+        with series.with_overlay(overlay):
+            got = series.get_series(conn, "current", ["pnl.margin_adj"])
+            assert got["pnl.margin_adj"][date(2026, 11, 1)] == 50.0 and "pnl.draft_only" in got
+        assert series.get_series(conn, "current", ["pnl.margin_adj"]) == {"pnl.margin_adj": {date(2026, 11, 1): 5.0}}         # outside the context: the real series
+    assert seen == [(["pnl.margin_adj"], None)]

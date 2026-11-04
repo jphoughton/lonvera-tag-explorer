@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[3]
 def test_seed_params_equal_the_code_defaults_except_aov_and_cac():
     prm = seed.seed_params()
     want = P.deep_merge(P.DEFAULTS, {})
+    for group, key in seed.POST_SEED_LEVERS:                      # levers added after migration 160 shipped live in the code defaults only
+        want[group].pop(key)
     want["payback"]["aov"] = pytest.approx(69.15600858369098)
     want["payback"]["cac"] = pytest.approx(105.4916738197425)
     assert prm == want

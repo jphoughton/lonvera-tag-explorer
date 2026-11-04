@@ -22,7 +22,7 @@ from ... import db
 from ...queries import ApiError
 from .. import audit, engine, rwdb, scenarios, series
 from ..interfaces import MONTHS, Month, parse_month
-from . import loaders, model, patterns, payback, table
+from . import loaders, model, patterns, payback, reference, table, undo, validation
 from .model import SHARE_KEYS, DriversResult, Levers
 from .revenue import revenue_lines
 
@@ -81,7 +81,10 @@ def get_table():
     conn = db.get_conn()
     res = _run(conn, _arg("scenario"))
     _drivers(res)
-    return jsonify(table.build(res, res.scenario.name, res.scenario.slug, res.scenario.version, loaders.current_date()))
+    today = loaders.current_date()
+    d = _drivers(res)
+    ref = reference.load_reference(conn, d.levers.ad_channels, d.levers.reference_days, today)
+    return jsonify(table.build(res, res.scenario.name, res.scenario.slug, res.scenario.version, today, ref))
 
 
 # ------------------------------------------------------------------------------------------------------------------ levers
@@ -98,7 +101,7 @@ def _check_levers(raw: Any) -> dict:
     """Validate a levers patch; returns the params['drivers'] merge patch."""
     if not isinstance(raw, dict) or not raw:
         raise ApiError(400, "levers must be a non-empty object")
-    extra = set(raw) - {"channel_share", "sales_tax_rate", "roas_slide", "payback", "ad_spend_channels", "posture_band", "summary_months"}
+    extra = set(raw) - {"channel_share", "sales_tax_rate", "roas_slide", "payback", "ad_spend_channels", "posture_band", "summary_months", "reference_days", "reference_tolerance"}
     if extra:
         raise ApiError(400, f"unknown lever {sorted(extra)[0]!r}")
     patch: dict[str, Any] = {}
@@ -157,6 +160,16 @@ def _check_levers(raw: Any) -> dict:
         if v is None or v != int(v) or not 1 <= v <= 36:
             raise ApiError(400, "summary_months must be a whole number of months from 1 to 36")
         patch["summary_months"] = int(v)
+    if "reference_days" in raw:
+        v = model._num(raw["reference_days"])
+        if v is None or v != int(v) or not 7 <= v <= 90:
+            raise ApiError(400, "reference_days must be a whole number of days from 7 to 90")
+        patch["reference_days"] = int(v)
+    if "reference_tolerance" in raw:
+        v = model._num(raw["reference_tolerance"])
+        if v is None or not 0 < v <= 1:
+            raise ApiError(400, "reference_tolerance must be a fraction above 0 and up to 1")
+        patch["reference_tolerance"] = v
     if "roas_slide" in raw:
         patch["roas_slide"] = _check_slide(raw["roas_slide"])
     return patch
@@ -189,27 +202,26 @@ def put_levers():
     return jsonify({"scenario": row, "levers": model.parse_levers(scn_params).to_dict()})
 
 
+# ------------------------------------------------------------------------------------------------------------------ series (validated)
+
+@bp.put("/series")
+def put_series():
+    """Same body as the core PUT /series, for Spend plan lines only, with the line bounds and the closed-month refusal applied."""
+    data = _body()
+    slug = data.get("scenario")
+    if not isinstance(slug, str) or not slug:
+        raise ApiError(400, "scenario is required")
+    items = series.parse_items(data.get("items"))
+    conn = db.get_conn()
+    scn = scenarios.get_scenario(conn, slug)
+    inp = loaders.load_inputs(conn, scn, loaders.current_date())
+    validation.check_items(items, model.compute_drivers(scn.params, inp), inp, only_drivers=True)
+    with rwdb.get_rw() as wconn:
+        res = series.apply_items(wconn, slug, items, expected_version=_int(data, "expected_version"), actor=audit.current_actor())
+    return jsonify(res)
+
+
 # ------------------------------------------------------------------------------------------------------------------ patterns
-
-def _locked(target: str, months: list[Month], base: DriversResult, inp: model.DriverInputs) -> list[Month]:
-    """Months in the range whose value comes from loaded data, so a typed plan value would do nothing."""
-    cutoff = inp.today.replace(day=1)
-    out = []
-    for m in months:
-        if target == "spend_total" and base.source.get(m) != "plan":
-            out.append(m)
-        elif target in ("nc_cpa", "nc_aov") and (base.nc_basis.get(m) != "plan" or base.source.get(m) != "plan"):
-            out.append(m)
-        elif target == "amazon_rev" and m < cutoff and m in inp.amazon_actual:
-            out.append(m)
-        elif target == "tiktok_rev" and m < cutoff and m in inp.tiktok_actual:
-            out.append(m)
-    return out
-
-
-def _fmt_months(ms: list[Month]) -> str:
-    return ", ".join(f"{m:%b %Y}" for m in ms[:4]) + (f" and {len(ms) - 4} more" if len(ms) > 4 else "")
-
 
 def _range_stats(d: DriversResult, months: list[Month], curve: list[float]) -> dict:
     spend = sum(d.spend_total.get(m, 0.0) for m in months)
@@ -268,9 +280,9 @@ def post_patterns():
             patterns.check_bounds(target, cells)
         except patterns.PatternError as e:
             raise ApiError(400, str(e)) from None
-        locked = _locked(target, months, base, inp)
+        locked = validation.locked_months(target, months, base, inp)
     if locked:
-        raise ApiError(400, f"{_fmt_months(locked)} hold loaded actuals; the plan applies to planned months only")
+        raise ApiError(400, f"{validation.fmt_months(locked)} hold loaded actuals; the plan applies to planned months only")
 
     # what the plan would look like with the pattern in place
     inp2 = copy.deepcopy(inp)
@@ -301,10 +313,23 @@ def post_patterns():
             v1 = scenarios.get_row(wconn, slug)["version"]
             res = {"version": v1, "changed": int(v1 != v0)}
         else:
-            items = series.parse_items([{"line_key": f"drivers.{target}", "month": m.isoformat(), "value": v, "kind": "input", "note": note}
-                                        for m, v in cells.items()])
+            cutoff = today.replace(day=1)                      # a closed month is corrected with kind 'override' (the core refuses a typed input there)
+            items = series.parse_items([{"line_key": f"drivers.{target}", "month": m.isoformat(), "value": v, "kind": "override" if m < cutoff else "input",
+                                         "note": note} for m, v in cells.items()])
             res = series.apply_items(wconn, slug, items, expected_version=ev, actor=actor)
     out.update({"preview": False, "version": res["version"], "changed": res["changed"], "note": note})
+    return jsonify(out)
+
+
+@bp.post("/undo")
+def post_undo():
+    """Put back exactly what one Spend plan change wrote (a pattern fill returns the `version` to pass), as one audited change."""
+    data = _body()
+    slug = data.get("scenario")
+    if not isinstance(slug, str) or not slug:
+        raise ApiError(400, "scenario is required")
+    with rwdb.get_rw() as conn:
+        out = undo.undo_change(conn, slug, data.get("version"), expected_version=_int(data, "expected_version"), actor=audit.current_actor())
     return jsonify(out)
 
 
@@ -343,4 +368,15 @@ def get_compare():
                                                                  pb["fulfillment_per_order"], int(pb["horizon_months"])) for m in MONTHS]},
                     "fy": fy})
     status = ["actual" if actual_through and m <= actual_through else "projected" for m in MONTHS]
-    return jsonify({"months": [m.isoformat() for m in MONTHS], "status": status, "scenarios": out})
+    view = out[0]
+    for o in out[1:]:                                    # differences from the viewing (first) scenario's side: view minus other, so "more spend here" is positive
+        o["vs_view"] = {"view": view["slug"], "fy": {y: {k: _diff(view["fy"][y].get(k), v) for k, v in vals.items()}
+                                                     for y, vals in o["fy"].items()}}
+    return jsonify({"months": [m.isoformat() for m in MONTHS], "status": status, "view": view["slug"], "scenarios": out})
+
+
+def _diff(mine: float | None, other: float | None) -> dict | None:
+    if mine is None or other is None:
+        return None
+    d = mine - other
+    return {"diff": d, "pct": (d / abs(other)) if other else None}

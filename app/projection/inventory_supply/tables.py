@@ -8,10 +8,12 @@ import math
 from datetime import date
 from typing import Any
 
+from .. import clock
 from ..interfaces import MONTHS, month_floor
 from .model import LOCATIONS, LOCATION_LONG, PRODUCTS, SupplyResult, product_name
 
-BURN_CAPTION = "Source: stock counts, demand forecast, purchase orders and FBA transfers"
+DEMAND_LABEL = "Demand still to ship after today's count"
+BURN_CAPTION = "Demand is what is still to ship after today's count: this month's forecast minus units already shipped."
 
 
 def _clean(v: Any) -> Any:
@@ -53,7 +55,7 @@ def burn_table(res: SupplyResult, loc: str) -> dict:
         base = f"{loc}.{prod}"
         rows.append({"key": f"{base}.h", "label": product_name(prod), "kind": "header", "fmt": "num", "values": [None] * len(months), "input": False})
         rows.append(_row(f"{base}.opening", "Opening stock", _line(res, (loc, prod, "opening"), months)))
-        rows.append(_row(f"{base}.demand", "Demand", _line(res, (loc, prod, "demand"), months)))
+        rows.append(_row(f"{base}.demand", DEMAND_LABEL, _line(res, (loc, prod, "demand"), months)))
         if loc == "amazon":
             rows.append(_row(f"{base}.inbound", "Inbound: FBA transfers", _line(res, (loc, prod, "inbound"), months)))
         elif loc == "total":
@@ -103,7 +105,7 @@ def value_table(res: SupplyResult) -> dict:
 
 def outlay_table(res: SupplyResult) -> dict:
     months = list(MONTHS)
-    start = res.start or month_floor(date.today())
+    start = res.start or month_floor(clock.today_pt())
     status = ["actual" if m < start else "projected" for m in months]
     intl = [res.intl_outlay.get(m, 0.0) for m in months]
     dep = [res.deposits.get(m, 0.0) for m in months]

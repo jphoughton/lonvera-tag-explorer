@@ -226,14 +226,32 @@ def test_settings_ignore_junk_and_apply_valid_overrides():
 
 
 def test_reference_day_priority_is_scenario_param_then_env_then_clock(monkeypatch):
+    from app.projection import clock
     from app.projection.inventory_supply import loaders
     monkeypatch.setenv("PROJECTION_TODAY", "2026-11-03")
     assert loaders.resolve_today({"inventory_supply": {"as_of": "2027-02-10"}}) == date(2027, 2, 10)
     assert loaders.resolve_today({}) == date(2026, 11, 3)
     monkeypatch.setenv("PROJECTION_TODAY", "not a date")
-    assert loaders.resolve_today({"inventory_supply": {"as_of": 5}}) == date.today()
+    assert loaders.resolve_today({"inventory_supply": {"as_of": 5}}) == clock.today_pt()
     monkeypatch.delenv("PROJECTION_TODAY")
-    assert loaders.resolve_today(None) == date.today()
+    assert loaders.resolve_today(None) == clock.today_pt()
+
+
+def test_the_reference_day_is_the_pacific_day_not_the_servers_utc_day(monkeypatch):
+    """At 06:10 UTC on Nov 4 it is still Nov 3 in Los Angeles: the supply pages must agree with demand and pacing."""
+    from datetime import datetime, timezone
+    from app.projection import clock
+    from app.projection.inventory_supply import freshness as fresh, loaders
+
+    class FakeDT:
+        @staticmethod
+        def now(tz=None):
+            return datetime(2026, 11, 4, 6, 10, tzinfo=timezone.utc).astimezone(tz)
+
+    monkeypatch.delenv("PROJECTION_TODAY", raising=False)
+    monkeypatch.setattr(clock, "datetime", FakeDT)
+    assert loaders.resolve_today({}) == date(2026, 11, 3)
+    assert clock.today_pt() == date(2026, 11, 3)
 
 
 def test_negative_opening_stock_and_a_safety_override_flow_into_reorder():

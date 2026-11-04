@@ -14,13 +14,14 @@ app/projection/financing/api.py             blueprint
 app/projection/financing/reconcile_map.py   47 lines against Term Debt, P&L 108-131 / 177-206 and Payback
 etl/projection_financing.py                 seed from the sheet snapshot; emits migrations/160_proj_financing.sql (--sql), --check, --apply
 migrations/160_proj_financing.sql           seeds the Current plan (params + 23 series cells); creates no tables (see QUESTIONS_financing.md 1)
+migrations/161_proj_financing_payback_store.sql   one store for the payback inputs (below)
 app/static/js/projection/financing.js       the page
-tests/projection/financing/                 171 tests (own database tagexp_proj_financing)
+tests/projection/financing/                 227 tests (own database tagexp_proj_financing)
 ```
 
 ## Inputs and outputs
 
-Reads upstream by name: `pnl.lines['noi']` and `['china_cogs']` (the stub's `cogs` is accepted for the add-back), `inventory.outlay` (cash by month), `cohorts.curve_live` / `curve_goal` (ages 1..60), `drivers.nc_aov` / `nc_cpa` / `actual_through` (payback fallback only). Each is optional and reads as zero when missing.
+Reads upstream by name: `pnl.lines['noi']` and `['china_cogs']` (the stub's `cogs` is accepted for the add-back) plus the variable-cost lines for the loaded payback, `inventory.outlay` (cash by month), `cohorts.curve_live` / `curve_goal` (ages 1..60), `drivers.nc_aov` / `nc_cpa` / `actual_through` (payback fallback only). `pnl` and `inventory` are required (compute has no default for them), so a failed upstream degrades this module (503 `upstream_degraded` through `degraded.ensure_ok`) instead of showing cash built on zeros. Without `cohorts` the payback, grid and payout read "unavailable".
 
 Returns `FinancingDetail(FinancingResult)`. `lines` (monthly series from the close month; earlier months are absent): `interest`, `principal`, `balance`, `loan_payment`, `tax`, `equity`, `cash_after_inventory`, `ending_cash` (the two are the same number, as in the sheet), `noi_before_inventory`, `opening_cash`, `inventory_buys`, `net_cash_flow`, `headroom`, `seller_principal`, `seller_interest`, `seller_balance`. Extras: `debt` (schedule lists), `seller`, `seller_flags`, `cash` (lowest month and value, first negative month, counts), `payback`, `matrix`, `payout`, `summary`, `warnings`, `recon`.
 
@@ -31,6 +32,22 @@ For the pacing module: `from app.projection.financing.calc import payback` (`pay
 `params['financing']` (defaults in `params.py`; `GET /inputs` lists effective values, defaults and sources): `close_month` (2026-09-01), `debt` {principal 3,000,000, rate 0.15, mode typed|fixed_payment, fixed_payment 125,000}, `seller_note` {enabled false, principal, rate, first_payment, installments, ebitda_floor}, `tax` {rate 0.21, deduct_interest false, payments [{month, from, to, label}]}, `cash` {opening, floor}, `payback` {aov, cac, product_cost_pct 0.1726, fulfillment 5.53, max_age 36, curve live|goal}, `matrix` {target_month 3, basis cm|loaded, fixed_cost 110,000, spends, roas}, `payout` {media_spend 800,000, cpa 90, aov 73, lazar 5,000, designer 3,000, samples 150 x $10, creative_production_rate 0.09, cogs_rate 0.14, fulfillment_rate 0.09, repeat_source goal|live|typed, scales, breakpoint, columns}.
 
 Series (`proj_series`, prefix `financing.`): `principal_paid` (input, typed per month; 21 seeded cells from Term Debt column E), `noi_before_inventory` (override; Sep-26 = 150,000), `opening_cash` (override; Oct-26 = 0), `tax` (override), `equity_payback` (input). Every typed value carries its sheet cell in `note`.
+
+## One store for the payback inputs
+
+Product cost (Payback D11), fulfillment per order (B12) and the horizon are the same cells on the Spend plan page and this page. They live in `params['drivers']['payback']` {`product_cost_pct`, `fulfillment_per_order`, `horizon_months`}, the store the Spend plan page and the pacing payback box read. `params.effective` resolves them as: that store, else a legacy `financing.payback.*` copy (scenarios restored from an older version), else the default; a stored value outside the Spend plan's ranges is ignored. `PUT /financing/inputs` with `payback.product_cost_pct|fulfillment|max_age` writes the drivers keys and clears the financing copies in one audited patch (null clears to the default), so an edit on either page moves both. `GET /inputs` returns `payback_sources` (`drivers` | `financing` | `default`). Average order value and cost per customer stay in `financing.payback.aov|cac`, blank by default: blank follows the drivers' last closed month (`payback_inputs.aov_source = "last closed month"`), a typed value is a deliberate override. Migration 161 drops the seeded copies (a value somebody changed moves to the single store first, typed AOV and CAC stay) for every scenario; it is idempotent. Reconcile: with AOV and CAC blank the Payback lines compare the app's last closed month with the sheet's month-to-date figures, so `payback_*` lines that depend on them differ by design; typing the sheet's two numbers ties them (tests do this).
+
+## Payback on two bases (skeptic S3 / S6)
+
+`payback(aov, cac, product_cost_pct, fulfillment, curve, max_age=36, *, fully_loaded=False, loaded_rate=None)`: with `fully_loaded=True` the cost per order is `loaded_rate x AOV` ("after all variable costs"); otherwise it is product cost + fulfillment ("on product margin", the sheet's Payback tab, still 10 months and still what the reconcile map checks). `calc.payback_pair(...)` returns both. `model.loaded_rate_info(params, pnl)` reads the P&L's own lines by name (`china_cogs`, `fulfillment_services`, `inbound_shipping`, `payment_processing`, `chargeback_management`; lever `payback.loaded_lines`) as a share of DTC revenue over the first 12 projected months (`payback.loaded_months`); a typed `payback.loaded_rate` replaces it, and a missing line gives no loaded result (never a lower cost). On the sheet's own rates the cost is 32.4% of order value (margin 67.6%, the skeptic's figure) and payback is 18 months vs 10 on product margin; the skeptic reads 19, the one-month difference is the curve rounding. The page, the headline (loaded first, product margin in the note) and `GET /payback` (`result` and `loaded.result`, `loaded.info.parts`) show both in those plain words; the spend x ROAS grid can take either margin (`matrix.margin`, default product, unchanged).
+
+## Top-up and what drives the low point
+
+`calc.top_up_to_zero` finds, on the exact waterfall (typed starting-cash resets included), the cash funded once at close (the close month's shortfall) and the smallest constant amount added each later month that keeps every month at zero or above. `summary.low_driver.sentence` is built from the waterfall: cash earned before inventory through the lowest month, what was paid out largest first (the typed term-loan schedule's principal, inventory buys, interest, tax), and the top-up. On the sheet's own inputs: through Dec-28 the plan earns $6.2M before inventory and pays out $7.5M ($3.4M inventory, $2.999M term-loan principal, $576K interest, $518K tax), so cash needs about $85.5K at close and about $43K a month after.
+
+## Validation
+
+`params.validate_params(params)` (exported as `app.projection.financing.validate_params`) refuses the values `PUT /inputs` and `PUT /debt` refuse. `compute` runs it on the effective params too, so a value that reaches the store through the generic scenario PATCH (the core's `Module.validate_params` hook is not in `Module` yet; the package passes it when the field exists) makes the module degrade with `invalid financing input: financing.tax.rate: must be at most 1` rather than compute with it.
 
 ## Behavior
 
@@ -79,5 +96,7 @@ With the sheet's single tax cell (`63,927.25`) entered as an override for Sep-27
 - Josh: decide items 1 (tax), 2 (Oct-26 opening cash) and 4 (tax months); confirm whether the term loan should be fully paid (the last typed payment is $1,000 short).
 - `payback.aov` / `cac` are typed levers from the pacing snapshot; the pacing module should supply live values (or write the levers).
 - Seller note and EBITDA floor: off, floor blank (amount not in the sheet).
+- The post-ship levers (`payback.loaded_*`, `matrix.margin`) live in the code defaults only; migration 160 is unchanged.
+- Pacing's variables panel still writes `financing.payback.*`; the single store is `drivers.payback.*` (ticket in TICKETS_financing.md).
 - Grid payload naming mismatch and the restore-baseline observation are in `QUESTIONS_financing.md`.
 - Net operating income and China COGS differences against the sheet belong to pnl and drivers (their reconcile reports); this module inherits them one for one.

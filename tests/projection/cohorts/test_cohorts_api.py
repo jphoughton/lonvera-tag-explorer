@@ -28,6 +28,12 @@ def loaded(cohorts_db):
         seed_cohorts(conn, build_history(first=date(2025, 8, 1), last=date(2026, 10, 1)), goal=[0.2, 0.1] + [0.01] * 58)
 
 
+@pytest.fixture()
+def wide_bands(client):
+    """Synthetic two-month files extrapolate to large multiples; these tests are about the upload mechanics, so the plan of record's bands are opened wide."""
+    client.put(f"{C}/levers", json={"levers": {"upload_lifetime_min": 0.0, "upload_lifetime_max": 50.0, "upload_twelve_min": 0.0, "upload_twelve_max": 20.0}})
+
+
 def csv_file(*lines: str, name: str = "cohorts.csv"):
     return {"file": (io.BytesIO(("\n".join([HEADER, *lines]) + "\n").encode()), name)}
 
@@ -102,7 +108,7 @@ def test_summary_payload_and_the_plain_freshness_line(client, loaded):
     assert s["freshness_line"] == "Cohorts loaded through Oct 2026; Nov closes Dec 1."
     assert s["cohorts_loaded"] == 15 and s["last_cohort"] == "2026-10-01" and s["data_through"] == "2026-10-01"
     assert s["freshness"]["cadence"] == "monthly-upload" and s["freshness"]["behind"] is False
-    assert s["lifetime_multiple"] == pytest.approx(s["lifetime_live"]) and s["curve"] == "live"
+    assert s["lifetime_multiple"] == pytest.approx(s["lifetime_live"]) and s["curve"] == "live" and s["curve_label"] == "Current, last 3 cohorts"
     assert s["forward_12m_from"] == "2026-11-01" and s["forward_12m_to"] == "2027-10-01" and s["forward_12m_repeat"] > 0
     assert s["backtest"]["months"] and s["backtest"]["gap"] is not None
 
@@ -160,7 +166,8 @@ def test_levers_null_removes_a_lever_back_to_the_default(client):
 
 
 @pytest.mark.parametrize("bad,fragment", [({"n_cohorts": 0}, "between 1 and 36"), ({"n_cohorts": 2.5}, "whole number"), ({"tail_decay": 2}, "between"),
-                                          ({"curve": "median"}, "curve must be"), ({"curve": "blend:7"}, "between 0 and 1"),
+                                          ({"curve_source": "median"}, "curve_source must be"), ({"curve_source": "blend:7"}, "between 0 and 1"),
+                                          ({"curve_source": "asof"}, "choose a month"), ({"asof_month": "2026-08-15"}, "first of a month"),
                                           ({"mystery": 1}, "unknown cohort lever"), ({"n_cohorts": "3"}, "must be a number")])
 def test_levers_validation_leaves_the_scenario_alone(client, pg, bad, fragment):
     v0 = client.get(f"{C}/levers").get_json()["version"]
@@ -181,18 +188,18 @@ def test_levers_combination_and_body_validation(client):
 
 def test_lever_edit_can_be_undone_with_the_core_restore(client, loaded):
     v0 = client.get(f"{C}/levers").get_json()["version"]
-    client.put(f"{C}/levers", json={"levers": {"curve": "goal"}})
+    client.put(f"{C}/levers", json={"levers": {"curve_source": "goal"}})
     assert client.get(f"{C}/curves").get_json()["summary"]["curve"] == "goal"
     r = client.post(f"{P}/scenarios/current/restore", json={"version": v0})
     assert r.status_code == 200
-    assert client.get(f"{C}/levers").get_json()["levers"]["curve"] == "live"
+    assert client.get(f"{C}/levers").get_json()["levers"]["curve_source"] == "live"
     assert client.get(f"{C}/curves").get_json()["summary"]["curve"] == "live"
 
 
 def test_a_scenario_clone_carries_its_own_levers_and_the_base_is_untouched(client, loaded):
     client.post(f"{P}/scenarios", json={"name": "Slow decay", "clone_from": "current"})
     slug = "slow-decay"
-    client.put(f"{C}/levers", json={"scenario": slug, "levers": {"tail_decay": 0.99, "curve": "blend:0.5"}})
+    client.put(f"{C}/levers", json={"scenario": slug, "levers": {"tail_decay": 0.99, "curve_source": "blend:0.5"}})
     base = client.get(f"{C}/curves?scenario=current").get_json()
     mine = client.get(f"{C}/curves?scenario={slug}").get_json()
     assert base["levers"]["tail_decay"] == 0.95 and mine["levers"]["tail_decay"] == 0.99
@@ -202,7 +209,7 @@ def test_a_scenario_clone_carries_its_own_levers_and_the_base_is_untouched(clien
 
 def test_goal_curve_choice_changes_repeat_revenue_and_a_missing_goal_warns(client, loaded, cohorts_db):
     live_total = {r["key"]: r for r in client.get(f"{C}/table").get_json()["rows"]}["repeat_rev"]["values"]
-    client.put(f"{C}/levers", json={"levers": {"curve": "goal"}})
+    client.put(f"{C}/levers", json={"levers": {"curve_source": "goal"}})
     goal_total = {r["key"]: r for r in client.get(f"{C}/table").get_json()["rows"]}["repeat_rev"]["values"]
     assert goal_total != live_total
     with rwdb.get_rw(cohorts_db) as conn:
@@ -239,7 +246,7 @@ def test_upload_commit_needs_the_preview_hash_and_rejects_a_changed_file(client,
     assert _counts(pg) == (0, 0)
 
 
-def test_upload_commit_writes_cohorts_cells_and_one_audit_row(client, pg):
+def test_upload_commit_writes_cohorts_cells_and_one_audit_row(client, wide_bands, pg):
     f = lambda: csv_file(csv_line("2026-08", 8417, 63.47, [76.43, 93.86]), csv_line("2026-09", 5641, 71.02, [78.91]), name="cohorts-revenue-2023-11-02-to-2026-11-02.csv")   # noqa: E731
     sha = client.post(f"{C}/upload", data=f(), content_type="multipart/form-data").get_json()["sha256"]
     r = client.post(f"{C}/upload?commit=1", data={**f(), "expect_sha256": sha}, content_type="multipart/form-data")
@@ -258,7 +265,7 @@ def test_upload_commit_writes_cohorts_cells_and_one_audit_row(client, pg):
     assert again["cohorts_added"] == 0 and again["cohorts_changed"] == 0 and again["cells_added"] == 0 and again["cells_changed"] == 0
 
 
-def test_upload_revision_shows_up_as_changed_cells_with_old_and_new(client, pg):
+def test_upload_revision_shows_up_as_changed_cells_with_old_and_new(client, wide_bands, pg):
     first = csv_file(csv_line("2026-08", 8417, 63.47, [76.43]))
     sha = client.post(f"{C}/upload", data=first, content_type="multipart/form-data").get_json()["sha256"]
     client.post(f"{C}/upload?commit=1", data={**csv_file(csv_line("2026-08", 8417, 63.47, [76.43])), "expect_sha256": sha}, content_type="multipart/form-data")
@@ -290,7 +297,7 @@ def test_upload_through_override_and_min_customers(client):
     assert out["summary"]["cohorts_loaded"] == 1 and out["summary"]["skipped"][0]["month"] == "2026-09-01"
 
 
-def test_loaded_upload_feeds_the_table(client):
+def test_loaded_upload_feeds_the_table(client, wide_bands):
     lines = [csv_line("2026-07", 10138, 61.39, [75.32, 94.58]), csv_line("2026-08", 8417, 63.47, [76.43, 93.86]), csv_line("2026-09", 5641, 71.02, [78.91])]
     sha = client.post(f"{C}/upload", data=csv_file(*lines), content_type="multipart/form-data").get_json()["sha256"]
     client.post(f"{C}/upload?commit=1", data={**csv_file(*lines), "expect_sha256": sha}, content_type="multipart/form-data")

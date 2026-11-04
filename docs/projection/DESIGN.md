@@ -11,7 +11,8 @@ Lonvera Projections look and behave like one product. This file is the spec the 
 5. Months are columns, entities are rows. Input rows amber, calculated rows quiet, totals heavy, projected months blue and asterisked. The grid does this; pass `kind`, `fmt`, `input` correctly.
 6. Labels read as a finished document: full words, no build history, no rationale, no "(see ...)". Expand an acronym the first time it appears on the page.
 7. Edit in place. No modal for a single value. Save is automatic and shows Saving, Saved or the error. Undo is always one keypress.
-8. Every action has a keyboard path. Visible focus. 44px touch targets on phones. Tables scroll inside their own box.
+8. Every action has a keyboard path. Visible focus. Touch targets of 40px (44px for menu items) on phones. Tables scroll inside their own box. Nothing under 12px except bold caps labels at 11px.
+8b. Every bulk write (fill a range, restore, replace a curve) says what it will change first and gives an Undo: a toast with `action: {label:'Undo', onClick}` (`ctx.toast`), or the grid Undo stack. A one-click overwrite with neither is a design bug.
 9. Write empty, loading and error states in plain language that say what happened and what to do.
 10. Check your page at 1440px and 390px, light and dark (`python tests/projection/design/tools/shoot.py` shows how).
 
@@ -51,10 +52,10 @@ All in `brand.css`, prefixed `--lv-`. Components use roles, never the raw brand 
 | Ink and lines | `--lv-ink`, `--lv-ink-2`, `--lv-muted`, `--lv-line`, `--lv-line-soft`, `--lv-line-strong` (3:1 control borders) |
 | Action (ember) | `--lv-action`, `-hover`, `-active`, `--lv-on-action`, `--lv-action-tint`, `--lv-link`, `--lv-link-hover`, `--lv-focus`, `--lv-select-bg` |
 | Status | `--lv-good`, `-warn`, `-bad`, `-info`, `-neutral` with `-bg` tints; solids `--lv-bad-solid`, `-good-solid`, `-warn-solid`; `--lv-neg` (negative numbers) |
-| Data cells | `--lv-input-bg`, `-input-edge`, `-input-hover`, `--lv-calc-ink`, `--lv-total-bg`, `--lv-total-rule`, `--lv-subtotal-bg`, `--lv-band-bg`, `--lv-hl-bg` |
+| Data cells | `--lv-input-bg`, `-input-edge` (control edge, 3:1), `-input-grid` (the amber gridline between input cells), `-input-hover`, `--lv-calc-ink`, `--lv-total-bg`, `--lv-total-rule`, `--lv-subtotal-bg`, `--lv-band-bg`, `--lv-hl-bg` |
 | Month headers | `--lv-actual-head/-ink`, `--lv-proj-head/-ink`, `--lv-proj-cell`, `--lv-proj-rule`, `--lv-proj-band` |
 | Charts | `--lv-viz-1..6`, `--lv-viz-ink` (main series), `--lv-viz-neutral` (Other), `--lv-viz-grid`, `--lv-viz-axis`, `--lv-viz-proj-alpha`, `--lv-viz-dash` |
-| Type | `--lv-font`, `--lv-mono`, `--lv-fs-2xs 10.5 / xs 11.5 / sm 12 / base 13 / md 14 / lg 16 / xl 20 / 2xl 28 / hero 40`, weights 400 / 500 / 600 / 700 / 800, `--lv-track-kicker` |
+| Type | `--lv-font`, `--lv-mono`, `--lv-fs-2xs 11 / xs 12 / sm 12.5 / base 13 / md 14 / lg 16 / xl 20 / 2xl 28 / hero 40`, weights 400 / 500 / 600 / 700 / 800, `--lv-track-kicker` |
 | Space, shape | `--lv-sp-1..8` (4, 8, 12, 16, 20, 24, 32, 40), radii `--lv-r-xs 4 / sm 8 / md 14 / lg 20 / pill`, shadows `--lv-shadow-1..3`, `--lv-ease`, `--lv-dur 150ms` |
 | Density | `--lv-row-h` 26 (compact) or 34 (comfortable), `--lv-cell-px`, `--lv-col-w` 92 / 100, `--lv-label-w` 250, `--lv-hit` (28, becomes 44 on touch and under 640px) |
 
@@ -62,7 +63,7 @@ All in `brand.css`, prefixed `--lv-`. Components use roles, never the raw brand 
 
 **1. Ember is close to warn and bad.** Ember (`#C75123`, OKLCH hue 40) is reserved for the primary action, the active tab underline, the focus ring and links (as ember deep `#9E3E19`). It is never used for a number, an alert or a status. Negative numbers and "bad" are **crimson** `#A3173C` (hue 14 against ember's 40, a clear step toward blue-red), always with a minus sign or parentheses, and every status chip carries an icon and a word. Warn is amber-brown on pale amber. `test_ember_is_not_a_status_color` enforces a gap of at least 25 degrees (measured 26). In dark mode the gap is wider (`#F59E74` links at hue 46 vs `#FF92AB` negatives at hue 6).
 
-**2. Yellow input cells on bone.** Input cells use a butter tint (`#FAEBC0`, amber at about 25% on Card) with a slightly stronger amber 1px gridline (`#DDB650`) and semibold ink text. Measured: fill vs calculated cell distance 6.4 in OKLab x100 (unmistakable), contrast with the panel 1.12:1 (not loud), ink on it 14.8:1. Hover deepens to `#F6E0A0`. Editing turns the cell white with a 2px focus ring. In dark mode the tint becomes a deep amber `#3A3011` with cream text. A grayscale printout still shows the amber grid edge.
+**2. Yellow input cells on bone.** Input cells use a butter tint (`#FAEBC0`, amber at about 25% on Card) with a slightly stronger amber 1px gridline (`--lv-input-grid`, `#DDB650`; the control edge `--lv-input-edge` is `#A98216` so a single input passes 3:1) and semibold ink text. Measured: fill vs calculated cell distance 6.4 in OKLab x100 (unmistakable), contrast with the panel 1.12:1 (not loud), ink on it 14.8:1. Hover deepens to `#F6E0A0`. Editing turns the cell white with a 2px focus ring. In dark mode the tint becomes a deep amber `#3A3011` with cream text. A grayscale printout still shows the amber grid edge.
 
 ### Contrast (WCAG), tested
 
@@ -88,7 +89,7 @@ Validated with the dataviz validator and ported checks (`test_chart_palette`): l
 
 ## 3. Type
 
-Plus Jakarta Sans. Page title 20px / 800 / -0.02em (`text-wrap: balance`). Section title 14px / 800. TLDR sentence 16px / 600. Purpose line 14px muted. Table and controls 13px (compact) with tabular numerals. Captions 11.5px muted. Kickers and group labels 10.5px / 700 / uppercase / +0.08em. KPI numbers 20px / 800 / -0.02em. Hero figure (one per view at most) 40px, proportional figures. Numbers in columns always `font-variant-numeric: tabular-nums` (the grid does it).
+Plus Jakarta Sans. Page title 20px / 800 / -0.02em (`text-wrap: balance`). Section title 14px / 800. TLDR sentence 16px / 600. Purpose line 14px muted. Table and controls 13px (compact) with tabular numerals. Captions, table headers, chips and notes 12px (`--lv-fs-xs`; a test fails the build below 12px; bold caps labels may be 11px). Kickers and group labels 11px / 700 / uppercase / +0.08em (`--lv-fs-2xs`, bold caps only, never body text). KPI numbers 20px / 800 / -0.02em. Hero figure (one per view at most) 40px, proportional figures. Numbers in columns always `font-variant-numeric: tabular-nums` (the grid does it).
 
 Number formats (from `ctx.fmt`): money `$1,234` (no cents above $1,000; `usd` shows cents for unit prices), negatives `($564,615)` in crimson, zero `—`, percent `12.5%`, multiples `1.86x`, units `1,234`, compact `$6.7M` and `-$350K` in TLDR text, months `Nov 2026`, dates `Nov 5, 2026`. Projected values get a trailing asterisk everywhere, including in the TLDR (`Jan 2027*`).
 
@@ -109,9 +110,9 @@ Number formats (from `ctx.fmt`): money `$1,234` (no cents above $1,000; `usd` sh
 ```
 
 - **One bar.** Projections and Tags are two sections of the same bar: `Lonvera` (home), `Tags`, `Projections`, the same 42px height, 16px side padding, 14px gaps, 14px bold brand and 13px muted links as the Tags pages. On `/projection` the module tabs follow `Projections` inline, and the scenario control sits at the right end. Switching between Tags and Projections reads as the same bar changing its tabs. Sticky, one row at every width.
-- **Module tabs**: Overview plus the seven modules, full height of the bar, thin dividers between the groups (no group labels; the Overview page and the narrow-screen menu keep the group names Plan, Supply and cash, Track). The active tab is 800 weight with a 3px ember underline. A module that is not built yet is muted, medium weight, with a small "soon" tag. When the tabs do not fit (1100px and below) they scroll horizontally inside the bar with a fade at the right edge; at 900px and below they collapse into one `Projections` menu button (the list is grouped, the current page is marked).
+- **Module tabs**: Pacing first (it is the default page: `/projection` lands on `/projection/pacing` when Pacing is built), then Overview (`/projection/overview`), then the other modules, full height of the bar, thin dividers between the groups (no group labels; the Overview page and the narrow-screen menu keep the group names). The active tab is 800 weight with a 3px ember underline and is scrolled into view when the tabs scroll. A module that is not built yet is muted, medium weight, with a small "soon" tag. When the tabs do not fit (1100px and below) they scroll horizontally inside the bar with a fade at the right edge; at 900px and below they collapse into one `Projections` menu button (same order, grouped, current page marked).
 - **Scenario control** (right end): a compact select with the scenario name, the version chip (`v31`, hidden under 640px), an amber `Copy` chip when you are not in the plan of record, and a `...` button that opens the actions menu: New scenario, Clone this scenario, Rename, History and restore, and (copies only) Delete this scenario in crimson. Menus are real `role=menu` popups: Enter or click opens, arrows move, Esc closes and returns focus, outside click closes, items are 44px tall on touch.
-- **Plan headline** (global strip under the bar, from `GET /run`) shows where the whole plan lands. It is hidden until `/run` returns real numbers: no module built, no figures, or every figure zero. It is not the page's TLDR.
+- **Plan headline** (global strip under the bar, from `GET /run`) shows where the whole plan lands. It is hidden until `/run` returns real numbers (no module built, no figures, or every figure zero). It answers "what did my change do": in a scenario copy each number shows its difference from the scenario it was cloned from (`-$0.6M vs Current plan`, `same as Current plan` right after cloning); in the plan of record a number that just moved shows what it was (`was $1.5M`). It is not the page's TLDR. Under 1100px it is one scrolling row.
 - **Page header** (`ctx.ui.pageHeader`): `h1` title (noun phrase, 1 to 3 words: "Cash and debt", "Inventory supply"), purpose line (one sentence, what the page is for and what to do on it), optional actions on the right (at most one primary), then the **TLDR strip**.
 - **TLDR strip** (`ctx.ui.tldr` or `pageHeader`'s `tldr`): a night band. Left: one sentence, at most 18 words, that starts with the finding and includes a number and a time ("Vital Bull runs out in January unless 40,000 units land by December 1."). Right: 3 to 5 KPIs: label (noun phrase, fully spelled), value (formatted, asterisk if projected), optional note (4 words or fewer). Add `tone: 'good'|'warn'|'bad'` only when there is a real threshold; tones use the `--lv-inv-*` colors that pass AA on the night band. If a page has nothing to say yet (no data), the sentence says so ("No purchase orders yet.").
 - **Source caption** (`ctx.ui.source(text)` or `captions` in the grid payload): one short line per table or chart: where the data comes from and how fresh. `QuickBooks through Oct 2026.` Not how it is computed.
@@ -144,7 +145,7 @@ export async function render(el, ctx) {
 ## 5. Tables (the grid)
 
 - Months are columns, entities are rows. First column (labels) and the header rows are sticky; wide tables scroll inside `.pg-scroll` (never the page). Year band above months; FY toggle adds fiscal-year columns on the right.
-- **Row kinds** (payload `kind`): `header` = collapsible section band (uppercase 10.5px on `--lv-band-bg`), `input` = amber, `calc` = quiet ink-2 on panel, `subtotal` = bold, 1px strong rule above, `total` = 800 weight, 2px ink rule above, sand fill, `ratio` = italic muted (percent and multiples).
+- **Row kinds** (payload `kind`): `header` = collapsible section band (uppercase 11px on `--lv-band-bg`), `input` = amber, `calc` = quiet ink-2 on panel, `subtotal` = bold, 1px strong rule above, `total` = 800 weight, 2px ink rule above, sand fill, `ratio` = italic muted (percent and multiples).
 - **Numbers** right-aligned, tabular. Negatives `($1,234)` crimson (percent and multiples: `-12.5%`), zero `—` muted, missing blank. Never mix units in a row. Money rows are whole dollars unless the unit is small (prices).
 - **Projected** months: header `--lv-proj-head` blue with blue ink, a 2px blue rule at the first projected month, a cool whisper tint on cells, an asterisk on every non-zero value. Actual headers are sand. The year band shows a mixed gradient on the year that contains both.
 - **Inputs** are amber with an amber gridline, semibold. Hover deepens them and the cursor becomes a text cursor. Calculated cells are never amber and have no hover change, so "can I type here" is answered by color alone plus the cursor.
@@ -157,7 +158,7 @@ export async function render(el, ctx) {
 - Click an amber cell (or Enter, F2, double-click, or just type) to edit in place. Enter commits and moves down, Tab and Shift+Tab commit and move sideways, arrows commit and move, Esc cancels, clicking elsewhere commits. Empty or `-` clears the override. Paste tab-separated numbers from Sheets: they fill across the months starting at the selected cell. Delete clears a selection. `350k`, `1.5m`, `12%`, `(1,234)` parse.
 - **No modal for a single edit.** The editor is the cell. Invalid input keeps the editor open, outlines it crimson, and the toolbar says why ("Not a number").
 - **Micro-states** (cell and toolbar status): pending = cell at 60% opacity, toolbar "Saving…"; saved = 2px green inset flash, toolbar "Saved 3 cells"; error = crimson inset, the value reverts, toolbar and toast say what happened ("Too many changes in a short time. Wait a minute and try again.").
-- **Undo**: Ctrl or Cmd+Z and the toolbar Undo button, 50 steps. Restore from History brings back an older version of the whole scenario (section 8).
+- **Undo**: Ctrl or Cmd+Z and the toolbar Undo button, 50 steps. A re-render after a save keeps keyboard focus on the grid (so Ctrl+Z, arrows and the next typed value work straight away). Restore from History brings back an older version of the whole scenario (section 8).
 - Edits write the current scenario only. The scenario bar (next section) always says which one.
 
 ## 7. Scenarios: which one am I in
@@ -170,10 +171,29 @@ The scenario control is part of the sticky bar, so it is visible on every page a
 - **Compare**: the baseline (usually the plan of record) is a solid ink line; each other scenario is a dashed line in the next slot color and a direct label at its last point. In tables, compare shows `Difference vs <baseline>` columns (value and percent) after the scenario's own columns, never replaces them. Compare is read-only; the page header says "Comparing Bull case with Current plan".
 - Clone is the way to try something: the dialog is "Clone scenario", prefilled name "<name> copy".
 
+### 7b. The plan of record is protected (no password)
+
+The plan of record (the default scenario, "Current plan") drives the pacing goals and the default view of every page, so a trial edit there silently moves them. There is no login. The protection is clarity plus one decision, built once in the shared layer (`lib/guard.js`, `lib/grid.js`, `shell.js`; module pages change nothing):
+
+- **Always visible.** In the bar the plan of record carries a calm `Plan of record` chip with the age of the last change ("changed 12 min ago", or "no edits yet") and a tooltip saying what it drives. Above every grid a one-line strip says "Plan of record. It drives the pacing goals and the default view of every page." with a `Make a copy to try changes` button. A copy shows the amber `Copy` chip instead.
+- **First edit per browser tab session** (cell edit, paste, delete, bulk fill or pattern, lever and settings saves) opens an inline card (`role=alertdialog`, focus on the primary): **Make a copy and edit it** (primary: clones the plan as "What-if <date time>", switches to the copy, applies the edit there, toast with `Rename`), **Edit the plan of record** (secondary: remembered for the rest of the tab session), **Cancel** (Esc; nothing is sent and the cell goes back). A burst of writes asks once, and queued follow-up writes of the same operation follow the copy.
+- **What does not ask:** scenario management (`/scenarios...`), previews, and fact stores every scenario shares (purchase orders, transfers, stock counts, the saved Goal curve, QuickBooks account mapping, feed rules, demand uploads). A copy would not isolate those, so asking would be noise.
+- **Restore in one click.** When the plan of record has moved since this tab session started, the top of the History drawer says so and offers `Restore plan of record to v<N>, <time>` as the primary button, so a bad run of edits is one confirm away from undone.
+- **The way back.** History is plain English and every version except the current one has Restore; a restore is itself a new version.
+
+### 7c. Concurrent edits, degraded sources, input limits
+
+- **Versioned writes.** Series saves, scenario updates and restores send `expected_version`. On a 409 the page shows "This plan changed in another tab or window (v12 to v13)" with `Reload` (primary, Esc) and `Overwrite`; Overwrite resends against the newer version and the other change stays in History. The edit is never silently dropped or silently applied over someone else's.
+- **Degraded sources.** `/run.degraded` lists modules whose source is down. The shell shows a persistent plain banner on every page ("<Module> failed to load, so numbers that depend on it are not shown.", with the reason beneath). A module that answers 503 `upstream_degraded` renders a plain card instead of an empty or zero page.
+- **Input limits.** Lines whose key is spend, units, orders, principal, cpa or aov are non-negative, and no value may reach 1e11; the grid refuses those in the cell before anything is sent (the server enforces the same and is the backstop). Any other limit the server names in a 400 is learned from its message, and the next entry is refused in the cell: `(500000)`, `-350k` and out-of-range values show "Enter 0 or more. This line cannot be negative." or "Enter a value from $0 to $10,000,000." (the limit the API named); the value is not sent and the editor stays open.
+- **Deleted scenarios and copies that follow their base.** Delete keeps the scenario for 30 days: the success toast has Undo, and History lists "Deleted scenarios" with days left and a Restore button (the restored scenario opens at once). A clone made before copies were frozen (`frozen: false`, has a base) shows `Detach from <base>` in the `...` menu; after a confirm it keeps today's numbers as its own and stops following the base.
+- **Books and feeds.** The plan headline reads "Books through Oct 2026 · Feeds through Nov 2, 2026" when `/run` sends `books_through` and `feeds_through`; older payloads fall back to "Actual through".
+- **Month status words.** Month headers carry a three-state chip: `Books` (closed, from QuickBooks), `Feeds` (the live month, from feeds), `Projected*` (model). The `actual` and `projected` payload values keep working; a module that sends `state` gets the three words in a chip row above the months (hover explains each).
+
 ## 8. Destructive actions and recovery
 
 - **Delete a scenario**: crimson button, then a dialog that explains the scope ("This removes the scenario and all of its inputs. Other scenarios are not affected.") and requires typing the scenario's slug. The plan of record cannot be deleted and shows no Delete button.
-- **Restore**: History drawer lists versions with who and what changed (the edited line, month, old to new), a Restore button on every version except the current one, and the copy "goes back to how it was at version N. The current state stays in the history, so this can be undone." Restore is itself a new version.
+- **Restore**: History drawer lists versions with who and what changed in plain words ("Marketing spend, Aug 2027: $5,000,000 to $450,000", never `drivers.spend_total`), a Restore button on every version except the current one, and the copy "goes back to how it was at version N. The current state stays in the history, so this can be undone." Restore is itself a new version.
 - **Uploads**: preview then commit, never overwrite a month without showing the diff (page type C).
 - Bulk series paste over 500 cells is split by the shell; the toast says the count.
 - Never use `window.confirm`. Use `ctx` dialogs (`confirmBox`, `confirmTyped`, `askText`).
@@ -211,6 +231,8 @@ Rules: say what happened first, then what to do. No error codes, no stack traces
 
 Chart.js only (vendored). Use `ctx.charts` (line, bar, combo, scenarioCompare). Rules: one y axis (never two scales; use small multiples or an index to 100 instead of dual axes; the demo's secondary percent axis is a library capability, not a pattern to copy); axis ticks are compact (`$600K`); title the metric in the card heading, not the legend; zero baseline for bars; legend on top right for 2 or more series; direct label the last point of at most the series the story is about; gridlines hairline and recessive; no 3D, no gradients, no pies; tooltips show month, series, value, and "(projected)". Every chart has its table next to it as the text alternative, and a canvas `aria-label` that states the measure ("New-customer revenue and NOI by month"). Height 280px, 240px on phones.
 
+Ordered series (cohort vintages, tiers) use `ctx.charts.ramp(n, slot)`: n steps from the slot color toward the ink color, so every step keeps the slot's 3:1 contrast with the card in light and dark. Never mix a color toward the surface (the lightest steps vanish on a dark card). Non-product series should not take slots 1 to 3 (they are Vital Bull, Boneflex, Beef Liver); use the ink "main" series first, then slots 4 to 6.
+
 ## 12. Wording
 
 - **Plain words.** "Cost per new customer", not "NC-CPA". "Net operating income", not "NOI", in labels. Acronyms are allowed only after the page has expanded them once, in the purpose line, a TLDR label or an `<abbr title="…">`. Glossary: NC = new customer, NOI = net operating income, AOV = average order value, ROAS = return on ad spend, MER = marketing efficiency ratio (revenue per ad dollar), EV = enterprise value, FY = fiscal year, TTM = trailing twelve months, PO = purchase order, 3PL = third-party logistics warehouse, COGS = cost of goods sold, FBA = Amazon fulfillment.
@@ -226,7 +248,7 @@ Chart.js only (vendored). Use `ctx.charts` (line, bar, combo, scenarioCompare). 
 - Focus ring: 2px `--lv-focus` (ember, lighter in dark), 2px offset; verified at 3:1 or better on every surface including amber cells, the dark top bar and the TLDR band. Never `outline: none` without a replacement.
 - Color is never the only signal: negatives have a sign or parentheses, statuses have icon and word, projected months have an asterisk, inputs have a cursor and an edge.
 - Contrast: see section 2 (all pairs tested).
-- Touch: 44px minimum targets under 640px and on coarse pointers (buttons, selects, nav tabs, dialog buttons); grid rows 36px.
+- Touch: under 640px and on coarse pointers buttons, segmented controls and fields are at least 40px tall, menu items and dialog buttons 44px, the top-bar links are full bar height with 40px-wide tap areas, group carets and disclosure rows get a full-row tap area, grid rows are 36px. Checked by `tests/projection/design/tools/vet_touch.py`.
 - Motion: 150ms color and shadow transitions only; `prefers-reduced-motion` removes all transitions and the spinner animation stops moving the layout.
 - Skip link to the main content on every page. `lang="en"`. Canvas charts have labels and a table.
 - Live regions: the main area is `aria-live="polite"`, toasts are `role="status"`.
@@ -254,6 +276,10 @@ Compact is the default because the grid is the product. `data-density="comfortab
 | Wide table scrolls inside its box | Page scrolls sideways |
 | Amber means "you can type here" and nothing else | Amber for warnings in the same view as input cells (use the warn chip) |
 
+## 16b. Readability audit (run it before you ship a page)
+
+`tests/projection/design/tools/vet.py <base_url> <out_dir>` loads every Projection page in light and dark at 1440, 1024, 768 and 390px and, for every text node and control, computes WCAG contrast against the real composited background (all ancestor fills and opacity), tiny text (under 12px, bold caps at 11px allowed), clipped text, controls without a name, control edges under 3:1, charts (Chart.js tick and legend colors, series marks under 3:1, missing aria-label), page overflow and console errors. `vet_states.py` does the same for menus, the History drawer, dialogs and the cell editor; `vet_touch.py` lists controls under 36px at 390px; `vet_tasks.py` times the walkthroughs against a local copy (it writes: never aim it at the live site). Pass a local URL for anything that edits. Findings and tickets: `docs/projection/DESIGN_REVIEW.md`.
+
 ## 17. Files, tests and shell changes
 
 | Path | What |
@@ -275,7 +301,7 @@ Shell JS edits made for the design (small, the module contract `render(el, ctx)`
 
 ## 18. Open questions
 
-1. **Edit lock.** Every scenario is editable at all times; safety is the amber cue, undo and History. If a misclick on the plan of record is still a worry, add a "Lock the plan of record" toggle (view-only until unlocked); the grid already has `readOnly`.
+1. **Edit lock.** Resolved by section 7b: the first edit per session on the plan of record asks, and History restores in one click. A hard lock is still possible (the grid has `readOnly`) if Josh wants view-only by default.
 2. **Plan headline vs page TLDR.** The shell's global headline strip stays (where the whole plan lands, hidden until real). Each page adds its own TLDR. If that feels like two strips, hide the global one on module pages.
 3. **Shared look with the Tags pages.** The Tags pages do not link `brand.css`, so the two bars match in structure and size but not yet in font, surface and accent (system font and pure white there; Plus Jakarta Sans and bone here). Linking `brand.css` in `index.html` and adding `.lv-mark` to both bars finishes the match; that file is the Tags owner's.
 4. **Logo fidelity.** The mark is traced from a 560px raster; at 30px it is exact, above about 200px high the edges would show tracing. Send the original vector if one exists.

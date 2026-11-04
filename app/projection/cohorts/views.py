@@ -28,15 +28,6 @@ def _series(s: dict, missing: float | None = 0.0) -> list:
     return [s.get(m, missing) for m in MONTHS]
 
 
-def curve_name(levers: dict) -> str:
-    c = levers.get("curve", "live")
-    if c == "live":
-        return f"Live (last {levers.get('n_cohorts', 3)} cohorts per age)"
-    if c == "goal":
-        return "Goal"
-    return f"blend of Goal ({float(c.split(':')[1]):.0%}) and Live"
-
-
 def actual_through_for(res_actual: date | None, c: CohortResultX) -> date | None:
     """Months up to here are backed by actual cohort data (the page's asterisk marks the rest). Falls back to the engine's frontier when no
     cohort cell is loaded."""
@@ -54,7 +45,7 @@ def table_payload(c: CohortResultX, actual_through: date | None) -> dict:
     rows.append(_row("repeat_actual", "Repeat revenue (actual, from cohort exports)", actual_vals))
     ratio = [(c.repeat_rev.get(m, 0.0) / a - 1.0) if a else None for m, a in zip(MONTHS, actual_vals)]
     rows.append(_row("repeat_gap", "Modeled vs actual", ratio, kind="ratio", fmt="pct",
-                     note="Modeled months apply today's Live curve to every cohort, so months from older cohorts can read below what those cohorts earned."))
+                     note="Modeled months apply the curve in use to every cohort, so months from older cohorts can read below what those cohorts earned."))
     rows.append(_row("h_cohort", "Revenue from cohorts", [None] * len(MONTHS), kind="header", fmt="text"))
     rows.append(_row("first_order_rev", "First-order revenue", _series(c.first_order_rev)))
     total_cohort = [c.first_order_rev.get(m, 0.0) + c.repeat_rev.get(m, 0.0) for m in MONTHS]
@@ -63,7 +54,7 @@ def table_payload(c: CohortResultX, actual_through: date | None) -> dict:
                      kind="ratio", fmt="pct"))
     rows.append(_row("new_customers", "New customers", _series(c.new_customers, None), fmt="num"))
     through = month_label(c.data_through)
-    caption = f"Source: cohort exports through {through}; repeat = cohort first-order revenue x {curve_name(c.levers)} retention at that age."
+    caption = f"Source: cohort exports through {through}; repeat = cohort first-order revenue x retention at that age ({c.curve_label})."
     return {"months": [m.isoformat() for m in MONTHS], "status": status, "rows": rows, "captions": [caption]}
 
 
@@ -87,7 +78,8 @@ def curves_payload(c: CohortResultX) -> dict:
                     "twelve_used": c.twelve_month_multiple, "twelve_live": c.twelve_live, "twelve_goal": c.twelve_goal,
                     "live_vs_goal": (c.lifetime_live / c.lifetime_goal - 1.0) if c.lifetime_goal else None,
                     "twelve_live_vs_goal": (c.twelve_live / c.twelve_goal - 1.0) if c.twelve_goal else None,
-                    "curve": c.levers.get("curve", "live")},
+                    "curve": c.levers.get("curve_source", "live"), "curve_source": c.levers.get("curve_source", "live"), "asof_month": c.levers.get("asof_month"),
+                    "label": c.curve_label},
         "levers": c.levers, "goal_snapshot": c.goal_snapshot.isoformat() if c.goal_snapshot else None, "warnings": c.warnings,
         "caption": f"Source: cohort exports through {month_label(c.data_through)}; Goal curve snapshot {month_label(c.goal_snapshot) if c.goal_snapshot else 'not loaded'}.",
     }
@@ -128,7 +120,8 @@ def summary_payload(c: CohortResultX, actual_through: date | None, fresh: dict |
         "lifetime_multiple": c.lifetime_multiple, "twelve_month_multiple": c.twelve_month_multiple,
         "lifetime_live": c.lifetime_live, "lifetime_goal": c.lifetime_goal,
         "live_vs_goal": (c.lifetime_live / c.lifetime_goal - 1.0) if c.lifetime_goal else None,
-        "curve": c.levers.get("curve", "live"), "curve_name": curve_name(c.levers),
+        "curve": c.levers.get("curve_source", "live"), "curve_source": c.levers.get("curve_source", "live"), "asof_month": c.levers.get("asof_month"),
+        "curve_name": c.curve_label, "curve_label": c.curve_label,
         "cohorts_loaded": loaded, "first_cohort": c.cohort_rows[0]["month"] if loaded else None,
         "last_cohort": c.cohort_rows[-1]["month"] if loaded else None,
         "data_through": c.data_through.isoformat() if c.data_through else None,

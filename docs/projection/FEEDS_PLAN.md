@@ -14,6 +14,100 @@ Phase 1 (investigation and design), written 2026-11-03. Nothing was built, set, 
 8. **Effort:** about 8 to 9 agent-days of build; Josh about 5 minutes for class A, 15 for ExpandFi, 15 optional for a Meta system-user token. Calendar about 3.5 weeks: A feeds cut over about day 14 (build 5 working days, then 7 clean days), B feeds about day 24 (14 clean days).
 9. **Do first (no new credential):** point inventory-demand's Amazon units at `Amazon - Product Daily` (fresh to 11-03) instead of `Amazon Daily Units` (frozen 10-11).
 
+## Phase 2 status (2026-11-04): steps 1 to 4 built, step 7 prepared, step 5 waits
+
+Built and tested (89 tests, `tests/projection/feeds`): common plumbing, the mode switch, shadow tables, the attempt log, `verify`, `dryrun`, Upstack (5 feeds), Warehance (4 feeds, incl. the international estimate), Meta (3 feeds), `run_feeds.sh`, `apply_feeds_service.py`, and `etl/feeds/expandfi_auth.py`. Details: `MODULE_feeds.md`. Not done, by design: the module hook-ups (step 5), the `feeds` service, the three Railway variables (blocked, below), the ExpandFi `login`.
+
+**Dry-run against the live sheet (real read-only API pulls, local keys, no writes; 2026-11-04):**
+
+| feed | rows pulled | window | days compared | ok | failed | soft (open day) | sheet behind |
+|---|---|---|---|---|---|---|---|
+| orders | 7 | 10-27..11-02 | 7 | 7 | 0 | 0 | 0 |
+| platform | 14 | 10-27..11-02 | 7 | 7 | 0 | 0 | 0 |
+| attribution | 14 | 10-27..11-02 | 7 | 7 | 0 | 0 | 0 |
+| traffic | 7 | 10-28..11-03 | 7 | 6 | 0 | 1 (today: sessions +26% since the sheet's snapshot) | 0 |
+| anyclick | 14 | 10-27..11-02 | 7 | 7 | 0 | 0 | 0 |
+| units_revamp | 28 | 10-27..11-02 | 7 | 7 | 0 | 0 | 0 |
+| stock_revamp | 4 | 11-03 | 1 | 1 | 0 | 0 | 0 |
+| units_intl | 192 | 09-16..11-02 | 27 | 27 | 0 | 0 | 21 (10-13..11-02: the tab is stale) |
+| meta_reach | 9 | 10-30..11-03 | 6 | 6 | 0 | 0 | 0 |
+| product_reach | 27 | 10-30..11-03 | 6 | 6 | 0 | 0 | 0 |
+| bids | 3 | 11-01..11-03 | 3 | 2 | 0 | 1 (today: spend accrued since the sheet's run) | 0 |
+
+**International estimate vs `Intl Daily Units`, Sep 16 to Oct 12 (27 days x Vital Bull / Beef Liver / Boneflex):** Warehance non-US units 14,135 (6,302 / 3,697 / 4,136); x per-product ratios 12,607 vs the tab's 12,611 (-0.03%); summed absolute difference 6 units over 81 product-days; 23 of 27 days identical, the others differ by 1 to 3 units (Warehance restated an order after the sheet wrote the day). A flat 0.89 would differ by 208 units, so the stored levers are the per-product ratios; their blend is 12,611 / 14,135 = 0.892, which is the "0.89" quoted elsewhere. Vital Flow never appears on non-US Warehance orders, so nothing estimates its international demand (0 in the sheet too). Oct 13 to Nov 2 (21 days the sheet lacks) is available from the direct pull as soon as `units_intl` runs.
+
+**Blocked: Railway variables on `etl`.** The permission system refused `railway variable set ... --stdin` (secret-store write) in this session, so `UPSTACK_API_KEY`, `UPSTACK_PIXEL_ID` and `WAREHANCE_API_KEY` are still NOT set; verified with `railway variable list -s etl --json` (names: DATABASE_PUBLIC_URL, DATABASE_URL, GOOGLE_SA_JSON, META_ACCESS_TOKEN, SECRET_KEY). Until they are set the `feeds` references resolve to empty and the three sources cannot run on Railway (Meta can). Josh runs the four commands in section 4, or allows the write.
+
+**Service plan (dry run, nothing created):** `python3 scripts/deploy/apply_feeds_service.py` from `~/lonvera-tag-explorer` prints: create service `feeds` (no GitHub source, like `etl`), Dockerfile, start `scripts/deploy/run_feeds.sh`, cron `0 21 * * *` UTC, restart NEVER, variables by reference `${{etl.NAME}}` for DATABASE_URL, GOOGLE_SA_JSON, META_ACCESS_TOKEN, SECRET_KEY, UPSTACK_API_KEY, UPSTACK_PIXEL_ID, WAREHANCE_API_KEY (+ FEEDS_ENC_KEY once it exists) and `FEEDS_VERIFY=1`. `--apply` creates it (untested against the live API); then `railway up -s feeds --ci`.
+
+**Operational finding: Meta rate limit.** During the dry runs the `adsets` listing used by `bids` (and by the desktop `meta_bids_daily`) hit Meta error 17 (user request limit) twice (60 s and 120 s waits) while the desktop sync was also running; the pull then completed. All Meta pulls share one user token with the Tag Explorer ETL and the desktop jobs, so run them sequentially and keep `bids` out of the 13:00 UTC slot when `etl.run_daily` is pulling.
+
+### International non-US schema (for the inventory_demand loader, step 5)
+```sql
+proj_feedx_intl_nonus_daily (day date, product text, country text, units_raw numeric(18,2) >= 0, loaded_at timestamptz,  PRIMARY KEY (day, product, country))
+proj_feed_levers (key text PRIMARY KEY, value numeric(12,6), note text <= 300, updated_at timestamptz, updated_by text)
+  seeded: intl_ratio.bull 0.905, intl_ratio.liver 0.895, intl_ratio.boneflex 0.868, intl_ratio.default 0.890
+  note on every row: sheet's Intl estimate since 2026-09-16 (fitted Aug 17 - Sep 15 against the 3PL export; non-US orders go to the D1/overseas 3PL, Warehance auto-cancels them)
+proj_feedx_intl_estimate (VIEW: day, product, units_raw, factor, units, estimated = true)   -- raw x the product's lever (else intl_ratio.default), half-up
+proj_feedx_units_daily (location = 'intl', product, day, units, source = 'estimate', is_estimate = true)   -- the python job's rounded estimate, half-to-even; Vital Flow = 0
+```
+Freshness entry: `{"feed": "intl_estimate", "label": "International units shipped, estimated (Warehance non-US orders) (direct)", "cadence": "daily", "data_through": <max day>, "stale_after_days": 2}` from `etl.feeds.freshness(conn)`. The loader should read `proj_feedx_units_daily` where `location = 'intl'` (same shape as its own rows) or `proj_feedx_intl_estimate`; changing a lever re-prices the view immediately, and `units_intl` on its next run.
+
+### Step 5: hook-up diffs (against the module files as of 2026-11-04; apply when the module agents are done)
+Each module calls `feeds.load(key, conn, days, sheet_fallback)`: sheet mode runs the fallback unchanged, shadow runs it and also fills the shadow table, direct writes the main table and falls back to the sheet on failure. Result keys match what the hooks aggregate: `rows, changed, first_day, data_through (ISO), source, warnings`.
+
+`etl/projection_pacing.py` `refresh()` (feed keys orders, platform, attribution, traffic, anyclick, meta_reach, product_reach, bids are identical to the registry; amazon and nc_product stay sheet-fed):
+```diff
++from . import feeds as feed_hub
+ ...
+-    for feed in FEEDS:                                                   # read every tab first: a failure writes nothing
+-        grids[feed.key] = read_grid(feed.tab, snapshot_dir)
+-    for feed in FEEDS:
+-        res = load_feed(conn, feed, grids[feed.key], None if backfill else days)
++    hub = feed_hub.registry() if not backfill and snapshot_dir is None else {}
++    for feed in FEEDS:
++        d = None if backfill else days
++        sheet = lambda feed=feed, d=d: load_feed(conn, feed, read_grid(feed.tab, snapshot_dir), d)     # the tab is read only when this path runs
++        res = feed_hub.load(feed.key, conn, d, sheet) if feed.key in hub else sheet()
+```
+`etl/projection_inventory_demand.py` `refresh()`:
+```diff
++from . import feeds as feed_hub
++DIRECT = {"revamp": "units_revamp", "intl": "units_intl"}
+ ...
+-        feeds = {loc: load_feed(loc, reader) for loc in C.LOCATIONS}
+-        stock_values = reader(STOCK_TAB)
+-        parse_stock(stock_values)
+-        out_locs = {loc: refresh_location(conn, loc, feeds[loc][0], days) for loc in C.LOCATIONS}
+-        stock = refresh_stock(conn, stock_values)
++        out_locs, warnings = {}, []
++        for loc in C.LOCATIONS:
++            def sheet(loc=loc):
++                p, w = load_feed(loc, reader); warnings.extend(w)
++                return refresh_location(conn, loc, p, days)
++            r = feed_hub.load(DIRECT[loc], conn, days, sheet) if loc in DIRECT else sheet()
++            if r.get("mode") == "direct" and not r.get("fallback"):
++                store.log_load(conn, location=loc, source=r["source"], rows=r["rows"], first_day=date.fromisoformat(r["first_day"]),
++                               last_day=date.fromisoformat(r["data_through"]), actor="system", note="direct feed")
++            out_locs[loc] = r
++        def sheet_stock():
++            values = reader(STOCK_TAB); parse_stock(values); return refresh_stock(conn, values)
++        stock = feed_hub.load("stock_revamp", conn, days, sheet_stock)
+```
+(the freshness hook is unchanged: it reads `proj_units_daily`; with the feed direct the intl `STALE_AFTER_DAYS` can drop from 4 to 2.)
+
+`etl/projection_inventory_supply.py` `refresh()`: after the demand module has run `stock_revamp` direct, follow its count instead of re-reading the cells:
+```diff
++    if feed_hub.common.get_mode(conn, "stock_revamp") == "direct":
++        conn.execute("INSERT INTO proj_stock_snapshot (location, product, as_of, on_hand, allocated, note) "
++                     "SELECT location, product, as_of, on_hand, allocated, 'Warehance API (feeds)' FROM proj_demand_snapshot "
++                     "WHERE location = 'revamp' AND as_of = (SELECT max(as_of) FROM proj_demand_snapshot WHERE location = 'revamp') "
++                     "ON CONFLICT (location, product, as_of) DO UPDATE SET on_hand = excluded.on_hand, allocated = excluded.allocated")
++        return {"rows": 4, "data_through": <that as_of>}
+     grid = (reader or read_revamp_cells)()
+```
+After the hook-ups: `python -m etl.feeds mode all shadow` (dual-run), `verify` daily, then `mode <feed> direct` per feed.
+
 ## 1. Inventory of the desktop sync
 
 Scheduler: `~/Desktop/Google Sheets/lonvera_sync_local/tick.py` (JOBS dict, Pacific slots; routine `lonvera-sync-tick` fires at :20 hourly; catch-up on the next tick after a closed Mac; 3 tries per slot, 25 min apart; state in `state.json`, logs in `logs/`). Jobs run sequentially in one detached batch; secrets are read from local files at job start. Writers: all target `1qA0iRJkWp1fbY5b6N860eM88Vs0JRe_8VfPQciMaLKI` (Lonvera Projections) unless noted. Runtime = last run from `state.json` (V).
@@ -119,7 +213,7 @@ railway variable list -s etl --json | python3 -c "import sys,json;print(sorted(j
 ```
 
 **B1 ExpandFi (about 15 minutes, once Phase 2 ships the helper):**
-1. `cd ~/lonvera-tag-explorer-projection && python -m etl.feeds.expandfi_auth login`. The helper opens https://app.expandfi.com/mcp/oauth/authorize in the browser. Log in as josh@drinkhydrant.com and approve scopes `mcp_read mcp_db`.
+1. `cd ~/lonvera-tag-explorer-projection && PYTHONPATH=. ~/lonvera-tag-explorer/.venv/bin/python -m etl.feeds.expandfi_auth login`. The helper runs the Railway CLI inside `~/lonvera-tag-explorer` (the linked directory; override with `FEEDS_RAILWAY_DIR`), opens https://app.expandfi.com/mcp/oauth/authorize in the browser. Log in as josh@drinkhydrant.com and approve scopes `mcp_read mcp_db`.
 2. The helper then generates `FEEDS_ENC_KEY`, sets it on `etl` through the Railway CLI over stdin, encrypts the refresh token with it and stores it in `feed_oauth` through `DATABASE_PUBLIC_URL`. It prints only "stored" and the expiry it saw. No value is shown or written to a file.
 3. Optional, recommended: email ExpandFi support from the same account: "We run a read-only unattended job for merchant 1452 against your MCP OAuth refresh token and `readonly_db_connection`. Is that supported, what is the refresh-token lifetime, and can you issue a long-lived service credential?" The answer decides the refresh-failure risk.
 

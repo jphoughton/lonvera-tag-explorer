@@ -15,15 +15,10 @@ import math
 from typing import Any
 
 from ..interfaces import Month, parse_month
+from .validation import BOUNDS, bound_error
 
 TYPES = ("flat", "step", "growth", "ramp")
-TARGETS = {                       # target -> (label, min, max); cells must satisfy min <= value <= max (min exclusive for rates that divide)
-    "spend_total": ("Marketing spend", 0.0, 5e7),
-    "nc_cpa": ("New-customer CPA", 0.01, 5e3),
-    "nc_aov": ("New-customer AOV", 0.01, 5e3),
-    "amazon_rev": ("Amazon revenue", 0.0, 1e8),
-    "tiktok_rev": ("TikTok revenue", 0.0, 1e8),
-}
+TARGETS = {k: (BOUNDS[k].label, BOUNDS[k].lo, BOUNDS[k].hi) for k in ("spend_total", "nc_cpa", "nc_aov", "amazon_rev", "tiktok_rev")}
 MAX_MONTHS = 60
 
 
@@ -84,10 +79,10 @@ def generate(spec: Any, months: list[Month]) -> dict[Month, float]:
 def check_bounds(target: str, values: dict[Month, float]) -> None:
     if target not in TARGETS:
         raise PatternError(f"target must be one of {', '.join(TARGETS)}")
-    label, lo, hi = TARGETS[target]
     for m, v in values.items():
-        if not math.isfinite(v) or v < lo or v > hi or (lo > 0 and v <= 0):
-            raise PatternError(f"{label} for {m:%b %Y} would be {v:,.2f}; it must stay between {lo:,.2f} and {hi:,.0f}")
+        err = bound_error(target, m, v)
+        if err:
+            raise PatternError(err)
 
 
 def describe(target: str, spec: dict, first: Month, last: Month) -> str:

@@ -74,12 +74,16 @@ let toastHost = null;
 export function toast(message, opts = {}) {
   if (typeof opts === 'string') opts = { kind: opts };
   const kind = opts.kind || 'info';
-  const ms = opts.ms ?? (kind === 'error' ? 6500 : 2800);
+  // opts.action = {label, onClick}: a button inside the toast (for example Undo after a bulk change); such toasts stay 9 seconds
+  const ms = opts.ms ?? (opts.action ? 9000 : kind === 'error' ? 6500 : 2800);
   if (!toastHost || !toastHost.isConnected) {
     toastHost = h('div', { class: 'pg-toasts', role: 'status', 'aria-live': 'polite' });
     document.body.append(toastHost);
   }
-  const el = h('div', { class: 'pg-toast ' + kind }, String(message));
+  const el = h('div', { class: 'pg-toast ' + kind }, h('span', null, String(message)));
+  if (opts.action && typeof opts.action.onClick === 'function') {
+    el.append(h('button', { type: 'button', class: 'pg-toast-act', onclick: () => { try { opts.action.onClick(); } finally { el.remove(); } } }, opts.action.label || 'Undo'));
+  }
   toastHost.append(el);
   while (toastHost.children.length > 4) toastHost.firstChild.remove();
   setTimeout(() => el.remove(), ms);
@@ -191,11 +195,33 @@ export function confirmTyped({ title, message, expect, confirmText = 'Delete', o
 export function loading(el, msg = 'Loading…') {
   el.replaceChildren(h('div', { class: 'loading', role: 'status' }, msg));
 }
+// Error codes become plain words ("internal_error" is never shown to a person); real sentences from the server pass through.
+const CODE_WORDS = {
+  internal_error: 'The server hit a problem.',
+  not_found: 'That part of the server is not available yet.',
+  rate_limited: 'Too many changes in a short time. Wait a minute and try again.',
+  bad_request: 'The server did not accept that request.',
+  invalid: 'The server did not accept that request.',
+  timeout: 'The server took too long to answer.',
+};
+export function plainError(err) {
+  const raw = String((err && err.message) || err || '').trim();
+  if (!raw || /^failed to fetch$|^networkerror|^load failed$/i.test(raw)) return 'The server did not answer.';
+  if (/^[a-z][a-z0-9_]*$/.test(raw)) return CODE_WORDS[raw] || (err && err.status >= 500 ? 'The server hit a problem.' : 'Something went wrong.');
+  return /[.!?]$/.test(raw) ? raw : raw + '.';
+}
 export function errorBox(el, err, onRetry) {
   if (err && (err.name === 'AuthError' || err.name === 'DisabledError' || err.name === 'AbortError')) return; // the shell owns these
+  if (err && err.code === 'upstream_degraded') {   // a module this page depends on failed: plain words (the shell banner names it), never a red error or a zero-filled page
+    el.replaceChildren(h('div', { class: 'pg-card pg-degraded-card', role: 'status' },
+      h('h2', null, 'These numbers are not shown'),
+      h('p', { class: 'muted' }, 'A module this page depends on failed to load. Nothing here is guessed or shown as zero.'),
+      onRetry ? h('button', { type: 'button', class: 'btn', onclick: onRetry }, 'Try again') : null));
+    return;
+  }
   el.replaceChildren(h('div', { class: 'errorbox', role: 'alert' },
     h('strong', 'Could not load this page. '),
-    h('span', null, err && err.message ? err.message : String(err)),
+    h('span', null, plainError(err), ' Your edits are safe.'),
     onRetry ? h('div', null, h('button', { type: 'button', class: 'btn', onclick: onRetry }, 'Retry')) : null));
 }
 export function empty(el, msg) {

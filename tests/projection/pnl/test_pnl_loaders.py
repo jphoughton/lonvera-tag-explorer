@@ -38,7 +38,7 @@ def test_seed_counts_and_idempotence(seeded):
     again = projection_pnl.seed(pg, sr)
     assert again == counts
     assert pg.execute("SELECT count(*) AS n FROM proj_actuals").fetchone()["n"] == n
-    assert counts["drivers"] >= 30 and counts["cogs_sku"] == 12 and counts["vendors"] == 10 and counts["settings"] == 6
+    assert counts["drivers"] >= 30 and counts["cogs_sku"] == 12 and counts["vendors"] == 10 and counts["settings"] == 7
 
 
 def test_loaded_history_equals_the_sheet_cell_for_cell(seeded):

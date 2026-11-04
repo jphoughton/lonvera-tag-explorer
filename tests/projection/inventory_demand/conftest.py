@@ -28,7 +28,7 @@ DB_URL = f"{PG_BASE}/{DB_NAME}"
 PASSWORD = "throwaway-test-password"
 from werkzeug.security import generate_password_hash                # noqa: E402
 USERS = {name: generate_password_hash(PASSWORD, method="scrypt:1024:8:1") for name in ("JoshHoughton", "Lazer")}
-MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "140_proj_inventory_demand.sql")
+MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "106_proj_scenario_lifecycle.sql", "140_proj_inventory_demand.sql")
 
 
 def make_app(**overrides):

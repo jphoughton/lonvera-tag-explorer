@@ -19,14 +19,14 @@ app/projection/drivers/api.py               blueprint at /api/projection/drivers
 app/projection/drivers/reconcile_map.py     P&L rows 11-16, 18-22, 51-56
 etl/projection_drivers.py                   seed from the sheet snapshot, freshness(conn), refresh(conn, days)
 app/static/js/projection/drivers.js         the page
-tests/projection/drivers/                   171 tests
+tests/projection/drivers/                   227 tests
 ```
 
 ## How it works
 
 Per month, actual or planned:
 
-- **Actual month** = a closed month with loaded spend: books (`pnl.mkt_*` from the QuickBooks upload, else the seeded `spend.*`), else a complete month of Meta spend from the app's own `ad_daily` (Meta exact, the other channels estimated from the channel mix lever). The open month is never actual. `actual_through` is the last such month (today Jul 2026).
+- **Month status, three words on every page:** `books` = closed month with QuickBooks loaded (`pnl.mkt_*` from the upload, else the seeded `spend.*`); `feeds` = closed month with no books yet but cohort-table customers or a complete month of Meta spend from `ad_daily` (Meta exact, the other channels estimated from the channel mix lever); `projected` = everything else, and the open month always. `DriversResult.month_status`, `books_through` and `feeds_through` carry it; `actual_through` equals `books_through` (Jul 2026 today), so every grid splits actual and projected exactly where the P&L does. The Spend plan page says it in chips and in the source line ("Books through Jul 2026. Feeds only, no books yet: Aug 2026 to Oct 2026. Projected from Nov 2026*.") and in a Month status row.
 - **Planned month**: marketing spend (P&L row 51, all channels) is the typed cell, else the month before carried forward; it is split over Amazon ads / Meta / Google / Bing / TikTok by the channel mix lever. Ad spend (row 11, the CPA denominator) is the channels chosen by the `ad_spend_channels` lever (Meta and Google).
 - **New customers**: typed override > cohort table (closed months) > plan. Plan: orders = ad spend / CPA, revenue = orders x AOV. CPA and AOV are typed per month, else the month before carries; an optional NC-ROAS slide sets CPA = AOV / ROAS across a month range.
 - **Amazon and TikTok revenue**: loaded actuals for closed months, else the typed plan, else carried.
@@ -51,23 +51,25 @@ Source per month shows in the grid ("Spend source": Books, Meta feed, Plan) and 
 
 Interchange fields, all 60 months: `spend_total` (**P&L row 51, all channels**, every month), `spend_meta`, `spend_google`, `spend_amazon_ads`, `spend_tiktok`, `nc_cpa`, `nc_aov`, `nc_orders`, `nc_rev`, `nc_roas`, `amazon_rev`, `tiktok_rev`, `actual_through`. `nc_cpa`, `nc_aov` and `nc_roas` are the implied values (ad spend / orders, revenue / orders, revenue / ad spend), so they always agree with orders and revenue.
 
-Extra: `spend_bing`, `marketing_spend` (= `spend_total`), `ad_spend` (row 11), `plan_cpa` / `plan_aov` (the effective levers), `sales_tax_rate`, `repeat_override` (typed repeat months), `dtc_actual`, `nc_rev_cohort` (what the cohort table says, shown beside typed values), `source`, `carried`, `slid`, `nc_basis` (`override | cohort | plan` per month), `levers`, `cell_info`. `sales_tax`, `dtc_rev`, `repeat_rev`, `total_revenue` are empty until `revenue_lines()` attaches them (cohorts run after drivers); use its return value.
+Extra: `spend_bing`, `month_status`, `books_through`, `feeds_through`, `marketing_spend` (= `spend_total`), `ad_spend` (row 11), `plan_cpa` / `plan_aov` (the effective levers), `sales_tax_rate`, `repeat_override` (typed repeat months), `dtc_actual`, `nc_rev_cohort` (what the cohort table says, shown beside typed values), `source`, `carried`, `slid`, `nc_basis` (`override | cohort | plan` per month), `levers`, `cell_info`. `sales_tax`, `dtc_rev`, `repeat_rev`, `total_revenue` are empty until `revenue_lines()` attaches them (cohorts run after drivers); use its return value.
 
 ## API (`/api/projection/drivers`)
 
 | method and path | body / query | returns |
 |---|---|---|
 | `GET /table?scenario=` | | grid payload in the shell's vocabulary (`kind` input / calc / subtotal / total / header / ratio, `fmt` usd / usd0 / num / x / text), plus `cellmeta`, `summary` (next / previous window spend, posture growth / harvest / hold, NC-ROAS, payback, FY table), `levers`, `scenario`, `actual_through` |
+| `PUT /series` | `{scenario, items:[{line_key, month, value\|null, kind}], expected_version?}` | the core `PUT /series` for Spend plan lines only, with the bounds and the closed-month refusal below; the page saves through it |
 | `GET /levers?scenario=` | | effective levers and the defaults |
 | `PUT /levers` | `{scenario, levers:{...}, expected_version?}` | validated merge into `params.drivers` (audited, versioned) |
 | `POST /patterns` | `{scenario, target, pattern, from, to, preview?, expected_version?}` | preview: before / after for the range (spend, NC revenue, NC-ROAS, CPA, payback), nothing written; apply: writes the cells (one audit row per cell, one version) |
-| `GET /compare?scenarios=a,b` | up to 6 | monthly series and FY numbers per scenario |
+| `POST /undo` | `{scenario, version, expected_version?}` | puts back exactly the cells (and NC-ROAS slide) the change at `version` wrote (a range fill returns that version), as one audited, versioned change; cells edited again since are left and counted in `skipped` |
+| `GET /compare?scenarios=a,b` | up to 6; the first is the viewing scenario | monthly series and FY numbers per scenario, plus `vs_view` (viewing scenario minus the other, so more spend in the scenario you are in reads positive) |
 
 Patterns: targets `spend_total`, `nc_cpa`, `nc_aov`, `amazon_rev`, `tiktok_rev` with `flat {value}`, `step {value, then_value, step_month}`, `growth {value, rate, cap?}`, `ramp {value, end_value}`; target `nc_roas` with `roas_slide {start, end}` (sets the lever for the range). Closed months with loaded actuals are refused (400 naming the months). Edits to plan cells go through the core `PUT /series`; auth, Origin check, JSON only, rate limits and noindex are the core's.
 
 ## The page
 
-Header, purpose line (expands CPA and AOV), TLDR strip (spend next 12 months and change on the last 12, NC revenue, NC-ROAS, payback, total revenue), a scenario cue (Plan of record chip, or amber "Scenario copy" with "Clone to try a change"), chart (spend, NC revenue, repeat revenue), the grid (yellow rows = the plan; "Typed over the model" rows; NC-ROAS and payback sit directly under the inputs), "Fill a range" (line, from, to, shape, live before / after preview, then Apply), Plan settings, Compare scenarios (view only). Edits to closed months are refused with a plain message. Checked at 1440 and 390 px, light and dark; console clean.
+Header, purpose line (expands CPA and AOV), TLDR strip (spend next 12 months and change on the last 12, NC revenue, NC-ROAS, payback, total revenue), a scenario cue (Plan of record chip, or amber "Scenario copy" with "Clone to try a change"), chart (spend, NC revenue, repeat revenue), the grid (yellow rows = the plan; "Typed over the model" rows; NC-ROAS and payback sit directly under the inputs), "Fill a range" (line, from, to, shape, live before / after preview, then Apply), Plan settings, Compare scenarios (view only, directly under the grid; a copy opens with its base already picked, rows read "Bull compared with Current plan: +$60K (+1%)"). After "Fill a range" the toast, the cue strip and Ctrl+Z all offer Undo, which restores exactly the cells the fill changed. The copy cue names its base scenario. Edits to closed months are refused with a plain message. Checked at 1440 and 390 px, light and dark; console clean.
 
 ## Variables (every input, named, scenario-aware, with its sheet default and source)
 
@@ -82,6 +84,8 @@ Levers live in `proj_scenarios.params.drivers` and are set with `PUT /api/projec
 | `payback.product_cost_pct` | fraction of AOV | 0.1726 | `Payback!D11` | levers | lever cases (payback row) |
 | `payback.fulfillment_per_order` | dollars | 5.53 | `Payback!B12` | levers | lever cases (payback row) |
 | `payback.horizon_months` | months | 36 | `Payback!E20:E56` (36-month table) | levers | `test_payback_horizon_cuts_the_search` |
+| `reference_days` | days, 7 to 90 | 28 | none (app default: window of the read-only feed references) | levers | `test_drivers_reference::test_the_window_length_is_a_lever` |
+| `reference_tolerance` | fraction | 0.05 | none (app default: a typed plan beyond 5% of its feed reference gets a note and a warn chip) | levers | `test_the_chip_is_quiet_inside_the_tolerance` |
 | `posture_band` | fraction | 0.10 | none (app default: change beyond +-10% reads as growth / harvest) | levers | `test_summary_window_and_band_lever_change_the_headline` |
 | `summary_months` | months | 12 | none (app default: the headline compares the next 12 months with the last 12) | levers | same test |
 | `drivers.spend_total` (monthly) | dollars | $350,000 Oct-26 to Dec-29, $847,183 Aug-26, $546,201 Sep-26 | `P&L` row 51 (typed from Aug-26) | grid, patterns, core `PUT /series` | `test_a_plan_series_cell_moves_the_output` |
@@ -97,6 +101,14 @@ Levers live in `proj_scenarios.params.drivers` and are set with `PUT /api/projec
 | actual Amazon / TikTok / DTC revenue | dollars | Jan-25 to Jul-26 | rows 18-20 | QuickBooks upload (`pnl.*`), seed | same |
 
 Not variables on purpose (technical limits): validation ranges of the levers and patterns, the 60-month axis, the 500-cell batch cap.
+
+## Validation
+
+One table of bounds (`validation.BOUNDS`): marketing spend 0 to 50,000,000; CPA and AOV above 0 and at most 1,000; Amazon and TikTok revenue 0 to 100,000,000; ad spend override 0 to 50,000,000; NC orders override 0 to 5,000,000; NC revenue and repeat revenue overrides 0 to 100,000,000. A typed plan input (spend, CPA, AOV, Amazon, TikTok) is refused for a closed month that already holds loaded data (400 naming the months); clearing such a cell and typing an override there are allowed. The same checks run on `PUT /drivers/series` (the Spend plan page saves through it, with `expected_version`), on `POST /drivers/patterns`, and as `MODULE.validate_series(conn, scenario, items)`, which the core now calls from every write path that goes through `series.apply_items` (raw `PUT /series` and patterns included) after its own rules (negatives, 0..50M spend, (0,1000] CPA and AOV, and a typed `input` refused for any month before the current Pacific month). The hook also rejects unknown `drivers.*` names. A closed month is corrected with `kind: override`: the page and the pattern endpoint send `override` for months before the open month and `input` from it. Tests: `test_drivers_validation.py`.
+
+## Feed references (read only)
+
+Beside the CPA input row: "Realized CPA" by closed month (ad spend of the channels chosen in Plan settings, from the Meta feed `ad_daily`, the ad-platform feed and the Amazon feed, over Shopify new customers from the orders feed; complete months only) and a chip "Plan $95 vs last 28 days $111" (warn when beyond the reference band). Beneath the Amazon plan row: "Amazon feed run-rate (last 28 days)": the feed's own monthly total for closed months it covers, then one flat run-rate (daily average of the window times the average month length) from the open month on, and a one-line note when a typed Amazon value differs from it by more than the band ("Typed Amazon revenue against the feed: Aug 2026 +5%, Sep 2026 +17%, Oct 2026 +18%, Nov 2026 on +8% (last 28 days)"). The window drops the newest feed day (usually partial) and never reaches today. Nothing is written and no plan value changes. Missing feed tables or empty feeds give no rows and no chip. Tests: `test_drivers_reference.py` (12).
 
 ## Daily refresh
 
@@ -150,7 +162,6 @@ Every cell over tolerance, with its cause (all pinned by `test_engine_reproduces
 
 - **Per-cell lock for closed months in the grid.** The plan rows are amber in closed months but refuse the edit with a plain message; a row option "editable only in projected months" in `grid.js` would remove the mismatch (QUESTIONS_drivers.md).
 - **A growth case that holds CPA flat is the rosiest input.** The plan carries $95 CPA at any spend; more spend usually costs more per customer. The NC-ROAS slide is the lever for it; there is no spend-elasticity lever yet. Say if you want one (CPA rises with spend relative to a base spend).
-- Clearing a cell in a scenario copy reverts to the base scenario's value (core behaviour), not to the carried value.
 - Amazon revenue and non-Meta spend actuals arrive by monthly upload (QuickBooks through the pnl page); there is no daily Amazon feed here.
 - With `ad_daily` loaded on Railway, `refresh` will make Aug-Oct 2026 feed actual months; typed overrides still win until cleared.
 - The Meta feed vs books gap row appears only where both exist; not exercised against production data.

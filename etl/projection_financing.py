@@ -106,12 +106,18 @@ def payout_columns() -> list[dict]:
     return cols
 
 
+# Levers added after migration 160 shipped: they live in the code defaults only, so the migration (already applied) never changes.
+POST_SEED_LEVERS = (("payback", "loaded_lines"), ("payback", "loaded_months"), ("payback", "loaded_rate"), ("matrix", "margin"))
+
+
 def seed_params() -> dict:
     """`params['financing']` as the sheet holds it (equal to the code defaults except AOV and CAC, which the sheet reads from pacing)."""
     sr = _sr()
     t = term_debt_terms()
     rate, pays = tax_payments()
     prm = P.deep_merge(P.DEFAULTS, {})
+    for group, key in POST_SEED_LEVERS:
+        prm[group].pop(key, None)
     prm["debt"].update({"principal": t["principal"], "rate": t["rate"], "fixed_payment": t["fixed_payment"], "mode": "typed"})
     prm["tax"].update({"rate": rate, "payments": pays})
     prm["payback"].update({"aov": float(sr.cell("Payback", "B7")), "cac": float(sr.cell("Payback", "B8")),
@@ -180,9 +186,14 @@ def build_sql() -> str:
     )
 
 
+SINGLE_STORE_MIGRATION = ROOT / "migrations" / "161_proj_financing_payback_store.sql"
+
+
 def apply_seed(conn, slug: str = "current") -> dict:
-    """Run the migration's seed against `conn` (a psycopg connection). Skips whatever is already there."""
+    """Run migrations 160 (the sheet's typed cells) and 161 (one store for the payback inputs) against `conn` (a psycopg connection), so the Current
+    plan is what a fresh database holds. Skips whatever is already there."""
     conn.execute(build_sql())
+    conn.execute(SINGLE_STORE_MIGRATION.read_text())
     row = conn.execute("SELECT count(*) AS n FROM proj_series WHERE line_key LIKE 'financing.%'").fetchone()
     return {"series": row["n"] if isinstance(row, dict) else row[0]}
 

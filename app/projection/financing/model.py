@@ -1,7 +1,8 @@
 """Financing module: loads the scenario's inputs and computes cash, term debt, seller note, tax, payback, spend x ROAS grid and payout schedule.
 
-Upstream (read by name): `pnl` (net operating income and China COGS by month), `inventory` (cash outlay by month), `cohorts` (retention curves),
-`drivers` (last closed month's new-customer AOV and CAC when the payback inputs are blank). Each is optional: a missing one reads as zeros.
+Upstream (read by name): `pnl` (net operating income, China COGS and the variable-cost lines by month) and `inventory` (cash outlay by month) are
+REQUIRED: without either the engine marks this module degraded instead of showing cash built on zeros. `cohorts` (retention curves) is needed for the
+payback, grid and payout (they read "unavailable" without it) and `drivers` (last closed month's new-customer AOV and CAC) only fills blank payback inputs.
 """
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ from datetime import date
 from typing import Any
 
 from .. import series as series_mod
+from ...queries import ApiError
 from ..interfaces import MONTHS, FinancingResult, Month, Series, add_months
 from . import calc
 from . import params as P
@@ -35,7 +37,11 @@ class FinancingDetail(FinancingResult):
     seller: calc.SellerNote = field(default_factory=calc.SellerNote)
     tax_detail: list[dict] = field(default_factory=list)
     cash: calc.Cash = field(default_factory=calc.Cash)
-    payback: calc.Payback | None = None
+    payback: calc.Payback | None = None                          # on product margin (the sheet's Payback tab)
+    payback_loaded: calc.Payback | None = None                   # after all variable costs (the P&L's own rates)
+    loaded_info: dict = field(default_factory=dict)              # the P&L rate behind payback_loaded and its parts
+    unavailable: dict[str, str] = field(default_factory=dict)    # section -> why it cannot be computed (payback / matrix / payout)
+    top_up: dict = field(default_factory=dict)                   # monthly cash that keeps ending cash at zero, and what drives the low point
     payback_inputs: dict = field(default_factory=dict)
     matrix: calc.Matrix | None = None
     payout: calc.Payout | None = None
@@ -96,10 +102,50 @@ def payback_inputs(prm: dict, drivers: Any) -> dict:
             "max_age": int(P.num(pb.get("max_age"), 36)), "curve": pb.get("curve") or "live"}
 
 
-def run_payback(inp: dict, curve: list[float]) -> calc.Payback | None:
+def run_payback(inp: dict, curve: list[float], loaded_rate: float | None = None, *, fully_loaded: bool = False) -> calc.Payback | None:
     if not inp.get("aov") or inp.get("cac") is None:
         return None
+    if fully_loaded:
+        if loaded_rate is None:
+            return None
+        return calc.payback(inp["aov"], inp["cac"], inp["product_cost_pct"], inp["fulfillment"], curve, inp["max_age"], fully_loaded=True,
+                            loaded_rate=loaded_rate)
     return calc.payback(inp["aov"], inp["cac"], inp["product_cost_pct"], inp["fulfillment"], curve, inp["max_age"])
+
+
+def loaded_rate_info(prm: dict, pnl: Any, rate_override: float | None = None) -> dict:
+    """Variable cost per new-customer order as a share of AOV, from the P&L's own rates: each configured line (product cost, fulfillment,
+    inbound shipping, payment processing, chargeback management) divided by DTC revenue, summed over the P&L's forward months (the first
+    `loaded_months` projected months; the latest months when none are projected). A typed `loaded_rate` replaces it. rate is None when a
+    configured line is missing from the P&L, so a partial list never reads as a lower cost."""
+    pb = prm["payback"]
+    keys = [k for k in (pb.get("loaded_lines") or P.LOADED_LINES) if isinstance(k, str)]
+    n = max(1, int(P.num(pb.get("loaded_months"), 12)))
+    typed = rate_override if rate_override is not None else P.opt_num(pb.get("loaded_rate"))
+    info: dict = {"rate": None, "source": None, "parts": [], "months": [], "missing": [], "lines": keys}
+    if typed is not None:
+        info.update(rate=typed, source="typed")
+        return info
+    lines = getattr(pnl, "lines", None) or {}
+    dtc = lines.get("dtc_rev") or {}
+    through = getattr(pnl, "actual_through", None)
+    live = sorted(m for m, v in dtc.items() if v and v > 0)
+    months = [m for m in live if through is None or m > through][:n] or live[-n:]
+    if not months:
+        info["missing"] = ["dtc_rev"]
+        return info
+    base = sum(dtc[m] for m in months)
+    parts = []
+    for k in keys:
+        if k not in lines:
+            info["missing"].append(k)
+            continue
+        parts.append({"key": k, "label": P.LOADED_LABELS.get(k, k.replace("_", " ").capitalize()), "rate": sum(lines[k].get(m, 0.0) for m in months) / base})
+    info["parts"] = parts
+    info["months"] = [months[0].isoformat(), months[-1].isoformat()]
+    if not info["missing"] and parts:
+        info.update(rate=sum(x["rate"] for x in parts), source="P&L rates")
+    return info
 
 
 def payout_repeat(prm: dict, cohorts: Any) -> tuple[list[float], str]:
@@ -126,19 +172,26 @@ def run_payout(prm: dict, repeat: list[float]) -> calc.Payout:
         breakpoint=P.num(po["breakpoint"]), columns=po["columns"])
 
 
-def run_matrix(prm: dict, pb: calc.Payback | None, curve: list[float], **over: Any) -> calc.Matrix | None:
+def run_matrix(prm: dict, pb: calc.Payback | None, curve: list[float], loaded: calc.Payback | None = None, **over: Any) -> calc.Matrix | None:
     if pb is None:
         return None
     mx = {**prm["matrix"], **{k: v for k, v in over.items() if v is not None}}
-    return calc.spend_roas_matrix(curve=curve, cm_rate=pb.cm_pct, target_month=int(mx["target_month"]), basis=mx["basis"],
-                                  fixed_cost=P.num(mx["fixed_cost"]), spends=[P.num(x) for x in mx["spends"]], roas=[P.num(x) for x in mx["roas"]])
+    base = loaded if (mx.get("margin") == "loaded" and loaded is not None) else pb
+    m = calc.spend_roas_matrix(curve=curve, cm_rate=base.cm_pct, target_month=int(mx["target_month"]), basis=mx["basis"],
+                               fixed_cost=P.num(mx["fixed_cost"]), spends=[P.num(x) for x in mx["spends"]], roas=[P.num(x) for x in mx["roas"]])
+    m.margin = "loaded" if base is loaded and loaded is not None else "product"
+    return m
 
 
 # ------------------------------------------------------------------------------------------------------------------ compute
 
-def compute(scn, inputs: FinancingInputs | None, pnl: Any = None, inventory: Any = None, cohorts: Any = None, drivers: Any = None) -> FinancingDetail:
+def compute(scn, inputs: FinancingInputs | None, pnl, inventory, cohorts=None, drivers=None) -> FinancingDetail:
     inputs = inputs or FinancingInputs(params=P.effective(getattr(scn, "params", None)))
     prm = inputs.params
+    try:
+        P.validate_params(prm)                                  # a stored value the validators would refuse (e.g. via the generic scenario PATCH) never computes
+    except ApiError as e:
+        raise ValueError(f"invalid financing input: {e.message}") from None
     ser = inputs.series
     close = P.to_month(prm.get("close_month"), DEFAULT_CLOSE)
     out = FinancingDetail(params=prm, close_month=close)
@@ -187,9 +240,10 @@ def compute(scn, inputs: FinancingInputs | None, pnl: Any = None, inventory: Any
     outlay = getattr(inventory, "outlay", None) or {}
     inv = {m: v for m, v in outlay.items() if m >= close}
     cash = prm["cash"]
-    c = calc.cash_waterfall(MONTHS, close=close, noi_before_inventory=noi_bi, loan_interest=interest, loan_principal=principal,
-                            seller_principal=seller.principal, seller_interest=seller.interest, tax=tax, equity=equity, inventory=inv,
-                            opening_first=P.num(cash.get("opening")), opening_override=ser.get(P.S_OPENING), floor=P.num(cash.get("floor")))
+    wf = dict(close=close, noi_before_inventory=noi_bi, loan_interest=interest, loan_principal=principal, seller_principal=seller.principal,
+              seller_interest=seller.interest, tax=tax, equity=equity, inventory=inv, opening_first=P.num(cash.get("opening")),
+              opening_override=ser.get(P.S_OPENING))
+    c = calc.cash_waterfall(MONTHS, floor=P.num(cash.get("floor")), **wf)
     L = c.lines
     out.lines = {"interest": interest, "principal": principal, "balance": balance, "tax": L["tax"], "equity": L["equity_payback"],
                  "cash_after_inventory": L["cash_after_inventory"], "ending_cash": L["ending_cash"], "noi_before_inventory": L["noi_before_inventory"],
@@ -200,14 +254,24 @@ def compute(scn, inputs: FinancingInputs | None, pnl: Any = None, inventory: Any
     out.override_cells = {k: sorted(m for m in cells if cells[m]["kind"] == "override") for k, cells in inputs.cells.items()
                           if any(v["kind"] == "override" for v in cells.values())}
 
-    # payback, grid, payout
+    out.top_up = cash_drivers(out, c, wf, tax, interest, principal, inv, seller)
+
+    # payback, grid, payout (need the retention curve from the cohorts module)
     pbi = payback_inputs(prm, drivers)
     curve = _curve(cohorts, pbi["curve"])
+    pbi["shared_sources"] = P.payback_sources(getattr(scn, "params", None))
     out.payback_inputs = pbi
-    out.payback = run_payback(pbi, curve)
-    out.matrix = run_matrix(prm, out.payback, curve)
-    repeat, src = payout_repeat(prm, cohorts)
-    out.payout, out.payout_repeat_source = run_payout(prm, repeat), src
+    out.loaded_info = loaded_rate_info(prm, pnl)
+    if not any(curve):
+        out.unavailable = {k: "The retention curve is not available: the cohorts module has no result." for k in ("payback", "matrix", "payout")}
+    else:
+        out.payback = run_payback(pbi, curve)
+        out.payback_loaded = run_payback(pbi, curve, out.loaded_info["rate"], fully_loaded=True)
+        out.matrix = run_matrix(prm, out.payback, curve, out.payback_loaded)
+        repeat, src = payout_repeat(prm, cohorts)
+        out.payout, out.payout_repeat_source = run_payout(prm, repeat), src
+        if out.payback is None:
+            out.unavailable["payback"] = "Enter the average order value and customer acquisition cost."
 
     out.summary = summarize(out, inventory_present=bool(outlay))
     out.warnings = out.summary["warnings"]
@@ -227,6 +291,30 @@ def build_recon(r: FinancingDetail) -> dict[str, Any]:
             rec[f"bonus_{col}"] = [0.0 if b is None else b for b in r.payout.bonus[col]]
             rec[f"comp_{col}"] = [0.0 if b is None else b for b in r.payout.total_comp[col]]
     return rec
+
+
+def cash_drivers(out: FinancingDetail, c: calc.Cash, wf: dict, tax: Series, interest: Series, principal: Series, inv: Series, seller: calc.SellerNote) -> dict:
+    """What drives the low point and what it takes to stay at zero: the cash earned and paid out from the close through the lowest month,
+    and the smallest monthly top-up that keeps every month at zero or above. Computed from the waterfall, nothing typed."""
+    funding, top = calc.top_up_to_zero(MONTHS, **wf)
+    res: dict[str, Any] = {"close_funding": funding, "monthly_top_up": top, "through": _iso(c.lowest_month), "months": 0, "operating": 0.0, "outflows": [], "starting_cash_adjustments": 0.0}
+    if c.lowest_month is None or (c.lowest_value or 0) >= 0:
+        return res
+    span = [m for m in MONTHS if out.close_month <= m <= c.lowest_month]
+    tot = lambda s: sum(s.get(m, 0.0) for m in span)                       # noqa: E731
+    items = [("term_loan_principal", "term-loan principal", tot(principal)), ("inventory", "inventory buys", tot(inv)),
+             ("term_loan_interest", "term-loan interest", tot(interest)), ("tax", "tax", tot(tax)),
+             ("seller_note", "seller note", tot(seller.principal) + tot(seller.interest)), ("equity", "equity payback", tot(wf["equity"]))]
+    L = c.lines
+    adj = 0.0
+    prev = None
+    for m in span:
+        if prev is not None:
+            adj += L["opening_cash"][m] - prev
+        prev = L["ending_cash"][m]
+    res.update(months=len(span), operating=tot(wf["noi_before_inventory"]), starting_cash_adjustments=adj,
+               outflows=sorted(({"key": k, "label": lab, "amount": a} for k, lab, a in items if a > 0.5), key=lambda x: -x["amount"]))
+    return res
 
 
 # ------------------------------------------------------------------------------------------------------------------ summary
@@ -255,6 +343,11 @@ def summarize(r: FinancingDetail, *, inventory_present: bool = True) -> dict:
         "ending_cash_last": (list(r.lines["ending_cash"].values()) or [None])[-1],
         "payback_months": r.payback.months if r.payback else None,
         "payback_interpolated": r.payback.months_interpolated if r.payback else None,
+        "payback_months_loaded": r.payback_loaded.months if r.payback_loaded else None,
+        "payback_loaded_available": r.payback_loaded is not None,
+        "payback_horizon": r.payback.ages[-1] if r.payback else None,
+        "monthly_top_up": r.top_up.get("monthly_top_up", 0.0),
+        "close_funding": r.top_up.get("close_funding", 0.0),
         "debt_balance_year_end": year_end,
         "term_debt_principal": P.num(r.params["debt"]["principal"]),
         "total_interest": debt.total_interest, "payoff_month": _iso(debt.payoff_month),

@@ -29,8 +29,8 @@ DB_URL = f"{PG_BASE}/{DB_NAME}"
 PASSWORD = "throwaway-test-password"
 from werkzeug.security import generate_password_hash                # noqa: E402
 USERS = {name: generate_password_hash(PASSWORD, method="scrypt:1024:8:1") for name in ("JoshHoughton", "Lazer")}
-MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "110_proj_cohorts.sql",
-              "120_proj_drivers.sql")
+MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "106_proj_scenario_lifecycle.sql",
+              "110_proj_cohorts.sql", "120_proj_drivers.sql", "170_proj_pacing.sql")          # 170: the feed tables the realized-CPA and Amazon references read
 TODAY = date(2026, 11, 3)
 SNAPSHOT_OK = (Path("~/lonvera-tag-explorer-data/projection-snapshot-2026-11-03/_manifest.json").expanduser()).exists()
 
@@ -116,7 +116,8 @@ def rw(drv_db):
 @pytest.fixture(autouse=True)
 def clean(drv_db):
     with psycopg.connect(drv_db) as c:
-        for t in ("proj_audit", "proj_actuals", "proj_scenario_history", "proj_series", "proj_cohort_cum", "proj_cohorts", "ad_daily"):
+        for t in ("proj_audit", "proj_actuals", "proj_scenario_history", "proj_series", "proj_cohort_cum", "proj_cohorts", "ad_daily", "proj_feed_amazon",
+                  "proj_feed_orders", "proj_feed_platform"):
             c.execute(f"DELETE FROM {t}")
         c.execute("DELETE FROM proj_scenarios WHERE slug <> 'current'")
         c.execute("UPDATE proj_scenarios SET name = 'Current plan', base_slug = NULL, params = '{}', version = 1, is_default = true")
@@ -152,7 +153,12 @@ needs_snapshot = pytest.mark.skipif(not SNAPSHOT_OK, reason="sheet snapshot not 
 def put_cells(conn, key: str, cells: dict, slug: str = "current", kind: str = "input", note: str | None = None):
     """Write scenario cells straight through the core series API (audited, versioned)."""
     from app.projection import series
-    items = series.parse_items([{"line_key": key, "month": m.isoformat(), "value": v, "kind": kind, **({"note": note} if note else {})}
+    cutoff = TODAY.replace(day=1)
+
+    def kind_for(m):                                  # the core refuses a typed plan input for a closed month; kind 'override' is how a closed month is corrected
+        return "override" if kind == "input" and key.startswith("drivers.") and m < cutoff else kind
+
+    items = series.parse_items([{"line_key": key, "month": m.isoformat(), "value": v, "kind": kind_for(m), **({"note": note} if note else {})}
                                 for m, v in cells.items()])
     out = series.apply_items(conn, slug, items, actor="test")
     conn.commit()

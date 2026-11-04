@@ -14,7 +14,10 @@ from __future__ import annotations
 from datetime import date
 
 from .. import series
-from ..freshness import today_pacific
+try:                                                           # the core's clock when it exists, else the freshness module's Pacific date
+    from ..clock import today_pt as today_pacific
+except ImportError:
+    from ..freshness import today_pacific
 from ..interfaces import Month, Scenario
 from .model import META_FEED_KEY, NC_ACTUAL_KEYS, OVERRIDE_KEYS, PLAN_KEYS, QB_CHANNEL_KEYS, REVENUE_KEYS, SERIES_PREFIX, DriverInputs
 

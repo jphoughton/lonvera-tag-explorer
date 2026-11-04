@@ -71,8 +71,13 @@ def load_qb_map(conn) -> dict[str, str]:
     return {r["account"]: r["line_key"] for r in conn.execute("SELECT account, line_key FROM proj_pnl_qb_map").fetchall()}
 
 
-def today() -> date:                                                   # a seam for tests
-    return date.today()
+def today() -> date:                                                   # a seam for tests; Pacific, one clock for every module
+    try:
+        from ..clock import today_pt
+        return today_pt()
+    except ImportError:                                                # app/projection/clock.py is added by the core module
+        from ..freshness import today_pacific
+        return today_pacific()
 
 
 def load_inputs(conn, scn: Scenario | None = None, today_: date | None = None) -> PnlInputs:
@@ -192,3 +197,59 @@ def freshness_entries(conn, today: date | None = None) -> list[dict]:
         through = date(m.year, m.month, calendar.monthrange(m.year, m.month)[1])
         stale_after = limit + calendar.monthrange(nxt.year, nxt.month)[1]
     return [{"feed": "quickbooks_pnl", "label": "QuickBooks P&L", "cadence": "monthly-upload", "data_through": through, "stale_after_days": stale_after}]
+
+
+# ---------------------------------------------------------------------------------------------------------------- upload checks and history
+
+def upload_checks(conn) -> dict:
+    """The coverage settings for a QuickBooks upload (global): proj_pnl_settings 'upload' over the built-in starting values."""
+    from .model import DEFAULT_SETTINGS
+    row = conn.execute("SELECT value FROM proj_pnl_settings WHERE key = 'upload'").fetchone()
+    return {**DEFAULT_SETTINGS["upload"], **((row or {}).get("value") or {})}
+
+
+def record_upload(conn, *, actor: str | None, filename: str, sha256: str, size: int, file_rows: int, months: list[str],
+                  replaced: list[dict], created: list[dict]) -> int:
+    row = conn.execute(
+        "INSERT INTO proj_upload_history (actor, filename, sha256, bytes, file_rows, months, new_cells, changed_cells, replaced, created) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+        (actor, filename[:200], sha256, size, file_rows, Jsonb(months), len(created), len(replaced), Jsonb(replaced), Jsonb(created))).fetchone()
+    return row["id"]
+
+
+def list_uploads(conn, limit: int = 10) -> list[dict]:
+    rows = conn.execute("SELECT id, at, actor, filename, sha256, months, new_cells, changed_cells, status, undone_at, undone_by FROM proj_upload_history "
+                        "ORDER BY id DESC LIMIT %s", (max(1, min(limit, 50)),)).fetchall()
+    latest = conn.execute("SELECT max(id) AS id FROM proj_upload_history WHERE status = 'applied'").fetchone()["id"]
+    return [{**r, "can_undo": r["id"] == latest} for r in rows]
+
+
+def undo_upload(conn, upload_id: int | None, *, actor: str | None) -> dict:
+    """Put back exactly what the latest applied upload replaced and remove what it created. Refuses unless it is the latest applied upload and nothing
+    has changed those cells since."""
+    from ...queries import ApiError
+    row = conn.execute("SELECT * FROM proj_upload_history WHERE status = 'applied' ORDER BY id DESC LIMIT 1 FOR UPDATE").fetchone()
+    if row is None:
+        raise ApiError(404, "there is no upload to undo")
+    if upload_id is not None and upload_id != row["id"]:
+        raise ApiError(409, "only the latest upload can be undone; undo the newer ones first")
+    cur = {(r["line_key"], r["month"]): float(r["value"]) for r in conn.execute(
+        "SELECT line_key, month, value FROM proj_actuals WHERE left(line_key, 4) = 'pnl.' AND month = ANY(%s)",
+        ([date.fromisoformat(m) for m in row["months"]],)).fetchall()}
+    for c in row["created"]:
+        if abs(cur.get((L.actuals_key(c["line_key"]), date.fromisoformat(c["month"])), float("nan")) - float(c["value"])) > 0.005:
+            raise ApiError(409, "loaded values changed after this upload, so it cannot be undone safely")
+    for c in row["replaced"]:
+        if abs(cur.get((L.actuals_key(c["line_key"]), date.fromisoformat(c["month"])), float("nan")) - float(c["new"])) > 0.005:
+            raise ApiError(409, "loaded values changed after this upload, so it cannot be undone safely")
+    with conn.cursor() as cur_:
+        for c in row["created"]:
+            cur_.execute("DELETE FROM proj_actuals WHERE line_key = %s AND month = %s", (L.actuals_key(c["line_key"]), date.fromisoformat(c["month"])))
+        for c in row["replaced"]:
+            cur_.execute("UPDATE proj_actuals SET value = %s, source = %s, loaded_at = now() WHERE line_key = %s AND month = %s",
+                         (c["old"], c["source"], L.actuals_key(c["line_key"]), date.fromisoformat(c["month"])))
+    conn.execute("UPDATE proj_upload_history SET status = 'undone', undone_at = now(), undone_by = %s WHERE id = %s", (actor, row["id"]))
+    audit.record(conn, actor=actor, scenario=None, action="pnl.upload.undo", note=row["filename"],
+                 old={"upload_id": row["id"], "sha256": row["sha256"]},
+                 new={"restored": len(row["replaced"]), "removed": len(row["created"]), "months": row["months"]})
+    return {"upload_id": row["id"], "filename": row["filename"], "restored": len(row["replaced"]), "removed": len(row["created"]), "months": row["months"]}

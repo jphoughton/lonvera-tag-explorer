@@ -24,7 +24,7 @@ from typing import Any
 from ...queries import ApiError
 from .. import scenarios
 from . import store
-from .model import (PO, PRODUCTS, SETTING_SPECS, SPEC_BY_KEY, WAREHOUSES, Inputs, ProductCost, ReorderParam, Transfer, Vendor, VendorCost, normalize_product)
+from .model import (PO, PRODUCTS, SETTING_SPECS, SPEC_BY_KEY, WAREHOUSES, Inputs, ProductCost, ReorderParam, Settings, Transfer, Vendor, VendorCost, normalize_product)
 
 NS = "inventory_supply"
 TABLE_KEYS = ("vendors", "prices", "reorder", "product_costs", "pos", "transfers")
@@ -39,6 +39,17 @@ _BASE_ID = re.compile(r"^[1-9][0-9]{0,11}$")
 
 
 # ---------------------------------------------------------------------------------------------------------------- reading the overlay
+
+PNL_NS = "pnl"
+SHARED_COST_MAX = 1000.0                                                   # the P&L's own bound for a China cost per unit
+
+
+def shared_china_costs(params: dict | None) -> dict[str, float]:
+    """{sku: dollars per unit} from the scenario params the P&L writes (`pnl.cogs.china_cost.<sku>`): the single source of the China landed cost.
+    Read from params only (no import of the P&L engine). Missing, null or mistyped entries are ignored."""
+    cogs = ((params or {}).get(PNL_NS) or {}).get("cogs") if isinstance((params or {}).get(PNL_NS), dict) else None
+    china = cogs.get("china_cost") if isinstance(cogs, dict) else None
+    return {str(k): float(v) for k, v in (china or {}).items() if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and 0 <= v <= SHARED_COST_MAX}
 
 def _ns(params: dict | None) -> dict:
     ns = (params or {}).get(NS)
@@ -71,9 +82,11 @@ def apply_overlay(inputs: Inputs, params: dict | None, *, strict: bool = False) 
     """Stored inputs with the scenario's changes applied. A change that no longer fits (a deleted row, an invalid value) is skipped and listed in
     `Inputs.notes` (shown as a data check); with `strict` it raises ApiError(400) instead (used when a change is being written)."""
     ns = _ns(params)
-    if not any(ns.get(k) for k in TABLE_KEYS):
+    shared = shared_china_costs(params)
+    if not any(ns.get(k) for k in TABLE_KEYS) and not any(pc.sku in shared for pc in inputs.product_costs.values()):
         return inputs
     out = copy.deepcopy(inputs)
+    settings = Settings.from_params(params)
     out.notes = list(out.notes)
     out.overridden = dict(out.overridden)
 
@@ -115,7 +128,7 @@ def apply_overlay(inputs: Inputs, params: dict | None, *, strict: bool = False) 
             bad(f"reorder {key}: unknown location or product")
             continue
         base = out.reorder.get((loc, prod))
-        merged = {"lead_days": base.lead_days if base else None, "safety_days": base.safety_days if base else 14, "moq_units": base.moq_units if base else 0.0,
+        merged = {"lead_days": base.lead_days if base else None, "safety_days": base.safety_days if base else round(settings.default_safety_days), "moq_units": base.moq_units if base else 0.0,
                   **{k: v for k, v in d.items() if k in REORDER_FIELDS}}
         try:
             out.reorder[(loc, prod)] = ReorderParam(loc, prod, int(store._number(merged, "lead_days", required=True, lo=0, hi=730)),
@@ -135,6 +148,9 @@ def apply_overlay(inputs: Inputs, params: dict | None, *, strict: bool = False) 
             out.overridden[("product_cost", prod)] = tuple(sorted(k for k in d if k in PCOST_FIELDS))
         except ApiError as e:
             bad(f"product cost {prod}: {e}")
+    for prod, pc in list(out.product_costs.items()):                                 # the P&L's China cost per SKU is the one source: it wins over the table and any overlay
+        if pc.sku in shared:
+            out.product_costs[prod] = ProductCost(prod, shared[pc.sku], pc.sku, pc.us_unit_cost, "pnl")
     out.pos = _apply_rows(out.pos, ns.get("pos"), "order", store.clean_po, _po_dict, _new_po, bad)
     out.transfers = _apply_rows(out.transfers, ns.get("transfers"), "transfer", store.clean_transfer, _tr_dict, _new_transfer, bad)
     return out
@@ -327,13 +343,34 @@ def set_variables(conn, slug: str, items: list[dict], *, base_inputs: Inputs, ex
     """Validate and write a list of variable changes into scenario `slug` (one version, audited, restorable). Returns the scenario row."""
     row = scenarios.get_row(conn, slug)
     own_ns = _ns(row["params"])
-    patch = build_patch(own_ns, items)
-    if not patch:
+    if not isinstance(items, list) or not items:
+        raise ApiError(400, "items must be a non-empty list")
+    sku_of = {p: pc.sku for p, pc in base_inputs.product_costs.items() if pc.sku}
+    mine, shared = [], []
+    for item in items:                                                       # a China cost of a SKU belongs to the P&L's param, not to this module's overlay
+        if isinstance(item, dict) and item.get("kind") == "product_cost" and item.get("field") == "china_unit_cost" and normalize_product(item.get("product")) in sku_of:
+            shared.append((sku_of[normalize_product(item["product"])], item.get("value")))
+        else:
+            mine.append(item)
+    patch = build_patch(own_ns, mine) if mine else {}
+    params_patch: dict = {NS: patch} if patch else {}
+    if shared:
+        own_pnl = copy.deepcopy(row["params"].get(PNL_NS) or {})
+        new_pnl = copy.deepcopy(own_pnl)
+        for sku, v in shared:
+            if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or v != v or not 0 <= v <= SHARED_COST_MAX):
+                raise ApiError(400, f"China landed cost for {sku}: enter a number from 0 to {SHARED_COST_MAX:g}")
+            _set_path(new_pnl, ["cogs", "china_cost", sku], None if v is None else float(v))
+        pnl_patch = _diff_patch(own_pnl, new_pnl)
+        if pnl_patch:
+            params_patch[PNL_NS] = pnl_patch
+    if not params_patch:
         return {"scenario": scenarios._public(row), "changed": 0}
-    effective = scenarios.get_scenario(conn, slug).params
-    prospective = scenarios.merge_patch(effective, {NS: patch})
-    apply_overlay(base_inputs, prospective, strict=True)                    # every changed order, transfer, vendor, price is validated as a whole
-    scn = scenarios.update(conn, slug, params={NS: patch}, expected_version=expected_version)
+    if patch:
+        effective = scenarios.get_scenario(conn, slug).params
+        prospective = scenarios.merge_patch(effective, {NS: patch})
+        apply_overlay(base_inputs, prospective, strict=True)                # every changed order, transfer, vendor, price is validated as a whole
+    scn = scenarios.update(conn, slug, params=params_patch, expected_version=expected_version)
     return {"scenario": scn, "changed": len(items)}
 
 
@@ -383,7 +420,8 @@ def catalog(base: Inputs, scenario_row: dict, effective_params: dict) -> dict:
                                              "moq_units": {"value": r.moq_units, "default": b.moq_units if b else None}}})
     for prod, c in sorted(applied.product_costs.items()):
         b = base.product_costs.get(prod)
-        tables["product_costs"].append({"key": prod, "overridden": list(applied.overridden.get(("product_cost", prod), ())), "new": b is None,
+        tables["product_costs"].append({"key": prod, "overridden": list(applied.overridden.get(("product_cost", prod), ())), "new": b is None, "sku": c.sku,
+                                        "source": "P&L cost model" if c.source == "pnl" else "table",
                                         "fields": {"china_unit_cost": {"value": c.china_unit_cost, "default": b.china_unit_cost if b else None}}})
     changes = []
     for table in TABLE_KEYS:
@@ -443,3 +481,48 @@ def accept_plan(conn, slug: str, body: dict) -> dict:
     res = set_variables(conn, slug, items, base_inputs=loaders.load_base(conn))
     return {"added_pos": [f"new:{n_po + i}" for i in range(len(pos))], "added_transfers": [f"new:{n_tr + i}" for i in range(len(trs))],
             "removed_pos": len(old_pos), "removed_transfers": len(old_tr), "scenario": {"slug": slug, "version": res["scenario"]["version"]}}
+
+
+# ---------------------------------------------------------------------------------------------------------------- validation hook
+
+def validate_params(params: dict, conn=None) -> None:
+    """Check params["inventory_supply"] as a whole: scalar variables in range and typed, table overlays well formed (and, given a connection, valid against the
+    stored rows). Raises ApiError(400); the core calls it for every change to a scenario's params when it supports module validators."""
+    ns = _ns(params)
+    for spec in SETTING_SPECS:
+        if spec.key in ns and ns[spec.key] is not None:
+            _check_lever({"name": spec.key, "value": ns[spec.key]})
+    unknown = sorted(set(ns) - set(SPEC_BY_KEY) - set(TABLE_KEYS))
+    if unknown:
+        raise ApiError(400, f"unknown inventory_supply parameter(s): {', '.join(unknown)}")
+    for table in TABLE_KEYS:
+        v = ns.get(table)
+        if v is not None and not isinstance(v, dict):
+            raise ApiError(400, f"inventory_supply.{table} must be an object")
+        for key, d in _dict_items(v):
+            if not isinstance(d, dict):
+                raise ApiError(400, f"inventory_supply.{table}[{key!r}] must be an object")
+    if any(ns.get(t) for t in TABLE_KEYS):
+        if conn is not None:
+            from . import loaders
+            apply_overlay(loaders.load_base(conn), params, strict=True)
+        else:
+            _validate_shapes(ns)
+
+
+def _validate_shapes(ns: dict) -> None:
+    """Without stored rows to check against: unknown row references and fields are still rejected."""
+    for table, allowed in (("pos", PO_ENTRY_FIELDS + ("deleted",)), ("transfers", TR_ENTRY_FIELDS + ("deleted",))):
+        for ref, d in _dict_items(ns.get(table)):
+            try:
+                _ref_parts(str(ref))
+            except ValueError as e:
+                raise ApiError(400, str(e)) from None
+            bad = sorted(set(d) - set(allowed))
+            if bad:
+                raise ApiError(400, f"inventory_supply.{table}[{ref}]: unknown field(s) {', '.join(bad)}")
+    for table, allowed in (("vendors", VENDOR_FIELDS), ("prices", PRICE_FIELDS), ("reorder", REORDER_FIELDS), ("product_costs", PCOST_FIELDS)):
+        for key, d in _dict_items(ns.get(table)):
+            bad = sorted(set(d) - set(allowed))
+            if bad:
+                raise ApiError(400, f"inventory_supply.{table}[{key}]: unknown field(s) {', '.join(bad)}")

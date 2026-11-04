@@ -3,6 +3,7 @@
 // produces, and the revenue stack on top (repeat, Amazon, TikTok, sales tax). Everything is one monthly grid; the yellow rows are the plan.
 // Edits: cells in the grid (core PUT /series), "Fill a range" (POST /drivers/patterns, previewed first), plan settings (PUT /drivers/levers).
 import { events } from './lib/api.js';
+import { toast as notify } from './lib/util.js';
 
 const ID = 'dr-style';
 const CSS = `
@@ -10,6 +11,8 @@ const CSS = `
 .dr-cue.copy { border-color: var(--lv-warn); background: var(--lv-warn-bg); }
 .dr-cue .who { font-weight: var(--lv-fw-heavy); color: var(--lv-ink); }
 .dr-cue .grow { flex: 1 1 260px; min-width: 0; }
+.dr-status { display: flex; flex-wrap: wrap; gap: var(--lv-sp-2); }
+.dr-status:empty { display: none; }
 .dr-tool { display: flex; flex-direction: column; gap: var(--lv-sp-3); }
 .dr-tool[hidden] { display: none; }
 .dr-settings, .dr-compare { display: flex; flex-direction: column; gap: var(--lv-sp-3); }
@@ -31,6 +34,9 @@ const CSS = `
 .dr-preview td.delta.up { color: var(--lv-good); font-weight: var(--lv-fw-semi); }
 .dr-preview td.delta.down { color: var(--lv-neg); font-weight: var(--lv-fw-semi); }
 .dr-box { background: var(--lv-surface-2); border-radius: var(--lv-r-sm); padding: var(--lv-sp-3); overflow-x: auto; max-width: 100%; }
+.dr-refs { display: flex; flex-direction: column; gap: var(--lv-sp-2); }
+.dr-refs:empty { display: none; }
+.dr-ref { display: flex; flex-wrap: wrap; gap: var(--lv-sp-2); align-items: center; }
 .dr-legend { display: flex; flex-wrap: wrap; gap: 4px var(--lv-sp-4); align-items: center; font-size: var(--lv-fs-xs); color: var(--lv-muted); }
 .dr-total { font-size: var(--lv-fs-sm); font-weight: var(--lv-fw-semi); }
 .dr-total.bad { color: var(--lv-bad); }
@@ -68,8 +74,25 @@ const SHARE_LABELS = [['amazon', 'Amazon ads'], ['meta', 'Meta'], ['google', 'Go
 const SHARE_TOTAL_TOLERANCE = 0.0005;
 const PAYBACK_NOT_REACHED = 'not within the horizon';
 
+// the last range fill (module scope: it survives the re-render that follows Apply, so Undo works from the toast, the cue button and Ctrl+Z)
+let lastFill = null;
+let live = null;                                                  // the ctx of the page on screen
+async function undoFill() {
+  const f = lastFill;
+  if (!f || !live) return;
+  try {
+    const res = await live.api.post('drivers/undo', { scenario: f.slug, version: f.version });
+    lastFill = null;
+    events.emit('saved', { scenario: f.slug, version: res.version });
+    notify(res.restored ? `Undid the range fill: ${res.restored} change${res.restored === 1 ? '' : 's'} put back${res.skipped ? `, ${res.skipped} edited since and left as they are` : ''}`
+      : 'Nothing to undo: those cells were edited again', 'ok');
+    live.reload();
+  } catch (e) { notify(e.message, 'error'); }
+}
+
 export async function render(el, ctx) {
   ensureStyle();
+  live = ctx;
   const { h, fmt, ui, charts, toast } = ctx;
   const slug = ctx.scenario;
   const info = ctx.scenarioInfo;
@@ -82,8 +105,12 @@ export async function render(el, ctx) {
 
   const load = () => ctx.api.table('drivers');
   let payload;
-  try { payload = await load(); } catch (e) { ui.error(root, e, ctx.reload); return undefined; }
+  let allScenarios = [];
+  try {
+    [payload, allScenarios] = await Promise.all([load(), ctx.api.get('scenarios').then((r) => r.scenarios || []).catch(() => [])]);
+  } catch (e) { ui.error(root, e, ctx.reload); return undefined; }
   if (!ctx.alive()) return undefined;
+  const baseName = (allScenarios.find((x) => x.slug === info.base_slug) || {}).name || null;
 
   const state = { payload, tool: null };
   const mon = (iso) => fmt.monthLabel(iso);
@@ -93,6 +120,7 @@ export async function render(el, ctx) {
 
   // ---------------------------------------------------------------- header and TLDR
   const headerHost = h('div');
+  const statusHost = h('div', { class: 'dr-status', role: 'note', 'aria-label': 'Month status' });
   function drawHeader() {
     const s = state.payload.summary;
     const n = s.window_months || 12;
@@ -110,6 +138,12 @@ export async function render(el, ctx) {
       { label: 'Payback on a new customer', value: pb == null ? PAYBACK_NOT_REACHED : `${pb} month${pb === 1 ? '' : 's'}*`, note: s.plan_cpa ? `CPA ${fmt.money(s.plan_cpa)}` : '', tone: pb == null && s.plan_cpa ? 'bad' : '' },
       { label: `Total revenue, next ${n} months`, value: fmt.compact(s.total_revenue_next_12) + '*' },
     ];
+    const sl = state.payload.status_line || {};
+    const statusChips = [];
+    if (sl.books_through) statusChips.push(ui.chip(`Books through ${mon(sl.books_through)}`, 'good'));
+    if (sl.feeds_from) statusChips.push(ui.chip(`Feeds only, no books yet: ${sl.feeds_from === sl.feeds_to ? mon(sl.feeds_from) : `${mon(sl.feeds_from)} to ${mon(sl.feeds_to)}`}`, 'info'));
+    if (sl.projected_from) statusChips.push(ui.chip(`Projected from ${mon(sl.projected_from)}*`, 'neutral'));
+    statusHost.replaceChildren(...statusChips);
     headerHost.replaceChildren(ui.pageHeader({
       title: 'Spend plan',
       purpose: 'Set what you spend each month, what a new customer costs (CPA, cost per acquisition) and spends on a first order (AOV, average order value).',
@@ -119,13 +153,18 @@ export async function render(el, ctx) {
   }
 
   // ---------------------------------------------------------------- which scenario am I in
-  const cue = h('div', { class: 'dr-cue' + (isCopy ? ' copy' : ''), role: 'note' },
-    ui.chip(isCopy ? 'Scenario copy' : 'Plan of record', isCopy ? 'warn' : 'neutral'),
-    h('span', { class: 'who' }, `${info.name} v${ctx.scenarioVersion}`),
-    h('span', { class: 'grow' }, isCopy
-      ? `Editing a copy${info.base_slug ? ` of ${info.base_slug}` : ''}. Changes here do not touch the plan of record.`
-      : 'Editing the plan of record. Changes save as you type, show in History and can be undone. Try a change on a copy first.'),
-    h('button', { type: 'button', class: 'btn small', onclick: () => cloneScenario() }, isCopy ? 'Clone this copy' : 'Clone to try a change'));
+  const cue = h('div', { class: 'dr-cue' + (isCopy ? ' copy' : ''), role: 'note' });
+  const canUndoFill = () => !!lastFill && lastFill.slug === slug && lastFill.version === state.payload.scenario.version;
+  function drawCue() {
+    cue.replaceChildren(...[
+      ui.chip(isCopy ? 'Scenario copy' : 'Plan of record', isCopy ? 'warn' : 'neutral'),
+      h('span', { class: 'who' }, `${info.name} v${state.payload.scenario.version}`),
+      h('span', { class: 'grow' }, isCopy ? `Editing a copy${baseName ? ` of ${baseName}` : ''}. Changes here do not touch the plan of record.` : ''),
+      canUndoFill() ? h('button', { type: 'button', class: 'btn small', id: 'dr-undo-fill', onclick: () => undoFill() }, `Undo range fill (${lastFill.count} change${lastFill.count === 1 ? '' : 's'})`) : null,
+      isCopy && baseName ? h('button', { type: 'button', class: 'btn small', onclick: () => { cmp.picked.add(info.base_slug); loadCompare(); compareHost.scrollIntoView({ block: 'start' }); } }, `Compare with ${baseName}`) : null,
+      isCopy ? h('button', { type: 'button', class: 'btn small', onclick: () => cloneScenario() }, 'Clone this copy') : null,
+    ].filter(Boolean));
+  }
 
   async function cloneScenario() {
     const { askText } = await import('./lib/util.js');
@@ -142,16 +181,25 @@ export async function render(el, ctx) {
   function drawChart() {
     charts.destroyAll();
     const p = state.payload;
-    const pick = (key, label) => ({ label, values: rowOf(p, key).values });
+    const ink = getComputedStyle(document.documentElement).getPropertyValue('--lv-viz-ink').trim() || undefined;       // the series the page is about; product slots stay with the products
+    const pick = (key, label, color) => ({ label, values: rowOf(p, key).values, color });
     charts.lineChart(canvas, { months: p.months, status: p.status, yFmt: 'usd0',
-      series: [pick('drivers.spend_total', 'Marketing spend'), pick('nc_rev', 'New-customer revenue'), pick('repeat_rev', 'Repeat revenue')] });
+      series: [pick('drivers.spend_total', 'Marketing spend', ink), pick('nc_rev', 'New-customer revenue', charts.PALETTE[3]), pick('repeat_rev', 'Repeat revenue', charts.PALETTE[4])] });
   }
 
   // ---------------------------------------------------------------- grid
   const gridHost = h('div');
-  const legend = h('div', { class: 'dr-legend' },
-    ui.chip('Carried', 'info'), h('span', null, 'a value carried from the month before; type a value to set it'),
-    h('span', null, 'Clear a yellow cell to remove the value you typed.'));
+  const legend = h('div', { class: 'dr-legend' });
+  const refHost = h('div', { class: 'dr-refs' });
+  function drawLegend() {
+    legend.replaceChildren(ui.chip('Carried', 'info'), h('span', null, 'a value carried from the month before; type a value to set it'),
+      h('span', null, 'Clear a yellow cell to remove the value you typed.'));
+    const r = state.payload.reference || {};
+    const kids = [];
+    if (r.cpa) kids.push(h('div', { class: 'dr-ref' }, ui.chip(r.cpa.chip, r.cpa.tone), h('span', { class: 'dr-legend' }, `Realized CPA from the feeds, ${mon(r.cpa.window.from)} to ${mon(r.cpa.window.to)}; plan CPA for ${mon(r.cpa.plan_month)}.`)));
+    if (r.amazon && r.amazon.note) kids.push(h('div', { class: 'dr-ref' }, ui.chip('Amazon feed', 'warn'), h('span', { class: 'dr-legend' }, r.amazon.note)));
+    refHost.replaceChildren(...kids);
+  }
   let grid = null;
   const cellMeta = () => state.payload.cellmeta || {};
   function highlight(cell) {
@@ -164,13 +212,20 @@ export async function render(el, ctx) {
     if (closed) throw new Error(`${mon(closed.month)} is a closed month and its value comes from the books. Upload the updated books to change it.`);
     const slide = (state.payload.levers || {}).roas_slide || {};
     const inSlide = (iso) => slide.enabled && iso >= slide.from && iso <= slide.to;           // a typed CPA inside the NC-ROAS slide has to be an override to count
-    await ctx.api.saveSeries(edits.map((e) => ({ line_key: e.line_key, month: e.month, value: e.value,
-      kind: OVERRIDES.has(e.line_key) || (e.line_key === 'drivers.nc_cpa' && inSlide(e.month)) ? 'override' : 'input' })));
+    const open = (state.payload.summary || {}).open_month || '';                     // a closed month is corrected with an override, a planned month takes an input
+    const items = edits.map((e) => ({ line_key: e.line_key, month: e.month, value: e.value,
+      kind: OVERRIDES.has(e.line_key) || (e.line_key === 'drivers.nc_cpa' && inSlide(e.month)) || e.month < open ? 'override' : 'input' }));
+    for (let i = 0; i < items.length; i += 500) {                                     // saved through the Spend plan endpoint: line bounds and closed months are checked there
+      try { await ctx.api.put('drivers/series', { scenario: slug, items: items.slice(i, i + 500), expected_version: state.payload.scenario.version }); }
+      catch (e) { throw e && e.status === 409 ? new Error('This plan changed in another tab or window. Reload to see it.') : e; }
+    }
     const fresh = await load();
     if (!ctx.alive()) return fresh;
     state.payload = fresh;
     drawHeader();
     drawChart();
+    drawLegend();
+    drawCue();
     return fresh;
   }
   function drawGrid() {
@@ -311,9 +366,11 @@ export async function render(el, ctx) {
     els.status.className = 'status';
     els.status.textContent = 'Saving';
     try {
-      const res = await ctx.api.post('drivers/patterns', requestBody(spec));
+      const res = await ctx.api.post('drivers/patterns', { ...requestBody(spec), expected_version: state.payload.scenario.version });
       events.emit('saved', { scenario: slug, version: res.version });
-      toast(`Saved ${res.changed} change${res.changed === 1 ? '' : 's'} to ${LINES.find((l) => l.id === tf.line).label}`, 'ok');
+      if (res.changed) lastFill = { slug, version: res.version, count: res.changed };
+      toast(`Saved ${res.changed} change${res.changed === 1 ? '' : 's'} to ${LINES.find((l) => l.id === tf.line).label}`,
+        res.changed ? { kind: 'ok', action: { label: 'Undo', onClick: () => undoFill() } } : 'ok');
       ctx.reload();
     } catch (e) { els.status.className = 'status err'; els.status.textContent = e.message; els.apply.disabled = false; }
   }
@@ -381,6 +438,8 @@ export async function render(el, ctx) {
     const horizonInput = h('input', { type: 'number', id: 'dr-hz', min: 1, max: 60, step: 1, value: String(lv.payback.horizon_months), inputmode: 'numeric' });
     const bandInput = h('input', { type: 'number', id: 'dr-band', min: 1, max: 100, step: 1, value: String(Math.round(lv.posture_band * 100)), inputmode: 'numeric' });
     const winInput = h('input', { type: 'number', id: 'dr-win', min: 1, max: 36, step: 1, value: String(lv.summary_months), inputmode: 'numeric' });
+    const refDaysInput = h('input', { type: 'number', id: 'dr-refd', min: 7, max: 90, step: 1, value: String(lv.reference_days), inputmode: 'numeric' });
+    const refTolInput = h('input', { type: 'number', id: 'dr-reft', min: 1, max: 100, step: 1, value: String(Math.round(lv.reference_tolerance * 100)), inputmode: 'numeric' });
     const adBoxes = Object.fromEntries(SHARE_LABELS.map(([k, label]) => {
       const box = h('input', { type: 'checkbox', id: 'dr-ad-' + k, checked: lv.ad_spend_channels.includes(k) });
       return [k, { box, label }];
@@ -391,15 +450,18 @@ export async function render(el, ctx) {
     const adSel = () => SHARE_LABELS.map(([k]) => k).filter((k) => adBoxes[k].box.checked);
     const desired = () => ({ channel_share: shares(), sales_tax_rate: (parseFloat(taxInput.value) || 0) / 100,
       payback: { product_cost_pct: (parseFloat(costInput.value) || 0) / 100, fulfillment_per_order: parseFloat(fulInput.value) || 0, horizon_months: parseInt(horizonInput.value, 10) || 0 },
-      ad_spend_channels: adSel(), posture_band: (parseFloat(bandInput.value) || 0) / 100, summary_months: parseInt(winInput.value, 10) || 0 });
+      ad_spend_channels: adSel(), posture_band: (parseFloat(bandInput.value) || 0) / 100, summary_months: parseInt(winInput.value, 10) || 0,
+      reference_days: parseInt(refDaysInput.value, 10) || 0, reference_tolerance: (parseFloat(refTolInput.value) || 0) / 100 });
     const differs = () => {
       const d = desired();
       return SHARE_LABELS.some(([k]) => Math.abs(d.channel_share[k] - lv.channel_share[k]) > 1e-6) || Math.abs(d.sales_tax_rate - lv.sales_tax_rate) > 1e-6
         || Math.abs(d.payback.product_cost_pct - lv.payback.product_cost_pct) > 1e-6 || Math.abs(d.payback.fulfillment_per_order - lv.payback.fulfillment_per_order) > 1e-6
         || d.payback.horizon_months !== lv.payback.horizon_months || Math.abs(d.posture_band - lv.posture_band) > 1e-6 || d.summary_months !== lv.summary_months
+        || d.reference_days !== lv.reference_days || Math.abs(d.reference_tolerance - lv.reference_tolerance) > 1e-6
         || d.ad_spend_channels.join() !== SHARE_LABELS.map(([k]) => k).filter((k) => lv.ad_spend_channels.includes(k)).join();
     };
-    const d0Valid = () => { const d = desired(); return d.payback.horizon_months >= 1 && d.payback.horizon_months <= 60 && d.summary_months >= 1 && d.summary_months <= 36 && d.posture_band > 0 && d.posture_band <= 1; };
+    const d0Valid = () => { const d = desired(); return d.payback.horizon_months >= 1 && d.payback.horizon_months <= 60 && d.summary_months >= 1 && d.summary_months <= 36 && d.posture_band > 0 && d.posture_band <= 1
+      && d.reference_days >= 7 && d.reference_days <= 90 && d.reference_tolerance > 0 && d.reference_tolerance <= 1; };
     const refresh = () => {
       const sum = SHARE_LABELS.reduce((a, [k]) => a + shares()[k], 0);
       const ok = Math.abs(sum - 1) <= SHARE_TOTAL_TOLERANCE;
@@ -409,14 +471,14 @@ export async function render(el, ctx) {
       save.disabled = !valid || !differs();
       status.textContent = '';
     };
-    [...Object.values(shareInputs), taxInput, costInput, fulInput, horizonInput, bandInput, winInput, ...Object.values(adBoxes).map((a) => a.box)].forEach((i) => i.addEventListener('input', refresh));
+    [...Object.values(shareInputs), taxInput, costInput, fulInput, horizonInput, bandInput, winInput, refDaysInput, refTolInput, ...Object.values(adBoxes).map((a) => a.box)].forEach((i) => i.addEventListener('input', refresh));
     save.addEventListener('click', async () => {
       save.disabled = true;
       status.className = 'status';
       status.textContent = 'Saving';
       try {
         const d = desired();
-        const res = await ctx.api.put('drivers/levers', { scenario: slug, levers: d });
+        const res = await ctx.api.put('drivers/levers', { scenario: slug, levers: d, expected_version: state.payload.scenario.version });
         events.emit('saved', { scenario: slug, version: res.scenario.version });
         toast('Plan settings saved', 'ok');
         ctx.reload();
@@ -427,7 +489,7 @@ export async function render(el, ctx) {
       ui.chip('NC-ROAS slide on', 'info'),
       h('span', null, `${fmt.x(rs.start, 2)} in ${mon(rs.from)} to ${fmt.x(rs.end, 2)} in ${mon(rs.to)}, then held.`),
       h('button', { type: 'button', class: 'btn small', onclick: async () => {
-        try { const res = await ctx.api.put('drivers/levers', { scenario: slug, levers: { roas_slide: { enabled: false } } }); events.emit('saved', { scenario: slug, version: res.scenario.version }); ctx.reload(); }
+        try { const res = await ctx.api.put('drivers/levers', { scenario: slug, levers: { roas_slide: { enabled: false } }, expected_version: state.payload.scenario.version }); events.emit('saved', { scenario: slug, version: res.scenario.version }); ctx.reload(); }
         catch (e) { toast(e.message, 'error'); }
       } }, 'Turn off')) : null;
     settingsHost.replaceChildren(...[
@@ -440,7 +502,9 @@ export async function render(el, ctx) {
         h('div', { class: 'dr-field' }, h('label', { for: 'dr-ful' }, 'Fulfillment per order for payback ($)'), fulInput),
         h('div', { class: 'dr-field' }, h('label', { for: 'dr-hz' }, 'Payback horizon (months)'), horizonInput),
         h('div', { class: 'dr-field' }, h('label', { for: 'dr-win' }, 'Headline window (months)'), winInput),
-        h('div', { class: 'dr-field' }, h('label', { for: 'dr-band' }, 'Growth or harvest band (% change)'), bandInput, h('span', { class: 'hint' }, 'Beyond this the plan reads as growth or harvest'))),
+        h('div', { class: 'dr-field' }, h('label', { for: 'dr-band' }, 'Growth or harvest band (% change)'), bandInput, h('span', { class: 'hint' }, 'Beyond this the plan reads as growth or harvest')),
+        h('div', { class: 'dr-field' }, h('label', { for: 'dr-refd' }, 'Feed reference window (days)'), refDaysInput, h('span', { class: 'hint' }, 'Realized CPA and the Amazon run-rate')),
+        h('div', { class: 'dr-field' }, h('label', { for: 'dr-reft' }, 'Feed reference band (% difference)'), refTolInput, h('span', { class: 'hint' }, 'A typed plan beyond this gets a note'))),
       h('div', { class: 'dr-field' }, h('span', { class: 'lbl' }, 'Channels counted as ad spend (the new-customer cost denominator)'),
         h('div', { class: 'dr-row' }, SHARE_LABELS.map(([k, label]) => h('label', { class: 'dr-check', for: 'dr-ad-' + k }, adBoxes[k].box, ' ' + label)))),
       slideRow,
@@ -452,7 +516,6 @@ export async function render(el, ctx) {
   const compareHost = h('div', { class: 'pg-card dr-compare' });
   const cmp = { picked: new Set(), metric: 'spend_total', data: null };
   const METRICS = [['spend_total', 'Marketing spend', 'usd0'], ['nc_rev', 'New-customer revenue', 'usd0'], ['nc_roas', 'NC-ROAS', 'x'], ['total_revenue', 'Total revenue', 'usd0']];
-  let allScenarios = [];
   async function drawCompare() {
     const metric = METRICS.find((m) => m[0] === cmp.metric);
     const chipsBox = h('div', { class: 'segs dr-compare-chips', role: 'group', 'aria-label': 'Scenarios to compare' },
@@ -464,21 +527,19 @@ export async function render(el, ctx) {
       allScenarios.length > 1 ? chipsBox : h('p', { class: 'dr-legend' }, 'There is only one scenario. Clone this one to try a different spend plan.')];
     if (cmp.data && cmp.picked.size) {
       const d = cmp.data;
-      const base = d.scenarios.find((s) => s.slug === slug);
-      const others = d.scenarios.filter((s) => s.slug !== slug);
+      const base = d.scenarios.find((s) => s.slug === (d.view || slug));
+      const others = d.scenarios.filter((s) => s.slug !== base.slug);
       const canvas2 = h('canvas', { 'aria-label': `${metric[1]} by month, ${base.name} compared with ${others.map((o) => o.name).join(', ')}` });
-      kids.push(h('p', { class: 'dr-legend' }, `Comparing ${others.map((o) => o.name).join(', ')} with ${base.name}`), metricSegs, h('div', { class: 'pg-chartbox' }, canvas2));
+      kids.push(h('p', { class: 'dr-legend' }, `Comparing ${base.name} with ${others.map((o) => o.name).join(', ')}`), metricSegs, h('div', { class: 'pg-chartbox' }, canvas2));
       const years = Object.keys(base.fy).filter((y) => y >= '2026');
       const f = (v, u) => (v == null ? '' : u === 'x' ? fmt.x(v, 2) : fmt.compact(v));
-      const body = [];
-      for (const s of d.scenarios) {
-        const isBase = s.slug === slug;
-        body.push(h('tr', null, h('td', null, isBase ? `${s.name} (this one)` : s.name), years.map((y) => h('td', null, f(s.fy[y][cmp.metric], metric[2])))));
-        if (!isBase) body.push(h('tr', null, h('td', null, `  Difference vs ${base.name}`), years.map((y) => {
-          const a = s.fy[y][cmp.metric], b = base.fy[y][cmp.metric];
-          if (a == null || b == null) return h('td', null, '');
-          const diff = a - b;
-          return h('td', { class: diff < 0 ? 'neg' : '' }, (diff >= 0 ? '+' : '-') + f(Math.abs(diff), metric[2]) + (metric[2] === 'x' || !b ? '' : ` (${signed(diff / Math.abs(b))})`));
+      const body = [h('tr', null, h('td', null, `${base.name} (this one)`), years.map((y) => h('td', null, f(base.fy[y][cmp.metric], metric[2]))))];
+      for (const s of others) {
+        body.push(h('tr', null, h('td', null, s.name), years.map((y) => h('td', null, f(s.fy[y][cmp.metric], metric[2])))));
+        body.push(h('tr', null, h('td', null, `${base.name} compared with ${s.name}`), years.map((y) => {      // this scenario minus the other: positive means this one is higher
+          const dd = ((s.vs_view || {}).fy || {})[y] ? s.vs_view.fy[y][cmp.metric] : null;
+          if (!dd) return h('td', null, '');
+          return h('td', { class: dd.diff < 0 ? 'neg' : '' }, (dd.diff >= 0 ? '+' : '-') + f(Math.abs(dd.diff), metric[2]) + (metric[2] === 'x' || dd.pct == null ? '' : ` (${signed(dd.pct)})`));
         })));
       }
       kids.push(h('div', { class: 'dr-scroll' }, h('table', { class: 'dr-fy' }, h('thead', null, h('tr', null, h('th', null, `${metric[1]} by fiscal year`), years.map((y) => h('th', null, `FY${y.slice(2)}*`)))), h('tbody', null, body))));
@@ -500,13 +561,23 @@ export async function render(el, ctx) {
   // ---------------------------------------------------------------- assemble
   drawHeader();
   drawGrid();
+  drawLegend();
   drawSettings();
-  root.replaceChildren(headerHost, cue, toolHost, chartCard, gridHost, legend, settingsHost, compareHost);
+  drawCue();
+  root.replaceChildren(headerHost, statusHost, cue, toolHost, chartCard, refHost, gridHost, legend, compareHost, settingsHost);
   drawChart();
-  try {
-    allScenarios = (await ctx.api.get('scenarios')).scenarios || [];
-  } catch { allScenarios = []; }
-  if (ctx.alive()) drawCompare();
+  if (isCopy && info.base_slug && allScenarios.some((x) => x.slug === info.base_slug)) cmp.picked.add(info.base_slug);
+  if (cmp.picked.size) loadCompare(); else drawCompare();
+
+  const onKey = (ev) => {
+    if (!(ev.ctrlKey || ev.metaKey) || ev.shiftKey || ev.key.toLowerCase() !== 'z' || !canUndoFill()) return;
+    if (ev.target && ev.target.matches && ev.target.matches('input, textarea, select')) return;
+    if (grid && grid.undoStack && grid.undoStack.length) return;            // a cell edit made after the fill undoes first
+    ev.preventDefault();
+    undoFill();
+  };
+  document.addEventListener('keydown', onKey);
+  cleanups.push(() => document.removeEventListener('keydown', onKey));
 
   return () => {
     clearTimeout(previewTimer);

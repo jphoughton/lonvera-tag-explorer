@@ -21,11 +21,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from ..interfaces import AXIS_END, AXIS_START
+from ..interfaces import AXIS_END, AXIS_START, add_months
 from . import lines as L
 from .store import norm_account
 from .xlsx_read import XlsxError, read_first_sheet
 
+MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 MAX_BYTES = 8_000_000
 MAX_ROWS = 5000
 MAX_COLS = 200
@@ -241,19 +242,101 @@ def months_summary(cells, diff) -> list[dict]:
     return out
 
 
-def preview(parsed: Parsed, qb_map: dict[str, str], existing: dict[str, dict[date, float]], today: date) -> dict:
+# Account families a closed month must carry before it can become "books". Membership is the structure of the P&L (which line belongs to which
+# family); which families are required, and how far a month may stray from its neighbours before it needs a second look, are settings
+# (proj_pnl_settings 'upload', defaults in model.DEFAULT_SETTINGS).
+FAMILIES: dict[str, tuple[str, ...]] = {
+    "revenue": L.REVENUE_KEYS,
+    "cost_of_goods": ("china_cogs", "us_cogs"),
+    "fulfillment": ("fulfillment_services", "inbound_shipping"),
+    "marketing_spend": L.CHANNEL_KEYS,
+    "operating_expenses": tuple(k for k in L.QB_KEYS if k not in L.REVENUE_KEYS and k not in L.CHANNEL_KEYS and k not in
+                                ("china_cogs", "us_cogs", "fulfillment_services", "inbound_shipping", "amazon_fba_fees", "amazon_seller_fees",
+                                 "amazon_subscriptions", "amazon_inbound_transport", "shipping_supplies", "shopify_subscriptions", "seller_fees",
+                                 "inventory_shrinkage")),
+}
+FAMILY_LABEL = {"revenue": "revenue", "cost_of_goods": "cost of goods", "fulfillment": "fulfillment and shipping", "marketing_spend": "ad spend",
+                "operating_expenses": "operating expenses"}
+
+
+def _money(v: float) -> str:
+    return f"${v:,.0f}" if abs(v) < 1e6 else f"${v / 1e6:,.2f}M"
+
+
+def _totals(merged: dict[tuple[str, date], float], m: date) -> tuple[float, float, bool]:
+    """(income, cost, has_data) for one month of a merged {(line, month): value} map."""
+    income = sum(v for (k, mm), v in merged.items() if mm == m and k in L.REVENUE_KEYS)
+    cost = sum(v for (k, mm), v in merged.items() if mm == m and k not in L.REVENUE_KEYS)
+    return income, cost, any(mm == m for (_, mm) in merged)
+
+
+def coverage_checks(cells: dict[tuple[str, date], float], existing: dict[str, dict[date, float]], months: list[date], cfg: dict,
+                    estimates: dict[date, dict] | None) -> dict:
+    """Per loaded month: which account families are present once the file is applied, whether the totals look right next to the neighbouring
+    months and the model's own figure, and what that means for net operating income. Blockers stop a commit; review items need a confirmation."""
+    required = [f for f in cfg["required_families"] if f in FAMILIES]
+    merged: dict[tuple[str, date], float] = {(k, m): v for k, mv in existing.items() for m, v in mv.items()}
+    merged.update(cells)
+    lo, hi = float(cfg["low_ratio"]), float(cfg["high_ratio"])
+    blockers: list[str] = []
+    review: list[str] = []
+    rows: list[dict] = []
+    loaded = sorted({m for (_, m) in cells})
+    for m in loaded:
+        label = f"{MONTH_NAMES[m.month - 1]} {m.year}"
+        present = {f for f, keys in FAMILIES.items() if any((k, m) in merged for k in keys)}
+        missing = [f for f in required if f not in present]
+        income, cost, _ = _totals(merged, m)
+        refs_i, refs_c = [], []
+        for nb in (add_months(m, -1), add_months(m, 1)):
+            i, c, has = _totals(merged, nb)
+            if has and i > 0 and c > 0:
+                refs_i.append(i)
+                refs_c.append(c)
+        est = (estimates or {}).get(m)
+        if est and est.get("income", 0) > 0 and est.get("cost", 0) > 0:
+            refs_i.append(est["income"])
+            refs_c.append(est["cost"])
+        flags = []
+        for name, value, refs in (("income", income, refs_i), ("cost", cost, refs_c)):
+            if value > 0 and refs:
+                ref = sorted(refs)[len(refs) // 2]
+                ratio = value / ref
+                if ratio < lo or ratio > hi:
+                    flags.append(f"{label} {name} {_money(value)} is {ratio * 100:.0f}% of the {_money(ref)} its neighbouring months and the model suggest")
+        if missing:
+            blockers.append(f"{label} has no {' and no '.join(FAMILY_LABEL[f] for f in missing)} accounts, so it cannot become books. Map the missing accounts or upload the full report")
+        review.extend(flags)
+        rows.append({"month": m.isoformat(), "families": {f: (f in present) for f in FAMILIES}, "missing": [FAMILY_LABEL[f] for f in missing],
+                     "income": income, "cost": cost, "noi": income - cost, "model_noi": (est or {}).get("noi"), "flags": flags, "ok": not missing and not flags})
+    return {"rows": rows, "blockers": blockers, "review": review}
+
+
+def preview(parsed: Parsed, qb_map: dict[str, str], existing: dict[str, dict[date, float]], today: date, estimates: dict[date, dict] | None = None,
+            checks: dict | None = None) -> dict:
+    if checks is None:
+        from .model import DEFAULT_SETTINGS
+        checks = DEFAULT_SETTINGS["upload"]
     b = build_cells(parsed, qb_map, today)
     d = diff_cells(b["cells"], existing)
+    cov = coverage_checks(b["cells"], existing, b["months"], checks, estimates)
     revenue_mapped = {x["line_key"] for x in b["mapped"]} & set(L.REVENUE_KEYS)
     notes = []
     if not revenue_mapped:
         notes.append("No revenue account is mapped: DTC, Amazon and TikTok revenue for these months will keep coming from the spend plan and cohorts.")
     if d["changed"]:
         notes.append(f"{len(d['changed'])} value(s) already loaded would be replaced; the old and new values are listed below.")
+    by_month = {r["month"]: r for r in cov["rows"]}
+    months = months_summary(b["cells"], d)
+    for m in months:
+        m.update({k: by_month[m["month"]][k] for k in ("families", "missing", "income", "cost", "noi", "model_noi", "flags", "ok")})
     return {"file": {"name": parsed.filename, "sha256": parsed.sha256, "bytes": parsed.bytes, "rows": parsed.rows, "header_row": parsed.header_row,
                      "months": [m.isoformat() for m in parsed.months]},
-            "months": months_summary(b["cells"], d),
+            "months": months,
             "mapped": b["mapped"], "unmapped": b["unmapped"], "ignored": parsed.ignored, "skipped_months": b["skipped_months"],
             "cells": {"total": len(b["cells"]), "new": len(d["new"]), "changed": len(d["changed"]), "same": d["same"]},
             "changes": d["changed"][:MAX_CHANGES_SHOWN], "changes_truncated": max(0, len(d["changed"]) - MAX_CHANGES_SHOWN),
-            "new_sample": d["new"][:20], "diff_sha256": diff_hash(b["cells"]), "notes": notes, "committable": bool(b["cells"])}, b["cells"]
+            "new_sample": d["new"][:20], "diff_sha256": diff_hash(b["cells"]), "notes": notes,
+            "blockers": cov["blockers"], "review": cov["review"], "needs_confirmation": bool(cov["review"]) and not cov["blockers"],
+            "required_families": [FAMILY_LABEL[f] for f in checks["required_families"] if f in FAMILY_LABEL],
+            "committable": bool(b["cells"]) and not cov["blockers"]}, b["cells"]

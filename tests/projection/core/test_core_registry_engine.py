@@ -52,13 +52,12 @@ def test_registry_with_missing_package_returns_nothing():
     assert all(not m["built"] for m in registry.listing("no_such_package_xyz"))
 
 
-def test_modules_endpoint_lists_the_seven_with_labels_and_groups(client):
+def test_modules_endpoint_lists_the_catalog_with_labels_and_groups(client):
     r = client.get(f"{P}/modules")
     assert r.status_code == 200
     mods = r.get_json()["modules"]
-    assert [(m["key"], m["label"], m["group"]) for m in mods] == [
-        ("cohorts", "Cohorts & curves", "P1"), ("drivers", "Spend plan", "P1"), ("pnl", "P&L", "P1"), ("inventory_demand", "Inventory demand", "P2"),
-        ("inventory_supply", "Inventory supply", "P2"), ("financing", "Cash & debt", "P2"), ("pacing", "Pacing", "P3")]
+    assert [(m["key"], m["label"], m["group"]) for m in mods] == [(k, label, group) for k, (label, group) in MODULE_CATALOG.items()]
+    assert {"cohorts", "drivers", "pnl", "inventory_demand", "inventory_supply", "financing", "pacing"} <= {m["key"] for m in mods}
     assert all(set(m) == {"key", "label", "group", "built", "ui"} and isinstance(m["built"], bool) for m in mods)
 
 
@@ -109,13 +108,14 @@ def test_stub_values_come_from_the_snapshot(conn, pkg_factory):
     assert res.actual_through == date(2026, 6, 1)
 
 
-def test_stubs_fall_back_to_zeros_without_a_snapshot(conn, pkg_factory, monkeypatch, tmp_path):
-    monkeypatch.setenv("PROJECTION_SNAPSHOT_DIR", str(tmp_path / "missing"))
+def test_without_a_snapshot_an_unbuilt_module_has_no_result_not_zeros(conn, pkg_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("PROJECTION_SNAPSHOT_DIR", str(tmp_path / "missing"))             # production: the snapshot files do not exist
     pkg_factory({})
     res = engine.run("current", conn, today=TODAY)
-    assert set(res.drivers.nc_rev.values()) == {0.0} and len(res.drivers.nc_rev) == 60
-    assert res.pnl.lines["noi"][MONTHS[0]] == 0.0 and res.cohorts.lifetime_multiple == 0.0 and res.cohorts.curve_live == [0.0] * 60
+    assert all(v is None for v in res.results.values()) and not any(res.stubbed.values()) and not res.errors and res.degraded == []
     assert res.actual_through is None
+    j = res.summary()
+    assert all(m["built"] is False and m["stub"] is False and "error" not in m for m in j["modules"].values()) and j["degraded"] == [] and j["headline"] == {}
 
 
 def test_actual_through_comes_from_loaded_actuals_when_present(conn, pkg_factory):
@@ -163,21 +163,87 @@ def test_load_inputs_gets_the_scenario_when_it_can_take_it(conn, pkg_factory):
     assert seen["inputs"] == {"slug": "current"}
 
 
-def test_a_failing_module_falls_back_to_its_stub_unless_strict(conn, pkg_factory):
-    pkg_factory({"pnl/__init__.py": """
-        from app.projection.interfaces import Module
-        def compute(scn, inputs):
-            raise ValueError("model bug")
-        MODULE = Module(key="pnl", compute=compute)
-    """})
+FAILING_PNL = {"pnl/__init__.py": """
+    from app.projection.interfaces import Module
+    def compute(scn, inputs):
+        raise ValueError("model bug")
+    MODULE = Module(key="pnl", compute=compute)
+"""}
+
+
+def test_a_failing_module_is_degraded_with_no_result_and_no_stand_in(conn, pkg_factory):
+    pkg_factory(FAILING_PNL)
     res = engine.run("current", conn, today=TODAY)
-    assert res.stubbed["pnl"] and res.errors["pnl"] == "ValueError: model bug" and res.summary()["modules"]["pnl"]["error"] == "ValueError: model bug"
-    assert res.built["pnl"] is True
+    assert res.pnl is None and res.results["pnl"] is None and not res.stubbed.get("pnl")                    # not the snapshot stub, not zeros
+    assert res.built["pnl"] is True and res.errors["pnl"] == "ValueError: model bug"
+    assert [d["module"] for d in res.degraded] == ["pnl", "financing", "pacing"]                              # and everything that reads the P&L
+    assert res.errors["financing"] == "upstream degraded: pnl" and res.financing is None
+    j = res.summary()
+    assert j["degraded"] == res.degraded
+    assert j["modules"]["pnl"] == {"built": True, "stub": False, "ms": j["modules"]["pnl"]["ms"], "error": "ValueError: model bug"}
+    assert "fy" not in j["headline"] and "lowest_ending_cash" not in j["headline"]                            # nothing plausible is reported for the broken chain
     with pytest.raises(ValueError):
         engine.run("current", conn, strict=True, today=TODAY)
 
 
-def test_a_module_that_breaks_the_transaction_does_not_poison_the_stubs(conn, pkg_factory):
+def test_a_degraded_module_in_production_leaves_nothing_that_looks_like_data(conn, pkg_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("PROJECTION_SNAPSHOT_DIR", str(tmp_path / "missing"))
+    pkg_factory({**FAILING_PNL, "drivers/__init__.py": DRIVERS_MODULE})
+    res = engine.run("current", conn, today=TODAY)
+    assert res.drivers is not None and res.pnl is None and res.financing is None and res.inventory is None and res.demand is None
+    assert [d["module"] for d in res.degraded] == ["pnl", "financing", "pacing"] and res.summary()["headline"] == {}
+
+
+def test_a_dependent_of_a_degraded_module_is_degraded_even_when_its_upstream_is_optional(conn, pkg_factory):
+    pkg = pkg_factory({"drivers/__init__.py": """
+        from app.projection.interfaces import Module
+        def compute(scn, inputs):
+            raise RuntimeError("no feed")
+        MODULE = Module(key="drivers", compute=compute)
+    """, "cohorts/__init__.py": """
+        from app.projection.interfaces import CohortResult, Module
+        RAN = []
+        def compute(scn, inputs, drivers):
+            RAN.append(1)
+            return CohortResult(lifetime_multiple=drivers.nc_rev.get(1, 0.0))
+        MODULE = Module(key="cohorts", compute=compute)
+    """, "pnl/__init__.py": """
+        from app.projection.interfaces import Module, PnlResult
+        RAN = []
+        def compute(scn, inputs, drivers=None, cohorts=None):
+            RAN.append(1)
+            return PnlResult(lines={"noi": {}})
+        MODULE = Module(key="pnl", compute=compute)
+    """})
+    res = engine.run("current", conn, today=TODAY)
+    assert importlib.import_module(f"{pkg}.cohorts").RAN == [] and importlib.import_module(f"{pkg}.pnl").RAN == []          # neither ran
+    assert res.errors["drivers"] == "RuntimeError: no feed" and res.errors["cohorts"] == "upstream degraded: drivers"
+    assert res.errors["pnl"] == "upstream degraded: drivers, cohorts" and res.pnl is None
+    assert [d["module"] for d in res.degraded][:3] == ["drivers", "cohorts", "pnl"]
+    with pytest.raises(RuntimeError, match="no feed"):
+        engine.run("current", conn, strict=True, today=TODAY)
+
+
+def test_a_module_missing_a_required_upstream_that_is_simply_not_built_is_degraded(conn, pkg_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("PROJECTION_SNAPSHOT_DIR", str(tmp_path / "missing"))               # production: no stub for the unbuilt drivers
+    pkg_factory({"cohorts/__init__.py": """
+        from app.projection.interfaces import CohortResult, Module
+        def compute(scn, inputs, drivers):
+            return CohortResult()
+        MODULE = Module(key="cohorts", compute=compute)
+    """})
+    res = engine.run("current", conn, today=TODAY)
+    assert res.cohorts is None and res.errors == {"cohorts": "upstream unavailable: drivers", "pnl": "upstream degraded: cohorts",
+                                                   "financing": "upstream degraded: pnl", "pacing": "upstream degraded: pnl, cohorts"}
+
+
+def test_a_module_that_returns_nothing_is_degraded(conn, pkg_factory):
+    pkg_factory({"drivers/__init__.py": "from app.projection.interfaces import Module\nMODULE = Module(key='drivers', compute=lambda scn, inputs: None)"})
+    res = engine.run("current", conn, today=TODAY)
+    assert res.drivers is None and res.errors["drivers"] == "the module returned no result"
+
+
+def test_a_module_that_breaks_the_transaction_does_not_poison_the_modules_after_it(conn, pkg_factory):
     pkg_factory({"drivers/__init__.py": """
         from app.projection.interfaces import Module
         def load_inputs(conn, scn):
@@ -185,15 +251,23 @@ def test_a_module_that_breaks_the_transaction_does_not_poison_the_stubs(conn, pk
         def compute(scn, inputs):
             return None
         MODULE = Module(key="drivers", load_inputs=load_inputs, compute=compute)
+    """, "inventory_demand/__init__.py": """
+        from app.projection.interfaces import DemandResult, Module
+        def load_inputs(conn, scn):
+            return conn.execute("SELECT count(*) AS n FROM proj_scenarios").fetchone()["n"]
+        def compute(scn, inputs):
+            return DemandResult(units={("revamp", "x"): {}, ("n", str(inputs)): {}})
+        MODULE = Module(key="inventory_demand", load_inputs=load_inputs, compute=compute)
     """})
     res = engine.run("current", conn, today=TODAY)
-    assert "UndefinedTable" in res.errors["drivers"] and res.stubbed["drivers"] and res.stubbed["pnl"]
+    assert "UndefinedTable" in res.errors["drivers"] and res.drivers is None
+    assert res.demand is not None and ("n", "1") in res.demand.units                                          # ran on a clean transaction after drivers broke it
 
 
 def test_module_with_no_compute_is_built_but_stubbed(conn, pkg_factory):
     pkg_factory({"cohorts/__init__.py": "from app.projection.interfaces import Module\nMODULE = Module(key='cohorts', ui='cohorts.js')"})
     res = engine.run("current", conn, today=TODAY)
-    assert res.built["cohorts"] and res.stubbed["cohorts"] and not res.errors
+    assert res.built["cohorts"] and res.stubbed["cohorts"] and not res.errors                              # (needs the snapshot, like every stub)
 
 
 def test_engine_uses_the_effective_params_of_the_scenario(client, conn, pkg_factory):
@@ -219,7 +293,8 @@ def test_run_endpoint_summary_shape(client, pkg_factory):
     r = client.get(f"{P}/run?scenario=current")
     assert r.status_code == 200
     j = r.get_json()
-    assert set(j) == {"scenario", "version", "actual_through", "modules", "headline"} and j["scenario"] == "current" and j["version"] == 2
+    assert set(j) == {"scenario", "version", "actual_through", "modules", "degraded", "headline"} and j["scenario"] == "current" and j["version"] == 2
+    assert j["degraded"] == []
     assert list(j["modules"]) == list(engine.ORDER)
     assert j["modules"]["drivers"]["built"] is True and j["modules"]["pnl"]["built"] is False and isinstance(j["modules"]["pnl"]["ms"], float)
     assert set(j["headline"]["fy"]) == {"2025", "2026", "2027", "2028", "2029"} and set(j["headline"]["fy"]["2027"]) == {"revenue", "noi"}

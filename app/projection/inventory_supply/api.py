@@ -10,9 +10,9 @@ from flask import Blueprint, jsonify, request
 from ... import db
 from ...queries import ApiError
 from .. import engine as proj_engine
-from .. import rwdb, scenarios
-from . import calc, freshness as fresh, loaders, overlay, planner, store, tables
-from .model import (LOCATIONS, LOCATION_NAMES, PO_STATUSES, PRODUCT_NAMES, PRODUCTS, TRANSFER_STATUSES, WAREHOUSES, Settings, SupplyResult)
+from .. import degraded, rwdb, scenarios
+from . import calc, freshness as fresh, history, loaders, overlay, planner, store, tables
+from .model import (LOCATIONS, LOCATION_NAMES, PO_STATUSES, PRODUCT_NAMES, PRODUCTS, TRANSFER_STATUSES, WAREHOUSES, Settings, SupplyResult, normalize_product)
 
 bp = Blueprint("proj_inventory_supply", __name__)
 
@@ -32,6 +32,7 @@ def _engine():
 
 def _supply() -> tuple[SupplyResult, Any]:
     eng = _engine()
+    degraded.ensure_ok(eng, "inventory_supply")                       # a degraded demand (or this module) is a 503 upstream_degraded, never zeros
     res = eng.results.get("inventory_supply")
     if not isinstance(res, SupplyResult):
         raise ApiError(503, "inventory_supply is not available: " + eng.errors.get("inventory_supply", "not built"))
@@ -110,6 +111,8 @@ def summary():
         "stats": res.stats, "warnings": res.warnings, "freshness": fresh.freshness(conn, res.today),
         "outlay_total": sum(res.outlay.values()), "demand_stub": bool(eng.stubbed.get("inventory_demand")),
         "stale_stock_days": Settings.from_params(eng.scenario.params).stale_stock_days,
+        "product_costs": [{"product": c.product, "sku": c.sku, "china_unit_cost": c.china_unit_cost, "source": "P&L cost model" if c.source == "pnl" else "table"}
+                          for c in loaders.load_inputs(conn, eng.scenario).product_costs.values()],
         "labels": {"products": PRODUCT_NAMES, "locations": LOCATION_NAMES},
     })
 
@@ -170,7 +173,7 @@ def vendors():
                             "default": ({"lead_days": base.reorder[(p.location, p.product)].lead_days, "safety_days": base.reorder[(p.location, p.product)].safety_days}
                                         if (p.location, p.product) in base.reorder else None)} for p in inputs.reorder.values()],
         "product_costs": [{"product": c.product, "sku": c.sku, "china_unit_cost": c.china_unit_cost, "us_unit_cost": c.us_unit_cost,
-                           "overridden": list(ov.get(("product_cost", c.product), ())),
+                           "source": "P&L cost model" if c.source == "pnl" else "table", "overridden": list(ov.get(("product_cost", c.product), ())),
                            "default": ({"china_unit_cost": base.product_costs[c.product].china_unit_cost} if c.product in base.product_costs else None)}
                           for c in inputs.product_costs.values()],
         "is_default": scn.is_default})
@@ -189,6 +192,7 @@ def variables_get():
 @bp.get("/plan/suggest")
 def plan_suggest():
     eng = _engine()
+    degraded.ensure_ok(eng, "inventory_supply")
     res = eng.results.get("inventory_supply")
     if not isinstance(res, SupplyResult):
         raise ApiError(503, "inventory_supply is not available")
@@ -386,16 +390,33 @@ def reorder_param_put():
 
 @bp.put("/product-costs")
 def product_cost_put():
+    """The China landed cost of a SKU has one source: the scenario param `pnl.cogs.china_cost.<sku>` (the P&L reads and writes the same key). A product with a
+    SKU is written there for the scenario in `?scenario=` (the plan of record when absent; value null = back to the stored seed); the stored table row is the
+    seed and fallback. A product without a SKU keeps this module's own storage."""
     body = _body()
+    bad = sorted(set(body) - {"product", "china_unit_cost", "us_unit_cost", "sku", "note"})
+    if bad:
+        raise ApiError(400, f"unknown field(s): {', '.join(bad)}")
     with rwdb.get_rw() as conn:
-        slug = _overlay_slug(conn)
-        if slug is None:
+        prod = normalize_product(body.get("product"))
+        if prod is None:
+            raise ApiError(400, f"product must be one of {', '.join(PRODUCTS)}")
+        base = loaders.load_base(conn)
+        pc = base.product_costs.get(prod)
+        slug = request.args.get("scenario") or scenarios.default_slug(conn)
+        is_plan = scenarios.get_row(conn, slug)["is_default"]
+        if pc is not None and pc.sku and "china_unit_cost" in body:
+            res = _ov_write(conn, slug, [{"kind": "product_cost", "product": prod, "field": "china_unit_cost", "value": body["china_unit_cost"]}])
+            table_fields = {k: v for k, v in body.items() if k in ("us_unit_cost", "sku", "note")}
+            if table_fields and is_plan:                                      # the seed table's other columns; its China cost stays as it is
+                store.put_product_cost(conn, {"product": prod, "china_unit_cost": pc.china_unit_cost, **table_fields})
+            return jsonify(_ov_out(res, sku=pc.sku, source="P&L cost model"))
+        if is_plan:
             return jsonify({"product_cost": _json_row(store.put_product_cost(conn, body))})
-        bad = sorted(set(body) - {"product", "china_unit_cost", "us_unit_cost", "sku", "note"})
+        bad = sorted(set(body) - {"product", "china_unit_cost"})
         if bad:
             raise ApiError(400, f"unknown field(s): {', '.join(bad)}")
-        res = _ov_write(conn, slug, [{"kind": "product_cost", "product": body.get("product"), "field": "china_unit_cost", "value": body.get("china_unit_cost")}]
-                        if "china_unit_cost" in body else [])
+        res = _ov_write(conn, slug, [{"kind": "product_cost", "product": prod, "field": "china_unit_cost", "value": body.get("china_unit_cost")}] if "china_unit_cost" in body else [])
     return jsonify(_ov_out(res))
 
 
@@ -415,3 +436,48 @@ def variables_put():
             raise ApiError(400, "scenario must be a slug")
         res = overlay.set_variables(conn, slug, body.get("items"), base_inputs=loaders.load_base(conn), expected_version=ev)
     return jsonify(_ov_out(res))
+
+
+# ---------------------------------------------------------------------------------------------------------------- history of the plan of record's supply data
+
+@bp.get("/history")
+def history_list():
+    try:
+        limit = int(request.args.get("limit", 50))
+    except ValueError:
+        raise ApiError(400, "limit must be an integer") from None
+    return jsonify({"changes": history.list_changes(db.get_conn(), limit)})
+
+
+@bp.post("/history/revert")
+def history_revert():
+    body = _body()
+    bad = sorted(set(body) - {"version"})
+    v = body.get("version")
+    if bad or isinstance(v, bool) or not isinstance(v, int):
+        raise ApiError(400, "send {version: <integer>}")
+    with rwdb.get_rw() as conn:
+        return jsonify(history.revert_change(conn, v))
+
+
+@bp.post("/history/restore")
+def history_restore():
+    """Restore orders, transfers, counts and prices to a version or time ({to_version} or {at}): undoes every later change still in force."""
+    from datetime import datetime
+    body = _body()
+    bad = sorted(set(body) - {"to_version", "at"})
+    if bad:
+        raise ApiError(400, f"unknown field(s): {', '.join(bad)}")
+    v, at = body.get("to_version"), body.get("at")
+    if v is not None and (isinstance(v, bool) or not isinstance(v, int)):
+        raise ApiError(400, "to_version must be an integer")
+    when = None
+    if at is not None:
+        try:
+            when = datetime.fromisoformat(str(at).replace("Z", "+00:00"))
+        except ValueError:
+            raise ApiError(400, "at must be an ISO date-time") from None
+        if when.tzinfo is None:
+            raise ApiError(400, "at must include a time zone (for example 2026-11-03T20:00:00-08:00)")
+    with rwdb.get_rw() as conn:
+        return jsonify(history.restore_to(conn, to_version=v, at=when))

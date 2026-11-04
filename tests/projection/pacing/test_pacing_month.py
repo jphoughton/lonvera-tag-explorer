@@ -153,8 +153,10 @@ def test_payback_matches_the_sheet_and_the_function_edges(nov):
 
 def test_payback_inputs_come_from_financing_params_when_set():
     assert M.payback_params({}) == (0.1726, 5.53, 36)                                    # the sheet's Payback!D11, B12 and the 36-age SCAN of Automated Pacing M9
-    assert M.payback_params({"financing": {"payback": {"product_cost_pct": 0.2, "fulfillment": 6, "max_age": 24}}}) == (0.2, 6.0, 24)
-    assert M.payback_params({"drivers": {"payback": {"product_cost_pct": 0.3}}}) == (0.3, 5.53, 36)   # the drivers module's copy is read when financing has none
+    assert M.payback_params({"drivers": {"payback": {"product_cost_pct": 0.3, "fulfillment_per_order": 6, "horizon_months": 24}}}) == (0.3, 6.0, 24)          # the one store
+    assert M.payback_params({"financing": {"payback": {"product_cost_pct": 0.2, "fulfillment": 7, "max_age": 12}}}) == (0.2, 7.0, 12)                      # legacy copy: fallback only
+    both = {"drivers": {"payback": {"product_cost_pct": 0.3}}, "financing": {"payback": {"product_cost_pct": 0.2, "fulfillment": 7}}}
+    assert M.payback_params(both) == (0.3, 7.0, 36)                                                                                                    # drivers wins per key
 
 
 def test_month_snapshot_uses_the_same_numbers_as_the_pacing_table(conn, book, cohorts):

@@ -33,6 +33,9 @@ DEFAULT_PAYBACK = {"product_cost_pct": 0.1726, "fulfillment_per_order": 5.53, "h
 DEFAULT_AD_CHANNELS = ("meta", "google")                    # P&L row 11 = Facebook + Google (the new-customer denominator)
 DEFAULT_POSTURE_BAND = 0.10                                 # next-window spend vs the window before: beyond +-10% reads as growth / harvest (app default)
 DEFAULT_SUMMARY_MONTHS = 12                                 # length of the headline windows (app default)
+DEFAULT_REFERENCE_DAYS = 28                                 # window of the read-only feed references (realized CPA, Amazon run-rate)
+DEFAULT_REFERENCE_TOLERANCE = 0.05                          # a typed plan this far from its feed reference gets a note
+MONTH_STATUSES = ("books", "feeds", "projected")
 
 PLAN_KEYS = ("spend_total", "nc_cpa", "nc_aov", "amazon_rev", "tiktok_rev")        # typed plan inputs (proj_series 'drivers.<key>', kind input)
 OVERRIDE_KEYS = ("ad_spend", "nc_orders", "nc_rev", "repeat_rev")                  # typed over a computed value (kind override)
@@ -79,6 +82,8 @@ class Levers:
     ad_channels: tuple = DEFAULT_AD_CHANNELS
     posture_band: float = DEFAULT_POSTURE_BAND
     summary_months: int = DEFAULT_SUMMARY_MONTHS
+    reference_days: int = DEFAULT_REFERENCE_DAYS
+    reference_tolerance: float = DEFAULT_REFERENCE_TOLERANCE
 
     def to_dict(self) -> dict:
         rs = self.roas_slide
@@ -86,7 +91,7 @@ class Levers:
                 "roas_slide": {"enabled": rs.enabled, "from": rs.start_month.isoformat() if rs.start_month else None,
                                "to": rs.end_month.isoformat() if rs.end_month else None, "start": rs.start, "end": rs.end},
                 "payback": dict(self.payback), "ad_spend_channels": list(self.ad_channels), "posture_band": self.posture_band,
-                "summary_months": self.summary_months}
+                "summary_months": self.summary_months, "reference_days": self.reference_days, "reference_tolerance": self.reference_tolerance}
 
 
 def _num(v: Any) -> float | None:
@@ -144,6 +149,12 @@ def parse_levers(params: dict | None) -> Levers:
     n = _num(p.get("summary_months"))
     if n is not None and 1 <= n <= 36 and n == int(n):
         lv.summary_months = int(n)
+    rd = _num(p.get("reference_days"))
+    if rd is not None and 7 <= rd <= 90 and rd == int(rd):
+        lv.reference_days = int(rd)
+    rt = _num(p.get("reference_tolerance"))
+    if rt is not None and 0 < rt <= 1:
+        lv.reference_tolerance = rt
     return lv
 
 
@@ -182,6 +193,9 @@ class DriversResult(DriverResult):
     carried: dict[str, set] = field(default_factory=dict)           # key -> months whose value was carried forward (not typed)
     slid: set = field(default_factory=set)                          # months whose CPA came from the NC-ROAS slide
     nc_basis: dict[Month, str] = field(default_factory=dict)        # 'override' | 'cohort' | 'plan'
+    month_status: dict[Month, str] = field(default_factory=dict)    # 'books' (QuickBooks loaded) | 'feeds' (closed, cohort or ad-feed data, no books) | 'projected'
+    books_through: Month | None = None                              # last books month; actual_through equals it, so every grid splits actual / projected the same way
+    feeds_through: Month | None = None                              # last month with books or feed data
     meta_books: Series = field(default_factory=dict)                # Meta spend from the books (for the feed gap)
     meta_feed: Series = field(default_factory=dict)
     levers: Levers = field(default_factory=Levers)
@@ -308,7 +322,14 @@ def compute_drivers(params: dict | None, inp: DriverInputs) -> DriversResult:
             last[key], seen_last[key] = v, True
             (res.amazon_rev if key == "amazon_rev" else res.tiktok_rev)[m] = v
 
-    res.actual_through = max(actual_months) if actual_months else None
+    # three-state month status, one vocabulary for every page: books (QuickBooks loaded), feeds (closed, cohort or ad-feed data, no books yet), projected
+    books = {m for m in books_months if m < cutoff}
+    feeds = {m for m in (set(inp.nc_orders_actual) | feed_months) if m < cutoff} - books
+    for m in MONTHS:
+        res.month_status[m] = "books" if m in books else "feeds" if m in feeds else "projected"
+    res.books_through = max(books) if books else None
+    res.feeds_through = max(books | feeds) if (books | feeds) else None
+    res.actual_through = res.books_through                  # the grid's actual / projected split is the books boundary, the same as the P&L
     return res
 
 

@@ -31,7 +31,9 @@ class CohortInputs:
 @dataclass
 class CohortResultX(CohortResult):
     """CohortResult plus what the page and the reconcile need. The engine only reads the declared CohortResult fields."""
-    curve_used: list[float] = field(default_factory=list)              # the curve that drives repeat_rev (Live, Goal or a blend), capped at max_age
+    curve_used: list[float] = field(default_factory=list)              # the curve that drives repeat_rev (Live, Goal, as-of or a blend), capped at max_age
+    curve_label: str = ""                                              # plain name of curve_used, e.g. 'As of Aug 2026, last 3 cohorts'
+    curve_asof: list[float] = field(default_factory=list)              # the as-of curve (ages 1..60) when curve_source is asof, else empty
     curve_points: list[eng.AgePoint] = field(default_factory=list)     # Live curve with the cohorts behind each age
     levers: dict = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
@@ -65,7 +67,8 @@ def compute(scn: Scenario, inputs: CohortInputs, nc_rev: Series | None = None) -
     points = eng.live_curve(cohorts, levers)
     live = [p.value for p in points]
     goal = list(inputs.goal) + [0.0] * (eng.CURVE_AGES - len(inputs.goal))
-    used, warning = eng.choose_curve(live, goal, levers)
+    asof = [p.value for p in eng.asof_curve(cohorts, levers.asof_month, levers)] if levers.curve_source == "asof" and levers.asof_month else None
+    used, warning = eng.choose_curve(live, goal, levers, asof)
 
     wf_inputs = eng.cohort_inputs(cohorts, nc_rev)
     total, by_year, _by_cohort = eng.waterfall(wf_inputs, used, MONTHS, levers.max_age)
@@ -90,7 +93,7 @@ def compute(scn: Scenario, inputs: CohortInputs, nc_rev: Series | None = None) -
     live_goal_warning = [warning] if warning else []
     return CohortResultX(
         curve_live=live, curve_goal=goal, lifetime_multiple=eng.curve_sum(used), repeat_rev=total, repeat_rev_actual=actual, cohort_rows=rows,
-        curve_used=used, curve_points=points, levers=levers.to_dict(), warnings=live_goal_warning,
+        curve_used=used, curve_label=eng.curve_label(levers, inputs.goal_snapshot), curve_asof=asof or [], curve_points=points, levers=levers.to_dict(), warnings=live_goal_warning,
         twelve_month_multiple=eng.curve_sum(used, 12), lifetime_live=eng.curve_sum(live), lifetime_goal=eng.curve_sum(goal),
         twelve_live=eng.curve_sum(live, 12), twelve_goal=eng.curve_sum(goal, 12), goal_snapshot=inputs.goal_snapshot,
         data_through=eng.data_through(cohorts, inputs.today), observed_through=eng.observed_through(cohorts, inputs.today), repeat_by_year=by_year,

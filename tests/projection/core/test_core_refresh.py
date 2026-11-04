@@ -254,6 +254,29 @@ def test_only_the_selected_modules_feeds_decide_the_exit_code(connect):
     assert run(connect, mods, keys=["drivers", "pnl"]) == 1
 
 
+def test_stale_manual_feed_is_reported_but_never_fails_the_run(connect, capsys):
+    ok = lambda conn, days: {"rows": 1}                                                  # noqa: E731
+    mods = {"inventory_demand": mod(ok, [feed("intl_units", date(2026, 9, 1), "manual", 35), feed("ad_daily", TODAY, "daily", 2)])}
+    assert run(connect, mods) == 0
+    out = capsys.readouterr().out
+    assert "feed intl_units last data 2026-09-01, 64 days old (stale after 35 days)" in out and "manual feed: not a failure" in out
+
+
+def test_a_stale_manual_feed_does_not_hide_a_stale_daily_one(connect, capsys):
+    ok = lambda conn, days: {"rows": 1}                                                  # noqa: E731
+    mods = {"drivers": mod(ok, [feed("manual_feed", date(2026, 1, 1), "manual", 35), feed("ad_daily", date(2026, 11, 1), "daily", 2)])}
+    assert run(connect, mods) == 1
+    assert "FAILED: drivers: feed ad_daily" in capsys.readouterr().out
+
+
+def test_manual_feed_is_listed_by_the_endpoint_with_its_own_label(client, fake_hooks):
+    fake_hooks["inventory_demand"] = mod(fresh=[feed("intl_units", date(2026, 9, 1), "manual", 35, "International units"), feed("ad_daily", TODAY)])
+    j = client.get(f"{P}/freshness").get_json()
+    by = {f["feed"]: f for f in j["feeds"]}
+    assert (by["intl_units"]["status"], by["intl_units"]["cadence"], by["intl_units"]["cadence_label"], by["intl_units"]["label"]) == ("stale", "manual", "Manual", "International units")
+    assert j["summary"] == {"fresh": 1, "stale": 1, "unknown": 0}
+
+
 # ------------------------------------------------------------------------------------------------------------ freshness evaluation
 
 def test_evaluate_status_age_and_messages():
@@ -267,6 +290,7 @@ def test_evaluate_status_age_and_messages():
     assert ev(through=date(2026, 11, 3), stale_after=0)["message"] == "feed ad_daily last data 2026-11-03, 1 day old (stale after 0 days)"
     assert ev(through=date(2026, 11, 3))["message"] == "feed ad_daily last data 2026-11-03, 1 day old"
     assert ev(label="Ad spend")["label"] == "Ad spend" and freshness.evaluate("m", {**feed(), "label": ""}, TODAY)["label"] == "ad_daily"
+    assert freshness.CADENCES == ("daily", "monthly-upload", "manual") and ev(cadence="manual")["cadence_label"] == "Manual"
     for bad in ({"feed": ""}, {**feed(), "cadence": "weekly"}, {**feed(), "stale_after_days": -1}, {**feed(), "stale_after_days": "2"}, {**feed(), "stale_after_days": True}):
         with pytest.raises(ValueError):
             freshness.evaluate("m", bad, TODAY)
@@ -313,10 +337,12 @@ def test_freshness_endpoint_shape_statuses_and_last_run(client, pg, fake_hooks):
     r = client.get(f"{P}/freshness")
     assert r.status_code == 200
     j = r.get_json()
-    assert set(j) == {"generated_at", "feeds", "summary"} and j["summary"] == {"fresh": 2, "stale": 2, "unknown": 1}
+    assert set(j) == {"generated_at", "feeds", "summary", "degraded"} and j["summary"] == {"fresh": 2, "stale": 2, "unknown": 1}
+    assert j["degraded"] == [{"module": "drivers", "error": "RuntimeError: nope"}]                                                      # latest drivers run failed
     assert [(f["module"], f["feed"]) for f in j["feeds"]] == [("cohorts", "cohort_export"), ("cohorts", "never"), ("drivers", "ad_daily"), ("drivers", "amazon"), ("pnl", "quickbooks")]
     by = {f["feed"]: f for f in j["feeds"]}
-    assert set(by["ad_daily"]) == {"module", "feed", "label", "cadence", "data_through", "age_days", "stale_after_days", "status", "message", "last_run"}
+    assert set(by["ad_daily"]) == {"module", "feed", "label", "cadence", "cadence_label", "data_through", "age_days", "stale_after_days", "status", "message", "last_run"}
+    assert (by["ad_daily"]["cadence_label"], by["quickbooks"]["cadence_label"]) == ("Daily", "Monthly upload")
     assert (by["ad_daily"]["label"], by["ad_daily"]["age_days"], by["ad_daily"]["status"]) == ("Ad spend (Meta)", 3, "stale")
     assert by["ad_daily"]["message"] == "feed ad_daily last data 2026-11-01, 3 days old (stale after 2 days)"
     assert by["amazon"]["status"] == "fresh" and by["never"]["status"] == "unknown" and by["never"]["data_through"] is None
@@ -338,11 +364,12 @@ def test_freshness_endpoint_reports_a_broken_hook_as_unknown(client, fake_hooks)
     assert j["summary"] == {"fresh": 1, "stale": 0, "unknown": 1}
     bad = next(f for f in j["feeds"] if f["module"] == "drivers")
     assert bad["status"] == "unknown" and bad["message"] == "freshness hook failed: RuntimeError: bad table" and bad["cadence"] is None
+    assert j["degraded"] == [{"module": "drivers", "error": "freshness hook failed: RuntimeError: bad table"}]
 
 
 def test_freshness_endpoint_with_no_hooks_is_empty(client, fake_hooks):
     j = client.get(f"{P}/freshness").get_json()
-    assert j["feeds"] == [] and j["summary"] == {"fresh": 0, "stale": 0, "unknown": 0}
+    assert j["feeds"] == [] and j["summary"] == {"fresh": 0, "stale": 0, "unknown": 0} and j["degraded"] == []
 
 
 def test_freshness_endpoint_auth_follows_the_app(anon, app_factory, fake_hooks):
@@ -411,3 +438,11 @@ def test_run_etl_one_off_path_is_unchanged(stub_python):
     assert p.returncode == 7 and calls == ["-m etl.migrate", "-m etl.projection_daily --dry-run"]
     p, calls = stub_python("meta_pull", OTHER_RC=5)
     assert p.returncode == 5
+
+
+def test_the_daily_run_purges_scenarios_deleted_more_than_30_days_ago(connect, pg, capsys):
+    pg.execute("INSERT INTO proj_scenarios (slug, name, base_slug, frozen, archived_at) VALUES ('old-gone', 'Old gone', 'current', true, now() - interval '45 days'),"
+               "('recent', 'Recent', 'current', true, now() - interval '5 days')")
+    assert run(connect, {"drivers": mod(lambda conn, days: {"rows": 1})}) == 0
+    assert [r["slug"] for r in pg.execute("SELECT slug FROM proj_scenarios WHERE slug IN ('old-gone', 'recent') ORDER BY slug").fetchall()] == ["recent"]
+    assert "purged 1 scenario(s) deleted more than 30 days ago" in capsys.readouterr().out

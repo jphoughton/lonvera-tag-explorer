@@ -6,6 +6,8 @@ from typing import Any
 
 import psycopg
 
+from .. import clock
+
 # feed key -> (label, cadence, stale_after_days)
 FEEDS = {
     "purchase_orders": ("Purchase orders", "monthly-upload", 30),
@@ -24,7 +26,7 @@ def _day(v: Any) -> date | None:
 
 def freshness(conn, today: date | None = None) -> list[dict]:
     """[{feed, label, cadence, data_through, stale_after_days, age_days, status}] for the manual inputs; status = fresh | STALE | missing."""
-    today = today or date.today()
+    today = today or clock.today_pt()
     data: dict[str, date | None] = {k: None for k in FEEDS}
     estimate = False
     try:

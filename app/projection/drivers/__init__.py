@@ -4,7 +4,7 @@ Replaces P&L rows 11-16, 19-20 and 51-56 (spend, new-customer revenue, orders, C
 revenue.revenue_lines() produces rows 17, 18, 21, 22 once the cohorts module has run. See docs/projection/MODULE_drivers.md.
 """
 from ..interfaces import Module
-from . import loaders, model
+from . import loaders, model, validation
 from .api import bp
 from .model import DriversResult
 from .revenue import RevenueLines, revenue_lines
@@ -19,5 +19,6 @@ def compute(scn, inputs) -> DriversResult:
 
 
 MODULE = Module(key="drivers", label="Spend plan", group="P1", load_inputs=load_inputs, compute=compute, blueprint=bp, ui="drivers.js")
+MODULE.validate_series = validation.validate_series          # the core calls this from PUT /series when its hook lands (signature: conn, scenario, items)
 
 __all__ = ["MODULE", "DriversResult", "RevenueLines", "revenue_lines"]

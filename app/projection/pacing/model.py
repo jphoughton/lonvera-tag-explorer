@@ -81,11 +81,12 @@ def automated_columns(summary: dict) -> dict[str, list]:
     return cols
 
 
-def compute(scn, inputs: PacingInputs, drivers=None, pnl=None, cohorts=None) -> PacingResult:
+def compute(scn, inputs: PacingInputs, pnl, drivers=None, cohorts=None) -> PacingResult:
+    # `pnl` has no default: the engine marks pacing degraded when the P&L is, instead of pacing against goals of zero
     params = getattr(scn, "params", None) or {}
     L = lv.parse(params)
     book = TargetBook(pnl, drivers, cohorts, levers=L)
-    summary = month_mod.pacing_month(inputs.frame, inputs.month, inputs.today, book, cohorts, params)
+    summary = month_mod.pacing_month(inputs.frame, inputs.month, inputs.today, book, cohorts, params, getattr(drivers, "actual_through", None))
     res = PacingResult(inputs.today, periods.data_through(inputs.today, L.data_lag_days), inputs.month, summary, automated_columns(summary))
     if inputs.full:
         _reconcile_extras(res, inputs, book, cohorts, params)

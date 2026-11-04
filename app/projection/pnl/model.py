@@ -38,6 +38,8 @@ from . import lines as L
 #   ev         P&L!C161:H162 multiples, BN100 basis year, A160 offer
 #   trend      P&L!H145 etc.: months in the growth-rate averages
 #   freshness  days after which the first month not loaded counts as late (global, not per scenario)
+#   upload     a QuickBooks month needs these account families to become books; income or cost below low_ratio or above high_ratio of its
+#              neighbours and the model's own figure needs a confirmation (global)
 DEFAULT_SETTINGS: dict[str, dict] = {
     "engine": {"rate_window_months": 4, "opex_inflation": 0.0, "cogs_inflation": 0.0},
     "headcount": {"base": 15000.0, "threshold": 20_000_000.0, "step": 5_000_000.0, "increment": 15000.0, "start": "2026-09-01"},
@@ -45,6 +47,7 @@ DEFAULT_SETTINGS: dict[str, dict] = {
     "ev": {"multiples": [3, 4, 5, 6, 7, 8], "year": 2027, "loi": 7_500_000.0},
     "trend": {"avg_window": 6},
     "freshness": {"stale_after_days": 45},
+    "upload": {"low_ratio": 0.5, "high_ratio": 2.0, "required_families": ["revenue", "cost_of_goods", "fulfillment", "marketing_spend", "operating_expenses"]},
 }
 SCENARIO_GROUPS = ("engine", "headcount", "cogs", "ev", "trend")        # settings a scenario may override (freshness is global)
 BASES = ("amazon_rev", "dtc_rev", "total_revenue")
@@ -68,7 +71,11 @@ class PnlInputs:
 
 @dataclass
 class PnlOutput(PnlResult):
-    actual_through: date | None = None                              # last month with loaded QuickBooks data (the P&L's own actual boundary)
+    actual_through: date | None = None                              # last month with loaded QuickBooks data (the P&L's own actual boundary) = books_through
+    books_through: date | None = None                               # last month with QuickBooks (books) loaded
+    feeds_through: date | None = None                               # last closed month with cohort / ad-feed actuals (the drivers module's boundary)
+    month_status: dict[date, str] = field(default_factory=dict)     # every month: 'books' | 'feeds' | 'projected'
+    data_checks: dict = field(default_factory=dict)                 # typed Aug-Oct values next to the cohort figures (see views.data_checks)
     window: list[date] = field(default_factory=list)               # months the trailing-rate drivers read
     driver_info: dict[str, dict] = field(default_factory=dict)     # leaf key -> resolved driver description for the driver table
     cogs_model: dict = field(default_factory=dict)                 # inputs and result of the COGS model
@@ -109,7 +116,7 @@ def effective_drivers(defaults: dict[str, list[dict]], params: dict) -> dict[str
 
 def validate_segments(key: str, segments: Any) -> list[dict]:
     """Normalise and check one driver. ValueError with a message naming the problem."""
-    if key not in L.DRIVER_KEYS:
+    if key not in L.DRIVER_KEYS + L.DRIVEN_PARENTS:
         raise ValueError(f"{key!r} is not a driven line")
     if not isinstance(segments, list) or not segments or len(segments) > 12:
         raise ValueError("segments must be a list of 1-12 steps")
@@ -156,8 +163,8 @@ def validate_segments(key: str, segments: Any) -> list[dict]:
                 seg["window"] = w
             if kind == "typed":
                 r = s.get("rate")
-                if isinstance(r, bool) or not isinstance(r, (int, float)) or not math.isfinite(r) or not -5 <= r <= 5:
-                    raise ValueError(f"{where}: typed needs a numeric rate (a fraction, 0.1 = 10%)")
+                if isinstance(r, bool) or not isinstance(r, (int, float)) or not math.isfinite(r) or not 0 <= r <= 1:
+                    raise ValueError(f"{where}: typed needs a rate between 0 and 1 (a fraction, 0.1 = 10%)")
                 seg["rate"] = float(r)
         out.append(seg)
     froms = [s["from"] for s in out if s["from"]]
@@ -271,7 +278,10 @@ def marketing_plan(drivers) -> tuple[Series, dict[str, Series]]:
 # ---------------------------------------------------------------------------------------------------------------- compute
 
 def qb_through(actuals: dict[str, Series], today: date | None) -> date | None:
-    cap = (today or date.today()).replace(day=1)
+    if today is None:
+        from .store import today as clock_today
+        today = clock_today()
+    cap = today.replace(day=1)
     months = [m for key, s in actuals.items() if key in L.QB_KEYS for m in s if m < cap]
     return max(months) if months else None
 
@@ -290,6 +300,9 @@ def compute_pnl(inputs: PnlInputs, drivers=None, cohorts=None, params: dict | No
     through = qb_through(actuals, inputs.today)
     out = PnlOutput(actual_through=through, settings=settings)
     is_act = {m: through is not None and m <= through for m in MONTHS}
+    feeds_through = getattr(drivers, "feeds_through", None) or getattr(drivers, "actual_through", None)         # drivers: feeds_through, else its old boundary
+    out.books_through, out.feeds_through = through, feeds_through
+    out.month_status = month_status(through, feeds_through)
     first_proj = next((m for m in MONTHS if not is_act[m]), None)
     n_window = int(eng.get("rate_window_months") or 4)
     cogs = cogs_model(inputs.cogs_sku, settings)
@@ -457,6 +470,7 @@ def compute_pnl(inputs: PnlInputs, drivers=None, cohorts=None, params: dict | No
     out.ttm = dict(v["ttm_noi"])
     out.ftm = dict(v["ftm_noi"])
     out.ev = implied_ev(out.fy, settings["ev"])
+    out.data_checks = data_checks(drivers, cohorts, v)
     out.driver_info = describe_drivers(defaults, v, resolve_rate, first_proj, n_window, win, cogs)
     if not through:
         out.warnings.append("No QuickBooks history is loaded: every month is projected from the drivers.")
@@ -465,6 +479,42 @@ def compute_pnl(inputs: PnlInputs, drivers=None, cohorts=None, params: dict | No
     absent = [g for g in SCENARIO_GROUPS if g not in inputs.settings]
     if absent:
         out.warnings.append(f"Settings not loaded for {', '.join(absent)}: the built-in starting values are in use until the settings are seeded.")
+    return out
+
+
+def data_checks(drivers, cohorts, v: dict[str, Series]) -> dict:
+    """The months where the P&L uses a typed value (new-customer revenue or repeat revenue) next to what the cohort data says. Nothing here changes a
+    number: it shows the sources side by side. Empty when the drivers module carries no typed months."""
+    typed = getattr(drivers, "repeat_override", None) or {}
+    nc_basis = getattr(drivers, "nc_basis", None) or {}
+    months = sorted(set(typed) | {m for m, b in nc_basis.items() if b == "override"})
+    if not months:
+        return {}
+    nc_cohort = getattr(drivers, "nc_rev_cohort", None) or {}
+    model = getattr(cohorts, "repeat_rev", None) or {}
+    export = getattr(cohorts, "repeat_rev_actual", None) or {}
+    return {"months": months,
+            "nc_used": {m: v["nc_rev"].get(m) for m in months}, "nc_cohort": {m: nc_cohort.get(m) for m in months},
+            "repeat_used": {m: v["repeat_rev"].get(m) for m in months}, "repeat_typed": {m: typed.get(m) for m in months},
+            "repeat_model": {m: model.get(m) for m in months}, "repeat_export": {m: export.get(m) for m in months}}
+
+
+# ---------------------------------------------------------------------------------------------------------------- month status
+
+STATUS_BOOKS, STATUS_FEEDS, STATUS_PROJECTED = "books", "feeds", "projected"
+
+
+def month_status(books_through: date | None, feeds_through: date | None) -> dict[date, str]:
+    """The one three-state vocabulary shared by every page. books = QuickBooks loaded; feeds = a closed month with cohort / ad-feed actuals but no
+    books yet; projected = everything else."""
+    out: dict[date, str] = {}
+    for m in MONTHS:
+        if books_through is not None and m <= books_through:
+            out[m] = STATUS_BOOKS
+        elif feeds_through is not None and m <= feeds_through:
+            out[m] = STATUS_FEEDS
+        else:
+            out[m] = STATUS_PROJECTED
     return out
 
 

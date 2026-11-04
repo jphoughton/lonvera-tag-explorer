@@ -104,6 +104,7 @@ class TargetBook:
 
     def __init__(self, pnl: Any = None, drivers: Any = None, cohorts: Any = None, row_map: dict[int, str] | None = None, levers: Levers | None = None):
         self.levers = levers or Levers()
+        self.pnl = pnl
         self._cost_lines = tuple(replace(c, driver=self.levers.cost_drivers.get(c.key, c.driver)) for c in COST_LINES)
         self._cost_by_key = {c.key: c for c in self._cost_lines}
         self.lines: dict[str, dict] = dict(getattr(pnl, "lines", None) or {})

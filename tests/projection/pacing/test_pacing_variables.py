@@ -39,11 +39,12 @@ def test_every_variable_has_the_sheets_value_a_source_and_an_owner():
     for s in lv.SPECS:
         assert s.source and s.label and s.path and s.owner in ("pacing", "drivers", "financing"), s.key
     d = {x["key"]: x for x in lv.describe({})}
-    assert len(d) == len(lv.SPECS) == 17 and all(x["is_default"] for x in d.values())
+    assert len(d) == len(lv.SPECS) == 18 and all(x["is_default"] for x in d.values())
     assert d["pace_good"]["default"] == 1.0 and d["pace_warn"]["default"] == 0.9 and d["last_days"]["default"] == 7 and d["data_lag_days"]["default"] == 1
     assert d["product_cost_pct"]["default"] == 0.1726 and d["fulfillment_per_order"]["default"] == 5.53 and d["payback_horizon"]["default"] == 36
     assert d["sales_tax_rate"]["default"] == 0.07 and d["below_ebitda_rows"]["default"] == [62, 94]
-    assert d["product_cost_pct"]["owner"] == "financing" and d["sales_tax_rate"]["owner"] == "drivers"
+    assert d["product_cost_pct"]["owner"] == "drivers" and d["sales_tax_rate"]["owner"] == "drivers"
+    assert d["product_cost_pct"]["path"] == "drivers.payback.product_cost_pct" and d["payback_horizon"]["path"] == "drivers.payback.horizon_months"
 
 
 def test_parse_ignores_malformed_stored_values():
@@ -143,11 +144,11 @@ def test_payback_box_inputs_move_the_payback(conn, pnl, cohorts):
     base, _ = month_rows(conn, pnl, cohorts, {})
     pb = base["payback"]
     assert pb["product_cost_pct"] == 0.1726 and pb["fulfillment_per_order"] == 5.53 and pb["horizon_months"] == 36 and pb["months"]["mtd"] == 10
-    costly, _ = month_rows(conn, pnl, cohorts, {"financing": {"payback": {"product_cost_pct": 0.4}}})
+    costly, _ = month_rows(conn, pnl, cohorts, {"drivers": {"payback": {"product_cost_pct": 0.4}}})
     assert costly["payback"]["first_order_margin"]["mtd"] < pb["first_order_margin"]["mtd"] and (costly["payback"]["months"]["mtd"] is None or costly["payback"]["months"]["mtd"] > 10)
-    short, _ = month_rows(conn, pnl, cohorts, {"financing": {"payback": {"max_age": 6}}})
+    short, _ = month_rows(conn, pnl, cohorts, {"drivers": {"payback": {"horizon_months": 6}}})
     assert short["payback"]["months"]["mtd"] is None and short["payback"]["months"]["mtd_label"] == "6+"
-    fulfil, _ = month_rows(conn, pnl, cohorts, {"financing": {"payback": {"fulfillment": 25}}})
+    fulfil, _ = month_rows(conn, pnl, cohorts, {"drivers": {"payback": {"fulfillment_per_order": 25}}})
     assert fulfil["payback"]["first_order_margin"]["mtd"] == pytest.approx(pb["first_order_margin"]["mtd"] - 25 + 5.53)
 
 
@@ -183,7 +184,7 @@ def test_feed_classification_rules_change_the_loaded_days(meta_sandbox):
 
 def test_levers_endpoint_lists_values_defaults_sources(api):
     j = api.get(f"{BASE}/levers?scenario=current").get_json()
-    assert j["scenario"] == "current" and len(j["levers"]) == 17
+    assert j["scenario"] == "current" and len(j["levers"]) == 18
     pw = next(x for x in j["levers"] if x["key"] == "pace_warn")
     assert pw["value"] == 0.9 and pw["is_default"] and pw["source"] and pw["owner"] == "pacing" and pw["path"] == "pacing.pace_warn"
 
@@ -215,7 +216,8 @@ def test_put_levers_writes_inputs_owned_by_other_modules_to_their_namespace(api,
     api.put(f"{BASE}/levers", json={"scenario": "current", "levers": {"product_cost_pct": 0.2, "sales_tax_rate": 0.08, "payback_horizon": 24}})
     with psycopg.connect(pacing_db, row_factory=dict_row) as c:
         p = c.execute("SELECT params FROM proj_scenarios WHERE slug='current'").fetchone()["params"]
-    assert p["financing"]["payback"] == {"product_cost_pct": 0.2, "max_age": 24} and p["drivers"]["sales_tax_rate"] == 0.08
+    assert p["drivers"]["payback"] == {"product_cost_pct": 0.2, "horizon_months": 24} and p["drivers"]["sales_tax_rate"] == 0.08
+    assert "financing" not in p                                                                                    # nothing is written to the legacy copy
 
 
 @pytest.mark.parametrize("body", [
@@ -264,3 +266,14 @@ def test_payback_and_feed_age_bands_follow_their_levers(conn, pnl, cohorts):
     fresh = [{"feed": "x", "label": "X", "data_through": "2026-10-27", "stale_after_days": 2}]
     assert views.freshness_chips(fresh, SNAPSHOT_DAY)[0]["status"] == "bad"                                   # 6 days behind yesterday: over the 5-day bar
     assert views.freshness_chips(fresh, SNAPSHOT_DAY, 1, 9)[0]["status"] == "warn"
+
+
+def test_the_generic_scenario_patch_is_checked_by_the_pacing_validator(api):
+    patch = lambda params: api.patch("/api/projection/scenarios/current", json={"params": params})        # noqa: E731
+    assert patch({"pacing": {"pace_warn": 5}}).status_code == 400
+    r = patch({"pacing": {"made_up": 1}})
+    assert r.status_code == 400 and "not a pacing variable" in r.get_json()["error"]
+    assert patch({"pacing": {"pace_warn": 1.0, "pace_good": 0.9}}).status_code == 400
+    assert patch({"pacing": {"cost_drivers": {"nope": "fixed"}}}).status_code == 400
+    ok = patch({"pacing": {"last_days": 10}})
+    assert ok.status_code == 200 and {x["key"]: x["value"] for x in api.get(f"{BASE}/levers").get_json()["levers"]}["last_days"] == 10

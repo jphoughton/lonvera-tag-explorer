@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import math
+import re
 from datetime import date
 from typing import Any, Callable
 
@@ -24,6 +25,12 @@ S_EQUITY = "financing.equity_payback"              # input: equity paid back in 
 SERIES_KEYS = (S_PRINCIPAL, S_NOI_BI, S_OPENING, S_TAX, S_EQUITY)
 
 # Payout block: step-up bonus per scale tier, one column per payback month.
+# P&L lines that are a cost of each new-customer order, read as a share of DTC revenue for the "after all variable costs" payback.
+# Product cost (China COGS), fulfillment services, inbound shipping, payment processing and chargeback management.
+LOADED_LINES = ["china_cogs", "fulfillment_services", "inbound_shipping", "payment_processing", "chargeback_management"]
+LOADED_LABELS = {"china_cogs": "Product cost", "fulfillment_services": "Fulfillment", "inbound_shipping": "Inbound shipping",
+                 "payment_processing": "Payment processing", "chargeback_management": "Chargeback management"}
+
 PAYOUT_SCALES = [800_000, 850_000, 900_000, 950_000, 1_000_000, 1_100_000, 1_200_000, 1_300_000, 1_400_000, 1_500_000]
 
 DEFAULTS: dict[str, Any] = {
@@ -41,8 +48,9 @@ DEFAULTS: dict[str, Any] = {
         ],
     },
     "cash": {"opening": 0.0, "floor": 0.0},
-    "payback": {"aov": None, "cac": None, "product_cost_pct": 0.1726, "fulfillment": 5.53, "max_age": 36, "curve": "live"},
-    "matrix": {"target_month": 3, "basis": "cm", "fixed_cost": 110_000.0,
+    "payback": {"aov": None, "cac": None, "product_cost_pct": 0.1726, "fulfillment": 5.53, "max_age": 36, "curve": "live",
+                "loaded_lines": list(LOADED_LINES), "loaded_months": 12, "loaded_rate": None},
+    "matrix": {"target_month": 3, "basis": "cm", "margin": "product", "fixed_cost": 110_000.0,
                "spends": [200_000 + 100_000 * i for i in range(19)],
                "roas": [round(0.40 + 0.05 * i, 2) for i in range(13)]},
     "payout": {
@@ -65,13 +73,61 @@ SOURCES: dict[str, str] = {
     "debt.rate": "Term Debt Monthly Paydown B5",
     "debt.fixed_payment": "Term Debt Monthly Paydown B6 (used only in fixed-payment mode)",
     "tax.rate": "P&L row 120 (21% of NOI)",
-    "payback.product_cost_pct": "Payback D11",
-    "payback.fulfillment": "Payback B12",
+    "payback.loaded_lines": "P&L lines read as a share of DTC revenue for the all-variable-costs payback",
+    "payback.product_cost_pct": "Payback D11 (shared with the Spend plan page)",
+    "payback.fulfillment": "Payback B12 (shared with the Spend plan page)",
     "matrix.fixed_cost": "Spend-ROAS Matrix B7",
     "payout.media_spend": "P&L F180", "payout.cpa": "P&L F182", "payout.aov": "P&L F183",
     "payout.lazar": "P&L G205", "payout.designer": "P&L G206", "payout.cogs_rate": "P&L G186", "payout.fulfillment_rate": "P&L G187",
     "payout.creative_production_rate": "P&L I208 (creative production cost, an expense)",
 }
+
+
+# ------------------------------------------------------------------------------------------------------------------ one store for the payback inputs
+
+# The Spend plan page and this page edit the same three sheet cells (Payback D11, B12 and the 36-month table). The single store is
+# params['drivers']['payback'] (read by the Spend plan, the pacing payback box and this module); `financing.payback.<key>` is only a legacy
+# fallback for scenarios saved before the merge. financing key -> drivers key:
+PAYBACK_SHARED = {"product_cost_pct": "product_cost_pct", "fulfillment": "fulfillment_per_order", "max_age": "horizon_months"}
+
+
+def _shared_value(fkey: str, v: Any) -> float | int | None:
+    """The drivers module's own ranges: a stored value outside them is ignored (it falls through to the legacy key or the default)."""
+    x = opt_num(v)
+    if x is None:
+        return None
+    if fkey == "product_cost_pct":
+        return x if 0 <= x < 1 else None
+    if fkey == "fulfillment":
+        return x if 0 <= x <= 1000 else None
+    return int(x) if 1 <= x <= 60 and x == int(x) else None
+
+
+def payback_sources(scn_params: dict | None) -> dict[str, str]:
+    """Where each shared payback input comes from in this scenario: 'drivers' (the single store), 'financing' (legacy copy) or 'default'."""
+    params = scn_params or {}
+    drv = (params.get("drivers") or {}).get("payback") if isinstance(params.get("drivers"), dict) else None
+    fin = (params.get(NS) or {}).get("payback") if isinstance(params.get(NS), dict) else None
+    out = {}
+    for fkey, dkey in PAYBACK_SHARED.items():
+        if isinstance(drv, dict) and _shared_value(fkey, drv.get(dkey)) is not None:
+            out[fkey] = "drivers"
+        elif isinstance(fin, dict) and fkey in fin and fin.get(fkey) is not None:
+            out[fkey] = "financing"
+        else:
+            out[fkey] = "default"
+    return out
+
+
+def split_payback_patch(patch: dict) -> tuple[dict, dict]:
+    """A financing merge patch -> (financing patch, drivers patch): the shared payback inputs move to params['drivers']['payback'] and the legacy
+    financing copies are removed, so every page reads one value. A null clears the shared input (back to the default)."""
+    pb = patch.get("payback")
+    if not isinstance(pb, dict) or not any(k in pb for k in PAYBACK_SHARED):
+        return patch, {}
+    rest = {k: v for k, v in pb.items() if k not in PAYBACK_SHARED}
+    fin = {**patch, "payback": {**rest, **{k: None for k in PAYBACK_SHARED}}}
+    return fin, {"payback": {PAYBACK_SHARED[k]: pb[k] for k in PAYBACK_SHARED if k in pb}}
 
 
 # ------------------------------------------------------------------------------------------------------------------ merge
@@ -87,9 +143,18 @@ def deep_merge(base: dict, over: dict) -> dict:
 
 
 def effective(scn_params: dict | None) -> dict:
-    """DEFAULTS overlaid with the scenario's effective `financing` params."""
+    """DEFAULTS, then the scenario's `financing` params (the legacy copies of the shared payback inputs included), then the single store
+    params['drivers']['payback'] for the shared inputs."""
     own = (scn_params or {}).get(NS)
-    return deep_merge(DEFAULTS, own if isinstance(own, dict) else {})
+    out = deep_merge(DEFAULTS, own if isinstance(own, dict) else {})
+    drv = (scn_params or {}).get("drivers")
+    drv = drv.get("payback") if isinstance(drv, dict) else None
+    if isinstance(drv, dict):
+        for fkey, dkey in PAYBACK_SHARED.items():
+            v = _shared_value(fkey, drv.get(dkey))
+            if v is not None:
+                out["payback"][fkey] = v
+    return out
 
 
 # ------------------------------------------------------------------------------------------------------------------ tolerant readers
@@ -167,6 +232,14 @@ def _number_list(lo: float, hi: float, max_len: int, *, ascending: bool = False,
     return check
 
 
+def _line_keys(path: str, v: Any) -> None:
+    if not isinstance(v, list) or not 1 <= len(v) <= 12:
+        _fail(path, "must be a list of 1 to 12 P&L line keys")
+    for i, k in enumerate(v):
+        if not isinstance(k, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,59}", k):
+            _fail(f"{path}[{i}]", "must be a P&L line key such as fulfillment_services")
+
+
 def _tax_payments(path: str, v: Any) -> None:
     if not isinstance(v, list) or len(v) > 24:
         _fail(path, "must be a list of at most 24 payments")
@@ -215,9 +288,10 @@ SCHEMA: dict[str, Any] = {
                     "installments": _integer(1, 20), "ebitda_floor": _number(0, 1e10, nullable=True)},
     "tax": {"rate": _number(0, 1), "deduct_interest": _boolean, "payments": _tax_payments},
     "cash": {"opening": _number(-1e10, 1e10), "floor": _number(-1e10, 1e10)},
-    "payback": {"aov": _number(0.01, 1e6, nullable=True), "cac": _number(0, 1e6, nullable=True), "product_cost_pct": _number(0, 1),
-                "fulfillment": _number(0, 1e6), "max_age": _integer(1, 60), "curve": _choice("live", "goal")},
-    "matrix": {"target_month": _integer(0, 60), "basis": _choice("cm", "loaded"), "fixed_cost": _number(0, 1e10),
+    "payback": {"aov": _number(0.01, 1e6, nullable=True), "cac": _number(0, 1e6, nullable=True), "product_cost_pct": _number(0, 0.99),
+                "fulfillment": _number(0, 1000), "max_age": _integer(1, 60), "curve": _choice("live", "goal"),
+                "loaded_lines": _line_keys, "loaded_months": _integer(1, 36), "loaded_rate": _number(0, 0.99, nullable=True)},
+    "matrix": {"target_month": _integer(0, 60), "basis": _choice("cm", "loaded"), "margin": _choice("product", "loaded"), "fixed_cost": _number(0, 1e10),
                "spends": _number_list(1, 1e10, 40, min_len=1), "roas": _number_list(0.01, 100, 40, min_len=1)},
     "payout": {"media_spend": _number(0, 1e10), "cpa": _number(0.01, 1e6), "aov": _number(0.01, 1e6), "lazar": _number(0, 1e9),
                "designer": _number(0, 1e9), "samples_count": _integer(0, 100000), "sample_cost": _number(0, 1e6),
@@ -245,3 +319,11 @@ def validate_patch(patch: Any, schema: dict | None = None, prefix: str = "") -> 
         else:
             rule(path, v)
     return patch
+
+
+def validate_params(params: Any) -> None:
+    """Validate this module's whole params namespace (what `params['financing']` holds, or any merge patch of it). Raises ApiError(400) naming the input.
+    Registered as the module's hook so the generic PATCH /scenarios path refuses the same values as PUT /financing/inputs."""
+    if params is None:
+        return
+    validate_patch(params)
