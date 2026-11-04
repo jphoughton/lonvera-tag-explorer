@@ -1,4 +1,4 @@
-import { h, enc, fmt, href, apiWindow, sparkParams, globalParams, badge, confBadge, stageBadge, liveDot, methodFlags, safeUrl, empty, isNum, colorChip, safeColor, cmpView, onCmpRefresh, setParentHint, stageSet, STAGES, currentParams } from '../util.js';
+import { h, enc, fmt, href, apiWindow, sparkParams, globalParams, badge, confBadge, stageBadge, liveDot, methodFlags, safeUrl, empty, isNum, colorChip, safeColor, cmpView, onCmpRefresh, setParentHint, stageSet, STAGES, currentParams, metricLabel } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { setRangeInfo } from '../controls.js';
@@ -34,10 +34,10 @@ function compareTable(d, wi) {
   const val = (m, k, days) => (perDay && ['spend', 'purchases', 'revenue'].includes(k) && days ? m[k] / days : m[k]);
   const rows = [
     ['spend', perDay ? 'Spend / day' : 'Spend', fmt.money, 'neutral'],
-    ['purchases', perDay ? 'Purchases / day' : 'Purchases', perDay ? fmt.dec1 : fmt.int, 'up'],
-    ['revenue', perDay ? 'Revenue / day' : 'Revenue', fmt.money, 'up'],
-    ['roas', 'ROAS', fmt.roas, 'up'],
-    ['cpa', 'CPA', fmt.money, 'down'],
+    ['purchases', metricLabel('purchases', 'Purchases') + (perDay ? ' / day' : ''), perDay ? fmt.dec1 : fmt.int, 'up'],
+    ['revenue', metricLabel('revenue', 'Revenue') + (perDay ? ' / day' : ''), fmt.money, 'up'],
+    ['roas', metricLabel('roas', 'ROAS'), fmt.roas, 'up'],
+    ['cpa', metricLabel('cpa', 'CPA'), fmt.money, 'down'],
   ];
   const tr = rows.map(([k, label, ff, dir]) => {
     const a = val(f.window, k, da), b = val(f.compare, k, db);
@@ -77,7 +77,7 @@ function metricsCard(d, wi) {
   return h('div', { class: 'card', id: 'family-metrics' },
     h('div', { class: 'card-head' }, h('h3', 'Creative metrics'), h('span', { class: 'live-flag' }, liveDot(f.live), f.live ? ' Live now' : ' Not live')),
     h('table', { class: 'mini' },
-      h('thead', h('tr', h('th'), ['Spend', 'Purchases', 'Revenue', 'ROAS', 'CPA'].map((x) => h('th', { class: 'num' }, x)))),
+      h('thead', h('tr', h('th'), ['Spend', metricLabel('purchases', 'Purchases'), metricLabel('revenue', 'Revenue'), metricLabel('roas', 'ROAS'), metricLabel('cpa', 'CPA')].map((x) => h('th', { class: 'num' }, x)))),
       h('tbody', tr)),
     cmpBlock,
     h('div', { class: 'muted small' }, d.metrics.counted_on_this_row
@@ -199,10 +199,10 @@ function campaignsTable(d, p, slug, G) {
     { key: 'stage', label: 'Stage', sort: (r) => r.stage, cell: (r) => stageBadge(r.stage) },
     { key: 'spend', label: 'Spend', num: true, sort: (r) => r.spend, cell: (r) => fmt.money(r.spend), total: (t) => fmt.money(t.spend) },
     { key: 'spend_share', label: '% of spend', num: true, sort: (r) => r.spend_share, cell: (r) => fmt.share(r.spend_share), total: () => '100.0%' },
-    { key: 'purchases', label: 'Purchases', num: true, sort: (r) => r.purchases, cell: (r) => fmt.int(r.purchases), total: (t) => fmt.int(t.purchases) },
-    { key: 'revenue', label: 'Revenue', num: true, sort: (r) => r.revenue, cell: (r) => fmt.money(r.revenue), total: (t) => fmt.money(t.revenue) },
-    { key: 'roas', label: 'ROAS', num: true, sort: (r) => r.roas, cell: (r) => fmt.roas(r.roas), total: (t) => fmt.roas(t.roas) },
-    { key: 'cpa', label: 'CPA', num: true, sort: (r) => r.cpa, cell: (r) => fmt.money(r.cpa), total: (t) => fmt.money(t.cpa) },
+    { key: 'purchases', label: () => metricLabel('purchases', 'Purchases'), num: true, sort: (r) => r.purchases, cell: (r) => fmt.int(r.purchases), total: (t) => fmt.int(t.purchases) },
+    { key: 'revenue', label: () => metricLabel('revenue', 'Revenue'), num: true, sort: (r) => r.revenue, cell: (r) => fmt.money(r.revenue), total: (t) => fmt.money(t.revenue) },
+    { key: 'roas', label: () => metricLabel('roas', 'ROAS'), num: true, sort: (r) => r.roas, cell: (r) => fmt.roas(r.roas), total: (t) => fmt.roas(t.roas) },
+    { key: 'cpa', label: () => metricLabel('cpa', 'CPA'), num: true, sort: (r) => r.cpa, cell: (r) => fmt.money(r.cpa), total: (t) => fmt.money(t.cpa) },
   ];
   return section('Campaigns', createTable({ columns: cols, rows, total: tot, rowKey: (r) => r.campaign_id, rowHref: (r) => href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }), tableClass: 'compact', testid: 'campaigns-mini-table' }).el, { id: 'campaigns' });
 }

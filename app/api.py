@@ -33,9 +33,21 @@ def _need_active(active: bool) -> None:
         raise q.ApiError(503, "active-ads data is not built yet")
 
 
+@bp.before_request
+def _pick_source():
+    """Every query of this request reads the chosen source's tables (source=meta|upstack, basis=nc|all; see queries.source_sql). Set on EVERY request, so a
+    worker thread never keeps the previous request's choice. /api/status and the tie-out are source-independent."""
+    if request.endpoint in ("api.status", "api.source_tieout"):
+        q.set_source("meta")
+    else:
+        q.set_source(*q.parse_source(request.args))
+
+
 def _ctx(with_window: bool = True):
     conn = db.get_conn()
     meta = q.load_meta(conn)
+    source, _ = q.parse_source(request.args)
+    meta = q.meta_for_source(meta, source) if request.endpoint not in ("api.status",) else meta
     w = q.parse_window(request.args, meta) if with_window else None
     if w is not None:
         _need_active(w.active)
@@ -192,6 +204,18 @@ def ad_detail(row_id: int):
     res["window_info"] = w.info(meta)
     res["compare_info"] = w.compare_info(meta)
     res["scope"] = SCOPE_TRACKER
+    return jsonify(res)
+
+
+@bp.get("/api/source/tieout")
+def source_tieout():
+    """Meta vs Upstack totals for a window (window=7d|30d|...|mtd|launch(=every day held) or from/to). Days outside Upstack's history are not compared."""
+    conn = db.get_conn()
+    meta = q.meta_for_source(q.load_meta(conn), "upstack")
+    w = q.parse_window({k: v for k, v in request.args.items() if k in ("window", "from", "to")}, meta)
+    df, dtt = w.span(meta)
+    res = q.source_tieout(conn, meta, df, dtt)
+    res["window_info"] = w.info(meta)
     return jsonify(res)
 
 

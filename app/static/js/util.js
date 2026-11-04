@@ -93,7 +93,7 @@ export function debounce(fn, ms = 200) {
 }
 
 // ---------- URL state ----------
-export const GLOBAL_KEYS = ['window', 'from', 'to', 'stage', 'compare', 'cfrom', 'cto', 'perday', 'tb', 'tl', 'tg', 'ts', 'active'];
+export const GLOBAL_KEYS = ['window', 'from', 'to', 'stage', 'compare', 'cfrom', 'cto', 'perday', 'tb', 'tl', 'tg', 'ts', 'active', 'source', 'basis'];
 
 export function qs(params) {
   const sp = new URLSearchParams();
@@ -151,12 +151,33 @@ export function apiWindow(p) {
     if (!STAGES.every((x) => set.has(x))) o.stage = STAGES.filter((x) => set.has(x)).join(',');
   }
   if (p.active === '1') o.active = 1; // only creatives / ads that are ACTIVE now
+  if (p.source === 'upstack') { o.source = 'upstack'; if (p.basis === 'all') o.basis = 'all'; } // numbers from Upstack's attribution instead of Meta's own reporting
   if (hasDateWindow(p)) {
     if (p.cfrom && p.cto) { o.cfrom = p.cfrom; o.cto = p.cto; }
     else if (p.compare) o.compare = p.compare;
   }
   return o;
 }
+
+// ---------- data source (Meta | Upstack) ----------
+// Set from every response's window_info.source (see applySourceState); tables, charts and cards read their metric names from here.
+const META_LABELS = { purchases: 'Purchases', revenue: 'Revenue', roas: 'ROAS', cpa: 'CPA' };
+export const srcView = { key: 'meta', basis: null, label: 'Meta', labels: META_LABELS, summary: null, note: null };
+export function applySourceState(info) {
+  const s = info && info.source;
+  if (!s) { Object.assign(srcView, { key: 'meta', basis: null, label: 'Meta', labels: META_LABELS, summary: null, note: null }); return; }
+  Object.assign(srcView, { key: s.key, basis: s.basis, label: s.label, labels: s.labels || META_LABELS, summary: s.summary || null, note: s.note || null });
+}
+const UP_LABELS = { nc: { purchases: 'New customers', revenue: 'NC revenue', roas: 'NC ROAS', cpa: 'NC CPA' }, all: { purchases: 'Orders', revenue: 'Revenue', roas: 'ROAS', cpa: 'Cost per order' } };
+// URL first (so headers are right before the response arrives), the response's window_info.source refines it
+export function srcFromParams(p) {
+  if (p && p.source === 'upstack') {
+    const basis = p.basis === 'all' ? 'all' : 'nc';
+    Object.assign(srcView, { key: 'upstack', basis, label: basis === 'nc' ? 'Upstack · new customers' : 'Upstack · all orders', labels: UP_LABELS[basis], summary: null, note: null });
+  } else Object.assign(srcView, { key: 'meta', basis: null, label: 'Meta', labels: META_LABELS, summary: null, note: null });
+}
+export const metricLabel = (key, fallback) => (srcView.labels && srcView.labels[key]) || fallback;
+export const isUpstack = () => srcView.key === 'upstack';
 
 // comparison view state shared by tables/cards (set by each page from the response)
 export const cmpView = { on: false, perDay: false, a: null, b: null };
@@ -177,6 +198,7 @@ export function cleanParams(p) {
   if (o.window === 'launch') delete o.window;
   if (o.from && o.to) delete o.window;
   if (o.active !== '1' && o.active !== 1) delete o.active;
+  if (o.source !== 'upstack') { delete o.source; delete o.basis; } else if (o.basis !== 'all') delete o.basis;
   if (o.tb === 'spend') delete o.tb;
   if (o.tl === 'roas') delete o.tl;
   if (o.tg === 'day') delete o.tg;

@@ -1,6 +1,6 @@
 // Shared metric columns. The same metrics appear at every level: Spend, % of spend, traffic (impressions, link clicks, CTR, CPC), purchases, revenue, ROAS, CPA.
 // With comparison on, Spend / % of spend / Purchases / Revenue / ROAS / CPA cells get a second line "vs <B> ▲12%".
-import { h, fmt, isNum, cmpView, stageSet, currentParams, colPref } from './util.js';
+import { h, fmt, isNum, cmpView, stageSet, currentParams, colPref, metricLabel, srcView } from './util.js';
 import { sparkSvg, sparkTitle, MAX_PINS, PIN_HINT } from './trend.js';
 
 // Testing $ / Scaling $ / Testing % only make sense when both stages are included in the stage filter
@@ -39,6 +39,17 @@ const DEFS = [
   ['scaling_spend', 'Scaling $', 'money', 'Spend in Scaling campaigns (selected window)'],
   ['testing_pct', 'Testing %', 'pct', 'Testing share of classified spend'],
 ];
+
+// Upstack source: the four result columns say what Upstack counts (new customers or all orders); spend, clicks and impressions stay Meta's
+const UP_TITLES = {
+  nc: { purchases: 'Upstack new customers credited to the ad (first orders; any-click, 30-day window)', revenue: 'Upstack new-customer revenue credited to the ad (order totals)',
+        roas: 'New-customer revenue / spend', cpa: 'Spend / new customers', conv_rate: 'New customers / link clicks' },
+  all: { purchases: 'Upstack orders credited to the ad (new and returning customers; any-click, 30-day window)', revenue: 'Upstack revenue of those orders (order totals)',
+         roas: 'Revenue / spend', cpa: 'Spend / orders', conv_rate: 'Orders / link clicks' },
+};
+function titleFor(key, title) {
+  return srcView.key === 'upstack' && UP_TITLES[srcView.basis] && UP_TITLES[srcView.basis][key] ? UP_TITLES[srcView.basis][key] : title;
+}
 
 function get(m, key) {
   if (!m) return null;
@@ -106,10 +117,10 @@ export function metricColumns({ getM = (r) => r.m, getTotalM = (t) => t && t.m, 
     return {
       key,
       label: () => {
-        const base = key === 'spend_share' ? shareLabel : label;
+        const base = key === 'spend_share' ? shareLabel : metricLabel(key, label);
         return cmpView.perDay && PERDAY.has(key) ? base + '/day' : base;
       },
-      num: true, title, cls: cls || '',
+      num: true, title: titleFor(key, title), cls: cls || '',
       hidden: STAGE_COLS.has(key) ? () => !bothStagesIncluded() : (group ? () => !colPref(group) : null),
       sort: val,
       deltaSort: comparable ? (r) => deltaPct(getM(r), key) : null,

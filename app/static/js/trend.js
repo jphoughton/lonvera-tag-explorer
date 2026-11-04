@@ -1,14 +1,14 @@
 // Trend panel (Chart.js), sparklines and the "pin rows into the chart" store.
-import { h, enc, isNum, apiWindow, currentParams, navigate, cleanParams, qs, cmpView, onCmpRefresh, colPref, trendCollapsed, setTrendCollapsed, sparkMetric } from './util.js';
+import { h, enc, isNum, apiWindow, currentParams, navigate, cleanParams, qs, cmpView, onCmpRefresh, colPref, trendCollapsed, setTrendCollapsed, sparkMetric, metricLabel } from './util.js';
 import { api, AuthError } from './api.js';
 import { trendChart, fmtMetric, BAR_COLOR, LINE_COLOR } from './charts.js';
 
 export const METRICS = [
   { key: 'spend', label: 'Spend', kind: 'money', additive: true },
-  { key: 'purchases', label: 'Purchases', kind: 'int', additive: true },
-  { key: 'revenue', label: 'Revenue', kind: 'money', additive: true },
-  { key: 'roas', label: 'ROAS', kind: 'roas' },
-  { key: 'cpa', label: 'CPA', kind: 'money' },
+  { key: 'purchases', get label() { return metricLabel('purchases', 'Purchases'); }, kind: 'int', additive: true },
+  { key: 'revenue', get label() { return metricLabel('revenue', 'Revenue'); }, kind: 'money', additive: true },
+  { key: 'roas', get label() { return metricLabel('roas', 'ROAS'); }, kind: 'roas' },
+  { key: 'cpa', get label() { return metricLabel('cpa', 'CPA'); }, kind: 'money' },
   { key: 'impressions', label: 'Impressions', kind: 'int', additive: true },
   { key: 'link_clicks', label: 'Link clicks', kind: 'int', additive: true },
   { key: 'ctr', label: 'CTR', kind: 'rate' },
