@@ -628,7 +628,7 @@ def test_first_column_name_is_always_visible_and_wraps(browser, base_url, width,
                 const nm = row.querySelector('.nm'); const meta = row.querySelector('.meta, .sub'); const td = row.querySelector('td.labelcol, td.adcol');
                 if (!nm) return null;
                 const r = nm.getBoundingClientRect(); const cs = getComputedStyle(nm); const mr = meta ? meta.getBoundingClientRect() : null;
-                const nameEl = nm.querySelector('.adname, .lvlname') || nm;
+                const nameEl = nm.querySelector('.rowname, .lvlname') || nm;
                 const nr = nameEl.getBoundingClientRect(); const ncs = getComputedStyle(nameEl);
                 return {text: nm.innerText.trim(), w: r.width, h: r.height, nameW: nr.width, clipped: nm.scrollWidth > nm.clientWidth + 1, overflow: ncs.overflow, ellipsis: ncs.textOverflow === 'ellipsis',
                         ws: cs.whiteSpace, tdW: td ? td.getBoundingClientRect().width : null, metaBelow: mr ? mr.top >= r.top + r.height - 1 : true};

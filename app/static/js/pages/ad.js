@@ -250,7 +250,7 @@ export async function adPage(ctx) {
   if (adsT) onCmpRefresh(() => adsT.refresh());
   setParentHint(href(path, { ...G, cluster, icp, pain }));
 
-  ctx.mount(h('div', { class: 'page ad-detail' },
+  ctx.mount(h('div', { class: 'page creative-detail' },
     h('div', { class: 'crumbrow' }, breadcrumbs(crumbs)),
     h('div', { class: 'pagehead' },
       h('div', { class: 'titleline' },

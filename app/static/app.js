@@ -96,6 +96,15 @@ async function showEmptyRange(params, root, my) {
         'Back to the last valid range')))));
 }
 
+function showBlank(root, why) {
+  root.removeAttribute('aria-busy');
+  root.replaceChildren(h('div', { class: 'page' },
+    h('div', { class: 'errorbox', role: 'alert', 'data-testid': 'blank-page' },
+      h('strong', 'This page did not render. '),
+      h('span', null, why),
+      h('div', null, h('button', { type: 'button', class: 'btn', onclick: () => render({ restore: true }) }, 'Retry')))));
+}
+
 async function render(opts = {}) {
   const my = ++token;
   if (abort) abort.abort();
@@ -121,7 +130,15 @@ async function render(opts = {}) {
     signal: abort.signal,
     alive: () => token === my,
     restore: opts.restore ? loadViewState() : null,
-    mount(node) { if (token === my) { root.replaceChildren(node); root.removeAttribute('aria-busy'); } },
+    mount(node) {
+      if (token !== my) return;
+      root.replaceChildren(node);
+      root.removeAttribute('aria-busy');
+      // an extension's cosmetic filter can hide a mounted page by class name (display:none leaves no layout boxes): say so, never a blank page
+      requestAnimationFrame(() => {
+        if (token === my && node.isConnected && !node.getClientRects().length) showBlank(root, 'The browser is hiding it. An ad blocker or extension may be matching a class name on this page.');
+      });
+    },
   };
   root.setAttribute('aria-busy', 'true');
   if (!route.public) {
@@ -133,6 +150,7 @@ async function render(opts = {}) {
   if (opts.scroll !== false) window.scrollTo(0, 0);
   try {
     await route.page(ctx);
+    if (token === my && root.getAttribute('aria-busy') === 'true') showBlank(root, 'The page finished loading but had nothing to show.');
     if (token === my && !route.public) lastValid = { window: params.window, from: params.from, to: params.to };
   } catch (e) {
     if (e instanceof AuthError || (e && e.name === 'AbortError') || token !== my) return;
