@@ -1,0 +1,17 @@
+.git
+.gitignore
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.env
+.env.*
+node_modules
+data
+snapshots
+tests
+playwright-report
+test-results
+*.log
+.DS_Store
+.railway

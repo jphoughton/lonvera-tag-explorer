@@ -1,0 +1,791 @@
+#!/usr/bin/env python3
+"""Mock of the Tag Explorer API (docs/CONTRACT.md v1 + v1.1) for developing and testing the UI.
+
+Serves app/static and canned-but-consistent JSON for every contract endpoint. Numbers are derived from one
+ad-level daily table so every level sums to its parent, and the window / stage / from-to params really
+change the figures. Login password: `test`.
+
+    .venv/bin/python tests/ui/mock_server.py            # http://127.0.0.1:5099
+"""
+import io
+import json
+import random
+import re
+import sys
+from datetime import date, timedelta
+from pathlib import Path
+
+from flask import Flask, Response, jsonify, request, send_from_directory
+
+ROOT = Path(__file__).resolve().parents[2]
+STATIC = ROOT / "app" / "static"
+
+DAILY_START = date(2026, 5, 6)
+DATA_THROUGH = date(2026, 11, 2)
+CUTOFF = date(2026, 9, 17)
+DAYS = [DAILY_START + timedelta(i) for i in range((DATA_THROUGH - DAILY_START).days + 1)]
+N = len(DAYS)
+MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+PASSWORD = "test"
+
+app = Flask(__name__, static_folder=str(STATIC), static_url_path="/static")
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+
+
+# ----------------------------------------------------------------------------------------------- data
+VB_LINES = [  # code, cluster, icp, pain, trigger
+    ("L01", "Low T & Libido", "Number Optimizer", "Low Energy", "Shame"),
+    ("L02", "Low T & Libido", "Number Optimizer", "Low Drive", "Frustration"),
+    ("L03", "Low T & Libido", "Frank the Skeptic", "Distrust of TRT", "Distrust"),
+    ("L04", "Low T & Libido", "Frank the Skeptic", "Brain Fog", "Fear"),
+    ("L05", "Energy & Performance", "Weekend Lifter", "Plateau", "Pride"),
+    ("L06", "Energy & Performance", "Weekend Lifter", "Recovery", "Frustration"),
+    ("L07", "Energy & Performance", "Busy Provider Dad", "Afternoon Crash", "Shame"),
+    ("L08", "Energy & Performance", "Busy Provider Dad", "Sleep", "Fear"),
+    ("L09", "Prostate & Aging", "Prostate Worrier", "Night Bathroom Trips", "Fear"),
+    ("L10", "Prostate & Aging", "Prostate Worrier", "Surgery Dodger", "Fear"),
+    ("L11", "Prostate & Aging", "Won't Slow Down", "Longevity", "Desire"),
+]
+CLUSTER_COLORS = {"Low T & Libido": "#c0392b", "Energy & Performance": "#2e86c1", "Prostate & Aging": "#7d3c98"}
+TRACKER_TAGS = {
+    "beef-liver": [
+        ("Hair Thinning", "Denise Thinning Hair", "Hair Loss"), ("Hair Thinning", "Denise Thinning Hair", "Ferritin Low"),
+        ("Iron & B12", "Carla Low Ferritin", "Fatigue"), ("Alcohol & Liver", "Gary Drinker", "Alcohol Face"),
+        ("Alcohol & Liver", "Gary Drinker", "Liver Health"), ("(none)", "(none)", "(none)"),
+    ],
+    "boneflex": [
+        ("Joint Pain", "Eileen Floor-Proof", "Knee Pain"), ("Joint Pain", "Eileen Floor-Proof", "Morning Stiffness"),
+        ("Joint Pain", "Ron Weekend Warrior", "Recovery"), ("Mobility", "Carol Daily NSAID", "NSAID Worry"),
+    ],
+}
+PRODUCTS = [
+    dict(slug="vita-bull", name="Vita Bull", tag_set="linemap", n=40, prefix=["Bull", "Brief2-2-Bull", "Lonvera-VitalBull-Static", "cedFat", "breakdown"]),
+    dict(slug="beef-liver", name="Beef Liver", tag_set="tracker", n=16, prefix=["Liver", "BeefLiver-Static", "Hair"]),
+    dict(slug="boneflex", name="Boneflex", tag_set="tracker", n=12, prefix=["BoneFlex", "Boneflex-Static"]),
+]
+STATUSES = ["Launched"] * 7 + ["Approved - Ready To Launch", "In Production", "Briefing"]
+INGREDIENTS = [("Zinc", "Low testosterone signalling", "Libido, recovery"), ("Cholesterol", "Hormone substrate gap", "T production"), ("Vitamin B12", "Low energy", "Focus")]
+XSS = "<img src=x onerror=window.__xss=1>Bull <b>bold</b> & <script>window.__xss=2</script>"
+
+
+def stage_of(name):
+    return "testing" if "test" in name.lower() else "scaling"
+
+
+def build():
+    rng = random.Random(7)
+    campaigns = {}
+    for p in PRODUCTS:
+        s = p["slug"]
+        for i, nm in enumerate([f"{p['name'].replace(' ', '')}_US_Scaling_CC_{i}" for i in range(1, 4)] + [f"{p['name'].replace(' ', '')}_WW_Test_Hooks_{i}" for i in range(1, 4)]):
+            cid = f"1202{(sum(map(ord, s)) * 100003 + i * 7919) % 10**9:09d}"
+            campaigns[cid] = dict(campaign_id=cid, product=s, name=nm, account=rng.choice(["Main", "BackUp"]), stage=stage_of(nm))
+    camp_by_prod = {p["slug"]: [c for c in campaigns.values() if c["product"] == p["slug"]] for p in PRODUCTS}
+
+    rows, fams, ads = [], [], []
+    rid = 1000
+    asset = 0
+
+    def daily_for(rng, launch, live, base):
+        """list of (spend, purchases, revenue) per day"""
+        li = max(0, (launch - DAILY_START).days) if launch else 0
+        end = N - 1 if live else min(N - 1, li + rng.randint(10, 120))
+        cpa = rng.uniform(62, 135)
+        aov = rng.uniform(58, 98)
+        out = []
+        for i in range(N):
+            if i < li or i > end:
+                out.append((0.0, 0, 0.0))
+                continue
+            age = i - li
+            shape = 0.5 + min(age, 20) / 20 - max(0, (age - 80) / 200)
+            sp = max(0.0, base * shape * rng.uniform(0.55, 1.4))
+            pu = int(round(sp / cpa * rng.uniform(0.6, 1.4)))
+            out.append((round(sp, 2), pu, round(pu * aov * rng.uniform(0.9, 1.1), 2)))
+        return out
+
+    for p in PRODUCTS:
+        s = p["slug"]
+        lines = VB_LINES if p["tag_set"] == "linemap" else None
+        ttags = TRACKER_TAGS.get(s)
+        for k in range(p["n"]):
+            pre = rng.choice(p["prefix"])
+            name = f"{pre}-{rng.randint(100, 999)}-Hook{rng.randint(1, 4)}" if pre in ("Bull", "Liver", "BoneFlex") else f"{pre}-{rng.randint(2, 40)}.{rng.randint(1, 9)}"
+            if k == 0:
+                name = "Brief2-2-Bull-398" if s == "vita-bull" else name
+            if k == 1 and s == "vita-bull":
+                name = "Bull-526-Hook2"
+            if k == 2 and s == "vita-bull":
+                name = "XSS-<b>test</b>-family"
+            key = name.lower()
+            if any(f["key"] == key for f in fams):
+                name = name + f"-{k}"
+                key = name.lower()
+            status = STATUSES[k % len(STATUSES)] if k > 5 else "Launched"
+            launched = status == "Launched"
+            launch = date(2026, 3, 1) + timedelta(days=rng.randint(0, 235)) if launched else None
+            if launched and k < 6:
+                launch = DAILY_START + timedelta(days=rng.randint(20, 150))
+            live = launched and rng.random() < 0.38
+            fam = dict(key=key, product=s, display=name, status=status, ad_type=rng.choice(["VID", "IMG"]), launch=launch, live=live,
+                       thumb=None if rng.random() < 0.12 else f"a{asset + 1}", rows=[], confidence=None)
+            asset += 1
+            nrows = 2 if (k % 9 == 4 and launched) else 1
+            picks = []
+            for r_i in range(nrows):
+                if lines:
+                    if k in (38, 39):
+                        ln = None
+                    else:
+                        ln = rng.choice(lines)
+                        while r_i == 1 and ln[0] == picks[0][0]:
+                            ln = rng.choice(lines)
+                    picks.append(ln)
+                else:
+                    picks.append(rng.choice(ttags))
+            for r_i, pk in enumerate(picks):
+                rid += 1
+                conf = rng.choices(["high", "medium", "low"], [0.2, 0.35, 0.45])[0]
+                method = rng.choice(["image", "video: thumbnail + 4 frames + audio transcript", "text only", "thumbnail: no audio"])
+                row = dict(id=rid, fam=key, product=s, ordinal=r_i, concept_id="0510" if (s == "vita-bull" and k == 5 and r_i == 0) else (name if r_i == 0 else f"{name} - Copy {r_i + 1}"),
+                           sheet_row=1500 + rid, conf=conf, method=method)
+                if lines:
+                    row["line"] = pk
+                    row["cluster"], row["icp"], row["pain"] = (pk[1], pk[2], pk[3]) if pk else ("(untagged)",) * 3
+                else:
+                    row["line"] = None
+                    row["cluster"], row["icp"], row["pain"] = pk
+                rows.append(row)
+                fam["rows"].append(row)
+            fam["confidence"] = min((r["conf"] for r in fam["rows"]), key={"low": 0, "medium": 1, "high": 2}.get)
+            fams.append(fam)
+
+            # Meta ads (only launched families spend)
+            if launched:
+                n_ads = rng.randint(1, 4)
+                base = rng.choice([8, 20, 60, 140, 300]) * (1.8 if live else 1)
+                for a in range(n_ads):
+                    cmp = rng.choice(camp_by_prod[s])
+                    ad = dict(ad_id=f"2385{rng.randint(10**10, 10**11):d}", fam=key, product=s, name=name if a == 0 else f"{name} - Copy {a + 1}",
+                              campaign_id=cmp["campaign_id"], adset=rng.choice(["US_Scaling_PastWinners", "WW_GEN_Test_Hooks", "US_Broad_1DC"]),
+                              status=rng.choice(["ACTIVE", "ACTIVE", "PAUSED"]), created=(launch + timedelta(days=a * 3)).isoformat(),
+                              daily=daily_for(rng, launch + timedelta(days=a * 3), live and a < 2, base / n_ads * rng.uniform(0.6, 1.5)),
+                              life=(0, 0, 0), detail_cut=0)
+                    if launch < DAILY_START:
+                        ls = rng.uniform(2000, 40000) / n_ads
+                        ad["life"] = (round(ls, 2), int(ls / 90), round(ls * rng.uniform(0.7, 1.1), 2))
+                    ads.append(ad)
+        # fixed zero-spend family for the "with spend only" test
+        # unmatched Meta families (no tracker row)
+        for u in range(6):
+            nm = f"Unmatched-{p['name'].replace(' ', '')}-{u + 1}"
+            cmp = rng.choice(camp_by_prod[s])
+            live = u < 2
+            ads.append(dict(ad_id=f"2386{rng.randint(10**10, 10**11):d}", fam=None, product=s, meta_family=nm, name=nm, campaign_id=cmp["campaign_id"],
+                            adset="US_Broad_1DC", status="ACTIVE", created="2026-09-01",
+                            daily=daily_for(rng, date(2026, 8, 20), live, rng.choice([5, 15, 40])), life=(0, 0, 0), detail_cut=0))
+    # first live vita-bull family has ad-level detail only for the last 60 days
+    fam_by_key = {f["key"]: f for f in fams}
+    for f in fams:
+        if f["product"] == "vita-bull" and f["live"]:
+            for ad in ads:
+                if ad["fam"] == f["key"]:
+                    ad["detail_cut"] = N - 60
+            f["has_remainder"] = True
+            break
+    # copy / content per row
+    for r in rows:
+        r["emotion"] = random.Random(r["id"]).choice(["Shame", "Fear", "Frustration", "Distrust", "Pride"])
+        r["ingredient"] = random.Random(r["id"] + 1).choice(INGREDIENTS)[0]
+    return campaigns, rows, fams, ads, fam_by_key
+
+
+CAMPAIGNS, ROWS, FAMS, ADS, FAM_BY_KEY = build()
+ROW_BY_ID = {r["id"]: r for r in ROWS}
+ASSETS = {f["thumb"] for f in FAMS if f["thumb"]}
+
+
+# ----------------------------------------------------------------------------------------------- windows
+class Bad(Exception):
+    pass
+
+
+def lab(d):
+    return f"{MON[d.month - 1]} {d.day}"
+
+
+def parse_win(args):
+    stage = args.get("stage", "all")
+    if stage not in ("all", "testing", "scaling"):
+        raise Bad("bad stage")
+    f, t = args.get("from"), args.get("to")
+    info = dict(kind="launch", label="Since launch", **{"from": None, "to": None}, days=None, clamped=False, note=None,
+                daily_start=DAILY_START.isoformat(), data_through=DATA_THROUGH.isoformat())
+    i0 = i1 = None
+    if f or t:
+        if not (f and t):
+            raise Bad("from and to are both required")
+        try:
+            fd, td = date.fromisoformat(f), date.fromisoformat(t)
+        except ValueError:
+            raise Bad("bad date")
+        if fd > td:
+            raise Bad("from is after to")
+        cf, ct = max(fd, DAILY_START), min(td, DATA_THROUGH)
+        if cf > ct:
+            cf = ct = DATA_THROUGH if fd > DATA_THROUGH else DAILY_START
+        clamped = (cf, ct) != (fd, td)
+        info.update(kind="custom", clamped=clamped,
+                    note=f"Daily data runs {DAILY_START.isoformat()} to {DATA_THROUGH.isoformat()}; range clamped." if clamped else None)
+        fd, td = cf, ct
+        info.update({"from": fd.isoformat(), "to": td.isoformat()})
+    else:
+        w = args.get("window", "launch")
+        if w == "launch":
+            if stage != "all":
+                info["note"] = "With a stage filter only days with a campaign (classified days) count."
+            return dict(info=info, i0=None, i1=None, stage=stage, key=("launch", stage), launch=True)
+        if w == "mtd":
+            fd, td, info["kind"] = DATA_THROUGH.replace(day=1), DATA_THROUGH, "mtd"
+        else:
+            m = re.fullmatch(r"(\d+)d", w)
+            if not m or int(m.group(1)) not in (1, 7, 14, 30, 60, 90, 180):
+                raise Bad("bad window")
+            n = int(m.group(1))
+            fd, td, info["kind"] = DATA_THROUGH - timedelta(days=n - 1), DATA_THROUGH, "trailing"
+        info.update({"from": fd.isoformat(), "to": td.isoformat()})
+    n = (td - fd).days + 1
+    info["days"] = n
+    info["label"] = f"{lab(fd)} · 1 day" if n == 1 else f"{lab(fd)} – {lab(td)} · {n} days"
+    i0, i1 = (fd - DAILY_START).days, (td - DAILY_START).days
+    return dict(info=info, i0=i0, i1=i1, stage=stage, key=(i0, i1, stage), launch=False)
+
+
+# ----------------------------------------------------------------------------------------------- metrics
+def sums(daily, i0, i1):
+    sp = pu = rv = 0.0
+    for i in range(max(0, i0), min(N - 1, i1) + 1):
+        d = daily[i]
+        sp += d[0]; pu += d[1]; rv += d[2]
+    return sp, pu, rv
+
+
+def ad_stage(ad):
+    return CAMPAIGNS[ad["campaign_id"]]["stage"]
+
+
+def launch_idx(launch):
+    return (launch - DAILY_START).days if launch else None
+
+
+def ad_metrics(ad, win, launch, cut=True):
+    """(spend, purchases, revenue) for one ad in the window, by stage: dict stage -> tuple"""
+    stg = ad_stage(ad)
+    daily = ad["daily"]
+    start = ad["detail_cut"] if cut else 0
+    out = {"testing": (0, 0, 0), "scaling": (0, 0, 0), "unclassified": (0, 0, 0)}
+    if win["launch"]:
+        if launch is None and ad["fam"] is not None:
+            return out
+        if launch is None or launch >= DAILY_START:
+            li = 0 if launch is None else (launch - DAILY_START).days
+            sp, pu, rv = sums(daily, max(li, start), N - 1)
+            out[stg] = (sp, pu, rv)
+        else:
+            ci = (CUTOFF - DAILY_START).days
+            sp, pu, rv = sums(daily, max(ci + 1, start), N - 1)
+            out[stg] = (sp, pu, rv)
+            out["unclassified"] = ad["life"]
+    else:
+        sp, pu, rv = sums(daily, max(win["i0"], start), win["i1"])
+        out[stg] = (sp, pu, rv)
+    return out
+
+
+def _roas(s, r):
+    return round(r / s, 4) if s > 0 else None
+
+
+def _cpa(s, p):
+    return round(s / p, 2) if p > 0 else None
+
+
+def metrics_of(split, win):
+    """apply the stage filter to a by-stage split -> spend, purchases, revenue"""
+    stage = win["stage"]
+    keys = ["testing", "scaling", "unclassified"] if stage == "all" else [stage]
+    sp = sum(split[k][0] for k in keys); pu = sum(split[k][1] for k in keys); rv = sum(split[k][2] for k in keys)
+    return sp, pu, rv
+
+
+_FM = {}
+
+
+def fam_split(fam_key, win, ads_filter=None):
+    """by-stage (spend, purchases, revenue) for a tracker family over its ads"""
+    ck = (fam_key, win["key"][:2] if not win["launch"] else "launch")
+    if ck in _FM:
+        return _FM[ck]
+    fam = FAM_BY_KEY[fam_key]
+    tot = {"testing": [0, 0, 0], "scaling": [0, 0, 0], "unclassified": [0, 0, 0]}
+    last7 = [0, 0, 0]
+    live = False
+    for ad in ADS:
+        if ad["fam"] != fam_key:
+            continue
+        for st, v in ad_metrics(ad, win, fam["launch"], cut=False).items():
+            for j in range(3):
+                tot[st][j] += v[j]
+        a7 = sums(ad["daily"], N - 7, N - 1)
+        for j in range(3):
+            last7[j] += a7[j]
+        if ad["daily"][N - 1][0] > 0 or ad["daily"][N - 2][0] > 0:
+            live = True
+    _FM[ck] = (tot, last7, live)
+    return _FM[ck]
+
+
+def make_m(items, win, unique_ads=None):
+    """items: [(fam, counted_here)] -> metrics object"""
+    m_sp = m_pu = m_rv = 0.0
+    sp7 = pu7 = 0.0
+    live = active = 0
+    split_tot = {"testing": [0.0, 0, 0.0], "scaling": [0.0, 0, 0.0], "unclassified": [0.0, 0, 0.0]}
+    for fam, counted in items:
+        if not counted:
+            continue
+        split, l7, lv = fam_split(fam["key"], win)
+        sp, pu, rv = metrics_of(split, win)
+        m_sp += sp; m_pu += pu; m_rv += rv
+        sp7 += l7[0]; pu7 += l7[1]
+        live += 1 if lv else 0
+        active += 1 if sp > 0 else 0
+        for k in split_tot:
+            for j in range(3):
+                split_tot[k][j] += split[k][j]
+    m_sp, m_rv = round(m_sp, 2), round(m_rv, 2)
+    cls = split_tot["testing"][0] + split_tot["scaling"][0]
+    stage_obj = {k: dict(spend=round(v[0], 2), purchases=int(round(v[1])), revenue=round(v[2], 2), roas=_roas(v[0], v[2]), cpa=_cpa(v[0], v[1])) for k, v in split_tot.items() if k != "unclassified"}
+    stage_obj["unclassified"] = dict(spend=round(split_tot["unclassified"][0], 2), purchases=int(round(split_tot["unclassified"][1])), revenue=round(split_tot["unclassified"][2], 2))
+    return dict(unique_ads=unique_ads if unique_ads is not None else len({f["key"] for f, _ in items}), live_now=live, spend=m_sp, purchases=int(round(m_pu)), revenue=m_rv,
+                roas=_roas(m_sp, m_rv), cpa=_cpa(m_sp, m_pu), spend_7d=round(sp7, 2), cpa_7d=_cpa(sp7, pu7), active_ads=active,
+                testing_pct=round(split_tot["testing"][0] / cls, 4) if cls > 0 else None, stage=stage_obj)
+
+
+def prod_items(slug):
+    """every (fam, row, counted_here) of a product"""
+    out = []
+    for f in FAMS:
+        if f["product"] != slug:
+            continue
+        for r in f["rows"]:
+            out.append((f, r, r["ordinal"] == 0))
+    return out
+
+
+def group_of(prod, row):
+    return (row["cluster"], row["icp"], row["pain"])
+
+
+def filt(items, args):
+    c, i, p = args.get("cluster"), args.get("icp"), args.get("pain")
+    return [(f, r, ch) for f, r, ch in items
+            if (c is None or r["cluster"] == c) and (i is None or r["icp"] == i) and (p is None or r["pain"] == p)]
+
+
+def items_for_m(entries):
+    """entries (fam,row,counted) -> items for make_m (unique families; counted if any counted row here)"""
+    seen = {}
+    for f, r, ch in entries:
+        seen[f["key"]] = seen.get(f["key"], False) or ch
+    return [(FAM_BY_KEY[k], v) for k, v in seen.items()]
+
+
+def prod_meta(slug):
+    return next(p for p in PRODUCTS if p["slug"] == slug)
+
+
+def product_json(p):
+    tl = "Line-mapped tags" if p["tag_set"] == "linemap" else "Tracker tags — not line-mapped yet"
+    return dict(slug=p["slug"], name=p["name"], tag_set=p["tag_set"], tag_label=tl)
+
+
+def unmatched_rows(slug, win):
+    by = {}
+    for ad in ADS:
+        if ad["product"] != slug or ad["fam"] is not None:
+            continue
+        e = by.setdefault(ad["meta_family"], dict(meta_family=ad["meta_family"], spend=0.0, purchases=0, revenue=0.0, spend_7d=0.0, live=False))
+        if win["launch"] or win["i0"] is None:
+            sp, pu, rv = sums(ad["daily"], 0, N - 1)
+        else:
+            sp, pu, rv = sums(ad["daily"], win["i0"], win["i1"])
+        e["spend"] += sp; e["purchases"] += pu; e["revenue"] += rv
+        e["spend_7d"] += sums(ad["daily"], N - 7, N - 1)[0]
+        e["live"] = e["live"] or ad["daily"][N - 1][0] > 0 or ad["daily"][N - 2][0] > 0
+    rows = []
+    for e in by.values():
+        e["spend"] = round(e["spend"], 2); e["revenue"] = round(e["revenue"], 2); e["spend_7d"] = round(e["spend_7d"], 2)
+        e["roas"] = _roas(e["spend"], e["revenue"]); e["cpa"] = _cpa(e["spend"], e["purchases"])
+        rows.append(e)
+    rows.sort(key=lambda r: -r["spend"])
+    return rows
+
+
+# ----------------------------------------------------------------------------------------------- routes
+@app.errorhandler(Bad)
+def _bad(e):
+    return jsonify(error=str(e)), 400
+
+
+@app.before_request
+def guard():
+    p = request.path
+    if (p.startswith("/api/") and p != "/api/login") or p.startswith("/media/"):
+        if request.cookies.get("sid") != "ok":
+            return jsonify(error="unauthorized"), 401
+    if p.startswith("/api/") and request.args.get("__delay"):
+        import time
+        time.sleep(float(request.args["__delay"]))
+
+
+@app.get("/healthz")
+def healthz():
+    return jsonify(ok=True)
+
+
+@app.post("/api/login")
+def login():
+    body = request.get_json(silent=True) or {}
+    if body.get("password") != PASSWORD:
+        return jsonify(error="bad password"), 401
+    r = Response(status=204)
+    r.set_cookie("sid", "ok", httponly=True, samesite="Lax")
+    return r
+
+
+@app.post("/api/logout")
+def logout():
+    r = Response(status=204)
+    r.delete_cookie("sid")
+    return r
+
+
+@app.get("/api/status")
+def status():
+    return jsonify(data_through=DATA_THROUGH.isoformat(), daily_start=DAILY_START.isoformat(), lifetime_cutoff=CUTOFF.isoformat(),
+                   last_refresh=dict(job="run_daily", finished_at="2026-11-03T06:12:00+00:00", status="ok"), products=len(PRODUCTS))
+
+
+@app.get("/api/products")
+def products():
+    win = parse_win(request.args)
+    out = []
+    for p in PRODUCTS:
+        ents = prod_items(p["slug"])
+        d = product_json(p)
+        d["rows"] = len(ents)
+        d["m"] = make_m(items_for_m(ents), win)
+        out.append(d)
+    return jsonify(out)
+
+
+@app.get("/api/products/<slug>/rollup")
+def rollup(slug):
+    win = parse_win(request.args)
+    p = prod_meta(slug)
+    level = request.args.get("level", "cluster")
+    ents = filt(prod_items(slug), request.args)
+    idx = {"cluster": 0, "icp": 1, "pain": 2}[level]
+    if level == "icp" and not request.args.get("cluster"):
+        raise Bad("icp requires cluster")
+    if level == "pain" and not (request.args.get("cluster") and request.args.get("icp")):
+        raise Bad("pain requires cluster and icp")
+    groups = {}
+    for f, r, ch in ents:
+        groups.setdefault(group_of(p, r)[idx], []).append((f, r, ch))
+    order = {}
+    if p["tag_set"] == "linemap":
+        for n, ln in enumerate(VB_LINES):
+            order.setdefault((ln[1], ln[2], ln[3])[idx], n)
+    rows = []
+    for label, es in groups.items():
+        m = make_m(items_for_m(es), win)
+        child = None
+        if level == "pain":
+            child = len({f["key"] for f, _, _ in es})
+        else:
+            child = len({group_of(p, r)[idx + 1] for _, r, _ in es})
+        row = dict(label=label, cluster=es[0][1]["cluster"], icp=es[0][1]["icp"] if idx >= 1 else None, pain=es[0][1]["pain"] if idx >= 2 else None,
+                   color=CLUSTER_COLORS.get(es[0][1]["cluster"]) if p["tag_set"] == "linemap" else None,
+                   line_code=es[0][1]["line"][0] if level == "pain" and es[0][1]["line"] else None,
+                   trigger=es[0][1]["line"][4] if level == "pain" and es[0][1]["line"] else None, child_count=child, m=m)
+        rows.append(row)
+    if p["tag_set"] == "linemap":
+        rows.sort(key=lambda r: (r["label"] == "(untagged)", order.get(r["label"], 99)))
+    else:
+        rows.sort(key=lambda r: (r["label"] in ("(untagged)", "(none)"), -r["m"]["spend"]))
+    um = unmatched_rows(slug, parse_win({}))
+    um7 = sum(u["spend_7d"] for u in um)
+    return jsonify(product=product_json(p), level=level, filters=dict(cluster=request.args.get("cluster"), icp=request.args.get("icp")),
+                   window=win["info"], window_info=win["info"], rows=rows, total=dict(m=make_m(items_for_m(ents), win)),
+                   unmatched=dict(spend_7d=round(um7, 2), spend_30d=round(um7 * 4.1, 2), live_families=sum(1 for u in um if u["live"]), families=len(um)))
+
+
+@app.get("/api/products/<slug>/families")
+def families(slug):
+    win = parse_win(request.args)
+    p = prod_meta(slug)
+    ents = filt(prod_items(slug), request.args)
+    groups = {}
+    for f, r, ch in ents:
+        groups.setdefault((f["key"], group_of(p, r)), []).append((f, r, ch))
+    rows = []
+    for (key, grp), es in groups.items():
+        f = FAM_BY_KEY[key]
+        counted = any(ch for _, _, ch in es)
+        m = make_m([(f, counted)], win, unique_ads=1)
+        rows.append(dict(family_key=key, display=f["display"], ad_ids=[r["id"] for _, r, _ in es], primary_id=es[0][1]["id"],
+                         concept_ids=[r["concept_id"] for _, r, _ in es], n_rows=len(f["rows"]), ad_type=f["ad_type"], status=f["status"],
+                         launch_date=f["launch"].isoformat() if f["launch"] else None, thumb_asset_id=f["thumb"],
+                         confidence=min((r["conf"] for _, r, _ in es), key={"low": 0, "medium": 1, "high": 2}.get) if p["tag_set"] == "linemap" else None,
+                         method=es[0][1]["method"] if p["tag_set"] == "linemap" else None, counted_here=counted, m=m))
+    rows.sort(key=lambda r: -r["m"]["spend"])
+    return jsonify(product=product_json(p), filters={k: request.args.get(k) for k in ("cluster", "icp", "pain")}, window=win["info"], window_info=win["info"],
+                   rows=rows, total=dict(m=make_m(items_for_m(ents), win)))
+
+
+@app.get("/api/products/<slug>/unmatched")
+def unmatched(slug):
+    win = parse_win(request.args)
+    rows = unmatched_rows(slug, win)
+    tot = dict(spend=round(sum(r["spend"] for r in rows), 2), purchases=sum(r["purchases"] for r in rows), revenue=round(sum(r["revenue"] for r in rows), 2),
+               spend_7d=round(sum(r["spend_7d"] for r in rows), 2), families=len(rows))
+    return jsonify(window_info=win["info"], rows=rows, total=tot)
+
+
+def ad_row(ad, win, launch):
+    split = ad_metrics(ad, win, launch)
+    sp, pu, rv = metrics_of(split, win)
+    cmp = CAMPAIGNS[ad["campaign_id"]]
+    fam = FAM_BY_KEY.get(ad["fam"]) if ad["fam"] else None
+    first = fam["rows"][0] if fam else None
+    sp7, pu7, _ = sums(ad["daily"], N - 7, N - 1)
+    days = 0
+    lo, hi = (0, N - 1) if win["launch"] else (win["i0"], win["i1"])
+    for i in range(lo, hi + 1):
+        if ad["daily"][i][0] > 0:
+            days += 1
+    return dict(ad_id=ad["ad_id"], ad_name=ad["name"], family_key=ad["fam"] or ("meta:" + ad["meta_family"].lower()), display=fam["display"] if fam else ad["meta_family"],
+                primary_id=first["id"] if first else None, thumb_asset_id=fam["thumb"] if fam else None, campaign_id=cmp["campaign_id"], campaign_name=cmp["name"],
+                stage=cmp["stage"], adset_name=ad["adset"], account=cmp["account"], status=ad["status"], created_date=ad["created"],
+                tag=dict(cluster=first["cluster"], icp=first["icp"], pain=first["pain"]) if first else dict(cluster=None, icp=None, pain=None),
+                spend=round(sp, 2), purchases=int(round(pu)), revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu), spend_7d=round(sp7, 2),
+                live=ad["daily"][N - 1][0] > 0 or ad["daily"][N - 2][0] > 0, days_active=days)
+
+
+def total_of(rows):
+    sp = sum(r["spend"] for r in rows); pu = sum(r["purchases"] for r in rows); rv = sum(r["revenue"] for r in rows)
+    return dict(spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu), spend_7d=round(sum(r["spend_7d"] for r in rows), 2))
+
+
+def ads_for(slug, args, win):
+    p = prod_meta(slug)
+    c, i, pn, fk, cid = (args.get(k) for k in ("cluster", "icp", "pain", "family_key", "campaign_id"))
+    fam_filter = None
+    if c or i or pn:
+        ents = filt(prod_items(slug), args)
+        fam_filter = {f["key"] for f, r, ch in ents if ch}
+    rows = []
+    remainders = []
+    for ad in ADS:
+        if ad["product"] != slug:
+            continue
+        if fam_filter is not None and ad["fam"] not in fam_filter:
+            continue
+        if fk and (ad["fam"] or ("meta:" + ad["meta_family"].lower())) != fk:
+            continue
+        if cid and ad["campaign_id"] != cid:
+            continue
+        if win["stage"] != "all" and ad_stage(ad) != win["stage"]:
+            continue
+        fam = FAM_BY_KEY.get(ad["fam"]) if ad["fam"] else None
+        rows.append(ad_row(ad, win, fam["launch"] if fam else None))
+    # remainder row for the family with partial ad-level detail
+    for f in FAMS:
+        if f.get("has_remainder") and f["product"] == slug and (fk in (None, f["key"])) and (fam_filter is None or f["key"] in fam_filter) and not cid:
+            tot = fam_split(f["key"], win)[0]
+            sp, pu, rv = metrics_of(tot, win)
+            have_sp = sum(r["spend"] for r in rows if r["family_key"] == f["key"])
+            have_pu = sum(r["purchases"] for r in rows if r["family_key"] == f["key"])
+            have_rv = sum(r["revenue"] for r in rows if r["family_key"] == f["key"])
+            if sp - have_sp > 0.5:
+                rem = dict(ad_id=None, ad_name="(days without ad-level detail)", family_key=f["key"], display=f["display"], primary_id=f["rows"][0]["id"], thumb_asset_id=None,
+                           campaign_id=None, campaign_name=None, stage=None, adset_name=None, account=None, status=None, created_date=None, tag=None,
+                           spend=round(sp - have_sp, 2), purchases=int(round(pu - have_pu)), revenue=round(rv - have_rv, 2), roas=_roas(sp - have_sp, rv - have_rv),
+                           cpa=_cpa(sp - have_sp, pu - have_pu), spend_7d=0, live=False, days_active=0)
+                remainders.append(rem)
+    rows = rows + remainders
+    rows.sort(key=lambda r: -(r["spend"] or 0))
+    return rows
+
+
+@app.get("/api/products/<slug>/ads")
+def ads(slug):
+    win = parse_win(request.args)
+    prod_meta(slug)
+    rows = ads_for(slug, request.args, win)
+    return jsonify(window_info=win["info"], rows=rows, total=total_of(rows))
+
+
+@app.get("/api/products/<slug>/campaigns")
+def campaigns(slug):
+    win = parse_win(request.args)
+    prod_meta(slug)
+    out = {}
+    for ad in ADS:
+        if ad["product"] != slug:
+            continue
+        fam = FAM_BY_KEY.get(ad["fam"]) if ad["fam"] else None
+        r = ad_row(ad, win, fam["launch"] if fam else None)
+        c = CAMPAIGNS[ad["campaign_id"]]
+        e = out.setdefault(c["campaign_id"], dict(campaign_id=c["campaign_id"], name=c["name"], account=c["account"], stage=c["stage"], ads=0, fams=set(), spend=0.0, purchases=0, revenue=0.0, spend_7d=0.0, live=False, last_day=None))
+        e["ads"] += 1; e["fams"].add(ad["fam"] or ad["meta_family"])
+        e["spend"] += r["spend"]; e["purchases"] += r["purchases"]; e["revenue"] += r["revenue"]; e["spend_7d"] += r["spend_7d"]
+        e["live"] = e["live"] or r["live"]
+        last = max((i for i in range(N) if ad["daily"][i][0] > 0), default=None)
+        if last is not None:
+            ld = DAYS[last].isoformat()
+            e["last_day"] = ld if e["last_day"] is None or ld > e["last_day"] else e["last_day"]
+    rows = []
+    for e in out.values():
+        if win["stage"] != "all" and e["stage"] != win["stage"]:
+            continue
+        e["families"] = len(e.pop("fams"))
+        e["spend"] = round(e["spend"], 2); e["revenue"] = round(e["revenue"], 2); e["spend_7d"] = round(e["spend_7d"], 2)
+        e["roas"] = _roas(e["spend"], e["revenue"]); e["cpa"] = _cpa(e["spend"], e["purchases"])
+        rows.append(e)
+    rows.sort(key=lambda r: -r["spend"])
+    by_stage = []
+    for st in ("testing", "scaling"):
+        rs = [r for r in rows if r["stage"] == st]
+        sp = sum(r["spend"] for r in rs); pu = sum(r["purchases"] for r in rs); rv = sum(r["revenue"] for r in rs)
+        by_stage.append(dict(stage=st, campaigns=len(rs), ads=sum(r["ads"] for r in rs), spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu), spend_7d=round(sum(r["spend_7d"] for r in rs), 2)))
+    tot = total_of(rows)
+    tot["ads"] = sum(r["ads"] for r in rows)
+    return jsonify(window_info=win["info"], by_stage=by_stage, rows=rows, total=tot)
+
+
+@app.get("/api/products/<slug>/stage-daily")
+def stage_daily(slug):
+    prod_meta(slug)
+    if any(k in request.args for k in ("window", "from", "to")):
+        win = parse_win({k: v for k, v in request.args.items() if k != "stage"})
+        lo, hi = (0, N - 1) if win["launch"] else (win["i0"], win["i1"])
+    else:
+        days = int(request.args.get("days", 90))
+        lo, hi = max(0, N - days), N - 1
+    out = []
+    for i in range(lo, hi + 1):
+        d = dict(day=DAYS[i].isoformat(), testing=0.0, scaling=0.0, unclassified=0.0)
+        for ad in ADS:
+            if ad["product"] == slug:
+                d[ad_stage(ad)] += ad["daily"][i][0]
+        d = {k: (round(v, 2) if k != "day" else v) for k, v in d.items()}
+        out.append(d)
+    return jsonify(out)
+
+
+def reliability(tag_row):
+    method = tag_row["method"].lower()
+    c = tag_row["conf"]
+    notes = []
+    if "text only" in method:
+        notes.append("Tagged from copy only (no image)")
+    elif "thumbnail" in method and "no audio" in method:
+        notes.append("Tagged from a thumbnail only")
+    notes.append({"low": "Low confidence — blind re-tag agreed ~52%", "high": "High confidence — blind re-tag agreed ~93%", "medium": "Medium confidence"}[c])
+    notes.append("Blind re-tag agreement overall: line 79%, ICP 84%, cluster 88%")
+    return ". ".join(notes)
+
+
+@app.get("/api/ads/<int:rid>")
+def ad_detail(rid):
+    row = ROW_BY_ID.get(rid)
+    if not row:
+        return jsonify(error="not found"), 404
+    win = parse_win(request.args)
+    fam = FAM_BY_KEY[row["fam"]]
+    p = prod_meta(row["product"])
+    linemap = p["tag_set"] == "linemap"
+    ln = row["line"]
+    tag = None
+    line = None
+    if linemap and ln:
+        tag = dict(tag_set="linemap", version="linemap-v2-2026-11-03", line_code=ln[0], cluster=ln[1], icp=ln[2], pain_point=ln[3], emotional_trigger=ln[4],
+                   confidence=row["conf"], method=row["method"], seen="A man at a kitchen table holding the bottle; text overlay about testosterone.",
+                   why=f"Hook speaks to {ln[3].lower()} for {ln[2]}.", runner_up="L07 · Busy Provider Dad / Afternoon Crash",
+                   copy_only_line=dict(line_code="L02", label="Low Drive") if row["conf"] != "high" else None, reliability_note=reliability(row))
+        line = dict(line_code=ln[0], story=f"{ln[2]} feels {ln[3].lower()} and wants it fixed without a prescription.", emotional_trigger=ln[4],
+                    ingredients=[dict(ingredient=i, attacks=a, supports=s) for i, a, s in INGREDIENTS[:2]])
+    is_video = fam["ad_type"] == "VID"
+    xss = fam["display"].startswith("XSS")
+    content = dict(primary_text=[XSS if xss else f"Tired of {ln[3].lower() if ln else 'feeling run down'}?\nHere is what 3 studies say about {row['ingredient']}.", "Second primary text variant, shorter."],
+                   headlines=["Built for men over 40", "The 90-day guarantee"], description="Free shipping on 3+ bottles.", meta_body="Meta body text as running.",
+                   meta_title="Vita Bull", meta_desc="Beef organ complex", transcript=("So here's the thing about testosterone... " * 30) if is_video else None, is_video=is_video)
+    nxt = [r for r in fam["rows"] if r["id"] != rid]
+    L = parse_win({}); D7 = parse_win({"window": "7d"}); D30 = parse_win({"window": "30d"})
+
+    def fm(w):
+        sp, pu, rv = metrics_of(fam_split(fam["key"], w)[0], w)
+        return dict(spend=round(sp, 2), purchases=int(round(pu)), revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu))
+    live = fam_split(fam["key"], L)[2]
+    series = [0, 0, 0]
+    daily = []
+    fam_ads = [a for a in ADS if a["fam"] == fam["key"]]
+    for i in range(N):
+        sp = sum(a["daily"][i][0] for a in fam_ads); pu = sum(a["daily"][i][1] for a in fam_ads); rv = sum(a["daily"][i][2] for a in fam_ads)
+        daily.append(dict(day=DAYS[i].isoformat(), spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), link_clicks=int(sp * 0.7)))
+    meta_ads = [ad_row(a, win, fam["launch"]) for a in fam_ads]
+    camps = {}
+    for r in meta_ads:
+        e = camps.setdefault(r["campaign_id"], dict(campaign_id=r["campaign_id"], name=r["campaign_name"], stage=r["stage"], spend=0.0, purchases=0, revenue=0.0))
+        e["spend"] += r["spend"]; e["purchases"] += r["purchases"]; e["revenue"] += r["revenue"]
+    asset_ids = [fam["thumb"]] if fam["thumb"] else []
+    frames = [f"f{rid}{k}" for k in range(4)] if is_video else []
+    return jsonify(id=rid, product=dict(slug=p["slug"], name=p["name"]), concept_id=row["concept_id"], ad_family=fam["display"], family_key=fam["key"], sheet_row=row["sheet_row"],
+                   status=fam["status"], ad_type=fam["ad_type"], style="UGC" if is_video else "Static", vendor="Madre", launch_date=fam["launch"].isoformat() if fam["launch"] else None,
+                   concept_name="Doctor says no", description="Founder explains the study.", hypothesis="Skeptics respond to cited studies.", meta_ad_name=fam["display"],
+                   story_url="https://example.com/story", asset_url="javascript:alert(1)" if xss else "https://drive.example.com/asset",
+                   tag=tag, tracker_tag=dict(cluster=row["cluster"], icp=row["icp"], pain_point=row["pain"], emotion=row["emotion"], ingredient=row["ingredient"]),
+                   line=line, content=content, assets=dict(thumb=fam["thumb"], frames=frames),
+                   siblings=[dict(id=r["id"], concept_id=r["concept_id"], line_code=r["line"][0] if r["line"] else None, cluster=r["cluster"], icp=r["icp"], pain_point=r["pain"], status=fam["status"]) for r in nxt],
+                   metrics=dict(counted_on_this_row=row["ordinal"] == 0, family=dict(launch=fm(L), d7=fm(D7), d30=fm(D30), window=fm(win), live=live)),
+                   window_info=win["info"], daily=daily, meta_ads=meta_ads,
+                   campaigns=[dict(e, spend=round(e["spend"], 2), revenue=round(e["revenue"], 2)) for e in camps.values()])
+
+
+@app.get("/media/<aid>")
+def media(aid):
+    from PIL import Image, ImageDraw
+    h = sum(ord(c) * (i + 3) for i, c in enumerate(aid))
+    img = Image.new("RGB", (160, 160), ((h * 37) % 200 + 30, (h * 91) % 200 + 30, (h * 53) % 200 + 30))
+    ImageDraw.Draw(img).text((10, 10), aid, fill=(255, 255, 255))
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    r = Response(buf.getvalue(), mimetype="image/png")
+    r.headers["Cache-Control"] = "private, max-age=86400"
+    return r
+
+
+def shell(*_a, **_k):
+    return send_from_directory(STATIC, "index.html")
+
+
+for rule in ("/", "/login", "/p/<slug>", "/ad/<rid>"):
+    app.add_url_rule(rule, endpoint="shell" + rule, view_func=shell)
+
+
+if __name__ == "__main__":
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5099
+    app.run(host="127.0.0.1", port=port, debug=False, threaded=True)

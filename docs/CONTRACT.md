@@ -118,3 +118,26 @@ Each agent ends with a short report: what's done, what was tested (commands + re
 
 ## ETL job list changes (Agent A)
 `etl.meta_pull` implements Stage 2 above (flags `--days N`, `--since D --until D`, `--dry-run`, `--no-replace` for a scratch compare); `etl.build_metrics` also (re)builds `family_daily` (with stage) and `meta_campaigns.stage`; `etl.backfill_sheet` also fills `meta_ad_lifetime` and `ad_lifetime` (family sums) from the Lifetime tab and `meta_ads` from its Ad ID/name/account/created/status columns. `etl.run_daily` = tracker_sync → meta_pull(--days 7) → map new families → build_metrics.
+
+---
+# v1.2 additions: comparison mode (window A vs window B)
+
+Josh wants to compare date windows side by side (last 7d vs last 30d, this week vs previous week, any custom range vs any other).
+
+## Params (every metrics endpoint: products, rollup, families, ads, campaigns, unmatched, ad detail)
+- `compare=prev|1d|7d|14d|30d|60d|90d|180d|mtd` or `cfrom=YYYY-MM-DD&cto=YYYY-MM-DD` (custom B window). Window A is the normal `window`/`from`/`to`.
+- `prev` = the window of identical length immediately before A (A = Oct 27–Nov 2 ⇒ B = Oct 20–26). The trailing presets for B end at `data_through` like A's presets (so A=7d, B=30d overlap — allowed).
+- Comparison needs a date window for A: if A is `launch`, return `400 {"error":"compare needs a date window"}`.
+- B is clamped to `daily_start..data_through` like A. Response carries `compare_info` next to `window_info` (same shape; `days` is the clamped length).
+- The `stage` filter applies to both windows.
+
+## Response additions
+Every metrics object `m` (and every row-level metric block) gains, always: `spend_per_day, purchases_per_day, revenue_per_day` (A value ÷ `window_info.days`). When `compare` is active it also gains
+`cmp:{spend, purchases, revenue, roas, cpa, active_ads, spend_per_day, purchases_per_day, revenue_per_day}` (window B, same semantics as A) and
+`delta:{spend, purchases, revenue, roas, cpa, spend_pct, purchases_pct, revenue_pct, roas_pct, cpa_pct, spend_per_day_pct, purchases_per_day_pct, revenue_per_day_pct}` where plain keys are A − B and `*_pct` is (A − B) / B (null when B is 0 or missing). `unique_ads`, `live_now`, `spend_7d`, `cpa_7d`, and the stage split of the launch window are not windowed and carry no `cmp`. Totals rows get `cmp`/`delta` recomputed from sums (never averaged). Ad detail: `metrics.family.compare` (same shape as `metrics.family.window`) and `metrics.family.delta`.
+Per-day normalization matters because A and B may have different lengths (7d vs 30d): the UI defaults to showing per-day spend/purchases/revenue whenever the two windows differ in length, with a toggle to show raw totals. ROAS and CPA are already length-independent.
+
+## UI (Agent C)
+- Header control **Compare to**: Off · Previous period · 7d · 14d · 30d · 60d · 90d · custom from/to. Persisted in the URL (`compare`, `cfrom`, `cto`), carried across all drill-downs. Choosing a compare while A is "Since launch" switches A to 7d and says so. A label line reads `Oct 27 – Nov 2 (7 days) vs Oct 20 – Oct 26 (7 days)`, plus a clamped notice if B was cut to available data.
+- When compare is on, the Spend, Purchases, Revenue, ROAS, CPA cells (every level, every table, totals rows) show A on the first line and a small second line `vs <B value> ▲12%` (arrow + % change A vs B). Colors: ROAS / purchases / revenue up = green, down = red; CPA down = green, up = red; spend neutral gray. A `Per day` checkbox (default on when the windows differ in length) switches spend/purchases/revenue cells and deltas to per-day values.
+- Sorting: clicking a header sorts by A; a small "Δ" toggle next to the sort arrow (or shift-click) sorts by % change. Ad detail: family metrics table gets columns A | B | Δ; the daily chart shades window A and window B in two tints. Campaigns view stage cards show A vs B too.
