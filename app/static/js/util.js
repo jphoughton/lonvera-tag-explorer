@@ -173,7 +173,13 @@ export function currentPlatform() {
   return v === 'google' || v === 'all' ? v : 'meta';
 }
 // every element that states which numbers the page shows ("Numbers: Upstack · new customers"), kept in step with srcView
-export function srcBadgeText() { return currentPlatform() === 'all' ? 'Numbers: each platform’s own reporting and Upstack' : 'Numbers: ' + srcView.label; }
+export function srcBadgeText() {
+  if (currentPlatform() === 'all') {
+    if (!/^\/campaigns\/?$/.test(location.pathname)) return 'Numbers: each platform’s own reporting and Upstack';        // the overview shows every basis side by side
+    return srcView.key === 'upstack' ? 'Numbers: ' + srcView.label : 'Numbers: each platform’s own reporting';                // All campaigns follows the switch
+  }
+  return 'Numbers: ' + srcView.label;
+}
 export function refreshSrcBadges() {
   const text = srcBadgeText();
   for (const el of document.querySelectorAll('.src-badge')) el.textContent = text;

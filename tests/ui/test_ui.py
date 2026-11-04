@@ -3020,7 +3020,7 @@ def test_ad_detail_copy_only_pick_has_no_dangling_separator_and_ads_table_has_tr
     page.wait_for_function("() => document.querySelectorAll('[data-testid=ads-table] tbody tr[data-key] svg.spark').length > 0", timeout=8000)
 
 
-@pytest.mark.parametrize("width", [390, 768, 1024, 1440, 2100])
+@pytest.mark.parametrize("width", [375, 390, 768, 1024, 1440, 2100])
 def test_pages_never_scroll_horizontally_at_page_level(page, width):
     """phone to desktop: only tables may scroll sideways inside their own box, never the page (/, a product, Campaigns, Ads, compare, the ad page)"""
     page.set_viewport_size({"width": 1440, "height": 900})
@@ -3028,7 +3028,8 @@ def test_pages_never_scroll_horizontally_at_page_level(page, width):
     page.set_viewport_size({"width": width, "height": 800})
     paths = ["/", f"/p/{SLUG}", f"/p/{SLUG}?view=campaigns&window=30d", f"/p/{SLUG}?view=ads&window=30d", f"/p/{SLUG}?window=7d&compare=prev&stage=testing",
              f"/p/{SLUG}?all=1&window=30d", f"{ad_path}?window=30d&compare=prev", "/?window=7d&compare=30d",
-             "/campaigns?window=30d", "/?platform=all&window=30d", "/?platform=google&window=30d", "/campaigns?platform=google&window=30d"]
+             "/campaigns?window=30d", "/?platform=all&window=30d", "/?platform=google&window=30d", "/campaigns?platform=google&window=30d",
+             "/campaigns?platform=all&window=30d", "/campaigns?window=30d&compare=prev"]
     for path in paths:
         page.goto(path)
         page.wait_for_selector(".tablebox, #family-metrics")
@@ -3282,6 +3283,162 @@ def test_numbers_from_switch_sits_beside_the_explanation_on_a_wide_window(page):
     page.wait_for_function("() => !new URL(location.href).searchParams.has('source')")
     expect(page.locator("[data-testid=src-badge]").first).to_have_text("Numbers: Meta")
     page.set_viewport_size({"width": 1280, "height": 900})
+
+
+# ------------------------------------------------------------------ platform trends and All campaigns
+def chart_sum(info, label_startswith=None):
+    """sum of the bar series of the trend chart (nulls are zeros)"""
+    return sum(sum(v or 0 for v in d["data"]) for d in bars_ds(info) if label_startswith is None or d["label"].startswith(label_startswith))
+
+
+@pytest.mark.mock_only
+def test_platform_campaigns_chart_split_grain_and_campaign_narrowing(page):
+    goto_home(page, "?window=30d")
+    page.locator("#view-switch [data-platform-view=campaigns]").click()
+    wait_trend(page)
+    info = trend_info(page)
+    assert [d["label"] for d in bars_ds(info)] == ["Spend"] and line_ds(info)[0]["label"].startswith("ROAS")
+    table_total = num(foot_value(page, "spend", "platform-campaigns"))
+    assert abs(chart_sum(info) - table_total) <= max(2.0, 0.002 * table_total)                      # the chart adds up to the table's total
+    assert [b.get_attribute("data-split") for b in page.locator("#trend-split .seg").all()] == ["none", "stage", "product"]
+    assert [b.get_attribute("data-grain") for b in page.locator("#trend-grain .seg").all()] == ["day", "week", "month"]
+    page.locator("#trend-split [data-split=product]").click()
+    page.wait_for_function("() => Chart.getChart('trend-chart').data.datasets.filter(d => d.type === 'bar').length > 1")
+    info = trend_info(page)
+    names = {d["label"] for d in bars_ds(info)}
+    assert {"Vita Bull", "Beef Liver", "Boneflex"} <= names and all(d["stack"] for d in bars_ds(info))     # stacked bars, one per product
+    assert abs(chart_sum(info) - table_total) <= max(2.0, 0.002 * table_total)
+    assert qparams(page)["ts"] == "product"
+    page.locator("#trend-split [data-split=stage]").click()
+    page.wait_for_function("() => Chart.getChart('trend-chart').data.datasets.some(d => d.label === 'Scaling')")
+    page.locator("#trend-grain [data-grain=week]").click()
+    page.wait_for_function("() => new URL(location.href).searchParams.get('tg') === 'week'")
+    wait_trend(page)
+    info = trend_info(page)
+    assert len(info["labels"]) < 8 and abs(chart_sum(info) - table_total) <= max(2.0, 0.002 * table_total)
+    page.locator("#trend-grain [data-grain=day]").click()
+    page.locator("#trend-split [data-split=none]").click()
+    # a campaign row's Chart button narrows the chart (not the table)
+    n_rows = page.locator("[data-testid=platform-campaigns] tbody tr[data-key]").count()
+    first = page.locator("[data-testid=platform-campaigns] tbody tr[data-key]").nth(2)
+    row_spend = num(first.locator("td").nth(col_index(page, "spend", "platform-campaigns")).inner_text())
+    first.locator("[data-testid=chart-row]").click()
+    expect(page.locator("[data-testid=chart-scope]")).to_be_visible()
+    assert "chart" in qparams(page)
+    idle(page)
+    wait_trend(page)
+    info = trend_info(page)
+    assert abs(chart_sum(info) - row_spend) <= max(2.0, 0.002 * row_spend)
+    assert page.locator("[data-testid=platform-campaigns] tbody tr[data-key]").count() == n_rows
+    page.locator("[data-testid=chart-scope] a").click()
+    page.wait_for_function("() => !new URL(location.href).searchParams.has('chart')")
+    shot(page, "14_platform_campaigns_chart")
+
+
+def col_index(page, key, testid):
+    return table_data(page, testid)["heads"].index(key)
+
+
+@pytest.mark.mock_only
+def test_all_platforms_chart_platform_series_numbers_and_links(page):
+    page.goto("/?platform=all&window=30d")
+    wait_trend(page)
+    info = trend_info(page)
+    assert {d["label"] for d in bars_ds(info)} == {"Meta", "Google"} and all(d["stack"] for d in bars_ds(info))
+    assert {d["label"] for d in line_ds(info)} == {"ROAS · Meta", "ROAS · Google"}                     # one ROAS line per platform
+    opts = page.locator("#trend-bars option").all_inner_texts()
+    assert opts == ["Spend", "Impressions", "Link clicks", "None"], opts                               # only what may be added across platforms
+    assert [b.get_attribute("data-numbers") for b in page.locator("#trend-numbers .seg").all()] == ["own", "nc", "all"]
+    own_spend = chart_sum(info, "Meta")
+    page.locator("#trend-numbers [data-numbers=nc]").click()
+    page.wait_for_function("() => new URL(location.href).searchParams.get('nb') === 'nc'")
+    wait_trend(page)
+    assert "Upstack attribution is drawn only where Upstack has it" in page.locator("#trend-note").inner_text()
+    assert abs(chart_sum(trend_info(page), "Meta") - own_spend) <= 1                                   # spend is the platform's on every basis
+    expect(page.locator("#view-switch [data-platform-view=campaigns]")).to_have_text("All campaigns")
+    page.locator("#view-switch [data-platform-view=campaigns]").click()                                # All platforms -> All campaigns
+    expect(page).to_have_url(re.compile(r"/campaigns\?"))
+    assert qparams(page)["platform"] == "all"
+    expect(page.locator("h1")).to_have_text("All campaigns")
+    page.locator("#view-switch [data-platform-view=home]").click()                                     # and back
+    expect(page.locator("h1")).to_have_text("All platforms")
+    shot(page, "15_all_platforms_chart")
+
+
+@pytest.mark.mock_only
+def test_all_campaigns_one_table_basis_labels_totals_and_filters(page):
+    page.goto("/campaigns?platform=all&window=30d")
+    t = "[data-testid=all-campaigns]"
+    page.locator(f"{t} tbody tr[data-key]").first.wait_for()
+    data = table_data(page, "all-campaigns")
+    platform_i, basis_i, group_i = (data["heads"].index(k) for k in ("platform", "basis", "group"))
+    plats = {r[platform_i] for r in data["rows"]}
+    assert plats == {"Meta", "Google"}
+    assert {r[basis_i] for r in data["rows"] if r[platform_i] == "Meta"} == {"Meta's own reporting"}      # each row says which basis it is counted on
+    assert {r[basis_i] for r in data["rows"] if r[platform_i] == "Google"} == {"Google's own reporting"}
+    assert any(r[group_i].startswith("Mixed") for r in data["rows"]) and {"Shopping", "Search"} <= {r[group_i] for r in data["rows"] if r[platform_i] == "Google"}
+    spend = [num(x) for x in col(page, "spend", "all-campaigns")]
+    assert spend == sorted(spend, reverse=True)                                                        # sorted by spend
+    foot = data["footRows"]
+    assert foot[0]["cells"][0].startswith("Total (spend, impressions, clicks)")
+    head = data["heads"]
+    tot = foot[0]["cells"]
+    assert num(tot[head.index("spend")]) > 0 and num(tot[head.index("impressions")]) > 0 and num(tot[head.index("link_clicks")]) > 0
+    for k in ("purchases", "revenue", "roas", "cpa"):
+        assert num(tot[head.index(k)]) is None, k                                                      # purchases / revenue / ROAS are not added across platforms
+    subs = {r["cells"][0].split(" ")[0]: r["cells"] for r in foot[1:]}
+    assert set(subs) == {"Meta", "Google"} and all(num(c[head.index("purchases")]) for c in subs.values())
+    assert abs(num(tot[head.index("spend")]) - (num(subs["Meta"][head.index("spend")]) + num(subs["Google"][head.index("spend")]))) <= 2
+    expect(page.locator("[data-testid=all-campaigns-note]")).to_contain_text("Not added up")
+    # the chart adds up to the table
+    wait_trend(page)
+    assert abs(chart_sum(trend_info(page)) - num(tot[head.index("spend")])) <= max(3.0, 0.002 * num(tot[head.index("spend")]))
+    # Platform filter: Meta only = Meta's own Campaigns total
+    page.locator("[data-testid=only-meta]").click()
+    expect(page).to_have_url(re.compile(r"only=meta"))
+    idle(page)
+    page.locator(f"{t} tbody tr[data-key]").first.wait_for()
+    assert {r[platform_i] for r in table_data(page, "all-campaigns")["rows"]} == {"Meta"}
+    all_meta_total = {k: num(foot_value(page, k, "all-campaigns")) for k in ("spend", "purchases", "revenue")}
+    assert page.locator(f"{t} tfoot tr").count() == 1 and all(v for v in all_meta_total.values())      # one platform in view: the Total row carries purchases and revenue
+    page.goto("/campaigns?window=30d")
+    page.locator("[data-testid=platform-campaigns] tbody tr[data-key]").first.wait_for()
+    for k in ("spend", "purchases", "revenue"):
+        assert abs(num(foot_value(page, k, "platform-campaigns")) - all_meta_total[k]) <= max(1.0, 0.001 * all_meta_total[k]), k
+    # Product and Type filters
+    page.goto("/campaigns?platform=all&window=30d")
+    page.locator("[data-testid=product-vita-bull]").click()
+    expect(page).to_have_url(re.compile(r"product=vita-bull"))
+    idle(page)
+    page.locator(f"{t} tbody tr[data-key]").first.wait_for()
+    assert {r[platform_i] for r in table_data(page, "all-campaigns")["rows"]} == {"Meta"}
+    page.locator("[data-testid=type-Search]").click()
+    expect(page).to_have_url(re.compile(r"type=Search"))
+    assert "product" not in qparams(page)
+    idle(page)
+    page.locator(f"{t} tbody tr[data-key]").first.wait_for()
+    d2 = table_data(page, "all-campaigns")
+    assert {r[platform_i] for r in d2["rows"]} == {"Google"} and {r[group_i] for r in d2["rows"]} == {"Search"}
+    # Numbers from Upstack: the Numbers column follows per row
+    page.goto("/campaigns?platform=all&window=30d")
+    page.locator(f"{t} tbody tr[data-key]").first.wait_for()
+    page.locator("#source-ctl [data-source=upstack]").click()
+    expect(page).to_have_url(re.compile(r"source=upstack"))
+    idle(page)
+    d3 = table_data(page, "all-campaigns")
+    assert {r[basis_i] for r in d3["rows"]} == {"Upstack · new customers"}
+    expect(page.locator("[data-testid=src-badge]").first).to_have_text("Numbers: Upstack · new customers")
+    page.locator("#basis-ctl [data-basis=all]").click()
+    idle(page)
+    assert {r[basis_i] for r in table_data(page, "all-campaigns")["rows"]} == {"Upstack · all orders"}
+    # the platform picker keeps you on Campaigns
+    page.locator("#platform-ctl [data-platform=google]").click()
+    expect(page).to_have_url(re.compile(r"/campaigns\?"))
+    assert qparams(page)["platform"] == "google"
+    page.locator("#platform-ctl [data-platform=all]").click()
+    expect(page).to_have_url(re.compile(r"/campaigns\?"))
+    assert qparams(page)["platform"] == "all"
+    shot(page, "16_all_campaigns")
 
 
 # ------------------------------------------------------------------ hooks (ad_hooks): Hook column of All creatives, Hook card on the ad page

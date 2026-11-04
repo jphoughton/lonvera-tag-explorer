@@ -6,6 +6,7 @@ import { createTable } from '../table.js';
 import { metricColumns, fixTotal, FLAT_KEYS, trendColumn } from '../columns.js';
 import { setRangeInfo } from '../controls.js';
 import { breadcrumbs, columnsChips, filterBar, saveFilterToUrl, makeFilter, saveSortToUrl, sortFromUrl, viewSwitch } from '../components.js';
+import { createTrendPanel } from '../trend.js';
 
 const NONE = 'none';
 
@@ -43,6 +44,8 @@ export async function campaignsPage(ctx) {
   const cols = [
     { key: 'name', label: 'Campaign', sticky: true, cls: 'labelcol', sort: (r) => r.name, total: () => 'Total',
       cell: (r) => { const to = adsHref(G, r); return to ? h('a', { href: to, class: 'rowlink', title: r.name }, r.name) : h('span', { title: r.name }, r.name); } },
+    { key: 'chart', label: '', nosort: true, header: h('span', { class: 'muted small' }, 'Chart'), total: () => '',
+      cell: (r) => h('a', { href: href('/campaigns', { ...G, product, chart: r.campaign_id }), class: 'btnlink small', 'data-testid': 'chart-row', title: 'Show only this campaign in the chart' }, 'Chart') },
     trendColumn(),
     { key: 'product', label: 'Product', sort: (r) => r.product, cell: (r) => productCell(r, G), total: () => '' },
     { key: 'account', label: 'Account', sort: (r) => r.account, cell: (r) => fmt.text(r.account) },
@@ -71,6 +74,12 @@ export async function campaignsPage(ctx) {
   // Product filter: All, every product that spent in the window (the chosen one always), and 'No product' when some families belong to none
   const chips = (d.products || []).filter((x) => x.spend > 0 || x.slug === product);
   const chip = (label, slug, n) => h('a', { class: 'seg', href: href('/campaigns', { ...G, product: slug }), 'data-product': slug || 'all', 'aria-pressed': String((product || null) === slug), title: n != null ? `${fmt.int(n)} campaigns` : null }, label);
+  const chartId = p.chart || null;
+  const chartRow = chartId ? d.rows.find((r) => r.campaign_id === chartId) : null;
+  const panel = createTrendPanel({ p, mode: 'source', signal, source: {
+    splits: [['none', 'None'], ['stage', 'Stage'], ['product', 'Product']],
+    fetch: ({ grain, split, signal: sig }) => api('/api/campaigns/trend', { ...wp, grain, ...(split !== 'none' ? { split } : {}), ...(product ? { product } : {}), ...(chartId ? { campaign_id: chartId } : {}) }, { signal: sig }),
+  } });
   const productCtl = h('div', { class: 'ctl', id: 'product-ctl' }, h('span', { class: 'ctl-name' }, 'Product'),
     h('span', { class: 'segs', role: 'group', 'aria-label': 'Product', 'data-testid': 'product-filter' }, chip('All', null, null), chips.map((x) => chip(x.name, x.slug, x.campaigns))));
 
@@ -79,7 +88,10 @@ export async function campaignsPage(ctx) {
       h('div', { class: 'note-line' }, 'One row per Meta campaign. A campaign that runs ads of several products reads Mixed, with each product’s share; the Product filter keeps one product’s ads.')),
     h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Marketing metrics', href: href('/', G) }, { label: 'Campaigns' }])),
     h('div', { class: 'ctl-row' }, productCtl),
+    chartId ? h('div', { class: 'note-line', id: 'chart-scope', 'data-testid': 'chart-scope' }, 'Chart shows only ', h('strong', null, chartRow ? chartRow.name : chartId), ' · ', h('a', { href: href('/campaigns', { ...G, product }), class: 'btnlink small' }, 'Show all campaigns')) : null,
+    panel.el,
     h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, product && d.product ? `Campaigns · ${d.product.name}` : 'Campaigns'), columnsChips(), filterUi.el),
     t.el,
   ));
+  panel.load();
 }

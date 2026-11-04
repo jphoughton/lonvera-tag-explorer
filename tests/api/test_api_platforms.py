@@ -177,3 +177,65 @@ def test_a_family_under_two_products_is_counted_once_like_the_products_table(cli
             pg.execute("DELETE FROM ad_metrics WHERE tracker_row_id = %s", (new_id,))
             pg.execute("DELETE FROM tracker_rows WHERE id = %s", (new_id,))
             pg.commit()
+
+
+# ---- trend of the platform Campaigns view
+
+def camp_trend(client, extra="", w="window=30d"):
+    return get_ok(client, f"/api/campaigns/trend?{w}{extra}")
+
+
+@pytest.mark.parametrize("w", DATE_WINDOWS)
+@pytest.mark.parametrize("s", STAGES)
+@pytest.mark.parametrize("grain", ["day", "week", "month"])
+def test_trend_points_add_up_to_the_campaigns_total(client, w, s, grain):
+    t = camp_trend(client, "&" + qs(s, f"grain={grain}"), w)
+    tab = get_ok(client, "/api/campaigns?" + qs(w, s))["total"]
+    for k in ("spend", "purchases", "revenue"):
+        assert round(sum(p[k] for p in t["points"]), 2) == pytest.approx(tab[k], abs=0.02), (k, grain)
+    assert t["grain"] == grain and t["platform"] == "meta"
+
+
+@pytest.mark.parametrize("split", ["stage", "product"])
+def test_trend_split_groups_add_up_to_the_points(client, split):
+    t = camp_trend(client, f"&split={split}&grain=week")
+    assert t["groups"]
+    for i, pt in enumerate(t["points"]):
+        assert round(sum(g["points"][i]["spend"] for g in t["groups"]), 2) == pytest.approx(pt["spend"], abs=0.02), (split, i)
+    tab = get_ok(client, "/api/campaigns?window=30d")["total"]
+    for g in t["groups"]:
+        assert len(g["points"]) == len(t["points"]) and g["label"] and g["key"]
+    assert round(sum(p["spend"] for g in t["groups"] for p in g["points"]), 2) == pytest.approx(tab["spend"], abs=0.02)
+    if split == "product":
+        assert {g["key"] for g in t["groups"]} <= {*product_slugs(client), "none"}
+    else:
+        assert {g["key"] for g in t["groups"]} == {"testing", "scaling", "unclassified"}
+
+
+def test_trend_product_filter_and_campaign_narrowing(client):
+    for slug in product_slugs(client):
+        t = camp_trend(client, f"&product={slug}")
+        tab = get_ok(client, f"/api/campaigns?window=30d&product={slug}")["total"]
+        assert round(sum(p["spend"] for p in t["points"]), 2) == pytest.approx(tab["spend"], abs=0.02), slug
+    rows = get_ok(client, "/api/campaigns?window=30d")["rows"]
+    for r in rows[:4]:
+        cid = r["campaign_id"]
+        t = camp_trend(client, f"&campaign_id={cid}")
+        assert round(sum(p["spend"] for p in t["points"]), 2) == pytest.approx(r["spend"], abs=0.02), cid
+        assert round(sum(p["purchases"] for p in t["points"]), 2) == pytest.approx(r["purchases"], abs=0.02), cid
+    assert t["scope"]["campaign_id"] == rows[3]["campaign_id"]
+
+
+def test_trend_compare_and_validation(client):
+    t = camp_trend(client, "&compare=prev", "window=7d")
+    assert t["compare_info"] is not None and len(t["cmp_points"]) == len(t["points"])
+    assert round(sum((p or {}).get("spend", 0) for p in t["cmp_points"]), 2) == pytest.approx(get_ok(client, "/api/campaigns?window=7d&compare=prev")["total"]["cmp"]["spend"], abs=0.02)
+    assert client.get("/api/campaigns/trend?window=7d&grain=year").status_code == 400
+    assert client.get("/api/campaigns/trend?window=7d&split=nope").status_code == 400
+    assert client.get("/api/campaigns/trend?window=7d&product=no-such").status_code == 404
+
+
+def test_trend_since_launch_covers_every_day_held(client):
+    t = camp_trend(client, "", "window=launch")
+    tab = get_ok(client, "/api/campaigns?window=launch")["total"]
+    assert round(sum(p["spend"] for p in t["points"]), 2) == pytest.approx(tab["spend"], abs=0.02)

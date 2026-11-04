@@ -2615,6 +2615,65 @@ SELECT ''::text AS gkey, NULL::text AS clabel, NULL::text AS color, day, stage, 
     return out
 
 
+CAMPAIGN_TREND_SPLITS = ("none", "stage", "product")
+
+
+def campaigns_trend(conn, meta: DataMeta, w: WindowSpec, product: dict | None | str = "all", *, campaign_id: str | None = None, grain: str = "day",
+                    split: str = "none") -> dict:
+    """Time series of the platform Campaigns view (Meta, all products): the same ad_daily rows, product assignment (_pfa), stage and active filters as
+    campaigns_all, so the window's points add up to its total. campaign_id narrows to one campaign; split=stage|product returns `groups` (one point list per
+    stage / product, same buckets) next to the combined `points`. Window B (compare) comes back as cmp_points aligned to A by position."""
+    if grain not in TREND_GRAINS:
+        raise ApiError(400, f"grain must be one of {', '.join(TREND_GRAINS)}")
+    if split not in CAMPAIGN_TREND_SPLITS:
+        raise ApiError(400, f"split must be one of {', '.join(CAMPAIGN_TREND_SPLITS)}")
+    df, dtt = (meta.daily_start, meta.data_through) if w.is_launch else (w.date_from, w.date_to)
+    cw = _cmp_window(w)
+    lo, hi = (min(df, cw.date_from), max(dtt, cw.date_to)) if cw is not None else (df, dtt)
+    pid = product["id"] if isinstance(product, dict) else (None if product is None else "all")
+    params: dict[str, Any] = {"stages": w.stages, "lo": lo, "hi": hi, "campaign": campaign_id}
+    if isinstance(product, dict):
+        params["prod"] = product["id"]
+    e = _row_exprs("ad")
+    sums = ", ".join(f"sum({e[k]}) AS {k}" for k in _A_KEYS)
+    stage_expr = "CASE WHEN ad.campaign_id = '' THEN 'unclassified' ELSE COALESCE(mc.stage, 'unclassified') END"
+    camp = "AND ad.campaign_id = %(campaign)s" if campaign_id is not None else ""
+    raw = rows_of(conn, act(f"""
+        WITH {_pfa(pid)}
+        SELECT ad.day, {stage_expr} AS stage, pfa.product_id, {sums}
+        FROM ad_daily ad JOIN pfa ON pfa.meta_family_key = ad.meta_family_key
+        LEFT JOIN meta_campaigns mc ON mc.campaign_id = ad.campaign_id
+        WHERE ad.day BETWEEN %(lo)s AND %(hi)s AND {stage_expr} = ANY(%(stages)s) {camp}
+        GROUP BY ad.day, 2, 3""", w.active), params)
+    prods = {r["id"]: r for r in rows_of(conn, "SELECT id, slug, name FROM products WHERE active ORDER BY sort_order, id")}
+    total: dict[dt.date, dict] = {}
+    by_stage: dict[str, dict[dt.date, dict]] = {}
+    by_prod: dict[Any, dict[dt.date, dict]] = {}
+    spend_a: dict[Any, Decimal] = {}
+    for r in raw:
+        v = _vec_of(r)
+        _vec_add(total.setdefault(r["day"], _vec()), v)
+        _vec_add(by_stage.setdefault(r["stage"], {}).setdefault(r["day"], _vec()), v)
+        _vec_add(by_prod.setdefault(r["product_id"], {}).setdefault(r["day"], _vec()), v)
+        if df <= r["day"] <= dtt:
+            spend_a[r["product_id"]] = spend_a.get(r["product_id"], Decimal(0)) + v["spend"]
+    out: dict[str, Any] = {"grain": grain, "scope": {"product": (product["slug"] if isinstance(product, dict) else (NO_PRODUCT_SLUG if product is None else None)),
+                                                      "campaign_id": campaign_id},
+                           "points": _points(total, df, dtt, grain)}
+    if cw is not None or w.cmp is not None:
+        n = len(out["points"])
+        cmp_pts: list[dict | None] = _points(_day_slice(total, cw), cw.date_from, cw.date_to, grain) if cw is not None else []
+        out["cmp_points"] = (cmp_pts + [None] * n)[:n]
+    if split == "stage":
+        out["groups"] = [{"key": st, "label": {"testing": "Testing", "scaling": "Scaling", "unclassified": "Unclassified"}.get(st, st), "color": None,
+                          "points": _points(by_stage.get(st, {}), df, dtt, grain)} for st in w.stages]
+    elif split == "product":
+        order = sorted(by_prod, key=lambda k: (-spend_a.get(k, Decimal(0)), str(k)))
+        out["groups"] = [{"key": (prods[k]["slug"] if k in prods else NO_PRODUCT_SLUG), "label": (prods[k]["name"] if k in prods else NO_PRODUCT), "color": None,
+                          "points": _points(by_prod[k], df, dtt, grain)} for k in order]
+    return out
+
+
 def _day_slice(day_vecs: dict, win: WindowSpec) -> dict:
     return {d: v for d, v in day_vecs.items() if win.date_from <= d <= win.date_to}
 

@@ -52,7 +52,34 @@ On a 4K window the switch sat at the far left of a 2,000 px bar and the explanat
 - **every table head says which numbers it shows**: a `Numbers: Upstack · new customers` badge in the Columns row (Tags tables, All creatives, the product Ads and Campaigns views, the ad page's Ads table, Google, the new Campaigns view);
 - the bar and the note exist on every page, so the product Creatives views and the ad page carry the same switch.
 
+## Trend charts (Campaigns, All platforms, All campaigns)
+
+The same panel as the product page (`createTrendPanel`, mode `source`): Bars and Line selectors (any metric), Day / Week / Month grain, Swap, Hide, compare overlay where comparison exists, the same Numbers-from and Count basis as the table underneath, state in the URL (`tb`, `tl`, `tg`, `ts`).
+
+| Page | Endpoint | Bars | Split bars by | Line |
+|---|---|---|---|---|
+| Meta Campaigns (`/campaigns`) | `GET /api/campaigns/trend` | any metric (default Spend) | None / Stage / Product | any metric (default ROAS; NC ROAS on the new-customer basis) |
+| All platforms (`/?platform=all`) | `GET /api/platforms/trend?numbers=own\|nc\|all` | Spend, Impressions, Link clicks (what may be added across platforms) | Platform | one line per platform |
+| All campaigns (`/campaigns?platform=all`) | `GET /api/platforms/trend` | same | Platform | one line per platform |
+
+- **Ties.** The chart's points are the table's rows summed: `campaigns_trend` reads the same `ad_daily` rows, product assignment (`_pfa`), stage and active filters as `campaigns_all`; the platform trend reads the same windows and queries as the overview / All campaigns table (Google through `google.trend`, now with a month grain). Asserted for every window, stage, grain and split in `tests/api/test_api_platforms.py`, `test_api_google.py`, `test_api_source.py`; checked on the full local data (30d: $340,583.67, 3,472 purchases, in every split and grain; Upstack new customers 2,614, all orders 4,189).
+- **Campaigns page.** The Product filter narrows the chart; the table's **Chart** button narrows the chart to one campaign (`chart=<campaign id>`, shown as "Chart shows only X, Show all campaigns"); the table stays whole. Comparison draws window B as the dashed overlay.
+- **All platforms.** The overview table shows every basis at once, so the chart has its own `Numbers` choice (Own reporting | Upstack new customers | Upstack all orders, `nb` in the URL). Ratio bars are not offered (a ROAS bar across platforms would be an added ratio); ROAS is a line per platform.
+- **Upstack depth.** Upstack attribution starts 2026-05-06 for Meta and 2025-05-13 for Google (the platforms' own feeds: Meta daily data 2026-05-06, Google 2024-03-25). On the Upstack bases each series is drawn only where it exists and the note under the chart names where each starts.
+- **Since launch on the All views** means the days every platform has data (today May 6, 2026 to Nov 2, 2026), never each platform's own history: Google's own reporting alone would otherwise cover 2.5 years against Meta's six months. The header note says so. The overview, the All campaigns table and the chart all use it. Trailing windows (7d, 30d ...) end on each platform's own last day, so Meta and Google can differ by a day (Meta Nov 2, Google Nov 3); the page lists the days each platform covers when they differ.
+
+## All campaigns (`/campaigns?platform=all`, `GET /api/campaigns/all`)
+
+Every Meta and Google campaign in one table, reachable from the Platform picker (All, then `View: Overview | All campaigns`), from the overview's "All campaigns" tab, and by URL; the picker keeps you on Campaigns when you change platform (All has no other Campaigns view).
+
+- **Columns.** Campaign, a sparkline (Meta rows), **Platform**, **Product / type** (a Meta product or Mixed with shares; a Google campaign type), **Numbers** (the basis that row is counted on: "Meta's own reporting", "Google's own reporting", "Upstack · new customers", "Upstack · all orders"), account, stage, ads, then the usual metrics with neutral headers (Purchases / orders, Cost per purchase) because the two platforms' counts mean different things.
+- **Numbers from + Count** apply per row: own reporting means each platform's own (Meta's for Meta rows, Google's for Google rows), Upstack reads every row on Upstack's attribution. Spend, impressions and clicks are the platform's in every basis.
+- **Filters.** Platform (`only=meta|google`), Meta product (`product=<slug>`), Google campaign type (`type=`); picking one clears the others (Google has no products, Meta has no types). Search, "with spend only", columns chips and sort (by spend by default) work as elsewhere.
+- **Totals.** With both platforms in view the Total row adds **spend, impressions and clicks only**, followed by a subtotal row per platform with the full metrics. **Purchases, revenue, ROAS and CPA are never added across platforms, in either basis:** under own reporting each platform credits the orders it touched, and under Upstack's any-click attribution an order is credited to every ad or campaign clicked in the 30 days before it, so one order can sit on a Meta ad and on a Google campaign. (Order-level overlap cannot be measured from the Upstack API, so the size of the double credit is unknown; the rule does not depend on it.) With one platform in view the Total row is that platform's full total, and **the Meta-only total equals the Meta Campaigns page total** (30d on the full local data: $340,583.67, 3,472 purchases, $240,864.76 revenue; asserted in `test_api_google.py`).
+- **Today's table, 30d (Oct 4 - Nov 2 Meta, Oct 5 - Nov 3 Google):** 63 rows (30 Meta, 33 Google), spend $358,157.10 = Meta $340,583.67 + Google $17,573.43; Upstack new customers 66 rows, all orders 74 rows (Meta rows with Upstack credit); since launch 142 rows (77 + 65).
+
 ## Not done
 
-- A platform-level trend chart on the Meta Campaigns view (the product views have one per product; here each row has its sparkline).
 - Product filter chips list products with spend in the window only; a product with no spend is not offered.
+- Comparison (window B) is not offered on the All views (the page says so); the Meta Campaigns chart does draw it.
+- Clicking a row narrows the chart on the Meta Campaigns page only; the All campaigns chart follows the Platform / Product / Type filters.

@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, db, google as gg, preview as pv, queries as q
+from . import auth, db, google as gg, platforms as pf, preview as pv, queries as q
 
 bp = Blueprint("api", __name__)
 
@@ -174,6 +174,59 @@ def campaigns_platform():
                     "products": q.campaign_products(conn, meta, w), **res})
 
 
+def _meta_product_arg(conn):
+    """product=<slug> | none | absent -> ('all' | product dict | None for families of no active product, brief for the response)."""
+    slug = _arg("product")
+    if slug is None:
+        return "all", None
+    if slug.lower() == q.NO_PRODUCT_SLUG:
+        return None, {"slug": q.NO_PRODUCT_SLUG, "name": q.NO_PRODUCT}
+    p = q.get_product(conn, slug)
+    return p, {"slug": p["slug"], "name": p["name"]}
+
+
+@bp.get("/api/campaigns/trend")
+def campaigns_platform_trend():
+    """Trend of /api/campaigns (Meta, all products): same window, stage, active, Meta | Upstack numbers and product filter, so its points add up to the table's
+    total. split=stage|product returns one point list per stage / product; campaign_id narrows to one campaign."""
+    conn, meta, w = _ctx()
+    product, brief = _meta_product_arg(conn)
+    res = q.campaigns_trend(conn, meta, w, product, campaign_id=_arg("campaign_id"), grain=(_arg("grain") or "day").lower(), split=(_arg("split") or "none").lower())
+    info = _all_days_info(w, meta)
+    return jsonify({"platform": "meta", "product": brief, "window_info": info, "compare_info": w.compare_info(meta), **res})
+
+
+@bp.get("/api/campaigns/all")
+def campaigns_all_platforms():
+    """Platform = All: every Meta and Google campaign in one list (see app/platforms.py). only=meta|google, product=<slug> (Meta) or type=<Google type> narrow it;
+    the numbers are the page's Numbers from / Count (own reporting, Upstack new customers, Upstack all orders), counted per platform and labelled per row."""
+    conn = db.get_conn()
+    meta = q.load_meta(conn)
+    numbers = pf.numbers_of(request.args)
+    try:
+        res = pf.all_campaigns(conn, meta, request.args, numbers, platform=_arg("only"), product_slug=_arg("product"), ctype=_arg("type"), spark=q.parse_spark(request.args))
+        res.update(pf.filter_chips(conn, meta, request.args, numbers))
+    finally:
+        q.set_source("meta")
+    return jsonify(res)
+
+
+@bp.get("/api/platforms/trend")
+def platforms_trend():
+    """Trend of the All views: spend (and any other metric) per platform on the chosen numbers over one x axis; same filters as /api/campaigns/all."""
+    conn = db.get_conn()
+    meta = q.load_meta(conn)
+    numbers = pf.numbers_of(request.args)
+    grain = (_arg("grain") or "day").lower()
+    if grain not in q.TREND_GRAINS:
+        raise q.ApiError(400, f"grain must be one of {', '.join(q.TREND_GRAINS)}")
+    try:
+        res = pf.trend(conn, meta, request.args, numbers, grain=grain, platform=_arg("only"), product_slug=_arg("product"), ctype=_arg("type"))
+    finally:
+        q.set_source("meta")
+    return jsonify(res)
+
+
 @bp.get("/api/products/<slug>/trend")
 def trend(slug: str):
     conn, meta, w = _ctx()
@@ -275,53 +328,48 @@ def google_trend():
     return jsonify({"channel": "google", "window_info": info, "compare_info": w.compare_info(gmeta), **res})
 
 
-# (source, basis, row key) of the All platforms overview: each platform's own numbers, then Upstack on new customers and on every order
-OVERVIEW_BASES = (("meta", "nc", "reported"), ("upstack", "nc", "nc"), ("upstack", "all", "all"))
-
-
 @bp.get("/api/platforms/overview")
 def platforms_overview():
     """All platforms side by side for one window: per platform three rows (its own reporting, Upstack new customers, Upstack all orders). Spend, clicks and
-    impressions are the platform's in every row. Stage / Active / comparison do not apply here (Google has neither), so they are ignored. Each row carries
-    the window it actually covers: Upstack answers only for the days it has pulled."""
+    impressions are the platform's in every row. Stage / Active only / comparison do not apply (Google has none of them) and are ignored. 'Since launch' is the
+    stretch both platforms have data for. Each row carries the window it actually covers: Upstack answers only for the days it has pulled."""
     conn = db.get_conn()
     meta = q.load_meta(conn)
-    plats = []
-    for key, name in (("meta", "Meta"), ("google", "Google")):
-        rows, note = [], None
-        for source, basis, bkey in OVERVIEW_BASES:
-            args = MultiDict(request.args)
-            for k in ("compare", "cfrom", "cto", "perday", "stage", "active"):
-                args.pop(k, None)
-            args["source"], args["basis"] = source, basis
+    rows: dict[str, list] = {"meta": [], "google": []}
+    notes: dict[str, str | None] = {"meta": None, "google": None}
+    head = None
+    try:
+        for numbers, bkey in (("own", "reported"), ("nc", "nc"), ("all", "all")):
+            source, basis = pf.NUMBERS[numbers]
+            wins, skipped, extra = pf.windows(meta, request.args, numbers)
+            for k, why in skipped.items():
+                notes[k] = why
+            if head is None and numbers == "own" and wins:
+                head = pf.head_info(wins, extra["note"])
             q.set_source(source, basis)
-            try:
+            for key in pf.PLATFORMS:
+                if key not in wins:
+                    continue
+                span, w = wins[key]
                 if key == "meta":
-                    m_s = q.meta_for_source(meta, source)
-                    w = q.parse_window(args, m_s)
                     extras: dict = {}
-                    q.products_list(conn, m_s, w, with_total=True, extras=extras)
+                    q.products_list(conn, span, w, with_total=True, extras=extras)
                     m = extras["total_all"]["m"]
-                    info = w.info(m_s)
+                    info = w.info(span)
                     labels = q.META_LABELS if source == "meta" else q.UPSTACK_LABELS[basis]
                 else:
-                    gm = gg.google_meta(meta, source)
-                    w = q.parse_window(args, gm)
-                    m = gg.rollup(conn, gm, w, "type")["total"]["m"]
-                    info = gg.window_info(w, gm)
+                    m = gg.rollup(conn, span, w, "type")["total"]["m"]
+                    info = gg.window_info(w, span)
                     labels = info["source"]["labels"]
-            except q.ApiError as e:
-                if e.status == 503:                    # a source that is not loaded: the row is left out, the reason is said once
-                    note = e.message if hasattr(e, "message") else str(e)
-                    continue
-                raise
-            label = ("Meta's own reporting" if key == "meta" else "Google's own reporting") if bkey == "reported" else ("Upstack · new customers" if bkey == "nc" else "Upstack · all orders")
-            rows.append({"basis": bkey, "label": label, "labels": labels, "m": m,
-                         "window": {"from": info.get("from"), "to": info.get("to"), "days": info.get("days"), "label": info.get("label"), "note": info.get("note"), "clamped": bool(info.get("clamped"))}})
-        plats.append({"key": key, "name": name, "rows": rows, "note": note})
-    q.set_source("meta")
-    head = q.parse_window(MultiDict({k: v for k, v in request.args.items() if k in ("window", "from", "to")}), meta)
-    return jsonify({"window_info": head.info(meta), "compare_info": None, "platforms": plats})
+                if extra["note"]:
+                    info["note"] = extra["note"]
+                rows[key].append({"basis": bkey, "label": pf.BASIS_LABEL[(key, numbers)], "labels": labels, "m": m, "window": pf.window_dict(info)})
+    finally:
+        q.set_source("meta")
+    if head is None:
+        head = q.parse_window(MultiDict({k: v for k, v in request.args.items() if k in ("window", "from", "to")}), meta).info(meta)
+    return jsonify({"window_info": head, "compare_info": None,
+                    "platforms": [{"key": k, "name": pf.NAMES[k], "rows": rows[k], "note": notes[k]} for k in pf.PLATFORMS]})
 
 
 @bp.get("/media/<aint:asset_id>")

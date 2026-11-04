@@ -5,7 +5,8 @@ import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { metricColumns } from '../columns.js';
 import { setRangeInfo, setPendingNote } from '../controls.js';
-import { breadcrumbs } from '../components.js';
+import { breadcrumbs, viewSwitch } from '../components.js';
+import { createTrendPanel } from '../trend.js';
 
 const KEYS = ['spend', 'impressions', 'link_clicks', 'ctr', 'cpc', 'purchases', 'revenue', 'roas', 'cpa'];
 // one neutral header per column: what a row counts is said by its own Numbers cell (new customers, orders, or the platform's purchases)
@@ -15,6 +16,16 @@ const NEUTRAL_TITLE = {
   revenue: 'The conversion value or order totals of what the row counts', roas: 'Revenue / spend', cpa: 'Spend / purchases (or new customers, or orders)',
   link_clicks: 'Meta link clicks; Google all clicks',
 };
+
+// the trend source of the All pages: spend bars split by platform, one line per platform. Bars are limited to what may be added across platforms
+// (spend, impressions, clicks). `basis` adds the chart's own Numbers choice (the overview shows all three bases in its table, so the chart needs one).
+export function platformTrendSource(p, wp, filt = {}, { basis = false } = {}) {
+  return {
+    splits: [['platform', 'Platform']], defaultSplit: 'platform', alwaysSplit: true, barsMetrics: ['spend', 'impressions', 'link_clicks'],
+    basis: basis ? { param: 'nb', options: [['own', 'Own reporting'], ['nc', 'Upstack · new customers'], ['all', 'Upstack · all orders']], default: 'own' } : null,
+    fetch: ({ grain, basis: nb, signal }) => api('/api/platforms/trend', { ...wp, grain, ...(basis ? { numbers: nb } : {}), ...filt }, { signal }),
+  };
+}
 
 export async function allPlatformsPage(ctx) {
   const { params: p, signal } = ctx;
@@ -43,14 +54,17 @@ export async function allPlatformsPage(ctx) {
     ...flat,
   ];
   const t = createTable({ columns: cols, rows, rowKey: (r) => r.key, emptyText: 'No platform data in this window.', testid: 'platform-overview' });
+  const panel = createTrendPanel({ p, mode: 'source', signal, source: platformTrendSource(p, apiWindow(p), {}, { basis: true }) });
   const notes = d.platforms.filter((x) => x.note).map((x) => h('div', { class: 'muted small', 'data-testid': 'platform-note' }, `${x.name}: ${x.note}`));
   ctx.mount(h('div', { class: 'page', 'data-level': 'platforms' },
-    h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'All platforms'), h('span', { class: 'badge muted-badge' }, 'Meta and Google')),
+    h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'All platforms'), h('span', { class: 'badge muted-badge' }, 'Meta and Google'), h('span', { class: 'spacer' }), viewSwitch('home', G, 'all')),
       h('div', { class: 'note-line' }, 'Each platform’s own reporting, then Upstack’s attribution of the same spend on new customers and on all orders.')),
     h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Marketing metrics', href: href('/', { ...G, platform: null }) }, { label: 'All platforms' }])),
+    panel.el,
     h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Platforms'), h('span', { class: 'src-badge', 'data-testid': 'src-badge' }, 'Numbers: each platform’s own reporting and Upstack')),
     rows.length ? t.el : empty('No platform data in this window.'),
     h('div', { class: 'muted small total-note' }, 'Not added up: Meta and Google each credit an order to the ads or campaigns clicked, so purchases overlap between platforms. Upstack rows start when Upstack’s history does; the date range of a clamped row is shown under its name.'),
     ...notes,
   ));
+  panel.load();
 }
