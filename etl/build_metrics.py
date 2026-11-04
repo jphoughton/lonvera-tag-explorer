@@ -9,6 +9,7 @@ Usage: python -m etl.build_metrics"""
 from __future__ import annotations
 
 import datetime as dt
+import re
 
 from . import db
 
@@ -141,6 +142,43 @@ SELECT g.k, g.name,
 FROM guess g LEFT JOIN daily d ON d.k = g.k LEFT JOIN life l ON l.k = g.k
 WHERE d.k IS NOT NULL OR l.k IS NOT NULL
 """
+
+
+# Source flip (Meta | Upstack): the same derived tables exist once per Upstack basis, named <table>_upstack_<basis>. They are built from the SAME SQL as the
+# Meta tables, with the table names swapped (ad_daily and meta_ad_lifetime are views over ad_daily_upstack there). Table names are whole tokens, so
+# family_daily never matches inside family_daily_active.
+_SOURCE_TABLES = ("family_daily_active", "family_daily", "ad_metrics", "unmatched_meta", "meta_ad_lifetime", "ad_daily")
+_RX_SOURCE_TABLES = re.compile(r"\b(" + "|".join(_SOURCE_TABLES) + r")\b")
+UPSTACK_BASES = ("nc", "all")
+
+
+def rename_tables(sql: str, sfx: str) -> str:
+    return _RX_SOURCE_TABLES.sub(lambda m: m.group(1) + sfx, sql) if sfx else sql
+
+
+def rebuild_source(conn, basis: str) -> dict:
+    """Rebuild family_daily / family_daily_active / ad_metrics / unmatched_meta for one Upstack basis ('nc' | 'all') from ad_daily_upstack_<basis>.
+    Same rules as rebuild() (first row, windows, stage, active); since launch = every day held. Caller owns the transaction."""
+    sfx = f"_upstack_{basis}"
+    dthru = conn.execute(f"SELECT max(day) FROM ad_daily{sfx}").fetchone()[0]
+    if dthru is None:
+        raise RuntimeError("ad_daily_upstack is empty; run the Upstack pull first")
+    P = {"d7": dthru - dt.timedelta(days=6), "d30": dthru - dt.timedelta(days=29), "d1": dthru - dt.timedelta(days=1)}
+    for t in ("family_daily", "family_daily_active", "ad_metrics", "unmatched_meta"):
+        conn.execute(f"TRUNCATE {t}{sfx}")
+    conn.execute(rename_tables(SQL_FAMILY_DAILY_ALL, sfx))
+    conn.execute(rename_tables(SQL_FAMILY_DAILY_ACTIVE, sfx))
+    conn.execute("DROP TABLE IF EXISTS tmp_ranked")
+    conn.execute(SQL_RANKED)
+    conn.execute(rename_tables(SQL_AD_METRICS, sfx), P)
+    conn.execute("DROP TABLE tmp_ranked")
+    conn.execute(rename_tables(SQL_UNMATCHED, sfx), P)
+    return {"basis": basis, "data_through": dthru.isoformat(),
+            "family_daily_rows": conn.execute(f"SELECT count(*) FROM family_daily{sfx}").fetchone()[0],
+            "ad_metrics_rows": conn.execute(f"SELECT count(*) FROM ad_metrics{sfx}").fetchone()[0],
+            "unmatched_families": conn.execute(f"SELECT count(*) FROM unmatched_meta{sfx}").fetchone()[0],
+            "spend_launch": float(conn.execute(f"SELECT coalesce(sum(spend_launch), 0) FROM ad_metrics{sfx}").fetchone()[0]),
+            "purchases_launch": float(conn.execute(f"SELECT coalesce(sum(purchases_launch), 0) FROM ad_metrics{sfx}").fetchone()[0])}
 
 
 def rebuild(conn, commit: bool = True) -> dict:

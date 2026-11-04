@@ -422,3 +422,27 @@ tr.total.extra td .note-link { font-weight: 400; font-size: 11px; margin-left: 6
 .empty-range { background: var(--panel); border: 1px solid var(--line); padding: 16px 18px; border-radius: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .empty-range .btn { margin-top: 0; }
 .total-note { margin: 4px 2px 10px; }
+
+/* ---- data source (Meta | Upstack): what the numbers are, always stated ---- */
+.source-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 6px; padding: 5px 10px; border-radius: 5px; font-size: 12px; line-height: 1.45; border: 1px solid var(--line-soft); background: #fff; color: var(--muted); }
+.source-banner.upstack { background: var(--accent-bg); border-color: var(--accent); color: var(--text); }
+.source-banner .src-text { flex: 1 1 360px; min-width: 0; }
+.source-banner .btn { flex: 0 0 auto; }
+.tieout { margin-top: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 5px; background: #fff; font-size: 12px; }
+.tieout[hidden] { display: none; }
+.tieout-head { margin-bottom: 6px; }
+.tieout-scroll { overflow-x: auto; margin-bottom: 8px; }
+.tieout-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.tieout-table th, .tieout-table td { padding: 3px 8px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; text-align: left; font-weight: 400; }
+.tieout-table thead th { color: var(--muted); font-size: 11px; font-weight: 600; background: var(--head-bg); }
+.tieout-table .num { text-align: right; }
+.tieout-table tr.shown th, .tieout-table tr.shown td { font-weight: 600; background: var(--accent-bg); }
+.tieout-table tr.muted th, .tieout-table tr.muted td { color: var(--muted); }
+.tieout-notes { margin: 4px 0 8px 18px; padding: 0; color: var(--text); }
+.tieout-notes li { margin: 2px 0; }
+.source-banner .src-more { display: none; }
+@media (max-width: 720px) {
+  .source-banner .src-text { flex-basis: 100%; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .source-banner.open .src-text { display: block; }
+  .source-banner .src-more { display: inline-block; }
+}

@@ -9,11 +9,12 @@ Conventions
 """
 from __future__ import annotations
 
+import contextvars
 import datetime as dt
 import json
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Any, Iterable
 
@@ -95,6 +96,45 @@ def act(sql: str, active: bool) -> str:
     return _RX_AD_DAILY.sub(lambda m: _AD_DAILY_ACTIVE + m.group(1), _RX_FAMILY_DAILY.sub("family_daily_active", sql))
 
 
+# Source flip (Meta | Upstack). `source=upstack` re-points every read of a Meta-derived table at its Upstack twin: <table>_upstack_<basis> (migration 008),
+# with basis nc = new customers, all = every attributed order. The swap is applied to the SQL text inside rows_of / row_of, per request (the API sets it
+# in a before_request hook, always, so a worker thread never carries a previous request's source). Table names are whole tokens, so family_daily is
+# never rewritten inside family_daily_active, and the raw ad_daily_upstack is untouched.
+SOURCES = ("meta", "upstack")
+BASES = ("nc", "all")
+DEFAULT_BASIS = "nc"
+_SRC_TABLES = ("family_daily_active", "family_daily", "ad_metrics", "unmatched_meta", "meta_ad_lifetime", "ad_daily")
+_RX_SRC_TABLES = re.compile(r"\b(" + "|".join(_SRC_TABLES) + r")\b")
+_SRC_SFX: contextvars.ContextVar[str] = contextvars.ContextVar("tagexp_source_suffix", default="")
+UPSTACK_MODEL = "Upstack any-click attribution, 30-day window, Meta Ads source"
+UPSTACK_LABELS = {
+    "nc": {"purchases": "New customers", "revenue": "NC revenue", "roas": "NC ROAS", "cpa": "NC CPA"},
+    "all": {"purchases": "Orders", "revenue": "Revenue", "roas": "ROAS", "cpa": "Cost per order"},
+}
+META_LABELS = {"purchases": "Purchases", "revenue": "Revenue", "roas": "ROAS", "cpa": "CPA"}
+
+
+def source_sql(sql: str, suffix: str | None = None) -> str:
+    sfx = _SRC_SFX.get() if suffix is None else suffix
+    return _RX_SRC_TABLES.sub(lambda m: m.group(1) + sfx, sql) if sfx else sql
+
+
+def set_source(source: str = "meta", basis: str = DEFAULT_BASIS) -> None:
+    """Make every query of the current request read `source`'s tables (see above). Called by the API's before_request hook."""
+    _SRC_SFX.set("" if source == "meta" else f"_upstack_{basis}")
+
+
+def parse_source(args) -> tuple[str, str]:
+    """source=meta|upstack (default meta), basis=nc|all (default nc; only used with upstack, but validated always). Unknown values are a 400."""
+    source = str(args.get("source") or "meta").strip().lower()
+    basis = str(args.get("basis") or DEFAULT_BASIS).strip().lower()
+    if source not in SOURCES:
+        raise ApiError(400, "source must be meta or upstack")
+    if basis not in BASES:
+        raise ApiError(400, "basis must be nc (new customers) or all (all orders)")
+    return source, basis
+
+
 # Schema features the v1.9 / v1.10 data layer adds (migration 007). Probed on a short TTL so the API keeps serving before the migration is
 # applied: without them tracker rows are not filtered by deleted_at, active=1 answers 503 and /unmatched since launch uses the daily rows.
 _CAPS: dict[str, bool] = {"deleted": False, "active": False, "unm_launch": False, "unm_traffic": False}
@@ -127,11 +167,11 @@ def alive(alias: str) -> str:
 
 
 def rows_of(conn, sql: str, params: Any = None) -> list[dict]:
-    return conn.execute(sql, params).fetchall()
+    return conn.execute(source_sql(sql), params).fetchall()
 
 
 def row_of(conn, sql: str, params: Any = None) -> dict | None:
-    return conn.execute(sql, params).fetchone()
+    return conn.execute(source_sql(sql), params).fetchone()
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -147,13 +187,17 @@ class DataMeta:
     impressions_from: dt.date | None = None      # first day with impression data (None = none loaded yet)
     status_as_of: str | None = None              # when meta_ads.status was last refreshed (app_meta ad_status_as_of), None = not recorded
     active_built_at: str | None = None           # when the 'active ads only' tables were last rebuilt
+    upstack_through: dt.date | None = None       # last complete day of the Upstack source (None = the Upstack source is not loaded)
+    upstack_first_day: dt.date | None = None     # first day of Upstack history held
+    upstack_built_at: str | None = None
 
 
 def load_meta(conn) -> DataMeta:
     refresh_caps(conn)
     kv = {r["key"]: r["value"] for r in rows_of(
         conn, "SELECT key, value FROM app_meta WHERE key = ANY(%s)",
-        (["daily_start", "lifetime_cutoff", "data_through", "ad_status_as_of", "active_built_at"],))}
+        (["daily_start", "lifetime_cutoff", "data_through", "ad_status_as_of", "active_built_at",
+          "upstack_through", "upstack_first_day", "upstack_built_at"],))}
     through = kv.get("data_through")
     start = kv.get("daily_start")
     if not through or not start:
@@ -169,7 +213,19 @@ def load_meta(conn) -> DataMeta:
         data_through=dt.date.fromisoformat(through),
         impressions_from=first_imp["d"] if first_imp else None,
         status_as_of=kv.get("ad_status_as_of"), active_built_at=kv.get("active_built_at"),
+        upstack_through=dt.date.fromisoformat(kv["upstack_through"]) if kv.get("upstack_through") else None,
+        upstack_first_day=dt.date.fromisoformat(kv["upstack_first_day"]) if kv.get("upstack_first_day") else None,
+        upstack_built_at=kv.get("upstack_built_at"),
     )
+
+
+def meta_for_source(meta: DataMeta, source: str) -> DataMeta:
+    """The data span of the chosen source: Upstack answers only for the days it has pulled (never past Meta's own data_through)."""
+    if source != "upstack":
+        return meta
+    if meta.upstack_through is None or meta.upstack_first_day is None:
+        raise ApiError(503, "Upstack data is not loaded yet")
+    return replace(meta, data_through=min(meta.data_through, meta.upstack_through), daily_start=max(meta.daily_start, meta.upstack_first_day))
 
 
 def _fmt_day(d: dt.date, with_year: bool) -> str:
@@ -193,6 +249,8 @@ class WindowSpec:
     stage: str = "all"            # 'all' or the included stages, comma-separated in canonical order (see parse_stage)
     cmp: "WindowSpec | None" = None   # comparison window B (None = comparison off); A is always a date window then
     active: bool = False          # v1.9: only ACTIVE Meta ads count (see act())
+    source: str = "meta"          # 'meta' | 'upstack' (see source_sql); the page labels follow window_info.source
+    basis: str = DEFAULT_BASIS    # Upstack only: 'nc' new customers | 'all' every attributed order
 
     @property
     def is_launch(self) -> bool:
@@ -226,10 +284,36 @@ class WindowSpec:
         return (f"Active ads only: a creative is listed only if it has at least one ACTIVE Meta ad ({when}); every number is for those active "
                 f"ads alone (current status applied to the whole period; {scope}); totals and shares are within this set.")
 
+    def source_info(self, meta: DataMeta) -> dict:
+        """Which numbers the page shows, in words, plus the metric labels the UI should use (so Upstack's are never mistaken for Meta's)."""
+        if self.source != "upstack":
+            return {"key": "meta", "basis": None, "label": "Meta", "labels": META_LABELS, "model": None, "note": None,
+                    "summary": "Meta's own reporting: purchases and revenue as Meta attributes them (returning customers included)."}
+        first = meta.upstack_first_day or meta.daily_start
+        if self.basis == "nc":
+            what = "First orders only (new customers) and their revenue"
+            label = "Upstack · new customers"
+        else:
+            what = "Every order credited to the ad (new and returning customers) and its revenue"
+            label = "Upstack · all orders"
+        summary = (f"{what}, credited to the ads clicked in the 30 days before the order ({UPSTACK_MODEL}). "
+                   f"Spend, clicks and impressions are Meta's, unchanged. Revenue is Upstack's order total (tax included, before refunds).")
+        note = (f"History starts {_fmt_day(first, True)}, so 'since launch' means since then (Meta's is all-time). "
+                "Some orders are credited to no identifiable ad and sit in no row (see the tie-out).")
+        return {"key": "upstack", "basis": self.basis, "label": label, "labels": UPSTACK_LABELS[self.basis], "model": UPSTACK_MODEL,
+                "summary": summary, "note": note, "history_from": first.isoformat(),
+                "through": (meta.upstack_through or meta.data_through).isoformat(),
+                "built_at": meta.upstack_built_at}
+
     def info(self, meta: DataMeta) -> dict:
         note = " ".join(x for x in (self.note, self.traffic_note(meta), self.active_note(meta)) if x) or None
+        src = self.source_info(meta)
+        if self.source == "upstack" and self.is_launch:
+            note = " ".join(x for x in (src["note"], note) if x)
         return {
-            "kind": self.kind, "name": self.name, "label": self.label,
+            "source": src,
+            "kind": self.kind, "name": self.name, "label": (self.label if not (self.source == "upstack" and self.is_launch)
+                                                              else f"Since launch · Upstack history from {_fmt_day(meta.upstack_first_day or meta.daily_start, True)}"),
             "from": self.date_from.isoformat() if self.date_from else None,
             "to": self.date_to.isoformat() if self.date_to else None,
             "days": self.days, "clamped": self.clamped, "note": note, "stage": self.stage, "stages": self.stages,
@@ -313,6 +397,7 @@ def parse_window(args, meta: DataMeta) -> WindowSpec:
     and the optional comparison window B: compare=prev|1d|...|mtd or cfrom/cto."""
     a = _parse_a(args, meta)
     a.active = parse_active(args)
+    a.source, a.basis = parse_source(args)
     a.cmp = parse_compare(args, meta, a)
     return a
 
@@ -2538,6 +2623,89 @@ def status(conn, meta: DataMeta, n_products: int) -> dict:
         "products": n_products,
         "active": active_summary(conn, meta),
         "stale": staleness(conn, meta),
+        "sources": sources_summary(meta),
+    }
+
+
+def sources_summary(meta: DataMeta) -> dict:
+    """What the source switch can offer: Upstack is available once its tables are built; `lag_days` > 1 means it is behind Meta's data."""
+    up = meta.upstack_through
+    return {"default": "meta", "meta": {"available": True, "through": meta.data_through.isoformat()},
+            "upstack": {"available": up is not None and meta.upstack_first_day is not None, "through": up.isoformat() if up else None,
+                        "history_from": meta.upstack_first_day.isoformat() if meta.upstack_first_day else None,
+                        "built_at": meta.upstack_built_at, "bases": list(BASES), "default_basis": DEFAULT_BASIS, "model": UPSTACK_MODEL,
+                        "lag_days": (meta.data_through - up).days if up else None}}
+
+
+def _vals(r: dict | None, *keys: str) -> dict:
+    return {k: (f2(r[k]) if r and r.get(k) is not None else 0.0) for k in keys}
+
+
+def _frac_diff(a: Any, b: Any) -> float | None:
+    """(a - b) / b as a fraction, None when b is 0."""
+    return ratio(_f(a) - _f(b), b, 4)
+
+
+def source_tieout(conn, meta: DataMeta, df: dt.date, dtt: dt.date) -> dict:
+    """Meta vs Upstack over [df, dtt] (every product, every ad). Always reads the raw tables by explicit name, whatever source the request asked for.
+      meta           Meta Graph API, ad grain (ad_daily): what the Meta source shows.
+      upstack_feed   Upstack's ad-platform feed (channel.*) at campaign grain, Meta campaigns only: an independent copy of Meta's spend and of Meta's own
+                     purchases; the spend check.
+      upstack_campaigns / upstack_ads   Upstack's attribution as pulled (campaign totals; ad rows). Ad rows overlap under any-click and may not
+                     add up to the campaigns: some orders are credited to a campaign but to no identifiable ad.
+      mapped         the ad rows tied to Meta ads, spend included: exactly what the Upstack source shows on every page (all ads, tracker or not).
+      unmapped       ad rows tied to no Meta ad ('(not set)', truncated ids, deleted ads): in no ad, family or tag total.
+      tags_pages     what the Tags pages total (ads on a tracker creative) in each mode: Meta, Upstack new customers, Upstack all orders."""
+    set_source("meta")
+    p = {"a": df, "b": dtt}
+    rng = "day BETWEEN %(a)s AND %(b)s"
+    m = row_of(conn, f"SELECT sum(spend) AS spend, sum(purchases) AS purchases, sum(conv_value) AS revenue, sum(link_clicks) AS clicks FROM ad_daily WHERE {rng}", p)
+    feed = row_of(conn, f"SELECT sum(spend) AS spend, sum(purchases) AS purchases, sum(purchases_value) AS revenue FROM upstack_channel_daily WHERE {rng}", p)
+    camps = row_of(conn, f"SELECT sum(nc) AS nc, sum(nc_rev) AS nc_rev, sum(orders) AS orders, sum(rev) AS rev FROM upstack_campaign_daily WHERE {rng}", p)
+    ads = row_of(conn, f"SELECT sum(nc) AS nc, sum(nc_rev) AS nc_rev, sum(orders) AS orders, sum(rev) AS rev FROM upstack_attr_daily WHERE {rng}", p)
+    mapped = row_of(conn, f"""SELECT sum(spend) AS spend, sum(nc_purchases) AS nc, sum(nc_conv_value) AS nc_rev, sum(purchases) AS orders, sum(conv_value) AS rev
+                              FROM ad_daily_upstack WHERE {rng}""", p)
+    unm = rows_of(conn, f"""SELECT reason, sum(nc) AS nc, sum(nc_rev) AS nc_rev, sum(orders) AS orders, sum(rev) AS rev FROM upstack_unmapped_daily
+                            WHERE {rng} GROUP BY reason ORDER BY reason""", p)
+    tags = {}
+    for key, tbl in (("meta", "family_daily"), ("upstack_nc", "family_daily_upstack_nc"), ("upstack_all", "family_daily_upstack_all")):
+        tags[key] = _vals(row_of(conn, f"SELECT sum(spend) AS spend, sum(purchases) AS purchases, sum(revenue) AS revenue FROM {tbl} WHERE {rng}", p),
+                          "spend", "purchases", "revenue")
+    daily = rows_of(conn, f"""
+        SELECT d.day, d.spend AS meta_spend, coalesce(f.spend, 0) AS feed_spend, coalesce(c.nc, 0) AS camp_nc, coalesce(c.orders, 0) AS camp_orders,
+               coalesce(a.nc, 0) AS mapped_nc, coalesce(a.orders, 0) AS mapped_orders
+        FROM (SELECT day, sum(spend) AS spend FROM ad_daily WHERE {rng} GROUP BY day) d
+        LEFT JOIN (SELECT day, sum(spend) AS spend FROM upstack_channel_daily WHERE {rng} GROUP BY day) f ON f.day = d.day
+        LEFT JOIN (SELECT day, sum(nc) AS nc, sum(orders) AS orders FROM upstack_campaign_daily WHERE {rng} GROUP BY day) c ON c.day = d.day
+        LEFT JOIN (SELECT day, sum(nc_purchases) AS nc, sum(purchases) AS orders FROM ad_daily_upstack WHERE {rng} GROUP BY day) a ON a.day = d.day
+        ORDER BY d.day""", p)
+    ff = row_of(conn, "SELECT min(day) AS d FROM upstack_channel_daily WHERE spend > 0")
+    ms, mp, mr = _f(m["spend"]), _f(m["purchases"]), _f(m["revenue"])
+    um = _vals(mapped, "spend", "nc", "nc_rev", "orders", "rev")
+    uc = _vals(camps, "nc", "nc_rev", "orders", "rev")
+    ua = _vals(ads, "nc", "nc_rev", "orders", "rev")
+    un = {"nc": 0.0, "nc_rev": 0.0, "orders": 0.0, "rev": 0.0, "by_reason": []}
+    for r in unm:
+        v = _vals(r, "nc", "nc_rev", "orders", "rev")
+        un["by_reason"].append({"reason": r["reason"], **v})
+        for k in ("nc", "nc_rev", "orders", "rev"):
+            un[k] = round(un[k] + v[k], 2)
+    return {
+        "from": df.isoformat(), "to": dtt.isoformat(), "days": (dtt - df).days + 1,
+        "meta": {**_vals(m, "spend", "purchases", "revenue", "clicks"), "roas": ratio(mr, ms, 2), "cpa": ratio(ms, mp, 2)},
+        "upstack_feed": {**_vals(feed, "spend", "purchases", "revenue"), "first_day": ff["d"].isoformat() if ff and ff["d"] else None,
+                         "spend_vs_meta_pct": _frac_diff(feed["spend"] if feed else 0, ms),
+                         "purchases_vs_meta_pct": _frac_diff(feed["purchases"] if feed else 0, mp)},
+        "upstack_campaigns": {**uc, "orders_vs_meta_purchases_pct": _frac_diff(uc["orders"], mp), "rev_vs_meta_revenue_pct": _frac_diff(uc["rev"], mr)},
+        "upstack_ads": {**ua, "ads_vs_campaigns_nc": ratio(ua["nc"], uc["nc"], 3), "ads_vs_campaigns_orders": ratio(ua["orders"], uc["orders"], 3)},
+        "mapped": {**um, "spend_vs_meta_pct": _frac_diff(um["spend"], ms), "orders_vs_meta_purchases_pct": _frac_diff(um["orders"], mp),
+                   "rev_vs_meta_revenue_pct": _frac_diff(um["rev"], mr), "roas_all": ratio(um["rev"], um["spend"], 2), "cpa_all": ratio(um["spend"], um["orders"], 2),
+                   "roas_nc": ratio(um["nc_rev"], um["spend"], 2), "cpa_nc": ratio(um["spend"], um["nc"], 2)},
+        "unmapped": un,
+        "tags_pages": tags,
+        "daily": [{"day": r["day"].isoformat(), "meta_spend": f2(r["meta_spend"]), "feed_spend": f2(r["feed_spend"]), "campaign_nc": num(r["camp_nc"]),
+                   "campaign_orders": num(r["camp_orders"]), "mapped_nc": num(r["mapped_nc"]), "mapped_orders": num(r["mapped_orders"])} for r in daily],
+        "model": UPSTACK_MODEL,
     }
 
 

@@ -1,4 +1,4 @@
-import { h, enc, fmt, stageSet, href, apiWindow, sparkParams, globalParams, navigate, confBadge, empty, thumb, stageBadge, liveDot, pick, setParams, getRowMode, setRowMode, setViewStateProvider, cmpView, onCmpRefresh } from '../util.js';
+import { h, enc, fmt, stageSet, href, apiWindow, sparkParams, globalParams, navigate, confBadge, empty, thumb, stageBadge, liveDot, pick, setParams, getRowMode, setRowMode, setViewStateProvider, cmpView, onCmpRefresh, metricLabel } from '../util.js';
 import { api, AuthError } from '../api.js';
 import { createTable } from '../table.js';
 import { metricColumns, fixTotal, FLAT_KEYS, trendColumn, pinColumn } from '../columns.js';
@@ -287,9 +287,9 @@ async function campaignsView(ctx, slug) {
       h('div', { class: 'stagecard-main' }, h('span', { class: 'big' }, fmt.money(s.spend)), h('span', { class: 'muted' }, totalSpend > 0 ? ` · ${fmt.pct((s.spend || 0) / totalSpend)} of spend` : '')),
       (s.cmp && cmpView.on) ? h('div', { class: 'stagecard-cmp' }, 'vs ', fmt.money(s.cmp.spend), ' ', deltaSpan(s.delta && s.delta.spend_pct, 'neutral')) : null,
       h('div', { class: 'stagecard-sub' },
-        h('span', null, 'ROAS ', h('b', null, fmt.roas(s.roas)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.roas(s.cmp.roas)), ' ', deltaSpan(s.delta && s.delta.roas_pct, 'up')] : null),
-        h('span', null, 'CPA ', h('b', null, fmt.money(s.cpa)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.money(s.cmp.cpa)), ' ', deltaSpan(s.delta && s.delta.cpa_pct, 'down')] : null),
-        h('span', null, 'Purchases ', h('b', null, fmt.int(s.purchases)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.int(s.cmp.purchases)), ' ', deltaSpan(s.delta && s.delta.purchases_pct, 'up')] : null)));
+        h('span', null, metricLabel('roas', 'ROAS') + ' ', h('b', null, fmt.roas(s.roas)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.roas(s.cmp.roas)), ' ', deltaSpan(s.delta && s.delta.roas_pct, 'up')] : null),
+        h('span', null, metricLabel('cpa', 'CPA') + ' ', h('b', null, fmt.money(s.cpa)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.money(s.cmp.cpa)), ' ', deltaSpan(s.delta && s.delta.cpa_pct, 'down')] : null),
+        h('span', null, metricLabel('purchases', 'Purchases') + ' ', h('b', null, fmt.int(s.purchases)), (s.cmp && cmpView.on) ? [' ', h('span', { class: 'b' }, 'vs ', fmt.int(s.cmp.purchases)), ' ', deltaSpan(s.delta && s.delta.purchases_pct, 'up')] : null)));
     return c;
   });
 

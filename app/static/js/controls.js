@@ -1,5 +1,6 @@
 // App header (Back, brand, data-through, logout) and the global range / stage / compare controls. State lives in the URL.
-import { h, navigate, setParams, fmt, isNum, currentParams, stageSet, stageParam, STAGES, hasDateWindow, compareOn, cmpView, applyCompareState, refreshCmp, qs, cleanParams } from './util.js';
+import { h, navigate, setParams, fmt, isNum, currentParams, stageSet, stageParam, STAGES, hasDateWindow, compareOn, cmpView, applyCompareState, refreshCmp, qs, cleanParams, srcFromParams, applySourceState, srcView } from './util.js';
+import { loadTieout } from './tieout.js';
 import { api, AuthError } from './api.js';
 
 const PRESETS = [['launch', 'Since launch'], ['1d', '1d'], ['7d', '7d'], ['14d', '14d'], ['30d', '30d'], ['60d', '60d'], ['90d', '90d'], ['180d', '180d'], ['mtd', 'MTD']];
@@ -10,6 +11,7 @@ let topbar, controls, statusEl, userEl, labelEl, noteEl, fromEl, toEl, errEl, ba
 let cmpSel, cfromEl, ctoEl, cmpCustomBox, perDayWrap, perDayCb, cerrEl;
 let presetBtns = [], stageBtns = {};
 let activeBtn, activeCountEl;
+let srcBtns = {}, basisBtns = {}, basisCtl, srcBannerEl, srcTextEl, tieBtn, tiePanel;
 let status = null;
 let uncVisible = false;
 let pendingNote = null;
@@ -85,11 +87,44 @@ export function buildShell({ onBack }) {
   perDayCb.addEventListener('change', onPerDay);
   perDayWrap = h('label', { class: 'check', id: 'perday-wrap', hidden: true }, perDayCb, ' Per day');
 
+  srcBtns = {};
+  for (const [key, text] of [['meta', 'Meta'], ['upstack', 'Upstack']]) {
+    const b = h('button', { type: 'button', class: 'seg', 'data-source': key, 'aria-pressed': String(key === 'meta') }, text);
+    b.addEventListener('click', () => setParams({ source: key === 'upstack' ? 'upstack' : null, basis: null }));
+    srcBtns[key] = b;
+  }
+  basisBtns = {};
+  for (const [key, text] of [['nc', 'New customers'], ['all', 'All orders']]) {
+    const b = h('button', { type: 'button', class: 'seg', 'data-basis': key, 'aria-pressed': String(key === 'nc') }, text);
+    b.addEventListener('click', () => setParams({ basis: key === 'all' ? 'all' : null }));
+    basisBtns[key] = b;
+  }
+  basisCtl = h('div', { class: 'ctl', id: 'basis-ctl', hidden: true }, h('span', { class: 'ctl-name' }, 'Count'), h('span', { class: 'segs', role: 'group', 'aria-label': 'What Upstack counts' }, Object.values(basisBtns)));
+  srcTextEl = h('span', { class: 'src-text', id: 'src-text' });
+  tieBtn = h('button', { type: 'button', class: 'btn small', id: 'tieout-btn', 'aria-expanded': 'false' }, 'Meta vs Upstack tie-out');
+  tiePanel = h('div', { class: 'tieout', id: 'tieout-panel', hidden: true });
+  tieBtn.addEventListener('click', () => {
+    const open = tiePanel.hidden;
+    tiePanel.hidden = !open;
+    tieBtn.setAttribute('aria-expanded', String(open));
+    if (open) loadTieout(tiePanel);
+  });
+  const moreBtn = h('button', { type: 'button', class: 'btn small src-more', id: 'src-more', 'aria-expanded': 'false' }, 'More');
+  moreBtn.addEventListener('click', () => {
+    const open = !srcBannerEl.classList.contains('open');
+    srcBannerEl.classList.toggle('open', open);
+    moreBtn.textContent = open ? 'Less' : 'More';
+    moreBtn.setAttribute('aria-expanded', String(open));
+  });
+  srcBannerEl = h('div', { class: 'source-banner meta', id: 'source-banner' }, srcTextEl, moreBtn, tieBtn);
+
   labelEl = h('strong', { class: 'range-label', id: 'range-label' });
   noteEl = h('div', { class: 'range-note', id: 'range-note' });
 
   controls.replaceChildren(h('div', { class: 'controls-in' },
     h('div', { class: 'ctl-row' },
+      h('div', { class: 'ctl', id: 'source-ctl' }, h('span', { class: 'ctl-name' }, 'Numbers from'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Data source' }, Object.values(srcBtns))),
+      basisCtl,
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Range'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Date range' }, presetBtns)),
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Custom'), fromEl, h('span', { class: 'muted' }, '–'), toEl, apply, errEl),
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Stage'), h('span', { class: 'chips', role: 'group', 'aria-label': 'Stage' }, Object.values(stageBtns), activeBtn), activeCountEl),
@@ -97,6 +132,8 @@ export function buildShell({ onBack }) {
     ),
     h('div', { class: 'ctl-row second' }, labelEl),
     noteEl,
+    srcBannerEl,
+    tiePanel,
   ));
 }
 
@@ -201,6 +238,7 @@ export function syncControls(p) {
   const win = custom ? null : (p.window || 'launch');
   presetBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.window === win)));
   syncStageChips(p);
+  syncSource(p);
   activeBtn.setAttribute('aria-pressed', String(p.active === '1'));
   activeCountEl.textContent = '';
   fromEl.value = custom ? p.from : '';
@@ -222,6 +260,24 @@ export function syncControls(p) {
   }
 }
 
+const META_SUMMARY = "Numbers: Meta's own reporting. Purchases and revenue are what Meta attributes to each ad (returning customers included). Switch to Upstack to read the same ads on Upstack's attribution.";
+const sourceUp = () => !!(status && status.sources && status.sources.upstack);
+// the switch, the Count sub-switch (Upstack only) and the one-line statement of what the numbers are; the text is refined by every response's window_info.source
+function setSrcText(strong, text) { srcTextEl.replaceChildren(...[strong ? h('strong', null, strong) : null, text].filter(Boolean)); }
+function syncSource(p) {
+  srcFromParams(p);
+  const up = srcView.key === 'upstack';
+  for (const [k, b] of Object.entries(srcBtns)) b.setAttribute('aria-pressed', String(k === srcView.key));
+  for (const [k, b] of Object.entries(basisBtns)) b.setAttribute('aria-pressed', String(k === (srcView.basis || 'nc')));
+  basisCtl.hidden = !up;
+  const avail = !sourceUp() || status.sources.upstack.available;
+  srcBtns.upstack.disabled = !avail && !up;
+  srcBtns.upstack.title = avail ? "Upstack's attribution: new customers or all orders credited to each ad (any-click, 30-day window)" : 'Upstack data is not loaded yet';
+  srcBtns.meta.title = "Meta's own reporting (as the ad platform attributes purchases)";
+  srcBannerEl.className = 'source-banner ' + srcView.key + (srcBannerEl.classList.contains('open') ? ' open' : '');
+  setSrcText(up ? srcView.label + '. ' : null, up ? (srcView.summary || '') : META_SUMMARY);
+}
+
 function rangeText(info) {
   if (!info) return '';
   if (info.kind === 'launch' || !info.from) return info.label || '';
@@ -233,6 +289,10 @@ function rangeText(info) {
 // a = window_info, b = compare_info (or null). opts.unclassified: the window has unclassified spend (shows that chip)
 export function setRangeInfo(p, a, b, { unclassified = false } = {}) {
   applyCompareState(p, a, b);
+  if (a && a.source) { applySourceState(a); if (srcView.key === 'upstack') setSrcText(srcView.label + '. ', `${srcView.summary || ''} ${srcView.note || ''}`.trim()); else setSrcText(null, META_SUMMARY); }
+  const foot = document.getElementById('source');
+  if (foot && a && a.source && a.source.key === 'upstack') foot.textContent = `Numbers: Upstack attribution (${a.source.model}), through ${fmt.day(a.source.through)}; spend, clicks and impressions: Meta Marketing API.`;
+  else if (foot && status) foot.textContent = 'Source: Meta Marketing API' + (status.last_refresh && status.last_refresh.finished_at ? ', refreshed ' + fmt.dateTime(status.last_refresh.finished_at) : '') + (status.data_through ? ' · data through ' + fmt.day(status.data_through) : '');
   if (unclassified !== uncVisible) { uncVisible = unclassified; syncStageChips(p); }
   perDayWrap.hidden = !cmpView.on;
   perDayCb.checked = cmpView.perDay;

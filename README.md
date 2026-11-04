@@ -4,6 +4,7 @@ Railway web app + Postgres: drill product → market cluster → ICP → pain po
 
 - `docs/CONTRACT.md` build contract (metric rules, HTTP contract, ETL jobs)
 - `docs/DEPLOY.md` deploy, daily refresh, secrets, backup/restore, rollback, cost
+- `docs/UPSTACK_SOURCE.md` the Meta | Upstack source switch: what Upstack mode counts, how it is built, backfill and daily job, tie-out
 
 ## Layout
 
