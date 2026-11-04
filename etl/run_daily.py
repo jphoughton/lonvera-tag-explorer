@@ -97,7 +97,7 @@ def run(days=7, source="auto", snapshot_dir=None, until=None) -> dict:
                 r.stats = st
                 r.rows_written = st["inserted"]
             return {"ads": st["ads"], "spend": st["spend"]}
-        if source != "sheet" and meta_error != "meta token rejected":       # a rejected token already failed the daily pull; don't retry the heavy call
+        if source != "sheet" and not meta_error:                           # the daily pull already failed (token / rate limit): don't pile the heavy call on top
             try:
                 step("lifetime", s_lifetime, results)
             except Exception as e:                                          # noqa: BLE001

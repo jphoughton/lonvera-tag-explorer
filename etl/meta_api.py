@@ -188,10 +188,11 @@ def fetch_ad_meta(tok, ad_ids: list[str], batch: int = 50, pace: float = 0.6) ->
 LIFETIME_FIELDS = "ad_id,ad_name,campaign_id,campaign_name,adset_id,adset_name,spend,impressions,actions,action_values,inline_link_clicks,date_start,date_stop"
 
 
-def pull_lifetime(tok, acct, an, earliest: dt.date = dt.date(2023, 1, 1), today: dt.date | None = None) -> list[dict]:
+def pull_lifetime(tok, acct, an, earliest: dt.date | None = None, today: dt.date | None = None) -> list[dict]:
     """All-time ad-level insights (one row per ad). Tries date_preset=maximum synchronously, then the async flow when Meta says the request is too big;
     if `maximum` itself is rejected it falls back to an explicit time_range from `earliest`."""
     today = today or dt.date.today()
+    earliest = earliest or today - dt.timedelta(days=36 * 30)        # Meta rejects start dates beyond 37 months (code 3018)
     base = {"level": "ad", "fields": LIFETIME_FIELDS}
     attempts = [{"date_preset": "maximum"},
                 {"time_range": json.dumps({"since": earliest.isoformat(), "until": today.isoformat()})}]
@@ -199,17 +200,24 @@ def pull_lifetime(tok, acct, an, earliest: dt.date = dt.date(2023, 1, 1), today:
     for a in attempts:
         params = {"access_token": tok, "limit": 500, **base, **a,
                   "filtering": json.dumps([{"field": "spend", "operator": "GREATER_THAN", "value": 0}])}
-        try:
+        rows = None
+        for attempt in (1, 2, 3):                                        # async jobs fail transiently under load: retry before changing strategy
             try:
-                rows = _paged(f"{G}/{acct}/insights", params, f"{an} lifetime")
-            except TooBig:
-                db.log(f"  {an} lifetime too big for the sync call -> async report")
-                rows = _async_report(tok, acct, an, {**base, **a})
-        except TokenRejected:
-            raise
-        except GraphError as e:
-            last = e
-            db.log(f"  {an} lifetime attempt {list(a)[0]} failed: {db.scrub(e)[:140]}")
+                try:
+                    rows = _paged(f"{G}/{acct}/insights", params, f"{an} lifetime")
+                except TooBig:
+                    db.log(f"  {an} lifetime too big for the sync call -> async report (attempt {attempt})")
+                    rows = _async_report(tok, acct, an, {**base, **a})
+                break
+            except TokenRejected:
+                raise
+            except GraphError as e:
+                last = e
+                db.log(f"  {an} lifetime {list(a)[0]} attempt {attempt} failed: {db.scrub(e)[:140]}")
+                if "async" not in str(e) or attempt == 3:
+                    break
+                time.sleep(60 * attempt)
+        if rows is None:
             continue
         for r in rows:
             r["account"] = an

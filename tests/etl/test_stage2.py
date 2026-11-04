@@ -229,3 +229,20 @@ def test_verify_api_sql_checks_pass_on_consistent_data(conn, tmp_path):
     ck = verify_api.Checks()
     verify_api.check_consistency(conn, ck)
     assert not ck.failed, ck.rows
+
+
+def test_run_daily_runs_lifetime_after_meta_and_fails_loudly_if_it_breaks(conn, tmp_path, monkeypatch):
+    from etl import lifetime_pull
+    snap = seed(conn, tmp_path)
+    order = []
+    monkeypatch.setattr(meta_pull, "pull_into_db", lambda *a, **k: order.append("meta") or {"chunks_failed": [], "chunks_loaded": 1, "rows_inserted": 0, "_pulled": {}})
+    monkeypatch.setattr(lifetime_pull, "run", lambda c, **k: order.append("lifetime") or {"ads": 0, "spend": 0, "inserted": 0})
+    res = run_daily.run(days=2, source="auto", snapshot_dir=str(snap), until=D(2026, 10, 31))
+    assert order == ["meta", "lifetime"] and res["lifetime"]["ok"] and res["build_metrics"]["ok"]
+
+    def broken(c, **k):
+        raise meta_api.RateLimited("80004 gave up")
+    monkeypatch.setattr(lifetime_pull, "run", broken)
+    with pytest.raises(db_mod.JobFailed, match="lifetime pull failed"):
+        run_daily.run(days=2, source="auto", snapshot_dir=str(snap), until=D(2026, 10, 31))
+    assert conn.execute("SELECT status FROM etl_runs WHERE job='build_metrics' ORDER BY id DESC LIMIT 1").fetchone()[0] == "ok"      # metrics still rebuilt

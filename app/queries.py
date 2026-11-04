@@ -10,6 +10,7 @@ Conventions
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 from dataclasses import dataclass
 from decimal import Decimal
@@ -40,7 +41,9 @@ GROUP_COLS = {"cluster": ("cluster",), "icp": ("cluster", "icp"), "pain": ("clus
 UNTAGGED = "(untagged)"
 TAG_LABELS = {"linemap": "Line-mapped tags", "tracker": "Tracker tags — not line-mapped yet"}
 CONF_NAME = {1: "low", 2: "medium", 3: "high"}
-GLOBAL_RELIABILITY = "Blind re-tag agreement overall: line 79%, ICP 84%, cluster 88%."
+# Blind re-tag agreement per product lives in app_meta `reliability:<slug>` (JSON written by etl.load_tags). Vita Bull falls back to its
+# original numbers when the key is missing; any other product without numbers gets a note with no percentages.
+_VB_RELIABILITY = {"overall": {"line": 0.79, "icp": 0.84, "cluster": 0.88}, "by_confidence": {"high": {"line": 0.93}, "low": {"line": 0.52}}}
 
 # --------------------------------------------------------------------------------------------------------------------
 # small pure helpers
@@ -1443,20 +1446,38 @@ def unmatched(conn, meta: DataMeta, w: WindowSpec, product: dict) -> dict:
 # --------------------------------------------------------------------------------------------------------------------
 
 
-def reliability_note(method: str | None, confidence: str | None) -> str:
+def _whole_pct(v) -> int:
+    return int(float(v) * 100 + 0.5)
+
+
+def reliability_stats(conn, slug: str) -> dict | None:
+    """The product's own blind re-tag agreement numbers (app_meta `reliability:<slug>`), None when there are none."""
+    r = row_of(conn, "SELECT value FROM app_meta WHERE key = %s", (f"reliability:{slug}",))
+    if r:
+        try:
+            v = json.loads(r["value"])
+            if isinstance(v, dict):
+                return v
+        except (TypeError, ValueError):
+            pass
+    return _VB_RELIABILITY if slug == "vita-bull" else None
+
+
+def reliability_note(method: str | None, confidence: str | None, stats: dict | None = None) -> str:
     parts = []
     m = (method or "").lower()
-    if "text only" in m:
+    if "text only" in m or "copy only" in m:
         parts.append("Tagged from copy only (no image).")
     elif "thumbnail" in m and "no audio" in m and "frames" not in m:
         parts.append("Tagged from a thumbnail only.")
-    if confidence == "low":
-        parts.append("Low confidence — blind re-tag agreed ~52%.")
-    elif confidence == "high":
-        parts.append("High confidence — blind re-tag agreed ~93%.")
-    elif confidence == "medium":
-        parts.append("Medium confidence.")
-    parts.append(GLOBAL_RELIABILITY)
+    by_conf = (stats or {}).get("by_confidence") or {}
+    label = {"low": "Low", "medium": "Medium", "high": "High"}.get(confidence or "")
+    if label:
+        line = (by_conf.get(confidence) or {}).get("line")
+        parts.append(f"{label} confidence — blind re-tag agreed ~{_whole_pct(line)}%." if line is not None else f"{label} confidence.")
+    ov = (stats or {}).get("overall") or {}
+    if all(ov.get(k) is not None for k in ("line", "icp", "cluster")):
+        parts.append(f"Blind re-tag agreement overall: line {_whole_pct(ov['line'])}%, ICP {_whole_pct(ov['icp'])}%, cluster {_whole_pct(ov['cluster'])}%.")
     return " ".join(parts)
 
 
@@ -1509,7 +1530,7 @@ def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
             "emotional_trigger": tg["emotional_trigger"] or tg["tl_trigger"], "confidence": tg["confidence"], "method": tg["method"],
             "seen": tg["seen"], "why": tg["why"], "runner_up": tg["runner_up"],
             "copy_only_line": _copy_only(tg["copy_only_line"], lines),
-            "reliability_note": reliability_note(tg["method"], tg["confidence"]) if tg["tag_set"] == "linemap" else None,
+            "reliability_note": reliability_note(tg["method"], tg["confidence"], reliability_stats(conn, r["slug"])) if tg["tag_set"] == "linemap" else None,
         }
         if tg["tl_id"]:
             ing = rows_of(conn, "SELECT ingredient, attacks, supports FROM line_ingredients WHERE line_id = %s ORDER BY sort_order, id", (tg["tl_id"],))
