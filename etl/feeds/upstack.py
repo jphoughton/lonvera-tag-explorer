@@ -167,7 +167,7 @@ FEEDS = [
          sheet_tab="Orders - History", sheet_parser=("etl.projection_pacing", "parse_orders")),
     Feed("platform", "Google and TikTok spend (Upstack)", "upstack", "proj_feed_platform", "proj_feedx_platform",
          ("day", "platform", "spend", "purchases", "purchase_value", "nc_purchases", "nc_purchase_value", "link_clicks", "clicks"), ("day", "platform"),
-         "day", pull=pull_platform, days=14,
+         "day", pull=pull_platform, days=14, settle_days=14,       # Google Ads restates conversion value for days after the day (Oct 30 moved +7.8% five days later)
          metrics=(Metric("spend", 1.0, 0.005), Metric("purchases", 1.0, 0.005), Metric("purchase_value", 1.0, 0.005), Metric("nc_purchases", 1.0, 0.005),
                   Metric("nc_purchase_value", 1.0, 0.005), Metric("link_clicks", 2.0, 0.005), Metric("clicks", 2.0, 0.005)),
          sheet_tab="Platform - History", sheet_parser=("etl.projection_pacing", "parse_platform")),
