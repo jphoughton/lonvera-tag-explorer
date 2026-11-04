@@ -91,6 +91,7 @@ class DataMeta:
     daily_start: dt.date
     lifetime_cutoff: dt.date
     data_through: dt.date
+    impressions_from: dt.date | None = None      # first day with impression data (None = none loaded yet)
 
 
 def load_meta(conn) -> DataMeta:
@@ -104,10 +105,12 @@ def load_meta(conn) -> DataMeta:
             raise NotLoaded()
         through = through or mm["hi"].isoformat()
         start = start or mm["lo"].isoformat()
+    first_imp = row_of(conn, "SELECT min(day) AS d FROM family_daily WHERE impressions > 0")
     return DataMeta(
         daily_start=dt.date.fromisoformat(start),
         lifetime_cutoff=dt.date.fromisoformat(kv.get("lifetime_cutoff") or "2026-09-17"),
         data_through=dt.date.fromisoformat(through),
+        impressions_from=first_imp["d"] if first_imp else None,
     )
 
 
@@ -144,12 +147,32 @@ class WindowSpec:
     def stages(self) -> list[str]:
         return list(STAGES) if self.stage == "all" else self.stage.split(",")
 
+    def traffic_note(self, meta: DataMeta) -> str | None:
+        """Why impressions / clicks / CTR / CPC / CPM may cover less than spend does."""
+        parts = []
+        start = meta.daily_start
+        if self.is_launch:
+            parts.append(f"Impressions, clicks, CTR and CPC cover days from {_fmt_day(meta.daily_start, False)} only")
+        elif self.date_from is not None:
+            start = self.date_from
+        if self.is_empty:
+            return None
+        if meta.impressions_from is None:
+            parts.append("no impressions are loaded yet" if self.is_launch else "No impressions are loaded yet")
+        elif meta.impressions_from > start:
+            parts.append(f"impressions from {_fmt_day(meta.impressions_from, False)}" if self.is_launch
+                         else f"Impressions only from {_fmt_day(meta.impressions_from, False)}")
+        if not parts:
+            return None
+        return "; ".join(parts) + "."
+
     def info(self, meta: DataMeta) -> dict:
+        note = " ".join(x for x in (self.note, self.traffic_note(meta)) if x) or None
         return {
             "kind": self.kind, "name": self.name, "label": self.label,
             "from": self.date_from.isoformat() if self.date_from else None,
             "to": self.date_to.isoformat() if self.date_to else None,
-            "days": self.days, "clamped": self.clamped, "note": self.note, "stage": self.stage, "stages": self.stages,
+            "days": self.days, "clamped": self.clamped, "note": note, "stage": self.stage, "stages": self.stages,
             "daily_start": meta.daily_start.isoformat(), "data_through": meta.data_through.isoformat(),
         }
 

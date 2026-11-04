@@ -179,8 +179,28 @@ export function createTable(opts) {
     table.append(tbody);
     if (total) table.append(h('tfoot', totalRow()));
     const st = wrap.scrollTop, sl = wrap.scrollLeft;
+    // keep keyboard focus on the same row / caret / header button across a re-render
+    const ae = document.activeElement;
+    let refocus = null;
+    if (ae && wrap.contains(ae)) {
+      const tr = ae.closest('tbody tr[data-key]');
+      const th = ae.closest('thead th');
+      if (tr) refocus = { row: tr.dataset.key, sel: ae === tr ? null : (ae.classList.contains('caret') ? 'button.caret' : null) };
+      else if (th) refocus = { head: th.dataset.col, sel: ae.classList.contains('deltabtn') ? 'button.deltabtn' : 'button.thbtn' };
+    }
     wrap.replaceChildren(table);
     wrap.scrollTop = st; wrap.scrollLeft = sl;
+    if (refocus) {
+      let target = null;
+      if (refocus.row != null) {
+        const tr = [...table.querySelectorAll('tbody tr[data-key]')].find((x) => x.dataset.key === refocus.row);
+        target = tr ? (refocus.sel ? tr.querySelector(refocus.sel) : tr) : null;
+      } else {
+        const th = [...table.querySelectorAll('thead th')].find((x) => x.dataset.col === refocus.head);
+        target = th ? th.querySelector(refocus.sel) : null;
+      }
+      if (target) target.focus({ preventScroll: true });
+    }
 
     foot.replaceChildren();
     if (list.length > shown.length) {
