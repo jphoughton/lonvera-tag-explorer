@@ -1,5 +1,5 @@
 // App header (Back, brand, data-through, logout) and the global range / stage / compare controls. State lives in the URL.
-import { h, navigate, setParams, href, globalParams, fmt, isNum, currentParams, stageSet, stageParam, STAGES, hasDateWindow, compareOn, cmpView, applyCompareState, refreshCmp, qs, cleanParams, srcFromParams, applySourceState, srcView } from './util.js';
+import { h, navigate, setParams, href, globalParams, fmt, isNum, currentParams, stageSet, stageParam, STAGES, hasDateWindow, compareOn, cmpView, applyCompareState, refreshCmp, qs, cleanParams, srcFromParams, applySourceState, srcView, currentPlatform, refreshSrcBadges } from './util.js';
 import { loadTieout } from './tieout.js';
 import { api, AuthError } from './api.js';
 
@@ -12,8 +12,9 @@ let cmpSel, cfromEl, ctoEl, cmpCustomBox, perDayWrap, perDayCb, cerrEl;
 let presetBtns = [], stageBtns = {};
 let activeBtn, activeCountEl;
 let srcBtns = {}, basisBtns = {}, basisCtl, srcBannerEl, srcTextEl, tieBtn, tiePanel;
-let channelBtns = {}, stageCtl;
-const isGoogle = () => /^\/google\/?$/.test(location.pathname);
+let srcCtl, srcBtns2 = {}, basisBtns2 = {}, srcCtl2, basisCtl2;      // the same Numbers-from switch a second time, inside the banner row next to the explanation and the tie-out button
+let platformBtns = {}, stageCtl;
+const isGoogle = () => currentPlatform() === 'google';
 let status = null;
 let uncVisible = false;
 let pendingNote = null;
@@ -89,25 +90,33 @@ export function buildShell({ onBack }) {
   perDayCb.addEventListener('change', onPerDay);
   perDayWrap = h('label', { class: 'check', id: 'perday-wrap', hidden: true }, perDayCb, ' Per day');
 
-  channelBtns = {};
-  for (const [key, text] of [['meta', 'Meta'], ['google', 'Google']]) {
-    const b = h('button', { type: 'button', class: 'seg', 'data-channel': key, 'aria-pressed': String(key === 'meta') }, text);
-    b.addEventListener('click', () => goChannel(key));
-    channelBtns[key] = b;
+  platformBtns = {};
+  for (const [key, text, title] of [['all', 'All', 'Every platform side by side'], ['meta', 'Meta', 'Meta: products, tags, creatives and campaigns'], ['google', 'Google', 'Google: campaign types and campaigns']]) {
+    const b = h('button', { type: 'button', class: 'seg', 'data-platform': key, 'aria-pressed': String(key === 'meta'), title }, text);
+    b.addEventListener('click', () => goPlatform(key));
+    platformBtns[key] = b;
   }
-  srcBtns = {};
-  for (const [key, text] of [['meta', 'Meta'], ['upstack', 'Upstack']]) {
-    const b = h('button', { type: 'button', class: 'seg', 'data-source': key, 'aria-pressed': String(key === 'meta') }, text);
-    b.addEventListener('click', () => setParams({ source: key === 'upstack' ? 'upstack' : null, basis: null }));
-    srcBtns[key] = b;
-  }
-  basisBtns = {};
-  for (const [key, text] of [['nc', 'New customers'], ['all', 'All orders']]) {
-    const b = h('button', { type: 'button', class: 'seg', 'data-basis': key, 'aria-pressed': String(key === 'nc') }, text);
-    b.addEventListener('click', () => setParams({ basis: key === 'all' ? 'all' : null }));
-    basisBtns[key] = b;
-  }
+  // Numbers from (Meta | Upstack) and Count (New customers | All orders): built twice, once in the controls bar and once beside the explanation row; both read and write the URL
+  const sourceSegs = (inline) => {
+    const btns = {}, bb = {};
+    for (const [key, text] of [['meta', 'Meta'], ['upstack', 'Upstack']]) {
+      const b = h('button', { type: 'button', class: 'seg', [inline ? 'data-src-inline' : 'data-source']: key, 'aria-pressed': String(key === 'meta') }, text);
+      b.addEventListener('click', () => setParams({ source: key === 'upstack' ? 'upstack' : null, basis: null }));
+      btns[key] = b;
+    }
+    for (const [key, text] of [['nc', 'New customers'], ['all', 'All orders']]) {
+      const b = h('button', { type: 'button', class: 'seg', [inline ? 'data-basis-inline' : 'data-basis']: key, 'aria-pressed': String(key === 'nc') }, text);
+      b.addEventListener('click', () => setParams({ basis: key === 'all' ? 'all' : null }));
+      bb[key] = b;
+    }
+    return { btns, bb };
+  };
+  const top = sourceSegs(false), inl = sourceSegs(true);
+  srcBtns = top.btns; basisBtns = top.bb; srcBtns2 = inl.btns; basisBtns2 = inl.bb;
+  srcCtl = h('div', { class: 'ctl', id: 'source-ctl' }, h('span', { class: 'ctl-name' }, 'Numbers from'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Data source' }, Object.values(srcBtns)));
   basisCtl = h('div', { class: 'ctl', id: 'basis-ctl', hidden: true }, h('span', { class: 'ctl-name' }, 'Count'), h('span', { class: 'segs', role: 'group', 'aria-label': 'What Upstack counts' }, Object.values(basisBtns)));
+  srcCtl2 = h('div', { class: 'ctl', id: 'source-ctl-inline' }, h('span', { class: 'ctl-name' }, 'Numbers from'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Data source (next to the explanation)' }, Object.values(srcBtns2)));
+  basisCtl2 = h('div', { class: 'ctl', id: 'basis-ctl-inline', hidden: true }, h('span', { class: 'ctl-name' }, 'Count'), h('span', { class: 'segs', role: 'group', 'aria-label': 'What Upstack counts (next to the explanation)' }, Object.values(basisBtns2)));
   srcTextEl = h('span', { class: 'src-text', id: 'src-text' });
   tieBtn = h('button', { type: 'button', class: 'btn small', id: 'tieout-btn', 'aria-expanded': 'false' }, 'Meta vs Upstack tie-out');
   tiePanel = h('div', { class: 'tieout', id: 'tieout-panel', hidden: true });
@@ -124,15 +133,15 @@ export function buildShell({ onBack }) {
     moreBtn.textContent = open ? 'Less' : 'More';
     moreBtn.setAttribute('aria-expanded', String(open));
   });
-  srcBannerEl = h('div', { class: 'source-banner meta', id: 'source-banner' }, srcTextEl, moreBtn, tieBtn);
+  srcBannerEl = h('div', { class: 'source-banner meta', id: 'source-banner' }, srcTextEl, srcCtl2, basisCtl2, moreBtn, tieBtn);       // the switch sits right before the tie-out button, where the eye is on a wide window
 
   labelEl = h('strong', { class: 'range-label', id: 'range-label' });
   noteEl = h('div', { class: 'range-note', id: 'range-note' });
 
   controls.replaceChildren(h('div', { class: 'controls-in' },
     h('div', { class: 'ctl-row' },
-      h('div', { class: 'ctl', id: 'channel-ctl' }, h('span', { class: 'ctl-name' }, 'Channel'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Channel' }, Object.values(channelBtns))),
-      h('div', { class: 'ctl', id: 'source-ctl' }, h('span', { class: 'ctl-name' }, 'Numbers from'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Data source' }, Object.values(srcBtns))),
+      h('div', { class: 'ctl', id: 'platform-ctl' }, h('span', { class: 'ctl-name' }, 'Platform'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Platform' }, Object.values(platformBtns))),
+      srcCtl,
       basisCtl,
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Range'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Date range' }, presetBtns)),
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Custom'), fromEl, h('span', { class: 'muted' }, '–'), toEl, apply, errEl),
@@ -247,7 +256,7 @@ export function syncControls(p) {
   const win = custom ? null : (p.window || 'launch');
   presetBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.window === win)));
   syncStageChips(p);
-  syncChannel();
+  syncPlatform();
   syncSource(p);
   activeBtn.setAttribute('aria-pressed', String(p.active === '1'));
   activeCountEl.textContent = '';
@@ -270,36 +279,71 @@ export function syncControls(p) {
   }
 }
 
-// Channel switch: Meta pages (/) and Google (/google). The range, comparison and numbers choice carry over; stage, Active only and the chart picks are Meta-only.
+// Platform = the top-level choice: All (overview), Meta (products / tags / creatives / campaigns) or Google (campaign types / campaigns). The range, comparison and
+// numbers choice carry over; stage, Active only and the chart picks exist on Meta only. On a Campaigns page the switch keeps you on Campaigns.
 const META_ONLY_KEYS = ['stage', 'active', 'tb', 'tl', 'tg', 'ts'];
-function goChannel(key) {
+function goPlatform(key) {
   const p = { ...globalParams(currentParams()) };
-  for (const k of META_ONLY_KEYS) delete p[k];
-  navigate(href(key === 'google' ? '/google' : '/', p));
+  if (key !== 'meta') for (const k of META_ONLY_KEYS) delete p[k];
+  p.platform = key === 'meta' ? null : key;
+  const onCampaigns = /^\/campaigns\/?$/.test(location.pathname);
+  navigate(href(onCampaigns && key !== 'all' ? '/campaigns' : '/', p));
 }
-function syncChannel() {
-  const g = isGoogle();
-  for (const [k, b] of Object.entries(channelBtns)) b.setAttribute('aria-pressed', String(k === (g ? 'google' : 'meta')));
-  if (stageCtl) stageCtl.hidden = g;
-  if (tieBtn) { tieBtn.hidden = g; if (g) { tiePanel.hidden = true; tieBtn.setAttribute('aria-expanded', 'false'); } }
-  if (srcBtns.meta) { srcBtns.meta.textContent = g ? 'Google' : 'Meta'; srcBtns.meta.title = g ? "Google's own reporting, delivered through Upstack's ad-platform feed" : "Meta's own reporting (as the ad platform attributes purchases)"; }
+function syncPlatform() {
+  const pl = currentPlatform();
+  for (const [k, b] of Object.entries(platformBtns)) b.setAttribute('aria-pressed', String(k === pl));
+  const st = status && status.sources && status.sources.platforms;
+  const g = st && st.find((x) => x.key === 'google');
+  if (platformBtns.google) { platformBtns.google.disabled = !!(g && !g.available) && pl !== 'google'; platformBtns.google.title = g && !g.available ? 'Google data is not loaded yet' : 'Google: campaign types and campaigns'; }
+  if (stageCtl) stageCtl.hidden = pl !== 'meta';
+  if (tieBtn) { tieBtn.hidden = pl !== 'meta'; if (pl !== 'meta') { tiePanel.hidden = true; tieBtn.setAttribute('aria-expanded', 'false'); } }
+  const all = pl === 'all';
+  for (const el of [srcCtl, srcCtl2]) if (el) el.hidden = all;
+  for (const set of [srcBtns, srcBtns2]) if (set.meta) { set.meta.textContent = pl === 'google' ? 'Google' : 'Meta'; set.meta.title = pl === 'google' ? "Google's own reporting, delivered through Upstack's ad-platform feed" : "Meta's own reporting (as the ad platform attributes purchases)"; }
 }
 
+const ALL_SUMMARY = "Every platform side by side: each platform's own reporting, then Upstack's any-click attribution (30-day window) on new customers and on all orders. Spend, clicks and impressions are the platform's in every row. Platforms credit the same order to each ad clicked, so do not add purchases across platforms.";
 const META_SUMMARY = "Numbers: Meta's own reporting. Purchases and revenue are what Meta attributes to each ad (returning customers included). Switch to Upstack to read the same ads on Upstack's attribution.";
 const sourceUp = () => !!(status && status.sources && status.sources.upstack);
-// the switch, the Count sub-switch (Upstack only) and the one-line statement of what the numbers are; the text is refined by every response's window_info.source
-function setSrcText(strong, text) { srcTextEl.replaceChildren(...[strong ? h('strong', null, strong) : null, text].filter(Boolean)); }
+// the switch, the Count sub-switch (Upstack only) and the one-line statement of what the numbers are; the text is refined by every response's window_info.source.
+// The words "Switch to Upstack" in the statement are a working button (so are the matching words on the Upstack side).
+const sourceAvailable = () => !sourceUp() || status.sources.upstack.available;
+function srcFlip(toUpstack, label) {
+  const b = h('button', { type: 'button', class: 'linkbtn', 'data-testid': 'switch-source', 'data-to': toUpstack ? 'upstack' : 'meta' }, label);
+  b.addEventListener('click', () => setParams(toUpstack ? { source: 'upstack', basis: null } : { source: null, basis: null }));
+  return b;
+}
+function setSrcText(strong, text) {
+  const all = currentPlatform() === 'all';
+  const up = srcView.key === 'upstack';
+  const own = isGoogle() ? 'Google’s own numbers' : 'Meta’s own numbers';
+  const parts = [strong ? h('strong', null, strong) : null];
+  const t = String(text || '');
+  const at = t.indexOf('Switch to Upstack');
+  if (all) parts.push(t);
+  else if (!up && at >= 0 && sourceAvailable()) parts.push(t.slice(0, at), srcFlip(true, 'Switch to Upstack'), t.slice(at + 'Switch to Upstack'.length));
+  else {
+    parts.push(t.replace(/\s*Switch to Upstack[^.]*\./, ''));
+    if (up) parts.push(' ', srcFlip(false, 'Switch to ' + own));
+    else if (sourceAvailable()) parts.push(' ', srcFlip(true, 'Switch to Upstack'));
+  }
+  srcTextEl.replaceChildren(...parts.filter((x) => x !== null && x !== ''));
+  refreshSrcBadges();
+}
 function syncSource(p) {
   srcFromParams(p);
   const up = srcView.key === 'upstack';
-  for (const [k, b] of Object.entries(srcBtns)) b.setAttribute('aria-pressed', String(k === srcView.key));
-  for (const [k, b] of Object.entries(basisBtns)) b.setAttribute('aria-pressed', String(k === (srcView.basis || 'nc')));
-  basisCtl.hidden = !up;
-  const avail = !sourceUp() || status.sources.upstack.available;
-  srcBtns.upstack.disabled = !avail && !up;
-  srcBtns.upstack.title = avail ? "Upstack's attribution: new customers or all orders credited to each ad (any-click, 30-day window)" : 'Upstack data is not loaded yet';
-  srcBannerEl.className = 'source-banner ' + srcView.key + (srcBannerEl.classList.contains('open') ? ' open' : '');
-  setSrcText(up ? srcView.label + '. ' : null, up ? (srcView.summary || '') : (isGoogle() ? (srcView.summary || "Google's own reporting, delivered through Upstack's ad-platform feed.") : META_SUMMARY));
+  const pl = currentPlatform();
+  for (const set of [srcBtns, srcBtns2]) for (const [k, b] of Object.entries(set)) b.setAttribute('aria-pressed', String(k === srcView.key));
+  for (const set of [basisBtns, basisBtns2]) for (const [k, b] of Object.entries(set)) b.setAttribute('aria-pressed', String(k === (srcView.basis || 'nc')));
+  for (const c of [basisCtl, basisCtl2]) c.hidden = !up || pl === 'all';
+  const avail = sourceAvailable();
+  for (const set of [srcBtns, srcBtns2]) {
+    set.upstack.disabled = !avail && !up;
+    set.upstack.title = avail ? "Upstack's attribution: new customers or all orders credited to each " + (pl === 'google' ? 'campaign' : 'ad') + ' (any-click, 30-day window)' : 'Upstack data is not loaded yet';
+  }
+  srcBannerEl.className = 'source-banner ' + (pl === 'all' ? 'meta' : srcView.key) + (srcBannerEl.classList.contains('open') ? ' open' : '');
+  setSrcText(pl === 'all' ? null : (up ? srcView.label + '. ' : null), pl === 'all' ? ALL_SUMMARY : (up ? (srcView.summary || '') : (pl === 'google' ? (srcView.summary || "Google's own reporting, delivered through Upstack's ad-platform feed.") : META_SUMMARY)));
 }
 
 function rangeText(info) {
@@ -315,7 +359,10 @@ export function setRangeInfo(p, a, b, { unclassified = false } = {}) {
   applyCompareState(p, a, b);
   if (a && a.source) { applySourceState(a); if (srcView.key === 'upstack') setSrcText(srcView.label + '. ', `${srcView.summary || ''} ${srcView.note || ''}`.trim()); else setSrcText(null, a.source.summary || META_SUMMARY); }
   const foot = document.getElementById('source');
-  if (foot && a && a.source && a.source.key === 'upstack') foot.textContent = `Numbers: Upstack attribution (${a.source.model}), through ${fmt.day(a.source.through)}; spend, clicks and impressions: Meta Marketing API.`;
+  const pl = currentPlatform();
+  if (foot && pl === 'all') foot.textContent = 'Sources: Meta Marketing API for Meta; Upstack (Google Ads feed and any-click attribution) for Google and for the Upstack rows' + (status && status.data_through ? ' · Meta data through ' + fmt.day(status.data_through) : '');
+  else if (foot && pl === 'google' && a && a.source) foot.textContent = `Source: Upstack, Google Ads feed${a.source.key === 'upstack' ? ` and attribution (${a.source.model})` : ''}, through ${fmt.day(a.source.through)}; spend, clicks and impressions are Google's.`;
+  else if (foot && a && a.source && a.source.key === 'upstack') foot.textContent = `Numbers: Upstack attribution (${a.source.model}), through ${fmt.day(a.source.through)}; spend, clicks and impressions: Meta Marketing API.`;
   else if (foot && status) foot.textContent = 'Source: Meta Marketing API' + (status.last_refresh && status.last_refresh.finished_at ? ', refreshed ' + fmt.dateTime(status.last_refresh.finished_at) : '') + (status.data_through ? ' · data through ' + fmt.day(status.data_through) : '');
   if (unclassified !== uncVisible) { uncVisible = unclassified; syncStageChips(p); }
   perDayWrap.hidden = !cmpView.on;

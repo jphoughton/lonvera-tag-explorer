@@ -105,6 +105,12 @@ def goto_product(page, params=""):
     wait_rows(page)
 
 
+def goto_home(page, params=""):
+    """the Meta landing page (Products table) of the Marketing metrics section"""
+    page.goto(f"/{params}")
+    page.locator("[data-testid=products-table] tbody tr").first.wait_for()
+
+
 def first_row(page):
     return page.locator(BODY_ROWS).first
 
@@ -3014,14 +3020,15 @@ def test_ad_detail_copy_only_pick_has_no_dangling_separator_and_ads_table_has_tr
     page.wait_for_function("() => document.querySelectorAll('[data-testid=ads-table] tbody tr[data-key] svg.spark').length > 0", timeout=8000)
 
 
-@pytest.mark.parametrize("width", [390, 768, 1024, 1440])
+@pytest.mark.parametrize("width", [390, 768, 1024, 1440, 2100])
 def test_pages_never_scroll_horizontally_at_page_level(page, width):
     """phone to desktop: only tables may scroll sideways inside their own box, never the page (/, a product, Campaigns, Ads, compare, the ad page)"""
     page.set_viewport_size({"width": 1440, "height": 900})
     ad_path = ad_page_url(page)
     page.set_viewport_size({"width": width, "height": 800})
     paths = ["/", f"/p/{SLUG}", f"/p/{SLUG}?view=campaigns&window=30d", f"/p/{SLUG}?view=ads&window=30d", f"/p/{SLUG}?window=7d&compare=prev&stage=testing",
-             f"/p/{SLUG}?all=1&window=30d", f"{ad_path}?window=30d&compare=prev", "/?window=7d&compare=30d"]
+             f"/p/{SLUG}?all=1&window=30d", f"{ad_path}?window=30d&compare=prev", "/?window=7d&compare=30d",
+             "/campaigns?window=30d", "/?platform=all&window=30d", "/?platform=google&window=30d", "/campaigns?platform=google&window=30d"]
     for path in paths:
         page.goto(path)
         page.wait_for_selector(".tablebox, #family-metrics")
@@ -3100,44 +3107,182 @@ def test_not_tested_bar_toggle_and_panel(page):
     shot(page, "10_not_tested")
 
 
-# ------------------------------------------------------------------ channel Google
+# ------------------------------------------------------------------ platforms: Platform picker, Google, All, platform-level Campaigns
+def platform_btn(page, key):
+    return page.locator(f"#platform-ctl [data-platform={key}]")
+
+
 @pytest.mark.mock_only
-def test_channel_switch_and_google_page(page):
+def test_platform_picker_google_page_and_back(page):
     goto_product(page, "?window=14d&stage=scaling")
-    chan = lambda k: page.locator(f"#channel-ctl [data-channel={k}]")                                  # noqa: E731
-    expect(chan("meta")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#platform-ctl .ctl-name")).to_have_text("Platform")
+    assert page.evaluate("() => document.querySelector('#controls .ctl-row .ctl').id") == "platform-ctl"          # first control of the bar
+    assert [b.get_attribute("data-platform") for b in page.locator("#platform-ctl .seg").all()] == ["all", "meta", "google"]
+    expect(platform_btn(page, "meta")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#stage-ctl")).to_be_visible()
-    page.locator("#channel-ctl [data-channel=google]").click()
-    expect(page).to_have_url(re.compile(r"/google\?"))
+    platform_btn(page, "google").click()
+    expect(page).to_have_url(re.compile(r"platform=google"))
     q = qparams(page)
-    assert q["window"] == "14d" and "stage" not in q, q                                                # the range carries over, Meta-only controls are dropped
+    assert q["window"] == "14d" and "stage" not in q and page.evaluate("() => location.pathname") == "/", q            # the range carries over, Meta-only controls are dropped
     expect(page.locator("h1")).to_have_text("Google")
-    expect(chan("google")).to_have_attribute("aria-pressed", "true")
+    expect(platform_btn(page, "google")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#stage-ctl")).to_be_hidden()
     expect(page.locator("#tieout-btn")).to_be_hidden()
     expect(page.locator("#source-ctl [data-source=meta]")).to_have_text("Google")
+    expect(page.locator("#source-ctl-inline [data-src-inline=meta]")).to_have_text("Google")
     types = page.locator("[data-testid=google-types] tbody tr[data-key]")
     expect(types.first).to_be_visible()
     assert types.count() >= 4
     expect(page.locator("[data-testid=google-types] th[data-col=revenue]")).to_contain_text("Conversion value")
     expect(page.locator("[data-testid=google-campaigns] tbody tr[data-key]").first).to_be_visible()
     expect(page.locator("[data-testid=google-trend] canvas")).to_be_visible()
+    expect(page.locator("[data-testid=src-badge]").first).to_have_text("Numbers: Google")
     total_google = num(foot_value(page, "spend", "google-types"))
     page.locator("#source-ctl [data-source=upstack]").click()                                          # Numbers from Upstack: labels change, spend does not
     expect(page).to_have_url(re.compile(r"source=upstack"))
     expect(page.locator("[data-testid=google-types] th[data-col=purchases]")).to_contain_text("New customers")
     assert abs(num(foot_value(page, "spend", "google-types")) - total_google) <= 1
     expect(page.locator("#source-banner")).to_contain_text("Upstack")
+    expect(page.locator("[data-testid=src-badge]").first).to_have_text("Numbers: Upstack · new customers")
     page.locator("[data-testid=google-types] tbody tr[data-key]").first.click()                        # a type row filters the campaigns table
     expect(page).to_have_url(re.compile(r"type="))
     expect(page.locator("#campaigns-title")).to_contain_text("Campaigns ·")
-    assert qparams(page)["source"] == "upstack"
-    page.locator("#channel-ctl [data-channel=meta]").click()                                           # back to the Meta pages: range and numbers choice carry over
-    expect(page).not_to_have_url(re.compile(r"/google"))
+    assert qparams(page)["source"] == "upstack" and qparams(page)["platform"] == "google"
+    platform_btn(page, "meta").click()                                                                  # back to Meta: range and numbers choice carry over, platform and type leave
+    page.wait_for_function("() => !new URL(location.href).searchParams.has('platform')")
     expect(page.locator("h1")).to_have_text("Marketing metrics")
-    expect(page.locator("#channel-ctl [data-channel=meta]")).to_have_attribute("aria-pressed", "true")
+    expect(platform_btn(page, "meta")).to_have_attribute("aria-pressed", "true")
     assert qparams(page)["window"] == "14d" and qparams(page)["source"] == "upstack" and "type" not in qparams(page)
     shot(page, "11_google")
+
+
+@pytest.mark.mock_only
+def test_first_google_url_still_works(page, base_url):
+    page.goto(f"{base_url}/google?window=14d")
+    expect(page).to_have_url(re.compile(r"/\?(?=.*platform=google)(?=.*window=14d)"))
+    expect(page.locator("h1")).to_have_text("Google")
+
+
+@pytest.mark.mock_only
+def test_google_campaigns_view_has_the_campaigns_first_and_types_as_a_filter(page):
+    goto_product(page, "?window=14d")
+    platform_btn(page, "google").click()
+    page.locator("#view-switch [data-platform-view=campaigns]").click()
+    expect(page).to_have_url(re.compile(r"/campaigns\?"))
+    expect(page.locator("h1")).to_have_text("Campaigns")
+    assert qparams(page)["platform"] == "google"
+    assert page.locator("[data-testid=google-types]").count() == 0                                      # the types are the filter row here, not a table
+    rows = page.locator("[data-testid=google-campaigns] tbody tr[data-key]")
+    expect(rows.first).to_be_visible()
+    n_all = rows.count()
+    chips = page.locator("[data-testid=type-filter] [data-type]")
+    assert chips.count() >= 3 and page.locator("[data-testid=type-filter] [data-type=all]").get_attribute("aria-pressed") == "true"
+    chips.nth(1).click()
+    expect(page).to_have_url(re.compile(r"type="))
+    idle(page)
+    expect(page.locator("[data-testid=google-campaigns] tbody tr[data-key]").first).to_be_visible()
+    assert 0 < page.locator("[data-testid=google-campaigns] tbody tr[data-key]").count() < n_all
+    platform_btn(page, "meta").click()                                                                  # the switch keeps you on Campaigns
+    expect(page).to_have_url(re.compile(r"/campaigns"))
+    assert "platform" not in qparams(page) and "type" not in qparams(page)
+    expect(page.locator("[data-testid=platform-campaigns]")).to_be_visible()
+
+
+@pytest.mark.mock_only
+def test_all_platforms_overview(page):
+    goto_product(page, "?window=14d&stage=scaling&compare=prev")
+    platform_btn(page, "all").click()
+    expect(page).to_have_url(re.compile(r"platform=all"))
+    expect(page.locator("h1")).to_have_text("All platforms")
+    assert "stage" not in qparams(page)
+    expect(page.locator("#stage-ctl")).to_be_hidden()
+    expect(page.locator("#source-ctl")).to_be_hidden()                                                  # each platform's own numbers and Upstack are side by side: no switch
+    expect(page.locator("#source-ctl-inline")).to_be_hidden()
+    expect(page.locator("#tieout-btn")).to_be_hidden()
+    rows = page.locator("[data-testid=platform-overview] tbody tr")
+    expect(rows).to_have_count(6)                                                                       # per platform: its own reporting, Upstack new customers, Upstack all orders
+    text = [r.inner_text() for r in rows.all()]
+    assert "Meta's own reporting" in text[0] and "Upstack · new customers" in text[1] and "Upstack · all orders" in text[2]
+    assert "Google's own reporting" in text[3] and "Upstack · all orders" in text[5]
+    spend = [num(x) for x in col(page, "spend", "platform-overview")]
+    assert spend[0] == spend[1] == spend[2] and spend[3] == spend[4] == spend[5] and spend[0] > 0 and spend[3] > 0    # spend is the platform's in every row
+    expect(page.locator("[data-testid=platform-overview] th[data-col=purchases]")).to_contain_text("Purchases / orders")
+    expect(page.locator("#range-note")).to_contain_text("do not apply to All platforms")
+    page.locator("[data-testid=platform-overview] a", has_text="Campaigns →").first.click()              # Meta's campaigns
+    expect(page).to_have_url(re.compile(r"/campaigns"))
+    expect(page.locator("[data-testid=platform-campaigns]")).to_be_visible()
+    shot(page, "12_all_platforms")
+
+
+@pytest.mark.mock_only
+def test_platform_campaigns_view_product_column_and_filter(page):
+    goto_home(page, "?window=30d")
+    page.locator("#view-switch [data-platform-view=campaigns]").click()
+    expect(page).to_have_url(re.compile(r"/campaigns\?"))
+    expect(page.locator("h1")).to_have_text("Campaigns")
+    t = "[data-testid=platform-campaigns]"
+    rows = page.locator(f"{t} tbody tr[data-key]")
+    expect(rows.first).to_be_visible()
+    n_all = rows.count()
+    assert n_all >= 6
+    spend_sum = sum(num(x) for x in col(page, "spend", "platform-campaigns"))
+    assert abs(spend_sum - num(foot_value(page, "spend", "platform-campaigns"))) <= max(2.0, 0.001 * spend_sum)      # the Total row is the sum of the rows
+    products_col = col(page, "product", "platform-campaigns")
+    assert any(c.startswith("Mixed") for c in products_col), products_col                                      # a campaign that runs several products says so
+    names = {c.split("\n")[0].strip() for c in products_col}
+    assert {"Vita Bull", "Beef Liver", "Boneflex"} <= names
+    chips = page.locator("[data-testid=product-filter] [data-product]")
+    assert [c.get_attribute("data-product") for c in chips.all()][:2] == ["all", "vita-bull"]
+    chips.nth(1).click()                                                                                # Vita Bull only
+    expect(page).to_have_url(re.compile(r"product=vita-bull"))
+    expect(page.locator("[data-testid=product-filter] [data-product=vita-bull]")).to_have_attribute("aria-pressed", "true")
+    idle(page)
+    expect(page.locator(f"{t} tbody tr[data-key]").first).to_be_visible()
+    n_vb = page.locator(f"{t} tbody tr[data-key]").count()
+    assert 0 < n_vb < n_all
+    expect(page.locator("#level-title")).to_contain_text("Vita Bull")
+    assert qparams(page)["window"] == "30d"
+    page.locator(f"{t} tbody tr[data-key]").first.locator("a.rowlink").click()                          # a campaign opens its ads in that product, as in the product view
+    expect(page).to_have_url(re.compile(r"/p/vita-bull\?.*view=ads.*campaign_id="))
+    expect(page.locator("h1")).to_contain_text("Vita Bull")
+    page.go_back()
+    page.locator("[data-testid=product-filter] [data-product=all]").click()
+    page.wait_for_function("() => !new URL(location.href).searchParams.has('product')")
+    idle(page)
+    expect(page.locator(f"{t} tbody tr[data-key]").first).to_be_visible()
+    assert page.locator(f"{t} tbody tr[data-key]").count() == n_all
+    page.locator("#source-ctl [data-source=upstack]").click()                                           # the Numbers-from flip applies like everywhere
+    expect(page.locator(f"{t} th[data-col=purchases]")).to_contain_text("New customers")
+    shot(page, "13_platform_campaigns")
+
+
+@pytest.mark.mock_only
+def test_numbers_from_switch_sits_beside_the_explanation_on_a_wide_window(page):
+    page.set_viewport_size({"width": 2100, "height": 1000})                                             # Josh's 4K window
+    goto_product(page, "?window=14d")
+    box = lambda sel: page.locator(sel).bounding_box()                                                  # noqa: E731
+    bar, tie, inline = box("#controls .controls-in"), box("#tieout-btn"), box("#source-ctl-inline")
+    assert bar["width"] <= 1601, bar                                                                    # the bar is capped, not 2,000 px wide
+    assert abs(inline["x"] + inline["width"] - tie["x"]) < 260, (inline, tie)                           # the switch is right next to the tie-out button
+    assert page.evaluate("() => document.querySelector('#view').getBoundingClientRect().width") <= 1601
+    assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1")
+    expect(page.locator("[data-testid=src-badge]").first).to_have_text("Numbers: Meta")
+    page.locator("[data-testid=switch-source]").click()                                                 # the words "Switch to Upstack" in the note are a button
+    expect(page).to_have_url(re.compile(r"source=upstack"))
+    expect(page.locator("[data-testid=src-badge]").first).to_have_text("Numbers: Upstack · new customers")
+    expect(page.locator("#source-ctl-inline [data-src-inline=upstack]")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#source-ctl [data-source=upstack]")).to_have_attribute("aria-pressed", "true")      # one state, two places
+    page.locator("#basis-ctl-inline [data-basis-inline=all]").click()
+    expect(page).to_have_url(re.compile(r"basis=all"))
+    expect(page.locator("[data-testid=src-badge]").first).to_have_text("Numbers: Upstack · all orders")
+    open_first_row(page)                                                                                # product page: same switch in view, same state
+    expect(page.locator("#source-ctl-inline")).to_be_visible()
+    expect(page.locator("[data-testid=src-badge]").first).to_have_text("Numbers: Upstack · all orders")
+    page.locator("[data-testid=switch-source]").click()                                                 # "Switch to Meta's own numbers"
+    page.wait_for_function("() => !new URL(location.href).searchParams.has('source')")
+    expect(page.locator("[data-testid=src-badge]").first).to_have_text("Numbers: Meta")
+    page.set_viewport_size({"width": 1280, "height": 900})
+
 
 # ------------------------------------------------------------------ hooks (ad_hooks): Hook column of All creatives, Hook card on the ad page
 def hook_cells(page):

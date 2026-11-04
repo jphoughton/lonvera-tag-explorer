@@ -113,3 +113,18 @@ def test_validation_and_no_leak_into_the_meta_pages(google, client):
 def test_status_reports_google(google, client):
     g = get_ok(client, "/api/status")["sources"]["google"]
     assert g["available"] is True and g["through"] == THROUGH.isoformat() and g["upstack_first_day"] == DAYS[0].isoformat()
+
+
+def test_overview_google_rows_are_the_rollup_totals_in_every_basis(google, client):
+    d = get_ok(client, f"/api/platforms/overview?{W}")
+    g = next(p for p in d["platforms"] if p["key"] == "google")
+    by = {r["basis"]: r for r in g["rows"]}
+    assert set(by) == {"reported", "nc", "all"} and g["note"] is None
+    for basis, qsx in (("reported", ""), ("nc", "&source=upstack&basis=nc"), ("all", "&source=upstack&basis=all")):
+        want = get_ok(client, f"/api/google/rollup?group=type&{W}{qsx}")["total"]["m"]
+        for k in ("spend", "purchases", "revenue", "impressions", "link_clicks", "roas", "cpa"):
+            assert by[basis]["m"][k] == want[k], (basis, k)
+    assert by["reported"]["label"] == "Google's own reporting" and by["nc"]["labels"]["purchases"] == "New customers" and by["all"]["labels"]["purchases"] == "Orders"
+    assert by["nc"]["window"]["from"] == str(DAYS[0]) and by["nc"]["window"]["to"] == str(DAYS[-1])
+    # spend is Google's in all three rows
+    assert by["reported"]["m"]["spend"] == by["nc"]["m"]["spend"] == by["all"]["m"]["spend"] == N * 200.0

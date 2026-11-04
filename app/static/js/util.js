@@ -93,7 +93,7 @@ export function debounce(fn, ms = 200) {
 }
 
 // ---------- URL state ----------
-export const GLOBAL_KEYS = ['window', 'from', 'to', 'stage', 'compare', 'cfrom', 'cto', 'perday', 'tb', 'tl', 'tg', 'ts', 'active', 'source', 'basis'];
+export const GLOBAL_KEYS = ['window', 'from', 'to', 'stage', 'compare', 'cfrom', 'cto', 'perday', 'tb', 'tl', 'tg', 'ts', 'active', 'source', 'basis', 'platform'];
 
 export function qs(params) {
   const sp = new URLSearchParams();
@@ -162,6 +162,22 @@ export function apiWindow(p) {
 // ---------- data source (Meta | Upstack) ----------
 // Set from every response's window_info.source (see applySourceState); tables, charts and cards read their metric names from here.
 const META_LABELS = { purchases: 'Purchases', revenue: 'Revenue', roas: 'ROAS', cpa: 'CPA' };
+// Platform = the top-level choice of the Marketing metrics section: meta (the default; the creative / tag pages), google, or all (overview).
+// It lives in the URL (platform=google|all; absent = meta) and only means something on the platform pages ('/' and '/campaigns'); product and ad pages are Meta.
+export const PLATFORM_PATHS = /^\/(campaigns)?\/?$/;
+export function currentPlatform() {
+  const path = location.pathname;
+  if (/^\/google\/?$/.test(path)) return 'google';                                  // the first Google URL; redirected to /?platform=google by the router
+  if (!PLATFORM_PATHS.test(path)) return 'meta';
+  const v = new URLSearchParams(location.search).get('platform');
+  return v === 'google' || v === 'all' ? v : 'meta';
+}
+// every element that states which numbers the page shows ("Numbers: Upstack · new customers"), kept in step with srcView
+export function srcBadgeText() { return currentPlatform() === 'all' ? 'Numbers: each platform’s own reporting and Upstack' : 'Numbers: ' + srcView.label; }
+export function refreshSrcBadges() {
+  const text = srcBadgeText();
+  for (const el of document.querySelectorAll('.src-badge')) el.textContent = text;
+}
 export const srcView = { key: 'meta', basis: null, label: 'Meta', labels: META_LABELS, summary: null, note: null };
 export function applySourceState(info) {
   const s = info && info.source;
@@ -173,7 +189,7 @@ const UP_LABELS = { nc: { purchases: 'New customers', revenue: 'NC revenue', roa
 export function srcFromParams(p) {
   const key = p && p.source === 'upstack' ? 'upstack' : 'meta';
   const basis = key === 'upstack' ? (p.basis === 'all' ? 'all' : 'nc') : null;
-  const chan = /^\/google\/?$/.test(location.pathname) ? 'google' : 'meta';
+  const chan = currentPlatform() === 'google' ? 'google' : 'meta';
   if (srcView.key === key && (srcView.basis || null) === basis && srcView.summary && srcView.channel === chan) return;      // already refined by this page's response: do not wipe its wording (syncControls can rerun after it)
   if (p && p.source === 'upstack') {
     const basis = p.basis === 'all' ? 'all' : 'nc';
