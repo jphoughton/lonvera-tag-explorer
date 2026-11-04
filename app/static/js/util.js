@@ -93,7 +93,7 @@ export function debounce(fn, ms = 200) {
 }
 
 // ---------- URL state ----------
-export const GLOBAL_KEYS = ['window', 'from', 'to', 'stage', 'compare', 'cfrom', 'cto', 'perday', 'tb', 'tl', 'tg', 'ts', 'active', 'source', 'basis', 'platform'];
+export const GLOBAL_KEYS = ['window', 'from', 'to', 'stage', 'compare', 'cfrom', 'cto', 'perday', 'tb', 'tl', 'tg', 'ts', 'active', 'source', 'basis'];
 
 export function qs(params) {
   const sp = new URLSearchParams();
@@ -162,15 +162,25 @@ export function apiWindow(p) {
 // ---------- data source (Meta | Upstack) ----------
 // Set from every response's window_info.source (see applySourceState); tables, charts and cards read their metric names from here.
 const META_LABELS = { purchases: 'Purchases', revenue: 'Revenue', roas: 'ROAS', cpa: 'CPA' };
-// Platform = the top-level choice of the Marketing metrics section: meta (the default; the creative / tag pages), google, or all (overview).
-// It lives in the URL (platform=google|all; absent = meta) and only means something on the platform pages ('/' and '/campaigns'); product and ad pages are Meta.
+// Platform = the top-level choice of the Marketing metrics section: all (the roll-up), meta (Products, tags, creatives) or google. It lives in the URL
+// (platform=all|meta|google) and only means something on the platform pages ('/' and '/campaigns'); product and ad pages are Meta.
+// The default depends on the path so that old links keep their meaning: a bare '/' is the All platforms roll-up (Josh's landing page), while '/campaigns' without
+// a platform was always Meta's Campaigns. A link to the Meta landing therefore carries platform=meta; platform=all is explicit on /campaigns.
 export const PLATFORM_PATHS = /^\/(campaigns)?\/?$/;
+export const DEFAULT_PLATFORM = { '/': 'all', '/campaigns': 'meta' };
+const platformPath = (path) => (path.length > 1 ? path.replace(/\/$/, '') : path);
 export function currentPlatform() {
   const path = location.pathname;
   if (/^\/google\/?$/.test(path)) return 'google';                                  // the first Google URL; redirected to /?platform=google by the router
   if (!PLATFORM_PATHS.test(path)) return 'meta';
   const v = new URLSearchParams(location.search).get('platform');
-  return v === 'google' || v === 'all' ? v : 'meta';
+  return v === 'google' || v === 'all' || v === 'meta' ? v : DEFAULT_PLATFORM[platformPath(path)];
+}
+// URL of a platform page: the platform parameter is left out when it is that path's default
+export function platformUrl(path, key, params = {}) {
+  const q = { ...params };
+  q.platform = key === DEFAULT_PLATFORM[path] ? null : key;
+  return href(path, q);
 }
 // every element that states which numbers the page shows ("Numbers: Upstack · new customers"), kept in step with srcView
 export function srcBadgeText() {

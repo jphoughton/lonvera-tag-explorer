@@ -31,7 +31,7 @@ function groupCell(r, G) {
 
 export async function allCampaignsPage(ctx) {
   const { params: p, signal } = ctx;
-  const G = globalParams(p);                                   // keeps platform=all
+  const G = { ...globalParams(p), platform: 'all' };          // platform=all is explicit on /campaigns (its default there is Meta)
   const only = p.only === 'meta' || p.only === 'google' ? p.only : null;
   const product = p.product || null;
   const ctype = p.type || null;
@@ -109,7 +109,7 @@ export async function allCampaignsPage(ctx) {
   ctx.mount(h('div', { class: 'page', 'data-level': 'all-campaigns' },
     h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'All campaigns'), h('span', { class: 'badge muted-badge' }, 'Meta and Google'), h('span', { class: 'spacer' }), viewSwitch('campaigns', G, 'all')),
       h('div', { class: 'note-line' }, 'Every Meta and Google campaign in one table. Each row is counted on the basis in its Numbers column.')),
-    h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Marketing metrics', href: href('/', { ...G, platform: null }) }, { label: 'All platforms', href: href('/', G) }, { label: 'All campaigns' }])),
+    h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Marketing metrics', href: href('/', { ...G, platform: null }) }, { label: 'All campaigns' }])),
     h('div', { class: 'ctl-row' }, platformCtl, productCtl, typeCtl),
     panel.el,
     h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Campaigns'), columnsChips(), filterUi.el),

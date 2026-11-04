@@ -1,4 +1,4 @@
-import { h, enc, fmt, stageSet, href, apiWindow, sparkParams, globalParams, navigate, confBadge, empty, thumb, stageBadge, liveDot, pick, setParams, getRowMode, setRowMode, setViewStateProvider, cmpView, onCmpRefresh, metricLabel } from '../util.js';
+import { h, enc, fmt, stageSet, href, apiWindow, sparkParams, globalParams, navigate, confBadge, empty, thumb, stageBadge, liveDot, pick, setParams, getRowMode, setRowMode, setViewStateProvider, cmpView, onCmpRefresh, metricLabel, platformUrl } from '../util.js';
 import { api, AuthError } from '../api.js';
 import { createTable } from '../table.js';
 import { metricColumns, fixTotal, FLAT_KEYS, trendColumn, pinColumn } from '../columns.js';
@@ -51,7 +51,7 @@ function pageHead(product, slug, p, active) {
 function tagCrumbs(slug, p, product, extra = []) {
   const G = globalParams(p);
   const path = pagePath(slug);
-  const crumbs = [{ label: 'Marketing metrics', href: href('/', G) }, { label: product.name, href: href(path, G) }];
+  const crumbs = [{ label: 'Meta', href: platformUrl('/', 'meta', G) }, { label: product.name, href: href(path, G) }];
   if (p.cluster) crumbs.push({ label: p.cluster, href: href(path, { ...G, cluster: p.cluster }) });
   if (p.icp) crumbs.push({ label: p.icp, href: href(path, { ...G, cluster: p.cluster, icp: p.icp }) });
   if (p.pain) crumbs.push({ label: p.pain, href: href(path, { ...G, cluster: p.cluster, icp: p.icp, pain: p.pain }) });
@@ -215,7 +215,7 @@ async function adsView(ctx, slug) {
   report(p, d, false);
   document.title = `Ads · ${product.name} · Marketing metrics`;
 
-  const crumbs = [{ label: 'Marketing metrics', href: href('/', G) }, { label: product.name, href: href(path, G) }];
+  const crumbs = [{ label: 'Meta', href: platformUrl('/', 'meta', G) }, { label: product.name, href: href(path, G) }];
   const firstRow = (d.rows || []).find((r) => r.ad_id != null);
   if (p.campaign_id) {
     crumbs.push({ label: 'Campaigns', href: href(path, { ...G, view: 'campaigns' }) });
@@ -337,7 +337,7 @@ async function campaignsView(ctx, slug) {
   setViewStateProvider(() => ({ pins: campPins.list(), tscroll: { top: t.wrap.scrollTop, left: t.wrap.scrollLeft } }));
   ctx.mount(h('div', { class: 'page', 'data-level': 'campaigns' },
     pageHead(product, slug, p, 'campaigns'),
-    h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Marketing metrics', href: href('/', G) }, { label: product.name, href: href(path, G) }, { label: 'Campaigns' }])),
+    h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Meta', href: platformUrl('/', 'meta', G) }, { label: product.name, href: href(path, G) }, { label: 'Campaigns' }])),
     campPanel.el,
     h('div', { class: 'stagecards' }, cards),
     h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', 'Daily spend by stage'), h('span', { class: 'muted small' }, daily.length ? `${fmt.day(daily[0].day)} – ${fmt.day(daily[daily.length - 1].day)}` : '')), chartBox),

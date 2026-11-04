@@ -107,7 +107,7 @@ def goto_product(page, params=""):
 
 def goto_home(page, params=""):
     """the Meta landing page (Products table) of the Marketing metrics section"""
-    page.goto(f"/{params}")
+    page.goto("/?platform=meta" + ("&" + params[1:] if params.startswith("?") else params))
     page.locator("[data-testid=products-table] tbody tr").first.wait_for()
 
 
@@ -279,7 +279,7 @@ def test_login_with_each_named_user_shows_the_name(anon_page, name):
     page.fill("#username", name)
     page.fill("#password", PASSWORD)
     page.click("button[type=submit]")
-    expect(page.locator("[data-testid=products-table]")).to_be_visible()
+    expect(page.locator("h1")).to_have_text("All platforms")                                          # a login lands on the default view: the All platforms roll-up
     expect(page.locator("#whoami")).to_have_text(name)
     assert page.evaluate("() => fetch('/api/status').then(r => r.json()).then(s => s.user)") == name
     page.goto(f"/p/{SLUG}")  # the name stays in the header on every page and goes away after logging out
@@ -321,11 +321,11 @@ def test_login_then_logout(anon_page):
     page.fill("#username", USERNAME)
     page.fill("#password", PASSWORD)
     page.click("button[type=submit]")
-    expect(page.locator("[data-testid=products-table]")).to_be_visible()
+    expect(page.locator("h1")).to_have_text("All platforms")
     expect(page.locator("#whoami")).to_have_text(USERNAME)  # the signed-in user's name sits next to Log out
     page.click("#logout")
     expect(page).to_have_url(re.compile(r"/login"))
-    page.goto("/")
+    page.goto("/?platform=meta")
     expect(page).to_have_url(re.compile(r"/login"))
 
 
@@ -341,13 +341,13 @@ def fake_status(page, patch):
 
 
 def test_stale_banner_shows_on_every_page_when_stale_and_is_not_dismissible(page):
-    page.goto("/")
+    page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     expect(page.locator("#stale-banner")).to_be_hidden()  # fresh: no banner
     assert "failed" not in page.locator("#status").inner_text().lower()
     fake_status(page, {"stale": {"is_stale": True, "reason": "the last Meta pull failed (token rejected)"}, "last_ok_at": "2026-11-02T22:12:00+00:00",
                        "last_refresh": {"job": "run_daily", "finished_at": "2026-11-03T06:12:00+00:00", "status": "failed"}})
-    for u in ("/", f"/p/{SLUG}", f"/p/{SLUG}?view=ads", f"/p/{SLUG}?view=campaigns"):
+    for u in ("/?platform=meta", "/", f"/p/{SLUG}", f"/p/{SLUG}?view=ads", f"/p/{SLUG}?view=campaigns"):
         page.goto(u)
         page.wait_for_selector(".tablebox")
         idle(page)
@@ -381,7 +381,7 @@ def test_stage_note_tooltip_and_legend_only_when_not_both_stages(page):
 
 
 def test_landing_has_tracker_total_not_on_tracker_and_account_total_rows(page):
-    page.goto("/")
+    page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     idle(page)
     d = table_data(page, "products-table")
@@ -407,7 +407,7 @@ def test_landing_has_tracker_total_not_on_tracker_and_account_total_rows(page):
     pos = page.evaluate("() => [...document.querySelectorAll('[data-testid=products-table] tfoot td')].map(td => getComputedStyle(td).position)")
     assert set(pos) == {"sticky"}
     # compare + per day show up in the extra rows too
-    page.goto("/?window=7d&compare=30d")
+    page.goto("/?platform=meta&window=7d&compare=30d")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     idle(page)
     assert page.locator("[data-testid=products-table] tfoot tr.untracked .cmpcell").count() >= 5
@@ -419,7 +419,7 @@ def test_landing_has_tracker_total_not_on_tracker_and_account_total_rows(page):
 
 @pytest.mark.parametrize("window", ["", "?window=30d"])
 def test_unmatched_panel_total_matches_the_landing_not_on_tracker_row(page, window):
-    page.goto("/" + window)
+    page.goto("/?platform=meta" + window.replace("?", "&"))
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     idle(page)
     d = table_data(page, "products-table")
@@ -493,7 +493,7 @@ def test_active_only_chip_toggles_url_refetches_tables_and_trend(page):
 def test_active_only_persists_across_drills_back_reload_and_every_screen(page):
     if not has_active_support(page):
         pytest.skip("API does not implement active=1 yet")
-    page.goto("/?active=1")
+    page.goto("/?platform=meta&active=1")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     wait_trend(page)
     expect(page.locator("#active-chip")).to_have_attribute("aria-pressed", "true")  # deep link
@@ -557,7 +557,7 @@ def test_creative_ad_vocabulary_headings_legend_and_columns(page):
     live_th = page.locator(f"{HEAD} th[data-col=live_now]")
     assert live_th.get_attribute("title") == "Creatives that spent in the last 2 days"
     # legend line + (i) tooltip under the heading of every table page
-    pages = ["/", f"/p/{SLUG}", purl(cluster, icp, pain), f"/p/{SLUG}?all=1", f"/p/{SLUG}?view=ads", f"/p/{SLUG}?view=campaigns"]
+    pages = ["/?platform=meta", f"/p/{SLUG}", purl(cluster, icp, pain), f"/p/{SLUG}?all=1", f"/p/{SLUG}?view=ads", f"/p/{SLUG}?view=campaigns"]
     for u in pages:
         page.goto(u)
         page.wait_for_selector(".tablebox")
@@ -917,7 +917,7 @@ def test_auth_disabled_first_visit_loads_without_cookie_login_or_logout(noauth_p
     # the whole app works: drill, ad detail, campaigns
     open_first_row(page)
     wait_rows(page)
-    page.goto("/")
+    page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     expect(page.locator("#logout")).to_be_hidden()
     page.goto(f"/p/{SLUG}?view=campaigns")
@@ -927,11 +927,11 @@ def test_auth_disabled_first_visit_loads_without_cookie_login_or_logout(noauth_p
 def test_auth_disabled_login_page_redirects_to_the_app(noauth_page):
     page = noauth_page
     page.goto("/login")
-    expect(page.locator("[data-testid=products-table]")).to_be_visible()
+    expect(page.locator("h1")).to_have_text("All platforms")
     assert page.url.rstrip("/").endswith(page.url.split("/")[2]) or page.url.endswith("/")  # landed on /
     assert page.locator("#username").count() == 0 and page.locator("#password").count() == 0
     page.goto("/login?next=/p/" + SLUG)  # no login step, so no ?next hop either: just the app
-    expect(page.locator("[data-testid=products-table]")).to_be_visible()
+    expect(page.locator("h1")).to_have_text("All platforms")
     expect(page.locator("#logout")).to_be_hidden()
 
 
@@ -952,7 +952,7 @@ def assert_total_row(page, testid, strict=True):  # the landing's first footer r
 
 
 def test_total_row_on_every_table_type(page):
-    page.goto("/")
+    page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     d = assert_total_row(page, "products-table")
     for k in ["unique_ads", "live_now", "spend", "spend_share", *TRAFFIC_COLS, "purchases", "revenue", "roas", "cpa", *STAGE_COLS]:
@@ -1001,7 +1001,7 @@ def test_total_row_on_every_table_type(page):
 
 
 def test_total_row_with_compare_per_day_and_single_stage(page):
-    page.goto("/?window=7d&compare=30d")
+    page.goto("/?platform=meta&window=7d&compare=30d")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     idle(page)
     assert page.is_checked("#perday")  # windows differ in length: per-day values
@@ -1011,7 +1011,7 @@ def test_total_row_with_compare_per_day_and_single_stage(page):
     assert "vs " in page.locator(f"[data-testid=products-table] tfoot td:nth-child({i + 1}) .cmpcell .b").first.inner_text()
     page.uncheck("#perday")  # raw totals: the total spend is the sum of the raw row spends
     d = assert_total_row(page, "products-table")
-    page.goto("/?stage=scaling")
+    page.goto("/?platform=meta&stage=scaling")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     d = assert_total_row(page, "products-table")
     assert not any(c in d["heads"] for c in STAGE_COLS)  # stage columns (and their totals) only when both stages are on
@@ -1033,7 +1033,7 @@ def test_total_row_stays_visible_at_the_bottom_of_a_long_table(page):
 
 # ------------------------------------------------------------------ products landing
 def test_products_landing(page):
-    page.goto("/")
+    page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     expect(page.locator("#data-through")).to_contain_text("Data through")
     d = table_data(page, "products-table")
@@ -1051,7 +1051,7 @@ def test_products_landing(page):
     # the stage chips and compare control sit in the header here too; row click -> product page, window carried
     expect(chip(page, "testing")).to_be_visible()
     expect(page.locator("#cmp")).to_be_visible()
-    page.goto("/?window=14d")
+    page.goto("/?platform=meta&window=14d")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     page.locator("[data-testid=products-table] tbody tr[data-key]").first.locator("td.num").first.click()
     expect(page).to_have_url(re.compile(r"/p/[^/?]+\?window=14d"))
@@ -1060,7 +1060,7 @@ def test_products_landing(page):
 
 @pytest.mark.mock_only
 def test_tag_labels_by_tag_set(page):
-    page.goto("/")
+    page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     txt = page.locator("[data-testid=products-table]").inner_text()
     assert "Line-mapped tags" in txt and "Tracker tags — not line-mapped yet" in txt
@@ -1086,13 +1086,13 @@ def test_open_link_drill_down_with_breadcrumb(page):
     q = qparams(page)
     assert (q["cluster"], q["icp"], q["pain"]) == (cluster, icp, pain)
     crumbs = page.locator(".crumbs li").all_inner_texts()
-    assert crumbs[0] == "Marketing metrics" and crumbs[2:5] == [cluster, icp, pain], crumbs
+    assert crumbs[0] == "Meta" and crumbs[2:5] == [cluster, icp, pain], crumbs
     shot(page, "03_families")
     first_row(page).locator("a.row-open").click()
     expect(page).to_have_url(re.compile(r"/ad/\d+"))
     expect(page.locator("#ad-title")).to_be_visible()
     crumbs = page.locator(".crumbs li").all_inner_texts()
-    assert crumbs[0] == "Marketing metrics" and crumbs[-1] != "" and len(crumbs) >= 3
+    assert crumbs[0] == "Meta" and crumbs[-1] != "" and len(crumbs) >= 3
     page.locator(".crumbs a", has_text=cluster).first.click()
     expect(page.locator("#level-title")).to_contain_text("ICPs in")
     assert qparams(page)["cluster"] == cluster
@@ -1329,7 +1329,7 @@ def test_back_button_restores_expanded_sort_and_scroll(page):
 
 
 def test_back_walks_the_drills_and_is_disabled_on_products(page):
-    page.goto("/")
+    page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     expect(page.locator("#back")).to_be_disabled()
     page.locator("[data-testid=products-table] tbody tr[data-key] a.prodname").first.click()
@@ -1363,7 +1363,7 @@ def test_back_without_history_goes_to_parent_level(page):
 
 
 def test_filter_changes_replace_history_so_back_is_not_an_undo(page):
-    page.goto("/")
+    page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     page.locator("[data-testid=products-table] tbody tr[data-key] a.prodname").first.click()
     wait_rows(page)
@@ -1536,13 +1536,13 @@ def test_stage_chips_toggle_both_ways(page):
 
 def test_stage_columns_hidden_with_single_stage_everywhere(page):
     """Testing $ / Scaling $ / Testing % appear only when BOTH Testing and Scaling are included"""
-    page.goto("/?stage=scaling")
+    page.goto("/?platform=meta&stage=scaling")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     assert not any(has_col(page, c, "products-table") for c in STAGE_COLS)
-    page.goto("/?stage=testing")
+    page.goto("/?platform=meta&stage=testing")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     assert not any(has_col(page, c, "products-table") for c in STAGE_COLS)
-    page.goto("/")
+    page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     assert all(has_col(page, c, "products-table") for c in STAGE_COLS)
     cluster, icp, pain = drill_to_families(page)
@@ -2154,7 +2154,7 @@ def test_columns_chip_group_toggles_and_persists(page):
     assert not any(has_col(page, c) for c in TRAFFIC_COLS) and all(has_col(page, c) for c in ADVANCED_COLS)
     expect(page.locator(".cchip[data-cols=advanced]")).to_have_attribute("aria-pressed", "true")
     # the same choice applies on every table: landing, ads, campaigns, flat families, unmatched, ad meta-ads
-    page.goto("/")
+    page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     assert not has_col(page, "impressions", "products-table") and has_col(page, "cpm", "products-table")
     page.goto(f"/p/{SLUG}?view=ads")
@@ -2208,7 +2208,7 @@ def test_ad_trend_panel_selectors_include_traffic(page):
 
 
 def test_source_line_and_no_sheet_wording(page):
-    for path in ("/", f"/p/{SLUG}", f"/p/{SLUG}?view=ads", f"/p/{SLUG}?view=campaigns", f"/p/{SLUG}?window=7d&compare=prev"):
+    for path in ("/?platform=meta", f"/p/{SLUG}", f"/p/{SLUG}?view=ads", f"/p/{SLUG}?view=campaigns", f"/p/{SLUG}?window=7d&compare=prev"):
         page.goto(path)
         page.wait_for_selector(".tablebox")
         idle(page)
@@ -2226,7 +2226,7 @@ def test_source_line_and_no_sheet_wording(page):
 # ------------------------------------------------------------------ trend panel, sparklines, pins (v1.6)
 def test_trend_panel_renders_at_every_level(page):
     cluster, icp, pain = drill_to_families(page)
-    urls = ["/", f"/p/{SLUG}", purl(cluster), purl(cluster, icp), purl(cluster, icp, pain), f"/p/{SLUG}?all=1",
+    urls = ["/?platform=meta", f"/p/{SLUG}", purl(cluster), purl(cluster, icp), purl(cluster, icp, pain), f"/p/{SLUG}?all=1",
             f"/p/{SLUG}?view=ads", f"/p/{SLUG}?view=campaigns", f"/p/{SLUG}?window=14d&compare=prev"]
     for u in urls:
         page.goto(u)
@@ -2553,7 +2553,7 @@ def test_sparkline_column_every_table_unsortable_totals_empty(page):
     page.locator(".cchip[data-cols=trend]").click()
     assert has_col(page, "trend")
     # every other table type has it too
-    page.goto("/")
+    page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     page.wait_for_selector("[data-testid=products-table] svg.spark")
     assert has_col(page, "trend", "products-table") and page.locator("[data-testid=products-table] tbody svg.spark").count() >= 1
@@ -2647,7 +2647,7 @@ def test_pin_rows_into_the_chart_max_8(page):
 
 
 def test_landing_trend_dual_axis_pins_products_and_client_side_switches(page):
-    page.goto("/")
+    page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     wait_trend(page)
     info = trend_info(page)
@@ -2730,7 +2730,7 @@ def test_bad_window_error_is_shown_with_retry(page):
 
 def test_no_console_errors_across_pages(page):
     """walk every page type; the fixture fails the test on any console error / page error"""
-    page.goto("/")
+    page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     drill_to_families(page)
     page.locator(f"{BODY_ROWS} button.caret").first.click()
@@ -2755,7 +2755,7 @@ def test_no_console_errors_across_pages(page):
     expect(page.locator("h1")).to_have_text("Not found")
 
 
-@pytest.mark.parametrize("path", ["/", f"/p/{SLUG}", f"/p/{SLUG}?view=campaigns", f"/p/{SLUG}?all=1", f"/p/{SLUG}?window=7d&compare=prev"])
+@pytest.mark.parametrize("path", ["/?platform=meta", f"/p/{SLUG}", f"/p/{SLUG}?view=campaigns", f"/p/{SLUG}?all=1", f"/p/{SLUG}?window=7d&compare=prev"])
 def test_no_page_level_horizontal_scroll_at_laptop_width(ctx, page, path):
     page.set_viewport_size({"width": 1280, "height": 720})
     page.goto(path)
@@ -2829,7 +2829,7 @@ def test_custom_range_outside_the_data_shows_empty_state_and_resets(page, a, b):
     wait_rows(page)
     assert "from" not in qparams(page)
     # the landing page too
-    page.goto(f"/?from={a}&to={b}")
+    page.goto(f"/?platform=meta&from={a}&to={b}")
     expect(page.locator("[data-testid=empty-range]")).to_be_visible()
     shot(page, "46_empty_range")
 
@@ -3026,8 +3026,8 @@ def test_pages_never_scroll_horizontally_at_page_level(page, width):
     page.set_viewport_size({"width": 1440, "height": 900})
     ad_path = ad_page_url(page)
     page.set_viewport_size({"width": width, "height": 800})
-    paths = ["/", f"/p/{SLUG}", f"/p/{SLUG}?view=campaigns&window=30d", f"/p/{SLUG}?view=ads&window=30d", f"/p/{SLUG}?window=7d&compare=prev&stage=testing",
-             f"/p/{SLUG}?all=1&window=30d", f"{ad_path}?window=30d&compare=prev", "/?window=7d&compare=30d",
+    paths = ["/", "/?platform=meta", f"/p/{SLUG}", f"/p/{SLUG}?view=campaigns&window=30d", f"/p/{SLUG}?view=ads&window=30d", f"/p/{SLUG}?window=7d&compare=prev&stage=testing",
+             f"/p/{SLUG}?all=1&window=30d", f"{ad_path}?window=30d&compare=prev", "/?platform=meta&window=7d&compare=30d", "/?window=30d",
              "/campaigns?window=30d", "/?platform=all&window=30d", "/?platform=google&window=30d", "/campaigns?platform=google&window=30d",
              "/campaigns?platform=all&window=30d", "/campaigns?window=30d&compare=prev"]
     for path in paths:
@@ -3150,8 +3150,8 @@ def test_platform_picker_google_page_and_back(page):
     expect(page.locator("#campaigns-title")).to_contain_text("Campaigns ·")
     assert qparams(page)["source"] == "upstack" and qparams(page)["platform"] == "google"
     platform_btn(page, "meta").click()                                                                  # back to Meta: range and numbers choice carry over, platform and type leave
-    page.wait_for_function("() => !new URL(location.href).searchParams.has('platform')")
-    expect(page.locator("h1")).to_have_text("Marketing metrics")
+    page.wait_for_function("() => new URL(location.href).searchParams.get('platform') === 'meta'")     # Meta's Products landing is explicit now: a bare / is All
+    expect(page.locator("h1")).to_have_text("Meta")
     expect(platform_btn(page, "meta")).to_have_attribute("aria-pressed", "true")
     assert qparams(page)["window"] == "14d" and qparams(page)["source"] == "upstack" and "type" not in qparams(page)
     shot(page, "11_google")
@@ -3193,9 +3193,8 @@ def test_google_campaigns_view_has_the_campaigns_first_and_types_as_a_filter(pag
 def test_all_platforms_overview(page):
     goto_product(page, "?window=14d&stage=scaling&compare=prev")
     platform_btn(page, "all").click()
-    expect(page).to_have_url(re.compile(r"platform=all"))
     expect(page.locator("h1")).to_have_text("All platforms")
-    assert "stage" not in qparams(page)
+    assert "stage" not in qparams(page) and "platform" not in qparams(page)                             # All is the default of the bare root
     expect(page.locator("#stage-ctl")).to_be_hidden()
     expect(page.locator("#source-ctl")).to_be_hidden()                                                  # each platform's own numbers and Upstack are side by side: no switch
     expect(page.locator("#source-ctl-inline")).to_be_hidden()
@@ -3355,7 +3354,7 @@ def test_all_platforms_chart_platform_series_numbers_and_links(page):
     wait_trend(page)
     assert "Upstack attribution is drawn only where Upstack has it" in page.locator("#trend-note").inner_text()
     assert abs(chart_sum(trend_info(page), "Meta") - own_spend) <= 1                                   # spend is the platform's on every basis
-    expect(page.locator("#view-switch [data-platform-view=campaigns]")).to_have_text("All campaigns")
+    expect(page.locator("#view-switch [data-platform-view=campaigns]")).to_have_text("Campaigns")
     page.locator("#view-switch [data-platform-view=campaigns]").click()                                # All platforms -> All campaigns
     expect(page).to_have_url(re.compile(r"/campaigns\?"))
     assert qparams(page)["platform"] == "all"
@@ -3439,6 +3438,66 @@ def test_all_campaigns_one_table_basis_labels_totals_and_filters(page):
     expect(page).to_have_url(re.compile(r"/campaigns\?"))
     assert qparams(page)["platform"] == "all"
     shot(page, "16_all_campaigns")
+
+
+# ------------------------------------------------------------------ default landing = All platforms
+@pytest.mark.mock_only
+def test_bare_root_is_the_all_platforms_roll_up_and_every_link_back_to_meta_is_explicit(page, base_url):
+    page.goto(f"{base_url}/")                                                                          # a bare root, as the top-bar link points to
+    expect(page.locator("h1")).to_have_text("All platforms")
+    assert page.evaluate("() => location.search") == ""                                                # no parameter was added
+    expect(platform_btn(page, "all")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#view-switch .ctl-name")).to_have_text("View by")
+    assert [b.inner_text() for b in page.locator("#view-switch .seg").all()] == ["Platforms", "Campaigns"]
+    expect(page.locator("#view-switch [data-platform-view=home]")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("[data-testid=platform-overview] tbody tr")).to_have_count(6)
+    wait_trend(page)                                                                                   # with the platform chart
+    assert {d["label"] for d in bars_ds(trend_info(page))} == {"Meta", "Google"}
+    expect(page.locator("#topbar a.navlink", has_text="Marketing metrics")).to_have_attribute("href", "/")                           # the top-bar Marketing metrics link is the bare root
+    # View by Campaigns: every campaign across both platforms, nothing to choose first
+    page.locator("#view-switch [data-platform-view=campaigns]").click()
+    expect(page).to_have_url(re.compile(r"/campaigns\?platform=all"))
+    page.locator("[data-testid=all-campaigns] tbody tr[data-key]").first.wait_for()
+    data = table_data(page, "all-campaigns")
+    assert {r[data["heads"].index("platform")] for r in data["rows"]} == {"Meta", "Google"}
+    page.locator("#view-switch [data-platform-view=home]").click()
+    expect(page.locator("h1")).to_have_text("All platforms")
+    assert page.evaluate("() => location.search").find("platform") == -1                                # All is the default of '/': no platform parameter
+    # the picker: Meta is the old Products landing, one click away and explicit in the URL
+    platform_btn(page, "meta").click()
+    expect(page).to_have_url(re.compile(r"/\?platform=meta"))
+    expect(page.locator("h1")).to_have_text("Meta")
+    page.locator("[data-testid=products-table] tbody tr").first.wait_for()
+    platform_btn(page, "google").click()
+    expect(page).to_have_url(re.compile(r"platform=google"))
+    platform_btn(page, "all").click()                                                                  # and back to the default URL
+    expect(page.locator("h1")).to_have_text("All platforms")
+    assert page.evaluate("() => location.search").find("platform") == -1
+    page.locator("#topbar a.navlink", has_text="Marketing metrics").click()                                                          # the top-bar link from any page lands on All
+    page.goto(f"{base_url}/p/{SLUG}")
+    page.locator("#topbar a.navlink", has_text="Marketing metrics").click()
+    expect(page.locator("h1")).to_have_text("All platforms")
+
+
+@pytest.mark.mock_only
+def test_existing_deep_links_keep_their_meaning(page, base_url):
+    page.goto(f"{base_url}/campaigns?window=30d")                                                       # no platform on /campaigns = Meta's Campaigns, as before
+    expect(page.locator("[data-testid=platform-campaigns]")).to_be_visible()
+    expect(platform_btn(page, "meta")).to_have_attribute("aria-pressed", "true")
+    page.goto(f"{base_url}/?platform=meta&window=7d&source=upstack&basis=all")                          # Meta landing with every parameter
+    expect(page.locator("h1")).to_have_text("Meta")
+    assert qparams(page)["source"] == "upstack" and qparams(page)["basis"] == "all" and qparams(page)["window"] == "7d"
+    page.goto(f"{base_url}/?window=7d&source=upstack")                                                  # a root with parameters but no platform is the roll-up with them applied
+    expect(page.locator("h1")).to_have_text("All platforms")
+    page.goto(f"{base_url}/p/{SLUG}?window=14d")                                                        # product pages are untouched
+    expect(page.locator("h1")).not_to_have_text("All platforms")
+    crumbs = page.locator(".crumbs li").all_inner_texts()
+    assert crumbs[0] == "Meta" and len(crumbs) == 2, crumbs
+    page.locator(".crumbs a").first.click()                                                             # back up the hierarchy = Meta's Products table, not the roll-up
+    expect(page.locator("h1")).to_have_text("Meta")
+    page.goto(f"{base_url}/p/{SLUG}")
+    page.locator("#back").click()
+    expect(page.locator("h1")).to_have_text("Meta")
 
 
 # ------------------------------------------------------------------ hooks (ad_hooks): Hook column of All creatives, Hook card on the ad page
