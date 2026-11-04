@@ -227,6 +227,32 @@ def build():
 
 CAMPAIGNS, ROWS, FAMS, ADS, FAM_BY_KEY = build()
 ROW_BY_ID = {r["id"]: r for r in ROWS}
+
+# hooks (ad_hooks): two thirds of the tracker rows have one; the others show the empty cell / no hook card. Own deterministic choice, no shared RNG.
+HOOKS = [  # hook, spoken, on_screen, source, confidence, note
+    ("Your doctor will not tell you this about testosterone", "Your doctor will not tell you this about testosterone", None, "spoken", "high", None),
+    ("STOP guessing your zinc levels after 40", None, "STOP guessing your zinc levels after 40", "on_screen", "medium", "no audio, text overlay only"),
+    ("I lifted for twenty years before I learned this about recovery and why my numbers never moved at all", "I lifted for twenty years before I learned this", "RECOVERY MYTH", "both", "high", None),
+    ("Organ supplements: the one thing nobody checks", None, None, "copy", "low", "image unreadable, hook taken from the primary text"),
+]
+
+
+def hook_of(row):
+    """the hook block of a tracker row (the ad-detail shape) or None"""
+    if FAM_BY_KEY[row["fam"]]["display"].startswith("XSS"):
+        return dict(hook=XSS, spoken=None, on_screen=None, hook_source="copy", confidence="low", note=None, version="hooks-v1-2026-11-05")
+    if row["id"] % 3 == 0:
+        return None
+    hook, spoken, on_screen, src, conf, note = HOOKS[row["id"] % len(HOOKS)]
+    return dict(hook=hook, spoken=spoken, on_screen=on_screen, hook_source=src, confidence=conf, note=note, version="hooks-v1-2026-11-05")
+
+
+def hook_fields(row):
+    """the three flat fields a /families row carries for its primary tracker row"""
+    k = hook_of(row)
+    return dict(hook=k["hook"] if k else None, hook_source=k["hook_source"] if k else None, hook_confidence=k["confidence"] if k else None)
+
+
 ASSETS = {f["thumb"] for f in FAMS if f["thumb"]}
 
 
@@ -884,7 +910,7 @@ def family_rows(slug, flt, win):
                          launch_date=f["launch"].isoformat() if f["launch"] else None, thumb_asset_id=f["thumb"],
                          confidence=min((r["conf"] for _, r, _ in es), key={"low": 0, "medium": 1, "high": 2}.get) if p["tag_set"] == "linemap" else None,
                          method=es[0][1]["method"] if p["tag_set"] == "linemap" else None, counted_here=counted, m=m,
-                         ads_count=ad_counts(key)[0], ads_live=ad_counts(key)[1], _fams=[key] if counted else []))
+                         ads_count=ad_counts(key)[0], ads_live=ad_counts(key)[1], _fams=[key] if counted else [], **hook_fields(es[0][1])))
     rows.sort(key=lambda r: -r["m"]["spend"])
     return rows, ents
 
@@ -1291,7 +1317,7 @@ def ad_detail(rid):
                    status=fam["status"], ad_type=fam["ad_type"], style="UGC" if is_video else "Static", vendor="Madre", launch_date=fam["launch"].isoformat() if fam["launch"] else None,
                    concept_name="Doctor says no", description="Founder explains the study.", hypothesis="Skeptics respond to cited studies.", meta_ad_name=fam["display"],
                    story_url="https://example.com/story", asset_url="javascript:alert(1)" if xss else "https://drive.example.com/asset",
-                   tag=tag, tracker_tag=dict(cluster=row["cluster"], icp=row["icp"], pain_point=row["pain"], emotion=row["emotion"], ingredient=row["ingredient"]),
+                   tag=tag, hook=hook_of(row), tracker_tag=dict(cluster=row["cluster"], icp=row["icp"], pain_point=row["pain"], emotion=row["emotion"], ingredient=row["ingredient"]),
                    line=line, content=content, assets=dict(thumb=fam["thumb"], frames=frames),
                    siblings=[dict(id=r["id"], concept_id=r["concept_id"], line_code=r["line"][0] if r["line"] else None, cluster=r["cluster"], icp=r["icp"], pain_point=r["pain"], status=fam["status"]) for r in nxt],
                    metrics=dict(counted_on_this_row=row["ordinal"] == 0, family=dict(launch=fm(L), d7=fm(D7), d30=fm(D30), window=fm(win), live=live, **cmp_fam)),

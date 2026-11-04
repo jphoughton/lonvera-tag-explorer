@@ -116,6 +116,23 @@ function tagBlock(d) {
   return h('div', { class: 'card', id: 'tag-block' }, h('div', { class: 'card-head' }, h('h3', 'Tag')), body);
 }
 
+// the ad's hook: first spoken line + on-image headline, boiled down to one line (ad_hooks, loaded by etl.load_hooks); no block until it is loaded
+function hookBlock(d) {
+  const k = d.hook;
+  if (!k || !k.hook) return null;
+  const src = k.hook_source ? k.hook_source.replace(/_/g, ' ') : null;
+  return h('div', { class: 'card hook-card', id: 'hook-block' },
+    h('div', { class: 'card-head' },
+      h('h3', 'Hook'),
+      src ? badge(src, 'method', 'Where the hook comes from') : null,
+      k.confidence ? badge(k.confidence, 'conf-' + k.confidence, 'How sure the extraction is of this hook') : null),
+    h('div', { class: 'hook-line', id: 'hook-line' }, k.hook),
+    kv('Spoken', k.spoken),
+    kv('On screen', k.on_screen),
+    kv('Note', k.note),
+    k.version ? h('div', { class: 'muted small' }, `Hooks ${k.version}`) : null);
+}
+
 function lineBlock(d) {
   const l = d.line;
   if (!l) return null;
@@ -261,6 +278,7 @@ export async function adPage(ctx) {
         adLinks(d.links || { story_url: d.story_url }), extLink('Asset', d.asset_url),
         h('a', { class: 'btnlink', href: href(path, { ...G, view: 'ads', family_key: d.family_key }) }, 'Ads table')),
       h('div', { class: 'note-line' }, meta)),
+    hookBlock(d),
     section('See the ad', preview.el, { id: 'see-ad' }),
     h('div', { class: 'adgrid' },
       h('div', { class: 'adcol-left' }, mediaCard(d)),
