@@ -28,7 +28,7 @@ The banner states which one is showing. Any-click credits an order to every camp
 `Brand Search` / `Prospecting Search` / `Competitors Search` / `IL | Search` is Search; anything else (for example `Prospecting | Top 3 Products | ...`) is **Other**, never guessed.
 
 ## Data
-Migration `010_upstack_google.sql` (additive): `upstack_google_campaigns`, `upstack_google_channel_daily`, `upstack_google_attr_daily`, `upstack_google_days`, and the derived `google_daily` (one row per day and campaign, rebuilt by every run).
+Migration `011_upstack_google.sql` (additive): `upstack_google_campaigns`, `upstack_google_channel_daily`, `upstack_google_attr_daily`, `upstack_google_days`, and the derived `google_daily` (one row per day and campaign, rebuilt by every run).
 `etl.upstack_daily` pulls it after the Meta side, in its own transaction (a failure on one side never rolls back the other; either failing marks the run failed):
 
 ```bash

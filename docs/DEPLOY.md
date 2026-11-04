@@ -97,6 +97,23 @@ railway run -s etl sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" .venv/bin/python -
 
 The variable to use locally is `DATABASE_PUBLIC_URL` (name only; resolve it through `railway run`, never copy the value into a file).
 
+### Ad hooks (migration 010, `etl.load_hooks`)
+
+A hook is an ad's first spoken line plus its on-image headline, boiled down to one line. A separate extraction cycle writes a JSON file per product (`[{row, concept_id, ad_family, unit_id, hook, spoken, on_screen, hook_source, confidence, note}]`); `etl.load_hooks` loads it into `ad_hooks`, which feeds the Hook column of the All creatives table and the Hook card on the ad page. Order matters: schema first, then the data.
+
+```bash
+# 1. Apply migration 010 (creates ad_hooks). It also runs by itself on every web boot and every etl run, so after a web deploy this is already done.
+railway run -s etl sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" .venv/bin/python -m etl.migrate'
+# 2. Load the hooks, one product at a time (the file is read from the laptop). Rows are matched to the tracker like etl.load_tags does: by (concept id, ad family) + ordinal, never by sheet row.
+railway run -s etl sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" .venv/bin/python -m etl.load_hooks --file <hooks_vita_bull.json> --version hooks-v1-2026-11-05 --product vita-bull'
+railway run -s etl sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" .venv/bin/python -m etl.load_hooks --file <hooks_beef_liver.json> --version hooks-v1-2026-11-05 --product beef-liver'
+railway run -s etl sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" .venv/bin/python -m etl.load_hooks --file <hooks_boneflex.json> --version hooks-v1-2026-11-05 --product boneflex'
+```
+
+- The load fails (nothing written) when fewer than 90% of the product's tracker rows match the file (`--min-coverage 0.90`; `--allow-mismatch` overrides), or when a `hook_source` / `confidence` value is not one of `spoken|on_screen|both|copy|none` / `high|medium|low`. Entries with an empty hook are skipped after the match; hooks whose key left the tracker are skipped and listed as a warning.
+- One hook per tracker row: re-running a version replaces its rows, a newer `--version` replaces the older hook of every row it covers, rows a file does not cover keep what they have. The whole load is one transaction. Try it first on a local DB (`tagexp_dev` after `python -m etl.migrate`).
+- The load is an `etl_runs` job (`load_hooks`), which is what moves the web service's response-cache footprint: the new hooks show up on the next request after the run finishes, no restart needed. Before migration 010 is applied the API simply returns no hooks.
+
 ## Rotating secrets
 
 - **APP_PASSWORD** (redeploys web):
