@@ -158,7 +158,8 @@ def test_native_intl_feed_runs_by_default_and_both_intl_feeds_share_one_pull(con
 def test_status_lists_every_feed_with_its_mode(conn):
     st = {r["feed"]: r for r in feeds.status(conn)}
     assert st["orders"]["mode"] == "sheet" and st["intl_estimate"]["mode"] == "shadow" and st["bids"]["source"] == "meta"
-    assert set(st) == {"orders", "platform", "attribution", "traffic", "anyclick", "units_revamp", "units_intl", "intl_estimate", "stock_revamp", "meta_reach", "product_reach", "bids"}
+    assert set(st) == {"orders", "platform", "attribution", "traffic", "anyclick", "units_revamp", "units_intl", "intl_estimate", "stock_revamp", "meta_reach", "product_reach", "bids",
+                       "amazon", "nc_product", "units_amazon"}
 
 
 def test_registry_is_ordered_by_source_and_unique():
