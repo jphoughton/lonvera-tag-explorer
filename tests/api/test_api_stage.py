@@ -11,7 +11,7 @@ from .helpers import THROUGH, WINDOWS, check_m, get_ok, qs, rows_by_product
 from .test_api_compare import PAIRS, check_cmp, n_days
 
 D = dt.date
-META = q.DataMeta(F.D0, F.CUT, THROUGH)
+META = q.DataMeta(F.D0, THROUGH)
 
 COMBOS = [
     ("stage=testing,scaling", ("testing", "scaling")),
@@ -117,33 +117,44 @@ def test_stage_split_is_unfiltered_and_launch_tieout(client):
         assert all3["spend"] == whole["spend"] and all3["purchases"] == whole["purchases"] and all3["revenue"] == whole["revenue"]
 
 
-def test_launch_lifetime_only_with_unclassified(client, fx):
-    """VB-Fam-B launched before D0: its Lifetime history is 'unclassified', so excluding that stage drops it."""
+def test_launch_stage_list_partitions_the_api_lifetime(client, fx):
+    """Since launch is the API lifetime. A stage list takes the daily rows of the included stages; what the daily rows do not explain
+    (history before the daily range, restatements, sheet-only days) is 'unclassified'. All three stages add up to the lifetime exactly."""
     def fam(stage):
         rows = get_ok(client, f"/api/products/vita-bull/families?window=launch&stage={stage}")["rows"]
         return next(r for r in rows if r["family_key"] == "vb-fam-b")["m"]
-    daily_post = sum(v[0] for (f, d, st), v in fx.family_daily.items() if f == "vb-fam-b" and d > F.CUT)
-    only_classified = sum(v[0] for (f, d, st), v in fx.family_daily.items() if f == "vb-fam-b" and d > F.CUT and st != "unclassified")
-    assert fam("unclassified")["spend"] == pytest.approx(float(F.dec("1620.75") + daily_post - only_classified), abs=0.006)
-    assert fam("testing,scaling")["spend"] == pytest.approx(float(only_classified), abs=0.006)
-    assert fam("scaling,unclassified")["spend"] + fam("testing")["spend"] == pytest.approx(fam("testing,scaling,unclassified")["spend"], abs=0.011)
+    lt = F.family_lifetime(fx, "vb-fam-b")
+    allm = fam("all")
+    assert allm["spend"] == pytest.approx(float(lt["spend"]), abs=0.006) and allm["impressions"] == lt["imp"] and allm["link_clicks"] == lt["clk"]
+    daily = F.daily_vec(fx, "vb-fam-b", None, None, ("testing", "scaling"))
+    assert fam("testing,scaling")["spend"] == pytest.approx(float(daily[0]), abs=0.006)             # no lifetime without 'unclassified'
+    parts = [fam(s)["spend"] for s in ("testing", "scaling", "unclassified")]
+    assert sum(parts) == pytest.approx(allm["spend"], abs=0.011)
+    assert fam("unclassified")["spend"] > 1000                                                       # b1 + b2 history before the daily range
+    assert fam("scaling,unclassified")["spend"] + fam("testing")["spend"] == pytest.approx(allm["spend"], abs=0.011)
+
+
+def test_launch_traffic_with_stage_lists(client, fx):
+    rows = lambda st: {r["family_key"]: r["m"] for r in get_ok(client, f"/api/products/vita-bull/families?window=launch&stage={st}")["rows"]}   # noqa: E731
+    a, t, s_, u = rows("all"), rows("testing"), rows("scaling"), rows("unclassified")
+    for k in ("vb-fam-a", "vb-fam-b", "vb-fam-d"):
+        for field in ("impressions", "link_clicks"):
+            assert t[k][field] + s_[k][field] + u[k][field] == a[k][field], (k, field)
 
 
 @pytest.mark.parametrize("w,wo,s,so", [c for c in CASES if "launch" in c.id or "7d" in c.id][:12])
 def test_ads_with_stage_lists(client, fx, w, wo, s, so):
     d = get_ok(client, "/api/products/vita-bull/ads?" + qs(w, s))
-    fams = {}
-    for r in sorted(fx.tracker, key=lambda r: (r["sheet_row"], r["id"])):
-        if r["product"] == "vita-bull" and not r["family_key"].startswith("id:"):
-            fams.setdefault(r["family_key"], r["launch"])
+    fams = {r["family_key"] for r in fx.tracker if r["product"] == "vita-bull" and not r["family_key"].startswith("id:")}
     ads, rem, rem_u = F.ad_oracle(fx, fams, wo, so, unmatched_pid=fx.product_ids["vita-bull"])
     got = {(r["ad_id"], r["family_key"]): r for r in d["rows"] if r["ad_id"]}
     assert set(got) == set(ads)
     for key, v in ads.items():
-        assert got[key]["spend"] == pytest.approx(float(v[0]), abs=0.006) and got[key]["revenue"] == pytest.approx(float(v[2]), abs=0.006)
+        assert got[key]["spend"] == pytest.approx(float(v["spend"]), abs=0.006) and got[key]["revenue"] == pytest.approx(float(v["revenue"]), abs=0.006)
+        assert got[key]["impressions"] == v["imp"] and got[key]["link_clicks"] == v["clk"], key
     remainder = next((r for r in d["rows"] if r["ad_id"] is None and r["on_tracker"]), None)
-    if any(rem):
-        assert remainder is not None and remainder["spend"] == pytest.approx(float(rem[0]), abs=0.006)
+    if any(abs(x) >= F.Decimal("0.005") for x in (rem["spend"], rem["purchases"], rem["revenue"])):
+        assert remainder is not None and remainder["spend"] == pytest.approx(float(rem["spend"]), abs=0.006)
     assert d["window_info"]["stage"] == q.parse_stage({"stage": s.split("=")[1].replace("%20", "")}) if s else True
 
 

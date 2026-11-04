@@ -1,9 +1,9 @@
 import { h, enc, fmt, stageSet, href, apiWindow, globalParams, navigate, confBadge, empty, thumb, stageBadge, liveDot, pick, setParams, getRowMode, setRowMode, setViewStateProvider, cmpView, onCmpRefresh } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
-import { metricColumns, fixTotal } from '../columns.js';
+import { metricColumns, fixTotal, FLAT_KEYS } from '../columns.js';
 import { setRangeInfo } from '../controls.js';
-import { breadcrumbs, filterBar, saveFilterToUrl, makeFilter, adsTable, familyAdsNode, unmatchedPanel, saveSortToUrl, sortFromUrl, campaignHrefFor } from '../components.js';
+import { breadcrumbs, columnsChips, filterBar, saveFilterToUrl, makeFilter, adsTable, familyAdsNode, unmatchedPanel, saveSortToUrl, sortFromUrl, campaignHrefFor } from '../components.js';
 import { stageChart } from '../charts.js';
 import { createTree } from '../tree.js';
 import { tagBadge } from './products.js';
@@ -172,7 +172,7 @@ async function familiesFlatView(ctx, slug) {
     h('div', { class: 'crumbrow' }, breadcrumbs(tagCrumbs(slug, p, product, [{ label: 'All ad families' }])), h('span', { class: 'spacer' }),
       h('a', { class: 'btnlink', id: 'toggle-all', href: href(path, { ...G, cluster: p.cluster, icp: p.icp, pain: p.pain }) }, '← Back to hierarchy')),
     h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'All ad families'),
-      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Clicking a row'), h('span', { class: 'segs', id: 'row-mode' }, modeBtns)), filterUi.el),
+      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Clicking a row'), h('span', { class: 'segs', id: 'row-mode' }, modeBtns)), columnsChips(), filterUi.el),
     table.el,
     unmatchedPanel(slug, p, um, signal),
   ));
@@ -231,7 +231,7 @@ async function adsView(ctx, slug) {
   ctx.mount(h('div', { class: 'page', 'data-level': 'ads' },
     pageHead(product, slug, p, p.campaign_id ? 'campaigns' : 'tags'),
     h('div', { class: 'crumbrow' }, breadcrumbs(crumbs)),
-    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Meta ads'), filterUi.el),
+    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Meta ads'), columnsChips(), filterUi.el),
     t.el,
   ));
   const vs = ctx.restore;
@@ -276,7 +276,7 @@ async function campaignsView(ctx, slug) {
   const canvas = h('canvas', { id: 'stage-chart', role: 'img', 'aria-label': 'Daily spend by stage' });
   const chartBox = h('div', { class: 'chartbox' }, canvas);
 
-  const flat = metricColumns({ getM: (r) => r, getTotalM: (t) => fixTotal(t), keys: ['spend', 'spend_share', 'purchases', 'revenue', 'roas', 'cpa'] });
+  const flat = metricColumns({ getM: (r) => r, getTotalM: (t) => fixTotal(t), keys: FLAT_KEYS });
   const cols = [
     { key: 'name', label: 'Campaign', sticky: true, cls: 'labelcol', sort: (r) => r.name, total: () => 'Total', cell: (r) => h('a', { href: href(path, { ...G, view: 'ads', campaign_id: r.campaign_id }), class: 'rowlink', title: r.name }, r.name) },
     { key: 'account', label: 'Account', sort: (r) => r.account, cell: (r) => fmt.text(r.account) },
@@ -308,7 +308,7 @@ async function campaignsView(ctx, slug) {
     h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Products', href: href('/', G) }, { label: product.name, href: href(path, G) }, { label: 'Campaigns' }])),
     h('div', { class: 'stagecards' }, cards),
     h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', 'Daily spend by stage'), h('span', { class: 'muted small' }, daily.length ? `${fmt.day(daily[0].day)} – ${fmt.day(daily[daily.length - 1].day)}` : '')), chartBox),
-    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Campaigns'), filterUi.el),
+    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Campaigns'), columnsChips(), filterUi.el),
     t.el,
     unmatchedPanel(slug, p, null, signal),
   ));

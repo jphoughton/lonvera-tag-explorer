@@ -31,7 +31,7 @@ def _all_days_info(w: q.WindowSpec, meta: q.DataMeta) -> dict:
     if w.is_launch:
         info["label"] = f"All days held · {q._fmt_day(meta.daily_start, True)} – {q._fmt_day(meta.data_through, True)}"
         base = "Since launch does not apply here; showing every day held."
-        info["note"] = base + (f" {w.note}" if w.note else "")
+        info["note"] = base + (f" {info['note']}" if info["note"] else "")
     return info
 
 

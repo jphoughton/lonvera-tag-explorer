@@ -4,6 +4,7 @@
 import { h, enc, fmt, href, apiWindow, globalParams, colorChip, thumb, confBadge, stageBadge, navigate, cmpView, onCmpRefresh, isNum, getRowMode, setRowMode, debounce, setViewStateProvider } from './util.js';
 import { api, AuthError } from './api.js';
 import { createTable, compare } from './table.js';
+import { columnsChips } from './components.js';
 import { metricColumns } from './columns.js';
 
 const ROOT = '__root__';
@@ -349,6 +350,7 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
     busy,
     h('span', { class: 'spacer' }),
     h('span', { class: 'ctl-name' }, 'Clicking a row'), h('span', { class: 'segs', id: 'row-mode' }, modeBtns),
+    columnsChips(),
     h('label', { class: 'check' }, cb, ' With spend only'), search, count);
   function updateToolbar(rows) {
     const n = rows.filter((r) => !r.pseudo).length;

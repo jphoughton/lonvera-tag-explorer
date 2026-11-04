@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { setRangeInfo } from '../controls.js';
 import { flatTotal } from '../columns.js';
-import { breadcrumbs, section, adsTable } from '../components.js';
+import { breadcrumbs, section, adsTable, columnsChips } from '../components.js';
 import { dailyChart } from '../charts.js';
 
 function kv(label, value, cls = '') {
@@ -224,7 +224,6 @@ export async function adPage(ctx) {
 
   const meta = [
     d.concept_id ? `Concept ${d.concept_id}` : null,
-    d.sheet_row ? `Tracker row ${d.sheet_row}` : null,
     d.launch_date ? `Launched ${d.launch_date}` : null,
     d.style ? `Style ${d.style}` : null,
     d.vendor ? `Vendor ${d.vendor}` : null,
@@ -238,8 +237,8 @@ export async function adPage(ctx) {
   else if (daily.length && d.launch_date && d.launch_date >= daily[0].day) shades.push({ from: d.launch_date, to: daily[daily.length - 1].day, color: 'rgba(26,95,180,0.14)', name: 'A' });
   if (d.compare_info && d.compare_info.from && cmpView.on) shades.push({ from: d.compare_info.from, to: d.compare_info.to, color: 'rgba(217,130,43,0.20)', name: 'B' });
   let chart = null;
-  const toggles = ['Spend', 'Revenue', 'Purchases'].map((name, i) => {
-    const cb = h('input', { type: 'checkbox', checked: true, 'data-series': name.toLowerCase(), id: 'toggle-' + name.toLowerCase() });
+  const toggles = ['Spend', 'Revenue', 'Purchases', 'Impressions', 'Clicks'].map((name, i) => {
+    const cb = h('input', { type: 'checkbox', checked: i < 3, 'data-series': name.toLowerCase(), id: 'toggle-' + name.toLowerCase() });
     cb.addEventListener('change', () => { if (chart) { chart.setDatasetVisibility(i, cb.checked); chart.update(); } });
     return h('label', { class: 'check' }, cb, ' ' + name);
   });
@@ -270,12 +269,12 @@ export async function adPage(ctx) {
         h('a', { class: 'btnlink', href: href(path, { ...G, view: 'ads', family_key: d.family_key }) }, 'Meta ads table')),
       h('div', { class: 'note-line' }, meta)),
     h('div', { class: 'adgrid' },
-      h('div', { class: 'adcol-left' }, mediaCard(d), metricsCard(d, wi)),
-      h('div', { class: 'adcol-right' }, chartCard)),
+      h('div', { class: 'adcol-left' }, mediaCard(d)),
+      h('div', { class: 'adcol-right' }, chartCard, metricsCard(d, wi))),
     h('div', { class: 'twocol' }, tagBlock(d), lineBlock(d)),
     copyBlock(d),
     siblingsTable(d, G),
-    adsT ? section('Meta ads in this family', adsT.el, { id: 'meta-ads' }) : null,
+    adsT ? section('Meta ads in this family', adsT.el, { id: 'meta-ads', aside: columnsChips() }) : null,
     campaignsTable(d, p, slug, G),
   ));
   onCmpRefresh(() => {

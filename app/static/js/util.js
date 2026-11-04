@@ -56,12 +56,14 @@ export const fmt = {
     return (v > 0 ? '▲' : '▼') + nf0.format(r) + '%';
   },
   share(v) { return isNum(v) ? (v * 100).toFixed(1) + '%' : '–'; },
-  // percentage-point change, value already in points: '▲1.2pp'
-  pp(v) {
+  // percentage-point change, value already in points: '▲1.2pp' (digits = decimals)
+  pp(v, digits = 1) {
     if (!isNum(v)) return '';
-    const r = Math.round(Math.abs(v) * 10) / 10;
-    return r === 0 ? '0pp' : (v > 0 ? '▲' : '▼') + r.toFixed(1) + 'pp';
+    const f = 10 ** digits;
+    const r = Math.round(Math.abs(v) * f) / f;
+    return r === 0 ? '0pp' : (v > 0 ? '▲' : '▼') + r.toFixed(digits) + 'pp';
   },
+  rate(v) { return isNum(v) ? (v * 100).toFixed(2) + '%' : '–'; }, // CTR 1.32%, conv rate 2.57%
   text(v) { return v == null || v === '' ? '–' : String(v); },
   // 'YYYY-MM-DD' -> 'Nov 2' (no Date object: avoids timezone drift)
   day(s) {
@@ -209,6 +211,15 @@ export function navIndex() { return (history.state && history.state.idx) || 0; }
 // pushState = a drill (Back returns here); replace = a filter change (Back is not an undo for filters)
 export function navigate(url, { replace = false, render = true, scroll = true } = {}) {
   saveViewState();
+  // "Per day" changes the URL without a re-render, so links built earlier may carry a stale value
+  try {
+    const u = new URL(url, location.href);
+    const cur = currentParams();
+    if (!replace && cur.perday != null && (u.searchParams.has('compare') || u.searchParams.has('cfrom')) && u.searchParams.get('perday') !== cur.perday) {
+      u.searchParams.set('perday', cur.perday);
+      url = u.pathname + u.search;
+    }
+  } catch { /* keep url */ }
   const idx = navIndex();
   if (replace) history.replaceState({ ...(history.state || {}), idx }, '', url);
   else history.pushState({ idx: idx + 1 }, '', url);
@@ -224,6 +235,18 @@ export function setParams(changes, opts = {}) {
 let parentHint = null;
 export function setParentHint(u) { parentHint = u; }
 export function getParentHint() { return parentHint; }
+
+// "Columns" chip groups: Traffic (default on) and Advanced (default off), persisted in localStorage
+const COLPREF = { traffic: 'tagexp.cols.traffic', advanced: 'tagexp.cols.advanced' };
+export function colPref(group) {
+  try {
+    const v = localStorage.getItem(COLPREF[group]);
+    return v == null ? group === 'traffic' : v === '1';
+  } catch { return group === 'traffic'; }
+}
+export function setColPref(group, on) {
+  try { localStorage.setItem(COLPREF[group], on ? '1' : '0'); } catch { /* ignore */ }
+}
 
 // "Clicking a row": 'expand' (drops down, default) or 'open' (navigates). Persisted in localStorage.
 const ROWMODE_KEY = 'tagexp.rowmode';

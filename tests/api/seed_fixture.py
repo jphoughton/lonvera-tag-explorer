@@ -101,25 +101,25 @@ def seed(conn) -> F.Fx:
                VALUES (%s,'Main',%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (ad_id, f"{disp} ({ad_id})", F.meta_family_key(disp), camp, "S" + ad_id, adset, created, status,
              days[0] if days else None, days[-1] if days else None))
-    for ad_id, (sp, pu, rv) in F.META_AD_LIFETIME.items():
-        k = F.meta_family_key(F.ADS[ad_id][0])
-        conn.execute("INSERT INTO meta_ad_lifetime (ad_id, meta_family_key, tracker_family_key, spend, purchases, conv_value) VALUES (%s,%s,%s,%s,%s,%s)",
-                     (ad_id, k, F.MAPPING[k][0], sp, pu, rv))
-    for tfam, (sp, pu, rv) in fx.lifetime.items():
-        conn.execute("INSERT INTO ad_lifetime (family_key, spend, purchases, conv_value) VALUES (%s,%s,%s,%s)", (tfam, sp, pu, rv))
+    for ad_id, lt in fx.ad_lifetime.items():          # API lifetime per Meta ad (CONTRACT v1.5)
+        conn.execute(
+            """INSERT INTO meta_ad_lifetime (ad_id, meta_family_key, tracker_family_key, spend, purchases, conv_value, impressions, link_clicks, source, pulled_at)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'meta_api', now())""",
+            (ad_id, lt["mfk"], lt["tfam"], lt["spend"], lt["purchases"], lt["revenue"], lt["imp"], lt["clk"]))
     with conn.cursor() as cur:
         cur.executemany(
-            """INSERT INTO ad_daily (ad_id, day, meta_family_key, meta_family, campaign_id, spend, purchases, conv_value, link_clicks, source)
-               VALUES (%(ad_id)s,%(day)s,%(meta_family_key)s,%(meta_family)s,%(campaign_id)s,%(spend)s,%(purchases)s,%(conv_value)s,%(link_clicks)s,%(source)s)""",
+            """INSERT INTO ad_daily (ad_id, day, meta_family_key, meta_family, campaign_id, spend, purchases, conv_value, link_clicks, impressions, source)
+               VALUES (%(ad_id)s,%(day)s,%(meta_family_key)s,%(meta_family)s,%(campaign_id)s,%(spend)s,%(purchases)s,%(conv_value)s,%(link_clicks)s,%(impressions)s,%(source)s)""",
             fx.ad_daily)
         cur.executemany(
-            "INSERT INTO family_daily (family_key, day, stage, spend, purchases, revenue, link_clicks) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+            "INSERT INTO family_daily (family_key, day, stage, spend, purchases, revenue, link_clicks, impressions, clicks_tr, spend_tr) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             [(f, d, st, *v) for (f, d, st), v in fx.family_daily.items()])
         cur.executemany(
             """INSERT INTO ad_metrics (tracker_row_id, product_id, family_key, is_first_row, launch_date, spend_launch, purchases_launch, revenue_launch,
-                   spend_7d, purchases_7d, revenue_7d, spend_30d, purchases_30d, revenue_30d, live)
+                   spend_7d, purchases_7d, revenue_7d, spend_30d, purchases_30d, revenue_30d, live, impressions_launch, clicks_launch)
                VALUES (%(tracker_row_id)s,%(product_id)s,%(family_key)s,%(is_first_row)s,%(launch_date)s,%(spend_launch)s,%(purchases_launch)s,
-                   %(revenue_launch)s,%(spend_7d)s,%(purchases_7d)s,%(revenue_7d)s,%(spend_30d)s,%(purchases_30d)s,%(revenue_30d)s,%(live)s)""",
+                   %(revenue_launch)s,%(spend_7d)s,%(purchases_7d)s,%(revenue_7d)s,%(spend_30d)s,%(purchases_30d)s,%(revenue_30d)s,%(live)s,
+                   %(impressions_launch)s,%(clicks_launch)s)""",
             list(fx.ad_metrics.values()))
         cur.executemany(
             """INSERT INTO unmatched_meta (meta_family_key, meta_family, product_id, spend_7d, purchases_7d, revenue_7d, spend_30d, purchases_30d,
@@ -136,7 +136,7 @@ def seed(conn) -> F.Fx:
                      (kind, idx, PNG_1X1))
     conn.execute("INSERT INTO creative_assets (family_key, kind, idx, mime, bytes, source) VALUES ('vb-fam-b','thumb',0,'image/jpeg',%s,'test')", (b"\xff\xd8\xff\xd9",))
 
-    for k, v in (("daily_start", F.D0.isoformat()), ("lifetime_cutoff", F.CUT.isoformat()), ("data_through", F.THROUGH.isoformat())):
+    for k, v in (("daily_start", F.D0.isoformat()), ("data_through", F.THROUGH.isoformat())):
         conn.execute("INSERT INTO app_meta (key, value) VALUES (%s,%s)", (k, v))
     conn.execute("INSERT INTO etl_runs (job, started_at, finished_at, status, data_through) VALUES ('meta_pull', now() - interval '2 hours', now() - interval '1 hour 59 minutes', 'ok', %s)", (F.THROUGH,))
     conn.execute("INSERT INTO etl_runs (job, started_at, finished_at, status, data_through) VALUES ('build_metrics', now() - interval '1 hour', now() - interval '59 minutes', 'ok', %s)", (F.THROUGH,))

@@ -11,3 +11,4 @@ snapshots/
 .DS_Store
 playwright-report/
 test-results/
+tests/ui/shots/

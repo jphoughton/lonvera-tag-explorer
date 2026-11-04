@@ -9,6 +9,7 @@ export function destroyCharts() {
 
 const COLORS = {
   spend: '#9db7e0', purchases: '#d9822b', revenue: '#1d8a56',
+  impressions: '#8a6bbf', clicks: '#c2410c',
   testing: '#7a5ad8', scaling: '#1b9a96', unclassified: '#b4bcc8',
 };
 
@@ -60,6 +61,9 @@ export function dailyChart(canvas, daily, shades = []) {
         { type: 'bar', label: 'Spend', data: daily.map((d) => d.spend), backgroundColor: COLORS.spend, yAxisID: 'y', order: 3 },
         { type: 'line', label: 'Revenue', data: daily.map((d) => d.revenue), borderColor: COLORS.revenue, backgroundColor: COLORS.revenue, yAxisID: 'y', pointRadius: 0, borderWidth: 1.5, tension: 0.2, order: 2 },
         { type: 'line', label: 'Purchases', data: daily.map((d) => d.purchases), borderColor: COLORS.purchases, backgroundColor: COLORS.purchases, yAxisID: 'y1', pointRadius: 0, borderWidth: 1.5, tension: 0.2, order: 1 },
+        // traffic: off by default; days where Meta has no impressions stay null (a gap, not zero)
+        { type: 'line', label: 'Impressions', hidden: true, data: daily.map((d) => (d.impressions == null ? null : d.impressions)), borderColor: COLORS.impressions, backgroundColor: COLORS.impressions, yAxisID: 'y2', pointRadius: 0, borderWidth: 1.5, tension: 0.2, spanGaps: false, order: 1 },
+        { type: 'line', label: 'Clicks', hidden: true, data: daily.map((d) => (d.link_clicks == null ? null : d.link_clicks)), borderColor: COLORS.clicks, backgroundColor: COLORS.clicks, yAxisID: 'y3', pointRadius: 0, borderWidth: 1.5, tension: 0.2, order: 1 },
       ],
     },
     options: {
@@ -68,13 +72,15 @@ export function dailyChart(canvas, daily, shades = []) {
         x: { ticks: { maxTicksLimit: 14, maxRotation: 0, callback: tickDay }, grid: { display: false } },
         y: { position: 'left', beginAtZero: true, ticks: { callback: (v) => fmt.money(v) }, title: { display: true, text: '$' } },
         y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'Purchases' } },
+        y2: { display: 'auto', position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'Impressions' }, ticks: { callback: (v) => fmt.int(v) } },
+        y3: { display: 'auto', position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'Link clicks' }, ticks: { callback: (v) => fmt.int(v) } },
       },
       plugins: {
         legend: { display: false },
         windowShade: { shades: sh },
         tooltip: {
           callbacks: {
-            label: (c) => `${c.dataset.label}: ${c.dataset.label === 'Purchases' ? fmt.int(c.parsed.y) : fmt.money2(c.parsed.y)}`,
+            label: (c) => `${c.dataset.label}: ${['Purchases', 'Impressions', 'Clicks'].includes(c.dataset.label) ? fmt.int(c.parsed.y) : fmt.money2(c.parsed.y)}`,
           },
         },
       },

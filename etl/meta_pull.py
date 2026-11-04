@@ -32,8 +32,9 @@ def aggregate(rows: list[dict]) -> dict[tuple, dict]:
         if a is None:
             f = fam(r["ad_name"])
             out[k] = a = {**{x: r[x] for x in ("ad_id", "day", "ad_name", "campaign_id", "campaign_name", "adset_id", "adset_name", "account")},
-                          "fam": f, "famkey": f.lower(), "spend": 0.0, "purchases": 0.0, "value": 0.0, "clicks": 0.0}
+                          "fam": f, "famkey": f.lower(), "spend": 0.0, "purchases": 0.0, "value": 0.0, "clicks": 0.0, "impressions": 0.0}
         a["spend"] += r["spend"]; a["purchases"] += r["purchases"]; a["value"] += r["value"]; a["clicks"] += r["clicks"]
+        a["impressions"] += r.get("impressions", 0.0)
     return out
 
 
@@ -62,9 +63,9 @@ def load_chunk(conn, agg: dict[tuple, dict], since: dt.date, until: dt.date, rep
     n = 0
     if replace:
         deleted = conn.execute("DELETE FROM ad_daily WHERE day BETWEEN %s AND %s", (since, until)).rowcount
-        n = db.bulk_copy(conn, "ad_daily", ["ad_id", "day", "meta_family_key", "meta_family", "campaign_id", "spend", "purchases", "conv_value", "link_clicks", "source"],
+        n = db.bulk_copy(conn, "ad_daily", ["ad_id", "day", "meta_family_key", "meta_family", "campaign_id", "spend", "purchases", "conv_value", "link_clicks", "impressions", "source"],
                          [(a["ad_id"], a["day"], a["famkey"], a["fam"], a["campaign_id"], round(a["spend"], 2), round(a["purchases"], 2), round(a["value"], 2),
-                           round(a["clicks"]), "meta_api") for a in agg.values()])
+                           round(a["clicks"]), round(a["impressions"]), "meta_api") for a in agg.values()])
     else:
         deleted = 0
     return {"deleted": deleted, "inserted": n, "ads": len(ads), "campaigns": len(camps)}

@@ -1,6 +1,7 @@
 import { h, enc, fmt, href, apiWindow, globalParams, badge, empty, isNum, onCmpRefresh } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
+import { columnsChips } from '../components.js';
 import { metricColumns } from '../columns.js';
 import { setRangeInfo, ensureStatus, windowInfoFallback } from '../controls.js';
 
@@ -58,6 +59,7 @@ export async function productsPage(ctx) {
   onCmpRefresh(() => t.refresh());
   ctx.mount(h('div', { class: 'page' },
     h('div', { class: 'pagehead' }, h('h1', 'Products')),
+    h('div', { class: 'tablehead' }, columnsChips()),
     list.length ? t.el : empty('No products with tracker rows or Meta spend.'),
   ));
 }

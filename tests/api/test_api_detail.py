@@ -94,10 +94,11 @@ def test_detail_meta_ads_and_campaigns(client, fx):
     assert set(by_camp) == {"C100", "C200"} | ({None} if any(r["ad_id"] is None for r in ads["rows"]) else set())
     assert by_camp["C200"]["name"] == "VB_Testing_Cambium" and by_camp["C200"]["stage"] == "testing"
     assert sum(c["spend"] for c in d["campaigns"]) == pytest.approx(sum(r["spend"] for r in ads["rows"]), abs=0.011)
-    # launch window: the family's sheet-grain days show up as a campaign-less remainder
+    # since launch = API lifetime per ad, so the campaign table adds up to the family's lifetime with no campaign-less remainder
     full = get_ok(client, "/api/ads/1000")
-    assert any(c["campaign_id"] is None for c in full["campaigns"])
+    assert {c["campaign_id"] for c in full["campaigns"]} == {"C100", "C200"}
     assert sum(r["spend"] for r in full["meta_ads"]) == pytest.approx(full["metrics"]["family"]["launch"]["spend"], abs=0.011)
+    assert sum(c["spend"] for c in full["campaigns"]) == pytest.approx(full["metrics"]["family"]["launch"]["spend"], abs=0.011)
 
 
 def test_detail_blank_family_and_untagged_and_tracker_tags(client, fx):

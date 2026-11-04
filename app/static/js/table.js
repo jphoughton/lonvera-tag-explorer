@@ -1,6 +1,6 @@
 // Generic sortable table: header click toggles asc/desc, numeric-aware compare, nulls last, stable,
 // pinned total row, clickable rows (mouse + Enter), optional inline row expansion, progressive rendering.
-import { h, navigate, cmpView } from './util.js';
+import { h, navigate, cmpView, onCmpRefresh } from './util.js';
 
 const collator = new Intl.Collator('en-US', { numeric: true, sensitivity: 'base' });
 const isNil = (v) => v == null || v === '' || (typeof v === 'number' && !Number.isFinite(v));
@@ -214,6 +214,7 @@ export function createTable(opts) {
   }
 
   render();
+  onCmpRefresh(render); // per-day / column-group toggles re-render without a refetch
   return {
     el: root,
     wrap,

@@ -148,6 +148,8 @@ async function logout() {
 // ---------- state ----------
 export function showControls(on) {
   controls.hidden = !on;
+  const src = document.getElementById('source');
+  if (src && !on) src.hidden = true;
   document.body.classList.toggle('no-controls', !on);
   topbar.querySelector('#logout').hidden = !on;
 }
@@ -253,6 +255,11 @@ export async function loadStatus(signal) {
       lr && lr.finished_at ? h('span', { class: 'muted' }, ` · refreshed ${fmt.dateTime(lr.finished_at)}${lr.status && lr.status !== 'ok' && lr.status !== 'success' ? ' (' + lr.status + ')' : ''}`) : null,
     );
     for (const el of [fromEl, toEl, cfromEl, ctoEl]) { el.min = status.daily_start || ''; el.max = status.data_through || ''; }
+    const src = document.getElementById('source');
+    if (src) {
+      src.textContent = 'Source: Meta Marketing API' + (lr && lr.finished_at ? ', refreshed ' + fmt.dateTime(lr.finished_at) : '') + (status.data_through ? ' · data through ' + fmt.day(status.data_through) : '');
+      src.hidden = false;
+    }
     return status;
   } catch (e) {
     if (e instanceof AuthError) throw e;
@@ -262,5 +269,5 @@ export async function loadStatus(signal) {
 }
 export function getStatus() { return status; }
 export async function ensureStatus(signal) { return status || loadStatus(signal); }
-export function clearStatus() { status = null; if (statusEl) statusEl.textContent = ''; }
+export function clearStatus() { status = null; if (statusEl) statusEl.textContent = ''; const src = document.getElementById('source'); if (src) src.hidden = true; }
 export { cleanParams, qs };

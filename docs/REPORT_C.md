@@ -1,0 +1,28 @@
+# REPORT_C (UI agent)
+
+## Delivered (app/static/**, tests/ui/**)
+Vanilla-JS SPA, no build step, Chart.js 4.4.1 vendored (`vendor/chart.umd.min.js`). Routes `/login`, `/`, `/p/<slug>`, `/ad/<id>` (History API, state in the URL). All data goes in via `textContent`; external URLs pass an http(s) check.
+- **Header**: Back (pushState for drills, replaceState for every filter; restores expanded rows, sort, table + page scroll from history.state with sessionStorage fallback; with no in-app history it goes to the parent level; disabled on `/`), date presets + custom range, Stage chips (Testing / Scaling, Unclassified only when the window has it, at least one stays on, `stage=` include list), Compare to (Off / Previous period / 7d..90d / custom, Per day), range label line, clamped / `window_info.note` notices.
+- **Product page**: dropdown tree (cluster > ICP > pain > family > Meta ad). Caret and (default "Drops down") row click expand in place, "Open >" navigates, "Opens" mode persisted in localStorage. Toolbar: Expand all, Collapse all, Expand to 0..3, Columns chips (Traffic on, Advanced off, persisted), search, With spend only. Lazy children from `/tree` (tag levels) and `/ads` (Meta ads under a family); sibling groups sort independently; total row pinned. Flat "All ad families" (`all=1`, `/families`), flat Meta ads table (`view=ads`), Campaigns view (stage cards, stacked daily chart, table), "Not on the tracker" panel, ad detail (media, tag block + badges + reliability note, Communication Overview, copy, siblings, family metrics, A|B|delta table, Meta ads, campaigns, daily chart with Spend/Revenue/Purchases/Impressions/Clicks toggles and A (blue) / B (orange) shading).
+- **Columns everywhere**: Unique ads, Live now, Spend, % of spend, Impressions, Link clicks, CTR, CPC, [CPM, Conv rate], Purchases, Revenue, ROAS, CPA, Testing $/Scaling $/Testing % only when both stages are on. No 7d columns, no Active ads column. Compare adds a second line `vs B ▲12%` (CTR / Conv rate / % of spend in pp), colors per spec, sort by value or by % change (Delta button or shift-click).
+- Copy follows v1.5: footer `Source: Meta Marketing API, refreshed <time>`; no "sheet" / "tab" / "ties to" wording; data-through comes from `/api/status`.
+
+## Tests
+- `tests/ui/mock_server.py` (Flask :5099) implements every contract endpoint through v1.5 (windows, stage list, compare, shares, traffic, `/tree`, unclassified days, impressions unknown before Jun 20). Login password `test`.
+- `.venv/bin/python -m pytest tests/ui` : **64 passed** against the mock (about 3 min). Screenshots in `tests/ui/shots/`.
+- `UI_BASE_URL=http://127.0.0.1:5098 UI_PASSWORD=test UI_ALLOW_RESOURCE_ERRORS=1 .venv/bin/python -m pytest tests/ui` against B's server on `tagexp_dev`: **all pass** (mock_only tests and campaign tests skip when that data is absent). Tests drill into whatever rows exist, so they are data-agnostic.
+
+## Observations on the real API (for B / orchestrator)
+1. `m.impressions` is `0` (not null) when unknown, `ctr/cpm` null. UI shows `–` when impressions = 0 next to spend or clicks. Prefer null.
+2. `cpc` is `0.0` in totals when impressions are unknown (tree total, window=30d: spend 111,340, clicks 50,560, cpc 0.0). CPC should be spend / link clicks or null.
+3. `by_stage` returns an `unclassified` card; UI renders one card per included stage (so 3 on current data). Campaign rows can sum to less than `total.spend` (days with no campaign), so shares sum below 100%.
+4. Last refresh status `failed` is shown in the header (`refreshed ... (failed)`).
+5. Assumptions to verify: `testing_pct` is a 0-1 fraction; `delta.spend_share_pp`, `ctr_pp`, `conv_rate_pp` are already in percentage points; CPM down = green, Conv rate up = green (contract only fixes CTR/CPC).
+6. `/api/products` is a bare array: the UI derives the A / B range labels client-side. With `?envelope=1` it would use the server labels (not wired).
+
+## Decisions / open items
+- Active ads column dropped (not in Josh's list); one line in `columns.js` brings it back.
+- Meta-ads tables label the share column "% of family" when filtered to one family, otherwise "% of spend". Ad-detail campaigns mini-table and the launch/7d/30d family table have no traffic columns (the API gives no traffic there).
+- `tree?root=family` needs all three filters, so `all=1` uses the flat `/families` table.
+- Static ES modules are not hashed: serve `/static/` with `Cache-Control: no-cache` (or version the URLs) so deploys are picked up.
+- A first-time visit without a cookie logs two 401s in the console before the redirect to `/login` (expected).

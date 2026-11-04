@@ -5,7 +5,7 @@ import itertools
 import pytest
 
 from . import fixture_data as F
-from .helpers import STAGE_PARAMS, THROUGH, check_m, get_ok, qs, rows_by_product
+from .helpers import STAGE_PARAMS, THROUGH, check_m, get_ok, qs, ratio_or_none, rows_by_product
 
 D = dt.date
 A7 = (D(2026, 10, 27), THROUGH)
@@ -80,8 +80,42 @@ def check_cmp(m, rows, fx, a, b, so, ctx, unique_override=None):
     else:
         assert dlt["roas"] == pytest.approx(ra - rb, abs=2e-4), ctx
         assert dlt["roas_pct"] == pytest.approx((ra - rb) / rb, abs=5e-4), ctx
+    check_cmp_traffic(m, agg_a, agg_b, da, db, ctx)
     # the A side and the non-windowed fields are exactly what they are without comparison
     check_m(m, agg_a if unique_override is None else dict(agg_a, unique=unique_override), ctx)
+
+
+def check_cmp_traffic(m, agg_a, agg_b, da, db, ctx):
+    """Traffic metrics inside cmp / delta: B sums, A - B, ctr_pp, percent changes (null when B is 0 / unknown)."""
+    c, dlt = m["cmp"], m["delta"]
+    assert c["impressions"] == agg_b["imp"] and c["link_clicks"] == agg_b["clk"], ctx
+    def ratios(agg):
+        return {"ctr": ratio_or_none(agg["clk_tr"], agg["imp"]), "cpc": ratio_or_none(agg["sp_tr"], agg["clk"]),
+                "cpm": None if not agg["imp"] else float(agg["sp_tr"]) * 1000 / agg["imp"], "conv_rate": ratio_or_none(agg["purch_t"], agg["clk"])}
+    ra, rb = ratios(agg_a), ratios(agg_b)
+    for k, tol in (("ctr", 1e-5), ("cpc", 1e-3), ("cpm", 1e-2), ("conv_rate", 1e-5)):
+        assert (c[k] is None) == (rb[k] is None), (ctx, k)
+        if rb[k] is not None:
+            assert c[k] == pytest.approx(rb[k], abs=tol), (ctx, k)
+        if ra[k] is None or rb[k] is None:
+            assert dlt[k] is None and dlt[f"{k}_pct"] is None, (ctx, k)
+        else:
+            assert dlt[k] == pytest.approx(ra[k] - rb[k], abs=2 * tol), (ctx, k)
+            if rb[k]:
+                assert dlt[f"{k}_pct"] == pytest.approx((ra[k] - rb[k]) / rb[k], abs=2e-3), (ctx, k)
+    assert dlt["impressions"] == agg_a["imp"] - agg_b["imp"] and dlt["link_clicks"] == agg_a["clk"] - agg_b["clk"], ctx
+    assert (dlt["ctr_pp"] is None) == (dlt["ctr"] is None), ctx
+    if dlt["ctr"] is not None:
+        assert dlt["ctr_pp"] == pytest.approx(dlt["ctr"] * 100, abs=2e-3), ctx           # percentage points
+    for key, a_, b_ in (("impressions", agg_a["imp"], agg_b["imp"]), ("link_clicks", agg_a["clk"], agg_b["clk"])):
+        assert (dlt[f"{key}_pct"] is None) == (b_ == 0), (ctx, key)
+        if b_:
+            assert dlt[f"{key}_pct"] == pytest.approx((a_ - b_) / b_, abs=2e-4), (ctx, key)
+        assert m[f"{key}_per_day"] == pytest.approx(a_ / da, abs=0.006), (ctx, key)
+        if db:
+            assert c[f"{key}_per_day"] == pytest.approx(b_ / db, abs=0.006), (ctx, key)
+        else:
+            assert c[f"{key}_per_day"] is None, (ctx, key)
 
 
 # --------------------------------------------------------------------------------------------------------------------- params
@@ -191,10 +225,11 @@ def test_non_windowed_fields_carry_no_cmp(client):
     for k in ("unique_ads", "live_now", "spend_7d", "cpa_7d"):
         assert not isinstance(m[k], dict)
     assert set(m["cmp"]) == {"spend", "purchases", "revenue", "roas", "cpa", "active_ads", "spend_per_day", "purchases_per_day", "revenue_per_day",
-                           "spend_share"}
+                           "spend_share", "impressions", "link_clicks", "ctr", "cpc", "cpm", "conv_rate", "impressions_per_day", "link_clicks_per_day"}
     assert set(m["delta"]) == {"spend", "purchases", "revenue", "roas", "cpa", "spend_pct", "purchases_pct", "revenue_pct", "roas_pct", "cpa_pct",
                                "spend_per_day_pct", "purchases_per_day_pct", "revenue_per_day_pct",
-                               "spend_share_pp"}
+                               "spend_share_pp", "impressions", "link_clicks", "ctr", "ctr_pp", "cpc", "cpm", "conv_rate", "impressions_pct", "link_clicks_pct",
+                               "ctr_pct", "cpc_pct", "cpm_pct", "conv_rate_pct", "impressions_per_day_pct", "link_clicks_per_day_pct"}
     assert "cmp" not in m["stage"]["testing"]
 
 
@@ -244,11 +279,7 @@ def test_stage_filter_applies_to_both_windows(client, fx):
 
 # --------------------------------------------------------------------------------------------------------------------- ads / campaigns / unmatched / detail
 def vb_family_launches(fx):
-    out = {}
-    for r in sorted(fx.tracker, key=lambda r: (r["sheet_row"], r["id"])):
-        if r["product"] == "vita-bull" and not r["family_key"].startswith("id:"):
-            out.setdefault(r["family_key"], r["launch"])
-    return out
+    return {r["family_key"] for r in fx.tracker if r["product"] == "vita-bull" and not r["family_key"].startswith("id:")}
 
 
 @pytest.mark.parametrize("q_,a,b,s,so", [c for c in CASES if c.id.endswith("|all") or c.id.endswith("|scaling")])
@@ -257,22 +288,24 @@ def test_ads_cmp(client, fx, q_, a, b, s, so):
     fams = vb_family_launches(fx)
     pid = fx.product_ids["vita-bull"]
     ads_a, rem_a, rem_au = F.ad_oracle(fx, fams, a, so, unmatched_pid=pid)
-    ads_b, rem_b, rem_bu = F.ad_oracle(fx, fams, b, so, unmatched_pid=pid) if b else ({}, [F.Z] * 3, [F.Z] * 3)
+    ads_b, rem_b, rem_bu = F.ad_oracle(fx, fams, b, so, unmatched_pid=pid) if b else ({}, F._zero(), F._zero())
     by = {(r["ad_id"], r["family_key"]): r for r in d["rows"] if r["ad_id"]}
-    keys = set(k for k, v in ads_a.items() if any(v)) | set(k for k, v in ads_b.items() if any(v))
+    keys = set(ads_a) | set(ads_b)
     assert set(by) == {(ad, f) for ad, f in keys}, (q_, s)
     for key in keys:
         r = by[key]
-        va, vb = ads_a.get(key, [F.Z] * 3), ads_b.get(key, [F.Z] * 3)
-        assert r["spend"] == pytest.approx(float(va[0]), abs=0.006) and r["cmp"]["spend"] == pytest.approx(float(vb[0]), abs=0.006), (key, q_)
-        assert r["cmp"]["revenue"] == pytest.approx(float(vb[2]), abs=0.006) and r["cmp"]["purchases"] == pytest.approx(float(vb[1]), abs=0.006)
-        assert r["delta"]["spend"] == pytest.approx(float(va[0] - vb[0]), abs=0.011)
-        assert (r["delta"]["spend_pct"] is None) == (vb[0] == 0)
-        assert r["spend_per_day"] == pytest.approx(float(va[0]) / n_days(a), abs=0.006)
+        va, vb = ads_a.get(key, F._zero()), ads_b.get(key, F._zero())
+        assert r["spend"] == pytest.approx(float(va["spend"]), abs=0.006) and r["cmp"]["spend"] == pytest.approx(float(vb["spend"]), abs=0.006), (key, q_)
+        assert r["cmp"]["revenue"] == pytest.approx(float(vb["revenue"]), abs=0.006) and r["cmp"]["purchases"] == pytest.approx(float(vb["purchases"]), abs=0.006)
+        assert r["cmp"]["impressions"] == vb["imp"] and r["cmp"]["link_clicks"] == vb["clk"] and r["impressions"] == va["imp"]
+        assert r["delta"]["spend"] == pytest.approx(float(va["spend"] - vb["spend"]), abs=0.011)
+        assert r["delta"]["impressions"] == va["imp"] - vb["imp"]
+        assert (r["delta"]["spend_pct"] is None) == (vb["spend"] == 0)
+        assert r["spend_per_day"] == pytest.approx(float(va["spend"]) / n_days(a), abs=0.006)
     for on_tracker, ra, rb in ((True, rem_a, rem_b), (False, rem_au, rem_bu)):
         rem = next((r for r in d["rows"] if r["ad_id"] is None and r["on_tracker"] is on_tracker), None)
-        if sum(ra) or sum(rb):
-            assert rem is not None and rem["spend"] == pytest.approx(float(ra[0]), abs=0.006) and rem["cmp"]["spend"] == pytest.approx(float(rb[0]), abs=0.006)
+        if ra["spend"] or rb["spend"]:
+            assert rem is not None and rem["spend"] == pytest.approx(float(ra["spend"]), abs=0.006) and rem["cmp"]["spend"] == pytest.approx(float(rb["spend"]), abs=0.006)
     # totals = sum of rows (A and B), ratios recomputed
     t = d["total"]
     assert t["spend"] == pytest.approx(sum(r["spend"] for r in d["rows"]), abs=0.02)
@@ -290,12 +323,12 @@ def test_ads_cmp(client, fx, q_, a, b, s, so):
 
 def test_ads_family_selection_and_campaign_filter_cmp(client, fx):
     d = get_ok(client, "/api/products/vita-bull/ads?family_key=vb-fam-a&window=14d&compare=prev")
-    fams = {"vb-fam-a": F.D(2026, 8, 1)}
+    fams = {"vb-fam-a"}
     a_, *_ = F.ad_oracle(fx, fams, (F.THROUGH - dt.timedelta(days=13), F.THROUGH), "all")
     b_, *_ = F.ad_oracle(fx, fams, (F.THROUGH - dt.timedelta(days=27), F.THROUGH - dt.timedelta(days=14)), "all")
     for r in d["rows"]:
-        assert r["spend"] == pytest.approx(float(a_.get((r["ad_id"], "vb-fam-a"), [F.Z])[0]), abs=0.006)
-        assert r["cmp"]["spend"] == pytest.approx(float(b_.get((r["ad_id"], "vb-fam-a"), [F.Z])[0]), abs=0.006)
+        assert r["spend"] == pytest.approx(float(a_.get((r["ad_id"], "vb-fam-a"), F._zero())["spend"]), abs=0.006)
+        assert r["cmp"]["spend"] == pytest.approx(float(b_.get((r["ad_id"], "vb-fam-a"), F._zero())["spend"]), abs=0.006)
     c = get_ok(client, "/api/products/vita-bull/ads?campaign_id=C200&window=14d&compare=prev")
     assert c["rows"] and all(r["campaign_id"] == "C200" for r in c["rows"] if r["ad_id"])
     assert all(r["stage"] == "testing" for r in c["rows"] if r["ad_id"])

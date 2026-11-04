@@ -1,8 +1,9 @@
-"""Synthetic dataset for the API tests + an independent pure-Python oracle of the contract's metric rules.
+"""Synthetic dataset for the API tests + an independent pure-Python oracle of the contract's metric rules (v1.5, API driven).
 
-The oracle works from the RAW fixture (tracker rows, ad_daily, mapping, campaigns, lifetime) and also builds the derived tables
-(family_daily, ad_metrics, unmatched_meta) the way etl.build_metrics is specified to. The tests then compare the API's answers to
-oracle answers computed with plain loops, so the SQL in app/queries.py is checked against an independent implementation.
+The oracle works from the RAW fixture (tracker rows, ad_daily with impressions, mapping, campaigns, API lifetime per Meta ad) and also builds
+the derived tables (family_daily incl. traffic sums, ad_metrics incl. launch impressions/clicks, unmatched_meta) the way etl.build_metrics is
+specified to. The tests then compare the API's answers to oracle answers computed with plain loops, so the SQL in app/queries.py is checked
+against an independent implementation.
 """
 from __future__ import annotations
 
@@ -15,7 +16,6 @@ from decimal import ROUND_HALF_UP, Decimal
 
 D = dt.date
 D0 = D(2026, 5, 6)
-CUT = D(2026, 9, 17)
 THROUGH = D(2026, 11, 2)
 Z = Decimal(0)
 STAGES = ("testing", "scaling", "unclassified")
@@ -107,6 +107,7 @@ ADS = {
     "f1": ("VB-Fam-F", "C999", "VB scale set", "PAUSED", D(2026, 9, 29)),
     "bl1a": ("BL-Fam-1", "C300", "BL scale set", "ACTIVE", D(2026, 9, 24)),
     "bl1b": ("BL-Fam-1 - Copy 2", "C400", "BL test set", "ACTIVE", D(2026, 10, 9)),
+    "bl2a": ("BL-Fam-2", "C300", "BL scale set", "PAUSED", D(2026, 8, 9)),               # no ad-level daily rows, only family-grain sheet days
     "bl3a": ("BL-Fam-3", "C300", "BL scale set", "ACTIVE", D(2026, 10, 27)),
     "u1": ("Brief2-2-Bull-398", "C100", "VB scale set", "ACTIVE", D(2026, 10, 19)),
     "u2": ("Weird-Bone-1", "C300", "BL scale set", "ACTIVE", D(2026, 10, 24)),
@@ -146,20 +147,26 @@ MAPPING = {
 META_REGEX = {"boneflex": ("bone", 10), "beef-liver": ("liver", 20), "vita-bull": ("bull", 30), "vita-belle": ("belle", 40),
               "vital-flow": (r"vital[-_ ]?flow", 50)}
 
-# per-ad lifetime (Meta Ads - Lifetime tab) for the pre-D0 family; ad_lifetime has extra history no ad row accounts for
-META_AD_LIFETIME = {"b1": (dec("1000.50"), dec(20), dec("900.00")), "b2": (dec("500.25"), dec(9), dec("400.00"))}
-LIFETIME_EXTRA = {"vb-fam-b": (dec("120.00"), dec(3), dec("100.00"))}
+# --- API lifetime (v1.5) -------------------------------------------------------------------------------------------------------------
+# history an ad has from before the daily range (spend, purchases, revenue, link clicks)
+PRE_HISTORY = {"b1": (dec("1000.50"), dec(20), dec("900.00"), 800), "b2": (dec("500.25"), dec(9), dec("400.00"), 400),
+               "a1": (dec("40.00"), dec(1), dec("60.00"), 30)}
+LIFETIME_RESTATE = {"e1": (dec("-3.00"), dec(0), dec("-5.00"), 0)}      # Meta restated: lifetime is a little below the sum of our daily rows
+NO_LIFETIME = {"c1"}                                                       # an ad the lifetime pull has not seen (yet)
+# lifetime impressions a family has that no ad row accounts for (so the family total is more than the sum of its ads' rows)
+FAMILY_EXTRA = {"vb-fam-d": (dec("7.00"), dec(1), dec("10.00"), 100, 5)}   # spend, purchases, revenue, impressions, clicks
+IMP_PER_CLICK = 50
 
 
 @dataclass
 class Fx:
     product_ids: dict = field(default_factory=dict)          # slug -> id
     tracker: list = field(default_factory=list)              # dicts with id, product, family_key, sheet_row, ...
-    ad_daily: list = field(default_factory=list)             # dicts: ad_id, day, meta_family_key, meta_family, campaign_id, spend, purchases, conv_value, link_clicks, source
+    ad_daily: list = field(default_factory=list)             # dicts: ad_id, day, meta_family_key, meta_family, campaign_id, spend, purchases, conv_value, link_clicks, impressions, source
     camp_stage: dict = field(default_factory=dict)           # campaign id -> stage
-    lifetime: dict = field(default_factory=dict)             # tracker family key -> (spend, purch, rev)
+    ad_lifetime: dict = field(default_factory=dict)          # ad_id -> {spend, purchases, revenue, imp, clk, mfk, tfam}
     # derived (oracle-built)
-    family_daily: dict = field(default_factory=dict)         # (family_key, day, stage) -> [spend, purch, rev, clicks]
+    family_daily: dict = field(default_factory=dict)         # (family_key, day, stage) -> [spend, purch, rev, clicks, imp, clicks_tr, spend_tr]
     ad_metrics: dict = field(default_factory=dict)           # tracker row id -> dict
     unmatched: dict = field(default_factory=dict)            # meta_family_key -> dict
 
@@ -177,13 +184,12 @@ def _series(key: str, start: dt.date, end: dt.date):
             purch = rnd.choice([0, 1, 1, 2, 3, 2.5])
             rev = round(purch * rnd.uniform(25, 60), 2)
             clicks = rnd.randint(5, 80)
-            yield d, dec(spend), dec(purch), dec(rev), clicks
+            yield d, dec(spend), dec(purch), dec(rev), clicks, rnd.randint(30, 90)
         d += dt.timedelta(days=1)
 
 
 def build_fixture(product_ids: dict) -> Fx:
     fx = Fx(product_ids=dict(product_ids))
-    # tracker rows
     seen = defaultdict(int)
     for i, t in enumerate(TRACKER):
         r = dict(t)
@@ -195,27 +201,37 @@ def build_fixture(product_ids: dict) -> Fx:
         r["product_id"] = product_ids[t["product"]]
         fx.tracker.append(r)
     fx.camp_stage = {cid: stage_of_campaign(name) for cid, _a, name in CAMPAIGNS}
-    # ad-level rows
+    # ad-level rows (Graph API: impressions known)
     for ad_id, (rng_s, rng_e) in AD_RANGES.items():
         disp, camp, *_ = ADS[ad_id]
-        for d, sp, pu, rv, cl in _series(ad_id, rng_s, rng_e):
+        for d, sp, pu, rv, cl, ipc in _series(ad_id, rng_s, rng_e):
             fx.ad_daily.append(dict(ad_id=ad_id, day=d, meta_family_key=meta_family_key(disp), meta_family=disp, campaign_id=camp,
-                                    spend=sp, purchases=pu, conv_value=rv, link_clicks=cl, source="meta_api"))
-    # family-grain sheet rows
+                                    spend=sp, purchases=pu, conv_value=rv, link_clicks=cl, impressions=cl * ipc, source="meta_api"))
+    # family-grain sheet rows: link clicks known (except BL-Fam-2: 0 = unknown), impressions NULL
     for disp, (s, e) in FAM_RANGES.items():
-        for d, sp, pu, rv, cl in _series("fam:" + disp, s, e):
+        for d, sp, pu, rv, cl, _ipc in _series("fam:" + disp, s, e):
             k = meta_family_key(disp)
             fx.ad_daily.append(dict(ad_id="fam:" + k, day=d, meta_family_key=k, meta_family=disp, campaign_id="",
-                                    spend=sp, purchases=pu, conv_value=rv, link_clicks=cl, source="sheet"))
-    # lifetime (family sums = per-ad sums + extra)
-    for ad_id, (sp, pu, rv) in META_AD_LIFETIME.items():
-        k = meta_family_key(ADS[ad_id][0])
-        tfam = MAPPING[k][0]
-        cur = fx.lifetime.get(tfam, (Z, Z, Z))
-        fx.lifetime[tfam] = (cur[0] + sp, cur[1] + pu, cur[2] + rv)
-    for tfam, (sp, pu, rv) in LIFETIME_EXTRA.items():
-        cur = fx.lifetime.get(tfam, (Z, Z, Z))
-        fx.lifetime[tfam] = (cur[0] + sp, cur[1] + pu, cur[2] + rv)
+                                    spend=sp, purchases=pu, conv_value=rv, link_clicks=0 if disp == "BL-Fam-2" else cl, impressions=None,
+                                    source="sheet"))
+    # API lifetime per Meta ad = history before the daily range + every daily row of the ad (+ the family-grain days, given to the first
+    # ad of the Meta family) +/- a restatement; one ad has no lifetime row at all
+    first_ad_of = {}
+    for ad_id, (disp, *_rest) in ADS.items():
+        first_ad_of.setdefault(meta_family_key(disp), ad_id)
+    for ad_id, (disp, *_rest) in ADS.items():
+        if ad_id in NO_LIFETIME:
+            continue
+        mfk = meta_family_key(disp)
+        pre = PRE_HISTORY.get(ad_id, (Z, Z, Z, 0))
+        rs = LIFETIME_RESTATE.get(ad_id, (Z, Z, Z, 0))
+        rows = [r for r in fx.ad_daily if r["meta_family_key"] == mfk and (r["ad_id"] == ad_id or (r["ad_id"].startswith("fam:") and first_ad_of[mfk] == ad_id))]
+        sp = pre[0] + rs[0] + sum((r["spend"] for r in rows), Z)
+        pu = pre[1] + rs[1] + sum((r["purchases"] for r in rows), Z)
+        rv = pre[2] + rs[2] + sum((r["conv_value"] for r in rows), Z)
+        clk = pre[3] + rs[3] + sum(r["link_clicks"] for r in rows)
+        fx.ad_lifetime[ad_id] = dict(spend=sp, purchases=pu, revenue=rv, imp=clk * IMP_PER_CLICK, clk=clk, mfk=mfk, tfam=MAPPING[mfk][0],
+                                     camp=ADS[ad_id][1])
     build_derived(fx)
     return fx
 
@@ -231,6 +247,14 @@ def stage_of_row(fx: Fx, campaign_id: str) -> str:
     return fx.camp_stage.get(campaign_id, "unclassified")
 
 
+def row_traffic(r: dict) -> tuple:
+    """(imp, clicks_tr, spend_tr) of one ad_daily row: impressions known -> clicks count for CTR; clicks known (API row, or sheet row with
+    clicks > 0) -> its spend is the CPC / CPM base."""
+    known_imp = r["impressions"] is not None
+    return (r["impressions"] if known_imp else 0, r["link_clicks"] if known_imp else 0,
+            r["spend"] if (known_imp or r["link_clicks"] > 0) else Z)
+
+
 def build_derived(fx: Fx) -> None:
     fd = fx.family_daily
     for r in fx.ad_daily:
@@ -238,23 +262,27 @@ def build_derived(fx: Fx) -> None:
         if tfam is None:
             continue
         key = (tfam, r["day"], stage_of_row(fx, r["campaign_id"]))
-        cur = fd.setdefault(key, [Z, Z, Z, 0])
+        cur = fd.setdefault(key, [Z, Z, Z, 0, 0, 0, Z])
+        imp, ctr_clicks, sp_tr = row_traffic(r)
         cur[0] += r["spend"]
         cur[1] += r["purchases"]
         cur[2] += r["conv_value"]
         cur[3] += r["link_clicks"]
-    # first rows
+        cur[4] += imp
+        cur[5] += ctr_clicks
+        cur[6] += sp_tr
     firsts = {}
     for r in sorted(fx.tracker, key=lambda r: (r["sheet_row"], r["id"])):
         firsts.setdefault((r["product_id"], r["family_key"]), r["id"])
     for r in fx.tracker:
         is_first = firsts[(r["product_id"], r["family_key"])] == r["id"]
         row = dict(tracker_row_id=r["id"], product_id=r["product_id"], family_key=r["family_key"], is_first_row=is_first,
-                   launch_date=r["launch"])
-        if is_first:
+                   launch_date=r["launch"], impressions_launch=0, clicks_launch=0)
+        if is_first and not r["family_key"].startswith("id:"):
             f = r["family_key"]
-            lm = launch_metrics(fx, f, r["launch"], "all")
-            row.update(spend_launch=lm[0], purchases_launch=lm[1], revenue_launch=lm[2])
+            lm = family_lifetime(fx, f)
+            row.update(spend_launch=rnd2(lm["spend"]), purchases_launch=rnd0(lm["purchases"]), revenue_launch=rnd2(lm["revenue"]),
+                       impressions_launch=lm["imp"], clicks_launch=lm["clk"])
             for tag, n in (("7d", 7), ("30d", 30)):
                 s, p, v = window_sums(fx, f, THROUGH - dt.timedelta(days=n - 1), THROUGH, STAGES)
                 row.update({f"spend_{tag}": s, f"purchases_{tag}": p, f"revenue_{tag}": v})
@@ -263,7 +291,6 @@ def build_derived(fx: Fx) -> None:
             row.update(spend_launch=Z, purchases_launch=Z, revenue_launch=Z, spend_7d=Z, purchases_7d=Z, revenue_7d=Z,
                        spend_30d=Z, purchases_30d=Z, revenue_30d=Z, live=False)
         fx.ad_metrics[r["id"]] = row
-    # unmatched
     by = defaultdict(list)
     for r in fx.ad_daily:
         if MAPPING.get(r["meta_family_key"], (None, None))[0] is None:
@@ -287,12 +314,39 @@ def build_derived(fx: Fx) -> None:
                                live=sums(THROUGH - dt.timedelta(days=1))[0] > 0)
 
 
+def family_lifetime(fx: Fx, tfam: str) -> dict:
+    """API lifetime of a tracker family = sum of its Meta ads' lifetime rows (+ the fixture's unattributable extra)."""
+    out = dict(spend=Z, purchases=Z, revenue=Z, imp=0, clk=0)
+    for lt in fx.ad_lifetime.values():
+        if lt["tfam"] == tfam:
+            out["spend"] += lt["spend"]
+            out["purchases"] += lt["purchases"]
+            out["revenue"] += lt["revenue"]
+            out["imp"] += lt["imp"]
+            out["clk"] += lt["clk"]
+    ex = FAMILY_EXTRA.get(tfam)
+    if ex:
+        out["spend"] += ex[0]
+        out["purchases"] += ex[1]
+        out["revenue"] += ex[2]
+        out["imp"] += ex[3]
+        out["clk"] += ex[4]
+    return out
+
+
+def daily_vec(fx: Fx, tfam: str, d_from: dt.date | None, d_to: dt.date | None, stages) -> list:
+    """[spend, purchases, revenue, clicks, impressions, clicks_tr, spend_tr] of family_daily rows in the range (None = every day) and stages."""
+    out = [Z, Z, Z, 0, 0, 0, Z]
+    for (f, day, st), v in fx.family_daily.items():
+        if f == tfam and st in stages and (d_from is None or d_from <= day <= d_to):
+            for i in range(7):
+                out[i] += v[i]
+    return out
+
+
 def window_sums(fx: Fx, tfam: str, d_from: dt.date, d_to: dt.date, stages) -> tuple[Decimal, Decimal, Decimal]:
-    s = p = v = Z
-    for (f, day, st), (sp, pu, rv, _cl) in fx.family_daily.items():
-        if f == tfam and d_from <= day <= d_to and st in stages:
-            s, p, v = s + sp, p + pu, v + rv
-    return s, p, v
+    v = daily_vec(fx, tfam, d_from, d_to, stages)
+    return v[0], v[1], v[2]
 
 
 def stages_of(stage) -> tuple:
@@ -302,56 +356,49 @@ def stages_of(stage) -> tuple:
     return (stage,) if isinstance(stage, str) else tuple(stage)
 
 
-def launch_start(launch: dt.date | None) -> dt.date | None:
-    if launch is None:
-        return None
-    return launch if launch >= D0 else CUT + dt.timedelta(days=1)
+def lifetime_residual(fx: Fx, tfam: str) -> dict:
+    """Lifetime minus every daily row we hold: history before the daily range and restatements. Counted as 'unclassified'."""
+    lt = family_lifetime(fx, tfam)
+    d = daily_vec(fx, tfam, None, None, STAGES)
+    return dict(spend=rnd2(lt["spend"]) - d[0], purchases=rnd0(lt["purchases"]) - d[1], revenue=rnd2(lt["revenue"]) - d[2],
+                imp=lt["imp"] - d[4], clk=lt["clk"] - d[3], clk_tr=lt["clk"] - d[5], sp_tr=rnd2(lt["spend"]) - d[6],
+                purch_t=rnd0(lt["purchases"]) - d[1])
 
 
-def launch_metrics(fx: Fx, tfam: str, launch: dt.date | None, stage: str) -> tuple[Decimal, Decimal, Decimal]:
-    """Contract rule 3 (+ stage filter: classified days only, no lifetime). Per family: money 2dp, purchases integer."""
-    if launch is None or tfam.startswith("id:"):
-        return Z, Z, Z
-    stages = stages_of(stage)
-    s, p, v = window_sums(fx, tfam, launch_start(launch), THROUGH, stages)
-    if "unclassified" in stages and launch < D0:       # lifetime history carries no stage -> it is 'unclassified'
-        # (all three stages together reproduce the contract's since-launch total)
-        ls, lp, lv = fx.lifetime.get(tfam, (Z, Z, Z))
-        s, p, v = s + ls, p + lp, v + lv
-    return rnd2(s), rnd0(p), rnd2(v)
-
-
-def stage_buckets(fx: Fx, tfam: str, launch: dt.date | None, window) -> dict:
-    """testing/scaling/unclassified buckets for the selected window (launch or (from, to))."""
-    out = {}
+def stage_buckets(fx: Fx, tfam: str, window) -> dict:
+    """testing/scaling/unclassified spend, purchases, revenue of the selected window (launch: unclassified also holds the residual)."""
+    d_from, d_to = (None, None) if window == "launch" else window
+    out = {st: tuple(daily_vec(fx, tfam, d_from, d_to, (st,))[:3]) for st in STAGES}
     if window == "launch":
-        if launch is None or tfam.startswith("id:"):
-            return {st: (Z, Z, Z) for st in STAGES}
-        d_from, d_to = launch_start(launch), THROUGH
-    else:
-        d_from, d_to = window
-    for st in STAGES:
-        out[st] = window_sums(fx, tfam, d_from, d_to, (st,))
-    if window == "launch" and launch < D0:
-        ls, lp, lv = fx.lifetime.get("%s" % tfam, (Z, Z, Z))
+        r = lifetime_residual(fx, tfam)
         u = out["unclassified"]
-        out["unclassified"] = (u[0] + ls, u[1] + lp, u[2] + lv)
+        out["unclassified"] = (u[0] + r["spend"], u[1] + r["purchases"], u[2] + r["revenue"])
     return out
 
 
-def family_metrics(fx: Fx, tfam: str, launch: dt.date | None, window, stage: str) -> dict:
-    """What the first tracker row of family `tfam` carries for the selected window + stage."""
+def family_metrics(fx: Fx, tfam: str, window, stage) -> dict:
+    """What the first tracker row of family `tfam` carries for the selected window + stage list (CONTRACT v1.5)."""
     stages = stages_of(stage)
+    zero = dict(spend=Z, purchases=Z, revenue=Z, imp=0, clk=0, clk_tr=0, sp_tr=Z, purch_t=Z, buckets={st: (Z, Z, Z) for st in STAGES},
+                s7=Z, p7=Z, live=False)
     if tfam.startswith("id:"):
-        z = (Z, Z, Z)
-        return dict(spend=Z, purchases=Z, revenue=Z, buckets={st: z for st in STAGES}, s7=Z, p7=Z, live=False)
-    if window == "launch":
-        s, p, v = launch_metrics(fx, tfam, launch, stage)
-    else:
-        s, p, v = window_sums(fx, tfam, window[0], window[1], stages)
+        return zero
     s7, p7, _ = window_sums(fx, tfam, THROUGH - dt.timedelta(days=6), THROUGH, STAGES)
     live = window_sums(fx, tfam, THROUGH - dt.timedelta(days=1), THROUGH, STAGES)[0] > 0
-    return dict(spend=s, purchases=p, revenue=v, buckets=stage_buckets(fx, tfam, launch, window), s7=s7, p7=p7, live=live)
+    if window == "launch":
+        lt = family_lifetime(fx, tfam)
+        if stages == STAGES:
+            m = dict(spend=rnd2(lt["spend"]), purchases=rnd0(lt["purchases"]), revenue=rnd2(lt["revenue"]), imp=lt["imp"], clk=lt["clk"],
+                     clk_tr=lt["clk"], sp_tr=rnd2(lt["spend"]), purch_t=rnd0(lt["purchases"]))
+        else:
+            v = daily_vec(fx, tfam, None, None, stages)
+            r = lifetime_residual(fx, tfam) if "unclassified" in stages else dict(spend=Z, purchases=Z, revenue=Z, imp=0, clk=0, clk_tr=0, sp_tr=Z, purch_t=Z)
+            m = dict(spend=rnd2(v[0] + r["spend"]), purchases=rnd0(v[1] + r["purchases"]), revenue=rnd2(v[2] + r["revenue"]),
+                     imp=v[4] + r["imp"], clk=v[3] + r["clk"], clk_tr=v[5] + r["clk_tr"], sp_tr=v[6] + r["sp_tr"], purch_t=v[1] + r["purch_t"])
+    else:
+        v = daily_vec(fx, tfam, window[0], window[1], stages)
+        m = dict(spend=v[0], purchases=v[1], revenue=v[2], imp=v[4], clk=v[3], clk_tr=v[5], sp_tr=v[6], purch_t=v[1])
+    return dict(m, buckets=stage_buckets(fx, tfam, window), s7=s7, p7=p7, live=live)
 
 
 def tag_labels(row: dict) -> tuple[str, str, str]:
@@ -365,18 +412,17 @@ def tag_labels(row: dict) -> tuple[str, str, str]:
     return t[1], t[2], t[3]
 
 
-def aggregate(fx: Fx, rows: list[dict], window, stage: str) -> dict:
+def aggregate(fx: Fx, rows: list[dict], window, stage) -> dict:
     """Oracle for one group of tracker rows -> the numbers behind `m`."""
     out = dict(unique=len({r["family_key"] for r in rows}), live=0, active=0, spend=Z, purchases=Z, revenue=Z, s7=Z, p7=Z,
-               t=[Z, Z, Z], s=[Z, Z, Z], u=[Z, Z, Z])
+               t=[Z, Z, Z], s=[Z, Z, Z], u=[Z, Z, Z], imp=0, clk=0, clk_tr=0, sp_tr=Z, purch_t=Z)
     for r in rows:
         am = fx.ad_metrics[r["id"]]
         if not am["is_first_row"] or r["family_key"].startswith("id:"):
             continue
-        fm = family_metrics(fx, r["family_key"], r["launch"], window, stage)
-        out["spend"] += fm["spend"]
-        out["purchases"] += fm["purchases"]
-        out["revenue"] += fm["revenue"]
+        fm = family_metrics(fx, r["family_key"], window, stage)
+        for k in ("spend", "purchases", "revenue", "imp", "clk", "clk_tr", "sp_tr", "purch_t"):
+            out[k] += fm[k]
         out["s7"] += fm["s7"]
         out["p7"] += fm["p7"]
         out["live"] += 1 if fm["live"] else 0
@@ -391,62 +437,80 @@ def aggregate(fx: Fx, rows: list[dict], window, stage: str) -> dict:
 # oracle: ad-level (Meta ad grain) rows
 # ---------------------------------------------------------------------------------------------------------------------------------
 
+FIELDS = ("spend", "purchases", "revenue", "imp", "clk", "clk_tr", "sp_tr", "purch_t")
 
-def ad_oracle(fx: Fx, fams: dict, window, stage: str, campaign: str | None = None, unmatched_pid: int | None = None):
-    """Per-Meta-ad sums for a selection. fams: tracker family key -> launch date of its first tracker row.
-    window: 'launch' (per-ad launch rule) or (from, to). unmatched_pid: also include Meta families with no tracker row assigned to that product.
-    Returns ({(ad_id, family): [spend, purchases, revenue]}, remainder, remainder_unmatched) - the remainder holds family-grain
-    ('fam:') days of tracker families and Lifetime history no ad row accounts for; remainder_unmatched the family-grain days of
-    Meta families that are not on the tracker."""
+
+def _zero():
+    return {k: Z for k in FIELDS}
+
+
+def _daily_fields(r: dict) -> dict:
+    imp, ctr_clicks, sp_tr = row_traffic(r)
+    return dict(spend=r["spend"], purchases=r["purchases"], revenue=r["conv_value"], imp=imp, clk=r["link_clicks"], clk_tr=ctr_clicks,
+                sp_tr=sp_tr, purch_t=r["purchases"])
+
+
+def _lifetime_fields(lt: dict) -> dict:
+    return dict(spend=lt["spend"], purchases=lt["purchases"], revenue=lt["revenue"], imp=lt["imp"], clk=lt["clk"], clk_tr=lt["clk"],
+                sp_tr=lt["spend"], purch_t=lt["purchases"])
+
+
+def ad_oracle(fx: Fx, fams: set, window, stage, campaign: str | None = None, unmatched_pid: int | None = None):
+    """Per-Meta-ad sums for a selection of tracker families `fams` (set of family keys).
+    window: 'launch' (per-ad API lifetime; with a stage list: the ad's daily rows of the included stages + [unclassified] lifetime minus all
+    its daily rows) or (from, to). unmatched_pid: also include Meta families with no tracker row assigned to that product.
+    Returns ({(ad_id, family): {field: value}}, remainder, remainder_unmatched) - the remainders hold family-grain ('fam:') days and, for
+    tracker families, what the family lifetime holds beyond its ads' lifetime rows."""
     stages = stages_of(stage)
-    ads: dict = defaultdict(lambda: [Z, Z, Z])
-    rem = [Z, Z, Z]
-    rem_u = [Z, Z, Z]
+    incl_uncl = "unclassified" in stages
+    ads: dict = defaultdict(_zero)
+    rem, rem_u = _zero(), _zero()
 
-    def add(target, r):
-        target[0] += r["spend"]
-        target[1] += r["purchases"]
-        target[2] += r["conv_value"]
+    def put(target, fields, sign=1):
+        for k in FIELDS:
+            target[k] += sign * fields[k]
 
     for r in fx.ad_daily:
         tfam = MAPPING[r["meta_family_key"]][0]
         if tfam is not None and tfam in fams:
-            if window == "launch":
-                ls = launch_start(fams[tfam])
-                if ls is None or not (ls <= r["day"] <= THROUGH):
-                    continue
-            elif not (window[0] <= r["day"] <= window[1]):
-                continue
-            key_fam = tfam
+            key_fam, matched = tfam, True
         elif tfam is None and unmatched_pid is not None and fx.unmatched[r["meta_family_key"]]["product_id"] == unmatched_pid:
-            if window != "launch" and not (window[0] <= r["day"] <= window[1]):
-                continue
-            key_fam = r["meta_family_key"]
+            key_fam, matched = r["meta_family_key"], False
         else:
             continue
-        if stage_of_row(fx, r["campaign_id"]) not in stages:
+        if window != "launch" and not (window[0] <= r["day"] <= window[1]):
             continue
         if campaign is not None and r["campaign_id"] != campaign:
             continue
-        if r["ad_id"].startswith("fam:"):
-            add(rem_u if tfam is None else rem, r)
-        else:
-            add(ads[(r["ad_id"], key_fam)], r)
-    if window == "launch" and "unclassified" in stages:
-        for tfam, launch in fams.items():
-            if launch is None or launch >= D0:
+        isfam = r["ad_id"].startswith("fam:")
+        target = (rem if matched else rem_u) if isfam else ads[(r["ad_id"], key_fam)]
+        st = stage_of_row(fx, r["campaign_id"])
+        f = _daily_fields(r)
+        if st in stages:
+            put(target, f)
+        if window == "launch" and incl_uncl:
+            put(target, f, -1)                      # lifetime contains every daily row: take it out, add the lifetime row below
+    if window == "launch" and incl_uncl:
+        for ad_id, lt in fx.ad_lifetime.items():
+            tfam = lt["tfam"]
+            if tfam is not None and tfam in fams:
+                key_fam = tfam
+            elif tfam is None and unmatched_pid is not None and fx.unmatched[lt["mfk"]]["product_id"] == unmatched_pid:
+                key_fam = lt["mfk"]
+            else:
                 continue
-            per_ad = [Z, Z, Z]
-            for ad_id, (sp, pu, rv) in META_AD_LIFETIME.items():
-                if MAPPING[meta_family_key(ADS[ad_id][0])][0] != tfam:
-                    continue
-                if campaign is not None and ADS[ad_id][1] != campaign:
-                    continue
-                for i, v in enumerate((sp, pu, rv)):
-                    per_ad[i] += v
-                    ads[(ad_id, tfam)][i] += v
-            if campaign is None:
-                lt = fx.lifetime.get(tfam, (Z, Z, Z))
-                for i in range(3):
-                    rem[i] += lt[i] - per_ad[i]
-    return {k: v for k, v in ads.items() if any(v)}, rem, rem_u
+            if campaign is not None and lt["camp"] != campaign:
+                continue
+            put(ads[(ad_id, key_fam)], _lifetime_fields(lt))
+        if campaign is None:
+            for tfam in fams:
+                lt = family_lifetime(fx, tfam)
+                have = _zero()
+                for x in fx.ad_lifetime.values():
+                    if x["tfam"] == tfam:
+                        put(have, _lifetime_fields(x))
+                fam_total = dict(spend=rnd2(lt["spend"]), purchases=rnd0(lt["purchases"]), revenue=rnd2(lt["revenue"]), imp=lt["imp"], clk=lt["clk"],
+                                 clk_tr=lt["clk"], sp_tr=rnd2(lt["spend"]), purch_t=rnd0(lt["purchases"]))
+                for k in FIELDS:
+                    rem[k] += fam_total[k] - have[k]
+    return {k: v for k, v in ads.items() if any(v[f] for f in FIELDS)}, rem, rem_u

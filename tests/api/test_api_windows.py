@@ -6,7 +6,7 @@ from app import queries as q
 
 from .helpers import get_ok
 
-META = q.DataMeta(dt.date(2026, 5, 6), dt.date(2026, 9, 17), dt.date(2026, 11, 2))
+META = q.DataMeta(dt.date(2026, 5, 6), dt.date(2026, 11, 2))
 
 
 def parse(**kw):
@@ -56,7 +56,7 @@ def test_clamping():
     w = parse(**{"from": "2026-10-30", "to": "2030-01-01"})
     assert w.clamped and w.date_to == dt.date(2026, 11, 2)
     # a trailing window longer than the data
-    short = q.DataMeta(dt.date(2026, 10, 20), dt.date(2026, 9, 17), dt.date(2026, 11, 2))
+    short = q.DataMeta(dt.date(2026, 10, 20), dt.date(2026, 11, 2))
     w = q.parse_window({"window": "30d"}, short)
     assert w.clamped and w.date_from == dt.date(2026, 10, 20) and w.days == 14 and "14 days instead of 30" in w.note
 
@@ -110,6 +110,6 @@ def test_http_window_info_shape(client):
 
 def test_status(client):
     d = get_ok(client, "/api/status")
-    assert d["data_through"] == "2026-11-02" and d["daily_start"] == "2026-05-06" and d["lifetime_cutoff"] == "2026-09-17"
+    assert d["data_through"] == "2026-11-02" and d["daily_start"] == "2026-05-06" and d["lifetime_cutoff"] is None      # no cutoff since v1.5
     assert d["last_refresh"]["job"] == "build_metrics" and d["last_refresh"]["status"] == "ok" and d["last_refresh"]["finished_at"]
     assert d["products"] == 5            # vita-bull, beef-liver, boneflex, vital-flow (Meta spend only), unassigned (Meta spend only)

@@ -1,5 +1,5 @@
 // Shared page components: breadcrumbs, filter bar, Meta-ads table, unmatched panel.
-import { h, enc, fmt, isNum, href, apiWindow, globalParams, debounce, navigate, stageBadge, liveDot, thumb, empty } from './util.js';
+import { h, enc, fmt, isNum, href, apiWindow, globalParams, debounce, navigate, stageBadge, liveDot, thumb, empty, colPref, setColPref, refreshCmp } from './util.js';
 import { api, AuthError } from './api.js';
 import { createTable } from './table.js';
 import { metricColumns, FLAT_KEYS, fixTotal } from './columns.js';
@@ -10,6 +10,23 @@ export function breadcrumbs(items) {
     h('ol', items.map((it, i) =>
       h('li', { class: i === last ? 'current' : '', 'aria-current': i === last ? 'page' : null },
         it.href && i !== last ? h('a', { href: it.href }, it.chip || null, it.label) : h('span', it.chip || null, it.label)))));
+}
+
+// "Columns" chip group: Traffic (Impressions, Link clicks, CTR, CPC; default on) and Advanced (CPM, Conv rate; default off)
+export function columnsChips() {
+  const mk = (g, label, title) => {
+    const b = h('button', { type: 'button', class: 'cchip', 'data-cols': g, 'aria-pressed': String(colPref(g)), title }, label);
+    b.addEventListener('click', () => {
+      const on = !colPref(g);
+      setColPref(g, on);
+      document.querySelectorAll(`.cchip[data-cols=${g}]`).forEach((x) => x.setAttribute('aria-pressed', String(on)));
+      refreshCmp();
+    });
+    return b;
+  };
+  return h('div', { class: 'ctl colchips' },
+    h('span', { class: 'ctl-name' }, 'Columns'),
+    h('span', { class: 'chips', role: 'group', 'aria-label': 'Columns' }, mk('traffic', 'Traffic', 'Impressions, Link clicks, CTR, CPC'), mk('advanced', 'Advanced', 'CPM, Conv rate')));
 }
 
 export function section(title, body, { id, aside } = {}) {
@@ -170,6 +187,7 @@ function unmatchedTable(d) {
   const wi = d.window_info;
   const rows = d.rows.map((r) => r);
   return h('div', null,
-    wi ? h('div', { class: 'muted small' }, 'Window: ' + (wi.kind === 'launch' ? 'all days held' : wi.label)) : null,
+    columnsChips(),
+    wi ? h('div', { class: 'muted small' }, 'Window: ' + (wi.kind === 'launch' ? 'all days' : wi.label)) : null,
     createTable({ columns: cols, rows, total, rowKey: (r) => r.meta_family, emptyText: 'Nothing unmatched.', testid: 'unmatched-table' }).el);
 }

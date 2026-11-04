@@ -25,6 +25,7 @@ DATA_THROUGH = date(2026, 11, 2)
 CUTOFF = date(2026, 9, 17)
 DAYS = [DAILY_START + timedelta(i) for i in range((DATA_THROUGH - DAILY_START).days + 1)]
 N = len(DAYS)
+IMP_START = 45
 MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 PASSWORD = "test"
 
@@ -85,6 +86,17 @@ def build():
     rows, fams, ads = [], [], []
     rid = 1000
     asset = 0
+
+    def traffic_for(rng, daily):
+        """per day (impressions or None, link clicks): impressions are unknown before IMP_START (API pull range)"""
+        cpc = rng.uniform(1.4, 3.6)
+        ctr = rng.uniform(0.007, 0.02)
+        out = []
+        for i, d in enumerate(daily):
+            clk = int(round(d[0] / cpc * rng.uniform(0.85, 1.15))) if d[0] > 0 else 0
+            imp = int(round(clk / ctr * rng.uniform(0.9, 1.1))) if (i >= IMP_START and d[0] > 0) else (0 if i >= IMP_START else None)
+            out.append((imp, clk))
+        return out, (round(1 / cpc, 6), ctr)
 
     def daily_for(rng, launch, live, base):
         """list of (spend, purchases, revenue) per day"""
@@ -174,6 +186,9 @@ def build():
                     if launch < DAILY_START:
                         ls = rng.uniform(2000, 40000) / n_ads
                         ad["life"] = (round(ls, 2), int(ls / 90), round(ls * rng.uniform(0.7, 1.1), 2))
+                    ad["tr"], (clk_per_dollar, ad_ctr) = traffic_for(rng, ad["daily"])
+                    lclk = int(ad["life"][0] * clk_per_dollar)
+                    ad["life_tr"] = (int(lclk / ad_ctr), lclk, ad["life"][0])
                     ads.append(ad)
         # fixed zero-spend family for the "with spend only" test
         # unmatched Meta families (no tracker row)
@@ -181,9 +196,11 @@ def build():
             nm = f"Unmatched-{p['name'].replace(' ', '')}-{u + 1}"
             cmp = rng.choice(camp_by_prod[s])
             live = u < 2
+            ud = daily_for(rng, date(2026, 8, 20), live, rng.choice([5, 15, 40]))
+            utr, _ = traffic_for(rng, ud)
             ads.append(dict(ad_id=f"2386{rng.randint(10**10, 10**11):d}", fam=None, product=s, meta_family=nm, name=nm, campaign_id=cmp["campaign_id"],
                             adset="US_Broad_1DC", status="ACTIVE", created="2026-09-01",
-                            daily=daily_for(rng, date(2026, 8, 20), live, rng.choice([5, 15, 40])), life=(0, 0, 0), detail_cut=0))
+                            daily=ud, tr=utr, life=(0, 0, 0), life_tr=(0, 0, 0), detail_cut=0))
     # first live vita-bull family has ad-level detail only for the last 60 days
     fam_by_key = {f["key"]: f for f in fams}
     f = sorted((x for x in fams if x["product"] == "vita-bull" and x["live"] and x["launch"] >= DAILY_START + timedelta(days=10)), key=lambda x: x["launch"])[0]
@@ -219,9 +236,15 @@ def build_window(fd, td, kind, stage):
         cf = ct = DATA_THROUGH if fd > DATA_THROUGH else DAILY_START
     clamped = (cf, ct) != (fd, td)
     n = (ct - cf).days + 1
+    i0_ = (cf - DAILY_START).days
+    notes = []
+    if clamped:
+        notes.append(f"Daily data runs {DAILY_START.isoformat()} to {DATA_THROUGH.isoformat()}; range clamped.")
+    if i0_ < IMP_START:
+        notes.append(f"Impressions are available from {lab(DAYS[IMP_START])}; CTR, CPM and CPC cover those days only.")
     info = dict(kind=kind, label=f"{lab(cf)} · 1 day" if n == 1 else f"{lab(cf)} – {lab(ct)} · {n} days",
                 **{"from": cf.isoformat(), "to": ct.isoformat()}, days=n, clamped=clamped,
-                note=f"Daily data runs {DAILY_START.isoformat()} to {DATA_THROUGH.isoformat()}; range clamped." if clamped else None,
+                note=" ".join(notes) or None,
                 daily_start=DAILY_START.isoformat(), data_through=DATA_THROUGH.isoformat())
     i0, i1 = (cf - DAILY_START).days, (ct - DAILY_START).days
     return dict(info=info, i0=i0, i1=i1, stage=stage, key=(i0, i1, stage), launch=False)
@@ -321,6 +344,7 @@ def launch_idx(launch):
     return (launch - DAILY_START).days if launch else None
 
 
+IMP_START = 45  # impressions exist only from this daily index on (Jun 20): earlier days are "unknown"
 UNC_DAYS = 30  # the first 30 daily rows come from the sheet backfill: no campaign, so "unclassified"
 
 
@@ -357,6 +381,60 @@ def ad_metrics(ad, win, launch, cut=True):
         out["unclassified"] = _add(out["unclassified"], ad["life"])
         return out
     return day_split(daily, max(win["i0"], start), win["i1"], stg)
+
+
+def ad_traffic(ad, win, launch, cut=True):
+    """(impressions, link clicks, clicks on days with impressions, spend on days with impressions) mirroring ad_metrics' day selection"""
+    tr, sp = ad["tr"], ad["daily"]
+    start = ad["detail_cut"] if cut else 0
+    life = False
+    if win["launch"]:
+        if launch is None and ad["fam"] is not None:
+            return (0, 0, 0, 0)
+        if launch is None or launch >= DAILY_START:
+            li = 0 if launch is None else (launch - DAILY_START).days
+            lo, hi = max(li, start), N - 1
+        else:
+            lo, hi, life = max((CUTOFF - DAILY_START).days + 1, start), N - 1, True
+    else:
+        lo, hi = max(win["i0"], start), win["i1"]
+    stg = ad_stage(ad)
+    imp = clk = clk_tr = sp_tr = 0
+    for i in range(max(lo, 0), min(hi, N - 1) + 1):
+        if ("unclassified" if i < UNC_DAYS else stg) not in win["stage"]:
+            continue
+        im, ck = tr[i]
+        clk += ck
+        if im is not None:
+            imp += im; clk_tr += ck; sp_tr += sp[i][0]
+    if life and "unclassified" in win["stage"]:
+        li_imp, li_clk, li_sp = ad["life_tr"]
+        imp += li_imp; clk += li_clk; clk_tr += li_clk; sp_tr += li_sp
+    return imp, clk, clk_tr, sp_tr
+
+
+_FT = {}
+
+
+def fam_traffic(fam_key, win):
+    ck = (fam_key, win["key"])
+    if ck not in _FT:
+        t = [0, 0, 0, 0]
+        for ad in ADS:
+            if ad["fam"] == fam_key:
+                for j, v in enumerate(ad_traffic(ad, win, FAM_BY_KEY[fam_key]["launch"], cut=False)):
+                    t[j] += v
+        _FT[ck] = tuple(t)
+    return _FT[ck]
+
+
+TRAFFIC_KEYS = ("impressions", "link_clicks", "ctr", "cpc", "cpm", "conv_rate")
+
+
+def traffic_fields(sp, pu, imp, clk, clk_tr, sp_tr):
+    return dict(impressions=int(imp) if imp else None, link_clicks=int(clk),
+                ctr=round(clk_tr / imp, 6) if imp else None, cpc=round(sp / clk, 4) if clk else None,
+                cpm=round(sp_tr / imp * 1000, 4) if imp else None, conv_rate=round(pu / clk, 6) if clk else None)
 
 
 def metrics_of(split, win):
@@ -419,11 +497,17 @@ def delta_block(a, b, wa, wb):
     for k in ("spend", "purchases", "revenue"):
         ap, bp = a[k] / da, b[k] / db
         d[k + "_per_day_pct"] = None if not bp else round((ap - bp) / bp, 4)
+    for k in TRAFFIC_KEYS:
+        av, bv = a.get(k), b.get(k)
+        d[k] = None if av is None or bv is None else round(av - bv, 6)
+        d[k + "_pct"] = None if av is None or not bv else round((av - bv) / bv, 4)
+    d["ctr_pp"] = None if d["ctr"] is None else round(d["ctr"] * 100, 4)
+    d["conv_rate_pp"] = None if d["conv_rate"] is None else round(d["conv_rate"] * 100, 4)
     return d
 
 
 def cmp_block(b, wb):
-    out = {k: b.get(k) for k in KEYS5 + ("active_ads",) if k in b}
+    out = {k: b.get(k) for k in KEYS5 + ("active_ads",) + TRAFFIC_KEYS if k in b}
     out.update(per_day(b, wb))
     return out
 
@@ -479,12 +563,18 @@ def _make_m(items, win, unique_ads=None):
             for j in range(3):
                 split_tot[k][j] += split[k][j]
     m_sp, m_rv = round(m_sp, 2), round(m_rv, 2)
+    t_imp = t_clk = t_clk_tr = t_sp_tr = 0
+    for fam, counted in items:
+        if counted:
+            ft = fam_traffic(fam["key"], win)
+            t_imp += ft[0]; t_clk += ft[1]; t_clk_tr += ft[2]; t_sp_tr += ft[3]
+    traffic = traffic_fields(m_sp, m_pu, t_imp, t_clk, t_clk_tr, t_sp_tr)
     cls = split_tot["testing"][0] + split_tot["scaling"][0]
     stage_obj = {k: dict(spend=round(v[0], 2), purchases=int(round(v[1])), revenue=round(v[2], 2), roas=_roas(v[0], v[2]), cpa=_cpa(v[0], v[1])) for k, v in split_tot.items() if k != "unclassified"}
     stage_obj["unclassified"] = dict(spend=round(split_tot["unclassified"][0], 2), purchases=int(round(split_tot["unclassified"][1])), revenue=round(split_tot["unclassified"][2], 2))
     return dict(unique_ads=unique_ads if unique_ads is not None else len({f["key"] for f, _ in items}), live_now=live, spend=m_sp, purchases=int(round(m_pu)), revenue=m_rv,
                 roas=_roas(m_sp, m_rv), cpa=_cpa(m_sp, m_pu), spend_7d=round(sp7, 2), cpa_7d=_cpa(sp7, pu7), active_ads=active,
-                testing_pct=round(split_tot["testing"][0] / cls, 4) if cls > 0 else None, stage=stage_obj)
+                testing_pct=round(split_tot["testing"][0] / cls, 4) if cls > 0 else None, stage=stage_obj, **traffic)
 
 
 def prod_items(slug):
@@ -530,7 +620,13 @@ def unmatched_rows(slug, win):
     for ad in ADS:
         if ad["product"] != slug or ad["fam"] is not None:
             continue
-        e = by.setdefault(ad["meta_family"], dict(meta_family=ad["meta_family"], spend=0.0, purchases=0, revenue=0.0, spend_7d=0.0, live=False, _b=[0.0, 0, 0.0]))
+        e = by.setdefault(ad["meta_family"], dict(meta_family=ad["meta_family"], spend=0.0, purchases=0, revenue=0.0, spend_7d=0.0, live=False, _b=[0.0, 0, 0.0], _t=[0, 0, 0, 0], _tb=[0, 0, 0, 0]))
+        tw = win if not win["launch"] else dict(win, launch=False, i0=0, i1=N - 1, key=("all", win["stage"]))
+        for j, v in enumerate(ad_traffic(ad, tw, None)):
+            e["_t"][j] += v
+        if getattr(g, "cmp", None):
+            for j, v in enumerate(ad_traffic(ad, g.cmp, None)):
+                e["_tb"][j] += v
         if win["launch"] or win["i0"] is None:
             sp, pu, rv = sums(ad["daily"], 0, N - 1)
         else:
@@ -548,7 +644,9 @@ def unmatched_rows(slug, win):
         e["purchases"] = int(round(e["purchases"]))
         e["roas"] = _roas(e["spend"], e["revenue"]); e["cpa"] = _cpa(e["spend"], e["purchases"])
         b = e.pop("_b")
-        eb = dict(spend=round(b[0], 2), purchases=int(round(b[1])), revenue=round(b[2], 2), roas=_roas(b[0], b[2]), cpa=_cpa(b[0], b[1]))
+        t, tb_ = e.pop("_t"), e.pop("_tb")
+        e.update(traffic_fields(e["spend"], e["purchases"], *t))
+        eb = dict(spend=round(b[0], 2), purchases=int(round(b[1])), revenue=round(b[2], 2), roas=_roas(b[0], b[2]), cpa=_cpa(b[0], b[1]), **traffic_fields(b[0], b[1], *tb_))
         decorate(e, eb if getattr(g, "cmp", None) else None, win if not win["launch"] else None)
         rows.append(e)
     rows.sort(key=lambda r: -r["spend"])
@@ -778,6 +876,7 @@ def unmatched(slug):
     tot = dict(spend=round(sum(r["spend"] for r in rows), 2), purchases=sum(r["purchases"] for r in rows), revenue=round(sum(r["revenue"] for r in rows), 2),
                spend_7d=round(sum(r["spend_7d"] for r in rows), 2), families=len(rows))
     tot["roas"] = _roas(tot["spend"], tot["revenue"]); tot["cpa"] = _cpa(tot["spend"], tot["purchases"])
+    tot.update(flat_traffic(rows, tot["spend"], tot["purchases"]))
     sum_cmp(tot, rows, win)
     shares(rows, tot)
     return jsonify(window_info=win["info"], compare_info=cinfo(), rows=rows, total=tot)
@@ -796,6 +895,7 @@ def _ad_row(ad, win, launch):
     fam = FAM_BY_KEY.get(ad["fam"]) if ad["fam"] else None
     first = fam["rows"][0] if fam else None
     sp7, pu7, _ = sums(ad["daily"], N - 7, N - 1)
+    tf = traffic_fields(sp, pu, *ad_traffic(ad, win, launch))
     days = 0
     lo, hi = (0, N - 1) if win["launch"] else (win["i0"], win["i1"])
     for i in range(lo, hi + 1):
@@ -806,7 +906,7 @@ def _ad_row(ad, win, launch):
                 stage=cmp["stage"], adset_name=ad["adset"], account=cmp["account"], status=ad["status"], created_date=ad["created"],
                 tag=dict(cluster=first["cluster"], icp=first["icp"], pain=first["pain"]) if first else dict(cluster=None, icp=None, pain=None),
                 spend=round(sp, 2), purchases=int(round(pu)), revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu), spend_7d=round(sp7, 2),
-                live=ad["daily"][N - 1][0] > 0 or ad["daily"][N - 2][0] > 0, days_active=days)
+                live=ad["daily"][N - 1][0] > 0 or ad["daily"][N - 2][0] > 0, days_active=days, **tf)
 
 
 def sum_cmp(tot, rows, win):
@@ -814,16 +914,25 @@ def sum_cmp(tot, rows, win):
     tb = None
     if getattr(g, "cmp", None) and rows and all("cmp" in r for r in rows):
         sp = sum(r["cmp"]["spend"] for r in rows); pu = sum(r["cmp"]["purchases"] for r in rows); rv = sum(r["cmp"]["revenue"] for r in rows)
-        tb = dict(spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu))
+        tb = dict(spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu), **flat_traffic([r["cmp"] for r in rows], sp, pu))
     elif getattr(g, "cmp", None):
-        tb = dict(spend=0, purchases=0, revenue=0, roas=None, cpa=None)
+        tb = dict(spend=0, purchases=0, revenue=0, roas=None, cpa=None, **traffic_fields(0, 0, 0, 0, 0, 0))
     decorate(tot, tb, win if not win["launch"] else None)
     return tot
 
 
+def flat_traffic(rows, sp, pu):
+    imp = sum(r.get("impressions") or 0 for r in rows)
+    clk = sum(r.get("link_clicks") or 0 for r in rows)
+    clk_tr = sum((r.get("ctr") or 0) * (r.get("impressions") or 0) for r in rows)
+    sp_tr = sum((r.get("cpm") or 0) * (r.get("impressions") or 0) / 1000 for r in rows)
+    return traffic_fields(sp, pu, imp, clk, clk_tr, sp_tr)
+
+
 def total_of(rows, win):
     sp = sum(r["spend"] for r in rows); pu = sum(r["purchases"] for r in rows); rv = sum(r["revenue"] for r in rows)
-    tot = dict(spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu), spend_7d=round(sum(r["spend_7d"] for r in rows), 2))
+    tot = dict(spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), roas=_roas(sp, rv), cpa=_cpa(sp, pu), spend_7d=round(sum(r["spend_7d"] for r in rows), 2),
+               **flat_traffic(rows, sp, pu))
     return sum_cmp(tot, rows, win)
 
 
@@ -898,6 +1007,7 @@ def campaigns(slug):
         e = out.setdefault(c["campaign_id"], dict(campaign_id=c["campaign_id"], name=c["name"], account=c["account"], stage=c["stage"], ads=0, fams=set(), spend=0.0, purchases=0, revenue=0.0, spend_7d=0.0, live=False, last_day=None))
         e["ads"] += 1; e["fams"].add(ad["fam"] or ad["meta_family"])
         e["spend"] += r["spend"]; e["purchases"] += r["purchases"]; e["revenue"] += r["revenue"]; e["spend_7d"] += r["spend_7d"]
+        e.setdefault("_rows", []).append(r)
         if "cmp" in r:
             b = e.setdefault("_b", [0.0, 0, 0.0])
             b[0] += r["cmp"]["spend"]; b[1] += r["cmp"]["purchases"]; b[2] += r["cmp"]["revenue"]
@@ -914,7 +1024,10 @@ def campaigns(slug):
         e["spend"] = round(e["spend"], 2); e["revenue"] = round(e["revenue"], 2); e["spend_7d"] = round(e["spend_7d"], 2)
         e["roas"] = _roas(e["spend"], e["revenue"]); e["cpa"] = _cpa(e["spend"], e["purchases"])
         b = e.pop("_b", None)
-        eb = dict(spend=round(b[0], 2), purchases=int(round(b[1])), revenue=round(b[2], 2), roas=_roas(b[0], b[2]), cpa=_cpa(b[0], b[1])) if b else None
+        crow = e.pop("_rows", [])
+        e.update(flat_traffic(crow, e["spend"], e["purchases"]))
+        eb = dict(spend=round(b[0], 2), purchases=int(round(b[1])), revenue=round(b[2], 2), roas=_roas(b[0], b[2]), cpa=_cpa(b[0], b[1]),
+                  **flat_traffic([r["cmp"] for r in crow], b[0], b[1])) if b else None
         decorate(e, eb, win if not win["launch"] else None)
         rows.append(e)
     rows.sort(key=lambda r: -r["spend"])
@@ -1003,7 +1116,9 @@ def ad_detail(rid):
     fam_ads = [a for a in ADS if a["fam"] == fam["key"]]
     for i in range(N):
         sp = sum(a["daily"][i][0] for a in fam_ads); pu = sum(a["daily"][i][1] for a in fam_ads); rv = sum(a["daily"][i][2] for a in fam_ads)
-        daily.append(dict(day=DAYS[i].isoformat(), spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), link_clicks=int(sp * 0.7)))
+        known = [a["tr"][i][0] for a in fam_ads if a["tr"][i][0] is not None]
+        daily.append(dict(day=DAYS[i].isoformat(), spend=round(sp, 2), purchases=pu, revenue=round(rv, 2), link_clicks=sum(a["tr"][i][1] for a in fam_ads),
+                          impressions=sum(known) if known else None))
     meta_ads = [ad_row(a, win, fam["launch"]) for a in fam_ads]
     shares(meta_ads, total_of(meta_ads, win))
     camps = {}

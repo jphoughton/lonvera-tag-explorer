@@ -10,27 +10,21 @@ from .helpers import STAGE_PARAMS, WINDOWS, close, get_ok, qs, rows_by_product
 THROUGH = F.THROUGH
 
 
-def family_launches(fx, slug="vita-bull"):
-    out = {}
-    for r in sorted(fx.tracker, key=lambda r: (r["sheet_row"], r["id"])):
-        if r["product"] == slug and not r["family_key"].startswith("id:"):
-            out.setdefault(r["family_key"], r["launch"])
-    return out
+def vb_families(fx):
+    return {r["family_key"] for r in fx.tracker if r["product"] == "vita-bull" and not r["family_key"].startswith("id:")}
 
 
 def groups_for(fx, cluster=None, icp=None, pain=None):
-    """first-row families (key -> launch) whose first tracker row is in the group"""
+    """tracker families whose first tracker row is in the group"""
     firsts = {}
     for r in sorted(fx.tracker, key=lambda r: (r["sheet_row"], r["id"])):
         if r["product"] == "vita-bull":
             firsts.setdefault(r["family_key"], r)
-    out = {}
+    out = set()
     for fk, r in firsts.items():
         c, i, p = F.tag_labels(r)
-        if fk.startswith("id:"):
-            continue
-        if (cluster in (None, c)) and (icp in (None, i)) and (pain in (None, p)):
-            out[fk] = r["launch"]
+        if not fk.startswith("id:") and (cluster in (None, c)) and (icp in (None, i)) and (pain in (None, p)):
+            out.add(fk)
     return out
 
 
@@ -40,22 +34,24 @@ WIN_STAGE = [pytest.param(w, wo, s, so, id=f"{w or 'default'}|{s or 'all'}") for
 @pytest.mark.parametrize("w,wo,s,so", WIN_STAGE)
 def test_ads_all_rows_match_oracle(client, fx, w, wo, s, so):
     d = get_ok(client, "/api/products/vita-bull/ads?" + qs(w, s))
-    fams = groups_for(fx)
-    ads, rem, rem_u = F.ad_oracle(fx, fams, wo, so, unmatched_pid=fx.product_ids["vita-bull"])
+    ads, rem, rem_u = F.ad_oracle(fx, vb_families(fx), wo, so, unmatched_pid=fx.product_ids["vita-bull"])
     got = {(r["ad_id"], r["family_key"]): r for r in d["rows"] if r["ad_id"]}
     assert set(got) == set(ads), (w, s)
     for key, v in ads.items():
         r = got[key]
-        assert close(r["spend"], v[0]) and close(r["purchases"], v[1]) and close(r["revenue"], v[2]), (key, w, s)
-        assert r["roas"] == (round(float(v[2] / v[0]), 4) if v[0] else None)
+        assert close(r["spend"], v["spend"]) and close(r["purchases"], v["purchases"]) and close(r["revenue"], v["revenue"]), (key, w, s)
+        assert r["impressions"] == v["imp"] and r["link_clicks"] == v["clk"], (key, w, s)
+        assert r["roas"] == (round(float(v["revenue"] / v["spend"]), 4) if v["spend"] else None)
+        assert r["ctr"] == (pytest.approx(float(v["clk_tr"] / v["imp"]), abs=1e-5) if v["imp"] else None), (key, w, s)
+        assert r["cpc"] == (pytest.approx(float(v["sp_tr"] / v["clk"]), abs=1e-3) if v["clk"] else None), (key, w, s)
     for on_tracker, want in ((True, rem), (False, rem_u)):            # family-grain days: tracker families / Meta families not on the tracker
         remainder = [r for r in d["rows"] if r["ad_id"] is None and r["on_tracker"] is on_tracker]
-        if any(abs(x) >= F.Decimal("0.005") for x in want):
+        if any(abs(want[k]) >= F.Decimal("0.005") for k in ("spend", "purchases", "revenue")):
             assert len(remainder) == 1 and remainder[0]["ad_name"] == "(days without ad-level detail)"
-            assert close(remainder[0]["spend"], want[0]) and close(remainder[0]["purchases"], want[1]) and close(remainder[0]["revenue"], want[2])
+            assert close(remainder[0]["spend"], want["spend"]) and close(remainder[0]["purchases"], want["purchases"]) and close(remainder[0]["revenue"], want["revenue"])
         else:
             assert not remainder
-    assert d["total"]["spend"] == pytest.approx(float(sum(v[0] for v in ads.values()) + rem[0] + rem_u[0]), abs=0.02)
+    assert d["total"]["spend"] == pytest.approx(float(sum(v["spend"] for v in ads.values()) + rem["spend"] + rem_u["spend"]), abs=0.02)
     assert d["total"]["ads"] == len(ads)
     assert [r["spend"] for r in d["rows"] if r["ad_id"]] == sorted((r["spend"] for r in d["rows"] if r["ad_id"]), reverse=True)
 
@@ -78,21 +74,30 @@ def test_ad_rows_add_up_to_group_totals(client, fx, w, wo, s, so):
             assert any(not r["on_tracker"] for r in d["rows"]) or wo != "launch"          # unmatched Meta families join the unfiltered view
 
 
-def test_ads_launch_rule_per_ad(client, fx):
+def test_ads_launch_is_the_ads_api_lifetime(client, fx):
+    """Since launch per ad = that ad's lifetime row from the Graph API (no cutoff rule, no launch-date gating)."""
     d = get_ok(client, "/api/products/vita-bull/ads?family_key=vb-fam-b")
     rows = {r["ad_id"]: r for r in d["rows"]}
-    post = {ad: sum(r["spend"] for r in fx.ad_daily if r["ad_id"] == ad and r["day"] > F.CUT) for ad in ("b1", "b2")}
-    assert rows["b1"]["spend"] == pytest.approx(float(F.dec("1000.50") + post["b1"]), abs=0.006)         # per-ad lifetime + daily after the cutoff
-    assert rows["b2"]["spend"] == pytest.approx(float(F.dec("500.25") + post["b2"]), abs=0.006)
-    rem = rows[None]
-    assert rem["spend"] == pytest.approx(120.00, abs=0.006) and rem["purchases"] == 3 and rem["revenue"] == pytest.approx(100.0, abs=0.006)   # lifetime no ad accounts for
+    for ad in ("b1", "b2"):
+        lt = fx.ad_lifetime[ad]
+        assert rows[ad]["spend"] == pytest.approx(float(lt["spend"]), abs=0.006) and rows[ad]["revenue"] == pytest.approx(float(lt["revenue"]), abs=0.006)
+        assert rows[ad]["impressions"] == lt["imp"] and rows[ad]["link_clicks"] == lt["clk"]
+        assert rows[ad]["ctr"] == pytest.approx(lt["clk"] / lt["imp"], abs=1e-5) and rows[ad]["cpc"] == pytest.approx(float(lt["spend"]) / lt["clk"], abs=1e-3)
     fam = next(r for r in get_ok(client, "/api/products/vita-bull/families")["rows"] if r["family_key"] == "vb-fam-b")["m"]
-    assert d["total"]["spend"] == pytest.approx(fam["spend"], abs=0.006)
-    # family A: launch after D0 -> daily only, sheet days become the remainder row
+    assert d["total"]["spend"] == pytest.approx(fam["spend"], abs=0.006) and d["total"]["spend"] == pytest.approx(float(fx.ad_lifetime["b1"]["spend"] + fx.ad_lifetime["b2"]["spend"]), abs=0.006)
+    assert None not in rows                                                                  # ads add up exactly, no remainder row (purchase rounding dust is not a row)
+    # an ad the lifetime pull has not seen (c1) contributes nothing to since-launch; the family has no launch date and still gets lifetime
+    c = get_ok(client, "/api/products/vita-bull/ads?family_key=vb-fam-c")
+    assert c["rows"] == [] and c["total"]["spend"] == 0
+    assert get_ok(client, "/api/products/vita-bull/ads?family_key=vb-fam-c&window=30d")["rows"][0]["ad_id"] == "c1"
+    # family A: sheet-grain days live inside a1's lifetime; the family total is the sum of its ads' lifetime
     d = get_ok(client, "/api/products/vita-bull/ads?family_key=vb-fam-a")
-    sheet_days = sum(r["spend"] for r in fx.ad_daily if r["ad_id"].startswith("fam:vb-fam-a") and r["day"] >= F.D(2026, 8, 1))
-    assert {r["ad_id"] for r in d["rows"] if r["ad_id"]} == {"a1", "a2", "a3"}
-    assert next(r for r in d["rows"] if r["ad_id"] is None)["spend"] == pytest.approx(float(sheet_days), abs=0.006)
+    assert {r["ad_id"] for r in d["rows"]} == {"a1", "a2", "a3"} and None not in {r["ad_id"] for r in d["rows"]}
+    assert rows is not None and next(r for r in d["rows"] if r["ad_id"] == "a1")["spend"] == pytest.approx(float(fx.ad_lifetime["a1"]["spend"]), abs=0.006)
+    # unattributable lifetime (the fixture's FAMILY_EXTRA on vb-fam-d) goes to the remainder row so the family still adds up
+    d = get_ok(client, "/api/products/vita-bull/ads?family_key=vb-fam-d&cluster=Beta Cluster&icp=ICP Three&pain=Pain D")
+    rem = [r for r in d["rows"] if r["ad_id"] is None]
+    assert len(rem) == 1 and rem[0]["spend"] == pytest.approx(7.0, abs=0.006) and rem[0]["impressions"] == 100 and rem[0]["link_clicks"] == 5
 
 
 def test_ads_row_fields(client, fx):
@@ -123,12 +128,11 @@ def test_ads_unknown_campaign_is_unclassified(client):
 def test_ads_campaign_filter(client, fx, camp, stage):
     for w, wo in (("window=30d", (THROUGH - dt.timedelta(days=29), THROUGH)), ("window=launch", "launch"), ("", "launch")):
         d = get_ok(client, "/api/products/vita-bull/ads?" + qs(f"campaign_id={camp}", w))
-        fams = groups_for(fx)
-        ads, rem, rem_u = F.ad_oracle(fx, fams, wo, "all", campaign=camp, unmatched_pid=fx.product_ids["vita-bull"])
+        ads, rem, rem_u = F.ad_oracle(fx, vb_families(fx), wo, "all", campaign=camp, unmatched_pid=fx.product_ids["vita-bull"])
         got = {(r["ad_id"], r["family_key"]): r for r in d["rows"] if r["ad_id"]}
         assert set(got) == set(ads), (camp, w)
         for key, v in ads.items():
-            assert close(got[key]["spend"], v[0]), (key, camp, w)
+            assert close(got[key]["spend"], v["spend"]), (key, camp, w)
             assert got[key]["campaign_id"] == camp
             if stage:
                 assert got[key]["stage"] == stage

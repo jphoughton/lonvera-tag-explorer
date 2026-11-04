@@ -80,11 +80,29 @@ def check_m(m: dict, agg: dict, ctx: str = "") -> None:
     eq("unclassified.spend", um["spend"], agg["u"][0])
     eq("unclassified.purchases", um["purchases"], agg["u"][1])
     eq("unclassified.revenue", um["revenue"], agg["u"][2])
+    check_traffic(m, agg, ctx)
     cls = float(agg["t"][0] + agg["s"][0])
     if cls:
         assert m["testing_pct"] == pytest.approx(float(agg["t"][0]) / cls, abs=1e-4), ctx
     else:
         assert m["testing_pct"] is None, ctx
+
+
+def ratio_or_none(a, b):
+    return None if not b else float(a) / float(b)
+
+
+def check_traffic(m: dict, agg: dict, ctx: str = "") -> None:
+    """impressions / link clicks / CTR / CPC / CPM / conv rate against the oracle's sums (null when the denominator is 0)."""
+    assert m["impressions"] == agg["imp"], f"{ctx} impressions {m['impressions']} != {agg['imp']}"
+    assert m["link_clicks"] == agg["clk"], f"{ctx} link_clicks {m['link_clicks']} != {agg['clk']}"
+    for key, num_, den, scale, tol in (("ctr", agg["clk_tr"], agg["imp"], 1, 1e-5), ("cpc", agg["sp_tr"], agg["clk"], 1, 1e-3),
+                                       ("cpm", agg["sp_tr"], agg["imp"], 1000, 1e-2), ("conv_rate", agg["purch_t"], agg["clk"], 1, 1e-5)):
+        want = ratio_or_none(num_, den)
+        if want is None:
+            assert m[key] is None, f"{ctx} {key} should be null, got {m[key]}"
+        else:
+            assert m[key] == pytest.approx(want * scale, abs=tol), f"{ctx} {key}: {m[key]} != {want * scale}"
 
 
 def rows_by_product(fx, slug):

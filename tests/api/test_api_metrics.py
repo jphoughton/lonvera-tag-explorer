@@ -226,24 +226,27 @@ def test_family_row_fields(client, fx):
     assert bl["id:bl-4"]["display"] == "BL-4" and bl["bl-fam-1"]["confidence"] is None
 
 
-def test_since_launch_rule_values(client, fx):
-    """Spot-check rule 3 on three families: launch after D0, launch before D0 (lifetime + post-cutoff daily), no launch date."""
+def test_since_launch_is_the_api_lifetime(client, fx):
+    """CONTRACT v1.5: since launch = sum of the family's Meta ads' lifetime rows - no cutoff, no launch-date gating."""
     rows = {r["family_key"]: r["m"] for r in get_ok(client, "/api/products/vita-bull/families")["rows"]}
-    # VB-Fam-B launched 2026-04-01 (< D0): lifetime (1500.75 + 120 extra) + daily after 2026-09-17, never the daily rows before it
-    post = sum(v[0] for (f, d, st), v in fx.family_daily.items() if f == "vb-fam-b" and d > F.CUT)
-    pre = sum(v[0] for (f, d, st), v in fx.family_daily.items() if f == "vb-fam-b" and d <= F.CUT)
-    assert pre > 0
-    assert rows["vb-fam-b"]["spend"] == pytest.approx(float(F.dec("1620.75") + post), abs=0.006)
-    # VB-Fam-C has no launch date: since-launch is 0 but a 30d window still shows its daily spend
-    assert rows["vb-fam-c"]["spend"] == 0
+    for fk in ("vb-fam-a", "vb-fam-b", "vb-fam-d", "vb-fam-e", "vb-fam-f"):
+        lt = F.family_lifetime(fx, fk)
+        assert rows[fk]["spend"] == pytest.approx(float(F.rnd2(lt["spend"])), abs=0.006), fk
+        assert rows[fk]["purchases"] == int(F.rnd0(lt["purchases"])) and rows[fk]["revenue"] == pytest.approx(float(F.rnd2(lt["revenue"])), abs=0.006), fk
+        assert rows[fk]["impressions"] == lt["imp"] and rows[fk]["link_clicks"] == lt["clk"], fk
+        assert rows[fk]["ctr"] == pytest.approx(lt["clk"] / lt["imp"], abs=1e-5) and rows[fk]["cpc"] == pytest.approx(float(F.rnd2(lt["spend"])) / lt["clk"], abs=1e-3)
+        assert rows[fk]["cpm"] == pytest.approx(float(F.rnd2(lt["spend"])) * 1000 / lt["imp"], abs=1e-2), fk
+    # VB-Fam-B was launched before the daily range: its lifetime is far more than the daily rows we hold
+    daily = F.daily_vec(fx, "vb-fam-b", None, None, F.STAGES)
+    assert rows["vb-fam-b"]["spend"] > float(daily[0]) + 1000
+    # VB-Fam-C has no launch date and its only ad has no lifetime row: since-launch is 0 (lifetime says so), a 30d window still shows its daily spend
+    assert rows["vb-fam-c"]["spend"] == 0 and rows["vb-fam-c"]["impressions"] == 0 and rows["vb-fam-c"]["ctr"] is None
     c30 = {r["family_key"]: r["m"] for r in get_ok(client, "/api/products/vita-bull/families?window=30d")["rows"]}
-    assert c30["vb-fam-c"]["spend"] > 0
-    # VB-Fam-A (launch 2026-08-01 >= D0): sum of mapped daily rows (sheet family rows + API ad rows) from the launch day
-    allsp = sum(v[0] for (f, d, st), v in fx.family_daily.items() if f == "vb-fam-a" and d >= F.D(2026, 8, 1))
-    assert rows["vb-fam-a"]["spend"] == pytest.approx(float(allsp), abs=0.006)
-    # launch purchases are whole numbers per family (the sheet rounds per family)
+    assert c30["vb-fam-c"]["spend"] > 0 and c30["vb-fam-c"]["ctr"] is not None
+    # no launch-date gating: VB-Fam-F (launched in July) and the family with NULL launch date are both just their lifetime
+    assert rows["vb-fam-f"]["spend"] == pytest.approx(float(F.rnd2(F.family_lifetime(fx, "vb-fam-f")["spend"])), abs=0.006)
+    # launch purchases are whole numbers per family; windowed purchases keep decimals
     assert all(float(r["purchases"]).is_integer() for r in rows.values())
-    # ... but windowed purchases keep decimals
     assert any(not float(r["purchases"]).is_integer() for r in c30.values())
 
 
