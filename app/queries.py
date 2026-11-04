@@ -191,6 +191,10 @@ class DataMeta:
     upstack_through: dt.date | None = None       # last complete day of the Upstack source (None = the Upstack source is not loaded)
     upstack_first_day: dt.date | None = None     # first day of Upstack history held
     upstack_built_at: str | None = None
+    google_first_day: dt.date | None = None      # Marketing metrics, channel Google: first day of Google's own numbers (Upstack channel feed)
+    google_upstack_first_day: dt.date | None = None   # first day of Upstack-attributed Google numbers
+    google_through: dt.date | None = None
+    google_built_at: str | None = None
 
 
 def load_meta(conn) -> DataMeta:
@@ -198,7 +202,7 @@ def load_meta(conn) -> DataMeta:
     kv = {r["key"]: r["value"] for r in rows_of(
         conn, "SELECT key, value FROM app_meta WHERE key = ANY(%s)",
         (["daily_start", "lifetime_cutoff", "data_through", "ad_status_as_of", "active_built_at",
-          "upstack_through", "upstack_first_day", "upstack_built_at"],))}
+          "upstack_through", "upstack_first_day", "upstack_built_at", "google_first_day", "google_upstack_first_day", "google_through", "google_built_at"],))}
     through = kv.get("data_through")
     start = kv.get("daily_start")
     if not through or not start:
@@ -217,6 +221,10 @@ def load_meta(conn) -> DataMeta:
         upstack_through=dt.date.fromisoformat(kv["upstack_through"]) if kv.get("upstack_through") else None,
         upstack_first_day=dt.date.fromisoformat(kv["upstack_first_day"]) if kv.get("upstack_first_day") else None,
         upstack_built_at=kv.get("upstack_built_at"),
+        google_first_day=dt.date.fromisoformat(kv["google_first_day"]) if kv.get("google_first_day") else None,
+        google_upstack_first_day=dt.date.fromisoformat(kv["google_upstack_first_day"]) if kv.get("google_upstack_first_day") else None,
+        google_through=dt.date.fromisoformat(kv["google_through"]) if kv.get("google_through") else None,
+        google_built_at=kv.get("google_built_at"),
     )
 
 
@@ -2694,7 +2702,12 @@ def status(conn, meta: DataMeta, n_products: int) -> dict:
 def sources_summary(meta: DataMeta) -> dict:
     """What the source switch can offer: Upstack is available once its tables are built; `lag_days` > 1 means it is behind Meta's data."""
     up = meta.upstack_through
+    gt = meta.google_through
     return {"default": "meta", "meta": {"available": True, "through": meta.data_through.isoformat()},
+            "google": {"available": gt is not None and meta.google_first_day is not None, "through": gt.isoformat() if gt else None,
+                       "first_day": meta.google_first_day.isoformat() if meta.google_first_day else None,
+                       "upstack_first_day": meta.google_upstack_first_day.isoformat() if meta.google_upstack_first_day else None,
+                       "built_at": meta.google_built_at},
             "upstack": {"available": up is not None and meta.upstack_first_day is not None, "through": up.isoformat() if up else None,
                         "history_from": meta.upstack_first_day.isoformat() if meta.upstack_first_day else None,
                         "built_at": meta.upstack_built_at, "bases": list(BASES), "default_basis": DEFAULT_BASIS, "model": UPSTACK_MODEL,

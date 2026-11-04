@@ -55,7 +55,7 @@ function syncUrlScenario() {
 }
 
 // ------------------------------------------------------------------ one bar: Lonvera | Tags | Projections | module tabs | scenario control
-// The static part of the bar (brand, Tags, Projections) is in projection.html and mirrors the Tags pages. This file fills the module tabs and the scenario control.
+// The static part of the bar (brand, Marketing metrics, Projections) is in projection.html and mirrors the Marketing metrics pages. This file fills the module tabs and the scenario control.
 
 // small popup menu (role=menu): click or Enter opens, arrows move, Esc and outside click close
 let openMenu = null;

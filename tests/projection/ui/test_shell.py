@@ -295,12 +295,12 @@ def test_mobile_390_no_page_overflow_table_scrolls_inside(mobile_page):
     assert p.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
 
 
-# ---------------------------------------------------------------- one bar (Lonvera | Tags | Projections | module tabs | scenario control)
+# ---------------------------------------------------------------- one bar (Lonvera | Marketing metrics | Projections | module tabs | scenario control)
 def test_single_bar_structure(page):
     open_module(page, "drivers")
     bar = page.locator("#topbar .topbar-in")
     assert page.locator("#topbar .brand").inner_text() == "Lonvera"
-    assert page.locator("#topbar a.navlink").all_inner_texts() == ["Tags", "Projections"]
+    assert page.locator("#topbar a.navlink").all_inner_texts() == ["Marketing metrics", "Projections"]
     # tabs and the scenario control live inside the same bar, in that order
     assert bar.locator("#pg-nav").count() == 1 and bar.locator("#pg-bar").count() == 1
     order = page.evaluate("[...document.querySelectorAll('#topbar .topbar-in > *')].map(e => e.id || e.className.split(' ')[0])")

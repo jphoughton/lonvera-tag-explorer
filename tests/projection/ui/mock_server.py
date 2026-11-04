@@ -166,7 +166,7 @@ def mockpage():
     return send_from_directory(FIXTURES, "_mockpage.js", max_age=0, mimetype="text/javascript")
 
 
-LOGIN_HTML = """<!doctype html><title>Sign in</title><body><h1 id="login-title">Tag Explorer sign in</h1>
+LOGIN_HTML = """<!doctype html><title>Sign in</title><body><h1 id="login-title">Marketing metrics sign in</h1>
 <button id="login-go">Sign in</button>
 <script>document.getElementById('login-go').onclick = async () => {
   await fetch('/api/login', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
@@ -182,7 +182,7 @@ def login_page():
 
 @app.get("/")
 def home():
-    return Response("<!doctype html><title>Tag Explorer</title><h1>Tag Explorer</h1>", mimetype="text/html")
+    return Response("<!doctype html><title>Marketing metrics</title><h1>Marketing metrics</h1>", mimetype="text/html")
 
 
 @app.post("/api/login")

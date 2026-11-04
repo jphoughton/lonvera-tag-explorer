@@ -1080,13 +1080,13 @@ def test_open_link_drill_down_with_breadcrumb(page):
     q = qparams(page)
     assert (q["cluster"], q["icp"], q["pain"]) == (cluster, icp, pain)
     crumbs = page.locator(".crumbs li").all_inner_texts()
-    assert crumbs[0] == "Products" and crumbs[2:5] == [cluster, icp, pain], crumbs
+    assert crumbs[0] == "Marketing metrics" and crumbs[2:5] == [cluster, icp, pain], crumbs
     shot(page, "03_families")
     first_row(page).locator("a.row-open").click()
     expect(page).to_have_url(re.compile(r"/ad/\d+"))
     expect(page.locator("#ad-title")).to_be_visible()
     crumbs = page.locator(".crumbs li").all_inner_texts()
-    assert crumbs[0] == "Products" and crumbs[-1] != "" and len(crumbs) >= 3
+    assert crumbs[0] == "Marketing metrics" and crumbs[-1] != "" and len(crumbs) >= 3
     page.locator(".crumbs a", has_text=cluster).first.click()
     expect(page.locator("#level-title")).to_contain_text("ICPs in")
     assert qparams(page)["cluster"] == cluster
@@ -2209,11 +2209,11 @@ def test_source_line_and_no_sheet_wording(page):
         src = page.locator("#source").inner_text()
         assert src.startswith("Source: Meta Marketing API, refreshed"), src
         text = page.locator("body").inner_text().lower()
-        assert not re.search(r"\bsheets?\b|\btabs?\b|ties to|google", text), re.findall(r"\bsheets?\b|\btabs?\b|ties to|google", text)
+        assert not re.search(r"\bsheets?\b|\btabs?\b|ties to|google sheets?", text), re.findall(r"\bsheets?\b|\btabs?\b|ties to|google sheets?", text)   # Google is a channel now, Google Sheets is still not a source
         expect(page.locator("#data-through")).to_contain_text("Data through")  # from /api/status
     open_first_ad(page)
     text = page.locator("body").inner_text().lower()
-    assert not re.search(r"\bsheets?\b|\btabs?\b|ties to|google", text)
+    assert not re.search(r"\bsheets?\b|\btabs?\b|ties to|google sheets?", text)
     assert page.locator("#source").inner_text().startswith("Source: Meta Marketing API")
 
 
@@ -3098,3 +3098,43 @@ def test_not_tested_bar_toggle_and_panel(page):
     page.wait_for_function("() => !new URL(location.href).searchParams.has('untested')")
     expect(page.locator("[data-testid=level-table]")).to_be_visible()
     shot(page, "10_not_tested")
+
+
+# ------------------------------------------------------------------ channel Google
+@pytest.mark.mock_only
+def test_channel_switch_and_google_page(page):
+    goto_product(page, "?window=14d&stage=scaling")
+    chan = lambda k: page.locator(f"#channel-ctl [data-channel={k}]")                                  # noqa: E731
+    expect(chan("meta")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#stage-ctl")).to_be_visible()
+    page.locator("#channel-ctl [data-channel=google]").click()
+    expect(page).to_have_url(re.compile(r"/google\?"))
+    q = qparams(page)
+    assert q["window"] == "14d" and "stage" not in q, q                                                # the range carries over, Meta-only controls are dropped
+    expect(page.locator("h1")).to_have_text("Google")
+    expect(chan("google")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#stage-ctl")).to_be_hidden()
+    expect(page.locator("#tieout-btn")).to_be_hidden()
+    expect(page.locator("#source-ctl [data-source=meta]")).to_have_text("Google")
+    types = page.locator("[data-testid=google-types] tbody tr[data-key]")
+    expect(types.first).to_be_visible()
+    assert types.count() >= 4
+    expect(page.locator("[data-testid=google-types] th[data-col=revenue]")).to_contain_text("Conversion value")
+    expect(page.locator("[data-testid=google-campaigns] tbody tr[data-key]").first).to_be_visible()
+    expect(page.locator("[data-testid=google-trend] canvas")).to_be_visible()
+    total_google = num(foot_value(page, "spend", "google-types"))
+    page.locator("#source-ctl [data-source=upstack]").click()                                          # Numbers from Upstack: labels change, spend does not
+    expect(page).to_have_url(re.compile(r"source=upstack"))
+    expect(page.locator("[data-testid=google-types] th[data-col=purchases]")).to_contain_text("New customers")
+    assert abs(num(foot_value(page, "spend", "google-types")) - total_google) <= 1
+    expect(page.locator("#source-banner")).to_contain_text("Upstack")
+    page.locator("[data-testid=google-types] tbody tr[data-key]").first.click()                        # a type row filters the campaigns table
+    expect(page).to_have_url(re.compile(r"type="))
+    expect(page.locator("#campaigns-title")).to_contain_text("Campaigns ·")
+    assert qparams(page)["source"] == "upstack"
+    page.locator("#channel-ctl [data-channel=meta]").click()                                           # back to the Meta pages: range and numbers choice carry over
+    expect(page).not_to_have_url(re.compile(r"/google"))
+    expect(page.locator("h1")).to_have_text("Marketing metrics")
+    expect(page.locator("#channel-ctl [data-channel=meta]")).to_have_attribute("aria-pressed", "true")
+    assert qparams(page)["window"] == "14d" and qparams(page)["source"] == "upstack" and "type" not in qparams(page)
+    shot(page, "11_google")

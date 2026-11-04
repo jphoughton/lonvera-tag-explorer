@@ -1015,6 +1015,100 @@ def coverage(slug):
     return jsonify(available=True, summary=dict(pain_points=summ, icps=icps), rows=rows, keys=keys, window_info=win["info"], compare_info=None)
 
 
+G_CAMPS = [("Standard Shopping | All Products | US | tROAS 190% | Branded | Hot", "Shopping", "ENABLED"), ("Standard Shopping | Bestseller Products | US", "Shopping", "PAUSED"),
+           ("Brand Search | US | Hot | tROAS 160%", "Search", "ENABLED"), ("PMax | Beef Liver Products | Broad | US", "Performance Max", "ENABLED"),
+           ("DG15 | Vital Bull | Video 9x16 | US", "Demand Gen", "PAUSED"), ("Prospecting | Top 3 Products | US | Cold", "Other", "PAUSED")]
+
+
+def g_day(ci, i):
+    rnd = random.Random(ci * 7919 + i)
+    sp = 30 + ci * 22 + rnd.random() * 40
+    clk = int(sp * (1.6 + rnd.random()))
+    return dict(spend=sp, imp=clk * 35, clk=clk, rp=sp / (28 + 4 * ci) * (0.8 + rnd.random() * 0.4), rv=sp * (1.1 + 0.15 * ci), up=sp / (45 + 3 * ci), uv=sp * (0.6 + 0.1 * ci))
+
+
+def g_sum(ci, i0, i1, src):
+    t = dict(spend=0.0, imp=0, clk=0, p=0.0, v=0.0)
+    for i in range(i0, i1 + 1):
+        d = g_day(ci, i)
+        t["spend"] += d["spend"]; t["imp"] += d["imp"]; t["clk"] += d["clk"]
+        t["p"] += d["up"] if src == "upstack" else d["rp"]
+        t["v"] += d["uv"] if src == "upstack" else d["rv"]
+    return t
+
+
+def g_m(t, days, total_spend):
+    sp, pu, rv, clk, imp = t["spend"], t["p"], t["v"], t["clk"], t["imp"]
+    return dict(spend=round(sp, 2), purchases=round(pu, 2), revenue=round(rv, 2), roas=round(rv / sp, 4) if sp else None, cpa=round(sp / pu, 2) if pu else None,
+                impressions=imp, link_clicks=clk, ctr=round(clk / imp, 5) if imp else None, cpc=round(sp / clk, 4) if clk else None, cpm=round(sp * 1000 / imp, 4) if imp else None,
+                conv_rate=round(pu / clk, 5) if clk else None, spend_share=round(sp / total_spend, 4) if total_spend else None, active_campaigns=1,
+                spend_per_day=round(sp / days, 2), purchases_per_day=round(pu / days, 2), revenue_per_day=round(rv / days, 2))
+
+
+def g_info(win, src, basis):
+    info = dict(win["info"], channel="google", stage="all", stages=["testing", "scaling", "unclassified"], stage_note="")
+    if src == "upstack":
+        info["source"] = dict(key="upstack", basis=basis, label="Upstack · " + ("new customers" if basis == "nc" else "all orders"),
+                              labels=dict(purchases="New customers" if basis == "nc" else "Orders", revenue="NC revenue" if basis == "nc" else "Revenue", roas="NC ROAS" if basis == "nc" else "ROAS",
+                                          cpa="NC CPA" if basis == "nc" else "Cost per order"),
+                              model="Upstack any-click attribution, 30-day window, Google Ads source", summary="Mock: Upstack's attribution of Google campaigns.", note=None)
+    else:
+        info["source"] = dict(key="meta", basis=None, label="Google", labels=dict(purchases="Purchases", revenue="Conversion value", roas="ROAS", cpa="CPA"), model=None,
+                              summary="Mock: Google's own reporting through Upstack.", note=None)
+    return info
+
+
+def g_rows(group, args, win):
+    src = "upstack" if args.get("source") == "upstack" else "meta"
+    basis = args.get("basis", "nc")
+    i0, i1 = (0, N - 1) if win.get("launch") else (win["i0"], win["i1"])
+    days = i1 - i0 + 1
+    want = args.get("type")
+    items = [(ci, c) for ci, c in enumerate(G_CAMPS) if not want or c[1] == want]
+    sums = {ci: g_sum(ci, i0, i1, src) for ci, _ in items}
+    tot_t = dict(spend=sum(t["spend"] for t in sums.values()), imp=sum(t["imp"] for t in sums.values()), clk=sum(t["clk"] for t in sums.values()),
+                 p=sum(t["p"] for t in sums.values()), v=sum(t["v"] for t in sums.values()))
+    rows = []
+    if group == "type":
+        for typ in dict.fromkeys(c[1] for _, c in items):
+            t = dict(spend=0.0, imp=0, clk=0, p=0.0, v=0.0)
+            for ci, c in items:
+                if c[1] == typ:
+                    for k in t:
+                        t[k] += sums[ci][k]
+            rows.append(dict(key=typ, label=typ, campaign_type=typ, m=g_m(t, days, tot_t["spend"])))
+    else:
+        for ci, c in items:
+            rows.append(dict(key="g%d" % ci, label=c[0], utm_campaign=None, campaign_type=c[1], in_feed=True, status=c[2], bid_strategy="X", m=g_m(sums[ci], days, tot_t["spend"])))
+    rows.sort(key=lambda r: -r["m"]["spend"])
+    return rows, g_m(tot_t, days, tot_t["spend"]), g_info(win, src, basis)
+
+
+@app.get("/api/google/rollup")
+def google_rollup():
+    win = parse_win(request.args)
+    group = request.args.get("group", "type")
+    if group not in ("type", "campaign"):
+        raise Bad("bad group")
+    rows, total, info = g_rows(group, request.args, win)
+    return jsonify(channel="google", group=group, type=request.args.get("type"), window=info, window_info=info, compare_info=None, rows=rows, total=dict(m=total))
+
+
+@app.get("/api/google/trend")
+def google_trend():
+    win = parse_win(request.args)
+    src = "upstack" if request.args.get("source") == "upstack" else "meta"
+    i0, i1 = (0, N - 1) if win.get("launch") else (win["i0"], win["i1"])
+    pts = []
+    for i in range(i0, i1 + 1):
+        sp = sum(g_day(ci, i)["spend"] for ci in range(len(G_CAMPS)))
+        pu = sum(g_day(ci, i)["up" if src == "upstack" else "rp"] for ci in range(len(G_CAMPS)))
+        rv = sum(g_day(ci, i)["uv" if src == "upstack" else "rv"] for ci in range(len(G_CAMPS)))
+        pts.append(dict(t=DAYS[i].isoformat(), partial=False, spend=round(sp, 2), purchases=round(pu, 2), revenue=round(rv, 2), roas=round(rv / sp, 4), cpa=round(sp / pu, 2),
+                        impressions=int(sp * 60), link_clicks=int(sp * 1.8), ctr=0.03, cpc=1.2, cpm=40.0, conv_rate=0.02))
+    return jsonify(channel="google", window_info=g_info(win, src, request.args.get("basis", "nc")), compare_info=None, grain=request.args.get("grain", "day"), scope={}, points=pts)
+
+
 @app.get("/api/products/<slug>/unmatched")
 def unmatched(slug):
     win = parse_win(request.args)
@@ -1547,7 +1641,7 @@ def shell(*_a, **_k):
     return send_from_directory(STATIC, "index.html")
 
 
-for rule in ("/", "/login", "/p/<slug>", "/ad/<rid>"):
+for rule in ("/", "/login", "/google", "/p/<slug>", "/ad/<rid>"):
     app.add_url_rule(rule, endpoint="shell" + rule, view_func=shell)
 
 

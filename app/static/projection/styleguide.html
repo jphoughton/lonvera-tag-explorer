@@ -180,7 +180,7 @@ const chromeDemo = (copy) => h('div', { class: 'chrome-demo' + (copy ? ' copy' :
   h('div', { class: 'pg-chrome' },
     h('div', { class: 'topbar-in' },
       h('a', { class: 'brand', href: '#sg-anatomy' }, 'Lonvera'),
-      h('a', { class: 'navlink', href: '#sg-anatomy' }, 'Tags'),
+      h('a', { class: 'navlink', href: '#sg-anatomy' }, 'Marketing metrics'),
       h('a', { class: 'navlink pg-brandnow', href: '#sg-anatomy' }, 'Projections'),
       h('nav', { class: 'pg-nav', 'aria-label': 'Projection modules (example)' },
         h('div', { class: 'pg-ngroup' }, tab('Overview', false)),
@@ -196,7 +196,7 @@ const menuDemo = () => h('div', { class: 'chrome-demo', style: { width: 'fit-con
   h('div', { class: 'pg-menu-pop', style: { position: 'static', boxShadow: 'none', border: 0 } },
     ['New scenario', 'Clone this scenario', 'Rename', 'History and restore'].map((t) => h('button', { class: 'pg-mitem', type: 'button' }, t)),
     h('div', { class: 'pg-msep' }), h('button', { class: 'pg-mitem danger', type: 'button' }, 'Delete this scenario')));
-sg.append(section('sg-anatomy', 'Page anatomy', 'One 42px bar, the same bar as the Tags pages: Lonvera, Tags, Projections, then the module tabs, then the scenario control at the right end. Under it: plan headline, then the page (title, one-line purpose, TLDR strip, the table or chart, one source caption).',
+sg.append(section('sg-anatomy', 'Page anatomy', 'One 42px bar, the same bar as the Marketing metrics pages: Lonvera, Marketing metrics, Projections, then the module tabs, then the scenario control at the right end. Under it: plan headline, then the page (title, one-line purpose, TLDR strip, the table or chart, one source caption).',
   h('h3', 'The bar: plan of record'), chromeDemo(false),
   h('h3', 'The bar: in a scenario copy (amber underline and Copy chip, so you never edit the wrong one)'), chromeDemo(true),
   h('h3', 'Scenario actions menu (the ... button)'), menuDemo(),

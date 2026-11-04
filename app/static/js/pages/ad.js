@@ -218,12 +218,12 @@ export async function adPage(ctx) {
   const slug = d.product.slug;
   const path = '/p/' + enc(slug);
   const title = d.ad_family || d.concept_id;
-  document.title = `Creative: ${title} · Tag Explorer`;
+  document.title = `Creative: ${title} · Marketing metrics`;
 
   const tg = d.tag || {};
   const tt = d.tracker_tag || {};
   const cluster = tg.cluster || tt.cluster, icp = tg.icp || tt.icp, pain = tg.pain_point || tt.pain_point;
-  const crumbs = [{ label: 'Products', href: href('/', G) }, { label: d.product.name, href: href(path, G) }];
+  const crumbs = [{ label: 'Marketing metrics', href: href('/', G) }, { label: d.product.name, href: href(path, G) }];
   if (cluster) crumbs.push({ label: cluster, href: href(path, { ...G, cluster }) });
   if (cluster && icp) crumbs.push({ label: icp, href: href(path, { ...G, cluster, icp }) });
   if (cluster && icp && pain) crumbs.push({ label: pain, href: href(path, { ...G, cluster, icp, pain }) });

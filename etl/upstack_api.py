@@ -89,21 +89,22 @@ class Client:
         raise UpstackError(f"{what} failed after {retries} tries: {last}")
 
     # ---- attribution --------------------------------------------------------------------------------------------------
-    def attribution(self, day: dt.date, dimension: str, extra_filters: list[dict] | None = None) -> list[dict]:
+    def attribution(self, day: dt.date, dimension: str, extra_filters: list[dict] | None = None, source: str = "Meta Ads") -> list[dict]:
+        src = SOURCE_FILTER if source == "Meta Ads" else {**SOURCE_FILTER, "value": source}
         body = {"pixelId": self.pixel, "dimension": dimension, "dateRange": {"start": day.isoformat(), "end": day.isoformat()},
                 "attributionModel": MODEL, "attributionWindow": WINDOW, "timezone": TIMEZONE, "valueSource": "orders",
-                "filters": {"and": [SOURCE_FILTER] + (extra_filters or [])}}
+                "filters": {"and": [src] + (extra_filters or [])}}
         res = self.post("/api/query-attribution", body, f"{day} {dimension}").get("results") or []
         return ((res[0].get("data") or {}).get("primary") or []) if res else []
 
     # ---- channel feed (campaign grain) --------------------------------------------------------------------------------
-    def channel_campaigns(self, start: dt.date, end: dt.date) -> list[dict]:
+    def channel_campaigns(self, start: dt.date, end: dt.date, measures: tuple = CHANNEL_MEASURES) -> list[dict]:
         out, offset = [], 0
         while True:
             body = {"pixelId": self.pixel, "granularity": "day", "timezone": TIMEZONE, "limit": CHANNEL_PAGE, "offset": offset,
                     "sortBy": "sourceUpdatedAt", "sortDirection": "desc",
                     "dateRange": {"start": start.isoformat(), "end": end.isoformat()},
-                    "measures": [{"measure": m} for m in CHANNEL_MEASURES], "dimensions": ["campaign"]}
+                    "measures": [{"measure": m} for m in measures], "dimensions": ["campaign"]}
             j = self.post("/api/query-channel-details", body, f"channel campaigns {start}..{end} @{offset}")
             out += j.get("results") or []
             pg = j.get("pagination") or {}
