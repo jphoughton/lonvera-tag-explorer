@@ -1,5 +1,5 @@
 // App header (Back, brand, data-through, logout) and the global range / stage / compare controls. State lives in the URL.
-import { h, navigate, setParams, href, globalParams, fmt, isNum, currentParams, stageSet, stageParam, STAGES, hasDateWindow, compareOn, cmpView, applyCompareState, refreshCmp, qs, cleanParams, srcFromParams, applySourceState, srcView, currentPlatform, refreshSrcBadges } from './util.js';
+import { h, navigate, setParams, href, globalParams, fmt, isNum, currentParams, stageSet, stageParam, STAGES, hasDateWindow, compareOn, cmpView, applyCompareState, refreshCmp, qs, cleanParams, srcFromParams, applySourceState, srcView, currentPlatform, refreshSrcBadges, platformUrl } from './util.js';
 import { loadTieout } from './tieout.js';
 import { api, AuthError } from './api.js';
 
@@ -288,9 +288,8 @@ const META_ONLY_KEYS = ['stage', 'active', 'tb', 'tl', 'tg', 'ts'];
 function goPlatform(key) {
   const p = { ...globalParams(currentParams()) };
   if (key !== 'meta') for (const k of META_ONLY_KEYS) delete p[k];
-  p.platform = key === 'meta' ? null : key;
   const onCampaigns = /^\/campaigns\/?$/.test(location.pathname);
-  navigate(href(onCampaigns ? '/campaigns' : '/', p));
+  navigate(platformUrl(onCampaigns ? '/campaigns' : '/', key, p));
 }
 function syncPlatform() {
   const pl = currentPlatform();

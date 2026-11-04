@@ -1,5 +1,5 @@
 // Shared page components: breadcrumbs, filter bar, Meta-ads table, unmatched panel.
-import { h, enc, fmt, isNum, currentParams, href, apiWindow, globalParams, debounce, navigate, stageBadge, liveDot, thumb, empty, colPref, setColPref, refreshCmp, srcBadgeText } from './util.js';
+import { h, enc, fmt, isNum, currentParams, href, apiWindow, globalParams, debounce, navigate, stageBadge, liveDot, thumb, empty, colPref, setColPref, refreshCmp, srcBadgeText, platformUrl } from './util.js';
 import { api, AuthError } from './api.js';
 import { createTable } from './table.js';
 import { metricColumns, FLAT_KEYS, fixTotal, trendColumn, bothStagesIncluded } from './columns.js';
@@ -16,13 +16,12 @@ export function breadcrumbs(items) {
 
 // "View: Products | Campaigns" (Meta) or "Overview | Campaigns" (Google): the two views of a platform; the range, stage and numbers choice carry over (platform stays in G)
 export function viewSwitch(active, G, platform = 'meta') {
-  const first = platform === 'meta' ? 'Products' : 'Overview';
-  const second = platform === 'all' ? 'All campaigns' : 'Campaigns';
+  const first = platform === 'meta' ? 'Products' : platform === 'all' ? 'Platforms' : 'Overview';
   const mk = (label, key, to) => h('a', { class: 'seg', href: to, 'data-platform-view': key, 'aria-current': active === key ? 'page' : null, 'aria-pressed': String(active === key) }, label);
   const g = { ...G };
-  delete g.type; delete g.product;
-  return h('div', { class: 'ctl', id: 'view-switch' }, h('span', { class: 'ctl-name' }, 'View'),
-    h('span', { class: 'segs', role: 'group', 'aria-label': 'View' }, mk(first, 'home', href('/', g)), mk(second, 'campaigns', href('/campaigns', g))));
+  delete g.type; delete g.product; delete g.only; delete g.chart; delete g.platform;
+  return h('div', { class: 'ctl', id: 'view-switch' }, h('span', { class: 'ctl-name' }, 'View by'),
+    h('span', { class: 'segs', role: 'group', 'aria-label': 'View by' }, mk(first, 'home', platformUrl('/', platform, g)), mk('Campaigns', 'campaigns', platformUrl('/campaigns', platform, g))));
 }
 
 // "Numbers: Upstack · new customers": which numbers the table beside it shows; text kept current by controls.js (refreshSrcBadges) on every flip

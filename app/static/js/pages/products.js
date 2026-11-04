@@ -31,7 +31,7 @@ function addShares(list, ta) {
 export async function productsPage(ctx) {
   const { params: p, signal } = ctx;
   const G = globalParams(p);
-  document.title = 'Marketing metrics';
+  document.title = 'Meta · Marketing metrics';
   const [data, st] = await Promise.all([api('/api/products', { ...apiWindow(p), envelope: 1 }, { signal }), ensureStatus(signal)]);
   if (!ctx.alive()) return;
   const list = Array.isArray(data) ? data : (data.rows || data.products || []);
@@ -98,7 +98,7 @@ export async function productsPage(ctx) {
   });
   onCmpRefresh(() => t.refresh());
   ctx.mount(h('div', { class: 'page' },
-    h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'Marketing metrics'), h('span', { class: 'spacer' }), viewSwitch('home', G, 'meta')), h('div', { class: 'note-line' }, 'Meta, by product')),
+    h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'Meta'), h('span', { class: 'spacer' }), viewSwitch('home', G, 'meta')), h('div', { class: 'note-line' }, 'Products, tags and creatives')),
     legendLine(),
     panel.el,
     h('div', { class: 'tablehead' }, columnsChips()),

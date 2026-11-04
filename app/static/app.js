@@ -1,4 +1,4 @@
-import { $, h, fmt, setRenderer, navigate, currentParams, qs, href, globalParams, hasDateWindow, compareOn, cleanParams, setViewStateProvider, clearCmpRefreshers, loadViewState, navIndex, getParentHint, setParentHint, currentPlatform } from './js/util.js';
+import { $, h, fmt, setRenderer, navigate, currentParams, qs, href, globalParams, hasDateWindow, compareOn, cleanParams, setViewStateProvider, clearCmpRefreshers, loadViewState, navIndex, getParentHint, setParentHint, currentPlatform, platformUrl } from './js/util.js';
 import { setUnauthorizedHandler, AuthError, ApiError } from './js/api.js';
 import { buildShell, showControls, syncControls, loadStatus, setRangeInfo, getStatus, setBackDisabled, setPendingNote, isAuthDisabled } from './js/controls.js';
 import { destroyCharts } from './js/charts.js';
@@ -52,11 +52,11 @@ function parentUrl() {
     if (p.pain) return href(base, { ...G, cluster: p.cluster, icp: p.icp });
     if (p.icp) return href(base, { ...G, cluster: p.cluster });
     if (p.cluster) return href(base, G);
-    return href('/', G);
+    return platformUrl('/', 'meta', G);                      // a product's parent is Meta's Products table, not the All roll-up
   }
-  if (path === '/campaigns') return href('/', G);
-  if (path === '/' && p.type) return href('/', { ...G, type: null });
-  if (/^\/ad\//.test(path)) return getParentHint() || href('/', G);
+  if (path === '/campaigns') return platformUrl('/', currentPlatform(), G);
+  if (path === '/' && p.type) return platformUrl('/', 'google', G);
+  if (/^\/ad\//.test(path)) return getParentHint() || platformUrl('/', 'meta', G);
   return null;
 }
 

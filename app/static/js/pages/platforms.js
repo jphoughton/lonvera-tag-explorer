@@ -1,6 +1,6 @@
 // Marketing metrics, platform All: one overview of every platform Upstack serves. Per platform three rows: the platform's own reporting, then Upstack's
 // any-click attribution on new customers and on all orders. Spend, clicks and impressions are the platform's in every row.
-import { h, fmt, href, apiWindow, globalParams, empty } from '../util.js';
+import { h, fmt, href, apiWindow, globalParams, empty, platformUrl } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { metricColumns } from '../columns.js';
@@ -46,8 +46,8 @@ export async function allPlatformsPage(ctx) {
   });
   const cols = [
     { key: 'platform', label: 'Platform', sticky: true, nosort: true,
-      cell: (r) => (r.first ? h('div', { class: 'cell-label-text' }, h('a', { href: href('/', { ...G, platform: r.platform.key === 'meta' ? null : r.platform.key }), class: 'prodname' }, r.platform.name),
-        h('div', { class: 'sub' }, h('a', { href: href('/campaigns', { ...G, platform: r.platform.key === 'meta' ? null : r.platform.key }), class: 'plain' }, 'Campaigns →'))) : '') },
+      cell: (r) => (r.first ? h('div', { class: 'cell-label-text' }, h('a', { href: platformUrl('/', r.platform.key, G), class: 'prodname' }, r.platform.name),
+        h('div', { class: 'sub' }, h('a', { href: platformUrl('/campaigns', r.platform.key, G), class: 'plain' }, 'Campaigns →'))) : '') },
     { key: 'basis', label: 'Numbers', nosort: true, cls: 'labelcol',
       cell: (r) => h('div', { class: 'cell-label-text' }, h('div', { class: 'nm' }, r.label),
         r.window && r.window.clamped && r.window.from ? h('div', { class: 'sub', title: r.window.note || '' }, `${fmt.day(r.window.from)} – ${fmt.day(r.window.to)}`) : null) },
@@ -59,7 +59,7 @@ export async function allPlatformsPage(ctx) {
   ctx.mount(h('div', { class: 'page', 'data-level': 'platforms' },
     h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'All platforms'), h('span', { class: 'badge muted-badge' }, 'Meta and Google'), h('span', { class: 'spacer' }), viewSwitch('home', G, 'all')),
       h('div', { class: 'note-line' }, 'Each platform’s own reporting, then Upstack’s attribution of the same spend on new customers and on all orders.')),
-    h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Marketing metrics', href: href('/', { ...G, platform: null }) }, { label: 'All platforms' }])),
+    h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Marketing metrics', href: href('/', G) }, { label: 'All platforms' }])),
     panel.el,
     h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Platforms'), h('span', { class: 'src-badge', 'data-testid': 'src-badge' }, 'Numbers: each platform’s own reporting and Upstack')),
     rows.length ? t.el : empty('No platform data in this window.'),

@@ -1,6 +1,6 @@
 // Marketing metrics, platform Meta, Campaigns view: every Meta campaign across all products in one table (one row per campaign).
 // The same numbers as the product Campaigns view, summed over products; a Product column and a Product filter say which product's ads a row counts.
-import { h, enc, fmt, href, apiWindow, sparkParams, globalParams, stageBadge, liveDot, onCmpRefresh } from '../util.js';
+import { h, enc, fmt, href, apiWindow, sparkParams, globalParams, stageBadge, liveDot, onCmpRefresh, platformUrl } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { metricColumns, fixTotal, FLAT_KEYS, trendColumn } from '../columns.js';
@@ -86,7 +86,7 @@ export async function campaignsPage(ctx) {
   ctx.mount(h('div', { class: 'page', 'data-level': 'platform-campaigns' },
     h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'Campaigns'), h('span', { class: 'badge muted-badge' }, 'Meta · all products'), h('span', { class: 'spacer' }), viewSwitch('campaigns', G, 'meta')),
       h('div', { class: 'note-line' }, 'One row per Meta campaign. A campaign that runs ads of several products reads Mixed, with each product’s share; the Product filter keeps one product’s ads.')),
-    h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Marketing metrics', href: href('/', G) }, { label: 'Campaigns' }])),
+    h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Meta', href: platformUrl('/', 'meta', G) }, { label: 'Campaigns' }])),
     h('div', { class: 'ctl-row' }, productCtl),
     chartId ? h('div', { class: 'note-line', id: 'chart-scope', 'data-testid': 'chart-scope' }, 'Chart shows only ', h('strong', null, chartRow ? chartRow.name : chartId), ' · ', h('a', { href: href('/campaigns', { ...G, product }), class: 'btnlink small' }, 'Show all campaigns')) : null,
     panel.el,

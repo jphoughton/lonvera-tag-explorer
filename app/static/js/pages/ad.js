@@ -1,4 +1,4 @@
-import { h, enc, fmt, href, apiWindow, sparkParams, globalParams, badge, confBadge, stageBadge, liveDot, methodFlags, safeUrl, empty, isNum, colorChip, safeColor, cmpView, onCmpRefresh, setParentHint, stageSet, STAGES, currentParams, metricLabel } from '../util.js';
+import { h, enc, fmt, href, apiWindow, sparkParams, globalParams, badge, confBadge, stageBadge, liveDot, methodFlags, safeUrl, empty, isNum, colorChip, safeColor, cmpView, onCmpRefresh, setParentHint, stageSet, STAGES, currentParams, metricLabel, platformUrl } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { setRangeInfo } from '../controls.js';
@@ -240,7 +240,7 @@ export async function adPage(ctx) {
   const tg = d.tag || {};
   const tt = d.tracker_tag || {};
   const cluster = tg.cluster || tt.cluster, icp = tg.icp || tt.icp, pain = tg.pain_point || tt.pain_point;
-  const crumbs = [{ label: 'Marketing metrics', href: href('/', G) }, { label: d.product.name, href: href(path, G) }];
+  const crumbs = [{ label: 'Meta', href: platformUrl('/', 'meta', G) }, { label: d.product.name, href: href(path, G) }];
   if (cluster) crumbs.push({ label: cluster, href: href(path, { ...G, cluster }) });
   if (cluster && icp) crumbs.push({ label: icp, href: href(path, { ...G, cluster, icp }) });
   if (cluster && icp && pain) crumbs.push({ label: pain, href: href(path, { ...G, cluster, icp, pain }) });

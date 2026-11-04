@@ -1,21 +1,25 @@
 # Marketing metrics: Platform picker, All platforms, platform-level Campaigns
 
-Josh: "i can choose by platform at the highest level", "by campaign by platform... not just by product", "nowhere to click flip to just look at upstack data per creative".
+Josh: "i can choose by platform at the highest level", "by campaign by platform... not just by product", "nowhere to click flip to just look at upstack data per creative", "I hit marketing metrics view... it goes to that all view... where i see by platform rolled up... then I also choose to view by campaign... across all platforms".
 
-## Platform = the first control
+## Platform = the first control, and the default landing is All
 
-`Platform: All | Meta | Google`, first control of the bar, kept in the URL (`platform=all|google`; absent = Meta, so every existing link is unchanged). It only means something on the platform pages (`/` and `/campaigns`); product and ad pages are Meta.
+`Platform: All | Meta | Google`, first control of the bar, kept in the URL (`platform=all|meta|google`). It only means something on the platform pages (`/` and `/campaigns`); product and ad pages are Meta.
+
+**The default depends on the path, so old links keep their meaning:** a bare `/` (what the top-bar **Marketing metrics** link and the Lonvera brand link point at, and where a login lands) is the **All platforms roll-up**; `/campaigns` without a platform is still **Meta's** Campaigns. A link to the Meta landing therefore carries `platform=meta`, and `platform=all` is explicit on `/campaigns`. Every other parameter (`window=`, `source=`, `basis=`, `compare=`, ...) is honored on whichever platform page it lands on; a root with parameters but no platform is the roll-up with them applied.
 
 | URL | What it shows |
 |---|---|
-| `/` (Meta, default) | the Products table, as before. `View: Products \| Campaigns` is new. |
-| `/campaigns` (Meta) | every Meta campaign across all products (below) |
+| `/` (bare, or with window / source / basis ...) | **All platforms**: the platforms rolled up in a table (own reporting, Upstack new customers, Upstack all orders per platform) with the platform trend chart. `View by: Platforms \| Campaigns` |
+| `/campaigns?platform=all` | **All campaigns**: every Meta and Google campaign in one table (below), reached from `View by: Campaigns` |
+| `/?platform=meta` | Meta: the Products table, tags and creatives (the old landing, one click away from the picker). `View by: Products \| Campaigns` |
+| `/campaigns` (= `/campaigns?platform=meta`) | every Meta campaign across all products (below) |
 | `/?platform=google` | Google overview: trend, campaign types, campaigns (see MARKETING_METRICS_GOOGLE.md) |
 | `/campaigns?platform=google` | Google campaigns first, the campaign types as a filter row |
-| `/?platform=all` | All platforms overview (below) |
+| `/p/<slug>`, `/ad/<id>` | unchanged (Meta); their breadcrumb starts at **Meta** (back up = the Products table, not the roll-up) |
 | `/google` | the first Google URL; redirects to `/?platform=google` |
 
-Switching platform keeps the range, comparison and Numbers-from choice; Stage, Active only and the chart picks (Meta only) are dropped when leaving Meta. On a Campaigns page the switch keeps you on Campaigns (All has no Campaigns view and goes to the overview). `/api/status` lists the platforms (`sources.platforms`: key, name, available, first_day, through); the Google button is disabled when Google is not loaded.
+Switching platform keeps the range, comparison and Numbers-from choice; Stage, Active only and the chart picks (Meta only) are dropped when leaving Meta. On a Campaigns page the switch keeps you on Campaigns (All, Meta and Google each have a Campaigns view). The `View by` switch has the same pattern as the product page's `View by: Tags | Campaigns`: Platforms | Campaigns on All, Products | Campaigns on Meta, Overview | Campaigns on Google. `/api/status` lists the platforms (`sources.platforms`: key, name, available, first_day, through); the Google button is disabled when Google is not loaded.
 
 ### Which platforms Upstack serves (checked 2026-11-04)
 
@@ -70,7 +74,7 @@ The same panel as the product page (`createTrendPanel`, mode `source`): Bars and
 
 ## All campaigns (`/campaigns?platform=all`, `GET /api/campaigns/all`)
 
-Every Meta and Google campaign in one table, reachable from the Platform picker (All, then `View: Overview | All campaigns`), from the overview's "All campaigns" tab, and by URL; the picker keeps you on Campaigns when you change platform (All has no other Campaigns view).
+Every Meta and Google campaign in one table, reachable from the landing page (`View by: Campaigns`), from the Platform picker and by URL; the picker keeps you on Campaigns when you change platform.
 
 - **Columns.** Campaign, a sparkline (Meta rows), **Platform**, **Product / type** (a Meta product or Mixed with shares; a Google campaign type), **Numbers** (the basis that row is counted on: "Meta's own reporting", "Google's own reporting", "Upstack · new customers", "Upstack · all orders"), account, stage, ads, then the usual metrics with neutral headers (Purchases / orders, Cost per purchase) because the two platforms' counts mean different things.
 - **Numbers from + Count** apply per row: own reporting means each platform's own (Meta's for Meta rows, Google's for Google rows), Upstack reads every row on Upstack's attribution. Spend, impressions and clicks are the platform's in every basis.
