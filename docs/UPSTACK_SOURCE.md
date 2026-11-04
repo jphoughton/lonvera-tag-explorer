@@ -73,8 +73,7 @@ backfill flag away (`--since`), but needs `daily_start` and Meta's own history t
 
 181 days, 2026-05-06 to 2026-11-02, 27,653 attribution rows, 151,191 ad-day rows. 124 of those days (2026-06-28 to 2026-10-29) were seeded from the sheet job's saved
 pulls (`~/.lonvera/upstack_ads_daily_state.json`, same API, same parameters) instead of re-pulling them: Upstack answers cold queries in 3-30 s each and parallel pulls only
-make it slower. Checked against fresh pulls of 9 of those days: campaign totals identical on all 9, ad rows identical on 6, and on the other 3 the same numbers under one
-ad name Meta renamed since (` - DONE` appended; totals equal). The other 57 days were pulled for this app.
+make it slower. Checked against fresh pulls of 9 days (Jul 15, Aug 20, Sep 10, Sep 25, Oct 10 inside the seeded range, plus Oct 30 - Nov 2): campaign totals identical on all 9, ad rows identical on 6; on Jul 15, Aug 20 and Sep 10 the only difference is one ad that Meta renamed since (`newMech_postId - Copy` became `... - Copy - DONE`; every number equal). The other 57 days were pulled for this app.
 
 | What | Result |
 |---|---|
