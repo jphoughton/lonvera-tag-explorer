@@ -136,9 +136,10 @@ def parse_source(args) -> tuple[str, str]:
     return source, basis
 
 
-# Schema features the v1.9 / v1.10 data layer adds (migration 007). Probed on a short TTL so the API keeps serving before the migration is
-# applied: without them tracker rows are not filtered by deleted_at, active=1 answers 503 and /unmatched since launch uses the daily rows.
-_CAPS: dict[str, bool] = {"deleted": False, "active": False, "unm_launch": False, "unm_traffic": False}
+# Schema features the v1.9 / v1.10 data layer adds (migration 007) and the hooks table (migration 010). Probed on a short TTL so the API keeps serving
+# before the migration is applied: without them tracker rows are not filtered by deleted_at, active=1 answers 503, /unmatched since launch uses the
+# daily rows and creatives / ads carry no hook.
+_CAPS: dict[str, bool] = {"deleted": False, "active": False, "unm_launch": False, "unm_traffic": False, "hooks": False}
 _CAPS_AT = 0.0
 _CAPS_TTL = 15.0
 
@@ -152,12 +153,14 @@ def refresh_caps(conn, force: bool = False) -> dict[str, bool]:
            AND ((table_name = 'tracker_rows' AND column_name = 'deleted_at')
              OR (table_name = 'ad_metrics' AND column_name IN ('ads_active_count', 'live_active', 'spend_launch_active'))
              OR (table_name = 'family_daily_active' AND column_name = 'family_key')
-             OR (table_name = 'unmatched_meta' AND column_name IN ('spend_launch', 'impressions_launch', 'clicks_launch')))""").fetchall()}
+             OR (table_name = 'unmatched_meta' AND column_name IN ('spend_launch', 'impressions_launch', 'clicks_launch'))
+             OR (table_name = 'ad_hooks' AND column_name = 'hook'))""").fetchall()}
     _CAPS["deleted"] = ("tracker_rows", "deleted_at") in have
     _CAPS["active"] = all(k in have for k in (("ad_metrics", "ads_active_count"), ("ad_metrics", "live_active"), ("ad_metrics", "spend_launch_active"),
                                               ("family_daily_active", "family_key")))
     _CAPS["unm_launch"] = ("unmatched_meta", "spend_launch") in have
     _CAPS["unm_traffic"] = _CAPS["unm_launch"] and ("unmatched_meta", "impressions_launch") in have and ("unmatched_meta", "clicks_launch") in have
+    _CAPS["hooks"] = ("ad_hooks", "hook") in have
     _CAPS_AT = time.monotonic()
     return _CAPS
 
@@ -1253,6 +1256,28 @@ def rollup(conn, meta: DataMeta, w: WindowSpec, product: dict, level: str, clust
 
 
 # --------------------------------------------------------------------------------------------------------------------
+# hooks (ad_hooks, migration 010; loaded by etl.load_hooks)
+# --------------------------------------------------------------------------------------------------------------------
+
+
+def hooks_for(conn, row_ids: list[int]) -> dict[int, dict]:
+    """{tracker_row_id: {hook, hook_source, confidence}} for the rows that have a hook. Empty before migration 010 is applied."""
+    if not _CAPS["hooks"] or not row_ids:
+        return {}
+    return {r["tracker_row_id"]: r for r in rows_of(
+        conn, "SELECT tracker_row_id, hook, hook_source, confidence FROM ad_hooks WHERE tracker_row_id = ANY(%s)", (list(row_ids),))}
+
+
+def hook_detail(conn, row_id: int) -> dict | None:
+    """The full hook of one tracker row (None when it has none): the line, what was said and shown, and where it came from."""
+    if not _CAPS["hooks"]:
+        return None
+    r = row_of(conn, """SELECT hook, spoken, on_screen, hook_source, confidence, note, version
+                        FROM ad_hooks WHERE tracker_row_id = %s""", (row_id,))
+    return {k: r[k] for k in ("hook", "spoken", "on_screen", "hook_source", "confidence", "note", "version")} if r else None
+
+
+# --------------------------------------------------------------------------------------------------------------------
 # families
 # --------------------------------------------------------------------------------------------------------------------
 
@@ -1290,8 +1315,10 @@ LEFT JOIN fl ON fl.family_key = g.family_key
 ORDER BY g.spend DESC, g.display COLLATE "C", g.family_key COLLATE "C"      -- same order as the tree (codepoint order)
 """
     raw = rows_of(conn, act(sql, w.active), params)
+    hooks = hooks_for(conn, [r["ad_ids"][0] for r in raw])             # a creative shows the hook of its primary tracker row
     out = []
     for r in raw:
+        hk = hooks.get(r["ad_ids"][0])
         out.append({
             "family_key": r["family_key"], "display": r["display"], "ad_ids": list(r["ad_ids"]), "primary_id": r["ad_ids"][0],
             "concept_ids": list(r["concept_ids"]), "n_rows": len(r["ad_ids"]), "ad_type": r["ad_type"], "status": r["status"],
@@ -1299,6 +1326,7 @@ ORDER BY g.spend DESC, g.display COLLATE "C", g.family_key COLLATE "C"      -- s
             "thumb_asset_id": r["thumb_id"], "confidence": CONF_NAME.get(r["conf_rank"]), "method": r["method"],
             "counted_here": bool(r["counted_here"]),
             "cluster": r["cluster"], "icp": r["icp"], "pain": r["pain"], "line_code": r["line_code"],
+            "hook": hk["hook"] if hk else None, "hook_source": hk["hook_source"] if hk else None, "hook_confidence": hk["confidence"] if hk else None,
             "m": shape_m(r, w),
         })
     counts = family_ad_counts(conn, meta, w, [r["family_key"] for r in out])
@@ -2222,6 +2250,7 @@ def ad_detail(conn, meta: DataMeta, w: WindowSpec, row_id: int) -> dict:
         "in_active_set": n_active_ads > 0,
         "ads_count": ac[0], "ads_live": ac[1],
         "tag": tag,
+        "hook": hook_detail(conn, row_id),
         "tracker_tag": {"cluster": r["tracker_cluster"], "icp": r["tracker_icp"], "pain_point": r["tracker_pain"],
                         "emotion": r["tracker_emotion"], "ingredient": r["tracker_ingredient"]},
         "line": line,

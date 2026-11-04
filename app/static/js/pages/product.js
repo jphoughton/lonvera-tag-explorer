@@ -145,6 +145,12 @@ async function familiesFlatView(ctx, slug) {
               r.counted_here === false ? h('span', { class: 'badge muted-badge', title: 'This creative’s metrics are counted on its first tracker row, which sits in another group' }, 'counted elsewhere') : null)));
       },
     },
+    {
+      key: 'hook', label: 'Hook', cls: 'hookcol', sort: (r) => r.hook, total: () => '',
+      title: 'The ad’s first spoken line and on-image headline, boiled down to one line',
+      cellTitle: (r) => r.hook || null,
+      cell: (r) => (r.hook ? h('span', { class: 'hooktext' }, r.hook) : ''),
+    },
     pinColumn({ pins: flatPins, keyOf: rkey, labelOf: (r) => r.display, scopeOf: (r) => ({ family_key: r.family_key, ...pick(p, ['cluster', 'icp', 'pain']) }) }),
     {
       key: '_ads', label: '', nosort: true, cls: 'actioncol', header: allAdsHeader,
@@ -165,9 +171,9 @@ async function familiesFlatView(ctx, slug) {
     onCount: (n, tot) => filterUi && filterUi.setCount(n, tot),
   });
   onCmpRefresh(() => table.refresh());
-  const apply = (st) => table.setFilter(makeFilter(st, (r) => r.m && r.m.spend, (r) => [r.display, ...(r.concept_ids || []), r.ad_type, r.status]));
+  const apply = (st) => table.setFilter(makeFilter(st, (r) => r.m && r.m.spend, (r) => [r.display, ...(r.concept_ids || []), r.ad_type, r.status, r.hook]));
   filterUi = filterBar({
-    spend: p.spend === '1', q: p.q, placeholder: 'Search creative, concept id…',
+    spend: p.spend === '1', q: p.q, placeholder: 'Search creative, concept id, hook…',
     onChange: (st) => { saveFilterToUrl(st); apply(st); },
   });
   if (p.spend === '1' || p.q) apply({ spend: p.spend === '1', q: p.q });

@@ -401,6 +401,12 @@ table.dt td.labelcol, table.dt td.adcol { overflow-wrap: anywhere; }
 .nm .rowname, .nm .lvlname { display: inline; overflow: visible; text-overflow: clip; max-width: none; white-space: normal; flex-shrink: 0; }
 .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 11.5px; color: var(--muted); margin-top: 1px; max-width: none; white-space: normal; }
 .meta.sub { overflow: visible; }
+/* hooks: a column of one-line hooks cut with an ellipsis (full text in the cell's title), and the hook card on the ad page */
+table.dt td.hookcol, table.dt th.hookcol { min-width: 170px; max-width: 300px; }
+.hooktext { display: block; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hook-card { margin-top: 8px; }
+.hook-line { font-size: 16px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; margin: 2px 0 6px; }
+@media (max-width: 760px) { table.dt td.hookcol, table.dt th.hookcol { min-width: 140px; max-width: 220px; } .hooktext { max-width: 220px; } }
 .cell-label { align-items: flex-start; }
 .cell-label-text { min-width: 0; flex: 1 1 140px; overflow: visible; }
 .chip-type { display: inline-block; padding: 0 6px; border-radius: 8px; font-size: 11px; font-weight: 600; background: var(--head-bg); color: #3b4452; }

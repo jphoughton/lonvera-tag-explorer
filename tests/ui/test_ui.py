@@ -3098,3 +3098,123 @@ def test_not_tested_bar_toggle_and_panel(page):
     page.wait_for_function("() => !new URL(location.href).searchParams.has('untested')")
     expect(page.locator("[data-testid=level-table]")).to_be_visible()
     shot(page, "10_not_tested")
+
+
+# ------------------------------------------------------------------ hooks (ad_hooks): Hook column of All creatives, Hook card on the ad page
+def hook_cells(page):
+    """one dict per row of the All creatives table: {key, text, title, clipped, overflow} for its Hook cell"""
+    return page.evaluate("""() => {
+        const t = document.querySelector('[data-testid=level-table] table');
+        const i = [...t.querySelectorAll(':scope > thead th')].findIndex(th => th.dataset.col === 'hook');
+        return [...t.querySelectorAll(':scope > tbody > tr[data-key]')].map(tr => {
+          const td = tr.children[i]; const sp = td.querySelector('.hooktext');
+          return {key: tr.dataset.key, text: td.innerText.trim(), title: td.getAttribute('title'),
+                  clipped: sp ? sp.scrollWidth > sp.clientWidth + 1 : false, overflow: sp ? getComputedStyle(sp).textOverflow : null};
+        }); }""")
+
+
+def hook_families(page):
+    """{table row key: the family's hook text or None} from the API, in the shape the table keys its rows"""
+    rows = page.context.request.get(f"/api/products/{SLUG}/families").json()["rows"]
+    return rows, {r["family_key"] + "|" + ",".join(str(i) for i in r["ad_ids"]): r["hook"] for r in rows}
+
+
+@pytest.mark.mock_only
+def test_all_creatives_hook_column_text_tooltip_sort_search_and_no_total(page):
+    rows, want = hook_families(page)
+    assert any(want.values()) and not all(want.values())                         # the mock gives some creatives a hook and others none
+    page.goto(f"/p/{SLUG}?all=1")
+    wait_rows(page)
+    d = table_data(page)
+    assert d["heads"][1:3] == ["display", "hook"]                                # right behind the Creative column (the first th is the caret)
+    assert page.locator(f"{HEAD} th[data-col=hook]").inner_text().strip() == "Hook"
+    cells = hook_cells(page)
+    assert {c["key"]: c["text"] for c in cells} == {k: v or "" for k, v in want.items()}
+    assert all(c["title"] == (want[c["key"]] or None) for c in cells), cells     # the full text is the tooltip; an empty cell has none
+    assert any(c["clipped"] and c["overflow"] == "ellipsis" for c in cells)      # the long hook is cut with an ellipsis ...
+    assert any(c["text"] and not c["clipped"] for c in cells)                    # ... the short ones are not
+    assert foot_value(page, "hook") == ""                                        # no total
+    # sortable by text; creatives without a hook sit last in both directions
+    v1, v2 = sort_both_ways(page, "hook", numeric=False)
+    full = lambda v: [x for x in v if x]                                         # noqa: E731
+    assert full(v1) == sorted(full(v1), key=str.lower) and full(v2) == sorted(full(v2), key=str.lower, reverse=True)
+    assert v1 == full(v1) + [x for x in v1 if not x] and v2 == full(v2) + [x for x in v2 if not x]
+    # the search box looks in the hook text too
+    needle = "zinc levels"
+    expected = {k for k, v in want.items() if needle in (v or "").lower()}
+    assert expected
+    page.fill("#flt-q", needle)
+    expect(page.locator(BODY_ROWS)).to_have_count(len(expected))
+    assert {c["key"] for c in hook_cells(page)} == expected
+
+
+@pytest.mark.mock_only
+def test_hook_column_keeps_the_page_from_scrolling_sideways_on_a_phone(page):
+    page.set_viewport_size({"width": 390, "height": 800})
+    page.goto(f"/p/{SLUG}?all=1")
+    wait_rows(page)
+    page.wait_for_timeout(250)
+    assert page.evaluate("() => document.documentElement.scrollWidth") <= 391
+    w = page.evaluate("() => Math.max(...[...document.querySelectorAll('.hooktext')].map(e => e.getBoundingClientRect().width))")
+    assert 0 < w <= 221, w                                                       # capped at 220px on narrow screens; the table scrolls inside its own box
+
+
+@pytest.mark.mock_only
+def test_ad_page_hook_card(page):
+    rows, _ = hook_families(page)
+    by_src = {}
+    for r in rows:
+        if r["hook"] and not r["display"].startswith("XSS"):
+            by_src.setdefault(r["hook_source"], r)
+    assert set(by_src) == {"spoken", "on_screen", "both", "copy"}, by_src.keys()
+    api = page.context.request
+    both = by_src["both"]
+    det = api.get(f"/api/ads/{both['primary_id']}").json()["hook"]
+    page.goto(f"/ad/{both['primary_id']}")
+    page.wait_for_selector("#family-metrics")
+    idle(page)
+    card = page.locator("#hook-block")
+    expect(card).to_be_visible()
+    expect(page.locator("#hook-line")).to_have_text(det["hook"])
+    kv = lambda label: card.locator(".kv", has_text=label).locator(".v")         # noqa: E731
+    expect(kv("Spoken")).to_have_text(det["spoken"])
+    expect(kv("On screen")).to_have_text(det["on_screen"])
+    expect(card.locator(".badge.method")).to_have_text("both")
+    expect(card.locator(".badge.conf-high")).to_have_text("high")
+    expect(card).to_contain_text("Hooks hooks-v1-2026-11-05")
+    # prominent, and between the title and the creative preview
+    pos = page.evaluate("""() => { const y = (s) => document.querySelector(s).getBoundingClientRect(); return {title: y('#ad-title').bottom, hook: y('#hook-block').top, line: parseFloat(getComputedStyle(document.querySelector('#hook-line')).fontSize), seeAd: y('#see-ad').top}; }""")
+    assert pos["title"] <= pos["hook"] < pos["seeAd"] and pos["line"] >= 15, pos
+    # a hook with no spoken line / on-screen text shows only what it has, with its source and confidence
+    copy = by_src["copy"]
+    page.goto(f"/ad/{copy['primary_id']}")
+    page.wait_for_selector("#hook-block")
+    expect(page.locator("#hook-line")).to_have_text(copy["hook"])
+    assert page.locator("#hook-block .kv", has_text="Spoken").count() == 0 and page.locator("#hook-block .kv", has_text="On screen").count() == 0
+    expect(page.locator("#hook-block .badge.method")).to_have_text("copy")
+    expect(page.locator("#hook-block .badge.conf-low")).to_have_text("low")
+    expect(page.locator("#hook-block .kv", has_text="Note").locator(".v")).to_contain_text("hook taken from the primary text")
+    page.goto(f"/ad/{by_src['on_screen']['primary_id']}")
+    page.wait_for_selector("#hook-block")
+    expect(page.locator("#hook-block .badge.method")).to_have_text("on screen")  # the underscore is a space
+    # no hook, no card
+    nohook = next(r for r in rows if not r["hook"])
+    page.goto(f"/ad/{nohook['primary_id']}")
+    page.wait_for_selector("#family-metrics")
+    idle(page)
+    assert page.locator("#hook-block").count() == 0 and page.locator("#tag-block").count() == 1
+
+
+@pytest.mark.mock_only
+def test_hooks_are_escaped(page):
+    rows, _ = hook_families(page)
+    x = next(r for r in rows if r["display"].startswith("XSS"))
+    assert "<img src=x onerror=window.__xss=1>" in x["hook"]
+    page.goto(f"/p/{SLUG}?all=1")
+    wait_rows(page)
+    assert "<img src=x onerror=window.__xss=1>" in page.locator(f"{TABLE} .hooktext").first.locator("xpath=ancestor::table").inner_text()
+    assert page.locator(f"{TABLE} .hooktext img, {TABLE} .hooktext b, {TABLE} .hooktext script").count() == 0
+    page.goto(f"/ad/{x['primary_id']}")
+    expect(page.locator("#hook-line")).to_have_text(x["hook"])
+    assert page.locator("#hook-block img, #hook-block b, #hook-block script").count() == 0
+    assert page.evaluate("() => window.__xss") is None
