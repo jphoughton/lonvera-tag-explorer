@@ -1,0 +1,422 @@
+#!/usr/bin/env python3
+"""Generate the data dictionary of the Lonvera marketing database from the LIVE schema plus the curated descriptions.
+
+    docs/schema/descriptions.py   curated text (the only file people edit)           -> read
+    Postgres (a migrated DB)      tables, views, columns, types, keys                -> introspected, never written
+
+Outputs
+    docs/DATA_SCHEMA.md           human + agent readable dictionary
+    docs/schema.json              the same, machine readable
+    COMMENT ON statements         for psql \\d+, DBeaver and agents that introspect (migrations 013 and 190, or a refresh migration)
+
+Usage (DATABASE_URL = any database with every migration applied, e.g. a local scratch DB; the production DB works too, read-only):
+    python scripts/gen_schema_doc.py --write                     regenerate docs/DATA_SCHEMA.md and docs/schema.json
+    python scripts/gen_schema_doc.py --check                     exit 1 when those files are stale (the test suite does the same)
+    python scripts/gen_schema_doc.py --problems                  list undescribed / stale entries and exit 1 if any
+    python scripts/gen_schema_doc.py --comments 013|190|191|all [--out FILE]
+                                                                 COMMENT ON statements; for a description change after migrations 013 / 190 were applied
+                                                                 write them to a NEW migration (migrations/NNN_schema_comments_<what>.sql)
+    python scripts/gen_schema_doc.py --emit-migration 013|190|191  rewrite the comment section of migrations/013_schema_comments_analytics.sql, 190_analytics_pacing_views.sql, 191_schema_comments_proj.sql
+                                                                 (only before the migration was applied anywhere: applied migrations are immutable;
+                                                                 013 keeps its hand-written DDL and only its comment section is rewritten)
+    python scripts/gen_schema_doc.py --verify-live               compare docs/schema.json with the database: every documented column exists with the stated type
+                                                                 (opens a READ ONLY session; run it against production)
+"""
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import os
+import sys
+from pathlib import Path
+
+import psycopg
+
+ROOT = Path(__file__).resolve().parent.parent
+DESC_PATH = ROOT / "docs" / "schema" / "descriptions.py"
+COMMENTS_MARKER = "-- ---------------------------------------------------------------- comments\n"
+MD_PATH = ROOT / "docs" / "DATA_SCHEMA.md"
+JSON_PATH = ROOT / "docs" / "schema.json"
+MIGRATIONS = {"013": ROOT / "migrations" / "013_schema_comments_analytics.sql", "190": ROOT / "migrations" / "190_analytics_pacing_views.sql",
+              "191": ROOT / "migrations" / "191_schema_comments_proj.sql"}
+# analytics views that read proj_feed_* (created by migration 170, after 013 runs on a fresh database): they and their comments live in migration 190
+LATE_ANALYTICS = {"analytics.meta_reach", "analytics.meta_campaign_daily_history", "analytics.data_coverage"}
+PROJ_GROUPS = {"proj_feeds", "proj_engine"}
+SCHEMAS = ("public", "analytics")
+KIND = {"r": "table", "p": "table", "v": "view", "m": "view"}
+REQUIRED_FIELDS = ("purpose", "grain", "source", "refresh", "coverage")
+SHORT_TYPES = {"timestamp with time zone": "timestamptz", "timestamp without time zone": "timestamp", "character varying": "varchar", "double precision": "float8"}
+
+
+# ------------------------------------------------------------------------------------------------------------------ descriptions
+def load_descriptions():
+    spec = importlib.util.spec_from_file_location("lonvera_schema_descriptions", DESC_PATH)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def resolve_cols(key: str, rel: dict, _seen: tuple = ()) -> dict[str, str]:
+    """Column descriptions of a relation: those inherited through `like` (recursively), overridden by its own."""
+    if key in _seen:
+        raise ValueError(f"circular 'like' at {key}")
+    spec = rel[key]
+    cols: dict[str, str] = {}
+    if spec.get("like"):
+        cols.update(resolve_cols(spec["like"], rel, _seen + (key,)))
+    cols.update(spec.get("cols") or {})
+    return cols
+
+
+# ------------------------------------------------------------------------------------------------------------------ introspection
+def introspect(conn) -> dict[str, dict]:
+    """{'schema.name': {schema, name, kind, columns: [{name, type, nullable}], primary_key: [..], foreign_keys: [..]}} for the public and analytics schemas."""
+    rels: dict[str, dict] = {}
+    for sch, name, relkind, attname, typ, notnull in conn.execute(
+            """SELECT n.nspname, c.relname, c.relkind, a.attname, format_type(a.atttypid, a.atttypmod), a.attnotnull
+               FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+               WHERE n.nspname = ANY(%s) AND c.relkind IN ('r', 'p', 'v', 'm')
+               ORDER BY n.nspname, c.relname, a.attnum""", (list(SCHEMAS),)).fetchall():
+        r = rels.setdefault(f"{sch}.{name}", {"schema": sch, "name": name, "kind": KIND[relkind], "columns": [], "primary_key": [], "foreign_keys": []})
+        r["columns"].append({"name": attname, "type": typ, "nullable": (not notnull) if r["kind"] == "table" else None})
+    for sch, name, cols in conn.execute(
+            """SELECT n.nspname, c.relname, array_agg(a.attname ORDER BY k.ord)
+               FROM pg_index i JOIN pg_class c ON c.oid = i.indrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+               CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
+               JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum
+               WHERE i.indisprimary AND n.nspname = ANY(%s) GROUP BY 1, 2""", (list(SCHEMAS),)).fetchall():
+        if f"{sch}.{name}" in rels:
+            rels[f"{sch}.{name}"]["primary_key"] = list(cols)
+    for sch, name, fcols, rsch, rname, rcols in conn.execute(
+            """SELECT n.nspname, c.relname,
+                      (SELECT array_agg(a.attname ORDER BY x.ord) FROM unnest(k.conkey) WITH ORDINALITY x(attnum, ord) JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = x.attnum),
+                      rn.nspname, rc.relname,
+                      (SELECT array_agg(a.attname ORDER BY x.ord) FROM unnest(k.confkey) WITH ORDINALITY x(attnum, ord) JOIN pg_attribute a ON a.attrelid = k.confrelid AND a.attnum = x.attnum)
+               FROM pg_constraint k JOIN pg_class c ON c.oid = k.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+               JOIN pg_class rc ON rc.oid = k.confrelid JOIN pg_namespace rn ON rn.oid = rc.relnamespace
+               WHERE k.contype = 'f' AND n.nspname = ANY(%s) ORDER BY 1, 2, 3""", (list(SCHEMAS),)).fetchall():
+        if f"{sch}.{name}" in rels:
+            rels[f"{sch}.{name}"]["foreign_keys"].append({"columns": list(fcols), "references": f"{rsch}.{rname}", "referenced_columns": list(rcols)})
+    return rels
+
+
+# ------------------------------------------------------------------------------------------------------------------ coverage check
+def problems(live: dict[str, dict], d=None, require_analytics: bool = True) -> list[str]:
+    """Everything that makes the dictionary lie or lag: an undescribed table / view / column, a description of something that no longer exists,
+    a missing required field, an analytics view without examples. Empty list = the dictionary is complete."""
+    d = d or load_descriptions()
+    out: list[str] = []
+    group_keys = {g for g, _ in d.GROUPS}
+    for key in sorted(live):
+        if key in d.EXCLUDED:
+            continue
+        if key not in d.REL:
+            out.append(f"{key}: exists in the database but has no entry in docs/schema/descriptions.py (describe it, or add it to EXCLUDED with a reason)")
+    for key, spec in d.REL.items():
+        sch, _, name = key.partition(".")
+        if sch not in SCHEMAS:
+            out.append(f"{key}: schema must be one of {SCHEMAS}")
+            continue
+        if key in d.EXCLUDED:
+            out.append(f"{key}: is both described and EXCLUDED")
+        if key not in live:
+            if sch == "analytics" and not require_analytics:
+                continue
+            out.append(f"{key}: described in docs/schema/descriptions.py but it does not exist in the database (stale entry)")
+            continue
+        r = live[key]
+        if spec.get("kind") != r["kind"]:
+            out.append(f"{key}: described as a {spec.get('kind')} but it is a {r['kind']}")
+        if spec.get("group") not in group_keys:
+            out.append(f"{key}: unknown group {spec.get('group')!r}")
+        for f in REQUIRED_FIELDS:
+            if not str(spec.get(f) or "").strip():
+                out.append(f"{key}: missing required field '{f}'")
+        if sch == "analytics" and len(spec.get("examples") or []) < 2:
+            out.append(f"{key}: an analytics view needs at least 2 example queries")
+        try:
+            cols = resolve_cols(key, d.REL)
+        except (KeyError, ValueError) as e:
+            out.append(f"{key}: bad 'like' ({e})")
+            continue
+        live_cols = [c["name"] for c in r["columns"]]
+        for c in live_cols:
+            if not str(cols.get(c) or "").strip():
+                out.append(f"{key}.{c}: column has no description")
+        for c in (spec.get("cols") or {}):
+            if c not in live_cols:
+                out.append(f"{key}.{c}: described but the column does not exist (stale)")
+    for key, why in d.EXCLUDED.items():
+        if not why.strip():
+            out.append(f"{key}: EXCLUDED needs a reason")
+        if key.startswith("analytics."):
+            out.append(f"{key}: nothing in analytics may be EXCLUDED")
+    return out
+
+
+# ------------------------------------------------------------------------------------------------------------------ model
+def build_model(live: dict[str, dict], d=None) -> dict:
+    d = d or load_descriptions()
+    relations = []
+    for key, spec in d.REL.items():
+        if key not in live:
+            continue
+        r = live[key]
+        cols = resolve_cols(key, d.REL)
+        relations.append({
+            "name": key, "schema": r["schema"], "relation": r["name"], "kind": r["kind"], "group": spec["group"],
+            "purpose": spec["purpose"], "grain": spec["grain"], "primary_key": r["primary_key"], "foreign_keys": r["foreign_keys"],
+            "source": spec["source"], "refresh": spec["refresh"], "coverage": spec["coverage"], "caveats": list(spec.get("caveats") or []),
+            "like": spec.get("like"),
+            "columns": [{"name": c["name"], "type": c["type"], "nullable": c["nullable"], "description": cols.get(c["name"], "")} for c in r["columns"]],
+            "examples": [{"title": t, "sql": s} for t, s in (spec.get("examples") or [])],
+        })
+    return {"groups": [{"key": k, "title": t} for k, t in d.GROUPS], "relations": relations,
+            "excluded": [{"name": k, "reason": v} for k, v in d.EXCLUDED.items()]}
+
+
+def render_json(model: dict) -> str:
+    return json.dumps(model, indent=1, ensure_ascii=False) + "\n"
+
+
+def _cell(s) -> str:
+    return str(s if s is not None else "").replace("|", "\\|").replace("\n", " ").strip()
+
+
+def _short(t: str) -> str:
+    return SHORT_TYPES.get(t, t)
+
+
+def render_markdown(model: dict, d=None) -> str:
+    d = d or load_descriptions()
+    out = [d.INTRO_MD.rstrip("\n"), "", d.TABLE_REFERENCE_INTRO_MD.rstrip("\n"), ""]
+    out.append("| Group | Relations |\n|---|---|")
+    for g in model["groups"]:
+        names = [r["name"] for r in model["relations"] if r["group"] == g["key"]]
+        out.append(f"| {_cell(g['title'])} | " + ", ".join(f"[`{n}`](#{_anchor(n)})" for n in names) + " |")
+    out.append("")
+    for g in model["groups"]:
+        rels = [r for r in model["relations"] if r["group"] == g["key"]]
+        if not rels:
+            continue
+        out += [f"## {g['title']}", ""]
+        for r in rels:
+            out.append(f"### {r['name']}")
+            out.append("")
+            out.append(f"*{r['kind']}*" + (f", columns like `{r['like']}`" if r.get("like") else ""))
+            out.append("")
+            out.append(f"**Purpose.** {r['purpose']}")
+            out.append("")
+            key = f"primary key `({', '.join(r['primary_key'])})`; " if r["primary_key"] else ""
+            out.append(f"- **Grain:** {key}{r['grain']}")
+            if r["foreign_keys"]:
+                out.append("- **References:** " + "; ".join(f"`({', '.join(f['columns'])})` -> `{f['references']}({', '.join(f['referenced_columns'])})`" for f in r["foreign_keys"]))
+            out.append(f"- **Source:** {r['source']}")
+            out.append(f"- **Refresh:** {r['refresh']}")
+            out.append(f"- **Coverage:** {r['coverage']}")
+            for c in r["caveats"]:
+                out.append(f"- **Caveat:** {c}")
+            out.append("")
+            out.append("| Column | Type | Null | Meaning |\n|---|---|---|---|")
+            for c in r["columns"]:
+                nul = "" if c["nullable"] is None else ("yes" if c["nullable"] else "no")
+                out.append(f"| `{c['name']}` | {_cell(_short(c['type']))} | {nul} | {_cell(c['description'])} |")
+            out.append("")
+            for ex in r["examples"]:
+                out.append(f"*{ex['title']}*")
+                out.append("")
+                out.append("```sql")
+                out.append(ex["sql"])
+                out.append("```")
+                out.append("")
+            if not r["examples"] and r.get("like"):
+                out.append(f"*Examples: same shape as `{r['like']}`; query it the same way.*")
+                out.append("")
+    out.append("## Regenerating")
+    out.append("")
+    out.append("Edit `docs/schema/descriptions.py`, then `python scripts/gen_schema_doc.py --write` (against a migrated database). "
+               "`tests/api/test_schema_docs.py` fails when a table, view or column has no description, when a description names something that no longer exists, "
+               "when an analytics example query does not run, and when this file or `docs/schema.json` is stale.")
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+def _anchor(name: str) -> str:
+    return name.lower().replace(".", "")
+
+
+# ------------------------------------------------------------------------------------------------------------------ comments
+def relation_comment(r: dict) -> str:
+    parts = [r["purpose"].strip(), f"Grain: {r['grain'].strip()}.", f"Source: {r['source'].strip()}.", f"Refresh: {r['refresh'].strip()}.", f"Coverage: {r['coverage'].strip()}."]
+    if r["caveats"]:
+        parts.append("Caveats: " + " | ".join(c.strip() for c in r["caveats"]))
+    return " ".join(parts)
+
+
+def expected_comments(model: dict, d=None) -> dict[tuple[str, str | None], str]:
+    """{(relation key, column or None): comment text} for every described relation."""
+    d = d or load_descriptions()
+    out: dict[tuple[str, str | None], str] = {("analytics", None): d.ANALYTICS_SCHEMA_COMMENT}
+    for r in model["relations"]:
+        out[(r["name"], None)] = relation_comment(r)
+        for c in r["columns"]:
+            out[(r["name"], c["name"])] = c["description"]
+    return out
+
+
+def _lit(s: str) -> str:
+    return "'" + s.replace("'", "''") + "'"
+
+
+def scope_of(r: dict) -> str:
+    """Which migration carries the comments of a relation: 013 (marketing + core analytics), 190 (analytics views over proj feeds), 191 (proj_* tables)."""
+    if r["name"] in LATE_ANALYTICS:
+        return "190"
+    return "191" if r["group"] in PROJ_GROUPS else "013"
+
+
+def comment_sql(model: dict, scope: str = "all", d=None) -> str:
+    """COMMENT ON statements for one migration's scope ('013' | '190' | '191') or everything ('all')."""
+    d = d or load_descriptions()
+    lines = []
+    if scope in ("013", "all"):
+        lines.append(f"COMMENT ON SCHEMA analytics IS {_lit(d.ANALYTICS_SCHEMA_COMMENT)};")
+    for r in model["relations"]:
+        if scope != "all" and scope_of(r) != scope:
+            continue
+        obj = "VIEW" if r["kind"] == "view" else "TABLE"
+        lines.append(f"COMMENT ON {obj} {r['schema']}.{r['relation']} IS {_lit(relation_comment(r))};")
+        for c in r["columns"]:
+            lines.append(f"COMMENT ON COLUMN {r['schema']}.{r['relation']}.{c['name']} IS {_lit(c['description'])};")
+    return "\n".join(lines) + "\n"
+
+
+def migration_text(which: str, model: dict, d=None) -> str:
+    """013 and 190 keep their hand-written DDL (everything above COMMENTS_MARKER) and get the comment section rewritten; 191 is comments only."""
+    if which in ("013", "190"):
+        path = MIGRATIONS[which]
+        if not path.exists():
+            raise SystemExit(f"{path} must exist with its hand-written DDL and the comments marker before comments can be emitted")
+        return path.read_text().split(COMMENTS_MARKER, 1)[0] + COMMENTS_MARKER + comment_sql(model, which, d)
+    if which == "191":
+        head = ("-- 191: COMMENT ON for the projection tables (proj_*), which migrations 100-180 create after 013 runs.\n"
+                "-- GENERATED by `python scripts/gen_schema_doc.py --emit-migration 191` from docs/schema/descriptions.py. Idempotent; immutable once applied.\n\n")
+        return head + comment_sql(model, "191", d)
+    raise ValueError(which)
+
+
+# ------------------------------------------------------------------------------------------------------------------ live verification
+def verify_live(conn, schema_json: dict) -> list[str]:
+    """docs/schema.json vs a live database (production, read-only): every documented relation / column exists with the documented type.
+    Returns the differences; analytics views that the database does not have yet (migrations 013 / 190 not applied) come back as 'NOTE:' lines, which are not differences."""
+    live = introspect(conn)
+    out = []
+    for r in schema_json["relations"]:
+        if r["schema"] == "analytics" and r["name"] not in live:
+            out.append(f"NOTE: {r['name']}: not in this database yet (migrations 013 / 190 not applied)")
+            continue
+        lr = live.get(r["name"])
+        if lr is None:
+            out.append(f"{r['name']}: missing in the database")
+            continue
+        if lr["kind"] != r["kind"]:
+            out.append(f"{r['name']}: documented as {r['kind']}, database has a {lr['kind']}")
+        have = {c["name"]: c for c in lr["columns"]}
+        for c in r["columns"]:
+            lc = have.get(c["name"])
+            if lc is None:
+                out.append(f"{r['name']}.{c['name']}: documented, missing in the database")
+            elif lc["type"] != c["type"]:
+                out.append(f"{r['name']}.{c['name']}: documented {c['type']}, database has {lc['type']}")
+            elif c["nullable"] is not None and lc["nullable"] != c["nullable"]:
+                out.append(f"{r['name']}.{c['name']}: nullability differs (documented {c['nullable']}, database {lc['nullable']})")
+        for c in lr["columns"]:
+            if c["name"] not in {x["name"] for x in r["columns"]}:
+                out.append(f"{r['name']}.{c['name']}: in the database, not documented")
+    documented = {r["name"] for r in schema_json["relations"]} | {e["name"] for e in schema_json["excluded"]}
+    for key in sorted(live):
+        if key not in documented:
+            out.append(f"{key}: in the database, not documented")
+    return out
+
+
+# ------------------------------------------------------------------------------------------------------------------ cli
+def connect(url: str | None):
+    url = url or os.environ.get("DATABASE_URL")
+    if not url:
+        sys.exit("DATABASE_URL is not set (point it at a database with every migration applied)")
+    return psycopg.connect(url, autocommit=True)
+
+
+def generate(conn) -> tuple[str, str, dict]:
+    d = load_descriptions()
+    live = introspect(conn)
+    model = build_model(live, d)
+    return render_markdown(model, d), render_json(model), model
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--database-url")
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--write", action="store_true")
+    g.add_argument("--check", action="store_true")
+    g.add_argument("--problems", action="store_true")
+    g.add_argument("--comments", choices=("013", "190", "191", "all"))
+    g.add_argument("--emit-migration", choices=sorted(MIGRATIONS))
+    g.add_argument("--verify-live", action="store_true")
+    ap.add_argument("--out", help="with --comments: write to this file instead of stdout")
+    a = ap.parse_args(argv)
+    conn = connect(a.database_url)
+    try:
+        if a.verify_live:
+            conn.execute("SET default_transaction_read_only = on")
+            bad = verify_live(conn, json.loads(JSON_PATH.read_text()))
+            for b in bad:
+                print(b)
+            diffs = [b for b in bad if not b.startswith("NOTE:")]
+            checked = len(json.loads(JSON_PATH.read_text())["relations"])
+            print(f"verify-live: {len(diffs)} difference(s) over {checked} documented relations ({len(bad) - len(diffs)} analytics view(s) not applied yet)")
+            return 1 if diffs else 0
+        d = load_descriptions()
+        live = introspect(conn)
+        probs = problems(live, d)
+        if a.problems or probs:
+            for p in probs:
+                print("PROBLEM:", p)
+            if a.problems:
+                print(f"{len(probs)} problem(s)")
+                return 1 if probs else 0
+            print(f"{len(probs)} problem(s): refusing to generate", file=sys.stderr)
+            return 1
+        model = build_model(live, d)
+        md, js = render_markdown(model, d), render_json(model)
+        if a.comments:
+            sql = comment_sql(model, a.comments, d)
+            if a.out:
+                Path(a.out).write_text(sql)
+            else:
+                sys.stdout.write(sql)
+            return 0
+        if a.emit_migration:
+            MIGRATIONS[a.emit_migration].write_text(migration_text(a.emit_migration, model, d))
+            print("wrote", MIGRATIONS[a.emit_migration].relative_to(ROOT))
+            return 0
+        if a.check:
+            stale = [p.name for p, text in ((MD_PATH, md), (JSON_PATH, js)) if not p.exists() or p.read_text() != text]
+            if stale:
+                print("STALE:", ", ".join(stale), "- run: python scripts/gen_schema_doc.py --write")
+                return 1
+            print("docs/DATA_SCHEMA.md and docs/schema.json are up to date")
+            return 0
+        MD_PATH.write_text(md)
+        JSON_PATH.write_text(js)
+        print(f"wrote {MD_PATH.relative_to(ROOT)} ({len(md.splitlines())} lines) and {JSON_PATH.relative_to(ROOT)} ({len(model['relations'])} relations)")
+        return 0
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
