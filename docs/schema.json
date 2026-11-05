@@ -5401,14 +5401,16 @@
    "name": "public.creative_stage_moves",
    "schema": "public",
    "relation": "creative_stage_moves",
-   "kind": "view",
+   "kind": "table",
    "group": "rollups",
-   "purpose": "One row per creative (tracker family) that ever spent: the first day it spent in a Testing campaign and in a Scaling campaign, whether it MOVED from testing to scaling (testing spend, then a later first scaling day), days in test, its numbers in testing before the move and in scaling since, the last 7 days and whether it is live. Behind the Test to scale page. Meta's own purchases and revenue; the _upstack_nc / _upstack_all views read the Upstack attribution.",
+   "purpose": "One row per creative (tracker family) that ever spent: the first day it spent in a Testing campaign and in a Scaling campaign, whether it MOVED from testing to scaling (testing spend, then a later first scaling day), days in test, its numbers in testing before the move and in scaling since, the last 7 days and whether it is live. Behind the Test to scale page. Meta's own purchases and revenue; the _upstack_nc / _upstack_all tables read the Upstack attribution. Precomputed (migration 016; it was a view in 015).",
    "grain": "one row per family_key that has spend (family_daily rows with spend > 0)",
-   "primary_key": [],
+   "primary_key": [
+    "family_key"
+   ],
    "foreign_keys": [],
-   "source": "public.family_daily (stage per campaign name: 'test' = testing) + ad_metrics first row + products + ad_tags + taxonomy_lines",
-   "refresh": "live view over family_daily, which is rebuilt nightly",
+   "source": "refresh_creative_stage_moves() from public.family_daily (stage per campaign name: 'test' = testing) + ad_metrics first row + products + ad_tags + taxonomy_lines",
+   "refresh": "nightly (etl.stage_moves, after run_daily and upstack_daily): DELETE + INSERT in one transaction; app_meta stage_moves_built_at / stage_moves_data_through say when",
    "coverage": "2026-05-06 through yesterday; about 2.6K creatives, 610 moved on 2026-11-04",
    "caveats": [
     "A move is inferred from daily spend, not from an event: Meta cannot move an ad between campaigns, the buyer duplicates the creative into a scaling campaign. Testing and scaling on the same first day, scaling first and scaling only are NOT moves (see path).",
@@ -5422,283 +5424,283 @@
     {
      "name": "family_key",
      "type": "text",
-     "nullable": null,
+     "nullable": false,
      "description": "Tracker family key (lower); joins family_daily, ad_metrics, creative_assets."
     },
     {
      "name": "tracker_row_id",
      "type": "bigint",
-     "nullable": null,
+     "nullable": true,
      "description": "tracker_rows.id of the family's first row (the one that carries its metrics); the app opens /ad/<id>."
     },
     {
      "name": "product_id",
      "type": "integer",
-     "nullable": null,
+     "nullable": true,
      "description": "products.id of that row (NULL when the family has no first row)."
     },
     {
      "name": "product_slug",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Product slug ('unassigned' for creatives of no product)."
     },
     {
      "name": "product_name",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Product name."
     },
     {
      "name": "concept_id",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Concept id of the first tracker row."
     },
     {
      "name": "display",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Display name: the ad family as typed in the tracker, else the concept id."
     },
     {
      "name": "ad_type",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "VID / IMG (tracker)."
     },
     {
      "name": "tracker_status",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Tracker status of the first row, e.g. '8 - Launched'."
     },
     {
      "name": "tracker_launch_date",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "Launch date typed in the tracker (undercounts the older ads; first_day is the one the page uses)."
     },
     {
      "name": "cluster",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Market cluster of the current tag ('(untagged)' when none)."
     },
     {
      "name": "icp",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "ICP of the current tag."
     },
     {
      "name": "pain",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Pain point of the current tag."
     },
     {
      "name": "data_start",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "First day this view's family_daily holds (2026-05-06 today)."
     },
     {
      "name": "data_through",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "Last day this view's family_daily holds."
     },
     {
      "name": "path",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "moved | testing_only | scaling_only | same_day (testing and scaling both first spent that day) | scaling_first (scaling before testing) | unclassified_only."
     },
     {
      "name": "began_in_testing",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true for moved and testing_only: the creatives a test-to-scale rate is about."
     },
     {
      "name": "moved",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when path = 'moved': spent in testing and its first scaling day is later."
     },
     {
      "name": "first_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "First day with spend in any stage = the launch day as far as the data goes."
     },
     {
      "name": "testing_first_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "First day with spend in a Testing campaign (NULL if none)."
     },
     {
      "name": "scaling_first_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "First day with spend in a Scaling campaign (NULL if none): the day of the move for a moved creative."
     },
     {
      "name": "last_spend_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "Last day with spend in any stage."
     },
     {
      "name": "scaling_last_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "Last day with spend in a Scaling campaign."
     },
     {
      "name": "days_in_test",
      "type": "integer",
-     "nullable": null,
+     "nullable": true,
      "description": "scaling_first_day - testing_first_day, for moved creatives only."
     },
     {
      "name": "launched_before_data_start",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when first_day is the first day of data: the creative was already running and its real launch day is earlier."
     },
     {
      "name": "test_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Testing-stage spend on days before the first scaling day, dollars."
     },
     {
      "name": "test_purchases",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Purchases (Meta-reported here, Upstack in the _upstack_ views) on those days."
     },
     {
      "name": "test_revenue",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Purchase value on those days, dollars."
     },
     {
      "name": "test_link_clicks",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Link clicks on those days."
     },
     {
      "name": "test_days",
      "type": "bigint",
-     "nullable": null,
+     "nullable": true,
      "description": "Days with testing spend before the first scaling day."
     },
     {
      "name": "test_after_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Testing-stage spend on or after the first scaling day (the original kept running), dollars."
     },
     {
      "name": "scale_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Scaling-stage spend since the move, through the last day, dollars."
     },
     {
      "name": "scale_purchases",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Purchases in the Scaling stage."
     },
     {
      "name": "scale_revenue",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Purchase value in the Scaling stage, dollars."
     },
     {
      "name": "scale_link_clicks",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Link clicks in the Scaling stage."
     },
     {
      "name": "scale_days",
      "type": "bigint",
-     "nullable": null,
+     "nullable": true,
      "description": "Days with scaling spend."
     },
     {
      "name": "unclassified_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Spend on days with no campaign (stage 'unclassified'), dollars; none today."
     },
     {
      "name": "last7_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Spend over the last 7 days of data, any stage, dollars."
     },
     {
      "name": "last7_purchases",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Purchases over the last 7 days, any stage."
     },
     {
      "name": "last7_revenue",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Purchase value over the last 7 days, any stage, dollars."
     },
     {
      "name": "last7_scale_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Scaling-stage spend over the last 7 days, dollars."
     },
     {
      "name": "last7_scale_purchases",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Scaling-stage purchases over the last 7 days."
     },
     {
      "name": "last7_scale_revenue",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Scaling-stage purchase value over the last 7 days, dollars."
     },
     {
      "name": "live",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when the creative spent on the last day of data or the day before (any stage)."
     },
     {
      "name": "live_scaling",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when it spent in a Scaling campaign on the last day of data or the day before."
     },
     {
      "name": "moves_that_day",
      "type": "bigint",
-     "nullable": null,
+     "nullable": true,
      "description": "Creatives that moved on the same scaling_first_day (all creatives, not only this product)."
     },
     {
      "name": "bulk_move_day",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when moved and 40 or more creatives moved that day: a mass relaunch, not a test winner."
     }
    ],
@@ -5717,14 +5719,16 @@
    "name": "public.creative_stage_moves_upstack_nc",
    "schema": "public",
    "relation": "creative_stage_moves_upstack_nc",
-   "kind": "view",
+   "kind": "table",
    "group": "rollups",
    "purpose": "creative_stage_moves on the Upstack new customers basis: the same creatives and the same Meta spend, with purchases / revenue as Upstack credits them.",
    "grain": "one row per family_key that has spend",
-   "primary_key": [],
+   "primary_key": [
+    "family_key"
+   ],
    "foreign_keys": [],
-   "source": "public.family_daily_upstack_nc (same rules as creative_stage_moves)",
-   "refresh": "live view over a table rebuilt nightly",
+   "source": "refresh_creative_stage_moves() from public.family_daily_upstack_nc (same rules as creative_stage_moves)",
+   "refresh": "nightly with creative_stage_moves (etl.stage_moves)",
    "coverage": "2026-05-06 through yesterday",
    "caveats": [
     "Spend, link clicks and the move itself are Meta's; test_purchases / test_revenue / scale_* / last7_* purchases and revenue change meaning.",
@@ -5735,283 +5739,283 @@
     {
      "name": "family_key",
      "type": "text",
-     "nullable": null,
+     "nullable": false,
      "description": "Tracker family key (lower); joins family_daily, ad_metrics, creative_assets."
     },
     {
      "name": "tracker_row_id",
      "type": "bigint",
-     "nullable": null,
+     "nullable": true,
      "description": "tracker_rows.id of the family's first row (the one that carries its metrics); the app opens /ad/<id>."
     },
     {
      "name": "product_id",
      "type": "integer",
-     "nullable": null,
+     "nullable": true,
      "description": "products.id of that row (NULL when the family has no first row)."
     },
     {
      "name": "product_slug",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Product slug ('unassigned' for creatives of no product)."
     },
     {
      "name": "product_name",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Product name."
     },
     {
      "name": "concept_id",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Concept id of the first tracker row."
     },
     {
      "name": "display",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Display name: the ad family as typed in the tracker, else the concept id."
     },
     {
      "name": "ad_type",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "VID / IMG (tracker)."
     },
     {
      "name": "tracker_status",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Tracker status of the first row, e.g. '8 - Launched'."
     },
     {
      "name": "tracker_launch_date",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "Launch date typed in the tracker (undercounts the older ads; first_day is the one the page uses)."
     },
     {
      "name": "cluster",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Market cluster of the current tag ('(untagged)' when none)."
     },
     {
      "name": "icp",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "ICP of the current tag."
     },
     {
      "name": "pain",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Pain point of the current tag."
     },
     {
      "name": "data_start",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "First day this view's family_daily holds (2026-05-06 today)."
     },
     {
      "name": "data_through",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "Last day this view's family_daily holds."
     },
     {
      "name": "path",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "moved | testing_only | scaling_only | same_day (testing and scaling both first spent that day) | scaling_first (scaling before testing) | unclassified_only."
     },
     {
      "name": "began_in_testing",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true for moved and testing_only: the creatives a test-to-scale rate is about."
     },
     {
      "name": "moved",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when path = 'moved': spent in testing and its first scaling day is later."
     },
     {
      "name": "first_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "First day with spend in any stage = the launch day as far as the data goes."
     },
     {
      "name": "testing_first_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "First day with spend in a Testing campaign (NULL if none)."
     },
     {
      "name": "scaling_first_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "First day with spend in a Scaling campaign (NULL if none): the day of the move for a moved creative."
     },
     {
      "name": "last_spend_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "Last day with spend in any stage."
     },
     {
      "name": "scaling_last_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "Last day with spend in a Scaling campaign."
     },
     {
      "name": "days_in_test",
      "type": "integer",
-     "nullable": null,
+     "nullable": true,
      "description": "scaling_first_day - testing_first_day, for moved creatives only."
     },
     {
      "name": "launched_before_data_start",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when first_day is the first day of data: the creative was already running and its real launch day is earlier."
     },
     {
      "name": "test_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Testing-stage spend on days before the first scaling day, dollars."
     },
     {
      "name": "test_purchases",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Upstack new customers credited on those days."
     },
     {
      "name": "test_revenue",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "First-order revenue of those customers, dollars."
     },
     {
      "name": "test_link_clicks",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Link clicks on those days."
     },
     {
      "name": "test_days",
      "type": "bigint",
-     "nullable": null,
+     "nullable": true,
      "description": "Days with testing spend before the first scaling day."
     },
     {
      "name": "test_after_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Testing-stage spend on or after the first scaling day (the original kept running), dollars."
     },
     {
      "name": "scale_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Scaling-stage spend since the move, through the last day, dollars."
     },
     {
      "name": "scale_purchases",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Upstack new customers credited in the Scaling stage."
     },
     {
      "name": "scale_revenue",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "First-order revenue of those customers, dollars."
     },
     {
      "name": "scale_link_clicks",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Link clicks in the Scaling stage."
     },
     {
      "name": "scale_days",
      "type": "bigint",
-     "nullable": null,
+     "nullable": true,
      "description": "Days with scaling spend."
     },
     {
      "name": "unclassified_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Spend on days with no campaign (stage 'unclassified'), dollars; none today."
     },
     {
      "name": "last7_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Spend over the last 7 days of data, any stage, dollars."
     },
     {
      "name": "last7_purchases",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Upstack new customers over the last 7 days."
     },
     {
      "name": "last7_revenue",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "First-order revenue over the last 7 days, dollars."
     },
     {
      "name": "last7_scale_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Scaling-stage spend over the last 7 days, dollars."
     },
     {
      "name": "last7_scale_purchases",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Upstack new customers in the Scaling stage, last 7 days."
     },
     {
      "name": "last7_scale_revenue",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "First-order revenue in the Scaling stage, last 7 days, dollars."
     },
     {
      "name": "live",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when the creative spent on the last day of data or the day before (any stage)."
     },
     {
      "name": "live_scaling",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when it spent in a Scaling campaign on the last day of data or the day before."
     },
     {
      "name": "moves_that_day",
      "type": "bigint",
-     "nullable": null,
+     "nullable": true,
      "description": "Creatives that moved on the same scaling_first_day (all creatives, not only this product)."
     },
     {
      "name": "bulk_move_day",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when moved and 40 or more creatives moved that day: a mass relaunch, not a test winner."
     }
    ],
@@ -6021,14 +6025,16 @@
    "name": "public.creative_stage_moves_upstack_all",
    "schema": "public",
    "relation": "creative_stage_moves_upstack_all",
-   "kind": "view",
+   "kind": "table",
    "group": "rollups",
    "purpose": "creative_stage_moves on the Upstack all orders basis: the same creatives and the same Meta spend, with purchases / revenue as Upstack credits them.",
    "grain": "one row per family_key that has spend",
-   "primary_key": [],
+   "primary_key": [
+    "family_key"
+   ],
    "foreign_keys": [],
-   "source": "public.family_daily_upstack_all (same rules as creative_stage_moves)",
-   "refresh": "live view over a table rebuilt nightly",
+   "source": "refresh_creative_stage_moves() from public.family_daily_upstack_all (same rules as creative_stage_moves)",
+   "refresh": "nightly with creative_stage_moves (etl.stage_moves)",
    "coverage": "2026-05-06 through yesterday",
    "caveats": [
     "Spend, link clicks and the move itself are Meta's; test_purchases / test_revenue / scale_* / last7_* purchases and revenue change meaning.",
@@ -6039,284 +6045,558 @@
     {
      "name": "family_key",
      "type": "text",
-     "nullable": null,
+     "nullable": false,
      "description": "Tracker family key (lower); joins family_daily, ad_metrics, creative_assets."
     },
     {
      "name": "tracker_row_id",
      "type": "bigint",
-     "nullable": null,
+     "nullable": true,
      "description": "tracker_rows.id of the family's first row (the one that carries its metrics); the app opens /ad/<id>."
     },
     {
      "name": "product_id",
      "type": "integer",
-     "nullable": null,
+     "nullable": true,
      "description": "products.id of that row (NULL when the family has no first row)."
     },
     {
      "name": "product_slug",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Product slug ('unassigned' for creatives of no product)."
     },
     {
      "name": "product_name",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Product name."
     },
     {
      "name": "concept_id",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Concept id of the first tracker row."
     },
     {
      "name": "display",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Display name: the ad family as typed in the tracker, else the concept id."
     },
     {
      "name": "ad_type",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "VID / IMG (tracker)."
     },
     {
      "name": "tracker_status",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Tracker status of the first row, e.g. '8 - Launched'."
     },
     {
      "name": "tracker_launch_date",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "Launch date typed in the tracker (undercounts the older ads; first_day is the one the page uses)."
     },
     {
      "name": "cluster",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Market cluster of the current tag ('(untagged)' when none)."
     },
     {
      "name": "icp",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "ICP of the current tag."
     },
     {
      "name": "pain",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "Pain point of the current tag."
     },
     {
      "name": "data_start",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "First day this view's family_daily holds (2026-05-06 today)."
     },
     {
      "name": "data_through",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "Last day this view's family_daily holds."
     },
     {
      "name": "path",
      "type": "text",
-     "nullable": null,
+     "nullable": true,
      "description": "moved | testing_only | scaling_only | same_day (testing and scaling both first spent that day) | scaling_first (scaling before testing) | unclassified_only."
     },
     {
      "name": "began_in_testing",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true for moved and testing_only: the creatives a test-to-scale rate is about."
     },
     {
      "name": "moved",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when path = 'moved': spent in testing and its first scaling day is later."
     },
     {
      "name": "first_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "First day with spend in any stage = the launch day as far as the data goes."
     },
     {
      "name": "testing_first_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "First day with spend in a Testing campaign (NULL if none)."
     },
     {
      "name": "scaling_first_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "First day with spend in a Scaling campaign (NULL if none): the day of the move for a moved creative."
     },
     {
      "name": "last_spend_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "Last day with spend in any stage."
     },
     {
      "name": "scaling_last_day",
      "type": "date",
-     "nullable": null,
+     "nullable": true,
      "description": "Last day with spend in a Scaling campaign."
     },
     {
      "name": "days_in_test",
      "type": "integer",
-     "nullable": null,
+     "nullable": true,
      "description": "scaling_first_day - testing_first_day, for moved creatives only."
     },
     {
      "name": "launched_before_data_start",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when first_day is the first day of data: the creative was already running and its real launch day is earlier."
     },
     {
      "name": "test_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Testing-stage spend on days before the first scaling day, dollars."
     },
     {
      "name": "test_purchases",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Upstack orders credited on those days."
     },
     {
      "name": "test_revenue",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Revenue of those orders, dollars."
     },
     {
      "name": "test_link_clicks",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Link clicks on those days."
     },
     {
      "name": "test_days",
      "type": "bigint",
-     "nullable": null,
+     "nullable": true,
      "description": "Days with testing spend before the first scaling day."
     },
     {
      "name": "test_after_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Testing-stage spend on or after the first scaling day (the original kept running), dollars."
     },
     {
      "name": "scale_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Scaling-stage spend since the move, through the last day, dollars."
     },
     {
      "name": "scale_purchases",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Upstack orders credited in the Scaling stage."
     },
     {
      "name": "scale_revenue",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Revenue of those orders, dollars."
     },
     {
      "name": "scale_link_clicks",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Link clicks in the Scaling stage."
     },
     {
      "name": "scale_days",
      "type": "bigint",
-     "nullable": null,
+     "nullable": true,
      "description": "Days with scaling spend."
     },
     {
      "name": "unclassified_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Spend on days with no campaign (stage 'unclassified'), dollars; none today."
     },
     {
      "name": "last7_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Spend over the last 7 days of data, any stage, dollars."
     },
     {
      "name": "last7_purchases",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Upstack orders over the last 7 days."
     },
     {
      "name": "last7_revenue",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Revenue over the last 7 days, dollars."
     },
     {
      "name": "last7_scale_spend",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Scaling-stage spend over the last 7 days, dollars."
     },
     {
      "name": "last7_scale_purchases",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Upstack orders in the Scaling stage, last 7 days."
     },
     {
      "name": "last7_scale_revenue",
      "type": "numeric",
-     "nullable": null,
+     "nullable": true,
      "description": "Revenue in the Scaling stage, last 7 days, dollars."
     },
     {
      "name": "live",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when the creative spent on the last day of data or the day before (any stage)."
     },
     {
      "name": "live_scaling",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when it spent in a Scaling campaign on the last day of data or the day before."
     },
     {
      "name": "moves_that_day",
      "type": "bigint",
-     "nullable": null,
+     "nullable": true,
      "description": "Creatives that moved on the same scaling_first_day (all creatives, not only this product)."
     },
     {
      "name": "bulk_move_day",
      "type": "boolean",
-     "nullable": null,
+     "nullable": true,
      "description": "true when moved and 40 or more creatives moved that day: a mass relaunch, not a test winner."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.creative_scaling_placements",
+   "schema": "public",
+   "relation": "creative_scaling_placements",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "Where each MOVED creative scales: one row per (creative, scaling campaign, ad set) with the spend, purchases and revenue of its ads there since the move, and how many ads. Behind the ad-set list of the Test to scale page.",
+   "grain": "one row per (family_key, campaign_id, adset_id) for creatives with creative_stage_moves.moved",
+   "primary_key": [
+    "family_key",
+    "campaign_id",
+    "adset_id"
+   ],
+   "foreign_keys": [],
+   "source": "refresh_creative_stage_moves() from ad_daily x meta_ads x meta_campaigns (stage 'scaling') x meta_family_map, days on or after the creative's first scaling day",
+   "refresh": "nightly (etl.stage_moves), with creative_stage_moves",
+   "coverage": "2026-05-06 through yesterday; about 600 moved creatives",
+   "caveats": [
+    "Spend adds up, per creative, to creative_stage_moves.scale_spend (spend > 0 days only; zero-spend days with purchases are not here).",
+    "adset_id / adset are '' for ad_daily rows whose ad has no meta_ads row. Meta-reported purchases / revenue here; the _upstack_ tables hold Upstack's credit."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "family_key",
+     "type": "text",
+     "nullable": false,
+     "description": "Tracker family key (creative_stage_moves.family_key)."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta scaling campaign id."
+    },
+    {
+     "name": "campaign",
+     "type": "text",
+     "nullable": false,
+     "description": "Campaign name."
+    },
+    {
+     "name": "adset_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta ad set id ('' when unknown)."
+    },
+    {
+     "name": "adset",
+     "type": "text",
+     "nullable": false,
+     "description": "Ad set name."
+    },
+    {
+     "name": "ads",
+     "type": "integer",
+     "nullable": false,
+     "description": "Distinct Meta ads of the creative that spent in this ad set since the move."
+    },
+    {
+     "name": "spend",
+     "type": "numeric",
+     "nullable": false,
+     "description": "Spend since the move, dollars."
+    },
+    {
+     "name": "purchases",
+     "type": "numeric",
+     "nullable": false,
+     "description": "Purchases (Meta-reported here) since the move."
+    },
+    {
+     "name": "revenue",
+     "type": "numeric",
+     "nullable": false,
+     "description": "Purchase value since the move, dollars."
+    },
+    {
+     "name": "first_day",
+     "type": "date",
+     "nullable": false,
+     "description": "First day with spend there."
+    },
+    {
+     "name": "last_day",
+     "type": "date",
+     "nullable": false,
+     "description": "Last day with spend there."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.creative_scaling_placements_upstack_nc",
+   "schema": "public",
+   "relation": "creative_scaling_placements_upstack_nc",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "creative_scaling_placements on the Upstack new customers basis: same ad sets and Meta spend, purchases / revenue as Upstack credits them.",
+   "grain": "one row per (family_key, campaign_id, adset_id)",
+   "primary_key": [
+    "family_key",
+    "campaign_id",
+    "adset_id"
+   ],
+   "foreign_keys": [],
+   "source": "refresh_creative_stage_moves() from ad_daily_upstack_nc",
+   "refresh": "nightly (etl.stage_moves)",
+   "coverage": "2026-05-06 through yesterday",
+   "caveats": [
+    "Spend is Meta's; purchases and revenue change meaning."
+   ],
+   "like": "public.creative_scaling_placements",
+   "columns": [
+    {
+     "name": "family_key",
+     "type": "text",
+     "nullable": false,
+     "description": "Tracker family key (creative_stage_moves.family_key)."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta scaling campaign id."
+    },
+    {
+     "name": "campaign",
+     "type": "text",
+     "nullable": false,
+     "description": "Campaign name."
+    },
+    {
+     "name": "adset_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta ad set id ('' when unknown)."
+    },
+    {
+     "name": "adset",
+     "type": "text",
+     "nullable": false,
+     "description": "Ad set name."
+    },
+    {
+     "name": "ads",
+     "type": "integer",
+     "nullable": false,
+     "description": "Distinct Meta ads of the creative that spent in this ad set since the move."
+    },
+    {
+     "name": "spend",
+     "type": "numeric",
+     "nullable": false,
+     "description": "Spend since the move, dollars."
+    },
+    {
+     "name": "purchases",
+     "type": "numeric",
+     "nullable": false,
+     "description": "Upstack new customers credited since the move."
+    },
+    {
+     "name": "revenue",
+     "type": "numeric",
+     "nullable": false,
+     "description": "First-order revenue of those customers, dollars."
+    },
+    {
+     "name": "first_day",
+     "type": "date",
+     "nullable": false,
+     "description": "First day with spend there."
+    },
+    {
+     "name": "last_day",
+     "type": "date",
+     "nullable": false,
+     "description": "Last day with spend there."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.creative_scaling_placements_upstack_all",
+   "schema": "public",
+   "relation": "creative_scaling_placements_upstack_all",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "creative_scaling_placements on the Upstack all orders basis: same ad sets and Meta spend, purchases / revenue as Upstack credits them.",
+   "grain": "one row per (family_key, campaign_id, adset_id)",
+   "primary_key": [
+    "family_key",
+    "campaign_id",
+    "adset_id"
+   ],
+   "foreign_keys": [],
+   "source": "refresh_creative_stage_moves() from ad_daily_upstack_all",
+   "refresh": "nightly (etl.stage_moves)",
+   "coverage": "2026-05-06 through yesterday",
+   "caveats": [
+    "Spend is Meta's; purchases and revenue change meaning."
+   ],
+   "like": "public.creative_scaling_placements",
+   "columns": [
+    {
+     "name": "family_key",
+     "type": "text",
+     "nullable": false,
+     "description": "Tracker family key (creative_stage_moves.family_key)."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta scaling campaign id."
+    },
+    {
+     "name": "campaign",
+     "type": "text",
+     "nullable": false,
+     "description": "Campaign name."
+    },
+    {
+     "name": "adset_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta ad set id ('' when unknown)."
+    },
+    {
+     "name": "adset",
+     "type": "text",
+     "nullable": false,
+     "description": "Ad set name."
+    },
+    {
+     "name": "ads",
+     "type": "integer",
+     "nullable": false,
+     "description": "Distinct Meta ads of the creative that spent in this ad set since the move."
+    },
+    {
+     "name": "spend",
+     "type": "numeric",
+     "nullable": false,
+     "description": "Spend since the move, dollars."
+    },
+    {
+     "name": "purchases",
+     "type": "numeric",
+     "nullable": false,
+     "description": "Upstack orders credited since the move."
+    },
+    {
+     "name": "revenue",
+     "type": "numeric",
+     "nullable": false,
+     "description": "Revenue of those orders, dollars."
+    },
+    {
+     "name": "first_day",
+     "type": "date",
+     "nullable": false,
+     "description": "First day with spend there."
+    },
+    {
+     "name": "last_day",
+     "type": "date",
+     "nullable": false,
+     "description": "Last day with spend there."
     }
    ],
    "examples": []

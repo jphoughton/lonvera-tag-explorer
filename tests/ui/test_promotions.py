@@ -445,3 +445,34 @@ def test_no_class_or_id_an_ad_blocker_would_hide(page):
         .filter(t => /^(ads?|ad-.*|ads-.*|adname|advert.*|sponsor.*)$/.test(t) || /promo|banner|sponsor|advert/i.test(t))""")
     assert bad == []
     assert page.locator("main#view .page").first.is_visible()
+
+
+# ------------------------------------------------------------------ failures and slowness never end in an endless "Loading…"
+@pytest.mark.allow_errors            # the browser logs the failed request
+def test_api_failure_shows_the_error_and_retry_works(page):
+    page.route("**/api/promotions*", lambda r: r.fulfill(status=503, content_type="application/json", body='{"error": "query timed out"}'))
+    page.goto("/promotions")
+    box = page.locator(".errorbox")
+    box.wait_for()
+    assert "query timed out" in box.inner_text() and box.get_by_role("button", name="Retry").is_visible()
+    assert page.locator(".loading").count() == 0
+    page.unroute("**/api/promotions*")
+    box.get_by_role("button", name="Retry").click()
+    page.wait_for_selector(STRIP)
+    assert n_moved(page) == 56
+
+
+@pytest.mark.allow_errors
+def test_a_hanging_request_ends_in_an_error_with_retry_not_loading_forever(page):
+    page.route("**/api/promotions*", lambda r: None)                      # never answered
+    page.goto("/promotions?tts_timeout_ms=800")
+    page.locator(".errorbox").wait_for(timeout=8000)
+    text = page.locator(".errorbox").inner_text()
+    assert "took longer than" in text and "Retry" in text
+    assert page.locator(".loading").count() == 0 and not page.evaluate("document.querySelector('#view').hasAttribute('aria-busy')")
+
+
+def test_page_says_when_the_precomputed_data_was_built(page):
+    goto(page)
+    txt = page.locator("[data-testid=tts-built]").inner_text()
+    assert "rebuilt" in txt and "through Nov 2" in txt

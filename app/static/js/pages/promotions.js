@@ -184,11 +184,32 @@ function searchBox(table, fieldsOf, { q = '', persist = false, testid, placehold
   return { el: h('div', { class: 'filterbar' }, input, count), setCount(n, total) { count.textContent = n === total ? `${fmt.int(total)} rows` : `${fmt.int(n)} of ${fmt.int(total)} rows`; } };
 }
 
+const SLOW_MS = 15000;
+// One call with a patience limit: a request that hangs or fails ends in the page's error box with Retry (app.js), never in an endless 'Loading…'.
+// `tts_timeout_ms` in the URL shortens the limit (used by the tests).
+async function loadPromotions(p, signal) {
+  const limit = Number(p.tts_timeout_ms) > 0 ? Number(p.tts_timeout_ms) : SLOW_MS;
+  const ctl = new AbortController();
+  let slow = false;
+  const timer = setTimeout(() => { slow = true; ctl.abort(); }, limit);
+  const relay = () => ctl.abort();
+  signal.addEventListener('abort', relay);
+  try {
+    return await api('/api/promotions', apiParams(p), { signal: ctl.signal });
+  } catch (e) {
+    if (slow) throw new Error(`Test to scale took longer than ${Math.round(limit / 1000)} seconds to answer. The server may be busy or the data is being rebuilt: press Retry.`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', relay);
+  }
+}
+
 export async function promotionsPage(ctx) {
   const { params: p, signal } = ctx;
   const G = globalParams(p);
   document.title = 'Test to scale · Marketing metrics';
-  const d = await api('/api/promotions', apiParams(p), { signal });
+  const d = await loadPromotions(p, signal);
   if (!ctx.alive()) return;
   setRangeInfo(p, d.window_info, null, { unclassified: false });
   const s = d.summary;
@@ -202,7 +223,8 @@ export async function promotionsPage(ctx) {
     h('p', null, h('strong', null, 'What counts as a move. '), d.definition.move),
     h('p', null, h('strong', null, 'Meta only. '), `Counts are creatives, not ads. Google has no creative grain, and ${(L.purchases || 'purchases').toLowerCase()} are Meta's (or Upstack's, see Numbers from above), never added across platforms. `,
       'Spend, clicks and the scaling numbers run to ', h('strong', null, fmt.day(through)), ', the latest day of data.'),
-    h('p', null, h('strong', null, 'Held up? '), d.definition.held));
+    h('p', null, h('strong', null, 'Held up? '), d.definition.held),
+    d.stage_moves ? h('p', { class: 'muted', 'data-testid': 'tts-built' }, `Precomputed nightly: rebuilt ${fmt.dateTime(d.stage_moves.built_at)}, through ${d.stage_moves.data_through ? fmt.day(d.stage_moves.data_through) : '–'}.`) : null);
 
   // ---------- filters that change every number on the page ----------
   const chip = (label, slug, n) => h('a', { class: 'seg', href: href('/promotions', { ...G, ...(p.hide_bulk ? { hide_bulk: p.hide_bulk } : {}), ...(p.bulk_min ? { bulk_min: p.bulk_min } : {}), ...(p.min_test_spend ? { min_test_spend: p.min_test_spend } : {}), ...(p.grain ? { grain: p.grain } : {}), product: slug }),

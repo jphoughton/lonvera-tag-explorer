@@ -129,6 +129,7 @@ def pdb():
             (UP_ALL, UP_ALL, UP_NC, UP_NC))
         for b in ("nc", "all"):
             build_metrics.rebuild_source(conn, b)
+        conn.execute("SELECT refresh_creative_stage_moves()")                       # the Test to scale tables (migration 016) are precomputed
         for k, v in (("upstack_through", THROUGH.isoformat()), ("upstack_first_day", D0.isoformat()), ("upstack_built_at", "2026-11-03T00:00:00+00:00")):
             conn.execute("INSERT INTO app_meta (key, value) VALUES (%s,%s)", (k, v))
         conn.execute("INSERT INTO etl_runs (job, started_at, finished_at, status, data_through) VALUES ('build_metrics', now() - interval '1 hour', now() - interval '59 minutes', 'ok', %s)", (THROUGH,))
@@ -553,3 +554,120 @@ def test_response_is_json_safe_and_free_of_sql_text(pc):
     raw = pc.get("/api/promotions?window=launch").get_data(as_text=True)
     json.loads(raw)
     assert "SELECT" not in raw and "Decimal" not in raw
+
+
+# ----------------------------------------------------------------------------------------------------------------- precomputed tables (migration 016)
+SFX = ("", "_upstack_nc", "_upstack_all")
+
+
+def old_view_sql(sfx):
+    """The migration-015 view logic (the select inside its template) for one basis: the reference the precomputed tables must equal."""
+    import re
+    from pathlib import Path
+    mig = (Path(__file__).resolve().parents[2] / "migrations" / "015_creative_stage_moves.sql").read_text()
+    tpl = re.search(r"\$tpl\$(.*?)\$tpl\$", mig, re.S).group(1)
+    return tpl[tpl.index("WITH bounds"):].replace("%1$s", sfx)
+
+
+def snapshot(conn):
+    out = {}
+    for sfx in SFX:
+        out["m" + sfx] = [tuple(sorted(r.items())) for r in conn.execute(f"SELECT * FROM creative_stage_moves{sfx} ORDER BY family_key").fetchall()]
+        out["p" + sfx] = [tuple(sorted(r.items())) for r in conn.execute(f"SELECT * FROM creative_scaling_placements{sfx} ORDER BY family_key, campaign_id, adset_id").fetchall()]
+    return out
+
+
+def test_tables_equal_the_old_view_logic_in_every_basis(pconn):
+    for sfx in SFX:
+        want = [dict(r) for r in pconn.execute(f"SELECT * FROM ({old_view_sql(sfx)}) v ORDER BY family_key").fetchall()]
+        have = [dict(r) for r in pconn.execute(f"SELECT * FROM creative_stage_moves{sfx} ORDER BY family_key").fetchall()]
+        assert len(want) == len(have) > 50 and want == have, sfx
+        assert [c for c in want[0]] == [c for c in have[0]]                                   # same columns in the same order
+    assert pconn.execute("SELECT count(*) FROM creative_stage_moves WHERE moved").fetchone()["count"] == len(MOVED_ALL)
+
+
+def test_placements_add_up_to_scaling_spend_in_every_basis(pconn):
+    for sfx in SFX:
+        bad = pconn.execute(f"""SELECT m.family_key, m.scale_spend, p.s FROM creative_stage_moves{sfx} m
+              LEFT JOIN (SELECT family_key, sum(spend) AS s FROM creative_scaling_placements{sfx} GROUP BY 1) p USING (family_key)
+              WHERE m.moved AND abs(m.scale_spend - coalesce(p.s, 0)) > 0.005""").fetchall()
+        assert bad == [], (sfx, bad[:3])
+        assert pconn.execute(f"SELECT count(*) FROM creative_scaling_placements{sfx} p JOIN creative_stage_moves{sfx} m USING (family_key) WHERE NOT m.moved").fetchone()["count"] == 0
+
+
+def test_refresh_is_idempotent_and_stamps_when_it_ran(pconn):
+    before = snapshot(pconn)
+    t0 = pconn.execute("SELECT value FROM app_meta WHERE key = 'stage_moves_built_at'").fetchone()["value"]
+    for _ in range(2):
+        pconn.execute("SELECT refresh_creative_stage_moves()")
+        pconn.commit()
+        assert snapshot(pconn) == before
+    row = {r["key"]: r["value"] for r in pconn.execute("SELECT key, value FROM app_meta WHERE key LIKE 'stage_moves_%'").fetchall()}
+    assert row["stage_moves_built_at"] >= t0 and row["stage_moves_data_through"] == THROUGH.isoformat()
+
+
+def test_nightly_module_refreshes_records_the_run_and_fails_loudly(pconn):
+    from etl import db as edb, stage_moves
+    import os
+    os.environ["DATABASE_URL"] = PROMO_URL
+    try:
+        assert stage_moves.main() == 0
+        r = pconn.execute("SELECT status, rows_written, data_through, stats FROM etl_runs WHERE job = 'stage_moves' ORDER BY id DESC LIMIT 1").fetchone()
+        assert r["status"] == "ok" and r["rows_written"] > 50 and r["data_through"] == THROUGH and r["stats"]["creative_stage_moves"] == r["rows_written"]
+        # a failure after the rebuild started is recorded as failed and rolls back: the previous rows stay
+        n_before = pconn.execute("SELECT count(*) FROM creative_stage_moves").fetchone()["count"]
+        orig = stage_moves.refresh
+
+        def broken(conn):
+            conn.execute("SELECT refresh_creative_stage_moves()")
+            raise edb.JobFailed("boom")
+        stage_moves.refresh = broken
+        try:
+            with pytest.raises(edb.JobFailed):
+                stage_moves.main()
+        finally:
+            stage_moves.refresh = orig
+        assert pconn.execute("SELECT status FROM etl_runs WHERE job = 'stage_moves' ORDER BY id DESC LIMIT 1").fetchone()["status"] == "failed"
+        assert pconn.execute("SELECT count(*) FROM creative_stage_moves").fetchone()["count"] == n_before
+    finally:
+        os.environ.pop("DATABASE_URL", None)
+
+
+def test_api_reports_when_the_tables_were_built_and_warns_when_they_are_old(pc, pconn):
+    d = get(pc)
+    assert d["stage_moves"]["data_through"] == THROUGH.isoformat() and d["stage_moves"]["built_at"].endswith("+00:00")
+    assert not any("rebuilt" in n for n in d["notes"])
+    pconn.execute("UPDATE app_meta SET value = '2026-10-30' WHERE key = 'stage_moves_data_through'")
+    pconn.commit()
+    try:
+        d = get(pc)
+        assert d["stage_moves"]["data_through"] == "2026-10-30" and any("older than the latest day of data" in n for n in d["notes"])
+    finally:
+        pconn.execute("UPDATE app_meta SET value = %s WHERE key = 'stage_moves_data_through'", (THROUGH.isoformat(),))
+        pconn.commit()
+
+
+def test_not_built_yet_is_a_clear_503(pc, pconn):
+    saved = pconn.execute("SELECT value FROM app_meta WHERE key = 'stage_moves_built_at'").fetchone()["value"]
+    pconn.execute("DELETE FROM app_meta WHERE key = 'stage_moves_built_at'")
+    pconn.commit()
+    try:
+        r = pc.get("/api/promotions")
+        assert r.status_code == 503 and "etl.stage_moves" in r.get_json()["error"]
+    finally:
+        pconn.execute("INSERT INTO app_meta (key, value) VALUES ('stage_moves_built_at', %s)", (saved,))
+        pconn.commit()
+
+
+def test_a_slow_query_answers_a_json_error_not_a_hang(pc, monkeypatch):
+    from app import promotions as P
+
+    def slow(conn, lo, hi):
+        conn.execute("SELECT pg_sleep(3)")
+        return []
+    monkeypatch.setattr(P, "_fetch", slow)
+    monkeypatch.setattr(P, "QUERY_TIMEOUT_MS", 150)
+    import time
+    t = time.time()
+    r = pc.get("/api/promotions")
+    assert r.status_code == 503 and r.get_json() == {"error": "query timed out"} and time.time() - t < 2.5
