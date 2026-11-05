@@ -63,7 +63,7 @@ WHERE moved AND scaling_first_day > data_through - 30
 ORDER BY scale_spend DESC;
 ```
 
-`creative_stage_moves` (Meta), `creative_stage_moves_upstack_nc`, `creative_stage_moves_upstack_all`: one row per creative that ever spent; columns are listed in the header of the migration. Ad-level detail (which ad sets a creative scaled in) is `ad_daily` x `meta_ads` x `meta_campaigns` where `stage = 'scaling'` and `day >= scaling_first_day`; the API's `placements` are exactly that and add up to `scale_spend`.
+`creative_stage_moves` (Meta), `creative_stage_moves_upstack_nc`, `creative_stage_moves_upstack_all`: one row per creative that ever spent; every column is described in `docs/DATA_SCHEMA.md` (and as `COMMENT ON` in the database; the text lives in `docs/schema/descriptions.py`, migration 015 carries the generated comments). Ad-level detail (which ad sets a creative scaled in) is `ad_daily` x `meta_ads` x `meta_campaigns` where `stage = 'scaling'` and `day >= scaling_first_day`; the API's `placements` are exactly that and add up to `scale_spend`.
 
 ## Caveats
 
