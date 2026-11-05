@@ -104,7 +104,7 @@ def act(sql: str, active: bool) -> str:
 SOURCES = ("meta", "upstack")
 BASES = ("nc", "all")
 DEFAULT_BASIS = "nc"
-_SRC_TABLES = ("family_daily_active", "family_daily", "ad_metrics", "unmatched_meta", "meta_ad_lifetime", "ad_daily")
+_SRC_TABLES = ("family_daily_active", "family_daily", "ad_metrics", "unmatched_meta", "meta_ad_lifetime", "ad_daily", "creative_stage_moves")
 _RX_SRC_TABLES = re.compile(r"\b(" + "|".join(_SRC_TABLES) + r")\b")
 _SRC_SFX: contextvars.ContextVar[str] = contextvars.ContextVar("tagexp_source_suffix", default="")
 UPSTACK_MODEL = "Upstack any-click attribution, 30-day window, Meta Ads source"
