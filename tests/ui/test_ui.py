@@ -3343,8 +3343,19 @@ def test_all_platforms_chart_platform_series_numbers_and_links(page):
     page.goto("/?platform=all&window=30d")
     wait_trend(page)
     info = trend_info(page)
-    assert {d["label"] for d in bars_ds(info)} == {"Meta", "Google"} and all(d["stack"] for d in bars_ds(info))
+    assert [d["label"] for d in bars_ds(info)] == ["Spend"]                                            # the default is the total: one bar per day = Meta + Google spend, not broken out
+    assert [b.get_attribute("data-split") for b in page.locator("#trend-split .seg").all()] == ["none", "platform"]
+    expect(page.locator("#trend-split [data-split=none]")).to_have_attribute("aria-pressed", "true")
+    assert "ts" not in qparams(page)                                                                   # the total is the default: nothing in the URL
     assert [d["label"] for d in line_ds(info)] == ["NC ROAS (total)"]                                  # the default Line is the total NC ROAS (actual new-customer revenue / total spend)
+    total_bars = chart_sum(info)
+    shot(page, "17_all_platforms_total_chart")
+    page.locator("#trend-split [data-split=platform]").click()                                         # Split bars by Platform stacks the same total into Meta + Google
+    page.wait_for_function("() => new URL(location.href).searchParams.get('ts') === 'platform'")
+    wait_trend(page)
+    info = trend_info(page)
+    assert {d["label"] for d in bars_ds(info)} == {"Meta", "Google"} and all(d["stack"] for d in bars_ds(info))
+    assert abs(chart_sum(info) - total_bars) <= 0.02
     pick_metric(page, "line", "roas")
     wait_trend(page)
     info = trend_info(page)
@@ -3665,8 +3676,8 @@ def test_bare_root_is_the_all_platforms_roll_up_and_every_link_back_to_meta_is_e
     assert [b.inner_text() for b in page.locator("#view-switch .seg").all()] == ["Platforms", "Campaigns"]
     expect(page.locator("#view-switch [data-platform-view=home]")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("[data-testid=platform-overview] tbody tr")).to_have_count(6)
-    wait_trend(page)                                                                                   # with the platform chart
-    assert {d["label"] for d in bars_ds(trend_info(page))} == {"Meta", "Google"}
+    wait_trend(page)                                                                                   # with the total-spend chart
+    assert [d["label"] for d in bars_ds(trend_info(page))] == ["Spend"]
     expect(page.locator("#topbar a.navlink", has_text="Marketing metrics")).to_have_attribute("href", "/")                           # the top-bar Marketing metrics link is the bare root
     # View by Campaigns: every campaign across both platforms, nothing to choose first
     page.locator("#view-switch [data-platform-view=campaigns]").click()
