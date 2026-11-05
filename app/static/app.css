@@ -510,4 +510,4 @@ tr.tts-bulk-row td { background: #fffaf2; }
 @media (max-width: 760px) { input.tts-num { width: 64px; } }
 
 /* readable line length for prose blocks */
-p, .tts-bulk-note, .tts-foot, .note-line { max-width: 62ch; }
+p, .tts-bulk-note, .tts-foot, .note-line { max-width: 50ch; }
