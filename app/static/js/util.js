@@ -236,7 +236,7 @@ export function cleanParams(p) {
   if (o.active !== '1' && o.active !== 1) delete o.active;
   if (o.source !== 'upstack') { delete o.source; delete o.basis; } else if (o.basis !== 'all') delete o.basis;
   if (o.tb === 'spend') delete o.tb;
-  if (o.tl === 'roas') delete o.tl;
+  if (o.tl === (currentPlatform() === 'all' ? 'nc_roas_total' : 'roas')) delete o.tl;      // the All views default to the total NC ROAS line, every other page to ROAS
   if (o.tg === 'day') delete o.tg;
   if (o.ts === 'none') delete o.ts;
   if (o.cfrom && o.cto) delete o.compare;
@@ -317,7 +317,7 @@ export function sparkMetric(p) {
   const b = p.tb || 'spend';
   if (b !== 'none') return b;
   const l = p.tl || 'roas';
-  return l !== 'none' ? l : 'spend';
+  return l !== 'none' && l !== 'nc_roas_total' ? l : 'spend';       // 'nc_roas_total' is a chart-only line (no per-row series behind it)
 }
 export function sparkParams(p) {
   return { spark: sparkMetric(p), spark_days: 30 };

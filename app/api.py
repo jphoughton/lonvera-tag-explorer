@@ -211,6 +211,25 @@ def campaigns_all_platforms():
     return jsonify(res)
 
 
+@bp.get("/api/platforms/kpis")
+def platforms_kpis():
+    """Totals strip of the All views: Total spend (Meta + Google), actual new-customer revenue counted once, Total NC ROAS (new-customer revenue / total spend over the
+    days Meta, Google and the orders feed all cover), the platform-attributed sum and its gap; window B too when Compare is on. only= / product= / type= follow the
+    All campaigns table (spend follows the filter; Total NC ROAS is only computed unfiltered)."""
+    conn = db.get_conn()
+    meta = q.load_meta(conn)
+    only = _arg("only")
+    if only not in (None, "meta", "google"):
+        raise q.ApiError(400, "only must be meta or google")
+    if _arg("product") is not None and _arg("type") is not None:
+        raise q.ApiError(400, "product and type cannot both be set")
+    try:
+        res = pf.kpis(conn, meta, request.args, platform=only, product_slug=_arg("product"), ctype=_arg("type"))
+    finally:
+        q.set_source("meta")
+    return jsonify(res)
+
+
 @bp.get("/api/platforms/trend")
 def platforms_trend():
     """Trend of the All views: spend (and any other metric) per platform on the chosen numbers over one x axis; same filters as /api/campaigns/all."""

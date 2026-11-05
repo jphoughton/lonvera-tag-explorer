@@ -161,6 +161,32 @@ export function shadeIdx(labels, grain, from, to) {
   return [i0, Math.max(i0, i1)];
 }
 
+// the sum of each stacked bar, written above it (few buckets only); opts.labels = {kind} when on
+const stackTotals = {
+  id: 'stackTotals',
+  afterDatasetsDraw(chart, _args, opts) {
+    if (!opts || !opts.on) return;
+    const { ctx, scales } = chart;
+    const bars = chart.data.datasets.map((d, i) => [d, i]).filter(([d, i]) => d.type === 'bar' && d.stack && !chart.getDatasetMeta(i).hidden);
+    if (!bars.length || !scales.y) return;
+    const n = chart.data.labels.length;
+    ctx.save();
+    ctx.font = '600 10.5px system-ui, sans-serif';
+    ctx.fillStyle = '#334155';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    for (let i = 0; i < n; i++) {
+      const vals = bars.map(([d]) => d.data[i]).filter((v) => Number.isFinite(v));
+      if (!vals.length) continue;
+      const sum = vals.reduce((a, b) => a + b, 0);
+      const el = chart.getDatasetMeta(bars[0][1]).data[i];
+      if (!el) continue;
+      ctx.fillText(opts.format(sum), el.x, scales.y.getPixelForValue(sum) - 3);
+    }
+    ctx.restore();
+  },
+};
+
 const BAR_COLOR = '#1a5fb4';
 const LINE_COLOR = '#d9822b';
 export { BAR_COLOR, LINE_COLOR };
@@ -181,6 +207,7 @@ export function trendChart(canvas, cfg) {
       borderWidth: ds.width || (bar ? 1 : 2.2), order: ds.order == null ? (bar ? 1 : 0) : ds.order, // lower order is drawn on top: lines above bars
       _kind: ds.kind,
       _cmpDates: ds.cmpDates || null,
+      _hideInTip: !!ds.hideInTip,                 // its value is already said by cfg.extra
     };
     if (bar) {
       o.borderRadius = 0;
@@ -215,8 +242,11 @@ export function trendChart(canvas, cfg) {
       plugins: {
         legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10, sort: (a, b) => a.datasetIndex - b.datasetIndex } },
         windowShade: { shades: sh },
+        stackTotals: { on: !!(cfg.stackTotals && cfg.stackedBars && labels.length <= 16 && cfg.left), format: (v) => fmtMetric(cfg.left ? cfg.left.kind : 'money', v) },
         tooltip: {
+          filter: (item) => !item.dataset._hideInTip,
           callbacks: {
+            afterBody: (items) => (cfg.extra && items.length ? cfg.extra(items[0].dataIndex) : []),
             title: (items) => {
               if (!items.length) return '';
               const i = items[0].dataIndex;
@@ -233,7 +263,7 @@ export function trendChart(canvas, cfg) {
         },
       },
     },
-    plugins: [windowShade],
+    plugins: [windowShade, stackTotals],
   });
   instances.add(chart);
   return chart;

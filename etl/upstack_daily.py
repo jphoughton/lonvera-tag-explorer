@@ -17,7 +17,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
 
-from . import db, upstack_api as api, upstack_build, upstack_google
+from . import db, upstack_api as api, upstack_build, upstack_google, upstack_orders
 
 PT = ZoneInfo("America/Los_Angeles")
 DEFAULT_DAYS = 7
@@ -170,6 +170,22 @@ def run_google(since: dt.date, until: dt.date, workers: int, dry_run: bool, skip
         conn.close()
 
 
+def run_orders(since: dt.date, until: dt.date, dry_run: bool, client: api.Client | None = None) -> dict:
+    """The business's actual new-customer revenue per Pacific day (own transaction, fails independently of the Meta and Google sides)."""
+    client = client or api.Client()
+    conn = db.connect()
+    try:
+        st = upstack_orders.run(conn, client, since, until, dry_run)
+        if not dry_run:
+            conn.commit()
+        return st
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--days", type=int, default=DEFAULT_DAYS, help="trailing complete Pacific days to (re)pull, ending --until (default 7)")
@@ -182,34 +198,45 @@ def main() -> None:
     ap.add_argument("--google-since", help="Google backfill start (YYYY-MM-DD): attribution from this day, channel feed from the same day; default = --since")
     ap.add_argument("--google-only", action="store_true", help="skip the Meta side")
     ap.add_argument("--no-google", action="store_true", help="skip the Google side")
+    ap.add_argument("--orders-since", help="orders backfill start (YYYY-MM-DD); default = --since (a nightly run restates the trailing days)")
+    ap.add_argument("--orders-only", action="store_true", help="only the orders side (new-customer revenue per day)")
+    ap.add_argument("--no-orders", action="store_true", help="skip the orders side")
     a = ap.parse_args()
     until = dt.date.fromisoformat(a.until) if a.until else yesterday_pt()
     since = dt.date.fromisoformat(a.since) if a.since else until - dt.timedelta(days=a.days - 1)
     g_since = dt.date.fromisoformat(a.google_since) if a.google_since else since
+    o_since = dt.date.fromisoformat(a.orders_since) if a.orders_since else since
     with db.JobRun("upstack_daily") as run_:
         res: dict = {}
         errors: list[Exception] = []
         if a.build_only:
             res = build_only()
         else:
-            if not a.google_only:                                              # Meta side and Google side fail independently; both are attempted
+            if not a.google_only and not a.orders_only:                        # Meta, Google and orders sides fail independently; all are attempted
                 try:
                     res = run(since, until, a.workers, a.dry_run, a.skip_done)
                 except Exception as e:                                         # noqa: BLE001
                     db.log("upstack (Meta) FAILED:", db.scrub(e))
                     errors.append(e)
-            if not a.no_google:
+            if not a.no_google and not a.orders_only:
                 try:
                     res["google"] = run_google(g_since, until, a.workers, a.dry_run, a.skip_done)
                 except Exception as e:                                         # noqa: BLE001
                     db.log("upstack (Google) FAILED:", db.scrub(e))
                     errors.append(e)
+            if not a.no_orders and not a.google_only:
+                try:
+                    res["orders"] = run_orders(o_since, until, a.dry_run)
+                except Exception as e:                                         # noqa: BLE001
+                    db.log("upstack (orders) FAILED:", db.scrub(e))
+                    errors.append(e)
         run_.stats = res
         b = res.get("build") or {}
+        db.log("  orders:", res.get("orders"))
         run_.rows_written = b.get("ad_daily_rows")
         if b.get("through"):
             run_.data_through = dt.date.fromisoformat(b["through"])
-        db.log("upstack_daily:", {k: v for k, v in res.items() if k not in ("build", "google")}, {k: v for k, v in b.items() if k not in ("derived", "match_rules")})
+        db.log("upstack_daily:", {k: v for k, v in res.items() if k not in ("build", "google", "orders")}, {k: v for k, v in b.items() if k not in ("derived", "match_rules")})
         db.log("  match rules:", b.get("match_rules"))
         db.log("  google:", res.get("google"))
         if errors:

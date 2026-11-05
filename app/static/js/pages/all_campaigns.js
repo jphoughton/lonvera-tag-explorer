@@ -9,6 +9,7 @@ import { setRangeInfo, setPendingNote } from '../controls.js';
 import { createTrendPanel } from '../trend.js';
 import { breadcrumbs, columnsChips, filterBar, saveFilterToUrl, makeFilter, saveSortToUrl, sortFromUrl, viewSwitch } from '../components.js';
 import { platformTrendSource } from './platforms.js';
+import { totalsStrip } from '../kpis.js';
 
 const NONE = 'none';
 const NEUTRAL = { purchases: 'Purchases / orders', revenue: 'Revenue', roas: 'ROAS', cpa: 'Cost per purchase', link_clicks: 'Clicks' };
@@ -40,7 +41,7 @@ export async function allCampaignsPage(ctx) {
   const filt = { ...(only ? { only } : {}), ...(product ? { product } : {}), ...(ctype ? { type: ctype } : {}) };
   const d = await api('/api/campaigns/all', { ...wp, ...sparkParams(p), ...filt }, { signal });
   if (!ctx.alive()) return;
-  if (p.compare || p.cfrom) setPendingNote('Comparison and the Stage / Active only filters do not apply to All platforms.');
+  if (p.compare || p.cfrom) setPendingNote('Comparison shows in the totals strip only; the chart, the table and the Stage / Active only filters do not apply to All platforms.');
   setRangeInfo(p, d.window_info, null, { unclassified: false });
 
   const flat = metricColumns({ getM: (r) => r.m, getTotalM: (t) => fixTotal(t && t.m), keys: FLAT_KEYS }).map((c) => {
@@ -104,6 +105,7 @@ export async function allCampaignsPage(ctx) {
       typeChips.map((x) => link(x.name, { ...none, type: x.key }, ctype === x.key, 'type-' + x.key)))) : null;
 
   const panel = createTrendPanel({ p, mode: 'source', signal, source: platformTrendSource(p, wp, filt) });
+  const strip = totalsStrip({ p, signal, filt });
   const winLines = Object.entries(d.platform_windows || {}).map(([k, w]) => `${k === 'meta' ? 'Meta' : 'Google'}: ${w.from === w.to ? fmt.day(w.from) : `${fmt.day(w.from)} – ${fmt.day(w.to)}`}`);
   const differ = new Set(Object.values(d.platform_windows || {}).map((w) => `${w.from}|${w.to}`)).size > 1;
   ctx.mount(h('div', { class: 'page', 'data-level': 'all-campaigns' },
@@ -111,6 +113,7 @@ export async function allCampaignsPage(ctx) {
       h('div', { class: 'note-line' }, 'Every Meta and Google campaign in one table. Each row is counted on the basis in its Numbers column.')),
     h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Marketing metrics', href: href('/', { ...G, platform: null }) }, { label: 'All campaigns' }])),
     h('div', { class: 'ctl-row' }, platformCtl, productCtl, typeCtl),
+    strip.el,
     panel.el,
     h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Campaigns'), columnsChips(), filterUi.el),
     t.el,
@@ -120,5 +123,6 @@ export async function allCampaignsPage(ctx) {
     differ ? h('div', { class: 'muted small', 'data-testid': 'all-campaigns-windows' }, 'Days covered: ' + winLines.join(' · ') + '.') : null,
     ...(d.notes || []).map((n) => h('div', { class: 'muted small', 'data-testid': 'platform-note' }, n)),
   ));
+  strip.load();
   panel.load();
 }
