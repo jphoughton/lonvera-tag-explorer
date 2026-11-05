@@ -27,6 +27,7 @@ DEFAULT_WINDOW = "30d"
 BULK_MIN_DEFAULT = 40                       # creatives entering scaling on one day: this many or more = a mass relaunch, not a test winner
 DROP_ARGS = ("compare", "cfrom", "cto", "perday", "stage", "active")    # the page is about stages; comparison and Active only do not apply
 NOT_SCALED_LIMIT = 1000
+QUERY_TIMEOUT_MS = 8000                     # statement_timeout for this endpoint (the app default is 20 s, the gateway's limit)
 PLACEMENTS_SHOWN = 8                        # ad sets listed per creative (the counts cover all of them)
 HELD_MIN_SPEND = 200.0                      # scaling spend and days since the move below which 'held up?' says too early
 HELD_MIN_DAYS = 3
@@ -159,22 +160,13 @@ def _thumbs(conn, family_keys: list[str]) -> dict[str, int]:
 
 
 def _placements(conn, family_keys: list[str]) -> dict[str, dict]:
-    """Where each moved creative scales: its SCALING-campaign ad sets since the move (ad_daily x meta_ads x meta_campaigns, mapped to the creative the same way
-    family_daily is built), so the spend adds up to the creative's scaling spend."""
+    """Where each moved creative scales: its SCALING-campaign ad sets since the move, read from the precomputed creative_scaling_placements (migration 016,
+    built from ad_daily x meta_ads x meta_campaigns mapped to the creative the way family_daily is built), so the spend adds up to the creative's scaling spend."""
     if not family_keys:
         return {}
     got = q.rows_of(conn, """
-        WITH mv AS (SELECT family_key, scaling_first_day FROM creative_stage_moves WHERE family_key = ANY(%(fks)s) AND path = 'moved')
-        SELECT m.tracker_family_key AS fk, c.campaign_id, c.name AS campaign, COALESCE(a.adset_id, '') AS adset_id, COALESCE(a.adset_name, '') AS adset,
-               count(DISTINCT d.ad_id) AS ads, sum(d.spend) AS spend, sum(d.purchases) AS purchases, sum(d.conv_value) AS revenue,
-               min(d.day) AS first_day, max(d.day) AS last_day
-        FROM ad_daily d
-        LEFT JOIN meta_ads a ON a.ad_id = d.ad_id
-        JOIN meta_family_map m ON m.meta_family_key = COALESCE(a.meta_family_key, d.meta_family_key) AND m.tracker_family_key = ANY(%(fks)s)
-        JOIN meta_campaigns c ON c.campaign_id = d.campaign_id AND c.stage = 'scaling'
-        JOIN mv ON mv.family_key = m.tracker_family_key AND d.day >= mv.scaling_first_day
-        WHERE d.spend > 0
-        GROUP BY 1, 2, 3, 4, 5""", {"fks": family_keys})
+        SELECT family_key AS fk, campaign_id, campaign, adset_id, adset, ads, spend, purchases, revenue, first_day, last_day
+        FROM creative_scaling_placements WHERE family_key = ANY(%(fks)s)""", {"fks": family_keys})
     by: dict[str, list[dict]] = collections.defaultdict(list)
     for r in got:
         by[r["fk"]].append(r)
@@ -188,6 +180,14 @@ def _placements(conn, family_keys: list[str]) -> dict[str, dict]:
                            for r in lst[:PLACEMENTS_SHOWN]],
                    "more": max(0, len(lst) - PLACEMENTS_SHOWN)}
     return out
+
+
+def built_info(conn) -> dict | None:
+    """When the precomputed tables were last rebuilt and the last day of data they cover (None = never built)."""
+    kv = {r["key"]: r["value"] for r in q.rows_of(conn, "SELECT key, value FROM app_meta WHERE key IN ('stage_moves_built_at', 'stage_moves_data_through')")}
+    if not kv.get("stage_moves_built_at"):
+        return None
+    return {"built_at": kv["stage_moves_built_at"], "data_through": kv.get("stage_moves_data_through") or None}
 
 
 def _scale_by_day(conn, family_keys: list[str], lo: dt.date, hi: dt.date) -> dict[dt.date, dict]:
@@ -310,6 +310,10 @@ def promotions(conn, meta: q.DataMeta, args, product_slug: str | None = None) ->
     w = parse_window(args, meta)
     lo, hi = w.span(meta)
     opts = parse_options(args, lo, hi)
+    conn.execute(f"SET LOCAL statement_timeout = {QUERY_TIMEOUT_MS}")           # a bad query answers a clear JSON error (503 'query timed out'), not a 20 s gateway hang
+    built = built_info(conn)
+    if built is None:
+        raise q.ApiError(503, "Test to scale data is not built yet: run python -m etl.stage_moves")
     product = None
     if product_slug is not None and product_slug.lower() in (q.NO_PRODUCT_SLUG, "unassigned"):
         product_slug = q.NO_PRODUCT_SLUG                                  # creatives of no active product
@@ -318,7 +322,7 @@ def promotions(conn, meta: q.DataMeta, args, product_slug: str | None = None) ->
         product_slug = product["slug"]
     order = {p["slug"]: (p["sort_order"], p["id"]) for p in q.rows_of(conn, "SELECT id, slug, sort_order FROM products WHERE active")}
     return assemble(_fetch(conn, lo, hi), lo=lo, hi=hi, through=meta.data_through, info=_info(w, meta), opts=opts, product_slug=product_slug,
-                    product_order=order, side=DbSide(conn))
+                    product_order=order, side=DbSide(conn), built=built)
 
 
 def parse_options(args, lo: dt.date, hi: dt.date) -> dict:
@@ -333,7 +337,7 @@ def parse_options(args, lo: dt.date, hi: dt.date) -> dict:
 
 
 def assemble(all_rows: list[dict], *, lo: dt.date, hi: dt.date, through: dt.date, info: dict, opts: dict, product_slug: str | None, product_order: dict,
-             side) -> dict:
+             side, built: dict | None = None) -> dict:
     """The page's payload from the creatives' rows (normalize_row'd). Pure: no database. product_slug: None = every product, 'none' = creatives of no
     product, else the slug."""
     hide_bulk, bulk_min, min_test, grain = opts["hide_bulk"], opts["bulk_min"], opts["min_test"], opts["grain"]
@@ -400,8 +404,10 @@ def assemble(all_rows: list[dict], *, lo: dt.date, hi: dt.date, through: dt.date
         notes.append(f"Scaling numbers run to {q._fmt_day(through, True)}, the latest day of data, not to the end of the window; the chart stops at the window's end.")
     if hide_bulk and hidden_bulk:
         notes.append(f"{hidden_bulk} creatives that moved on bulk days are left out of every number on this page.")
+    if built and built.get("data_through") and built["data_through"] < through.isoformat():
+        notes.append(f"The Test to scale tables were last rebuilt {built['built_at'][:16].replace('T', ' ')} UTC and run through {built['data_through']}, older than the latest day of data ({through.isoformat()}).")
     return {
-        "platform": "meta", "scope": "tracker", "window_info": info, "compare_info": None, "data_through": through.isoformat(),
+        "stage_moves": built, "platform": "meta", "scope": "tracker", "window_info": info, "compare_info": None, "data_through": through.isoformat(),
         "labels": info["source"]["labels"], "numbers": info["source"]["label"],
         "filters": {"product": product_slug, "hide_bulk": hide_bulk, "bulk_min": bulk_min, "min_test_spend": min_test, "grain": grain},
         "definition": {"move": MOVE_DEFINITION, "bulk": BULK_NOTE.format(n=bulk_min), "held": HELD_RULE,

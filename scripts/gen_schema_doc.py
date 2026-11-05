@@ -38,10 +38,11 @@ DESC_PATH = ROOT / "docs" / "schema" / "descriptions.py"
 COMMENTS_MARKER = "-- ---------------------------------------------------------------- comments\n"
 MD_PATH = ROOT / "docs" / "DATA_SCHEMA.md"
 JSON_PATH = ROOT / "docs" / "schema.json"
-MIGRATIONS = {"013": ROOT / "migrations" / "013_schema_comments_analytics.sql", "015": ROOT / "migrations" / "015_creative_stage_moves.sql",
+MIGRATIONS = {"013": ROOT / "migrations" / "013_schema_comments_analytics.sql", "015": ROOT / "migrations" / "015_creative_stage_moves.sql", "016": ROOT / "migrations" / "016_creative_stage_moves_tables.sql",
               "190": ROOT / "migrations" / "190_analytics_pacing_views.sql", "191": ROOT / "migrations" / "191_schema_comments_proj.sql"}
 # the Test to scale views (created by migration 015, after 013 runs on a fresh database): they and their comments live in migration 015
-LATE_STAGE_MOVES = {"public.creative_stage_moves", "public.creative_stage_moves_upstack_nc", "public.creative_stage_moves_upstack_all"}
+# (migration 016 turned them into tables and added the placements tables; 015's own comment section is frozen history)
+LATE_STAGE_MOVES = {f"public.{n}{b}" for n in ("creative_stage_moves", "creative_scaling_placements") for b in ("", "_upstack_nc", "_upstack_all")}
 # analytics views that read proj_feed_* (created by migration 170, after 013 runs on a fresh database): they and their comments live in migration 190
 LATE_ANALYTICS = {"analytics.meta_reach", "analytics.meta_campaign_daily_history", "analytics.data_coverage"}
 PROJ_GROUPS = {"proj_feeds", "proj_engine"}
@@ -276,7 +277,7 @@ def scope_of(r: dict) -> str:
     if r["name"] in LATE_ANALYTICS:
         return "190"
     if r["name"] in LATE_STAGE_MOVES:
-        return "015"
+        return "016"
     return "191" if r["group"] in PROJ_GROUPS else "013"
 
 
@@ -298,7 +299,7 @@ def comment_sql(model: dict, scope: str = "all", d=None) -> str:
 
 def migration_text(which: str, model: dict, d=None) -> str:
     """013, 015 and 190 keep their hand-written DDL (everything above COMMENTS_MARKER) and get the comment section rewritten; 191 is comments only."""
-    if which in ("013", "015", "190"):
+    if which in ("013", "015", "016", "190"):
         path = MIGRATIONS[which]
         if not path.exists():
             raise SystemExit(f"{path} must exist with its hand-written DDL and the comments marker before comments can be emitted")
@@ -367,7 +368,7 @@ def main(argv=None) -> int:
     g.add_argument("--write", action="store_true")
     g.add_argument("--check", action="store_true")
     g.add_argument("--problems", action="store_true")
-    g.add_argument("--comments", choices=("013", "015", "190", "191", "all"))
+    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "all"))
     g.add_argument("--emit-migration", choices=sorted(MIGRATIONS))
     g.add_argument("--verify-live", action="store_true")
     ap.add_argument("--out", help="with --comments: write to this file instead of stdout")

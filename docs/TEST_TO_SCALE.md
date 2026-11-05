@@ -1,6 +1,6 @@
 # Test to scale: creatives that moved from Testing to Scaling
 
-Page `/promotions` (top nav: **Test to scale**), endpoint `GET /api/promotions`, SQL view `creative_stage_moves` (migration `015_creative_stage_moves.sql`).
+Page `/promotions` (top nav: **Test to scale**), endpoint `GET /api/promotions`, precomputed tables `creative_stage_moves*` and `creative_scaling_placements*` (migration `016`, rebuilt nightly by `python -m etl.stage_moves` after run_daily and upstack_daily; the logic is migration 015's view; refresh by hand with the same command; `app_meta` keys `stage_moves_built_at` / `stage_moves_data_through`, also in the API's `stage_moves` and on the page).
 Built on `family_daily` (creative x day x stage), so it needs nothing the Tags data does not already have. Meta only: Google has no creative grain.
 
 ## What a move is
@@ -52,7 +52,7 @@ In production on 2026-11-04 the 40 line flags Aug 22 (76 moves), Oct 22 (187) an
 
 Response: `window_info`, `data_through`, `labels` (metric names of the basis), `filters`, `definition`, `products` (chips with counts), `summary` (strip), `bulk_days`, `series` (chart points), `moved` (one row per creative: launch / move day, days in test, `test`, `scale`, `last7`, `held`, `bulk`, `placements` = scaling campaigns / ad sets / ads since the move with spend), `not_scaled` (began in testing, never scaled: still testing or stopped), `cohorts` (funnel by launch week), `notes`. Cached like the other metrics endpoints (`app/respcache.py`).
 
-## SQL view, for agents
+## Tables, for agents
 
 ```sql
 -- creatives that moved in the last 30 days, biggest scaling spend first (Meta's numbers)
@@ -63,7 +63,11 @@ WHERE moved AND scaling_first_day > data_through - 30
 ORDER BY scale_spend DESC;
 ```
 
-`creative_stage_moves` (Meta), `creative_stage_moves_upstack_nc`, `creative_stage_moves_upstack_all`: one row per creative that ever spent; every column is described in `docs/DATA_SCHEMA.md` (and as `COMMENT ON` in the database; the text lives in `docs/schema/descriptions.py`, migration 015 carries the generated comments). Ad-level detail (which ad sets a creative scaled in) is `ad_daily` x `meta_ads` x `meta_campaigns` where `stage = 'scaling'` and `day >= scaling_first_day`; the API's `placements` are exactly that and add up to `scale_spend`.
+`creative_stage_moves` (Meta), `creative_stage_moves_upstack_nc`, `creative_stage_moves_upstack_all` (tables since 016, same names and columns as 015's views): one row per creative that ever spent; every column is described in `docs/DATA_SCHEMA.md` (and as `COMMENT ON` in the database; the text lives in `docs/schema/descriptions.py`, migration 016 carries the generated comments). Ad-level detail (which ad sets a creative scaled in) is `creative_scaling_placements*` (= `ad_daily` x `meta_ads` x `meta_campaigns` where `stage = 'scaling'` and `day >= scaling_first_day`); the API's `placements` are exactly that and add up to `scale_spend`.
+
+## Speed and staleness
+
+Migration 015 evaluated the view per request: 6 to 20+ seconds, and windows past about 30 days hit the 20 s gateway limit. 016 precomputes (see top). Every request answers from indexed tables; the endpoint also caps its own queries at 8 s (`QUERY_TIMEOUT_MS`) and answers a JSON error instead of hanging, and the page shows an error with Retry after 15 s. The tables are as fresh as the last nightly run: `/api/promotions` returns `stage_moves.built_at` and `data_through`, the page prints them, and a note appears when they are older than the latest day of data. If the nightly `etl.stage_moves` step fails the deployment goes red and the page keeps the previous rows.
 
 ## Caveats
 

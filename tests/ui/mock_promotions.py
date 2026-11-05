@@ -231,5 +231,6 @@ def register(app, deps):
             for k in ("test_purchases", "test_revenue", "scale_purchases", "scale_revenue", "last7_purchases", "last7_revenue", "last7_scale_purchases", "last7_scale_revenue"):
                 r[k] = round(r[k] * mult, 2)
         order = {p[0]: (p[2], p[2]) for p in PRODUCTS}
-        out = P.assemble([P.normalize_row(r) for r in rows], lo=lo, hi=hi, through=THROUGH, info=info, opts=opts, product_slug=slug or None, product_order=order, side=MemSide())
+        out = P.assemble([P.normalize_row(r) for r in rows], lo=lo, hi=hi, through=THROUGH, info=info, opts=opts, product_slug=slug or None, product_order=order, side=MemSide(),
+                         built={"built_at": "2026-11-03T13:41:00+00:00", "data_through": THROUGH.isoformat()})
         return Response(json.dumps(out, default=_json_default), mimetype="application/json")
