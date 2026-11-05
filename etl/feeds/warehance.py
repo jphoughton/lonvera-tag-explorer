@@ -322,7 +322,7 @@ FEEDS = [
          sheet_tab="Warehance Daily", sheet_parser=("etl.feeds.warehance", "sheet_rows_revamp"),
          notes="Denver-dated shipments, voided excluded; the current Denver day is never stored."),
     Feed("units_intl", "International units shipped (estimated from Warehance non-US orders)", "warehance", "proj_units_daily", "proj_feedx_units_daily",
-         _UNITS_COLS, ("location", "product", "day"), "day", pull=pull_units_intl, days=21, stale_after=4, span=intl_span,
+         _UNITS_COLS, ("location", "product", "day"), "day", pull=pull_units_intl, days=21, stale_after=2, sheet_stale_after=4, span=intl_span,
          delete_where=_loc_where("intl", only_estimates=True), scope_where="location = 'intl'", conflict_nothing=True,
          metrics=(Metric("units", 3.0, 0.02),), sheet_tab="Intl Daily Units", sheet_parser=("etl.feeds.warehance", "sheet_rows_intl"),
          notes="Estimate days only (from 2026-09-16); Vital Flow is not estimated and is written as 0, as the sheet does."),

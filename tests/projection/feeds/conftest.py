@@ -60,3 +60,48 @@ def conn(feeds_db):
     c.execute("UPDATE proj_feed_levers SET value = 0.868 WHERE key = 'intl_ratio.boneflex'")
     c.commit()
     c.close()
+
+
+# ---------------------------------------------------------------------------------------------------------------- module hook-up tests (step 5)
+# A second database with EVERY migration of the tree: the hook-up tests run the real refresh hooks of the pacing, inventory demand and inventory supply
+# modules (and, in the end-to-end test, the whole etl.projection_daily run) against it, with dict-row connections as the projection runner hands them out.
+
+WIRED_DB_NAME = os.environ.get("TEST_PROJ_FEEDS_WIRED_DB", "tagexp_proj_feeds_wired")
+WIRED_DB_URL = f"{PG_BASE}/{WIRED_DB_NAME}"
+WIRED_TRUNCATE = ("proj_feed_orders", "proj_feed_amazon", "proj_feed_platform", "proj_feed_attribution", "proj_feed_traffic", "proj_feed_meta_reach",
+                  "proj_feed_product_reach", "proj_feed_nc_product", "proj_feed_anyclick", "proj_feed_bids", "proj_feed_meta_day", "proj_feed_meta_product",
+                  "proj_feed_runs", "proj_feed_config", "proj_feed_attempts", "proj_feed_verify", "proj_feed_verify_runs",
+                  "proj_feedx_orders", "proj_feedx_amazon", "proj_feedx_platform", "proj_feedx_attribution", "proj_feedx_traffic", "proj_feedx_meta_reach",
+                  "proj_feedx_product_reach", "proj_feedx_nc_product", "proj_feedx_anyclick", "proj_feedx_bids", "proj_feedx_units_daily",
+                  "proj_feedx_demand_snapshot", "proj_feedx_intl_nonus_daily",
+                  "proj_units_daily", "proj_units_monthly", "proj_units_country", "proj_units_loads", "proj_demand_snapshot",
+                  "proj_stock_snapshot", "proj_po", "proj_fba_transfer", "proj_vendor_lead", "proj_pacing_hourly", "proj_audit", "proj_refresh_runs",
+                  "proj_actuals", "proj_cohorts", "ad_daily", "meta_ads", "meta_campaigns")
+
+
+@pytest.fixture(scope="session")
+def wired_db():
+    try:
+        with psycopg.connect(f"{PG_BASE}/postgres", autocommit=True) as c:
+            c.execute(f'DROP DATABASE IF EXISTS "{WIRED_DB_NAME}" WITH (FORCE)')
+            c.execute(f'CREATE DATABASE "{WIRED_DB_NAME}"')
+            c.execute(f'ALTER DATABASE "{WIRED_DB_NAME}" SET synchronous_commit = off')
+    except psycopg.OperationalError as e:
+        pytest.skip(f"Postgres not available: {e}")
+    from etl import migrate
+    with psycopg.connect(WIRED_DB_URL) as conn:
+        migrate.migrate(conn)                                    # the real migrations directory, in filename order
+    return WIRED_DB_URL
+
+
+@pytest.fixture()
+def dconn(wired_db):
+    """A dict-row connection (what etl.projection_daily hands to a refresh hook) on the all-migrations database, emptied of feed and module data afterwards."""
+    from psycopg.rows import dict_row
+    c = psycopg.connect(wired_db, row_factory=dict_row)
+    yield c
+    c.rollback()
+    present = {r["tablename"] for r in c.execute("SELECT tablename FROM pg_tables WHERE schemaname = current_schema()").fetchall()}
+    c.execute("TRUNCATE " + ", ".join(t for t in WIRED_TRUNCATE if t in present) + " CASCADE")           # CASCADE: the cohort child tables and the vendor price lists
+    c.commit()
+    c.close()

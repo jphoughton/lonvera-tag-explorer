@@ -36,7 +36,9 @@ class Feed:
     day_col: str                               # the date column the window and the freshness use
     pull: Callable[[Ctx, Span], list[tuple]] = field(repr=False, default=lambda ctx, span: [])
     days: int = 14                             # default trailing window per run
-    stale_after: int = 2                       # freshness: days after which the feed counts as stale
+    stale_after: int = 2                       # freshness: days after which the feed counts as stale while the feed itself is the source (shadow, direct)
+    sheet_stale_after: int = 2                 # freshness: the same limit while the sheet-fed path is the source (the module's own threshold; a test pins them)
+    fixed_window: bool = False                 # True: history cannot be re-pulled, so a caller's wider `days` never widens the window (bids)
     metrics: tuple[Metric, ...] = ()
     span: Callable[[Ctx, int], Span] = default_span
     delete_where: Callable[[Span], tuple[sql.Composable, tuple]] | None = None
@@ -49,6 +51,13 @@ class Feed:
     native: bool = False                       # no sheet twin: the feed always runs (default mode shadow) and `main` is the table it writes
     conflict_nothing: bool = False             # insert with ON CONFLICT DO NOTHING (never overwrite a row the delete did not remove)
     notes: str = ""
+
+    def module_days(self, days: int | None) -> int:
+        """Window for a pull started by a projection module's refresh: the module's trailing `days` (14 by default), never narrower than the feed's own
+        window (Amazon needs 21 so matured days are refreshed) and never wider for a feed whose history cannot be rebuilt."""
+        if self.fixed_window or not days:
+            return self.days
+        return max(days, self.days)
 
     @property
     def default_mode(self) -> str:

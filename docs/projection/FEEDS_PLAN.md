@@ -14,9 +14,11 @@ Phase 1 (investigation and design), written 2026-11-03. Nothing was built, set, 
 8. **Effort:** about 8 to 9 agent-days of build; Josh about 5 minutes for class A, 15 for ExpandFi, 15 optional for a Meta system-user token. Calendar about 3.5 weeks: A feeds cut over about day 14 (build 5 working days, then 7 clean days), B feeds about day 24 (14 clean days).
 9. **Do first (no new credential):** point inventory-demand's Amazon units at `Amazon - Product Daily` (fresh to 11-03) instead of `Amazon Daily Units` (frozen 10-11).
 
-## Phase 2 status (2026-11-04): steps 1 to 4 built, step 7 prepared, step 5 waits
+## Phase 2 status (2026-11-04): steps 1 to 5 built, step 7 prepared, flips are Josh's
 
-Built and tested (89 tests, `tests/projection/feeds`): common plumbing, the mode switch, shadow tables, the attempt log, `verify`, `dryrun`, Upstack (5 feeds), Warehance (4 feeds, incl. the international estimate), Meta (3 feeds), `run_feeds.sh`, `apply_feeds_service.py`, and `etl/feeds/expandfi_auth.py`. Details: `MODULE_feeds.md`. Not done, by design: the module hook-ups (step 5), the `feeds` service, the three Railway variables (blocked, below), the ExpandFi `login`.
+Built and tested (`tests/projection/feeds`): common plumbing, the mode switch, shadow tables, the attempt log, `verify`, `dryrun`, Upstack (5 feeds), Warehance (4 feeds, incl. the international estimate), Meta (3 feeds), ExpandFi (3 feeds), `run_feeds.sh`, `apply_feeds_service.py`, `etl/feeds/expandfi_auth.py`, and (step 5, branch `feat/feeds-cutover-wiring`) the **module hook-ups**: `etl/projection_pacing.py`, `etl/projection_inventory_demand.py` and `etl/projection_inventory_supply.py` now follow each feed's mode. Details: `MODULE_feeds.md`, section "Module hook-ups (step 5)", which also holds the flip procedure and the list of inputs that still need a human.
+
+**Step 5 changes nothing in production until a feed is flipped.** Every feed is `sheet` or `shadow` today, and in both modes the three modules read the sheet tabs exactly as before and call no API (the `feeds` service keeps filling the shadow tables). Only `python -m etl.feeds mode <feed> direct` makes a module read from the feed.
 
 **Dry-run against the live sheet (real read-only API pulls, local keys, no writes; 2026-11-04):**
 
@@ -53,60 +55,27 @@ proj_feedx_units_daily (location = 'intl', product, day, units, source = 'estima
 ```
 Freshness entry: `{"feed": "intl_estimate", "label": "International units shipped, estimated (Warehance non-US orders) (direct)", "cadence": "daily", "data_through": <max day>, "stale_after_days": 2}` from `etl.feeds.freshness(conn)`. The loader should read `proj_feedx_units_daily` where `location = 'intl'` (same shape as its own rows) or `proj_feedx_intl_estimate`; changing a lever re-prices the view immediately, and `units_intl` on its next run.
 
-### Step 5: hook-up diffs (against the module files as of 2026-11-04; apply when the module agents are done)
-Each module calls `feeds.load(key, conn, days, sheet_fallback)`: sheet mode runs the fallback unchanged, shadow runs it and also fills the shadow table, direct writes the main table and falls back to the sheet on failure. Result keys match what the hooks aggregate: `rows, changed, first_day, data_through (ISO), source, warnings`.
+### Step 5: module hook-ups (built 2026-11-04)
+Each module calls `feeds.load(key, conn, days, sheet_fallback, ctx, module=True)`: **sheet** returns the sheet result untouched, **shadow** the same (the module pulls into the shadow table only when env `FEEDS_MODULE_SHADOW=1`; otherwise the `feeds` service owns the shadow tables), **direct** writes the main table from the feed inside a savepoint and falls back to the sheet read when the pull fails. A module reads a sheet tab up front only for feeds that are not direct, so a direct feed's tab is never touched unless its own pull failed.
 
-`etl/projection_pacing.py` `refresh()` (feed keys orders, platform, attribution, traffic, anyclick, meta_reach, product_reach, bids are identical to the registry; amazon and nc_product stay sheet-fed):
-```diff
-+from . import feeds as feed_hub
- ...
--    for feed in FEEDS:                                                   # read every tab first: a failure writes nothing
--        grids[feed.key] = read_grid(feed.tab, snapshot_dir)
--    for feed in FEEDS:
--        res = load_feed(conn, feed, grids[feed.key], None if backfill else days)
-+    hub = feed_hub.registry() if not backfill and snapshot_dir is None else {}
-+    for feed in FEEDS:
-+        d = None if backfill else days
-+        sheet = lambda feed=feed, d=d: load_feed(conn, feed, read_grid(feed.tab, snapshot_dir), d)     # the tab is read only when this path runs
-+        res = feed_hub.load(feed.key, conn, d, sheet) if feed.key in hub else sheet()
-```
-`etl/projection_inventory_demand.py` `refresh()`:
-```diff
-+from . import feeds as feed_hub
-+DIRECT = {"revamp": "units_revamp", "intl": "units_intl"}
- ...
--        feeds = {loc: load_feed(loc, reader) for loc in C.LOCATIONS}
--        stock_values = reader(STOCK_TAB)
--        parse_stock(stock_values)
--        out_locs = {loc: refresh_location(conn, loc, feeds[loc][0], days) for loc in C.LOCATIONS}
--        stock = refresh_stock(conn, stock_values)
-+        out_locs, warnings = {}, []
-+        for loc in C.LOCATIONS:
-+            def sheet(loc=loc):
-+                p, w = load_feed(loc, reader); warnings.extend(w)
-+                return refresh_location(conn, loc, p, days)
-+            r = feed_hub.load(DIRECT[loc], conn, days, sheet) if loc in DIRECT else sheet()
-+            if r.get("mode") == "direct" and not r.get("fallback"):
-+                store.log_load(conn, location=loc, source=r["source"], rows=r["rows"], first_day=date.fromisoformat(r["first_day"]),
-+                               last_day=date.fromisoformat(r["data_through"]), actor="system", note="direct feed")
-+            out_locs[loc] = r
-+        def sheet_stock():
-+            values = reader(STOCK_TAB); parse_stock(values); return refresh_stock(conn, values)
-+        stock = feed_hub.load("stock_revamp", conn, days, sheet_stock)
-```
-(the freshness hook is unchanged: it reads `proj_units_daily`; with the feed direct the intl `STALE_AFTER_DAYS` can drop from 4 to 2.)
+Feed to module map (every feed the modules read now has a registry entry that matches what the module aggregates; a test pins table, columns, tab and sheet-side stale limit):
 
-`etl/projection_inventory_supply.py` `refresh()`: after the demand module has run `stock_revamp` direct, follow its count instead of re-reading the cells:
-```diff
-+    if feed_hub.common.get_mode(conn, "stock_revamp") == "direct":
-+        conn.execute("INSERT INTO proj_stock_snapshot (location, product, as_of, on_hand, allocated, note) "
-+                     "SELECT location, product, as_of, on_hand, allocated, 'Warehance API (feeds)' FROM proj_demand_snapshot "
-+                     "WHERE location = 'revamp' AND as_of = (SELECT max(as_of) FROM proj_demand_snapshot WHERE location = 'revamp') "
-+                     "ON CONFLICT (location, product, as_of) DO UPDATE SET on_hand = excluded.on_hand, allocated = excluded.allocated")
-+        return {"rows": 4, "data_through": <that as_of>}
-     grid = (reader or read_revamp_cells)()
-```
-After the hook-ups: `python -m etl.feeds mode all shadow` (dual-run), `verify` daily, then `mode <feed> direct` per feed.
+| module | feeds | sheet tab it replaces | notes |
+|---|---|---|---|
+| pacing | orders, platform, attribution, traffic, anyclick, meta_reach, product_reach, bids | Orders - History, Platform - History, Attribution - History, Traffic - Daily, Upstack Any-Click - By Campaign, Meta Account - Reach, Meta Product - Reach, Meta Bids - Daily | |
+| pacing | amazon, nc_product (ExpandFi) | Amazon - Daily, NC Rev - By Product | |
+| inventory_demand | units_revamp, units_intl, units_amazon (ExpandFi), stock_revamp | Warehance Daily, Intl Daily Units, Amazon - Product Daily (fallback tab Amazon Daily Units stays sheet-only), Warehance Fcst Inputs | `units_amazon` was not in the original plan; Amazon units come from the product tab, not Amazon - Daily |
+| inventory_supply | stock_revamp | Warehance Fcst Inputs A33:D39 | follows the count the demand module pulled (`proj_demand_snapshot`); reads the cells only if that table holds no Revamp count |
+
+What changed against the diffs first written here:
+- **Windows are per feed.** A module passes its trailing `days` (14); `Feed.module_days` widens it to the feed's own window (Amazon and product reach 21, international 21) and never narrows it. `bids` is `fixed_window`: its past days cannot be re-pulled (they are rebuilt from the activity log), so a module never widens it beyond 3 days.
+- **Transactions.** The module owns and commits its transaction. `pull_and_write(..., commit=False)` writes the feed and its log row in one savepoint, so a failed direct pull (or a write the database refuses) leaves the module's earlier writes in the same run alone, and the failure and fallback rows are logged inside the module's transaction.
+- **Row factories and old databases.** The runner hands hooks dict-row connections; the feeds helpers read through tuple cursors and treat a missing `proj_feed_config` / `proj_feed_levers` as `sheet` / no levers.
+- **Time cap.** `projection_daily`'s `RefreshTimeout` passes through a pull instead of being turned into a fallback.
+- **Backfill and `--snapshot-dir`** always read the sheet (full history).
+- **Supply** shares one writer (`_write_revamp_counts`) between the sheet path and the feed path, so the audit rows and the "same values: skip" rule are identical.
+- **Warnings.** A module that fell back returns `warnings`; the runner prints one `warning <module>: ...` line each (the run is ok, exit code unchanged).
+- **Freshness chips.** While a feed is direct its chip uses the feed's own limit and says `(direct)`: pacing feeds 2 (Amazon 3), demand revamp 2, Amazon 3, international 2 (cadence `daily`, so a failed pull that fell back to an old sheet fails the run; it is 4 days and `monthly-upload` while the feed is sheet or shadow), supply `stock_revamp` 2. `python -m etl.feeds freshness` lists all 15 feeds with their mode and the limit that applies in that mode (the sheet-side limit lives in `Feed.sheet_stale_after`).
 
 ## 1. Inventory of the desktop sync
 

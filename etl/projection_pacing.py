@@ -14,6 +14,11 @@ CLI:  python -m etl.projection_pacing refresh [--days 14] [--snapshot-dir DIR]
       python -m etl.projection_pacing seed-hourly [--snapshot-dir DIR]   Meta time-of-day curve (typed input of the sheet; refresh also loads it when the table is empty)
 Live reads use GOOGLE_SA_JSON (or the local key file) through etl.sheets_io; --snapshot-dir reads the frozen snapshot instead.
 
+Server-side feeds (docs/projection/FEEDS_PLAN.md, MODULE_feeds.md): each of the ten sheet-fed feeds above has a twin in etl/feeds with a per-feed mode in
+proj_feed_config. `sheet` (the default) behaves exactly as described here. `direct` pulls the feed from its source API into the same table and never reads
+its sheet tab, unless the pull fails: then the tab is read as before and the result carries a warning. `shadow` is the same as `sheet` here (the `feeds`
+service fills the shadow tables). Backfill and --snapshot-dir always read the sheet.
+
 Feed tabs and columns relied on (sheet 1qA0iRJkWp1fbY5b6N860eM88Vs0JRe_8VfPQciMaLKI) are listed in docs/projection/MODULE_pacing.md.
 """
 from __future__ import annotations
@@ -32,6 +37,7 @@ from psycopg.rows import tuple_row
 from app.projection.pacing.feedspec import FEED_SPECS, FeedSpec, freshness as _freshness
 
 from . import db, sheets_io
+from . import feeds as feed_hub
 
 DEFAULT_SNAPSHOT = Path(os.environ.get("PROJECTION_SNAPSHOT_DIR", "~/lonvera-tag-explorer-data/projection-snapshot-2026-11-03")).expanduser()
 
@@ -447,17 +453,36 @@ def seed_hourly(conn, grid: list[list]) -> int:
 
 # ---------------------------------------------------------------------------------------------------------------- public hooks
 
-def refresh(conn, days: int = 14, snapshot_dir: str | os.PathLike | None = None, backfill: bool = False) -> dict:
-    """Replace the trailing `days` of every feed (everything when backfill=True or a feed table is empty) and rebuild Meta from ad_daily."""
+def refresh(conn, days: int = 14, snapshot_dir: str | os.PathLike | None = None, backfill: bool = False, *, hub_ctx: Any = None) -> dict:
+    """Replace the trailing `days` of every feed (everything when backfill=True or a feed table is empty) and rebuild Meta from ad_daily.
+
+    A feed whose mode (etl.feeds, proj_feed_config) is `direct` is pulled from its source API instead of the sheet; its tab is read only if that pull fails
+    (the result then carries a warning). `hub_ctx` is the etl.feeds context for those pulls (tests inject fake HTTP and a fake warehouse through it)."""
     if days < 1:
         raise ValueError("days must be >= 1")
     out: dict[str, Any] = {}
+    warnings: list[str] = []
     total = 0
+    use_hub = not backfill and snapshot_dir is None                       # a backfill reloads full history and a snapshot is the sheet: both read the sheet
+    modes = {f.key: (feed_hub.mode_of(conn, f.key) if use_hub else "sheet") for f in FEEDS}
     grids = {}
-    for feed in FEEDS:                                                   # read every tab first: a failure writes nothing
-        grids[feed.key] = read_grid(feed.tab, snapshot_dir)
+    for feed in FEEDS:                                                   # read every sheet tab this run needs first: a failure writes nothing
+        if modes[feed.key] != "direct":
+            grids[feed.key] = read_grid(feed.tab, snapshot_dir)
+    ctx = hub_ctx
     for feed in FEEDS:
-        res = load_feed(conn, feed, grids[feed.key], None if backfill else days)
+        d = None if backfill else days
+
+        def sheet(feed=feed, d=d):
+            return load_feed(conn, feed, grids[feed.key] if feed.key in grids else read_grid(feed.tab, snapshot_dir), d)   # a direct feed's tab is read only on fallback
+        if modes[feed.key] == "sheet":
+            res = sheet()
+        else:
+            ctx = ctx or feed_hub.make_ctx()                             # one context for the run: the ExpandFi feeds share one warehouse credential
+            res = feed_hub.load(feed.key, conn, d, sheet, ctx, module=True)
+            warn = feed_hub.fallback_warning(feed.key, res)
+            if warn:
+                warnings.append(warn)
         out[feed.key] = res
         total += res["rows"]
     # Meta from the app's own ad_daily. Sheet history only on backfill (days before ad_daily begins).
@@ -481,12 +506,16 @@ def refresh(conn, days: int = 14, snapshot_dir: str | os.PathLike | None = None,
             out["hourly_curve"] = {"rows": 0, "warning": db.scrub(e)[:200]}
     conn.commit()
     thr = [dt.date.fromisoformat(v["data_through"]) for k, v in out.items() if isinstance(v, dict) and v.get("data_through") and k != "meta_sheet_history"]
-    return {"rows": total, "data_through": min(thr).isoformat() if thr else None, "feeds": out}
+    res = {"rows": total, "data_through": min(thr).isoformat() if thr else None, "feeds": out}
+    if warnings:
+        res["warnings"] = warnings
+    return res
 
 
 def freshness(conn) -> list[dict]:
-    """One entry per feed: the last day held in the table (read from the table itself). Hook for the global /api/projection/freshness."""
-    return _freshness(conn)
+    """One entry per feed: the last day held in the table (read from the table itself). Hook for the global /api/projection/freshness.
+    A feed in `direct` mode gets the feed's own stale-after limit (etl.feeds registry) and says so in its label; every other mode is unchanged."""
+    return [feed_hub.direct_chip(conn, e, e["feed"]) if e["feed"] in FEED_BY_KEY else e for e in _freshness(conn)]
 
 
 # ---------------------------------------------------------------------------------------------------------------- CLI

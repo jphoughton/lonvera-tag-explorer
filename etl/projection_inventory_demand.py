@@ -13,6 +13,10 @@ A day that is still filling in (Warehance's current day, Amazon's two reporting-
 and `refresh` reports the days it held back. International days from the sheet's estimate date on are flagged `is_estimate`; a real count
 (an uploaded 3PL export) is never replaced by an estimate.
 
+Server-side feeds (docs/projection/FEEDS_PLAN.md): units_revamp, units_amazon, units_intl and stock_revamp each have a twin in etl/feeds with a per-feed
+mode in proj_feed_config. `sheet` (the default) and `shadow` behave exactly as described above. `direct` pulls that feed from Warehance / the ExpandFi
+warehouse into the same tables and never reads its sheet tab, unless the pull fails: then the tab is read as before and the result carries a warning.
+
 Hook contract for the daily runner (app/projection/freshness.py):
     refresh(conn, days=14) -> {"rows", "data_through", ...}      idempotent, trailing-days upsert, raises FeedError when a tab is empty/unreadable
     freshness(conn)        -> [{"feed", "label", "cadence", "data_through", "stale_after_days"}, ...]
@@ -31,11 +35,14 @@ from app.projection.inventory_demand import store
 from app.projection.inventory_demand.store import DailyRow
 
 from . import db as etl_db
+from . import feeds as feed_hub
 from . import sheets_io
 
 Reader = Callable[[str], list[list]]
 
 STOCK_TAB = "Warehance Fcst Inputs"
+DIRECT_FEED = {"revamp": "units_revamp", "amazon": "units_amazon", "intl": "units_intl"}      # location -> its etl.feeds twin
+STOCK_FEED = "stock_revamp"
 AMAZON_MONTHLY_TAB = "Amazon Monthly Units"
 COUNTRY_TAB = "Intl By Country"
 INPUT_TABS = {"revamp": "Warehance Fcst Inputs", "amazon": "Amazon Fcst Inputs", "intl": "Intl Fcst Inputs"}
@@ -293,23 +300,64 @@ def refresh_stock(conn, values: list[list]) -> dict:
 
 # ------------------------------------------------------------------------------------------------------------------ public hooks
 
-def refresh(conn, days: int = 14, reader: Reader | None = None) -> dict:
+def refresh(conn, days: int = 14, reader: Reader | None = None, *, hub_ctx: Any = None) -> dict:
     """The daily job: trailing-days upsert of the three daily feeds plus the US warehouse stock snapshot. Commits on success.
 
-    Returns {"rows", "changed", "data_through" (the oldest of the three feeds' last complete day), "locations": {...}, "stock": {...}}.
+    Returns {"rows", "changed", "data_through" (the oldest of the three feeds' last complete day), "locations": {...}, "stock": {...}, "warnings": [...]}.
     Raises FeedError when a tab is empty or unreadable (nothing is written then: the transaction is rolled back).
-    """
+
+    A feed whose mode (etl.feeds, proj_feed_config) is `direct` is pulled from its source instead of the sheet; its tab is read only if that pull fails
+    (the warning says so). `hub_ctx` is the etl.feeds context for those pulls (tests inject fake HTTP and a fake warehouse through it)."""
     if isinstance(days, bool) or not isinstance(days, int) or days < 1:
         raise ValueError("days must be a positive integer")
     reader = reader or live_reader()
     try:
-        # read and parse everything first: a bad tab must not leave a half-refreshed state
-        feeds = {loc: load_feed(loc, reader) for loc in C.LOCATIONS}
-        stock_values = reader(STOCK_TAB)
-        parse_stock(stock_values)
+        modes = {loc: feed_hub.mode_of(conn, DIRECT_FEED[loc]) for loc in C.LOCATIONS}
+        stock_mode = feed_hub.mode_of(conn, STOCK_FEED)
+        # read and parse everything the sheet path needs first: a bad tab must not leave a half-refreshed state (a direct feed's tab is read only on fallback)
+        feeds = {loc: load_feed(loc, reader) for loc in C.LOCATIONS if modes[loc] != "direct"}
+        stock_values = None
+        if stock_mode != "direct":
+            stock_values = reader(STOCK_TAB)
+            parse_stock(stock_values)
         warnings = [w for _, w in feeds.values() if w]
-        out_locs = {loc: refresh_location(conn, loc, feeds[loc][0], days) for loc in C.LOCATIONS}
-        stock = refresh_stock(conn, stock_values)
+        ctx = hub_ctx or (feed_hub.make_ctx() if "direct" in (*modes.values(), stock_mode) else None)
+
+        def sheet_location(loc: str) -> dict:
+            parsed, warn = feeds[loc] if loc in feeds else load_feed(loc, reader)
+            if warn and loc not in feeds:
+                warnings.append(warn)
+            return refresh_location(conn, loc, parsed, days)
+
+        out_locs = {}
+        for loc in C.LOCATIONS:
+            if modes[loc] == "sheet":
+                out_locs[loc] = sheet_location(loc)
+                continue
+            r = out_locs[loc] = feed_hub.load(DIRECT_FEED[loc], conn, days, lambda loc=loc: sheet_location(loc), ctx, module=True)
+            if r.get("mode") == "direct" and not r.get("fallback") and r.get("data_through"):
+                store.log_load(conn, location=loc, source=r["source"], rows=r["rows"], first_day=date.fromisoformat(r["first_day"]),
+                               last_day=date.fromisoformat(r["data_through"]), actor="system", note="direct feed")
+            warn = feed_hub.fallback_warning(DIRECT_FEED[loc], r)
+            if warn:
+                warnings.append(warn)
+
+        def sheet_stock() -> dict:
+            values = stock_values
+            if values is None:                                                 # a direct feed's tab is read only when its pull failed
+                values = reader(STOCK_TAB)
+                parse_stock(values)
+            return refresh_stock(conn, values)
+
+        if stock_mode == "sheet":
+            stock = sheet_stock()
+        else:
+            stock = feed_hub.load(STOCK_FEED, conn, days, sheet_stock, ctx, module=True)
+            if stock.get("mode") == "direct" and not stock.get("fallback"):
+                stock["as_of"] = stock.get("data_through")
+            warn = feed_hub.fallback_warning(STOCK_FEED, stock)
+            if warn:
+                warnings.append(warn)
         store.audit_load(conn, action="inventory_demand.refresh", summary={"locations": out_locs, "stock": stock, "warnings": warnings}, actor="system")
         conn.commit()
     except Exception:
@@ -323,15 +371,21 @@ def refresh(conn, days: int = 14, reader: Reader | None = None) -> dict:
 
 
 def freshness(conn) -> list[dict]:
-    """One entry per location: the newest complete day loaded."""
+    """One entry per location: the newest complete day loaded.
+
+    The international feed is a hand-uploaded tracking file (estimated days since Sep 16): reported as stale, never fatal to the daily run, until a
+    server-side feed replaces it. While `units_intl` is in direct mode it is the server-side feed: cadence daily and the 2-day limit of the feed (a failed
+    pull that fell back to the sheet then goes stale loudly). The other locations get the feed's limit while their feed is direct."""
     out = []
     for loc in C.LOCATIONS:
         _, last = store.data_range(conn, loc)
-        # The international feed is a hand-uploaded tracking file (estimated days since Sep 16): reported as stale, never fatal to the daily run,
-        # until a server-side feed replaces it.
         cadence = "monthly-upload" if loc == "intl" else "daily"
-        out.append({"feed": f"inventory_demand.{loc}", "label": C.FEED_LABELS[loc], "cadence": cadence, "data_through": last,
-                    "stale_after_days": C.STALE_AFTER_DAYS[loc]})
+        entry = {"feed": f"inventory_demand.{loc}", "label": C.FEED_LABELS[loc], "cadence": cadence, "data_through": last,
+                 "stale_after_days": C.STALE_AFTER_DAYS[loc]}
+        direct = feed_hub.direct_chip(conn, entry, DIRECT_FEED[loc])
+        if direct is not entry:
+            direct = {**direct, "cadence": "daily"}
+        out.append(direct)
     return out
 
 

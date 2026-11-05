@@ -499,7 +499,7 @@ FEEDS = [
          sheet_parser=("etl.projection_pacing", "parse_product_reach"), skip_compare=lambda row, today: row[3] >= today, fresh_where="grain = 'day'",
          notes="Available from 2026-07-05 only (Meta serves filtered unique clicks about 120 days back)."),
     Feed("bids", "Meta bid caps and ROAS floors", "meta", "proj_feed_bids", "proj_feedx_bids",
-         ("day", "spend", "capped_spend", "spend_x_cap", "floor_spend", "spend_x_floor"), ("day",), "day", pull=pull_bids, days=3, stale_after=2, span=bids_span,
+         ("day", "spend", "capped_spend", "spend_x_cap", "floor_spend", "spend_x_floor"), ("day",), "day", pull=pull_bids, days=3, stale_after=2, fixed_window=True, span=bids_span,
          metrics=(Metric("spend", 1.0, 0.01), Metric("capped_spend", 1.0, 0.01), Metric("spend_x_cap", 5.0, 0.01), Metric("floor_spend", 1.0, 0.01),
                   Metric("spend_x_floor", 5.0, 0.01)), sheet_tab="Meta Bids - Daily", sheet_parser=("etl.projection_pacing", "parse_bids"),
          notes="Settings of past days are rebuilt from the ad account activity log, so history cannot be re-pulled; seed it once from the sheet."),

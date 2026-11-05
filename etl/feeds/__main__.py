@@ -23,7 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("feed", nargs="?")
     p.add_argument("mode", nargs="?", choices=common.MODES)
     sub.add_parser("status")
-    sub.add_parser("freshness")
+    sub.add_parser("freshness", help="every feed: mode, newest day, age and the stale-after limit that applies in that mode")
     p = sub.add_parser("verify")
     p.add_argument("--feed")
     p.add_argument("--days", type=int, default=30)
@@ -71,8 +71,8 @@ def main(argv: list[str] | None = None) -> int:
                           + (f"  {r['note']}" if r["note"] else ""))
                 return 0
             if a.cmd == "freshness":
-                for e in freshness(conn):
-                    print(f"{e['feed']:24s} {e['status']:8s} through {e['data_through']} (age {e['age_days']}, stale after {e['stale_after_days']})  mode {e['mode']}")
+                for e in freshness(conn, include_sheet=True):                  # every feed, in whatever mode, against that mode's stale-after limit
+                    print(f"{e['feed']:24s} {e['mode']:7s} {e['status']:8s} through {e['data_through']} (age {e['age_days']}, stale after {e['stale_after_days']})")
                 return 0
             if a.cmd == "verify":
                 from .verify import run_verify

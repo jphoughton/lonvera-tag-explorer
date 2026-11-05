@@ -8,6 +8,10 @@
 from the sheet (those with a sheet row) and the lookup tables, then loads them again. Ids of seeded purchase orders and transfers are their sheet rows.
 `refresh` is the only daily feed: Revamp (Warehance) on-hand and allocated units, read from the `Warehance Fcst Inputs` snapshot cells that the sheet's
 Warehance sync writes every day (service account, read-only, env GOOGLE_SA_JSON). FBA and international 3PL counts are manual (POST .../stock).
+
+Server-side feed (docs/projection/FEEDS_PLAN.md): while the feed `stock_revamp` (etl/feeds, proj_feed_config) is `direct`, `refresh` follows the count the
+inventory_demand module just pulled from Warehance (`proj_demand_snapshot`, written earlier in the same daily run) and does not read the sheet cells; if that
+table holds no Revamp count yet it reads the sheet as before and says so in `warnings`.
 """
 from __future__ import annotations
 
@@ -19,6 +23,8 @@ from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Callable
+
+from . import feeds as feed_hub
 
 ROOT = Path(__file__).resolve().parents[1]
 EPOCH = date(1899, 12, 30)
@@ -237,14 +243,53 @@ def read_revamp_cells() -> list[list]:
     return res.get("values", [])
 
 
+def _write_revamp_counts(conn, counts: dict[str, tuple[float, float]], as_of: date, note: str) -> int:
+    """One dated row per product (skipped when the same day already holds the same values, replaced when it differs), each with its audit row."""
+    from app.projection import audit
+    written = 0
+    for prod, (on_hand, allocated) in counts.items():
+        old = conn.execute("SELECT on_hand, allocated FROM proj_stock_snapshot WHERE location = 'revamp' AND product = %s AND as_of = %s",
+                           (prod, as_of)).fetchone()
+        if old is not None and float(old["on_hand"]) == on_hand and float(old["allocated"]) == allocated:
+            continue
+        conn.execute("INSERT INTO proj_stock_snapshot (location, product, as_of, on_hand, allocated, inbound_per_3pl, estimate, note) "
+                     "VALUES ('revamp', %s, %s, %s, %s, 0, false, %s) "
+                     "ON CONFLICT (location, product, as_of) DO UPDATE SET on_hand = EXCLUDED.on_hand, allocated = EXCLUDED.allocated",
+                     (prod, as_of, on_hand, allocated, note))
+        audit.record(conn, actor="system", scenario=None, action="inventory_supply.stock.refresh", line_key=f"inventory_supply.stock:revamp.{prod}",
+                     month=as_of.replace(day=1), old={k: float(v) for k, v in old.items()} if old else None, new={"on_hand": on_hand, "allocated": allocated, "as_of": as_of.isoformat()})
+        written += 1
+    return written
+
+
+def _counts_from_feed(conn) -> tuple[dict[str, tuple[float, float]], date | None]:
+    """The newest Revamp count held in proj_demand_snapshot (written by the inventory_demand module): ({product: (on hand, allocated)}, its date)."""
+    if not feed_hub.common.table_exists(conn, "proj_demand_snapshot"):       # inventory_demand not migrated: nothing to follow
+        return {}, None
+    rows = conn.execute("SELECT product, on_hand, allocated, as_of FROM proj_demand_snapshot WHERE location = 'revamp' "
+                        "AND as_of = (SELECT max(as_of) FROM proj_demand_snapshot WHERE location = 'revamp')").fetchall()
+    counts = {r["product"]: (float(r["on_hand"]), float(r["allocated"])) for r in rows if r["product"] in PRODUCT_ORDER}
+    return counts, (rows[0]["as_of"] if rows else None)
+
+
 def refresh(conn, days: int = 14, *, today: date | None = None, reader: Callable[[], list[list]] | None = None) -> dict:
     """Append the Revamp (Warehance) on-hand and allocated counts as a new dated row per product.
 
     The sheet holds one current count (rows 35-38 for Vital Bull, Beef Liver, Boneflex, Vital Belle; snapshot date in B39). A count older than `days` is not
     loaded. A row for that day that already exists with the same values is skipped; the same day with different values is replaced (the sync rewrites
-    the cells during the day). Returns {"rows": rows written, "data_through": the snapshot date}."""
+    the cells during the day). While the feed `stock_revamp` is direct the count comes from proj_demand_snapshot instead of the sheet cells (see the module
+    docstring). Returns {"rows": rows written, "data_through": the snapshot date}, plus "mode": "direct" and "warnings" when that applies."""
     from app.projection import clock
     today = today or clock.today_pt()
+    warnings: list[str] = []
+    if feed_hub.mode_of(conn, "stock_revamp") == "direct":
+        counts, as_of = _counts_from_feed(conn)
+        if as_of is not None and counts:
+            if (today - as_of).days > days:
+                return {"rows": 0, "data_through": as_of.isoformat(), "mode": "direct"}
+            written = _write_revamp_counts(conn, counts, as_of, "Warehance on hand and allocated, from the Warehance feed (etl.feeds stock_revamp).")
+            return {"rows": written, "data_through": as_of.isoformat(), "mode": "direct"}
+        warnings.append("stock_revamp: no Revamp count in proj_demand_snapshot to follow, the sheet cells were read instead")
     grid = (reader or read_revamp_cells)()
     by_label = {}
     for line in grid:
@@ -258,23 +303,12 @@ def refresh(conn, days: int = 14, *, today: date | None = None, reader: Callable
             as_of = _serial(line[1])
     if not as_of or not by_label:
         raise RuntimeError("Warehance Fcst Inputs: stock block not found (expected rows labelled by product and a 'Snapshot date' row)")
-    if (today - as_of).days > days:
-        return {"rows": 0, "data_through": as_of.isoformat()}
-    from app.projection import audit
-    written = 0
-    for prod, (on_hand, allocated) in by_label.items():
-        old = conn.execute("SELECT on_hand, allocated FROM proj_stock_snapshot WHERE location = 'revamp' AND product = %s AND as_of = %s",
-                           (prod, as_of)).fetchone()
-        if old is not None and float(old["on_hand"]) == on_hand and float(old["allocated"]) == allocated:
-            continue
-        conn.execute("INSERT INTO proj_stock_snapshot (location, product, as_of, on_hand, allocated, inbound_per_3pl, estimate, note) "
-                     "VALUES ('revamp', %s, %s, %s, %s, 0, false, 'Warehance on hand and allocated, read from Warehance Fcst Inputs.') "
-                     "ON CONFLICT (location, product, as_of) DO UPDATE SET on_hand = EXCLUDED.on_hand, allocated = EXCLUDED.allocated",
-                     (prod, as_of, on_hand, allocated))
-        audit.record(conn, actor="system", scenario=None, action="inventory_supply.stock.refresh", line_key=f"inventory_supply.stock:revamp.{prod}",
-                     month=as_of.replace(day=1), old={k: float(v) for k, v in old.items()} if old else None, new={"on_hand": on_hand, "allocated": allocated, "as_of": as_of.isoformat()})
-        written += 1
-    return {"rows": written, "data_through": as_of.isoformat()}
+    out = {"rows": 0, "data_through": as_of.isoformat()}
+    if (today - as_of).days <= days:
+        out["rows"] = _write_revamp_counts(conn, by_label, as_of, "Warehance on hand and allocated, read from Warehance Fcst Inputs.")
+    if warnings:
+        out["warnings"] = warnings
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------------------- freshness
@@ -284,8 +318,9 @@ def freshness(conn, today: date | None = None) -> list[dict]:
     (counts entered by hand, so monthly-upload for the runner, which treats them as reported-never-fatal; 14 days). `input` carries the real cadence
     ('manual') for the page; `data_through` is the date of the last purchase-order / transfer edit, or the latest count date."""
     from app.projection.inventory_supply import freshness as f
-    return [{"feed": e["feed"], "label": e["label"], "cadence": "daily" if e["cadence"] == "daily" else "monthly-upload", "input": e["cadence"],
-             "data_through": e["data_through"], "stale_after_days": e["stale_after_days"]} for e in f.freshness(conn, today)]
+    out = [{"feed": e["feed"], "label": e["label"], "cadence": "daily" if e["cadence"] == "daily" else "monthly-upload", "input": e["cadence"],
+            "data_through": e["data_through"], "stale_after_days": e["stale_after_days"]} for e in f.freshness(conn, today)]
+    return [feed_hub.direct_chip(conn, e, "stock_revamp") if e["feed"] == "stock_revamp" else e for e in out]       # direct: the feed's own limit and label
 
 
 # ---------------------------------------------------------------------------------------------------------------- CLI
