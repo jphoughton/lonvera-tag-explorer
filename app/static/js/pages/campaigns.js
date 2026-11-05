@@ -7,6 +7,7 @@ import { metricColumns, fixTotal, FLAT_KEYS, trendColumn } from '../columns.js';
 import { setRangeInfo } from '../controls.js';
 import { breadcrumbs, columnsChips, filterBar, saveFilterToUrl, makeFilter, saveSortToUrl, sortFromUrl, viewSwitch } from '../components.js';
 import { createTrendPanel } from '../trend.js';
+import { ownStrip } from '../kpis.js';
 
 const NONE = 'none';
 
@@ -88,6 +89,7 @@ export async function campaignsPage(ctx) {
       h('div', { class: 'note-line' }, 'One row per Meta campaign. A campaign that runs ads of several products reads Mixed, with each product’s share; the Product filter keeps one product’s ads.')),
     h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Meta', href: platformUrl('/', 'meta', G) }, { label: 'Campaigns' }])),
     h('div', { class: 'ctl-row' }, productCtl),
+    ownStrip('meta', product && d.product ? `Meta · ${d.product.name}` : 'Meta', d.total, d.window_info),
     chartId ? h('div', { class: 'note-line', id: 'chart-scope', 'data-testid': 'chart-scope' }, 'Chart shows only ', h('strong', null, chartRow ? chartRow.name : chartId), ' · ', h('a', { href: href('/campaigns', { ...G, product }), class: 'btnlink small' }, 'Show all campaigns')) : null,
     panel.el,
     h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, product && d.product ? `Campaigns · ${d.product.name}` : 'Campaigns'), columnsChips(), filterUi.el),

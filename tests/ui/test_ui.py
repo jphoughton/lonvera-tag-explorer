@@ -3485,8 +3485,8 @@ def test_totals_strip_and_total_line_on_all_platforms_tie_to_the_chart_and_the_t
     t = api_json(page, "/api/platforms/trend?window=30d&grain=day")["total"]
     D = [p for p in t["points"] if p and p["nc_rev"] is not None]
     rev, sp = sum(p["nc_rev"] for p in D), sum(p["nc_spend"] for p in D)
-    assert abs(float(strip_val(page, "nc-rev")) - rev) <= 0.011 and abs(float(strip_val(page, "nc-roas")) - rev / sp) <= 0.00006
-    assert strip_text(page, "nc-roas") == f"{rev / sp:.2f}x"
+    assert abs(float(strip_val(page, "revenue")) - rev) <= 0.011 and abs(float(strip_val(page, "roas")) - rev / sp) <= 0.00006
+    assert strip_text(page, "roas") == f"{rev / sp:.2f}x"
     a = page.locator("[data-testid=kpi-attributed]").inner_text()                                      # the platforms' attributed sum and the gap sit next to the actual
     assert "Platforms attribute" in a and "gap" in a and "overlap" in a and "unattributed" in a
     k = api_json(page, "/api/platforms/kpis?window=30d")["total"]["nc"]["attributed"]
@@ -3526,25 +3526,98 @@ def test_total_nc_roas_buckets_are_ratio_of_sums_and_totals_label_the_bars(page)
     assert page.evaluate("() => Chart.getChart('trend-chart').options.plugins.stackTotals.on") is True             # a few monthly bars: the total sits on each stack
 
 
+TILES = ["kpi-spend", "kpi-revenue", "kpi-roas"]
+
+
+def tile_ids(page):
+    return page.locator("[data-testid=totals-strip] .kpi").evaluate_all("els => els.map(e => e.dataset.testid)")
+
+
+def tile_labels(page):
+    return page.locator("[data-testid=totals-strip] .kpi-label").evaluate_all("els => els.map(e => e.textContent)")           # the CSS upper-cases them on screen
+
+
+def table_total(page, testid, key):
+    data = table_data(page, testid)
+    return num(data["footRows"][0]["cells"][data["heads"].index(key)])
+
+
 @pytest.mark.mock_only
-@pytest.mark.parametrize("extra", ["only=meta", "only=google", "product=vita-bull", "type=Search"])
-def test_filters_hide_total_nc_roas_with_one_sentence_and_keep_total_spend(page, extra):
-    page.goto(f"/campaigns?platform=all&window=30d&{extra}")
+@pytest.mark.parametrize("basis", ["", "&source=upstack&basis=nc", "&source=upstack&basis=all"])
+@pytest.mark.parametrize("key", ["meta", "google"])
+def test_platform_filter_switches_strip_and_chart_to_that_platforms_own_figures(page, key, basis):
+    name = key.capitalize()
+    page.goto(f"/campaigns?platform=all&window=30d{basis}")
     wait_strip(page)
     wait_trend(page)
-    sentence = page.locator("[data-testid=kpi-roas-hidden]")
-    expect(sentence).to_have_count(1)
-    expect(sentence).to_contain_text("all platforms and all products only")
-    expect(page.locator("[data-testid=kpi-nc-roas]")).to_have_count(0)
-    expect(page.locator("[data-testid=kpi-nc-rev]")).to_have_count(0)
+    assert tile_ids(page) == TILES and tile_labels(page) == ["Total spend", "Total NC revenue", "Total NC ROAS"]      # blended: Platform = All
+    expect(page.locator("[data-testid=totals-strip]")).to_have_attribute("data-view", "all")
+    page.locator("[data-testid=all-campaigns] tbody tr[data-key]").first.wait_for()
+    subs = {r["cells"][0].split(" ")[0]: r["cells"] for r in table_data(page, "all-campaigns")["footRows"][1:]}
+    head = table_data(page, "all-campaigns")["heads"]
+    page.locator(f"[data-testid=only-{key}]").click()                                                              # filter Platform to Meta / Google
+    expect(page).to_have_url(re.compile(rf"only={key}"))
+    idle(page)
+    page.locator("[data-testid=all-campaigns] tbody tr[data-key]").first.wait_for()
+    wait_strip(page)
+    wait_trend(page)
+    expect(page.locator(f"[data-testid=totals-strip][data-view={key}]")).to_have_count(1)
+    assert tile_ids(page) == TILES                                                                                # the same three tiles in the same layout
+    nc = "nc" in basis
+    assert tile_labels(page) == [f"{name} spend", f"{name} {'NC revenue' if nc else 'revenue'}", f"{name} {'NC ROAS' if nc else 'ROAS'}"], tile_labels(page)
+    expect(page.locator("[data-testid=kpi-roas-hidden]")).to_have_count(0)                                         # no blended ratio, no 'hidden' sentence
+    assert page.locator("[data-testid=kpi-view-note]").inner_text().startswith(f"Showing {name} only, on ")
+    # numbers: KPI spend = the platform's subtotal in the All view = the filtered table's total row, to the dollar; revenue and ROAS likewise
+    assert abs(float(strip_val(page, "spend")) - num(subs[name][head.index("spend")])) <= 1
+    assert abs(float(strip_val(page, "spend")) - table_total(page, "all-campaigns", "spend")) <= 1
+    assert abs(float(strip_val(page, "revenue")) - num(subs[name][head.index("revenue")])) <= 1
+    assert abs(float(strip_val(page, "roas")) - num(subs[name][head.index("roas")])) <= 0.006
+    assert strip_text(page, "roas") == f"{float(strip_val(page, 'roas')):.2f}x"
+    # the chart is that platform's: its stack, its own ROAS line (no total line, no NC ROAS (total) choice)
+    info = trend_info(page)
+    assert {d["label"] for d in bars_ds(info)} == {name} and abs(chart_sum(info) - float(strip_val(page, "spend"))) <= 0.011
+    assert [d["label"] for d in line_ds(info)] == [f"{'NC ROAS' if nc else 'ROAS'} · {name}"]
     assert "nc_roas_total" not in page.locator("#trend-line").inner_html()
-    assert "NC ROAS (total)" not in [d["label"] for d in line_ds(trend_info(page))]
+    assert qparams(page)["only"] == key and ("platform" not in qparams(page) or qparams(page)["platform"] == "all")   # the filter lives in the URL
+
+
+@pytest.mark.mock_only
+def test_meta_only_and_google_only_kpi_spend_equal_the_subtotals_and_add_to_the_blended_total(page):
+    page.goto("/campaigns?platform=all&window=30d")
+    wait_strip(page)
     page.locator("[data-testid=all-campaigns] tbody tr[data-key]").first.wait_for()
     data = table_data(page, "all-campaigns")
-    tot = num(data["footRows"][0]["cells"][data["heads"].index("spend")])
-    assert float(strip_val(page, "spend")) > 0 and abs(tot - float(strip_val(page, "spend"))) <= 1          # spend follows the filter and still ties to the table total
-    assert abs(chart_sum(trend_info(page)) - float(strip_val(page, "spend"))) <= 0.011
-    assert page.locator("#trend-note").inner_text().count("all platforms and all products only") == 0         # the sentence is said once, under the strip
+    subs = {r["cells"][0].split(" ")[0]: num(r["cells"][data["heads"].index("spend")]) for r in data["footRows"][1:]}
+    blended = float(strip_val(page, "spend"))
+    got = {}
+    for key in ("meta", "google"):
+        k = api_json(page, f"/api/platforms/kpis?window=30d&only={key}")["total"]
+        got[key] = k["spend"]
+        assert abs(k["spend"] - subs[key.capitalize()]) <= 1, (key, k["spend"], subs)                          # = the Meta / Google subtotal row of the table
+    assert abs(got["meta"] + got["google"] - blended) <= 0.011                                                    # and the two add to the blended Total spend
+
+
+@pytest.mark.mock_only
+@pytest.mark.parametrize("path,key,table,name", [
+    ("/?platform=meta&window=30d", "meta", "products-table", "Meta"), ("/campaigns?window=30d", "meta", "platform-campaigns", "Meta"),
+    ("/?platform=google&window=30d", "google", "google-campaigns", "Google"), ("/campaigns?platform=google&window=30d", "google", "google-campaigns", "Google"),
+])
+def test_meta_and_google_pages_carry_the_same_strip_with_their_own_figures(page, path, key, table, name):
+    page.goto(path)
+    wait_strip(page)
+    page.locator(f"[data-testid={table}] tbody tr[data-key]").first.wait_for()
+    expect(page.locator(f"[data-testid=totals-strip][data-view={key}]")).to_have_count(1)
+    assert tile_ids(page) == TILES and tile_labels(page) == [f"{name} spend", f"{name} revenue", f"{name} ROAS"]
+    spend = float(strip_val(page, "spend"))
+    data = table_data(page, table)
+    foot = [r["cells"] for r in data["footRows"]] if table == "products-table" else [data["footRows"][0]["cells"]]
+    want = max(num(c[data["heads"].index("spend")]) or 0 for c in foot)                                          # the Meta landing's biggest total row is the whole account
+    assert abs(spend - want) <= 1, (path, spend, foot)
+    assert float(strip_val(page, "roas")) > 0 and float(strip_val(page, "revenue")) > 0
+    page.goto(path + "&source=upstack&basis=nc")                                                                 # the Numbers basis in force is the strip's basis
+    wait_strip(page)
+    assert tile_labels(page) == [f"{name} spend", f"{name} NC revenue", f"{name} NC ROAS"]
+    assert "Upstack · new customers" in page.locator("[data-testid=totals-strip] .kpi-sub").nth(1).inner_text()
 
 
 @pytest.mark.mock_only
@@ -3563,7 +3636,7 @@ def test_totals_strip_shows_window_b_when_compare_is_on(page):
 @pytest.mark.parametrize("width", [375, 1024, 2100])
 def test_totals_strip_is_readable_and_never_scrolls_the_page_sideways(page, width):
     page.set_viewport_size({"width": width, "height": 900})
-    for path in ("/?window=30d", "/campaigns?platform=all&window=30d"):
+    for path in ("/?window=30d", "/campaigns?platform=all&window=30d", "/campaigns?platform=all&window=30d&only=google", "/campaigns?window=30d"):
         page.goto(path)
         wait_strip(page)
         wait_trend(page)

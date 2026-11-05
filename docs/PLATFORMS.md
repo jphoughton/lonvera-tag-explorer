@@ -91,7 +91,8 @@ Meta and Google are the only spend platforms, so a **totals strip** sits above t
 - **Total NC ROAS = Total NC revenue / spend of the same days.** A ratio of sums over the days Meta, Google and the orders feed all cover; a day without orders is **blank, never zero**, and the strip says "N of M days". The chart's Day / Week / Month buckets are ratios of sums too (never a mean of daily ratios) and weigh back to the strip.
 - **The platforms' attributed sum is shown beside the actual**: "Platforms attribute $X (Meta + Google) · gap" where gap = attributed sum minus actual = overlap net of unattributed (Upstack any-click new-customer basis, same days).
 - **Chart.** Total spend is the stack: the sum is written above each bar when there are 16 bars or fewer (Week / Month), and every hover lists Meta spend, Google spend, Total spend and Total NC ROAS of the bucket. **NC ROAS (total)** is a Line choice (a dark line, a line only: it cannot be swapped into Bars) and the **default Line** on both pages; with Line = ROAS the per-platform lines are drawn and the dark total line sits beside them. If orders do not reach back to the chart's first day the note says from when it exists and the earlier days are blank.
-- **Filters hide the ratio.** With a Platform, Product or Campaign type filter the tile, the NC revenue tile and the line are hidden and one sentence says why (Upstack orders have no product or platform dimension, so new-customer revenue cannot be split); Total spend stays and follows the filter (ties to the filtered table). Default Line is ROAS again then.
+- **Platform filter = that platform's own figures.** Filter Platform to Meta or Google (the chips on All campaigns, `only=meta|google`, which carries `platform=all` and the Numbers choice in the URL; or the top-bar Platform picker, which lands on the Meta / Google pages) and the strip and chart switch to **that platform's own numbers on the Numbers basis in force** (its own reporting, Upstack new customers, Upstack all orders): its spend, its revenue and its ROAS, with no blended total and no other platform. **Same three tiles, same layout; only the numbers and the label change** ('Total' | 'Meta' | 'Google'; 'NC revenue' / 'NC ROAS' on the new-customer basis). A Product filter (Meta) or Campaign type filter (Google) belongs to one platform, so it gives that platform's strip, named 'Meta · Vita Bull' / 'Google · Search'. In the API: `GET /api/platforms/kpis?only=meta&source=upstack&basis=nc` returns `view: "meta"`, `total.spend` and `total.m` = the platform's subtotal of the All campaigns table for the same arguments (asserted equal: spend, purchases, revenue, ROAS, CPA, on all three bases). The chart is that platform's stack with its own ROAS line (no total line, no 'NC ROAS (total)' choice, default Line ROAS).
+- **The same strip is on the platform pages** (Meta Products landing, Meta Campaigns, Google, Google Campaigns), built from each page's own total so it ties to that table by construction.
 
 Today (full local data, orders from 2025-01-01 to 2026-11-03). Meta's last day is Nov 2 and Google's Nov 3, so the ratio uses the days all three cover:
 
@@ -101,6 +102,16 @@ Today (full local data, orders from 2025-01-01 to 2026-11-03). Meta's last day i
 | Since launch (May 6 - Nov 2, 181 days) | $4,175,701.81 | $3,001,173.77 | $4,175,701.81 | **0.72x** (0.7187) | $2,676,786.55 | -$324,387.22 (-10.8%) |
 
 Both gaps are negative: the platforms together credit less new-customer revenue than the business actually had, so unattributed orders outweigh the overlap between the platforms.
+
+**Platform views, 30d (Meta Oct 4 - Nov 2, Google Oct 5 - Nov 3)**; spend is the platform's in every basis:
+
+| | Spend | Own reporting: revenue / ROAS | Upstack new customers: NC revenue / NC ROAS | Upstack all orders: revenue / ROAS |
+|---|---|---|---|---|
+| Meta | $340,583.67 | $240,864.76 / 0.71 (3,472 purchases) | $183,706.27 / 0.54 (2,614 new customers) | $261,436.08 / 0.77 (4,189 orders) |
+| Google | $17,573.43 | $24,691.82 / 1.41 (339 purchases) | $15,395.93 / 0.88 (209 new customers) | $37,447.26 / 2.13 (536 orders) |
+
+Meta + Google spend = the blended $358,157.10. Since launch a single platform keeps its own history, as the table does (the page names the days): Meta $4,006,296.06 from May 6, 2026; Google $633,774.46 from Mar 25, 2024 on its own reporting and $565,441.55 from May 13, 2025 on Upstack's, against $169,405.75 for the days both platforms share (the All view).
+
 
 Ties asserted in `tests/api/test_api_platform_totals.py` (strip = table total row = chart total = Meta + Google from the two independent trend endpoints; Total NC ROAS recomputed from the raw orders; attributed sum and gap; every grain a ratio of sums; blank-not-zero; the filters; compare; since launch; no orders loaded) and in `tests/ui/test_ui.py` (strip text and `data-value` against the chart and the table total, the default Line, the tooltip lines, filters, compare, 375 / 1,024 / 2,100 px with no page-level sideways scroll).
 

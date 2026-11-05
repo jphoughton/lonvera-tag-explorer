@@ -355,10 +355,45 @@ def kpi_of(t: dict) -> dict:
     return out
 
 
-def kpis(conn, meta: q.DataMeta, args, *, platform=None, product_slug=None, ctype=None) -> dict:
-    """Totals strip above the All charts: window A and, when Compare is on (a date window), window B."""
+ROAS_LABELS = {"own": ("Revenue", "ROAS"), "nc": ("NC revenue", "NC ROAS"), "all": ("Revenue", "ROAS")}      # as the tables label them on each basis
+
+
+def platform_view_of(platform, product_slug, ctype) -> str | None:
+    """The platform whose own figures the strip shows: the Platform filter, or the platform a Product (Meta) / Campaign type (Google) filter belongs to."""
+    return platform or ("meta" if product_slug is not None else "google" if ctype is not None else None)
+
+
+def platform_total(conn, meta: q.DataMeta, args, numbers: str, view: str, *, platform, product_slug, ctype) -> dict:
+    """One platform's own figures for the strip: the subtotal of the All campaigns table for the same arguments (so spend, revenue and ROAS tie to it by construction),
+    on the Numbers basis in force (own reporting, Upstack new customers, Upstack all orders). No blended total, no overlap with the other platform."""
+    res = all_campaigns(conn, meta, args, numbers, platform=platform, product_slug=product_slug, ctype=ctype)
+    sub = res["subtotals"].get(view)
+    m = (sub or {}).get("m") or {}
+    spend = round(m.get("spend") or 0.0, 2)
+    wins, _sk, _x = windows(meta, args, numbers, [pf for pf in PLATFORMS if platform in (None, pf)])
+    w = {}
+    if view in wins:                                   # the days the figures cover (a since-launch window names its first and last day)
+        lo, hi = _range(*wins[view])
+        w = {"from": lo.isoformat(), "to": hi.isoformat(), "days": (hi - lo).days + 1}
+    rev_l, roas_l = ROAS_LABELS[numbers]
+    other = "google" if view == "meta" else "meta"
+    scope = (q.NO_PRODUCT if product_slug == q.NO_PRODUCT_SLUG else q.get_product(conn, product_slug)["name"]) if product_slug is not None else ctype
+    return {"view": view, "name": NAMES[view] + (f" · {scope}" if scope else ""), "platform": NAMES[view], "numbers": numbers, "basis": BASIS_LABEL[(view, numbers)], "labels": {"revenue": rev_l, "roas": roas_l},
+            "spend": spend, f"{view}_spend": spend, f"{other}_spend": 0.0, f"{view}_share": 1.0 if spend else None, f"{other}_share": 0.0 if spend else None,
+            "window": {"from": w.get("from"), "to": w.get("to"), "days": w.get("days")} if w else None,
+            "m": {k: m.get(k) for k in ("spend", "purchases", "revenue", "roas", "cpa", "impressions", "link_clicks")} if sub else None,
+            "note": None if sub else f"{NAMES[view]} has no data loaded for this window.", "notes": res["notes"]}
+
+
+def kpis(conn, meta: q.DataMeta, args, *, numbers: str = "own", platform=None, product_slug=None, ctype=None) -> dict:
+    """Totals strip above the All charts: window A and, when Compare is on (a date window), window B. Unfiltered it is the blended strip (Total spend, actual NC
+    revenue, Total NC ROAS). With a Platform filter (or a Product / Campaign type filter, which belong to one platform) it is THAT platform's own figures on the
+    Numbers basis in force, laid out the same: only the numbers and the labels change."""
+    view = platform_view_of(platform, product_slug, ctype)
+    if view:
+        return _platform_kpis(conn, meta, args, numbers, view, platform=platform, product_slug=product_slug, ctype=ctype)
     a = day_table(conn, meta, args, platform=platform, product_slug=product_slug, ctype=ctype)
-    out = {"filters": {"only": platform, "product": product_slug, "type": ctype}, "total": kpi_of(a), "compare": None, "delta": None,
+    out = {"view": "all", "filters": {"only": platform, "product": product_slug, "type": ctype}, "total": kpi_of(a), "compare": None, "delta": None,
            "orders": {"first": a["orders_first"].isoformat() if a["orders_first"] else None, "last": a["orders_last"].isoformat() if a["orders_last"] else None},
            "platform_windows": {k: {"from": v[0].isoformat(), "to": v[1].isoformat()} for k, v in a["ranges"].items()},
            "notes": [f"{NAMES[k]}: {why}" for k, why in a["skipped"].items()]}
@@ -388,6 +423,54 @@ def kpis(conn, meta: q.DataMeta, args, *, platform=None, product_slug=None, ctyp
             ta, tb = out["total"], out["compare"]
             pct = lambda x, y: round((x - y) / y, 4) if x is not None and y else None
             out["delta"] = {"spend_pct": pct(ta["spend"], tb["spend"]), "nc_rev_pct": pct(ta["nc"].get("rev"), tb["nc"].get("rev")), "nc_roas_pct": pct(ta["nc"].get("roas"), tb["nc"].get("roas"))}
+    return out
+
+
+def _compare_window(meta: q.DataMeta, args, platforms):
+    """window B of the page's own window (None when Compare is off, a launch window, or B is empty), as the first loaded platform reads it"""
+    if not any(args.get(k) for k in ("compare", "cfrom", "cto")):
+        return None
+    try:
+        full_wins, _sk, _x = windows(meta, args, "own", platforms, keep_compare=True)
+        if not full_wins:
+            return None
+        cw = next(iter(full_wins.values()))[1].cmp
+    except q.ApiError:
+        return None
+    return cw if cw is not None and not cw.is_empty else None
+
+
+def _b_args(args, cw) -> MultiDict:
+    b = MultiDict(args)
+    for k in ("compare", "cfrom", "cto", "perday", "window"):
+        b.pop(k, None)
+    b["from"], b["to"] = cw.date_from.isoformat(), cw.date_to.isoformat()
+    return b
+
+
+def _platform_kpis(conn, meta, args, numbers, view, *, platform, product_slug, ctype) -> dict:
+    kw = dict(platform=platform, product_slug=product_slug, ctype=ctype)
+    a = platform_total(conn, meta, args, numbers, view, **kw)
+    out = {"view": view, "filters": {"only": platform, "product": product_slug, "type": ctype}, "total": a, "compare": None, "delta": None, "numbers": numbers,
+           "notes": list(a.pop("notes")), "platform_windows": {}}
+    wins, _sk, extra = windows(meta, args, numbers, [pf for pf in PLATFORMS if platform in (None, pf)])
+    out["window_info"] = head_info(wins, extra["note"]) if wins else {}
+    out["platform_windows"] = {k: {"from": (w.date_from if not w.is_launch else span.daily_start).isoformat(), "to": (w.date_to if not w.is_launch else span.data_through).isoformat()} for k, (span, w) in wins.items()}
+    cw = _compare_window(meta, args, [pf for pf in PLATFORMS if platform in (None, pf)])
+    if cw is not None:
+        try:
+            b = platform_total(conn, meta, _b_args(args, cw), numbers, view, **kw)
+        except q.ApiError as e:
+            if e.status != 400:
+                raise
+            out["notes"].append("The comparison window starts before the platform's data does, so there is nothing to compare to.")
+            return out
+        b.pop("notes", None)
+        out["compare"] = b
+        out["compare_info"] = {"from": cw.date_from.isoformat(), "to": cw.date_to.isoformat(), "days": (cw.date_to - cw.date_from).days + 1}
+        pct = lambda x, y: round((x - y) / y, 4) if x is not None and y else None
+        ma, mb = a.get("m") or {}, b.get("m") or {}
+        out["delta"] = {"spend_pct": pct(a["spend"], b["spend"]), "revenue_pct": pct(ma.get("revenue"), mb.get("revenue")), "roas_pct": pct(ma.get("roas"), mb.get("roas"))}
     return out
 
 

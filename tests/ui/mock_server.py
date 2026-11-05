@@ -1531,7 +1531,21 @@ def platforms_kpis():
     if slug and typ:
         raise Bad("product and type cannot both be set")
     lo, hi = (0, N - 1) if win["launch"] else (win["i0"], win["i1"])
-    out = dict(filters=dict(only=only, product=slug, type=typ), total=kpi_block(lo, hi, only, slug, typ), compare=None, delta=None,
+    view = only or ("meta" if slug else "google" if typ else None)
+    if view:                                           # one platform's own figures on the Numbers basis: the subtotal of the All campaigns table for the same arguments
+        numbers = numbers_arg(request.args)
+        res = campaigns_all_platforms().get_json()
+        m = res["subtotals"][view]["m"]
+        spend = round(m["spend"], 2)
+        scope = next(pr["name"] for pr in PRODUCTS if pr["slug"] == slug) if slug else typ
+        other = "google" if view == "meta" else "meta"
+        total = dict(view=view, name=view.capitalize() + (f" · {scope}" if scope else ""), platform=view.capitalize(), numbers=numbers, basis=res["basis"][view],
+                     labels=dict(zip(("revenue", "roas"), dict(own=("Revenue", "ROAS"), nc=("NC revenue", "NC ROAS"), all=("Revenue", "ROAS"))[numbers])),
+                     spend=spend, **{f"{view}_spend": spend, f"{other}_spend": 0.0, f"{view}_share": 1.0, f"{other}_share": 0.0},
+                     window=dict(**{"from": DAYS[lo].isoformat(), "to": DAYS[hi].isoformat()}, days=hi - lo + 1),
+                     m={k: m.get(k) for k in ("spend", "purchases", "revenue", "roas", "cpa", "impressions", "link_clicks")})
+        return jsonify(view=view, filters=dict(only=only, product=slug, type=typ), total=total, compare=None, delta=None, numbers=numbers, notes=[], platform_windows={}, window_info=win["info"])
+    out = dict(view="all", filters=dict(only=only, product=slug, type=typ), total=kpi_block(lo, hi, only, slug, typ), compare=None, delta=None,
                orders=dict(first=DAYS[ORDERS_FROM].isoformat(), last=DAYS[-1].isoformat()), platform_windows={}, notes=[], window_info=win["info"])
     if getattr(g, "cmp", None):
         b = kpi_block(g.cmp["i0"], g.cmp["i1"], only, slug, typ)
