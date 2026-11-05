@@ -8,6 +8,7 @@ import { metricColumns } from '../columns.js';
 import { setRangeInfo } from '../controls.js';
 import { breadcrumbs, viewSwitch, srcBadge } from '../components.js';
 import { trendChart, BAR_COLOR, LINE_COLOR } from '../charts.js';
+import { ownStrip } from '../kpis.js';
 
 const TYPES = ['Shopping', 'Search', 'Performance Max', 'Demand Gen', 'Other'];
 const KEYS = ['spend', 'spend_share', 'impressions', 'link_clicks', 'ctr', 'cpc', 'cpm', 'conv_rate', 'purchases', 'revenue', 'roas', 'cpa'];
@@ -153,6 +154,7 @@ export async function googlePage(ctx) {
     h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', campaignsView ? 'Campaigns' : 'Google'), h('span', { class: 'badge muted-badge', title: 'Read from Upstack: its Google ad-platform feed and its attribution' }, 'Google · Upstack-fed · campaign level'),
       h('span', { class: 'spacer' }), viewSwitch(campaignsView ? 'campaigns' : 'home', G, 'google'))),
     h('div', { class: 'crumbrow' }, breadcrumbs(crumbs)),
+    ownStrip('google', type ? `Google · ${type}` : 'Google', camps.total.m, types.window_info),
     panel.el,
     campaignsView ? h('div', { class: 'ctl-row' }, typeChips) : null,
     campaignsView ? null : h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Campaign types'), colChips()),

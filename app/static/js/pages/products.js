@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { columnsChips, legendLine, viewSwitch } from '../components.js';
 import { createTrendPanel, createPins } from '../trend.js';
+import { ownStrip } from '../kpis.js';
 import { metricColumns, trendColumn, pinColumn, flatTotal } from '../columns.js';
 import { setRangeInfo, ensureStatus, windowInfoFallback } from '../controls.js';
 
@@ -100,6 +101,7 @@ export async function productsPage(ctx) {
   ctx.mount(h('div', { class: 'page' },
     h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'Meta'), h('span', { class: 'spacer' }), viewSwitch('home', G, 'meta')), h('div', { class: 'note-line' }, 'Products, tags and creatives')),
     legendLine(),
+    ownStrip('meta', 'Meta', ta || tm, a),
     panel.el,
     h('div', { class: 'tablehead' }, columnsChips()),
     list.length ? t.el : empty('No products with tracker rows or Meta spend.'),

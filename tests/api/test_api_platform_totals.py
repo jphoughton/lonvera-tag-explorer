@@ -120,16 +120,65 @@ def test_the_day_without_orders_is_blank_in_the_chart_and_kept_in_spend(orders, 
     assert first["nc_roas"] is None and first["nc_rev"] is None and first["spend"] > 0 and first["nc_days"] == 0
 
 
+BASES = {"own": "", "nc": "&source=upstack&basis=nc", "all": "&source=upstack&basis=all"}
+
+
+def table_sub(client, extra, pf_key, w=W):
+    t = get_ok(client, f"/api/campaigns/all?{w}{extra}")
+    return t, t["subtotals"][pf_key]["m"]
+
+
+def test_blended_view_is_labelled_all_and_has_no_platform_block(orders, client):
+    k = kpi(client)
+    assert k["view"] == "all" and "m" not in k["total"] and k["total"]["nc"]["available"]
+
+
+@pytest.mark.parametrize("basis", ["own", "nc", "all"])
+@pytest.mark.parametrize("key", ["meta", "google"])
+def test_platform_filter_shows_that_platforms_own_figures_equal_to_the_table_subtotal(orders, client, key, basis):
+    extra = BASES[basis]
+    k = get_ok(client, f"/api/platforms/kpis?{W}&only={key}{extra}")
+    t, sub = table_sub(client, f"&only={key}{extra}", key)
+    tot = k["total"]
+    assert k["view"] == key and tot["view"] == key and tot["name"] == key.capitalize() and tot["platform"] == key.capitalize() and tot["numbers"] == basis
+    assert tot["spend"] == sub["spend"] == t["total"]["spend"] and tot[f"{key}_spend"] == tot["spend"]       # KPI spend = the table's subtotal = the table's total row
+    for m in ("purchases", "revenue", "roas", "cpa"):
+        assert tot["m"][m] == sub[m], (key, basis, m)                                                     # revenue and ROAS on the basis in force: the platform-attributed numbers
+    assert tot["basis"] == t["basis"][key]
+    assert tot["labels"] == {"own": {"revenue": "Revenue", "roas": "ROAS"}, "nc": {"revenue": "NC revenue", "roas": "NC ROAS"}, "all": {"revenue": "Revenue", "roas": "ROAS"}}[basis]
+    other = "google" if key == "meta" else "meta"
+    assert tot[f"{other}_spend"] == 0.0 and tot[f"{key}_share"] == 1.0                                       # no blended total, no other platform
+    assert "nc" not in tot
+
+
+def test_platform_only_spend_equals_the_all_view_subtotals_and_they_add_to_the_blended_total(orders, client):
+    t = get_ok(client, f"/api/campaigns/all?{W}")                                                             # Platform = All: both subtotals in one table
+    meta_k = get_ok(client, f"/api/platforms/kpis?{W}&only=meta")["total"]
+    google_k = get_ok(client, f"/api/platforms/kpis?{W}&only=google")["total"]
+    blended = kpi(client)["total"]
+    assert meta_k["spend"] == t["subtotals"]["meta"]["m"]["spend"] and google_k["spend"] == t["subtotals"]["google"]["m"]["spend"]
+    assert round(meta_k["spend"] + google_k["spend"], 2) == blended["spend"] == t["total"]["spend"]
+    assert blended["meta_spend"] == meta_k["spend"] and blended["google_spend"] == google_k["spend"]
+
+
+def test_product_and_type_filters_belong_to_one_platform_and_show_its_own_figures(orders, client):
+    k = get_ok(client, f"/api/platforms/kpis?{W}&product=vita-bull{BASES['nc']}")
+    t, sub = table_sub(client, f"&product=vita-bull{BASES['nc']}", "meta")
+    assert k["view"] == "meta" and k["total"]["spend"] == sub["spend"] == t["total"]["spend"] > 0 and k["total"]["m"]["roas"] == sub["roas"]
+    assert k["total"]["name"] == "Meta · Vita Bull" and k["total"]["platform"] == "Meta"                       # the label says which slice of the platform it is
+    k = get_ok(client, f"/api/platforms/kpis?{W}&type=Search")
+    t, sub = table_sub(client, "&type=Search", "google")
+    assert k["view"] == "google" and k["total"]["spend"] == sub["spend"] == t["total"]["spend"] > 0 and k["total"]["m"]["revenue"] == sub["revenue"]
+    assert k["total"]["name"] == "Google · Search"
+
+
 @pytest.mark.parametrize("extra", ["&only=meta", "&only=google", "&product=vita-bull", "&type=Search"])
-def test_filters_keep_total_spend_but_hide_total_nc_roas_with_one_sentence(orders, client, extra):
-    k = kpi(client, extra)
-    nc = k["total"]["nc"]
-    assert nc["available"] is False and "all platforms and all products only" in nc["reason"] and nc.get("roas") is None and nc.get("rev") is None
-    table = get_ok(client, f"/api/campaigns/all?{W}{extra}")
-    assert k["total"]["spend"] == table["total"]["spend"] > 0                              # spend follows the filter and still ties to the table
+def test_a_filtered_chart_follows_the_same_platform_and_its_spend_ties_to_the_strip(orders, client, extra):
+    k = get_ok(client, f"/api/platforms/kpis?{W}{extra}")
     chart = get_ok(client, f"/api/platforms/trend?{W}{extra}")
-    assert chart["total"]["available"] is False and all(p is None or p["nc_roas"] is None for p in chart["total"]["points"])
-    assert round(sum(p["spend"] for p in chart["total"]["points"] if p), 2) == pytest.approx(table["total"]["spend"], abs=0.01)
+    assert chart["total"]["available"] is False and all(p is None or p["nc_roas"] is None for p in chart["total"]["points"])      # no blended ratio on a platform view
+    assert round(sum(p["spend"] for p in chart["total"]["points"] if p), 2) == pytest.approx(k["total"]["spend"], abs=0.01)
+    assert {g["key"] for g in chart["groups"]} == {k["view"]}                                                 # one platform's bars and lines
 
 
 def test_compare_window_gets_its_own_totals_and_deltas(orders, client):
@@ -144,6 +193,14 @@ def test_compare_window_gets_its_own_totals_and_deltas(orders, client):
     assert k["delta"]["nc_rev_pct"] == pytest.approx((orders[d_a][0] - orders[d_b][0]) / orders[d_b][0], abs=0.0002)
     assert get_ok(client, f"/api/platforms/kpis?{W}")["compare"] is None
     assert get_ok(client, "/api/platforms/kpis?window=launch")["compare"] is None
+
+
+def test_compare_window_of_a_platform_view_is_that_platforms_window_b(orders, client):
+    d_a, d_b = DAYS[-1], DAYS[-2]
+    k = get_ok(client, f"/api/platforms/kpis?from={d_a}&to={d_a}&compare=prev&only=meta{BASES['nc']}")
+    b = get_ok(client, f"/api/campaigns/all?from={d_b}&to={d_b}&only=meta{BASES['nc']}")["subtotals"]["meta"]["m"]
+    assert k["view"] == "meta" and k["compare"]["spend"] == b["spend"] and k["compare"]["m"]["roas"] == b["roas"] and k["compare_info"]["from"] == str(d_b)
+    assert k["delta"]["spend_pct"] == pytest.approx((k["total"]["spend"] - b["spend"]) / b["spend"], abs=0.0002)
 
 
 def test_a_compare_window_before_a_platforms_data_says_so_instead_of_failing(orders, client):

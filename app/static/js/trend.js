@@ -494,7 +494,7 @@ export function createTrendPanel(opts) {
     if (totOn && tot.orders_first && labels.length && labels[0] < tot.orders_first) notes.push(`Total NC ROAS is available from ${fmt.day(tot.orders_first)}; earlier days are blank, not zero.`);
     // hover: both platforms' spend, the total and the total NC ROAS of the bucket
     const have = new Set((res.groups || []).map((g) => g.key));
-    const extra = tot ? (i) => {
+    const extra = tot && totalLine ? (i) => {                  // a platform view keeps the plain per-series hover: its own spend and ROAS lines say it all
       const t = totPts[i];
       if (!t) return [];
       const out = [];
