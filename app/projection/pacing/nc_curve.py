@@ -141,3 +141,26 @@ def build(rows: Iterable[Sequence], today: dt.date, hours: float, spent: float |
                   "is_stale": newest is None or age > STALE_AFTER_DAYS},
     })
     return out
+
+
+def build_orders(rows: Iterable[Sequence], today: dt.date, hours: float, so_far: float | None, dow: str = "all", window_days: int = WINDOW_DAYS) -> dict:
+    """End-of-day new customers (first orders), from an ORDER-COUNT share curve: share of hour h = first orders in hour h over the window / all first orders
+    in the window (ratio of sums, the same 30 closed days and the same same-weekday switch as the revenue curve; it is not the revenue share).
+    Returns {loaded, share, projected_eod, reason}; no curve, or zero share by this time, means no projection."""
+    first, last = window_dates(today, window_days)
+    cells = _by_day(rows, first, last)
+    swapped = {d: [[c[1], c[0]] for c in day] for d, day in cells.items()}     # orders in the 'revenue' slot: share_curve then builds the order share
+    use_days = [d for d in swapped if dow != "same" or d.weekday() == today.weekday()]
+    curve = share_curve(swapped, use_days)
+    out = {"loaded": False, "share": None, "projected_eod": None, "days_used": len(curve["days"]), "reason": None}
+    if len(curve["days"]) < MIN_DAYS or curve["total"] <= 0:
+        out["reason"] = f"Only {len(curve['days'])} closed day(s) of first orders by hour are loaded; at least {MIN_DAYS} are needed."
+        return out
+    out["loaded"] = True
+    sh = share_at(curve["cum"], curve["share"], hours)
+    out["share"] = sh
+    if sh <= 0:
+        out["reason"] = "Too early in the day: no first orders have landed by this time on a typical day."
+    elif so_far is not None:
+        out["projected_eod"] = so_far / sh
+    return out

@@ -8,6 +8,7 @@
     GET /freshness                                     last day held by each feed, with age and status
     GET /intraday?spent=&time=HH:MM                    projected end-of-day Meta spend from the hourly spend curve
     GET /intraday-nc?spent=&time=HH:MM&dow=all|same    projected end-of-day new-customer revenue from the 30-closed-day hourly share curve (feed nc_hourly)
+    GET /intraday-roascpa?meta=&google=&nc_rev=&nc_orders=&meta_time=&nc_time=&dow=   projected end-of-day NC ROAS and NC CPA, with the trailing 28 closed days as reference
     GET /live-today                                    today so far (Meta spend, NC revenue) from the latest hourly Upstack snapshot (etl.live_today), with age and stale flag
     GET /levers?scenario=                              every variable behind the numbers: value, sheet default, source, owner
     PUT /levers   {scenario, levers:{key: value | null}, expected_version?}     edit scenario variables (null restores the sheet's value); audited, versioned
@@ -26,7 +27,7 @@ from psycopg.types.json import Jsonb
 from ... import db
 from ...queries import ApiError
 from .. import audit, degraded, engine, rwdb, scenarios
-from . import catalog, feeds, levers as lv, month as month_mod, nc_curve, periods, views
+from . import catalog, feeds, levers as lv, month as month_mod, nc_curve, periods, roas_cpa, views
 from .feedspec import freshness as feed_freshness
 from .targets import TargetBook
 
@@ -283,6 +284,86 @@ def get_intraday():
         out["message"] = ("The hourly spend curve is not loaded, so this assumes spend is even through the day. "
                           "Load the curve with `python -m etl.projection_pacing seed-hourly` (it reads the sheet's Automated Pacing L23:M46); "
                           "the daily refresh also loads it the next time it runs.")
+    return jsonify(out)
+
+
+def _num_arg(name: str) -> float | None:
+    v = _arg(name)
+    if v is None or v == "":
+        return None
+    try:
+        x = float(v)
+    except ValueError:
+        raise ApiError(400, f"{name} must be a number") from None
+    if not (0 <= x < 1e9):
+        raise ApiError(400, f"{name} must be between 0 and 1,000,000,000")
+    return x
+
+
+def _hours_of(name: str) -> float:
+    t = _arg(name)
+    if not t:
+        return _hours_arg()
+    try:
+        hh, mm = t.split(":")[:2]
+        hours = int(hh) + int(mm) / 60
+    except ValueError:
+        raise ApiError(400, f"{name} must be HH:MM") from None
+    if not 0 <= hours <= 24:
+        raise ApiError(400, f"{name} must be between 00:00 and 24:00")
+    return hours
+
+
+def _reference_28(conn, today):
+    """Trailing 28 closed days ending at the last day all of Meta, Google and Upstack orders have: NC revenue / (Meta + Google spend) and spend / new customers,
+    read the way the Trends totals do (app/trends.py). None when any source is missing."""
+    from ... import trends                                                  # local: the trends module pulls in the heavier query layer
+    try:
+        cov = trends.coverage(conn, today)
+        lasts = [cov[k].last for k in ("meta", "google", "orders")]
+        if not all(lasts):
+            return None
+        hi = min(min(lasts), today - timedelta(days=1))
+        lo = hi - timedelta(days=27)
+        fr, _ = trends.fetch_frame(conn, lo, hi, cov)
+        S = trends.sums(fr, lo, hi)
+    except Exception:                                                        # noqa: BLE001  (tables not loaded)
+        conn.rollback()
+        return None
+    spend = S["ms"] + S["gs"]
+    if spend <= 0 or S["onc_rev"] <= 0:
+        return None
+    return {"from": lo.isoformat(), "to": hi.isoformat(), "days": 28, "total_spend": spend, "nc_rev": S["onc_rev"], "new_customers": S["onc_ord"],
+            "nc_roas": S["onc_rev"] / spend, "nc_cpa": (spend / S["onc_ord"]) if S["onc_ord"] else None}
+
+
+@bp.get("/intraday-roascpa")
+def get_intraday_roascpa():
+    """Projected end-of-day NC ROAS (NC revenue / Meta + Google spend) and NC CPA (spend / new customers) from the three so-far figures, the Meta hourly
+    spend curve and the 30-closed-day first-order curves (revenue and order count, each its own share). See app/projection/pacing/roas_cpa.py."""
+    conn = db.get_conn()
+    today = _today()
+    meta, google, nc_rev, nc_orders = (_num_arg(k) for k in ("meta", "google", "nc_rev", "nc_orders"))
+    dow = _arg("dow") or "all"
+    if dow not in ("all", "same"):
+        raise ApiError(400, "dow must be all or same")
+    meta_hours, nc_hours = _hours_of("meta_time"), _hours_of("nc_time")
+    hourly = [0.0] * 24
+    for r in conn.execute("SELECT hour, spend_30d FROM proj_pacing_hourly ORDER BY hour").fetchall():
+        h, s = (r["hour"], r["spend_30d"]) if isinstance(r, dict) else (r[0], r[1])
+        hourly[int(h)] = float(s)
+    first, _ = nc_curve.window_dates(today)
+    try:
+        rows = [tuple(r.values()) if isinstance(r, dict) else tuple(r)
+                for r in conn.execute("SELECT day, hour, nc_rev, nc_orders FROM proj_feed_nc_hourly WHERE day >= %s AND day < %s", (first, today)).fetchall()]
+    except Exception:                                                        # noqa: BLE001
+        conn.rollback()
+        rows = []
+    out = roas_cpa.project(meta_hourly=hourly, meta_spent=meta, meta_hours=meta_hours, nc_rows=rows, today=today, nc_rev=nc_rev, nc_orders=nc_orders,
+                           nc_hours=nc_hours, google=google, dow=dow)
+    out["inputs"] = {"meta": meta, "google": google, "nc_rev": nc_rev, "nc_orders": nc_orders, "meta_time": round(meta_hours, 2), "nc_time": round(nc_hours, 2), "dow": dow}
+    out["reference_28"] = _reference_28(conn, today)
+    out["as_of"] = today.isoformat()
     return jsonify(out)
 
 
