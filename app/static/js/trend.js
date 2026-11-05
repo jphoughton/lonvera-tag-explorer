@@ -1,5 +1,5 @@
 // Trend panel (Chart.js), sparklines and the "pin rows into the chart" store.
-import { h, enc, isNum, apiWindow, currentParams, navigate, cleanParams, qs, cmpView, onCmpRefresh, colPref, trendCollapsed, setTrendCollapsed, sparkMetric, metricLabel } from './util.js';
+import { h, enc, fmt, isNum, apiWindow, currentParams, navigate, cleanParams, qs, cmpView, onCmpRefresh, colPref, trendCollapsed, setTrendCollapsed, sparkMetric, metricLabel } from './util.js';
 import { api, AuthError } from './api.js';
 import { trendChart, fmtMetric, BAR_COLOR, LINE_COLOR } from './charts.js';
 
@@ -17,6 +17,10 @@ export const METRICS = [
   { key: 'conv_rate', label: 'Conv rate', kind: 'rate', advanced: true },
 ];
 const METRIC = Object.fromEntries(METRICS.map((m) => [m.key, m]));
+// chart-only line on the All views: the business's actual new-customer revenue / total spend (Meta + Google), drawn from the server's `total` series
+export const NC_TOTAL = { key: 'nc_roas_total', label: 'NC ROAS (total)', kind: 'roas', virtual: true };
+METRIC[NC_TOTAL.key] = NC_TOTAL;
+const TOTAL_COLOR = '#111827';
 export const metricInfo = (key) => METRIC[key] || METRIC.spend;
 
 const PALETTE = ['#1a5fb4', '#d9822b', '#1d8a56', '#a64dc4', '#c2410c', '#0b7a75', '#b8860b', '#c0392b'];
@@ -166,6 +170,7 @@ function normalize(d) {
     children: d.children || null,
     groups: d.groups || null,                       // generic split: [{key, label, color, points}] (platform pages)
     labels: d.labels || null,                       // explicit x axis (platform pages: platforms whose series start on different days)
+    total: d.total || null,                         // All views: total spend and total NC ROAS per bucket, on the same x axis
     notes: d.notes || [],
     grain: d.grain || 'day',
   };
@@ -190,6 +195,8 @@ const SPLIT_HINT = 'Split by Stage applies to additive Bars metrics (Spend, Purc
            splits: [[key, label]] (first = default unless defaultSplit), defaultSplit,
            barsMetrics: [metric keys] limits the Bars choices (metrics that may be added across the groups),
            alwaysSplit: the server always returns the groups (platform pages): ratio lines are drawn per group even when Bars is None,
+           total: the response carries `total` (total spend + total NC ROAS per bucket): shown in the tooltip, and as totals above the stacked bars,
+           totalLine: offer 'NC ROAS (total)' as a Line choice and make it the default (off when a filter hides the ratio),
            basis: {param, options: [[key, label]], default} an extra Numbers choice kept in the URL } }
 */
 export function createTrendPanel(opts) {
@@ -197,10 +204,13 @@ export function createTrendPanel(opts) {
   const src = mode === 'source' ? opts.source : null;
   const splitItems = src ? src.splits : [['none', 'None'], ['stage', 'Stage']];
   const barsOnly = src && src.barsMetrics ? src.barsMetrics : null;
-  const valid = (v, d) => (v === 'none' || METRIC[v] ? v : d);
+  const totalLine = !!(src && src.totalLine);
+  const defaultLine = totalLine ? NC_TOTAL.key : 'roas';
+  const validBars = (v, d) => (v === 'none' || (METRIC[v] && !METRIC[v].virtual) ? v : d);
+  const validLine = (v, d) => (v === 'none' || (METRIC[v] && (!METRIC[v].virtual || totalLine)) ? v : d);
   const state = {
-    bars: valid(p.tb, 'spend'),
-    line: valid(p.tl, 'roas'),
+    bars: validBars(p.tb, 'spend'),
+    line: validLine(p.tl, defaultLine),
     grain: ['week', 'month'].includes(p.tg) ? p.tg : 'day',
     split: splitItems.some(([k]) => k === p.ts) ? p.ts : (src ? (src.defaultSplit || splitItems[0][0]) : 'none'),
     basis: src && src.basis ? (src.basis.options.some(([k]) => k === p[src.basis.param]) ? p[src.basis.param] : src.basis.default) : null,
@@ -218,23 +228,30 @@ export function createTrendPanel(opts) {
   const effSplit = () => (barsAdditive() && state.split !== 'none' ? state.split : 'none');
 
   // ----- DOM -----
-  const optionsFor = (sel, current, only = null) => {
-    sel.replaceChildren(...METRICS.filter((m) => (!m.advanced || colPref('advanced') || current === m.key) && (!only || only.includes(m.key))).map((m) => h('option', { value: m.key }, m.label)), h('option', { value: 'none' }, 'None'));
+  const optionsFor = (sel, current, only = null, extra = []) => {
+    sel.replaceChildren(...extra.map((m) => h('option', { value: m.key }, m.label)), ...METRICS.filter((m) => (!m.advanced || colPref('advanced') || current === m.key) && (!only || only.includes(m.key))).map((m) => h('option', { value: m.key }, m.label)), h('option', { value: 'none' }, 'None'));
     sel.value = current;
   };
   const barsSel = h('select', { id: 'trend-bars', 'aria-label': 'Bars metric (left axis)' });
   const lineSel = h('select', { id: 'trend-line', 'aria-label': 'Line metric (right axis)' });
   optionsFor(barsSel, state.bars, barsOnly);
-  optionsFor(lineSel, state.line);
+  const lineExtra = totalLine ? [NC_TOTAL] : [];
+  optionsFor(lineSel, state.line, null, lineExtra);
   barsSel.addEventListener('change', () => pageNavigate({ tb: barsSel.value })); // bars also drive the sparkline column: re-render the page
   lineSel.addEventListener('change', () => {
     if (state.bars === 'none') { pageNavigate({ tl: lineSel.value }); return; } // sparklines follow the line while Bars = None: re-render
     state.line = lineSel.value;
-    writeUrl('tl', state.line, 'roas');
+    writeUrl('tl', state.line, defaultLine);
+    syncSwap();
     if (last) paint(last); else load();
   });
   const swapBtn = h('button', { type: 'button', class: 'btn small', id: 'trend-swap', title: 'Swap Bars and Line' }, 'Swap');
   swapBtn.addEventListener('click', () => pageNavigate({ tb: state.line, tl: state.bars }));
+  function syncSwap() {
+    const v = !!(METRIC[state.line] && METRIC[state.line].virtual);
+    swapBtn.disabled = v;
+    swapBtn.title = v ? 'NC ROAS (total) is a line only: it cannot be swapped into the bars' : 'Swap Bars and Line';
+  }
   function pageNavigate(changes) {
     const q = cleanParams({ ...currentParams(), ...changes });
     navigate(location.pathname + qs(q), { replace: true, scroll: false });
@@ -291,6 +308,7 @@ export function createTrendPanel(opts) {
   }
   syncSplitControl();
   syncPinLock();
+  syncSwap();
 
   // ----- state -----
   function writeUrl(key, value, dflt) {
@@ -427,6 +445,11 @@ export function createTrendPanel(opts) {
       else if (split === 'stage' && res.byStage) groups = order.map((st) => ({ key: st, label: STAGE_NAME[st], color: STAGE_COLOR[st], points: res.byStage[st] }));
     }
     const stacked = !!bm && !!groups;
+    // All views: the server's total series (spend of both platforms, NC ROAS as a ratio of sums per bucket), same x axis as the labels
+    const tot = src && src.total && res.total ? res.total : null;
+    const totOn = !!(tot && tot.available && totalLine);
+    const totPts = tot ? tot.points || [] : [];
+    const totLine = () => ({ axis: 'right', type: 'line', kind: NC_TOTAL.kind, label: NC_TOTAL.label, data: totPts.map((pt) => (pt && isNum(pt.nc_roas) ? pt.nc_roas : null)), color: TOTAL_COLOR, width: 2.6, partialDash: true, order: -1, hideInTip: true });
     if (rows) {
       // pinned rows: one line per row on the right axis (Bars = None)
       if (lm) res.pinned.forEach((pn, i) => datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: pn.label, data: val(pn.points, lm), color: PALETTE[i % PALETTE.length], width: 2, partialDash: true }));
@@ -440,8 +463,11 @@ export function createTrendPanel(opts) {
         }
       }
       if (lm) {
-        if (groups && !lm.additive) {
+        if (lm.virtual) {
+          if (totOn) datasets.push(totLine());
+        } else if (groups && !lm.additive) {
           groups.forEach((g) => datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: `${lm.label} · ${g.label}`, data: val(g.points, lm), color: g.color, width: 2, partialDash: true }));
+          if (totOn && lm.key === 'roas') datasets.push(totLine());               // the actual total next to each platform's own line
         } else {
           datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: lm.label, data: val(pts, lm), color: LINE_COLOR, width: 2.4, partialDash: true });
         }
@@ -465,9 +491,22 @@ export function createTrendPanel(opts) {
       if (a && a.from && a.to) shades.push({ from: a.from, to: a.to, color: 'rgba(26,95,180,0.14)' });
       if (b && b.from && b.to && cmpView.on) shades.push({ from: b.from, to: b.to, color: 'rgba(217,130,43,0.20)' });
     }
+    if (totOn && tot.orders_first && labels.length && labels[0] < tot.orders_first) notes.push(`Total NC ROAS is available from ${fmt.day(tot.orders_first)}; earlier days are blank, not zero.`);
+    // hover: both platforms' spend, the total and the total NC ROAS of the bucket
+    const have = new Set((res.groups || []).map((g) => g.key));
+    const extra = tot ? (i) => {
+      const t = totPts[i];
+      if (!t) return [];
+      const out = [];
+      if (have.has('meta')) out.push(`Meta spend: ${fmt.money2(t.meta_spend)}`);
+      if (have.has('google')) out.push(`Google spend: ${fmt.money2(t.google_spend)}`);
+      out.push(`Total spend: ${fmt.money2(t.spend)}`);
+      if (tot.available) out.push(isNum(t.nc_roas) ? `Total NC ROAS: ${fmt.roas(t.nc_roas)}${t.nc_days != null ? ` (${t.nc_days} day${t.nc_days === 1 ? '' : 's'} with orders)` : ''}` : 'Total NC ROAS: no order data');
+      return out;
+    } : null;
     if (chart) chart.destroy();
     chart = trendChart(canvas, {
-      labels, grain: res.grain || state.grain, partial, shades, stackedBars: stacked,
+      labels, grain: res.grain || state.grain, partial, shades, stackedBars: stacked, stackTotals: !!tot, extra,
       left: bm && !rows ? { kind: bm.kind, title: `${bm.label} (bars, left)` } : null,
       right: lm ? { kind: lm.kind, title: `${lm.label} (line, right)` } : null,
       datasets,
@@ -486,7 +525,7 @@ export function createTrendPanel(opts) {
   // advanced metrics appear with the Advanced columns chip; pins re-draw the chart
   onCmpRefresh(() => {
     optionsFor(barsSel, state.bars, barsOnly);
-    optionsFor(lineSel, state.line);
+    optionsFor(lineSel, state.line, null, lineExtra);
     overlayWrap.hidden = !(cmpView.on && mode !== 'ad');
   });
   if (pins) pins.onChange(() => { if (!state.collapsed && state.bars === 'none') load(); else if (!state.collapsed) pinInfoOnly(); });

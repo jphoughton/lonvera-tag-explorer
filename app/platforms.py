@@ -42,12 +42,14 @@ def _span(meta: q.DataMeta, platform: str, source: str) -> q.DataMeta:
     return q.meta_for_source(meta, source) if platform == "meta" else gg.google_meta(meta, source)
 
 
-def windows(meta: q.DataMeta, args, numbers: str, platforms=PLATFORMS) -> tuple[dict, dict, dict]:
+def windows(meta: q.DataMeta, args, numbers: str, platforms=PLATFORMS, keep_compare: bool = False) -> tuple[dict, dict, dict]:
     """({platform: (data span, WindowSpec)}, {platform: why it is left out}, info). A platform whose data is not loaded is left out. 'Since launch' on the
     All views is the stretch every loaded platform has data for (a platform alone keeps its own). Stage / Active only / comparison are dropped."""
     source, basis = NUMBERS[numbers]
     a = MultiDict(args)
     for k in DROP:
+        if keep_compare and k in ("compare", "cfrom", "cto", "perday"):
+            continue
         a.pop(k, None)
     a["source"], a["basis"] = source, basis
     spans, skipped = {}, {}
@@ -229,4 +231,191 @@ def trend(conn, meta: q.DataMeta, args, numbers: str, *, grain: str = "day", pla
         notes.append("Upstack attribution is drawn only where Upstack has it: "
                      + ", ".join(f"{g['label']} from {q._fmt_day(dt.date.fromisoformat(g['history_from']), True)}" for g in groups) + ".")
     info = head_info(wins, extra["note"]) if wins else {}
-    return {"grain": grain, "numbers": numbers, "labels": labels, "points": comb, "groups": groups, "window_info": info, "compare_info": None, "notes": notes}
+    tbl = day_table(conn, meta, args, platform=platform, product_slug=product_slug, ctype=ctype)
+    part = {pt["t"]: bool(pt.get("partial")) for pt in comb}
+    total = total_series(tbl, grain, labels, part)
+    return {"grain": grain, "numbers": numbers, "labels": labels, "points": comb, "groups": groups, "total": total, "window_info": info, "compare_info": None, "notes": notes}
+
+
+# ---------------------------------------------------------------------------------------------------------------- totals: Total spend and Total NC ROAS
+#
+# Meta and Google are the only spend platforms, so Total spend = Meta spend + Google spend (each platform's own spend, the same in every basis).
+# Total NC ROAS = the business's ACTUAL new-customer revenue / total spend. The numerator is Upstack's order-level new-customer revenue per Pacific day
+# (upstack_orders_daily, the same source and buckets as the pacing 'NC Rev'), counted once. It is NOT the sum of Meta-attributed and Google-attributed
+# NC revenue: both platforms credit the same orders and some orders are credited to neither. That attributed sum is shown next to it with the gap.
+# The ratio is a ratio of sums over the days both platforms and the orders feed cover; a day without data is blank, never zero.
+
+NO_ROAS_FILTER = ("Total NC ROAS is shown for all platforms and all products only: Upstack's orders have no product or platform dimension, so new-customer revenue "
+                  "cannot be split to a filtered view. Total spend below still follows the filter.")
+NO_ROAS_ORDERS = "New-customer order data (Upstack orders) is not loaded yet, so Total NC ROAS is not available."
+NO_ROAS_PLATFORM = "Total NC ROAS needs both Meta and Google data in the window."
+
+
+def orders_coverage(conn) -> tuple[dt.date | None, dt.date | None]:
+    r = q.row_of(conn, "SELECT min(day) AS a, max(day) AS b FROM upstack_orders_daily")
+    return (r["a"], r["b"]) if r and r["a"] else (None, None)
+
+
+def orders_by_day(conn, lo: dt.date, hi: dt.date) -> dict[dt.date, dict]:
+    return {r["day"]: {"nc_rev": float(r["nc_rev"]), "nc_orders": float(r["nc_orders"]), "total_rev": float(r["total_rev"])}
+            for r in q.rows_of(conn, "SELECT day, nc_rev, nc_orders, total_rev FROM upstack_orders_daily WHERE day BETWEEN %(a)s AND %(b)s", {"a": lo, "b": hi})}
+
+
+def _range(span: q.DataMeta, w: q.WindowSpec) -> tuple[dt.date, dt.date]:
+    return (span.daily_start, span.data_through) if w.is_launch else (w.date_from, w.date_to)
+
+
+def _day_points(conn, span, w, pf: str, product, ctype) -> list[dict]:
+    if pf == "meta":
+        return q.campaigns_trend(conn, span, w, product, grain="day")["points"]
+    return gg.trend(conn, span, w, "day", ctype, None)["points"]
+
+
+def _product_arg(conn, slug):
+    if slug is None:
+        return "all"
+    return None if slug == q.NO_PRODUCT_SLUG else q.get_product(conn, slug)
+
+
+def day_table(conn, meta: q.DataMeta, args, *, platform=None, product_slug=None, ctype=None) -> dict:
+    """Per Pacific day: Meta spend, Google spend (None where the platform's window does not cover the day), actual NC revenue (None where the orders feed has no
+    day) and, on the Upstack new-customer basis, what each platform attributes. `full` = both platforms, no product / type filter: the only view where a total
+    NC ROAS means something."""
+    want = [pf for pf in PLATFORMS if (platform in (None, pf)) and not (pf == "google" and product_slug is not None) and not (pf == "meta" and ctype is not None)]
+    wins, skipped, extra = windows(meta, args, "own", [pf for pf in PLATFORMS if platform in (None, pf)])
+    spend: dict[str, dict[dt.date, float]] = {}
+    rng: dict[str, tuple] = {}
+    for pf in want:
+        if pf not in wins:
+            continue
+        span, w = wins[pf]
+        q.set_source("meta", "nc")
+        product = _product_arg(conn, product_slug) if pf == "meta" else None
+        spend[pf] = {dt.date.fromisoformat(pt["t"]): pt["spend"] for pt in _day_points(conn, span, w, pf, product, ctype)}
+        rng[pf] = _range(span, w)
+    full = platform is None and product_slug is None and ctype is None and set(spend) == set(PLATFORMS)
+    days = sorted({d for m in spend.values() for d in m})
+    first, last = orders_coverage(conn)
+    orders = orders_by_day(conn, days[0], days[-1]) if days and first else {}
+    # what each platform attributes on Upstack's new-customer basis (for the gap line)
+    attributed: dict[str, dict[dt.date, float]] = {}
+    if full and orders:
+        wins_nc, _sk, _x = windows(meta, args, "nc")
+        for pf, (span, w) in wins_nc.items():
+            q.set_source("upstack", "nc")
+            product = "all" if pf == "meta" else None
+            attributed[pf] = {dt.date.fromisoformat(pt["t"]): pt["revenue"] for pt in _day_points(conn, span, w, pf, product, None)}
+    q.set_source("meta")
+    reason = None
+    if not full:
+        reason = NO_ROAS_FILTER if (platform or product_slug or ctype) else NO_ROAS_PLATFORM
+    elif not orders:
+        reason = NO_ROAS_ORDERS
+    rows = []
+    for d in days:
+        m, g = spend.get("meta", {}).get(d), spend.get("google", {}).get(d)
+        o = orders.get(d)
+        defined = full and m is not None and g is not None and o is not None
+        rows.append({"day": d, "meta": m, "google": g, "spend": (m or 0.0) + (g or 0.0), "nc_rev": o["nc_rev"] if o else None, "nc_orders": o["nc_orders"] if o else None,
+                     "defined": defined, "attr_meta": attributed.get("meta", {}).get(d), "attr_google": attributed.get("google", {}).get(d)})
+    return {"rows": rows, "full": full, "reason": reason, "ranges": rng, "orders_first": first, "orders_last": last, "skipped": skipped, "extra": extra, "wins": wins}
+
+
+def _roas(rev: float, spend: float):
+    return round(rev / spend, 4) if spend else None
+
+
+def kpi_of(t: dict) -> dict:
+    """The strip for one window from its day table: totals follow the table (each platform over its own window); NC ROAS is over the days all three feeds cover."""
+    rows = t["rows"]
+    meta_sp = round(sum(r["meta"] or 0.0 for r in rows), 2)
+    google_sp = round(sum(r["google"] or 0.0 for r in rows), 2)
+    total = round(meta_sp + google_sp, 2)
+    out = {"spend": total, "meta_spend": meta_sp, "google_spend": google_sp,
+           "meta_share": round(meta_sp / total, 4) if total else None, "google_share": round(google_sp / total, 4) if total else None,
+           "window": {"from": rows[0]["day"].isoformat(), "to": rows[-1]["day"].isoformat(), "days": len(rows)} if rows else None}
+    D = [r for r in rows if r["defined"]]
+    nc: dict = {"available": bool(D) and t["reason"] is None, "reason": t["reason"]}
+    if D and t["reason"] is None:
+        rev = round(sum(r["nc_rev"] for r in D), 2)
+        sp = round(sum(r["spend"] for r in D), 2)
+        attr_m = round(sum(r["attr_meta"] or 0.0 for r in D), 2) if any(r["attr_meta"] is not None for r in D) else None
+        attr_g = round(sum(r["attr_google"] or 0.0 for r in D), 2) if any(r["attr_google"] is not None for r in D) else None
+        have = attr_m is not None and attr_g is not None
+        attr_sum = round(attr_m + attr_g, 2) if have else None
+        nc.update({"rev": rev, "spend": sp, "roas": _roas(rev, sp), "from": D[0]["day"].isoformat(), "to": D[-1]["day"].isoformat(), "days": len(D),
+                   "orders": round(sum(r["nc_orders"] or 0 for r in D)),
+                   "attributed": {"meta": attr_m, "google": attr_g, "sum": attr_sum, "gap": round(attr_sum - rev, 2) if have else None,
+                                  "gap_pct": round((attr_sum - rev) / rev, 4) if have and rev else None}})
+        if len(D) < len(rows):
+            nc["partial"] = f"Days with Meta, Google and order data: {len(D)} of {len(rows)} in this window."
+    elif t["reason"] is None:
+        nc["reason"] = "No day in this window has Meta, Google and order data together."
+    out["nc"] = nc
+    return out
+
+
+def kpis(conn, meta: q.DataMeta, args, *, platform=None, product_slug=None, ctype=None) -> dict:
+    """Totals strip above the All charts: window A and, when Compare is on (a date window), window B."""
+    a = day_table(conn, meta, args, platform=platform, product_slug=product_slug, ctype=ctype)
+    out = {"filters": {"only": platform, "product": product_slug, "type": ctype}, "total": kpi_of(a), "compare": None, "delta": None,
+           "orders": {"first": a["orders_first"].isoformat() if a["orders_first"] else None, "last": a["orders_last"].isoformat() if a["orders_last"] else None},
+           "platform_windows": {k: {"from": v[0].isoformat(), "to": v[1].isoformat()} for k, v in a["ranges"].items()},
+           "notes": [f"{NAMES[k]}: {why}" for k, why in a["skipped"].items()]}
+    out["window_info"] = head_info(a["wins"], a["extra"]["note"]) if a["wins"] else {}
+    cmp_on = any(args.get(k) for k in ("compare", "cfrom", "cto")) and a["wins"]
+    if cmp_on:
+        try:
+            full_wins, _sk, _x = windows(meta, args, "own", keep_compare=True)
+            span0, w0 = next(iter(full_wins.values()))
+            cw = w0.cmp
+        except q.ApiError:
+            cw = None
+        if cw is not None and not cw.is_empty:
+            b_args = MultiDict(args)
+            for k in ("compare", "cfrom", "cto", "perday", "window"):
+                b_args.pop(k, None)
+            b_args["from"], b_args["to"] = cw.date_from.isoformat(), cw.date_to.isoformat()
+            try:
+                b = day_table(conn, meta, b_args, platform=platform, product_slug=product_slug, ctype=ctype)
+            except q.ApiError as e:
+                if e.status != 400:
+                    raise
+                out["notes"].append("The comparison window starts before a platform's data does, so there is nothing to compare to.")
+                return out
+            out["compare"] = kpi_of(b)
+            out["compare_info"] = {"from": cw.date_from.isoformat(), "to": cw.date_to.isoformat(), "days": (cw.date_to - cw.date_from).days + 1}
+            ta, tb = out["total"], out["compare"]
+            pct = lambda x, y: round((x - y) / y, 4) if x is not None and y else None
+            out["delta"] = {"spend_pct": pct(ta["spend"], tb["spend"]), "nc_rev_pct": pct(ta["nc"].get("rev"), tb["nc"].get("rev")), "nc_roas_pct": pct(ta["nc"].get("roas"), tb["nc"].get("roas"))}
+    return out
+
+
+def _bucket_key(d: dt.date, grain: str) -> dt.date:
+    return d if grain == "day" else d - dt.timedelta(days=d.weekday()) if grain == "week" else d.replace(day=1)
+
+
+def total_series(t: dict, grain: str, labels: list[str], partial: dict[str, bool]) -> dict:
+    """The Total series of the chart on the chart's own x axis: per bucket the platforms' summed spend, and NC ROAS as a ratio of sums over the days all feeds
+    cover (never a mean of daily ratios). Buckets without such a day are null."""
+    by: dict[dt.date, dict] = {}
+    for r in t["rows"]:
+        b = by.setdefault(_bucket_key(r["day"], grain), {"spend": 0.0, "meta": 0.0, "google": 0.0, "nc_rev": 0.0, "nc_spend": 0.0, "days": 0})
+        b["spend"] += r["spend"]
+        b["meta"] += r["meta"] or 0.0
+        b["google"] += r["google"] or 0.0
+        if r["defined"]:
+            b["nc_rev"] += r["nc_rev"]
+            b["nc_spend"] += r["spend"]
+            b["days"] += 1
+    pts = []
+    for lab in labels:
+        b = by.get(dt.date.fromisoformat(lab))
+        if not b:
+            pts.append(None)
+            continue
+        pts.append({"t": lab, "partial": bool(partial.get(lab)), "spend": round(b["spend"], 2), "meta_spend": round(b["meta"], 2), "google_spend": round(b["google"], 2),
+                    "nc_rev": round(b["nc_rev"], 2) if b["days"] else None, "nc_spend": round(b["nc_spend"], 2) if b["days"] else None,
+                    "nc_roas": _roas(b["nc_rev"], b["nc_spend"]) if b["days"] else None, "nc_days": b["days"]})
+    return {"available": t["full"] and t["reason"] is None, "reason": t["reason"], "points": pts,
+            "orders_first": t["orders_first"].isoformat() if t["orders_first"] else None}

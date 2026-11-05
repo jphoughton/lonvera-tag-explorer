@@ -9,6 +9,7 @@ change the figures. Login password: `test`.
 """
 import io
 import json
+import math
 import os
 import random
 import re
@@ -1365,7 +1366,7 @@ def platform_campaigns():
     return jsonify(platform="meta", product=brief, scope="tracker+unmatched", window_info=win["info"], compare_info=cinfo(), products=product_chips(win), rows=rows, total=tot)
 
 
-def platform_series(win, platform, numbers, ads_filter=None):
+def platform_series(win, platform, numbers, ads_filter=None, gtype=None):
     """per-day 8-tuples of a platform on the chosen numbers (mock); Meta from the mock ads, Google from g_day"""
     lo, hi = (0, N - 1) if win["launch"] else (win["i0"], win["i1"])
     if platform == "meta":
@@ -1376,6 +1377,8 @@ def platform_series(win, platform, numbers, ads_filter=None):
     for i in range(N):
         sp = pu = rv = imp = clk = 0.0
         for ci in range(len(G_CAMPS)):
+            if gtype and G_CAMPS[ci][1] != gtype:
+                continue
             d = g_day(ci, i)
             sp += d["spend"]; imp += d["imp"]; clk += d["clk"]
             pu += d["rp"] if numbers == "own" else d["up"]
@@ -1424,7 +1427,7 @@ def platforms_trend():
         if only and only != key or (key == "google" and slug) or (key == "meta" and typ):
             continue
         ads_f = [a for a in cur_ads() if a["product"] == slug] if (key == "meta" and slug) else None
-        arr, lo, hi = platform_series(win, key, numbers, ads_f)
+        arr, lo, hi = platform_series(win, key, numbers, ads_f, typ)
         groups.append(dict(key=key, label=name, color=color, points=series_points(arr, lo, hi, grain)))
     labels = sorted({pt["t"] for gr in groups for pt in gr["points"]})
     comb = []
@@ -1432,7 +1435,112 @@ def platforms_trend():
         col = [pt for gr in groups for pt in gr["points"] if pt["t"] == t]
         comb.append(dict(t=t, spend=round(sum(c["spend"] for c in col), 2), impressions=sum(c["impressions"] or 0 for c in col), link_clicks=sum(c["link_clicks"] or 0 for c in col)))
     notes = ["Upstack attribution is drawn only where Upstack has it: Meta from May 6, 2026, Google from May 13, 2025."] if numbers != "own" else []
-    return jsonify(window_info=win["info"], compare_info=None, grain=grain, numbers=numbers, labels=labels, points=comb, groups=groups, notes=notes)
+    total = total_block(win, grain, labels, only, slug, typ)
+    return jsonify(window_info=win["info"], compare_info=None, grain=grain, numbers=numbers, labels=labels, points=comb, groups=groups, total=total, notes=notes)
+
+
+# ----------------------------------------------------------------------------------------------- Total spend / Total NC ROAS (All views)
+ORDERS_FROM = 3                       # the mock orders feed starts three days after the first day: earlier days read blank, never zero
+NO_ROAS_FILTER = ("Total NC ROAS is shown for all platforms and all products only: Upstack's orders have no product or platform dimension, so new-customer revenue "
+                  "cannot be split to a filtered view. Total spend below still follows the filter.")
+
+
+def day_spend_table(only, slug, typ):
+    """per-day spend of each platform in view (all N days), the platforms' filters as on the All campaigns table"""
+    out = {}
+    for key in ("meta", "google"):
+        if only and only != key or (key == "google" and slug) or (key == "meta" and typ):
+            continue
+        ads_f = [a for a in cur_ads() if a["product"] == slug] if (key == "meta" and slug) else None
+        arr, _lo, _hi = platform_series({"launch": True}, key, "own", ads_f, typ)
+        out[key] = [round(a[0], 2) for a in arr]            # cents per day, as the day points the chart draws
+    return out
+
+
+_ORDERS = []
+
+
+def orders_nc(i):
+    """actual new-customer revenue of mock day i: a little over half of that day's two-platform spend (all ads, whatever the request filters), varying by day;
+    None before the feed starts"""
+    if i < ORDERS_FROM:
+        return None
+    if not _ORDERS:
+        marr = sum_series(ADS, ALL_STAGES)
+        garr, _lo, _hi = platform_series({"launch": True}, "google", "own")
+        _ORDERS.extend(None if k < ORDERS_FROM else round((marr[k][0] + garr[k][0]) * (0.55 + 0.1 * math.sin(k)) + 120.0, 2) for k in range(N))
+    return _ORDERS[i]
+
+
+def _bucket(d, grain):
+    return d if grain == "day" else d - timedelta(days=d.weekday()) if grain == "week" else d.replace(day=1)
+
+
+def total_block(win, grain, labels, only, slug, typ):
+    lo, hi = (0, N - 1) if win["launch"] else (win["i0"], win["i1"])
+    sp = day_spend_table(only, slug, typ)
+    full = not only and not slug and not typ
+    by = {}
+    for i in range(lo, hi + 1):
+        b = by.setdefault(_bucket(DAYS[i], grain), dict(spend=0.0, meta=0.0, google=0.0, rev=0.0, nsp=0.0, days=0, n=0))
+        m, gg = sp.get("meta", [0.0] * N)[i], sp.get("google", [0.0] * N)[i]
+        b["spend"] += m + gg; b["meta"] += m; b["google"] += gg; b["n"] += 1
+        o = orders_nc(i)
+        if full and o is not None:
+            b["rev"] += o; b["nsp"] += m + gg; b["days"] += 1
+    size = lambda k: 1 if grain == "day" else 7 if grain == "week" else __import__("calendar").monthrange(k.year, k.month)[1]
+    pts = []
+    for lab in labels:
+        k = date.fromisoformat(lab)
+        b = by.get(k)
+        if not b:
+            pts.append(None)
+            continue
+        pts.append(dict(t=lab, partial=b["n"] < size(k), spend=round(b["spend"], 2), meta_spend=round(b["meta"], 2), google_spend=round(b["google"], 2),
+                        nc_rev=round(b["rev"], 2) if b["days"] else None, nc_spend=round(b["nsp"], 2) if b["days"] else None,
+                        nc_roas=round(b["rev"] / b["nsp"], 4) if b["days"] and b["nsp"] else None, nc_days=b["days"]))
+    return dict(available=full, reason=None if full else NO_ROAS_FILTER, points=pts, orders_first=DAYS[ORDERS_FROM].isoformat())
+
+
+def kpi_block(lo, hi, only, slug, typ):
+    sp = day_spend_table(only, slug, typ)
+    full = not only and not slug and not typ
+    meta_sp = round(sum(sp.get("meta", [0.0] * N)[lo:hi + 1]), 2)
+    google_sp = round(sum(sp.get("google", [0.0] * N)[lo:hi + 1]), 2)
+    total = round(meta_sp + google_sp, 2)
+    D = [i for i in range(lo, hi + 1) if full and orders_nc(i) is not None]
+    nc = dict(available=bool(D) and full, reason=None if full else NO_ROAS_FILTER)
+    if D and full:
+        rev = round(sum(orders_nc(i) for i in D), 2)
+        nsp = round(sum(sp["meta"][i] + sp["google"][i] for i in D), 2)
+        am, ag = round(rev * 0.62, 2), round(rev * 0.18, 2)
+        nc.update(rev=rev, spend=nsp, roas=round(rev / nsp, 4), **{"from": DAYS[D[0]].isoformat(), "to": DAYS[D[-1]].isoformat()}, days=len(D), orders=len(D) * 7,
+                  attributed=dict(meta=am, google=ag, sum=round(am + ag, 2), gap=round(am + ag - rev, 2), gap_pct=round((am + ag - rev) / rev, 4)))
+        if len(D) < hi - lo + 1:
+            nc["partial"] = f"Days with Meta, Google and order data: {len(D)} of {hi - lo + 1} in this window."
+    return dict(spend=total, meta_spend=meta_sp, google_spend=google_sp, meta_share=round(meta_sp / total, 4) if total else None,
+                google_share=round(google_sp / total, 4) if total else None, window=dict(**{"from": DAYS[lo].isoformat(), "to": DAYS[hi].isoformat()}, days=hi - lo + 1), nc=nc)
+
+
+@app.get("/api/platforms/kpis")
+def platforms_kpis():
+    win = parse_win({k: v for k, v in request.args.items() if k in ("window", "from", "to")})
+    only, slug, typ = request.args.get("only"), request.args.get("product"), request.args.get("type")
+    if only not in (None, "meta", "google"):
+        raise Bad("only must be meta or google")
+    if slug and typ:
+        raise Bad("product and type cannot both be set")
+    lo, hi = (0, N - 1) if win["launch"] else (win["i0"], win["i1"])
+    out = dict(filters=dict(only=only, product=slug, type=typ), total=kpi_block(lo, hi, only, slug, typ), compare=None, delta=None,
+               orders=dict(first=DAYS[ORDERS_FROM].isoformat(), last=DAYS[-1].isoformat()), platform_windows={}, notes=[], window_info=win["info"])
+    if getattr(g, "cmp", None):
+        b = kpi_block(g.cmp["i0"], g.cmp["i1"], only, slug, typ)
+        out["compare"] = b
+        out["compare_info"] = g.cmp["info"]
+        ta, tb = out["total"], b
+        pct = lambda x, y: round((x - y) / y, 4) if x is not None and y else None
+        out["delta"] = dict(spend_pct=pct(ta["spend"], tb["spend"]), nc_rev_pct=pct(ta["nc"].get("rev"), tb["nc"].get("rev")), nc_roas_pct=pct(ta["nc"].get("roas"), tb["nc"].get("roas")))
+    return jsonify(out)
 
 
 @app.get("/api/campaigns/all")

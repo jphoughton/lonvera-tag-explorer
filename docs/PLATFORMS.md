@@ -63,8 +63,8 @@ The same panel as the product page (`createTrendPanel`, mode `source`): Bars and
 | Page | Endpoint | Bars | Split bars by | Line |
 |---|---|---|---|---|
 | Meta Campaigns (`/campaigns`) | `GET /api/campaigns/trend` | any metric (default Spend) | None / Stage / Product | any metric (default ROAS; NC ROAS on the new-customer basis) |
-| All platforms (`/?platform=all`) | `GET /api/platforms/trend?numbers=own\|nc\|all` | Spend, Impressions, Link clicks (what may be added across platforms) | Platform | one line per platform |
-| All campaigns (`/campaigns?platform=all`) | `GET /api/platforms/trend` | same | Platform | one line per platform |
+| All platforms (`/?platform=all`) | `GET /api/platforms/trend?numbers=own\|nc\|all` | Spend, Impressions, Link clicks (what may be added across platforms) | Platform | **NC ROAS (total)** by default; ROAS gives one line per platform plus the total beside them |
+| All campaigns (`/campaigns?platform=all`) | `GET /api/platforms/trend` | same | Platform | same |
 
 - **Ties.** The chart's points are the table's rows summed: `campaigns_trend` reads the same `ad_daily` rows, product assignment (`_pfa`), stage and active filters as `campaigns_all`; the platform trend reads the same windows and queries as the overview / All campaigns table (Google through `google.trend`, now with a month grain). Asserted for every window, stage, grain and split in `tests/api/test_api_platforms.py`, `test_api_google.py`, `test_api_source.py`; checked on the full local data (30d: $340,583.67, 3,472 purchases, in every split and grain; Upstack new customers 2,614, all orders 4,189).
 - **Campaigns page.** The Product filter narrows the chart; the table's **Chart** button narrows the chart to one campaign (`chart=<campaign id>`, shown as "Chart shows only X, Show all campaigns"); the table stays whole. Comparison draws window B as the dashed overlay.
@@ -82,8 +82,32 @@ Every Meta and Google campaign in one table, reachable from the landing page (`V
 - **Totals.** With both platforms in view the Total row adds **spend, impressions and clicks only**, followed by a subtotal row per platform with the full metrics. **Purchases, revenue, ROAS and CPA are never added across platforms, in either basis:** under own reporting each platform credits the orders it touched, and under Upstack's any-click attribution an order is credited to every ad or campaign clicked in the 30 days before it, so one order can sit on a Meta ad and on a Google campaign. (Order-level overlap cannot be measured from the Upstack API, so the size of the double credit is unknown; the rule does not depend on it.) With one platform in view the Total row is that platform's full total, and **the Meta-only total equals the Meta Campaigns page total** (30d on the full local data: $340,583.67, 3,472 purchases, $240,864.76 revenue; asserted in `test_api_google.py`).
 - **Today's table, 30d (Oct 4 - Nov 2 Meta, Oct 5 - Nov 3 Google):** 63 rows (30 Meta, 33 Google), spend $358,157.10 = Meta $340,583.67 + Google $17,573.43; Upstack new customers 66 rows, all orders 74 rows (Meta rows with Upstack credit); since launch 142 rows (77 + 65).
 
+## Total spend and Total NC ROAS (All platforms and All campaigns)
+
+Meta and Google are the only spend platforms, so a **totals strip** sits above the chart on both All views: **Total spend**, **Total NC revenue**, **Total NC ROAS** for the selected window (and window B under each tile when Compare is on; comparison shows in the strip only). `GET /api/platforms/kpis` (same window and `only` / `product` / `type` filters as the table and chart).
+
+- **Total spend** = Meta spend + Google spend over the window, each platform over its own days (so it equals the All campaigns table's Total row, to the cent; Meta and Google shares underneath).
+- **Total NC revenue = the business's actual new-customer revenue, counted once**: Upstack's order-level new-customer revenue per Pacific day (`upstack_orders_daily`, migration 012; the same source and day buckets as the pacing "NC Rev"; validated equal to the pacing sheet's `Orders - Daily (NC-RC Rev)` for all 30 days Oct 5 to Nov 3, $224,242.41). It is **not** the sum of Meta-attributed plus Google-attributed new-customer revenue: both platforms credit the same orders (overlap) and some orders are credited to neither (unattributed), so that sum is the wrong numerator.
+- **Total NC ROAS = Total NC revenue / spend of the same days.** A ratio of sums over the days Meta, Google and the orders feed all cover; a day without orders is **blank, never zero**, and the strip says "N of M days". The chart's Day / Week / Month buckets are ratios of sums too (never a mean of daily ratios) and weigh back to the strip.
+- **The platforms' attributed sum is shown beside the actual**: "Platforms attribute $X (Meta + Google) · gap" where gap = attributed sum minus actual = overlap net of unattributed (Upstack any-click new-customer basis, same days).
+- **Chart.** Total spend is the stack: the sum is written above each bar when there are 16 bars or fewer (Week / Month), and every hover lists Meta spend, Google spend, Total spend and Total NC ROAS of the bucket. **NC ROAS (total)** is a Line choice (a dark line, a line only: it cannot be swapped into Bars) and the **default Line** on both pages; with Line = ROAS the per-platform lines are drawn and the dark total line sits beside them. If orders do not reach back to the chart's first day the note says from when it exists and the earlier days are blank.
+- **Filters hide the ratio.** With a Platform, Product or Campaign type filter the tile, the NC revenue tile and the line are hidden and one sentence says why (Upstack orders have no product or platform dimension, so new-customer revenue cannot be split); Total spend stays and follows the filter (ties to the filtered table). Default Line is ROAS again then.
+
+Today (full local data, orders from 2025-01-01 to 2026-11-03). Meta's last day is Nov 2 and Google's Nov 3, so the ratio uses the days all three cover:
+
+| Window | Total spend (whole window) | Total NC revenue (actual) | Spend of the covered days | Total NC ROAS | Platforms attribute | Gap |
+|---|---|---|---|---|---|---|
+| 30d (Oct 4 - Nov 3; ratio over Oct 5 - Nov 2, 29 of 31 days) | $358,157.10 = Meta $340,583.67 (95.1%) + Google $17,573.43 (4.9%) | $218,437.52 | $342,431.72 | **0.64x** (0.6379) | $187,583.83 (Meta $172,883.45 + Google $14,700.38) | -$30,853.69 (-14.1%) |
+| Since launch (May 6 - Nov 2, 181 days) | $4,175,701.81 | $3,001,173.77 | $4,175,701.81 | **0.72x** (0.7187) | $2,676,786.55 | -$324,387.22 (-10.8%) |
+
+Both gaps are negative: the platforms together credit less new-customer revenue than the business actually had, so unattributed orders outweigh the overlap between the platforms.
+
+Ties asserted in `tests/api/test_api_platform_totals.py` (strip = table total row = chart total = Meta + Google from the two independent trend endpoints; Total NC ROAS recomputed from the raw orders; attributed sum and gap; every grain a ratio of sums; blank-not-zero; the filters; compare; since launch; no orders loaded) and in `tests/ui/test_ui.py` (strip text and `data-value` against the chart and the table total, the default Line, the tooltip lines, filters, compare, 375 / 1,024 / 2,100 px with no page-level sideways scroll).
+
+The orders feed is `etl/upstack_orders.py` (Upstack `/api/query`, `orders.*` measures, Pacific days, 60-day chunks; refuses an empty answer) run by `python -m etl.upstack_daily` with the Meta and Google sides (`--orders-since` to backfill, `--orders-only`, `--no-orders`); the nightly etl cron restates the trailing days.
+
 ## Not done
 
 - Product filter chips list products with spend in the window only; a product with no spend is not offered.
-- Comparison (window B) is not offered on the All views (the page says so); the Meta Campaigns chart does draw it.
+- Comparison (window B) shows in the totals strip of the All views only (the page says so); the All charts and tables show window A. The Meta Campaigns chart does draw it.
 - Clicking a row narrows the chart on the Meta Campaigns page only; the All campaigns chart follows the Platform / Product / Type filters.

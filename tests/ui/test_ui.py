@@ -3029,7 +3029,7 @@ def test_pages_never_scroll_horizontally_at_page_level(page, width):
     paths = ["/", "/?platform=meta", f"/p/{SLUG}", f"/p/{SLUG}?view=campaigns&window=30d", f"/p/{SLUG}?view=ads&window=30d", f"/p/{SLUG}?window=7d&compare=prev&stage=testing",
              f"/p/{SLUG}?all=1&window=30d", f"{ad_path}?window=30d&compare=prev", "/?platform=meta&window=7d&compare=30d", "/?window=30d",
              "/campaigns?window=30d", "/?platform=all&window=30d", "/?platform=google&window=30d", "/campaigns?platform=google&window=30d",
-             "/campaigns?platform=all&window=30d", "/campaigns?window=30d&compare=prev"]
+             "/campaigns?platform=all&window=30d", "/campaigns?window=30d&compare=prev", "/?window=30d&compare=prev"]
     for path in paths:
         page.goto(path)
         page.wait_for_selector(".tablebox, #family-metrics")
@@ -3344,7 +3344,11 @@ def test_all_platforms_chart_platform_series_numbers_and_links(page):
     wait_trend(page)
     info = trend_info(page)
     assert {d["label"] for d in bars_ds(info)} == {"Meta", "Google"} and all(d["stack"] for d in bars_ds(info))
-    assert {d["label"] for d in line_ds(info)} == {"ROAS · Meta", "ROAS · Google"}                     # one ROAS line per platform
+    assert [d["label"] for d in line_ds(info)] == ["NC ROAS (total)"]                                  # the default Line is the total NC ROAS (actual new-customer revenue / total spend)
+    pick_metric(page, "line", "roas")
+    wait_trend(page)
+    info = trend_info(page)
+    assert {d["label"] for d in line_ds(info)} == {"ROAS · Meta", "ROAS · Google", "NC ROAS (total)"}  # one ROAS line per platform, and the actual total next to them
     opts = page.locator("#trend-bars option").all_inner_texts()
     assert opts == ["Spend", "Impressions", "Link clicks", "None"], opts                               # only what may be added across platforms
     assert [b.get_attribute("data-numbers") for b in page.locator("#trend-numbers .seg").all()] == ["own", "nc", "all"]
@@ -3438,6 +3442,143 @@ def test_all_campaigns_one_table_basis_labels_totals_and_filters(page):
     expect(page).to_have_url(re.compile(r"/campaigns\?"))
     assert qparams(page)["platform"] == "all"
     shot(page, "16_all_campaigns")
+
+
+# ------------------------------------------------------------------ All views: Total spend and Total NC ROAS
+def strip_val(page, key):
+    return page.locator(f"[data-testid=totals-strip] [data-testid=kpi-{key}-value]").get_attribute("data-value")
+
+
+def strip_text(page, key):
+    return page.locator(f"[data-testid=totals-strip] [data-testid=kpi-{key}-value]").inner_text()
+
+
+def wait_strip(page):
+    page.locator("[data-testid=totals-strip] [data-testid=kpi-spend-value]").wait_for()
+
+
+def api_json(page, url):
+    return page.evaluate("async (u) => (await fetch(u)).json()", url)
+
+
+@pytest.mark.mock_only
+def test_totals_strip_and_total_line_on_all_platforms_tie_to_the_chart_and_the_table(page):
+    page.goto("/?window=30d")
+    wait_strip(page)
+    wait_trend(page)
+    info = trend_info(page)
+    # chart: total spend is the stack, the default Line is the dark total NC ROAS line
+    assert [d["label"] for d in line_ds(info)] == ["NC ROAS (total)"] and page.locator("#trend-line").input_value() == "nc_roas_total"
+    assert page.locator("#trend-line option").first.inner_text() == "NC ROAS (total)"
+    assert "nc_roas_total" not in page.locator("#trend-bars").inner_html()                             # a line only: never a Bars choice
+    spend = float(strip_val(page, "spend"))
+    assert abs(chart_sum(info) - spend) <= 0.011                                                       # strip = chart total, to the cent
+    assert strip_text(page, "spend") == "$" + f"{round(spend):,}"
+    # the table below says the same: the All campaigns table total is the strip's total spend
+    page.locator("#view-switch [data-platform-view=campaigns]").click()
+    page.locator("[data-testid=all-campaigns] tbody tr[data-key]").first.wait_for()
+    wait_strip(page)
+    data = table_data(page, "all-campaigns")
+    tot = num(data["footRows"][0]["cells"][data["heads"].index("spend")])
+    assert strip_text(page, "spend") == "$" + f"{round(float(strip_val(page, 'spend'))):,}" and abs(tot - float(strip_val(page, "spend"))) <= 1
+    # Total NC ROAS = actual NC revenue / spend of the same days, recomputed from the daily total series (ratio of sums)
+    t = api_json(page, "/api/platforms/trend?window=30d&grain=day")["total"]
+    D = [p for p in t["points"] if p and p["nc_rev"] is not None]
+    rev, sp = sum(p["nc_rev"] for p in D), sum(p["nc_spend"] for p in D)
+    assert abs(float(strip_val(page, "nc-rev")) - rev) <= 0.011 and abs(float(strip_val(page, "nc-roas")) - rev / sp) <= 0.00006
+    assert strip_text(page, "nc-roas") == f"{rev / sp:.2f}x"
+    a = page.locator("[data-testid=kpi-attributed]").inner_text()                                      # the platforms' attributed sum and the gap sit next to the actual
+    assert "Platforms attribute" in a and "gap" in a and "overlap" in a and "unattributed" in a
+    k = api_json(page, "/api/platforms/kpis?window=30d")["total"]["nc"]["attributed"]
+    assert abs(k["sum"] - (k["meta"] + k["google"])) <= 0.011 and abs(k["gap"] - (k["sum"] - rev)) <= 0.011
+    # hover: both platforms' spend, the total and the total NC ROAS
+    lines = page.evaluate("() => Chart.getChart('trend-chart').options.plugins.tooltip.callbacks.afterBody([{dataIndex: 12}])")
+    assert [x.split(":")[0] for x in lines] == ["Meta spend", "Google spend", "Total spend", "Total NC ROAS"], lines
+    # ROAS as the line: each platform's own line plus the actual total beside them
+    pick_metric(page, "line", "roas")
+    wait_trend(page)
+    assert {d["label"] for d in line_ds(trend_info(page))} == {"ROAS · Meta", "ROAS · Google", "NC ROAS (total)"}
+    shot(page, "16_totals_strip_all_campaigns")
+
+
+@pytest.mark.mock_only
+def test_total_nc_roas_buckets_are_ratio_of_sums_and_totals_label_the_bars(page):
+    page.goto("/?window=launch&tg=week")
+    wait_strip(page)
+    wait_trend(page)
+    k = api_json(page, "/api/platforms/kpis?window=launch")["total"]["nc"]
+    wk = api_json(page, "/api/platforms/trend?window=launch&grain=week")["total"]["points"]
+    W = [p for p in wk if p and p["nc_rev"] is not None]
+    assert abs(sum(p["nc_rev"] for p in W) / sum(p["nc_spend"] for p in W) - k["roas"]) <= 0.00006        # the weekly buckets weigh back to the strip: ratio of sums
+    day = api_json(page, "/api/platforms/trend?window=launch&grain=day")["total"]["points"]
+    first_with = next(i for i, p in enumerate(day) if p["nc_rev"] is not None)
+    assert first_with == 3 and all(p["nc_roas"] is None and p["nc_rev"] is None for p in day[:3]) and day[0]["spend"] > 0       # blank before the orders feed starts, spend kept
+    assert "of" in page.locator("[data-testid=kpi-partial]").inner_text()                              # the days without order data are said, not hidden
+    note = page.locator("#trend-note").inner_text()
+    assert "Total NC ROAS is available from" in note and "blank, not zero" in note
+    page.locator("#trend-grain [data-grain=day]").click()
+    wait_trend(page)
+    line = line_ds(trend_info(page))[0]
+    assert line["data"][:3] == [None, None, None] and line["data"][3] is not None                      # drawn only where it exists, never as zero
+    assert page.evaluate("() => Chart.getChart('trend-chart').options.plugins.stackTotals.on") is False            # 180 daily bars: no labels
+    page.locator("#trend-grain [data-grain=month]").click()
+    wait_trend(page)
+    assert page.evaluate("() => Chart.getChart('trend-chart').options.plugins.stackTotals.on") is True             # a few monthly bars: the total sits on each stack
+
+
+@pytest.mark.mock_only
+@pytest.mark.parametrize("extra", ["only=meta", "only=google", "product=vita-bull", "type=Search"])
+def test_filters_hide_total_nc_roas_with_one_sentence_and_keep_total_spend(page, extra):
+    page.goto(f"/campaigns?platform=all&window=30d&{extra}")
+    wait_strip(page)
+    wait_trend(page)
+    sentence = page.locator("[data-testid=kpi-roas-hidden]")
+    expect(sentence).to_have_count(1)
+    expect(sentence).to_contain_text("all platforms and all products only")
+    expect(page.locator("[data-testid=kpi-nc-roas]")).to_have_count(0)
+    expect(page.locator("[data-testid=kpi-nc-rev]")).to_have_count(0)
+    assert "nc_roas_total" not in page.locator("#trend-line").inner_html()
+    assert "NC ROAS (total)" not in [d["label"] for d in line_ds(trend_info(page))]
+    page.locator("[data-testid=all-campaigns] tbody tr[data-key]").first.wait_for()
+    data = table_data(page, "all-campaigns")
+    tot = num(data["footRows"][0]["cells"][data["heads"].index("spend")])
+    assert float(strip_val(page, "spend")) > 0 and abs(tot - float(strip_val(page, "spend"))) <= 1          # spend follows the filter and still ties to the table total
+    assert abs(chart_sum(trend_info(page)) - float(strip_val(page, "spend"))) <= 0.011
+    assert page.locator("#trend-note").inner_text().count("all platforms and all products only") == 0         # the sentence is said once, under the strip
+
+
+@pytest.mark.mock_only
+def test_totals_strip_shows_window_b_when_compare_is_on(page):
+    page.goto("/?window=14d&compare=prev")
+    wait_strip(page)
+    expect(page.locator("[data-testid=totals-strip] [data-testid=kpi-compare]")).to_have_count(3)
+    expect(page.locator("#range-note")).to_contain_text("totals strip")
+    k = api_json(page, "/api/platforms/kpis?window=14d&compare=prev")
+    assert k["compare"] and abs(k["delta"]["spend_pct"] - (k["total"]["spend"] - k["compare"]["spend"]) / k["compare"]["spend"]) <= 0.0002
+    txt = page.locator("[data-testid=totals-strip] [data-testid=kpi-compare]").first.inner_text()
+    assert txt.startswith("Window B: $") and ("▲" in txt or "▼" in txt)
+
+
+@pytest.mark.mock_only
+@pytest.mark.parametrize("width", [375, 1024, 2100])
+def test_totals_strip_is_readable_and_never_scrolls_the_page_sideways(page, width):
+    page.set_viewport_size({"width": width, "height": 900})
+    for path in ("/?window=30d", "/campaigns?platform=all&window=30d"):
+        page.goto(path)
+        wait_strip(page)
+        wait_trend(page)
+        boxes = page.evaluate("() => [...document.querySelectorAll('[data-testid=totals-strip] .kpi')].map(k => { const r = k.getBoundingClientRect(); return {l: r.left, r: r.right, t: r.top, w: r.width, sw: k.scrollWidth, cw: k.clientWidth}; })")
+        assert len(boxes) == 3, boxes
+        assert all(b["l"] >= 0 and b["r"] <= width + 0.5 and b["sw"] <= b["cw"] + 1 for b in boxes), boxes   # nothing clipped or pushed past the edge
+        assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), (path, width)
+        if width == 375:
+            assert len({round(b["l"]) for b in boxes}) == 1 and boxes[1]["t"] > boxes[0]["t"]            # a phone stacks the tiles
+        else:
+            assert len({round(b["t"]) for b in boxes}) == 1, boxes                                       # a laptop and a 4K window show them in one row
+            assert page.evaluate("() => document.querySelector('[data-testid=totals-strip]').getBoundingClientRect().width") <= 1601
+        assert all(b["w"] >= 200 for b in boxes), boxes
+    shot(page, f"17_totals_strip_{width}")
+    page.set_viewport_size({"width": 1280, "height": 900})
 
 
 # ------------------------------------------------------------------ default landing = All platforms
