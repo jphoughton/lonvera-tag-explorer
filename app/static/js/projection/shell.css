@@ -278,3 +278,6 @@ a.pg-mcard:hover { text-decoration: none; box-shadow: var(--lv-shadow-2); border
 .pg-degraded-d { flex: 1 1 100%; font-weight: var(--lv-fw-medium); color: var(--lv-ink-2); padding-left: 24px; }
 .pg-degraded .btn { flex: 0 0 auto; }
 .pg-degraded-card { max-width: 560px; }
+
+/* readable line length for prose blocks */
+.pg-purpose, .pg-source, .pacing-note { max-width: 50ch; }

@@ -215,7 +215,7 @@
   --bad-bg: var(--lv-bad-bg);
   --testing: var(--lv-info);
   --testing-bg: var(--lv-info-bg);
-  --scaling: var(--lv-viz-4);
+  --scaling: #5a43a3;
   --scaling-bg: var(--lv-surface-2);
   --unc: var(--lv-neutral);
   --unc-bg: var(--lv-neutral-bg);
