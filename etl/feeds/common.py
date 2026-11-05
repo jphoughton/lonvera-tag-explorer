@@ -14,6 +14,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from psycopg import sql
+from psycopg.rows import tuple_row
 
 PT = ZoneInfo("America/Los_Angeles")
 DENVER = ZoneInfo("America/Denver")
@@ -224,18 +225,31 @@ def day_floor_where(col: str) -> sql.Composable:
 
 # ---------------------------------------------------------------------------------------------------------------- mode switch and attempt log
 
+def _fetch(conn, query: str, params: Sequence[Any] = ()) -> list[tuple]:
+    """Rows as tuples whatever row factory the connection uses (the projection runner hands its hooks dict-row connections)."""
+    with conn.cursor(row_factory=tuple_row) as cur:
+        cur.execute(query, params)
+        return cur.fetchall()
+
+
 def get_mode(conn, feed: str, default: str = "sheet") -> str:
-    """The feed's mode; `default` when no row exists ('sheet' for feeds with a sheet twin, 'shadow' for native feeds)."""
-    r = conn.execute("SELECT mode FROM proj_feed_config WHERE feed = %s", (feed,)).fetchone()
-    return (r[0] if r else default)
+    """The feed's mode; `default` when no row exists ('sheet' for feeds with a sheet twin, 'shadow' for native feeds) or the switch table is not there yet."""
+    if not table_exists(conn, "proj_feed_config"):
+        return default
+    r = _fetch(conn, "SELECT mode FROM proj_feed_config WHERE feed = %s", (feed,))
+    return r[0][0] if r else default
 
 
 def all_modes(conn) -> dict[str, str]:
-    return {r[0]: r[1] for r in conn.execute("SELECT feed, mode FROM proj_feed_config").fetchall()}
+    if not table_exists(conn, "proj_feed_config"):
+        return {}
+    return {r[0]: r[1] for r in _fetch(conn, "SELECT feed, mode FROM proj_feed_config")}
 
 
 def get_levers(conn) -> dict[str, float]:
-    return {r[0]: float(r[1]) for r in conn.execute("SELECT key, value FROM proj_feed_levers").fetchall()}
+    if not table_exists(conn, "proj_feed_levers"):
+        return {}
+    return {r[0]: float(r[1]) for r in _fetch(conn, "SELECT key, value FROM proj_feed_levers")}
 
 
 def set_lever(conn, key: str, value: float, note: str | None = None, by: str = "cli") -> None:
@@ -264,7 +278,7 @@ def log_attempt(conn, feed: str, mode: str, source: str, status: str, started_at
 
 def mirror_main_run(conn, feed: str, source: str, rows: int, first: dt.date | None, last: dt.date | None, note: str | None) -> None:
     """Keep the pacing module's proj_feed_runs row current when a feed writes its main table directly (the table exists once migration 170 ran)."""
-    if conn.execute("SELECT to_regclass('proj_feed_runs')").fetchone()[0] is None:
+    if not table_exists(conn, "proj_feed_runs"):
         return
     conn.execute(
         "INSERT INTO proj_feed_runs (feed, source, loaded_at, rows_loaded, first_day, last_day, note) VALUES (%s, %s, now(), %s, %s, %s, %s) "
@@ -274,7 +288,7 @@ def mirror_main_run(conn, feed: str, source: str, rows: int, first: dt.date | No
 
 
 def table_exists(conn, table: str) -> bool:
-    return conn.execute("SELECT to_regclass(%s)", (table,)).fetchone()[0] is not None
+    return _fetch(conn, "SELECT to_regclass(%s)", (table,))[0][0] is not None
 
 
 def round2(x: float) -> float:

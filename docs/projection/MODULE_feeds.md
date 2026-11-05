@@ -1,11 +1,11 @@
 # Projection feeds (server-side pulls)
 
-What it replaced (once cut over): the desktop routine `lonvera-sync-tick` and the two desktop tasks as the writers of the sheet raw tabs the projection reads. It pulls straight from Upstack, Warehance and Meta into Postgres on a Railway cron. Nothing here writes to the sheet, Meta, Upstack or Warehance. Design, inventory and cutover plan: `FEEDS_PLAN.md`.
+What it replaced (once cut over): the desktop routine `lonvera-sync-tick` and the two desktop tasks as the writers of the sheet raw tabs the projection reads. It pulls straight from Upstack, Warehance, Meta and the ExpandFi warehouse into Postgres on a Railway cron, and (once a feed is `direct`) from the nightly projection refresh itself. Nothing here writes to the sheet, Meta, Upstack or Warehance. Design, inventory and cutover plan: `FEEDS_PLAN.md`.
 
 ## Files
 ```
 migrations/180_proj_feeds.sql        mode switch, attempt log, verify tables, levers, raw non-US table + estimate view, 12 shadow tables, feed_oauth
-etl/feeds/__init__.py                registry, pull_and_write, load() (module hook), run(), freshness(), status()
+etl/feeds/__init__.py                registry, pull_and_write, load() (module hook), mode_of(), direct_chip(), run(), freshness(), status()
 etl/feeds/common.py                  Ctx, scrub, Http (retry/backoff/limits), RateLimiter, trailing_span, replace_window, mode/lever/attempt helpers
 etl/feeds/feed.py                    Feed and Metric definitions
 etl/feeds/upstack.py                 orders, platform, attribution, traffic, anyclick
@@ -18,7 +18,8 @@ etl/feeds/expandfi_auth.py           OAuth login/refresh, encrypted token storag
 etl/feeds/__main__.py                CLI
 scripts/deploy/run_feeds.sh          service entrypoint (migrate, run, verify)
 scripts/deploy/apply_feeds_service.py   dry-run-by-default creation of the Railway cron service `feeds`
-tests/projection/feeds/              114 tests
+etl/projection_pacing.py, projection_inventory_demand.py, projection_inventory_supply.py   the hook-ups (step 5): follow each feed's mode, sheet fallback, mode-aware chips
+tests/projection/feeds/              feed tests, plus test_feeds_module_hooks.py (hook-ups per module and mode) and test_feeds_cutover_e2e.py (the whole nightly run, no sheet)
 ```
 
 ## Commands
@@ -28,6 +29,7 @@ python -m etl.feeds run [--only a,b] [--days N]              pull every feed in 
 python -m etl.feeds verify [--feed a,b] [--days 30] [--need 7] [--live-sheet]   shadow vs sheet-fed table per day; prints consecutive clean days
 python -m etl.feeds dryrun --feed X [--days 5]               real read-only pull, diff with the live sheet tab, no writes
 python -m etl.feeds status | freshness | lever [KEY VALUE --note ...]
+        freshness lists EVERY feed (sheet, shadow and direct): mode, newest day, age and the stale-after limit that applies in that mode
 python -m etl.feeds.expandfi_auth {login|refresh|spike|tcp HOST PORT}
 ```
 Local run needs `DATABASE_URL`. `dryrun` needs no database for Upstack, Warehance and Meta (credentials come from the environment or the local files the desktop jobs use); the ExpandFi feeds read the stored login from `DATABASE_URL` and need `FEEDS_ENC_KEY` too (both are rotated or read, never printed).
@@ -65,6 +67,46 @@ One credential per run: `get_warehouse(ctx)` refreshes the stored OAuth login un
 ## International estimate (`intl_estimate`, `units_intl`)
 Non-US ship-to orders on Warehance in any status (Shopify routes them to the overseas warehouse and Warehance auto-cancels them), bottles = metadata quantity x the bundle multiplier in the SKU suffix, dated by Pacific order date. `proj_feedx_intl_nonus_daily(day, product, country, units_raw)` holds the raw counts. The estimate is raw x the lever `intl_ratio.<product>` in `proj_feed_levers` (seeded 0.905 / 0.895 / 0.868, default 0.89; edit with `python -m etl.feeds lever intl_ratio.bull 0.9 --note ...`). View `proj_feedx_intl_estimate(day, product, units_raw, factor, units, estimated)` applies the levers. `units_intl` writes the rounded estimate as `proj_units_daily` rows exactly as the sheet-fed loader does (source `estimate`, `is_estimate` true, Vital Flow written as 0). Vital Flow lines never appear on non-US Warehance orders, so its international demand is not estimated by anything (it is 0 in the sheet too).
 
+## Module hook-ups (step 5)
+Three projection modules read the feeds' data; each follows the feed's mode (`python -m etl.feeds mode`; no row = `sheet`, native feeds `shadow`).
+
+| mode | pacing, inventory demand, inventory supply |
+|---|---|
+| `sheet` | exactly as before: the sheet tabs are read through the service account, no API is called, results and tables are identical (tested against the module's output with no mode row at all). |
+| `shadow` | the same as `sheet` for the module. The `feeds` service (21:00 UTC) fills `proj_feedx_*` and `verify` compares. The module also pulls into the shadow table only when env `FEEDS_MODULE_SHADOW=1` is set on the service that runs `projection_daily`. |
+| `direct` | the module's main table is filled from the feed (`source` api:upstack, api:warehance, api:meta, api:expandfi); that feed's sheet tab is NOT read. If the pull raises (or the database refuses the rows) the tab is read as before for that feed only, the result carries `warnings`, the runner prints `warning <module>: <feed>: the direct pull failed, the sheet was read instead (...)`, `proj_feed_attempts` holds a `failed` and a `fallback` row, and the freshness chip is judged against the feed's own limit, so a fallback to an old sheet goes stale loudly. |
+
+Wiring (`feeds.load(key, conn, days, sheet_fallback, ctx, module=True)`):
+- **pacing** `refresh`: the ten feeds orders, platform, attribution, traffic, anyclick, meta_reach, product_reach, bids, amazon, nc_product. Tabs are read up front only for feeds that are not direct. Backfill and `--snapshot-dir` always read the sheet. One-time sheet seeds stay sheet-fed: Meta campaign history before `ad_daily` and the typed hourly curve (both already loaded in production; a brand-new database would read them once).
+- **inventory demand** `refresh`: locations revamp, amazon, intl through units_revamp, units_amazon, units_intl, and the stock snapshot through stock_revamp. A direct location also writes its `proj_units_loads` row (`note` "direct feed") and the module's audit row. The older `Amazon Daily Units` tab stays the sheet-side fallback of the Amazon product tab. International: only estimate days are replaced and a real count (an upload) is never overwritten.
+- **inventory supply** `refresh`: while `stock_revamp` is direct it follows `proj_demand_snapshot` (written by the demand module earlier in the same run; the default module order has demand first) and does not read `Warehance Fcst Inputs`; with no Revamp count to follow it reads the cells and warns. FBA and international counts, purchase orders, transfers and vendor costs are typed in the app and untouched.
+- **Windows**: the module's `days` (14) is widened to each feed's own window (`Feed.module_days`): Amazon, product reach, international 21; never wider than 3 for `bids` (its past days cannot be rebuilt). A direct pull never backfills; use the sheet backfill for history.
+- **Transactions**: the module commits. A direct pull and its log row go in one savepoint (`pull_and_write(commit=False)`), so a failed feed never takes the module's other writes with it.
+- **Chips**: a direct feed's chip says `(direct)` and uses the feed's limit (`Feed.stale_after`: 2 days, Amazon 3, international 2). The sheet-side limits are `Feed.sheet_stale_after` (a test pins them to the modules' own constants): international 4 and `monthly-upload` while the feed is sheet or shadow, 2 and `daily` while direct.
+
+### Flip procedure (per feed, reversible, no deploy)
+Prerequisites: the variable names for that source are on the service that runs `projection_daily` (the `etl` service): Upstack `UPSTACK_API_KEY` `UPSTACK_PIXEL_ID`, Warehance `WAREHANCE_API_KEY`, Meta `META_ACCESS_TOKEN`, ExpandFi `FEEDS_ENC_KEY` (check names only: `railway variable list -s etl --json | python3 -c "import sys,json;print(sorted(json.load(sys.stdin)))"`). Without them the direct pull fails and the module falls back to the sheet (safe, but not a cutover). The runner's time cap is 600 s per module (`PROJECTION_REFRESH_TIMEOUT_SEC`). In the 2026-11-04 shadow run the pulls of one module took about 2 minutes (international orders about 90 s, bids about 85 s), more when Meta rate-limits (waits of 60 to 900 s): raise the cap to 1800 on `etl` if a module's duration in `proj_refresh_runs` nears 500 s. The cap firing aborts the module loudly; it is never turned into a fallback.
+
+`RUN <args>` below means `cd ~/lonvera-tag-explorer && railway run -s etl sh -c 'cd <a checkout of build/v1 with this PR merged> && DATABASE_URL="$DATABASE_PUBLIC_URL" PYTHONPATH=. ~/lonvera-tag-explorer/.venv/bin/python -m etl.feeds <args>'` (`~/lonvera-tag-explorer` is the linked Railway project; its own checkout was behind origin on 2026-11-04, so `git pull` there first or point `cd` at another checkout). `mode`, `status`, `freshness` and `verify` only read or write the small config tables.
+1. Evidence first: `RUN verify --need 7` shows consecutive clean days per feed (7 for Upstack, Warehance, Meta; 14 for the ExpandFi feeds).
+2. Flip one source at a time, in this order: Upstack (`mode orders direct`, `platform`, `attribution`, `traffic`, `anyclick`), Warehance (`units_revamp`, `stock_revamp`, `units_intl`), Meta (`meta_reach`, `product_reach`, `bids`), ExpandFi (`amazon`, `nc_product`, `units_amazon`). Command: `RUN mode orders direct`.
+3. Confirm after the next 13:00 UTC run (or run it now: `railway run -s etl ... python -m etl.projection_daily --only pacing,inventory_demand,inventory_supply`):
+   - `RUN mode` lists the feed as `direct`;
+   - the runner log shows `pacing: ok ...` / `inventory_demand: ok ...` with no `warning ...` lines for that feed and `all modules refreshed and fresh`;
+   - `RUN status` shows the feed `direct`, last `ok` today; `RUN freshness` shows it `fresh` with the direct limit;
+   - the app's freshness chips (`/api/projection/freshness`) show the chip labelled `(direct)` and fresh; for `proj_feed_runs` the `source` reads `api:<source>`.
+4. **Rollback**: `RUN mode <feed> sheet`. The next refresh reads the sheet tab again and replaces the module's trailing window from it (the sheet is only as fresh as the desktop writer: keep that running for 7 more days after each flip and rehearse one rollback). A failed direct pull needs no rollback: the module already fell back for that run.
+5. Do not turn off a desktop writer until the feed has been direct and clean for 7 more days (FEEDS_PLAN section 7).
+
+### Inputs that still need a human (no feed exists)
+- QuickBooks P&L months (upload page; `quickbooks_pnl` chip, 45 days).
+- Cohort export (upload page; `cohort_export` chip, 45 days; the export tool is unconfirmed).
+- Purchase orders, FBA transfers, vendor costs and lead times (typed in the app; `purchase_orders` chip, 30 days).
+- FBA stock count and international 3PL stock count (typed in the app; `stock_fba` / `stock_intl` chips, 14 days).
+- International 3PL monthly tracking export (real units before 2026-09-16; since then the Warehance estimate stands in, scaled by the `intl_ratio.*` levers in `proj_feed_levers`).
+- One-time sheet seeds: Meta campaign history before `ad_daily` begins, the typed Meta hourly curve (loaded; only a new database re-reads them).
+- Credentials: the ExpandFi login (`python -m etl.feeds.expandfi_auth login` again if the refresh token ever dies), the Upstack, Warehance and Meta keys on the `etl` service.
+
 ## Dry-run against the live sheet (2026-11-04, read-only)
 See the table in `FEEDS_PLAN.md` section "Phase 2 status". Intl estimate vs `Intl Daily Units`, Sep 16 to Oct 12 (27 days x 3 products): totals 12,607 vs 12,611 (-0.03%), summed absolute difference 6 units, 23 of 27 days identical; a flat 0.89 would differ by 208 units.
 
@@ -88,6 +130,7 @@ The six soft `amazon` days are Ads `attributed_sales` still maturing (up to 6 pe
 ## Open items
 - Railway variables `UPSTACK_API_KEY`, `UPSTACK_PIXEL_ID`, `WAREHANCE_API_KEY` on `etl`: the write was refused by the permission system in this session; the commands are in `FEEDS_PLAN.md`.
 - `feeds` service not created (`apply_feeds_service.py` is dry-run by default; `--apply` and `railway up -s feeds --ci` are the production steps).
-- The module hook-ups (step 5) are written as diffs in `FEEDS_PLAN.md`; the modules' files were not touched.
+- The module hook-ups (step 5) are built and tested (branch `feat/feeds-cutover-wiring`, section "Module hook-ups"); production behaviour is unchanged until a feed is flipped to `direct`.
+- Not rehearsed against production: a real `direct` run of the modules (the tests use fixture rows at the pull boundary; the pulls themselves were dry-run against the live sources earlier). The first flip is the first real one: flip one feed, run `projection_daily --only <module>` once by hand and read the log.
 - ExpandFi: login done 2026-11-04; the refresh, minted credential, TCP connect and `SELECT 1` pass from Josh's Mac (`expandfi_auth spike`). Reachability of `data.expandfi.com:5432` from Railway is not yet tested (the `feeds` container is asleep between runs): the first scheduled run proves it. The refresh-token lifetime is unknown.
 - `cryptography` is requested in `REQUIREMENTS_REQUESTS.md`.

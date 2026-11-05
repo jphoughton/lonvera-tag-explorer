@@ -94,6 +94,7 @@ class ModuleRun:
     rows: int | None = None
     data_through: date | None = None
     error: str | None = None
+    warnings: tuple[str, ...] = ()               # e.g. a direct feed whose pull failed and was read from the sheet instead: the run is ok, the line says so
 
     @property
     def seconds(self) -> float:
@@ -119,7 +120,9 @@ def run_module(key: str, mod: Any, connect: Callable[[], Any], days: int, timeou
         conn.commit()
         out = out if isinstance(out, dict) else {}
         rows = out.get("rows")
-        return done("ok", rows=int(rows) if isinstance(rows, (int, float)) and not isinstance(rows, bool) else None, data_through=_parse_date(out.get("data_through")))
+        warns = out.get("warnings")
+        return done("ok", rows=int(rows) if isinstance(rows, (int, float)) and not isinstance(rows, bool) else None, data_through=_parse_date(out.get("data_through")),
+                    warnings=tuple(scrub(w, 240) for w in warns if isinstance(w, str)) if isinstance(warns, (list, tuple)) else ())
     except Exception as e:                                          # noqa: BLE001  (one module's failure is recorded, never raised)
         return done("failed", error=scrub(f"{type(e).__name__}: {e}"))
     finally:
@@ -137,7 +140,8 @@ def record(rec_conn, r: ModuleRun) -> None:
 
 def line(r: ModuleRun) -> str:
     if r.status == "ok":
-        return f"{r.module}: ok rows={r.rows if r.rows is not None else '-'} data_through={r.data_through or '-'} ({r.seconds:.1f}s)"
+        warn = f" WARNINGS: {len(r.warnings)} (below)" if r.warnings else ""
+        return f"{r.module}: ok rows={r.rows if r.rows is not None else '-'} data_through={r.data_through or '-'} ({r.seconds:.1f}s){warn}"
     if r.status == "skipped":
         return f"{r.module}: skipped ({r.error})"
     return f"{r.module}: FAILED {r.error} ({r.seconds:.1f}s)"
@@ -177,6 +181,8 @@ def run_all(keys: list[str], connect: Callable[[], Any], *, days: int = DEFAULT_
         for key in keys:
             r = run_module(key, hooks.get(key), connect, days, timeout, problems.get(key))
             log(line(r))
+            for w in r.warnings:                                    # one line each: log() cuts a line at 1000 characters
+                log(f"  warning {key}: {w}")
             if r.status == "failed":
                 failures.append(f"{key} refresh failed")
             try:
