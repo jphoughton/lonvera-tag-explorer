@@ -391,7 +391,7 @@ def stub_python(tmp_path):
     log = tmp_path / "calls.log"
     exe = bin_dir / "python"
     exe.write_text('#!/bin/sh\necho "$*" >> "$STUB_LOG"\ncase "$2" in\n'
-                   '  etl.migrate) exit "${MIGRATE_RC:-0}";;\n  etl.run_daily) exit "${DAILY_RC:-0}";;\n  etl.upstack_daily) exit "${UP_RC:-0}";;\n  etl.projection_daily) exit "${PROJ_RC:-0}";;\n'
+                   '  etl.migrate) exit "${MIGRATE_RC:-0}";;\n  etl.run_daily) exit "${DAILY_RC:-0}";;\n  etl.upstack_daily) exit "${UP_RC:-0}";;\n  etl.stage_moves) exit "${SM_RC:-0}";;\n  etl.projection_daily) exit "${PROJ_RC:-0}";;\n'
                    '  *) exit "${OTHER_RC:-0}";;\nesac\n')
     exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
 
@@ -407,19 +407,26 @@ def stub_python(tmp_path):
 
 def test_run_etl_runs_migrate_then_run_daily_then_upstack_then_projection_daily(stub_python):
     p, calls = stub_python()
-    assert p.returncode == 0 and calls == ["-m etl.migrate", "-m etl.run_daily", "-m etl.upstack_daily", "-m etl.projection_daily"]
+    assert p.returncode == 0 and calls == ["-m etl.migrate", "-m etl.run_daily", "-m etl.upstack_daily", "-m etl.stage_moves", "-m etl.projection_daily"]
 
 
 def test_run_etl_runs_projection_even_when_run_daily_fails_and_exits_non_zero(stub_python):
     p, calls = stub_python(DAILY_RC=3)
-    assert p.returncode == 3 and calls == ["-m etl.migrate", "-m etl.run_daily", "-m etl.upstack_daily", "-m etl.projection_daily"]
+    assert p.returncode == 3 and calls == ["-m etl.migrate", "-m etl.run_daily", "-m etl.upstack_daily", "-m etl.stage_moves", "-m etl.projection_daily"]
     assert "etl.run_daily failed (exit 3)" in p.stderr and "projection_daily failed" not in p.stderr and "upstack_daily failed" not in p.stderr
 
 
 def test_run_etl_runs_projection_even_when_upstack_fails_and_exits_non_zero(stub_python):
     p, calls = stub_python(UP_RC=6)
-    assert p.returncode == 6 and calls == ["-m etl.migrate", "-m etl.run_daily", "-m etl.upstack_daily", "-m etl.projection_daily"]
+    assert p.returncode == 6 and calls == ["-m etl.migrate", "-m etl.run_daily", "-m etl.upstack_daily", "-m etl.stage_moves", "-m etl.projection_daily"]
     assert "etl.upstack_daily failed (exit 6)" in p.stderr and "run_daily failed" not in p.stderr and "projection_daily failed" not in p.stderr
+
+
+def test_run_etl_a_failed_stage_moves_refresh_still_runs_projection_and_fails_the_run(stub_python):
+    p, calls = stub_python(SM_RC=5)
+    assert p.returncode == 5 and calls[-2:] == ["-m etl.stage_moves", "-m etl.projection_daily"] and "etl.stage_moves failed (exit 5)" in p.stderr
+    p, _ = stub_python(UP_RC=6, SM_RC=5)
+    assert p.returncode == 6                                              # an earlier failure keeps priority
 
 
 def test_run_etl_run_daily_failure_wins_over_upstack_failure(stub_python):
