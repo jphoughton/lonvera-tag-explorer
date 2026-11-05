@@ -485,6 +485,14 @@ def refresh(conn, days: int = 14, snapshot_dir: str | os.PathLike | None = None,
                 warnings.append(warn)
         out[feed.key] = res
         total += res["rows"]
+    # nc_hourly (native feed, no sheet twin, no module table): only a direct feed is pulled here; a failure is a warning, never a failed refresh
+    if use_hub and feed_hub.mode_of(conn, "nc_hourly") != "sheet":
+        try:
+            res = feed_hub.load("nc_hourly", conn, days, None, ctx or feed_hub.make_ctx(), module=True)
+            if res:
+                out["nc_hourly"] = res
+        except Exception as e:                                          # noqa: BLE001
+            warnings.append(db.scrub(f"nc_hourly: the direct pull failed ({type(e).__name__}: {e})")[:240])
     # Meta from the app's own ad_daily. Sheet history only on backfill (days before ad_daily begins).
     first_run = _scalar(conn, "SELECT 1 FROM proj_feed_meta_day WHERE source = 'sheet' LIMIT 1") is None          # first deploy: load the history once, no manual backfill
     if backfill or first_run:

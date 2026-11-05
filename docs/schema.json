@@ -9514,6 +9514,60 @@
    "examples": []
   },
   {
+   "name": "public.proj_feed_nc_hourly",
+   "schema": "public",
+   "relation": "proj_feed_nc_hourly",
+   "kind": "table",
+   "group": "proj_feeds",
+   "purpose": "New-customer revenue and first orders by Pacific day and clock hour (Shopify first orders from the ExpandFi warehouse); the hourly share curve behind the 'NC revenue today' card on Projections > Pacing.",
+   "grain": "one row per (day, hour) with at least one first order",
+   "primary_key": [
+    "day",
+    "hour"
+   ],
+   "foreign_keys": [],
+   "source": "etl.feeds nc_hourly (ExpandFi warehouse shopify_orders); no sheet tab carries it",
+   "refresh": "feeds service 21:00 UTC, trailing 35 closed days",
+   "coverage": "from the first pull (60-day backfill once)",
+   "caveats": [
+    "Sparse: an hour with no first order has no row. Today is never stored. The 25-hour fall-back day merges both 1 a.m. hours into hour 1. Order totals include tax and are before refunds, like upstack_orders_daily.nc_rev; day sums equal proj_feed_nc_product. Aggregates only."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Pacific day of the first order."
+    },
+    {
+     "name": "hour",
+     "type": "smallint",
+     "nullable": false,
+     "description": "Pacific wall-clock hour 0-23."
+    },
+    {
+     "name": "nc_rev",
+     "type": "numeric(18,2)",
+     "nullable": false,
+     "description": "Sum of order total_price of the first orders in that hour (tax included, before refunds); test orders and orders without priced lines excluded."
+    },
+    {
+     "name": "nc_orders",
+     "type": "integer",
+     "nullable": false,
+     "description": "Number of first orders in that hour."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When loaded."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.proj_feedx_intl_estimate",
    "schema": "public",
    "relation": "proj_feedx_intl_estimate",

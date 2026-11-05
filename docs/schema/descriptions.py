@@ -1519,6 +1519,13 @@ rel("public.proj_feedx_intl_nonus_daily", group="proj_feeds", kind="table",
     grain="one row per (day, product, country)", source="etl.feeds intl_estimate (Warehance API); no sheet tab carries it", refresh="feeds service 21:00 UTC", coverage="about 488 rows",
     caveats=["Raw bottle counts, not yet scaled by the ratio lever. Aggregates only."],
     cols={"day": "Pacific order day.", "product": "Product key.", "country": "ISO 3166 alpha-2, upper case.", "units_raw": "Raw non-US bottles.", "loaded_at": "When loaded."})
+rel("public.proj_feed_nc_hourly", group="proj_feeds", kind="table",
+    purpose="New-customer revenue and first orders by Pacific day and clock hour (Shopify first orders from the ExpandFi warehouse); the hourly share curve behind the 'NC revenue today' card on Projections > Pacing.",
+    grain="one row per (day, hour) with at least one first order", source="etl.feeds nc_hourly (ExpandFi warehouse shopify_orders); no sheet tab carries it", refresh="feeds service 21:00 UTC, trailing 35 closed days",
+    coverage="from the first pull (60-day backfill once)",
+    caveats=["Sparse: an hour with no first order has no row. Today is never stored. The 25-hour fall-back day merges both 1 a.m. hours into hour 1. Order totals include tax and are before refunds, like upstack_orders_daily.nc_rev; day sums equal proj_feed_nc_product. Aggregates only."],
+    cols={"day": "Pacific day of the first order.", "hour": "Pacific wall-clock hour 0-23.", "nc_rev": "Sum of order total_price of the first orders in that hour (tax included, before refunds); test orders and orders without priced lines excluded.",
+          "nc_orders": "Number of first orders in that hour.", "loaded_at": "When loaded."})
 rel("public.proj_feedx_intl_estimate", group="proj_feeds", kind="view",
     purpose="The overseas-3PL units estimate: raw non-US units x the product's ratio lever (else intl_ratio.default), flagged estimated.",
     grain="one row per (day, product)", source="proj_feedx_intl_nonus_daily x proj_feed_levers", refresh="live view", coverage="as the raw table",

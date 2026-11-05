@@ -336,7 +336,9 @@ def product_of(sku: str | None) -> str:
 
 # The customer key is shopify_customer_id, else lower(email) (an empty string counts as missing); each customer's first order is the earliest
 # (processed_at, id). processed_at is a UTC timestamp; the day is its Pacific date. Only first orders whose Pacific day is in the window are returned.
-FIRST_ORDERS_SQL = """
+def _first_orders_sql(extra_select: str = "") -> str:
+    """The first-order statement shared by nc_product (day) and nc_hourly (day and Pacific clock hour): one definition of 'new customer'."""
+    return """
     WITH keyed AS (
         SELECT id, processed_at, COALESCE(NULLIF(shopify_customer_id, ''), NULLIF(lower(email), '')) AS ck
         FROM shopify_orders
@@ -349,7 +351,7 @@ FIRST_ORDERS_SQL = """
         ORDER BY ck, processed_at, id
     )
     SELECT o.id,
-           ((f.processed_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/Los_Angeles')::date AS pt_day,
+           ((f.processed_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/Los_Angeles')::date AS pt_day,""" + extra_select + """
            o.total_price,
            o.raw_data->>'test' AS test,
            (SELECT jsonb_agg(jsonb_build_object('sku', li->>'sku', 'p', li->>'price', 'q', li->>'quantity', 'd', li->>'total_discount'))
@@ -359,6 +361,11 @@ FIRST_ORDERS_SQL = """
     WHERE ((f.processed_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/Los_Angeles')::date BETWEEN %(since)s AND %(until)s
     ORDER BY 2, 1
 """
+
+
+FIRST_ORDERS_SQL = _first_orders_sql()
+# Same statement plus the Pacific wall-clock hour (0-23) of processed_at. On the 25-hour fall-back day both 1 a.m. hours read 1 (merged into one bucket).
+FIRST_ORDERS_HOURLY_SQL = _first_orders_sql("\n           EXTRACT(hour FROM (f.processed_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/Los_Angeles')::int AS pt_hour,")
 
 
 def nc_rows(order_rows: list[tuple]) -> list[tuple]:
@@ -396,6 +403,37 @@ def pull_nc_product(ctx: Ctx, span: Span) -> list[tuple]:
     return out
 
 
+# ---------------------------------------------------------------------------------------------------------------- new-customer revenue by Pacific hour (Shopify)
+
+def nc_hourly_rows(order_rows: list[tuple]) -> list[tuple]:
+    """First orders (id, pacific day, pacific hour, total_price, test flag, line items) -> (day, hour, nc_rev, nc_orders), sparse (only hours with an order).
+    The same orders and the same revenue as nc_product: test orders and orders without priced lines are skipped, revenue = total_price (tax included,
+    before refunds, like Upstack's new_customer_total_revenue), so the sum of a day's hours equals that day's nc_product total."""
+    out: dict[tuple, list[float]] = collections.defaultdict(lambda: [0.0, 0])
+    for _oid, day, hour, total, test, lines in order_rows:
+        if test == "true" or not lines:
+            continue
+        net = sum(max(float(li.get("p") or 0) * float(li.get("q") or 0) - float(li.get("d") or 0), 0) for li in lines)
+        if net <= 0:
+            continue
+        if not 0 <= int(hour) <= 23:
+            raise FeedError(f"nc_hourly: hour {hour} outside 0-23 on {day}")
+        rec = out[(day, int(hour))]
+        rec[0] += float(total or 0)
+        rec[1] += 1
+    return [(d, h, round2(v[0]), int(v[1])) for (d, h), v in sorted(out.items())]
+
+
+def pull_nc_hourly(ctx: Ctx, span: Span) -> list[tuple]:
+    rows = get_warehouse(ctx).query(FIRST_ORDERS_HOURLY_SQL, {"since": span.since, "until": span.until})
+    if not rows:
+        raise FeedEmpty("nc_hourly: no first orders in the window; nothing written")
+    out = nc_hourly_rows(rows)
+    if not out:
+        raise FeedEmpty("nc_hourly: no priced first order in the window; nothing written")
+    return out
+
+
 # ---------------------------------------------------------------------------------------------------------------- sheet parser (units)
 
 def sheet_rows_units_amazon(grid: list[list]) -> list[tuple]:
@@ -429,6 +467,10 @@ FEEDS = [
          metrics=(Metric("nc_rev", **_MONEY), Metric("nc_orders", **_COUNT)),
          sheet_tab="NC Rev - By Product", sheet_parser=("etl.projection_pacing", "parse_nc_product"),
          notes="Actual Shopify first orders, not Meta-attributed; Pacific days."),
+    Feed("nc_hourly", "New-customer revenue by hour (ExpandFi)", "expandfi", "proj_feed_nc_hourly", "proj_feed_nc_hourly",
+         ("day", "hour", "nc_rev", "nc_orders"), ("day", "hour"), "day", pull=pull_nc_hourly, days=35, stale_after=2, native=True,
+         notes="Shopify first orders by Pacific day and clock hour (no sheet twin); feeds the hourly share curve of the 'NC revenue today' card. "
+               "Window 35 days so the 30-closed-day curve stays current; the day sums tie to nc_product."),
     Feed("units_amazon", "Amazon units sold by product (ExpandFi)", "expandfi", "proj_units_daily", "proj_feedx_units_daily", UNITS_COLS,
          ("location", "product", "day"), "day", pull=pull_units_amazon, days=21, stale_after=3, settle_days=14,
          delete_where=_amazon_units_where, scope_where="location = 'amazon'", metrics=(Metric("units", **_COUNT),),
