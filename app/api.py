@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, db, google as gg, platforms as pf, preview as pv, promotions as promo, queries as q
+from . import auth, db, google as gg, platforms as pf, preview as pv, promotions as promo, queries as q, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -355,6 +355,13 @@ def promotions():
     conn = db.get_conn()
     meta = q.meta_for_source(q.load_meta(conn), q.parse_source(request.args)[0])
     return jsonify(promo.promotions(conn, meta, request.args, product_slug=_arg("product")))
+
+
+@bp.get("/api/trends")
+def trends():
+    """Trends: the key marketing metrics by day, week or month with the change vs the previous period (like for like for the open period).
+    interval=day|week|month (default week), periods=<n> (default 14 / 12 / 12), numbers=own|nc|all (Meta / Google purchases and revenue basis). See app/trends.py."""
+    return jsonify(trn.trends(db.get_conn(), request.args))
 
 
 @bp.get("/api/platforms/overview")

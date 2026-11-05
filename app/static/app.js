@@ -13,6 +13,7 @@ import { campaignsPage } from './js/pages/campaigns.js';
 import { allPlatformsPage } from './js/pages/platforms.js';
 import { allCampaignsPage } from './js/pages/all_campaigns.js';
 import { promotionsPage } from './js/pages/promotions.js';
+import { trendsPage } from './js/pages/trends.js';
 
 // Platform pages: '/' is the home of the chosen platform (platform=all overview, google, else Meta's products) and '/campaigns' its Campaigns view.
 // Google's campaigns are part of its one page, so its Campaigns view is the same page with the campaigns table first.
@@ -23,6 +24,7 @@ const routes = [
   { re: /^\/?$/, page: homePage },
   { re: /^\/campaigns\/?$/, page: campaignsRoute },
   { re: /^\/promotions\/?$/, page: promotionsPage },
+  { re: /^\/trends\/?$/, page: trendsPage },
   { re: /^\/p\/([^/]+)\/?$/, page: productPage },
   { re: /^\/ad\/([^/]+)\/?$/, page: adPage },
 ];
@@ -57,7 +59,7 @@ function parentUrl() {
     return platformUrl('/', 'meta', G);                      // a product's parent is Meta's Products table, not the All roll-up
   }
   if (path === '/campaigns') return platformUrl('/', currentPlatform(), G);
-  if (path === '/promotions') return href('/', G);
+  if (path === '/promotions' || path === '/trends') return href('/', G);
   if (path === '/' && p.type) return platformUrl('/', 'google', G);
   if (/^\/ad\//.test(path)) return getParentHint() || platformUrl('/', 'meta', G);
   return null;
@@ -209,5 +211,6 @@ buildShell({ onBack: goBack });
   const tags = document.querySelector('#topbar .navlink'); tags.textContent = 'Marketing metrics';
   tags.after(h('a', { class: 'navlink', href: '/projection', target: '_self' }, 'Projections'));
   tags.after(h('a', { class: 'navlink', href: '/promotions', 'data-testid': 'nav-test-to-scale' }, 'Test to scale'));
+  tags.after(h('a', { class: 'navlink', href: '/trends', 'data-testid': 'nav-trends' }, 'Trends'));
 }
 render({ restore: true });
