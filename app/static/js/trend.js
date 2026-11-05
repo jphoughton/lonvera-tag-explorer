@@ -194,7 +194,7 @@ const SPLIT_HINT = 'Split by Stage applies to additive Bars metrics (Spend, Purc
            fetch({grain, split, basis, signal}) -> API response ({points, groups?, labels?, cmp_points?, notes?, window_info, compare_info}),
            splits: [[key, label]] (first = default unless defaultSplit), defaultSplit,
            barsMetrics: [metric keys] limits the Bars choices (metrics that may be added across the groups),
-           alwaysSplit: the server always returns the groups (platform pages): ratio lines are drawn per group even when Bars is None,
+           alwaysSplit: the server always returns the groups (platform pages): ratio lines are drawn per group even when Bars is None or not split (Split bars by None = the combined total),
            total: the response carries `total` (total spend + total NC ROAS per bucket): shown in the tooltip, and as totals above the stacked bars,
            totalLine: offer 'NC ROAS (total)' as a Line choice and make it the default (off when a filter hides the ratio),
            basis: {param, options: [[key, label]], default} an extra Numbers choice kept in the URL } }
@@ -439,9 +439,14 @@ export function createTrendPanel(opts) {
     const hasData = (list) => list.some((pt) => pt && ((pt.spend || 0) > 0 || (pt.purchases || 0) > 0 || (pt.link_clicks || 0) > 0));
     // the split series: stage (product pages), or the groups the server sends (platform pages: stage / product / platform)
     const order = ['testing', 'scaling', 'unclassified'].filter((s) => res.byStage && res.byStage[s] && (s !== 'unclassified' || hasData(res.byStage[s])));
-    let groups = null;
-    if (split !== 'none' || (src && src.alwaysSplit && res.groups)) {
-      if (res.groups) groups = res.groups.filter((g) => g.key !== 'unclassified' || hasData(g.points)).map((g, i) => ({ ...g, color: g.color || STAGE_COLOR[g.key] || PALETTE[i % PALETTE.length] }));
+    const mkGroups = (list) => list.filter((g) => g.key !== 'unclassified' || hasData(g.points)).map((g, i) => ({ ...g, color: g.color || STAGE_COLOR[g.key] || PALETTE[i % PALETTE.length] }));
+    let groups = null;       // stacked into the bars
+    let lineGroups = null;   // one ratio line each (platform pages: always, so a platform's own ROAS can be read while the bars show the total)
+    if (src && src.alwaysSplit && res.groups) {
+      lineGroups = mkGroups(res.groups);
+      if (state.split !== 'none') groups = lineGroups;
+    } else if (split !== 'none') {
+      if (res.groups) groups = mkGroups(res.groups);
       else if (split === 'stage' && res.byStage) groups = order.map((st) => ({ key: st, label: STAGE_NAME[st], color: STAGE_COLOR[st], points: res.byStage[st] }));
     }
     const stacked = !!bm && !!groups;
@@ -459,14 +464,15 @@ export function createTrendPanel(opts) {
         if (stacked) {
           groups.forEach((g) => datasets.push({ axis: 'left', type: 'bar', kind: bm.kind, label: g.label, data: val(g.points, bm), color: g.color, stack: 'stage', opaque: true }));
         } else {
-          datasets.push({ axis: 'left', type: 'bar', kind: bm.kind, label: bm.label, data: val(pts, bm), color: BAR_COLOR });
+          // the combined series (total spend of both platforms): one bar per bucket; a stack of one so the total is written above it on a few buckets
+          datasets.push({ axis: 'left', type: 'bar', kind: bm.kind, label: bm.label, data: val(pts, bm), color: BAR_COLOR, ...(tot ? { stack: 'total' } : {}) });
         }
       }
       if (lm) {
         if (lm.virtual) {
           if (totOn) datasets.push(totLine());
-        } else if (groups && !lm.additive) {
-          groups.forEach((g) => datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: `${lm.label} · ${g.label}`, data: val(g.points, lm), color: g.color, width: 2, partialDash: true }));
+        } else if ((lineGroups || groups) && !lm.additive) {
+          (lineGroups || groups).forEach((g) => datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: `${lm.label} · ${g.label}`, data: val(g.points, lm), color: g.color, width: 2, partialDash: true }));
           if (totOn && lm.key === 'roas') datasets.push(totLine());               // the actual total next to each platform's own line
         } else {
           datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: lm.label, data: val(pts, lm), color: LINE_COLOR, width: 2.4, partialDash: true });
@@ -506,7 +512,7 @@ export function createTrendPanel(opts) {
     } : null;
     if (chart) chart.destroy();
     chart = trendChart(canvas, {
-      labels, grain: res.grain || state.grain, partial, shades, stackedBars: stacked, stackTotals: !!tot, extra,
+      labels, grain: res.grain || state.grain, partial, shades, stackedBars: stacked || (!!bm && !!tot && !rows), stackTotals: !!tot, extra,
       left: bm && !rows ? { kind: bm.kind, title: `${bm.label} (bars, left)` } : null,
       right: lm ? { kind: lm.kind, title: `${lm.label} (line, right)` } : null,
       datasets,

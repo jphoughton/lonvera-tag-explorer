@@ -18,12 +18,12 @@ const NEUTRAL_TITLE = {
   link_clicks: 'Meta link clicks; Google all clicks',
 };
 
-// the trend source of the All pages: spend bars split by platform, one line per platform. Bars are limited to what may be added across platforms
+// the trend source of the All pages: total spend bars (Split bars by Platform stacks them), Total NC ROAS as the line, each platform's own ratio as a Line choice. Bars are limited to what may be added across platforms
 // (spend, impressions, clicks). `basis` adds the chart's own Numbers choice (the overview shows all three bases in its table, so the chart needs one).
 export function platformTrendSource(p, wp, filt = {}, { basis = false } = {}) {
   const unfiltered = !filt.only && !filt.product && !filt.type;
   return {
-    splits: [['platform', 'Platform']], defaultSplit: 'platform', alwaysSplit: true, barsMetrics: ['spend', 'impressions', 'link_clicks'],
+    splits: [['none', 'Total'], ['platform', 'Platform']], defaultSplit: unfiltered ? 'none' : 'platform', alwaysSplit: true, barsMetrics: ['spend', 'impressions', 'link_clicks'],
     total: true, totalLine: unfiltered,                    // total spend in the tooltip and over the bars; 'NC ROAS (total)' is a Line choice (and the default) when no filter hides it
     basis: basis ? { param: 'nb', options: [['own', 'Own reporting'], ['nc', 'Upstack · new customers'], ['all', 'Upstack · all orders']], default: 'own' } : null,
     fetch: ({ grain, basis: nb, signal }) => api('/api/platforms/trend', { ...wp, grain, ...(basis ? { numbers: nb } : {}), ...filt }, { signal }),
