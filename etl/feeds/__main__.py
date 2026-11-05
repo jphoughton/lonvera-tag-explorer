@@ -1,4 +1,4 @@
-"""CLI: python -m etl.feeds {run,mode,status,verify,dryrun,lever,freshness} ... (see etl/feeds/__init__.py)."""
+"""CLI: python -m etl.feeds {run,mode,status,verify,dryrun,live,lever,freshness} ... (see etl/feeds/__init__.py)."""
 from __future__ import annotations
 
 import argparse
@@ -32,6 +32,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("dryrun", help="real read-only API pull diffed against the live sheet tab; no writes")
     p.add_argument("--feed", required=True)
     p.add_argument("--days", type=int, default=5)
+    p = sub.add_parser("live", help="one pull of today so far from Upstack into proj_live_today_snapshots (same as python -m etl.live_today)")
+    p.add_argument("--dry-run", action="store_true")
     p = sub.add_parser("lever", help="show or set a lever (proj_feed_levers)")
     p.add_argument("key", nargs="?")
     p.add_argument("value", nargs="?", type=float)
@@ -39,6 +41,9 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     feeds = registry()
     try:
+        if a.cmd == "live":
+            from etl import live_today
+            return live_today.main(["--dry-run"] if a.dry_run else [])
         if a.cmd == "dryrun":
             from .dryrun import dryrun
             if a.feed not in feeds:
