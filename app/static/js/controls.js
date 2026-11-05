@@ -16,6 +16,7 @@ let srcCtl, srcBtns2 = {}, basisBtns2 = {}, srcCtl2, basisCtl2;      // the same
 let platformBtns = {}, stageCtl;
 const isGoogle = () => currentPlatform() === 'google';
 const onCampaignsPage = () => /^\/campaigns\/?$/.test(location.pathname);
+const onPromotionsPage = () => /^\/promotions\/?$/.test(location.pathname);        // Test to scale: the page is about stages and has no comparison
 const ALL_CAMPAIGNS_OWN = "Each row is counted by its own platform: Meta's reporting for Meta campaigns, Google's for Google campaigns (see the Numbers column). Spend, impressions and clicks are totalled; purchases and revenue are not added across platforms. Switch to Upstack to read every row on Upstack's attribution.";
 const ALL_CAMPAIGNS_UP = "Every row is read on Upstack's any-click attribution (30-day window); spend, clicks and impressions stay the platform's. An order can be credited to a Meta ad and a Google campaign, so purchases and revenue are given per platform, never added.";
 let status = null;
@@ -149,7 +150,7 @@ export function buildShell({ onBack }) {
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Range'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Date range' }, presetBtns)),
       h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Custom'), fromEl, h('span', { class: 'muted' }, '–'), toEl, apply, errEl),
       (stageCtl = h('div', { class: 'ctl', id: 'stage-ctl' }, h('span', { class: 'ctl-name' }, 'Stage'), h('span', { class: 'chips', role: 'group', 'aria-label': 'Stage' }, Object.values(stageBtns), activeBtn), activeCountEl)),
-      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Compare to'), cmpSel, cmpCustomBox, perDayWrap),
+      h('div', { class: 'ctl', id: 'compare-ctl' }, h('span', { class: 'ctl-name' }, 'Compare to'), cmpSel, cmpCustomBox, perDayWrap),
     ),
     h('div', { class: 'ctl-row second' }, labelEl),
     noteEl,
@@ -297,7 +298,9 @@ function syncPlatform() {
   const st = status && status.sources && status.sources.platforms;
   const g = st && st.find((x) => x.key === 'google');
   if (platformBtns.google) { platformBtns.google.disabled = !!(g && !g.available) && pl !== 'google'; platformBtns.google.title = g && !g.available ? 'Google data is not loaded yet' : 'Google: campaign types and campaigns'; }
-  if (stageCtl) stageCtl.hidden = pl !== 'meta';
+  if (stageCtl) stageCtl.hidden = pl !== 'meta' || onPromotionsPage();
+  const cmpCtl = document.getElementById('compare-ctl');
+  if (cmpCtl) cmpCtl.hidden = onPromotionsPage();
   if (tieBtn) { tieBtn.hidden = pl !== 'meta'; if (pl !== 'meta') { tiePanel.hidden = true; tieBtn.setAttribute('aria-expanded', 'false'); } }
   const overview = pl === 'all' && !onCampaignsPage();                       // the overview shows every basis side by side; All campaigns takes the switch like any table
   for (const el of [srcCtl, srcCtl2]) if (el) el.hidden = overview;
