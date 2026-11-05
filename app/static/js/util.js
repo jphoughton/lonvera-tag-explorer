@@ -231,7 +231,7 @@ export function applyCompareState(p, a, b) {
 export function cleanParams(p) {
   const o = { ...p };
   if (o.stage === 'all' || o.stage === STAGES.join(',')) delete o.stage;
-  if (o.window === 'launch') delete o.window;
+  if (o.window === 'launch' && !/^\/promotions\/?$/.test(location.pathname)) delete o.window;      // Test to scale defaults to the last 30 days: its Since launch stays in the URL
   if (o.from && o.to) delete o.window;
   if (o.active !== '1' && o.active !== 1) delete o.active;
   if (o.source !== 'upstack') { delete o.source; delete o.basis; } else if (o.basis !== 'all') delete o.basis;

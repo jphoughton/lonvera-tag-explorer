@@ -17,7 +17,7 @@ export function compare(a, b, dir) {
    columns: [{key,label,num,sort(row),cell(row)->Node|string,total(totalObj)->Node|string,title,cls,sticky,nosort,header(Node),firstDir}],
    rows, total, sortKey, sortDir, sortBy ('value'|'delta'), onSort(key,dir,by),
    rowHref(row)->string|null, rowKey(row)->string, rowClass(row)->string,
-   expand: {render(row)->Promise<Node>|Node}   // adds a caret column
+   expand: {render(row)->Promise<Node>|Node}   // adds a caret column (expandLabel = its tooltip, default 'Show ads')
    pageSize, emptyText, tableClass, testid
  }
 */
@@ -109,7 +109,7 @@ export function createTable(opts) {
     });
     if (opts.expand) {
       const open = expanded.has(key);
-      const btn = h('button', { type: 'button', class: 'caret', 'aria-expanded': String(open), title: 'Show ads', 'aria-label': 'Show ads' }, open ? '▾' : '▸');
+      const btn = h('button', { type: 'button', class: 'caret', 'aria-expanded': String(open), title: opts.expandLabel || 'Show ads', 'aria-label': opts.expandLabel || 'Show ads' }, open ? '▾' : '▸');
       btn.addEventListener('click', (e) => { e.stopPropagation(); toggle(key, r); });
       tr.append(h('td', { class: 'caretcell' }, btn));
     }

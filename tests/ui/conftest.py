@@ -43,7 +43,7 @@ def base_url():
     if env:
         yield env.rstrip("/")
         return
-    port = 5099
+    port = int(os.environ.get("UI_MOCK_PORT", "5099"))          # another run on this machine can take the port: set UI_MOCK_PORT
     url = f"http://127.0.0.1:{port}"
     proc = None
     if not _up(url):
@@ -69,7 +69,7 @@ def noauth_url():
         return
     if not IS_MOCK:
         pytest.skip("set UI_NOAUTH_BASE_URL to test an AUTH_DISABLED=1 server")
-    port = 5097
+    port = int(os.environ.get("UI_NOAUTH_MOCK_PORT", "5097"))
     url = f"http://127.0.0.1:{port}"
     proc = None
     if not _up(url):

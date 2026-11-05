@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, db, google as gg, platforms as pf, preview as pv, queries as q
+from . import auth, db, google as gg, platforms as pf, preview as pv, promotions as promo, queries as q
 
 bp = Blueprint("api", __name__)
 
@@ -346,6 +346,15 @@ def google_trend():
     if w.is_launch:
         info["note"] = f"Trend covers every day held ({q._fmt_day(gmeta.daily_start, True)} – {q._fmt_day(gmeta.data_through, True)})." + (f" {info['note']}" if info["note"] else "")
     return jsonify({"channel": "google", "window_info": info, "compare_info": w.compare_info(gmeta), **res})
+
+
+@bp.get("/api/promotions")
+def promotions():
+    """Test to scale (Meta only): creatives moved from Testing to Scaling in the window, those launched and not scaled, the funnel by launch week and a chart series.
+    window / from / to / days (default the last 30 days), product=<slug>|none, hide_bulk=1, bulk_min=<n>, min_test_spend=<$>, grain=auto|day|week, source / basis. See app/promotions.py."""
+    conn = db.get_conn()
+    meta = q.meta_for_source(q.load_meta(conn), q.parse_source(request.args)[0])
+    return jsonify(promo.promotions(conn, meta, request.args, product_slug=_arg("product")))
 
 
 @bp.get("/api/platforms/overview")

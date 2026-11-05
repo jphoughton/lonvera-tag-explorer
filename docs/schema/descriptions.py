@@ -1168,6 +1168,93 @@ for _b, _lbl in (("nc", "Upstack new customers"), ("all", "Upstack all orders"))
         grain="one row per tracker_row_id", source=f"etl.build_metrics.rebuild_source('{_b}')", refresh="nightly rebuild", coverage="3,980 rows",
         caveats=["Same first-row rule as ad_metrics. purchases_* / revenue_* are Upstack's credit on this basis; spend is Meta's."], cols={})
 
+# Test to scale (migration 015): one view per attribution basis, the data behind the /promotions page (docs/TEST_TO_SCALE.md)
+rel("public.creative_stage_moves", group="rollups", kind="view",
+    purpose="One row per creative (tracker family) that ever spent: the first day it spent in a Testing campaign and in a Scaling campaign, whether it MOVED from testing to scaling "
+            "(testing spend, then a later first scaling day), days in test, its numbers in testing before the move and in scaling since, the last 7 days and whether it is live. "
+            "Behind the Test to scale page. Meta's own purchases and revenue; the _upstack_nc / _upstack_all views read the Upstack attribution.",
+    grain="one row per family_key that has spend (family_daily rows with spend > 0)", source="public.family_daily (stage per campaign name: 'test' = testing) + ad_metrics first row + products + ad_tags + taxonomy_lines",
+    refresh="live view over family_daily, which is rebuilt nightly", coverage="2026-05-06 through yesterday; about 2.6K creatives, 610 moved on 2026-11-04",
+    caveats=["A move is inferred from daily spend, not from an event: Meta cannot move an ad between campaigns, the buyer duplicates the creative into a scaling campaign. "
+             "Testing and scaling on the same first day, scaling first and scaling only are NOT moves (see path).",
+             "Bulk moves: on 2026-08-22, 2026-10-22 and 2026-10-23 76, 187 and 80 creatives moved in one day (mass relaunches into new scaling campaigns, not test winners). "
+             "bulk_move_day marks days with 40 or more moves; the app lets you hide them.",
+             "first_day is the first day with spend in any stage: creatives already running on the first day of data (launched_before_data_start, 2026-05-06) have an earlier real launch day, so days_in_test is a lower bound.",
+             "test_* counts TESTING-stage rows on days before the first scaling day (all testing days when it never scaled); scale_* counts SCALING-stage rows since the move through the last day. "
+             "Testing spend that continues after the move is test_after_spend only.",
+             "Spend and link clicks are Meta's in every view; purchases and revenue are Meta-reported here, Upstack's in the _upstack_ views. Not additive across platforms."],
+    cols={
+        "family_key": "Tracker family key (lower); joins family_daily, ad_metrics, creative_assets.",
+        "tracker_row_id": "tracker_rows.id of the family's first row (the one that carries its metrics); the app opens /ad/<id>.",
+        "product_id": "products.id of that row (NULL when the family has no first row).",
+        "product_slug": "Product slug ('unassigned' for creatives of no product).",
+        "product_name": "Product name.",
+        "concept_id": "Concept id of the first tracker row.",
+        "display": "Display name: the ad family as typed in the tracker, else the concept id.",
+        "ad_type": "VID / IMG (tracker).",
+        "tracker_status": "Tracker status of the first row, e.g. '8 - Launched'.",
+        "tracker_launch_date": "Launch date typed in the tracker (undercounts the older ads; first_day is the one the page uses).",
+        "cluster": "Market cluster of the current tag ('(untagged)' when none).",
+        "icp": "ICP of the current tag.",
+        "pain": "Pain point of the current tag.",
+        "data_start": "First day this view's family_daily holds (2026-05-06 today).",
+        "data_through": "Last day this view's family_daily holds.",
+        "path": "moved | testing_only | scaling_only | same_day (testing and scaling both first spent that day) | scaling_first (scaling before testing) | unclassified_only.",
+        "began_in_testing": "true for moved and testing_only: the creatives a test-to-scale rate is about.",
+        "moved": "true when path = 'moved': spent in testing and its first scaling day is later.",
+        "first_day": "First day with spend in any stage = the launch day as far as the data goes.",
+        "testing_first_day": "First day with spend in a Testing campaign (NULL if none).",
+        "scaling_first_day": "First day with spend in a Scaling campaign (NULL if none): the day of the move for a moved creative.",
+        "last_spend_day": "Last day with spend in any stage.",
+        "scaling_last_day": "Last day with spend in a Scaling campaign.",
+        "days_in_test": "scaling_first_day - testing_first_day, for moved creatives only.",
+        "launched_before_data_start": "true when first_day is the first day of data: the creative was already running and its real launch day is earlier.",
+        "test_spend": "Testing-stage spend on days before the first scaling day, dollars.",
+        "test_purchases": "Purchases (Meta-reported here, Upstack in the _upstack_ views) on those days.",
+        "test_revenue": "Purchase value on those days, dollars.",
+        "test_link_clicks": "Link clicks on those days.",
+        "test_days": "Days with testing spend before the first scaling day.",
+        "test_after_spend": "Testing-stage spend on or after the first scaling day (the original kept running), dollars.",
+        "scale_spend": "Scaling-stage spend since the move, through the last day, dollars.",
+        "scale_purchases": "Purchases in the Scaling stage.",
+        "scale_revenue": "Purchase value in the Scaling stage, dollars.",
+        "scale_link_clicks": "Link clicks in the Scaling stage.",
+        "scale_days": "Days with scaling spend.",
+        "unclassified_spend": "Spend on days with no campaign (stage 'unclassified'), dollars; none today.",
+        "last7_spend": "Spend over the last 7 days of data, any stage, dollars.",
+        "last7_purchases": "Purchases over the last 7 days, any stage.",
+        "last7_revenue": "Purchase value over the last 7 days, any stage, dollars.",
+        "last7_scale_spend": "Scaling-stage spend over the last 7 days, dollars.",
+        "last7_scale_purchases": "Scaling-stage purchases over the last 7 days.",
+        "last7_scale_revenue": "Scaling-stage purchase value over the last 7 days, dollars.",
+        "live": "true when the creative spent on the last day of data or the day before (any stage).",
+        "live_scaling": "true when it spent in a Scaling campaign on the last day of data or the day before.",
+        "moves_that_day": "Creatives that moved on the same scaling_first_day (all creatives, not only this product).",
+        "bulk_move_day": "true when moved and 40 or more creatives moved that day: a mass relaunch, not a test winner.",
+    },
+    examples=[("Creatives that moved to scaling in the last 30 days, with testing and scaling ROAS",
+               "SELECT display, product_slug, first_day, scaling_first_day, days_in_test, round(test_spend, 2) AS test_spend,\n"
+               "       round(test_revenue / NULLIF(test_spend, 0), 2) AS test_roas, round(scale_spend, 2) AS scale_spend,\n"
+               "       round(scale_revenue / NULLIF(scale_spend, 0), 2) AS scale_roas, bulk_move_day\n"
+               "FROM creative_stage_moves\nWHERE moved AND scaling_first_day > data_through - 30\nORDER BY scale_spend DESC LIMIT 20;"),
+              ("Moves per day and which days were bulk (mass relaunch) days",
+               "SELECT scaling_first_day AS day, count(*) AS moves, bool_or(bulk_move_day) AS bulk\nFROM creative_stage_moves\nWHERE moved\n"
+               "GROUP BY 1 ORDER BY 2 DESC LIMIT 10;")])
+for _b, _lbl in (("nc", "Upstack new customers"), ("all", "Upstack all orders")):
+    rel(f"public.creative_stage_moves_upstack_{_b}", group="rollups", kind="view", like="public.creative_stage_moves",
+        purpose=f"creative_stage_moves on the {_lbl} basis: the same creatives and the same Meta spend, with purchases / revenue as Upstack credits them.",
+        grain="one row per family_key that has spend", source=f"public.family_daily_upstack_{_b} (same rules as creative_stage_moves)", refresh="live view over a table rebuilt nightly",
+        coverage="2026-05-06 through yesterday", caveats=["Spend, link clicks and the move itself are Meta's; test_purchases / test_revenue / scale_* / last7_* purchases and revenue change meaning.",
+                                                         "A creative's first spend day can differ from the Meta view only where Upstack's history starts later than Meta's daily data (both start 2026-05-06 today)."],
+        cols={"test_purchases": ("Upstack new customers credited on those days." if _b == "nc" else "Upstack orders credited on those days."),
+              "test_revenue": ("First-order revenue of those customers, dollars." if _b == "nc" else "Revenue of those orders, dollars."),
+              "scale_purchases": ("Upstack new customers credited in the Scaling stage." if _b == "nc" else "Upstack orders credited in the Scaling stage."),
+              "scale_revenue": ("First-order revenue of those customers, dollars." if _b == "nc" else "Revenue of those orders, dollars."),
+              "last7_purchases": ("Upstack new customers over the last 7 days." if _b == "nc" else "Upstack orders over the last 7 days."),
+              "last7_revenue": ("First-order revenue over the last 7 days, dollars." if _b == "nc" else "Revenue over the last 7 days, dollars."),
+              "last7_scale_purchases": ("Upstack new customers in the Scaling stage, last 7 days." if _b == "nc" else "Upstack orders in the Scaling stage, last 7 days."),
+              "last7_scale_revenue": ("First-order revenue in the Scaling stage, last 7 days, dollars." if _b == "nc" else "Revenue in the Scaling stage, last 7 days, dollars.")})
+
 rel("public.unmatched_meta", group="rollups", kind="table",
     purpose="Meta families that map to no live tracker family, with the product guessed for them and their windowed and since-launch numbers. Closes the gap between ad_metrics and the account total.",
     grain="one row per Meta family (meta_family_key)", source="etl.build_metrics from meta_ads, ad_daily, meta_ad_lifetime, meta_campaigns, products.meta_regex",

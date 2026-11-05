@@ -488,3 +488,23 @@ tr.total.extra td .note-link { font-weight: 400; font-size: 11px; margin-left: 6
 .kpi-note { margin-top: 5px; }
 .kpi-loading { padding: 8px 2px; }
 @media (max-width: 480px) { .kpi-value { font-size: 23px; } }
+
+/* ---------- Test to scale (/promotions): creatives moved from Testing to Scaling. Class names start with tts- (never ad-, ads-, sponsor, promo, banner: ad blockers hide those) ---------- */
+.tts-help { background: var(--panel); border: 1px solid var(--line-soft); border-radius: 6px; padding: 5px 12px; margin: 4px 0 8px; font-size: 12.5px; }
+.tts-help p { margin: 3px 0; overflow-wrap: anywhere; }
+.tts-filters { margin: 6px 0 8px; }
+input.tts-num { width: 72px; }
+.tts-bulk-note { margin: 8px 0 2px; padding: 6px 10px; border: 1px solid #e6c84f; background: var(--warn-bg); color: var(--warn); border-radius: 5px; font-size: 12.5px; overflow-wrap: anywhere; }
+.badge.tts-bulk { background: #ffe6cc; color: #8a4300; }
+.badge.tts-held { white-space: nowrap; }
+.badge.tts-held-held { background: var(--good-bg); color: var(--good); }
+.badge.tts-held-softer { background: var(--warn-bg); color: var(--warn); }
+.badge.tts-held-fell { background: var(--bad-bg); color: var(--bad); }
+.badge.tts-held-too_early, .badge.tts-held-no_baseline { background: var(--unc-bg); color: var(--unc); }
+.badge.tts-state-still_testing { background: var(--testing-bg); color: var(--testing); }
+.badge.tts-state-stopped { background: var(--unc-bg); color: var(--unc); }
+tr.tts-bulk-row td { background: #fffaf2; }
+.tts-held-count { white-space: nowrap; }
+.tts-foot { margin: 2px 2px 6px; overflow-wrap: anywhere; }
+.tts-product { font-weight: 600; color: var(--text); }
+@media (max-width: 760px) { input.tts-num { width: 64px; } }
