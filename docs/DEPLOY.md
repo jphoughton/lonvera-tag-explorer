@@ -175,6 +175,17 @@ Notes
 * To expose more (say `proj_feed_nc_product`), add a view to `analytics` in a new migration and describe it; to expose less, drop its view. Nothing else grants access.
 * Verify the documented schema against production without writing: `railway run -s etl sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" .venv/bin/python scripts/gen_schema_doc.py --verify-live'` (opens a READ ONLY session).
 
+## Live today (hourly cron service `live`)
+
+Fills the "Meta spend today" and "NC revenue today" cards on Projections > Pacing without typing: once an hour it asks Upstack for the Pacific day so far (Meta spend, Google spend, total spend, new-customer revenue, new customers) and stores one snapshot row in `proj_live_today_snapshots` (migration 192, history kept 90 days). The page reads the newest row through `GET /api/projection/pacing/live-today`.
+
+- Service: Railway cron service `live` on the same image as `etl` / `feeds` (`Dockerfile`), restart policy Never.
+- **Start command: `scripts/deploy/run_live.sh`** (runs `python -m etl.migrate`, then `python -m etl.live_today`; the pull takes a few seconds). **Cron schedule: `0 * * * *`** (UTC, every hour on the hour).
+- Variables (reference the `etl` service's values): `DATABASE_URL`, `UPSTACK_API_KEY`, `UPSTACK_PIXEL_ID`. No other secret is needed.
+- Failure behaviour: on an Upstack error, an auth failure or an unusable response nothing is written (the last good snapshot stays), the error is logged without credentials and the run exits 1 so Railway shows Failed. The page marks a snapshot older than 150 minutes, or one from a previous Pacific day, as stale (a previous-day pull is never used to fill a card).
+- Manual run / check: `scripts/deploy/run_live.sh --dry-run` (or `python -m etl.live_today --dry-run`) pulls and prints without touching the database; `python -m etl.feeds live` is the same entry point.
+- Upstack lag: Upstack's current-hour spend and orders trail real time by roughly 30 to 60 minutes (measured 2026-11-05: at 15:05 Pacific the 14:00 hour held about half of a normal hour for both Meta spend and new-customer revenue, and nothing for 15:00; the figures did not change between pulls two minutes apart). Treat the numbers as a floor, so the projections lean low early in the day.
+
 ## Backup and restore (Postgres)
 
 Railway volumes are not a backup. Postgres here is **18.x**; `pg_dump` must be version 18 or newer (the local `postgresql@16` refuses). Install once: `brew install postgresql@18`.

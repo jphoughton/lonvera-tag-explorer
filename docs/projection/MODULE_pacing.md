@@ -39,6 +39,7 @@ Header with the TLDR (finding first, five numbers), a row of six pace cards (rev
 | `GET /snapshot?month=` | Actual / Projected* / Target / Diff / Diff % and payback |
 | `GET /rollup?grain=day\|week\|month&from=&to=&view=rollup\|meta&bands=&delta=1` | periods as columns, metrics as rows, plan block (month grain) |
 | `GET /catalog`, `GET /freshness`, `GET /intraday?spent=&time=` | metric list, feed age, projected end-of-day Meta spend |
+| `GET /live-today` | newest hourly Upstack snapshot of today so far (`proj_live_today_snapshots`, written by `python -m etl.live_today`): meta_spend, google_spend, total_spend, nc_rev, nc_orders, pull time (Pacific), age in minutes, `stale` (older than 150 minutes, or a previous Pacific day: then `stale_reason` is `age` or `previous_day`). The two intraday cards fill themselves from it; a typed value overrides until Use live or clearing the field. Month math is untouched. Start command and schedule: docs/DEPLOY.md > Live today. |
 | `GET/PUT /levers` | variables of a scenario; PUT `{scenario, levers:{key: value\|null}, expected_version?}` is validated, audited, versioned |
 | `GET/PUT /rules` | feed classification rules (all scenarios), audited |
 

@@ -8,6 +8,7 @@
     GET /freshness                                     last day held by each feed, with age and status
     GET /intraday?spent=&time=HH:MM                    projected end-of-day Meta spend from the hourly spend curve
     GET /intraday-nc?spent=&time=HH:MM&dow=all|same    projected end-of-day new-customer revenue from the 30-closed-day hourly share curve (feed nc_hourly)
+    GET /live-today                                    today so far (Meta spend, NC revenue) from the latest hourly Upstack snapshot (etl.live_today), with age and stale flag
     GET /levers?scenario=                              every variable behind the numbers: value, sheet default, source, owner
     PUT /levers   {scenario, levers:{key: value | null}, expected_version?}     edit scenario variables (null restores the sheet's value); audited, versioned
     GET /rules, PUT /rules {rules:{key: value | null}}                          feed classification rules (global; applied when the ETL loads a day)
@@ -16,7 +17,7 @@ Goals come from the scenario's P&L (engine); actuals from the proj_feed_* tables
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from flask import Blueprint, jsonify, request
@@ -283,6 +284,40 @@ def get_intraday():
                           "Load the curve with `python -m etl.projection_pacing seed-hourly` (it reads the sheet's Automated Pacing L23:M46); "
                           "the daily refresh also loads it the next time it runs.")
     return jsonify(out)
+
+
+# ---------------------------------------------------------------------------------------------------------------- live today
+
+LIVE_STALE_MINUTES = 150            # the cron runs hourly; two missed pulls plus slack
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+@bp.get("/live-today")
+def get_live_today():
+    """The latest hourly snapshot of today so far (table proj_live_today_snapshots, written by `python -m etl.live_today`). `stale` is true when the
+    snapshot is older than 150 minutes or belongs to a previous Pacific day (then the numbers are NOT today's and the page must not use them)."""
+    conn = db.get_conn()
+    today = _today()
+    try:
+        r = conn.execute("SELECT pulled_at, day, pacific_time, meta_spend, google_spend, total_spend, nc_rev, nc_orders FROM proj_live_today_snapshots "
+                         "ORDER BY pulled_at DESC LIMIT 1").fetchone()
+    except Exception:                                                        # noqa: BLE001  (migration 192 not applied yet)
+        conn.rollback()
+        r = None
+    base = {"loaded": False, "as_of": today.isoformat(), "stale": False, "stale_reason": None, "stale_after_minutes": LIVE_STALE_MINUTES, "snapshot": None, "age_minutes": None}
+    if r is None:
+        return jsonify({**base, "message": "No live pull yet. Type today's numbers, or wait for the next hourly pull."})
+    pulled_at, day, ptime, meta, google, total, nc_rev, nc_orders = (tuple(r.values()) if isinstance(r, dict) else tuple(r))
+    age = max(0, int((_now_utc() - pulled_at).total_seconds() // 60))
+    reason = "previous_day" if day != today else ("age" if age > LIVE_STALE_MINUTES else None)
+    msg = {"previous_day": f"The newest live pull is from {day.strftime('%b %-d')}, not today. Type today's numbers.",
+           "age": f"The newest live pull is {age} minutes old (the pull runs hourly)."}.get(reason)
+    snap = {"pulled_at": pulled_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"), "day": day.isoformat(), "pacific_time": ptime.strftime("%H:%M"),
+            "meta_spend": float(meta), "google_spend": float(google), "total_spend": float(total), "nc_rev": float(nc_rev), "nc_orders": int(nc_orders)}
+    return jsonify({**base, "loaded": True, "snapshot": snap, "age_minutes": age, "stale": reason is not None, "stale_reason": reason, "message": msg})
 
 
 # ---------------------------------------------------------------------------------------------------------------- variables

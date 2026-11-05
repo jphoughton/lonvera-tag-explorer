@@ -1,5 +1,5 @@
 // Pacing page: where the month is landing against the plan, the month snapshot, and day / week / month trends.
-// Reads /api/projection/pacing/{month,snapshot,rollup,intraday,intraday-nc}. Read-only: nothing on this page edits the plan.
+// Reads /api/projection/pacing/{month,snapshot,rollup,intraday,intraday-nc,live-today}. Read-only: nothing on this page edits the plan.
 // Styles are injected once and use only the --lv-* tokens from brand.css.
 
 const CSS = `
@@ -23,7 +23,8 @@ const CSS = `
 .pacing-shares-wrap { overflow-x: auto; }
 @media (max-width: 640px) { .pacing-shares td.bar, .pacing-shares th.bar, .pacing-shares td.rev, .pacing-shares th.rev { display: none; } }
 .pacing-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--lv-sp-3); align-content: start; }
-.pacing-ncl [hidden] { display: none !important; }
+.pacing-ncl [hidden], .pacing-live [hidden] { display: none !important; }
+.pacing-live { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lv-sp-2); color: var(--lv-ink-2); font-size: var(--lv-fs-sm); max-width: 50ch; }
 .pacing-ncl { display: flex; flex-direction: column; gap: var(--lv-sp-2); }
 .pacing-ncl .pacing-note { align-items: flex-start; flex-wrap: wrap; }
 .pacing-ncl .pacing-check { display: inline-flex; align-items: center; gap: 6px; color: var(--lv-ink-2); font-size: var(--lv-fs-sm); }
@@ -116,6 +117,59 @@ export async function render(el, ctx) {
   const { h, ui, fmt } = ctx;
   const asOf = ctx.params && ctx.params.as_of ? { as_of: ctx.params.as_of } : {};
   const state = { month: (ctx.params && ctx.params.month) || null, grain: 'month', view: 'rollup', delta: false, collapsed: null };
+
+  // ---- live today: the latest hourly Upstack pull (python -m etl.live_today, endpoint pacing/live-today). The two intraday cards subscribe to it and fill
+  // themselves; a value typed into a card always wins until "Use live" is pressed or the field is cleared. The age shown is the server's age at fetch time plus
+  // the minutes since the fetch, so it never depends on this browser's clock.
+  const live = { data: null, at: 0, subs: new Map() };
+  const liveAge = () => (live.data && live.data.age_minutes != null ? live.data.age_minutes + Math.floor((Date.now() - live.at) / 60000) : null);
+  const liveUsable = () => !!(live.data && live.data.loaded && live.data.snapshot && live.data.stale_reason !== 'previous_day');
+  const agoText = (m) => (m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.floor(m / 60)} h ${m % 60} min ago`);
+  async function loadLive() {
+    try { live.data = await ctx.api.get('pacing/live-today', asOf); live.at = Date.now(); } catch (e) { if (!live.data) live.data = null; }
+    if (ctx.alive()) live.subs.forEach((f) => f());
+  }
+  // One card's link to the live snapshot. `field` is the snapshot value the card shows (meta_spend or nc_rev); `rerun` re-asks the card's own endpoint.
+  function liveBinding(field, spent, time, rerun) {
+    let typed = false;
+    let filled = null;
+    const line = h('div', { class: 'pacing-live', role: 'status', 'data-live': field });
+    const useBtn = h('button', { type: 'button', class: 'btn small', hidden: true }, 'Use live');
+    const fill = () => {
+      const snap = live.data.snapshot;
+      spent.value = String(Math.round(snap[field] * 100) / 100);
+      time.value = snap.pacific_time;
+      filled = snap.pulled_at;
+      rerun();
+    };
+    const refresh = () => {
+      const d = live.data;
+      const usable = liveUsable();
+      const age = liveAge();
+      const stale = !!d && d.loaded && (d.stale_reason === 'previous_day' || (age != null && age > d.stale_after_minutes));
+      const parts = [];
+      if (!d || !d.loaded) parts.push(h('span', null, d ? d.message : 'Live numbers are not available right now. Type today\'s number above.'));
+      else if (d.stale_reason === 'previous_day') parts.push(ui.chip('Stale data', 'warn'), h('span', null, d.message));
+      else {
+        parts.push(h('span', null, `Live from Upstack, pulled ${d.snapshot.pacific_time} PT (${agoText(age)}).`));
+        if (stale) parts.unshift(ui.chip('Stale data', 'warn'));
+        if (stale) parts.push(h('span', null, 'The hourly pull has not run for over two and a half hours.'));
+        if (typed) parts.push(h('span', null, 'Your typed value is in use.'));
+      }
+      line.replaceChildren(...parts, useBtn);
+      useBtn.hidden = !(usable && typed);
+      if (usable && !typed && filled !== d.snapshot.pulled_at) fill();
+    };
+    spent.addEventListener('input', () => {
+      if (spent.value === '') { typed = false; filled = null; } else typed = true;
+      refresh();
+    });
+    time.addEventListener('input', () => { typed = true; refresh(); });
+    useBtn.addEventListener('click', () => { typed = false; filled = null; refresh(); });
+    live.subs.set(field, refresh);
+    if (live.data) refresh();
+    return line;
+  }
 
   const fd = (v, f) => {
     const [kind, digits] = FMT[f] || ['num'];
@@ -297,11 +351,12 @@ export async function render(el, ctx) {
   }
 
   function intradayBox() {
-    const spent = h('input', { type: 'number', min: '0', step: '1', inputmode: 'decimal', 'aria-label': 'Meta spend so far today' });
+    const spent = h('input', { type: 'number', min: '0', step: 'any', inputmode: 'decimal', 'aria-label': 'Meta spend so far today' });
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
     const time = h('input', { type: 'time', 'aria-label': 'Time of day, Pacific', value: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}` });
     const out = h('p', { class: 'pacing-note', role: 'status' }, 'Enter today\'s Meta spend so far to project the end-of-day total.');
     let timer = null;
+    let liveLine = null;
     const run = () => {
       clearTimeout(timer);
       timer = setTimeout(async () => {
@@ -317,9 +372,11 @@ export async function render(el, ctx) {
     };
     spent.addEventListener('input', run);
     time.addEventListener('input', run);
+    liveLine = liveBinding('meta_spend', spent, time, run);
     return h('div', { class: 'pg-card', 'data-box': 'intraday' },
       h('h2', { class: 'pg-h2' }, 'Meta spend today'),
       h('div', { class: 'pacing-controls' }, h('label', null, 'Spent so far $'), spent, h('label', null, 'Time (Pacific)'), time),
+      liveLine,
       out,
       ui.source('Share of a typical day\'s spend already out by that time, from the last 30 days of hourly Meta spend.'));
   }
@@ -327,7 +384,7 @@ export async function render(el, ctx) {
   // "NC revenue today": the same projection for new-customer revenue. The share curve is computed on the server (30 closed days of hourly Shopify first
   // orders, ratio of sums); the browser only sends what has landed so far and the time, and shows the curve behind the number.
   function ncRevBox() {
-    const spent = h('input', { type: 'number', min: '0', step: '1', inputmode: 'decimal', 'aria-label': 'New-customer revenue so far today' });
+    const spent = h('input', { type: 'number', min: '0', step: 'any', inputmode: 'decimal', 'aria-label': 'New-customer revenue so far today' });
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
     const time = h('input', { type: 'time', 'aria-label': 'Time of day, Pacific', value: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}` });
     const same = h('input', { type: 'checkbox', 'aria-label': 'Use only days with today\'s weekday' });
@@ -387,10 +444,11 @@ export async function render(el, ctx) {
     time.addEventListener('input', run);
     same.addEventListener('change', run);
     run();
+    const liveLine = liveBinding('nc_rev', spent, time, run);
     return h('div', { class: 'pg-card pacing-ncl', 'data-box': 'intraday-nc' },
       h('h2', { class: 'pg-h2' }, 'NC revenue today'),
       h('div', { class: 'pacing-controls' }, h('label', null, 'NC revenue so far $'), spent, h('label', null, 'Time (Pacific)'), time, toggle),
-      out, warn, basis, curveHost);
+      liveLine, out, warn, basis, curveHost);
   }
 
   // ---- variables: every number behind the pacing, with its sheet value and source
@@ -599,7 +657,10 @@ export async function render(el, ctx) {
 
   headHost.replaceChildren(ui.pageHeader({ title: 'Pacing', purpose: 'Where the month is landing against the plan.' }));
   varsHost.replaceChildren(variablesBox());
+  loadLive();
+  const liveTimer = setInterval(loadLive, 5 * 60 * 1000);                        // a new pull lands hourly; the age text re-renders each minute
+  const ageTimer = setInterval(() => live.subs.forEach((f) => f()), 60 * 1000);
   await loadMonth();
   loadTrend();
-  return () => {};
+  return () => { clearInterval(liveTimer); clearInterval(ageTimer); };
 }

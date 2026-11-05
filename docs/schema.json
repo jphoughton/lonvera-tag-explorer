@@ -9568,6 +9568,77 @@
    "examples": []
   },
   {
+   "name": "public.proj_live_today_snapshots",
+   "schema": "public",
+   "relation": "proj_live_today_snapshots",
+   "kind": "table",
+   "group": "proj_feeds",
+   "purpose": "Today's Meta spend, Google spend, new-customer revenue and new customers so far, one snapshot per hourly pull from Upstack; fills the 'Meta spend today' and 'NC revenue today' cards on Projections > Pacing.",
+   "grain": "one row per pull (pulled_at, to the minute)",
+   "primary_key": [
+    "pulled_at"
+   ],
+   "foreign_keys": [],
+   "source": "etl.live_today (Upstack /api/query and /api/query-channel-details for the Pacific day so far); no sheet tab carries it",
+   "refresh": "Railway cron `live`, every hour on the hour",
+   "coverage": "from the first pull; history kept 90 days",
+   "caveats": [
+    "Upstack's spend for the current day trails the ad platforms by some minutes, so the figures are a floor of what has been spent and sold. Same measures as upstack_orders_daily (nc_rev = orders.new_customer_total_revenue, tax included, before refunds), so a closed day ties. Aggregates only."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "pulled_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When Upstack was asked, to the minute (UTC)."
+    },
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Pacific day the numbers belong to."
+    },
+    {
+     "name": "pacific_time",
+     "type": "time without time zone",
+     "nullable": false,
+     "description": "Pacific wall-clock time of the pull, to the minute."
+    },
+    {
+     "name": "meta_spend",
+     "type": "numeric(18,2)",
+     "nullable": false,
+     "description": "Meta (Facebook / Instagram) spend so far that day, dollars, all ad accounts Upstack sees."
+    },
+    {
+     "name": "google_spend",
+     "type": "numeric(18,2)",
+     "nullable": false,
+     "description": "Google Ads spend so far that day, dollars."
+    },
+    {
+     "name": "total_spend",
+     "type": "numeric(18,2)",
+     "nullable": false,
+     "description": "Spend so far across every ad platform Upstack reports (Meta, Google, TikTok), dollars."
+    },
+    {
+     "name": "nc_rev",
+     "type": "numeric(18,2)",
+     "nullable": false,
+     "description": "New-customer revenue so far that day, dollars (orders.new_customer_total_revenue)."
+    },
+    {
+     "name": "nc_orders",
+     "type": "integer",
+     "nullable": false,
+     "description": "New customers (first orders) so far that day."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.proj_feedx_intl_estimate",
    "schema": "public",
    "relation": "proj_feedx_intl_estimate",
