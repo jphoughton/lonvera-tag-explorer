@@ -130,6 +130,51 @@ railway run -s etl sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" .venv/bin/python -
 - **META_ACCESS_TOKEN**: `printf '%s' "$NEW_TOKEN" | railway variable set -s etl META_ACCESS_TOKEN --stdin`. The next cron run uses it; test now with the manual run above (`railway run -s etl ...etl.meta_pull --days 1`). Current token: a Facebook **user** token (debug_token 2026-11-03: type USER, valid, `expires_at` 0, `data_access_expires_at` 2026-08-28) pulled from the local Odylic Lens store. It dies if its owner changes their password, is removed from the ad accounts, or revokes the app. Recommended: a **system-user token** (Business Settings > System Users > add an Employee system user, assign both Lonvera ad accounts with read access, generate a token with `ads_read` only, "never expires"), then set it as above. `etl.meta_pull` must exit non-zero on a Meta auth error (codes 190 / 102 / 463 / 467) so the cron execution shows Failed; falling back to the sheet source keeps the data fresh but must not turn the run green.
 - **GOOGLE_SA_JSON**: the service account is `kill-scale-sheet-writer@shopify-data-451316.iam.gserviceaccount.com`. To rotate, create a new key in Google Cloud and `python3 -c "import json,sys;sys.stdout.write(json.dumps(json.load(open('KEY.json')),separators=(',',':')))" | railway variable set -s etl GOOGLE_SA_JSON --stdin`, then delete the old key.
 
+## Read-only analytics access (`analytics_reader`)
+
+Other people and AI agents read the marketing data through ONE login role, `analytics_reader`, that can `SELECT` from the views of the `analytics` schema and from nothing else.
+The schema, its views and their `COMMENT`s come from migrations 013 (core views), 190 (views over the projection pacing feeds) and 191 (comments on the `proj_*` tables), which run on every web
+boot / etl run like any other. The ROLE is not a migration (roles are cluster-wide and need a password): `etl/reader_role.py` creates it. Dictionary: `docs/DATA_SCHEMA.md`; agent quick start:
+`docs/AGENT_DATA_GUIDE.md`.
+
+```bash
+cd ~/lonvera-tag-explorer
+# create (first time): role + grants + a random password; the connection URL is written to the file, mode 600, outside the repo
+railway run -s etl sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" .venv/bin/python -m etl.reader_role create'
+# optional: --out PATH (default ~/lonvera-tag-explorer-data/analytics_reader_url.txt, must be outside the repo), --sslmode MODE (default require)
+
+# new password (someone left, a URL leaked): writes the file again and ends every session that used the old password
+railway run -s etl sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" .venv/bin/python -m etl.reader_role rotate'
+# grants / settings / drift report (exit 1 on drift; prints no secret); `create` on an existing role re-applies the policy without touching the password
+railway run -s etl sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" .venv/bin/python -m etl.reader_role status'
+# remove it (ends sessions, drops its privileges, drops the role)
+railway run -s etl sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" .venv/bin/python -m etl.reader_role drop --yes'
+```
+
+The command prints only the file path and a success line. The password is never printed or logged and never reaches Postgres in clear text (the role is given a SCRAM-SHA-256 verifier). The URL host / port / database
+come from `DATABASE_PUBLIC_URL` (the Railway TCP proxy; `postgres-ssl` accepts TLS, hence `sslmode=require`). Hand the file's content to a person through a password manager, never through chat, email or git.
+
+**Expected grants** (what `status` checks, and `tests/api/test_reader_role.py` proves on a scratch cluster with real password authentication):
+
+| Object | Reader's privilege |
+|---|---|
+| role attributes | LOGIN, NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOREPLICATION, NOBYPASSRLS, NOINHERIT, CONNECTION LIMIT 5, member of no role |
+| role defaults | `default_transaction_read_only = on`, `statement_timeout = 30s`, `idle_in_transaction_session_timeout = 60s`, `temp_file_limit = 512MB`, `search_path = analytics, pg_catalog` |
+| database | CONNECT (explicit; PUBLIC also has CONNECT and TEMP, so the role can create temp tables inside its 512MB cap) |
+| schema `analytics` | USAGE only (no CREATE) |
+| every view in `analytics` | SELECT only; `ALTER DEFAULT PRIVILEGES IN SCHEMA analytics GRANT SELECT ON TABLES` means views added later by the migration role are readable without another grant |
+| schema `public`, every table / view / sequence in it (`feed_oauth`, `proj_*`, `ad_daily`, ...) | nothing: `permission denied` |
+| catalogs | `pg_catalog` / `information_schema` are readable by every role, so the NAMES of tables are visible; their contents, `pg_authid` and files are not |
+
+Notes
+* `default_transaction_read_only` is a convenience: a session can switch it off. What stops a write or a read of a public table is that the role has no privilege for it (views run with their owner's rights, so SELECT on a view needs
+  nothing on the tables behind it). The tests run every forbidden statement twice, once with the default and once with it switched off.
+* Postgres refuses to drop or retype a table column that an `analytics` view reads ("other objects depend on it"): a future migration that changes such a column must `DROP VIEW` / recreate the views in the same migration.
+* A new table, view or column anywhere in `public` or `analytics` fails `tests/api/test_schema_docs.py` until it is described in `docs/schema/descriptions.py` (then `python scripts/gen_schema_doc.py --write` against a migrated database,
+  and a new migration for the COMMENTs: `python scripts/gen_schema_doc.py --comments all --out migrations/NNN_schema_comments_<what>.sql`). Migrations that already ran are immutable.
+* To expose more (say `proj_feed_nc_product`), add a view to `analytics` in a new migration and describe it; to expose less, drop its view. Nothing else grants access.
+* Verify the documented schema against production without writing: `railway run -s etl sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" .venv/bin/python scripts/gen_schema_doc.py --verify-live'` (opens a READ ONLY session).
+
 ## Backup and restore (Postgres)
 
 Railway volumes are not a backup. Postgres here is **18.x**; `pg_dump` must be version 18 or newer (the local `postgresql@16` refuses). Install once: `brew install postgresql@18`.
