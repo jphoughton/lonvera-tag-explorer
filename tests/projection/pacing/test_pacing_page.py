@@ -147,3 +147,107 @@ def test_a_bad_value_is_refused_in_place(browser, base_url, clean_levers):
     page.locator("[data-choice='edit']").click()
     page.wait_for_selector("[data-lever='last_days'] input.bad")
     ctx.close()
+
+
+# ---------------------------------------------------------------------------------------------------------------- NC revenue today card
+
+import datetime as _dt                                                       # noqa: E402
+import os                                                                    # noqa: E402
+
+import psycopg                                                               # noqa: E402
+from test_pacing_nc_today import nc                                          # noqa: E402,F401  (fixture: a deterministic hourly curve for the 30 closed days)
+
+SHOTS = os.environ.get("NCREV_SHOTS")
+
+
+def shot(page, name):
+    if SHOTS:
+        os.makedirs(SHOTS, exist_ok=True)
+        page.locator("[data-box='intraday-nc']").screenshot(path=os.path.join(SHOTS, name))
+
+
+def test_nc_revenue_card_projects_end_of_day_new_customer_revenue(browser, base_url, nc):
+    ctx, page, errors = open_page(browser, base_url)
+    box = "[data-box='intraday-nc']"
+    assert page.locator(f"{box} h2").inner_text() == "NC revenue today"
+    page.fill(f"{box} input[type='number']", "300")
+    page.fill(f"{box} input[type='time']", "12:00")
+    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\").innerText.includes('Projected end-of-day')")
+    txt = page.locator(f"{box} .pacing-note[role='status']").inner_text()
+    assert "Projected end-of-day NC revenue $1,000*, $700 still to go (30% of a typical day's NC revenue is in by 12:00)." in txt
+    assert "last 30 closed days of hourly Shopify first orders" in page.locator(box).inner_text()
+    assert page.locator(f"{box} details.pacing-curve").count() == 1 and page.locator(f"{box} details table tbody tr").count() == 24     # collapsed, 24 hours behind it
+    assert not page.locator(f"{box} details").evaluate("d => d.open")
+    page.locator(f"{box} summary").click()
+    assert "2026-10-04 to 2026-11-02: 30 closed days used" in page.locator(f"{box} details").inner_text()
+    assert page.locator(f"{box} details tr.now td").first.inner_text() == "12:00"
+    assert page.locator(f"{box} label.pacing-check").is_hidden()                                          # weekdays and weekends do not differ in this fixture
+    assert page.locator(f"{box} .pacing-note").filter(has_text="Stale data").count() == 0 or page.locator(f"{box} .pacing-note[hidden]").count() >= 1
+    shot(page, "nc_card_desktop_open.png")
+    # a time before anything has landed: a plain sentence, not a number
+    page.fill(f"{box} input[type='time']", "05:00")
+    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\").innerText.includes('Too early')")
+    assert errors == []
+    ctx.close()
+
+
+def test_nc_revenue_card_phone_width_and_dark(browser, base_url, nc):
+    for scheme in ("light", "dark"):
+        ctx, page, errors = open_page(browser, base_url, (375, 800), scheme)
+        box = "[data-box='intraday-nc']"
+        page.fill(f"{box} input[type='number']", "300")
+        page.fill(f"{box} input[type='time']", "12:00")
+        page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\").innerText.includes('Projected end-of-day')")
+        page.locator(f"{box} summary").click()
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+        assert page.locator(box).evaluate("el => el.scrollWidth <= el.clientWidth + 1")
+        shot(page, f"nc_card_375_{scheme}.png")
+        assert errors == []
+        ctx.close()
+
+
+def test_nc_revenue_card_weekday_switch_and_stale_warning(browser, base_url, nc, pacing_db):
+    with psycopg.connect(pacing_db) as c:                                    # weekends carry their hours earlier than weekdays: the gap at 12:00 is well over 3 points
+        c.execute("DELETE FROM proj_feed_nc_hourly")
+        for i in range(1, 31):
+            d = _dt.date(2026, 11, 3) - _dt.timedelta(days=i)
+            shape = {7: 40.0, 18: 60.0} if d.weekday() < 5 else {7: 70.0, 18: 30.0}
+            for h, pct in shape.items():
+                c.execute("INSERT INTO proj_feed_nc_hourly (day, hour, nc_rev, nc_orders) VALUES (%s, %s, %s, 1)", (d, h, pct * 10))
+        c.commit()
+    ctx, page, errors = open_page(browser, base_url)
+    box = "[data-box='intraday-nc']"
+    page.fill(f"{box} input[type='number']", "100")
+    page.fill(f"{box} input[type='time']", "12:00")
+    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\").innerText.includes('Projected end-of-day')")
+    page.wait_for_selector(f"{box} label.pacing-check", state="visible")
+    assert "Projected end-of-day NC revenue $" in page.locator(f"{box} .pacing-note[role='status']").inner_text()
+    before = page.locator(f"{box} .pacing-note[role='status']").inner_text()
+    page.locator(f"{box} label.pacing-check input").check()                  # Tuesday only: a weekday-shaped curve (40% by noon)
+    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note[role='status']\").innerText.includes('(40% of a typical day')")
+    assert page.locator(f"{box} .pacing-note[role='status']").inner_text() != before
+    page.locator(f"{box} summary").click()
+    assert "weekdays 40.0% in" in page.locator(f"{box} details").inner_text()
+    ctx.close()
+    with psycopg.connect(pacing_db) as c:                                    # the newest closed day is 5 days before yesterday
+        c.execute("DELETE FROM proj_feed_nc_hourly WHERE day > '2026-10-28'")
+        c.commit()
+    ctx, page, errors = open_page(browser, base_url)
+    page.wait_for_selector(f"{box} .pacing-note:has-text('Stale data')")
+    assert "2026-10-28" in page.locator(f"{box}").inner_text()
+    shot(page, "nc_card_stale.png")
+    assert errors == []
+    ctx.close()
+
+
+def test_nc_revenue_card_without_a_curve_says_so(browser, base_url, pacing_db):
+    with psycopg.connect(pacing_db) as c:
+        c.execute("DELETE FROM proj_feed_nc_hourly")
+        c.commit()
+    ctx, page, errors = open_page(browser, base_url)
+    box = "[data-box='intraday-nc']"
+    page.fill(f"{box} input[type='number']", "300")
+    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\").innerText.includes('No closed day')")
+    assert "Projected" not in page.locator(f"{box} .pacing-note[role='status']").inner_text().split("No closed day")[0]
+    assert errors == []
+    ctx.close()

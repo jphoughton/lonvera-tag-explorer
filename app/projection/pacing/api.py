@@ -7,6 +7,7 @@
     GET /catalog?view=rollup|meta                      bands and metrics available to the rollup
     GET /freshness                                     last day held by each feed, with age and status
     GET /intraday?spent=&time=HH:MM                    projected end-of-day Meta spend from the hourly spend curve
+    GET /intraday-nc?spent=&time=HH:MM&dow=all|same    projected end-of-day new-customer revenue from the 30-closed-day hourly share curve (feed nc_hourly)
     GET /levers?scenario=                              every variable behind the numbers: value, sheet default, source, owner
     PUT /levers   {scenario, levers:{key: value | null}, expected_version?}     edit scenario variables (null restores the sheet's value); audited, versioned
     GET /rules, PUT /rules {rules:{key: value | null}}                          feed classification rules (global; applied when the ETL loads a day)
@@ -24,7 +25,7 @@ from psycopg.types.json import Jsonb
 from ... import db
 from ...queries import ApiError
 from .. import audit, degraded, engine, rwdb, scenarios
-from . import catalog, feeds, levers as lv, month as month_mod, periods, views
+from . import catalog, feeds, levers as lv, month as month_mod, nc_curve, periods, views
 from .feedspec import freshness as feed_freshness
 from .targets import TargetBook
 
@@ -100,10 +101,25 @@ def _month_options(today: date, L: lv.Levers) -> list[dict]:
 
 def _fresh_chips(conn, today: date, L: lv.Levers) -> list[dict]:
     try:
-        return views.freshness_chips(feed_freshness(conn), today, L.data_lag_days, L.stale_bad_days)
+        fresh = feed_freshness(conn)
     except Exception:                                                        # noqa: BLE001  (feed tables not migrated yet)
         conn.rollback()
         return []
+    fresh = fresh + _nc_hourly_entry(conn)
+    return views.freshness_chips(fresh, today, L.data_lag_days, L.stale_bad_days)
+
+
+def _nc_hourly_entry(conn) -> list[dict]:
+    """The chip of feed nc_hourly (no sheet tab, so it is not a FeedSpec and the ETL's freshness never sees it): shown once the feed has loaded a day."""
+    try:
+        r = conn.execute("SELECT max(day) AS d FROM proj_feed_nc_hourly").fetchone()
+        last = r["d"] if isinstance(r, dict) else (r[0] if r else None)
+    except Exception:                                                        # noqa: BLE001  (migration 020 not applied yet)
+        conn.rollback()
+        return []
+    if last is None:
+        return []
+    return [{"feed": "nc_hourly", "label": "New-customer revenue by hour (ExpandFi)", "cadence": "daily", "data_through": last, "stale_after_days": nc_curve.STALE_AFTER_DAYS}]
 
 
 def _load_month_frame(conn, month: date, today: date, L: lv.Levers):
@@ -184,6 +200,54 @@ def get_freshness():
     L = lv.parse(scenarios.get_scenario(db.get_conn(), _arg("scenario")).params)
     return jsonify({"as_of": today.isoformat(), "expected_through": periods.data_through(today, L.data_lag_days).isoformat(),
                     "feeds": _fresh_chips(db.get_conn(), today, L)})
+
+
+def _hours_arg() -> float:
+    t = _arg("time")
+    if t:
+        try:
+            hh, mm = t.split(":")[:2]
+            hours = int(hh) + int(mm) / 60
+        except ValueError:
+            raise ApiError(400, "time must be HH:MM") from None
+        if not 0 <= hours <= 24:
+            raise ApiError(400, "time must be between 00:00 and 24:00")
+        return hours
+    now = datetime.now(periods.PACIFIC)
+    return now.hour + now.minute / 60
+
+
+@bp.get("/intraday-nc")
+def get_intraday_nc():
+    """The 'NC revenue today' card: end-of-day new-customer revenue = revenue so far / share of a typical day's NC revenue already in by that time.
+    The curve is the ratio-of-sums share by Pacific hour over the last 30 closed days of feed nc_hourly (today never enters). No curve = no projection
+    (revenue is never assumed even through the day)."""
+    conn = db.get_conn()
+    today = _today()
+    try:
+        spent = float(_arg("spent")) if _arg("spent") is not None else None
+    except ValueError:
+        raise ApiError(400, "spent must be a number") from None
+    if spent is not None and not (0 <= spent < 1e9):
+        raise ApiError(400, "spent must be between 0 and 1,000,000,000")
+    dow = _arg("dow") or "all"
+    if dow not in ("all", "same"):
+        raise ApiError(400, "dow must be all or same")
+    hours = _hours_arg()
+    first, _ = nc_curve.window_dates(today)
+    try:
+        rows = [tuple(r.values()) if isinstance(r, dict) else tuple(r)
+                for r in conn.execute("SELECT day, hour, nc_rev, nc_orders FROM proj_feed_nc_hourly WHERE day >= %s AND day < %s", (first, today)).fetchall()]
+    except Exception:                                                        # noqa: BLE001  (migration 020 not applied yet)
+        conn.rollback()
+        rows = []
+    out = nc_curve.build(rows, today, hours, spent, dow)
+    if not out["loaded"] and not out.get("reason"):
+        out["reason"] = "No closed day of new-customer revenue by hour is loaded yet."
+    out["message"] = out.get("reason") if not out["loaded"] or out.get("projected_eod") is None else None
+    out["as_of"] = today.isoformat()
+    out["basis"] = (f"{out['window']['days_used']} closed days, {out['window']['from']} to {out['window']['to']}" if out["loaded"] else None)
+    return jsonify(out)
 
 
 @bp.get("/intraday")

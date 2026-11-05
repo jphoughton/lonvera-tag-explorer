@@ -1,5 +1,5 @@
 // Pacing page: where the month is landing against the plan, the month snapshot, and day / week / month trends.
-// Reads /api/projection/pacing/{month,snapshot,rollup,intraday}. Read-only: nothing on this page edits the plan.
+// Reads /api/projection/pacing/{month,snapshot,rollup,intraday,intraday-nc}. Read-only: nothing on this page edits the plan.
 // Styles are injected once and use only the --lv-* tokens from brand.css.
 
 const CSS = `
@@ -19,6 +19,21 @@ const CSS = `
 .pacing-bar.warn .fill { background: var(--lv-warn-solid); }
 .pacing-bar.bad .fill { background: var(--lv-bad-solid); }
 .pacing-bar .tick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--lv-ink); opacity: 0.55; }
+.pacing-two > * { min-width: 0; }
+.pacing-shares-wrap { overflow-x: auto; }
+@media (max-width: 640px) { .pacing-shares td.bar, .pacing-shares th.bar, .pacing-shares td.rev, .pacing-shares th.rev { display: none; } }
+.pacing-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--lv-sp-3); align-content: start; }
+.pacing-ncl [hidden] { display: none !important; }
+.pacing-ncl { display: flex; flex-direction: column; gap: var(--lv-sp-2); }
+.pacing-ncl .pacing-note { align-items: flex-start; flex-wrap: wrap; }
+.pacing-ncl .pacing-check { display: inline-flex; align-items: center; gap: 6px; color: var(--lv-ink-2); font-size: var(--lv-fs-sm); }
+.pacing-ncl details > summary { cursor: pointer; font-weight: var(--lv-fw-semi); font-size: var(--lv-fs-base); }
+.pacing-shares { border-collapse: collapse; width: 100%; font-size: var(--lv-fs-sm); font-variant-numeric: tabular-nums; margin-top: var(--lv-sp-2); }
+.pacing-shares th, .pacing-shares td { padding: 2px var(--lv-sp-2); text-align: right; border-bottom: 1px solid var(--lv-line-soft); white-space: nowrap; }
+.pacing-shares th:first-child, .pacing-shares td:first-child { text-align: left; }
+.pacing-shares td.bar { width: 40%; }
+.pacing-shares tr.now td { background: var(--lv-band-bg); font-weight: var(--lv-fw-semi); }
+.pacing-shares .pacing-bar { min-width: 60px; }
 .pacing-note { display: flex; align-items: center; gap: var(--lv-sp-2); color: var(--lv-ink-2); font-size: var(--lv-fs-sm); }
 .pacing-table-wrap { overflow: auto; border: 1px solid var(--lv-line); border-radius: var(--lv-r-md); background: var(--lv-surface); }
 table.pacing-table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 860px; font-size: var(--lv-fs-base); font-variant-numeric: tabular-nums; }
@@ -309,6 +324,75 @@ export async function render(el, ctx) {
       ui.source('Share of a typical day\'s spend already out by that time, from the last 30 days of hourly Meta spend.'));
   }
 
+  // "NC revenue today": the same projection for new-customer revenue. The share curve is computed on the server (30 closed days of hourly Shopify first
+  // orders, ratio of sums); the browser only sends what has landed so far and the time, and shows the curve behind the number.
+  function ncRevBox() {
+    const spent = h('input', { type: 'number', min: '0', step: '1', inputmode: 'decimal', 'aria-label': 'New-customer revenue so far today' });
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+    const time = h('input', { type: 'time', 'aria-label': 'Time of day, Pacific', value: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}` });
+    const same = h('input', { type: 'checkbox', 'aria-label': 'Use only days with today\'s weekday' });
+    const toggle = h('label', { class: 'pacing-check', hidden: true }, same, 'Same weekday only');
+    const out = h('p', { class: 'pacing-note', role: 'status' }, 'Enter today\'s new-customer revenue so far to project the end-of-day total.');
+    const warn = h('div', { class: 'pacing-note', hidden: true });
+    const curveHost = h('div');
+    const basis = h('p', { class: 'pg-source' }, 'Share of a typical day\'s new-customer revenue already in by that time, from the last 30 closed days of hourly Shopify first orders.');
+    let timer = null;
+    let seq = 0;
+    const hhmm = (hr) => `${String(Math.floor(hr)).padStart(2, '0')}:${String(Math.round((hr % 1) * 60)).padStart(2, '0')}`;
+    const curveTable = (r) => {
+      const cur = Math.min(23, Math.floor(r.hour));
+      const rows = r.curve.map((c) => h('tr', { class: c.hour === cur ? 'now' : '' },
+        h('td', null, c.label), h('td', { class: 'rev' }, fmt.money(c.nc_rev)), h('td', null, fmt.pct(c.share, 1)), h('td', null, fmt.pct(c.cum_end, 1)),
+        h('td', { class: 'bar' }, h('div', { class: 'pacing-bar' }, h('div', { class: 'fill', style: `width:${Math.max(0, Math.min(100, c.cum_end * 100)).toFixed(1)}%` })))));
+      const d = r.dow_check, w = r.window;
+      const dowLine = d.gap_points == null ? null
+        : `By ${hhmm(r.hour)}: weekdays ${fmt.pct(d.weekday_share, 1)} in (${d.weekday_days} days), weekends ${fmt.pct(d.weekend_share, 1)} (${d.weekend_days} days), a gap of ${(Math.abs(d.gap_points) * 100).toFixed(1)} points`
+          + (d.differs ? `; today is a ${r.weekday}, so the same-weekday switch above is available (${d.same_weekday_days} days).` : '; the two are within 3 points, so all days are used.');
+      return h('details', { class: 'pacing-curve' }, h('summary', null, 'Share curve by hour'),
+        h('p', { class: 'pg-source' }, `Window ${w.from} to ${w.to}: ${w.days_used} closed days used${w.missing_days.length ? `, ${w.missing_days.length} with no first orders (${w.missing_days.join(', ')})` : ''}, `
+          + `${fmt.money(w.total_nc_rev)} of new-customer revenue on ${w.total_nc_orders.toLocaleString('en-US')} first orders. Today is never in the curve.`
+          + (r.mean_of_ratios_share != null ? ` Share by ${hhmm(r.hour)}: ${fmt.pct(r.share_of_day, 1)} as a ratio of sums (used), ${fmt.pct(r.mean_of_ratios_share, 1)} as an average of daily ratios.` : '')),
+        dowLine ? h('p', { class: 'pg-source' }, dowLine) : null,
+        h('div', { class: 'pacing-shares-wrap' }, h('table', { class: 'pacing-shares', 'aria-label': 'Cumulative share of the day\'s new-customer revenue by hour' },
+          h('thead', null, h('tr', null, h('th', null, 'Hour (Pacific)'), h('th', { class: 'rev' }, 'NC revenue'), h('th', null, 'Share of day'), h('th', null, 'Cumulative'), h('th', { class: 'bar' }, ''))),
+          h('tbody', null, rows))));
+    };
+    const run = () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        const mine = ++seq;
+        try {
+          const params = { time: time.value };
+          if (spent.value) params.spent = spent.value;
+          if (same.checked) params.dow = 'same';
+          const r = await ctx.api.get('pacing/intraday-nc', params);
+          if (!ctx.alive() || mine !== seq) return;
+          toggle.hidden = !(r.dow_check && r.dow_check.differs) && !same.checked;
+          const st = r.stale || {};
+          warn.hidden = !(st.is_stale);
+          if (st.is_stale) warn.replaceChildren(ui.chip('Stale data', 'warn'), st.newest_closed_day
+            ? `The newest closed day in the curve is ${st.newest_closed_day}, ${st.age_days} days before yesterday (stale after ${st.stale_after_days}).` : 'No closed day of new-customer revenue by hour is loaded.');
+          curveHost.replaceChildren(...(r.loaded ? [curveTable(r)] : []));
+          if (!spent.value) {
+            out.replaceChildren(r.loaded ? 'Enter today\'s new-customer revenue so far to project the end-of-day total.' : (r.message || 'The hourly curve is not loaded.'));
+            return;
+          }
+          if (r.projected_eod == null) { out.replaceChildren(ui.chip('No projection', 'info'), h('span', null, r.message || 'Too early in the day to project.')); return; }
+          out.replaceChildren(h('span', null, `Projected end-of-day NC revenue ${fmt.money(r.projected_eod)}*, ${fmt.money(r.to_go)} still to go (${fmt.pct(r.share_of_day, 0)} of a typical day's NC revenue is in by ${time.value}). `
+            + (r.low_share ? 'Early in the day the share is small, so the projection swings a lot. ' : '') + '* Projected.'));
+        } catch (e) { out.textContent = e.message; }
+      }, 250);
+    };
+    spent.addEventListener('input', run);
+    time.addEventListener('input', run);
+    same.addEventListener('change', run);
+    run();
+    return h('div', { class: 'pg-card pacing-ncl', 'data-box': 'intraday-nc' },
+      h('h2', { class: 'pg-h2' }, 'NC revenue today'),
+      h('div', { class: 'pacing-controls' }, h('label', null, 'NC revenue so far $'), spent, h('label', null, 'Time (Pacific)'), time, toggle),
+      out, warn, basis, curveHost);
+  }
+
   // ---- variables: every number behind the pacing, with its sheet value and source
   const fromDisplay = (lev, text) => {
     const t = String(text).trim();
@@ -408,7 +492,7 @@ export async function render(el, ctx) {
     } else {
       tableHost.replaceChildren(monthTable(data.rows), ui.source(data.captions[0]));
     }
-    extraHost.replaceChildren(h('div', { class: 'pacing-two' }, paybackBox(data), intradayBox()));
+    extraHost.replaceChildren(h('div', { class: 'pacing-two' }, paybackBox(data), h('div', { class: 'pacing-stack' }, intradayBox(), ncRevBox())));
     feedHost.replaceChildren(h('section', { class: 'pg-section' }, h('h2', { class: 'pg-h2' }, 'Data feeds'), freshnessChips(chips),
       ui.source('Each feed refreshes daily and should reach yesterday. Meta spend comes from the Marketing metrics data; the rest is read from the Lonvera Projections sheet.')));
     loadSnapshot();

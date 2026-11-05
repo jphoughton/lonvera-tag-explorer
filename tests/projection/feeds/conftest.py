@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 PG_BASE = os.environ.get("TEST_PG_BASE", "postgresql://localhost")
 DB_NAME = os.environ.get("TEST_PROJ_FEEDS_DB", "tagexp_proj_feeds")
 DB_URL = f"{PG_BASE}/{DB_NAME}"
-MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "105_proj_refresh.sql", "180_proj_feeds.sql")
+MIGRATIONS = ("001_init.sql", "020_proj_feed_nc_hourly.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "105_proj_refresh.sql", "180_proj_feeds.sql")
 SHEET_FED = ("140_proj_inventory_demand.sql", "170_proj_pacing.sql")
 
 
@@ -69,7 +69,7 @@ def conn(feeds_db):
 WIRED_DB_NAME = os.environ.get("TEST_PROJ_FEEDS_WIRED_DB", "tagexp_proj_feeds_wired")
 WIRED_DB_URL = f"{PG_BASE}/{WIRED_DB_NAME}"
 WIRED_TRUNCATE = ("proj_feed_orders", "proj_feed_amazon", "proj_feed_platform", "proj_feed_attribution", "proj_feed_traffic", "proj_feed_meta_reach",
-                  "proj_feed_product_reach", "proj_feed_nc_product", "proj_feed_anyclick", "proj_feed_bids", "proj_feed_meta_day", "proj_feed_meta_product",
+                  "proj_feed_product_reach", "proj_feed_nc_product", "proj_feed_nc_hourly", "proj_feed_anyclick", "proj_feed_bids", "proj_feed_meta_day", "proj_feed_meta_product",
                   "proj_feed_runs", "proj_feed_config", "proj_feed_attempts", "proj_feed_verify", "proj_feed_verify_runs",
                   "proj_feedx_orders", "proj_feedx_amazon", "proj_feedx_platform", "proj_feedx_attribution", "proj_feedx_traffic", "proj_feedx_meta_reach",
                   "proj_feedx_product_reach", "proj_feedx_nc_product", "proj_feedx_anyclick", "proj_feedx_bids", "proj_feedx_units_daily",
