@@ -25,6 +25,10 @@ const CSS = `
 .pacing-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--lv-sp-3); align-content: start; }
 .pacing-ncl [hidden], .pacing-live [hidden] { display: none !important; }
 .pacing-live { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lv-sp-2); color: var(--lv-ink-2); font-size: var(--lv-fs-sm); max-width: 50ch; }
+.pacing-roascpa { display: flex; flex-direction: column; gap: var(--lv-sp-2); }
+.pacing-roascpa [hidden] { display: none !important; }
+.pacing-roascpa .rc-line { color: var(--lv-ink); font-size: var(--lv-fs-base); max-width: 50ch; margin: 0; }
+.pacing-roascpa .rc-muted, .pacing-roascpa .rc-caption { color: var(--lv-ink-2); font-size: var(--lv-fs-sm); max-width: 50ch; margin: 0; }
 .pacing-ncl { display: flex; flex-direction: column; gap: var(--lv-sp-2); }
 .pacing-ncl .pacing-note { align-items: flex-start; flex-wrap: wrap; }
 .pacing-ncl .pacing-check { display: inline-flex; align-items: center; gap: 6px; color: var(--lv-ink-2); font-size: var(--lv-fs-sm); }
@@ -122,6 +126,8 @@ export async function render(el, ctx) {
   // themselves; a value typed into a card always wins until "Use live" is pressed or the field is cleared. The age shown is the server's age at fetch time plus
   // the minutes since the fetch, so it never depends on this browser's clock.
   const live = { data: null, at: 0, subs: new Map() };
+  const pokes = [];
+  const poke = () => pokes.forEach((f) => f());                                  // tells the projected ROAS / CPA card that a card input changed
   const liveAge = () => (live.data && live.data.age_minutes != null ? live.data.age_minutes + Math.floor((Date.now() - live.at) / 60000) : null);
   const liveUsable = () => !!(live.data && live.data.loaded && live.data.snapshot && live.data.stale_reason !== 'previous_day');
   const agoText = (m) => (m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.floor(m / 60)} h ${m % 60} min ago`);
@@ -141,6 +147,7 @@ export async function render(el, ctx) {
       time.value = snap.pacific_time;
       filled = snap.pulled_at;
       rerun();
+      poke();
     };
     const refresh = () => {
       const d = live.data;
@@ -350,6 +357,8 @@ export async function render(el, ctx) {
       !ld && pb.loaded_unavailable ? h('p', { class: 'pacing-note' }, ui.chip('Unavailable', 'warn'), `Payback after all variable costs: ${pb.loaded_unavailable}`) : null);
   }
 
+  const intra = {};                                                              // the two cards' inputs, read by the projected ROAS / CPA card
+
   function intradayBox() {
     const spent = h('input', { type: 'number', min: '0', step: 'any', inputmode: 'decimal', 'aria-label': 'Meta spend so far today' });
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
@@ -373,6 +382,7 @@ export async function render(el, ctx) {
     spent.addEventListener('input', run);
     time.addEventListener('input', run);
     liveLine = liveBinding('meta_spend', spent, time, run);
+    intra.metaSpent = spent; intra.metaTime = time;
     return h('div', { class: 'pg-card', 'data-box': 'intraday' },
       h('h2', { class: 'pg-h2' }, 'Meta spend today'),
       h('div', { class: 'pacing-controls' }, h('label', null, 'Spent so far $'), spent, h('label', null, 'Time (Pacific)'), time),
@@ -445,10 +455,85 @@ export async function render(el, ctx) {
     same.addEventListener('change', run);
     run();
     const liveLine = liveBinding('nc_rev', spent, time, run);
+    intra.ncSpent = spent; intra.ncTime = time; intra.same = same;
     return h('div', { class: 'pg-card pacing-ncl', 'data-box': 'intraday-nc' },
       h('h2', { class: 'pg-h2' }, 'NC revenue today'),
       h('div', { class: 'pacing-controls' }, h('label', null, 'NC revenue so far $'), spent, h('label', null, 'Time (Pacific)'), time, toggle),
       liveLine, out, warn, basis, curveHost);
+  }
+
+
+  // "Projected NC ROAS and NC CPA today": built from the two cards above plus Google spend and new customers so far. The server does the math
+  // (GET pacing/intraday-roascpa). Meta and NC revenue come from the cards' own fields (live or typed); Google and new customers have their own fields here,
+  // filled from the live pull until typed over. Nothing is projected from a missing input.
+  function roasCpaBox() {
+    const google = h('input', { type: 'number', min: '0', step: 'any', inputmode: 'decimal', 'aria-label': 'Google spend so far today' });
+    const cust = h('input', { type: 'number', min: '0', step: '1', inputmode: 'numeric', 'aria-label': 'New customers so far today' });
+    const out = h('div', { class: 'pacing-roascpa-out', role: 'status' }, h('p', { class: 'rc-muted' }, 'Fill in the cards above to see the projection.'));
+    const typed = { google: false, cust: false };
+    const filled = { google: null, cust: null };
+    let timer = null;
+    let seq = 0;
+    const x = (v) => (v == null ? '-' : `${v.toFixed(2)}x`);
+    const usd = (v) => (v == null ? '-' : fmt.money(v, { digits: 2 }));
+    const syncLive = () => {
+      if (!liveUsable()) return;
+      const snap = live.data.snapshot;
+      if (!typed.google && filled.google !== snap.pulled_at) { google.value = String(Math.round(snap.google_spend * 100) / 100); filled.google = snap.pulled_at; }
+      if (!typed.cust && filled.cust !== snap.pulled_at) { cust.value = String(snap.nc_orders); filled.cust = snap.pulled_at; }
+    };
+    const run = () => {
+      syncLive();
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        const mine = ++seq;
+        const meta = intra.metaSpent && intra.metaSpent.value;
+        const rev = intra.ncSpent && intra.ncSpent.value;
+        if (!meta || !rev) { out.replaceChildren(h('p', { class: 'rc-muted' }, 'Enter Meta spend and new-customer revenue so far in the cards above (or wait for the live pull) to project.')); return; }
+        const params = { meta, nc_rev: rev, meta_time: intra.metaTime.value, nc_time: intra.ncTime.value };
+        if (google.value !== '') params.google = google.value;
+        if (cust.value !== '') params.nc_orders = cust.value;
+        if (intra.same && intra.same.checked) params.dow = 'same';
+        try {
+          const r = await ctx.api.get('pacing/intraday-roascpa', params);
+          if (!ctx.alive() || mine !== seq) return;
+          const rows = [];
+          if (r.nc_roas_eod == null && r.nc_cpa_eod == null) {
+            rows.push(h('p', { class: 'rc-line' }, ui.chip('No projection', 'info'), ' ', r.nc_rev_eod == null
+              ? (r.rev_reason || 'Too early in the day to project new-customer revenue.') : 'Spend could not be projected: the hourly Meta spend curve is not loaded or too early in the day.'));
+          } else {
+            rows.push(h('p', { class: 'rc-line' }, `Projected NC ROAS ${x(r.nc_roas_eod)}*`));
+            rows.push(h('p', { class: 'rc-line' }, r.nc_cpa_eod != null ? `Projected NC CPA ${usd(r.nc_cpa_eod)}*`
+              : (params.nc_orders == null ? 'Projected NC CPA: add new customers so far.' : 'Projected NC CPA - (no new customers projected yet).')));
+            const parts = [`End-of-day spend ${fmt.money(r.total_spend_eod)}*`, `NC revenue ${fmt.money(r.nc_rev_eod)}*`];
+            if (r.nc_orders_eod != null) parts.push(`${Math.round(r.nc_orders_eod).toLocaleString('en-US')} new customers*`);
+            rows.push(h('p', { class: 'rc-muted' }, parts.join(', ') + '.'));
+          }
+          const sofar = [];
+          if (r.nc_roas_so_far != null) sofar.push(`NC ROAS so far ${x(r.nc_roas_so_far)}`);
+          if (r.nc_cpa_so_far != null) sofar.push(`NC CPA so far ${usd(r.nc_cpa_so_far)}`);
+          if (sofar.length) rows.push(h('p', { class: 'rc-muted', 'data-rc': 'sofar' }, sofar.join(', ') + '.'));
+          const ref = r.reference_28;
+          rows.push(h('p', { class: 'rc-muted', 'data-rc': 'ref' }, ref ? `vs last 28 days: ${x(ref.nc_roas)} / ${usd(ref.nc_cpa)} (${ref.from} to ${ref.to}).` : 'vs last 28 days: not available.'));
+          rows.push(h('p', { class: 'rc-caption', 'data-rc': 'caption' }, params.google == null
+            ? 'Google spend is not included because none was given.'
+            : 'Google has no hourly curve, so its end-of-day spend is Google so far scaled by the same end-of-day to so-far ratio as Meta.'));
+          out.replaceChildren(...rows);
+        } catch (e) { out.replaceChildren(h('p', { class: 'rc-muted' }, e.message)); }
+      }, 250);
+    };
+    google.addEventListener('input', () => { typed.google = google.value !== ''; if (!typed.google) filled.google = null; run(); });
+    cust.addEventListener('input', () => { typed.cust = cust.value !== ''; if (!typed.cust) filled.cust = null; run(); });
+    live.subs.set('roascpa', run);
+    pokes.push(run);
+    [intra.metaSpent, intra.metaTime, intra.ncSpent, intra.ncTime].forEach((el) => el && el.addEventListener('input', run));
+    if (intra.same) intra.same.addEventListener('change', run);
+    run();
+    return h('div', { class: 'pg-card pacing-roascpa', 'data-box': 'roascpa' },
+      h('h2', { class: 'pg-h2' }, 'Projected NC ROAS and NC CPA today'),
+      h('div', { class: 'pacing-controls' }, h('label', null, 'Google spend so far $'), google, h('label', null, 'New customers so far'), cust),
+      out,
+      ui.source('NC ROAS is new-customer revenue divided by Meta plus Google spend; NC CPA is that spend divided by new customers. Each is projected to end of day from the two cards above and a first-order count curve built the same way as the revenue curve. Upstack trails real time by 30 to 60 minutes, so early in the day the projection leans low. * Projected.'));
   }
 
   // ---- variables: every number behind the pacing, with its sheet value and source
@@ -550,7 +635,8 @@ export async function render(el, ctx) {
     } else {
       tableHost.replaceChildren(monthTable(data.rows), ui.source(data.captions[0]));
     }
-    extraHost.replaceChildren(h('div', { class: 'pacing-two' }, paybackBox(data), h('div', { class: 'pacing-stack' }, intradayBox(), ncRevBox())));
+    pokes.length = 0;
+    extraHost.replaceChildren(h('div', { class: 'pacing-two' }, paybackBox(data), h('div', { class: 'pacing-stack' }, intradayBox(), ncRevBox(), roasCpaBox())));
     feedHost.replaceChildren(h('section', { class: 'pg-section' }, h('h2', { class: 'pg-h2' }, 'Data feeds'), freshnessChips(chips),
       ui.source('Each feed refreshes daily and should reach yesterday. Meta spend comes from the Marketing metrics data; the rest is read from the Lonvera Projections sheet.')));
     loadSnapshot();
