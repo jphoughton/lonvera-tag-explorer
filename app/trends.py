@@ -409,7 +409,7 @@ def build_catalog(numbers: str) -> list[dict]:
 GROUPS = [
     {"key": "plan", "label": "Plan", "default": True, "intervals": ["month"]},
     {"key": "totals", "label": "DTC / Shopify", "default": True},
-    {"key": "meta", "label": "Meta", "default": False},
+    {"key": "meta", "label": "Meta", "default": True},
     {"key": "google", "label": "Google", "default": False},
     {"key": "products", "label": "By product", "default": False},
     {"key": "stage", "label": "Testing vs scaling", "default": False},

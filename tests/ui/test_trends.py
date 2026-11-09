@@ -79,7 +79,7 @@ def test_nav_link_and_default_week_view(page):
     h = heads(page)
     assert h[:6] == ["period", "total_rev", "nc_rev", "rc_rev", "nc_orders", "nc_aov"]
     assert h[-9:] == ["chg:total_rev", "chg:total_spend", "chg:nc_rev", "chg:rc_rev", "chg:nc_roas", "chg:nc_cpa", "chg:nc_orders", "chg:m_roas", "chg:g_roas"]
-    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "WoW Δ"]
+    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "WoW Δ"]
 
 
 def test_toggle_day_week_month_changes_the_rows_and_url(page):
@@ -187,7 +187,7 @@ def test_layout_is_the_sheets_bands_in_the_sheets_order_oldest_first(page):
 
 def test_plan_block_on_the_month_grain(page):
     goto(page, "?interval=month")
-    assert [b[0] for b in bands(page)] == ["Projected* | Target | % Diff", "DTC / SHOPIFY", "MoM Δ"]
+    assert [b[0] for b in bands(page)] == ["Projected* | Target | % Diff", "DTC / SHOPIFY", "META", "MoM Δ"]
     assert dict(bands(page))["Projected* | Target | % Diff"] == 17
     h = heads(page)
     assert h[1:4] == ["plan_total_rev_proj", "plan_total_rev_goal", "plan_total_rev_diff"] and h[16:18] == ["plan_ebitda_gap", "plan_noi_gap"]
@@ -240,14 +240,16 @@ def test_band_chips_show_and_hide_bands_and_chart_line_pick(page):
     goto(page)
     assert page.locator("[data-testid=trn-group-totals]").get_attribute("aria-pressed") == "true"
     assert page.locator("[data-testid=trn-group-change]").get_attribute("aria-pressed") == "true"
-    assert page.locator("[data-testid=trn-group-meta]").get_attribute("aria-pressed") == "false"
-    page.locator("[data-testid=trn-group-meta]").click()
-    pressed(page, "trn-group-meta")
+    assert page.locator("[data-testid=trn-group-meta]").get_attribute("aria-pressed") == "true"                    # Meta is on by default (Josh 2026-11-09)
     h = heads(page)
     for k in ("m_impr", "m_cpm", "m_ctr", "m_cpc", "m_roas", "reach", "frequency", "cost_1k", "uoc", "meta_spend"):
         assert k in h, k
     assert h.index("nc_roas") < h.index("meta_spend") < h.index("chg:total_rev")                                 # the sheet's order: DTC, Meta, ..., the change block last
-    assert params(page)["groups"] == "totals,meta,change"
+    page.locator("[data-testid=trn-group-meta]").click()                                                          # switching it off hides the Meta columns
+    page.wait_for_function("() => { const e = document.querySelector('[data-testid=trn-group-meta]'); return !!e && e.getAttribute('aria-pressed') === 'false'; }")
+    assert "meta_spend" not in heads(page) and params(page)["groups"] == "totals,change"
+    page.locator("[data-testid=trn-group-meta]").click()
+    pressed(page, "trn-group-meta")
     page.locator("[data-testid=trn-group-products]").click()
     pressed(page, "trn-group-products")
     h = heads(page)
