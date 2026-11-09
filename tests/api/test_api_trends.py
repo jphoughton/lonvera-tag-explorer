@@ -447,16 +447,38 @@ def test_freshness_chips_and_staleness(tc):
 
 
 def test_groups_and_catalog(tc):
+    """Changed with the sheet layout: the chips are the sheet's bands (DTC / Shopify, Meta, Google, By product, Testing vs scaling, Change; Plan on the month grain), and
+    each group lists the columns of its bands in the sheet's order."""
     d = get(tc)
     keys = {m["key"] for m in d["metrics"]}
     g = {x["key"]: x["metrics"] for x in d["groups"]}
-    assert g["totals"][:3] == ["total_spend", "meta_spend", "google_spend"] and "nc_roas" in g["totals"] and "nc_cpa" in g["totals"]
-    assert {"m_impr", "m_cpm", "m_ctr", "m_cpc", "m_roas", "reach", "frequency"} <= set(g["meta"]) and {"g_clicks", "g_cpc", "g_roas"} <= set(g["google"])
+    assert list(g) == ["totals", "meta", "google", "products", "stage", "change"]
+    assert g["totals"][:5] == ["total_rev", "nc_rev", "rc_rev", "nc_orders", "nc_aov"] and "nc_roas" in g["totals"] and "nc_cpa" in g["totals"]
+    assert {"m_impr", "m_cpm", "m_ctr", "m_cpc", "m_roas", "reach", "frequency", "meta_spend"} <= set(g["meta"]) and {"g_clicks", "g_cpc", "g_roas", "google_spend"} <= set(g["google"])
     for slug in ("vitabull", "beefliver", "boneflex"):
-        assert g[slug] == [f"p_{slug}_spend", f"p_{slug}_nc_rev", f"p_{slug}_nc_roas", f"p_{slug}_nc_cpa"]
+        assert {f"p_{slug}_spend", f"p_{slug}_nc_rev", f"p_{slug}_nc_roas", f"p_{slug}_nc_cpa", f"p_{slug}_nc_orders"} <= set(g["products"])
     assert set(sum(g.values(), [])) <= keys
+    assert [x["key"] for x in get(tc, interval="month")["groups"]][0] == "plan"                  # the plan block exists on the month grain only
     pol = {m["key"]: m["pol"] for m in d["metrics"]}
     assert pol["total_spend"] == "neutral" and pol["nc_cpa"] == "down_good" and pol["nc_roas"] == "up_good" and pol["m_cpm"] == "down_good"
+
+
+def test_layout_is_the_sheets_bands_in_the_sheets_order(tc):
+    d = get(tc)
+    assert [b["title"] for b in d["layout"]] == ["DTC / SHOPIFY", "META", "SPEND", "NC REVENUE", "NC ROAS", "NC ORDERS", "NC CPA", "SPEND BY STAGE", "TESTING % OF SPEND",
+                                                 "NC (UPSTACK ANY-CLICK)", "NC CPA BY STAGE", "GOOGLE", "WoW Δ"]
+    cols = {b["key"]: [c["label"] for c in b["cols"]] for b in d["layout"]}
+    assert cols["dtc"] == ["Total Revenue", "NC Revenue", "Repeat Revenue", "NC Orders", "NC AOV", "Ad Spend", "NC CPA", "NC ROAS", "MER", "NC Conversion", "Repeat Share %"]
+    assert cols["meta"][:9] == ["Spend", "Link Clicks", "CPC", "Purchases", "Purchase Value", "CVR", "Platform ROAS", "Cost per Purchase", "Impressions"]
+    assert cols["prod_nc_roas"] == ["VitaBull", "Beef Liver", "Boneflex", "Total"]
+    assert [x["title"] for x in get(tc, interval="month")["layout"]][0] == "Projected* | Target | % Diff" and get(tc, interval="month")["layout"][-1]["title"] == "MoM Δ"
+    assert get(tc, interval="day")["layout"][-1]["title"] == "DoD Δ"
+    nc = {b["key"]: [c["label"] for c in b["cols"]] for b in get(tc, numbers="nc")["layout"]}
+    assert nc["meta"][3:5] == ["New customers (Upstack)", "NC revenue (Upstack)"] and nc["meta"][6] == "NC ROAS (Upstack)"
+    every = {m["key"] for m in d["metrics"]}
+    placed = {c["key"] for b in d["layout"] for c in b["cols"]}
+    assert every <= placed, every - placed                                                       # no metric is lost by the layout
+    assert placed <= every
 
 
 def test_every_interval_answers_quickly_on_the_fixture(tc):
