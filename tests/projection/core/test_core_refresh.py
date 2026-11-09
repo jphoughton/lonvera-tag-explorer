@@ -436,7 +436,7 @@ def test_run_etl_run_daily_failure_wins_over_upstack_failure(stub_python):
 
 def test_run_etl_exits_non_zero_when_only_projection_fails(stub_python):
     p, calls = stub_python(PROJ_RC=1)
-    assert p.returncode == 1 and calls[-2] == "-m etl.projection_daily" and "etl.projection_daily failed (exit 1)" in p.stderr
+    assert p.returncode == 1 and calls[-3] == "-m etl.projection_daily" and "etl.projection_daily failed (exit 1)" in p.stderr
 
 
 def test_run_etl_reports_both_failures(stub_python):
