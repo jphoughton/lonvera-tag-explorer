@@ -94,6 +94,11 @@ table.pacing-table { border-collapse: separate; border-spacing: 0; width: 100%; 
 .pacing-var input[type="text"].bad { border-color: var(--lv-bad); }
 .pacing-var .def { color: var(--lv-muted); font-size: var(--lv-fs-xs); white-space: nowrap; }
 .pacing-details > summary { cursor: pointer; font-weight: var(--lv-fw-heavy); font-size: var(--lv-fs-md); }
+.amz-box { display: flex; flex-direction: column; gap: var(--lv-sp-2); align-items: flex-start; }
+.amz-line { margin: 0; max-width: 50ch; color: var(--lv-ink); font-size: var(--lv-fs-base); }
+.amz-meta { margin: 0; max-width: 50ch; color: var(--lv-ink-2); font-size: var(--lv-fs-sm); }
+.amz-check { display: inline-flex; align-items: center; gap: 6px; color: var(--lv-ink-2); font-size: var(--lv-fs-sm); }
+.amz-ctx { color: var(--lv-ink-2); font-size: var(--lv-fs-sm); font-weight: normal; }
 @media (max-width: 640px) { .pacing-table th.lab, .pacing-table td.lab { min-width: 150px; } .pacing-trend-scroll th.lab, .pacing-trend-scroll td.lab { min-width: 140px; } }
 `;
 
@@ -121,7 +126,7 @@ export async function render(el, ctx) {
   installStyle();
   const { h, ui, fmt } = ctx;
   const asOf = ctx.params && ctx.params.as_of ? { as_of: ctx.params.as_of } : {};
-  const state = { month: (ctx.params && ctx.params.month) || null, grain: 'month', view: 'rollup', delta: false, collapsed: null };
+  const state = { month: (ctx.params && ctx.params.month) || null, grain: 'month', view: 'rollup', delta: false, collapsed: null, amzActuals: false };
 
   // ---- live today: the latest hourly Upstack pull (python -m etl.live_today, endpoint pacing/live-today). The two intraday cards subscribe to it and fill
   // themselves; a value typed into a card always wins until "Use live" is pressed or the field is cleared. The age shown is the server's age at fetch time plus
@@ -239,7 +244,8 @@ export async function render(el, ctx) {
     const cls = [d.neg ? 'neg' : '', d.zero ? 'zero' : '', opts.proj ? 'proj' : ''].filter(Boolean).join(' ');
     if (d.blank) return h('td', { class: cls });
     const c = opts.context;
-    return h('td', { class: cls }, d.text, opts.star && !d.zero ? h('span', { class: 'pacing-ast' }, '*') : null,
+    return h('td', { class: cls }, d.text, (opts.star || opts.amz) && !d.zero ? h('span', { class: 'pacing-ast' }, '*') : null,
+      opts.amz && opts.amz.actuals_only != null ? h('div', { class: 'amz-ctx', title: 'Reported Amazon days only, nothing projected' }, `Actuals only ${fd(opts.amz.actuals_only, row.fmt).text}`) : null,
       c && c.value != null ? h('div', { class: 'pacing-ctx', title: `${c.days} complete days, ${c.from} to ${c.to}` }, `${c.label} ${fd(c.value, row.fmt).text}`) : null,
       c && c.value == null && c.unavailable ? h('div', { class: 'pacing-ctx' }, `${c.label} unavailable: ${c.unavailable}`) : null);
   }
@@ -263,7 +269,7 @@ export async function render(el, ctx) {
       body.append(h('tr', { class: r.kind },
         h('th', { class: 'lab', scope: 'row', style: { paddingLeft: `calc(var(--lv-sp-3) + ${r.indent * 14}px)` }, title: r.note || null },
           abbr(r.label), r.note ? h('span', { class: 'pg-note', title: r.note, 'aria-label': r.note }, 'i') : null),
-        paceCell(r), numCell(r, r.mtd, { context: r.context }), numCell(r, r.last7), numCell(r, r.daily_needed), numCell(r, r.should_be), numCell(r, r.goal),
+        paceCell(r), numCell(r, r.mtd, { context: r.context, amz: r.amazon_projected ? r : null }), numCell(r, r.last7), numCell(r, r.daily_needed), numCell(r, r.should_be), numCell(r, r.goal),
         numCell(r, r.projection, { proj: true, star: r.fmt !== 'pct1' && r.kind !== 'ratio' })));
     }
     return h('div', { class: 'pacing-table-wrap' }, h('table', { class: 'pacing-table', 'aria-label': 'Month pacing against the plan' },
@@ -606,11 +612,24 @@ export async function render(el, ctx) {
     return box;
   }
 
+  // ---- Amazon month to date, completed: reported days plus the missing days at the trailing 7-day average (nightly snapshot, else computed live). Shown only when
+  // something was projected, the newest day looks partial or the feed is stale; the switch shows reported days only (the table then carries no asterisk).
+  function amazonBox(data) {
+    const a = data.amazon_mtd;
+    if (!a || !a.applies || !(a.days_projected > 0 || (a.flags || []).includes('newest_day_partial') || a.status === 'stale')) return null;
+    const src = a.source === 'snapshot' ? 'From the nightly snapshot.' : `Computed live${a.live_reason ? ` (${a.live_reason})` : ''}.`;
+    const only = h('input', { type: 'checkbox', checked: state.amzActuals, 'aria-label': 'Show Amazon reported days only', onchange: (e) => { state.amzActuals = e.target.checked; loadMonth(); } });
+    return h('div', { class: 'amz-box', 'data-amz-status': a.status },
+      h('p', { class: 'amz-line', role: 'status' }, a.note),
+      h('p', { class: 'amz-meta' }, `${src} ${state.amzActuals ? 'Showing reported days only.' : 'Figures marked * include the projected days.'}`),
+      h('label', { class: 'amz-check' }, only, 'Amazon reported days only'));
+  }
+
   async function loadMonth() {
     ui.loading(tableHost, 'Loading the month…');
     let data;
     try {
-      data = await ctx.api.get('pacing/month', { month: state.month, ...asOf });
+      data = await ctx.api.get('pacing/month', { month: state.month, amazon: state.amzActuals ? 'actuals' : null, ...asOf });
     } catch (e) { ui.error(tableHost, e, loadMonth); return; }
     if (!ctx.alive()) return;
     state.month = data.month;
@@ -631,6 +650,8 @@ export async function render(el, ctx) {
     const notes = [];
     if (data.early) notes.push(h('div', { class: 'pacing-note' }, ui.chip('Early in the month', 'info'), `${data.days_elapsed} of ${data.days_in_month} days so far. Early projections swing: subscription renewals land in the first days of the month.`));
     if (missing) notes.push(h('div', { class: 'pacing-note' }, ui.chip('Plan lines missing', 'warn'), 'The scenario P&L has no values for some cost lines yet, so cost and profit goals read as zero for them.'));
+    const amzBox = amazonBox(data);
+    if (amzBox) notes.push(amzBox);
     noteHost.replaceChildren(...notes);
     if (!data.rows.length) {
       ui.empty(tableHost, data.days_elapsed === 0 ? 'This month has not started. Pick an earlier month.' : 'No actuals for this month yet.');
@@ -648,7 +669,7 @@ export async function render(el, ctx) {
   async function loadSnapshot() {
     let data;
     try {
-      data = await ctx.api.get('pacing/snapshot', { month: state.month, ...asOf });
+      data = await ctx.api.get('pacing/snapshot', { month: state.month, amazon: state.amzActuals ? 'actuals' : null, ...asOf });
     } catch (e) { snapHost.replaceChildren(h('div', { class: 'errorbox', role: 'alert' }, e.message)); return; }
     if (!ctx.alive()) return;
     const body = h('tbody');
@@ -659,7 +680,7 @@ export async function render(el, ctx) {
       const cell = (v, extra = {}) => { const d = dd(v); return h('td', { class: [d.neg ? 'neg' : '', extra.cls || ''].join(' ').trim() }, d.text, extra.star && !d.blank ? h('span', { class: 'pacing-ast' }, '*') : null); };
       const dp = fd(r.diff_pct, 'pct');
       const tone = r.status === 'good' || r.status === 'warn' || r.status === 'bad' ? r.status : null;
-      body.append(h('tr', null, h('th', { class: 'lab', scope: 'row' }, abbr(r.label)), cell(r.actual), cell(r.projected, { cls: 'proj', star: data.partial && r.fmt !== 'x' && r.fmt !== 'money2' }),
+      body.append(h('tr', null, h('th', { class: 'lab', scope: 'row' }, abbr(r.label)), cell(r.actual, { star: !!r.amazon_projected }), cell(r.projected, { cls: 'proj', star: data.partial && r.fmt !== 'x' && r.fmt !== 'money2' }),
         cell(r.target), cell(r.diff), h('td', { class: dp.neg ? 'neg' : '' }, dp.text, tone ? ' ' : null, tone ? ui.chip((r.direction === 'down' ? DOWN : UP)[tone], tone) : null)));
     }
     if (data.payback) {
