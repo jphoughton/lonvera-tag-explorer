@@ -9,7 +9,8 @@ import { breadcrumbs } from '../components.js';
 
 export const DEFAULT_VIEW = 'should_scale';
 const DEFAULTS = { min_test_spend: 500, min_purchases: 5, bar_pct: 100 };
-const TABS = [['should_scale', 'What should be scaled'], ['in_scaling', 'Performance in scaling'], ['detail', 'All moves, with detail']];
+const KILL_KEYS = ['kill_min_spend', 'kill_roas_pct'];
+const TABS = [['should_scale', 'What should be scaled'], ['should_kill', 'What should be killed'], ['in_scaling', 'Performance in scaling'], ['detail', 'All moves, with detail']];
 const money = (v) => fmt.money(v);
 const roasX = (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–');
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -33,6 +34,8 @@ function apiParams(view, p) {
   o.view = view;
   if (view === 'should_scale') {
     for (const k of Object.keys(DEFAULTS)) if (p[k] != null && p[k] !== '') o[k] = p[k];
+  } else if (view === 'should_kill') {
+    for (const k of KILL_KEYS) if (p[k] != null && p[k] !== '') o[k] = p[k];
   } else {
     if (p.hide_bulk === '1') o.hide_bulk = 1;
     if (p.bulk_min) o.bulk_min = p.bulk_min;
@@ -70,7 +73,8 @@ function creativeCell(r, G, flags = []) {
 
 function productChips(d, p, view) {
   const G = globalParams(p);
-  const keep = view === 'should_scale' ? Object.fromEntries(Object.keys(DEFAULTS).filter((k) => p[k] != null && p[k] !== '').map((k) => [k, p[k]])) : { ...(p.hide_bulk ? { hide_bulk: p.hide_bulk } : {}), ...(p.bulk_min ? { bulk_min: p.bulk_min } : {}) };
+  const keys = view === 'should_scale' ? Object.keys(DEFAULTS) : view === 'should_kill' ? KILL_KEYS : null;
+  const keep = keys ? Object.fromEntries(keys.filter((k) => p[k] != null && p[k] !== '').map((k) => [k, p[k]])) : { ...(p.hide_bulk ? { hide_bulk: p.hide_bulk } : {}), ...(p.bulk_min ? { bulk_min: p.bulk_min } : {}) };
   const chip = (label, slug, n) => h('a', { class: 'seg', href: href('/promotions', { ...G, ...keep, view, product: slug }), 'data-testid': 'sv-product-' + (slug || 'all'), 'aria-pressed': String((p.product || null) === slug),
     title: n != null ? `${fmt.int(n)} creative${n === 1 ? '' : 's'}` : null }, label);
   return h('div', { class: 'ctl', 'data-testid': 'sv-product-filter' }, h('span', { class: 'ctl-name' }, 'Product'),
@@ -157,6 +161,85 @@ function renderShould(ctx, d, p) {
     ...[].concat(body), ...foot];
 }
 
+// ---------------------------------------------------------------------------------------------------------------- view 3 (what should be killed)
+const KDEFAULT_PCT = 60;
+function farChip(v) {
+  const t = `Testing ROAS is ${Math.round(v.ratio * 100)}% of the ${roasX(v.scaling_roas)} scaling average of this product (scaling cost per purchase ${money(v.scaling_cpa)})`;
+  return h('span', { class: 'badge kv-vs kv-vs-' + slug(v.word), 'data-vs': v.word, title: t }, v.word);
+}
+function killConf(c, d) {
+  return h('span', { class: 'badge sv-conf sv-conf-' + c.level, 'data-conf': c.level, title: `${confText[c.level]} confidence: ${d.definition.confidence[c.level]}` }, confText[c.level]);
+}
+function killColumns(d, G, withRank) {
+  const L = d.labels || {};
+  const cols = [
+    { key: 'display', label: 'Creative', sticky: true, cls: 'labelcol', sort: (r) => r.display, cell: (r) => creativeCell(r, G) },
+    { key: 'product', label: 'Product', sort: (r) => r.product.name, cell: (r) => h('span', { class: 'tts-product', 'data-product': r.product.slug }, r.product.name) },
+    { key: 'days', label: 'Days in testing', num: true, sort: (r) => r.days_in_testing, title: 'Days from its first spend to the latest day of data', cell: (r) => (r.launched_before_data_start ? '≥ ' : '') + fmt.int(r.days_in_testing) },
+    { key: 'spend', label: 'Testing spend', num: true, sort: (r) => r.test.spend, cell: (r) => money(r.test.spend) },
+    { key: 'purchases', label: () => metricLabel('purchases', cap((L.purchases || 'Purchases').toLowerCase())), num: true, sort: (r) => r.test.purchases, cell: (r) => fmt.int(r.test.purchases) },
+    { key: 'roas', label: () => metricLabel('roas', 'ROAS'), num: true, sort: (r) => r.test.roas, cell: (r) => roasX(r.test.roas) },
+    { key: 'cpa', label: () => metricLabel('cpa', 'CPA'), num: true, sort: (r) => r.test.cpa, cell: (r) => money(r.test.cpa) },
+    { key: 'vs', label: 'Vs scaling average', sort: (r) => r.vs_scaling.ratio, title: 'Far below or below the average of the same product in scaling over the last 30 days (hover for the numbers)', cell: (r) => farChip(r.vs_scaling) },
+    { key: 'l7spend', label: 'Last 7 days spend', num: true, sort: (r) => r.last7.spend, title: 'Testing spend over the last 7 days of data: the money that stops when it is turned off', cell: (r) => money(r.last7.spend) },
+    { key: 'l7roas', label: () => `Last 7 days ${metricLabel('roas', 'ROAS')}`, num: true, sort: (r) => r.last7.roas, cell: (r) => roasX(r.last7.roas) },
+    { key: 'wasted', label: 'Wasted spend', num: true, sort: (r) => r.wasted, title: d.definition.wasted, cell: (r) => money(r.wasted) },
+    { key: 'reason', label: 'Why', sort: (r) => r.reason, cls: 'kv-reason', cell: (r) => h('span', { 'data-testid': 'kv-reason' }, r.reason) },
+    { key: 'conf', label: 'Confidence', sort: (r) => r.confidence.spend_x, title: 'How much spend the call rests on, against the product\'s scaling cost per purchase', cell: (r) => killConf(r.confidence, d) },
+  ];
+  if (withRank) cols.unshift({ key: 'rank', label: '#', num: true, sort: (r) => r._rank, cell: (r) => String(r._rank), title: 'Rank' });
+  return cols;
+}
+
+function renderKill(ctx, d, p) {
+  const G = globalParams(p);
+  const f = d.filters;
+  const set = (k, v, dflt) => setParams({ [k]: v === '' || !(Number(v) > 0) || Number(v) === dflt ? null : String(Math.floor(Number(v))) });
+  const spendEl = numberInput('kv-min-spend', 'Min testing spend', f.kill_min_spend == null ? '' : f.kill_min_spend, 0, '$', (v) => set('kill_min_spend', v, null), { placeholder: 'auto' });
+  spendEl.append(h('span', { class: 'muted' }, 'blank = 2 times the scaling cost per purchase'));
+  const pctEl = numberInput('kv-roas-pct', 'ROAS under', f.kill_roas_pct, 1, '', (v) => set('kill_roas_pct', v, KDEFAULT_PCT));
+  pctEl.append(h('span', { class: 'muted' }, '% of the scaling average'));
+  const changed = f.kill_min_spend != null || Number(f.kill_roas_pct) !== KDEFAULT_PCT;
+  const reset = changed ? h('a', { href: '#', class: 'linkbtn', 'data-testid': 'kv-reset', onclick: (e) => { e.preventDefault(); setParams({ kill_min_spend: null, kill_roas_pct: null }); } }, 'Reset to the defaults') : null;
+  const controls = h('div', { class: 'ctl-row tts-filters sv-controls', 'data-testid': 'sv-controls' }, productChips(d, p, 'should_kill'), spendEl, pctEl, reset);
+  const lines = d.lines.length ? h('ul', { class: 'sv-bars', 'data-testid': 'kv-lines', 'aria-label': 'What enough spend and clearly below mean for each product' },
+    d.lines.map((b) => h('li', { 'data-testid': 'kv-line-' + b.slug, 'data-min-spend': String(b.min_spend) },
+      h('strong', null, `${b.name}: kill line ${money(b.min_spend)} of testing spend`),
+      ` · scaling average ${fmt.roas(b.scaling_roas)} ${(d.labels || {}).roas || 'ROAS'} and ${money(b.scaling_cpa)} ${(d.labels || {}).cpa || 'CPA'} · clearly below = ROAS under ${fmt.roas(b.roas_floor)} and CPA over ${money(b.cpa_floor)}, or no purchases`))) : null;
+  const s = d.summary, t = d.total;
+  const summary = h('div', { class: 'sv-summary', 'data-testid': 'sv-summary' },
+    h('strong', { 'data-testid': 'sv-count', 'data-n': String(s.kill) }, `${fmt.int(s.kill)} of ${fmt.int(s.testing_live)} creatives in testing should be killed`),
+    s.kill ? `: ${money(t.testing_spend)} spent on them so far, ${money(t.last7_spend)} of it in the last 7 days.` : '.', ' Testing creatives that have not moved to scaling and spent in the last 3 days.');
+  const cols = killColumns(d, G, true);
+  const mk = (rows, testid) => createTable({ columns: cols, rows: rank(rows), rowKey: (r) => r.family_key, tableClass: 'compact', emptyText: 'Nothing to kill with these rules.', testid });
+  const main = mk(d.rows, 'kv-table');
+  const totalRow = d.rows.length ? h('div', { class: 'sv-summary kv-total', 'data-testid': 'kv-total' }, h('strong', null, 'Total'),
+    ` ${fmt.int(t.creatives)} creatives · ${money(t.testing_spend)} testing spend · `, h('strong', { 'data-testid': 'kv-total-l7' }, money(t.last7_spend)), ' last 7 days spend (what stops if you turn them off) · ', money(t.wasted), ' wasted') : null;
+  const copyBtn = d.rows.length ? h('button', { type: 'button', class: 'btn kv-copy', 'data-testid': 'kv-copy', title: 'Copies the creative names, one per line, to paste into Ads Manager' }, 'Copy list') : null;
+  const copied = h('span', { class: 'muted small', 'data-testid': 'kv-copied', role: 'status' }, '');
+  if (copyBtn) copyBtn.addEventListener('click', async () => {
+    const text = d.names.join('\n');
+    try { await navigator.clipboard.writeText(text); copied.textContent = `Copied ${d.names.length} names.`; } catch (e) {
+      const ta = h('textarea', { 'aria-hidden': 'true', style: 'position:fixed;left:-9999px' }, text); document.body.append(ta); ta.select();
+      try { document.execCommand('copy'); copied.textContent = `Copied ${d.names.length} names.`; } catch (e2) { copied.textContent = 'Could not copy: select the names in the table instead.'; }
+      ta.remove();
+    }
+  });
+  const body = d.rows.length ? [main.el] : [empty('Nothing in testing needs killing right now: no live creative has both spent enough to judge and fallen clearly below its product\'s scaling average. Lower the minimum spend or raise the ROAS percentage above to see more.')];
+  const watchTable = d.watch.length ? mk(d.watch, 'kv-watch-table') : null;
+  const watch = h('details', { class: 'sv-defs kv-watch', 'data-testid': 'kv-watch' },
+    h('summary', null, `Watch list · ${fmt.int(d.watch_total)} not yet`),
+    h('p', { class: 'muted small' }, 'Not killed yet: no purchases after spending one to two times the product\'s scaling cost per purchase, or enough spend but ROAS below 80% of the scaling average without being clearly below. Biggest spend first.' + (d.watch_total > d.watch.length ? ` Showing the biggest ${d.watch.length}.` : '')),
+    watchTable ? watchTable.el : h('p', { class: 'muted' }, 'Nothing on the watch list.'));
+  return [
+    h('p', { class: 'sv-lead', 'data-testid': 'sv-rule' }, d.definition.rule),
+    h('p', { class: 'sv-lead muted', 'data-testid': 'sv-screen' }, d.definition.screen),
+    controls, lines, summary,
+    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'What should be killed'), h('span', { class: 'src-badge', 'data-testid': 'src-badge' }, 'Numbers: ' + (d.numbers || 'Meta')), copyBtn, copied),
+    ...body, totalRow, watch,
+    ...(d.notes || []).map((n) => h('div', { class: 'muted small', 'data-testid': 'sv-note' }, n))];
+}
+
 // ---------------------------------------------------------------------------------------------------------------- view 2
 const statusTitle = {
   holding: 'The last 7 days return within 10% of, or more than, the ROAS since the move',
@@ -235,12 +318,12 @@ function renderScaling(ctx, d, p) {
 export async function scaleViewsPage(ctx) {
   const { params: p, signal } = ctx;
   const view = currentView(p);
-  document.title = (view === 'in_scaling' ? 'Performance in scaling' : 'What should be scaled') + ' · Test to scale · Marketing metrics';
+  document.title = (view === 'in_scaling' ? 'Performance in scaling' : view === 'should_kill' ? 'What should be killed' : 'What should be scaled') + ' · Test to scale · Marketing metrics';
   const d = await load(view, p, signal);
   if (!ctx.alive()) return;
   setRangeInfo(p, d.window_info, null, { unclassified: false });
   const G = globalParams(p);
-  const inner = view === 'in_scaling' ? renderScaling(ctx, d, p) : renderShould(ctx, d, p);
+  const inner = view === 'in_scaling' ? renderScaling(ctx, d, p) : view === 'should_kill' ? renderKill(ctx, d, p) : renderShould(ctx, d, p);
   ctx.mount(h('div', { class: 'page sv-page', 'data-level': 'promotions', 'data-view': view },
     h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'Test to scale'), h('span', { class: 'badge muted-badge' }, 'Meta only · creatives'), h('span', { class: 'spacer' }))),
     h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Marketing metrics', href: href('/', G) }, { label: 'Test to scale' }])),
