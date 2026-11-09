@@ -1,0 +1,506 @@
+[
+ {
+  "line": "B01",
+  "cluster": "GLP-1 Companion",
+  "icp": "GLP-1 Glow-Down",
+  "pain": "Hair Loss",
+  "trigger": "Fear",
+  "story": "Two months into the shot, she pulls a clump of hair from the shower drain."
+ },
+ {
+  "line": "B02",
+  "cluster": "GLP-1 Companion",
+  "icp": "GLP-1 Glow-Down",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Shame",
+  "story": "Eating a fraction of what she used to, she's asleep on the couch by 7:30."
+ },
+ {
+  "line": "B03",
+  "cluster": "GLP-1 Companion",
+  "icp": "GLP-1 Glow-Down",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Fear",
+  "story": "She's losing weight on the shot and worried she's losing nutrients with it."
+ },
+ {
+  "line": "B04",
+  "cluster": "GLP-1 Companion",
+  "icp": "Bariatric Patient",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Fear",
+  "story": "Her post-op labs come back low again, even though she does everything right."
+ },
+ {
+  "line": "B05",
+  "cluster": "GLP-1 Companion",
+  "icp": "Bariatric Patient",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Frustration",
+  "story": "Since the surgery she's exhausted, and standard iron and B12 pills aren't absorbing."
+ },
+ {
+  "line": "B06",
+  "cluster": "Hair Thinning",
+  "icp": "BL3 Thinning and Drained",
+  "pain": "Hair Loss",
+  "trigger": "Shame",
+  "story": "Her part keeps widening and her ponytail is half the thickness it was."
+ },
+ {
+  "line": "B07",
+  "cluster": "Hair Thinning",
+  "icp": "BL3 Thinning and Drained",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Frustration",
+  "story": "Her doctor says her ferritin is normal, yet she's exhausted and still shedding."
+ },
+ {
+  "line": "B08",
+  "cluster": "Hair Thinning",
+  "icp": "BL3 Thinning and Drained",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Desire",
+  "story": "She wants to feel like herself again, with energy and thick hair."
+ },
+ {
+  "line": "B09",
+  "cluster": "Hair Thinning",
+  "icp": "Biotin Theater",
+  "pain": "Hair Loss",
+  "trigger": "Frustration",
+  "story": "She has taken biotin gummies for six months and her shedding hasn't slowed."
+ },
+ {
+  "line": "B10",
+  "cluster": "Hair Thinning",
+  "icp": "Biotin Theater",
+  "pain": "Distrust of Synthetic Solutions",
+  "trigger": "Distrust",
+  "story": "Every hair vitamin ad promises thick hair, and she's stopped believing them."
+ },
+ {
+  "line": "B11",
+  "cluster": "Hair Thinning",
+  "icp": "Told It's Normal",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Frustration",
+  "story": "Her doctor calls her ferritin of 20 normal, but she knows something is off."
+ },
+ {
+  "line": "B12",
+  "cluster": "Hair Thinning",
+  "icp": "Told It's Normal",
+  "pain": "Hair Loss",
+  "trigger": "Fear",
+  "story": "She Googles hair loss causes at midnight, afraid it's permanent and nobody's looking."
+ },
+ {
+  "line": "B13",
+  "cluster": "Iron & B12",
+  "icp": "Iron-Pill Quitter",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Frustration",
+  "story": "She stares at the iron bottle she quit after weeks of stomach pain."
+ },
+ {
+  "line": "B14",
+  "cluster": "Iron & B12",
+  "icp": "Iron-Pill Quitter",
+  "pain": "Digestion / Gut Health",
+  "trigger": "Fear",
+  "story": "She remembers the constipation and nausea and won't try another iron pill."
+ },
+ {
+  "line": "B15",
+  "cluster": "Iron & B12",
+  "icp": "Iron-Pill Quitter",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Desire",
+  "story": "She wants iron that doesn't wreck her stomach so she can get her energy back."
+ },
+ {
+  "line": "B16",
+  "cluster": "Iron & B12",
+  "icp": "The Gallon Donor",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Frustration",
+  "story": "The donor center checks her hemoglobin, never her ferritin, while her stores empty."
+ },
+ {
+  "line": "B17",
+  "cluster": "Iron & B12",
+  "icp": "The Gallon Donor",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Pride",
+  "story": "She's proud to donate and wants to keep going without running on empty."
+ },
+ {
+  "line": "B18",
+  "cluster": "Iron & B12",
+  "icp": "The Absorber",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Distrust",
+  "story": "Reading his medication's side-effect sheet, he wonders if B12 explains his tingling."
+ },
+ {
+  "line": "B19",
+  "cluster": "Iron & B12",
+  "icp": "The Absorber",
+  "pain": "Mental Fog / Mood Instability",
+  "trigger": "Frustration",
+  "story": "Doctors call his brain fog normal for his age, and he doesn't buy it."
+ },
+ {
+  "line": "B20",
+  "cluster": "Menopause",
+  "icp": "Perimenopause Prepper",
+  "pain": "Hormone Decline (Testosterone / Estrogen)",
+  "trigger": "Shame",
+  "story": "She snaps at her partner over nothing and wonders who she's turning into."
+ },
+ {
+  "line": "B21",
+  "cluster": "Menopause",
+  "icp": "Perimenopause Prepper",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Frustration",
+  "story": "She wakes at 3am drenched, then drags through the next day."
+ },
+ {
+  "line": "B22",
+  "cluster": "Menopause",
+  "icp": "Perimenopause Prepper",
+  "pain": "General Vitality / Aging Well",
+  "trigger": "Desire",
+  "story": "She wants to feel like herself again before menopause hits full force."
+ },
+ {
+  "line": "B23",
+  "cluster": "Menopause",
+  "icp": "Heavy Bleeder",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Shame",
+  "story": "Day two of her period, she cancels plans and white-knuckles through work."
+ },
+ {
+  "line": "B24",
+  "cluster": "Menopause",
+  "icp": "Heavy Bleeder",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Frustration",
+  "story": "Every cycle takes more iron than her diet replaces, and she's wiped out."
+ },
+ {
+  "line": "B25",
+  "cluster": "Menopause",
+  "icp": "Heavy Bleeder",
+  "pain": "Hair Loss",
+  "trigger": "Fear",
+  "story": "Years of heavy periods and now her hair is thinning, too."
+ },
+ {
+  "line": "B26",
+  "cluster": "Collagen",
+  "icp": "One-Scoop Everything Buyer",
+  "pain": "Hair Loss",
+  "trigger": "Frustration",
+  "story": "She drinks collagen daily for hair and skin, and sees nothing change."
+ },
+ {
+  "line": "B27",
+  "cluster": "Collagen",
+  "icp": "One-Scoop Everything Buyer",
+  "pain": "Distrust of Synthetic Solutions",
+  "trigger": "Distrust",
+  "story": "She learns her collagen scoop is an incomplete protein and feels played."
+ },
+ {
+  "line": "B28",
+  "cluster": "Collagen",
+  "icp": "Powder Churner",
+  "pain": "Off-Putting Taste / Hard to Eat",
+  "trigger": "Frustration",
+  "story": "Her third gritty powder is sitting in the pantry, half-finished and hated."
+ },
+ {
+  "line": "B29",
+  "cluster": "Collagen",
+  "icp": "Powder Churner",
+  "pain": "General Vitality / Aging Well",
+  "trigger": "Desire",
+  "story": "She wants real nutrition in one easy capsule instead of another scoop."
+ },
+ {
+  "line": "B30",
+  "cluster": "Beauty-from-Within / Skin",
+  "icp": "Acne at 30",
+  "pain": "Skin / Acne / Glow",
+  "trigger": "Shame",
+  "story": "A new breakout appears the morning of her big meeting, again."
+ },
+ {
+  "line": "B31",
+  "cluster": "Beauty-from-Within / Skin",
+  "icp": "Acne at 30",
+  "pain": "Distrust of Synthetic Solutions",
+  "trigger": "Fear",
+  "story": "She reads Accutane side-effect threads at midnight, desperate for another option."
+ },
+ {
+  "line": "B32",
+  "cluster": "Beauty-from-Within / Skin",
+  "icp": "Retinol Quitter",
+  "pain": "Skin / Acne / Glow",
+  "trigger": "Frustration",
+  "story": "Retinol leaves her skin red and peeling, and she's tired of the purge."
+ },
+ {
+  "line": "B33",
+  "cluster": "Beauty-from-Within / Skin",
+  "icp": "Retinol Quitter",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Desire",
+  "story": "She wants vitamin A from food instead of another cream on her face."
+ },
+ {
+  "line": "B34",
+  "cluster": "Energy & Multivitamin",
+  "icp": "The Wired-Tired",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Frustration",
+  "story": "Third coffee in hand, she's still dragging at 3pm."
+ },
+ {
+  "line": "B35",
+  "cluster": "Energy & Multivitamin",
+  "icp": "The Wired-Tired",
+  "pain": "Mental Fog / Mood Instability",
+  "trigger": "Shame",
+  "story": "She blanks on a colleague's name in the middle of a meeting."
+ },
+ {
+  "line": "B36",
+  "cluster": "Energy & Multivitamin",
+  "icp": "AG1 Defector",
+  "pain": "Distrust of Synthetic Solutions",
+  "trigger": "Distrust",
+  "story": "She learns most of her $99 greens powder's ingredients don't list doses."
+ },
+ {
+  "line": "B37",
+  "cluster": "Energy & Multivitamin",
+  "icp": "AG1 Defector",
+  "pain": "Offer / Price-Led",
+  "trigger": "Frustration",
+  "story": "She's tired of spending $99 a month on a gritty drink."
+ },
+ {
+  "line": "B38",
+  "cluster": "Energy & Multivitamin",
+  "icp": "AG1 Defector",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Comparison",
+  "story": "She finds out her greens powder left out iron, B12 and vitamin A."
+ },
+ {
+  "line": "B39",
+  "cluster": "Energy & Multivitamin",
+  "icp": "The Night-Shift Nurse",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Frustration",
+  "story": "At 4am in the break room, she opens her third energy drink."
+ },
+ {
+  "line": "B40",
+  "cluster": "Energy & Multivitamin",
+  "icp": "The Night-Shift Nurse",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Fear",
+  "story": "Night shifts and vending-machine meals leave her running on empty nutritionally."
+ },
+ {
+  "line": "B41",
+  "cluster": "Alcohol & Liver Support",
+  "icp": "BL1 Weekend Face",
+  "pain": "Alcohol Face",
+  "trigger": "Shame",
+  "story": "Monday morning he sees a puffy, red face after a weekend of drinks."
+ },
+ {
+  "line": "B42",
+  "cluster": "Alcohol & Liver Support",
+  "icp": "BL1 Weekend Face",
+  "pain": "Liver Health / Detox",
+  "trigger": "Fear",
+  "story": "He wonders what a weekend of drinking is doing to his liver."
+ },
+ {
+  "line": "B43",
+  "cluster": "Alcohol & Liver Support",
+  "icp": "BL1 Weekend Face",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Frustration",
+  "story": "Monday is a write-off, with the hangover fog lasting well into the afternoon."
+ },
+ {
+  "line": "B44",
+  "cluster": "Alcohol & Liver Support",
+  "icp": "Beer Drinker",
+  "pain": "Weight Gain / Stubborn Belly Fat",
+  "trigger": "Shame",
+  "story": "His beer belly keeps growing, and he's quit on every diet."
+ },
+ {
+  "line": "B45",
+  "cluster": "Alcohol & Liver Support",
+  "icp": "Beer Drinker",
+  "pain": "Liver Health / Detox",
+  "trigger": "Fear",
+  "story": "His doctor flags his liver enzymes, and he isn't ready to quit beer."
+ },
+ {
+  "line": "B46",
+  "cluster": "Alcohol & Liver Support",
+  "icp": "Wine-Mom Wind-Down",
+  "pain": "Alcohol Face",
+  "trigger": "Shame",
+  "story": "She pours the nightly glass while packing lunches, then wakes up dull and puffy."
+ },
+ {
+  "line": "B47",
+  "cluster": "Alcohol & Liver Support",
+  "icp": "Wine-Mom Wind-Down",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Fear",
+  "story": "One or two glasses nightly, and she wonders what it's draining from her."
+ },
+ {
+  "line": "B48",
+  "cluster": "Alcohol & Liver Support",
+  "icp": "Wine-Mom Wind-Down",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Frustration",
+  "story": "She wakes unrefreshed every morning no matter how early she goes to bed."
+ },
+ {
+  "line": "B49",
+  "cluster": "Weight Loss & Belly Fat",
+  "icp": "BL2 The Stubborn Gut",
+  "pain": "Weight Gain / Stubborn Belly Fat",
+  "trigger": "Shame",
+  "story": "The belly won't budge, though he eats better and trains."
+ },
+ {
+  "line": "B50",
+  "cluster": "Weight Loss & Belly Fat",
+  "icp": "BL2 The Stubborn Gut",
+  "pain": "Liver Health / Detox",
+  "trigger": "Fear",
+  "story": "His doctor mentions a fatty liver, and he wants to fix it with food."
+ },
+ {
+  "line": "B51",
+  "cluster": "Weight Loss & Belly Fat",
+  "icp": "Failed Dieter",
+  "pain": "Weight Gain / Stubborn Belly Fat",
+  "trigger": "Frustration",
+  "story": "Keto, calorie counting and cleanses have all failed, and the weight keeps coming back."
+ },
+ {
+  "line": "B52",
+  "cluster": "Weight Loss & Belly Fat",
+  "icp": "Failed Dieter",
+  "pain": "Distrust of Synthetic Solutions",
+  "trigger": "Distrust",
+  "story": "Diet pills and shakes haven't worked, so a real food fix sounds right."
+ },
+ {
+  "line": "B53",
+  "cluster": "Ancestral Nutrition",
+  "icp": "Primal Living",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Relief",
+  "story": "He eats steak and eggs but wonders if he's missing what organ meats give."
+ },
+ {
+  "line": "B54",
+  "cluster": "Ancestral Nutrition",
+  "icp": "Primal Living",
+  "pain": "Distrust of Synthetic Solutions",
+  "trigger": "Pride",
+  "story": "He avoids anything synthetic and wants supplements made from real food."
+ },
+ {
+  "line": "B55",
+  "cluster": "Ancestral Nutrition",
+  "icp": "Label Reader",
+  "pain": "Ingredient Quality / Sourcing",
+  "trigger": "Distrust",
+  "story": "Every supplement label gets read, and anything with fillers goes back on the shelf."
+ },
+ {
+  "line": "B56",
+  "cluster": "Ancestral Nutrition",
+  "icp": "Label Reader",
+  "pain": "Offer / Price-Led",
+  "trigger": "Comparison",
+  "story": "Price per serving gets compared across brands before anything goes in the cart."
+ },
+ {
+  "line": "B57",
+  "cluster": "Ancestral Nutrition",
+  "icp": "Curious Beginner",
+  "pain": "Off-Putting Taste / Hard to Eat",
+  "trigger": "Frustration",
+  "story": "Liver is called a superfood, but cooking and eating it is a nonstarter."
+ },
+ {
+  "line": "B58",
+  "cluster": "Ancestral Nutrition",
+  "icp": "Curious Beginner",
+  "pain": "General Vitality / Aging Well",
+  "trigger": "Desire",
+  "story": "A friend swears by liver capsules, so curiosity wins out over skepticism."
+ },
+ {
+  "line": "B59",
+  "cluster": "Fertility & Postpartum",
+  "icp": "The Preconception Primer",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Desire",
+  "story": "She starts a 'preparing for baby' shelf and wants food-form nutrients."
+ },
+ {
+  "line": "B60",
+  "cluster": "Fertility & Postpartum",
+  "icp": "The Preconception Primer",
+  "pain": "Distrust of Synthetic Solutions",
+  "trigger": "Fear",
+  "story": "Another negative test on cycle eight, and she wonders if synthetic prenatals are enough."
+ },
+ {
+  "line": "B61",
+  "cluster": "Fertility & Postpartum",
+  "icp": "Postpartum Rebuilder",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Frustration",
+  "story": "Pumping at 2am on crackers alone, she's running on empty."
+ },
+ {
+  "line": "B62",
+  "cluster": "Fertility & Postpartum",
+  "icp": "Postpartum Rebuilder",
+  "pain": "Hair Loss",
+  "trigger": "Fear",
+  "story": "Months after birth, handfuls of hair are coming out in the shower."
+ },
+ {
+  "line": "B63",
+  "cluster": "Fertility & Postpartum",
+  "icp": "Postpartum Rebuilder",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Frustration",
+  "story": "Nursing and sleepless, she's depleted and has no time to cook."
+ }
+]

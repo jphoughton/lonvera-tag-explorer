@@ -16,6 +16,7 @@ from psycopg.types.json import Jsonb
 _SECRET_PATTERNS = [
     re.compile(r"(access_token=)[^&\s'\"]+", re.I),
     re.compile(r"(Bearer\s+)[A-Za-z0-9_\-\.]+", re.I),
+    re.compile(r"\bsk-ant-[A-Za-z0-9_\-]{10,}"),                 # Claude OAuth / API tokens
     re.compile(r"\bEA[A-Za-z0-9]{40,}\b"),          # Meta user/system tokens start with EA...
 ]
 
@@ -23,7 +24,7 @@ _SECRET_PATTERNS = [
 def scrub(text) -> str:
     """Remove anything that looks like a token (and the literal env token values) from text destined for logs / etl_runs."""
     s = str(text)
-    for env in ("META_ACCESS_TOKEN", "GOOGLE_SA_JSON", "APP_PASSWORD", "SECRET_KEY"):
+    for env in ("META_ACCESS_TOKEN", "GOOGLE_SA_JSON", "APP_PASSWORD", "SECRET_KEY", "CLAUDE_CODE_OAUTH_TOKEN"):
         v = os.environ.get(env)
         if v and len(v) > 8:
             s = s.replace(v, "***")

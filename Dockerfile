@@ -15,6 +15,15 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
+# Node + the Claude Code CLI (pinned): etl.auto_tag shells out to `claude -p` (auth = CLAUDE_CODE_OAUTH_TOKEN env var on the etl service). Node is copied from the
+# official node image (the python image keeps python in /usr/local, so only node + npm are taken, not the whole tree).
+COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:22-bookworm-slim /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && npm install -g @anthropic-ai/claude-code@2.1.321 \
+ && npm cache clean --force \
+ && claude --version
+
 # Non-root runtime user.
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
 
