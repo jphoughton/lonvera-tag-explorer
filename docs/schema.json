@@ -6602,6 +6602,79 @@
    "examples": []
   },
   {
+   "name": "public.scaling_benchmarks",
+   "schema": "public",
+   "relation": "scaling_benchmarks",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "What the Scaling campaigns spent and returned over the last 30 days of data, per product and Numbers basis: the benchmark the Test to scale page holds a testing creative against ('What should be scaled': is its testing ROAS or CPA at least as good as its product's scaling average?).",
+   "grain": "one row per (basis, product_slug) with scaling spend in the 30 days",
+   "primary_key": [
+    "basis",
+    "product_slug"
+   ],
+   "foreign_keys": [],
+   "source": "refresh_scaling_benchmarks() from public.family_daily (stage 'scaling', and its _upstack_nc / _upstack_all twins) x ad_metrics first row x products",
+   "refresh": "nightly (etl.stage_moves, same transaction as creative_stage_moves): DELETE + INSERT",
+   "coverage": "3 bases x up to 4 products (incl. 'none'); 30 days ending on the last day of family_daily",
+   "caveats": [
+    "All scaling spend of the product counts, including creatives that moved in a mass relaunch and creatives that never tested.",
+    "product_slug 'none' = creatives of no active product (products.slug 'unassigned' or no tracker row). Spend is Meta's in every basis; purchases and revenue are Upstack's in the upstack_* bases (not additive across bases)."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "basis",
+     "type": "text",
+     "nullable": false,
+     "description": "'meta' (Meta's own reporting), 'upstack_nc' (Upstack new customers) or 'upstack_all' (Upstack all orders)."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": false,
+     "description": "products.slug of the creative's product, or 'none'."
+    },
+    {
+     "name": "day_from",
+     "type": "date",
+     "nullable": false,
+     "description": "First day of the 30-day window (day_to - 29)."
+    },
+    {
+     "name": "day_to",
+     "type": "date",
+     "nullable": false,
+     "description": "Last day of family_daily: the window ends there."
+    },
+    {
+     "name": "creatives",
+     "type": "integer",
+     "nullable": false,
+     "description": "Creatives (tracker families) with scaling spend in the window."
+    },
+    {
+     "name": "spend",
+     "type": "numeric",
+     "nullable": false,
+     "description": "Scaling spend in the window, dollars."
+    },
+    {
+     "name": "purchases",
+     "type": "numeric",
+     "nullable": false,
+     "description": "Purchases in Scaling campaigns in the window (the basis's meaning: Meta purchases, Upstack new customers, or Upstack orders)."
+    },
+    {
+     "name": "revenue",
+     "type": "numeric",
+     "nullable": false,
+     "description": "Purchase value in the window, dollars (the basis's meaning)."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.unmatched_meta",
    "schema": "public",
    "relation": "unmatched_meta",

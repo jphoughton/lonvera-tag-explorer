@@ -508,6 +508,28 @@ tr.tts-bulk-row td { background: #fffaf2; }
 .tts-foot { margin: 2px 2px 6px; overflow-wrap: anywhere; }
 .tts-product { font-weight: 600; color: var(--text); }
 @media (max-width: 760px) { input.tts-num { width: 64px; } }
+/* ---------- Test to scale, the two simple views (What should be scaled, Performance in scaling). Class names start with sv- ---------- */
+.sv-tabs { display: flex; margin: 6px 0 8px; max-width: 100%; flex-wrap: wrap; }
+.sv-tabs .seg { flex: 1 1 auto; text-align: center; }
+.sv-tabs .seg { padding: 6px 12px; font-size: 13px; }
+.sv-lead { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; }
+.sv-controls { margin: 8px 0; }
+input.sv-num { width: 84px; }
+.sv-bars { list-style: none; margin: 6px 0; padding: 6px 12px; background: var(--panel); border: 1px solid var(--line-soft); border-radius: 6px; font-size: 12.5px; }
+.sv-bars li { margin: 2px 0; overflow-wrap: anywhere; }
+.sv-summary { margin: 6px 0 2px; font-size: 13px; overflow-wrap: anywhere; }
+.sv-foot { margin: 6px 2px; overflow-wrap: anywhere; max-width: 50ch; }
+.sv-name { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; }
+.sv-defs { margin: 8px 0; font-size: 12.5px; }
+.sv-defs p { margin: 4px 0; }
+.badge.sv-conf-high { background: var(--good-bg); color: var(--good); }
+.badge.sv-conf-medium { background: var(--warn-bg); color: var(--warn); }
+.badge.sv-conf-low { background: var(--bad-bg); color: var(--bad); }
+.badge.sv-vs-above, .badge.sv-vt-better, .badge.sv-status-holding { background: var(--good-bg); color: var(--good); }
+.badge.sv-vs-near, .badge.sv-vt-about-the-same { background: var(--warn-bg); color: var(--warn); }
+.badge.sv-vs-below, .badge.sv-vt-worse, .badge.sv-status-fading { background: var(--bad-bg); color: var(--bad); }
+.badge.sv-vt-too-early, .badge.sv-vt-no-baseline, .badge.sv-status-too-early, .badge.sv-status-stopped { background: var(--unc-bg); color: var(--unc); }
+@media (max-width: 760px) { input.sv-num { width: 72px; } }
 
 /* ---------- Trends (/trends): laid out like the rollup tabs of the Lonvera Projections sheet (periods as rows, labelled bands of columns, change block at the right).
    Class names start with trn- (never ad-, ads-, sponsor, promo, banner: ad blockers hide those). Band colours are the sheet's, darkened where white text on the original fell under 4.5:1. ---------- */
@@ -566,7 +588,7 @@ td.trn-empty { padding: 18px; color: var(--muted); }
 }
 
 /* readable line length for prose blocks */
-p, .tts-bulk-note, .tts-foot, .note-line { max-width: 50ch; }
+p, .tts-bulk-note, .tts-foot, .note-line, .sv-lead { max-width: 50ch; }
 
 /* ---------- Tag lookup (/lookup and the small box on the Meta page); classes start tl- ---------- */
 .tl-form { margin: 8px 0 12px; }
