@@ -29,6 +29,9 @@ G_UP_FIRST = D(2026, 1, 15)
 NO_ORDERS_DAY = D(2026, 3, 3)
 ANYCLICK_FIRST = D(2026, 1, 1)
 TODAY = D(2026, 11, 5)
+TRAFFIC_FIRST = D(2026, 1, 20)                        # the traffic feed (new visitors) starts here
+TRAFFIC_HOLE = D(2026, 4, 14)                         # one day the feed lacks
+ZERO_VISITORS_DAY = D(2026, 6, 9)                     # a real zero
 
 
 def rng(a, b):
@@ -56,6 +59,7 @@ def orc(d):  return 0 if d == NO_ORDERS_DAY else 500 + d.day
 def tnc(d):  return 1 + d.day % 3                                       # any-click new customers, Testing campaigns
 def snc(d):  return 2 + d.weekday()
 def ssum(f, a, b):  return sum(f(d) for d in rng(a, b))
+def nv(d):   return 0 if d == ZERO_VISITORS_DAY else 1000 + 37 * d.weekday() + d.day   # tracked new visitors
 def meta_present(d): return not (HOLE[0] <= d <= HOLE[1])
 
 
@@ -105,6 +109,9 @@ def tdb():
                             + [(d, "Other", "sheet" if d < APP_FIRST else "app", ms(d) - ms(d) // 2 - ms(d) // 4 - ms(d) // 8) for d in days if meta_present(d)])
             cur.executemany("INSERT INTO proj_feed_nc_product (day, product, nc_rev, nc_orders) VALUES (%s,%s,%s,%s)",
                             [(d, name, orev(d) // div, onc(d) // div) for d in days if d != NO_ORDERS_DAY for name, div in prods])
+            # traffic feed: Jan 20 on, one missing day, and a partial row for today (999999) that must never be read
+            cur.executemany("INSERT INTO proj_feed_traffic (day, new_visitors, visitors, sessions) VALUES (%s,%s,%s,%s)",
+                            [(d, nv(d), nv(d) * 2, nv(d) * 3) for d in rng(TRAFFIC_FIRST, LAST) if d != TRAFFIC_HOLE] + [(TODAY, 999999, 999999, 999999)])
             cur.executemany("INSERT INTO proj_feed_anyclick (day, stage, nc, nc_rev) VALUES (%s,%s,%s,0)",
                             [(d, st, f(d)) for d in rng(ANYCLICK_FIRST, LAST) for st, f in (("Testing", tnc), ("Scaling", snc))])
             # reach feed: day rows for the last 60 days, week rows (ISO, Monday start), month rows; the current periods run through today (partial)
@@ -468,7 +475,7 @@ def test_layout_is_the_sheets_bands_in_the_sheets_order(tc):
     assert [b["title"] for b in d["layout"]] == ["DTC / SHOPIFY", "META", "SPEND", "NC REVENUE", "NC ROAS", "NC ORDERS", "NC CPA", "SPEND BY STAGE", "TESTING % OF SPEND",
                                                  "NC (UPSTACK ANY-CLICK)", "NC CPA BY STAGE", "GOOGLE", "WoW Δ"]
     cols = {b["key"]: [c["label"] for c in b["cols"]] for b in d["layout"]}
-    assert cols["dtc"] == ["Total Revenue", "NC Revenue", "Repeat Revenue", "NC Orders", "NC AOV", "Ad Spend", "NC CPA", "NC ROAS", "MER", "NC Conversion", "Repeat Share %"]
+    assert cols["dtc"] == ["Total Revenue", "NC Revenue", "Repeat Revenue", "NC Orders", "NC AOV", "Ad Spend", "NC CPA", "NC ROAS", "MER", "NC Conversion", "Repeat Share %", "New Visitors", "Cost per New Visitor"]
     assert cols["meta"][:9] == ["Spend", "Link Clicks", "CPC", "Purchases", "Purchase Value", "CVR", "Platform ROAS", "Cost per Purchase", "Impressions"]
     assert cols["prod_nc_roas"] == ["VitaBull", "Beef Liver", "Boneflex", "Total"]
     assert [x["title"] for x in get(tc, interval="month")["layout"]][0] == "Projected* | Target | % Diff" and get(tc, interval="month")["layout"][-1]["title"] == "MoM Δ"
@@ -509,3 +516,112 @@ def test_sheet_parity_ratios_nc_aov_mer_repeat_share_conversion_first_impression
     assert approx(w["v"]["nc_cvr"], ssum(onc, a, b) / (ssum(mc, a, b) + ssum(gc, a, b)), 1e-6)
     assert approx(w["v"]["m_cvr"], ssum(mp, a, b) / ssum(mc, a, b), 1e-6) and approx(w["v"]["g_cvr"], ssum(gp, a, b) / ssum(gc, a, b), 1e-6)
     assert approx(w["v"]["first_imp"], week_reach(a) / ssum(mi, a, b), 1e-6)
+
+
+# ----------------------------------------------------------------------------- new visitors and cost per new visitor (Upstack traffic feed)
+def test_new_visitors_and_cost_per_new_visitor_are_sums_and_ratios_of_sums(tc):
+    for interval, n in (("week", 30), ("month", 10), ("day", 60)):
+        d = get(tc, interval=interval, periods=n)
+        checked = 0
+        for r in d["rows"]:
+            if r["state"] != "closed":
+                continue
+            a, b = D.fromisoformat(r["start"]), D.fromisoformat(r["end"])
+            if a < TRAFFIC_FIRST or any(not meta_present(x) for x in rng(a, b)) or TRAFFIC_HOLE in rng(a, b):
+                continue
+            visitors, spend = ssum(nv, a, b), ssum(ms, a, b) + ssum(gs, a, b)
+            assert r["v"]["new_visitors"] == visitors, (interval, r["label"])
+            if visitors:
+                assert approx(r["v"]["cost_nv"], spend / visitors, 1e-5), (interval, r["label"])
+            checked += 1
+        assert checked >= 5, interval
+    w = by_start(get(tc, interval="week", periods=20), D(2026, 10, 19))
+    a, b = D(2026, 10, 19), D(2026, 10, 25)
+    mean_of_ratios = sum((ms(x) + gs(x)) / nv(x) for x in rng(a, b)) / 7
+    assert abs(mean_of_ratios - w["v"]["cost_nv"]) / w["v"]["cost_nv"] > 0.002              # the page shows the ratio of sums
+    assert approx(w["v"]["cost_nv"], (ssum(ms, a, b) + ssum(gs, a, b)) / ssum(nv, a, b), 1e-6)
+
+
+def test_cost_per_new_visitor_uses_the_same_total_spend_as_the_ad_spend_column(tc):
+    r = by_start(get(tc, interval="week", periods=20), D(2026, 10, 19))
+    assert approx(r["v"]["cost_nv"] * r["v"]["new_visitors"], r["v"]["total_spend"], 0.05)
+
+
+def test_new_visitors_dash_before_the_feed_starts_and_when_a_period_straddles_the_first_day(tc):
+    d = get(tc, interval="week", as_of="2026-02-04", periods=4)
+    before = by_start(d, D(2026, 1, 12))                                       # Jan 12-18: entirely before Jan 20
+    straddle = by_start(d, D(2026, 1, 19))                                     # Jan 19-25: starts a day before the feed
+    for r in (before, straddle):
+        assert r["v"]["new_visitors"] is None and r["v"]["cost_nv"] is None, r["label"]
+        assert "starts Jan 20, 2026" in r["why"]["new_visitors"] and "starts Jan 20, 2026" in r["why"]["cost_nv"]
+        assert r["v"]["total_spend"] is not None                                # the other columns are untouched
+        assert "new_visitors" not in r["d"] and "cost_nv" not in r["d"]
+    ok = by_start(d, D(2026, 1, 26))
+    assert ok["v"]["new_visitors"] == ssum(nv, D(2026, 1, 26), D(2026, 2, 1))
+    assert "new_visitors" not in ok["d"] and "starts" in ok["why"]["new_visitors:d"] or "no data" in ok["why"]["new_visitors:d"]
+    m = get(tc, interval="month", as_of="2026-02-10", periods=3)
+    jan = by_start(m, D(2026, 1, 1))
+    assert jan["v"]["new_visitors"] is None and jan["v"]["cost_nv"] is None and "starts Jan 20, 2026" in jan["why"]["cost_nv"]
+    assert by_start(m, D(2026, 2, 1))["v"]["new_visitors"] == ssum(nv, D(2026, 2, 1), D(2026, 2, 9))        # the open month: through yesterday
+
+
+def test_new_visitors_dash_for_a_period_with_a_missing_traffic_day(tc):
+    d = get(tc, interval="week", as_of="2026-04-27", periods=4)
+    w = by_start(d, D(2026, 4, 13))                                            # Apr 13-19 holds the missing Apr 14
+    assert w["v"]["new_visitors"] is None and w["v"]["cost_nv"] is None
+    assert "no data for Apr 14, 2026" in w["why"]["new_visitors"] and "no data for Apr 14, 2026" in w["why"]["cost_nv"]
+    assert w["v"]["total_spend"] is not None
+    nxt = by_start(d, D(2026, 4, 20))
+    assert nxt["v"]["new_visitors"] == ssum(nv, D(2026, 4, 20), D(2026, 4, 26))
+    assert "new_visitors" not in nxt["d"] and "no data" in nxt["why"]["new_visitors:d"]               # the base week is a dash
+    day = by_start(get(tc, interval="day", as_of="2026-04-16", periods=3), D(2026, 4, 14))
+    assert day["v"]["new_visitors"] is None and "no data for Apr 14, 2026" in day["why"]["new_visitors"]
+    mo = by_start(get(tc, interval="month", as_of="2026-05-10", periods=3), D(2026, 4, 1))
+    assert mo["v"]["new_visitors"] is None and "no data for Apr 14, 2026" in mo["why"]["cost_nv"]
+
+
+def test_zero_visitor_day_is_a_real_zero_and_cost_is_undefined_not_zero(tc):
+    day = by_start(get(tc, interval="day", as_of="2026-06-12", periods=5), ZERO_VISITORS_DAY)
+    assert day["v"]["new_visitors"] == 0 and day["v"]["cost_nv"] is None
+    assert "zero" in day["why"]["cost_nv"]
+    wk = by_start(get(tc, interval="week", as_of="2026-06-17", periods=4), D(2026, 6, 8))              # the week around it still sums (the zero day adds nothing)
+    assert wk["v"]["new_visitors"] == ssum(nv, D(2026, 6, 8), D(2026, 6, 14))
+    assert approx(wk["v"]["cost_nv"], (ssum(ms, D(2026, 6, 8), D(2026, 6, 14)) + ssum(gs, D(2026, 6, 8), D(2026, 6, 14))) / wk["v"]["new_visitors"], 1e-5)
+
+
+def test_changes_for_new_visitors_and_cost_closed_open_and_polarity(tc):
+    d = get(tc, interval="week", periods=8)
+    cur, prev = by_start(d, D(2026, 10, 19)), by_start(d, D(2026, 10, 12))
+    exp = ssum(nv, D(2026, 10, 19), D(2026, 10, 25)) / ssum(nv, D(2026, 10, 12), D(2026, 10, 18)) - 1
+    assert approx(cur["d"]["new_visitors"]["v"], exp, 1e-5) and cur["d"]["new_visitors"]["t"] == "pct"
+    c_now = (ssum(ms, D(2026, 10, 19), D(2026, 10, 25)) + ssum(gs, D(2026, 10, 19), D(2026, 10, 25))) / ssum(nv, D(2026, 10, 19), D(2026, 10, 25))
+    c_prev = (ssum(ms, D(2026, 10, 12), D(2026, 10, 18)) + ssum(gs, D(2026, 10, 12), D(2026, 10, 18))) / ssum(nv, D(2026, 10, 12), D(2026, 10, 18))
+    assert approx(cur["d"]["cost_nv"]["v"], c_now / c_prev - 1, 1e-5)
+    pol = {m["key"]: m["pol"] for m in d["metrics"]}
+    kind = {m["key"]: m["kind"] for m in d["metrics"]}
+    assert pol["new_visitors"] == "up_good" and pol["cost_nv"] == "down_good" and kind["new_visitors"] == "int" and kind["cost_nv"] == "money2"
+    # the open week (Nov 2-4 loaded) against the same weekdays of the last week; today's partial traffic row (999999) is never read
+    o = by_start(d, D(2026, 11, 2))
+    assert o["open"] and o["v"]["new_visitors"] == ssum(nv, D(2026, 11, 2), D(2026, 11, 4))
+    assert approx(o["d"]["new_visitors"]["v"], ssum(nv, D(2026, 11, 2), D(2026, 11, 4)) / ssum(nv, D(2026, 10, 26), D(2026, 10, 28)) - 1, 1e-5)
+    om = by_start(get(tc, interval="month", periods=3), D(2026, 11, 1))
+    assert om["v"]["new_visitors"] == ssum(nv, D(2026, 11, 1), D(2026, 11, 4))
+    assert approx(om["d"]["new_visitors"]["v"], ssum(nv, D(2026, 11, 1), D(2026, 11, 4)) / ssum(nv, D(2026, 10, 1), D(2026, 10, 4)) - 1, 1e-5)
+
+
+def test_new_visitor_columns_sit_in_the_dtc_band_the_change_block_and_the_freshness_chips(tc):
+    d = get(tc)
+    dtc = next(b for b in d["layout"] if b["key"] == "dtc")
+    assert [c["key"] for c in dtc["cols"]][-3:] == ["repeat_share", "new_visitors", "cost_nv"]               # the sheet's position: after Repeat Share %
+    assert [c["label"] for c in dtc["cols"]][-2:] == ["New Visitors", "Cost per New Visitor"]
+    chg = next(b for b in d["layout"] if b["key"] == "change")
+    assert {"new_visitors", "cost_nv"} <= {c["key"] for c in chg["cols"]}
+    g = {x["key"]: x["metrics"] for x in d["groups"]}
+    assert {"new_visitors", "cost_nv"} <= set(g["totals"]) and not ({"new_visitors", "cost_nv"} & set(g["meta"]))
+    f = {x["key"]: x for x in d["freshness"]}
+    assert f["traffic"]["first"] == "2026-01-20" and f["traffic"]["last"] == "2026-11-04" and not f["traffic"]["stale"]    # today's partial row is not counted
+
+
+def test_a_week_across_the_dst_change_counts_seven_days_of_visitors(tc):
+    w = by_start(get(tc, interval="week", as_of="2026-11-11", periods=4), D(2026, 10, 26))                  # Nov 1 2026 is the end of daylight time
+    assert w["days"] == 7 and w["v"]["new_visitors"] == sum(nv(x) for x in rng(D(2026, 10, 26), D(2026, 11, 1)))

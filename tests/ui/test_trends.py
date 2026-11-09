@@ -78,7 +78,7 @@ def test_nav_link_and_default_week_view(page):
     assert "Oct 19 – Oct 25" in page.evaluate("() => document.querySelectorAll('[data-testid=trn-table] tbody tr[data-key]')[10].children[0].title")        # a closed week's own base, on hover
     h = heads(page)
     assert h[:6] == ["period", "total_rev", "nc_rev", "rc_rev", "nc_orders", "nc_aov"]
-    assert h[-9:] == ["chg:total_rev", "chg:total_spend", "chg:nc_rev", "chg:rc_rev", "chg:nc_roas", "chg:nc_cpa", "chg:nc_orders", "chg:m_roas", "chg:g_roas"]
+    assert h[-11:] == ["chg:total_rev", "chg:total_spend", "chg:nc_rev", "chg:rc_rev", "chg:nc_roas", "chg:nc_cpa", "chg:nc_orders", "chg:new_visitors", "chg:cost_nv", "chg:m_roas", "chg:g_roas"]
     assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "WoW Δ"]
 
 
@@ -167,7 +167,7 @@ def test_layout_is_the_sheets_bands_in_the_sheets_order_oldest_first(page):
     assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "SPEND", "NC REVENUE", "NC ROAS", "NC ORDERS", "NC CPA", "SPEND BY STAGE", "TESTING % OF SPEND",
                                            "NC (UPSTACK ANY-CLICK)", "NC CPA BY STAGE", "GOOGLE", "WoW Δ"]
     spans = dict(bands(page))
-    assert spans["DTC / SHOPIFY"] == 11 and spans["SPEND"] == 4 and spans["TESTING % OF SPEND"] == 1 and spans["WoW Δ"] == 9
+    assert spans["DTC / SHOPIFY"] == 13 and spans["SPEND"] == 4 and spans["TESTING % OF SPEND"] == 1 and spans["WoW Δ"] == 11
     labels = page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] thead tr.trn-colrow th')].map(th => th.innerText.replace(/\\s+/g, ' ').trim())")
     assert labels[:5] == ["Total Revenue", "NC Revenue", "Repeat Revenue", "NC Orders", "NC AOV"]
     assert "Platform ROAS" in labels and "Purchase Value" in labels and "Cost per 1,000 Reached" in labels
@@ -331,7 +331,7 @@ def test_reach_has_no_change_while_the_period_is_open(page):
 def test_freshness_chips_and_help(page):
     goto(page)
     chips = page.locator("[data-testid=trn-fresh] .badge")
-    assert chips.count() == 9
+    assert chips.count() == 10
     assert chips.first.inner_text().startswith("Meta") and "Nov 4" in chips.first.inner_text()
     assert page.locator("[data-testid=trn-fresh] [data-stale=true]").count() == 0
     assert "so far" in page.locator("[data-testid=trn-help-short]").inner_text()
@@ -425,3 +425,33 @@ def test_no_class_or_id_an_ad_blocker_would_hide(page):
     bad = page.evaluate("""() => [...document.querySelectorAll('#view *')].flatMap(e => [...e.classList, e.id].filter(Boolean))
         .filter(t => /^(ads?|ad-.*|ads-.*|adname|advert.*|sponsor.*)$/.test(t) || /promo|banner|sponsor|advert/i.test(t))""")
     assert bad == []
+
+
+def test_new_visitors_and_cost_per_new_visitor_columns(page):
+    """Both columns sit at the end of the DTC / SHOPIFY band (the sheet's position), with the sheet's labels, #,##0 and $0.00 formats, dashes with a reason before the
+    traffic feed starts (2025-05-08), and a change in the change block that follows the polarity colours (more visitors good, higher cost bad)."""
+    goto(page, "?interval=month&periods=24")
+    h = heads(page)
+    labels = page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] thead tr.trn-colrow th')].map(th => th.innerText.replace(/\\s+/g, ' ').trim())")
+    assert h.index("new_visitors") == h.index("repeat_share") + 1 and h.index("cost_nv") == h.index("new_visitors") + 1 and h.index("cost_nv") < h.index("meta_spend")
+    assert labels[h.index("new_visitors") - 1] == "New Visitors" and labels[h.index("cost_nv") - 1] == "Cost per New Visitor"
+    r = rows(page)
+    nv_i, c_i = h.index("new_visitors"), h.index("cost_nv")
+    assert r[0]["cells"][nv_i] == "–" and r[0]["cells"][c_i] == "–"                                      # Dec 2024: before the feed
+    tip = page.evaluate("(i) => document.querySelector('[data-testid=trn-table] tbody tr:first-child').children[i].title", c_i)
+    assert "starts May 8, 2025" in tip
+    closed = r[-2]["cells"]
+    assert re.fullmatch(r"\d{1,3}(,\d{3})*", closed[nv_i]), closed[nv_i]
+    assert re.fullmatch(r"\$\d{1,3}(,\d{3})*\.\d\d", closed[c_i]), closed[c_i]
+    for k in ("new_visitors", "cost_nv"):
+        ch = r[-2]["cells"][h.index("chg:" + k)]
+        assert re.fullmatch(r"[+-]\d+\.\d%|0\.0%", ch), (k, ch)
+    # day and week grains render both too, and the open period carries the like-for-like 'so far' change
+    for interval in ("day", "week"):
+        goto(page, f"?interval={interval}")
+        h2, r2 = heads(page), rows(page)
+        done = [x for x in r2 if "trn-pending" not in x["cls"]][-1] if interval == "day" else r2[-2]
+        assert re.fullmatch(r"\d{1,3}(,\d{3})*", done["cells"][h2.index("new_visitors")]) and done["cells"][h2.index("cost_nv")].startswith("$")
+    assert "trn-open" in r2[-1]["cls"] and r2[-1]["cells"][h2.index("new_visitors")] != "–" and r2[-1]["cells"][h2.index("chg:new_visitors")] != "–"
+    left_out = page.locator("[data-testid=trn-left-out]").inner_text()
+    assert "new visitors" not in left_out.lower()

@@ -289,7 +289,7 @@ export async function trendsPage(ctx) {
   const notes = h('div', { class: 'trn-notes', 'data-testid': 'trn-notes' },
     open ? h('p', { 'data-testid': 'trn-vs' }, h('strong', null, `${open.label} (${open.days_cov} of ${open.days} days, so far)`), open.compare.text ? ` is compared with ${open.compare.text}: ${vsText(open)}.` : ` has no like-for-like comparison: ${open.compare.why}`) : null,
     iv === 'month' && plan ? h('p', { 'data-testid': 'trn-plan-note' }, plan.available ? h('span', null, h('strong', null, 'Projected*: '), plan.caption) : h('span', null, h('strong', null, 'Plan columns are empty. '), plan.reason)) : null,
-    h('p', { class: 'muted', 'data-testid': 'trn-left-out' }, 'Left out because this app has no data for them: the sheet\'s BUSINESS-WIDE and AMAZON bands, EBITDA (LIVE P&L) and the plan block on the day and week views, TikTok spend, new visitors, the per-product click bands and the bid columns.'));
+    h('p', { class: 'muted', 'data-testid': 'trn-left-out' }, 'Left out because this app has no data for them: the sheet\'s BUSINESS-WIDE and AMAZON bands, EBITDA (LIVE P&L) and the plan block on the day and week views, TikTok spend, the per-product click bands and the bid columns.'));
 
   const page = h('div', { class: 'page trn-page', 'data-testid': 'trn-page' },
     h('div', { class: 'pagehead' }, h('h1', null, 'Trends'), h('span', { class: 'muted' }, ` ${d.labels[iv]} · last ${d.periods} ${iv === 'day' ? 'days' : iv === 'week' ? 'weeks' : 'months'}`)),
