@@ -364,6 +364,13 @@ def trends():
     return jsonify(trn.trends(db.get_conn(), request.args))
 
 
+@bp.get("/api/trends/plan")
+def trends_plan():
+    """Trends, month grain: the Pacing page's projected / target / % diff per month (from=YYYY-MM-DD&to=YYYY-MM-DD). Answers 200 with available=false and the reason when the
+    plan cannot be built, so the Trends table still renders. See app/trends.py (plan_payload)."""
+    return jsonify(trn.plan_payload(request.args))
+
+
 @bp.get("/api/tag-lookup")
 def tag_lookup():
     """Tag lookup: q=<an ad name as the platform shows it | a Meta ad id | a tracker Concept ID or Ad Family>. The new (line-mapped) tags of the matching tracker rows,

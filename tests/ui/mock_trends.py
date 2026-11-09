@@ -103,3 +103,38 @@ def register(app, deps):
             c.last = min(c.last, through)
         periods = T.build_periods(opt["interval"], today, through, opt["periods"])
         return jsonify(T.assemble(opt, today, cov, through, periods, FR, REACH[opt["interval"]]))
+
+    @app.get("/api/trends/plan")
+    def trends_plan_mock():
+        return jsonify(plan_mock(request.args))
+
+
+def plan_mock(args) -> dict:
+    """GET /api/trends/plan for the mock: made-up projected / target numbers per month, shaped exactly like app.trends.plan_payload (the real numbers come from the pacing module)."""
+    if args.get("fail") == "1":
+        return {"available": False, "reason": "The plan figures could not be loaded (mock failure).", "months": [], "values": {}}
+    frm = D.fromisoformat(args["from"]).replace(day=1)
+    to = D.fromisoformat(args["to"]).replace(day=1)
+    months, d = [], frm
+    while d <= to:
+        months.append(d)
+        d = (d.replace(day=28) + dt.timedelta(days=4)).replace(day=1)
+    R = random.Random(11)
+    vals = {k: [] for k in ("total_rev", "total_spend", "nc_rev", "ebitda", "noi")}
+    out = {}
+    for m in months:
+        S = T.sums(FR, m, T.month_end(m))
+        base = {"total_rev": S["otot"] * 1.4, "total_spend": (S["ms"] + S["gs"]) * 1.1, "nc_rev": S["onc_rev"], "ebitda": S["otot"] * 0.12, "noi": S["otot"] * 0.1}
+        for k, v in base.items():
+            goal = v * R.uniform(0.9, 1.1)
+            if not v:                                                       # a month before the data begins has no plan figure
+                for suf in ("proj", "goal", "diff"):
+                    out.setdefault(f"plan_{k}_{suf}", []).append(None)
+                continue
+            out.setdefault(f"plan_{k}_proj", []).append(round(v, 4))
+            out.setdefault(f"plan_{k}_goal", []).append(round(goal, 4))
+            out.setdefault(f"plan_{k}_diff", []).append(round(v / goal - 1, 6))
+    for k in ("ebitda", "noi"):
+        out[f"plan_{k}_gap"] = [None if p is None else round(p - g, 4) for p, g in zip(out[f"plan_{k}_proj"], out[f"plan_{k}_goal"])]
+    return {"available": True, "reason": None, "months": [m.isoformat() for m in months], "values": out, "data_through": LAST.isoformat(),
+            "caption": "Same figures as the Pacing page (mock)."}

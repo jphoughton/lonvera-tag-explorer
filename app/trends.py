@@ -1,4 +1,5 @@
-"""Trends (/trends): the key marketing metrics by Day (DoD), Week (WoW) or Month (MoM), each period with its change against the previous period.
+"""Trends (/trends): the key marketing metrics by Day (DoD), Week (WoW) or Month (MoM), laid out in the bands of the Google Sheet 'Lonvera Projections'
+(Pacing - Daily / Rollup - Weekly / Rollup - Monthly: see docs/TRENDS.md), each period with its change against the previous period.
 
 One endpoint, one SQL round per source (a GROUP BY day over an indexed daily table), everything else is arithmetic in Python on a small per-day frame, so every
 interval answers in well under a second uncached; there is no per-request recomputation of anything heavy. See docs/TRENDS.md for the definitions.
@@ -386,6 +387,11 @@ def build_catalog(numbers: str) -> list[dict]:
         add(f"p_{slug}_nc_rev", f"{name} NC revenue", slug, "money", UP, ("prod_nc",), lambda S, nr=nr: S[nr], "Actual first-order revenue split across product lines (feed nc_product).")
         add(f"p_{slug}_nc_roas", f"{name} NC ROAS", slug, "roas", UP, ("prod_nc", "prod_spend"), lambda S, nr=nr, sp=sp: _div(S[nr], S[sp]), "Product NC revenue / product Meta spend.")
         add(f"p_{slug}_nc_cpa", f"{name} NC CPA", slug, "money2", DOWN, ("prod_nc", "prod_spend"), lambda S, no=no, sp=sp: _div(S[sp], S[no]), "Product Meta spend / product new customers (orders whose largest product line is this product).")
+        add(f"p_{slug}_nc_orders", f"{name} NC orders", slug, "int", UP, ("prod_nc",), lambda S, no=no: S[no], "Actual new customers whose first order was mostly this product (feed nc_product).")
+
+    # the product bands' Total columns divide by Meta spend alone, exactly as the sheet does (the DTC band's NC ROAS / NC CPA use Meta + Google)
+    add("meta_nc_roas", "NC ROAS on Meta spend", "totals", "roas", UP, ("orders", "meta"), lambda S: _div(S["onc_rev"], S["ms"]), "Actual NC revenue / Meta spend (the product bands' Total column).")
+    add("meta_nc_cpa", "NC CPA on Meta spend", "totals", "money2", DOWN, ("orders", "meta"), lambda S: _div(S["ms"], S["onc_ord"]), "Meta spend / actual new customers (the product bands' Total column).")
 
     # testing vs scaling
     add("test_spend", "Testing spend", "stage", "money", NEUTRAL, ("meta",), lambda S: S["ts"], "Meta spend in campaigns whose name contains 'test'.")
@@ -398,17 +404,98 @@ def build_catalog(numbers: str) -> list[dict]:
     return M
 
 
+# ---------------------------------------------------------------------------------------------------------------- the layout (the sheet's bands)
+# Chips (what the page lets you show or hide). 'plan' exists for the month grain only; 'change' is the sheet's WoW / MoM change block.
 GROUPS = [
-    {"key": "totals", "label": "Totals", "default": True},
+    {"key": "plan", "label": "Plan", "default": True, "intervals": ["month"]},
+    {"key": "totals", "label": "DTC / Shopify", "default": True},
     {"key": "meta", "label": "Meta", "default": False},
     {"key": "google", "label": "Google", "default": False},
-    {"key": "vitabull", "label": "VitaBull", "default": False},
-    {"key": "beefliver", "label": "Beef Liver", "default": False},
-    {"key": "boneflex", "label": "Boneflex", "default": False},
+    {"key": "products", "label": "By product", "default": False},
     {"key": "stage", "label": "Testing vs scaling", "default": False},
+    {"key": "change", "label": "Change", "default": True},
 ]
-# the Meta group also leads with Meta spend and the Google group with Google spend, so a group reads on its own (the first group that names a metric places it)
-GROUP_EXTRA = {"meta": ("meta_spend",), "google": ("google_spend",), "vitabull": (), "beefliver": (), "boneflex": (), "stage": ("meta_spend",)}
+
+# The sheet's own columns of the 'WoW Δ' / 'MoM Δ' band that the app can supply (it has no Amazon and no EBITDA): % change of these against the previous period.
+CHANGE_COLS = (("total_rev", "Total Revenue"), ("total_spend", "Total Spend"), ("nc_rev", "NC Revenue"), ("rc_rev", "Repeat Revenue"), ("nc_roas", "NC ROAS"),
+               ("nc_cpa", "NC CPA"), ("nc_orders", "NC Orders"), ("m_roas", None), ("g_roas", None))
+CHANGE_TITLE = {"day": "DoD Δ", "week": "WoW Δ", "month": "MoM Δ"}
+
+# Month grain: the sheet's leading 'Projected* | Target | % Diff' block (Total Rev, Total Spend, NC Rev, EBITDA, NOI, then the EBITDA and NOI gap in dollars).
+# The numbers are the Pacing page's own (app.projection.pacing.views.plan_block): this module only lays them out. (key, title, polarity)
+PLAN_MEASURES = (("total_rev", "Total Rev", UP), ("total_spend", "Total Spend", DOWN), ("nc_rev", "NC Rev", UP), ("ebitda", "EBITDA", UP), ("noi", "NOI", UP))
+
+
+def plan_columns() -> list[dict]:
+    """The plan band's columns (values come from /api/trends/plan): per measure Projected* | Target | % Diff, then the two dollar gaps."""
+    cols: list[dict] = []
+    for key, title, pol in PLAN_MEASURES:
+        cols += [{"key": f"plan_{key}_proj", "label": "Projected*", "kind": "money", "sub": title, "pol": NEUTRAL},
+                 {"key": f"plan_{key}_goal", "label": "Target", "kind": "money", "sub": title, "pol": NEUTRAL},
+                 {"key": f"plan_{key}_diff", "label": "% Diff", "kind": "diff", "sub": title, "pol": pol}]
+    cols += [{"key": "plan_ebitda_gap", "label": "EBITDA", "kind": "gap", "sub": "Gap vs Target", "pol": UP},
+             {"key": "plan_noi_gap", "label": "NOI", "kind": "gap", "sub": "Gap vs Target", "pol": UP}]
+    return cols
+
+
+def _col(key: str, label: str, **kw) -> dict:
+    return {"key": key, "label": label, **kw}
+
+
+def build_layout(interval: str, numbers: str, catalog: list[dict]) -> list[dict]:
+    """The bands, left to right, in the order of the sheet's Rollup tabs: [Projected* | Target | % Diff (month)] DTC / SHOPIFY, META, per-product metric bands, SPEND BY STAGE,
+    TESTING % OF SPEND, NC (UPSTACK ANY-CLICK), NC CPA BY STAGE, GOOGLE, then the change block. Bands the app has no data for (BUSINESS-WIDE with Amazon, AMAZON, EBITDA (LIVE P&L),
+    the per-product click bands) are left out; columns inside a band the app cannot supply are left out too (docs/TRENDS.md lists them).
+    Each band: key, title, group (the chip), tone (the colour family), cols [{key, label, tone?}]; a column key is a metric key of the payload (or a plan_ key)."""
+    by = {m["key"]: m for m in catalog}
+
+    def short(key: str, prefix: str) -> str:                          # 'Meta new customers (Upstack)' -> 'New customers (Upstack)'
+        t = by[key]["label"]
+        t = t[len(prefix):] if t.startswith(prefix) else t
+        return t[:1].upper() + t[1:]
+
+    own = numbers == "own"
+
+    def plat(p: str, prefix: str) -> list[dict]:
+        return [_col(f"{p}_purch", "Purchases" if own else short(f"{p}_purch", prefix)), _col(f"{p}_rev", "Purchase Value" if own else short(f"{p}_rev", prefix))]
+
+    bands: list[dict] = []
+    if interval == "month":
+        bands.append({"key": "plan", "title": "Projected* | Target | % Diff", "group": "plan", "tone": "ink", "cols": plan_columns(), "external": True})
+    bands.append({"key": "dtc", "title": "DTC / SHOPIFY", "group": "totals", "tone": "teal", "cols": [
+        _col("total_rev", "Total Revenue"), _col("nc_rev", "NC Revenue"), _col("rc_rev", "Repeat Revenue"), _col("nc_orders", "NC Orders"), _col("nc_aov", "NC AOV"),
+        _col("total_spend", "Ad Spend"), _col("nc_cpa", "NC CPA"), _col("nc_roas", "NC ROAS"), _col("mer", "MER"), _col("nc_cvr", "NC Conversion"), _col("repeat_share", "Repeat Share %")]})
+    bands.append({"key": "meta", "title": "META", "group": "meta", "tone": "blue", "cols": [
+        _col("meta_spend", "Spend"), _col("m_clicks", "Link Clicks"), _col("m_cpc", "CPC"), *plat("m", "Meta "), _col("m_cvr", "CVR"),
+        _col("m_roas", "Platform ROAS" if own else short("m_roas", "Meta ")), _col("m_cpp", "Cost per Purchase" if own else short("m_cpp", "Meta ")),
+        _col("m_impr", "Impressions"), _col("reach", "Reach"), _col("first_imp", "First-Time Impression %"), _col("cost_1k", "Cost per 1,000 Reached"), _col("m_cpm", "CPM"),
+        _col("frequency", "Frequency"), _col("uoc", "Unique Outbound Clicks"), _col("uoc_ctr", "Unique Outbound CTR"), _col("m_ctr", "Link CTR")]})
+    prod = [("vitabull", "VitaBull", "vb"), ("beefliver", "Beef Liver", "bl"), ("boneflex", "Boneflex", "bf")]
+    for i, (bkey, title, per, total) in enumerate((("spend", "SPEND", "p_{}_spend", "meta_spend"), ("nc_rev", "NC REVENUE", "p_{}_nc_rev", "nc_rev"),
+                                                   ("nc_roas", "NC ROAS", "p_{}_nc_roas", "meta_nc_roas"), ("nc_orders", "NC ORDERS", "p_{}_nc_orders", "nc_orders"),
+                                                   ("nc_cpa", "NC CPA", "p_{}_nc_cpa", "meta_nc_cpa"))):
+        bands.append({"key": "prod_" + bkey, "title": title, "group": "products", "tone": "plum" if i % 2 == 0 else "slate",
+                      "cols": [_col(per.format(slug), name, tone=tone) for slug, name, tone in prod] + [_col(total, "Total", tone="tot")]})
+    bands += [
+        {"key": "stage_spend", "title": "SPEND BY STAGE", "group": "stage", "tone": "slate", "cols": [_col("scale_spend", "Scaling Spend"), _col("test_spend", "Testing Spend")]},
+        {"key": "stage_share", "title": "TESTING % OF SPEND", "group": "stage", "tone": "plum", "cols": [_col("test_share", "Testing %")]},
+        {"key": "stage_nc", "title": "NC (UPSTACK ANY-CLICK)", "group": "stage", "tone": "slate", "cols": [_col("scale_nc", "Scaling NC"), _col("test_nc", "Testing NC")]},
+        {"key": "stage_cpa", "title": "NC CPA BY STAGE", "group": "stage", "tone": "plum", "cols": [_col("scale_cpa", "Scaling NC CPA"), _col("test_cpa", "Testing NC CPA")]},
+        {"key": "google", "title": "GOOGLE", "group": "google", "tone": "green", "cols": [
+            _col("google_spend", "Spend"), _col("g_clicks", "Clicks"), _col("g_cpc", "CPC"), *plat("g", "Google "), _col("g_cvr", "CVR"),
+            _col("g_roas", "Platform ROAS" if own else short("g_roas", "Google ")), _col("g_cpp", "Cost per Purchase" if own else short("g_cpp", "Google ")),
+            _col("g_impr", "Impressions"), _col("g_ctr", "CTR")]}]
+    ch = []
+    for key, label in CHANGE_COLS:
+        if label is None:
+            label = ("Meta " if key == "m_roas" else "Google ") + ("ROAS" if own else "NC ROAS")
+        ch.append(_col(key, label))
+    bands.append({"key": "change", "title": CHANGE_TITLE[interval], "group": "change", "tone": "grey", "cols": ch, "change": True})
+    for b in bands:
+        if not b.get("external"):
+            for c in b["cols"]:
+                assert c["key"] in by, c["key"]
+    return bands
 
 
 def _num(v: float | None, nd: int = 6) -> float | None:
@@ -575,12 +662,13 @@ def assemble(opt: dict, today: dt.date, cov: dict[str, Cov], through: dt.date, p
         row.update(v=v, d={k: x for k, x in d.items() if x is not None}, why=why, reach_through=rrow["end"].isoformat() if rrow and p["open"] else None)
         rows.append(row)
 
+    layout = build_layout(interval, numbers, catalog)
     groups = []
-    seen: set[str] = set()
     for g in GROUPS:
-        keys = [k for k in GROUP_EXTRA.get(g["key"], ())] + [m["key"] for m in catalog if m["group"] == g["key"]]
-        groups.append({**g, "metrics": list(dict.fromkeys(keys))})
-        seen.update(keys)
+        if g.get("intervals") and interval not in g["intervals"]:
+            continue
+        keys = [c["key"] for b in layout if b["group"] == g["key"] for c in b["cols"]]
+        groups.append({"key": g["key"], "label": g["label"], "default": g["default"], "metrics": list(dict.fromkeys(keys))})
     yday = today - dt.timedelta(days=1)
     fresh = []
     for k in SOURCE_ORDER:
@@ -595,5 +683,46 @@ def assemble(opt: dict, today: dt.date, cov: dict[str, Cov], through: dt.date, p
         notes.append(f"Meta before {_d(cov['meta_up'].first, True)} comes from the sheet-fed campaign history (campaign grain, Meta's own reporting); Upstack attribution of Meta starts {_d(cov['meta_up'].first, True)}.")
     return {"interval": interval, "periods": n, "numbers": numbers, "basis": BASIS_NAME[numbers], "today": today.isoformat(), "data_through": through.isoformat(),
             "metrics": [{k: m[k] for k in ("key", "label", "group", "kind", "pol", "help")} | {"change": KINDS[m["kind"]], "needs": list(m["needs"])} for m in catalog],
-            "groups": groups, "freshness": fresh, "rows": rows, "notes": notes,
+            "groups": groups, "layout": layout, "freshness": fresh, "rows": rows, "notes": notes,
             "labels": {"day": "Day over day", "week": "Week over week", "month": "Month over month"}}
+
+
+# ---------------------------------------------------------------------------------------------------------------- the plan block (month grain)
+
+PLAN_MAX_MONTHS = 36
+
+
+def _pacing_setup():
+    """(today, engine result, TargetBook, connection) exactly as the Pacing page builds them (scenario and as_of read from the request)."""
+    from .projection.pacing import api as pacing_api
+    return pacing_api._setup()
+
+
+def plan_payload(args, setup: Callable | None = None) -> dict:
+    """GET /api/trends/plan?from=YYYY-MM-DD&to=YYYY-MM-DD: the Pacing page's own 'Projection against the plan' numbers (projected, target, % diff) for each month in
+    [from, to], via app.projection.pacing.views (plan_block). A running month projects at its month-to-date pace over the whole month; a closed month is its actual.
+    The EBITDA and NOI gaps are projected minus target. Never raises for an engine problem: the page shows dashes with the reason instead."""
+    try:
+        frm = dt.date.fromisoformat(str(args.get("from", "")).strip()).replace(day=1)
+        to = dt.date.fromisoformat(str(args.get("to", "")).strip()).replace(day=1)
+    except ValueError:
+        raise q.ApiError(400, "from and to must be dates (YYYY-MM-DD)") from None
+    if frm > to or (to.year - frm.year) * 12 + to.month - frm.month + 1 > PLAN_MAX_MONTHS:
+        raise q.ApiError(400, f"from must not be after to, and at most {PLAN_MAX_MONTHS} months")
+    try:
+        from .projection.pacing import views as pacing_views
+        today, _res, book, conn = (setup or _pacing_setup)()
+        out = pacing_views.rollup_payload(conn, "month", frm, to, today, book, "rollup", ["projection against the plan"])
+    except Exception as e:                                                                    # noqa: BLE001  (the page must still render without the plan block)
+        msg = getattr(e, "message", None) or str(e) or e.__class__.__name__
+        return {"available": False, "reason": f"The plan figures could not be loaded ({msg}).", "months": [], "values": {}}
+    rows = {r["key"]: r for r in out["rows"] if r.get("values") is not None}
+    values: dict[str, list] = {}
+    for key, _title, _pol in PLAN_MEASURES:
+        for suf, src in (("proj", "proj"), ("goal", "goal"), ("diff", "diff")):
+            r = rows.get(f"plan_{key}_{src}")
+            values[f"plan_{key}_{suf}"] = [_num(v) for v in r["values"]] if r else [None] * len(out["months"])
+    for key in ("ebitda", "noi"):
+        values[f"plan_{key}_gap"] = [_num(p - g) if p is not None and g is not None else None for p, g in zip(values[f"plan_{key}_proj"], values[f"plan_{key}_goal"])]
+    return {"available": True, "reason": None, "months": out["months"], "status": out["status"], "values": values, "data_through": out["data_through"],
+            "caption": "Same figures as the Pacing page: a running month is projected at its month-to-date pace over the whole month, a closed month is its actual; targets are the plan of record's P&L. Business-wide, so Amazon is included here, unlike the columns to the right."}
