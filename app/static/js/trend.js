@@ -29,6 +29,18 @@ const STAGE_NAME = { testing: 'Testing', scaling: 'Scaling', unclassified: 'Uncl
 const SVGNS = 'http://www.w3.org/2000/svg';
 export const MAX_PINS = 8;
 
+// the trend source of the All pages: total spend bars (Split bars by Platform stacks them), Total NC ROAS as the line, each platform's own ratio as a Line choice. Bars are limited to what may be added across platforms
+// (spend, impressions, clicks). `basis` adds the chart's own Numbers choice (the overview shows all three bases in its table, so the chart needs one).
+export function platformTrendSource(p, wp, filt = {}, { basis = false } = {}) {
+  const unfiltered = !filt.only && !filt.product && !filt.type;
+  return {
+    splits: [['none', 'Total'], ['platform', 'Platform']], defaultSplit: unfiltered ? 'none' : 'platform', alwaysSplit: true, barsMetrics: ['spend', 'impressions', 'link_clicks'],
+    total: true, totalLine: unfiltered,                    // total spend in the tooltip and over the bars; 'NC ROAS (total)' is a Line choice (and the default) when no filter hides it
+    basis: basis ? { param: 'nb', options: [['own', 'Own reporting'], ['nc', 'Upstack · new customers'], ['all', 'Upstack · all orders']], default: 'own' } : null,
+    fetch: ({ grain, basis: nb, signal }) => api('/api/platforms/trend', { ...wp, grain, ...(basis ? { numbers: nb } : {}), ...filt }, { signal }),
+  };
+}
+
 // ---------- sparklines ----------
 export function sparkSvg(vals, { w = 70, h: hh = 20, title = '' } = {}) {
   const svg = document.createElementNS(SVGNS, 'svg');
@@ -201,6 +213,10 @@ const SPLIT_HINT = 'Split by Stage applies to additive Bars metrics (Spend, Purc
 */
 export function createTrendPanel(opts) {
   const { slug, p, scope = {}, pins, mode = 'scope', signal } = opts;
+  // `local` = a host page without the Marketing router (Projections): control changes stay in the panel, nothing is written to the URL,
+  // and the Hide / Show choice is kept in its own store (opts.collapseStore {get, set}) instead of the Marketing pages' one.
+  const local = !!opts.local;
+  const cstore = opts.collapseStore || { get: trendCollapsed, set: setTrendCollapsed };
   const src = mode === 'source' ? opts.source : null;
   const splitItems = src ? src.splits : [['none', 'None'], ['stage', 'Stage']];
   const barsOnly = src && src.barsMetrics ? src.barsMetrics : null;
@@ -215,7 +231,7 @@ export function createTrendPanel(opts) {
     split: splitItems.some(([k]) => k === p.ts) ? p.ts : (src ? (src.defaultSplit || splitItems[0][0]) : 'none'),
     basis: src && src.basis ? (src.basis.options.some(([k]) => k === p[src.basis.param]) ? p[src.basis.param] : src.basis.default) : null,
     overlay: true,
-    collapsed: trendCollapsed(),
+    collapsed: cstore.get(),
   };
   if (barsOnly && state.bars !== 'none' && !barsOnly.includes(state.bars)) state.bars = barsOnly[0];
   const defaultSplit = src ? (src.defaultSplit || splitItems[0][0]) : 'none';
@@ -253,6 +269,16 @@ export function createTrendPanel(opts) {
     swapBtn.title = v ? 'NC ROAS (total) is a line only: it cannot be swapped into the bars' : 'Swap Bars and Line';
   }
   function pageNavigate(changes) {
+    if (local) {
+      if ('tb' in changes) state.bars = validBars(changes.tb, state.bars);
+      if ('tl' in changes) state.line = validLine(changes.tl, state.line);
+      if (barsOnly && state.bars !== 'none' && !barsOnly.includes(state.bars)) state.bars = barsOnly[0];
+      optionsFor(barsSel, state.bars, barsOnly);
+      optionsFor(lineSel, state.line, null, lineExtra);
+      syncSplitControl(); syncSwap(); syncPinLock();
+      load();
+      return;
+    }
     const q = cleanParams({ ...currentParams(), ...changes });
     navigate(location.pathname + qs(q), { replace: true, scroll: false });
   }
@@ -312,6 +338,7 @@ export function createTrendPanel(opts) {
 
   // ----- state -----
   function writeUrl(key, value, dflt) {
+    if (local) return;
     const u = new URL(location.href);
     if (value === dflt) u.searchParams.delete(key); else u.searchParams.set(key, value);
     navigate(u.pathname + u.search, { replace: true, render: false });
@@ -325,7 +352,7 @@ export function createTrendPanel(opts) {
   }
   function setCollapsed(on) {
     state.collapsed = on;
-    setTrendCollapsed(on);
+    cstore.set(on);
     toggleBtn.textContent = on ? 'Show' : 'Hide';
     toggleBtn.setAttribute('aria-expanded', String(!on));
     el.dataset.collapsed = String(on);

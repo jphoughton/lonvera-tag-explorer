@@ -6,7 +6,7 @@ import { createTable } from '../table.js';
 import { metricColumns } from '../columns.js';
 import { setRangeInfo, setPendingNote } from '../controls.js';
 import { breadcrumbs, viewSwitch } from '../components.js';
-import { createTrendPanel } from '../trend.js';
+import { createTrendPanel, platformTrendSource } from '../trend.js';
 import { totalsStrip } from '../kpis.js';
 
 const KEYS = ['spend', 'impressions', 'link_clicks', 'ctr', 'cpc', 'purchases', 'revenue', 'roas', 'cpa'];
@@ -18,17 +18,7 @@ const NEUTRAL_TITLE = {
   link_clicks: 'Meta link clicks; Google all clicks',
 };
 
-// the trend source of the All pages: total spend bars (Split bars by Platform stacks them), Total NC ROAS as the line, each platform's own ratio as a Line choice. Bars are limited to what may be added across platforms
-// (spend, impressions, clicks). `basis` adds the chart's own Numbers choice (the overview shows all three bases in its table, so the chart needs one).
-export function platformTrendSource(p, wp, filt = {}, { basis = false } = {}) {
-  const unfiltered = !filt.only && !filt.product && !filt.type;
-  return {
-    splits: [['none', 'Total'], ['platform', 'Platform']], defaultSplit: unfiltered ? 'none' : 'platform', alwaysSplit: true, barsMetrics: ['spend', 'impressions', 'link_clicks'],
-    total: true, totalLine: unfiltered,                    // total spend in the tooltip and over the bars; 'NC ROAS (total)' is a Line choice (and the default) when no filter hides it
-    basis: basis ? { param: 'nb', options: [['own', 'Own reporting'], ['nc', 'Upstack · new customers'], ['all', 'Upstack · all orders']], default: 'own' } : null,
-    fetch: ({ grain, basis: nb, signal }) => api('/api/platforms/trend', { ...wp, grain, ...(basis ? { numbers: nb } : {}), ...filt }, { signal }),
-  };
-}
+export { platformTrendSource };   // moved to trend.js so the Projections page can use it without loading this page
 
 export async function allPlatformsPage(ctx) {
   const { params: p, signal } = ctx;
