@@ -24,7 +24,7 @@ One header row of band titles, one of column labels, the period column and both 
 
 | Sheet band | On the page |
 |---|---|
-| DTC / SHOPIFY | `DTC / SHOPIFY` chip: Total Revenue, NC Revenue, Repeat Revenue, NC Orders, NC AOV, Ad Spend (Meta + Google), NC CPA, NC ROAS, MER, NC Conversion, Repeat Share % |
+| DTC / SHOPIFY | `DTC / SHOPIFY` chip: Total Revenue, NC Revenue, Repeat Revenue, NC Orders, NC AOV, Ad Spend (Meta + Google), NC CPA, NC ROAS, MER, NC Conversion, Repeat Share %, New Visitors, Cost per New Visitor |
 | META | `Meta` chip: Spend, Link Clicks, CPC, Purchases, Purchase Value (Platform basis; follows the Numbers-from switch), CVR, Platform ROAS, Cost per Purchase, Impressions, Reach, First-Time Impression %, Cost per 1,000 Reached, CPM, Frequency, Unique Outbound Clicks, Unique Outbound CTR, Link CTR |
 | per-product bands | `By product` chip: SPEND, NC REVENUE, NC ROAS, NC ORDERS, NC CPA, each VitaBull / Beef Liver / Boneflex / Total |
 | SPEND BY STAGE, TESTING %, NC (ANY-CLICK), NC CPA BY STAGE | `Testing vs scaling` chip: Scaling / Testing columns (no Total columns, no 'Testing CPA vs Scaling') |
@@ -67,9 +67,18 @@ About 18 queries, each a `GROUP BY day` over an indexed daily table (or a min / 
 
 ## Not built (what the sheet has and the app does not)
 
-* Bands the app has no data for: BUSINESS-WIDE and AMAZON (no Amazon sales or ad data here), EBITDA (LIVE P&L) (the Plan block gives EBITDA and NOI against target on the month grain only), TikTok spend (the Ad Spend column is Meta + Google), New Visitors and Cost per New Visitor (`proj_feed_traffic` exists; not wired), Total Orders / AOV / overall conversion rate, Avg Cost Cap / Avg ROAS Floor and the capped-spend shares (`proj_feed_bids`), Meta / Google AOV and the last-click NC columns of Meta and Google.
+* Bands the app has no data for: BUSINESS-WIDE and AMAZON (no Amazon sales or ad data here), EBITDA (LIVE P&L) (the Plan block gives EBITDA and NOI against target on the month grain only), TikTok spend (the Ad Spend column is Meta + Google), Total Orders / AOV / overall conversion rate, Avg Cost Cap / Avg ROAS Floor and the capped-spend shares (`proj_feed_bids`), Meta / Google AOV and the last-click NC columns of Meta and Google.
 * Per-product Unique Outbound Clicks, Conv Rate, NC Rev per click and Cost per click bands (`proj_feed_product_reach` only holds unique outbound clicks from 2026-07-05).
 * The Total columns and `Testing CPA vs Scaling` of the stage bands (testing + scaling does not always add up to Meta spend: a campaign without a stage is in neither).
 * Per-metric collapsible column groups (the sheet only has them on the plan block); the chips show or hide whole bands instead.
 * The sheet's EBITDA / NOI change columns, Amazon changes, and its row-above comparison for an open period (the app compares like for like).
 * Intraday like-for-like for today (no hourly data for today is stored).
+
+## New Visitors and Cost per New Visitor (added 2026-11-09)
+
+The sheet puts both at the end of its DTC / SHOPIFY band (after Repeat Share %, before Cost per Unique Outbound Click); the page does the same, in the `DTC / SHOPIFY` chip, and both are in the change block (after NC Orders).
+
+* **New Visitors** = Upstack `tracked.new_visitors` (first-time visitors, all sources, pixel-tracked), the app's `proj_feed_traffic` feed (Pacific days, from 2025-05-08, the last 14 days rewritten daily). A period's value is the SUM of its days (the sheet does the same; a person who clears cookies or switches device counts again, so it is a first-visit count, not a de-duplicated head count). The feed's row for today is partial and never read, like every other source here.
+* **Cost per New Visitor** = total ad spend of the period (Meta + Google, the same figure as the Ad Spend column) / new visitors of the period: a ratio of sums, `$0.00`. The sheet's and the Pacing page's `DTC ad spend` also include TikTok spend (about 0.5% of Meta), so their cost is marginally higher than this page's; the other difference is that the sheet's open period includes today's partial visitors.
+* Dashes with a reason, never zero: a period that starts before 2025-05-08, one that holds a day the feed lacks, or a feed that is not loaded through the period. A day with a real 0 visitors is shown as 0 and its cost as a dash (undefined).
+* Polarity: more new visitors is good (green when up), a higher cost per new visitor is bad. The open period is compared like for like (same elapsed days of the previous period).

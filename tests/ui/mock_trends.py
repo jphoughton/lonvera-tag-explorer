@@ -25,10 +25,12 @@ FIRST, LAST = D(2025, 1, 1), D(2026, 11, 4)
 TODAY = D(2026, 11, 5)
 HOLE = (D(2025, 3, 4), D(2025, 3, 13))                  # Meta has no rows on these days (the real sheet history has this hole)
 META_UP_FIRST, G_UP_FIRST = D(2026, 5, 6), D(2025, 5, 13)
+TRAFFIC_FIRST = D(2025, 5, 8)                            # the traffic feed (new visitors) starts here
 
 
 def _build():
     R = random.Random(5)
+    RV = random.Random(77)                                   # its own stream: the golden file pins the numbers drawn from R
     fr, meta_days, prod_days = {}, set(), set()
     reach_day = {}
     for d in T.daterange(FIRST, LAST):
@@ -44,6 +46,8 @@ def _build():
         row["ss"] = ms - row["ts"]
         row["tnc"], row["snc"] = round(nc_o * 0.3), round(nc_o * 0.8)
         row["otot"] = row["onc_rev"] + row["orc"]
+        if d >= TRAFFIC_FIRST:
+            row["nv"] = round(nc_o * RV.uniform(22, 30))
         if d >= G_UP_FIRST:
             row.update(gp_nc=row["gp_own"] * 0.6, gr_nc=row["gr_own"] * 0.55, gp_all=row["gp_own"] * 1.7, gr_all=row["gr_own"] * 1.6)
         if d >= META_UP_FIRST:
@@ -82,7 +86,7 @@ FR, META_DAYS, PROD_DAYS, REACH = _build()
 
 def _cov():
     return {"meta": T.Cov(FIRST, LAST, META_DAYS), "meta_up": T.Cov(META_UP_FIRST, LAST), "google": T.Cov(FIRST, LAST), "google_up": T.Cov(G_UP_FIRST, LAST),
-            "orders": T.Cov(FIRST, LAST), "prod_spend": T.Cov(FIRST, LAST, PROD_DAYS), "prod_nc": T.Cov(FIRST, LAST), "anyclick": T.Cov(D(2025, 5, 8), LAST), "reach": T.Cov(FIRST, LAST)}
+            "orders": T.Cov(FIRST, LAST), "prod_spend": T.Cov(FIRST, LAST, PROD_DAYS), "prod_nc": T.Cov(FIRST, LAST), "anyclick": T.Cov(D(2025, 5, 8), LAST), "traffic": T.Cov(TRAFFIC_FIRST, LAST), "reach": T.Cov(FIRST, LAST)}
 
 
 def register(app, deps):

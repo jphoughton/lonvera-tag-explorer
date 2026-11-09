@@ -159,10 +159,10 @@ def build_periods(interval: str, today: dt.date, through: dt.date, n: int) -> li
 SOURCE_LABELS = {
     "meta": "Meta spend and delivery", "meta_up": "Upstack attribution of Meta", "google": "Google", "google_up": "Upstack attribution of Google",
     "orders": "Upstack orders (new customers, revenue)", "prod_spend": "Meta spend by product", "prod_nc": "New customers by product", "reach": "Meta reach",
-    "anyclick": "Upstack any-click new customers by stage",
+    "anyclick": "Upstack any-click new customers by stage", "traffic": "Upstack site traffic (new visitors)",
 }
-SHORT = {"meta": "Meta", "google": "Google", "orders": "Orders", "meta_up": "Meta attribution", "google_up": "Google attribution", "prod_spend": "Product spend", "prod_nc": "Product customers", "reach": "Reach", "anyclick": "Stage customers"}
-SOURCE_ORDER = ("meta", "google", "orders", "meta_up", "google_up", "prod_spend", "prod_nc", "anyclick", "reach")
+SHORT = {"meta": "Meta", "google": "Google", "orders": "Orders", "meta_up": "Meta attribution", "google_up": "Google attribution", "prod_spend": "Product spend", "prod_nc": "Product customers", "reach": "Reach", "traffic": "Traffic", "anyclick": "Stage customers"}
+SOURCE_ORDER = ("meta", "google", "orders", "meta_up", "google_up", "prod_spend", "prod_nc", "anyclick", "traffic", "reach")
 
 
 class Cov:
@@ -200,6 +200,7 @@ def coverage(conn, today: dt.date) -> dict[str, Cov]:
         UNION ALL SELECT 'prod_spend', min(day), max(day) FROM proj_feed_meta_product
         UNION ALL SELECT 'prod_nc', min(day), max(day) FROM proj_feed_nc_product
         UNION ALL SELECT 'anyclick', min(day), max(day) FROM proj_feed_anyclick
+        UNION ALL SELECT 'traffic', min(day), max(day) FROM proj_feed_traffic
         UNION ALL SELECT 'reach', min(period_start), max(period_end) FROM proj_feed_meta_reach WHERE grain = 'day'""").fetchall()
     mm = {r["k"]: (r["lo"], r["hi"]) for r in rows}
     yday = today - dt.timedelta(days=1)
@@ -222,6 +223,8 @@ def coverage(conn, today: dt.date) -> dict[str, Cov]:
     lo, hi = mm["prod_nc"]
     cov["prod_nc"] = Cov(lo, min(hi, yday) if hi else None)               # today's row, if any, is partial: never read
     cov["anyclick"] = Cov(*mm["anyclick"])
+    lo, hi = mm["traffic"]
+    cov["traffic"] = Cov(lo, min(hi, yday) if hi else None)                # the feed's last row is today, partial: never read
     lo, hi = mm["reach"]
     cov["reach"] = Cov(lo, min(hi, yday) if hi else None)
     return cov
@@ -238,7 +241,7 @@ def through_of(cov: dict[str, Cov], today: dt.date) -> dt.date:
 # ---------------------------------------------------------------------------------------------------------------- the day frame
 
 SUM_KEYS = ("ms", "mi", "mc", "mp_own", "mr_own", "mp_nc", "mr_nc", "mp_all", "mr_all", "gs", "gi", "gc", "gp_own", "gr_own", "gp_nc", "gr_nc", "gp_all", "gr_all",
-            "onc_rev", "onc_ord", "orc", "otot", "ts", "ss", "tnc", "snc") + tuple(f"{k}_{s}" for k, _ in PRODUCTS for s in ("spend", "ncrev", "ncord"))
+            "onc_rev", "onc_ord", "orc", "otot", "ts", "ss", "tnc", "snc", "nv") + tuple(f"{k}_{s}" for k, _ in PRODUCTS for s in ("spend", "ncrev", "ncord"))
 
 
 def _f(x: Any) -> float:
@@ -248,7 +251,7 @@ def _f(x: Any) -> float:
 def fetch_frame(conn, lo: dt.date, hi: dt.date, cov: dict[str, Cov]) -> tuple[dict[dt.date, dict[str, float]], dict[str, set[dt.date]]]:
     """Per-day sums for [lo, hi] from every source, one grouped query each. Returns ({day: {key: value}}, {source: days that have rows})."""
     fr: dict[dt.date, dict[str, float]] = {}
-    present: dict[str, set[dt.date]] = {k: set() for k in ("meta", "prod_spend")}
+    present: dict[str, set[dt.date]] = {k: set() for k in ("meta", "prod_spend", "traffic")}
 
     def put(day: dt.date, **kv: float) -> None:
         row = fr.setdefault(day, {})
@@ -286,6 +289,9 @@ def fetch_frame(conn, lo: dt.date, hi: dt.date, cov: dict[str, Cov]) -> tuple[di
         present["prod_spend"].add(r["day"])
         if r["product"] in slug:
             put(r["day"], **{f"{slug[r['product']]}_spend": _f(r["s"])})
+    for r in conn.execute("SELECT day, new_visitors FROM proj_feed_traffic WHERE day BETWEEN %s AND %s", (lo, hi)):
+        present["traffic"].add(r["day"])
+        put(r["day"], nv=_f(r["new_visitors"]))
     for r in conn.execute("SELECT day, stage, nc FROM proj_feed_anyclick WHERE day BETWEEN %s AND %s", (lo, hi)):
         put(r["day"], **{("tnc" if r["stage"] == "Testing" else "snc"): _f(r["nc"])})
     for r in conn.execute("SELECT day, product, nc_rev, nc_orders FROM proj_feed_nc_product WHERE day BETWEEN %s AND %s", (lo, hi)):
@@ -339,6 +345,10 @@ def build_catalog(numbers: str) -> list[dict]:
     add("rc_rev", "Returning revenue", "totals", "money", UP, ("orders",), lambda S: S["orc"], "Repeat-order revenue (Upstack orders feed).")
     add("total_rev", "Total revenue", "totals", "money", UP, ("orders",), lambda S: S["otot"], "All order revenue: new + returning (Upstack orders feed; no Amazon).")
     add("repeat_share", "Repeat share of revenue", "totals", "rate", NEUTRAL, ("orders",), lambda S: _div(S["orc"], S["otot"]), "Returning revenue / total revenue.")
+    add("new_visitors", "New visitors", "totals", "int", UP, ("traffic",), lambda S: S["nv"],
+        "Upstack tracked.new_visitors: first-time visitors, all sources, pixel-tracked (feed proj_feed_traffic, Pacific days). Summed over the days of the period.")
+    add("cost_nv", "Cost per new visitor", "totals", "money2", DOWN, ("traffic", "meta", "google"), lambda S: _div(S["ms"] + S["gs"], S["nv"]),
+        "Total spend (Meta + Google) / new visitors, as a ratio of the period's sums.")
     add("mer", "MER", "totals", "roas", UP, ("orders", "meta", "google"), lambda S: _div(S["otot"], S["ms"] + S["gs"]), "Total revenue / total spend (orders feed: no Amazon revenue, no Amazon or TikTok spend).")
 
     # Meta
@@ -418,7 +428,7 @@ GROUPS = [
 
 # The sheet's own columns of the 'WoW Δ' / 'MoM Δ' band that the app can supply (it has no Amazon and no EBITDA): % change of these against the previous period.
 CHANGE_COLS = (("total_rev", "Total Revenue"), ("total_spend", "Total Spend"), ("nc_rev", "NC Revenue"), ("rc_rev", "Repeat Revenue"), ("nc_roas", "NC ROAS"),
-               ("nc_cpa", "NC CPA"), ("nc_orders", "NC Orders"), ("m_roas", None), ("g_roas", None))
+               ("nc_cpa", "NC CPA"), ("nc_orders", "NC Orders"), ("new_visitors", "New Visitors"), ("cost_nv", "Cost per New Visitor"), ("m_roas", None), ("g_roas", None))
 CHANGE_TITLE = {"day": "DoD Δ", "week": "WoW Δ", "month": "MoM Δ"}
 
 # Month grain: the sheet's leading 'Projected* | Target | % Diff' block (Total Rev, Total Spend, NC Rev, EBITDA, NOI, then the EBITDA and NOI gap in dollars).
@@ -464,7 +474,8 @@ def build_layout(interval: str, numbers: str, catalog: list[dict]) -> list[dict]
         bands.append({"key": "plan", "title": "Projected* | Target | % Diff", "group": "plan", "tone": "ink", "cols": plan_columns(), "external": True})
     bands.append({"key": "dtc", "title": "DTC / SHOPIFY", "group": "totals", "tone": "teal", "cols": [
         _col("total_rev", "Total Revenue"), _col("nc_rev", "NC Revenue"), _col("rc_rev", "Repeat Revenue"), _col("nc_orders", "NC Orders"), _col("nc_aov", "NC AOV"),
-        _col("total_spend", "Ad Spend"), _col("nc_cpa", "NC CPA"), _col("nc_roas", "NC ROAS"), _col("mer", "MER"), _col("nc_cvr", "NC Conversion"), _col("repeat_share", "Repeat Share %")]})
+        _col("total_spend", "Ad Spend"), _col("nc_cpa", "NC CPA"), _col("nc_roas", "NC ROAS"), _col("mer", "MER"), _col("nc_cvr", "NC Conversion"), _col("repeat_share", "Repeat Share %"),
+        _col("new_visitors", "New Visitors"), _col("cost_nv", "Cost per New Visitor")]})
     bands.append({"key": "meta", "title": "META", "group": "meta", "tone": "blue", "cols": [
         _col("meta_spend", "Spend"), _col("m_clicks", "Link Clicks"), _col("m_cpc", "CPC"), *plat("m", "Meta "), _col("m_cvr", "CVR"),
         _col("m_roas", "Platform ROAS" if own else short("m_roas", "Meta ")), _col("m_cpp", "Cost per Purchase" if own else short("m_cpp", "Meta ")),
@@ -559,6 +570,7 @@ def trends(conn, args, *, today: dt.date | None = None) -> dict:
     fr, present = fetch_frame(conn, lo, through, cov)
     cov["meta"].present = present["meta"]
     cov["prod_spend"].present = present["prod_spend"]
+    cov["traffic"].present = present["traffic"]
     reach = fetch_reach(conn, opt["interval"], lo, today)
     return assemble(opt, today, cov, through, periods, fr, reach)
 
