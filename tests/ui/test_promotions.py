@@ -24,8 +24,13 @@ def idle(page):
     page.wait_for_function("() => !document.querySelector('#view').hasAttribute('aria-busy')")
 
 
+def detail(qs=""):
+    """The detail view (the third tab: the page's original content) is opened with view=detail; a bare /promotions opens What should be scaled."""
+    return "/promotions" + (qs + "&view=detail" if qs else "?view=detail")
+
+
 def goto(page, qs=""):
-    page.goto("/promotions" + qs)
+    page.goto(detail(qs))
     page.wait_for_selector(STRIP)
     idle(page)
 
@@ -89,10 +94,14 @@ def test_top_nav_link_opens_the_page(page):
     page.locator("[data-testid=nav-test-to-scale]").wait_for()
     assert page.locator("[data-testid=nav-test-to-scale]").inner_text() == "Test to scale"
     page.locator("[data-testid=nav-test-to-scale]").click()
-    page.wait_for_selector(STRIP)
+    page.wait_for_selector("[data-testid=sv-tabs]")                                    # the page opens on its first tab, What should be scaled
     assert urlparse(page.url).path == "/promotions"
     expect(page.locator("h1")).to_have_text("Test to scale")
     expect(page).to_have_title(re.compile("Test to scale"))
+    expect(page.locator("[data-testid=sv-tab-should_scale]")).to_have_attribute("aria-pressed", "true")
+    page.locator("[data-testid=sv-tab-detail]").click()
+    page.wait_for_selector(STRIP)
+    assert params(page).get("view") == "detail"
 
 
 def test_page_renders_every_section_and_defaults_to_the_last_30_days(page):
@@ -244,7 +253,7 @@ def test_range_presets_refetch_and_the_page_follows_the_data(page):
     page.locator(".seg[data-window='launch']").click()
     idle(page)
     expect(page.locator("#range-label")).to_contain_text("All days held")
-    page.goto("/promotions?window=launch")
+    page.goto(detail("?window=launch"))
     page.wait_for_selector(STRIP)
     idle(page)
     assert params(page)["window"] == "launch" and n_moved(page) == 74                               # a reload keeps Since launch, it does not fall back to 30 days
@@ -403,7 +412,7 @@ def test_empty_state_when_nothing_moved(page):
 
 @pytest.mark.allow_errors            # the API answers 400 (no data in that range): the browser logs it
 def test_out_of_range_dates_use_the_apps_empty_range_state(page):
-    page.goto("/promotions?from=2027-01-01&to=2027-01-05")
+    page.goto(detail("?from=2027-01-01&to=2027-01-05"))
     page.wait_for_selector("[data-testid=empty-range]")
     page.locator("[data-testid=reset-range]").click()
     page.wait_for_selector(STRIP)
@@ -419,7 +428,7 @@ def test_phone_width_has_no_sideways_scroll(browser, base_url):
         pg.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
         pg.on("pageerror", lambda e: errs.append(str(e)))
         for qs in ("", "?hide_bulk=1", "?window=launch", "?window=1d", "?source=upstack&basis=all&grain=week"):
-            pg.goto("/promotions" + qs)
+            pg.goto(detail(qs))
             pg.wait_for_selector(STRIP)
             idle(pg)
             w = pg.evaluate("[document.documentElement.scrollWidth, document.documentElement.clientWidth, document.body.scrollWidth]")
@@ -427,7 +436,7 @@ def test_phone_width_has_no_sideways_scroll(browser, base_url):
             over = pg.evaluate("""() => [...document.querySelectorAll('#view *')].filter(e => { const r = e.getBoundingClientRect();
                 return r.width > 0 && r.right > document.documentElement.clientWidth + 1 && !e.closest('.tablewrap'); }).map(e => e.className || e.tagName).slice(0, 5)""")
             assert over == [], (qs, over)
-        pg.goto("/promotions")
+        pg.goto(detail())
         pg.wait_for_selector(STRIP)
         idle(pg)
         pg.locator(f"{MOVED} tbody tr[data-key]").first.locator("button.caret").click()
@@ -451,7 +460,7 @@ def test_no_class_or_id_an_ad_blocker_would_hide(page):
 @pytest.mark.allow_errors            # the browser logs the failed request
 def test_api_failure_shows_the_error_and_retry_works(page):
     page.route("**/api/promotions*", lambda r: r.fulfill(status=503, content_type="application/json", body='{"error": "query timed out"}'))
-    page.goto("/promotions")
+    page.goto(detail())
     box = page.locator(".errorbox")
     box.wait_for()
     assert "query timed out" in box.inner_text() and box.get_by_role("button", name="Retry").is_visible()
@@ -465,7 +474,7 @@ def test_api_failure_shows_the_error_and_retry_works(page):
 @pytest.mark.allow_errors
 def test_a_hanging_request_ends_in_an_error_with_retry_not_loading_forever(page):
     page.route("**/api/promotions*", lambda r: None)                      # never answered
-    page.goto("/promotions?tts_timeout_ms=800")
+    page.goto(detail("?tts_timeout_ms=800"))
     page.locator(".errorbox").wait_for(timeout=8000)
     text = page.locator(".errorbox").inner_text()
     assert "took longer than" in text and "Retry" in text

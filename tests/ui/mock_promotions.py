@@ -19,7 +19,7 @@ from flask import Response, jsonify, request
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from app import promotions as P, queries as q            # noqa: E402
+from app import promotions as P, queries as q, scale_views as SV            # noqa: E402
 
 D0, THROUGH = date(2026, 5, 6), date(2026, 11, 2)
 IDX_THROUGH = (THROUGH - D0).days
@@ -146,6 +146,34 @@ ROWS = _build()
 BY_KEY = {r["family_key"]: r for r in ROWS}
 
 
+MULT_KEYS = ("test_purchases", "test_revenue", "scale_purchases", "scale_revenue", "last7_purchases", "last7_revenue", "last7_scale_purchases", "last7_scale_revenue")
+# the product scaling averages of the last 30 days (spend, purchases, revenue; Meta basis): Vita Bull 0.80x / $60, Beef Liver 0.80x / $60, Boneflex none
+SV_BENCH = {"vita-bull": (20000.0, 333.0, 16000.0), "beef-liver": (15000.0, 250.0, 12000.0)}
+
+
+def _sv_testing() -> list[dict]:
+    """Testing-only creatives for the 'What should be scaled' view (deterministic): (name, product, first day index, spend, purchases, revenue, days since last spend)."""
+    spec = [("Bull-901-Hook1", "vita-bull", 150, 1500, 60, 2100, 0), ("Bull-902-Hook2", "vita-bull", 165, 800, 30, 1000, 0), ("Liver-903-Hook1", "beef-liver", 170, 600, 8, 750, 0),
+            ("Liver-904-Hook3", "beef-liver", 168, 900, 12, 700, 0), ("Bull-905-Hook1", "vita-bull", 176, 120, 6, 300, 0), ("Boneflex-906-Hook1", "boneflex", 172, 700, 9, 1500, 0),
+            ("Bull-907-Hook2", "vita-bull", 160, 2500, 20, 1500, 0), ("Liver-908-Dead", "beef-liver", 140, 1200, 40, 3000, 5)]
+    tmpl = next(r for r in ROWS if r["path"] == "testing_only")
+    out = []
+    for i, (name, prod, li, sp, pu, rv, dead) in enumerate(spec):
+        slug, pname, _ = next(p for p in PRODUCTS if p[0] == prod)
+        r = copy.deepcopy(tmpl)
+        last = THROUGH - timedelta(days=dead)
+        r.update(family_key=name.lower(), tracker_row_id=9000 + i, product_slug=slug, product_name=pname, display=name, concept_id=name, path="testing_only", moved=False,
+                 first_day=_day(li), testing_first_day=_day(li), scaling_first_day=None, last_spend_day=last, live=dead == 0, launched_before_data_start=False,
+                 test_spend=float(sp), test_purchases=float(pu), test_revenue=float(rv), test_days=10,
+                 last7_spend=0.0 if dead else round(sp * 0.4, 2), last7_purchases=0.0 if dead else round(pu * 0.4, 2), last7_revenue=0.0 if dead else round(rv * 0.4, 2),
+                 scale_spend=0.0, scale_purchases=0.0, scale_revenue=0.0, scale_days=0)
+        out.append(r)
+    return out
+
+
+SV_TESTING = _sv_testing()
+
+
 class MemSide:
     """thumbnails, hooks, ad sets and the daily scaling spend, made up deterministically from the rows"""
 
@@ -191,9 +219,8 @@ def register(app, deps):
     """deps: parse_win (the mock's window parser) and Bad (its 400 exception)."""
     parse_win, Bad = deps["parse_win"], deps["Bad"]
 
-    @app.get("/api/promotions")
-    def promotions_mock():
-        args = request.args
+    def window_of(args):
+        """(lo, hi, info) of the request's window with the Numbers source filled in, like the real endpoint."""
         a = {k: v for k, v in args.items() if k not in P.DROP_ARGS}
         days = a.pop("days", None)
         if days is not None:
@@ -218,6 +245,12 @@ def register(app, deps):
             info["label"] = f"All days held · {q._fmt_day(D0, True)} – {q._fmt_day(THROUGH, True)}"
         else:
             lo, hi = date.fromisoformat(info["from"]), date.fromisoformat(info["to"])
+        return lo, hi, info, src, basis
+
+    @app.get("/api/promotions")
+    def promotions_mock():
+        args = request.args
+        lo, hi, info, src, basis = window_of(args)
         try:
             opts = P.parse_options(args, lo, hi)
         except q.ApiError as e:
@@ -233,4 +266,31 @@ def register(app, deps):
         order = {p[0]: (p[2], p[2]) for p in PRODUCTS}
         out = P.assemble([P.normalize_row(r) for r in rows], lo=lo, hi=hi, through=THROUGH, info=info, opts=opts, product_slug=slug or None, product_order=order, side=MemSide(),
                          built={"built_at": "2026-11-03T13:41:00+00:00", "data_through": THROUGH.isoformat()})
+        return Response(json.dumps(out, default=_json_default), mimetype="application/json")
+
+
+    @app.get("/api/promotions/scale")
+    def promotions_scale_mock():
+        args = request.args
+        try:
+            view = SV.parse_view(args)
+            opts = SV.parse_should_scale_options(args) if view == "should_scale" else SV.parse_in_scaling_options(args)
+        except q.ApiError as e:
+            return jsonify(error=e.message), e.status
+        lo, hi, info, src, basis = window_of(args)
+        slug = args.get("product")
+        if slug and slug not in [p[0] for p in PRODUCTS] + ["none"]:
+            return jsonify(error="product not found"), 404
+        mult = UP_MULT[basis] if src == "upstack" else 1.0
+        built = {"built_at": "2026-11-03T13:41:00+00:00", "data_through": THROUGH.isoformat()}
+        order = {p[0]: (p[2], p[2]) for p in PRODUCTS}
+        scale = lambda rows: [dict(r, **{k: round(r[k] * mult, 2) for k in MULT_KEYS}) for r in rows]          # noqa: E731
+        if view == "in_scaling":
+            out = SV.build_in_scaling([P.normalize_row(r) for r in scale(copy.deepcopy(ROWS))], lo=lo, hi=hi, through=THROUGH, opts=opts, product_slug=slug or None,
+                                      product_order=order, info=info, built=built)
+        else:
+            bench = [dict(product_slug=k, day_from=THROUGH - timedelta(days=29), day_to=THROUGH, creatives=12, spend=v[0], purchases=round(v[1] * mult, 2), revenue=round(v[2] * mult, 2))
+                     for k, v in SV_BENCH.items()]
+            out = SV.build_should_scale([P.normalize_row(r) for r in scale(copy.deepcopy(SV_TESTING))], bench, through=THROUGH, opts=opts, product_slug=slug or None,
+                                        product_order=order, product_names={p[0]: p[1] for p in PRODUCTS} | {"none": q.NO_PRODUCT}, info=info, built=built)
         return Response(json.dumps(out, default=_json_default), mimetype="application/json")
