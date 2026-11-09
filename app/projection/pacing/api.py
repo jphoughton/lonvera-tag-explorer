@@ -1,6 +1,7 @@
 """HTTP layer for the pacing module, mounted at /api/projection/pacing.
 
     GET /month?month=YYYY-MM[&scenario=&as_of=]       month pacing table (Automated Pacing): MTD, last 7 days, goal, projection, pacing, status
+    GET /amazon-mtd?month=YYYY-MM[&live=1]            Amazon month to date, completed: reported days plus the missing days at the trailing 7-day average (nightly snapshot, else computed live)
     GET /snapshot?month=YYYY-MM                        Month Snapshot: Actual / Projected* / Target / Diff / Diff % and payback
     GET /rollup?grain=day|week|month&from=&to=&view=rollup|meta&bands=a,b&delta=1
                                                        rollup grid: periods as columns, metrics as rows
@@ -27,7 +28,7 @@ from psycopg.types.json import Jsonb
 from ... import db
 from ...queries import ApiError
 from .. import audit, degraded, engine, rwdb, scenarios
-from . import catalog, feeds, levers as lv, month as month_mod, nc_curve, periods, roas_cpa, views
+from . import amazon_mtd as amz, catalog, feeds, levers as lv, month as month_mod, nc_curve, periods, roas_cpa, views
 from .feedspec import freshness as feed_freshness
 from .targets import TargetBook
 
@@ -130,6 +131,44 @@ def _load_month_frame(conn, month: date, today: date, L: lv.Levers):
     return feeds.load_frame(conn, min(month, thr - timedelta(days=back)), max(min(periods.month_end(month), thr), min(month, thr)))
 
 
+def _amazon_arg() -> bool:
+    """True when the caller asked for Amazon actuals only (?amazon=actuals); otherwise the completed month to date."""
+    return (_arg("amazon") or "").lower() in ("actuals", "actual", "actuals_only")
+
+
+def _amazon_block(conn, month: date, today: date, L: lv.Levers, actuals_only: bool) -> dict:
+    """The completed Amazon MTD of `month` (nightly snapshot if current, else live) plus the switch state. Only the month holding the last complete day is completed;
+    any other month is closed (or future) and reads actuals."""
+    thr = periods.data_through(today, L.data_lag_days)
+    if periods.month_start(thr) != month:
+        return {"applies": False, "actuals_only": actuals_only, "month": month.isoformat(), "status": "not_current", "days_projected": 0, "flags": [],
+                "note": "", "source": None, "live_reason": None}
+    res = amz.resolve(conn, month, today, thr)
+    res["applies"], res["actuals_only"] = True, actuals_only
+    return res
+
+
+def _with_amazon(conn, fr, month: date, today: date, L: lv.Levers, actuals_only: bool, build):
+    """build(frame) -> payload. Runs it on the completed frame (and on actuals for the two-number view) and tells the payload which rows moved."""
+    blk = _amazon_block(conn, month, today, L, actuals_only)
+    out = build(fr)
+    blk["rows_changed"] = []
+    if blk.get("applies") and not actuals_only and (blk.get("projected_days") or blk.get("partial_topup")):
+        out_c = build(amz.apply_to_frame(fr, blk))
+        base = {r["key"]: r for r in out["rows"]}
+        for r in out_c["rows"]:
+            a = base.get(r["key"])
+            if a is not None:
+                key = "mtd" if "mtd" in r else "actual"
+                if abs((r[key] or 0) - (a[key] or 0)) > 1e-6:
+                    r["amazon_projected"] = True
+                    r["actuals_only"] = a[key]
+                    blk["rows_changed"].append(r["key"])
+        out = out_c
+    out["amazon_mtd"] = blk
+    return out
+
+
 # ---------------------------------------------------------------------------------------------------------------- routes
 
 @bp.get("/month")
@@ -140,7 +179,8 @@ def get_month():
     fr = _load_month_frame(conn, month, today, L)
     cohorts = res.results.get("cohorts")
     scn = res.scenario
-    out = month_mod.pacing_month(fr, month, today, book, cohorts, scn.params, res.actual_through, feeds.cpa_reference(conn, scn.params, L.cpa_window_days, today))
+    ref = feeds.cpa_reference(conn, scn.params, L.cpa_window_days, today)
+    out = _with_amazon(conn, fr, month, today, L, _amazon_arg(), lambda f: month_mod.pacing_month(f, month, today, book, cohorts, scn.params, res.actual_through, ref))
     out["scenario"] = {"slug": scn.slug, "name": scn.name, "version": scn.version}
     out["months"] = _month_options(today, L)
     out["freshness"] = _fresh_chips(conn, today, L)
@@ -150,13 +190,27 @@ def get_month():
     return jsonify(out)
 
 
+@bp.get("/amazon-mtd")
+def get_amazon_mtd():
+    today, res, book, conn = _setup()
+    L = book.levers
+    month = _month_arg(today, L)
+    thr = periods.data_through(today, L.data_lag_days)
+    if periods.month_start(thr) != month:
+        raise ApiError(400, "Amazon month to date is completed only for the month holding the last complete day")
+    out = amz.resolve(conn, month, today, thr, live=(_arg("live") or "") in ("1", "true"))
+    out["scenario"] = res.scenario.slug
+    return jsonify(out)
+
+
 @bp.get("/snapshot")
 def get_snapshot():
     today, res, book, conn = _setup()
     L = book.levers
     month = _month_arg(today, L)
     fr = _load_month_frame(conn, month, today, L)
-    out = month_mod.snapshot_month(fr, month, today, book, res.results.get("cohorts"), res.scenario.params, res.actual_through)
+    out = _with_amazon(conn, fr, month, today, L, _amazon_arg(),
+                       lambda f: month_mod.snapshot_month(f, month, today, book, res.results.get("cohorts"), res.scenario.params, res.actual_through))
     out["months"] = _month_options(today, L)
     out["missing_goal_rows"] = book.missing_rows()
     return jsonify(out)

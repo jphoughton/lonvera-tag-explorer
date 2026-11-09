@@ -34,6 +34,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--days", type=int, default=5)
     p = sub.add_parser("live", help="one pull of today so far from Upstack into proj_live_today_snapshots (same as python -m etl.live_today)")
     p.add_argument("--dry-run", action="store_true")
+    p = sub.add_parser("amazon-mtd", help="complete this month's Amazon revenue and store the nightly snapshot (same as python -m etl.amazon_mtd)")
+    p.add_argument("--dry-run", action="store_true")
     p = sub.add_parser("lever", help="show or set a lever (proj_feed_levers)")
     p.add_argument("key", nargs="?")
     p.add_argument("value", nargs="?", type=float)
@@ -44,6 +46,9 @@ def main(argv: list[str] | None = None) -> int:
         if a.cmd == "live":
             from etl import live_today
             return live_today.main(["--dry-run"] if a.dry_run else [])
+        if a.cmd == "amazon-mtd":
+            from etl import amazon_mtd
+            return amazon_mtd.main(["--dry-run"] if a.dry_run else [])
         if a.cmd == "dryrun":
             from .dryrun import dryrun
             if a.feed not in feeds:

@@ -28,7 +28,7 @@ from pacing_support import PASSWORD, SNAP, SNAPSHOT_DAY, make_app          # noq
 PG_BASE = os.environ.get("TEST_PG_BASE", "postgresql://localhost")
 DB_NAME = os.environ.get("TEST_PROJ_PACING_DB", "tagexp_proj_pacing_t")
 DB_URL = f"{PG_BASE}/{DB_NAME}"
-MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "105_proj_refresh.sql", "106_proj_scenario_lifecycle.sql", "160_proj_financing.sql", "161_proj_financing_payback_store.sql", "170_proj_pacing.sql", "020_proj_feed_nc_hourly.sql", "192_proj_live_today.sql")
+MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "105_proj_refresh.sql", "106_proj_scenario_lifecycle.sql", "160_proj_financing.sql", "161_proj_financing_payback_store.sql", "170_proj_pacing.sql", "020_proj_feed_nc_hourly.sql", "192_proj_live_today.sql", "193_proj_amazon_mtd.sql")
 
 
 @pytest.fixture(scope="session")

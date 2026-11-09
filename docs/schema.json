@@ -9639,6 +9639,138 @@
    "examples": []
   },
   {
+   "name": "public.proj_amazon_mtd_snapshots",
+   "schema": "public",
+   "relation": "proj_amazon_mtd_snapshots",
+   "kind": "table",
+   "group": "proj_feeds",
+   "purpose": "Completed Amazon month-to-date revenue, one snapshot per Pacific day and month: reported days plus the missing days projected at the trailing 7-day average of the reported days; read by Projections > Pacing instead of computing on every page load.",
+   "grain": "one row per (snapshot_day, month)",
+   "primary_key": [
+    "snapshot_day",
+    "month"
+   ],
+   "foreign_keys": [],
+   "source": "proj_feed_amazon.revenue through etl.amazon_mtd",
+   "refresh": "after the Amazon feed load in the feeds service (21:00 UTC) and again in the etl service (13:00 UTC); a same-day re-run replaces the row",
+   "coverage": "from the first run; history kept so each day's projection can be compared with the final month",
+   "caveats": [
+    "projected_mtd is an estimate, never an actual; a later feed load restates days (the page then computes live); Amazon revenue is total_amount_usd by purchase day, Amazon.com plus B2B. Aggregates only."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "snapshot_day",
+     "type": "date",
+     "nullable": false,
+     "description": "Pacific day of the run."
+    },
+    {
+     "name": "month",
+     "type": "date",
+     "nullable": false,
+     "description": "First day of the month that was completed."
+    },
+    {
+     "name": "computed_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the run computed it (UTC)."
+    },
+    {
+     "name": "data_through",
+     "type": "date",
+     "nullable": false,
+     "description": "Last day that should have been complete at the run (yesterday by default)."
+    },
+    {
+     "name": "last_actual_day",
+     "type": "date",
+     "nullable": true,
+     "description": "Last day of the month with reported Amazon revenue; null before the first reported day."
+    },
+    {
+     "name": "days_actual",
+     "type": "integer",
+     "nullable": false,
+     "description": "Calendar days from the 1st through the last reported day."
+    },
+    {
+     "name": "days_projected",
+     "type": "integer",
+     "nullable": false,
+     "description": "Days after the last reported day, through data_through, that were projected (0 when the feed is current or stale)."
+    },
+    {
+     "name": "daily_rate",
+     "type": "numeric(18,2)",
+     "nullable": true,
+     "description": "Dollars per projected day: mean of the last 7 reported days with revenue above zero (fewer when fewer exist)."
+    },
+    {
+     "name": "actual_mtd",
+     "type": "numeric(18,2)",
+     "nullable": false,
+     "description": "Reported Amazon revenue from the 1st through the last reported day, dollars."
+    },
+    {
+     "name": "projected_mtd",
+     "type": "numeric(18,2)",
+     "nullable": false,
+     "description": "actual_mtd plus the projected days plus any partial-day top-up, dollars."
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "nullable": false,
+     "description": "complete (nothing to project), projected, stale (feed more than 5 days behind: nothing projected), no_rate (no revenue in the feed), no_days (month has no complete day)."
+    },
+    {
+     "name": "method",
+     "type": "text",
+     "nullable": false,
+     "description": "Rule and version that made the row, e.g. trailing-7-available/v1."
+    },
+    {
+     "name": "flags",
+     "type": "text[]",
+     "nullable": false,
+     "description": "Plain flags: feed_stale, short_window, window_has_gaps, gap_days_inside_month, newest_day_partial, no_data."
+    },
+    {
+     "name": "projected_days",
+     "type": "jsonb",
+     "nullable": false,
+     "description": "The projected days as json: [{day, revenue}], so a reader can rebuild the completed month without recomputing."
+    },
+    {
+     "name": "partial_topup",
+     "type": "numeric(18,2)",
+     "nullable": false,
+     "description": "Dollars added because the newest reported day looked partial (below half the days before it); 0 otherwise."
+    },
+    {
+     "name": "lag_days",
+     "type": "integer",
+     "nullable": true,
+     "description": "Days between data_through and the last reported day."
+    },
+    {
+     "name": "rate_source",
+     "type": "text",
+     "nullable": true,
+     "description": "trailing_7_available, or previous_month_last_7 when the month has no reported day yet."
+    },
+    {
+     "name": "note",
+     "type": "text",
+     "nullable": true,
+     "description": "The plain-language line the page shows."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.proj_feedx_intl_estimate",
    "schema": "public",
    "relation": "proj_feedx_intl_estimate",
