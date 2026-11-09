@@ -313,9 +313,9 @@ export async function render(el, ctx) {
       kp('advertising', 'Ad spend pace', fmt.compact(by.advertising && by.advertising.projection) + '*')].filter(Boolean);
     const pb = data.payback && data.payback.available ? data.payback : null;
     if (pb) {
-      const m = pb.loaded ? pb.loaded.months : pb.months;
-      kpis.push({ label: pb.loaded ? 'Payback after all costs, months' : 'Payback, months', value: String(m.mtd_label), tone: m.status === 'none' ? null : m.status,
-        note: pb.loaded ? `${pb.months.mtd_label} on product margin · goal ${m.goal_label}` : `goal ${m.goal_label}` });
+      const m = pb.months;
+      kpis.push({ label: 'Payback, months', value: String(m.mtd_label), tone: m.status === 'none' ? null : m.status,
+        note: `goal ${m.goal_label} · product cost and fulfillment only${pb.loaded ? ` · after all costs ${pb.loaded.months.mtd_label}` : ''}` });
     }
     return kpis;
   }
