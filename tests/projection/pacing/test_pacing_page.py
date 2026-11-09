@@ -251,3 +251,16 @@ def test_nc_revenue_card_without_a_curve_says_so(browser, base_url, pacing_db):
     assert "Projected" not in page.locator(f"{box} .pacing-note[role='status']").inner_text().split("No closed day")[0]
     assert errors == []
     ctx.close()
+
+
+def test_payback_card_headline_is_the_sheet_definition_with_all_costs_as_a_second_line(browser, base_url):
+    """Josh 2026-11-09: the card must match the sheet's Payback tab (product cost + fulfillment only); the stricter reading is a muted second line."""
+    ctx, page, errors = open_page(browser, base_url)
+    card = page.locator(".pacing-card[data-key='payback']")
+    if card.count() == 0:
+        pytest.skip("no payback on the test month")
+    assert card.locator(".t").inner_text().strip().lower() == "payback months"
+    assert "product cost and fulfillment only" in card.locator(".g").inner_text()
+    if card.locator(".pacing-ctx").count():
+        assert "after all variable costs" in card.locator(".pacing-ctx").inner_text().lower()
+    ctx.close()
