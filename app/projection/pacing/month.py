@@ -183,6 +183,8 @@ def build_rows(c: Ctx) -> list[dict]:
     add(amount_row(c, S_("repeat_rev", "DTC repeat revenue", "REVENUE", "money", "up", 1), rep))
     add(ratio_row(c, S_("nc_roas", "DTC NC ROAS", "REVENUE", "x", "up", 1, "ratio", "New-customer revenue / DTC ad spend"), nc, dtc_ad))
     add(ratio_row(c, S_("nc_cpa", "DTC NC CPA", "REVENUE", "money2", "down", 1, "ratio", "DTC ad spend / new customers"), dtc_ad, ncc))
+    add(ratio_row(c, S_("dtc_nc_aov", "DTC NC AOV", "REVENUE", "money2", "up", 1, "ratio",
+                        "New-customer revenue / new customers, month to date. Goal: the plan's new-customer revenue / the plan's new customers (the plan's AOV)."), nc, ncc))
     add(amount_row(c, S_("amazon_rev", "Amazon revenue", "REVENUE", "money", "up", 1), amz))
     add(amount_row(c, S_("sales_tax", "Sales tax (est.)", "REVENUE", "money", None, 1, "memo", "DTC revenue x the plan's sales-tax rate"), tax))
     add(_proj_only(c, S_("refunds", "Refunds (actual)", "REVENUE", "money", None, 1, "memo", "Shopify refunds so far. The plan's revenue does not deduct refunds."),
@@ -378,6 +380,22 @@ def cpa_context(c: Ctx, today: date, rows_by_key: dict, ref: Any = None) -> dict
             "status": _status(value / goal, "down", L) if goal else NONE}
 
 
+def aov_context(c: Ctx, today: date, rows_by_key: dict, ref: Any = None) -> dict | None:
+    """Realized new-customer AOV over the last `cpa_window_days` days beside the month's: the Spend plan page's number (`ref.aov_window`), same window and guards as the CPA one."""
+    L = c.levers
+    thr = dthru(today, L.data_lag_days)
+    if ref is None or month_start(thr) != c.month or not c.elapsed:
+        return None
+    label = f"Last {L.cpa_window_days} days"
+    w = getattr(ref, "aov_window", None)
+    if not w:
+        return {"label": label, "value": None, "days": 0, "pacing": None, "status": NONE, "unavailable": (getattr(ref, "unavailable", {}) or {}).get("aov") or "The feeds do not cover the window"}
+    value = w["aov"]
+    goal = rows_by_key.get("dtc_nc_aov", {}).get("goal")
+    return {"label": label, "days": w["days"], "from": w["from"], "to": w["to"], "value": value, "pacing": (value / goal) if goal else None,
+            "status": _status(value / goal, "up", L) if goal else NONE}
+
+
 def pacing_month(fr: Frame, month: date, today: date, book: TargetBook, cohorts: Any = None, scn_params: dict | None = None,
                  actual_through: date | None = None, cpa_ref: Any = None) -> dict:
     c = month_context(fr, month, today, book)
@@ -389,6 +407,9 @@ def pacing_month(fr: Frame, month: date, today: date, book: TargetBook, cohorts:
         for k in ("nc_cpa", "nc_cpa2"):
             if k in by:
                 by[k]["context"] = ctx28
+    aov28 = aov_context(c, today, by, cpa_ref) if rows else None
+    if aov28 and "dtc_nc_aov" in by:
+        by["dtc_nc_aov"]["context"] = aov28
     tl = tldr(by) if rows else []
     return {"month": month.isoformat(), "state": month_state(month, actual_through, c.elapsed, c.dim), "as_of": today.isoformat(),
             "data_through": dthru(today, L.data_lag_days).isoformat(), "days_in_month": c.dim,

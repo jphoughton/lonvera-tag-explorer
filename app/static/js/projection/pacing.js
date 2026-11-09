@@ -288,12 +288,13 @@ export async function render(el, ctx) {
     });
     const pb = data.payback && data.payback.available ? data.payback : null;
     if (pb) {
-      const m = pb.loaded ? pb.loaded.months : pb.months;
+      const m = pb.months;
       const tone = m.status === 'none' ? null : m.status;
       out.push(h('div', { class: 'pacing-card', 'data-key': 'payback' },
-        h('div', { class: 't' }, pb.loaded ? 'Payback after all variable costs' : 'Payback on product margin'),
+        h('div', { class: 't' }, 'Payback months'),
         h('div', { class: 'v' }, `${m.mtd_label} months`),
-        h('div', { class: 'g' }, `Goal ${m.goal_label} months${pb.loaded ? ` · ${pb.months.mtd_label} on product margin` : ''}`),
+        h('div', { class: 'g' }, `Goal ${m.goal_label} months · product cost and fulfillment only`),
+        pb.loaded ? h('div', { class: 'pacing-ctx' }, `After all variable costs ${pb.loaded.months.mtd_label} months (goal ${pb.loaded.months.goal_label})`) : null,
         h('div', { class: 'row' }, tone ? ui.chip(tone === 'good' ? 'On pace' : tone === 'warn' ? 'Behind' : 'Well behind', tone) : null)));
     }
     return h('div', { class: 'pacing-cards' }, out);

@@ -1977,12 +1977,16 @@ import mock_trends  # noqa: E402  (Trends: /api/trends, built on the real payloa
 
 mock_trends.register(app, dict(Bad=Bad))
 
+import mock_lookup  # noqa: E402  (Tag lookup: /api/tag-lookup, built on the real matching code in app/lookup.py over a few made-up rows)
+
+mock_lookup.register(app, dict(Bad=Bad))
+
 
 def shell(*_a, **_k):
     return send_from_directory(STATIC, "index.html")
 
 
-for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/p/<slug>", "/ad/<rid>"):
+for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/lookup", "/p/<slug>", "/ad/<rid>"):
     app.add_url_rule(rule, endpoint="shell" + rule, view_func=shell)
 
 
