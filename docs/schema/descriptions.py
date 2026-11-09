@@ -1273,6 +1273,18 @@ for _b, _lbl in (("nc", "Upstack new customers"), ("all", "Upstack all orders"))
         cols={"purchases": ("Upstack new customers credited since the move." if _b == "nc" else "Upstack orders credited since the move."),
               "revenue": ("First-order revenue of those customers, dollars." if _b == "nc" else "Revenue of those orders, dollars.")})
 
+rel("public.scaling_benchmarks", group="rollups", kind="table",
+    purpose="What the Scaling campaigns spent and returned over the last 30 days of data, per product and Numbers basis: the benchmark the Test to scale page holds a testing creative against ('What should be scaled': is its testing ROAS or CPA at least as good as its product's scaling average?).",
+    grain="one row per (basis, product_slug) with scaling spend in the 30 days", source="refresh_scaling_benchmarks() from public.family_daily (stage 'scaling', and its _upstack_nc / _upstack_all twins) x ad_metrics first row x products",
+    refresh="nightly (etl.stage_moves, same transaction as creative_stage_moves): DELETE + INSERT", coverage="3 bases x up to 4 products (incl. 'none'); 30 days ending on the last day of family_daily",
+    caveats=["All scaling spend of the product counts, including creatives that moved in a mass relaunch and creatives that never tested.",
+             "product_slug 'none' = creatives of no active product (products.slug 'unassigned' or no tracker row). Spend is Meta's in every basis; purchases and revenue are Upstack's in the upstack_* bases (not additive across bases)."],
+    cols={"basis": "'meta' (Meta's own reporting), 'upstack_nc' (Upstack new customers) or 'upstack_all' (Upstack all orders).", "product_slug": "products.slug of the creative's product, or 'none'.",
+          "day_from": "First day of the 30-day window (day_to - 29).", "day_to": "Last day of family_daily: the window ends there.",
+          "creatives": "Creatives (tracker families) with scaling spend in the window.", "spend": "Scaling spend in the window, dollars.",
+          "purchases": "Purchases in Scaling campaigns in the window (the basis's meaning: Meta purchases, Upstack new customers, or Upstack orders).",
+          "revenue": "Purchase value in the window, dollars (the basis's meaning)."})
+
 rel("public.unmatched_meta", group="rollups", kind="table",
     purpose="Meta families that map to no live tracker family, with the product guessed for them and their windowed and since-launch numbers. Closes the gap between ad_metrics and the account total.",
     grain="one row per Meta family (meta_family_key)", source="etl.build_metrics from meta_ads, ad_daily, meta_ad_lifetime, meta_campaigns, products.meta_regex",

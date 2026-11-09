@@ -36,6 +36,27 @@ In production on 2026-11-04 the 40 line flags Aug 22 (76 moves), Oct 22 (187) an
 - **Held up?** compares scaling ROAS since the move with testing ROAS before it: held up at 90% or more, softer from 70%, fell below. Too early until the creative has spent $200 and run 3 days in scaling; no baseline when its testing earned nothing. Thresholds are in `app/promotions.py` (`HELD_*`) and in `definition.held_thresholds`.
 - Numbers from: Meta's own reporting (default), or Upstack (new customers, or all orders), through the same Numbers from / Count switch as the rest of the app. Spend, link clicks and the move itself are Meta's in every basis; purchases and revenue change. The Upstack views start with Upstack's history (2026-05-06, the same as Meta's daily data today).
 
+## The two simple views (first two tabs)
+
+`/promotions` opens on **What should be scaled** (the default; the original page is the third tab, `?view=detail`). Tabs: `view=should_scale` | `in_scaling` | `detail`. Both simple views are plain ranked tables from `GET /api/promotions/scale?view=...` (`app/scale_views.py`, UI `app/static/js/pages/scale_views.js`), read from the precomputed tables only (`creative_stage_moves*` plus `scaling_benchmarks`, migration 193, rebuilt in the same nightly `etl.stage_moves` transaction); no aggregation on request, same 8 s statement timeout, error box with Retry, same Numbers from switch (Meta own / Upstack new customers / Upstack all orders).
+
+**What should be scaled** (`view=should_scale`): creatives with `path = 'testing_only'` (spent in a Testing campaign, never in a Scaling campaign) that spent on one of the last 3 days of data. Editable defaults (all in the chosen Numbers basis; URL params):
+
+| Rule | Default | Param | Where it comes from |
+|---|---|---|---|
+| Minimum testing spend | $500 | `min_test_spend` (the page's existing parameter name; here it is a floor with a default) | `SV_MIN_SPEND`, my default, Josh to set |
+| Minimum purchases | 5 | `min_purchases` | `SV_MIN_PURCHASES`, my default |
+| Return bar | 100% of the product's scaling average | `bar_pct` | testing ROAS at or above the average scaling ROAS of the SAME product over the last 30 days of data (`scaling_benchmarks`), or testing CPA at or below that product's scaling CPA (divided by the bar fraction) |
+| Recent spend | last 3 days | fixed (`SV_RECENT_DAYS`) | a dead creative is not recommended |
+
+Excluded: anything with scaling spend (moved, same day, scaling first, scaling only). A product with no scaling spend in 30 days has no average, so none of its creatives qualifies (a note says so). The scaling average counts all scaling spend of the product, including mass-relaunch creatives.
+Ranking: extra revenue over what the product's scaling average would have earned on the same spend (revenue - bar ROAS x spend), biggest first (rewards spend as well as return; one lucky small test does not top the list). Columns: rank, creative (link), product, days in testing, testing spend, purchases, ROAS, CPA, vs scaling average (above / near / below; "above (on cost per purchase only)" when only CPA beats it; near = testing ROAS from 90% of the bar), last 7 days ROAS, confidence chip (more than 50 purchases high, 20 to 50 medium, under 20 low). It is a screen, not a verdict, and says so. Empty state: plain sentence plus the 5 nearest misses (floors met, bar missed, closest first).
+
+**Performance in scaling** (`view=in_scaling`): creatives whose first scaling day is in the page's window (range bar, default last 30 days), from `creative_stage_moves`; product filter and the page's Hide bulk moves control (`hide_bulk`, `bulk_min`, default 40) reused; bulk days carry the same chip and note. Sorted by scaling spend, with a spend-weighted total row per product (ratio of sums) and an All products row. "Vs its testing" and the too-early floor reuse `app.promotions.held_up` (scaling ROAS since the move / testing ROAS before it; $200 and 3 days): better from 110%, about the same from 90% (the page's held-up line), worse below; too early / no baseline as the page says. Status: **too early** (the page's floor), **stopped** (no scaling spend in the last 7 days), **fading** (last 7 days ROAS more than 10% below the since-move ROAS), else **holding**. Deviation from the brief: too early uses the page's existing floor ($200, 3 days) instead of a 7-day / purchase minimum, and "stopped" is a fourth word so a dead creative is never called holding.
+
+`scaling_benchmarks` (basis `meta` | `upstack_nc` | `upstack_all`, product_slug incl. `none`): scaling spend, purchases, revenue and creatives over the 30 days ending on the last day of `family_daily`; described in `docs/DATA_SCHEMA.md`.
+Tests: `tests/api/test_api_scale_views.py` (hand-built database, plain-Python oracle from the daily rows), `tests/ui/test_scale_views.py` (mock server).
+
 ## API
 
 `GET /api/promotions`

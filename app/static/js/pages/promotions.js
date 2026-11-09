@@ -8,6 +8,7 @@ import { createTable } from '../table.js';
 import { setRangeInfo } from '../controls.js';
 import { breadcrumbs, saveSortToUrl, sortFromUrl } from '../components.js';
 import { trendChart } from '../charts.js';
+import { viewTabs, currentView, scaleViewsPage } from './scale_views.js';
 
 const HELD_TEXT = { held: 'Held up', softer: 'Softer', fell: 'Fell', too_early: 'Too early', no_baseline: 'No baseline' };
 const HELD_TITLE = {
@@ -207,6 +208,7 @@ async function loadPromotions(p, signal) {
 
 export async function promotionsPage(ctx) {
   const { params: p, signal } = ctx;
+  if (currentView(p) !== 'detail') return scaleViewsPage(ctx);          // the two simple views (What should be scaled, Performance in scaling) are the first tabs; this page is the third
   const G = globalParams(p);
   document.title = 'Test to scale · Marketing metrics';
   const d = await loadPromotions(p, signal);
@@ -227,7 +229,7 @@ export async function promotionsPage(ctx) {
     d.stage_moves ? h('p', { class: 'muted', 'data-testid': 'tts-built' }, `Precomputed nightly: rebuilt ${fmt.dateTime(d.stage_moves.built_at)}, through ${d.stage_moves.data_through ? fmt.day(d.stage_moves.data_through) : '–'}.`) : null);
 
   // ---------- filters that change every number on the page ----------
-  const chip = (label, slug, n) => h('a', { class: 'seg', href: href('/promotions', { ...G, ...(p.hide_bulk ? { hide_bulk: p.hide_bulk } : {}), ...(p.bulk_min ? { bulk_min: p.bulk_min } : {}), ...(p.min_test_spend ? { min_test_spend: p.min_test_spend } : {}), ...(p.grain ? { grain: p.grain } : {}), product: slug }),
+  const chip = (label, slug, n) => h('a', { class: 'seg', href: href('/promotions', { ...G, ...(p.hide_bulk ? { hide_bulk: p.hide_bulk } : {}), ...(p.bulk_min ? { bulk_min: p.bulk_min } : {}), ...(p.min_test_spend ? { min_test_spend: p.min_test_spend } : {}), ...(p.grain ? { grain: p.grain } : {}), view: 'detail', product: slug }),
     'data-testid': 'tts-product-' + (slug || 'all'), 'aria-pressed': String((p.product || null) === slug), title: n != null ? `${fmt.int(n.moved)} moved, ${fmt.int(n.launched)} began in testing` : null }, label);
   const productCtl = h('div', { class: 'ctl', id: 'tts-product-ctl' }, h('span', { class: 'ctl-name' }, 'Product'),
     h('span', { class: 'segs', role: 'group', 'aria-label': 'Product', 'data-testid': 'tts-product-filter' }, chip('All', null, null), (d.products || []).map((x) => chip(x.name, x.slug, x))));
@@ -317,6 +319,7 @@ export async function promotionsPage(ctx) {
     h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'Test to scale'), h('span', { class: 'badge muted-badge' }, 'Meta only · creatives'), h('span', { class: 'spacer' })),
       h('div', { class: 'note-line' }, 'Creatives that moved from Testing to Scaling in the range above, and what happened around the move.')),
     h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Marketing metrics', href: href('/', G) }, { label: 'Test to scale' }])),
+    viewTabs('detail', p),
     help,
     filters,
     strip,
