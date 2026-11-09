@@ -1,5 +1,8 @@
 """Trends (/trends) in the browser, against the mock server (tests/ui/mock_trends.py: the real payload builder over made-up days).
 
+The table is laid out like the rollup tabs of the Lonvera Projections sheet: periods as rows, OLDEST FIRST with the open period last, labelled bands of columns, the
+change against the previous period as one block at the right (the sheet's WoW / MoM block), a 'Change after every column' switch for per-metric change columns.
+
 Mock facts used below: data 2025-01-01 .. 2026-11-04, "today" = Thu 2026-11-05 Pacific, so Nov 4 is the last loaded day: the open week W45 (Mon Nov 2 - Wed Nov 4,
 3 of 7 days) is compared with Oct 26-28, the open month Nov (4 days) with Oct 1-4, and the Day view starts with a not-loaded placeholder for today.
 """
@@ -41,7 +44,16 @@ def rows(page):
 
 
 def heads(page):
-    return page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] thead th')].map(th => th.dataset.col || '')")
+    """Column keys left to right: 'period', then one per column of the second header row (change-block columns are 'chg:<metric>', per-metric change columns '<metric>:d')."""
+    return ["period"] + page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] thead tr.trn-colrow th')].map(th => th.dataset.col || '')")
+
+
+def bands(page):
+    return page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] thead tr.trn-bandrow th[data-band]')].map(th => [th.innerText.trim(), th.colSpan])")
+
+
+def col(page, key):
+    return heads(page).index(key)
 
 
 def test_nav_link_and_default_week_view(page):
@@ -56,13 +68,18 @@ def test_nav_link_and_default_week_view(page):
     assert len(r) == 12
     assert page.locator("[data-testid=trn-interval-week]").get_attribute("aria-pressed") == "true"
     assert page.locator("#controls").is_hidden()                       # the global range bar does not apply
-    first = r[0]
-    assert first["cells"][0].startswith("W45") and "so far" in first["cells"][0] and "3 of 7 days" in first["cells"][0]
-    assert "Oct 26 – Oct 28" in first["cells"][0] and "same 3 days" in first["cells"][0]
-    assert "trn-open" in first["cls"]
-    assert r[1]["cells"][0].startswith("W44") and "so far" not in r[1]["cells"][0] and "vs Oct 19 – Oct 25" in r[1]["cells"][0]
+    last = r[-1]                                                       # the sheet's order: oldest first, the open period last
+    assert last["cells"][0].startswith("W45") and "so far" in last["cells"][0] and "3 of 7 days" in last["cells"][0] and "Nov 2 – Nov 8" in last["cells"][0]
+    assert "trn-open" in last["cls"]
+    assert r[0]["cells"][0].startswith("W34") and r[-2]["cells"][0].startswith("W44") and "so far" not in r[-2]["cells"][0]
+    assert [x["key"] for x in r] == sorted(x["key"] for x in r)         # ascending by period start
+    note = page.locator("[data-testid=trn-vs]").inner_text()
+    assert "W45" in note and "the same 3 weekdays of last week" in note and "Oct 26 – Oct 28" in note
+    assert "Oct 19 – Oct 25" in page.evaluate("() => document.querySelectorAll('[data-testid=trn-table] tbody tr[data-key]')[10].children[0].title")        # a closed week's own base, on hover
     h = heads(page)
-    assert h[:5] == ["period", "total_spend", "total_spend:d", "meta_spend", "meta_spend:d"]
+    assert h[:6] == ["period", "total_rev", "nc_rev", "rc_rev", "nc_orders", "nc_aov"]
+    assert h[-9:] == ["chg:total_rev", "chg:total_spend", "chg:nc_rev", "chg:rc_rev", "chg:nc_roas", "chg:nc_cpa", "chg:nc_orders", "chg:m_roas", "chg:g_roas"]
+    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "WoW Δ"]
 
 
 def test_toggle_day_week_month_changes_the_rows_and_url(page):
@@ -72,15 +89,20 @@ def test_toggle_day_week_month_changes_the_rows_and_url(page):
     idle(page)
     assert params(page).get("interval") == "day"
     d = rows(page)
-    assert "not loaded yet" in d[0]["cells"][0] and d[0]["cells"][1] == "–" and "trn-pending" in d[0]["cls"]       # today: nothing loaded, no misleading change
-    assert d[1]["cells"][0].startswith("Wed Nov 4") and "vs Nov 3" in d[1]["cells"][0]
-    assert re.search(r"[▲▼]\d", d[1]["cells"][2]), d[1]["cells"][:4]                                               # yesterday is closed: it has a change
+    ci = col(page, "chg:total_rev")
+    assert "not loaded yet" in d[-1]["cells"][0] and d[-1]["cells"][1] == "–" and "trn-pending" in d[-1]["cls"]       # today (last row): nothing loaded, no misleading change
+    assert d[-1]["cells"][ci] == "–"
+    assert d[-2]["cells"][0].startswith("Wed Nov 4") and "Against" in page.evaluate("() => document.querySelectorAll('[data-testid=trn-table] tbody tr[data-key]')[13].children[%d].title" % ci)
+    assert re.fullmatch(r"[+-]\d+\.\d%|0\.0%", d[-2]["cells"][ci]), d[-2]["cells"][ci]                              # yesterday is closed: it has a change, signed with one decimal
+    assert [b[0] for b in bands(page)][-1] == "DoD Δ"
     page.locator("[data-testid=trn-interval-month]").click()
     pressed(page, "trn-interval-month")
     page.wait_for_function("() => document.querySelectorAll('[data-testid=trn-table] tbody tr[data-key]').length === 12")
     m = rows(page)
-    assert m[0]["cells"][0].startswith("Nov 2026") and "so far" in m[0]["cells"][0] and "4 of 30 days" in m[0]["cells"][0] and "vs Oct 1 – Oct 4" in m[0]["cells"][0]
-    assert m[1]["cells"][0].startswith("Oct 2026") and "so far" not in m[1]["cells"][0]
+    assert m[-1]["cells"][0].startswith("Nov 2026") and "so far" in m[-1]["cells"][0] and "4 of 30 days" in m[-1]["cells"][0]
+    assert "Oct 1 – Oct 4" in page.locator("[data-testid=trn-vs]").inner_text()
+    assert m[-2]["cells"][0].startswith("Oct 2026") and "so far" not in m[-2]["cells"][0]
+    assert [b[0] for b in bands(page)][-1] == "MoM Δ"
     page.locator("[data-testid=trn-interval-week]").click()
     pressed(page, "trn-interval-week")
     assert "interval" not in params(page)                              # week is the default: a clean URL
@@ -98,41 +120,151 @@ def test_periods_control_changes_the_span(page):
 
 
 def test_change_colours_follow_polarity(page):
-    goto(page, "?groups=totals")
-    # spend changes are neutral (grey), CPA down is good, ROAS up is good
+    goto(page)
+    # the change block: spend changes are neutral (grey), CPA down is good, ROAS up is good; a tinted cell is green or red
     res = page.evaluate("""() => {
         const out = {};
+        const heads = [...document.querySelectorAll('[data-testid=trn-table] thead tr.trn-colrow th')].map(th => th.dataset.col);
         for (const tr of document.querySelectorAll('[data-testid=trn-table] tbody tr[data-key]')) {
           for (const k of ['total_spend', 'nc_cpa', 'nc_roas']) {
-            const i = [...document.querySelectorAll('[data-testid=trn-table] thead th')].findIndex(th => th.dataset.col === k + ':d');
-            const el = tr.children[i].querySelector('.trn-chg');
-            if (el) (out[k] = out[k] || []).push([el.dataset.dir, el.className.replace('trn-chg ', '')]);
+            const td = tr.children[heads.indexOf('chg:' + k) + 1];
+            const el = td.querySelector('.trn-val');
+            if (el && el.dataset.dir) (out[k] = out[k] || []).push([el.dataset.dir, td.className.includes('trn-good') ? 'good' : td.className.includes('trn-bad') ? 'bad' : 'plain', td.innerText.trim()]);
           }
         }
         return out;
     }""")
-    assert res["total_spend"] and all(c == "trn-flat" for _, c in res["total_spend"])
-    for d, c in res["nc_cpa"]:
-        assert (c == "trn-good") == (d == "down") or c == "trn-flat", (d, c)
-    for d, c in res["nc_roas"]:
-        assert (c == "trn-good") == (d == "up") or c == "trn-flat", (d, c)
-    assert any(c == "trn-bad" for _, c in res["nc_roas"]) and any(c == "trn-good" for _, c in res["nc_roas"])
+    assert res["total_spend"] and all(c == "plain" for _, c, _t in res["total_spend"])
+    for d, c, _t in res["nc_cpa"]:
+        assert (c == "good") == (d == "down") or d == "flat", (d, c)
+    for d, c, _t in res["nc_roas"]:
+        assert (c == "good") == (d == "up") or d == "flat", (d, c)
+    assert any(c == "bad" for _, c, _t in res["nc_roas"]) and any(c == "good" for _, c, _t in res["nc_roas"])
+    assert all(re.fullmatch(r"[+-]\d+\.\d%|0\.0%|–", t) for rr in res.values() for _, _c, t in rr)
 
 
-def test_column_groups_and_chart_line_pick(page):
+def test_change_after_every_column_switch_is_off_by_default_and_adds_the_old_columns(page):
+    goto(page)
+    assert page.locator("[data-testid=trn-delta-off]").get_attribute("aria-pressed") == "true"
+    assert not [k for k in heads(page) if k.endswith(":d")]
+    page.locator("[data-testid=trn-delta-on]").click()
+    pressed(page, "trn-delta-on")
+    assert params(page)["delta"] == "1"
+    h = heads(page)
+    i = h.index("total_rev")
+    assert h[i + 1] == "total_rev:d" and h[h.index("nc_roas") + 1] == "nc_roas:d" and "chg:nc_roas" in h        # the change block stays
+    r = rows(page)
+    assert re.search(r"[▲▼]\d", r[-2]["cells"][h.index("nc_cpa") + 1]), r[-2]["cells"][:6]
+    tints = page.evaluate("""(i) => [...document.querySelectorAll('[data-testid=trn-table] tbody tr[data-key]')].flatMap(tr => [...tr.children[i].querySelectorAll('.trn-chg')].map(e => e.className.replace('trn-chg ', '')))""", h.index("nc_cpa") + 1)
+    assert "trn-good" in tints and "trn-bad" in tints                                                          # polarity colours are kept
+    page.locator("[data-testid=trn-delta-off]").click()
+    pressed(page, "trn-delta-off")
+    assert "delta" not in params(page)
+
+
+def test_layout_is_the_sheets_bands_in_the_sheets_order_oldest_first(page):
+    goto(page, "?groups=all")
+    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "SPEND", "NC REVENUE", "NC ROAS", "NC ORDERS", "NC CPA", "SPEND BY STAGE", "TESTING % OF SPEND",
+                                           "NC (UPSTACK ANY-CLICK)", "NC CPA BY STAGE", "GOOGLE", "WoW Δ"]
+    spans = dict(bands(page))
+    assert spans["DTC / SHOPIFY"] == 11 and spans["SPEND"] == 4 and spans["TESTING % OF SPEND"] == 1 and spans["WoW Δ"] == 9
+    labels = page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] thead tr.trn-colrow th')].map(th => th.innerText.replace(/\\s+/g, ' ').trim())")
+    assert labels[:5] == ["Total Revenue", "NC Revenue", "Repeat Revenue", "NC Orders", "NC AOV"]
+    assert "Platform ROAS" in labels and "Purchase Value" in labels and "Cost per 1,000 Reached" in labels
+    assert page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] thead tr.trn-colrow th.trn-t-vb')].length") == 5       # the sheet's per-product tint on the VitaBull heads
+    # the first column and the two header rows are frozen
+    st = page.evaluate("""() => { const g = (el) => getComputedStyle(el).position;
+        const t = document.querySelector('[data-testid=trn-table]');
+        return [g(t.querySelector('thead tr.trn-bandrow th')), g(t.querySelector('thead tr.trn-colrow th')), g(t.querySelector('thead th.trn-corner')), g(t.querySelector('tbody td.trn-pcol'))]; }""")
+    assert st == ["sticky"] * 4
+    box = page.evaluate("() => { const b = document.querySelector('[data-testid=trn-table]'); b.scrollLeft = 600; return [b.scrollLeft, b.scrollWidth > b.clientWidth]; }")
+    assert box[1] and box[0] > 0
+    left = page.evaluate("() => document.querySelector('[data-testid=trn-table] tbody td.trn-pcol').getBoundingClientRect().left - document.querySelector('[data-testid=trn-table]').getBoundingClientRect().left")
+    assert left < 3                                                                                           # the period column stays at the left edge while the bands scroll
+    w = page.evaluate("[document.documentElement.scrollWidth, document.documentElement.clientWidth]")
+    assert w[0] <= w[1]                                                                                       # the page itself does not scroll sideways, only the table box
+
+
+def test_plan_block_on_the_month_grain(page):
+    goto(page, "?interval=month")
+    assert [b[0] for b in bands(page)] == ["Projected* | Target | % Diff", "DTC / SHOPIFY", "META", "MoM Δ"]
+    assert dict(bands(page))["Projected* | Target | % Diff"] == 17
+    h = heads(page)
+    assert h[1:4] == ["plan_total_rev_proj", "plan_total_rev_goal", "plan_total_rev_diff"] and h[16:18] == ["plan_ebitda_gap", "plan_noi_gap"]
+    labels = page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] thead tr.trn-colrow th')].slice(0, 5).map(th => th.innerText.replace(/\\s+/g, ' ').trim())")
+    assert labels == ["Total Rev Projected*", "Total Rev Target", "Total Rev % Diff", "Total Spend Projected*", "Total Spend Target"]
+    r = rows(page)
+    c = r[-1]["cells"]
+    assert re.fullmatch(r"\$[\d,]+", c[1]) and re.fullmatch(r"\$[\d,]+", c[2]) and re.fullmatch(r"[+-]\d+\.\d%", c[3]), c[:4]
+    assert re.fullmatch(r"[+-]\$[\d,]+", c[16]), c[16]
+    assert "Same figures as the Pacing page" in page.locator("[data-testid=trn-plan-note]").inner_text()
+    tinted = page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] tbody td.trn-tint')].length")
+    assert tinted > 12
+    page.goto("/trends?interval=week")                                                                         # the plan block is a month-grain thing
+    page.wait_for_selector(TABLE + " tbody tr[data-key]")
+    assert not [k for k in heads(page) if k.startswith("plan_")] and page.locator("[data-testid=trn-group-plan]").count() == 0
+
+
+@pytest.mark.allow_errors
+def test_plan_block_failure_shows_dashes_with_the_reason_and_the_table_still_renders(page):
+    page.route("**/api/trends/plan*", lambda route: route.fulfill(status=503, content_type="application/json", body='{"error":"upstream_degraded"}'))
+    goto(page, "?interval=month")
+    r = rows(page)
+    assert len(r) == 12 and all(x == "–" for x in r[-1]["cells"][1:18]) and re.search(r"\d", r[-1]["cells"][18])
+    assert "Plan columns are empty" in page.locator("[data-testid=trn-plan-note]").inner_text()
+    assert "could not be loaded" in page.evaluate("() => document.querySelector('[data-testid=trn-table] tbody tr:last-child').children[1].title")
+
+
+@pytest.mark.parametrize("interval,numbers", [("week", "own"), ("day", "nc"), ("month", "own")])
+def test_rendered_cells_equal_the_values_from_before_the_layout_rebuild(page, interval, numbers):
+    """Every value cell on screen equals the pre-rebuild payload value of the same period and metric (tests/fixtures/trends_golden_before_layout.json; the mock has fixed days)."""
+    import json
+    from pathlib import Path
+    golden = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "trends_golden_before_layout.json").read_text())[f"{interval}:{numbers}"]
+    goto(page, f"?interval={interval}&numbers={numbers}&periods=6&groups=all")
+    h = heads(page)
+    got = page.evaluate("""() => [...document.querySelectorAll('[data-testid=trn-table] tbody tr[data-key]')].map(tr => [tr.dataset.key, [...tr.children].map(td => { const e = td.querySelector('.trn-val'); return e ? e.dataset.v : null; })])""")
+    checked = 0
+    for key, vs in got:
+        assert key in golden, key
+        for name, v in zip(h, vs):
+            if name == "period" or name.startswith(("plan_", "chg:")) or name.endswith(":d") or name not in golden[key]["v"]:
+                continue
+            exp = golden[key]["v"][name]
+            assert (float(v) if v else None) == exp, (key, name, v, exp)
+            checked += 1
+    assert checked > 300, checked
+
+
+def test_band_chips_show_and_hide_bands_and_chart_line_pick(page):
     goto(page)
     assert page.locator("[data-testid=trn-group-totals]").get_attribute("aria-pressed") == "true"
-    assert page.locator("[data-testid=trn-group-meta]").get_attribute("aria-pressed") == "false"
+    assert page.locator("[data-testid=trn-group-change]").get_attribute("aria-pressed") == "true"
+    assert page.locator("[data-testid=trn-group-meta]").get_attribute("aria-pressed") == "true"                    # Meta is on by default (Josh 2026-11-09)
+    h = heads(page)
+    for k in ("m_impr", "m_cpm", "m_ctr", "m_cpc", "m_roas", "reach", "frequency", "cost_1k", "uoc", "meta_spend"):
+        assert k in h, k
+    assert h.index("nc_roas") < h.index("meta_spend") < h.index("chg:total_rev")                                 # the sheet's order: DTC, Meta, ..., the change block last
+    page.locator("[data-testid=trn-group-meta]").click()                                                          # switching it off hides the Meta columns
+    page.wait_for_function("() => { const e = document.querySelector('[data-testid=trn-group-meta]'); return !!e && e.getAttribute('aria-pressed') === 'false'; }")
+    assert "meta_spend" not in heads(page) and params(page)["groups"] == "totals,change"
     page.locator("[data-testid=trn-group-meta]").click()
     pressed(page, "trn-group-meta")
+    page.locator("[data-testid=trn-group-products]").click()
+    pressed(page, "trn-group-products")
     h = heads(page)
-    for k in ("m_impr", "m_cpm", "m_ctr", "m_cpc", "m_roas", "reach", "frequency", "cost_1k", "uoc"):
-        assert k in h, k
-    assert params(page)["groups"] == "totals,meta"
-    page.locator("[data-testid=trn-group-vitabull]").click()
-    pressed(page, "trn-group-vitabull")
-    assert "p_vitabull_nc_roas" in heads(page)
-    # the last group cannot be switched off
+    assert "p_vitabull_nc_roas" in h and "p_boneflex_nc_cpa" in h and "meta_nc_roas" in h
+    page.locator("[data-testid=trn-group-all]").click()
+    pressed(page, "trn-group-all")
+    assert page.locator("[data-testid=trn-group-stage]").get_attribute("aria-pressed") == "true" and "test_share" in heads(page)
+    page.locator("[data-testid=trn-group-all]").click()                                                           # All again = back to the defaults, a clean URL
+    page.wait_for_function("() => !location.search.includes('groups')")
+    assert "groups" not in params(page)
+    # an old bookmark with a single product still works (it is the By product band now)
+    page.goto("/trends?groups=vitabull")
+    page.wait_for_selector(TABLE + " tbody tr[data-key]")
+    assert "p_vitabull_nc_roas" in heads(page) and page.locator("[data-testid=trn-group-products]").get_attribute("aria-pressed") == "true"
+    # the last band cannot be switched off
     page.goto("/trends?groups=stage")
     page.wait_for_selector(TABLE + " tbody tr[data-key]")
     page.locator("[data-testid=trn-group-stage]").click()
@@ -155,14 +287,15 @@ def test_numbers_basis_switch_changes_meta_and_google_columns(page):
     goto(page, "?groups=meta,google")
     h = heads(page)
     i = h.index("m_roas")
-    own = rows(page)[1]["cells"][i]
-    assert re.fullmatch(r"\d\.\d\d", own), own
+    own = rows(page)[-2]["cells"][i]
+    assert re.fullmatch(r"\d\.\d\dx", own), own
+    assert "Platform ROAS" in page.locator("[data-testid=trn-pick-m_roas]").inner_text()
     page.locator("[data-testid=trn-numbers-nc]").click()
     pressed(page, "trn-numbers-nc")
     assert params(page)["numbers"] == "nc"
     page.wait_for_selector("[data-testid=trn-pick-m_roas]")
     assert "NC ROAS (Upstack)" in page.locator("[data-testid=trn-pick-m_roas]").inner_text()
-    assert rows(page)[1]["cells"][i] != own
+    assert rows(page)[-2]["cells"][i] != own
     assert "Own" not in page.locator("[data-testid=trn-pick-m_roas]").inner_text()
 
 
@@ -171,26 +304,27 @@ def test_missing_source_days_are_dashes_with_a_reason(page):
     r = rows(page)
     h = heads(page)
     i = h.index("m_roas")
-    oldest = r[-1]
+    oldest = r[0]
     assert oldest["cells"][0].startswith("Dec 2024") or oldest["cells"][0].startswith("Jan 2025") or oldest["cells"][i] in ("–", "")
     page.goto("/trends?interval=month&periods=24&numbers=nc&groups=meta")
     page.wait_for_selector(TABLE + " tbody tr[data-key]")
     r = rows(page)
     h = heads(page)
     i = h.index("m_roas")
-    assert r[-1]["cells"][i] == "–" and r[0]["cells"][i] != "–"        # Upstack attribution of Meta only starts 2026-05-06
-    tip = page.evaluate("(i) => document.querySelector('[data-testid=trn-table] tbody tr:last-child').children[i].title", i)
+    assert r[0]["cells"][i] == "–" and r[-1]["cells"][i] != "–"        # Upstack attribution of Meta only starts 2026-05-06
+    tip = page.evaluate("(i) => document.querySelector('[data-testid=trn-table] tbody tr:first-child').children[i].title", i)
     assert "starts" in tip
 
 
 def test_reach_has_no_change_while_the_period_is_open(page):
-    goto(page, "?groups=meta")
+    goto(page, "?groups=meta&delta=1")
     h = heads(page)
     i = h.index("reach")
     r = rows(page)
-    assert re.search(r"\d", r[0]["cells"][i]) and r[0]["cells"][i + 1] == "–"        # open week: value from the feed row, no change
-    assert re.search(r"[▲▼]", r[1]["cells"][i + 1])                                    # closed week: change vs the previous week's own row
-    tip = page.evaluate("(i) => document.querySelector('[data-testid=trn-table] tbody tr:first-child').children[i + 1].title", i)
+    assert h[i + 1] == "reach:d"
+    assert re.search(r"\d", r[-1]["cells"][i]) and r[-1]["cells"][i + 1] == "–"        # open week (last row): value from the feed row, no change
+    assert re.search(r"[▲▼]", r[-2]["cells"][i + 1])                                    # closed week: change vs the previous week's own row
+    tip = page.evaluate("(i) => document.querySelector('[data-testid=trn-table] tbody tr:last-child').children[i + 1].title", i)
     assert "like-for-like" in tip.lower() or "same days" in tip.lower()
 
 
@@ -213,8 +347,8 @@ def test_stale_feed_is_flagged(page):
 def test_open_period_and_placeholder_rows_when_the_week_starts(page):
     goto(page, "?as_of=2026-11-02&interval=week")
     r = rows(page)
-    assert "not loaded yet" in r[0]["cells"][0] and r[0]["cells"][1] == "–"
-    assert r[1]["cells"][0].startswith("W44") and "so far" not in r[1]["cells"][0]
+    assert "not loaded yet" in r[-1]["cells"][0] and r[-1]["cells"][1] == "–"
+    assert r[-2]["cells"][0].startswith("W44") and "so far" not in r[-2]["cells"][0]
 
 
 @pytest.mark.allow_errors
@@ -243,12 +377,17 @@ def test_slow_answer_ends_in_the_error_box(page):
 
 
 def test_screenshots_desktop(page):
-    goto(page, "?groups=totals,meta")
+    goto(page, "?groups=totals,meta,change")
     page.screenshot(path=str(SHOTS / "trends_01_week_desktop.png"), full_page=True)
-    goto(page, "?interval=day&groups=totals,vitabull")
+    goto(page, "?interval=day&groups=totals,products,change")
     page.screenshot(path=str(SHOTS / "trends_02_day_desktop.png"), full_page=True)
-    goto(page, "?interval=month&groups=totals,stage")
+    goto(page, "?interval=month")
     page.screenshot(path=str(SHOTS / "trends_03_month_desktop.png"), full_page=True)
+    goto(page, "?groups=all")
+    page.evaluate("() => { document.querySelector('[data-testid=trn-table]').scrollLeft = 1500; }")
+    page.screenshot(path=str(SHOTS / "trends_06_week_all_bands_scrolled.png"), full_page=True)
+    goto(page, "?delta=1")
+    page.screenshot(path=str(SHOTS / "trends_07_week_change_after_every_column.png"), full_page=True)
 
 
 def test_phone_width_has_no_sideways_scroll(browser, base_url):
@@ -259,7 +398,7 @@ def test_phone_width_has_no_sideways_scroll(browser, base_url):
         errs = []
         pg.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
         pg.on("pageerror", lambda e: errs.append(str(e)))
-        for qs in ("", "?interval=day", "?interval=month&groups=totals,meta,google,vitabull,beefliver,boneflex,stage", "?groups=meta&numbers=nc"):
+        for qs in ("", "?interval=day", "?interval=month&groups=all", "?groups=meta&numbers=nc&delta=1"):
             pg.goto("/trends" + qs)
             pg.wait_for_selector(TABLE + " tbody tr[data-key]")
             idle(pg)
@@ -268,7 +407,7 @@ def test_phone_width_has_no_sideways_scroll(browser, base_url):
             over = pg.evaluate("""() => [...document.querySelectorAll('#view *')].filter(e => { const r = e.getBoundingClientRect();
                 return r.width > 0 && r.right > document.documentElement.clientWidth + 1 && !e.closest('.tablewrap'); }).map(e => e.className || e.tagName).slice(0, 5)""")
             assert over == [], (qs, over)
-        pg.goto("/trends?groups=totals,meta")
+        pg.goto("/trends?groups=totals,meta,change")
         pg.wait_for_selector(TABLE + " tbody tr[data-key]")
         idle(pg)
         pg.screenshot(path=str(SHOTS / "trends_04_week_phone.png"), full_page=True)
@@ -282,7 +421,7 @@ def test_phone_width_has_no_sideways_scroll(browser, base_url):
 
 
 def test_no_class_or_id_an_ad_blocker_would_hide(page):
-    goto(page, "?groups=totals,meta,google,vitabull,stage")
+    goto(page, "?groups=all&delta=1")
     bad = page.evaluate("""() => [...document.querySelectorAll('#view *')].flatMap(e => [...e.classList, e.id].filter(Boolean))
         .filter(t => /^(ads?|ad-.*|ads-.*|adname|advert.*|sponsor.*)$/.test(t) || /promo|banner|sponsor|advert/i.test(t))""")
     assert bad == []

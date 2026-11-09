@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, db, google as gg, platforms as pf, preview as pv, promotions as promo, queries as q, trends as trn
+from . import auth, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -357,11 +357,35 @@ def promotions():
     return jsonify(promo.promotions(conn, meta, request.args, product_slug=_arg("product")))
 
 
+@bp.get("/api/promotions/scale")
+def promotions_scale():
+    """Test to scale, the two simple views: view=should_scale (testing creatives that look good enough to move; min_test_spend, min_purchases, bar_pct) or
+    view=in_scaling (creatives that moved and how they do since; window / from / to / days, hide_bulk, bulk_min); both product=<slug>|none, source / basis. See app/scale_views.py."""
+    conn = db.get_conn()
+    meta = q.meta_for_source(q.load_meta(conn), q.parse_source(request.args)[0])
+    return jsonify(sv.scale_views(conn, meta, request.args, product_slug=_arg("product")))
+
+
 @bp.get("/api/trends")
 def trends():
     """Trends: the key marketing metrics by day, week or month with the change vs the previous period (like for like for the open period).
     interval=day|week|month (default week), periods=<n> (default 14 / 12 / 12), numbers=own|nc|all (Meta / Google purchases and revenue basis). See app/trends.py."""
     return jsonify(trn.trends(db.get_conn(), request.args))
+
+
+@bp.get("/api/trends/plan")
+def trends_plan():
+    """Trends, month grain: the Pacing page's projected / target / % diff per month (from=YYYY-MM-DD&to=YYYY-MM-DD). Answers 200 with available=false and the reason when the
+    plan cannot be built, so the Trends table still renders. See app/trends.py (plan_payload)."""
+    return jsonify(trn.plan_payload(request.args))
+
+
+@bp.get("/api/tag-lookup")
+def tag_lookup():
+    """Tag lookup: q=<an ad name as the platform shows it | a Meta ad id | a tracker Concept ID or Ad Family>. The new (line-mapped) tags of the matching tracker rows,
+    the tracker's own tags beside them, the hook, a 30-day and since-launch performance line, and, with no match, the closest names (never a guessed tag).
+    source / basis choose the numbers like everywhere else. See app/lookup.py and docs/TAG_LOOKUP.md."""
+    return jsonify(tlk.lookup_db(db.get_conn(), request.args))
 
 
 @bp.get("/api/platforms/overview")

@@ -44,6 +44,7 @@ const CSS = `
 table.pacing-table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 860px; font-size: var(--lv-fs-base); font-variant-numeric: tabular-nums; }
 .pacing-table th, .pacing-table td { padding: 0 var(--lv-sp-3); height: var(--lv-row-h, 26px); border-bottom: 1px solid var(--lv-line-soft); white-space: nowrap; text-align: right; background: var(--lv-surface); }
 .pacing-table thead th { position: sticky; top: 0; z-index: 3; background: var(--lv-surface-2); font-weight: var(--lv-fw-semi); font-size: var(--lv-fs-sm); border-bottom: 1px solid var(--lv-line); height: 32px; }
+@media (min-width: 1000px) { .pacing-table-wrap { overflow: visible; } .pacing-table thead th { top: 43px; } }   /* wide screens: the header follows the page under the top bar; narrow screens keep the sideways scroll box */
 .pacing-table thead th.proj { background: var(--lv-proj-head); color: var(--lv-proj-ink); }
 .pacing-table th.lab, .pacing-table td.lab { position: sticky; left: 0; z-index: 2; text-align: left; font-weight: inherit; min-width: 220px; border-right: 1px solid var(--lv-line); }
 .pacing-table thead th.lab { z-index: 4; }
@@ -294,12 +295,13 @@ export async function render(el, ctx) {
     });
     const pb = data.payback && data.payback.available ? data.payback : null;
     if (pb) {
-      const m = pb.loaded ? pb.loaded.months : pb.months;
+      const m = pb.months;
       const tone = m.status === 'none' ? null : m.status;
       out.push(h('div', { class: 'pacing-card', 'data-key': 'payback' },
-        h('div', { class: 't' }, pb.loaded ? 'Payback after all variable costs' : 'Payback on product margin'),
+        h('div', { class: 't' }, 'Payback months'),
         h('div', { class: 'v' }, `${m.mtd_label} months`),
-        h('div', { class: 'g' }, `Goal ${m.goal_label} months${pb.loaded ? ` · ${pb.months.mtd_label} on product margin` : ''}`),
+        h('div', { class: 'g' }, `Goal ${m.goal_label} months · product cost and fulfillment only`),
+        pb.loaded ? h('div', { class: 'pacing-ctx' }, `After all variable costs ${pb.loaded.months.mtd_label} months (goal ${pb.loaded.months.goal_label})`) : null,
         h('div', { class: 'row' }, tone ? ui.chip(tone === 'good' ? 'On pace' : tone === 'warn' ? 'Behind' : 'Well behind', tone) : null)));
     }
     return h('div', { class: 'pacing-cards' }, out);
@@ -318,9 +320,9 @@ export async function render(el, ctx) {
       kp('advertising', 'Ad spend pace', fmt.compact(by.advertising && by.advertising.projection) + '*')].filter(Boolean);
     const pb = data.payback && data.payback.available ? data.payback : null;
     if (pb) {
-      const m = pb.loaded ? pb.loaded.months : pb.months;
-      kpis.push({ label: pb.loaded ? 'Payback after all costs, months' : 'Payback, months', value: String(m.mtd_label), tone: m.status === 'none' ? null : m.status,
-        note: pb.loaded ? `${pb.months.mtd_label} on product margin · goal ${m.goal_label}` : `goal ${m.goal_label}` });
+      const m = pb.months;
+      kpis.push({ label: 'Payback, months', value: String(m.mtd_label), tone: m.status === 'none' ? null : m.status,
+        note: `goal ${m.goal_label} · product cost and fulfillment only${pb.loaded ? ` · after all costs ${pb.loaded.months.mtd_label}` : ''}` });
     }
     return kpis;
   }
