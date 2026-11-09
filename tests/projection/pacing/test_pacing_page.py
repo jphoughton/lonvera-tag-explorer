@@ -251,3 +251,34 @@ def test_nc_revenue_card_without_a_curve_says_so(browser, base_url, pacing_db):
     assert "Projected" not in page.locator(f"{box} .pacing-note[role='status']").inner_text().split("No closed day")[0]
     assert errors == []
     ctx.close()
+
+
+@pytest.mark.parametrize("pace,word,tone", [(1.12, "On pace", "good"), (0.95, "Behind", "warn"), (0.70, "Well behind", "bad")])
+def test_dtc_nc_aov_row_renders_after_nc_cpa_with_higher_is_better_chips(browser, base_url, pace, word, tone):
+    import json as _json
+    ctx = browser.new_context(viewport={"width": 1440, "height": 900})
+    page = ctx.new_page()
+
+    def patch(route):
+        resp = route.fetch()
+        j = resp.json()
+        for r in j["rows"]:
+            if r["key"] == "dtc_nc_aov":
+                r["goal"] = 70.0
+                r["projection"] = r["mtd"] = 70.0 * pace
+                r["pacing"] = pace
+                r["status"] = tone
+        route.fulfill(response=resp, body=_json.dumps(j), headers={**resp.headers, "content-type": "application/json"})
+    page.route("**/api/projection/pacing/month*", patch)
+    page.goto(base_url + "/projection/pacing")
+    page.wait_for_selector("body[data-pg-state='ready']")
+    table = page.locator("table.pacing-table[aria-label='Month pacing against the plan']")
+    labels = [t.strip() for t in table.locator("tbody tr th.lab").all_inner_texts()]
+    i = next(k for k, t in enumerate(labels) if t.startswith("DTC NC CPA"))
+    assert labels[i + 1].startswith("DTC NC AOV")
+    row = table.locator("tbody tr").filter(has=page.locator("th.lab", has_text="DTC NC AOV"))
+    assert row.locator(".pg-chip").first.inner_text().strip() == word
+    assert row.locator(".pct").inner_text().strip() == f"{round(pace * 100)}%"
+    assert "$" in row.inner_text() and row.locator("th.lab .pg-note").count() == 1                      # the little i popover carries the definition
+    assert "plan's AOV" in row.locator("th.lab .pg-note").get_attribute("title")
+    ctx.close()
