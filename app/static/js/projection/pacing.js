@@ -44,6 +44,7 @@ const CSS = `
 table.pacing-table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 860px; font-size: var(--lv-fs-base); font-variant-numeric: tabular-nums; }
 .pacing-table th, .pacing-table td { padding: 0 var(--lv-sp-3); height: var(--lv-row-h, 26px); border-bottom: 1px solid var(--lv-line-soft); white-space: nowrap; text-align: right; background: var(--lv-surface); }
 .pacing-table thead th { position: sticky; top: 0; z-index: 3; background: var(--lv-surface-2); font-weight: var(--lv-fw-semi); font-size: var(--lv-fs-sm); border-bottom: 1px solid var(--lv-line); height: 32px; }
+@media (min-width: 1000px) { .pacing-table-wrap { overflow: visible; } .pacing-table thead th { top: 43px; } }   /* wide screens: the header follows the page under the top bar; narrow screens keep the sideways scroll box */
 .pacing-table thead th.proj { background: var(--lv-proj-head); color: var(--lv-proj-ink); }
 .pacing-table th.lab, .pacing-table td.lab { position: sticky; left: 0; z-index: 2; text-align: left; font-weight: inherit; min-width: 220px; border-right: 1px solid var(--lv-line); }
 .pacing-table thead th.lab { z-index: 4; }
