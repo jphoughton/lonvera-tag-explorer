@@ -407,24 +407,24 @@ def stub_python(tmp_path):
 
 def test_run_etl_runs_migrate_then_run_daily_then_upstack_then_projection_daily(stub_python):
     p, calls = stub_python()
-    assert p.returncode == 0 and calls == ["-m etl.migrate", "-m etl.run_daily", "-m etl.upstack_daily", "-m etl.stage_moves", "-m etl.projection_daily", "-m etl.amazon_mtd"]
+    assert p.returncode == 0 and calls == ["-m etl.migrate", "-m etl.run_daily", "-m etl.upstack_daily", "-m etl.stage_moves", "-m etl.projection_daily", "-m etl.amazon_mtd", "-m etl.auto_tag"]
 
 
 def test_run_etl_runs_projection_even_when_run_daily_fails_and_exits_non_zero(stub_python):
     p, calls = stub_python(DAILY_RC=3)
-    assert p.returncode == 3 and calls == ["-m etl.migrate", "-m etl.run_daily", "-m etl.upstack_daily", "-m etl.stage_moves", "-m etl.projection_daily", "-m etl.amazon_mtd"]
+    assert p.returncode == 3 and calls == ["-m etl.migrate", "-m etl.run_daily", "-m etl.upstack_daily", "-m etl.stage_moves", "-m etl.projection_daily", "-m etl.amazon_mtd", "-m etl.auto_tag"]
     assert "etl.run_daily failed (exit 3)" in p.stderr and "projection_daily failed" not in p.stderr and "upstack_daily failed" not in p.stderr
 
 
 def test_run_etl_runs_projection_even_when_upstack_fails_and_exits_non_zero(stub_python):
     p, calls = stub_python(UP_RC=6)
-    assert p.returncode == 6 and calls == ["-m etl.migrate", "-m etl.run_daily", "-m etl.upstack_daily", "-m etl.stage_moves", "-m etl.projection_daily", "-m etl.amazon_mtd"]
+    assert p.returncode == 6 and calls == ["-m etl.migrate", "-m etl.run_daily", "-m etl.upstack_daily", "-m etl.stage_moves", "-m etl.projection_daily", "-m etl.amazon_mtd", "-m etl.auto_tag"]
     assert "etl.upstack_daily failed (exit 6)" in p.stderr and "run_daily failed" not in p.stderr and "projection_daily failed" not in p.stderr
 
 
 def test_run_etl_a_failed_stage_moves_refresh_still_runs_projection_and_fails_the_run(stub_python):
     p, calls = stub_python(SM_RC=5)
-    assert p.returncode == 5 and calls[-3:] == ["-m etl.stage_moves", "-m etl.projection_daily", "-m etl.amazon_mtd"] and "etl.stage_moves failed (exit 5)" in p.stderr
+    assert p.returncode == 5 and calls[-4:] == ["-m etl.stage_moves", "-m etl.projection_daily", "-m etl.amazon_mtd", "-m etl.auto_tag"] and "etl.stage_moves failed (exit 5)" in p.stderr
     p, _ = stub_python(UP_RC=6, SM_RC=5)
     assert p.returncode == 6                                              # an earlier failure keeps priority
 
