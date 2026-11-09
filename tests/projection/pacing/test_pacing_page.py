@@ -71,7 +71,7 @@ def test_month_picker_changes_the_table(browser, base_url):
 
 def test_trend_controls_switch_grain_view_and_bands(browser, base_url):
     ctx, page, errors = open_page(browser, base_url)
-    page.get_by_role("button", name="Week", exact=True).click()
+    page.get_by_role("group", name="Period").get_by_role("button", name="Week", exact=True).click()
     page.wait_for_function("((document.querySelector('.pacing-trend-scroll thead th:last-child') || {}).innerText || '').startsWith('W')")
     page.get_by_role("button", name="Meta campaigns").click()
     page.wait_for_function("((document.querySelector('.pacing-trend-scroll tr.band td') || {}).innerText || '').toLowerCase().includes('meta campaigns')")

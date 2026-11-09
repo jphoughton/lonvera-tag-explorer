@@ -2,6 +2,8 @@
 // Reads /api/projection/pacing/{month,snapshot,rollup,intraday,intraday-nc,live-today}. Read-only: nothing on this page edits the plan.
 // Styles are injected once and use only the --lv-* tokens from brand.css.
 
+import { pacingTrendPanel } from './pacing_trend.js';
+
 const CSS = `
 .pacing-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lv-sp-2); }
 .pacing-controls label { color: var(--lv-muted); font-size: var(--lv-fs-xs); font-weight: var(--lv-fw-bold); letter-spacing: var(--lv-track-kicker); text-transform: uppercase; }
@@ -208,7 +210,8 @@ export async function render(el, ctx) {
   const snapHost = h('div');
   const trendHost = h('div');
   const feedHost = h('div');
-  el.replaceChildren(h('div', { class: 'pg-page' }, headHost, cardsHost, noteHost, tableHost, extraHost, varsHost, snapHost, trendHost, feedHost));
+  const trendPanel = pacingTrendPanel();                                            // the Marketing metrics Trend panel, full width under the header
+  el.replaceChildren(h('div', { class: 'pg-page' }, headHost, trendPanel.el, cardsHost, noteHost, tableHost, extraHost, varsHost, snapHost, trendHost, feedHost));
 
   const monthSelect = h('select', { 'aria-label': 'Month', onchange: () => { state.month = monthSelect.value; ctx.setParams({ month: state.month }); loadMonth(); } });
   const feedSummary = h('span');
@@ -750,5 +753,5 @@ export async function render(el, ctx) {
   const ageTimer = setInterval(() => live.subs.forEach((f) => f()), 60 * 1000);
   await loadMonth();
   loadTrend();
-  return () => { clearInterval(liveTimer); clearInterval(ageTimer); };
+  return () => { clearInterval(liveTimer); clearInterval(ageTimer); trendPanel.destroy(); };
 }

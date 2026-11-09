@@ -140,3 +140,21 @@ def meta_sandbox(pacing_db):
         c.execute(f"DELETE FROM {t}")
     ETL.refresh(c, snapshot_dir=SNAP, backfill=True)
     c.close()
+
+
+@pytest.fixture(autouse=True)
+def _trend_panel_gets_an_empty_series(monkeypatch):
+    """The Pacing page mounts the Marketing Trend panel, which reads /api/platforms/trend. This test database has none of the ad tables (503, a console error),
+    so every browser context made by these tests answers that one URL with an empty 200; test_pacing_trend_panel.py routes its own series on top."""
+    try:
+        from playwright.sync_api import Browser
+    except Exception:                                                        # noqa: BLE001
+        return
+    orig = Browser.new_context
+    body = '{"window_info":null,"compare_info":null,"grain":"day","labels":[],"points":[],"groups":[],"total":{"available":false,"points":[]},"notes":[]}'
+
+    def new_context(self, *a, **kw):
+        ctx = orig(self, *a, **kw)
+        ctx.route("**/api/platforms/trend*", lambda r: r.fulfill(status=200, content_type="application/json", body=body))
+        return ctx
+    monkeypatch.setattr(Browser, "new_context", new_context)
