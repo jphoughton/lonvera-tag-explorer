@@ -219,7 +219,7 @@ def read_snapshot(conn, month: dt.date, today: dt.date, data_through: dt.date) -
     load of the Amazon feed (so a feed that reloaded after the snapshot is never hidden behind it)."""
     try:
         rows = _rows(conn, "SELECT * FROM proj_amazon_mtd_snapshots WHERE month = %s AND snapshot_day <= %s ORDER BY snapshot_day DESC LIMIT 1", (month, today))
-    except Exception:                                                       # noqa: BLE001  (migration 193 not applied yet)
+    except Exception:                                                       # noqa: BLE001  (migration 194 not applied yet)
         conn.rollback()
         return None, "snapshot table not available"
     if not rows:

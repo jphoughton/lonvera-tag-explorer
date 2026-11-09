@@ -1,4 +1,4 @@
--- 193: nightly snapshot of the completed Amazon month-to-date (python -m etl.amazon_mtd). Amazon revenue reaches the feed with a lag, so month to date reads low;
+-- 194: nightly snapshot of the completed Amazon month-to-date (python -m etl.amazon_mtd). Amazon revenue reaches the feed with a lag, so month to date reads low;
 -- the pacing page projects the missing days at the trailing 7-day average of the reported days (Josh's rule) and shows the result with an asterisk. The page reads
 -- the newest snapshot when it is current and computes live otherwise (the payload says which). One row per Pacific day and month, history kept: it lets us later
 -- compare each day's projection with the month's final actual. Additive and idempotent. Aggregates only.
