@@ -228,9 +228,12 @@ def test_rendered_cells_equal_the_values_from_before_the_layout_rebuild(page, in
     for key, vs in got:
         assert key in golden, key
         for name, v in zip(h, vs):
-            if name == "period" or name.startswith(("plan_", "chg:")) or name.endswith(":d") or name not in golden[key]["v"]:
+            if name == "nc_cvr":                                    # intentionally redefined 2026-11-09 (new customers / new visitors): the old click-based value is nc_cvr_clicks
                 continue
-            exp = golden[key]["v"][name]
+            gname = "nc_cvr" if name == "nc_cvr_clicks" else name
+            if name == "period" or name.startswith(("plan_", "chg:")) or name.endswith(":d") or gname not in golden[key]["v"]:
+                continue
+            exp = golden[key]["v"][gname]
             assert (float(v) if v else None) == exp, (key, name, v, exp)
             checked += 1
     assert checked > 300, checked
@@ -455,3 +458,25 @@ def test_new_visitors_and_cost_per_new_visitor_columns(page):
     assert "trn-open" in r2[-1]["cls"] and r2[-1]["cells"][h2.index("new_visitors")] != "–" and r2[-1]["cells"][h2.index("chg:new_visitors")] != "–"
     left_out = page.locator("[data-testid=trn-left-out]").inner_text()
     assert "new visitors" not in left_out.lower()
+
+
+def test_nc_conversion_is_new_customers_over_new_visitors_with_its_label_format_and_hover(page):
+    """NC Conversion (DTC band) = new customers / new visitors, shown as a percentage; a dash with the traffic-feed reason before 2025-05-08; the sheet's click-based figure is the
+    last column of the Meta band as 'NC Conversion (clicks)'; the Definitions text says it differs from the sheet."""
+    goto(page, "?interval=month&periods=24")
+    h = heads(page)
+    labels = page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] thead tr.trn-colrow th')].map(th => th.innerText.replace(/\\s+/g, ' ').trim())")
+    i, j = h.index("nc_cvr"), h.index("nc_cvr_clicks")
+    assert labels[i - 1] == "NC Conversion" and labels[j - 1] == "NC Conversion (clicks)" and i < h.index("repeat_share") < h.index("new_visitors") < h.index("meta_spend") < j
+    r = rows(page)
+    assert r[1]["cells"][i] == "–"                                                    # Jan 2025: orders exist, the traffic feed does not yet
+    tip = page.evaluate("(i) => document.querySelector('[data-testid=trn-table] tbody tr:nth-child(2)').children[i].title", i)
+    assert "starts May 8, 2025" in tip
+    closed = r[-2]["cells"]
+    assert re.fullmatch(r"\d+\.\d+%", closed[i]) and re.fullmatch(r"\d+\.\d+%", closed[j]), (closed[i], closed[j])
+    nc, nv_ = (float(closed[h.index(k)].replace(",", "")) for k in ("nc_orders", "new_visitors"))
+    assert abs(float(closed[i][:-1]) - 100 * nc / nv_) < 0.06                          # the cell is NC Orders / New Visitors as printed
+    assert closed[i] != closed[j]
+    page.locator("[data-testid=trn-more] summary").click()
+    txt = page.locator("[data-testid=trn-more]").inner_text()
+    assert "new visitors" in txt and "differs from the sheet" in txt
