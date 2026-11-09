@@ -477,6 +477,7 @@ def test_layout_is_the_sheets_bands_in_the_sheets_order(tc):
     cols = {b["key"]: [c["label"] for c in b["cols"]] for b in d["layout"]}
     assert cols["dtc"] == ["Total Revenue", "NC Revenue", "Repeat Revenue", "NC Orders", "NC AOV", "Ad Spend", "NC CPA", "NC ROAS", "MER", "NC Conversion", "Repeat Share %", "New Visitors", "Cost per New Visitor"]
     assert cols["meta"][:9] == ["Spend", "Link Clicks", "CPC", "Purchases", "Purchase Value", "CVR", "Platform ROAS", "Cost per Purchase", "Impressions"]
+    assert cols["meta"][-1] == "NC Conversion (clicks)"                                  # the click-based NC conversion, kept after Link CTR
     assert cols["prod_nc_roas"] == ["VitaBull", "Beef Liver", "Boneflex", "Total"]
     assert [x["title"] for x in get(tc, interval="month")["layout"]][0] == "Projected* | Target | % Diff" and get(tc, interval="month")["layout"][-1]["title"] == "MoM Δ"
     assert get(tc, interval="day")["layout"][-1]["title"] == "DoD Δ"
@@ -513,7 +514,8 @@ def test_sheet_parity_ratios_nc_aov_mer_repeat_share_conversion_first_impression
     assert approx(w["v"]["nc_aov"], ssum(orev, a, b) / ssum(onc, a, b), 1e-4)
     assert approx(w["v"]["mer"], (ssum(orev, a, b) + ssum(orc, a, b)) / spend, 1e-5)
     assert approx(w["v"]["repeat_share"], ssum(orc, a, b) / (ssum(orev, a, b) + ssum(orc, a, b)), 1e-6)
-    assert approx(w["v"]["nc_cvr"], ssum(onc, a, b) / (ssum(mc, a, b) + ssum(gc, a, b)), 1e-6)
+    assert approx(w["v"]["nc_cvr"], ssum(onc, a, b) / ssum(nv, a, b), 1e-6)                                  # new customers / new visitors (2026-11-09)
+    assert approx(w["v"]["nc_cvr_clicks"], ssum(onc, a, b) / (ssum(mc, a, b) + ssum(gc, a, b)), 1e-6)          # the sheet's click-based definition, kept as an extra column
     assert approx(w["v"]["m_cvr"], ssum(mp, a, b) / ssum(mc, a, b), 1e-6) and approx(w["v"]["g_cvr"], ssum(gp, a, b) / ssum(gc, a, b), 1e-6)
     assert approx(w["v"]["first_imp"], week_reach(a) / ssum(mi, a, b), 1e-6)
 
@@ -625,3 +627,63 @@ def test_new_visitor_columns_sit_in_the_dtc_band_the_change_block_and_the_freshn
 def test_a_week_across_the_dst_change_counts_seven_days_of_visitors(tc):
     w = by_start(get(tc, interval="week", as_of="2026-11-11", periods=4), D(2026, 10, 26))                  # Nov 1 2026 is the end of daylight time
     assert w["days"] == 7 and w["v"]["new_visitors"] == sum(nv(x) for x in rng(D(2026, 10, 26), D(2026, 11, 1)))
+
+
+# ----------------------------------------------------------------------------- NC conversion = Upstack new customers / Upstack new visitors (2026-11-09)
+def test_nc_conversion_is_a_ratio_of_sums_of_new_customers_over_new_visitors(tc):
+    for interval, n in (("week", 30), ("month", 10), ("day", 60)):
+        checked = 0
+        for r in get(tc, interval=interval, periods=n)["rows"]:
+            if r["state"] != "closed":
+                continue
+            a, b = D.fromisoformat(r["start"]), D.fromisoformat(r["end"])
+            if a < TRAFFIC_FIRST or TRAFFIC_HOLE in rng(a, b) or ssum(nv, a, b) == 0:
+                continue
+            assert approx(r["v"]["nc_cvr"], ssum(onc, a, b) / ssum(nv, a, b), 1e-5), (interval, r["label"])
+            checked += 1
+        assert checked >= 5, interval
+    a, b = D(2026, 10, 19), D(2026, 10, 25)
+    w = by_start(get(tc, interval="week", periods=20), a)
+    mean_of_ratios = sum(onc(x) / nv(x) for x in rng(a, b)) / 7
+    assert abs(mean_of_ratios - w["v"]["nc_cvr"]) / w["v"]["nc_cvr"] > 0.0005               # never a mean of daily ratios
+    assert approx(w["v"]["nc_cvr"], ssum(onc, a, b) / ssum(nv, a, b), 1e-6)
+    assert approx(w["v"]["nc_cvr"], w["v"]["nc_orders"] / w["v"]["new_visitors"], 1e-4)       # same numerator as NC Orders, same denominator as New Visitors
+    m = by_start(get(tc, interval="month", periods=4), D(2026, 10, 1))
+    assert approx(m["v"]["nc_cvr"], ssum(onc, D(2026, 10, 1), D(2026, 10, 31)) / ssum(nv, D(2026, 10, 1), D(2026, 10, 31)), 1e-6)
+
+
+def test_nc_conversion_dashes_follow_the_new_visitor_rules(tc):
+    d = get(tc, interval="week", as_of="2026-02-04", periods=4)
+    for start in (D(2026, 1, 12), D(2026, 1, 19)):                                   # before the feed / straddling its first day
+        r = by_start(d, start)
+        assert r["v"]["nc_cvr"] is None and "starts Jan 20, 2026" in r["why"]["nc_cvr"], r["label"]
+        assert r["v"]["nc_cvr_clicks"] is not None                                   # the click-based column does not depend on traffic
+    ok = by_start(d, D(2026, 1, 26))
+    assert approx(ok["v"]["nc_cvr"], ssum(onc, D(2026, 1, 26), D(2026, 2, 1)) / ssum(nv, D(2026, 1, 26), D(2026, 2, 1)), 1e-6)
+    w = by_start(get(tc, interval="week", as_of="2026-04-27", periods=4), D(2026, 4, 13))     # holds the missing Apr 14
+    assert w["v"]["nc_cvr"] is None and "no data for Apr 14, 2026" in w["why"]["nc_cvr"]
+    day = by_start(get(tc, interval="day", as_of="2026-06-12", periods=5), ZERO_VISITORS_DAY)
+    assert day["v"]["nc_cvr"] is None and "zero" in day["why"]["nc_cvr"].lower()                # zero visitors: undefined, not 0 and not a division error
+    wk = by_start(get(tc, interval="week", as_of="2026-06-17", periods=4), D(2026, 6, 8))
+    assert approx(wk["v"]["nc_cvr"], ssum(onc, D(2026, 6, 8), D(2026, 6, 14)) / ssum(nv, D(2026, 6, 8), D(2026, 6, 14)), 1e-6)
+
+
+def test_nc_conversion_dst_week_open_period_and_metadata(tc):
+    w = by_start(get(tc, interval="week", as_of="2026-11-11", periods=4), D(2026, 10, 26))      # the week of the Nov 1 clock change
+    assert w["days"] == 7 and approx(w["v"]["nc_cvr"], ssum(onc, D(2026, 10, 26), D(2026, 11, 1)) / ssum(nv, D(2026, 10, 26), D(2026, 11, 1)), 1e-6)
+    d = get(tc, interval="week", periods=8)
+    o = by_start(d, D(2026, 11, 2))                                                            # open: Nov 2-4 against Oct 26-28, today's partial traffic row never read
+    now = ssum(onc, D(2026, 11, 2), D(2026, 11, 4)) / ssum(nv, D(2026, 11, 2), D(2026, 11, 4))
+    prev = ssum(onc, D(2026, 10, 26), D(2026, 10, 28)) / ssum(nv, D(2026, 10, 26), D(2026, 10, 28))
+    assert o["open"] and approx(o["v"]["nc_cvr"], now, 1e-6)
+    assert o["d"]["nc_cvr"]["t"] == "pp" and abs(o["d"]["nc_cvr"]["v"] - (now - prev)) < 2e-6
+    m = {x["key"]: x for x in d["metrics"]}
+    assert m["nc_cvr"]["pol"] == "up_good" and m["nc_cvr"]["kind"] == "rate"
+    assert set(m["nc_cvr"]["needs"]) == {"orders", "traffic"} and set(m["nc_cvr_clicks"]["needs"]) == {"orders", "meta", "google"}
+    assert m["nc_cvr"]["help"].startswith("Upstack new customers / Upstack new visitors")
+    assert m["nc_cvr_clicks"]["label"] == "NC conversion (clicks)" and m["nc_cvr_clicks"]["pol"] == "up_good"
+    # the other conversions keep their own definitions
+    a, b = D(2026, 10, 19), D(2026, 10, 25)
+    r = by_start(d, a)
+    assert approx(r["v"]["m_cvr"], ssum(mp, a, b) / ssum(mc, a, b), 1e-6) and approx(r["v"]["g_cvr"], ssum(gp, a, b) / ssum(gc, a, b), 1e-6)
+    assert approx(r["v"]["nc_cvr_clicks"], ssum(onc, a, b) / (ssum(mc, a, b) + ssum(gc, a, b)), 1e-6)

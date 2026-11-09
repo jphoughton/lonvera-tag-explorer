@@ -341,7 +341,8 @@ def build_catalog(numbers: str) -> list[dict]:
     add("nc_orders", "New customers", "totals", "int", UP, ("orders",), lambda S: S["onc_ord"], "Actual new customers (first orders), Upstack orders feed.")
     add("nc_cpa", "NC CPA", "totals", "money2", DOWN, ("orders", "meta", "google"), lambda S: _div(S["ms"] + S["gs"], S["onc_ord"]), "Total spend / actual new customers.")
     add("nc_aov", "NC AOV", "totals", "money2", UP, ("orders",), lambda S: _div(S["onc_rev"], S["onc_ord"]), "Actual NC revenue / actual new customers.")
-    add("nc_cvr", "NC conversion", "totals", "rate", UP, ("orders", "meta", "google"), lambda S: _div(S["onc_ord"], S["mc"] + S["gc"]), "Actual new customers / (Meta link clicks + Google clicks).")
+    add("nc_cvr", "NC conversion", "totals", "rate", UP, ("orders", "traffic"), lambda S: _div(S["onc_ord"], S["nv"]),
+        "Upstack new customers / Upstack new visitors: the same new-customer count as NC Orders over the same new-visitor count as New Visitors, as a ratio of the period's sums. Differs from the sheet, which divides by link clicks (see NC Conversion (clicks) in the Meta band).")
     add("rc_rev", "Returning revenue", "totals", "money", UP, ("orders",), lambda S: S["orc"], "Repeat-order revenue (Upstack orders feed).")
     add("total_rev", "Total revenue", "totals", "money", UP, ("orders",), lambda S: S["otot"], "All order revenue: new + returning (Upstack orders feed; no Amazon).")
     add("repeat_share", "Repeat share of revenue", "totals", "rate", NEUTRAL, ("orders",), lambda S: _div(S["orc"], S["otot"]), "Returning revenue / total revenue.")
@@ -365,6 +366,8 @@ def build_catalog(numbers: str) -> list[dict]:
     add("m_purch", f"Meta {nm[0]}{suf}", "meta", "int", UP, mneeds, lambda S, pk=pk: S[pk], f"Basis: {BASIS_NAME[numbers]}.")
     add("m_rev", f"Meta {nm[1]}{suf}", "meta", "money", UP, mneeds, lambda S, rk=rk: S[rk], f"Basis: {BASIS_NAME[numbers]}.")
     add("m_cvr", "Meta conversion", "meta", "rate", UP, ("meta",), lambda S: _div(S["mp_own"], S["mc"]), "Meta-reported purchases / link clicks (Meta's own count).")
+    add("nc_cvr_clicks", "NC conversion (clicks)", "meta", "rate", UP, ("orders", "meta", "google"), lambda S: _div(S["onc_ord"], S["mc"] + S["gc"]),
+        "The sheet's NC Conversion: actual new customers / (Meta link clicks + Google clicks).")
     add("m_roas", f"Meta {nm[2]}{suf}", "meta", "roas", UP, mneeds, lambda S, rk=rk: _div(S[rk], S["ms"]), f"Revenue / Meta spend. Basis: {BASIS_NAME[numbers]}.")
     add("m_cpp", f"Meta {nm[3]}{suf}", "meta", "money2", DOWN, mneeds, lambda S, pk=pk: _div(S["ms"], S[pk]), f"Meta spend / {nm[0]}. Basis: {BASIS_NAME[numbers]}.")
     # Meta reach (read from the reach feed's own rows, never summed)
@@ -480,7 +483,7 @@ def build_layout(interval: str, numbers: str, catalog: list[dict]) -> list[dict]
         _col("meta_spend", "Spend"), _col("m_clicks", "Link Clicks"), _col("m_cpc", "CPC"), *plat("m", "Meta "), _col("m_cvr", "CVR"),
         _col("m_roas", "Platform ROAS" if own else short("m_roas", "Meta ")), _col("m_cpp", "Cost per Purchase" if own else short("m_cpp", "Meta ")),
         _col("m_impr", "Impressions"), _col("reach", "Reach"), _col("first_imp", "First-Time Impression %"), _col("cost_1k", "Cost per 1,000 Reached"), _col("m_cpm", "CPM"),
-        _col("frequency", "Frequency"), _col("uoc", "Unique Outbound Clicks"), _col("uoc_ctr", "Unique Outbound CTR"), _col("m_ctr", "Link CTR")]})
+        _col("frequency", "Frequency"), _col("uoc", "Unique Outbound Clicks"), _col("uoc_ctr", "Unique Outbound CTR"), _col("m_ctr", "Link CTR"), _col("nc_cvr_clicks", "NC Conversion (clicks)")]})
     prod = [("vitabull", "VitaBull", "vb"), ("beefliver", "Beef Liver", "bl"), ("boneflex", "Boneflex", "bf")]
     for i, (bkey, title, per, total) in enumerate((("spend", "SPEND", "p_{}_spend", "meta_spend"), ("nc_rev", "NC REVENUE", "p_{}_nc_rev", "nc_rev"),
                                                    ("nc_roas", "NC ROAS", "p_{}_nc_roas", "meta_nc_roas"), ("nc_orders", "NC ORDERS", "p_{}_nc_orders", "nc_orders"),
