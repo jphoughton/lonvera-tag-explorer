@@ -174,6 +174,28 @@ def _sv_testing() -> list[dict]:
 SV_TESTING = _sv_testing()
 
 
+def _sv_kill_extras() -> list[dict]:
+    """Extra testing creatives for the 'What should be killed' view only: (name, product, spend, purchases, revenue, days since last spend). Kill line = 2 x $60 = $120."""
+    spec = [("Bull-911-Zero", "vita-bull", 400, 0, 0, 0), ("Bull-912-Poor", "vita-bull", 900, 5, 270, 0), ("Liver-913-Early", "beef-liver", 90, 0, 0, 0),
+            ("Liver-914-Dead", "beef-liver", 700, 0, 0, 5), ("Liver-915-Medium", "beef-liver", 130, 0, 0, 0), ("Boneflex-916-NoBar", "boneflex", 500, 0, 0, 0),
+            ("Liver-917-Fine", "beef-liver", 800, 10, 560, 0), ("Bull-918-Soft", "vita-bull", 1000, 10, 600, 0)]
+    tmpl = next(r for r in ROWS if r["path"] == "testing_only")
+    out = []
+    for i, (name, prod, sp, pu, rv, dead) in enumerate(spec):
+        slug, pname, _ = next(p for p in PRODUCTS if p[0] == prod)
+        r = copy.deepcopy(tmpl)
+        r.update(family_key=name.lower(), tracker_row_id=9100 + i, product_slug=slug, product_name=pname, display=name, concept_id=name, path="testing_only", moved=False,
+                 first_day=_day(172), testing_first_day=_day(172), scaling_first_day=None, last_spend_day=THROUGH - timedelta(days=dead), live=dead == 0, launched_before_data_start=False,
+                 test_spend=float(sp), test_purchases=float(pu), test_revenue=float(rv), test_days=10,
+                 last7_spend=0.0 if dead else round(sp * 0.4, 2), last7_purchases=0.0 if dead else round(pu * 0.4, 2), last7_revenue=0.0 if dead else round(rv * 0.4, 2),
+                 scale_spend=0.0, scale_purchases=0.0, scale_revenue=0.0, scale_days=0)
+        out.append(r)
+    return out
+
+
+SV_KILL_EXTRAS = _sv_kill_extras()
+
+
 class MemSide:
     """thumbnails, hooks, ad sets and the daily scaling spend, made up deterministically from the rows"""
 
@@ -274,7 +296,7 @@ def register(app, deps):
         args = request.args
         try:
             view = SV.parse_view(args)
-            opts = SV.parse_should_scale_options(args) if view == "should_scale" else SV.parse_in_scaling_options(args)
+            opts = {"should_scale": SV.parse_should_scale_options, "should_kill": SV.parse_should_kill_options, "in_scaling": SV.parse_in_scaling_options}[view](args)
         except q.ApiError as e:
             return jsonify(error=e.message), e.status
         lo, hi, info, src, basis = window_of(args)
@@ -291,6 +313,10 @@ def register(app, deps):
         else:
             bench = [dict(product_slug=k, day_from=THROUGH - timedelta(days=29), day_to=THROUGH, creatives=12, spend=v[0], purchases=round(v[1] * mult, 2), revenue=round(v[2] * mult, 2))
                      for k, v in SV_BENCH.items()]
+            if view == "should_kill":
+                out = SV.build_should_kill([P.normalize_row(r) for r in scale(copy.deepcopy(SV_TESTING + SV_KILL_EXTRAS))], bench, through=THROUGH, opts=opts, product_slug=slug or None,
+                                           product_order=order, product_names={p[0]: p[1] for p in PRODUCTS} | {"none": q.NO_PRODUCT}, info=info, built=built)
+                return Response(json.dumps(out, default=_json_default), mimetype="application/json")
             out = SV.build_should_scale([P.normalize_row(r) for r in scale(copy.deepcopy(SV_TESTING))], bench, through=THROUGH, opts=opts, product_slug=slug or None,
                                         product_order=order, product_names={p[0]: p[1] for p in PRODUCTS} | {"none": q.NO_PRODUCT}, info=info, built=built)
         return Response(json.dumps(out, default=_json_default), mimetype="application/json")

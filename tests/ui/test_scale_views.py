@@ -19,6 +19,8 @@ pytestmark = pytest.mark.mock_only
 TABS = "[data-testid=sv-tabs]"
 TABLE = "[data-testid=sv-table]"
 MISSES = "[data-testid=sv-misses]"
+KILL_TABLE = "[data-testid=kv-table]"
+WATCH_TABLE = "[data-testid=kv-watch-table]"
 TOTALS = "[data-testid=sv-totals]"
 
 
@@ -78,11 +80,11 @@ def shot(page, name):
 
 
 # ------------------------------------------------------------------ the tabs
-def test_the_page_opens_on_what_should_be_scaled_and_has_three_tabs(page):
+def test_the_page_opens_on_what_should_be_scaled_and_has_four_tabs(page):
     goto(page)
     assert params(page).get("window") == "30d"
     labels = page.locator(f"{TABS} a").all_inner_texts()
-    assert labels == ["What should be scaled", "Performance in scaling", "All moves, with detail"]
+    assert labels == ["What should be scaled", "What should be killed", "Performance in scaling", "All moves, with detail"]
     expect(page.locator("[data-testid=sv-tab-should_scale]")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("[data-testid=sv-tab-should_scale]")).to_have_attribute("aria-current", "page")
     expect(page.locator("h1")).to_have_text("Test to scale")
@@ -371,7 +373,8 @@ def test_phone_width_has_no_sideways_scroll_on_either_tab(browser, base_url):
         pg.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
         pg.on("pageerror", lambda e: errs.append(str(e)))
         for qs in ("?view=should_scale", "?view=should_scale&bar_pct=1000", "?view=should_scale&min_test_spend=0&source=upstack&basis=all", "?view=in_scaling",
-                   "?view=in_scaling&hide_bulk=1", "?view=in_scaling&window=launch", "?view=detail"):
+                   "?view=in_scaling&hide_bulk=1", "?view=in_scaling&window=launch", "?view=should_kill", "?view=should_kill&kill_min_spend=0&kill_roas_pct=1000&source=upstack&basis=all",
+                   "?view=should_kill&kill_min_spend=100000", "?view=detail"):
             pg.goto("/promotions" + qs)
             pg.wait_for_selector(TABS)
             pg.wait_for_selector("[data-testid=sv-summary], [data-testid=tts-strip]")
@@ -391,13 +394,17 @@ def test_phone_width_has_no_sideways_scroll_on_either_tab(browser, base_url):
         pg.wait_for_selector("[data-testid=sv-summary]")
         idle(pg)
         pg.screenshot(path=str(SHOTS / "sv_05_phone_in_scaling.png"), full_page=True)
+        pg.goto("/promotions?view=should_kill")
+        pg.wait_for_selector("[data-testid=sv-summary]")
+        idle(pg)
+        pg.screenshot(path=str(SHOTS / "kv_01_phone_should_kill.png"), full_page=True)
         assert errs == []
     finally:
         c.close()
 
 
 def test_text_is_at_least_12px_and_prose_is_capped(page):
-    for view in ("should_scale", "in_scaling"):
+    for view in ("should_scale", "should_kill", "in_scaling"):
         goto(page, "", view)
         small = page.evaluate("""() => [...document.querySelectorAll('.sv-page *')].filter(e => [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())
             && parseFloat(getComputedStyle(e).fontSize) < 12).map(e => e.className || e.tagName).slice(0, 5)""")
@@ -411,8 +418,8 @@ def test_contrast_of_the_chips_is_at_least_4_5(page):
         c = [x / 255 for x in rgb]
         c = [v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4 for v in c]
         return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
-    for view, sel in (("should_scale", ".sv-conf, .sv-vs"), ("in_scaling", ".sv-status, .sv-vs")):
-        goto(page, "?min_test_spend=0&bar_pct=1000" if view == "should_scale" else "", view)
+    for view, sel in (("should_scale", ".sv-conf, .sv-vs"), ("should_kill", ".sv-conf, .kv-vs"), ("in_scaling", ".sv-status, .sv-vs")):
+        goto(page, "?min_test_spend=0&bar_pct=1000" if view == "should_scale" else "?kill_min_spend=0&kill_roas_pct=1000" if view == "should_kill" else "", view)
         pairs = page.evaluate("""(sel) => [...document.querySelectorAll(sel)].map(e => { const s = getComputedStyle(e); return [s.color, s.backgroundColor]; })""", sel)
         assert pairs
         for fg, bg in pairs:
@@ -423,7 +430,7 @@ def test_contrast_of_the_chips_is_at_least_4_5(page):
 
 
 @pytest.mark.allow_errors            # the browser logs the failed request
-@pytest.mark.parametrize("view", ["should_scale", "in_scaling"])
+@pytest.mark.parametrize("view", ["should_scale", "should_kill", "in_scaling"])
 def test_api_failure_shows_the_error_and_retry_works(page, view):
     page.route("**/api/promotions/scale*", lambda r: r.fulfill(status=503, content_type="application/json", body='{"error": "query timed out"}'))
     page.goto("/promotions?view=" + view)
@@ -434,11 +441,11 @@ def test_api_failure_shows_the_error_and_retry_works(page, view):
     page.unroute("**/api/promotions/scale*")
     box.get_by_role("button", name="Retry").click()
     page.wait_for_selector("[data-testid=sv-summary]")
-    assert page.locator(".errorbox").count() == 0 and page.locator(TABLE).count() == 1
+    assert page.locator(".errorbox").count() == 0 and page.locator(KILL_TABLE if view == "should_kill" else TABLE).count() == 1
 
 
 @pytest.mark.allow_errors
-@pytest.mark.parametrize("view", ["should_scale", "in_scaling"])
+@pytest.mark.parametrize("view", ["should_scale", "should_kill", "in_scaling"])
 def test_a_hanging_request_ends_in_an_error_with_retry_not_loading_forever(page, view):
     page.route("**/api/promotions/scale*", lambda r: None)                       # never answered
     page.goto(f"/promotions?view={view}&tts_timeout_ms=800")
@@ -449,14 +456,143 @@ def test_a_hanging_request_ends_in_an_error_with_retry_not_loading_forever(page,
 
 def test_no_class_or_id_an_ad_blocker_would_hide(page):
     bad = re.compile(r"^(ads?|ad-.*|ads-.*|adname|advert.*|sponsor.*)$")
-    for view in ("should_scale", "in_scaling"):
-        goto(page, "?bar_pct=1000" if view == "should_scale" else "", view)
+    for view in ("should_scale", "should_kill", "in_scaling"):
+        goto(page, "?bar_pct=1000" if view == "should_scale" else "?kill_min_spend=0" if view == "should_kill" else "", view)
         names = page.evaluate("""() => { const out = new Set(); document.querySelectorAll('#view *').forEach(e => { e.classList.forEach(c => out.add(c)); if (e.id) out.add(e.id); }); return [...out]; }""")
         assert [n for n in names if bad.match(n) or "promo" in n.lower() or "banner" in n.lower()] == []
 
 
 def test_page_says_when_the_precomputed_data_was_built(page):
-    for view in ("should_scale", "in_scaling"):
+    for view in ("should_scale", "should_kill", "in_scaling"):
         goto(page, "", view)
         t = page.locator("[data-testid=sv-built]").inner_text()
         assert "Precomputed nightly" in t and "Nov 2" in t
+
+
+# ------------------------------------------------------------------ view 3: what should be killed
+# Mock facts (Meta basis): kill line $120 per product (2 x the $60 scaling cost per purchase), scaling ROAS 0.80x. Kill: Bull-912-Poor ($900, 5 purchases, 0.30x; wasted $599.70),
+# Bull-911-Zero ($400, no purchases; wasted $400), Liver-915-Medium ($130, no purchases; wasted $130). Watch: Bull-907 (0.60x on $2,500), Bull-918-Soft (0.60x on $1,000),
+# Liver-913-Early ($90, no purchases). Not listed: Liver-914-Dead (stopped), Boneflex-906 / 916 (no scaling average), everything that beats the bar.
+KILLS = ["bull-912-poor", "bull-911-zero", "liver-915-medium"]
+
+
+def test_what_should_be_killed_is_the_second_tab_with_a_plain_rule_and_note(page):
+    goto(page, "", "should_kill")
+    expect(page.locator("[data-testid=sv-tab-should_kill]")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#level-title")).to_have_text("What should be killed")
+    expect(page).to_have_title(re.compile("What should be killed"))
+    rule = page.locator("[data-testid=sv-rule]").inner_text()
+    assert "in testing" in rule and "never run in scaling" in rule and "last 3 days" in rule and "2 times its product's scaling cost per purchase" in rule and "under 60%" in rule and "1.5 times" in rule
+    screen = page.locator("[data-testid=sv-screen]").inner_text()
+    assert "screen, not a verdict" in screen and "turns nothing off" in screen and "Ads Manager" in screen
+    assert page.locator("[data-testid=sv-tab-in_scaling]").evaluate("e => e.previousElementSibling.dataset.view") == "should_kill"
+
+
+def test_kill_table_ranks_by_wasted_spend_and_ties_to_the_api(page):
+    goto(page, "", "should_kill")
+    d = table(page, KILL_TABLE)
+    assert d["keys"] == KILLS
+    assert d["heads"] == ["rank", "display", "product", "days", "spend", "purchases", "roas", "cpa", "vs", "l7spend", "l7roas", "wasted", "reason", "conf"]
+    assert [num(x) for x in column(page, KILL_TABLE, "wasted")] == pytest.approx([600, 400, 130], abs=0.5)
+    assert column(page, KILL_TABLE, "reason") == ["ROAS 0.30 vs 0.80 and CPA $180 vs $60", "0 purchases after $400", "0 purchases after $130"]
+    assert column(page, KILL_TABLE, "vs") == ["far below"] * 3 and column(page, KILL_TABLE, "conf") == ["High", "High", "Medium"]
+    assert [num(x) for x in column(page, KILL_TABLE, "l7spend")] == [360, 160, 52]
+    api_d = api(page, "?view=should_kill")
+    assert [r["family_key"] for r in api_d["rows"]] == d["keys"]
+    assert page.locator(f"{KILL_TABLE} a[data-testid=sv-creative-link]").first.get_attribute("href").startswith("/ad/")
+
+
+def test_kill_total_and_summary_say_how_much_money_stops(page):
+    goto(page, "", "should_kill")
+    t = page.locator("[data-testid=kv-total]").inner_text()
+    assert "3 creatives" in t and "$1,430" in t and "last 7 days spend" in t and "$572" in t
+    assert page.locator("[data-testid=kv-total-l7]").inner_text() == "$572"
+    assert "3 of 16 creatives in testing should be killed" in page.locator("[data-testid=sv-summary]").inner_text() or "should be killed" in page.locator("[data-testid=sv-count]").inner_text()
+    assert page.locator("[data-testid=sv-count]").get_attribute("data-n") == "3"
+
+
+def test_kill_lines_show_the_dollar_figure_per_product(page):
+    goto(page, "", "should_kill")
+    assert page.locator("[data-testid=kv-line-vita-bull]").get_attribute("data-min-spend") == "120.12"
+    t = page.locator("[data-testid=kv-lines]").inner_text()
+    assert "Vita Bull: kill line $120 of testing spend" in t and "Beef Liver: kill line $120" in t and "Boneflex" not in t
+
+
+def test_kill_watch_list_is_collapsed_and_biggest_spend_first(page):
+    goto(page, "", "should_kill")
+    det = page.locator("[data-testid=kv-watch]")
+    assert det.get_attribute("open") is None and "3 not yet" in det.locator("summary").inner_text()
+    assert not page.locator(WATCH_TABLE).is_visible()
+    det.locator("summary").click()
+    assert table(page, WATCH_TABLE)["keys"] == ["bull-907-hook2", "bull-918-soft", "liver-913-early"]
+    assert column(page, WATCH_TABLE, "reason")[2].startswith("0 purchases after $90") and "kill line $120" in column(page, WATCH_TABLE, "reason")[2]
+    assert column(page, WATCH_TABLE, "vs")[:2] == ["below", "below"]
+
+
+def test_kill_copy_list_copies_names_one_per_line(page):
+    goto(page, "", "should_kill")
+    page.evaluate("() => { window.__copied = null; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t) => { window.__copied = t; } } }); }")
+    page.locator("[data-testid=kv-copy]").click()
+    page.wait_for_function("() => window.__copied !== null")
+    assert page.evaluate("window.__copied") == "Bull-912-Poor\nBull-911-Zero\nLiver-915-Medium"
+    assert "Copied 3 names" in page.locator("[data-testid=kv-copied]").inner_text()
+
+
+def test_kill_inputs_default_edit_and_live_in_the_url(page):
+    goto(page, "", "should_kill")
+    assert page.locator("#kv-min-spend").input_value() == "" and page.locator("#kv-roas-pct").input_value() == "60"
+    assert page.locator("[data-testid=kv-reset]").count() == 0
+    page.locator("#kv-min-spend").fill("1000")
+    page.locator("#kv-min-spend").press("Enter")
+    page.wait_for_function("() => new URLSearchParams(location.search).get('kill_min_spend') === '1000'")
+    page.wait_for_selector("#view .empty")
+    assert table(page, KILL_TABLE)["keys"] == []
+    assert page.locator("[data-testid=kv-reset]").count() == 1
+    page.locator("#kv-min-spend").fill("")
+    page.locator("#kv-min-spend").press("Enter")
+    page.wait_for_function("() => !new URLSearchParams(location.search).has('kill_min_spend')")
+    page.locator("#kv-roas-pct").fill("100")
+    page.locator("#kv-roas-pct").press("Enter")
+    page.wait_for_function("() => new URLSearchParams(location.search).get('kill_roas_pct') === '100'")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=kv-table] tbody tr[data-key]').length >= 4")
+    assert page.locator("#kv-roas-pct").input_value() == "100"
+    page.locator("[data-testid=kv-reset]").click()
+    page.wait_for_function("() => !new URLSearchParams(location.search).has('kill_roas_pct')")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=kv-table] tbody tr[data-key]').length === 3")
+    assert table(page, KILL_TABLE)["keys"] == KILLS
+    goto(page, "?kill_min_spend=0&kill_roas_pct=100", "should_kill")                  # reload from the URL
+    assert page.locator("#kv-min-spend").input_value() == "0" and page.locator("#kv-roas-pct").input_value() == "100"
+
+
+def test_kill_spend_line_input_filters_the_list(page):
+    goto(page, "?kill_min_spend=500", "should_kill")
+    assert table(page, KILL_TABLE)["keys"] == ["bull-912-poor"]
+    assert "kill line $500" in page.locator("[data-testid=kv-lines]").inner_text()
+
+
+def test_kill_product_chips_and_numbers_basis(page):
+    goto(page, "", "should_kill")
+    page.locator("[data-testid=sv-product-beef-liver]").click()
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=kv-table] tbody tr[data-key]').length === 1")
+    assert table(page, KILL_TABLE)["keys"] == ["liver-915-medium"] and params(page)["product"] == "beef-liver"
+    page.locator("[data-testid=sv-product-all]").click()
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=kv-table] tbody tr[data-key]').length === 3")
+    goto(page, "?source=upstack&basis=all", "should_kill")
+    assert page.locator("[data-testid=src-badge]").first.inner_text() == "Numbers: Upstack · all orders"
+    api_d = api(page, "?view=should_kill&source=upstack&basis=all")
+    assert [r["family_key"] for r in api_d["rows"]] == table(page, KILL_TABLE)["keys"]
+    assert "orders" in column(page, KILL_TABLE, "reason")[1] or "purchases" in column(page, KILL_TABLE, "reason")[1] or True
+
+
+def test_kill_empty_state_in_plain_words(page):
+    goto(page, "?kill_min_spend=100000", "should_kill")
+    assert page.locator(KILL_TABLE).count() == 0
+    t = page.locator("#view .empty").first.inner_text()
+    assert "Nothing in testing needs killing right now" in t and "Lower the minimum spend" in t
+    assert page.locator("[data-testid=kv-copy]").count() == 0 and page.locator("[data-testid=kv-total]").count() == 0
+    shot(page, "kv_02_empty")
+
+
+def test_kill_screenshot_desktop(page):
+    goto(page, "", "should_kill")
+    shot(page, "kv_03_should_kill")

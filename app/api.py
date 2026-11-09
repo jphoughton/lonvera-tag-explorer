@@ -359,8 +359,8 @@ def promotions():
 
 @bp.get("/api/promotions/scale")
 def promotions_scale():
-    """Test to scale, the two simple views: view=should_scale (testing creatives that look good enough to move; min_test_spend, min_purchases, bar_pct) or
-    view=in_scaling (creatives that moved and how they do since; window / from / to / days, hide_bulk, bulk_min); both product=<slug>|none, source / basis. See app/scale_views.py."""
+    """Test to scale, the simple views: view=should_scale (testing creatives that look good enough to move; min_test_spend, min_purchases, bar_pct), view=should_kill (live testing
+    creatives clearly below their product's scaling average; kill_min_spend, kill_roas_pct) or view=in_scaling (creatives that moved and how they do since; window / from / to / days, hide_bulk, bulk_min); both product=<slug>|none, source / basis. See app/scale_views.py."""
     conn = db.get_conn()
     meta = q.meta_for_source(q.load_meta(conn), q.parse_source(request.args)[0])
     return jsonify(sv.scale_views(conn, meta, request.args, product_slug=_arg("product")))

@@ -11,6 +11,8 @@ VIEW 1  should_scale: creatives in TESTING that have not moved to scaling and lo
   Ranking: extra revenue the creative earned above what the product's scaling average would have earned on the same spend (revenue - bar ROAS x spend), biggest first.
   Confidence chip: more than 50 purchases high, 20 to 50 medium, under 20 low. Nearest misses (floors met, bar missed) come back for the empty state.
 
+VIEW 3  should_kill: the mirror of view 1 (see build_should_kill): live testing creatives with enough spend that are clearly below their product's scaling average.
+
 VIEW 2  in_scaling: creatives that moved (first scaling day inside the window, the page's window) and how they do since the move.
   Held-up logic is the page's own (app.promotions.held_up): scaling ROAS since the move divided by testing ROAS before it, and the same 'too early' floor ($200 and 3 days
   in scaling). 'vs testing' words: better from 110%, about the same from 90% (the page's held-up line), worse below. Status: too early (the page's floor), stopped (no
@@ -32,7 +34,15 @@ CONF_HIGH, CONF_MID = 50, 20         # purchases: more than 50 high, 20 to 50 me
 NEAR_MISSES = 5
 BETTER = 1.10                        # View 2: scaling ROAS / testing ROAS from 110% = better, from HELD_OK (90%) about the same, below worse
 FADE = 0.90                          # View 2: last 7 days ROAS below 90% of the since-move ROAS = fading
-VIEWS = ("should_scale", "in_scaling")
+VIEWS = ("should_scale", "should_kill", "in_scaling")
+
+KV_SPEND_X = 2.0                     # View 3 (should_kill): enough spend to judge = this many of the product's scaling CPAs (kill_min_spend overrides, in dollars)
+KV_WATCH_X = 1.0                     # watch list: zero purchases after spending from this many CPAs up to the kill line
+KV_ROAS_PCT = 60                     # clearly below the bar: testing ROAS under this % of the product's scaling ROAS ...
+KV_CPA_X = 1.5                       # ... AND testing CPA above this many scaling CPAs (zero purchases needs neither)
+KV_WATCH_PCT = 80                    # watch list: enough spend but testing ROAS under 80% of the bar and not a kill
+KV_HIGH_X, KV_MID_X = 3.0, 2.0       # confidence: spend at or above 3 CPAs high, 2 to 3 medium, less low
+KV_WATCH_MAX = 25
 
 RULE_TEXT = ("Creatives that are in testing, have not moved to scaling, spent in the last {recent} days, and have at least ${spend} of testing spend and {purchases} {pw}, "
              "and {bar}. Ranked by the extra revenue each earned over what its product's scaling average would have earned on the same spend, biggest first.")
@@ -56,6 +66,12 @@ def parse_should_scale_options(args) -> dict:
     return {"min_spend": promo._money(args, "min_test_spend") if spend_raw not in (None, "") else SV_MIN_SPEND,
             "min_purchases": q.parse_uint(pur_raw, 0, 9999, "min_purchases must be an integer from 0 to 9999") if pur_raw not in (None, "") else SV_MIN_PURCHASES,
             "bar_pct": q.parse_uint(bar_raw, 1, 1000, "bar_pct must be an integer from 1 to 1000") if bar_raw not in (None, "") else SV_BAR_PCT}
+
+
+def parse_should_kill_options(args) -> dict:
+    spend_raw, pct_raw = args.get("kill_min_spend"), args.get("kill_roas_pct")
+    return {"min_spend": promo._money(args, "kill_min_spend") if spend_raw not in (None, "") else None,
+            "roas_pct": q.parse_uint(pct_raw, 1, 1000, "kill_roas_pct must be an integer from 1 to 1000") if pct_raw not in (None, "") else KV_ROAS_PCT}
 
 
 def parse_in_scaling_options(args) -> dict:
@@ -165,6 +181,109 @@ def build_should_scale(rows: list[dict], bench: list[dict], *, through: dt.date,
     }
 
 
+# ---------------------------------------------------------------------------------------------------------------- view 3 (should_kill)
+
+def _kill_line(bar: dict, opts: dict) -> dict:
+    """What 'enough spend' and 'clearly below the bar' resolve to for one product (bar = _bar(...) at 100%)."""
+    cpa = bar["_cpa"]
+    min_spend = opts["min_spend"] if opts["min_spend"] is not None else KV_SPEND_X * cpa
+    return {"min_spend": min_spend, "watch_from": KV_WATCH_X * cpa, "roas_floor": bar["_roas"] * opts["roas_pct"] / 100.0, "cpa_floor": KV_CPA_X * cpa,
+            "scaling_roas": bar["_roas"], "scaling_cpa": cpa}
+
+
+def _judge(r: dict, line: dict, opts: dict) -> dict | None:
+    """'kill', 'watch' or None for one live testing creative against its product's line."""
+    sp, pu, rv = r["test_spend"], r["test_purchases"], r["test_revenue"]
+    roas = rv / sp if sp else 0.0
+    cpa = sp / pu if pu else None
+    if roas >= line["scaling_roas"] or (cpa is not None and cpa <= line["scaling_cpa"]):
+        return None                                       # would pass the scale view's bar: never a kill candidate
+    ratio = roas / line["scaling_roas"]
+    if sp >= line["min_spend"]:
+        if pu == 0 or (roas < line["roas_floor"] and cpa is not None and cpa > line["cpa_floor"]):
+            return {"kind": "kill", "ratio": ratio, "cpa": cpa, "roas": roas}
+        if ratio < KV_WATCH_PCT / 100.0:
+            return {"kind": "watch", "ratio": ratio, "cpa": cpa, "roas": roas}
+        return None
+    if pu == 0 and sp >= line["watch_from"]:
+        return {"kind": "watch", "ratio": ratio, "cpa": cpa, "roas": roas}
+    return None
+
+
+def _kill_reason(r: dict, j: dict, line: dict, labels: dict, kind: str) -> str:
+    sp, pu = r["test_spend"], r["test_purchases"]
+    pw = (labels.get("purchases") or "purchases").lower()
+    if pu == 0:
+        return f"0 {pw} after ${sp:,.0f}" + ("" if kind == "kill" else f" (kill line ${line['min_spend']:,.0f})")
+    t = f"ROAS {j['roas']:.2f} vs {line['scaling_roas']:.2f} and CPA ${j['cpa']:,.0f} vs ${line['scaling_cpa']:,.0f}"
+    return t if kind == "kill" else f"ROAS {j['roas']:.2f} vs {line['scaling_roas']:.2f} ({j['ratio']:.0%} of the scaling average) on ${sp:,.0f} spent"
+
+
+def _kill_row(r: dict, j: dict, line: dict, through: dt.date, labels: dict, kind: str, roas_pct: int) -> dict:
+    sp, pu = r["test_spend"], r["test_purchases"]
+    x = sp / line["scaling_cpa"]
+    wasted = max(0.0, sp - pu * line["scaling_cpa"])
+    return {**_ident(r), "days_in_testing": (through - r["first_day"]).days + 1, "last_spend_day": r["last_spend_day"],
+            "test": _blk(sp, pu, r["test_revenue"]), "last7": _blk(r["last7_spend"], r["last7_purchases"], r["last7_revenue"]),
+            "vs_scaling": {"word": "far below" if j["ratio"] < roas_pct / 100.0 else "below", "ratio": round(j["ratio"], 4), "scaling_roas": round(line["scaling_roas"], 4),
+                           "scaling_cpa": round(line["scaling_cpa"], 2)},
+            "confidence": {"level": "high" if x >= KV_HIGH_X else "medium" if x >= KV_MID_X else "low", "spend_x": round(x, 2)},
+            "wasted": q.f2(wasted), "reason": _kill_reason(r, j, line, labels, kind), "kind": kind}
+
+
+def build_should_kill(rows: list[dict], bench: list[dict], *, through: dt.date, opts: dict, product_slug: str | None, product_order: dict, product_names: dict,
+                      info: dict, built: dict | None = None) -> dict:
+    """View 3 payload. rows: creative_stage_moves rows (normalize_row'd); candidates are path 'testing_only' that spent in the last 3 days. Pure: no database."""
+    labels = info["source"]["labels"]
+    live = [r for r in rows if r["path"] == "testing_only" and r["last_spend_day"] is not None and (through - r["last_spend_day"]).days < SV_RECENT_DAYS]
+    chips = _product_chips(live, product_order)
+    cand = [r for r in live if product_slug is None or r["product_slug"] == product_slug]
+    bench_by = {b["product_slug"]: b for b in bench}
+    bars = {}
+    for slug in {r["product_slug"] for r in cand} | ({product_slug} if product_slug else set(bench_by)):
+        b = _bar(bench_by.get(slug), 1.0)
+        bars[slug] = b if b is not None and b["_cpa"] else None          # kill needs both the product's scaling ROAS and CPA
+    lines = {slug: _kill_line(b, opts) for slug, b in bars.items() if b is not None}
+    kills, watch = [], []
+    for r in cand:
+        line = lines.get(r["product_slug"])
+        j = _judge(r, line, opts) if line else None
+        if j:
+            (kills if j["kind"] == "kill" else watch).append(_kill_row(r, j, line, through, labels, j["kind"], opts["roas_pct"]))
+    key = lambda x: (-x["wasted"], -x["test"]["spend"], x["display"] or "", x["family_key"])        # noqa: E731
+    kills.sort(key=key)
+    watch.sort(key=lambda x: (-x["test"]["spend"], x["display"] or "", x["family_key"]))
+    total = {"creatives": len(kills), "testing_spend": q.f2(sum(x["test"]["spend"] for x in kills)), "last7_spend": q.f2(sum(x["last7"]["spend"] for x in kills)),
+             "wasted": q.f2(sum(x["wasted"] for x in kills))}
+    order = lambda s: (product_order.get(s, (10**6, 0)), s)        # noqa: E731
+    shown = [{"slug": s, "name": product_names.get(s, s), "scaling_roas": round(ln["scaling_roas"], 4), "scaling_cpa": round(ln["scaling_cpa"], 2), "min_spend": round(ln["min_spend"], 2),
+              "roas_floor": round(ln["roas_floor"], 4), "cpa_floor": round(ln["cpa_floor"], 2)} for s, ln in sorted(lines.items(), key=lambda kv: order(kv[0])) if product_slug is None or s == product_slug]
+    notes = []
+    for slug in sorted({r["product_slug"] for r in cand if lines.get(r["product_slug"]) is None}, key=order):
+        notes.append(f"{product_names.get(slug, slug)} has no scaling spend and purchases in the last 30 days, so there is nothing to compare its testing creatives with and none is listed.")
+    if built and built.get("data_through") and built["data_through"] < through.isoformat():
+        notes.append(f"The Test to scale tables were last rebuilt {built['built_at'][:16].replace('T', ' ')} UTC and run through {built['data_through']}, older than the latest day of data ({through.isoformat()}).")
+    spend_txt = (f"${opts['min_spend']:,.0f}" if opts["min_spend"] is not None else f"{KV_SPEND_X:g} times its product's scaling cost per purchase")
+    return {
+        "view": "should_kill", "platform": "meta", "scope": "tracker", "window_info": info, "data_through": through.isoformat(), "stage_moves": built,
+        "labels": labels, "numbers": info["source"]["label"],
+        "filters": {"product": product_slug, "kill_min_spend": opts["min_spend"], "kill_roas_pct": opts["roas_pct"]},
+        "defaults": {"kill_min_spend": None, "kill_roas_pct": KV_ROAS_PCT, "spend_x": KV_SPEND_X, "cpa_x": KV_CPA_X, "recent_days": SV_RECENT_DAYS},
+        "definition": {"rule": (f"Creatives that are in testing, have never run in scaling, spent in the last {SV_RECENT_DAYS} days, have spent at least {spend_txt}, and are clearly below their product's "
+                                f"scaling average over the last 30 days: no purchases at all, or ROAS under {opts['roas_pct']}% of the average and cost per purchase more than {KV_CPA_X:g} times it. "
+                                "Ranked by wasted spend, biggest first."),
+                       "screen": "This is a screen, not a verdict: testing numbers are noisy on small spend. The app only reads Meta and turns nothing off: copy the list and turn the ads off in Ads Manager yourself.",
+                       "wasted": "Wasted spend is what a creative spent beyond what a typical scaling creative of its product needs to land the same purchases (spend minus purchases times the product's scaling cost per purchase, never below 0).",
+                       "confidence": {"high": f"spent at least {KV_HIGH_X:g} times the product's scaling cost per purchase", "medium": f"spent {KV_MID_X:g} to {KV_HIGH_X:g} times it", "low": f"spent less than {KV_MID_X:g} times it"}},
+        "products": chips, "lines": shown,
+        "summary": {"testing_live": len(cand), "kill": len(kills), "watch": len(watch), "no_line": sum(1 for r in cand if lines.get(r["product_slug"]) is None),
+                    "by_product": {s: sum(1 for x in kills if x["product"]["slug"] == s) for s in sorted({x["product"]["slug"] for x in kills})}},
+        "rows": kills, "total": total, "watch": watch[:KV_WATCH_MAX], "watch_total": len(watch),
+        "names": [x["display"] for x in kills],
+        "notes": notes,
+    }
+
+
 # ---------------------------------------------------------------------------------------------------------------- view 2
 
 def _vs_testing(held: dict) -> dict:
@@ -265,7 +384,7 @@ def scale_views(conn, meta: q.DataMeta, args, product_slug: str | None = None) -
     view = parse_view(args)
     w = promo.parse_window(args, meta)
     lo, hi = w.span(meta)
-    opts = parse_should_scale_options(args) if view == "should_scale" else parse_in_scaling_options(args)
+    opts = {"should_scale": parse_should_scale_options, "should_kill": parse_should_kill_options, "in_scaling": parse_in_scaling_options}[view](args)
     conn.execute(f"SET LOCAL statement_timeout = {promo.QUERY_TIMEOUT_MS}")
     built = promo.built_info(conn)
     if built is None:
@@ -280,5 +399,8 @@ def scale_views(conn, meta: q.DataMeta, args, product_slug: str | None = None) -
     if view == "in_scaling":
         return build_in_scaling(_fetch_moved(conn, lo, hi), lo=lo, hi=hi, through=meta.data_through, opts=opts, product_slug=product_slug, product_order=order, info=info, built=built)
     names = {p["slug"]: p["name"] for p in prods} | {q.NO_PRODUCT_SLUG: q.NO_PRODUCT}
+    if view == "should_kill":
+        return build_should_kill(_fetch_testing(conn), _fetch_bench(conn), through=meta.data_through, opts=opts, product_slug=product_slug, product_order=order, product_names=names,
+                                 info=info, built=built)
     return build_should_scale(_fetch_testing(conn), _fetch_bench(conn), through=meta.data_through, opts=opts, product_slug=product_slug, product_order=order, product_names=names,
                               info=info, built=built)

@@ -59,6 +59,14 @@ CREATIVES = [
     cr("bl-t-cpa", "beef-liver", (BL_T, D(2026, 10, 27), THROUGH, 100, 2, 38)),                      # 6 days: ROAS 0.38 < 0.5 but CPA $50 < $100: beats on CPA only
     cr("bl-t-both", "beef-liver", (BL_T, D(2026, 10, 28), THROUGH, 100, 2, 90)),                     # beats on both
     cr("bf-t-nobar", "boneflex", (BF_T, D(2026, 10, 26), THROUGH, 100, 2, 250)),                     # Boneflex has no scaling spend: no bar
+    # ---- testing creatives for the kill view (live: spent on the last day)
+    cr("vb-k-zero", "vita-bull", (VB_T, D(2026, 10, 29), THROUGH, 100, 0, 0)),                        # $500, no purchases: kill (zero purchases)
+    cr("vb-k-soft", "vita-bull", (VB_T, D(2026, 10, 27), THROUGH, 100, 1, 76)),                       # $700, 7 purchases, ROAS 0.76: 72% of the bar, CPA $100: not a kill (ROAS above 60%), watch
+    cr("bl-k-poor", "beef-liver", (BL_T, D(2026, 10, 30), THROUGH, 150, 1, 37.5)),                    # $600, 4 purchases, ROAS 0.25, CPA $150 (> 1.5 x 84 = 126): kill by ROAS and CPA
+    cr("bl-k-watch", "beef-liver", (BL_T, D(2026, 11, 2), THROUGH, 100, 0, 0)),                      # $100 with no purchases: 1.2 x the $84 CPA, under the $168 kill line: watch
+    cr("bl-k-tiny", "beef-liver", (BL_T, D(2026, 11, 2), THROUGH, 40, 0, 0)),                        # $40: under 1 x CPA: neither
+    cr("bf-k-nobar", "boneflex", (BF_T, D(2026, 10, 29), THROUGH, 100, 0, 0)),                       # Boneflex has no scaling average: never listed
+    cr("vb-k-stale", "vita-bull", (VB_T, D(2026, 10, 26), D(2026, 10, 30), 100, 0, 0)),              # $500, no purchases, but stopped Oct 30: already off
     # ---- moved to scaling (view 2); tests before, scaling after
     cr("vb-mv-a", "vita-bull", (VB_T, D(2026, 10, 10), D(2026, 10, 14), 100, 1, 90), (VB_S, D(2026, 10, 20), THROUGH, 200, 3, 270)),              # better, holding
     cr("vb-mv-fade", "vita-bull", (VB_T, D(2026, 10, 8), D(2026, 10, 12), 100, 1, 100), (VB_S, D(2026, 10, 14), D(2026, 10, 26), 200, 2, 300),
@@ -257,7 +265,7 @@ def test_default_rules_rank_and_exclusions(vc):
     assert {"vb-t-edge", "vb-t-big", "vb-t-high", "vb-t-roas", "bl-t-cpa", "bl-t-both"} <= set(keys(d))          # the edge creative (last spend Oct 31) is still recent
     assert d["rows"] == sorted(d["rows"], key=lambda r: (-r["extra_revenue"], -r["test"]["spend"], r["family_key"]))
     s = d["summary"]
-    assert s["qualify"] == len(want) and s["meets_floors"] == len(info) + s["no_bar"] and s["testing_live"] == 10
+    assert s["qualify"] == len(want) and s["meets_floors"] == len(info) + s["no_bar"] and s["testing_live"] == 16
     assert s["no_bar"] == 1                                                                         # bf-t-nobar met the floors but Boneflex has no scaling average
 
 
@@ -362,12 +370,12 @@ def test_a_product_with_no_scaling_spend_has_no_bar_and_says_so(vc):
     d = get(vc, "product=boneflex")
     assert d["rows"] == [] and d["near_misses"] == [] and d["bars"] == []
     assert any("Boneflex has no scaling spend in the last 30 days" in n for n in d["notes"])
-    assert d["summary"]["no_bar"] == 1 and d["summary"]["testing_live"] == 1
+    assert d["summary"]["no_bar"] == 1 and d["summary"]["testing_live"] == 2
 
 
 def test_product_chips_count_live_testing_creatives(vc):
     d = get(vc)
-    assert {c["slug"]: c["n"] for c in d["products"]} == {"vita-bull": 7, "beef-liver": 2, "boneflex": 1}
+    assert {c["slug"]: c["n"] for c in d["products"]} == {"vita-bull": 9, "beef-liver": 5, "boneflex": 2}
     f = facts()
     live = [k for k, x in f.items() if x["path"] == "testing_only" and (THROUGH - x["last"]).days < 3]
     assert sum(c["n"] for c in d["products"]) == len(live)
@@ -564,10 +572,191 @@ def test_in_scaling_empty_window_is_empty_not_an_error(vc):
     assert d["rows"] == [] and d["totals"] == [] and d["total_all"] is None and d["summary"]["n"] == 0
 
 
+# ----------------------------------------------------------------------------------------------------------------- view 3: what should be killed
+def kill_oracle(mult=1.0, min_spend=None, pct=60, product=None):
+    """(kill keys in rank order, watch keys, per-creative dict) from the daily rows only. Plain-Python statement of the rule."""
+    f, b = facts(mult), bench(mult)
+    kill, watch, info = [], [], {}
+    for fam, x in f.items():
+        if x["path"] != "testing_only" or (THROUGH - x["last"]).days >= 3 or (product and x["product"] != product):
+            continue
+        bp = b.get(x["product"])
+        if not bp or bp[0] <= 0 or bp[2] <= 0 or bp[1] <= 0:
+            continue
+        s_roas, s_cpa = bp[2] / bp[0], bp[0] / bp[1]
+        sp, pu, rv = x["test"]
+        roas = rv / sp
+        line = min_spend if min_spend is not None else 2 * s_cpa
+        wasted = max(0.0, sp - pu * s_cpa)
+        beats = roas >= s_roas or (pu > 0 and sp / pu <= s_cpa)
+        if beats:
+            continue
+        info[fam] = (sp, pu, roas, wasted)
+        if sp >= line and (pu == 0 or (roas < s_roas * pct / 100 and sp / pu > 1.5 * s_cpa)):
+            kill.append((fam, wasted, sp))
+        elif (sp >= line and roas / s_roas < 0.8) or (sp < line and pu == 0 and sp >= s_cpa):
+            watch.append((fam, sp))
+    kill.sort(key=lambda t: (-t[1], -t[2], t[0]))
+    watch.sort(key=lambda t: (-t[1], t[0]))
+    return [t[0] for t in kill], [t[0] for t in watch], info
+
+
+def test_kill_defaults_resolve_per_product_and_rank_by_wasted_spend(vc):
+    d = get(vc, view="should_kill")
+    want, wwant, info = kill_oracle()
+    assert keys(d) == want == ["vb-k-zero", "bl-k-poor", "vb-t-poor"] or keys(d) == want
+    assert {"vb-k-zero", "bl-k-poor", "vb-t-poor"} == set(want)
+    assert d["filters"] == {"product": None, "kill_min_spend": None, "kill_roas_pct": 60}
+    assert d["defaults"]["spend_x"] == 2.0 and d["defaults"]["cpa_x"] == 1.5 and d["defaults"]["kill_roas_pct"] == 60
+    b = bench()
+    lines = {x["slug"]: x for x in d["lines"]}
+    for p in ("vita-bull", "beef-liver"):
+        sp, pu, rv = b[p]
+        assert lines[p]["min_spend"] == pytest.approx(2 * sp / pu, abs=0.01) and lines[p]["scaling_cpa"] == pytest.approx(sp / pu, abs=0.01)
+        assert lines[p]["roas_floor"] == pytest.approx(0.6 * rv / sp, abs=1e-4) and lines[p]["cpa_floor"] == pytest.approx(1.5 * sp / pu, abs=0.01)
+    assert "boneflex" not in lines
+    assert [r["wasted"] for r in d["rows"]] == sorted((r["wasted"] for r in d["rows"]), reverse=True)
+
+
+def test_kill_rows_match_the_oracle_and_the_reasons_read_in_plain_words(vc):
+    d = get(vc, view="should_kill")
+    _, _, info = kill_oracle()
+    by = {r["family_key"]: r for r in d["rows"]}
+    for fam, r in by.items():
+        sp, pu, roas, wasted = info[fam]
+        assert r["test"]["spend"] == pytest.approx(sp) and r["test"]["purchases"] == pytest.approx(pu) and r["test"]["roas"] == pytest.approx(roas, abs=1e-4)
+        assert r["wasted"] == pytest.approx(wasted, abs=0.01)
+        assert r["primary_id"] is not None and r["vs_scaling"]["word"] == "far below" and r["kind"] == "kill"
+        x = facts()[fam]
+        assert r["days_in_testing"] == (THROUGH - x["first"]).days + 1
+        assert r["last7"]["spend"] == pytest.approx(x["last7"][0])
+    z = by["vb-k-zero"]
+    assert z["reason"] == "0 purchases after $500" and z["test"]["cpa"] is None and z["wasted"] == 500.0
+    assert z["last7"]["spend"] == 500.0 and z["days_in_testing"] == 5
+    p = by["bl-k-poor"]
+    vb, bl = bench()["vita-bull"], bench()["beef-liver"]
+    assert p["reason"] == f"ROAS 0.25 vs {bl[2] / bl[0]:.2f} and CPA $150 vs ${bl[0] / bl[1]:,.0f}"
+    assert p["wasted"] == pytest.approx(600 - 4 * bl[0] / bl[1], abs=0.01)           # money beyond what a typical scaling creative needs for the same 4 purchases
+    assert by["vb-t-poor"]["wasted"] == pytest.approx(900 - 9 * vb[0] / vb[1], abs=0.01)
+
+
+def test_kill_branches_zero_purchases_roas_and_cpa_together_and_the_one_without_the_other(vc):
+    d = get(vc, view="should_kill")
+    k, w = set(keys(d)), set(keys(d, "watch"))
+    assert {"vb-k-zero", "bl-k-poor", "vb-t-poor"} <= k
+    assert "vb-k-soft" not in k and "vb-k-soft" in w                      # ROAS 72% of the bar: not under 60%, so a watch, not a kill
+    # ROAS far below the bar but cost per purchase not above 1.5 x: lowering the spend line cannot turn it into a kill; raising the ROAS percentage can
+    d2 = get(vc, "kill_roas_pct=75", view="should_kill")
+    assert "vb-k-soft" in keys(d2) and "vb-k-soft" not in keys(d2, "watch")
+    assert keys(d2) == kill_oracle(pct=75)[0]
+
+
+def test_kill_exclusions_dead_scale_qualifying_moved_and_unbarred(vc):
+    d = get(vc, view="should_kill")
+    shown = set(keys(d)) | set(keys(d, "watch"))
+    for fam in ("vb-k-stale", "vb-t-dead", "bf-k-nobar", "bf-t-nobar", "bl-k-tiny", "vb-mv-a", "bl-mv-c", "vb-scaling-only", "bl-same-day", "vb-t-cheap"):
+        assert fam not in shown, fam
+    scale_keys = set(keys(get(vc)))
+    assert scale_keys.isdisjoint(shown)                                   # nothing the scale view lists appears here
+    assert set(keys(get(vc, "min_test_spend=0&min_purchases=0"))).isdisjoint(set(keys(d)))        # even with every floor off, the scale view's bar never lets a kill candidate in
+    assert any("Boneflex has no scaling spend and purchases" in n for n in d["notes"]) and d["summary"]["no_line"] == 2
+
+
+def test_kill_watch_list(vc):
+    d = get(vc, view="should_kill")
+    want, wwant, _ = kill_oracle()
+    assert keys(d, "watch") == wwant and set(wwant) >= {"vb-k-soft", "bl-k-watch"}
+    assert d["watch_total"] == len(wwant)
+    by = {r["family_key"]: r for r in d["watch"]}
+    assert by["bl-k-watch"]["reason"].startswith("0 purchases after $100") and "kill line $" in by["bl-k-watch"]["reason"] and by["bl-k-watch"]["kind"] == "watch"
+    assert by["vb-k-soft"]["reason"].startswith("ROAS 0.76 vs ") and "% of the scaling average" in by["vb-k-soft"]["reason"]
+    assert by["vb-k-soft"]["vs_scaling"]["word"] == "below"
+    assert d["summary"]["watch"] == len(wwant) and "bl-k-tiny" not in by
+
+
+def test_kill_total_row(vc):
+    d = get(vc, view="should_kill")
+    rows = d["rows"]
+    t = d["total"]
+    assert t["creatives"] == len(rows) == d["summary"]["kill"]
+    assert t["testing_spend"] == pytest.approx(sum(r["test"]["spend"] for r in rows)) and t["last7_spend"] == pytest.approx(sum(r["last7"]["spend"] for r in rows))
+    assert t["wasted"] == pytest.approx(sum(r["wasted"] for r in rows), abs=0.02)
+    _, _, info = kill_oracle()
+    assert t["last7_spend"] == pytest.approx(sum(facts()[k]["last7"][0] for k in keys(d)))
+    assert d["names"] == [r["display"] for r in rows] and all(n for n in d["names"])
+
+
+def test_kill_confidence_bands_follow_spend_against_the_scaling_cpa(vc):
+    d = get(vc, view="should_kill")
+    lines = {x["slug"]: x["scaling_cpa"] for x in d["lines"]}
+    for r in d["rows"] + d["watch"]:
+        x = r["test"]["spend"] / lines[r["product"]["slug"]]
+        assert r["confidence"]["level"] == ("high" if x >= 3 else "medium" if x >= 2 else "low"), r["family_key"]
+    by = {r["family_key"]: r["confidence"]["level"] for r in d["rows"]}
+    assert by["vb-k-zero"] == "high" and by["bl-k-poor"] == "high"
+    d2 = get(vc, "kill_min_spend=100", view="should_kill")                      # a lower spend line admits creatives that spent under 2 CPAs: low
+    assert {r["confidence"]["level"] for r in d2["rows"]} <= {"high", "medium", "low"}
+    assert "bl-k-watch" in keys(d2) and {r["family_key"]: r["confidence"]["level"] for r in d2["rows"]}["bl-k-watch"] == "low"
+
+
+@pytest.mark.parametrize("qs,kw", [("kill_min_spend=0", {"min_spend": 0.0}), ("kill_min_spend=600", {"min_spend": 600.0}), ("kill_min_spend=2000", {"min_spend": 2000.0}),
+                                    ("kill_roas_pct=30", {"pct": 30}), ("kill_roas_pct=100", {"pct": 100}), ("kill_roas_pct=200&kill_min_spend=400", {"pct": 200, "min_spend": 400.0})])
+def test_kill_thresholds_are_editable_and_equal_the_oracle(vc, qs, kw):
+    d = get(vc, qs, view="should_kill")
+    want, wwant, _ = kill_oracle(**kw)
+    assert keys(d) == want and keys(d, "watch") == wwant
+    assert d["filters"]["kill_roas_pct"] == kw.get("pct", 60) and d["filters"]["kill_min_spend"] == kw.get("min_spend")
+    assert all(x["min_spend"] == kw["min_spend"] for x in d["lines"]) if "min_spend" in kw else True
+
+
+def test_kill_spend_line_moves_the_list_both_ways(vc):
+    base = set(keys(get(vc, view="should_kill")))
+    assert set(keys(get(vc, "kill_min_spend=2000", view="should_kill"))) == set()
+    assert base < set(keys(get(vc, "kill_min_spend=0", view="should_kill")))
+
+
+def test_kill_product_filter_and_chips(vc):
+    d = get(vc, "product=beef-liver", view="should_kill")
+    want, wwant, _ = kill_oracle(product="beef-liver")
+    assert keys(d) == want == ["bl-k-poor"] and keys(d, "watch") == wwant
+    assert [x["slug"] for x in d["lines"]] == ["beef-liver"] and d["filters"]["product"] == "beef-liver"
+    assert {c["slug"]: c["n"] for c in get(vc, "product=beef-liver", view="should_kill")["products"]} == {"vita-bull": 9, "beef-liver": 5, "boneflex": 2}
+    b = get(vc, "product=boneflex", view="should_kill")
+    assert b["rows"] == [] and b["watch"] == [] and b["lines"] == [] and b["total"]["creatives"] == 0
+    assert any("Boneflex has no scaling spend and purchases" in n for n in b["notes"])
+
+
+@pytest.mark.parametrize("basis", ["upstack_all", "upstack_nc"])
+def test_kill_in_each_numbers_basis(vc, basis):
+    mult = BASIS_MULT[basis]
+    d = get(vc, BASIS_QS[basis], view="should_kill")
+    want, wwant, info = kill_oracle(mult)
+    assert keys(d) == want and keys(d, "watch") == wwant
+    assert d["numbers"].startswith("Upstack")
+    for r in d["rows"]:
+        assert r["test"]["purchases"] == pytest.approx(info[r["family_key"]][1])
+        assert r["wasted"] == pytest.approx(info[r["family_key"]][3], abs=0.01)
+    s = {x["slug"]: x for x in d["lines"]}
+    b = bench(mult)
+    assert s["vita-bull"]["min_spend"] == pytest.approx(2 * b["vita-bull"][0] / b["vita-bull"][1], abs=0.01)
+
+
+def test_kill_empty_state_is_an_empty_list_not_an_error(vc):
+    d = get(vc, "kill_min_spend=100000", view="should_kill")
+    assert d["rows"] == [] and d["names"] == [] and d["total"] == {"creatives": 0, "testing_spend": 0.0, "last7_spend": 0.0, "wasted": 0.0} and d["summary"]["kill"] == 0
+
+
+def test_kill_rule_text_and_the_read_only_note(vc):
+    d = get(vc, view="should_kill")
+    assert "screen, not a verdict" in d["definition"]["screen"] and "turns nothing off" in d["definition"]["screen"]
+    assert "never run in scaling" in d["definition"]["rule"] and "Ranked by wasted spend" in d["definition"]["rule"]
+    assert "never below 0" in d["definition"]["wasted"]
+
+
 # ----------------------------------------------------------------------------------------------------------------- errors, limits, guards
 def test_bad_parameters_are_400s_and_unknown_product_404(vc):
     for qs in ("view=nope", "view=should_scale&min_purchases=-1", "view=should_scale&min_purchases=x", "view=should_scale&bar_pct=0", "view=should_scale&bar_pct=1001",
-               "view=should_scale&min_test_spend=abc", "view=in_scaling&bulk_min=0", "view=in_scaling&hide_bulk=maybe", "view=in_scaling&window=bogus", "source=bogus"):
+               "view=should_scale&min_test_spend=abc", "view=in_scaling&bulk_min=0", "view=should_kill&kill_roas_pct=0", "view=should_kill&kill_roas_pct=1001", "view=should_kill&kill_min_spend=abc", "view=in_scaling&hide_bulk=maybe", "view=in_scaling&window=bogus", "source=bogus"):
         r = vc.get("/api/promotions/scale?" + qs)
         assert r.status_code == 400 and "error" in r.get_json(), (qs, r.status_code)
     assert vc.get("/api/promotions/scale?view=should_scale&product=nope").status_code == 404
@@ -601,7 +790,7 @@ def test_not_built_yet_is_a_clear_503(vc, vconn):
         vconn.commit()
 
 
-@pytest.mark.parametrize("view,fn", [("should_scale", "_fetch_testing"), ("in_scaling", "_fetch_moved")])
+@pytest.mark.parametrize("view,fn", [("should_scale", "_fetch_testing"), ("should_kill", "_fetch_testing"), ("in_scaling", "_fetch_moved")])
 def test_a_slow_query_answers_a_json_error_not_a_hang(vc, monkeypatch, view, fn):
     import time
     from app import promotions as P

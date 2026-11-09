@@ -530,6 +530,13 @@ input.sv-num { width: 84px; }
 .badge.sv-vs-below, .badge.sv-vt-worse, .badge.sv-status-fading { background: var(--bad-bg); color: var(--bad); }
 .badge.sv-vt-too-early, .badge.sv-vt-no-baseline, .badge.sv-status-too-early, .badge.sv-status-stopped { background: var(--unc-bg); color: var(--unc); }
 @media (max-width: 760px) { input.sv-num { width: 72px; } }
+/* What should be killed (kv-): same chips and table as the scale view */
+.badge.kv-vs-far-below { background: var(--bad-bg); color: var(--bad); }
+.badge.kv-vs-below { background: var(--warn-bg); color: var(--warn); }
+.kv-total { padding: 6px 0; }
+.kv-reason { min-width: 18ch; }
+.tablehead .kv-copy { margin-left: 8px; }
+input.sv-num[placeholder] { width: 84px; }
 
 /* ---------- Trends (/trends): laid out like the rollup tabs of the Lonvera Projections sheet (periods as rows, labelled bands of columns, change block at the right).
    Class names start with trn- (never ad-, ads-, sponsor, promo, banner: ad blockers hide those). Band colours are the sheet's, darkened where white text on the original fell under 4.5:1. ---------- */
