@@ -64,7 +64,7 @@ CONCEPTS_NEW = 6                       # ... and new section (together 20 per pr
 TOP_FADED, TOP_STOP, TOP_COMPETITOR, TOP_PROPOSAL = 8, 5, 3, 5
 W_PROP_ADJ, W_PROP_COMP = 0.5, 0.5     # proposed new clusters: score = 100 x (0.5 adjacent results + 0.5 competitor activity)
 MAX_PER_FADED_ROW = 3                  # concepts go to the top rows of the faded list only (budget 6); the rest are listed with 0
-TOP_ITERATE, TOP_NEW = 8, 6            # rows per product per section
+TOP_NEW = 6                            # test rows per product (Make more has no row cap since 2026-11-10: every Working / Rising line is listed)
 MAX_PER_ITERATE_ROW, MAX_PER_NEW_ROW = 5, 2
 
 NEW_MAX_ADS = 1                        # new: at most this many judged ads on the line ...
@@ -100,8 +100,22 @@ TOP_WINNERS = 5
 COMP_LONG_DAYS = 60                    # a competitor ad running this long counts as long-running
 W_ADJ_C, W_CROSS_C, W_COMP_C, W_ORDER_C, W_STORY_C = 0.40, 0.15, 0.25, 0.12, 0.08   # new-line weights when a competitor file is loaded
 ST_WORKING, ST_RISING, ST_FADING, ST_NOT, ST_AVG, ST_EARLY, ST_UNTESTED = ("WORKING NOW", "RISING", "FADING / WAS WORKING", "NOT WORKING", "AVERAGE", "TOO EARLY", "UNTESTED / UNDER-TESTED")
-STATUS_USUAL = "RUNNING AS USUAL"                 # shown for lines whose underlying status is AVERAGE; every other status keeps its real label
+STATUS_USUAL = "RUNNING AS USUAL"                 # the label old snapshots (before 2026-11-10 Action / Status redesign) used for AVERAGE lines; read as Average
 STATUSES = (ST_WORKING, ST_RISING, ST_FADING, ST_NOT, ST_AVG, ST_EARLY, ST_UNTESTED)
+
+# ---- Action and Status vocabulary (2026-11-10). Every concept has exactly ONE Action (JSON field `section`, user-facing word "Action") and ONE Status.
+# Stored snapshots keep their old values; every read goes through norm_snapshot / norm_section / norm_status / norm_key below (old -> new, idempotent).
+ACTIONS = ("revive", "make_more", "test", "add", "stop", "hold")
+ACTION_LABEL = {"revive": "Revive", "make_more": "Make more", "test": "Test", "add": "Add to sheet", "stop": "Stop", "hold": "Hold"}
+SRC_COMPETITOR, SRC_DRAFT = "Competitor", "Our draft"
+OLD_SECTION = {"faded": ("revive", None), "iterate": ("make_more", None), "new": ("test", None), "proposal": ("add", SRC_DRAFT), "competitor": ("add", SRC_COMPETITOR), "stop": ("stop", None), "rest": ("hold", None),
+               "other": ("hold", None)}
+OLD_FROM_NEW = {"revive": ["faded"], "make_more": ["iterate"], "test": ["new"], "add": ["proposal", "competitor"], "stop": ["stop"], "hold": ["rest", "other"]}
+STATUS_LABELS = ("Working", "Rising", "Fading", "Not working", "Average", "Too early", "Untested")
+STATUS_LABEL = {ST_WORKING: "Working", ST_RISING: "Rising", ST_FADING: "Fading", ST_NOT: "Not working", ST_AVG: "Average", ST_EARLY: "Too early", ST_UNTESTED: "Untested",
+                STATUS_USUAL: "Average", "FADED": "Fading", "COLLAPSED": "Fading", "STOPPED": "Fading", "PROPOSED (draft)": "Untested", "NO LINE": "No line",
+                **{k: k for k in STATUS_LABELS}}
+REVIVE_KINDS = ("FADED", "COLLAPSED", "STOPPED")
 HOOK_MIN_SPEND = 1000.0
 
 LEGEND = [
@@ -946,17 +960,26 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
     for nw in new_rows:
         by_product[nw["line"]["product"]]["new"].append(nw)
 
-    def common(section, rank, l, m, b, concepts, score, conf, fl, why, comp_dict, hooks, evidence=None):
+    def detail_extras(lid, l, m, slug) -> dict:
+        """What every line row's panel shows besides the numbers: its winning ads (with the working stretch for the trend bars). Same data on every Action, Hold included."""
+        wins, wtotal, whealthy = former_winners(fams_by_line.get(lid, []), base[slug]["roas"], weekly, through)
+        return {"stretch": best_stretch(line_weekly.get(lid, {}), prod_weekly.get(slug, {})),
+                "former_winners": [{k_: v_ for k_, v_ in w_.items() if k_ != "excess"} for w_ in wins[:TOP_WINNERS]],
+                "winners_summary": {"winners": wtotal, "not_working": len(wins), "stopped": sum(1 for w_ in wins if w_["kind"] == "stopped"), "decayed": sum(1 for w_ in wins if w_["kind"] == "decayed"), "still_working": whealthy,
+                                    "live_share": round(whealthy / wtotal, 3) if wtotal else None, "launches_in_peak": None, "launches_last_30d": m["launches_30d"]}}
+
+    def common(section, rank, l, m, b, concepts, score, conf, fl, why, comp_dict, hooks, evidence=None, extras=None):
         cs = comp_sum.get(l["id"])
-        return {"section": section, "product": l["product"], "rank": rank, "line_id": l["id"], "line_code": l["line_code"], "cluster": l["cluster"], "icp": l["icp"], "pain_point": l["pain_point"],
+        return {**(extras or {}), "section": section, "product": l["product"], "rank": rank, "line_id": l["id"], "line_code": l["line_code"], "cluster": l["cluster"], "icp": l["icp"], "pain_point": l["pain_point"],
                 "emotional_trigger": l["emotional_trigger"], "story": l["story"], "ingredients": l["ingredients"], "concepts": concepts, "score": round(score, 1), "confidence": conf, "flags": fl,
-                "why": why, "status": m["status"], "then_now": then_now(m), "competitor": ({k: v for k, v in cs.items()} if cs else None), "components": {k: round(v, 3) for k, v in comp_dict.items()},
+                "why": why, "status": STATUS_LABEL[m["status"]], "then_now": then_now(m), "competitor": ({k: v for k, v in cs.items()} if cs else None), "components": {k: round(v, 3) for k, v in comp_dict.items()},
                 "metrics": metric_block(m, b), "hooks": hooks, "evidence": evidence}
 
     for slug in PRODUCTS:
         b = base[slug]
-        its = sorted(by_product[slug]["iterate"], key=lambda r: (-r["score"], r["line"]["sort_order"], r["line"]["id"]))[:TOP_ITERATE]
-        alloc = allocate([r["score"] for r in its], CONCEPTS_ITERATE, 1, MAX_PER_ITERATE_ROW)
+        its = sorted(by_product[slug]["iterate"], key=lambda r: (-r["score"], r["line"]["sort_order"], r["line"]["id"]))
+        budget_rows = min(len(its), CONCEPTS_ITERATE)                 # the weekly concept budget goes to the best-scoring lines; every other Working / Rising line is listed with 0
+        alloc = allocate([r["score"] for r in its[:budget_rows]], CONCEPTS_ITERATE, 1, MAX_PER_ITERATE_ROW) + [0] * (len(its) - budget_rows)
         for i, (it, n) in enumerate(zip(its, alloc), start=1):
             l, m = it["line"], it["m"]
             fl = risk_flags(m)
@@ -966,7 +989,7 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
                 fl.append("fading vs prior 30 days")
             why = (f"ROAS {m['roas']:.2f}x vs {b['roas']:.2f}x for the product (index {m['idx_launch']:.2f}); {pct(m['hit_rate'])} of {m['mature']} mature ads reached ${HIT_SPEND:,.0f} vs {pct(b['hit_rate'])}; "
                    f"{pct(m['launch_share_30d'])} of the product's new ads in 30 days vs {pct(m['spend_share'])} of its spend.")
-            rows.append(common("iterate", i, l, m, b, n, it["score"], conf_level(m, [z for z in fl if z in ("thin sample", "weak tags", "few ads") or z.startswith("Upstack")]), fl, why, it["comp"], hooks_for(l["id"])))
+            rows.append(common("make_more", i, l, m, b, n, it["score"], conf_level(m, [z for z in fl if z in ("thin sample", "weak tags", "few ads") or z.startswith("Upstack")]), fl, why, it["comp"], hooks_for(l["id"]), extras=detail_extras(l["id"], l, m, slug)))
         fd = sorted(by_product[slug]["faded"], key=lambda r: (-r["score"], r["line"]["sort_order"], r["line"]["id"]))[:TOP_FADED]
         budget_rows = min(len(fd), CONCEPTS_FADED)
         alloc = allocate([max(r["score"], 1.0) for r in fd[:budget_rows]], CONCEPTS_FADED, 1, MAX_PER_FADED_ROW) + [0] * (len(fd) - budget_rows)
@@ -1022,10 +1045,10 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
                 fl.append(f"thin: peak stretch only {usd(stt['spend'])}")
             if stt and stt["roas"] < 1.0:
                 fl.append(f"peak ROAS {x(stt['roas'])} was above the product average but under 1.0x")
-            r = common("faded", i, l, m, b, n, it["score"], conf_level(m, [z for z in fl if z in ("thin sample", "weak tags", "few ads") or z.startswith("Upstack")]), fl,
+            r = common("revive", i, l, m, b, n, it["score"], conf_level(m, [z for z in fl if z in ("thin sample", "weak tags", "few ads") or z.startswith("Upstack")]), fl,
                        f"{it['kind']}: was working, now isn't. {peak_txt} {now_txt}", it["comp"],
                        [{"hook": w_["hook"], "ad": w_["ad"], "ad_id": w_["ad_id"], "spend": w_["spend"], "roas": w_["roas"], "line_code": l["line_code"], "borrowed": False} for w_ in wins if w_["hook"]][:3])
-            r["status"] = it["kind"]
+            r["revive_kind"] = it["kind"]                              # STOPPED / COLLAPSED / FADED; the status itself is the line's one of seven
             r["when_it_worked"] = peak_txt
             r["how_it_stopped"] = now_txt
             r["diagnosis"] = diagnosis
@@ -1041,7 +1064,7 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
             l, m = it["line"], it["m"]
             rows.append(common("stop", i, l, m, b, 0, 0.0, "medium", risk_flags(m),
                                f"Spent {usd(m['spend'])} over {m['judged']} tested ads at {x(m['roas'])} against {x(b['roas'])} for the product (index {m['idx_launch']:.2f}); {('no spend in the last 30 days' if m['spend_30d'] < DORMANT_SPEND else 'last 30 days index ' + format(m['idx_30'], '.2f'))}. Consistent with a line that is weak over its history.",
-                               {}, []))
+                               {}, hooks_for(l["id"]), extras=detail_extras(l["id"], l, m, slug)))
         nws = sorted(by_product[slug]["new"], key=lambda r: (not r["has_evidence"], -r["score"], r["line"]["sort_order"], r["line"]["id"]))
         chosen = [r for r in nws if r["has_evidence"]][:TOP_NEW]
         if len(chosen) < NEW_MIN_FILL:
@@ -1054,13 +1077,13 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
             cr_l = lines[nw["cross_src"]] if nw["cross_src"] else None
             ev = {"adjacent": ({"product": adj_l["product"], "line_code": adj_l["line_code"], "icp": adj_l["icp"], "cluster": adj_l["cluster"], "pain_point": adj_l["pain_point"],
                                 "spend": money(metrics[adj_l["id"]]["spend"]), "roas": metrics[adj_l["id"]]["roas"], "roas_index": round(metrics[adj_l["id"]]["idx_launch"], 3),
-                                "same": "ICP" if norm(adj_l["icp"]) == norm(l["icp"]) else "cluster", "status": metrics[adj_l["id"]]["status"]} if adj_l else None),
+                                "same": "ICP" if norm(adj_l["icp"]) == norm(l["icp"]) else "cluster", "status": STATUS_LABEL[metrics[adj_l["id"]]["status"]]} if adj_l else None),
                   "cross_product": ({"product": cr_l["product"], "line_code": cr_l["line_code"], "icp": cr_l["icp"], "cluster": cr_l["cluster"], "pain_point": cr_l["pain_point"],
                                      "spend": money(metrics[cr_l["id"]]["spend"]), "roas": metrics[cr_l["id"]]["roas"], "roas_index": round(metrics[cr_l["id"]]["idx_launch"], 3),
-                                     "same": "pain point" if norm(cr_l["pain_point"]) == norm(l["pain_point"]) else "cluster", "status": metrics[cr_l["id"]]["status"]} if cr_l else None)}
+                                     "same": "pain point" if norm(cr_l["pain_point"]) == norm(l["pain_point"]) else "cluster", "status": STATUS_LABEL[metrics[cr_l["id"]]["status"]]} if cr_l else None)}
             parts = []
             if adj_l:
-                parts.append(f"same {ev['adjacent']['same']} on {adj_l['line_code']} ({adj_l['pain_point']}) spent ${metrics[adj_l['id']]['spend']:,.0f} at {metrics[adj_l['id']]['roas']:.2f}x, index {metrics[adj_l['id']]['idx_launch']:.2f}, {metrics[adj_l['id']]['status'].lower()}")
+                parts.append(f"same {ev['adjacent']['same']} on {adj_l['line_code']} ({adj_l['pain_point']}) spent ${metrics[adj_l['id']]['spend']:,.0f} at {metrics[adj_l['id']]['roas']:.2f}x, index {metrics[adj_l['id']]['idx_launch']:.2f}, {STATUS_LABEL[metrics[adj_l['id']]['status']].lower()}")
             if cr_l:
                 parts.append(f"same {ev['cross_product']['same']} on {cr_l['product']} {cr_l['line_code']} spent ${metrics[cr_l['id']]['spend']:,.0f} at {metrics[cr_l['id']]['roas']:.2f}x, index {metrics[cr_l['id']]['idx_launch']:.2f}")
             cs = comp_sum.get(l["id"])
@@ -1071,7 +1094,7 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
             if m["tagged_ads"]:
                 fl.append(f"{m['tagged_ads']} ad(s) already tagged, ${m['spend']:,.0f} spent")
             hooks = hooks_for(l["id"], borrowed_from=nw["adj_src"], limit=2) if nw["adj_src"] else []      # copy only from the same product's adjacent winner: another product's hooks do not transfer
-            rows.append(common("new", i, l, m, b, n, nw["score"], "medium" if ((adj_l and cr_l) or (cs and (adj_l or cr_l))) else "low", fl, why, nw["comp"], hooks, ev))
+            rows.append(common("test", i, l, m, b, n, nw["score"], "medium" if ((adj_l and cr_l) or (cs and (adj_l or cr_l))) else "low", fl, why, nw["comp"], hooks, ev))
         # proposed new market clusters (drafts for Josh's approval); evidence = adjacent results of ours + competitor activity, never invented numbers
         claimed: list[str] = []
         have_icps = {norm(x_["icp"]) for x_ in lines.values() if x_["product"] == slug}
@@ -1088,7 +1111,7 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
                 m2 = metrics[lid2]
                 e = comp_econ(m2) * comp_size(m2) * (1.0 - WEAK_PENALTY * m2["weak_share"]) * proven_factor(m2)
                 adj_best = max(adj_best, e)
-                adj_items.append({"line_code": code, "status": m2["status"], "spend": money(m2["spend"]), "roas": m2["roas"], "roas_index": round(m2["idx_launch"], 3) if m2["idx_launch"] is not None else None})
+                adj_items.append({"line_code": code, "status": STATUS_LABEL[m2["status"]], "spend": money(m2["spend"]), "roas": m2["roas"], "roas_index": round(m2["idx_launch"], 3) if m2["idx_launch"] is not None else None})
             mrows = []
             if comp:
                 for r in comp["rows"]:
@@ -1105,9 +1128,9 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
             if cs:
                 parts.append("Competitors run it: " + cs["text"] + " (running a long time, not proven performance).")
             parts.append(pr["source"])
-            rows.append({"section": "proposal", "product": slug, "rank": i, "line_id": None, "line_code": "DRAFT", "cluster": pr["cluster"], "icp": pr["icp"], "pain_point": pr["pain_point"],
+            rows.append({"section": "add", "source": SRC_DRAFT, "product": slug, "rank": i, "line_id": None, "line_code": "DRAFT", "cluster": pr["cluster"], "icp": pr["icp"], "pain_point": pr["pain_point"],
                          "emotional_trigger": None, "story": pr["story"], "ingredients": "", "concepts": 1, "score": round(t["score"], 1), "confidence": "medium" if (cs and t["adj"] > 0) else "low",
-                         "flags": [pr["flag"], "DRAFT for approval", "no performance numbers: evidence is competitor activity and our adjacent results only"], "why": " ".join(parts), "status": "PROPOSED (draft)",
+                         "flags": [pr["flag"], "DRAFT for approval", "no performance numbers: evidence is competitor activity and our adjacent results only"], "why": " ".join(parts), "status": STATUS_LABEL[ST_UNTESTED],
                          "then_now": "", "competitor": cs, "components": {"adjacent": round(t["adj"], 3), "competitors": round(comp_score(cs), 3)}, "metrics": {"spend": 0, "tagged_ads": 0, "ads": 0, "judged": 0},
                          "hooks": [{"hook": c_["hook"], "ad": c_["brand"], "ad_id": None, "spend": None, "roas": None, "line_code": c_["brand"], "borrowed": True} for c_ in (cs["hooks"] if cs else [])][:2],
                          "evidence": {"adjacent_lines": t["adj_items"]}, "cluster_description": pr["cluster_description"], "icp_description": pr["icp_description"], "pain_description": pr["pain_description"]})
@@ -1121,11 +1144,11 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
             for i, g_ in enumerate(ranked, start=1):
                 cs = comp_summary(g_)
                 top = max(g_, key=lambda r: r["days"])
-                rows.append({"section": "competitor", "product": slug, "rank": i, "line_id": None, "line_code": "not on sheet", "cluster": g_[0]["cluster"] or "(not mapped)", "icp": g_[0]["icp"] or "(not mapped)",
+                rows.append({"section": "add", "source": SRC_COMPETITOR, "product": slug, "rank": i, "line_id": None, "line_code": "not on sheet", "cluster": g_[0]["cluster"] or "(not mapped)", "icp": g_[0]["icp"] or "(not mapped)",
                              "pain_point": g_[0]["pain_point"] or "(not mapped)", "emotional_trigger": None, "story": ("Competitor hook: " + top["hook"]) if top["hook"] else "", "ingredients": "", "concepts": 1,
                              "score": round(100 * comp_score(cs), 1), "confidence": "medium" if cs["long_running"] >= 2 and cs["competitors"] >= 2 else "low",
                              "flags": ["not on our Communication Overview", "competitor signal is running a long time, not proven performance"],
-                             "why": "Competitors run this angle: " + cs["text"] + ". We have no line for it.", "status": ST_UNTESTED, "then_now": "", "competitor": cs, "components": {"competitors": round(comp_score(cs), 3)},
+                             "why": "Competitors run this angle: " + cs["text"] + ". We have no line for it.", "status": STATUS_LABEL[ST_UNTESTED], "then_now": "", "competitor": cs, "components": {"competitors": round(comp_score(cs), 3)},
                              "metrics": {"spend": 0, "tagged_ads": 0, "ads": 0, "judged": 0}, "hooks": [], "evidence": None,
                              "cluster_description": "As mapped from the competitor ads; not a cluster on our sheet.", "icp_description": "As mapped from the competitor ads.", "pain_description": "As mapped from the competitor ads."})
 
@@ -1139,12 +1162,10 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
         for i, (lid, m) in enumerate(rest, start=1):
             l = lines[lid]
             if m["spend"] >= JUDGED_SPEND:
-                why = f"Not on an action list this week. Spent {usd(m['spend'])} at {x(m['roas'])} against {x(b['roas'])} for the product; last 14 days {usd(m['spend_14d'])}."
+                why = f"No action this week. Spent {usd(m['spend'])} at {x(m['roas'])} against {x(b['roas'])} for the product; last 14 days {usd(m['spend_14d'])}."
             else:
-                why = f"Not on an action list this week. Spent {usd(m['spend'])} so far."
-            row = common("rest", i, l, m, b, 0, 0.0, "low", [], why, {}, [])
-            row["status"] = STATUS_USUAL if m["status"] == ST_AVG else m["status"]
-            rows.append(row)
+                why = f"No action this week. Spent {usd(m['spend'])} so far."
+            rows.append(common("hold", i, l, m, b, 0, 0.0, "low", risk_flags(m), why, {}, hooks_for(lid), extras=detail_extras(lid, l, m, slug)))
         nm = [f for f in fams if f["product"] == slug and (f["line_id"] is None or f["line_id"] not in lines)]
         la, d30_, d14_ = _blank(), _blank(), _blank()
         for f in nm:
@@ -1158,9 +1179,9 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
         if not nm:                                                    # on prod every dollar sits on a tagged ad family (0% unmapped); the row exists only when something is unmapped
             continue
         top_nm = sorted(nm, key=lambda f: -f["spend_launch"])[:15]
-        rows.append({"section": "rest", "product": slug, "rank": 10 ** 6, "line_id": None, "line_code": "no line", "cluster": "Ads without a line yet", "icp": "Untagged ads", "pain_point": "Not a concept line", "unmapped_ads": [{"ad": f["display"], "spend": money(f["spend_launch"]), "spend_14d": money(_f(f["w"].get("s14"))), "tagger": f.get("tagger") or ""} for f in top_nm],
+        rows.append({"section": "hold", "product": slug, "rank": 10 ** 6, "line_id": None, "line_code": "no line", "cluster": "Ads without a line yet", "icp": "Untagged ads", "pain_point": "Not a concept line", "unmapped_ads": [{"ad": f["display"], "spend": money(f["spend_launch"]), "spend_14d": money(_f(f["w"].get("s14"))), "tagger": f.get("tagger") or ""} for f in top_nm],
                      "emotional_trigger": "", "story": "Meta spend on ads that no line claims yet, kept here so the rows add up to the product tile.", "ingredients": "", "concepts": 0, "score": 0.0, "confidence": "low", "flags": [],
-                     "why": f"{len(nm)} ads with spend carry no line; {usd(la['spend'])} all time.", "status": "NO LINE", "then_now": "", "competitor": None, "components": {}, "metrics": mm, "hooks": [], "evidence": None,
+                     "why": f"{len(nm)} ads with spend carry no line; {usd(la['spend'])} all time.", "status": "No line", "then_now": "", "competitor": None, "components": {}, "metrics": mm, "hooks": [], "evidence": None,
                      "cluster_description": "Spend that no line tag claims.", "icp_description": "Ads without a tag or without a tracker row.", "pain_description": "Not a concept line; it exists so the rows add up to the product tile."})
 
     names = {l["product"]: l["product_name"] for l in inp["lines"]}
@@ -1176,7 +1197,7 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
     untagged_spend = {s: sum(f["spend_launch"] for f in fams if f["product"] == s and f["line_id"] not in lines) for s in PRODUCTS}
     auto_fams = sum(1 for f in fams if (f["tagger"] or "").startswith("auto-"))
     thresholds = {k: v for k, v in globals().items() if k.isupper() and isinstance(v, (int, float)) and not isinstance(v, bool)}
-    out_stats = {"data_through": through.isoformat(), "week_start": week.isoformat(), "status_counts": {sl: {(STATUS_USUAL if st == ST_AVG else st): n for st, n in c.items()} for sl, c in status_counts.items()}, "status_counts_total": {(STATUS_USUAL if st == ST_AVG else st): sum(c[st] for c in status_counts.values()) for st in STATUSES},
+    out_stats = {"data_through": through.isoformat(), "week_start": week.isoformat(), "status_counts": {sl: {STATUS_LABEL[st]: n for st, n in c.items()} for sl, c in status_counts.items()}, "status_counts_total": {STATUS_LABEL[st]: sum(c[st] for c in status_counts.values()) for st in STATUSES},
                  "iterate_candidates": len(iterate), "faded_candidates": len(faded), "faded_by_kind": {k_: sum(1 for f_ in faded if f_["kind"] == k_) for k_ in ("FADED", "COLLAPSED", "STOPPED")}, "stop_candidates": len(stop), "new_candidates": len(new_rows),
                  "competitors": ({"as_of": comp["as_of"], "source": comp.get("source"), "rows": len(comp["rows"]), "matched_rows": sum(len(v) for v in comp_by_line.values()), "unmatched_rows": len(comp_unmatched),
                                   "brands": len({r["brand"] for r in comp["rows"]}), "stale_brands": comp.get("stale_brands", [])} if comp else None),
@@ -1190,14 +1211,109 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
 
 
 # ----------------------------------------------------------------------------------------------------------------------- output
-SECTION_ORDER = ("faded", "iterate", "new", "proposal", "competitor", "stop", "rest")
-SECTION_TITLES = {"faded": "Was working, now isn't (FADED / COLLAPSED / STOPPED)", "iterate": "Iterate on what is working (WORKING NOW / RISING)", "new": "New and untested clusters",
-                  "proposal": "Proposed new market clusters and lines (drafts for Josh's approval)", "competitor": "Competitor angles we have not made (not on our sheet)", "stop": "Stop or deprioritise (NOT WORKING)", "rest": "Everything else"}
+SECTION_ORDER = ACTIONS
+SECTION_TITLES = {"revive": "Revive: beat the product average 3+ weeks in a row, now below it or off", "make_more": "Make more: working or rising", "test": "Test: on our sheet, 0 to 1 ads run",
+                  "add": "Add to sheet: not on our sheet yet (competitor angles and our drafts)", "stop": "Stop: enough spend, consistently below the product average", "hold": "Hold: no action this week"}
+
+
+def norm_section(sec) -> str:
+    """Old section -> new Action (new values and anything unknown pass through)."""
+    return OLD_SECTION[sec][0] if sec in OLD_SECTION else sec
+
+
+def norm_status(st):
+    return STATUS_LABEL.get(st, st)
+
+
+def norm_key(key):
+    """A row key product|section|cluster|icp|pain_point with an old section rewritten to the new Action (manual:<id> keys and new keys unchanged)."""
+    if not isinstance(key, str) or key.startswith("manual:"):
+        return key
+    parts = key.split("|")
+    if len(parts) >= 5 and parts[1] in OLD_SECTION:
+        parts[1] = OLD_SECTION[parts[1]][0]
+        return "|".join(parts)
+    return key
+
+
+def key_variants(key: str) -> list[str]:
+    """The normalised key plus every old-section form of it (for deleting / looking up state stored under an old key)."""
+    key = norm_key(key)
+    if not isinstance(key, str) or key.startswith("manual:"):
+        return [key]
+    parts = key.split("|")
+    if len(parts) < 5:
+        return [key]
+    return [key] + ["|".join([parts[0], o, *parts[2:]]) for o in OLD_FROM_NEW.get(parts[1], [])]
+
+
+def norm_row(r: dict) -> dict:
+    """One row in the new vocabulary: section = Action, `source` on Add rows, status = one of the seven labels (old Revive rows keep their old kind in `revive_kind`). Idempotent."""
+    out = dict(r)
+    old = r.get("section")
+    if old in OLD_SECTION:
+        out["section"], src = OLD_SECTION[old]
+        if src and not out.get("source"):
+            out["source"] = src
+    st = r.get("status")
+    if st in REVIVE_KINDS and not out.get("revive_kind"):
+        out["revive_kind"] = st
+    if st is not None:
+        out["status"] = norm_status(st)
+    return out
+
+
+def norm_stats(stats):
+    if not isinstance(stats, dict):
+        return stats
+    out = dict(stats)
+    def fold(c):
+        o = {}
+        for k, v in (c or {}).items():
+            o[norm_status(k)] = o.get(norm_status(k), 0) + v
+        return o
+    if "status_counts_total" in out:
+        out["status_counts_total"] = fold(out["status_counts_total"])
+    if isinstance(out.get("status_counts"), dict):
+        out["status_counts"] = {k: fold(v) for k, v in out["status_counts"].items()}
+    return out
+
+
+def norm_snapshot(snap: dict) -> dict:
+    """A snapshot / saved-view payload with rows, stats and filters in the new vocabulary. Never writes anything: stored snapshots keep their old values."""
+    out = dict(snap)
+    out["rows"] = [norm_row(r) for r in snap.get("rows", [])]
+    if "stats" in out:
+        out["stats"] = norm_stats(out["stats"])
+    return out
+
+
+def definitions(thr: dict | None = None) -> dict:
+    """The rules printed on /priorities, with the real thresholds (from the snapshot's stored thresholds, else the constants in this module)."""
+    g = {**{k: v for k, v in globals().items() if k.isupper()}, **(thr or {})}
+    d0 = lambda v: f"${v:,.0f}"
+    idx = lambda v: f"{v:.2f}".rstrip("0").rstrip(".") if v != int(v) else f"{int(v)}"
+    return {
+        "actions": [
+            {"key": "revive", "label": "Revive", "rule": f"Beat the product average for {g['STRETCH_WEEKS']} or more weeks in a row (at least {d0(g['STRETCH_WEEK_MIN'])} spent a week and {idx(g['STRETCH_MIN_INDEX'])}x the product's ROAS over the stretch), and is now below it or switched off."},
+            {"key": "make_more", "label": "Make more", "rule": "Status is Working or Rising. Every one is listed, best score first; the top " + str(g["CONCEPTS_ITERATE"]) + " per product share this week's new concepts."},
+            {"key": "test", "label": "Test", "rule": f"On our sheet, with 0 to {g['NEW_MAX_ADS']} ad run (under {d0(g['NEW_MAX_SPEND'])} spent). Up to {g['TOP_NEW']} per product, best evidence from similar lines and competitors first."},
+            {"key": "add", "label": "Add to sheet", "rule": f"Not on our sheet yet. Source is Competitor (an angle competitors run that we have no line for, up to {g['TOP_COMPETITOR']} per product) or Our draft (a proposal, up to {g['TOP_PROPOSAL']} per product)."},
+            {"key": "stop", "label": "Stop", "rule": f"Spent at least {d0(g['MIN_LINE_SPEND'])} and is consistently below the product average (status Not working), and never had a strong stretch. Up to {g['TOP_STOP']} per product."},
+            {"key": "hold", "label": "Hold", "rule": "Everything else: average, too early to judge, or not picked for another action. No action this week."}],
+        "statuses": [
+            {"label": "Working", "rule": f"Beats the product average over the last 30 days and since launch (since launch at least {idx(g['INDEX_BAR'])}x the product's ROAS), on at least {d0(g['MIN_LINE_SPEND'])} spent, {g['MIN_LINE_PURCHASES']} purchases and {g['MIN_LINE_ADS']} ads that spent {d0(g['JUDGED_SPEND'])}."},
+            {"label": "Rising", "rule": f"Above the product average now and at least {round((g['RISE_RATIO'] - 1) * 100)}% better than days {g['THEN_FROM']} to {g['THEN_TO']}."},
+            {"label": "Fading", "rule": f"Was above the product average and now is below it, down {round((1 - g['FALL_RATIO']) * 100)}% or more from days {g['THEN_FROM']} to {g['THEN_TO']}, or has had no spend for 30 days."},
+            {"label": "Not working", "rule": f"Enough spend to judge and below the product average: under {idx(g['NOT_WORK_LIFE'])}x since launch and under {idx(g['NOW_BAD'])}x in the last 30 days."},
+            {"label": "Average", "rule": "Enough spend to judge and close to the product average."},
+            {"label": "Too early", "rule": f"Under {d0(g['MIN_LINE_SPEND'])} spent, {g['MIN_LINE_PURCHASES']} purchases or {g['MIN_LINE_ADS']} ads that spent {d0(g['JUDGED_SPEND'])}, so it cannot be judged yet."},
+            {"label": "Untested", "rule": f"Under {d0(g['NEW_MAX_SPEND'])} spent and at most {g['NEW_MAX_ADS']} ad."}]}
 CSV_COLS = ["market_cluster", "icp", "pain_point", "story", "product", "section", "market_cluster_description", "icp_description", "pain_point_description", "status", "rank", "concepts", "week_start",
             "then_vs_now", "when_it_worked", "how_it_stopped", "diagnosis", "revive_play", "former_winner_ads", "what_others_are_running", "emotional_trigger", "ingredients", "line_code", "confidence", "flags", "score",
             "spend", "roas", "cpa", "roas_index", "ads", "hit_rate", "hit_rate_index", "spend_30d", "roas_30d", "spend_prior30", "roas_prior30", "launches_30d", "nc_roas", "nc_cpa",
             "hook_1", "hook_2", "hook_3", "why", "source", "notes",
-            "ads_launched", "ads_under_100_spend", "ads_100_plus_spend", "ads_10k_plus_spend", "hit_rate_10k_of_launched", "hit_rate_10k_of_tested", "spend_14d", "roas_14d", "ads_launched_last_30d", "ads_10k_plus_of_launched_last_30d"]
+            "ads_launched", "ads_under_100_spend", "ads_100_plus_spend", "ads_10k_plus_spend", "hit_rate_10k_of_launched", "hit_rate_10k_of_tested", "spend_14d", "roas_14d", "ads_launched_last_30d", "ads_10k_plus_of_launched_last_30d", "add_source"]
 
 
 def _row_key(r: dict) -> str:
@@ -1216,6 +1332,8 @@ def _funnel_cells(fn: dict | None) -> list:
 
 def to_csv(snapshot: dict, briefed: dict | None = None) -> str:
     """briefed (view exports only): {row key: {at, note}} appends the columns briefed (yes / blank), briefed_at and briefed_note after every other column."""
+    snapshot = norm_snapshot(snapshot)                                  # old stored snapshots read in the new vocabulary
+    briefed = {norm_key(k): v for k, v in briefed.items()} if briefed is not None else None
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
     w.writerow(CSV_COLS + (["briefed", "briefed_at", "briefed_note"] if briefed is not None else []))
@@ -1229,7 +1347,7 @@ def to_csv(snapshot: dict, briefed: dict | None = None) -> str:
                     " | ".join(f"{w_['ad']} ({w_['kind']}, ${w_['spend']:,} at {w_['roas']}x, peak week {w_['peak_week']}" + (f", stopped {w_['stopped']}" if w_.get("stopped") else "") + ")" for w_ in r.get("former_winners", [])),
                     comp, r["emotional_trigger"] or "", r["ingredients"], r["line_code"], r["confidence"],
                     "; ".join(r["flags"]), r["score"], g("spend"), g("roas"), g("cpa"), g("roas_index"), g("ads"), g("hit_rate"), g("hit_rate_index"), g("spend_30d"), g("roas_30d"), g("spend_prior30"),
-                    g("roas_prior30"), g("launches_30d"), g("nc_roas"), g("nc_cpa"), hk[0], hk[1], hk[2], r["why"], "manual" if r.get("manual") else "auto", r.get("notes", "")] + _funnel_cells(m.get("funnel")) + [g("spend_14d") if g("spend_14d") is not None else "", g("roas_14d") if g("roas_14d") is not None else "", *(((m.get("funnel") or {}).get("launched_30d", ""), (m.get("funnel") or {}).get("top_launched_30d", "")))])
+                    g("roas_prior30"), g("launches_30d"), g("nc_roas"), g("nc_cpa"), hk[0], hk[1], hk[2], r["why"], "manual" if r.get("manual") else "auto", r.get("notes", "")] + _funnel_cells(m.get("funnel")) + [g("spend_14d") if g("spend_14d") is not None else "", g("roas_14d") if g("roas_14d") is not None else "", *(((m.get("funnel") or {}).get("launched_30d", ""), (m.get("funnel") or {}).get("top_launched_30d", ""))), r.get("source", "") if r.get("section") == "add" else ""])
         formula = lambda c: "'" + c if isinstance(c, str) and c[:1] in ("=", "+", "-", "@", "\t") else c
         if r.get("manual"):          # typed by hand: a leading = + - @ would run as a formula when the CSV is opened in Sheets / Excel
             row = [formula(c) for c in row]
@@ -1241,6 +1359,7 @@ def to_csv(snapshot: dict, briefed: dict | None = None) -> str:
 
 
 def to_markdown(snapshot: dict) -> str:
+    snapshot = norm_snapshot(snapshot)
     rows = snapshot["rows"]
     pct = lambda x: "n/a" if x is None else f"{x * 100:.0f}%"
     L = [f"# Creative priorities, week of {snapshot['week_start']}", "",
@@ -1273,7 +1392,7 @@ def to_markdown(snapshot: dict) -> str:
             L += ["", f"### {SECTION_TITLES[sec]}", ""]
             for r in sr:
                 m = r["metrics"]
-                L.append(f"**{r['rank']}. {r['cluster']} → {r['icp']} → {r['pain_point']}**  [{r['status']}]  ")
+                L.append(f"**{r['rank']}. {r['cluster']} → {r['icp']} → {r['pain_point']}**  [{r['status']}{', ' + r['source'] if r.get('source') else ''}]  ")
                 L.append(f"Story: {r['story'] or ''}  ")
                 L.append(f"_Cluster: {r['cluster_description']} ICP: {r['icp_description']} Pain point: {r['pain_description']}_  ")
                 if r.get("then_now"):
@@ -1281,7 +1400,7 @@ def to_markdown(snapshot: dict) -> str:
                 if r.get("competitor"):
                     L.append(f"What others are running: {r['competitor']['text']} (running a long time, not proven performance)  ")
                 extra = f"{r['concepts']} concept(s)" if r["concepts"] else "no new concepts"
-                if sec == "iterate":
+                if sec == "make_more":
                     extra += f" | hit rate {pct(m.get('hit_rate'))}"
                 L.append(f"_{extra} | confidence {r['confidence']}{' | ' + '; '.join(r['flags']) if r['flags'] else ''}_  ")
                 L.append(f"Why: {r['why']}  ")
@@ -1293,7 +1412,7 @@ def to_markdown(snapshot: dict) -> str:
                     for w_ in r.get("former_winners", [])[:3]:
                         L.append(f"- Former winner: {w_['ad']} ({w_['kind']}), ${w_['spend']:,} at {w_['roas']}x, peak week {w_['peak_week']}" + (f", stopped {w_['stopped']}" if w_.get("stopped") else "") + (f": {w_['hook']}" if w_["hook"] else "") + "  ")
                 if r["hooks"]:
-                    L.append(("Hooks from the working period: " if sec == "faded" else "Hooks: ") + " / ".join(h["hook"] for h in r["hooks"]))
+                    L.append(("Hooks from the working period: " if sec == "revive" else "Hooks: ") + " / ".join(h["hook"] for h in r["hooks"]))
                 L.append("")
     return "\n".join(L) + "\n"
 

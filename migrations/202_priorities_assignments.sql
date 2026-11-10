@@ -58,7 +58,7 @@ COMMENT ON COLUMN public.creative_priorities_assignments.cluster IS 'Market clus
 COMMENT ON COLUMN public.creative_priorities_assignments.icp IS 'ICP at assign time.';
 COMMENT ON COLUMN public.creative_priorities_assignments.pain_point IS 'Pain point at assign time.';
 COMMENT ON COLUMN public.creative_priorities_assignments.story IS 'Story at assign time; empty when none.';
-COMMENT ON COLUMN public.creative_priorities_assignments.section_at_assign IS 'Page section the concept sat in when assigned: ''iterate'' | ''faded'' | ''new'' | ''other''.';
+COMMENT ON COLUMN public.creative_priorities_assignments.section_at_assign IS 'Action the concept had when assigned: ''revive'' | ''make_more'' | ''test'' | ''add'' | ''stop'' | ''hold'' (rows written before 2026-11-10 hold the old section names ''faded'' | ''iterate'' | ''new'' | ''proposal'' | ''competitor'' | ''rest'' | ''other'', shown as the new Action).';
 COMMENT ON COLUMN public.creative_priorities_assignments.note IS 'Note typed when assigning or changing the assignment.';
 COMMENT ON COLUMN public.creative_priorities_assignments.vendor_note IS 'Note typed by the vendor on their own link page.';
 COMMENT ON COLUMN public.creative_priorities_assignments.for_week IS 'The Monday of the week the vendor works on it (a CHECK enforces a Monday).';

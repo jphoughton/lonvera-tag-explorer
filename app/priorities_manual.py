@@ -18,8 +18,9 @@ from . import queries as q
 CATALOGS = Path(__file__).resolve().parent.parent / "etl" / "autotag" / "catalogs"
 PRODUCTS = (("vita-bull", "Vita Bull"), ("beef-liver", "Beef Liver"), ("boneflex", "Boneflex"))
 PRODUCT_NAME = dict(PRODUCTS)
-SECTIONS = ("iterate", "faded", "new", "other")        # the page's own section keys; 'other' is the manual-only catch-all
-SECTION_LABEL = {"iterate": "Iterate on what is working", "faded": "Was working, now isn’t", "new": "New and untested", "other": "Other"}
+SECTIONS = ("revive", "make_more", "test", "hold")     # the page's Actions a typed-in concept can take (2026-11-10); rows stored earlier keep iterate / faded / new / other and are read through the same map
+SECTION_LABEL = {"revive": "Revive", "make_more": "Make more", "test": "Test", "hold": "Hold"}
+OLD_SECTIONS = {"iterate": "make_more", "faded": "revive", "new": "test", "other": "hold"}
 LIMITS = {"cluster": 200, "icp": 200, "pain_point": 200, "story": 400, "notes": 2000, "why_now": 300}
 BODY_BYTES = 32 * 1024
 FIELDS = ("product", "section", "cluster", "icp", "pain_point", "story", "notes", "why_now")
@@ -86,7 +87,7 @@ def clean(body: dict, partial: bool = False) -> dict:
             raise q.ApiError(400, "product must be one of: " + ", ".join(PRODUCT_NAME))
         out["product"] = p
     if not partial or "section" in body:
-        s = body.get("section")
+        s = OLD_SECTIONS.get(body.get("section"), body.get("section"))
         if s not in SECTIONS:
             raise q.ApiError(400, "section must be one of: " + ", ".join(SECTIONS))
         out["section"] = s
@@ -108,7 +109,7 @@ def to_row(rec: dict) -> dict:
     """A stored concept as a /priorities row: every key the CSV / print / table code reads is present."""
     new = [k for k, f in (("cluster", "new_cluster"), ("ICP", "new_icp"), ("pain point", "new_pain_point"), ("story", "new_story")) if rec.get(f)]
     iso = lambda v: v if isinstance(v, str) or v is None else v.isoformat()
-    return {"manual": True, "id": rec["id"], "key": f"manual:{rec['id']}", "done": rec.get("status") == "done", "section": rec["section"], "product": rec["product"],
+    return {"manual": True, "id": rec["id"], "key": f"manual:{rec['id']}", "done": rec.get("status") == "done", "section": OLD_SECTIONS.get(rec["section"], rec["section"]), "product": rec["product"],
             "product_name": PRODUCT_NAME.get(rec["product"], rec["product"]), "rank": -1, "line_id": None, "line_code": "", "cluster": rec["cluster"], "icp": rec["icp"], "pain_point": rec["pain_point"],
             "story": rec.get("story") or "", "emotional_trigger": "", "ingredients": "", "concepts": 0, "score": 0, "confidence": "", "flags": [], "why": rec.get("why_now") or "", "why_now": rec.get("why_now") or "",
             "notes": rec.get("notes") or "", "status": "MANUAL", "cluster_description": "", "icp_description": "", "pain_description": "", "components": {}, "metrics": {}, "hooks": [], "evidence": None,

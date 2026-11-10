@@ -307,6 +307,9 @@ def _shape(rec: dict, ads: list[dict], vendor_view: bool = False) -> dict:
     stage = stage_of(rec, statuses)
     best = max(statuses, key=_tracker_rank, default=None) if statuses else None
     d = {k: (_iso(rec[k]) if k in _TS or k == "for_week" else rec[k]) for k in rec}
+    if d.get("section_at_assign"):
+        from etl import creative_priorities as cp
+        d["section_at_assign"] = cp.norm_section(d["section_at_assign"])        # assignments made before 2026-11-10 stored the old section name; shown as the new Action
     d["tracker_concept_ids"] = list(rec.get("tracker_concept_ids") or [])
     d.update(stage=stage, stage_label=stage_label(stage), tracker_status=best)
     d["suggested_concept_ids"] = [a["concept_id"] for a in ads if not a["explicit"]]
@@ -369,6 +372,7 @@ def create_assignments(conn, body: dict, user: str | None = None) -> dict:
     """Assign concepts (row keys of a snapshot) to a vendor for a week. The server resolves the rows from the stored snapshot, never from client text. Duplicates (same concept, vendor and week,
     not dropped) are skipped. -> {created: [assignment, ...], skipped: [{key, reason}]}"""
     from . import creative_priorities as cpr
+    from etl.creative_priorities import norm_key
     f = clean_create(body)
     keys = body.get("keys")
     if not isinstance(keys, list) or not keys or not all(isinstance(k, str) and 0 < len(k) <= 400 for k in keys):
@@ -384,7 +388,7 @@ def create_assignments(conn, body: dict, user: str | None = None) -> dict:
     try:
         with _rw() as w:
             for k in keys:
-                r = by_key.get(k)
+                r = by_key.get(norm_key(k))
                 if r is None:
                     skipped.append({"key": k, "reason": "not in this week's list"})
                     continue

@@ -24,11 +24,15 @@ def register(app, deps):
     def live(include_done=True):
         """The mock's current snapshot (plus the manual concepts): the fixture, minus rows dropped and plus row edits made through /__test/priorities/drop."""
         from app import creative_priorities as cpr, priorities_manual as pm
-        d = json.loads(FIXTURE.read_text())
-        d["rows"] = [r for r in d["rows"] if cpr.row_key(r) not in state["drop"]]
+        from etl import creative_priorities as cp
+        d = cp.norm_snapshot(json.loads(FIXTURE.read_text()))                   # the fixture is a snapshot stored before the Action / Status redesign: read through the same map as the real API
+        drop = {cp.norm_key(k) for k in state["drop"]}
+        edit = {cp.norm_key(k): v for k, v in state["edit"].items()}
+        d["rows"] = [r for r in d["rows"] if cpr.row_key(r) not in drop]
         for r in d["rows"]:
-            r.update(state["edit"].get(cpr.row_key(r), {}))
-        return pm.merge(d, recs(), include_done=include_done)
+            r.update(edit.get(cpr.row_key(r), {}))
+        d = pm.merge(d, recs(), include_done=include_done)
+        return {**d, "rows": cpr.with_ckey(d["rows"]), "definitions": cp.definitions(d.get("thresholds"))}       # ckey and definitions as in app.creative_priorities.payload
 
     merged = live
 
@@ -164,6 +168,8 @@ def register(app, deps):
             key, flag, note = cpr.clean_briefed(request.get_json(silent=True) or {})
         except q.ApiError as e:
             return err(e)
+        from etl import creative_priorities as cp
+        key = cp.norm_key(key)
         valid = set(v["keys"]) | {cpr.row_key(x) for x in v["payload"]["rows"]}
         if v["kind"] == "filters":
             valid |= {cpr.row_key(x) for x in live()["rows"]}
