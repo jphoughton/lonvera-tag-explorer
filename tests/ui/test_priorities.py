@@ -37,7 +37,7 @@ def test_everything_is_collapsed_on_load_and_the_detail_panels_are_hidden(page):
     assert page.locator("[data-testid=pri-body] " + DETAIL + "[hidden]").count() == 30
     assert page.locator("[data-testid=pri-shown]").text_content() == "30 of 30 concepts shown"
     heads = [t.strip() for t in page.locator("[data-testid=pri-table] thead th").all_text_contents()]
-    assert [h.replace(" ⇅", "") for h in heads[1:]] == ["Product", "Action", "Market Cluster", "ICP", "Pain Point", "Story", "Status", "Concepts", "Key number", "Spend \u00b7 14d", "ROAS \u00b7 14d"]
+    assert [h.replace(" ⇅", "") for h in heads[1:]] == ["Product", "Action", "Market Cluster", "ICP", "Pain Point", "Story", "Status", "Concepts", "Key number", "Spend \u00b7 14d", "ROAS \u00b7 14d", "In production"]
     page.screenshot(path=str(SHOTS / "priorities_collapsed.png"), full_page=False)
 
 
@@ -1656,3 +1656,201 @@ def test_filter_view_round_trips_selected_chips_including_statuses(page):
     assert visible_rows(page) == n
     assert page.locator("[data-testid=pri-f-product-vita-bull]").get_attribute("data-on") == "true" and page.locator("[data-testid=pri-f-product-beef-liver]").get_attribute("data-on") == "false"
     assert page.locator("[data-testid=pri-stat][data-status='Rising']").get_attribute("aria-pressed") == "true" and page.locator("[data-testid=pri-stat][data-status='Working']").get_attribute("aria-pressed") == "true"
+
+
+# ---------------------------------------------------------------------------------------------------------------- Assign to vendor (production hooks)
+import datetime as _dt                                                       # noqa: E402
+
+
+@pytest.fixture
+def fresh_assign(ctx, base_url):
+    ctx.request.post(base_url + "/__test/assign/reset")
+
+
+def _next_monday():
+    t = _dt.date.today()
+    return t - _dt.timedelta(days=t.weekday()) + _dt.timedelta(days=7)
+
+
+def _md(d):
+    return f"{d:%b} {d.day}"
+
+
+def _tick(page, *idx):
+    rows = page.locator("[data-testid=pri-body] " + ROW)
+    for i in idx:
+        rows.nth(i).locator("[data-testid=pri-pick]").check()
+
+
+def _assign(page, vendor="Madre", note=None, week=None):
+    page.locator("[data-testid=pri-sel-assign]").click()
+    page.wait_for_selector("[data-testid=pri-as-dialog]")
+    page.select_option("[data-testid=pri-as-vendor]", vendor)
+    if week:
+        page.select_option("[data-testid=pri-as-week]", week)
+    if note:
+        page.fill("[data-testid=pri-as-note]", note)
+    page.locator("[data-testid=pri-as-ok]").click()
+    page.wait_for_selector("[data-testid=pri-as-result] p")
+
+
+def _cell(page, i):
+    return page.locator("[data-testid=pri-body] " + ROW).nth(i).locator(".pri-c-prod").text_content().strip()
+
+
+def test_assign_button_shows_with_a_selection_and_the_dialog_defaults_to_next_monday(page, fresh_assign):
+    goto(page)
+    assert page.locator("[data-testid=pri-sel-assign]").is_hidden()                                       # nothing ticked: the toolbar is hidden
+    _tick(page, 0, 1)
+    page.locator("[data-testid=pri-sel-assign]").click()
+    dlg = page.locator("[data-testid=pri-as-dialog]")
+    assert dlg.is_visible() and "2 concepts selected" in dlg.locator("[data-testid=pri-as-note-count]").text_content()
+    vendors = dlg.locator("[data-testid=pri-as-vendor] option").all_text_contents()
+    assert vendors[0] == "Madre" and "Victoria" in vendors and len(vendors) == 9
+    nm = _next_monday()
+    chosen = dlg.locator("[data-testid=pri-as-week]").evaluate("e => e.options[e.selectedIndex].value")
+    opts = dlg.locator("[data-testid=pri-as-week] option").evaluate_all("els => els.map(e => e.value)")
+    assert chosen == nm.isoformat() and len(opts) == 5 and all(_dt.date.fromisoformat(o).weekday() == 0 for o in opts)       # Mondays only, next Monday preselected
+    assert dlg.locator("[data-testid=pri-as-note]").get_attribute("maxlength") == "500"
+    page.screenshot(path=str(SHOTS / "priorities_assign_dialog.png"), full_page=False)
+    page.locator("[data-testid=pri-as-cancel]").click()
+    assert page.locator("[data-testid=pri-as-dialog]").count() == 0
+
+
+def test_assigning_two_rows_keeps_them_listed_unchanged_and_shows_in_production(page, fresh_assign):
+    goto(page)
+    cols = [t.strip().replace(" ⇅", "") for t in page.locator("[data-testid=pri-table] thead th").all_text_contents()]
+    assert cols[-1] == "In production"
+    rows = page.locator("[data-testid=pri-body] " + ROW)
+    before = [(rows.nth(i).locator(".pri-c-section").text_content(), rows.nth(i).locator(".pri-c-status").text_content(), rows.nth(i).locator(".pri-c-pain").text_content()) for i in (0, 1)]
+    assert _cell(page, 0) == "–" and _cell(page, 1) == "–"                                       # nothing assigned yet
+    _tick(page, 0, 1)
+    _assign(page, "Madre", note="brief sent")
+    nm = _next_monday()
+    res = page.locator("[data-testid=pri-as-created]").text_content()
+    assert res == f"2 concepts assigned to Madre for the week of {_md(nm)}." and page.locator("[data-testid=pri-as-skipped]").count() == 0
+    assert "/priorities/production" in page.locator("[data-testid=pri-as-open-production]").get_attribute("href")
+    page.locator("[data-testid=pri-as-ok]").click()                                                         # Close
+    page.wait_for_selector("[data-testid=pri-as-dialog]", state="detached")
+    assert visible_rows(page) == 30                                                                         # assigning never removes a concept
+    rows = page.locator("[data-testid=pri-body] " + ROW)
+    after = [(rows.nth(i).locator(".pri-c-section").text_content(), rows.nth(i).locator(".pri-c-status").text_content(), rows.nth(i).locator(".pri-c-pain").text_content()) for i in (0, 1)]
+    assert after == before                                                                                  # same Action and Status
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=pri-body] tr.pri-row')[0].querySelector('.pri-c-prod').textContent.includes('Madre')")
+    assert _cell(page, 0) == f"Madre, week of {_md(nm)}: Assigned" and _cell(page, 1) == f"Madre, week of {_md(nm)}: Assigned" and _cell(page, 2) == "–"
+    page.screenshot(path=str(SHOTS / "priorities_in_production.png"), full_page=False)
+
+
+def test_assigning_the_same_concepts_again_is_skipped_with_the_reason(page, fresh_assign):
+    goto(page)
+    _tick(page, 0, 1)
+    _assign(page, "Madre")
+    page.locator("[data-testid=pri-as-ok]").click()
+    page.wait_for_selector("[data-testid=pri-as-dialog]", state="detached")
+    _assign(page, "Madre")                                                                                  # same two, same vendor, same week
+    assert page.locator("[data-testid=pri-as-created]").text_content().startswith("0 concepts assigned to Madre")
+    sk = page.locator("[data-testid=pri-as-skipped]")
+    assert sk.locator("li").count() == 2 and all("already assigned to this vendor for that week" in t for t in sk.locator("li").all_text_contents()) and "2 skipped" in sk.text_content()
+    page.locator("[data-testid=pri-as-ok]").click()
+    page.wait_for_selector("[data-testid=pri-as-dialog]", state="detached")
+    assert not any("earlier" in t for t in page.locator(".pri-c-prod").all_text_contents())                # nothing new was created
+    _tick(page, 0)
+    page.locator("[data-testid=pri-sel-clear]").click()
+    _tick(page, 0)
+    _assign(page, "Victoria")                                                                               # another vendor is fine
+    assert page.locator("[data-testid=pri-as-created]").text_content().startswith("1 concept assigned to Victoria")
+    page.locator("[data-testid=pri-as-ok]").click()
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=pri-body] tr.pri-row')[0].querySelector('.pri-c-prod').textContent.includes('earlier')")
+
+
+def test_row_detail_shows_the_production_history_for_every_kind_of_row(page, fresh_assign):
+    goto(page)
+    _tick(page, 0)
+    _assign(page, "Madre", week=_next_monday().isoformat())
+    page.locator("[data-testid=pri-as-ok]").click()
+    page.wait_for_selector("[data-testid=pri-as-dialog]", state="detached")
+    rows = page.locator("[data-testid=pri-body] " + ROW)
+    rows.nth(0).locator("[data-testid=pri-toggle]").click()
+    hist = page.locator("[data-testid=pri-body] " + DETAIL).first.locator("[data-testid=pri-prod-history]")
+    page.wait_for_function("() => document.querySelector('[data-testid=pri-prod-history] [data-testid=pri-prod-htable]')")
+    assert hist.is_visible() and "Production history" in hist.text_content()
+    heads = [t.strip() for t in hist.locator("th").all_text_contents()]
+    assert heads == ["Week of", "Vendor", "Stage", "Brief", "Creative", "Ads", "Result"]
+    assert hist.locator("[data-testid=pri-prod-hrow]").count() == 1 and f"{_md(_next_monday())}" in hist.text_content() and "Madre" in hist.text_content() and "Assigned" in hist.text_content()
+    rows.nth(1).locator("[data-testid=pri-toggle]").click()                                                 # a concept nobody has been given
+    h2 = page.locator("[data-testid=pri-body] " + DETAIL).nth(1).locator("[data-testid=pri-prod-history]")
+    assert "Not assigned to a vendor yet" in h2.text_content()
+
+
+def test_add_rows_and_manual_concepts_can_be_assigned_too(page, fresh_assign):
+    goto(page)
+    add_row = page.locator("[data-testid=pri-body] tr.pri-row[data-section=add]").first
+    add_row.locator("[data-testid=pri-pick]").check()
+    _assign(page, "TrybeOrion")
+    assert page.locator("[data-testid=pri-as-created]").text_content().startswith("1 concept assigned to TrybeOrion")
+    page.locator("[data-testid=pri-as-ok]").click()
+    page.wait_for_function("() => [...document.querySelectorAll('tr.pri-row[data-section=add] .pri-c-prod')].some(e => e.textContent.includes('TrybeOrion'))")
+    page.locator("[data-testid=pri-sel-clear]").click()
+    add_concept(page)
+    try:
+        page.locator(MROW).locator("[data-testid=pri-pick]").check()
+        _assign(page, "Internal")
+        assert page.locator("[data-testid=pri-as-created]").text_content().startswith("1 concept assigned to Internal")
+        page.locator("[data-testid=pri-as-ok]").click()
+        page.wait_for_function("() => [...document.querySelectorAll('tr.pri-row[data-source=manual] .pri-c-prod')].some(e => e.textContent.includes('Internal'))")
+    finally:
+        for m in page.evaluate("() => fetch('/api/priorities/manual').then(r => r.json()).then(d => d.rows)"):
+            page.evaluate("(id) => fetch('/api/priorities/manual/' + id, { method: 'DELETE' })", m["id"])
+
+
+def test_hide_already_assigned_checkbox_is_off_by_default_and_hides_only_when_ticked(page, fresh_assign):
+    goto(page)
+    box = page.locator("[data-testid=pri-hide-assigned]")
+    assert box.is_visible() and not box.is_checked() and "Hide concepts already assigned this week" in page.locator("label:has([data-testid=pri-hide-assigned])").text_content()
+    _tick(page, 0, 1)
+    _assign(page, "Madre")                                                                                  # for next week: still counts as assigned (this week or later)
+    page.locator("[data-testid=pri-as-ok]").click()
+    page.wait_for_function("() => document.querySelector('.pri-c-prod').textContent.includes('Madre')")
+    assert visible_rows(page) == 30                                                                         # assigning alone never hides anything
+    box.check()
+    assert visible_rows(page) == 28 and "28 of 30 concepts shown" == page.locator("[data-testid=pri-shown]").text_content() and "1 filter on" in page.locator("[data-testid=pri-active-filters]").text_content()
+    box.uncheck()
+    assert visible_rows(page) == 30
+    box.check()
+    page.locator("[data-testid=pri-clear-filters]").click()
+    assert visible_rows(page) == 30 and not box.is_checked()
+
+
+def test_header_links_to_production(page, fresh_assign):
+    goto(page)
+    link = page.locator("[data-testid=pri-prod-link]")
+    assert link.text_content().strip() == "Production" and link.get_attribute("href") == "/priorities/production"
+    link.click()
+    page.wait_for_selector("[data-testid=prod-page]")
+
+
+def test_public_saved_view_has_no_production_column_checkbox_or_history(page, fresh_assign):
+    goto(page)
+    _tick(page, 0, 1)
+    _assign(page, "Madre")
+    page.locator("[data-testid=pri-as-ok]").click()
+    page.wait_for_selector("[data-testid=pri-as-dialog]", state="detached")
+    tok = page.evaluate("""(ids) => fetch('/api/priorities/views', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Madre round', kind: 'rows', ids }) }).then(r => r.json()).then(v => v.token)""",
+                        page.evaluate("() => fetch('/api/priorities').then(r => r.json()).then(d => d.rows.slice(0, 2).map(r => [r.product, r.section, r.cluster, r.icp, r.pain_point].join('|')))"))
+    calls = []
+    page.on("request", lambda rq: calls.append(rq.url) if "/api/priorities/assignments" in rq.url else None)
+    page.goto(f"/priorities/v/{tok}")
+    page.wait_for_selector("[data-testid=pri-page]")
+    idle(page)
+    assert visible_rows(page) == 2
+    heads = [t.strip().replace(" ⇅", "") for t in page.locator("[data-testid=pri-table] thead th").all_text_contents()]
+    assert "In production" not in heads and not any("production" in t.lower() for t in heads)
+    assert page.locator(".pri-c-prod").count() == 0 and page.locator("[data-testid=pri-inprod]").count() == 0
+    assert page.locator("[data-testid=pri-hide-assigned]").count() == 0 and page.locator("[data-testid=pri-sel-assign]").count() == 0 and page.locator("[data-testid=pri-prod-link]").count() == 0
+    page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
+    assert page.locator("[data-testid=pri-prod-history]").count() == 0 and "Madre" not in page.locator("[data-testid=pri-body]").text_content()
+    assert calls == []                                                                                     # the public page never even asks for assignments
+    page.goto("/priorities?view=" + tok)                                                                   # the logged-in view switcher is the app page: the column is there
+    page.wait_for_selector("[data-testid=pri-page]")
+    idle(page)
+    assert page.locator(".pri-c-prod").count() == 2

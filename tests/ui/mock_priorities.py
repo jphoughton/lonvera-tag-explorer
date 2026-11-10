@@ -35,6 +35,7 @@ def register(app, deps):
         return {**d, "rows": cpr.with_ckey(d["rows"]), "definitions": cp.definitions(d.get("thresholds"))}       # ckey and definitions as in app.creative_priorities.payload
 
     merged = live
+    app.config["PRI_LIVE"] = live                                             # the assignments mock resolves the keys of POST /api/priorities/assignments from this snapshot
 
     @app.get("/api/priorities")
     def priorities_mock():

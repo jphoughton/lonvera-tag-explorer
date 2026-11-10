@@ -17,6 +17,7 @@ const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(
 const mondayOf = (iso) => { const [y, m, d] = iso.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1, d)); t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7)); return t.toISOString().slice(0, 10); };
 const addDays = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1, d + n)); return t.toISOString().slice(0, 10); };
 const vendorLinkUrl = (tok) => `${location.origin}/priorities/vendor/${tok}`;
+export { mondayOf, addDays, today, VENDOR_FALLBACK };                       // used by priorities_assign.js (the Assign to vendor dialog on /priorities)
 
 // "Launched 11/3, $1,240 spent, 1.80 return" from the linked ads (earliest launch date, total spend, spend-weighted return), or '' when nothing is launched
 export function resultText(r) {
