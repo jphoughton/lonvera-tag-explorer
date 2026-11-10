@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, creative_priorities as cpr, priorities_assign as pas, priorities_manual as pman, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import auth, creative_priorities as cpr, priorities_assign as pas, priorities_launch_api as pla, priorities_manual as pman, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -560,7 +560,9 @@ def _json_body() -> dict:
 def priorities_assignments():
     """Production assignments: ?week=YYYY-MM-DD (snaps to its Monday) &vendor=<name> &include_closed=1 (adds launched and dropped) -> {rows, vendors, weeks}. Each row: the table fields plus stage,
     stage_label, tracker_status, suggested_concept_ids and ads [{concept_id, ad_family, status, launch_date, spend, roas, ad_url}]. See app/priorities_assign.py."""
-    return jsonify(pas.list_assignments(db.get_conn(), week=_arg("week"), vendor=_arg("vendor"), include_closed=request.args.get("include_closed") in ("1", "true")))
+    out = pas.list_assignments(db.get_conn(), week=_arg("week"), vendor=_arg("vendor"), include_closed=request.args.get("include_closed") in ("1", "true"))
+    out["launch"] = pla.discovery()                  # {enabled, can_launch, dry_run}: the production page shows launch controls only when enabled (see app/priorities_launch_api.py)
+    return jsonify(out)
 
 
 @bp.post("/api/priorities/assignments")

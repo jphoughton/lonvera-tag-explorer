@@ -206,7 +206,9 @@ def test_listing_before_the_migration_is_empty_not_an_error(client, snaps, pg):
     pg.execute("ALTER TABLE creative_priorities_assignments RENAME TO cpa_tmp")
     pg.commit()
     try:
-        assert client.get("/api/priorities/assignments").get_json() == {"rows": [], "vendors": pa.VENDORS, "weeks": []}
+        listing = client.get("/api/priorities/assignments").get_json()
+        assert listing.pop("launch") == {"enabled": False, "can_launch": False, "dry_run": True}          # the discovery flag is there even when nothing is assigned (launch is dark by default)
+        assert listing == {"rows": [], "vendors": pa.VENDORS, "weeks": []}
         assert client.get("/api/priorities/vendor-links").get_json()["links"] == []
     finally:
         pg.rollback()
