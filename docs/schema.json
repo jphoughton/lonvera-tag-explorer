@@ -6675,6 +6675,522 @@
    "examples": []
   },
   {
+   "name": "public.competitor_brands",
+   "schema": "public",
+   "relation": "competitor_brands",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "The competitor brands whose Meta ads are watched weekly (Heart & Soil, Primal Viking, My Marrow ...): exact search phrases for the public Ad Library, the advertiser-name regex that keeps only the brand's own page, and the freshness of the last scrape. Editable: insert / update rows to add or retire a brand (etl.competitor_ads only seeds missing brands).",
+   "grain": "one row per brand",
+   "primary_key": [
+    "brand"
+   ],
+   "foreign_keys": [],
+   "source": "seeded by etl.competitor_ads (BRANDS constant), edited by hand; last_* columns written by each run",
+   "refresh": "weekly (Sundays Pacific, etl.competitor_ads)",
+   "coverage": "18 brands seeded 2026-11-09",
+   "caveats": [
+    "last_error is set when the brand failed in the latest run (blocked, age-gated, layout change); its rows are then carried forward and flagged stale in competitor_concepts.",
+    "Brands whose ads are age-gated for logged-out visitors (Hims, Keeps, Men's Edge, Reclaim Co) cannot be read and are not seeded."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "brand",
+     "type": "text",
+     "nullable": false,
+     "description": "Brand name (primary key), as shown in the views."
+    },
+    {
+     "name": "product_type",
+     "type": "text",
+     "nullable": false,
+     "description": "Free text: what the brand sells (beef organ capsules, joint supplement ...)."
+    },
+    {
+     "name": "search_phrases",
+     "type": "text[]",
+     "nullable": false,
+     "description": "Exact phrases searched in the Ad Library (brand name, landing domain); results are filtered by name_match."
+    },
+    {
+     "name": "name_match",
+     "type": "text",
+     "nullable": false,
+     "description": "Case-insensitive regex the advertiser (page) name must match; creator ads named 'X with Brand' are dropped."
+    },
+    {
+     "name": "active",
+     "type": "boolean",
+     "nullable": false,
+     "description": "False retires the brand without deleting its history."
+    },
+    {
+     "name": "last_attempt_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "Last time a run tried this brand."
+    },
+    {
+     "name": "last_ok_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "Last time the brand loaded without error."
+    },
+    {
+     "name": "last_error",
+     "type": "text",
+     "nullable": true,
+     "description": "Reason the last attempt failed; NULL after a good run."
+    },
+    {
+     "name": "last_ad_count",
+     "type": "integer",
+     "nullable": true,
+     "description": "Active US ads read in the last good run (a top slice by impressions: capped at about 150 cards per phrase)."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.competitor_ads",
+   "schema": "public",
+   "relation": "competitor_ads",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "Weekly snapshot of the ACTIVE US Meta ads of each watched competitor, one row per Library ID, read from the public Meta Ad Library with headless Chromium. No spend, impressions or performance exist for these ads: days_running and variant_count are the only strength signals.",
+   "grain": "one row per (week_start, library_id)",
+   "primary_key": [
+    "week_start",
+    "library_id"
+   ],
+   "foreign_keys": [
+    {
+     "columns": [
+      "brand"
+     ],
+     "references": "public.competitor_brands",
+     "referenced_columns": [
+      "brand"
+     ]
+    }
+   ],
+   "source": "etl.competitor_ads: public Ad Library cards (exact-phrase search, impressions-sorted, advertiser filtered)",
+   "refresh": "weekly, Sundays Pacific; a failed brand has its previous week copied forward (carried_from set)",
+   "coverage": "from 2026-11-09; about 100-150 ads per large brand (a top slice, not a census)",
+   "caveats": [
+    "The Library lazy-loads: each phrase returns at most about 150 cards, so large brands (Heart & Soil about 1,000 ads) are a top slice by impressions.",
+    "start_date resets when a brand re-uploads an ad, so days_running understates the age of re-uploaded creatives.",
+    "format is 'video' when the card has a video, else 'image' (carousels are not distinguishable from images). hook is the first sentence of the copy (video speech and on-image text are not read).",
+    "Cards with 'N ads use this creative and text' count N in variant_count."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "week_start",
+     "type": "date",
+     "nullable": false,
+     "description": "Monday (Pacific) of the week of the run."
+    },
+    {
+     "name": "library_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta Ad Library ID."
+    },
+    {
+     "name": "brand",
+     "type": "text",
+     "nullable": false,
+     "description": "competitor_brands.brand."
+    },
+    {
+     "name": "advertiser",
+     "type": "text",
+     "nullable": true,
+     "description": "Page name shown on the card."
+    },
+    {
+     "name": "start_date",
+     "type": "date",
+     "nullable": true,
+     "description": "'Started running on' date (resets on re-upload)."
+    },
+    {
+     "name": "days_running",
+     "type": "integer",
+     "nullable": true,
+     "description": "seen_on minus start_date."
+    },
+    {
+     "name": "variant_count",
+     "type": "integer",
+     "nullable": false,
+     "description": "Ads sharing this creative and text (card says 'N ads use this creative and text'), else 1."
+    },
+    {
+     "name": "format",
+     "type": "text",
+     "nullable": true,
+     "description": "'video' or 'image'."
+    },
+    {
+     "name": "primary_text",
+     "type": "text",
+     "nullable": true,
+     "description": "Ad copy as shown (up to 2,500 characters)."
+    },
+    {
+     "name": "headline",
+     "type": "text",
+     "nullable": true,
+     "description": "Card headline (first line after the landing domain that is not a button label)."
+    },
+    {
+     "name": "hook",
+     "type": "text",
+     "nullable": true,
+     "description": "First sentence of the copy, else the headline."
+    },
+    {
+     "name": "landing_url",
+     "type": "text",
+     "nullable": true,
+     "description": "Landing domain and path (tracking query removed)."
+    },
+    {
+     "name": "concept_key",
+     "type": "text",
+     "nullable": false,
+     "description": "Brand + hash of the first 160 characters of normalised copy: groups near-duplicate copy into one concept."
+    },
+    {
+     "name": "seen_on",
+     "type": "date",
+     "nullable": false,
+     "description": "Date the Library was read (Pacific); for carried rows the original date."
+    },
+    {
+     "name": "carried_from",
+     "type": "date",
+     "nullable": true,
+     "description": "NULL for fresh rows; for carried-forward rows the week_start they were copied from."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.competitor_concept_class",
+   "schema": "public",
+   "relation": "competitor_concept_class",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "Lonvera taxonomy classification of each competitor concept (concept_key), made once by headless Claude from the copy text and cached, so only new concepts use plan usage: an existing line (product / cluster / ICP / pain point from the autotag catalogs), a NEW angle with suggested cluster / ICP / pain point, or out of category.",
+   "grain": "one row per concept_key",
+   "primary_key": [
+    "concept_key"
+   ],
+   "foreign_keys": [],
+   "source": "etl.competitor_ads classification step (claude -p, text only, batches of 8 concepts, catalogs etl/autotag/catalogs/*.json)",
+   "refresh": "weekly; concepts already classified are never re-asked",
+   "coverage": "from 2026-11-09",
+   "caveats": [
+    "Text only: the model never sees the image or video, so low confidence is common for statics whose message is on the image.",
+    "line_code is NULL for NEW angles (cluster / icp / pain_point hold the suggestion) and for out-of-category ads (mapped_product 'none')."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "concept_key",
+     "type": "text",
+     "nullable": false,
+     "description": "competitor_ads.concept_key (primary key)."
+    },
+    {
+     "name": "brand",
+     "type": "text",
+     "nullable": false,
+     "description": "Brand."
+    },
+    {
+     "name": "mapped_product",
+     "type": "text",
+     "nullable": true,
+     "description": "'vita-bull' | 'beef-liver' | 'boneflex' | 'none': the Lonvera product the angle competes with."
+    },
+    {
+     "name": "line_code",
+     "type": "text",
+     "nullable": true,
+     "description": "Catalog line code (L.. Vital Bull, B.. Beef Liver, BF.. Boneflex) or NULL."
+    },
+    {
+     "name": "cluster",
+     "type": "text",
+     "nullable": true,
+     "description": "Market cluster (catalog value, or suggested for NEW)."
+    },
+    {
+     "name": "icp",
+     "type": "text",
+     "nullable": true,
+     "description": "ICP (catalog value, or suggested for NEW)."
+    },
+    {
+     "name": "pain_point",
+     "type": "text",
+     "nullable": true,
+     "description": "Pain point (catalog value, or suggested for NEW)."
+    },
+    {
+     "name": "confidence",
+     "type": "text",
+     "nullable": true,
+     "description": "high | medium | low."
+    },
+    {
+     "name": "is_new_angle",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True when no catalog line covers the angle."
+    },
+    {
+     "name": "new_angle_label",
+     "type": "text",
+     "nullable": true,
+     "description": "4-8 word label of a NEW angle."
+    },
+    {
+     "name": "why",
+     "type": "text",
+     "nullable": true,
+     "description": "The model's reason, 15 words or fewer."
+    },
+    {
+     "name": "model",
+     "type": "text",
+     "nullable": true,
+     "description": "Model id used."
+    },
+    {
+     "name": "classified_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When it was classified."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.competitor_concepts",
+   "schema": "public",
+   "relation": "competitor_concepts",
+   "kind": "view",
+   "group": "rollups",
+   "purpose": "What competitors run on Meta right now, grouped by concept (near-duplicate copy), with the Lonvera line each maps to. The contract read by the weekly Creative priorities one-sheeter. Latest week: WHERE week_start = (SELECT max(week_start) FROM competitor_concepts).",
+   "grain": "one row per (week_start, brand, concept_key)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.competitor_ads x competitor_brands x competitor_concept_class",
+   "refresh": "weekly (Sundays Pacific)",
+   "coverage": "from 2026-11-09",
+   "caveats": [
+    "No spend, impressions or ROAS: days_running (max across the concept's ads) and variant_count (ads sharing the creative) are proxies, and start dates reset on re-upload.",
+    "is_stale = the brand failed to load this week and the rows are the last good snapshot carried forward, or the data is older than 8 days.",
+    "Unclassified concepts show confidence 'low' and NULL mapped_product / line_code. For NEW angles cluster / icp / pain_point are the model's suggestion."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "week_start",
+     "type": "date",
+     "nullable": null,
+     "description": "Monday (Pacific) of the run week."
+    },
+    {
+     "name": "brand",
+     "type": "text",
+     "nullable": null,
+     "description": "Brand."
+    },
+    {
+     "name": "concept_key",
+     "type": "text",
+     "nullable": null,
+     "description": "Concept (near-duplicate copy of one brand)."
+    },
+    {
+     "name": "first_ad_start_date",
+     "type": "date",
+     "nullable": null,
+     "description": "Earliest start date among the concept's ads."
+    },
+    {
+     "name": "days_running",
+     "type": "integer",
+     "nullable": null,
+     "description": "Max days running among the concept's ads (as of as_of)."
+    },
+    {
+     "name": "variant_count",
+     "type": "integer",
+     "nullable": null,
+     "description": "Ads sharing the creative / copy, summed over the concept's cards."
+    },
+    {
+     "name": "format",
+     "type": "text",
+     "nullable": null,
+     "description": "'video' or 'image' of the longest-running ad."
+    },
+    {
+     "name": "hook",
+     "type": "text",
+     "nullable": null,
+     "description": "First sentence of the longest-running ad's copy."
+    },
+    {
+     "name": "primary_text_excerpt",
+     "type": "text",
+     "nullable": null,
+     "description": "First 280 characters of that ad's copy."
+    },
+    {
+     "name": "mapped_product",
+     "type": "text",
+     "nullable": null,
+     "description": "'vita-bull' | 'beef-liver' | 'boneflex' | 'none' | NULL."
+    },
+    {
+     "name": "line_code",
+     "type": "text",
+     "nullable": null,
+     "description": "Lonvera catalog line, NULL for NEW / out-of-category / unclassified."
+    },
+    {
+     "name": "cluster",
+     "type": "text",
+     "nullable": null,
+     "description": "Market cluster."
+    },
+    {
+     "name": "icp",
+     "type": "text",
+     "nullable": null,
+     "description": "ICP."
+    },
+    {
+     "name": "pain_point",
+     "type": "text",
+     "nullable": null,
+     "description": "Pain point."
+    },
+    {
+     "name": "confidence",
+     "type": "text",
+     "nullable": null,
+     "description": "high | medium | low (unclassified = low)."
+    },
+    {
+     "name": "is_new_angle",
+     "type": "boolean",
+     "nullable": null,
+     "description": "No catalog line covers it."
+    },
+    {
+     "name": "new_angle_label",
+     "type": "text",
+     "nullable": null,
+     "description": "Label of the NEW angle."
+    },
+    {
+     "name": "as_of",
+     "type": "date",
+     "nullable": null,
+     "description": "Date the Library was read."
+    },
+    {
+     "name": "is_stale",
+     "type": "boolean",
+     "nullable": null,
+     "description": "Carried forward or older than 8 days."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.creative_priorities_snapshots",
+   "schema": "public",
+   "relation": "creative_priorities_snapshots",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "The weekly creative priorities one-sheeter: per product, the market cluster / ICP / pain point / story lines to iterate on (ads that work) and to produce for the first time, with the number of new concepts to brief and the numbers behind each row. One snapshot per week, kept as produced.",
+   "grain": "one row per week (week_start = the Sunday, Pacific)",
+   "primary_key": [
+    "week_start"
+   ],
+   "foreign_keys": [],
+   "source": "etl.creative_priorities from ad_metrics, family_daily (and the _upstack_nc twin), creative_stage_moves, ad_tags (linemap), taxonomy_lines, line_ingredients, ad_hooks",
+   "refresh": "Sundays, in the nightly etl (gated on Pacific time, non-fatal); by hand with python -m etl.creative_priorities [--week YYYY-MM-DD]; re-running a week replaces its snapshot",
+   "coverage": "from the week the migration was deployed; one row per Sunday",
+   "caveats": [
+    "Scored on Meta-reported numbers; the Upstack new-customer ROAS only raises a flag. Prioritisation, not a causal claim.",
+    "rows is a JSON array; each element carries section ('iterate' | 'new'), product, rank, the line (cluster, icp, pain_point, story), concepts, score, confidence, flags, why, metrics and hooks. Scoring and thresholds: docs/CREATIVE_PRIORITIES.md."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "week_start",
+     "type": "date",
+     "nullable": false,
+     "description": "The Sunday (Pacific) the snapshot belongs to (primary key)."
+    },
+    {
+     "name": "built_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the snapshot was last written."
+    },
+    {
+     "name": "data_through",
+     "type": "date",
+     "nullable": false,
+     "description": "Last day of Meta data the snapshot used."
+    },
+    {
+     "name": "basis",
+     "type": "text",
+     "nullable": false,
+     "description": "Numbers basis of the scoring: 'meta' (Meta-reported)."
+    },
+    {
+     "name": "thresholds",
+     "type": "jsonb",
+     "nullable": false,
+     "description": "JSON object: every threshold and weight constant of etl/creative_priorities.py as used for this snapshot."
+    },
+    {
+     "name": "baselines",
+     "type": "jsonb",
+     "nullable": false,
+     "description": "JSON object by product slug: the product's own averages (ROAS since launch / last 30 days, CPA, hit rate, new ads in 30 days) the lines are compared with."
+    },
+    {
+     "name": "rows",
+     "type": "jsonb",
+     "nullable": false,
+     "description": "JSON array of the ranked rows (iterate and new sections, all products)."
+    },
+    {
+     "name": "stats",
+     "type": "jsonb",
+     "nullable": false,
+     "description": "JSON object: candidate counts, skipped counts, tagged and untagged spend, data_through."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.unmatched_meta",
    "schema": "public",
    "relation": "unmatched_meta",

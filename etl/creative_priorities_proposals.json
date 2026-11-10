@@ -1,0 +1,305 @@
+[
+ {
+  "product": "vita-bull",
+  "flag": "NEW CLUSTER",
+  "cluster": "GLP-1 Companion (men)",
+  "icp": "Men on GLP-1",
+  "pain_point": "Low Energy / Muscle & Nutrient Loss",
+  "story": "Thirty pounds lighter on the shot, yet the stairs feel harder than before.",
+  "cluster_description": "Proposed market: men losing weight on a GLP-1 shot who feel weaker and drained.",
+  "icp_description": "The man on a GLP-1 who is lighter on the scale but weaker in daily life.",
+  "pain_description": "Energy, muscle and nutrients drop along with the weight.",
+  "match_terms": [
+   "glp-1",
+   "glp1"
+  ],
+  "adjacent_lines": [
+   "L26",
+   "L24"
+  ],
+  "source": "Competitor angle (Ancestral, men on GLP-1); Vital Bull has no GLP-1 cluster."
+ },
+ {
+  "product": "vita-bull",
+  "flag": "NEW CLUSTER",
+  "cluster": "Chest Fat (cortisol / estrogen)",
+  "icp": "Man-Boobs & Chest Fat",
+  "pain_point": "Weight Gain / Stubborn Belly Fat",
+  "story": "He's lean everywhere except his chest, and a loose shirt hides it daily.",
+  "cluster_description": "Proposed market: men with chest fat who read it as a hormone and stress problem.",
+  "icp_description": "The man who trains and eats well but cannot shift chest fat.",
+  "pain_description": "Stubborn chest and belly fat he blames on cortisol and estrogen.",
+  "match_terms": [
+   "man-boob",
+   "man boob",
+   "chest fat"
+  ],
+  "adjacent_lines": [
+   "L24",
+   "L23"
+  ],
+  "source": "Competitor angle (Primal Viking since June, Primal Edge copying); no Vital Bull line."
+ },
+ {
+  "product": "vita-bull",
+  "flag": "NEW CLUSTER",
+  "cluster": "Alcohol & Liver Support (men)",
+  "icp": "Over-30 Drinker",
+  "pain_point": "Liver Health / Detox",
+  "story": "Two beers used to be nothing; now alcohol flattens him for days.",
+  "cluster_description": "Proposed market: men for whom drinking now costs energy and recovery.",
+  "icp_description": "The man over thirty whose body no longer handles alcohol like it did.",
+  "pain_description": "Alcohol hits harder and the liver feels tired.",
+  "match_terms": [
+   "over-30 drinker",
+   "alcohol hits",
+   "drinker"
+  ],
+  "adjacent_lines": [
+   "B42",
+   "B45"
+  ],
+  "source": "Competitor angle (Primal Viking); Beef Liver's alcohol lines are our largest, none exists for Vital Bull."
+ },
+ {
+  "product": "vita-bull",
+  "flag": "NEW CLUSTER",
+  "cluster": "Liver & Belly (men 55+)",
+  "icp": "Fatty-Liver Belly Man 55+",
+  "pain_point": "Liver Health / Detox",
+  "story": "Doctor looks at his belt and says it's not the beer, it's the liver.",
+  "cluster_description": "Proposed market: men over 55 whose belly and low energy point to a fatty liver.",
+  "icp_description": "The older man told his belly is a liver problem, not a beer problem.",
+  "pain_description": "A growing belly and low energy tied to a tired liver.",
+  "match_terms": [
+   "fatty-liver",
+   "fatty liver",
+   "not beer",
+   "belly = liver"
+  ],
+  "adjacent_lines": [
+   "B42",
+   "B44"
+  ],
+  "source": "Competitor angle (Forge, doctor-story advertorials started Nov 3-5); Beef Liver's belly line is below average, so test the male version small."
+ },
+ {
+  "product": "vita-bull",
+  "flag": "NEW LINE inside Ancestral Nutrition",
+  "cluster": "Ancestral Nutrition",
+  "icp": "Category Comparer",
+  "pain_point": "Ingredient Quality / Sourcing",
+  "story": "Reindeer, bison or beef organs: he wants to know which dose is real.",
+  "cluster_description": "Existing market: men who want the nutrients of organ meats.",
+  "icp_description": "The buyer who compares organ supplements on source and dose before buying.",
+  "pain_description": "Not knowing which brand's sourcing and dose is honest.",
+  "match_terms": [
+   "category comparer",
+   "wild organ",
+   "reindeer",
+   "bison",
+   "wild vs"
+  ],
+  "adjacent_lines": [
+   "L36",
+   "L35"
+  ],
+  "source": "Competitor angle (Primal Viking reindeer vs beef since May, Primal Edge, Beef Organ Guide); our Label Reader lines are the nearest."
+ },
+ {
+  "product": "beef-liver",
+  "flag": "NEW CLUSTER",
+  "cluster": "Women's Cycle & Hormones",
+  "icp": "Cycle Struggler",
+  "pain_point": "Hormone Decline (Testosterone / Estrogen)",
+  "story": "Only two good weeks a month, and cramps and short cycles eat the rest.",
+  "cluster_description": "Proposed market: women whose monthly cycle drives their energy and mood.",
+  "icp_description": "The woman with cramps, short cycles and PMS who feels good only part of the month.",
+  "pain_description": "Hormone swings she feels in energy, mood and her cycle.",
+  "match_terms": [
+   "cycle",
+   "pms"
+  ],
+  "adjacent_lines": [
+   "B13",
+   "B07"
+  ],
+  "source": "Competitor angle (Heart & Soil Her Package, 17+ ads since Sep 1); closest of ours is B20 Perimenopause Prepper."
+ },
+ {
+  "product": "beef-liver",
+  "flag": "NEW CLUSTER",
+  "cluster": "Thyroid",
+  "icp": "Thyroid Suspect",
+  "pain_point": "Low Energy / Afternoon Crash",
+  "story": "Tired, foggy and stuck on weight, she suspects her thyroid is running on empty.",
+  "cluster_description": "Proposed market: women who link tiredness, fog and weight to their thyroid.",
+  "icp_description": "The woman over 30 chasing symptoms and wondering about her thyroid.",
+  "pain_description": "Constant tiredness, brain fog and stubborn weight.",
+  "match_terms": [
+   "thyroid"
+  ],
+  "adjacent_lines": [
+   "B34"
+  ],
+  "source": "Competitor angle (Heart & Soil and Ancestral thyroid funnels)."
+ },
+ {
+  "product": "beef-liver",
+  "flag": "NEW CLUSTER",
+  "cluster": "Grey Hair",
+  "icp": "Premature Graying",
+  "pain_point": "Early Grays Noticer / Hair Loss",
+  "story": "The first grays showed up at thirty-two, and nobody ever mentioned copper.",
+  "cluster_description": "Proposed market: people seeing grey hair early who want a nutrient reason.",
+  "icp_description": "The person who found their first grays well before expected.",
+  "pain_description": "Early grey hair, tied in the ad to a copper gap.",
+  "match_terms": [
+   "gray",
+   "grey"
+  ],
+  "adjacent_lines": [
+   "B07",
+   "B06"
+  ],
+  "source": "Competitor angle (Ancestral creator video Oct 29); the pain point exists on the tracker Lists tab but not on our sheet."
+ },
+ {
+  "product": "beef-liver",
+  "flag": "NEW LINE inside Fertility & Postpartum",
+  "cluster": "Fertility & Postpartum",
+  "icp": "Mom Feeding Kids Whole Foods",
+  "pain_point": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "story": "She cooks everything from scratch, yet her kids still miss iron and B12.",
+  "cluster_description": "Existing market: mothers around pregnancy and early parenting.",
+  "icp_description": "The mother who feeds her children whole foods and worries about gaps.",
+  "pain_description": "Iron and B12 shortfalls in a household that already eats well.",
+  "match_terms": [
+   "mom feeding",
+   "kids' nutrition",
+   "kids nutrition"
+  ],
+  "adjacent_lines": [
+   "B13"
+  ],
+  "source": "Competitor angle (Love Ya Guts, Ancestral and Folqs postpartum wave)."
+ },
+ {
+  "product": "beef-liver",
+  "flag": "NEW LINE inside Collagen",
+  "cluster": "Collagen",
+  "icp": "Thinning-Skin Senior",
+  "pain_point": "Skin / Acne / Glow",
+  "story": "Bruises keep showing up on thin skin, and she blames age or her pills.",
+  "cluster_description": "Existing market: collagen and beauty-from-within buyers.",
+  "icp_description": "The older woman whose skin has thinned and bruises easily.",
+  "pain_description": "Thin, fragile skin she writes off as age or medication.",
+  "match_terms": [
+   "thinning-skin",
+   "thin skin"
+  ],
+  "adjacent_lines": [
+   "B32"
+  ],
+  "source": "Competitor angle (NativePath)."
+ },
+ {
+  "product": "beef-liver",
+  "flag": "NEW LINE inside Menopause",
+  "cluster": "Menopause",
+  "icp": "Low Desire Woman",
+  "pain_point": "Hormone Decline (Testosterone / Estrogen)",
+  "story": "Desire faded with her hormones, and nobody told her it can come back.",
+  "cluster_description": "Existing market: women in perimenopause and menopause.",
+  "icp_description": "The woman whose desire has dropped since her hormones changed.",
+  "pain_description": "Lost desire that she assumes is permanent.",
+  "match_terms": [
+   "low desire"
+  ],
+  "adjacent_lines": [
+   "B20"
+  ],
+  "source": "Competitor angle (Primal Queen, Nov)."
+ },
+ {
+  "product": "boneflex",
+  "flag": "NEW LINE inside Menopause",
+  "cluster": "Menopause",
+  "icp": "Women's Bone-Marrow Joint Buyer",
+  "pain_point": "Joint Pain & Mobility Loss",
+  "story": "Menopause made her joints ache, and stairs now feel like something to dread.",
+  "cluster_description": "Existing market: women whose joints changed with menopause.",
+  "icp_description": "The woman who buys on bone marrow as the reason her joints hurt.",
+  "pain_description": "Joint pain and stair fear that started in menopause.",
+  "match_terms": [
+   "bone-marrow joint",
+   "bone marrow",
+   "marrow"
+  ],
+  "adjacent_lines": [
+   "BF51",
+   "BF53"
+  ],
+  "source": "Competitor angle (My Marrow, Primal Queen Marrow, direct Boneflex competitors); our bone-marrow line BF51 reads strongest on Boneflex."
+ },
+ {
+  "product": "boneflex",
+  "flag": "NEW CLUSTER",
+  "cluster": "Spanish-Language Joint Buyer",
+  "icp": "Spanish-speaking joint buyer",
+  "pain_point": "Joint Pain & Mobility Loss",
+  "story": "A familiar TV voice tells her, in Spanish, how her knees can feel again.",
+  "cluster_description": "Proposed market: Spanish-speaking joint buyers reached in their own language.",
+  "icp_description": "The Spanish-speaking buyer who trusts a known personality.",
+  "pain_description": "Joint pain, in the buyer's own language and voice.",
+  "match_terms": [
+   "spanish"
+  ],
+  "adjacent_lines": [
+   "BF18",
+   "BF25"
+  ],
+  "source": "Competitor angle (OmegaXL, 8 ads since Feb 19)."
+ },
+ {
+  "product": "boneflex",
+  "flag": "NEW LINE inside Aging in Place & Mobility",
+  "cluster": "Aging in Place & Mobility",
+  "icp": "Busy-Mom Routine Builder",
+  "pain_point": "General Vitality / Aging Well",
+  "story": "No time for eight bottles, so she wants one simple joint routine.",
+  "cluster_description": "Existing market: people keeping mobile as they age.",
+  "icp_description": "The busy mother who wants fewer, better supplements.",
+  "pain_description": "Too many bottles and too little time.",
+  "match_terms": [
+   "busy-mom",
+   "busy mom"
+  ],
+  "adjacent_lines": [
+   "BF12"
+  ],
+  "source": "Competitor angle (Relief Factor)."
+ },
+ {
+  "product": "boneflex",
+  "flag": "NEW CLUSTER",
+  "cluster": "Stack Consolidation",
+  "icp": "Eight-Bottle Stacker",
+  "pain_point": "Offer / Price-Led",
+  "story": "Eight bottles crowd her counter, and none delivered what the label promised.",
+  "cluster_description": "Proposed market: buyers who want one product to replace a cabinet of supplements.",
+  "icp_description": "The buyer with a shelf of joint and wellness bottles.",
+  "pain_description": "Money and counter space spent on stacks that did not work.",
+  "match_terms": [
+   "stack",
+   "eight bottle",
+   "8 bottle",
+   "one pouch"
+  ],
+  "adjacent_lines": [
+   "BF12",
+   "BF27"
+  ],
+  "source": "Competitor angle (Folqs eight-organ pouch, Haka 'tried everything'); our Build-My-Stack offer lines are working."
+ }
+]
