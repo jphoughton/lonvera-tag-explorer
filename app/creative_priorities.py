@@ -66,11 +66,12 @@ def filter_rows(snap: dict, ids: list[str] | None) -> dict:
     return {**snap, "rows": [r for r in snap["rows"] if row_key(r) in keep]}
 
 
-def csv_text(conn, raw_week: str | None, ids: list[str] | None = None) -> tuple[str, str]:
+def csv_text(conn, raw_week: str | None, ids: list[str] | None = None, briefed_token: str | None = None) -> tuple[str, str]:
+    """briefed_token: a view's token; adds the briefed columns from that view (an in-page view exported with the latest data)."""
     from etl import creative_priorities as cp
     snap = snapshot(conn, raw_week)
     snap = filter_rows(pm.merge(snap, pm.list_records(conn), include_done=bool(ids)), ids)       # with no selection the full CSV leaves done manual concepts out; a selected one is exported
-    return snap["week_start"], cp.to_csv(snap)
+    return snap["week_start"], cp.to_csv(snap, briefed=get_view(briefed_token)["view"]["briefed"] if briefed_token else None)
 
 
 # ---------------------------------------------------------------------------------------------------------------- saved views
@@ -102,7 +103,7 @@ def _views_conn():
     return rwdb.get_rw()
 
 
-FILTER_KEYS = ("products", "sections", "q", "key", "dir")
+FILTER_KEYS = ("products", "sections", "q", "key", "dir", "status")
 
 
 def clean_filters(raw) -> dict:
@@ -124,13 +125,18 @@ def clean_filters(raw) -> dict:
         raise q.ApiError(400, "filters.key must be a column name")
     out["key"] = key or None
     out["dir"] = -1 if raw.get("dir") == -1 else 1
+    st = raw.get("status")
+    if st is not None and (not isinstance(st, str) or len(st) > 60):
+        raise q.ApiError(400, "filters.status must be a status name")
+    out["status"] = st or None
     return out
 
 
 def apply_filters(rows: list[dict], f: dict) -> list[dict]:
     """Rows matching a saved filter state (same rules as the page: product and section membership, search over cluster / ICP / pain point / story). Order is kept."""
     prods, secs, needle = set(f.get("products") or []), set(f.get("sections") or []), (f.get("q") or "").strip().lower()
-    return [r for r in rows if (not prods or r.get("product") in prods) and (not secs or r.get("section") in secs)
+    status = f.get("status")
+    return [r for r in rows if (not prods or r.get("product") in prods) and (not secs or r.get("section") in secs) and (not status or r.get("status") == status)
             and (not needle or any(needle in str(r.get(k) or "").lower() for k in ("cluster", "icp", "pain_point", "story")))]
 
 
@@ -205,14 +211,14 @@ def view_response(r: dict) -> dict:
     p = r["payload"]
     return {**p, "weeks": [], "view": {"token": r["token"], "name": r["name"], "week_start": r["week_start"].isoformat() if hasattr(r["week_start"], "isoformat") else r["week_start"],
                                        "created_at": r["created_at"].isoformat() if hasattr(r["created_at"], "isoformat") else r["created_at"], "count": len(p["rows"]),
-                                       "kind": r.get("kind") or "rows", "filters": r.get("filters"), "keys": list(r.get("keys") or [])}}
+                                       "kind": r.get("kind") or "rows", "filters": r.get("filters"), "keys": list(r.get("keys") or []), "briefed": r.get("briefed") or {}}}
 
 
 def get_view(token: str) -> dict:
     if not TOKEN_RE.fullmatch(token or ""):
         raise q.ApiError(404, "Saved view not found.")
     with _views_conn() as w:
-        r = w.execute("SELECT token, name, week_start, payload, kind, filters, keys, created_at FROM creative_priorities_views WHERE token = %s", (token,)).fetchone()
+        r = w.execute("SELECT token, name, week_start, payload, kind, filters, keys, briefed, created_at FROM creative_priorities_views WHERE token = %s", (token,)).fetchone()
     if r is None:
         raise q.ApiError(404, "Saved view not found.")
     return view_response(r)
@@ -222,7 +228,48 @@ def view_csv(token: str, ids: list[str] | None = None) -> tuple[str, str]:
     """(file slug, csv text): the slug is the slugified view name; ids (row keys) keep only those of the view's frozen rows."""
     from etl import creative_priorities as cp
     v = get_view(token)
-    return slug(v["view"]["name"]), cp.to_csv(filter_rows({**v, "stats": {}}, ids))
+    return slug(v["view"]["name"]), cp.to_csv(filter_rows({**v, "stats": {}}, ids), briefed=v["view"]["briefed"])
+
+
+MAX_NOTE = 200
+
+
+def clean_briefed(body: dict) -> tuple[str, bool, str]:
+    """Validate a briefed toggle body {key, briefed, note?} -> (key, briefed, cleaned note: whitespace collapsed, printable only, at most 200 characters)."""
+    key = body.get("key")
+    if not isinstance(key, str) or not 0 < len(key) <= 600:
+        raise q.ApiError(400, "key must be a row key")
+    if not isinstance(body.get("briefed"), bool):
+        raise q.ApiError(400, "briefed must be true or false")
+    note = body.get("note")
+    if note is not None and not isinstance(note, str):
+        raise q.ApiError(400, "note must be text")
+    note = "".join(ch for ch in " ".join((note or "").split()) if ch.isprintable())[:MAX_NOTE].strip()
+    return key, body["briefed"], note
+
+
+def set_briefed(conn, token: str, body: dict) -> dict:
+    """Mark a concept briefed (or not) inside a view: {key, briefed: bool, note?}. The key must be a row of the view (its frozen rows) or, for a filters view, of the current snapshot.
+    Stored per view + row key with a timestamp, so everyone with the link sees the same state."""
+    if not TOKEN_RE.fullmatch(token or ""):
+        raise q.ApiError(404, "Saved view not found.")
+    key, flag, note = clean_briefed(body)
+    with _views_conn() as w:
+        r = w.execute("SELECT kind, keys, payload FROM creative_priorities_views WHERE token = %s", (token,)).fetchone()
+    if r is None:
+        raise q.ApiError(404, "Saved view not found.")
+    valid = set(r["keys"]) | {row_key(x) for x in r["payload"]["rows"]}
+    if key not in valid and r["kind"] == "filters":
+        valid |= {row_key(x) for x in payload(conn, None)["rows"]}
+    if key not in valid:
+        raise q.ApiError(404, "That concept is not in this view.")
+    now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
+    with _views_conn() as w:
+        if flag:
+            w.execute("UPDATE creative_priorities_views SET briefed = briefed || jsonb_build_object(%s::text, %s::jsonb) WHERE token = %s", (key, Jsonb({"at": now, "note": note}), token))
+        else:
+            w.execute("UPDATE creative_priorities_views SET briefed = briefed - %s::text WHERE token = %s", (key, token))
+    return {"key": key, "briefed": flag, "at": now if flag else None, "note": note if flag else ""}
 
 
 def rename_view(token: str, raw_name) -> dict:

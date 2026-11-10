@@ -95,7 +95,8 @@ def register(app, deps):
         ids = request.args.getlist("id")
         snap = cpr.filter_rows(live(include_done=bool(ids)), ids)
         fname = cpr.slug(request.args["name"]) if request.args.get("name") else f"creative-priorities-{snap['week_start']}"
-        return Response(cp.to_csv(snap), mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{fname}.csv"'})
+        bt = request.args.get("briefed_from")
+        return Response(cp.to_csv(snap, briefed=views[bt]["briefed"] if bt in views else None), mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{fname}.csv"'})
 
     # saved views, in memory (the same builders as app/creative_priorities.py)
     views: dict[str, dict] = {}
@@ -114,7 +115,7 @@ def register(app, deps):
         except q.ApiError as e:
             return err(e)
         tok = secrets.token_urlsafe(24)
-        views[tok] = {**v, "token": tok, "name": cpr.clean_name(body.get("name")), "created_at": dt.datetime.now(dt.timezone.utc).isoformat()}
+        views[tok] = {**v, "briefed": {}, "token": tok, "name": cpr.clean_name(body.get("name")), "created_at": dt.datetime.now(dt.timezone.utc).isoformat()}
         return jsonify(token=tok, url=f"/priorities/v/{tok}", name=views[tok]["name"], count=v["count"], missing=v["missing"], week_start=v["week_start"], kind=v["kind"]), 201
 
     @app.get("/api/priorities/views")
@@ -138,7 +139,7 @@ def register(app, deps):
         if v is None:
             return jsonify(error="Saved view not found."), 404
         snap = cpr.filter_rows({**v["payload"], "stats": {}}, request.args.getlist("id"))
-        return Response(cp.to_csv(snap), mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{cpr.slug(v["name"])}.csv"'})
+        return Response(cp.to_csv(snap, briefed=v["briefed"]), mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{cpr.slug(v["name"])}.csv"'})
 
     @app.put("/api/priorities/views/<token>")
     def priorities_view_update_mock(token):
@@ -152,6 +153,28 @@ def register(app, deps):
             return err(e)
         v.update(n)
         return jsonify(token=token, count=n["count"], missing=n["missing"], week_start=n["week_start"], kind=n["kind"])
+
+    @app.patch("/api/priorities/views/<token>/briefed")
+    def priorities_view_briefed_mock(token):
+        from app import creative_priorities as cpr, queries as q
+        v = views.get(token)
+        if v is None:
+            return jsonify(error="Saved view not found."), 404
+        try:
+            key, flag, note = cpr.clean_briefed(request.get_json(silent=True) or {})
+        except q.ApiError as e:
+            return err(e)
+        valid = set(v["keys"]) | {cpr.row_key(x) for x in v["payload"]["rows"]}
+        if v["kind"] == "filters":
+            valid |= {cpr.row_key(x) for x in live()["rows"]}
+        if key not in valid:
+            return jsonify(error="That concept is not in this view."), 404
+        now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
+        if flag:
+            v["briefed"][key] = {"at": now, "note": note}
+        else:
+            v["briefed"].pop(key, None)
+        return jsonify(key=key, briefed=flag, at=now if flag else None, note=note if flag else "")
 
     @app.patch("/api/priorities/views/<token>")
     def priorities_view_rename_mock(token):

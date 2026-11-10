@@ -101,7 +101,7 @@ def test_view_create_open_csv_delete_and_unknown_token(client, snaps, views):
     c = client.get(f"/api/priorities/views/{v['token']}/csv")
     rows = list(csv.reader(io.StringIO(c.get_data(as_text=True))))
     full = list(csv.reader(io.StringIO(client.get("/api/priorities.csv?week=2026-11-08").get_data(as_text=True))))
-    assert c.status_code == 200 and rows == full                                                      # same columns, same row
+    assert c.status_code == 200 and [r[:len(full[0])] for r in rows] == full and rows[0][len(full[0]):] == ['briefed', 'briefed_at', 'briefed_note']                                                      # same columns, same row
     assert client.delete("/api/priorities/views/" + v["token"]).status_code == 204
     assert client.get("/api/priorities/views/" + v["token"]).status_code == 404
     assert client.delete("/api/priorities/views/" + v["token"]).status_code == 404
@@ -301,13 +301,14 @@ def test_rows_view_reports_kind_keys_and_legacy_default(client, two_rows, views)
 
 
 def test_filter_view_stores_filters_freezes_the_matching_rows_and_lists_its_kind(client, two_rows, views):
-    v = client.post("/api/priorities/views", json={"name": "VB live", "kind": "filters", "filters": {"products": ["vita-bull"], "sections": [], "q": " low ", "key": "pain", "dir": -1, "junk": 1}}).get_json()
+    v = client.post("/api/priorities/views", json={"name": "VB live", "kind": "filters", "filters": {"products": ["vita-bull"], "sections": [], "q": " low ", "key": "pain", "dir": -1, "status": "WORKING NOW", "junk": 1}}).get_json()
     assert v["kind"] == "filters" and v["count"] == 1
     g = client.get("/api/priorities/views/" + v["token"]).get_json()
-    assert g["view"]["kind"] == "filters" and g["view"]["filters"] == {"products": ["vita-bull"], "sections": [], "q": "low", "key": "pain", "dir": -1} and g["view"]["keys"] == []
+    assert g["view"]["kind"] == "filters" and g["view"]["filters"] == {"products": ["vita-bull"], "sections": [], "q": "low", "key": "pain", "dir": -1, "status": "WORKING NOW"} and g["view"]["keys"] == []
     assert [r["icp"] for r in g["rows"]] == ["Given Up Guy"]                              # frozen copy = the rows matching at save time
     lst = client.get("/api/priorities/views").get_json()["views"]
     assert lst[0]["kind"] == "filters" and lst[0]["filters"]["products"] == ["vita-bull"] and lst[0]["count"] == 1
+    assert client.post("/api/priorities/views", json={"kind": "filters", "filters": {"status": "NOT WORKING"}}).get_json()["count"] == 0       # status filter applies to the frozen copy too
     nothing = client.post("/api/priorities/views", json={"kind": "filters", "filters": {"q": "zzzz"}}).get_json()
     assert nothing["count"] == 0
     for bad in (None, "x", {"products": "vita-bull"}, {"q": "x" * 201}, {"sections": [1]}, {"dir": 1, "key": "k" * 40}):
@@ -346,3 +347,66 @@ def test_csv_name_param_and_view_csv_id_filter(client, two_rows, views):
 
 def test_view_write_routes_need_login(anon, two_rows):
     assert anon.put("/api/priorities/views/" + "A" * 30, json={"ids": ["a"]}).status_code == 401
+
+
+# ---------------------------------------------------------------------------------------------------------------- briefed checkmarks
+
+def _briefed(client, token, **body):
+    return client.patch(f"/api/priorities/views/{token}/briefed", json=body)
+
+
+def test_briefed_toggle_persists_for_everyone_with_a_timestamp_and_note(client, two_rows, views):
+    v = client.post("/api/priorities/views", json={"name": "Brief me", "ids": [_key(ROW), _key(ROW2)]}).get_json()
+    assert client.get("/api/priorities/views/" + v["token"]).get_json()["view"]["briefed"] == {}
+    r = _briefed(client, v["token"], key=_key(ROW), briefed=True, note="  sent to   Madre 11/12  ")
+    assert r.status_code == 200 and r.get_json()["briefed"] is True and r.get_json()["note"] == "sent to Madre 11/12" and re.match(r"\d{4}-\d\d-\d\dT", r.get_json()["at"])
+    b = client.get("/api/priorities/views/" + v["token"]).get_json()["view"]["briefed"]
+    assert list(b) == [_key(ROW)] and b[_key(ROW)]["note"] == "sent to Madre 11/12"
+    csvt = list(csv.reader(io.StringIO(client.get(f"/api/priorities/views/{v['token']}/csv").get_data(as_text=True))))
+    assert csvt[0][-3:] == ["briefed", "briefed_at", "briefed_note"]
+    by_icp = {r_[1]: r_ for r_ in csvt[1:]}
+    assert by_icp["Given Up Guy"][-3] == "yes" and by_icp["Given Up Guy"][-1] == "sent to Madre 11/12" and by_icp["Plateau Man"][-3:] == ["", "", ""]
+    plain = list(csv.reader(io.StringIO(client.get("/api/priorities.csv?week=2026-11-08").get_data(as_text=True))))
+    assert "briefed" not in plain[0]                                                                              # only view exports carry the columns
+    live = list(csv.reader(io.StringIO(client.get("/api/priorities.csv", query_string={"week": "2026-11-08", "briefed_from": v["token"]}).get_data(as_text=True))))
+    assert live[0][-3] == "briefed" and {r_[1]: r_[-3] for r_ in live[1:]} == {"Given Up Guy": "yes", "Plateau Man": ""}
+    r = _briefed(client, v["token"], key=_key(ROW), briefed=False)
+    assert r.get_json()["briefed"] is False and client.get("/api/priorities/views/" + v["token"]).get_json()["view"]["briefed"] == {}
+
+
+def test_briefed_validation_unknown_key_token_and_formula_note(client, two_rows, views):
+    v = client.post("/api/priorities/views", json={"ids": [_key(ROW)]}).get_json()
+    t = v["token"]
+    assert _briefed(client, t, key="nope|a|b|c|d", briefed=True).status_code == 404                              # not a row of the view
+    assert _briefed(client, t, key=_key(ROW2), briefed=True).status_code == 404                                  # a real row, but not in this rows view
+    assert _briefed(client, t, key="", briefed=True).status_code == 400
+    assert _briefed(client, t, key=_key(ROW)).status_code == 400 and _briefed(client, t, key=_key(ROW), briefed="yes").status_code == 400
+    assert _briefed(client, t, key=_key(ROW), briefed=True, note=5).status_code == 400
+    assert _briefed(client, "A" * 30, key=_key(ROW), briefed=True).status_code == 404 and _briefed(client, "short", key="x", briefed=True).status_code == 404
+    assert client.patch(f"/api/priorities/views/{t}/briefed", data="x", content_type="text/plain").status_code == 400
+    assert client.patch(f"/api/priorities/views/{t}/briefed", json={"key": _key(ROW), "briefed": True}, headers={"Origin": "http://evil.example"}).status_code == 403
+    long = _briefed(client, t, key=_key(ROW), briefed=True, note="x" * 500).get_json()
+    assert len(long["note"]) == 200
+    _briefed(client, t, key=_key(ROW), briefed=True, note="=HYPERLINK(1)")
+    row = list(csv.reader(io.StringIO(client.get(f"/api/priorities/views/{t}/csv").get_data(as_text=True))))[1]
+    assert row[-1] == "'=HYPERLINK(1)"                                                                            # a typed note cannot run as a formula in Sheets
+    f = client.post("/api/priorities/views", json={"kind": "filters", "filters": {"products": ["vita-bull"]}}).get_json()["token"]
+    assert _briefed(client, f, key=_key(ROW), briefed=True).status_code == 200                                    # a filters view accepts any row of the current snapshot
+    assert _briefed(client, f, key="zzz|a|b|c|d", briefed=True).status_code == 404
+    client.delete("/api/priorities/views/" + t)
+    assert _briefed(client, t, key=_key(ROW), briefed=True).status_code == 404
+
+
+def test_briefed_has_its_own_rate_limit_and_needs_login(anon, client, two_rows, views, app):
+    from app import api as api_mod
+    assert anon.patch("/api/priorities/views/" + "A" * 30 + "/briefed", json={"key": "a", "briefed": True}).status_code == 401
+    v = client.post("/api/priorities/views", json={"ids": [_key(ROW)]}).get_json()
+    api_mod._briefed_limiter = None
+    old = app.config.get("PRIORITIES_BRIEFED_PER_MIN")
+    app.config["PRIORITIES_BRIEFED_PER_MIN"] = 3
+    try:
+        codes = [_briefed(client, v["token"], key=_key(ROW), briefed=bool(i % 2)).status_code for i in range(5)]
+        assert codes[:3] == [200, 200, 200] and 429 in codes[3:]
+    finally:
+        app.config["PRIORITIES_BRIEFED_PER_MIN"] = old
+        api_mod._briefed_limiter = None

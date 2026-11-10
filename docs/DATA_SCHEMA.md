@@ -1789,6 +1789,7 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `kind` | text | no | 'rows' (a fixed set of selected rows, shown with the latest numbers where the row still exists) or 'filters' (a saved filter state applied live to the current snapshot). |
 | `filters` | jsonb | yes | JSON object for kind 'filters': products (slugs), sections (keys), q (search text), key and dir (sort). NULL for kind 'rows'. |
 | `updated_at` | timestamptz | yes | When the view was last replaced by Update this view; NULL if never. |
+| `briefed` | jsonb | no | JSON object: stable row key (product\|section\|cluster\|icp\|pain_point, or manual:<id>) -> {at, note} for the concepts marked briefed in this view; absent = not briefed. |
 
 ### public.creative_priorities_manual
 

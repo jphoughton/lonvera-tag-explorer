@@ -7269,6 +7269,12 @@
      "type": "timestamp with time zone",
      "nullable": true,
      "description": "When the view was last replaced by Update this view; NULL if never."
+    },
+    {
+     "name": "briefed",
+     "type": "jsonb",
+     "nullable": false,
+     "description": "JSON object: stable row key (product|section|cluster|icp|pain_point, or manual:<id>) -> {at, note} for the concepts marked briefed in this view; absent = not briefed."
     }
    ],
    "examples": []

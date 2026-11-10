@@ -1078,3 +1078,330 @@ def test_manual_concept_works_inside_rows_and_filter_views(page):
     page.locator(MROW).locator("[data-testid=pri-toggle]").click()
     assert page.locator("[data-testid=pri-manual-edit]").count() == 0
     delete_all_manual(page)
+
+
+# ---------------------------------------------------------------------------------------------------------------- redesigned page header
+
+def test_header_has_title_subline_week_view_one_filled_button_and_secondary_group(page):
+    goto(page)
+    assert page.locator("[data-testid=pri-title]").text_content() == "Creative priorities"
+    sub = page.locator("[data-testid=pri-sub]").text_content()
+    assert "Week of 2026-11-08" in sub and "Data through 2026-11-08" in sub and "Competitor ads as of 2026-11-09" in sub
+    assert page.locator("[data-testid=pri-week]").is_visible() and page.locator(VSEL).is_visible()
+    filled = page.locator(".pri-top .pri-hd-screen .btn.primary")
+    assert filled.count() == 1 and filled.first.get_attribute("data-testid") == "pri-add-concept"            # Add concept is the one filled button
+    grp = page.locator(".pri-btngroup")
+    assert grp.locator("[data-testid=pri-csv]").is_visible() and grp.locator("[data-testid=pri-print]").is_visible()
+    seg = page.locator(".pri-tablebar .pri-seg")
+    assert seg.locator("[data-testid=pri-all-expand]").is_visible() and seg.locator("[data-testid=pri-all-collapse]").is_visible()
+    assert page.locator("[data-testid=pri-legend] dt").count() == 4                                             # the legend exists once (the print copy); the screen copy has its own id
+
+
+def test_status_strip_has_every_count_as_a_clickable_tile_that_filters_and_clears(page):
+    goto(page)
+    fx = FIXTURE["stats"]["status_counts_total"]
+    tiles = page.locator("[data-testid=pri-stat]")
+    assert tiles.count() == len(fx)
+    got = {t.get_attribute("data-status"): int(t.locator(".pri-stat-n").text_content()) for t in tiles.all()}
+    assert got == fx
+    page.locator("[data-testid=pri-stat][data-status='RISING']").click()
+    n = visible_rows(page)
+    assert 0 < n < 30 and set(page.locator("[data-testid=pri-body] [data-testid=pri-status]").all_text_contents()) == {"RISING"}
+    assert page.locator("[data-testid=pri-stat][data-status='RISING']").get_attribute("aria-pressed") == "true"
+    assert page.locator("[data-testid=pri-f-status]").input_value() == "RISING" and "1 filter on" in page.locator("[data-testid=pri-active-filters]").text_content()
+    page.locator("[data-testid=pri-stat][data-status='RISING']").click()                                          # click again = off
+    assert visible_rows(page) == 30 and page.locator("[data-testid=pri-clear-filters]").is_hidden()
+    page.locator("[data-testid=pri-f-status]").select_option("FADED")                                              # the filter-bar select drives the same filter
+    assert set(page.locator("[data-testid=pri-body] [data-testid=pri-status]").all_text_contents()) == {"FADED"}
+
+
+def test_product_tiles_show_the_four_numbers_and_filter_by_product(page):
+    goto(page)
+    tiles = page.locator("[data-testid=pri-ptile]")
+    assert tiles.count() == 3
+    for t in tiles.all():
+        slug = t.get_attribute("data-product")
+        b = FIXTURE["baselines"][slug]
+        txt = t.text_content()
+        assert b["product_name"] in txt and _roas(b["roas"]) in txt and _roas(b["roas_30d"]) in txt and f"{round(b['hit_rate'] * 100)}%" in txt and _money(b["cpa"]) in txt, (slug, txt)
+    page.locator("[data-testid=pri-ptile][data-product='beef-liver']").click()
+    assert set(page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("els => els.map(e => e.dataset.product)")) == {"beef-liver"}
+    assert page.locator("[data-testid=pri-f-product-beef-liver]").get_attribute("aria-pressed") == "true" and page.locator("[data-testid=pri-f-product-vita-bull]").get_attribute("aria-pressed") == "false"
+    page.locator("[data-testid=pri-ptile][data-product='beef-liver']").click()
+    assert visible_rows(page) == 30
+
+
+def test_disclosures_keep_every_word_and_the_clear_filters_link_resets_everything(page):
+    goto(page)
+    tags, nums = page.locator("[data-testid=pri-about-tags]"), page.locator("[data-testid=pri-about-numbers]")
+    assert tags.get_attribute("open") is None and nums.get_attribute("open") is None                              # collapsed by default
+    tags.locator("summary").click()
+    nums.locator("summary").click()
+    assert [x.strip() for x in tags.locator("dt").all_text_contents()] == ["Market Cluster", "ICP", "Pain Point", "Story"]
+    for leg in FIXTURE["legend"]:
+        assert leg["meaning"] in tags.text_content()
+    t = nums.text_content()
+    for frag in ("Week of 2026-11-08. Data through 2026-11-08.", "Numbers are Meta-reported (ROAS = purchase value / spend, CPA = spend / purchases)", "Upstack new-customer ROAS beside them.",
+                 "This is prioritisation: consistent with the numbers, not proof that more concepts will work.", "Every row is collapsed: open a row for the full detail.",
+                 "Competitor ads: Meta Ad Library, as of 2026-11-09; refreshed weekly. Running a long time is a signal, not proven performance."):
+        assert frag in t, frag
+    intro = page.locator("[data-testid=pri-printintro]").text_content()
+    assert "Lines by status: " in intro and "AVERAGE 36" in intro and "WORKING NOW 10" in intro
+    for s_ in FIXTURE["baselines"].values():
+        assert f"{s_['product_name']} average ROAS {_roas(s_['roas'])} since launch, {_roas(s_['roas_30d'])} last 30 days, CPA {_money(s_['cpa'])}, hit rate {round(s_['hit_rate'] * 100)}%" in intro.replace("×", "x")
+    # filters: several at once, active count, one link clears all
+    clear = page.locator("[data-testid=pri-clear-filters]")
+    assert clear.is_hidden()
+    page.locator("[data-testid=pri-f-product-boneflex]").click()
+    page.locator("[data-testid=pri-search]").fill("a")
+    page.locator("[data-testid=pri-f-status]").select_option("FADED")
+    assert "3 filters on" in page.locator("[data-testid=pri-active-filters]").text_content() and clear.is_visible()
+    clear.click()
+    assert visible_rows(page) == 30 and clear.is_hidden() and page.locator("[data-testid=pri-search]").input_value() == "" and page.locator("[data-testid=pri-f-status]").input_value() == ""
+    assert page.locator("[data-testid=pri-f-product-boneflex]").get_attribute("aria-pressed") == "true"
+
+
+def test_filter_view_remembers_the_status_filter(page):
+    goto(page)
+    page.locator("[data-testid=pri-stat][data-status='RISING']").click()
+    t = tok(save_filter_view(page, "Rising only"))
+    open_view(page, t)
+    assert page.locator("[data-testid=pri-f-status]").input_value() == "RISING" and page.locator("[data-testid=pri-stat][data-status='RISING']").get_attribute("aria-pressed") == "true"
+    assert set(page.locator("[data-testid=pri-body] [data-testid=pri-status]").all_text_contents()) == {"RISING"}
+
+
+def test_header_uses_the_width_and_print_still_has_the_full_intro_and_none_of_the_controls(browser, base_url):
+    c = browser.new_context(viewport={"width": 1280, "height": 900}, base_url=base_url)
+    c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+    p = c.new_page()
+    p.goto("/priorities")
+    p.wait_for_selector("[data-testid=pri-page]")
+    idle(p)
+    boxes = p.locator("[data-testid=pri-ptile]").evaluate_all("els => els.map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.right)]; })")
+    assert len({b[0] for b in boxes}) == 1 and max(b[1] for b in boxes) > 1100                              # three tiles in one row spanning the page, not a 380px column
+    p.screenshot(path=str(SHOTS / "priorities_header_1280.png"))
+    p.emulate_media(media="print")
+    assert p.locator("[data-testid=pri-printintro]").is_visible() and p.locator("[data-testid=pri-legend]").is_visible() and p.locator("[data-testid=pri-counts]").is_visible()
+    assert p.locator(".pri-actions").is_hidden() and p.locator("[data-testid=pri-statstrip]").is_hidden() and p.locator("[data-testid=pri-filters]").is_hidden() and p.locator(VSEL).is_hidden()
+    p.close()
+    c.close()
+    c = browser.new_context(viewport={"width": 375, "height": 812}, base_url=base_url)
+    c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+    p = c.new_page()
+    p.goto("/priorities")
+    p.wait_for_selector("[data-testid=pri-page]")
+    idle(p)
+    assert p.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    p.locator("[data-testid=pri-about-tags] summary").click()
+    p.locator("[data-testid=pri-about-numbers] summary").click()
+    assert p.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    p.screenshot(path=str(SHOTS / "priorities_header_375.png"))
+    c.close()
+
+
+# ---------------------------------------------------------------------------------------------------------------- show selected only
+
+def test_show_selected_only_toggles_in_place_unticking_removes_the_row_and_empty_selection_turns_it_off(page):
+    goto(page)
+    chip = page.locator("[data-testid=pri-f-selected]")
+    assert chip.is_disabled() and "Selected (0)" in chip.text_content()                                      # nothing ticked: nothing to show
+    pains = [page.locator(PICK).nth(i).locator("xpath=ancestor::tr").locator(".pri-c-pain").text_content() for i in (1, 6, 7)]
+    pick_rows(page, 1, 6, 7)
+    assert chip.is_enabled() and "Selected (3)" in chip.text_content()
+    page.locator("[data-testid=pri-sel-only]").click()                                                         # toolbar toggle
+    assert visible_rows(page) == 3 and sorted(rows_text(page)) == sorted(pains)
+    assert chip.get_attribute("aria-pressed") == "true" and page.locator("[data-testid=pri-sel-only]").get_attribute("aria-pressed") == "true"
+    assert "3 of 30 concepts shown" in page.locator("[data-testid=pri-shown]").text_content() and "1 filter on" in page.locator("[data-testid=pri-active-filters]").text_content()
+    page.locator("[data-testid=pri-toggle]").first.click()                                                       # expand/collapse works and survives
+    assert page.locator(DETAIL + ":visible").count() == 1
+    page.locator(PICK).nth(0).click()                                                                          # unticking removes the row from the filtered list right away
+    assert visible_rows(page) == 2 and "Selected (2)" in chip.text_content()
+    page.locator("[data-testid=pri-search]").fill(pains[1][:5])                                                 # composes with search / filters / sort
+    assert visible_rows(page) <= 2
+    page.locator("[data-testid=pri-search]").fill("")
+    page.locator("[data-testid=pri-f-product-boneflex]").click()
+    assert all(p != "boneflex" for p in page.locator(f"[data-testid=pri-body] {ROW}").evaluate_all("els => els.map(e => e.dataset.product)"))
+    page.locator("[data-testid=pri-f-product-boneflex]").click()
+    page.locator("[data-testid=pri-sort-pain]").click()
+    assert rows_text(page) == sorted(rows_text(page), key=str.lower)
+    page.locator(PICK).nth(0).click()
+    page.locator(PICK).nth(0).click()                                                                          # last one: empty selection turns the toggle off with a hint
+    assert visible_rows(page) == 30 and chip.get_attribute("aria-pressed") == "false" and chip.is_disabled()
+    assert "Nothing is selected" in page.locator("[data-testid=pri-sel-hint]").text_content() and page.locator(TOOLS).is_hidden()
+    pick_rows(page, 2)
+    assert page.locator("[data-testid=pri-sel-hint]").text_content() == ""                                      # the hint goes away once something is ticked again
+    chip.click()
+    assert visible_rows(page) == 1
+    chip.click()                                                                                                 # off again from the chip
+    assert visible_rows(page) == 30
+    page.locator("[data-testid=pri-sel-only]").click()
+    page.locator("[data-testid=pri-clear-filters]").click()                                                      # Clear filters also turns it off
+    assert visible_rows(page) == 30 and chip.get_attribute("aria-pressed") == "false"
+
+
+def test_selected_only_not_persisted_across_reload_and_save_dialog_shows_the_count_and_name(page):
+    goto(page)
+    pick_rows(page, 0, 1)
+    page.locator("[data-testid=pri-sel-only]").click()
+    assert visible_rows(page) == 2
+    page.reload()
+    page.wait_for_selector("[data-testid=pri-page]")
+    idle(page)
+    assert visible_rows(page) == 30 and "Selected (2)" in page.locator("[data-testid=pri-f-selected]").text_content()     # ticks persist (sessionStorage), the toggle does not
+    page.locator("[data-testid=pri-sel-only]").click()
+    page.locator(PICK).nth(1).click()                                                                          # review and untick before saving
+    page.locator("[data-testid=pri-sel-save]").click()
+    page.locator(DLG).wait_for()
+    assert page.locator("[data-testid=pri-dialog-note]").text_content() == "1 concept selected" and page.locator(NAME).is_visible()
+    page.keyboard.press("Escape")
+    pick_rows(page, 0)
+    page.locator("[data-testid=pri-save-open]").click()
+    page.locator(DLG).wait_for()
+    assert "concept" in page.locator("[data-testid=pri-dialog-note]").text_content()
+    page.keyboard.press("Escape")
+
+
+def test_selected_only_works_with_manual_rows(page):
+    goto(page)
+    add_concept(page, notes="Pick me")
+    idx = page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("rows => rows.findIndex(r => r.dataset.source === 'manual')")
+    pick_rows(page, idx)
+    page.locator("[data-testid=pri-f-selected]").click()
+    assert visible_rows(page) == 1 and page.locator(MROW).count() == 1
+    page.locator(MROW).locator("[data-testid=pri-toggle]").click()
+    page.locator("[data-testid=pri-manual-edit]").click()                                                        # editing reloads the page data; the toggle and the tick survive
+    page.wait_for_selector(FORM)
+    page.fill("[data-testid=pri-f-notes]", "Still picked")
+    page.locator("[data-testid=pri-f-save]").click()
+    page.wait_for_selector(FORM, state="detached")
+    idle(page)
+    assert visible_rows(page) == 1 and page.locator("[data-testid=pri-f-selected]").get_attribute("aria-pressed") == "true"
+    delete_all_manual(page)
+
+
+# ---------------------------------------------------------------------------------------------------------------- briefed checkmarks in saved views
+
+BRIEF = "[data-testid=pri-brief-toggle]"
+PROG = "[data-testid=pri-brief-progress]"
+
+
+def fresh_page(browser, base_url, w=1440):
+    c = browser.new_context(viewport={"width": w, "height": 900}, base_url=base_url)
+    c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+    p = c.new_page()
+    return c, p
+
+
+def open_share(p, url):
+    p.goto(url)
+    p.wait_for_selector("[data-testid=pri-view-note]")
+    idle(p)
+
+
+def test_share_page_has_product_filter_with_counts_briefed_toggle_progress_and_hide_briefed(page, browser, base_url):
+    goto(page)
+    rows = page.locator(f"[data-testid=pri-body] {ROW}").evaluate_all("els => els.map(e => e.dataset.product)")
+    idx = [i for i in range(len(rows)) if rows[i] in ("vita-bull", "beef-liver")][:6]
+    url = save_view(page, "Brief tracker", *idx)
+    want = {p_: rows_ for p_, rows_ in ((p_, sum(1 for i in idx if rows[i] == p_)) for p_ in set(rows[i] for i in idx))}
+    c, p = fresh_page(browser, base_url)
+    open_share(p, url)
+    assert p.locator(PICK).count() == 0 and p.locator(TOOLS).count() == 0 and p.locator("[data-testid=pri-search]").count() == 0       # no edit chrome beyond the briefed controls
+    chips = {x.get_attribute("data-testid").replace("pri-f-product-", ""): x.text_content() for x in p.locator("[data-testid^=pri-f-product-]").all()}
+    assert set(chips) == set(want) and all(f"({want[k]})" in chips[k] for k in chips)                                                # only products in the view, with counts
+    assert p.locator(PROG).text_content() == f"0 of {len(idx)} briefed" and p.locator(BRIEF).count() == len(idx)
+    assert "null" not in p.locator("[data-testid=pri-body]").text_content()
+    p.locator(BRIEF).nth(0).click()
+    p.wait_for_function("() => document.querySelector('[data-testid=pri-brief-progress]').textContent.startsWith('1 of')")
+    assert p.locator("tr.pri-row.pri-briefed").count() == 1 and p.locator(BRIEF).nth(0).get_attribute("aria-pressed") == "true"
+    p.locator(BRIEF).nth(1).click()
+    p.wait_for_function("() => document.querySelector('[data-testid=pri-brief-progress]').textContent.startsWith('2 of')")
+    # state is on the server: a reload and a second browser both see it
+    p.reload()
+    p.wait_for_selector("[data-testid=pri-view-note]")
+    idle(p)
+    assert p.locator(PROG).text_content() == f"2 of {len(idx)} briefed" and p.locator("tr.pri-row.pri-briefed").count() == 2
+    c2, p2 = fresh_page(browser, base_url)
+    open_share(p2, url)
+    assert p2.locator(PROG).text_content() == f"2 of {len(idx)} briefed"
+    # filters
+    p.locator("[data-testid=pri-f-brief-open]").click()
+    assert visible_rows(p) == len(idx) - 2 and p.locator("tr.pri-row.pri-briefed").count() == 0
+    p.locator("[data-testid=pri-f-brief-done]").click()
+    assert visible_rows(p) == 2
+    p.locator("[data-testid=pri-f-brief-all]").click()
+    assert visible_rows(p) == len(idx)
+    p.locator("[data-testid=pri-hide-briefed]").click()                                                                               # quick toggle
+    assert visible_rows(p) == len(idx) - 2 and p.locator("[data-testid=pri-hide-briefed]").get_attribute("aria-pressed") == "true"
+    first = next(iter(want))
+    other = [k for k in want if k != first]
+    p.locator(f"[data-testid=pri-f-product-{other[0]}]").click()                                                                      # composes with the product chips
+    assert all(x == first for x in p.locator(f"[data-testid=pri-body] {ROW}").evaluate_all("els => els.map(e => e.dataset.product)"))
+    assert "of" in p.locator(PROG).text_content() and p.locator("[data-testid=pri-active-filters]").text_content().startswith("2 filter")
+    p.locator("[data-testid=pri-clear-filters]").click()
+    assert visible_rows(p) == len(idx)
+    # sort by the Briefed column
+    p.locator("[data-testid=pri-sort-briefed]").click()
+    flags = p.locator(f"[data-testid=pri-body] {ROW}").evaluate_all("els => els.map(e => e.classList.contains('pri-briefed'))")
+    assert flags == sorted(flags)
+    # note
+    p.locator("[data-testid=pri-brief-note]").first.click()
+    p.locator(DLG).wait_for()
+    p.locator(NAME).fill("sent to Madre 11/12")
+    p.keyboard.press("Enter")
+    p.wait_for_function("() => document.body.textContent.includes('sent to Madre 11/12')")
+    # exports: CSV columns, print marker, copy as text
+    with p.expect_download() as dl:
+        p.locator("[data-testid=pri-csv]").click()
+    rowsx = csv_of(dl.value)
+    assert rowsx[0][-3:] == ["briefed", "briefed_at", "briefed_note"] and [r[-3] for r in rowsx[1:]].count("yes") == 2 and "sent to Madre 11/12" in [r[-1] for r in rowsx[1:]]
+    p.emulate_media(media="print")
+    assert p.locator("[data-testid=pri-print-briefed]").count() == 2
+    c2.close()
+    c.close()
+
+
+def test_briefed_in_the_view_switcher_not_on_all_concepts_frozen_and_manual_rows(page):
+    goto(page)
+    assert page.locator(BRIEF).count() == 0 and page.locator(PROG).count() == 0 and page.locator("[data-testid=pri-f-brief-all]").count() == 0     # All concepts has no briefed controls
+    add_concept(page, notes="Brief me too")
+    idx = page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("rows => rows.findIndex(r => r.dataset.source === 'manual')")
+    t = tok(save_view(page, "Tracker", idx, 0, 1))
+    open_view(page, t)
+    assert page.locator(PROG).text_content() == "0 of 3 briefed" and page.locator(BRIEF).count() == 3
+    page.locator(MROW).locator(BRIEF).click()                                                                    # a manual row can be briefed too
+    page.wait_for_function("() => document.querySelector('[data-testid=pri-brief-progress]').textContent.startsWith('1 of')")
+    assert page.locator(MROW).get_attribute("class").count("pri-briefed") == 1
+    page.locator("[data-testid=pri-f-product-vita-bull]").text_content()
+    page.locator("[data-testid=pri-data-mode]").select_option("frozen")                                          # frozen vs latest: the checkmark belongs to the view, so it stays
+    page.wait_for_function("() => location.search.includes('data=frozen')")
+    idle(page)
+    assert page.locator(PROG).text_content() == "1 of 3 briefed" and page.locator("tr.pri-row.pri-briefed").count() == 1
+    page.locator("[data-testid=pri-f-brief-open]").click()
+    assert visible_rows(page) == 2
+    pick_rows(page, 0)
+    page.locator("[data-testid=pri-sel-copy]").click()                                                           # copy as text carries the state
+    page.locator("[data-testid=pri-f-brief-all]").click()
+    page.locator("[data-testid=pri-sel-clear]").click()
+    with page.expect_download() as dl:
+        page.locator("[data-testid=pri-csv]").click()
+    assert csv_of(dl.value)[0][-3] == "briefed"
+    page.locator("[data-testid=pri-data-mode]").select_option("latest")
+    page.wait_for_function("() => !location.search.includes('data=frozen')")
+    idle(page)
+    with page.expect_download() as dl:
+        page.locator("[data-testid=pri-csv]").click()
+    rowsx = csv_of(dl.value)
+    assert rowsx[0][-3] == "briefed" and [r[-3] for r in rowsx[1:]].count("yes") == 1                           # latest-data export of a view carries the briefed columns too
+    delete_all_manual(page)
+
+
+@pytest.mark.allow_errors
+def test_briefed_toggle_on_a_deleted_view_shows_an_error_and_keeps_the_row_unmarked(page):
+    goto(page)
+    t = tok(save_view(page, "Gone soon", 0, 1))
+    open_view(page, t)
+    page.request.delete(page.url.split("/priorities")[0] + f"/api/priorities/views/{t}")
+    page.locator(BRIEF).first.click()
+    page.wait_for_selector("[data-testid=pri-brief-error]:not(:empty)")
+    assert page.locator("tr.pri-row.pri-briefed").count() == 0 and page.locator(PROG).text_content() == "0 of 2 briefed"
