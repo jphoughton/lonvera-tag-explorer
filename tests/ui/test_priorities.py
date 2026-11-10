@@ -967,6 +967,8 @@ def test_manual_row_in_a_saved_view_is_frozen(page):
     idx = page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("rows => rows.findIndex(r => r.dataset.source === 'manual')")
     pick_rows(page, idx)
     page.locator("[data-testid=pri-sel-save]").click()
+    page.locator(DLG).wait_for()
+    page.keyboard.press("Enter")
     page.wait_for_selector("[data-testid=pri-view-link]")
     link = page.locator("[data-testid=pri-view-link]").get_attribute("href")
     page.locator(MROW).locator("[data-testid=pri-toggle]").click()
@@ -1042,3 +1044,37 @@ def test_manual_form_screenshots_at_1280_and_375(browser, base_url):
         assert p.locator("[data-testid=pri-f-save]").is_visible()
         p.screenshot(path=str(SHOTS / name))
         c.close()
+
+
+def test_manual_concept_works_inside_rows_and_filter_views(page):
+    goto(page)
+    add_concept(page, notes="Manual notes v1")
+    idx = page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("rows => rows.findIndex(r => r.dataset.source === 'manual')")
+    t = tok(save_view(page, "With manual", idx, 0))
+    tf = tok(save_filter_view(page, "Everything live"))
+    open_view(page, t)
+    assert visible_rows(page) == 2 and page.locator(MROW).count() == 1
+    page.locator(MROW).locator("[data-testid=pri-toggle]").click()                                    # the manual row is editable inside the view, and the view survives the reload
+    page.locator("[data-testid=pri-manual-edit]").click()
+    page.wait_for_selector(FORM)
+    page.fill("[data-testid=pri-f-notes]", "Manual notes v2")
+    page.locator("[data-testid=pri-f-save]").click()
+    page.wait_for_selector(FORM, state="detached")
+    idle(page)
+    assert f"view={t}" in page.url and visible_rows(page) == 2 and page.locator(BAR).count() == 1
+    page.locator(MROW).locator("[data-testid=pri-toggle]").click()
+    assert page.locator("[data-testid=pri-manual-notes]").text_content() == "Manual notes v2"        # Latest data
+    page.locator("[data-testid=pri-data-mode]").select_option("frozen")
+    page.wait_for_function("() => location.search.includes('data=frozen')")
+    idle(page)
+    page.locator(MROW).locator("[data-testid=pri-toggle]").click()
+    assert page.locator("[data-testid=pri-manual-notes]").text_content() == "Manual notes v1"        # Frozen as saved
+    open_view(page, tf)                                                                                 # a filter view includes manual rows by itself
+    assert page.locator(MROW).count() == 1 and visible_rows(page) == 31
+    # the manual concept is deleted later: the rows view keeps its frozen copy, marked, read-only
+    page.evaluate("async () => { const rows = (await (await fetch('/api/priorities/manual?include_done=1')).json()).rows; for (const r of rows) await fetch('/api/priorities/manual/' + r.id, { method: 'DELETE' }); }")
+    open_view(page, t)
+    assert visible_rows(page) == 2 and "from 20" in page.locator("[data-testid=pri-from]").text_content()
+    page.locator(MROW).locator("[data-testid=pri-toggle]").click()
+    assert page.locator("[data-testid=pri-manual-edit]").count() == 0
+    delete_all_manual(page)
