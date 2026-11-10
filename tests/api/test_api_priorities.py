@@ -61,7 +61,7 @@ def test_csv_download(client, snaps):
     rows = list(csv.reader(io.StringIO(r.get_data(as_text=True))))
     assert rows[0][:4] == ["market_cluster", "icp", "pain_point", "story"]
     assert rows[1][:4] == ["Energy", "Given Up Guy", "Low T", ROW["story"]]            # the story is complete, nothing truncated
-    assert rows[1][4:7] == ["The Energy market.", "The specific person.", "The problem."]
+    assert rows[1][4:6] == ["Vita Bull", "iterate"] and rows[1][6:9] == ["The Energy market.", "The specific person.", "The problem."]
 
 
 def test_requires_login(anon, snaps):
