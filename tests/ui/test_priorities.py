@@ -11,7 +11,7 @@ pytestmark = pytest.mark.mock_only
 
 ROW = "[data-testid=pri-card]"
 DETAIL = "[data-testid=pri-detail]"
-SEC = ["revive", "make_more", "test", "add", "stop", "hold"]
+SEC = ["revive", "make_more", "test", "stop", "hold"]
 
 
 def idle(page):
@@ -732,7 +732,7 @@ def test_every_fact_is_still_in_every_expanded_panel(page):
             assert f"{fn['launched']:,}" in txt and f"{fn['top']:,} of {fn['launched']:,} launched ads" in txt and "Under $100 spend" not in txt
             assert _money(m["spend"]) in txt and _money(m["spend_30d"]) in txt and _money(m["spend_prior30"]) in txt
         else:
-            assert "Ads tagged" in txt or r["section"] == "add"
+            assert "Ads tagged" in txt or r.get("source")
         for w in r.get("former_winners") or []:
             assert norm(w["ad"]) in txt and _money(w["spend"]) in txt and _roas(w["roas"]) in txt and w["peak_week"] in txt and w["kind"] in txt and (w["stopped"] or "") in txt
         for k in r["hooks"]:
@@ -1576,8 +1576,9 @@ def test_key_number_is_plain_english_with_the_product_named(page):
     assert key(f"[data-section=make_more][data-product={mm['product']}]") == f"{_roas(mm['metrics']['roas_30d'])} last 30 days. {b[mm['product']]['product_name']} average {_roas(b[mm['product']]['roas_30d'])}."
     assert key("[data-section=hold][data-product=vita-bull]") == f"{_roas(0.8)} since launch. Vita Bull average {_roas(b['vita-bull']['roas'])}."
     assert not [t for t in page.locator("[data-testid=pri-body] .pri-c-key").all_text_contents() if "lifetime" in t.lower() or "all time" in t.lower()]
-    add = page.locator("[data-testid=pri-body] tr.pri-row[data-section=add]").first
-    assert add.locator("[data-testid=pri-source]").text_content() in ("Competitor", "Our draft")
+    add = page.locator("[data-testid=pri-body] tr.pri-row[data-section=test]").filter(has=page.locator("[data-testid=pri-source]")).first
+    assert add.locator("[data-testid=pri-source]").text_content() in ("New idea, from a competitorNot on the sheet yet", "New idea, our draftNot on the sheet yet")
+    assert page.locator("[data-testid=pri-body] tr.pri-row[data-section=add]").count() == 0
     assert key("[data-section=test]") in ("No spend yet",) or "spent so far" in key("[data-section=test]")
 
 
@@ -1586,7 +1587,7 @@ def test_definitions_block_prints_every_rule_with_the_real_thresholds(page):
     block = page.locator("[data-testid=pri-defs]")
     assert block.is_visible() and block.get_attribute("open") is not None                           # open by default
     acts = block.locator("[data-testid=pri-defs-actions] dt").all_text_contents()
-    assert acts == ["Revive", "Make more", "Test", "Add to sheet", "Stop", "Hold"]
+    assert acts == ["Revive", "Make more", "Test", "Stop", "Hold"]
     sts = block.locator("[data-testid=pri-defs-statuses] dt").all_text_contents()
     assert sts == ["Working", "Rising", "Fading", "Not working", "Average", "Too early", "Untested"]
     txt = block.text_content()
@@ -1618,7 +1619,7 @@ def test_chips_start_unselected_show_everything_and_select_to_narrow(page):
     goto(page)
     total = visible_rows(page)
     chips = page.locator("[data-testid^=pri-f-product-], [data-testid^=pri-f-section-]")
-    assert chips.count() >= 8 and all(c.get_attribute("data-on") == "false" for c in chips.all())            # none selected: every chip outlined / off
+    assert chips.count() >= 7 and all(c.get_attribute("data-on") == "false" for c in chips.all())            # none selected: every chip outlined / off
     assert page.locator("[data-testid=pri-stat][aria-pressed=true]").count() == 0 and page.locator("[data-testid=pri-clear-filters]").is_hidden()
     def prods(): return set(page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("els => els.map(e => e.dataset.product)"))
     def secs(): return set(page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("els => els.map(e => e.dataset.section)"))
@@ -1782,14 +1783,15 @@ def test_row_detail_shows_the_production_history_for_every_kind_of_row(page, fre
     assert "Not assigned to a vendor yet" in h2.text_content()
 
 
-def test_add_rows_and_manual_concepts_can_be_assigned_too(page, fresh_assign):
+def test_new_idea_rows_and_manual_concepts_can_be_assigned_too(page, fresh_assign):
     goto(page)
-    add_row = page.locator("[data-testid=pri-body] tr.pri-row[data-section=add]").first
+    add_row = page.locator("[data-testid=pri-body] tr.pri-row[data-section=test]").filter(has=page.locator("[data-testid=pri-source]")).first      # a new idea: Test row, not on the sheet yet
+    assert "Not on the sheet yet" in add_row.text_content()
     add_row.locator("[data-testid=pri-pick]").check()
     _assign(page, "TrybeOrion")
     assert page.locator("[data-testid=pri-as-created]").text_content().startswith("1 concept assigned to TrybeOrion")
     page.locator("[data-testid=pri-as-ok]").click()
-    page.wait_for_function("() => [...document.querySelectorAll('tr.pri-row[data-section=add] .pri-c-prod')].some(e => e.textContent.includes('TrybeOrion'))")
+    page.wait_for_function("() => [...document.querySelectorAll('tr.pri-row[data-section=test]:has([data-testid=pri-source]) .pri-c-prod')].some(e => e.textContent.includes('TrybeOrion'))")
     page.locator("[data-testid=pri-sel-clear]").click()
     add_concept(page)
     try:
@@ -1859,3 +1861,21 @@ def test_public_saved_view_has_no_production_column_checkbox_or_history(page, fr
     page.wait_for_selector("[data-testid=pri-page]")
     idle(page)
     assert page.locator(".pri-c-prod").count() == 2
+
+
+def test_add_is_not_an_action_and_new_ideas_sit_under_test_after_the_sheet_lines(page):
+    goto(page)
+    assert page.locator("[data-testid=pri-f-section-add]").count() == 0 and page.locator("[data-testid=pri-body] tr.pri-row[data-section=add]").count() == 0
+    assert "Add to sheet" not in page.locator("[data-testid=pri-page]").text_content()
+    test_rows = page.locator("[data-testid=pri-body] tr.pri-row[data-section=test]")
+    kinds = test_rows.evaluate_all("rows => rows.map(r => [r.dataset.product, r.querySelector('[data-testid=pri-source]') ? r.querySelector('[data-testid=pri-source]').firstChild.textContent : ''])")
+    for slug in ("vita-bull", "beef-liver", "boneflex"):
+        mine = [k for p, k in kinds if p == slug]
+        assert mine == ["", "", "New idea, our draft", "New idea, our draft"], (slug, mine)                         # 2 on-sheet lines then 2 drafts per product in the mock data
+    assert len(kinds) == 12
+    chip = page.locator("[data-testid=pri-body] tr.pri-row[data-section=test]").filter(has=page.locator("[data-testid=pri-source]")).first
+    assert chip.locator("[data-testid=pri-not-on-sheet]").text_content() == "Not on the sheet yet"
+    page.locator("[data-testid=pri-f-section-test]").click()
+    assert visible_rows(page) == 12
+    rules = page.locator("[data-testid=pri-defs-actions]").text_content()
+    assert "New idea, from a competitor" in rules and "New idea, our draft" in rules and "Not on the sheet yet" in rules and "—" not in rules

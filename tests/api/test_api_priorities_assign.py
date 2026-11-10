@@ -465,4 +465,15 @@ def test_assign_accepts_an_old_section_key_and_stores_the_new_action(client, sna
     pg.execute("UPDATE creative_priorities_assignments SET section_at_assign = 'proposal'")
     pg.commit()
     got = client.get("/api/priorities/assignments").get_json()
-    assert [a["section_at_assign"] for a in got["rows"]] == ["add"]                  # an old stored value shows as the new Action
+    assert [a["section_at_assign"] for a in got["rows"]] == ["test"]                 # an old stored value shows as the new Action (add folded into test)
+
+
+def test_a_new_idea_row_still_assigns_under_its_old_add_key_and_stores_test(client, pg):
+    idea = {**ROW, "section": "add", "source": "Our draft", "line_id": None, "line_code": "DRAFT", "cluster": "Chest Fat", "icp": "Chest Guy", "pain_point": "Belly", "story": ""}
+    seed_snapshot(pg, {"2026-11-08": [LINE_ROW, idea]})
+    r = assign(client, [_key(idea)], "Madre", MONDAY)                                       # product|add|...: the key a page or bookmark built before the change
+    assert r.status_code == 201 and r.get_json()["skipped"] == []
+    row = pg.execute("SELECT section_at_assign, vendor, icp FROM creative_priorities_assignments").fetchone()
+    assert tuple(row) == ("test", "Madre", "Chest Guy")
+    again = assign(client, [_key({**idea, "section": "test"})], "Madre", MONDAY).get_json()      # the same concept under its new key is the same concept (no duplicate)
+    assert not again["created"]

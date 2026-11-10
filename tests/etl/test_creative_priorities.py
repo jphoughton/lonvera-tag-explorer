@@ -75,7 +75,7 @@ def test_iterate_picks_only_lines_clearly_above_the_product_average():
 
 def test_new_lines_have_no_ads_and_skip_lines_added_after_tagging():
     r = cp.compute(scenario(), WEEK)
-    nw = [x for x in r["rows"] if x["section"] == "test" and x["product"] == "vita-bull"]
+    nw = [x for x in r["rows"] if x["section"] == "test" and x["product"] == "vita-bull" and not x.get("source")]      # on-sheet lines only (new ideas are Test rows too)
     ids = [x["line_id"] for x in nw]
     assert 7 not in ids and 1 not in ids and 2 not in ids and 3 not in ids   # tested lines and the added-after-tagging line never appear
     assert set(ids) <= {4, 5, 6}
@@ -97,7 +97,7 @@ def test_new_line_ranked_by_evidence_adjacent_winner_first_and_hooks_only_from_s
 def test_numbers_are_never_invented_for_untested_lines():
     r = cp.compute(scenario(), WEEK)
     for x in r["rows"]:
-        if x["section"] == "test":
+        if x["section"] == "test" and not x.get("source"):
             assert x["metrics"]["roas"] is None and x["metrics"]["cpa"] is None
 
 
@@ -269,7 +269,7 @@ def comp_rows(**kw):
 
 def test_no_competitor_file_means_no_competitor_section_or_signal():
     r = cp.compute(scenario(), WEEK)
-    assert not [x for x in r["rows"] if x["section"] == "add" and x["source"] == "Competitor"] and all(x["competitor"] is None for x in r["rows"]) and r["competitors_as_of"] is None
+    assert not [x for x in r["rows"] if x["section"] == "test" and x.get("source") == "Competitor"] and all(x["competitor"] is None for x in r["rows"]) and r["competitors_as_of"] is None
 
 
 def test_competitor_signal_lifts_an_untested_line_and_unmatched_angles_get_their_own_section():
@@ -283,7 +283,7 @@ def test_competitor_signal_lifts_an_untested_line_and_unmatched_angles_get_their
     l5 = new["VI05"]
     assert l5["competitor"]["competitors"] == 3 and l5["competitor"]["long_running"] == 3 and "running 60+ days" in l5["competitor"]["text"]
     assert l5["score"] > base["VI05"]["score"] and "not proven performance" in l5["why"]
-    comp = [x for x in r["rows"] if x["section"] == "add" and x["source"] == "Competitor"]
+    comp = [x for x in r["rows"] if x["section"] == "test" and x.get("source") == "Competitor"]
     assert len(comp) == 1 and comp[0]["cluster"] == "Brand New Market" and comp[0]["competitor"]["competitors"] == 2 and comp[0]["line_code"] == "not on sheet"
     assert r["competitors_as_of"] == "2026-11-08"
 
@@ -380,7 +380,7 @@ def test_proposals_are_ranked_by_evidence_and_never_carry_performance_numbers(tm
     inp["competitors"] = {"as_of": "2026-11-08", "source": "t", "loaded_at": None, "rows": [
         comp_rows(brand="A", cluster="Chest Fat", icp="x", pain_point="y", days=90), comp_rows(brand="B", cluster="Chest Fat", icp="x", pain_point="y", days=70)]}
     r = cp.compute(inp, WEEK)
-    pr = [x for x in r["rows"] if x["section"] == "add" and x["source"] == "Our draft"]
+    pr = [x for x in r["rows"] if x["section"] == "test" and x.get("source") == "Our draft"]
     assert [x["icp"] for x in pr] == ["Chest Guy", "Night Owl"]                   # the draft whose ICP exists on the sheet dropped out; competitor + adjacent evidence ranks first
     first = pr[0]
     assert first["line_code"] == "DRAFT" and first["status"] == "Untested" and "NEW CLUSTER" in first["flags"] and "DRAFT for approval" in first["flags"]
@@ -390,12 +390,12 @@ def test_proposals_are_ranked_by_evidence_and_never_carry_performance_numbers(tm
     # the competitor section does not repeat an angle already drafted
     inp["competitors"]["rows"].append(comp_rows(brand="C", cluster="Other Angle", icp="z", pain_point="w", new=True))
     r2 = cp.compute(inp, WEEK)
-    assert [x["cluster"] for x in r2["rows"] if x["section"] == "add" and x["source"] == "Competitor"] == ["Other Angle"]
+    assert [x["cluster"] for x in r2["rows"] if x["section"] == "test" and x.get("source") == "Competitor"] == ["Other Angle"]
 
 
 def test_proposals_without_a_competitor_file_still_show_adjacent_evidence_only(tmp_path, monkeypatch):
     proposal_scenario(tmp_path, monkeypatch)
-    pr = [x for x in cp.compute(scenario(), WEEK)["rows"] if x["section"] == "add" and x["source"] == "Our draft"]
+    pr = [x for x in cp.compute(scenario(), WEEK)["rows"] if x["section"] == "test" and x.get("source") == "Our draft"]
     assert pr and all(x["competitor"] is None for x in pr) and "Adjacent results of ours: VI01" in pr[0]["why"]
 
 
@@ -404,9 +404,10 @@ def test_csv_and_markdown_carry_proposals(tmp_path, monkeypatch):
     r = cp.compute(scenario(), WEEK)
     rows = list(csv.reader(io.StringIO(cp.to_csv(r))))
     h = rows[0]
-    prop = [dict(zip(h, x)) for x in rows[1:] if dict(zip(h, x))["section"] == "add" and dict(zip(h, x))["add_source"] == "Our draft"]
+    prop = [dict(zip(h, x)) for x in rows[1:] if dict(zip(h, x))["section"] == "test" and dict(zip(h, x))["add_source"] == "Our draft"]
     assert prop and prop[0]["status"] == "Untested" and prop[0]["story"] and "NEW CLUSTER" in prop[0]["flags"]
-    assert "Add to sheet: " in cp.to_markdown(r) and "Our draft" in cp.to_markdown(r)
+    md = cp.to_markdown(r)
+    assert "Add to sheet" not in md and "New idea, our draft, not on the sheet yet" in md
 
 
 # ---------------------------------------------------------------------------------------------------------------- was working, now isn't (weekly history)
@@ -623,15 +624,15 @@ def test_old_snapshots_read_in_the_new_vocabulary_and_old_keys_resolve():
         {"section": "proposal", "status": "PROPOSED (draft)"}, {"section": "competitor", "status": "UNTESTED / UNDER-TESTED"}, {"section": "stop", "status": "NOT WORKING"}],
         "stats": {"status_counts_total": {"RUNNING AS USUAL": 3, "WORKING NOW": 2, "FADING / WAS WORKING": 1, "AVERAGE": 0}}}
     n = cp.norm_snapshot(old)
-    assert [r["section"] for r in n["rows"]] == ["revive", "make_more", "test", "hold", "add", "add", "stop"]
+    assert [r["section"] for r in n["rows"]] == ["revive", "make_more", "test", "hold", "test", "test", "stop"]
     assert [r["status"] for r in n["rows"]] == ["Fading", "Working", "Untested", "Average", "Untested", "Untested", "Not working"]
     assert n["rows"][0]["revive_kind"] == "COLLAPSED" and n["rows"][4]["source"] == "Our draft" and n["rows"][5]["source"] == "Competitor"
     assert n["stats"]["status_counts_total"] == {"Average": 3, "Working": 2, "Fading": 1}
     assert cp.norm_snapshot(n) == n                                             # idempotent
     assert old["rows"][0]["section"] == "faded"                                 # the stored snapshot is never rewritten
     assert cp.norm_key("vita-bull|faded|C|I|P") == "vita-bull|revive|C|I|P" == cp.norm_key("vita-bull|revive|C|I|P")
-    assert cp.norm_key("vita-bull|proposal|C|I|P") == "vita-bull|add|C|I|P" and cp.norm_key("manual:7") == "manual:7"
-    assert cp.key_variants("vita-bull|add|C|I|P") == ["vita-bull|add|C|I|P", "vita-bull|proposal|C|I|P", "vita-bull|competitor|C|I|P"]
+    assert cp.norm_key("vita-bull|proposal|C|I|P") == "vita-bull|test|C|I|P" and cp.norm_key("manual:7") == "manual:7"
+    assert cp.key_variants("vita-bull|add|C|I|P") == ["vita-bull|test|C|I|P", "vita-bull|new|C|I|P", "vita-bull|add|C|I|P", "vita-bull|proposal|C|I|P", "vita-bull|competitor|C|I|P"]
 
 
 def test_make_more_lists_every_working_or_rising_line_with_no_row_cap():
@@ -666,3 +667,58 @@ def test_definitions_use_the_real_thresholds():
     assert "$5,000" in txt and "$1,000" in txt and "15%" in txt and "$200" in txt
     assert "{" not in txt and "None" not in txt
     assert "$7,000" in " ".join(s["rule"] for s in cp.definitions({"MIN_LINE_SPEND": 7000.0})["statuses"])
+
+
+# ----------------------------------------------------------------------------------------------- "Add to sheet" folded into Test (2026-11-10, later)
+def _ideas_scenario(tmp_path, monkeypatch, n_comp=5):
+    proposal_scenario(tmp_path, monkeypatch)
+    inp = scenario()
+    rows = [comp_rows(brand="A", cluster="Chest Fat", icp="x", pain_point="y", days=90), comp_rows(brand="B", cluster="Chest Fat", icp="x", pain_point="y", days=70)]
+    for i in range(n_comp):
+        rows += [comp_rows(brand=f"C{i}", cluster=f"Angle {i}", icp=f"icp{i}", pain_point=f"pain{i}", days=80 + i, new=True), comp_rows(brand=f"D{i}", cluster=f"Angle {i}", icp=f"icp{i}", pain_point=f"pain{i}", days=70, new=True)]
+    inp["competitors"] = {"as_of": "2026-11-08", "source": "t", "loaded_at": None, "rows": rows}
+    return cp.compute(inp, WEEK)
+
+
+def test_there_is_no_add_action_anywhere_and_new_ideas_are_test_rows_with_their_source(tmp_path, monkeypatch):
+    r = _ideas_scenario(tmp_path, monkeypatch)
+    assert "add" not in cp.ACTIONS and "add" not in cp.ACTION_LABEL and "add" not in cp.SECTION_TITLES
+    assert {x["section"] for x in r["rows"]} <= set(cp.ACTIONS)
+    ideas = [x for x in r["rows"] if x.get("source")]
+    assert {x["source"] for x in ideas} == {"Our draft", "Competitor"} and {x["section"] for x in ideas} == {"test"}
+    rows = list(csv.reader(io.StringIO(cp.to_csv(r))))
+    h = rows[0]
+    assert h[-1] == "add_source" and "add" not in {x[h.index("section")] for x in rows[1:]}
+    assert {x[h.index("add_source")] for x in rows[1:] if x[h.index("section")] == "test"} == {"", "Our draft", "Competitor"}
+    md = cp.to_markdown(r)
+    assert "### Add to sheet" not in md and "Add to sheet" not in md
+    assert "New idea, our draft, not on the sheet yet" in md and "New idea, from a competitor, not on the sheet yet" in md
+    assert "Add to sheet" not in " ".join(a["label"] + a["rule"] for a in cp.definitions()["actions"]) and [a["key"] for a in cp.definitions()["actions"]] == list(cp.ACTIONS)
+    rule = next(a["rule"] for a in cp.definitions()["actions"] if a["key"] == "test")
+    assert "—" not in rule and "New idea, from a competitor" in rule and "on-sheet lines first" in rule and "counts on-sheet lines only" in rule
+
+
+def test_test_orders_sheet_lines_then_drafts_then_competitors_and_each_kind_keeps_its_own_cap(tmp_path, monkeypatch):
+    r = _ideas_scenario(tmp_path, monkeypatch)
+    for slug in cp.PRODUCTS:
+        test = sorted((x for x in r["rows"] if x["product"] == slug and x["section"] == "test"), key=lambda x: x["rank"])
+        kinds = [x.get("source") for x in test]
+        order = {None: 0, "Our draft": 1, "Competitor": 2}
+        assert kinds == sorted(kinds, key=order.get), slug
+        assert [x["rank"] for x in test] == list(range(1, len(test) + 1)), slug
+        assert kinds.count(None) <= cp.TOP_NEW and kinds.count("Our draft") <= cp.TOP_PROPOSAL and kinds.count("Competitor") <= cp.TOP_COMPETITOR
+    vb = [x.get("source") for x in r["rows"] if x["product"] == "vita-bull" and x["section"] == "test"]
+    assert vb.count("Competitor") == cp.TOP_COMPETITOR == 3 and vb.count("Our draft") == 2 and vb.count(None) >= 1          # 5 competitor angles on offer, cap 3; on-sheet lines are not squeezed out
+
+
+def test_an_old_snapshot_row_with_add_reads_as_test_and_is_renumbered(tmp_path, monkeypatch):
+    assert cp.norm_section("add") == "test" and cp.norm_key("vita-bull|add|C|I|P") == "vita-bull|test|C|I|P"
+    assert "vita-bull|add|C|I|P" in cp.key_variants("vita-bull|test|C|I|P") and "vita-bull|add|C|I|P" in cp.key_variants("vita-bull|add|C|I|P")
+    old = {"week_start": "2026-11-08", "rows": [
+        {"section": "add", "source": "Competitor", "product": "vita-bull", "rank": 1, "status": "Untested"},
+        {"section": "add", "source": "Our draft", "product": "vita-bull", "rank": 1, "status": "Untested"},
+        {"section": "test", "product": "vita-bull", "rank": 1, "status": "Untested"}], "stats": {}}
+    n = cp.norm_snapshot(old)
+    assert {r["section"] for r in n["rows"]} == {"test"}
+    assert sorted((r["rank"], r.get("source")) for r in n["rows"]) == [(1, None), (2, "Our draft"), (3, "Competitor")]
+    assert cp.norm_snapshot(n) == n

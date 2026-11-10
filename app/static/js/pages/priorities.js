@@ -1,4 +1,4 @@
-// Creative priorities (/priorities): the weekly one-sheeter as one table. Every concept has exactly one Action (Revive / Make more / Test / Add to sheet / Stop / Hold; JSON field `section`) and one Status
+// Creative priorities (/priorities): the weekly one-sheeter as one table. Every concept has exactly one Action (Revive / Make more / Test / Stop / Hold; JSON field `section`) and one Status
 // (Working / Rising / Fading / Not working / Average / Too early / Untested); the rules are printed on the page from the API's `definitions`. One row per concept, ALL COLLAPSED on load (nothing is remembered). A row shows Market Cluster | ICP | Pain Point | Story (full text) | Status | Concepts | one key number; the chevron button (or a click on
 // the row) opens a detail panel directly under it with everything else. Print CSS expands every panel. Class names and test ids start with `pri-` (never ad-, ads-, sponsor, banner, promo).
 import { h, fmt, isNum, href, navigate, qs } from '../util.js';
@@ -9,7 +9,7 @@ import { assignControls } from './priorities_assign.js';
 
 const PRODUCT_ORDER = ['vita-bull', 'beef-liver', 'boneflex'];
 const value_keys = ['product', 'section', 'cluster', 'icp', 'pain', 'story', 'status', 'concepts', 'key', 'spend14', 'roas14'];
-const SECTIONS = [['revive', 'Revive'], ['make_more', 'Make more'], ['test', 'Test'], ['add', 'Add to sheet'], ['stop', 'Stop'], ['hold', 'Hold']];
+const SECTIONS = [['revive', 'Revive'], ['make_more', 'Make more'], ['test', 'Test'], ['stop', 'Stop'], ['hold', 'Hold']];
 let DEFS = {};                                                                      // the rules from the API payload (real thresholds), set in render
 const actionRule = (k) => ((DEFS.actions || []).find((a) => a.key === k) || {}).rule || '';
 const statusRule = (l) => ((DEFS.statuses || []).find((x) => x.label === l) || {}).rule || '';
@@ -30,14 +30,14 @@ function numbers(r) {
       ['Last 30 days', [['Spend', fmt.money(m.spend_30d)], ['ROAS', roasX(m.roas_30d)], ['CPA', fmt.money(m.cpa_30d)], ['Purchases', fmt.int(m.purchases_30d)]]],
       ['Last 14 days', [['Spend', fmt.money(m.spend_14d)], ['ROAS', roasX(m.roas_14d)], ['Purchases', fmt.int(m.purchases_14d)]]]];
   }
-  if (r.line_id != null && r.section !== 'test' && r.section !== 'add') {            // every line row with results, Hold included, shows the same number tiles
+  if (r.line_id != null && r.section !== 'test') {            // every line row with results, Hold included, shows the same number tiles
     return [['Performance', [['Spend', fmt.money(m.spend)], ['ROAS (all time)', roasX(m.roas)], ['CPA (all time)', fmt.money(m.cpa)], ['Upstack new-customer ROAS', roasX(m.nc_roas)], ['ROAS, strong tags only', roasX(m.roas_strong_tags)]]],
       ['Testing', m.funnel
         ? [['Ads launched', fmt.int(m.funnel.launched)], ['Hit rate ($10K+ spend)', share(m.funnel.top, m.funnel.launched), `(${fmt.int(m.funnel.top)} of ${fmt.int(m.funnel.launched)} launched ads)`], ['New ads, 30 days', fmt.int(m.launches_30d)]]
         : [['Ads tested ($100+)', fmt.int(m.judged)], ['Ads that reached $1,000', `${m.hits} of ${m.mature}`, `(${pct(m.hit_rate)} of ads that spent $100+ and launched 14+ days ago)`], ['New ads, 30 days', fmt.int(m.launches_30d)]]],
       ['Live', [...(isNum(m.spend_14d) ? [['Last 14 days', roasX(m.roas_14d), `on ${fmt.money(m.spend_14d)}${isNum(m.roas_14d) ? '' : ' (under $100: no ratio)'}`]] : []), ['Last 30 days', roasX(m.roas_30d), `on ${fmt.money(m.spend_30d)}`], ['Prior 30 days', roasX(m.roas_prior30), `on ${fmt.money(m.spend_prior30)}`], ['Live ads', fmt.int(m.live_ads)]].concat(m.funnel && m.funnel.active_30d != null ? [['Launched in last 30 days', fmt.int(m.funnel.launched_30d != null ? m.funnel.launched_30d : m.funnel.active_30d)], ['Of those, $10K+ so far', fmt.int(m.funnel.top_launched_30d != null ? m.funnel.top_launched_30d : m.funnel.top_30d)]] : [])]];
   }
-  if (r.section === 'add') return [];
+  if (r.source) return [];                                                           // a new idea (not on the sheet yet) has no numbers of ours
   return [['Performance', [['Ads tagged', fmt.int(m.tagged_ads)], ['Spend so far', fmt.money(m.spend)]]]];
 }
 
@@ -53,7 +53,7 @@ function keyNumber(r, d) {
     return r.stretch ? `${roasX(r.stretch.roas)} at peak. ${now}` : `${roasX(m.roas)} since launch. ${now}`;
   }
   if (r.section === 'make_more') return `${roasX(m.roas_30d)} last 30 days. ${avg(b.roas_30d)}`;
-  if (r.section === 'add') return r.competitor ? r.competitor.text : 'Draft';
+  if (r.source) return r.competitor ? r.competitor.text : 'Draft';
   if (r.section === 'test') return m.spend > 0 ? `${fmt.money(m.spend)} spent so far` : 'No spend yet';
   if (m.spend >= 100) return `${roasX(m.roas)} since launch. ${avg(b.roas)}`;                       // stop and hold
   return m.spend > 0 ? `${fmt.money(m.spend)} spent so far` : 'No spend yet';
@@ -199,7 +199,7 @@ function detail(r, d) {
   if (faded && why && why.endsWith(`${r.when_it_worked} ${r.how_it_stopped}`)) why = why.slice(0, why.length - `${r.when_it_worked} ${r.how_it_stopped}`.length).trim();
   const flagPills = (r.flags || []).map((f) => h('span', { class: 'pri-pill pri-pill-fade' }, f));
   const play = faded ? h('section', { class: 'pri-cta', 'data-testid': 'pri-play' }, h('h4', { class: 'pri-cta-h' }, h('span', { 'aria-hidden': 'true' }, '→ '), 'Revive play: '), h('p', null, r.revive_play))
-    : hookList(r, r.section === 'add' ? 'Competitor hooks seen' : r.section === 'test' ? 'Hooks to borrow (same product, adjacent winner)' : r.section === 'make_more' ? 'Proven hooks to iterate from' : 'Hooks from the best ads on this line', 'pri-cta');
+    : hookList(r, r.source ? 'Competitor hooks seen' : r.section === 'test' ? 'Hooks to borrow (same product, adjacent winner)' : r.section === 'make_more' ? 'Proven hooks to iterate from' : 'Hooks from the best ads on this line', 'pri-cta');
   const hooksLow = faded ? hookList(r, 'Hooks from the working period') : null;
   return h('div', { class: 'pri-panel pri-tone-' + tone },
     h('div', { class: 'pri-id' },
@@ -260,6 +260,7 @@ const withProd = (p, r, actl) => { if (actl) p.append(actl.history(r)); return p
 const panelFor = (r, d, mctl, actl) => { if (r.manual) return withProd(manualPanel(r, mctl), r, actl); if (r.section === 'hold' && r.line_id == null) return unmappedPanel(r, d); const p = detail(r, d); addManualNotes(p, r, d); return withProd(p, r, actl); };
 
 const SECTION_LABEL = Object.fromEntries(SECTIONS);
+const NEW_IDEA = { 'Competitor': 'New idea, from a competitor', 'Our draft': 'New idea, our draft' };
 const SECTION_ORDER = SECTIONS.map(([k]) => k);
 const COLS = [['product', 'Product'], ['section', 'Action'], ['cluster', 'Market Cluster'], ['icp', 'ICP'], ['pain', 'Pain Point'], ['story', 'Story'], ['status', 'Status'], ['concepts', 'Concepts'], ['key', 'Key number'], ['spend14', 'Spend \u00b7 14d'], ['roas14', 'ROAS \u00b7 14d']];
 
@@ -311,7 +312,7 @@ function rowPair(r, d, printed = false, onPick = null, mctl = null, actl = null)
   const tr = h('tr', { class: 'pri-row' + (r.manual ? ' pri-manual' + (r.done ? ' pri-done' : '') : ''), 'data-testid': 'pri-card', 'data-section': r.section, 'data-product': r.product, 'data-source': r.manual ? 'manual' : 'auto' },
     h('td', { class: 'pri-c pri-c-tog' }, printed || !onPick ? null : pick, printed ? null : btn),
     cell('Product', 'product', (d.baselines[r.product] || {}).product_name || r.product),
-    cell('Action', 'section', h('span', { class: 'pri-sec pri-sec-' + r.section, title: actionRule(r.section) }, SECTION_LABEL[r.section]), r.section === 'add' && r.source ? h('span', { class: 'pri-src', 'data-testid': 'pri-source' }, r.source) : null, r.manual ? h('span', { class: 'pri-mbadge', 'data-testid': 'pri-manual-badge' }, 'Manual') : null),
+    cell('Action', 'section', h('span', { class: 'pri-sec pri-sec-' + r.section, title: actionRule(r.section) }, SECTION_LABEL[r.section]), r.source ? h('span', { class: 'pri-src', 'data-testid': 'pri-source', title: 'Not on the sheet yet' }, [NEW_IDEA[r.source] || r.source, h('span', { class: 'pri-src-sub', 'data-testid': 'pri-not-on-sheet' }, 'Not on the sheet yet')]) : null, r.manual ? h('span', { class: 'pri-mbadge', 'data-testid': 'pri-manual-badge' }, 'Manual') : null),
     cell('Market Cluster', 'cluster', r.cluster, r._from ? h('span', { class: 'pri-from', 'data-testid': 'pri-from', title: 'No longer in the current snapshot: the numbers are the frozen copy saved with the view' }, ' from ' + r._from) : null), cell('ICP', 'icp', r.icp), cell('Pain Point', 'pain', r.pain_point), cell('Story', 'story', r.story || '–'),
     cell('Status', 'status', h('span', { class: 'pri-status pri-st-' + (STATUS_CLASS[r.status] || 'flat'), 'data-testid': 'pri-status' }, r.manual && r.done ? 'MANUAL (done)' : r.status)),
     cell('Concepts', 'concepts', r.manual || r.section === 'hold' ? '\u2013' : r.concepts ? `${r.concepts} concept${r.concepts === 1 ? '' : 's'}` : 'None'),
@@ -345,7 +346,7 @@ function render(d, view = null, opts = {}) {
   let shownList = [];
   const carry = opts.carry || {};
   const sf = act && act.view.kind === 'filters' && act.view.filters ? act.view.filters : null;      // a filter view starts from its saved filters (applied live to whatever rows exist now)
-  const pick0 = (saved, all) => { const keep = (saved || []).filter((x) => all.includes(x)); return new Set(keep.length ? keep : all); };
+  const pick0 = (saved, all) => { const keep = (saved || []).map((x) => (x === 'add' ? 'test' : x)).filter((x) => all.includes(x)); return new Set(keep.length ? keep : all); };
   const state = { products: pick0(sf && sf.products, slugs), sections: pick0(sf && sf.sections, sections), q: carry.q || (sf ? sf.q || '' : ''), key: carry.key || (sf && value_keys.includes(sf.key) ? sf.key : null),
                   dir: carry.dir || (sf && sf.dir === -1 ? -1 : 1), showDone: !!carry.showDone, onlySel: !!carry.onlySel, brief: carry.brief || 'all', statuses: carry.statuses ? new Set(carry.statuses) : new Set(sf && sf.statuses && sf.statuses.length ? sf.statuses : sf && sf.status ? [sf.status] : []) };
   const allOn = (set, all) => (all.every((x) => set.has(x)) ? [] : all.filter((x) => set.has(x)));
@@ -736,7 +737,7 @@ function render(d, view = null, opts = {}) {
   }
   function copyText() {
     const rows = d.rows.filter(isSel).sort((a, b) => (pOrder[a.product] - pOrder[b.product]) || (sOrder[a.section] - sOrder[b.section]) || (a.rank - b.rank));
-    const text = rows.map((r) => [`Product: ${(d.baselines[r.product] || {}).product_name || r.product}`, `Action: ${SECTION_LABEL[r.section]}${r.source ? ' (' + r.source + ')' : ''}`,
+    const text = rows.map((r) => [`Product: ${(d.baselines[r.product] || {}).product_name || r.product}`, `Action: ${SECTION_LABEL[r.section]}${r.source ? ' (' + (NEW_IDEA[r.source] || r.source) + ', not on the sheet yet)' : ''}`,
       `Market Cluster: ${r.cluster}`, `ICP: ${r.icp}`, `Pain Point: ${r.pain_point}`, `Story: ${r.story || '\u2013'}`, `Status: ${r.status}`, `Key number: ${keyNumber(r, d)}`,
       `Concepts to brief: ${r.concepts || 0}`, ...(hasBriefed ? [`Briefed: ${isBriefed(r) ? briefTxt(r).replace('Briefed ', 'yes, ') : 'no'}`] : []), ...strip(r, true).map((t, i) => (i === 0 ? 'Notes: ' : '') + t)].join('\n')).join('\n\n');
     const done = (ok) => { copyNote.textContent = ok ? `Copied ${rows.length} row${rows.length === 1 ? '' : 's'}.` : 'Copy failed: select the text and copy by hand.'; };

@@ -430,7 +430,7 @@ def test_filter_view_stores_a_list_of_statuses_and_old_single_status_still_filte
 # ----------------------------------------------------------------------------------------------- Action / Status redesign: old stored data keeps working (2026-11-10)
 def test_payload_carries_the_definitions_with_real_thresholds(client, snaps):
     d = client.get("/api/priorities?week=2026-11-08").get_json()
-    assert [a["key"] for a in d["definitions"]["actions"]] == ["revive", "make_more", "test", "add", "stop", "hold"]
+    assert [a["key"] for a in d["definitions"]["actions"]] == ["revive", "make_more", "test", "stop", "hold"]
     assert [s["label"] for s in d["definitions"]["statuses"]] == ["Working", "Rising", "Fading", "Not working", "Average", "Too early", "Untested"]
     assert "$5,000" in " ".join(s["rule"] for s in d["definitions"]["statuses"])
     assert d["rows"][0]["section"] == "make_more" and d["rows"][0]["status"] == "Working"                  # stored as iterate / WORKING NOW
@@ -461,4 +461,51 @@ def test_selected_rows_csv_and_filters_accept_old_section_names(client, two_rows
     assert len(rows) == 2 and rows[1][rows[0].index("section")] == "make_more"
     from app import creative_priorities as cpv
     f = cpv.clean_filters({"products": [], "sections": ["iterate", "proposal", "make_more"], "statuses": ["RUNNING AS USUAL"], "q": ""})
-    assert f["sections"] == ["make_more", "add"] and f["statuses"] == ["Average"]
+    assert f["sections"] == ["make_more", "test"] and f["statuses"] == ["Average"]
+
+
+# ----------------------------------------------------------------------------------------------- "Add to sheet" folded into Test (2026-11-10, later)
+ONSHEET = {**ROW, "section": "new", "line_id": 5, "line_code": "L05", "cluster": "Sleep", "icp": "Night Owl", "pain_point": "Wakes at 3", "status": "UNTESTED / UNDER-TESTED", "rank": 1}
+IDEA_DRAFT = {**ROW, "section": "add", "source": "Our draft", "line_id": None, "line_code": "DRAFT", "cluster": "Chest Fat", "icp": "Chest Guy", "pain_point": "Belly", "status": "Untested", "rank": 1}
+IDEA_COMP = {**ROW, "section": "add", "source": "Competitor", "line_id": None, "line_code": "not on sheet", "cluster": "Other Angle", "icp": "z", "pain_point": "w", "status": "Untested", "rank": 1}
+
+
+@pytest.fixture()
+def add_rows(pg, snaps):
+    """A snapshot stored before the change: Add rows still carry section 'add', and each kind is ranked from 1."""
+    from app import api as api_mod
+    api_mod._view_limiter = None
+    pg.execute("UPDATE creative_priorities_snapshots SET rows = %s WHERE week_start = '2026-11-08'", (json.dumps([IDEA_COMP, IDEA_DRAFT, ROW, ONSHEET]),))
+    pg.commit()
+
+
+def test_an_old_snapshot_add_row_reads_as_test_with_its_source_and_test_orders_sheet_lines_first(client, add_rows):
+    d = client.get("/api/priorities?week=2026-11-08").get_json()
+    assert "add" not in {r["section"] for r in d["rows"]}
+    assert "add" not in [a["key"] for a in d["definitions"]["actions"]]
+    test = sorted((r for r in d["rows"] if r["section"] == "test"), key=lambda r: r["rank"])
+    assert [(r["source"] if "source" in r else None) for r in test] == [None, "Our draft", "Competitor"] and [r["rank"] for r in test] == [1, 2, 3]
+    assert [r["icp"] for r in test] == ["Night Owl", "Chest Guy", "z"]
+
+
+def test_csv_has_no_add_action_and_keeps_the_add_source_column(client, add_rows):
+    rows = list(csv.reader(io.StringIO(client.get("/api/priorities.csv?week=2026-11-08").get_data(as_text=True))))
+    h = rows[0]
+    assert "add_source" in h and h[-1] == "add_source"
+    assert "add" not in {r[h.index("section")] for r in rows[1:]}
+    got = {r[h.index("icp")]: (r[h.index("section")], r[h.index("add_source")]) for r in rows[1:]}
+    assert got["Chest Guy"] == ("test", "Our draft") and got["z"] == ("test", "Competitor") and got["Night Owl"] == ("test", "")
+
+
+def test_a_filter_or_selection_saved_on_add_means_test(client, add_rows, views):
+    from app import creative_priorities as cpv
+    assert cpv.clean_filters({"sections": ["add"]})["sections"] == ["test"]
+    assert cpv.clean_filters({"sections": ["add", "test", "stop"]})["sections"] == ["test", "stop"]
+    v = client.post("/api/priorities/views", json={"kind": "filters", "filters": {"sections": ["add"]}}).get_json()
+    g = client.get("/api/priorities/views/" + v["token"]).get_json()
+    assert g["view"]["filters"]["sections"] == ["test"] and v["count"] == 3                        # the on-sheet line and both new ideas
+    assert {r["section"] for r in g["rows"]} == {"test"}
+    old_key = "|".join([IDEA_DRAFT["product"], "add", IDEA_DRAFT["cluster"], IDEA_DRAFT["icp"], IDEA_DRAFT["pain_point"]])                     # a bookmarked selection from before the change
+    r = client.get("/api/priorities.csv", query_string={"week": "2026-11-08", "id": old_key})
+    out = list(csv.reader(io.StringIO(r.get_data(as_text=True))))
+    assert len(out) == 2 and out[1][out[0].index("section")] == "test" and out[1][out[0].index("add_source")] == "Our draft"
