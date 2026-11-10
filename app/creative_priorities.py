@@ -103,7 +103,7 @@ def _views_conn():
     return rwdb.get_rw()
 
 
-FILTER_KEYS = ("products", "sections", "q", "key", "dir", "status")
+FILTER_KEYS = ("products", "sections", "q", "key", "dir", "status", "statuses")
 
 
 def clean_filters(raw) -> dict:
@@ -129,14 +129,18 @@ def clean_filters(raw) -> dict:
     if st is not None and (not isinstance(st, str) or len(st) > 60):
         raise q.ApiError(400, "filters.status must be a status name")
     out["status"] = st or None
+    sts = raw.get("statuses") or []
+    if not isinstance(sts, list) or len(sts) > 20 or not all(isinstance(x, str) and 0 < len(x) <= 60 for x in sts):
+        raise q.ApiError(400, "filters.statuses must be a short list of status names")
+    out["statuses"] = list(dict.fromkeys(sts))
     return out
 
 
 def apply_filters(rows: list[dict], f: dict) -> list[dict]:
     """Rows matching a saved filter state (same rules as the page: product and section membership, search over cluster / ICP / pain point / story). Order is kept."""
     prods, secs, needle = set(f.get("products") or []), set(f.get("sections") or []), (f.get("q") or "").strip().lower()
-    status = f.get("status")
-    return [r for r in rows if (not prods or r.get("product") in prods) and (not secs or r.get("section") in secs) and (not status or r.get("status") == status)
+    statuses = set(f.get("statuses") or []) | ({f["status"]} if f.get("status") else set())
+    return [r for r in rows if (not prods or r.get("product") in prods) and (not secs or r.get("section") in secs) and (not statuses or r.get("status") in statuses)
             and (not needle or any(needle in str(r.get(k) or "").lower() for k in ("cluster", "icp", "pain_point", "story")))]
 
 

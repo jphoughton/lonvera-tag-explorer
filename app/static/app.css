@@ -1095,3 +1095,11 @@ button.pri-stat:hover { background: color-mix(in srgb, var(--tone) 14%, #fff); }
 @media print { .pri-recon, .pri-tfoot { display: none; } .pri-ptotal { font-weight: 700; font-size: 10px; } }
 :root { --lv-pri-sec-rest: #6b6459; }
 .pri-sec-rest { background: var(--lv-pri-sec-rest, #6b6459); } .pri-cc-sec-rest { --cc: var(--lv-pri-sec-rest); }
+.pri-hitstrip { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--lv-pri-card-line); }
+.pri-hitrow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pri-hitc { display: grid; gap: 1px; min-width: 0; padding: 6px 8px; background: #fff; border: 1px solid var(--lv-pri-card-line); border-radius: 8px; }
+.pri-hitc strong { font-size: 22px; line-height: 1.1; color: var(--pc); font-variant-numeric: tabular-nums; } .pri-hitc .pri-label { font-size: 9.5px; letter-spacing: .04em; } .pri-hitc .pri-k { font-size: 11px; }
+@media (max-width: 600px) { .pri-hitrow { grid-template-columns: 1fr; } }
+/* status tiles: neutral white until selected, then filled in the status colour */
+.pri-stat { background: #fff; } button.pri-stat:hover { background: color-mix(in srgb, var(--tone) 10%, #fff); }
+.pri-stat[aria-pressed="true"] { background: var(--tone); color: #fff; }

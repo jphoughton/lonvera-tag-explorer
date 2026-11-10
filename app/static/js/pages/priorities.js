@@ -23,12 +23,6 @@ const pct = (v) => (isNum(v) ? fmt.pct(v) : '–');
 const share = (n, dn) => { if (!dn) return '\u2013'; const v = 100 * n / dn; return (v > 0 && v < 10 ? v.toFixed(1) : Math.round(v)) + '%'; };
 const compact$ = (v) => (v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e4 ? '$' + Math.round(v / 1e3) + 'K' : fmt.money(v));
 // the all-time funnel text for a product baseline or a row's metrics.funnel: launched, under $100, $100+, $10K+
-const funnelText = (f) => `Launched ${fmt.int(f.launched)} \u00b7 under $100: ${fmt.int(f.under_tested)} (${share(f.under_tested, f.launched)}) \u00b7 $100+: ${fmt.int(f.tested)} \u00b7 $10K+: ${fmt.int(f.top)} (${share(f.top, f.launched)})`;
-const cohortText = (c) => `Launched ${fmt.int(c.launched)} (${fmt.int(c.spent)} with spend) \u00b7 under $100: ${fmt.int(c.under_tested)} (${share(c.under_tested, c.launched)}) \u00b7 $100+: ${fmt.int(c.tested)} \u00b7 $10K+: ${fmt.int(c.top)} (${share(c.top, c.launched)})`;
-const funnel30Text = (f) => `${fmt.int(f.active)} ads spent \u00b7 under $100: ${fmt.int(f.under_tested)} (${share(f.under_tested, f.active)}) \u00b7 $100+: ${fmt.int(f.tested)} \u00b7 $10K+: ${fmt.int(f.top)} (${share(f.top, f.active)})`;
-// small stacked bar: under $100 | $100 to $10K | $10K+ (widths are shares of the total; the $10K+ slice never drops under 3px so it stays visible)
-const funnelBar = (under, tested, top, total, label) => h('div', { class: 'pri-fbar2', role: 'img', 'aria-label': label, 'data-testid': 'pri-funnel-bar' },
-  h('span', { class: 'pri-fb-u', style: { flexGrow: String(under) } }), h('span', { class: 'pri-fb-m', style: { flexGrow: String(Math.max(tested - top, 0)) } }), h('span', { class: 'pri-fb-t', style: { flexGrow: String(top) } }));
 
 // stat cards for the detail panel: [[group, [[label, value, sub?], ...]], ...]; labels and values are the same facts the old inline row showed
 function numbers(r) {
@@ -41,8 +35,7 @@ function numbers(r) {
   if (r.section === 'iterate' || r.section === 'faded' || r.section === 'stop' || r.section === 'rest') {
     return [['Performance', [['Spend', fmt.money(m.spend)], ['ROAS (all time)', roasX(m.roas)], ['CPA (all time)', fmt.money(m.cpa)], ['Upstack new-customer ROAS', roasX(m.nc_roas)], ['ROAS, strong tags only', roasX(m.roas_strong_tags)]]],
       ['Testing', m.funnel
-        ? [['Ads launched', fmt.int(m.funnel.launched)], ['Under $100 spend', fmt.int(m.funnel.under_tested), `(${share(m.funnel.under_tested, m.funnel.launched)} of launched)`], ['Ads tested ($100+)', fmt.int(m.funnel.tested)],
-           ['Ads that reached $10K+', fmt.int(m.funnel.top), `(${fmt.int(m.funnel.top)} of ${fmt.int(m.funnel.launched)} launched = ${share(m.funnel.top, m.funnel.launched)}; ${fmt.int(m.funnel.top)} of ${fmt.int(m.funnel.tested)} that spent $100+ = ${share(m.funnel.top, m.funnel.tested)})`], ['New ads, 30 days', fmt.int(m.launches_30d)]]
+        ? [['Ads launched', fmt.int(m.funnel.launched)], ['Hit rate ($10K+ spend)', share(m.funnel.top, m.funnel.launched), `(${fmt.int(m.funnel.top)} of ${fmt.int(m.funnel.launched)} launched ads)`], ['New ads, 30 days', fmt.int(m.launches_30d)]]
         : [['Ads tested ($100+)', fmt.int(m.judged)], ['Ads that reached $1,000', `${m.hits} of ${m.mature}`, `(${pct(m.hit_rate)} of ads that spent $100+ and launched 14+ days ago)`], ['New ads, 30 days', fmt.int(m.launches_30d)]]],
       ['Live', [...(isNum(m.spend_14d) ? [['Last 14 days', roasX(m.roas_14d), `on ${fmt.money(m.spend_14d)}${isNum(m.roas_14d) ? '' : ' (under $100: no ratio)'}`]] : []), ['Last 30 days', roasX(m.roas_30d), `on ${fmt.money(m.spend_30d)}`], ['Prior 30 days', roasX(m.roas_prior30), `on ${fmt.money(m.spend_prior30)}`], ['Live ads', fmt.int(m.live_ads)]].concat(m.funnel && m.funnel.active_30d != null ? [['Launched in last 30 days', fmt.int(m.funnel.launched_30d != null ? m.funnel.launched_30d : m.funnel.active_30d)], ['Of those, $10K+ so far', fmt.int(m.funnel.top_launched_30d != null ? m.funnel.top_launched_30d : m.funnel.top_30d)]] : [])]];
   }
@@ -352,9 +345,9 @@ function render(d, view = null, opts = {}) {
   const sf = act && act.view.kind === 'filters' && act.view.filters ? act.view.filters : null;      // a filter view starts from its saved filters (applied live to whatever rows exist now)
   const pick0 = (saved, all) => { const keep = (saved || []).filter((x) => all.includes(x)); return new Set(keep.length ? keep : all); };
   const state = { products: pick0(sf && sf.products, slugs), sections: pick0(sf && sf.sections, sections), q: carry.q || (sf ? sf.q || '' : ''), key: carry.key || (sf && value_keys.includes(sf.key) ? sf.key : null),
-                  dir: carry.dir || (sf && sf.dir === -1 ? -1 : 1), showDone: !!carry.showDone, onlySel: !!carry.onlySel, brief: carry.brief || 'all', status: carry.status !== undefined ? carry.status : (sf && sf.status) || null };
+                  dir: carry.dir || (sf && sf.dir === -1 ? -1 : 1), showDone: !!carry.showDone, onlySel: !!carry.onlySel, brief: carry.brief || 'all', statuses: carry.statuses ? new Set(carry.statuses) : new Set(sf && sf.statuses && sf.statuses.length ? sf.statuses : sf && sf.status ? [sf.status] : []) };
   const allOn = (set, all) => (all.every((x) => set.has(x)) ? [] : all.filter((x) => set.has(x)));
-  const currentFilters = () => ({ products: allOn(state.products, slugs), sections: allOn(state.sections, sections), q: state.q.trim(), key: state.key, dir: state.dir, status: state.status || null });
+  const currentFilters = () => ({ products: allOn(state.products, slugs), sections: allOn(state.sections, sections), q: state.q.trim(), key: state.key, dir: state.dir, status: null, statuses: [...state.statuses] });
   if (opts.ref) opts.ref.state = state;
   const value = {
     product: (r) => pOrder[r.product], section: (r) => sOrder[r.section], cluster: (r) => r.cluster.toLowerCase(), icp: (r) => r.icp.toLowerCase(), pain: (r) => r.pain_point.toLowerCase(),
@@ -401,7 +394,7 @@ function render(d, view = null, opts = {}) {
     else if (sel.size > 0 || !state.onlySel) selHint.textContent = '';
     const q = state.q.trim().toLowerCase();
     const eligible = pairs.filter((p) => state.showDone || !p.r.done);                               // done manual concepts stay hidden until Show done is ticked
-    let list = eligible.filter((p) => state.products.has(p.r.product) && state.sections.has(p.r.section) && (!state.status || p.r.status === state.status) && (!state.onlySel || sel.has(keyOf(p.r))) && (state.brief === 'all' || (state.brief === 'done') === isBriefed(p.r))
+    let list = eligible.filter((p) => state.products.has(p.r.product) && state.sections.has(p.r.section) && (!state.statuses.size || state.statuses.has(p.r.status)) && (!state.onlySel || sel.has(keyOf(p.r))) && (state.brief === 'all' || (state.brief === 'done') === isBriefed(p.r))
       && (!q || [p.r.cluster, p.r.icp, p.r.pain_point, p.r.story].some((t) => (t || '').toLowerCase().includes(q))));
     const def = (a, b) => (sOrder[a.r.section] - sOrder[b.r.section]) || (pOrder[a.r.product] - pOrder[b.r.product]) || (a.r.rank - b.r.rank);
     if (state.key) {
@@ -429,7 +422,9 @@ function render(d, view = null, opts = {}) {
   const chip = (set, key, label, testid, all, cc) => {
     const on = () => set.has(key) && !all.every((x) => set.has(x));
     const b = h('button', { type: 'button', class: 'pri-chipbtn pri-cc ' + cc, 'aria-pressed': String(set.has(key)), 'data-on': String(on()), 'data-testid': testid, onclick: () => {
-      if (set.has(key)) set.delete(key); else set.add(key);
+      if (all.every((x) => set.has(x))) { set.clear(); set.add(key); }                         // nothing selected yet (everything shown): the first click selects just that chip
+      else if (set.has(key)) { set.delete(key); if (!set.size) all.forEach((x) => set.add(x)); }   // deselecting the last one goes back to no filter
+      else set.add(key);
       apply();
     } }, h('i', { class: 'pri-cdot', 'aria-hidden': 'true' }), label);
     uiSync.push(() => { b.setAttribute('aria-pressed', String(set.has(key))); b.setAttribute('data-on', String(on())); });
@@ -439,9 +434,9 @@ function render(d, view = null, opts = {}) {
   const actionsHost = h('div', { class: 'pri-actions pri-hd-screen' });                                                                 // Add concept + export, filled by buildTop
   const searchIn = h('input', { type: 'search', 'data-testid': 'pri-search', placeholder: 'cluster, ICP, pain point or story', value: state.q, oninput: (e) => { state.q = e.target.value; apply(); } });
   uiSync.push(() => { if (searchIn.value !== state.q) searchIn.value = state.q; });
-  const nActive = () => (slugs.every((x) => state.products.has(x)) ? 0 : 1) + (sections.every((x) => state.sections.has(x)) ? 0 : 1) + (state.status ? 1 : 0) + (state.q.trim() ? 1 : 0) + (state.onlySel ? 1 : 0) + (state.brief !== 'all' ? 1 : 0);
+  const nActive = () => (slugs.every((x) => state.products.has(x)) ? 0 : 1) + (sections.every((x) => state.sections.has(x)) ? 0 : 1) + (state.statuses.size ? 1 : 0) + (state.q.trim() ? 1 : 0) + (state.onlySel ? 1 : 0) + (state.brief !== 'all' ? 1 : 0);
   const clearBtn = h('button', { type: 'button', class: 'pri-clear', 'data-testid': 'pri-clear-filters', onclick: () => {
-    slugs.forEach((x) => state.products.add(x)); sections.forEach((x) => state.sections.add(x)); state.status = null; state.q = ''; state.onlySel = false; state.brief = 'all'; apply();
+    slugs.forEach((x) => state.products.add(x)); sections.forEach((x) => state.sections.add(x)); state.statuses.clear(); state.q = ''; state.onlySel = false; state.brief = 'all'; apply();
   } }, 'Clear filters');
   const activeNote = h('span', { class: 'pri-activen', 'data-testid': 'pri-active-filters', 'aria-live': 'polite' });
   uiSync.push(() => { const n = nActive(); clearBtn.hidden = n === 0; activeNote.textContent = n ? `${n} filter${n === 1 ? '' : 's'} on` : ''; });
@@ -518,8 +513,11 @@ function render(d, view = null, opts = {}) {
   const legend = (tid) => h('dl', { class: 'pri-legend', 'data-testid': tid }, (d.legend || []).flatMap((x) => [h('dt', null, x.tag), h('dd', null, x.meaning)]));
   const counts = d.stats && d.stats.status_counts_total ? Object.entries(d.stats.status_counts_total) : [];
   const baseLine = (b) => b.funnel
-    ? ` ALL TIME: ROAS ${roasX(b.roas)}, CPA ${fmt.money(b.cpa)}; ${funnelText(b.funnel)}; ${fmt.int(b.funnel.top)} of ${fmt.int(b.funnel.launched)} launched ads hit $10K+ spend (${share(b.funnel.top, b.funnel.launched)}); ${fmt.int(b.funnel.top)} of ${fmt.int(b.funnel.tested)} ads that spent $100+ (${share(b.funnel.top, b.funnel.tested)}). LAST 30 DAYS: ROAS ${roasX(b.roas_30d)}, CPA ${fmt.money(b.cpa_30d)}`
-      + (isNum(b.spend_14d) ? `. LAST 14 DAYS: ROAS ${roasX(b.roas_14d)}, CPA ${fmt.money(b.cpa_14d)}, spend ${fmt.money(b.spend_14d)}` + (b.cohort_14d ? `; launched in the last 14 days: ${fmt.int(b.cohort_14d.top)} of ${fmt.int(b.cohort_14d.launched)} hit $10K+ (under $100: ${fmt.int(b.cohort_14d.under_tested)}, $100+: ${fmt.int(b.cohort_14d.tested)})` : '') : '') + (b.cohorts && b.cohorts.length ? '. By launch date (spend to date): ' + b.cohorts.map((c) => `${c.label.toLowerCase()}: ${fmt.int(c.top)} of ${fmt.int(c.launched)} hit $10K+ (under $100: ${fmt.int(c.under_tested)}, $100+: ${fmt.int(c.tested)})`).join('; ') : (b.funnel_30d ? `; ${funnel30Text(b.funnel_30d)} within the window` : ''))
+    ? ` ALL TIME: ROAS ${roasX(b.roas)}, CPA ${fmt.money(b.cpa)}. LAST 30 DAYS: ROAS ${roasX(b.roas_30d)}, CPA ${fmt.money(b.cpa_30d)}`
+      + (isNum(b.spend_14d) ? `. LAST 14 DAYS: ROAS ${roasX(b.roas_14d)}, CPA ${fmt.money(b.cpa_14d)}, spend ${fmt.money(b.spend_14d)}` : '')
+      + `. Hit rate (ads that reached $10K+ spend): lifetime ${share(b.funnel.top, b.funnel.launched)} (${fmt.int(b.funnel.top)} of ${fmt.int(b.funnel.launched)} launched ads)`
+      + ((b.cohorts || [])[0] ? `; launched in last 30 days ${share(b.cohorts[0].top, b.cohorts[0].launched)} (${fmt.int(b.cohorts[0].top)} of ${fmt.int(b.cohorts[0].launched)})` : '')
+      + (b.cohort_14d ? `; launched in last 14 days ${share(b.cohort_14d.top, b.cohort_14d.launched)} (${fmt.int(b.cohort_14d.top)} of ${fmt.int(b.cohort_14d.launched)})` : '') + '.'
     : ` average ROAS ${roasX(b.roas)} all time, ${roasX(b.roas_30d)} last 30 days, CPA ${fmt.money(b.cpa)}, hit rate ${pct(b.hit_rate)}`;
   const buildTop = () => {
     const sub = `Week of ${d.week_start} · Data through ${d.data_through} · ` + (d.competitors_as_of ? `Competitor ads as of ${d.competitors_as_of}` : 'No competitor ads loaded yet');
@@ -529,8 +527,8 @@ function render(d, view = null, opts = {}) {
       const inner = [h('span', { class: 'pri-stat-n' }, String(v)), h('span', { class: 'pri-stat-k' }, k)];
       if (readonly) return h('div', { class: 'pri-stat pri-stat-' + tone, 'data-testid': 'pri-stat' }, inner);
       const b = h('button', { type: 'button', class: 'pri-stat pri-stat-' + tone, 'aria-pressed': 'false', 'data-testid': 'pri-stat', 'data-status': k, title: `${v} lines have this status in total. Click to show only the concepts with this status.`,
-        onclick: () => { state.status = state.status === k ? null : k; apply(); } }, inner);
-      uiSync.push(() => b.setAttribute('aria-pressed', String(state.status === k)));
+        onclick: () => { if (state.statuses.has(k)) state.statuses.delete(k); else state.statuses.add(k); apply(); } }, inner);
+      uiSync.push(() => b.setAttribute('aria-pressed', String(state.statuses.has(k))));
       return b;
     };
     const delta = (cur, base, lowerBetter) => {                       // chip: last 30 days vs all time; green = better, red = worse
@@ -539,38 +537,28 @@ function render(d, view = null, opts = {}) {
       return h('span', { class: 'pri-delta ' + (flat ? 'pri-delta-flat' : good ? 'pri-delta-up' : 'pri-delta-down'), 'data-testid': 'pri-delta' }, `${dv > 0 ? '+' : dv < 0 ? '\u2212' : ''}${Math.abs(Math.round(dv * 100))}% vs all time`);
     };
     const prodTile = (x) => {
-      const b = d.baselines[x], fn = b.funnel, f3 = b.funnel_30d, cohorts = b.cohorts || [];
+      const b = d.baselines[x], fn = b.funnel, c14 = b.cohort_14d;
       const stat = (label, v, chip) => h('div', { class: 'pri-pstat' }, h('span', { class: 'pri-label' }, label), h('strong', null, v), chip || null);
       const allBlock = h('div', { class: 'pri-pblock', 'data-testid': 'pri-pblock-all' },
         h('span', { class: 'pri-pbh' }, 'All time'),
-        h('div', { class: 'pri-pstats' }, stat('ROAS (all time)', roasX(b.roas)), stat('CPA (all time)', fmt.money(b.cpa)), stat('Spend', b.spend != null ? compact$(b.spend) : '\u2013'), stat('Purchases', b.purchases != null ? fmt.int(b.purchases) : '\u2013')),
-        fn ? h('div', { class: 'pri-hit', 'data-testid': 'pri-hit' },
-          h('div', { class: 'pri-hit-h' }, h('span', { class: 'pri-label' }, 'Ads that hit $10K+ spend'), h('strong', null, `${fmt.int(fn.top)} of ${fmt.int(fn.launched)} launched`), h('span', { class: 'pri-k' }, ` (${share(fn.top, fn.launched)}); ${fmt.int(fn.top)} of ${fmt.int(fn.tested)} ads that spent $100+ (${share(fn.top, fn.tested)})`)),
-          funnelBar(fn.under_tested, fn.tested, fn.top, fn.launched, funnelText(fn)),
-          h('div', { class: 'pri-hit-l', 'data-testid': 'pri-funnel' }, funnelText(fn)))
-          : h('div', { class: 'pri-hit', 'data-testid': 'pri-hit' }, h('div', { class: 'pri-hit-h' }, h('span', { class: 'pri-label' }, 'Ads that reached $1,000 spend'), h('strong', null, `${fmt.int(b.hits)} of ${fmt.int(b.judged)}`), h('span', { class: 'pri-k' }, ` ads that spent $100+ and launched 14+ days ago (${pct(b.hit_rate)})`))));
-      const cohortRow = (c) => h('div', { class: 'pri-cohort', 'data-testid': 'pri-cohort' },
-        h('div', { class: 'pri-hit-h' }, h('span', { class: 'pri-label' }, c.label), h('strong', null, `${fmt.int(c.top)} of ${fmt.int(c.launched)}`), h('span', { class: 'pri-k' }, ` ads hit $10K+ spend (${share(c.top, c.launched)})`)),
-        funnelBar(c.under_tested, c.tested, c.top, c.launched, cohortText(c)), h('div', { class: 'pri-hit-l', 'data-testid': 'pri-cohort-l' }, cohortText(c)));
+        h('div', { class: 'pri-pstats' }, stat('ROAS (all time)', roasX(b.roas)), stat('CPA (all time)', fmt.money(b.cpa)), stat('Spend', b.spend != null ? compact$(b.spend) : '\u2013'), stat('Purchases', b.purchases != null ? fmt.int(b.purchases) : '\u2013')));
       const liveBlock = h('div', { class: 'pri-pblock pri-pblock-30', 'data-testid': 'pri-pblock-30d' },
         h('span', { class: 'pri-pbh' }, 'Last 30 days'), h('span', { class: 'pri-k pri-pbn' }, 'Activity in the window: ROAS, CPA, spend, purchases, ads live'),
         h('div', { class: 'pri-pstats' }, stat('ROAS (30 days)', roasX(b.roas_30d), delta(b.roas_30d, b.roas, false)), stat('CPA (30 days)', fmt.money(b.cpa_30d), delta(b.cpa_30d, b.cpa, true)),
           stat('Spend', b.spend_30d != null ? fmt.money(b.spend_30d) : '\u2013'), stat('Purchases', b.purchases_30d != null ? fmt.int(b.purchases_30d) : '\u2013'),
-          stat('Ads live now', b.live_ads != null ? fmt.int(b.live_ads) : '\u2013'), stat('New ads launched', fmt.int(b.new_ads_30d))),
-        cohorts.length ? h('div', { class: 'pri-cohorts', 'data-testid': 'pri-cohorts' }, h('span', { class: 'pri-label' }, 'Ads by launch date (spend to date, not just the last 30 days)'),
-          cohorts.map(cohortRow))
-        : f3 ? h('div', { class: 'pri-hit', 'data-testid': 'pri-hit-30d' },
-          h('div', { class: 'pri-hit-h' }, h('span', { class: 'pri-label' }, 'Ads that spent in the 30 days'), h('strong', null, `${fmt.int(f3.top)} of ${fmt.int(f3.active)}`), h('span', { class: 'pri-k' }, ` reached $10K+ inside the window (${share(f3.top, f3.active)})`)),
-          funnelBar(f3.under_tested, f3.tested, f3.top, f3.active, funnel30Text(f3)),
-          h('div', { class: 'pri-hit-l', 'data-testid': 'pri-funnel-30d' }, funnel30Text(f3))) : null);
-      const c14 = b.cohort_14d;
+          stat('Ads live now', b.live_ads != null ? fmt.int(b.live_ads) : '\u2013'), stat('New ads launched', fmt.int(b.new_ads_30d))));
       const block14 = isNum(b.spend_14d) ? h('div', { class: 'pri-pblock pri-pblock-30 pri-pblock-14', 'data-testid': 'pri-pblock-14d' },
         h('span', { class: 'pri-pbh' }, 'Last 14 days'), h('span', { class: 'pri-k pri-pbn' }, 'Activity in the window: ROAS, CPA, spend, purchases, ads that spent'),
         h('div', { class: 'pri-pstats' }, stat('ROAS (14 days)', roasX(b.roas_14d), delta(b.roas_14d, b.roas, false)), stat('CPA (14 days)', fmt.money(b.cpa_14d), delta(b.cpa_14d, b.cpa, true)),
           stat('Spend', fmt.money(b.spend_14d)), stat('Purchases', isNum(b.purchases_14d) ? fmt.int(b.purchases_14d) : '\u2013'),
-          stat('Ads live now', isNum(b.live_14d) ? fmt.int(b.live_14d) : '\u2013'), stat('New ads launched', isNum(b.new_ads_14d) ? fmt.int(b.new_ads_14d) : '\u2013')),
-        c14 ? h('div', { class: 'pri-cohorts', 'data-testid': 'pri-cohorts-14d' }, cohortRow(c14)) : null) : null;
-      const inner = [h('span', { class: 'pri-pname' }, h('i', { class: 'pri-pdot', 'aria-hidden': 'true' }), b.product_name), allBlock, liveBlock, block14];
+          stat('Ads live now', isNum(b.live_14d) ? fmt.int(b.live_14d) : '\u2013'), stat('New ads launched', isNum(b.new_ads_14d) ? fmt.int(b.new_ads_14d) : '\u2013'))) : null;
+      const hitCell = (label, n, m, tid) => h('div', { class: 'pri-hitc', 'data-testid': tid }, h('span', { class: 'pri-label' }, label), h('strong', null, share(n, m)), h('span', { class: 'pri-k' }, `${fmt.int(n)} of ${fmt.int(m)} launched ads`));
+      const c30 = (b.cohorts || [])[0];
+      const hitStrip = h('div', { class: 'pri-hitstrip', 'data-testid': 'pri-hitstrip' },
+        h('span', { class: 'pri-pbh' }, 'Hit rate (ads that reached $10K+ spend)'),
+        fn ? h('div', { class: 'pri-hitrow' }, hitCell('Lifetime', fn.top, fn.launched, 'pri-hit-all'), c30 ? hitCell('Launched in last 30 days', c30.top, c30.launched, 'pri-hit-30') : null, c14 ? hitCell('Launched in last 14 days', c14.top, c14.launched, 'pri-hit-14') : null)
+          : h('div', { class: 'pri-hitrow' }, h('div', { class: 'pri-hitc', 'data-testid': 'pri-hit-all' }, h('span', { class: 'pri-label' }, 'Ads that reached $1,000 spend'), h('strong', null, pct(b.hit_rate)), h('span', { class: 'pri-k' }, `${fmt.int(b.hits)} of ${fmt.int(b.judged)} ads that spent $100+`))));
+      const inner = [h('span', { class: 'pri-pname' }, h('i', { class: 'pri-pdot', 'aria-hidden': 'true' }), b.product_name), allBlock, liveBlock, block14, hitStrip];
       const tip = `${b.product_name}: ROAS ${roasX(b.roas)} all time, ${roasX(b.roas_30d)} last 30 days; CPA ${fmt.money(b.cpa)} all time. Click to show only ${b.product_name}.`;
       if (readonly) return h('div', { class: 'pri-ptile', 'data-prod': x, 'data-testid': 'pri-ptile' }, inner);
       const el = h('button', { type: 'button', class: 'pri-ptile', 'aria-pressed': 'false', 'data-testid': 'pri-ptile', 'data-product': x, 'data-prod': x, title: tip,
@@ -584,12 +572,11 @@ function render(d, view = null, opts = {}) {
       h('ul', null,
         h('li', null, h('strong', null, 'ROAS'), ' = Meta-reported purchase value divided by spend. ', h('strong', null, 'All time'), ' = since each ad launched; ', h('strong', null, 'last 30 days'), ` = the 30 days up to ${through}.`),
         h('li', null, h('strong', null, 'Spend \u00b7 14d / ROAS \u00b7 14d'), ' (table columns) = the 14 days up to the data-through date, raw purchase value / spend; ROAS shows a dash under $100 spend in the window. The arrow compares it with the product\u2019s last-30-day ROAS (green up, red down, 5% or more).'),
-        h('li', null, h('strong', null, 'Last 14 days'), ' block: same measures over the 14 days ending on the data-through date. Ads live now = ads that spent in the window (30-day block: spent in the last 30 days; 14-day block: in the last 14). New ads launched = ads whose first spend was in the window. The launch-date row counts ads launched in the last 14 days by tracker launch date (else first day with spend), split by spend to date.'),
+        h('li', null, h('strong', null, 'Last 14 days'), ' block: same measures over the 14 days ending on the data-through date. Ads live now = ads that spent in the window (30-day block: spent in the last 30 days; 14-day block: in the last 14). New ads launched = ads whose first spend was in the window.'),
         h('li', null, h('strong', null, 'Total row'), ' under the table = the 14-day spend and spend-weighted ROAS of the rows shown. It will not equal the tile: the tile covers every ad of the product, the table only concept lines (not ads with no line, not lines without a row, not rows hidden by filters). The note under it shows the gap per product.'),
         h('li', null, h('strong', null, 'CPA'), ' (cost per purchase) = spend divided by purchases, same two windows.'),
-        h('li', null, h('strong', null, 'Launched'), ' = every ad with a launch date on the tracker or any spend (renamed re-uploads count as their own ad; ads with a launch date but $0 spend are launched and land in "under $100").'),
-        h('li', null, h('strong', null, 'Tested'), ' = an ad that spent $100 or more. ', h('strong', null, 'Hit'), ' = an ad that reached $10,000 spend. The hit rate is hits out of all launched ads; hits out of the $100+ ads is shown beside it. Every launched ad counts, including recent ones.'),
-        h('li', null, h('strong', null, 'Last 30 days'), ' block: ROAS, CPA, spend, purchases and ads live are activity inside the 30-day window. The three launch-date rows below are different: they take ads by launch date (last 30 days, 31 to 60 days ago, 61 to 90 days ago; launch date from the tracker, else first day with spend) and split them by spend to date: under $100, $100+, $10K+. New ads need time to reach $10K, so the older rows show what ads that have had time actually do. Launched counts include launched ads with $0 spend; New ads launched above counts only ads that have spent.'),
+        h('li', null, h('strong', null, 'Hit rate'), ' = share of ads launched in the period that have spent $10,000 or more to date; recent ads have had less time to get there. Lifetime = all launched ads; the 30-day and 14-day rates only count ads launched in that window (launch date from the tracker, else first day with spend). Launched counts every ad with a launch date or any spend, including ads that never spent $100.'),
+        h('li', null, h('strong', null, 'Last 30 days / last 14 days'), ' blocks: ROAS, CPA, spend, purchases and ads live are activity inside the window.'),
         h('li', null, 'The green / red chip compares the last 30 days with all time (higher ROAS and lower CPA are green).'),
         h('li', null, 'Upstack new-customer ROAS is a separate measure and is shown in each row panel.'),
         h('li', null, `Data through ${through}.`)));
