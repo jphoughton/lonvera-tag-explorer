@@ -1150,3 +1150,18 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 .pri-c-prod { min-width: 150px; font-size: 13px; } .pri-inprod { overflow-wrap: anywhere; }
 .pri-as-out { margin-top: 8px; font-size: 13px; } .pri-as-out ul { margin: 4px 0 6px 18px; padding: 0; }
 .pri-prodhist { margin-top: 10px; }
+/* Launch to Meta dialog (Production page, only when launching is enabled) */
+.prod-ldialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; }
+.prod-lbody { display: grid; gap: 10px; min-width: 0; }
+.prod-lh { margin: 6px 0 0; font-size: 14px; }
+.prod-lscroll { overflow-x: auto; max-width: 100%; }
+.prod-ltable { border-collapse: collapse; font-size: 13px; width: 100%; }
+.prod-ltable th, .prod-ltable td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border, #d8d8d8); vertical-align: top; overflow-wrap: anywhere; font-size: 13px; }
+.prod-ltable thead th { font-size: 12px; font-weight: 800; background: #efe8da; }
+.prod-ltable tbody th { font-weight: 700; white-space: nowrap; }
+.prod-testmode { margin: 0; padding: 8px 10px; border: 1px solid #8a4b00; border-radius: 6px; background: #fff4e0; color: #5c3200; font-weight: 700; font-size: 14px; }
+.prod-lstate { margin: 0; font-weight: 700; font-size: 15px; }
+.prod-lline { margin: 0; font-weight: 650; font-size: 14px; }
+.prod-lin { width: 100%; box-sizing: border-box; font-size: 16px; padding: 8px 10px; }
+.prod-lleft { justify-content: flex-start; flex-wrap: wrap; }
+.prod-ltsv { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 12px; }

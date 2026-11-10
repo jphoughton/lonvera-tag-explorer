@@ -75,9 +75,17 @@ export async function productionPage(ctx) {
   const load = async () => {
     data = await api('/api/priorities/assignments', { week: st.week, vendor: st.vendor, include_closed: st.closed ? 1 : '' }, { signal: ctx.signal });
     draw();
+    launchControls();
   };
   const patch = async (id, b, done) => {
     try { await api('/api/priorities/assignments/' + id, {}, { method: 'PATCH', body: b }); await load(); if (done) say(done); } catch (e) { if (e && e.name === 'AbortError') throw e; say(e.message || 'Could not save.', true); }
+  };
+  // Launch to Meta controls (priorities_launch.js): only fetched and drawn when the API says launching is enabled for this login; otherwise the page is unchanged.
+  let launchMod = null;
+  const launchControls = async () => {
+    const lf = data && data.launch;
+    if (!lf || lf.enabled !== true) return;
+    try { launchMod = launchMod || await import('./priorities_launch.js'); launchMod.decorate(root, lf, ctx); } catch (e) { /* the launch controls are optional: the table works without them */ }
   };
   const vendorNames = () => (data.vendors && data.vendors.length ? data.vendors : VENDOR_FALLBACK);
 
