@@ -684,3 +684,4 @@ p, .tts-bulk-note, .tts-foot, .note-line, .sv-lead { max-width: 50ch; }
 .pri-st-ok { color: #1a7f37; } .pri-st-up { color: #0b6bcb; } .pri-st-fade { color: #b35900; } .pri-st-bad { color: #b42318; } .pri-st-flat { color: #667085; } .pri-st-new { color: #7a3db8; }
 .pri-thennow, .pri-others, .pri-approach { margin: 4px 0; }
 @media print { .pri-status { border: 1px solid #444; color: #000 !important; } }
+.pri-story-block { margin: 6px 0; padding: 6px 10px; border-left: 3px solid #b35900; } .pri-story-block p { margin: 3px 0; } .pri-story-block ul { margin: 2px 0 4px; padding-left: 18px; }
