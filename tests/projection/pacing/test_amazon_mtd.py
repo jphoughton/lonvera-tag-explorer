@@ -360,7 +360,7 @@ def test_run_feeds_exit_codes_keep_their_order_and_a_snapshot_failure_alone_is_v
 def test_run_etl_snapshots_after_projection_daily_as_a_safety_net(tmp_path):
     call = _stub(tmp_path, "run_etl.sh")
     p, calls = call()
-    assert p.returncode == 0 and calls[-5:] == ["-m etl.projection_daily", "-m etl.amazon_mtd", "-m etl.competitor_ads --if-sunday", "-m etl.creative_priorities --if-sunday", "-m etl.auto_tag"]
+    assert p.returncode == 0 and calls[-6:] == ["-m etl.projection_daily", "-m etl.amazon_mtd", "-m etl.competitor_ads --if-sunday", "-m etl.creative_priorities --if-sunday", "-m etl.assignment_tags", "-m etl.auto_tag"]
     p, calls = call(AMZ_RC=4)
     assert p.returncode == 4 and "etl.amazon_mtd failed (exit 4)" in p.stderr
     p, _ = call(AMZ_RC=4, PROJ_RC=1)
