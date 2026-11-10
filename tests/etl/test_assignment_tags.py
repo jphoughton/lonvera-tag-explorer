@@ -14,7 +14,7 @@ MONDAY = dt.date(2026, 11, 9)
 
 @pytest.fixture(autouse=True)
 def clean(conn):
-    conn.execute("TRUNCATE creative_priorities_assignments RESTART IDENTITY")
+    conn.execute("TRUNCATE creative_priorities_assignments RESTART IDENTITY CASCADE")
     conn.commit()
 
 
