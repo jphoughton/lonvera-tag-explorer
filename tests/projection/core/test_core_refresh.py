@@ -424,7 +424,7 @@ def test_run_etl_runs_projection_even_when_upstack_fails_and_exits_non_zero(stub
 
 def test_run_etl_a_failed_stage_moves_refresh_still_runs_projection_and_fails_the_run(stub_python):
     p, calls = stub_python(SM_RC=5)
-    assert p.returncode == 5 and calls[-5:] == ["-m etl.stage_moves", "-m etl.projection_daily", "-m etl.amazon_mtd", "-m etl.competitor_ads --if-sunday", "-m etl.creative_priorities --if-sunday", "-m etl.auto_tag"] and "etl.stage_moves failed (exit 5)" in p.stderr
+    assert p.returncode == 5 and calls[-6:] == ["-m etl.stage_moves", "-m etl.projection_daily", "-m etl.amazon_mtd", "-m etl.competitor_ads --if-sunday", "-m etl.creative_priorities --if-sunday", "-m etl.auto_tag"] and "etl.stage_moves failed (exit 5)" in p.stderr
     p, _ = stub_python(UP_RC=6, SM_RC=5)
     assert p.returncode == 6                                              # an earlier failure keeps priority
 
@@ -436,7 +436,7 @@ def test_run_etl_run_daily_failure_wins_over_upstack_failure(stub_python):
 
 def test_run_etl_exits_non_zero_when_only_projection_fails(stub_python):
     p, calls = stub_python(PROJ_RC=1)
-    assert p.returncode == 1 and calls[-4] == "-m etl.projection_daily" and "etl.projection_daily failed (exit 1)" in p.stderr
+    assert p.returncode == 1 and calls[-5] == "-m etl.projection_daily" and "etl.projection_daily failed (exit 1)" in p.stderr
 
 
 def test_run_etl_reports_both_failures(stub_python):
