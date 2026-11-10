@@ -1769,7 +1769,7 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 
 *table*
 
-**Purpose.** Saved views of the creative priorities sheet: the rows someone selected on /priorities (or a saved filter state), switchable in place with /priorities?view=<token> and frozen with the snapshot's baselines and legend on the share link /priorities/v/<token>.
+**Purpose.** Saved views of the creative priorities sheet: the rows someone selected on /priorities, frozen with the snapshot's baselines and legend, opened by an unguessable link /priorities/v/<token>.
 
 - **Grain:** primary key `(id)`; one row per saved view (token is unique)
 - **Source:** app/creative_priorities.py (Save view on /priorities), copied from creative_priorities_snapshots

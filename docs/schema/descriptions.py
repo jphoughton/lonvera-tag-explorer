@@ -1353,7 +1353,7 @@ rel("public.creative_priorities_snapshots", group="creative", kind="table",
           "rows": "JSON array of the ranked rows (iterate and new sections, all products).", "stats": "JSON object: candidate counts, skipped counts, tagged and untagged spend, data_through."})
 
 rel("public.creative_priorities_views", group="creative", kind="table",
-    purpose="Saved views of the creative priorities sheet: the rows someone selected on /priorities (or a saved filter state), switchable in place with /priorities?view=<token> and frozen with the snapshot's baselines and legend on the share link /priorities/v/<token>.",
+    purpose="Saved views of the creative priorities sheet: the rows someone selected on /priorities, frozen with the snapshot's baselines and legend, opened by an unguessable link /priorities/v/<token>.",
     grain="one row per saved view (token is unique)", source="app/creative_priorities.py (Save view on /priorities), copied from creative_priorities_snapshots",
     refresh="written on demand by the app; never rebuilt", coverage="from the day migration 198 was applied",
     caveats=["payload is a frozen copy: a view does not change when a later snapshot replaces its week. The link is the access (the app has no password)."],
