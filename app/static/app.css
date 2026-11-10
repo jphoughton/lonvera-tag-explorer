@@ -741,6 +741,7 @@ button.pri-ptile { cursor: pointer; } button.pri-ptile:hover { background: var(-
 .pri-segbtn:first-child { border-radius: 6px 0 0 6px; margin-left: 0; } .pri-segbtn:last-child { border-radius: 0 6px 6px 0; } .pri-segbtn:hover { background: var(--lv-hover, #f3ede1); }
 .pri-segbtn:focus-visible, .pri-stat:focus-visible, .pri-ptile:focus-visible, .pri-clear:focus-visible { outline: 2px solid var(--lv-focus, #c75123); outline-offset: 2px; }
 @media (max-width: 760px) {
+  .pri-prodlink { width: 100%; text-align: center; white-space: normal; }
   .pri-viewsel { min-width: 0; width: 100%; } .pri-headctl, .pri-viewbar, .pri-viewgrp, .pri-weekl { width: 100%; } .pri-viewbar { align-items: stretch; }
   .pri-pstats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pri-ptiles, .pri-abouts { grid-template-columns: 1fr; }
   .pri-frow { grid-template-columns: 1fr; gap: 4px; } .pri-fl { width: 100%; } .pri-fselect { width: 100%; }
@@ -1146,7 +1147,7 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 .pri-defs h3 { margin: 4px 0 0; font-size: 13px; text-transform: none; letter-spacing: 0; }
 
 /* In production column, Production link and Assign to vendor dialog (2026-11-10) */
-.pri-prodlink { align-self: center; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.pri-prodlink { align-self: flex-end; display: inline-block; text-decoration: none; font-size: 13px; font-weight: 600; padding: 5px 12px; white-space: nowrap; }
 .pri-c-prod { min-width: 150px; font-size: 13px; } .pri-inprod { overflow-wrap: anywhere; }
 .pri-as-out { margin-top: 8px; font-size: 13px; } .pri-as-out ul { margin: 4px 0 6px 18px; padding: 0; }
 .pri-prodhist { margin-top: 10px; }

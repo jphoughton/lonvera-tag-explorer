@@ -1824,7 +1824,12 @@ def test_hide_already_assigned_checkbox_is_off_by_default_and_hides_only_when_ti
 def test_header_links_to_production(page, fresh_assign):
     goto(page)
     link = page.locator("[data-testid=pri-prod-link]")
-    assert link.text_content().strip() == "Production" and link.get_attribute("href") == "/priorities/production"
+    assert link.is_visible() and link.text_content().strip().startswith("Production board")
+    assert link.get_attribute("href") == "/priorities/production" and link.get_attribute("title") == "Concepts assigned to vendors, by week"
+    assert "btn" in link.get_attribute("class").split()
+    page.set_viewport_size({"width": 375, "height": 800})
+    assert link.is_visible() and page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    page.set_viewport_size({"width": 1280, "height": 800})
     link.click()
     page.wait_for_selector("[data-testid=prod-page]")
 

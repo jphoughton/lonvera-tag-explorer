@@ -52,7 +52,9 @@ export function assignControls({ d, selected, keyOf, refresh }) {
     x.body.replaceChildren(h('table', { class: 'pri-wt', 'data-testid': 'pri-prod-htable' }, h('tbody', null,
       h('tr', { class: 'pri-wth' }, ['Week of', 'Vendor', 'Stage', 'Brief', 'Creative', 'Ads', 'Result'].map((t) => h('th', { scope: 'col' }, t))), list.map(row))));
   }
-  const repaint = () => { cells.forEach(paintCell); hists.forEach(paintHist); };
+  const counters = new Set();
+  const openCount = () => (st.rows && !st.failed ? st.rows.filter(isOpen).length : null);
+  const repaint = () => { cells.forEach(paintCell); hists.forEach(paintHist); counters.forEach((f) => f(openCount())); };
 
   async function load() {
     try {
@@ -126,6 +128,7 @@ export function assignControls({ d, selected, keyOf, refresh }) {
   load();
   return {
     button, hideLabel,
+    onCount(f) { counters.add(f); f(openCount()); },
     hideOn: () => st.hide,
     setHide: (on) => { st.hide = on; hideBox.checked = on; },
     hidden: (r) => st.hide && assignedNow(r),

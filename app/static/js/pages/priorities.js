@@ -591,6 +591,8 @@ function render(d, view = null, opts = {}) {
     actionsHost.replaceChildren(
       readonly || !opts.reload ? null : h('button', { type: 'button', class: 'btn primary pri-add', 'data-testid': 'pri-add-concept', onclick: () => mctl.add() }, 'Add concept'),
       h('span', { class: 'pri-btngroup', role: 'group', 'aria-label': 'Export' }, csvLink, h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-print', onclick: () => window.print() }, printLabel)));
+    const prodLink = h('a', { class: 'btn pri-prodlink', href: href('/priorities/production', {}), title: 'Concepts assigned to vendors, by week', 'data-testid': 'pri-prod-link' }, 'Production board');
+    if (actl) actl.onCount((n) => { prodLink.textContent = n === null ? 'Production board' : `Production board (${n})`; });
     const about = (title, tid, ...kids) => h('details', { class: 'pri-about', 'data-testid': tid }, h('summary', null, title), h('div', { class: 'pri-about-b' }, ...kids));
     return h('div', { class: 'pri-top' },
       h('div', { class: 'pri-titlerow' },
@@ -598,7 +600,7 @@ function render(d, view = null, opts = {}) {
           h('h1', { 'data-testid': 'pri-title' }, readonly ? `Creative priorities: ${view.name}` : act ? `Creative priorities: ${act.view.name}` : 'Creative priorities'),
           h('p', { class: 'pri-sub pri-hd-screen', 'data-testid': 'pri-sub' }, sub)),
         readonly ? null : h('div', { class: 'pri-headctl pri-hd-screen' },
-          act ? null : h('label', { class: 'pri-weekl' }, h('span', { class: 'pri-flabel' }, 'Week'), weekSel), viewbar, h('a', { class: 'pri-prodlink', href: href('/priorities/production', {}), 'data-testid': 'pri-prod-link' }, 'Production'))),
+          act ? null : h('label', { class: 'pri-weekl' }, h('span', { class: 'pri-flabel' }, 'Week'), weekSel), viewbar, prodLink)),
       readonly ? h('p', { class: 'pri-lead', 'data-testid': 'pri-view-note' }, `Saved view of ${d.rows.length} concept${d.rows.length === 1 ? '' : 's'}, snapshot week of ${d.week_start} (frozen: it does not change when a newer snapshot arrives). `,
         h('a', { href: href('/priorities', {}), 'data-testid': 'pri-open-full' }, 'Open full priorities'), ' ',
         h('a', { href: viewUrl(view.token), 'data-testid': 'pri-open-live' }, 'Open as a view with the latest data'), ' ',
