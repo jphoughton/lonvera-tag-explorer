@@ -7608,6 +7608,78 @@
    "examples": []
   },
   {
+   "name": "public.alert_state",
+   "schema": "public",
+   "relation": "alert_state",
+   "kind": "table",
+   "group": "ops",
+   "purpose": "De-duplication state of the failure and staleness alerts sent to Slack by etl.alerts: one row per check (a job that failed, a table that went stale, the web health check ...), so the job alerts once when a problem appears, repeats every 24 hours while it lasts, and sends one 'recovered' line when it clears.",
+   "grain": "one row per check id",
+   "primary_key": [
+    "check_id"
+   ],
+   "foreign_keys": [],
+   "source": "etl.alerts (hourly Railway cron service `alerts`)",
+   "refresh": "hourly",
+   "coverage": "from the first run of the alerts service",
+   "caveats": [
+    "resolved_at is NULL while the problem is open; a problem that comes back reopens the same row (first_seen restarts, alert_count restarts).",
+    "last_alerted is NULL when the problem was seen but no message could be sent (for example SLACK_ALERT_WEBHOOK_URL is not set yet): the alert goes out on the first run after the webhook works."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "check_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Stable id of the check, for example job:run_daily, fresh:meta, web:health (primary key)."
+    },
+    {
+     "name": "first_seen",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the current problem was first seen."
+    },
+    {
+     "name": "last_seen",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "Last run that still saw the problem (or the run that saw it clear, when resolved)."
+    },
+    {
+     "name": "last_alerted",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When Slack was last told about it; NULL if never delivered."
+    },
+    {
+     "name": "resolved_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the problem cleared; NULL while open."
+    },
+    {
+     "name": "alert_count",
+     "type": "integer",
+     "nullable": false,
+     "description": "Messages sent for the current problem."
+    },
+    {
+     "name": "fingerprint",
+     "type": "text",
+     "nullable": true,
+     "description": "Short text that changes when the problem changes shape (for example another feed started failing); a change re-alerts at once."
+    },
+    {
+     "name": "last_message",
+     "type": "text",
+     "nullable": true,
+     "description": "Text of the last alert (what broke, since when, how to fix)."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.etl_runs",
    "schema": "public",
    "relation": "etl_runs",
