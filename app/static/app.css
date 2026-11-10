@@ -1103,3 +1103,35 @@ button.pri-stat:hover { background: color-mix(in srgb, var(--tone) 14%, #fff); }
 /* status tiles: neutral white until selected, then filled in the status colour */
 .pri-stat { background: #fff; } button.pri-stat:hover { background: color-mix(in srgb, var(--tone) 10%, #fff); }
 .pri-stat[aria-pressed="true"] { background: var(--tone); color: #fff; }
+
+/* ---- Production (/priorities/production) and the vendor page (/priorities/vendor/<token>): plain tables / cards ---- */
+body.pri-bare #topbar, body.pri-bare #controls { display: none; }
+.prod-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; margin: 8px 0; }
+.prod-ctl { display: flex; flex-direction: column; gap: 3px; }
+.prod-check { font-size: 14px; }
+.prod-links { margin: 10px 0; padding: 8px 10px; border: 1px solid var(--lv-line, #dcd3c3); border-radius: 8px; }
+.prod-linkrow { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 4px; }
+.prod-vl { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.prod-msg { min-height: 18px; margin: 6px 0; font-size: 13px; overflow-wrap: anywhere; }
+.prod-url { font-family: ui-monospace, monospace; user-select: all; }
+.prod-scroll { overflow-x: auto; max-width: 100%; }
+.prod-table { font-size: 13px; min-width: 1100px; }
+.prod-table th { font-size: 12px; }
+.prod-c { padding: 8px; vertical-align: top; border-bottom: 1px solid var(--border, #d8d8d8); overflow-wrap: anywhere; }
+.prod-nowrap { white-space: nowrap; }
+.prod-concept { min-width: 200px; }
+.prod-small { font-size: 12px; padding: 3px 8px; margin: 2px 4px 2px 0; }
+.prod-acts { min-width: 150px; }
+.prod-danger { background: #b42318; border-color: #b42318; color: #fff; }
+.prod-vendor { max-width: 760px; }
+.prod-week h2 { font-size: 18px; margin: 18px 0 6px; }
+.prod-card { border: 1px solid var(--lv-line, #dcd3c3); border-radius: 8px; padding: 10px 14px; margin: 8px 0; display: grid; gap: 8px; }
+.prod-card h3 { margin: 0; font-size: 16px; }
+.prod-story { margin: 0; font-style: italic; font-size: 14px; }
+.prod-dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; font-size: 14px; }
+.prod-dl dd { margin: 0; overflow-wrap: anywhere; }
+.prod-in { width: 100%; box-sizing: border-box; font-size: 16px; }
+.prod-vbtns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.prod-saved { font-size: 13px; }
+@media (max-width: 600px) { .prod-controls { flex-direction: column; align-items: stretch; } .prod-dl { grid-template-columns: 1fr; } }
+.prod-page .pri-flabel, .prod-page .pri-sub { font-size: 12px; }
