@@ -36,7 +36,7 @@ with the creative fully looked at; expect video ads (cover only) to be weaker.
    (no database url, no Meta / Upstack tokens), and `db.scrub` strips the token from logs and `etl_runs`.
 3. The Dockerfile installs Node 22 and `@anthropic-ai/claude-code@2.1.321` (pinned, bump deliberately). The web service shares the image, so it carries the CLI too (about +200 MB).
 
-**Cost = plan usage, not dollars.** Every ad is one Sonnet call with a ~14K-character prompt plus one picture; roughly 7-15 s each. A 150-ad run is about 20-35 min of wall clock and counts
+**Cost = plan usage, not dollars.** Every ad is one Sonnet call with a ~14K-character prompt plus one picture; roughly 7-15 s each. A 400-ad run is about 55-100 min of wall clock and counts
 against Josh's plan limits. `etl_runs` job `auto_tag` stats record calls, attempts, input / output / cache tokens, duration, tagged families / rows, by product and confidence.
 Backlog on 2026-11-10 (read from prod via the analytics reader): 232 qualifying untagged families (Beef Liver 130, Boneflex 50, Vita Bull 52), so the first two nights are catch-up,
 then it is the week's new ads .
@@ -46,7 +46,7 @@ then it is the week's new ads .
 * Auth error ("Not logged in", expired token) or usage / rate limit -> the run **stops at once** (no retries, no hammering), the tags made so far are kept, the run is recorded failed.
 * CLI missing from the image -> same, recorded failed.
 * In `scripts/deploy/run_etl.sh` the step runs **last** and is non-fatal: it never changes the nightly exit code and never delays the data steps. Check `etl_runs` where `job='auto_tag'`.
-* Hard cap per run: `--limit` (default 150 ads).
+* Hard cap per run: `--limit` (default 400 ads).
 
 ## Manual runs
     python -m etl.auto_tag --dry-run                 # counts candidates per product, shows 2 sample units per product; no calls, no token needed
