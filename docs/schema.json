@@ -7191,6 +7191,71 @@
    "examples": []
   },
   {
+   "name": "public.creative_priorities_views",
+   "schema": "public",
+   "relation": "creative_priorities_views",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "Saved views of the creative priorities sheet: the rows someone selected on /priorities, frozen with the snapshot's baselines and legend, opened by an unguessable link /priorities/v/<token>.",
+   "grain": "one row per saved view (token is unique)",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "app/creative_priorities.py (Save view on /priorities), copied from creative_priorities_snapshots",
+   "refresh": "written on demand by the app; never rebuilt",
+   "coverage": "from the day migration 198 was applied",
+   "caveats": [
+    "payload is a frozen copy: a view does not change when a later snapshot replaces its week. The link is the access (the app has no password)."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Surrogate key (primary key)."
+    },
+    {
+     "name": "token",
+     "type": "text",
+     "nullable": false,
+     "description": "Unguessable link token (unique)."
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "nullable": false,
+     "description": "View name, '' when unnamed; shown as the page title and used in the CSV file name."
+    },
+    {
+     "name": "week_start",
+     "type": "date",
+     "nullable": false,
+     "description": "The snapshot week (Sunday, Pacific) the rows came from."
+    },
+    {
+     "name": "keys",
+     "type": "text[]",
+     "nullable": false,
+     "description": "Stable row keys of the selected rows."
+    },
+    {
+     "name": "payload",
+     "type": "jsonb",
+     "nullable": false,
+     "description": "JSON object: the selected rows plus the snapshot's baselines, legend and competitor as-of date."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the view was saved."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.unmatched_meta",
    "schema": "public",
    "relation": "unmatched_meta",
