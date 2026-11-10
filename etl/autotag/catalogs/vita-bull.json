@@ -1,0 +1,298 @@
+[
+ {
+  "line": "L01",
+  "cluster": "TRT & Men's Clinics",
+  "icp": "TRT Considerer",
+  "pain": "Declining Testosterone",
+  "trigger": "Fear",
+  "story": "His blood test says low testosterone, and he's weighing TRT injections for life."
+ },
+ {
+  "line": "L02",
+  "cluster": "TRT & Men's Clinics",
+  "icp": "TRT Considerer",
+  "pain": "Hormone Decline (Testosterone / Estrogen)",
+  "trigger": "Frustration",
+  "story": "Two clinics pushed him toward hormone injections before explaining why his numbers dropped."
+ },
+ {
+  "line": "L03",
+  "cluster": "TRT & Men's Clinics",
+  "icp": "TRT Considerer",
+  "pain": "Distrust of Synthetic Solutions",
+  "trigger": "Distrust",
+  "story": "He doesn't trust shutting down his own hormone production with a lifelong prescription."
+ },
+ {
+  "line": "L04",
+  "cluster": "TRT & Men's Clinics",
+  "icp": "Peptide Clinic Shopper",
+  "pain": "Declining Testosterone",
+  "trigger": "Desire",
+  "story": "He wants his old drive back and is comparing peptide clinic plans."
+ },
+ {
+  "line": "L05",
+  "cluster": "TRT & Men's Clinics",
+  "icp": "Peptide Clinic Shopper",
+  "pain": "Muscle Recovery / Athletic Performance",
+  "trigger": "Comparison",
+  "story": "Guys at his gym are on peptides and recovering faster than he is."
+ },
+ {
+  "line": "L06",
+  "cluster": "TRT & Men's Clinics",
+  "icp": "Peptide Clinic Shopper",
+  "pain": "Offer / Price-Led",
+  "trigger": "Frustration",
+  "story": "He's pricing peptide clinics at hundreds a month and wants something simpler first."
+ },
+ {
+  "line": "L07",
+  "cluster": "TRT & Men's Clinics",
+  "icp": "Natural Testosterone Support",
+  "pain": "Declining Testosterone",
+  "trigger": "Desire",
+  "story": "He wants his testosterone up without TRT and searches late at night."
+ },
+ {
+  "line": "L08",
+  "cluster": "TRT & Men's Clinics",
+  "icp": "Natural Testosterone Support",
+  "pain": "Distrust of Synthetic Solutions",
+  "trigger": "Distrust",
+  "story": "Every supplement ad promises testosterone, and he assumes it's another pill that does nothing."
+ },
+ {
+  "line": "L09",
+  "cluster": "TRT & Men's Clinics",
+  "icp": "Natural Testosterone Support",
+  "pain": "Ingredient Quality / Sourcing",
+  "trigger": "Pride",
+  "story": "He reads every label and only wants ingredients he'd eat as real food."
+ },
+ {
+  "line": "L10",
+  "cluster": "ED / Performance",
+  "icp": "Soft in the Wrong Places",
+  "pain": "Sexual Performance / Libido Decline",
+  "trigger": "Shame",
+  "story": "Things go soft at the wrong moment, so he avoids the bedroom."
+ },
+ {
+  "line": "L11",
+  "cluster": "ED / Performance",
+  "icp": "Soft in the Wrong Places",
+  "pain": "Declining Testosterone",
+  "trigger": "Fear",
+  "story": "He wonders if low testosterone is why it keeps happening, and says nothing."
+ },
+ {
+  "line": "L12",
+  "cluster": "ED / Performance",
+  "icp": "Bedroom Upgrade Seeker",
+  "pain": "Sexual Performance / Libido Decline",
+  "trigger": "Desire",
+  "story": "Nothing is broken, but he wants the drive and stamina he had at 30."
+ },
+ {
+  "line": "L13",
+  "cluster": "ED / Performance",
+  "icp": "Bedroom Upgrade Seeker",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Frustration",
+  "story": "By evening he's too tired for the bedroom, even when he wants to be."
+ },
+ {
+  "line": "L14",
+  "cluster": "ED / Performance",
+  "icp": "Bedroom Upgrade Seeker",
+  "pain": "General Vitality / Aging Well",
+  "trigger": "Pride",
+  "story": "At 45 he wants to perform like the man he used to be."
+ },
+ {
+  "line": "L15",
+  "cluster": "Prostate / Urinary",
+  "icp": "The Night Waker",
+  "pain": "Prostate / Urinary Health",
+  "trigger": "Frustration",
+  "story": "He wakes two or three times a night to pee and drags all day."
+ },
+ {
+  "line": "L16",
+  "cluster": "Prostate / Urinary",
+  "icp": "The Night Waker",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Shame",
+  "story": "He nods off in afternoon meetings after another broken night of sleep."
+ },
+ {
+  "line": "L17",
+  "cluster": "Prostate / Urinary",
+  "icp": "The Night Waker",
+  "pain": "Mental Fog / Mood Instability",
+  "trigger": "Fear",
+  "story": "He loses his words mid-sentence and wonders if broken sleep is doing it."
+ },
+ {
+  "line": "L18",
+  "cluster": "Prostate / Urinary",
+  "icp": "Prostate Worrier",
+  "pain": "Prostate / Urinary Health",
+  "trigger": "Fear",
+  "story": "His doctor said his prostate is enlarged, and he lies awake worrying about surgery."
+ },
+ {
+  "line": "L19",
+  "cluster": "Prostate / Urinary",
+  "icp": "Prostate Worrier",
+  "pain": "General Vitality / Aging Well",
+  "trigger": "Relief",
+  "story": "He wants to feel he's doing something about it before it gets worse."
+ },
+ {
+  "line": "L20",
+  "cluster": "Muscle & Strength",
+  "icp": "VB3 Same Effort, Less Back",
+  "pain": "Muscle Recovery / Athletic Performance",
+  "trigger": "Frustration",
+  "story": "He trains as hard as ever, but the weights stall and soreness lingers."
+ },
+ {
+  "line": "L21",
+  "cluster": "Muscle & Strength",
+  "icp": "VB3 Same Effort, Less Back",
+  "pain": "Declining Testosterone",
+  "trigger": "Fear",
+  "story": "His lifts stall at 45, and he wonders if testosterone is the reason."
+ },
+ {
+  "line": "L22",
+  "cluster": "Muscle & Strength",
+  "icp": "VB3 Same Effort, Less Back",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Desire",
+  "story": "He wants enough energy left after work to train like he used to."
+ },
+ {
+  "line": "L23",
+  "cluster": "Muscle & Strength",
+  "icp": "Physique / Body Composition",
+  "pain": "Weight Gain / Stubborn Belly Fat",
+  "trigger": "Shame",
+  "story": "He eats clean and lifts, but the belly stays and muscle won't build."
+ },
+ {
+  "line": "L24",
+  "cluster": "Muscle & Strength",
+  "icp": "Physique / Body Composition",
+  "pain": "Muscle Recovery / Athletic Performance",
+  "trigger": "Frustration",
+  "story": "He trains four days a week but looks the same as last year."
+ },
+ {
+  "line": "L25",
+  "cluster": "Muscle & Strength",
+  "icp": "Physique / Body Composition",
+  "pain": "Declining Testosterone",
+  "trigger": "Fear",
+  "story": "He suspects low testosterone is why the old gym results won't come back."
+ },
+ {
+  "line": "L26",
+  "cluster": "Energy & Multivitamin",
+  "icp": "Given Up Guy",
+  "pain": "Declining Testosterone",
+  "trigger": "Frustration",
+  "story": "He decided feeling worn out is just turning 50, and stopped trying."
+ },
+ {
+  "line": "L27",
+  "cluster": "Energy & Multivitamin",
+  "icp": "Given Up Guy",
+  "pain": "Low Energy / Afternoon Crash",
+  "trigger": "Shame",
+  "story": "He falls asleep on the couch by 8pm while his family goes on without him."
+ },
+ {
+  "line": "L28",
+  "cluster": "Energy & Multivitamin",
+  "icp": "Given Up Guy",
+  "pain": "General Vitality / Aging Well",
+  "trigger": "Relief",
+  "story": "He hears it may not be age, and starts to hope again."
+ },
+ {
+  "line": "L29",
+  "cluster": "Energy & Multivitamin",
+  "icp": "Won't Slow Down",
+  "pain": "General Vitality / Aging Well",
+  "trigger": "Pride",
+  "story": "At 60 he still golfs and hikes and wants his body to keep up."
+ },
+ {
+  "line": "L30",
+  "cluster": "Energy & Multivitamin",
+  "icp": "Won't Slow Down",
+  "pain": "Declining Testosterone",
+  "trigger": "Fear",
+  "story": "He feels his energy slipping and refuses to accept it as normal aging."
+ },
+ {
+  "line": "L31",
+  "cluster": "Energy & Multivitamin",
+  "icp": "Won't Slow Down",
+  "pain": "Muscle Recovery / Athletic Performance",
+  "trigger": "Frustration",
+  "story": "A round of golf or a hike now leaves him sore for days."
+ },
+ {
+  "line": "L32",
+  "cluster": "Energy & Multivitamin",
+  "icp": "Number Optimizer",
+  "pain": "Declining Testosterone",
+  "trigger": "Frustration",
+  "story": "He tracks his bloodwork and sleep in a spreadsheet and wants better numbers."
+ },
+ {
+  "line": "L33",
+  "cluster": "Energy & Multivitamin",
+  "icp": "Number Optimizer",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Relief",
+  "story": "His bloodwork shows low iron and B12, and he finally has something to fix."
+ },
+ {
+  "line": "L34",
+  "cluster": "Energy & Multivitamin",
+  "icp": "Number Optimizer",
+  "pain": "Hormone Decline (Testosterone / Estrogen)",
+  "trigger": "Comparison",
+  "story": "He compares his labs to the optimal range and sees where he falls short."
+ },
+ {
+  "line": "L35",
+  "cluster": "Ancestral Nutrition",
+  "icp": "Primal Living",
+  "pain": "Declining Testosterone",
+  "trigger": "Distrust",
+  "story": "He believes modern food and seed oils drained his testosterone."
+ },
+ {
+  "line": "L36",
+  "cluster": "Ancestral Nutrition",
+  "icp": "Primal Living",
+  "pain": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+  "trigger": "Relief",
+  "story": "He wants the nutrients his grandfather got from organ meats, without cooking liver."
+ },
+ {
+  "line": "L37",
+  "cluster": "Ancestral Nutrition",
+  "icp": "Primal Living",
+  "pain": "Distrust of Synthetic Solutions",
+  "trigger": "Pride",
+  "story": "He eats grass-fed steak, avoids anything synthetic, and wants supplements made from real food."
+ }
+]
