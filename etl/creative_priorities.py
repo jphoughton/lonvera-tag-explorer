@@ -1104,10 +1104,18 @@ CSV_COLS = ["market_cluster", "icp", "pain_point", "story", "product", "section"
             "hook_1", "hook_2", "hook_3", "why", "source", "notes"]
 
 
-def to_csv(snapshot: dict) -> str:
+def _row_key(r: dict) -> str:
+    """Same join as app.creative_priorities.row_key (kept here so etl does not import the app)."""
+    if r.get("manual"):
+        return str(r["key"])
+    return "|".join(str(r.get(k)) for k in ("product", "section", "cluster", "icp", "pain_point"))
+
+
+def to_csv(snapshot: dict, briefed: dict | None = None) -> str:
+    """briefed (view exports only): {row key: {at, note}} appends the columns briefed (yes / blank), briefed_at and briefed_note after every other column."""
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
-    w.writerow(CSV_COLS)
+    w.writerow(CSV_COLS + (["briefed", "briefed_at", "briefed_note"] if briefed is not None else []))
     for r in sorted(snapshot["rows"], key=lambda r: (PRODUCTS.index(r["product"]) if r["product"] in PRODUCTS else 99, SECTION_ORDER.index(r["section"]) if r["section"] in SECTION_ORDER else len(SECTION_ORDER), r["rank"])):
         m = r["metrics"]
         g = lambda k: m.get(k)
@@ -1119,8 +1127,12 @@ def to_csv(snapshot: dict) -> str:
                     comp, r["emotional_trigger"] or "", r["ingredients"], r["line_code"], r["confidence"],
                     "; ".join(r["flags"]), r["score"], g("spend"), g("roas"), g("cpa"), g("roas_index"), g("ads"), g("hit_rate"), g("hit_rate_index"), g("spend_30d"), g("roas_30d"), g("spend_prior30"),
                     g("roas_prior30"), g("launches_30d"), g("nc_roas"), g("nc_cpa"), hk[0], hk[1], hk[2], r["why"], "manual" if r.get("manual") else "auto", r.get("notes", "")])
+        formula = lambda c: "'" + c if isinstance(c, str) and c[:1] in ("=", "+", "-", "@", "\t") else c
         if r.get("manual"):          # typed by hand: a leading = + - @ would run as a formula when the CSV is opened in Sheets / Excel
-            row = ["'" + c if isinstance(c, str) and c[:1] in ("=", "+", "-", "@", "\t") else c for c in row]
+            row = [formula(c) for c in row]
+        if briefed is not None:
+            b = briefed.get(_row_key(r)) or {}
+            row += ["yes" if b else "", b.get("at", ""), formula(b.get("note", ""))]
         w.writerow(row)
     return buf.getvalue()
 

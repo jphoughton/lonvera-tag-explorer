@@ -375,24 +375,24 @@ def priorities():
 @bp.get("/api/priorities.csv")
 def priorities_csv():
     """The same snapshot as a CSV download (week=YYYY-MM-DD, default the latest). Repeated id=<row key> keeps only those rows (same columns); no id = every row."""
-    week, text = cpr.csv_text(db.get_conn(), _arg("week"), request.args.getlist("id"))
-    return Response(text, mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="creative-priorities-{week}.csv"'})
+    week, text = cpr.csv_text(db.get_conn(), _arg("week"), request.args.getlist("id"), briefed_token=_arg("briefed_from"))
+    fname = cpr.slug(_arg("name")) if _arg("name") else f"creative-priorities-{week}"       # name= (the active view's name) becomes the file name
+    return Response(text, mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{fname}.csv"'})
 
 
 _view_limiter = None
 
 
-def _views_write_guard():
+def _views_write_guard(limiter_name: str = "_view_limiter", per_min_key: str = "PRIORITIES_VIEWS_PER_MIN", default: int = 30):
     """Saved-view writes: same-origin only, JSON only, per-IP sliding window (30 per minute, like the projection writes), a larger body cap than the app-wide 64 KB (500 row keys)."""
-    global _view_limiter
     from urllib.parse import urlsplit
     from .projection.limits import SlidingWindow
     origin = request.headers.get("Origin")
     if origin is not None and urlsplit(origin).netloc.lower() != request.host.lower():
         raise q.ApiError(403, "origin mismatch")
-    if _view_limiter is None:
-        _view_limiter = SlidingWindow(int(current_app.config.get("PRIORITIES_VIEWS_PER_MIN") or 30), 60)
-    wait = _view_limiter.hit(request.remote_addr or "unknown")
+    if globals().get(limiter_name) is None:
+        globals()[limiter_name] = SlidingWindow(int(current_app.config.get(per_min_key) or default), 60)
+    wait = globals()[limiter_name].hit(request.remote_addr or "unknown")
     if wait:
         resp = jsonify(error="rate_limited", retry_after=wait)
         resp.status_code = 429
@@ -404,7 +404,7 @@ def _views_write_guard():
 
 @bp.post("/api/priorities/views")
 def priorities_view_create():
-    """Save the selected rows as a view: {name?, week?, ids: [row key,...]} -> {token, url, count, missing}. The link is the access (the app has no password)."""
+    """Save a view: {name?, week?, kind?: rows|filters, ids: [row key,...] (rows) or filters: {products, sections, q, key, dir} (filters)} -> {token, url, count, missing, kind}. The link is the access (the app has no password)."""
     blocked = _views_write_guard()
     if blocked is not None:
         return blocked
@@ -426,8 +426,35 @@ def priorities_view(token: str):
 
 @bp.get("/api/priorities/views/<token>/csv")
 def priorities_view_csv(token: str):
-    name_slug, text = cpr.view_csv(token)
+    name_slug, text = cpr.view_csv(token, request.args.getlist("id"))
     return Response(text, mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{name_slug}.csv"'})
+
+
+@bp.put("/api/priorities/views/<token>")
+def priorities_view_update(token: str):
+    """Update this view: replace its rows ({ids}) or filters ({filters}) with the current ones, from the latest snapshot. Name, kind and link stay."""
+    blocked = _views_write_guard()
+    if blocked is not None:
+        return blocked
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        raise q.ApiError(400, "JSON object body required")
+    return jsonify(cpr.update_view(db.get_conn(), token, body))
+
+
+_briefed_limiter = None
+
+
+@bp.patch("/api/priorities/views/<token>/briefed")
+def priorities_view_briefed(token: str):
+    """Mark a concept briefed / not briefed in a view: {key, briefed: true|false, note?} -> {key, briefed, at, note}. Own limit (120 per minute per IP, PRIORITIES_BRIEFED_PER_MIN)."""
+    blocked = _views_write_guard("_briefed_limiter", "PRIORITIES_BRIEFED_PER_MIN", 120)
+    if blocked is not None:
+        return blocked
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        raise q.ApiError(400, "JSON object body required")
+    return jsonify(cpr.set_briefed(db.get_conn(), token, body))
 
 
 @bp.patch("/api/priorities/views/<token>")

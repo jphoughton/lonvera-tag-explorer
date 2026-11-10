@@ -7251,6 +7251,30 @@
      "type": "timestamp with time zone",
      "nullable": false,
      "description": "When the view was saved."
+    },
+    {
+     "name": "kind",
+     "type": "text",
+     "nullable": false,
+     "description": "'rows' (a fixed set of selected rows, shown with the latest numbers where the row still exists) or 'filters' (a saved filter state applied live to the current snapshot)."
+    },
+    {
+     "name": "filters",
+     "type": "jsonb",
+     "nullable": true,
+     "description": "JSON object for kind 'filters': products (slugs), sections (keys), q (search text), key and dir (sort). NULL for kind 'rows'."
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the view was last replaced by Update this view; NULL if never."
+    },
+    {
+     "name": "briefed",
+     "type": "jsonb",
+     "nullable": false,
+     "description": "JSON object: stable row key (product|section|cluster|icp|pain_point, or manual:<id>) -> {at, note} for the concepts marked briefed in this view; absent = not briefed."
     }
    ],
    "examples": []

@@ -1359,7 +1359,11 @@ rel("public.creative_priorities_views", group="creative", kind="table",
     caveats=["payload is a frozen copy: a view does not change when a later snapshot replaces its week. The link is the access (the app has no password)."],
     cols={"id": "Surrogate key (primary key).", "token": "Unguessable link token (unique).", "name": "View name, '' when unnamed; shown as the page title and used in the CSV file name.",
           "week_start": "The snapshot week (Sunday, Pacific) the rows came from.", "keys": "Stable row keys of the selected rows.",
-          "payload": "JSON object: the selected rows plus the snapshot's baselines, legend and competitor as-of date.", "created_at": "When the view was saved."})
+          "payload": "JSON object: the selected rows plus the snapshot's baselines, legend and competitor as-of date.", "created_at": "When the view was saved.",
+          "kind": "'rows' (a fixed set of selected rows, shown with the latest numbers where the row still exists) or 'filters' (a saved filter state applied live to the current snapshot).",
+          "filters": "JSON object for kind 'filters': products (slugs), sections (keys), q (search text), key and dir (sort). NULL for kind 'rows'.",
+          "updated_at": "When the view was last replaced by Update this view; NULL if never.",
+          "briefed": "JSON object: stable row key (product|section|cluster|icp|pain_point, or manual:<id>) -> {at, note} for the concepts marked briefed in this view; absent = not briefed."})
 
 rel("public.creative_priorities_manual", group="creative", kind="table",
     purpose="Concepts added by hand on /priorities (Add concept): product, market cluster, ICP, pain point, story, notes and a why-now line. Not tied to a weekly snapshot: a row stays on the sheet every week until it is marked done or deleted.",

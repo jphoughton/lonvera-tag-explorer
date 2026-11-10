@@ -16,13 +16,21 @@ def register(app, deps):
     # manual concepts, in memory (same validation / rows / options as app/priorities_manual.py)
     manual: dict[int, dict] = {}
     seq = [0]
+    state = {"drop": set(), "edit": {}}
 
     def recs():
         return sorted(manual.values(), key=lambda r: (r["created_at"], r["id"]), reverse=True)
 
-    def merged(include_done=True):
-        from app import priorities_manual as pm
-        return pm.merge(json.loads(FIXTURE.read_text()), recs(), include_done=include_done)
+    def live(include_done=True):
+        """The mock's current snapshot (plus the manual concepts): the fixture, minus rows dropped and plus row edits made through /__test/priorities/drop."""
+        from app import creative_priorities as cpr, priorities_manual as pm
+        d = json.loads(FIXTURE.read_text())
+        d["rows"] = [r for r in d["rows"] if cpr.row_key(r) not in state["drop"]]
+        for r in d["rows"]:
+            r.update(state["edit"].get(cpr.row_key(r), {}))
+        return pm.merge(d, recs(), include_done=include_done)
+
+    merged = live
 
     @app.get("/api/priorities")
     def priorities_mock():
@@ -30,7 +38,7 @@ def register(app, deps):
             return jsonify(error="query timed out"), 503
         if request.args.get("empty") == "1":
             return jsonify(error="No creative priorities snapshot exists yet."), 404
-        return jsonify(merged())
+        return jsonify(live())
 
     @app.get("/api/priorities/manual/options")
     def priorities_manual_options_mock():
@@ -85,49 +93,88 @@ def register(app, deps):
         from app import creative_priorities as cpr
         from etl import creative_priorities as cp
         ids = request.args.getlist("id")
-        snap = cpr.filter_rows(merged(include_done=bool(ids)), ids)
-        return Response(cp.to_csv(snap), mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="creative-priorities-{snap["week_start"]}.csv"'})
+        snap = cpr.filter_rows(live(include_done=bool(ids)), ids)
+        fname = cpr.slug(request.args["name"]) if request.args.get("name") else f"creative-priorities-{snap['week_start']}"
+        bt = request.args.get("briefed_from")
+        return Response(cp.to_csv(snap, briefed=views[bt]["briefed"] if bt in views else None), mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{fname}.csv"'})
 
-    # saved views, in memory (same shape as app/creative_priorities.py)
+    # saved views, in memory (the same builders as app/creative_priorities.py)
     views: dict[str, dict] = {}
 
-    def snap_of(ids):
-        from app import creative_priorities as cpr
-        return cpr.filter_rows(merged(), ids)
+    full = live
+
+    def err(e):
+        return jsonify(error=e.message if hasattr(e, "message") else str(e)), getattr(e, "status", 400)
 
     @app.post("/api/priorities/views")
     def priorities_view_create_mock():
-        from app import creative_priorities as cpr
+        from app import creative_priorities as cpr, queries as q
         body = request.get_json(silent=True) or {}
-        ids = body.get("ids") or []
-        snap = snap_of(ids)
-        if not snap["rows"]:
-            return jsonify(error="None of the selected rows exist in that snapshot."), 400
+        try:
+            v = cpr.build_view(full(), body)
+        except q.ApiError as e:
+            return err(e)
         tok = secrets.token_urlsafe(24)
-        views[tok] = {"snap": snap, "name": cpr.clean_name(body.get("name")), "created": dt.datetime.now(dt.timezone.utc).isoformat()}
-        return jsonify(token=tok, url=f"/priorities/v/{tok}", name=views[tok]["name"], count=len(snap["rows"]), missing=len(set(ids)) - len(snap["rows"]), week_start=snap["week_start"]), 201
+        views[tok] = {**v, "briefed": {}, "token": tok, "name": cpr.clean_name(body.get("name")), "created_at": dt.datetime.now(dt.timezone.utc).isoformat()}
+        return jsonify(token=tok, url=f"/priorities/v/{tok}", name=views[tok]["name"], count=v["count"], missing=v["missing"], week_start=v["week_start"], kind=v["kind"]), 201
 
     @app.get("/api/priorities/views")
     def priorities_views_mock():
-        return jsonify(views=[{"token": t, "name": v["name"], "week_start": v["snap"]["week_start"], "count": len(v["snap"]["rows"]), "created_at": v["created"], "url": f"/priorities/v/{t}"}
-                              for t, v in reversed(list(views.items()))])
+        return jsonify(views=sorted(({"token": t, "name": v["name"], "week_start": v["week_start"], "count": v["count"], "kind": v["kind"], "filters": v["filters"], "created_at": v["created_at"],
+                                      "url": f"/priorities/v/{t}"} for t, v in views.items()), key=lambda x: x["name"].lower()))
 
     @app.get("/api/priorities/views/<token>")
     def priorities_view_mock(token):
+        from app import creative_priorities as cpr
         v = views.get(token)
         if v is None:
             return jsonify(error="Saved view not found."), 404
-        s = v["snap"]
-        return jsonify({**s, "weeks": [], "view": {"token": token, "name": v["name"], "week_start": s["week_start"], "created_at": v["created"], "count": len(s["rows"])}})
+        return jsonify(cpr.view_response({**v, "payload": v["payload"]}))
 
     @app.get("/api/priorities/views/<token>/csv")
     def priorities_view_csv_mock(token):
+        from app import creative_priorities as cpr
         from etl import creative_priorities as cp
         v = views.get(token)
         if v is None:
             return jsonify(error="Saved view not found."), 404
-        from app import creative_priorities as cpr
-        return Response(cp.to_csv(v["snap"]), mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{cpr.slug(v["name"])}.csv"'})
+        snap = cpr.filter_rows({**v["payload"], "stats": {}}, request.args.getlist("id"))
+        return Response(cp.to_csv(snap, briefed=v["briefed"]), mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{cpr.slug(v["name"])}.csv"'})
+
+    @app.put("/api/priorities/views/<token>")
+    def priorities_view_update_mock(token):
+        from app import creative_priorities as cpr, queries as q
+        v = views.get(token)
+        if v is None:
+            return jsonify(error="Saved view not found."), 404
+        try:
+            n = cpr.build_view(full(), {**(request.get_json(silent=True) or {}), "kind": v["kind"]})
+        except q.ApiError as e:
+            return err(e)
+        v.update(n)
+        return jsonify(token=token, count=n["count"], missing=n["missing"], week_start=n["week_start"], kind=n["kind"])
+
+    @app.patch("/api/priorities/views/<token>/briefed")
+    def priorities_view_briefed_mock(token):
+        from app import creative_priorities as cpr, queries as q
+        v = views.get(token)
+        if v is None:
+            return jsonify(error="Saved view not found."), 404
+        try:
+            key, flag, note = cpr.clean_briefed(request.get_json(silent=True) or {})
+        except q.ApiError as e:
+            return err(e)
+        valid = set(v["keys"]) | {cpr.row_key(x) for x in v["payload"]["rows"]}
+        if v["kind"] == "filters":
+            valid |= {cpr.row_key(x) for x in live()["rows"]}
+        if key not in valid:
+            return jsonify(error="That concept is not in this view."), 404
+        now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
+        if flag:
+            v["briefed"][key] = {"at": now, "note": note}
+        else:
+            v["briefed"].pop(key, None)
+        return jsonify(key=key, briefed=flag, at=now if flag else None, note=note if flag else "")
 
     @app.patch("/api/priorities/views/<token>")
     def priorities_view_rename_mock(token):
@@ -143,3 +190,13 @@ def register(app, deps):
         if views.pop(token, None) is None:
             return jsonify(error="Saved view not found."), 404
         return "", 204
+
+    # test hooks on the mock's "current snapshot": drop rows (missing-row fallback) and edit a row's concept count (live vs frozen numbers)
+
+    @app.post("/__test/priorities/drop")
+    def priorities_drop_mock():
+        from app import creative_priorities as cpr
+        b = request.get_json(silent=True) or {}
+        state["drop"] = set(b.get("keys") or [])
+        state["edit"] = b.get("edit") or {}
+        return jsonify(ok=True)
