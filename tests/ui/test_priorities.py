@@ -1090,7 +1090,7 @@ def test_header_has_title_subline_week_view_one_filled_button_and_secondary_grou
     sub = page.locator("[data-testid=pri-sub]").text_content()
     assert "Week of 2026-11-08" in sub and "Data through 2026-11-08" in sub and "Competitor ads as of 2026-11-09" in sub
     assert page.locator("[data-testid=pri-week]").is_visible() and page.locator(VSEL).is_visible()
-    filled = page.locator(".pri-top .pri-hd-screen .btn.primary")
+    filled = page.locator(".pri-fbar .btn.primary")
     assert filled.count() == 1 and filled.first.get_attribute("data-testid") == "pri-add-concept"            # Add concept is the one filled button
     grp = page.locator(".pri-btngroup")
     assert grp.locator("[data-testid=pri-csv]").is_visible() and grp.locator("[data-testid=pri-print]").is_visible()
@@ -1110,11 +1110,13 @@ def test_status_strip_has_every_count_as_a_clickable_tile_that_filters_and_clear
     n = visible_rows(page)
     assert 0 < n < 30 and set(page.locator("[data-testid=pri-body] [data-testid=pri-status]").all_text_contents()) == {"RISING"}
     assert page.locator("[data-testid=pri-stat][data-status='RISING']").get_attribute("aria-pressed") == "true"
-    assert page.locator("[data-testid=pri-f-status]").input_value() == "RISING" and "1 filter on" in page.locator("[data-testid=pri-active-filters]").text_content()
+    assert "1 filter on" in page.locator("[data-testid=pri-active-filters]").text_content()
+    assert page.locator("[data-testid=pri-statstrip]").locator("xpath=ancestor::*[@data-testid='pri-filters']").count() == 1      # the status chips live in the filter bar
+    assert page.locator(".pri-top [data-testid=pri-stat]").count() == 0
     page.locator("[data-testid=pri-stat][data-status='RISING']").click()                                          # click again = off
     assert visible_rows(page) == 30 and page.locator("[data-testid=pri-clear-filters]").is_hidden()
-    page.locator("[data-testid=pri-f-status]").select_option("FADED")                                              # the filter-bar select drives the same filter
-    assert set(page.locator("[data-testid=pri-body] [data-testid=pri-status]").all_text_contents()) == {"FADED"}
+    page.locator("[data-testid=pri-stat][data-status='WORKING NOW']").click()                                             # one status control: choosing another chip switches the filter
+    assert set(page.locator("[data-testid=pri-body] [data-testid=pri-status]").all_text_contents()) == {"WORKING NOW"}
 
 
 def test_product_tiles_show_the_four_numbers_and_filter_by_product(page):
@@ -1130,12 +1132,16 @@ def test_product_tiles_show_the_four_numbers_and_filter_by_product(page):
         assert "All time" in txt and "Last 30 days" in txt and "ROAS (all time)" in txt and "CPA (all time)" in txt and "ROAS (30 days)" in txt and "vs all time" in txt, (slug, txt)
         assert f"Launched {fn['launched']:,} \u00b7 under $100: {fn['under_tested']:,}" in t.locator("[data-testid=pri-funnel]").text_content(), slug
         assert f"$100+: {fn['tested']:,} \u00b7 $10K+: {fn['top']:,}" in txt and f"{fn['top']:,} of {fn['launched']:,}" in txt and f"{fn['top']:,} of {fn['tested']:,}" in txt, (slug, txt)
-        cs = t.locator("[data-testid=pri-cohort]")
-        assert cs.count() == 3 and t.locator("[data-testid=pri-funnel-bar]").count() == 4
+        cs = t.locator("[data-testid=pri-cohorts] [data-testid=pri-cohort]")
+        assert cs.count() == 3 and t.locator("[data-testid=pri-funnel-bar]").count() == 5
         for i, c in enumerate(b["cohorts"]):
             ct = cs.nth(i).text_content()
             assert c["label"] in ct and f"{c['top']:,} of {c['launched']:,}" in ct and f"under $100: {c['under_tested']:,}" in ct and f"({c['spent']:,} with spend)" in ct, (slug, ct)
         assert "Activity in the window" in txt and "spend to date" in txt
+        b14 = t.locator("[data-testid=pri-pblock-14d]")
+        c14 = b["cohort_14d"]
+        assert "Last 14 days" in b14.text_content() and "ROAS (14 days)" in b14.text_content() and _money(b["spend_14d"]) in b14.text_content() and f"{c14['top']:,} of {c14['launched']:,}" in b14.text_content()
+        assert txt.index("All time") < txt.index("Last 30 days") < txt.index("Last 14 days")
     page.locator("[data-testid=pri-ptile][data-product='beef-liver']").click()
     assert set(page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("els => els.map(e => e.dataset.product)")) == {"beef-liver"}
     assert page.locator("[data-testid=pri-f-product-beef-liver]").get_attribute("aria-pressed") == "true" and page.locator("[data-testid=pri-f-product-vita-bull]").get_attribute("aria-pressed") == "false"
@@ -1186,7 +1192,7 @@ def test_tiles_without_funnel_fields_still_render(page):
         r = route.fetch()
         d = r.json()
         for b in d["baselines"].values():
-            for k in ("funnel", "funnel_30d", "cohorts", "cpa_30d", "spend_30d", "purchases_30d", "purchases", "live_ads"):
+            for k in ("funnel", "funnel_30d", "cohorts", "cohort_14d", "cpa_30d", "spend_30d", "purchases_30d", "purchases", "live_ads"):
                 b.pop(k, None)
         for row in d["rows"]:
             row["metrics"].pop("funnel", None)
@@ -1201,10 +1207,10 @@ def test_tiles_without_funnel_fields_still_render(page):
     assert clear.is_hidden()
     page.locator("[data-testid=pri-f-product-boneflex]").click()
     page.locator("[data-testid=pri-search]").fill("a")
-    page.locator("[data-testid=pri-f-status]").select_option("FADED")
+    page.locator("[data-testid=pri-stat][data-status='WORKING NOW']").click()
     assert "3 filters on" in page.locator("[data-testid=pri-active-filters]").text_content() and clear.is_visible()
     clear.click()
-    assert visible_rows(page) == 30 and clear.is_hidden() and page.locator("[data-testid=pri-search]").input_value() == "" and page.locator("[data-testid=pri-f-status]").input_value() == ""
+    assert visible_rows(page) == 30 and clear.is_hidden() and page.locator("[data-testid=pri-search]").input_value() == "" and page.locator("[data-testid=pri-stat][aria-pressed=true]").count() == 0
     assert page.locator("[data-testid=pri-f-product-boneflex]").get_attribute("aria-pressed") == "true"
 
 
@@ -1213,7 +1219,7 @@ def test_filter_view_remembers_the_status_filter(page):
     page.locator("[data-testid=pri-stat][data-status='RISING']").click()
     t = tok(save_filter_view(page, "Rising only"))
     open_view(page, t)
-    assert page.locator("[data-testid=pri-f-status]").input_value() == "RISING" and page.locator("[data-testid=pri-stat][data-status='RISING']").get_attribute("aria-pressed") == "true"
+    assert page.locator("[data-testid=pri-stat][data-status='RISING']").get_attribute("aria-pressed") == "true"
     assert set(page.locator("[data-testid=pri-body] [data-testid=pri-status]").all_text_contents()) == {"RISING"}
 
 
@@ -1476,3 +1482,33 @@ def test_14_day_stat_card_in_panel(page):
     goto(page)
     page.locator("[data-testid=pri-toggle]").first.click()
     assert "Last 14 days" in page.locator("[data-testid=pri-detail]:visible").first.text_content()
+
+
+def _fx_sum(rows):
+    sp = sum(r["metrics"]["spend_14d"] for r in rows if r["metrics"].get("spend_14d") is not None and not r.get("manual"))
+    val = sum(r["metrics"]["value_14d"] for r in rows if r["metrics"].get("spend_14d") is not None and not r.get("manual"))
+    return sp, val
+
+
+def test_total_row_sums_rows_shown_with_weighted_roas_and_reconciles_to_the_tiles(page):
+    goto(page)
+    sp, val = _fx_sum(FIXTURE["rows"])
+    tot = page.locator("[data-testid=pri-total]")
+    assert _money(sp) in tot.locator("[data-testid=pri-total-spend]").text_content()
+    assert tot.locator("[data-testid=pri-total-roas]").text_content() == _roas(val / sp)
+    assert page.locator("[data-testid=pri-subtotal]").count() == 3                                  # one per product when several are shown
+    # filter to one product: the total changes, the subtotals go away, and the note reconciles against that product's tile
+    page.locator("[data-testid=pri-ptile][data-product='beef-liver']").click()
+    rows = [r for r in FIXTURE["rows"] if r["product"] == "beef-liver"]
+    sp1, val1 = _fx_sum(rows)
+    assert _money(sp1) in page.locator("[data-testid=pri-total-spend]").text_content() and page.locator("[data-testid=pri-subtotal]").count() == 0
+    b = FIXTURE["baselines"]["beef-liver"]
+    note = page.locator("[data-testid=pri-recon]").text_content()
+    assert f"shown rows = {_money(sp1)} of the product" in note and _money(b["spend_14d"]) in note and f"({round(100 * sp1 / b['spend_14d'])}%)" in note and _money(b["spend_14d_no_line"]) in note and "ads with no line" in note and "lines with no row here" in note
+    # a ROAS cell of a row is never averaged: the total ROAS is value / spend
+    assert page.locator("[data-testid=pri-total-roas]").text_content() == _roas(val1 / sp1)
+    # search narrows the total further
+    page.locator("[data-testid=pri-search]").fill(rows[0]["pain_point"][:12])
+    shown = [r for r in rows if rows[0]["pain_point"][:12].lower() in (r["cluster"] + r["icp"] + r["pain_point"] + (r["story"] or "")).lower()]
+    sp2, _ = _fx_sum(shown)
+    assert _money(sp2) in page.locator("[data-testid=pri-total-spend]").text_content()

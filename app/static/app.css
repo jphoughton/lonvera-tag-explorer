@@ -1077,3 +1077,19 @@ button.pri-stat:hover { background: color-mix(in srgb, var(--tone) 14%, #fff); }
 .pri-pbn { font-size: 11px; margin-top: -4px; }
 .pri-cohorts { display: grid; gap: 8px; padding-top: 8px; border-top: 1px dashed var(--lv-pri-card-line-strong); }
 .pri-cohort { display: grid; gap: 4px; padding: 6px 8px; background: #fff; border: 1px solid var(--lv-pri-card-line); border-radius: 8px; }
+/* status counts and the actions now live in the filter bar */
+.pri-fbar .pri-stats { gap: 6px; }
+.pri-fbar .pri-stat { padding: 4px 10px; }
+.pri-fbar .pri-actions { margin: 0 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+@media (max-width: 760px) { .pri-fbar .pri-actions { margin-left: 0; width: 100%; } .pri-fbar .pri-actions .pri-add { flex: 1 1 100%; } }
+.pri-pblock-14 { margin-top: -4px; }
+.pri-cohort .pri-hit-l { font-size: 11px; color: var(--lv-pri-label); }
+.pri-tfoot .pri-trow td { background: #efe8da; border-top: 2px solid var(--lv-pri-card-line-strong); padding-top: 8px; padding-bottom: 8px; font-variant-numeric: tabular-nums; }
+.pri-tfoot .pri-trow.pri-tot-vita-bull td { background: color-mix(in srgb, var(--lv-pri-prod-vb) 10%, #fff); border-top: 1px solid var(--lv-pri-prod-vb); }
+.pri-tfoot .pri-trow.pri-tot-beef-liver td { background: color-mix(in srgb, var(--lv-pri-prod-bl) 10%, #fff); border-top: 1px solid var(--lv-pri-prod-bl); }
+.pri-tfoot .pri-trow.pri-tot-boneflex td { background: color-mix(in srgb, var(--lv-pri-prod-bf) 10%, #fff); border-top: 1px solid var(--lv-pri-prod-bf); }
+.pri-tfoot .pri-trow.pri-tot-all td { font-size: 14px; }
+.pri-recon { margin: 8px 0 14px; font-size: 12.5px; display: grid; gap: 3px; color: var(--lv-ink-2, #3d372f); }
+.pri-recon-n { font-size: 11.5px; }
+@media (max-width: 760px) { .pri-tfoot, .pri-tfoot tr { display: block; } .pri-tfoot .pri-c-tlabel { display: block; } }
+@media print { .pri-recon, .pri-tfoot { display: none; } .pri-ptotal { font-weight: 700; font-size: 10px; } }
