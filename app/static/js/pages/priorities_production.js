@@ -4,6 +4,7 @@
 import { h, fmt, isNum, href, navigate } from '../util.js';
 import { api } from '../api.js';
 import { showControls } from '../controls.js';
+import { expander } from './priorities_panel.js';
 
 const STAGES = { assigned: 'Assigned', brief_sent: 'Brief sent', creative_in: 'Creative delivered', ready: 'Ready to launch', launched: 'Launched', dropped: 'Dropped' };
 const VENDOR_FALLBACK = ['Madre', 'Victoria', 'TrybeDCShop', 'TrybeOrion', '10xROAS', 'Internal', 'PuredMedia', 'CreateMastery', 'OpenProgram'];
@@ -70,6 +71,7 @@ export async function productionPage(ctx) {
   const msg = h('p', { class: 'prod-msg', role: 'status', 'data-testid': 'prod-msg' });
   const say = (t, bad) => { msg.textContent = t || ''; msg.classList.toggle('pri-err', !!bad); };
   const body = h('div', { class: 'prod-body' });
+  const openIds = new Set();                                   // rows whose details are open: kept across redraws (the payload is cached, so no new request)
   const root = h('div', { class: 'page pri-page prod-page', 'data-testid': 'prod-page' });
 
   const load = async () => {
@@ -150,16 +152,20 @@ export async function productionPage(ctx) {
   }
 
   function row(r) {
-    return h('tr', { class: 'prod-row', 'data-testid': 'prod-row', 'data-id': r.id, 'data-stage': r.stage },
+    const host = h('div', { class: 'prod-xd', 'data-testid': 'prod-detail' });
+    const wrap = h('tr', { class: 'prod-detailrow', 'data-testid': 'prod-detail-row', 'data-id': r.id }, h('td', { colspan: '10', class: 'prod-xcell' }, host));
+    const x = expander({ key: 'a' + r.id, fetchDetail: () => api(`/api/priorities/assignments/${r.id}/detail`, {}, { signal: ctx.signal }), host, wrap, startOpen: openIds.has(r.id), onToggle: (o) => { if (o) openIds.add(r.id); else openIds.delete(r.id); } });
+    const main = h('tr', { class: 'prod-row', 'data-testid': 'prod-row', 'data-id': r.id, 'data-stage': r.stage },
       h('td', { class: 'prod-c prod-nowrap', 'data-testid': 'prod-week' }, weekLabel(r.for_week).replace('Week of ', '')),
       h('td', { class: 'prod-c', 'data-testid': 'prod-vendor' }, r.vendor),
       h('td', { class: 'prod-c', 'data-testid': 'prod-product' }, productName(r.product)),
-      h('td', { class: 'prod-c prod-concept', 'data-testid': 'prod-concept' }, h('strong', null, r.pain_point || r.cluster), h('div', { class: 'pri-sub' }, [r.cluster, r.icp].filter(Boolean).join(' / ')), r.note ? h('div', { class: 'pri-sub' }, 'Note: ' + r.note) : null, r.vendor_note ? h('div', { class: 'pri-sub', 'data-testid': 'prod-vnote' }, 'Vendor note: ' + r.vendor_note) : null),
+      h('td', { class: 'prod-c prod-concept', 'data-testid': 'prod-concept' }, h('strong', null, x.nameButton(r.pain_point || r.cluster)), h('div', { class: 'pri-sub' }, [r.cluster, r.icp].filter(Boolean).join(' / ')), r.note ? h('div', { class: 'pri-sub' }, 'Note: ' + r.note) : null, r.vendor_note ? h('div', { class: 'pri-sub', 'data-testid': 'prod-vnote' }, 'Vendor note: ' + r.vendor_note) : null, h('div', null, x.button())),
       linkCell(r, 'brief_url', 'Brief'), linkCell(r, 'creative_url', 'Creative'),
       h('td', { class: 'prod-c prod-nowrap', 'data-testid': 'prod-stage' }, stageLabel(r)),
       adsCell(r),
       h('td', { class: 'prod-c', 'data-testid': 'prod-result' }, resultText(r)),
       actions(r));
+    return [main, wrap];
   }
 
   function draw() {
@@ -178,7 +184,7 @@ export async function productionPage(ctx) {
     const heads = ['Week of', 'Vendor', 'Product', 'Concept', 'Brief', 'Creative', 'Stage', 'Ads', 'Result', ''];
     const table = (data.rows || []).length
       ? h('div', { class: 'prod-scroll', 'data-testid': 'prod-scroll' }, h('table', { class: 'pri-table prod-table', 'data-testid': 'prod-table' },
-        h('thead', null, h('tr', null, heads.map((x) => h('th', { scope: 'col' }, x)))), h('tbody', null, data.rows.map(row))))
+        h('thead', null, h('tr', null, heads.map((x) => h('th', { scope: 'col' }, x)))), h('tbody', null, data.rows.flatMap(row))))
       : h('p', { 'data-testid': 'prod-empty' }, 'Nothing here yet. On Creative priorities, tick concepts and click Assign to vendor.');
     body.replaceChildren(h('div', { class: 'pri-titlerow' }, h('div', { class: 'pri-titlecol' }, h('h1', null, 'Production'), h('p', { class: 'pri-sub' }, 'Concepts given to vendors to make, by week. Status of launched ads comes from the Creative Tracker.')),
       h('a', { href: href('/priorities', {}), 'data-testid': 'prod-back' }, 'Back to Creative priorities')), controls, links, msg, table);
@@ -199,6 +205,7 @@ export async function vendorPage(ctx) {
     throw e;
   }
   const root = h('div', { class: 'page pri-page prod-page prod-vendor', 'data-testid': 'prod-vendor-page' });
+  const openIds = new Set();
   const draw = () => {
     const rows = d.rows || [];
     const weeks = [...new Set(rows.map((r) => r.for_week))].sort().reverse();
@@ -216,8 +223,11 @@ export async function vendorPage(ctx) {
     const note = h('input', { type: 'text', class: 'pri-name prod-in', 'aria-label': 'Note', 'data-testid': 'prod-in-note', placeholder: 'Anything we should know', value: r.vendor_note || '', maxlength: '1000' });
     const res = resultText(r);
     const dt = (l, ...v) => [h('dt', { class: 'pri-flabel' }, l), h('dd', null, ...v)];
+    const host = h('div', { class: 'prod-xd prod-xd-v', 'data-testid': 'prod-detail' });
+    const x = expander({ key: 'v' + r.id, fetchDetail: () => api(`/api/priorities/vendor/${tok}/${r.id}/detail`, {}, { signal: ctx.signal }), host, startOpen: openIds.has(r.id), onToggle: (o) => { if (o) openIds.add(r.id); else openIds.delete(r.id); } });
     return h('article', { class: 'prod-card', 'data-testid': 'prod-card', 'data-id': r.id, 'data-stage': r.stage },
-      h('h3', null, r.pain_point || r.cluster), h('p', { class: 'pri-sub' }, [productName(r.product), r.cluster, r.icp].filter(Boolean).join(' / ')),
+      h('h3', null, x.nameButton(r.pain_point || r.cluster)), h('p', { class: 'pri-sub' }, [productName(r.product), r.cluster, r.icp].filter(Boolean).join(' / ')),
+      h('div', null, x.button()), host,
       r.story ? h('p', { class: 'prod-story', 'data-testid': 'prod-story' }, r.story) : null,
       h('dl', { class: 'prod-dl' },
         dt('Brief', r.brief_url ? link(r.brief_url, short(r.brief_url), { 'data-testid': 'prod-brief_url' }) : 'Not added yet'),

@@ -1166,3 +1166,13 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 .prod-lin { width: 100%; box-sizing: border-box; font-size: 16px; padding: 8px 10px; }
 .prod-lleft { justify-content: flex-start; flex-wrap: wrap; }
 .prod-ltsv { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 12px; }
+
+/* Production details (2026-11-10): the /priorities detail panel under an assignment, expandable. The table keeps its own horizontal scroll; the panel is pinned to the left edge of the scroll box at phone width. */
+.prod-detailrow[hidden], .prod-xd[hidden] { display: none; }
+.prod-xcell { padding: 0; border-bottom: 2px solid var(--lv-line, #dcd3c3); background: rgba(127, 127, 127, .04); }
+.prod-xd { position: sticky; left: 0; box-sizing: border-box; width: min(1060px, calc(100vw - 32px)); padding: 10px 12px 14px; }
+.prod-xd-v { position: static; width: auto; padding: 4px 0 0; }
+.prod-namebtn { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: inherit; text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; overflow-wrap: anywhere; }
+.prod-namebtn:hover { text-decoration-style: solid; }
+.pri-ex-best { margin-left: 8px; white-space: nowrap; }
+@media (max-width: 760px) { .pri-ex td[data-label="Spend"]::before { content: 'spend '; color: var(--lv-muted, #665d53); } .pri-ex td[data-label="Return on ad spend"]::before { content: 'return '; color: var(--lv-muted, #665d53); } }

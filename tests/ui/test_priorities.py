@@ -1879,3 +1879,14 @@ def test_add_is_not_an_action_and_new_ideas_sit_under_test_after_the_sheet_lines
     assert visible_rows(page) == 12
     rules = page.locator("[data-testid=pri-defs-actions]").text_content()
     assert "New idea, from a competitor" in rules and "New idea, our draft" in rules and "Not on the sheet yet" in rules and "—" not in rules
+
+
+def test_priorities_panel_is_unchanged_by_the_shared_module(page):
+    """The detail panel moved into priorities_panel.js (shared with Production and the vendor page); on /priorities it still has the same parts and still shows 3 hooks, no example-ads table."""
+    page.goto("/priorities")
+    page.wait_for_selector("[data-testid=pri-body]")
+    page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
+    panel = page.locator("[data-testid=pri-body] [data-testid=pri-detail]:not([hidden]) .pri-panel").first
+    panel.wait_for()
+    assert panel.locator(".pri-tile").count() >= 3 and panel.locator("[data-testid=pri-hooks] .pri-hook").count() == 3
+    assert panel.locator("[data-testid=pri-examples]").count() == 0 and panel.locator(".pri-foot").count() == 1
