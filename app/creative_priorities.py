@@ -8,7 +8,7 @@ import secrets
 
 from psycopg.types.json import Jsonb
 
-from . import priorities_manual as pm, queries as q
+from . import priorities_assign as pa, priorities_manual as pm, queries as q
 
 NOT_BUILT = "No creative priorities snapshot exists yet. It is written on Sundays by the nightly etl; run python -m etl.creative_priorities to write the current week."
 
@@ -47,8 +47,14 @@ def snapshot(conn, raw_week: str | None) -> dict:
 def payload(conn, raw_week: str | None) -> dict:
     from etl import creative_priorities as cp
     snap = pm.merge(snapshot(conn, raw_week), pm.list_records(conn))        # manual concepts are not tied to a week: they ride along on every snapshot (done ones flagged, hidden by the page)
+    snap = {**snap, "rows": with_ckey(snap["rows"])}
     comp = (snap.get("stats") or {}).get("competitors")
     return {**snap, "competitors_as_of": comp["as_of"] if comp else None, "competitor_stale": (comp or {}).get("stale_brands", []), "weeks": weeks(conn), "legend": [{"tag": a, "meaning": b} for a, b in cp.LEGEND]}
+
+
+def with_ckey(rows: list[dict]) -> list[dict]:
+    """Each row plus ckey, the stable concept key (line:<id> | manual:<id> | text:<product>|<cluster>|<icp>|<pain point>) that production assignments attach to. Computed, never stored."""
+    return [{**r, "ckey": pa.concept_key(r)} for r in rows]
 
 
 def row_key(r: dict) -> str:
@@ -212,7 +218,7 @@ def list_views(limit: int = 50) -> list[dict]:
 
 def view_response(r: dict) -> dict:
     """The GET body for one stored view (shared with the UI test mock): the frozen payload plus a `view` block (name, kind, filters, row keys)."""
-    p = r["payload"]
+    p = {**r["payload"], "rows": with_ckey(r["payload"]["rows"])}
     return {**p, "weeks": [], "view": {"token": r["token"], "name": r["name"], "week_start": r["week_start"].isoformat() if hasattr(r["week_start"], "isoformat") else r["week_start"],
                                        "created_at": r["created_at"].isoformat() if hasattr(r["created_at"], "isoformat") else r["created_at"], "count": len(p["rows"]),
                                        "kind": r.get("kind") or "rows", "filters": r.get("filters"), "keys": list(r.get("keys") or []), "briefed": r.get("briefed") or {}}}
