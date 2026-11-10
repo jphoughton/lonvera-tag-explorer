@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import auth, creative_priorities as cpr, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -364,6 +364,19 @@ def promotions_scale():
     conn = db.get_conn()
     meta = q.meta_for_source(q.load_meta(conn), q.parse_source(request.args)[0])
     return jsonify(sv.scale_views(conn, meta, request.args, product_slug=_arg("product")))
+
+
+@bp.get("/api/priorities")
+def priorities():
+    """Creative priorities: the weekly one-sheeter (week=YYYY-MM-DD, default the latest snapshot) plus the list of stored weeks. See app/creative_priorities.py."""
+    return jsonify(cpr.payload(db.get_conn(), _arg("week")))
+
+
+@bp.get("/api/priorities.csv")
+def priorities_csv():
+    """The same snapshot as a CSV download (week=YYYY-MM-DD, default the latest)."""
+    week, text = cpr.csv_text(db.get_conn(), _arg("week"))
+    return Response(text, mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="creative-priorities-{week}.csv"'})
 
 
 @bp.get("/api/trends")
