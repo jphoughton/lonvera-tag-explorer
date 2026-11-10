@@ -7406,6 +7406,234 @@
    "examples": []
   },
   {
+   "name": "public.creative_priorities_assignments",
+   "schema": "public",
+   "relation": "creative_priorities_assignments",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "Production assignments from /priorities: a concept given to a vendor to make for a week (Assign to vendor), with the brief link, the creative link, the stage timestamps and the Creative Tracker Concept IDs of the ads that came out of it. The concept itself stays in the ideation list unchanged.",
+   "grain": "one row per concept x vendor x week (open rows are unique; a dropped row can be assigned again)",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "the /priorities and /priorities/production pages and the vendor link page via /api/priorities/assignments (app/priorities_assign.py)",
+   "refresh": "on demand (a person assigns, adds links, marks ready or launched, drops; a vendor adds a creative link and a note)",
+   "coverage": "from the day the migration was deployed",
+   "caveats": [
+    "The stage is not stored: it is derived at read time from the links, the timestamps and the status of the linked Creative Tracker rows (the tracker wins when it is further along).",
+    "Nothing here is written to the Google Sheet or Meta. The tag text is copied from the row at assign time, so history survives a taxonomy reload; line_id has no foreign key on purpose.",
+    "No author column: the app has no login of its own, only timestamps."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Primary key (bigserial)."
+    },
+    {
+     "name": "concept_key",
+     "type": "text",
+     "nullable": false,
+     "description": "Stable concept handle: 'line:<taxonomy_lines.id>' when the row has a line, 'manual:<id>' for a manual concept, else 'text:<product>|<cluster>|<icp>|<pain point>' (lowercased, spaces collapsed)."
+    },
+    {
+     "name": "text_key",
+     "type": "text",
+     "nullable": false,
+     "description": "The text form of the key ('text:<product>|<cluster>|<icp>|<pain point>'), always stored, so a proposal that later becomes a real line still matches."
+    },
+    {
+     "name": "product",
+     "type": "text",
+     "nullable": false,
+     "description": "'vita-bull' | 'beef-liver' | 'boneflex'."
+    },
+    {
+     "name": "vendor",
+     "type": "text",
+     "nullable": false,
+     "description": "Vendor, spelled as in the Creative Tracker Vendor column (Madre, Victoria, TrybeDCShop, TrybeOrion, 10xROAS, Internal)."
+    },
+    {
+     "name": "line_id",
+     "type": "integer",
+     "nullable": true,
+     "description": "taxonomy_lines.id at assign time; NULL for manual or proposed concepts. No foreign key."
+    },
+    {
+     "name": "manual_id",
+     "type": "bigint",
+     "nullable": true,
+     "description": "creative_priorities_manual.id for a manual concept; NULL otherwise."
+    },
+    {
+     "name": "line_code",
+     "type": "text",
+     "nullable": false,
+     "description": "Line code (for example BL12) at assign time; empty when none."
+    },
+    {
+     "name": "cluster",
+     "type": "text",
+     "nullable": false,
+     "description": "Market cluster at assign time."
+    },
+    {
+     "name": "icp",
+     "type": "text",
+     "nullable": false,
+     "description": "ICP at assign time."
+    },
+    {
+     "name": "pain_point",
+     "type": "text",
+     "nullable": false,
+     "description": "Pain point at assign time."
+    },
+    {
+     "name": "story",
+     "type": "text",
+     "nullable": false,
+     "description": "Story at assign time; empty when none."
+    },
+    {
+     "name": "section_at_assign",
+     "type": "text",
+     "nullable": false,
+     "description": "Page section the concept sat in when assigned: 'iterate' | 'faded' | 'new' | 'other'."
+    },
+    {
+     "name": "note",
+     "type": "text",
+     "nullable": false,
+     "description": "Note typed when assigning or changing the assignment."
+    },
+    {
+     "name": "vendor_note",
+     "type": "text",
+     "nullable": false,
+     "description": "Note typed by the vendor on their own link page."
+    },
+    {
+     "name": "for_week",
+     "type": "date",
+     "nullable": false,
+     "description": "The Monday of the week the vendor works on it (a CHECK enforces a Monday)."
+    },
+    {
+     "name": "brief_url",
+     "type": "text",
+     "nullable": true,
+     "description": "Link to the brief; NULL until added."
+    },
+    {
+     "name": "creative_url",
+     "type": "text",
+     "nullable": true,
+     "description": "Link to the finished creative; NULL until added."
+    },
+    {
+     "name": "brief_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the brief link was first added; NULL until then."
+    },
+    {
+     "name": "creative_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the creative link was first added; NULL until then."
+    },
+    {
+     "name": "ready_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When someone clicked Ready to launch; NULL if not (or cleared)."
+    },
+    {
+     "name": "launched_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When it was marked launched by hand; NULL if not. A linked tracker row with status 8 or 9 also counts as launched."
+    },
+    {
+     "name": "dropped_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the assignment was dropped (soft cancel); NULL while active. Rows are never deleted."
+    },
+    {
+     "name": "tracker_concept_ids",
+     "type": "text[]",
+     "nullable": false,
+     "description": "Creative Tracker Concept IDs of the ads made from this assignment, entered by hand."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the assignment was created."
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When it was last changed."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.creative_priorities_vendor_links",
+   "schema": "public",
+   "relation": "creative_priorities_vendor_links",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "One permanent unguessable link per vendor for the vendor page /priorities/vendor/<token>, where the vendor sees only their own concepts and adds a creative link and a note.",
+   "grain": "one row per vendor (vendor is the primary key)",
+   "primary_key": [
+    "vendor"
+   ],
+   "foreign_keys": [],
+   "source": "the Production page via /api/priorities/vendor-links (app/priorities_assign.py)",
+   "refresh": "on demand (a link is created on first use and replaced by Reset link)",
+   "coverage": "from the day the migration was deployed",
+   "caveats": [
+    "The link is the access: the page needs no login. Reset link replaces the token and the old link stops working."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "vendor",
+     "type": "text",
+     "nullable": false,
+     "description": "Vendor name (primary key), as in creative_priorities_assignments.vendor."
+    },
+    {
+     "name": "token",
+     "type": "text",
+     "nullable": false,
+     "description": "Unguessable link token (unique)."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the link was first created."
+    },
+    {
+     "name": "rotated_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the token was last replaced by Reset link; NULL if never."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.unmatched_meta",
    "schema": "public",
    "relation": "unmatched_meta",

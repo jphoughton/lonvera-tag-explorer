@@ -108,7 +108,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
 | Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily) |
-| Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual) |
+| Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links) |
 | Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.competitor_brands`](#publiccompetitor_brands), [`public.competitor_ads`](#publiccompetitor_ads), [`public.competitor_concept_class`](#publiccompetitor_concept_class), [`public.competitor_concepts`](#publiccompetitor_concepts), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
 | Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta) |
 | Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow) | [`public.proj_feed_config`](#publicproj_feed_config), [`public.proj_feed_runs`](#publicproj_feed_runs), [`public.proj_feed_attempts`](#publicproj_feed_attempts), [`public.proj_feed_verify`](#publicproj_feed_verify), [`public.proj_feed_verify_runs`](#publicproj_feed_verify_runs), [`public.proj_feed_levers`](#publicproj_feed_levers), [`public.proj_feed_orders`](#publicproj_feed_orders), [`public.proj_feedx_orders`](#publicproj_feedx_orders), [`public.proj_feed_amazon`](#publicproj_feed_amazon), [`public.proj_feedx_amazon`](#publicproj_feedx_amazon), [`public.proj_feed_platform`](#publicproj_feed_platform), [`public.proj_feedx_platform`](#publicproj_feedx_platform), [`public.proj_feed_attribution`](#publicproj_feed_attribution), [`public.proj_feedx_attribution`](#publicproj_feedx_attribution), [`public.proj_feed_traffic`](#publicproj_feed_traffic), [`public.proj_feedx_traffic`](#publicproj_feedx_traffic), [`public.proj_feed_meta_reach`](#publicproj_feed_meta_reach), [`public.proj_feedx_meta_reach`](#publicproj_feedx_meta_reach), [`public.proj_feed_product_reach`](#publicproj_feed_product_reach), [`public.proj_feedx_product_reach`](#publicproj_feedx_product_reach), [`public.proj_feed_nc_product`](#publicproj_feed_nc_product), [`public.proj_feedx_nc_product`](#publicproj_feedx_nc_product), [`public.proj_feed_anyclick`](#publicproj_feed_anyclick), [`public.proj_feedx_anyclick`](#publicproj_feedx_anyclick), [`public.proj_feed_bids`](#publicproj_feed_bids), [`public.proj_feedx_bids`](#publicproj_feedx_bids), [`public.proj_feed_meta_day`](#publicproj_feed_meta_day), [`public.proj_feed_meta_product`](#publicproj_feed_meta_product), [`public.proj_pacing_hourly`](#publicproj_pacing_hourly), [`public.proj_pacing_setting`](#publicproj_pacing_setting), [`public.proj_units_daily`](#publicproj_units_daily), [`public.proj_feedx_units_daily`](#publicproj_feedx_units_daily), [`public.proj_demand_snapshot`](#publicproj_demand_snapshot), [`public.proj_feedx_demand_snapshot`](#publicproj_feedx_demand_snapshot), [`public.proj_feedx_intl_nonus_daily`](#publicproj_feedx_intl_nonus_daily), [`public.proj_feed_nc_hourly`](#publicproj_feed_nc_hourly), [`public.proj_live_today_snapshots`](#publicproj_live_today_snapshots), [`public.proj_amazon_mtd_snapshots`](#publicproj_amazon_mtd_snapshots), [`public.proj_feedx_intl_estimate`](#publicproj_feedx_intl_estimate), [`public.proj_meta_spend_monthly`](#publicproj_meta_spend_monthly) |
@@ -1823,6 +1823,68 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `created_at` | timestamptz | no | When the concept was added. |
 | `updated_at` | timestamptz | no | When it was last edited or its status changed. |
 | `done_at` | timestamptz | yes | When it was marked done; NULL while open. |
+
+### public.creative_priorities_assignments
+
+*table*
+
+**Purpose.** Production assignments from /priorities: a concept given to a vendor to make for a week (Assign to vendor), with the brief link, the creative link, the stage timestamps and the Creative Tracker Concept IDs of the ads that came out of it. The concept itself stays in the ideation list unchanged.
+
+- **Grain:** primary key `(id)`; one row per concept x vendor x week (open rows are unique; a dropped row can be assigned again)
+- **Source:** the /priorities and /priorities/production pages and the vendor link page via /api/priorities/assignments (app/priorities_assign.py)
+- **Refresh:** on demand (a person assigns, adds links, marks ready or launched, drops; a vendor adds a creative link and a note)
+- **Coverage:** from the day the migration was deployed
+- **Caveat:** The stage is not stored: it is derived at read time from the links, the timestamps and the status of the linked Creative Tracker rows (the tracker wins when it is further along).
+- **Caveat:** Nothing here is written to the Google Sheet or Meta. The tag text is copied from the row at assign time, so history survives a taxonomy reload; line_id has no foreign key on purpose.
+- **Caveat:** No author column: the app has no login of its own, only timestamps.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Primary key (bigserial). |
+| `concept_key` | text | no | Stable concept handle: 'line:<taxonomy_lines.id>' when the row has a line, 'manual:<id>' for a manual concept, else 'text:<product>\|<cluster>\|<icp>\|<pain point>' (lowercased, spaces collapsed). |
+| `text_key` | text | no | The text form of the key ('text:<product>\|<cluster>\|<icp>\|<pain point>'), always stored, so a proposal that later becomes a real line still matches. |
+| `product` | text | no | 'vita-bull' \| 'beef-liver' \| 'boneflex'. |
+| `vendor` | text | no | Vendor, spelled as in the Creative Tracker Vendor column (Madre, Victoria, TrybeDCShop, TrybeOrion, 10xROAS, Internal). |
+| `line_id` | integer | yes | taxonomy_lines.id at assign time; NULL for manual or proposed concepts. No foreign key. |
+| `manual_id` | bigint | yes | creative_priorities_manual.id for a manual concept; NULL otherwise. |
+| `line_code` | text | no | Line code (for example BL12) at assign time; empty when none. |
+| `cluster` | text | no | Market cluster at assign time. |
+| `icp` | text | no | ICP at assign time. |
+| `pain_point` | text | no | Pain point at assign time. |
+| `story` | text | no | Story at assign time; empty when none. |
+| `section_at_assign` | text | no | Page section the concept sat in when assigned: 'iterate' \| 'faded' \| 'new' \| 'other'. |
+| `note` | text | no | Note typed when assigning or changing the assignment. |
+| `vendor_note` | text | no | Note typed by the vendor on their own link page. |
+| `for_week` | date | no | The Monday of the week the vendor works on it (a CHECK enforces a Monday). |
+| `brief_url` | text | yes | Link to the brief; NULL until added. |
+| `creative_url` | text | yes | Link to the finished creative; NULL until added. |
+| `brief_at` | timestamptz | yes | When the brief link was first added; NULL until then. |
+| `creative_at` | timestamptz | yes | When the creative link was first added; NULL until then. |
+| `ready_at` | timestamptz | yes | When someone clicked Ready to launch; NULL if not (or cleared). |
+| `launched_at` | timestamptz | yes | When it was marked launched by hand; NULL if not. A linked tracker row with status 8 or 9 also counts as launched. |
+| `dropped_at` | timestamptz | yes | When the assignment was dropped (soft cancel); NULL while active. Rows are never deleted. |
+| `tracker_concept_ids` | text[] | no | Creative Tracker Concept IDs of the ads made from this assignment, entered by hand. |
+| `created_at` | timestamptz | no | When the assignment was created. |
+| `updated_at` | timestamptz | no | When it was last changed. |
+
+### public.creative_priorities_vendor_links
+
+*table*
+
+**Purpose.** One permanent unguessable link per vendor for the vendor page /priorities/vendor/<token>, where the vendor sees only their own concepts and adds a creative link and a note.
+
+- **Grain:** primary key `(vendor)`; one row per vendor (vendor is the primary key)
+- **Source:** the Production page via /api/priorities/vendor-links (app/priorities_assign.py)
+- **Refresh:** on demand (a link is created on first use and replaced by Reset link)
+- **Coverage:** from the day the migration was deployed
+- **Caveat:** The link is the access: the page needs no login. Reset link replaces the token and the old link stops working.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `vendor` | text | no | Vendor name (primary key), as in creative_priorities_assignments.vendor. |
+| `token` | text | no | Unguessable link token (unique). |
+| `created_at` | timestamptz | no | When the link was first created. |
+| `rotated_at` | timestamptz | yes | When the token was last replaced by Reset link; NULL if never. |
 
 ## Derived creative-family roll-ups (rebuilt in full by etl.build_metrics)
 
