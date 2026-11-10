@@ -54,7 +54,7 @@ Qualifies when its status is WORKING NOW or RISING (see above; this already requ
 
 Score (0 to 100) = 35% economics + 20% hit rate + 20% room to iterate + 15% momentum + 10% size, times (1 - 0.35 x share of the line's spend on weak tags):
 * economics: blended index (half since-launch, half last 30 days) mapped 0.95 -> 0, 1.40 -> 1;
-* hit rate: shrunk share of mature ads (>= 14 days old, judged) that reached $1,000, as an index to the product's, mapped 0.75 -> 0, 2.0 -> 1;
+* hit rate (scoring only, constant `HIT_SPEND` = $1,000): shrunk share of mature ads (>= 14 days old, judged) that reached $1,000, as an index to the product's, mapped 0.75 -> 0, 2.0 -> 1;
 * room: 1 - (line's share of the product's new ads in 30 days / line's share of the product's spend), floored at 0: lots of spend, few recent launches = room;
 * momentum: 0.5 + (last-30-day ROAS / prior-30-day ROAS - 1), clamped, 0.5 when either window is under $1,000;
 * size: log scale from $5,000 (0) to $25,000 (1).
@@ -73,3 +73,12 @@ Score = 50% adjacent winner + 20% cross-product + 20% Josh's cluster order + 10%
 * Offer / sale lines (Offer / Price-Led, "50% off" ads) carry generic copy, so their ICP tags are often low confidence: they top the list on economics but with weak tags (penalised and flagged).
 * "New" is judged on the tag, not on a text search of ad copy.
 * Recent ads (< 14 days) are left out of the hit rate; mass relaunch days count as launches.
+
+## What the tiles and hit-rate numbers mean (2026-11-10)
+* **Words.** ROAS = Meta-reported purchase value / spend. CPA (cost per purchase) = spend / purchases. **All time** = since each ad launched; **last 30 days** and **last 14 days** = the days ending on the data-through date. Upstack new-customer ROAS is a separate measure (row panels only).
+* **Funnel (display).** *Launched* = every ad (first tracker row of an ad family in `ad_metrics`) that has a Launch Date or any spend. Of those: *under $100* spend (never really tested, includes launched ads with $0 spend), *tested* = $100+ (`JUDGED_SPEND`), *hit* = $10,000+ (`TOP_SPEND`). **Hit rate = hits / launched** (the honest headline); hits / tested is shown beside it. The product tiles, the row panel stat cards, the print intro and the CSV columns `ads_launched`, `ads_under_100_spend`, `ads_100_plus_spend`, `ads_10k_plus_spend`, `hit_rate_10k_of_launched`, `hit_rate_10k_of_tested` (appended after `notes`) all use these counts; "Ads tested" always equals the $100+ count. Excluded: ad families with no launch date and no spend (briefs, ideas), tracker rows deleted from the sheet. Included: renamed re-uploads (each is its own ad family) and relaunch copies, so launched counts run higher than the number of distinct concepts.
+* **Last-30-days funnel.** Ads that spent in the window: how many spent under $100, $100+ and $10K+ **inside the window**. $10K in 30 days is far stricter than $10K over an ad's life, so it is small by construction.
+* **Last 14 days columns** (`Spend · 14d`, `ROAS · 14d`; snapshot fields `spend_14d`, `purchases_14d`, `roas_14d`): per concept, summed from `family_daily` over the 14 days ending at the data-through date, Meta-reported, raw (not shrunk) purchase value / spend. ROAS is blank (a dash) under $100 spend in the window (`MIN_14D_SPEND`); the spend still shows. Manual, proposal, competitor and untested rows show a dash. The ROAS cell is tinted green / red with an arrow when 5% or more above / below the product's last-30-day ROAS. Print strips add `14d: $X at Yx`; the CSV appends `spend_14d`, `roas_14d` at the very end.
+* **Scoring is unchanged.** The score's hit-rate component still counts a hit at $1,000 (`HIT_SPEND`) over mature tested ads. Switching it to $10,000 left every status unchanged but moved 14 of 74 scores and the order of 5 rows (hits per line are single digits, so the shrunk rate gets noisy), so display and scoring use separate constants.
+* Old snapshots without the funnel / 14-day fields still render (the tile shows the old $1,000 hit rate; no funnel, delta chip or 14-day figures).
+

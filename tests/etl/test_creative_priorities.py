@@ -514,3 +514,45 @@ def test_faded_rows_lead_csv_and_markdown_and_carry_the_story_columns():
     md = cp.to_markdown(r)
     assert md.index("Was working, now isn't") < md.index("Iterate on what is working") or "Iterate on what is working" not in md
     assert "Revive play:" in md and "Former winner:" in md
+
+
+def test_funnel_counts_launched_under_100_tested_and_10k_hits():
+    inp = scenario()
+    for f, sp in zip([x for x in inp["families"] if x["product"] == "vita-bull"][:3], (50.0, 100.0, 12000.0)):
+        f["spend_launch"] = sp
+    inp["funnel"] = {"vita-bull": {"launched": 40, "under_tested": 8, "tested": 32, "top": 5}}
+    r = cp.compute(inp, WEEK)
+    b = r["baselines"]["vita-bull"]
+    assert b["funnel"] == {"launched": 40, "under_tested": 8, "tested": 32, "top": 5} and b["hit_spend"] == 10000.0 and b["tested_spend"] == 100.0
+    f30 = b["funnel_30d"]
+    assert f30["active"] == f30["under_tested"] + f30["tested"] and f30["top"] <= f30["tested"]
+    # without the SQL funnel the counts come from the families in hand and still add up
+    inp2 = scenario()
+    del_ = inp2.pop("funnel", None)
+    b2 = cp.compute(inp2, WEEK)["baselines"]["vita-bull"]["funnel"]
+    assert b2["launched"] == b2["under_tested"] + b2["tested"] and b2["top"] <= b2["tested"]
+    md = cp.to_markdown(cp.compute(inp, WEEK))
+    assert "ALL TIME" in md and "LAST 30 DAYS" in md and "under $100 spend 8 (20%)" in md and "$10,000+ (hits) 5" in md
+
+
+def test_row_funnel_and_14_day_numbers_with_a_100_dollar_floor():
+    inp = scenario()
+    fs = [x for x in inp["families"] if x["product"] == "vita-bull" and x["line_id"] == 1]
+    for f in fs:
+        inp["win"]["meta"][f["family_key"]].update(s14=20.0, p14=1.0, r14=30.0)
+    inp["win"]["meta"][fs[0]["family_key"]].update(s14=500.0, p14=6.0, r14=700.0)
+    r = cp.compute(inp, WEEK)
+    row = next(x for x in r["rows"] if x["line_id"] == 1)
+    m = row["metrics"]
+    assert m["funnel"]["launched"] >= m["funnel"]["tested"] and m["spend_14d"] == 640 and round(m["roas_14d"], 3) == round((700 + 7 * 30) / 640, 3)
+    for f in fs:
+        inp["win"]["meta"][f["family_key"]].update(s14=10.0, p14=1.0, r14=15.0)
+    low = next(x for x in cp.compute(inp, WEEK)["rows"] if x["line_id"] == 1)["metrics"]
+    assert low["spend_14d"] == 80 and low["roas_14d"] is None            # under $100 in the window: spend shown, no ratio
+    csvrows = list(csv.reader(io.StringIO(cp.to_csv(r))))
+    h = csvrows[0]
+    assert h[-2:] == ["spend_14d", "roas_14d"] and "ads_10k_plus_spend" in h
+
+
+def test_scoring_still_uses_the_1000_dollar_hit_not_the_10k_display_hit():
+    assert cp.HIT_SPEND == 1000.0 and cp.TOP_SPEND == 10000.0

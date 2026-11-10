@@ -37,7 +37,7 @@ def test_everything_is_collapsed_on_load_and_the_detail_panels_are_hidden(page):
     assert page.locator("[data-testid=pri-body] " + DETAIL + "[hidden]").count() == 30
     assert page.locator("[data-testid=pri-shown]").text_content() == "30 of 30 concepts shown"
     heads = [t.strip() for t in page.locator("[data-testid=pri-table] thead th").all_text_contents()]
-    assert [h.replace(" ⇅", "") for h in heads[1:]] == ["Product", "Section", "Market Cluster", "ICP", "Pain Point", "Story", "Status", "Concepts", "Key number"]
+    assert [h.replace(" ⇅", "") for h in heads[1:]] == ["Product", "Section", "Market Cluster", "ICP", "Pain Point", "Story", "Status", "Concepts", "Key number", "Spend \u00b7 14d", "ROAS \u00b7 14d"]
     page.screenshot(path=str(SHOTS / "priorities_collapsed.png"), full_page=False)
 
 
@@ -730,9 +730,11 @@ def test_every_fact_is_still_in_every_expanded_panel(page):
             assert fl in txt
         if r["section"] in ("iterate", "faded", "stop"):
             m = r["metrics"]
-            for label in ("Spend", "ROAS", "CPA", "Upstack new-customer ROAS", "ROAS, strong tags only", "Ads tested", "Hit rate", "New ads, 30 days", "Last 30 days", "Prior 30 days", "Live ads"):
+            for label in ("Spend", "ROAS (all time)", "CPA (all time)", "Upstack new-customer ROAS", "ROAS, strong tags only", "Ads launched", "Under $100 spend", "Ads tested ($100+)", "Ads that reached $10K+", "New ads, 30 days", "Last 30 days", "Prior 30 days", "Live ads"):
                 assert label.lower() in txt.lower(), (label, r["pain_point"])
-            assert _money(m["spend"]) in txt and f"{m['hits']}/{m['mature']}" in txt and _money(m["spend_30d"]) in txt and _money(m["spend_prior30"]) in txt
+            fn = m["funnel"]
+            assert f"{fn['launched']:,}" in txt and f"{fn['tested']:,}" in txt and f"{fn['top']:,}" in txt and "of launched" in txt
+            assert _money(m["spend"]) in txt and _money(m["spend_30d"]) in txt and _money(m["spend_prior30"]) in txt
         else:
             assert "Ads tagged" in txt or r["section"] == "proposal" or r["section"] == "competitor"
         for w in r.get("former_winners") or []:
@@ -945,7 +947,7 @@ def test_manual_row_filters_search_sort_selection_csv_print_and_copy(page):
         page.locator("[data-testid=pri-sel-csv]").click()
     sel = csv_of(dl.value)
     head = sel[0]
-    assert head[:4] == ["market_cluster", "icp", "pain_point", "story"] and head[-2:] == ["source", "notes"] and len(sel) == 3
+    assert head[:4] == ["market_cluster", "icp", "pain_point", "story"] and head[head.index("source"):head.index("source") + 2] == ["source", "notes"] and head[-2:] == ["spend_14d", "roas_14d"] and len(sel) == 3
     assert sorted(r[head.index("source")] for r in sel[1:]) == ["auto", "manual"]
     assert [r for r in sel[1:] if r[head.index("source")] == "manual"][0][head.index("notes")] == "Unique-notes-marker for print"
     # print layout: the compact strip shows the notes
@@ -1123,7 +1125,12 @@ def test_product_tiles_show_the_four_numbers_and_filter_by_product(page):
         slug = t.get_attribute("data-product")
         b = FIXTURE["baselines"][slug]
         txt = t.text_content()
-        assert b["product_name"] in txt and _roas(b["roas"]) in txt and _roas(b["roas_30d"]) in txt and f"{round(b['hit_rate'] * 100)}%" in txt and _money(b["cpa"]) in txt, (slug, txt)
+        fn, f3 = b["funnel"], b["funnel_30d"]
+        assert b["product_name"] in txt and _roas(b["roas"]) in txt and _roas(b["roas_30d"]) in txt and _money(b["cpa"]) in txt and _money(b["cpa_30d"]) in txt, (slug, txt)
+        assert "All time" in txt and "Last 30 days" in txt and "ROAS (all time)" in txt and "CPA (all time)" in txt and "ROAS (30 days)" in txt and "vs all time" in txt, (slug, txt)
+        assert f"Launched {fn['launched']:,} \u00b7 under $100: {fn['under_tested']:,}" in t.locator("[data-testid=pri-funnel]").text_content(), slug
+        assert f"$100+: {fn['tested']:,} \u00b7 $10K+: {fn['top']:,}" in txt and f"{fn['top']:,} of {fn['launched']:,}" in txt and f"{fn['top']:,} of {fn['tested']:,}" in txt, (slug, txt)
+        assert f"{f3['active']:,} ads spent" in t.locator("[data-testid=pri-funnel-30d]").text_content() and t.locator("[data-testid=pri-funnel-bar]").count() == 2
     page.locator("[data-testid=pri-ptile][data-product='beef-liver']").click()
     assert set(page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("els => els.map(e => e.dataset.product)")) == {"beef-liver"}
     assert page.locator("[data-testid=pri-f-product-beef-liver]").get_attribute("aria-pressed") == "true" and page.locator("[data-testid=pri-f-product-vita-bull]").get_attribute("aria-pressed") == "false"
@@ -1141,14 +1148,47 @@ def test_disclosures_keep_every_word_and_the_clear_filters_link_resets_everythin
     for leg in FIXTURE["legend"]:
         assert leg["meaning"] in tags.text_content()
     t = nums.text_content()
-    for frag in ("Week of 2026-11-08. Data through 2026-11-08.", "Numbers are Meta-reported (ROAS = purchase value / spend, CPA = spend / purchases)", "Upstack new-customer ROAS beside them.",
+    for frag in ("Week of 2026-11-08. Data through 2026-11-08.", "Numbers are Meta-reported (ROAS = purchase value / spend, CPA = cost per purchase = spend / purchases)", "Upstack new-customer ROAS is separate and shown in the row panels.",
                  "This is prioritisation: consistent with the numbers, not proof that more concepts will work.", "Every row is collapsed: open a row for the full detail.",
                  "Competitor ads: Meta Ad Library, as of 2026-11-09; refreshed weekly. Running a long time is a signal, not proven performance."):
         assert frag in t, frag
     intro = page.locator("[data-testid=pri-printintro]").text_content()
     assert "Lines by status: " in intro and "AVERAGE 36" in intro and "WORKING NOW 10" in intro
     for s_ in FIXTURE["baselines"].values():
-        assert f"{s_['product_name']} average ROAS {_roas(s_['roas'])} since launch, {_roas(s_['roas_30d'])} last 30 days, CPA {_money(s_['cpa'])}, hit rate {round(s_['hit_rate'] * 100)}%" in intro.replace("×", "x")
+        fn_ = s_["funnel"]
+        flat = intro.replace("×", "x")
+        assert f"{s_['product_name']} ALL TIME: ROAS {_roas(s_['roas'])}, CPA {_money(s_['cpa'])}; Launched {fn_['launched']:,} \u00b7 under $100: {fn_['under_tested']:,}" in flat, s_["product_name"]
+        assert f"$10K+: {fn_['top']:,}" in flat and f"LAST 30 DAYS: ROAS {_roas(s_['roas_30d'])}, CPA {_money(s_['cpa_30d'])}" in flat
+
+
+def test_metric_help_defines_every_metric_and_is_keyboard_operable(page):
+    goto(page)
+    h = page.locator("[data-testid=pri-metric-help]")
+    assert h.locator("ul").is_hidden()
+    h.locator("summary").focus()
+    page.keyboard.press("Enter")
+    txt = h.text_content()
+    for frag in ("ROAS", "CPA", "Launched", "Tested", "Hit", "$10,000", "$100", "Last 30 days", "Upstack new-customer ROAS", "Data through 2026-11-08"):
+        assert frag in txt, frag
+    assert h.locator("ul").is_visible()
+
+
+def test_tiles_without_funnel_fields_still_render(page):
+    """An old snapshot (no funnel, no 30-day fields) shows the old hit rate and no funnel or delta chips."""
+    def strip(route):
+        r = route.fetch()
+        d = r.json()
+        for b in d["baselines"].values():
+            for k in ("funnel", "funnel_30d", "cpa_30d", "spend_30d", "purchases_30d", "purchases", "live_ads"):
+                b.pop(k, None)
+        for row in d["rows"]:
+            row["metrics"].pop("funnel", None)
+        route.fulfill(response=r, json=d)
+    page.route("**/api/priorities?*", strip)
+    page.route("**/api/priorities", strip)
+    goto(page)
+    t = page.locator("[data-testid=pri-ptile]").first
+    assert t.locator("[data-testid=pri-funnel]").count() == 0 and "Ads that reached $1,000" in t.text_content()
     # filters: several at once, active count, one link clears all
     clear = page.locator("[data-testid=pri-clear-filters]")
     assert clear.is_hidden()
@@ -1405,3 +1445,27 @@ def test_briefed_toggle_on_a_deleted_view_shows_an_error_and_keeps_the_row_unmar
     page.locator(BRIEF).first.click()
     page.wait_for_selector("[data-testid=pri-brief-error]:not(:empty)")
     assert page.locator("tr.pri-row.pri-briefed").count() == 0 and page.locator(PROG).text_content() == "0 of 2 briefed"
+
+
+def test_14_day_columns_show_spend_and_roas_sort_and_dash_below_100(page):
+    goto(page)
+    heads = page.locator("[data-testid=pri-body]").locator("xpath=ancestor::table//th").all_text_contents()
+    assert "Spend \u00b7 14d" in " ".join(heads) and "ROAS \u00b7 14d" in " ".join(heads)
+    rows = page.locator("[data-testid=pri-body] tr.pri-row")
+    low = next(r for r in FIXTURE["rows"] if r["metrics"].get("spend_14d") == 42.0)
+    for i in range(rows.count()):
+        row = rows.nth(i)
+        if low["pain_point"] in row.locator(".pri-c-pain").text_content() and low["cluster"] in row.locator(".pri-c-cluster").text_content():
+            assert _money(42.0) in row.locator(".pri-c-spend14").text_content() and row.locator(".pri-c-roas14").text_content().strip() == "\u2013"
+    page.locator("[data-testid=pri-sort-roas14]").click()
+    page.locator("[data-testid=pri-sort-roas14]").click()
+    vals = [float(v) for v in page.locator("[data-testid=pri-body] tr.pri-row .pri-c-roas14 [data-testid=pri-roas14]").evaluate_all("els => els.map(e => e.firstChild.textContent.replace('x',''))")]
+    assert vals == sorted(vals, reverse=True) and len(vals) > 3
+    page.locator("[data-testid=pri-sort-spend14]").click()
+    assert page.locator("[data-testid=pri-sort-spend14]").locator("xpath=ancestor::th").get_attribute("aria-sort") == "ascending"
+
+
+def test_14_day_stat_card_in_panel(page):
+    goto(page)
+    page.locator("[data-testid=pri-toggle]").first.click()
+    assert "Last 14 days" in page.locator("[data-testid=pri-detail]:visible").first.text_content()
