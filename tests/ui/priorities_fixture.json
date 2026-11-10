@@ -17,7 +17,29 @@
    "judged": 591,
    "hits": 348,
    "new_ads_30d": 491,
-   "nc_roas": 0.6179
+   "nc_roas": 0.6179,
+   "funnel": {
+    "launched": 1551,
+    "under_tested": 638,
+    "tested": 913,
+    "top": 112
+   },
+   "funnel_30d": {
+    "active": 362,
+    "under_tested": 120,
+    "tested": 242,
+    "top": 5
+   },
+   "hit_spend": 10000.0,
+   "tested_spend": 100.0,
+   "spend_30d": 252061.87,
+   "purchases_30d": 1800,
+   "cpa_30d": 94.82,
+   "purchases": 58483,
+   "live_ads": 51,
+   "data_through": "2026-11-09",
+   "spend_14d": 113427.84,
+   "roas_14d": 0.7492
   },
   "beef-liver": {
    "product_name": "Beef Liver",
@@ -31,7 +53,29 @@
    "judged": 491,
    "hits": 257,
    "new_ads_30d": 682,
-   "nc_roas": 0.6111
+   "nc_roas": 0.6111,
+   "funnel": {
+    "launched": 1594,
+    "under_tested": 860,
+    "tested": 734,
+    "top": 111
+   },
+   "funnel_30d": {
+    "active": 361,
+    "under_tested": 120,
+    "tested": 241,
+    "top": 5
+   },
+   "hit_spend": 10000.0,
+   "tested_spend": 100.0,
+   "spend_30d": 288969.12,
+   "purchases_30d": 1800,
+   "cpa_30d": 74.11,
+   "purchases": 85785,
+   "live_ads": 51,
+   "data_through": "2026-11-09",
+   "spend_14d": 130036.1,
+   "roas_14d": 0.7135
   },
   "boneflex": {
    "product_name": "Boneflex",
@@ -45,7 +89,29 @@
    "judged": 314,
    "hits": 148,
    "new_ads_30d": 366,
-   "nc_roas": 0.6669
+   "nc_roas": 0.6669,
+   "funnel": {
+    "launched": 990,
+    "under_tested": 625,
+    "tested": 365,
+    "top": 38
+   },
+   "funnel_30d": {
+    "active": 288,
+    "under_tested": 120,
+    "tested": 168,
+    "top": 3
+   },
+   "hit_spend": 10000.0,
+   "tested_spend": 100.0,
+   "spend_30d": 116004.98,
+   "purchases_30d": 1800,
+   "cpa_30d": 86.34,
+   "purchases": 29559,
+   "live_ads": 43,
+   "data_through": "2026-11-09",
+   "spend_14d": 52202.24,
+   "roas_14d": 0.6353
   }
  },
  "rows": [
@@ -131,7 +197,20 @@
     "idx_30": 1.078,
     "cpa_30d": 79.75,
     "share_then": 0.0058,
-    "share_now": 0.0138
+    "share_now": 0.0138,
+    "funnel": {
+     "launched": 8,
+     "under_tested": 4,
+     "tested": 4,
+     "top": 1,
+     "active_30d": 2,
+     "under_tested_30d": 1,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 42.0,
+    "purchases_14d": 7,
+    "roas_14d": null
    },
    "hooks": [
     {
@@ -231,7 +310,20 @@
     "idx_30": 1.285,
     "cpa_30d": 78.46,
     "share_then": 0.0697,
-    "share_now": 0.0657
+    "share_now": 0.0657,
+    "funnel": {
+     "launched": 38,
+     "under_tested": 6,
+     "tested": 32,
+     "top": 3,
+     "active_30d": 16,
+     "under_tested_30d": 8,
+     "tested_30d": 8,
+     "top_30d": 0
+    },
+    "spend_14d": 3071.74,
+    "purchases_14d": 34,
+    "roas_14d": 0.57
    },
    "hooks": [
     {
@@ -331,7 +423,20 @@
     "idx_30": 0.831,
     "cpa_30d": 132.34,
     "share_then": 0.0471,
-    "share_now": 0.0255
+    "share_now": 0.0255,
+    "funnel": {
+     "launched": 38,
+     "under_tested": 8,
+     "tested": 30,
+     "top": 3,
+     "active_30d": 15,
+     "under_tested_30d": 7,
+     "tested_30d": 7,
+     "top_30d": 0
+    },
+    "spend_14d": 1191.06,
+    "purchases_14d": 13,
+    "roas_14d": 0.64
    },
    "hooks": [
     {
@@ -546,7 +651,20 @@
     "idx_30": 0.954,
     "cpa_30d": 106.8,
     "share_then": 0.046,
-    "share_now": 0.0421
+    "share_now": 0.0421,
+    "funnel": {
+     "launched": 34,
+     "under_tested": 3,
+     "tested": 31,
+     "top": 3,
+     "active_30d": 15,
+     "under_tested_30d": 7,
+     "tested_30d": 7,
+     "top_30d": 0
+    },
+    "spend_14d": 1970.54,
+    "purchases_14d": 21,
+    "roas_14d": 0.71
    },
    "hooks": [
     {
@@ -760,7 +878,20 @@
     "idx_30": 0.886,
     "cpa_30d": 111.99,
     "share_then": 0.068,
-    "share_now": 0.0647
+    "share_now": 0.0647,
+    "funnel": {
+     "launched": 116,
+     "under_tested": 8,
+     "tested": 108,
+     "top": 10,
+     "active_30d": 54,
+     "under_tested_30d": 27,
+     "tested_30d": 27,
+     "top_30d": 0
+    },
+    "spend_14d": 3023.6,
+    "purchases_14d": 33,
+    "roas_14d": 0.78
    },
    "hooks": [],
    "evidence": null,
@@ -828,7 +959,20 @@
     "idx_30": 0.983,
     "cpa_30d": null,
     "share_then": 0.005,
-    "share_now": 0.0004
+    "share_now": 0.0004,
+    "funnel": {
+     "launched": 41,
+     "under_tested": 4,
+     "tested": 37,
+     "top": 3,
+     "active_30d": 18,
+     "under_tested_30d": 9,
+     "tested_30d": 9,
+     "top_30d": 0
+    },
+    "spend_14d": 18.91,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [],
    "evidence": null,
@@ -900,7 +1044,20 @@
     "idx_30": null,
     "cpa_30d": null,
     "share_then": 0.0,
-    "share_now": 0.0
+    "share_now": 0.0,
+    "funnel": {
+     "launched": 3,
+     "under_tested": 3,
+     "tested": 0,
+     "top": 0,
+     "active_30d": 1,
+     "under_tested_30d": 0,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 0.0,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [
     {
@@ -1005,7 +1162,20 @@
     "idx_30": null,
     "cpa_30d": null,
     "share_then": 0.0,
-    "share_now": 0.0
+    "share_now": 0.0,
+    "funnel": {
+     "launched": 3,
+     "under_tested": 3,
+     "tested": 0,
+     "top": 0,
+     "active_30d": 1,
+     "under_tested_30d": 0,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 0.0,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [
     {
@@ -1105,7 +1275,20 @@
     "spend": 0,
     "tagged_ads": 0,
     "ads": 0,
-    "judged": 0
+    "judged": 0,
+    "funnel": {
+     "launched": 3,
+     "under_tested": 3,
+     "tested": 0,
+     "top": 0,
+     "active_30d": 1,
+     "under_tested_30d": 0,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 0.0,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [
     {
@@ -1199,7 +1382,20 @@
     "spend": 0,
     "tagged_ads": 0,
     "ads": 0,
-    "judged": 0
+    "judged": 0,
+    "funnel": {
+     "launched": 3,
+     "under_tested": 3,
+     "tested": 0,
+     "top": 0,
+     "active_30d": 1,
+     "under_tested_30d": 0,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 0.0,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [
     {
@@ -1298,7 +1494,20 @@
     "idx_30": 1.334,
     "cpa_30d": 72.9,
     "share_then": 0.013,
-    "share_now": 0.1452
+    "share_now": 0.1452,
+    "funnel": {
+     "launched": 66,
+     "under_tested": 26,
+     "tested": 40,
+     "top": 4,
+     "active_30d": 20,
+     "under_tested_30d": 10,
+     "tested_30d": 10,
+     "top_30d": 0
+    },
+    "spend_14d": 9513.48,
+    "purchases_14d": 105,
+    "roas_14d": 0.57
    },
    "hooks": [
     {
@@ -1427,7 +1636,20 @@
     "idx_30": 1.323,
     "cpa_30d": 76.56,
     "share_then": 0.1951,
-    "share_now": 0.1073
+    "share_now": 0.1073,
+    "funnel": {
+     "launched": 52,
+     "under_tested": 10,
+     "tested": 42,
+     "top": 4,
+     "active_30d": 21,
+     "under_tested_30d": 10,
+     "tested_30d": 10,
+     "top_30d": 0
+    },
+    "spend_14d": 7028.34,
+    "purchases_14d": 78,
+    "roas_14d": 0.64
    },
    "hooks": [
     {
@@ -1556,7 +1778,20 @@
     "idx_30": 0.837,
     "cpa_30d": 156.31,
     "share_then": 0.0066,
-    "share_now": 0.0086
+    "share_now": 0.0086,
+    "funnel": {
+     "launched": 45,
+     "under_tested": 27,
+     "tested": 18,
+     "top": 1,
+     "active_30d": 9,
+     "under_tested_30d": 4,
+     "tested_30d": 4,
+     "top_30d": 0
+    },
+    "spend_14d": 562.71,
+    "purchases_14d": 6,
+    "roas_14d": 0.71
    },
    "hooks": [
     {
@@ -1765,11 +2000,24 @@
     "idx_30": 0.958,
     "cpa_30d": 103.19,
     "share_then": 0.0223,
-    "share_now": 0.0177
+    "share_now": 0.0177,
+    "funnel": {
+     "launched": 77,
+     "under_tested": 60,
+     "tested": 17,
+     "top": 1,
+     "active_30d": 8,
+     "under_tested_30d": 4,
+     "tested_30d": 4,
+     "top_30d": 0
+    },
+    "spend_14d": 1160.92,
+    "purchases_14d": 12,
+    "roas_14d": 0.78
    },
    "hooks": [
     {
-     "hook": "Real Energy From Grass-Fed Beef Liver. 70% OFF \u2013 OVERSTOCKED",
+     "hook": "Real Energy From Grass-Fed Beef Liver. 70% OFF – OVERSTOCKED",
      "ad": "LiverSpringSale_vert_5.6_3",
      "ad_id": 2029,
      "spend": 16601,
@@ -1800,7 +2048,7 @@
    "when_it_worked": "Weeks of 2026-06-29 to 2026-07-26 (4 weeks): ROAS 1.18x vs 0.76x for the product over the same weeks (index 1.55), CPA $62, $2,709 spend.",
    "how_it_stopped": "Last 30 days: ROAS 0.65x (index 0.96), CPA $103, $2,580 spend; ROAS -44% from the peak; last at or above the product average in the 4 weeks ending 2026-09-13 (8 weeks ago).",
    "diagnosis": "50 new ads launched in the last 30 days run at 0.58x vs 0.71x for the product: consistent with the whole line weakening even with fresh ads.",
-   "revive_play": "2 concepts this week: rework the angle (new story or ICP framing) keeping the structure of the winning hooks (\"Real Energy From Grass-Fed Beef Liver. 70% OFF \u2013 OVERSTOCKED\" (LiverSpringSale_vert_5.6_3, peak week of 2026-05-18); \"Double DISCOUNT Ends TONIGHT\" (tt-liver-16, peak week of 2026-10-19)); test small before scaling against the product's 0.71x last-30-day ROAS.",
+   "revive_play": "2 concepts this week: rework the angle (new story or ICP framing) keeping the structure of the winning hooks (\"Real Energy From Grass-Fed Beef Liver. 70% OFF – OVERSTOCKED\" (LiverSpringSale_vert_5.6_3, peak week of 2026-05-18); \"Double DISCOUNT Ends TONIGHT\" (tt-liver-16, peak week of 2026-10-19)); test small before scaling against the product's 0.71x last-30-day ROAS.",
    "stretch": {
     "start": "2026-06-29",
     "end": "2026-07-26",
@@ -1826,7 +2074,7 @@
     {
      "ad": "LiverSpringSale_vert_5.6_3",
      "ad_id": 2029,
-     "hook": "Real Energy From Grass-Fed Beef Liver. 70% OFF \u2013 OVERSTOCKED",
+     "hook": "Real Energy From Grass-Fed Beef Liver. 70% OFF – OVERSTOCKED",
      "spend": 16601,
      "roas": 0.92,
      "kind": "stopped",
@@ -1931,7 +2179,20 @@
     "idx_30": 0.879,
     "cpa_30d": 100.51,
     "share_then": 0.1547,
-    "share_now": 0.0994
+    "share_now": 0.0994,
+    "funnel": {
+     "launched": 146,
+     "under_tested": 37,
+     "tested": 109,
+     "top": 10,
+     "active_30d": 54,
+     "under_tested_30d": 27,
+     "tested_30d": 27,
+     "top_30d": 0
+    },
+    "spend_14d": 6513.04,
+    "purchases_14d": 72,
+    "roas_14d": 0.85
    },
    "hooks": [],
    "evidence": null,
@@ -2016,7 +2277,20 @@
     "idx_30": 0.872,
     "cpa_30d": 91.71,
     "share_then": 0.0412,
-    "share_now": 0.0265
+    "share_now": 0.0265,
+    "funnel": {
+     "launched": 58,
+     "under_tested": 28,
+     "tested": 30,
+     "top": 3,
+     "active_30d": 15,
+     "under_tested_30d": 7,
+     "tested_30d": 7,
+     "top_30d": 0
+    },
+    "spend_14d": 1733.34,
+    "purchases_14d": 19,
+    "roas_14d": 0.92
    },
    "hooks": [],
    "evidence": null,
@@ -2114,7 +2388,20 @@
     "idx_30": null,
     "cpa_30d": null,
     "share_then": 0.0,
-    "share_now": 0.0
+    "share_now": 0.0,
+    "funnel": {
+     "launched": 3,
+     "under_tested": 3,
+     "tested": 0,
+     "top": 0,
+     "active_30d": 1,
+     "under_tested_30d": 0,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 0.0,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [],
    "evidence": {
@@ -2228,7 +2515,20 @@
     "idx_30": 0.998,
     "cpa_30d": null,
     "share_then": 0.0,
-    "share_now": 0.0
+    "share_now": 0.0,
+    "funnel": {
+     "launched": 4,
+     "under_tested": 4,
+     "tested": 0,
+     "top": 0,
+     "active_30d": 1,
+     "under_tested_30d": 0,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 2.53,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [],
    "evidence": {
@@ -2309,7 +2609,20 @@
     "spend": 0,
     "tagged_ads": 0,
     "ads": 0,
-    "judged": 0
+    "judged": 0,
+    "funnel": {
+     "launched": 3,
+     "under_tested": 3,
+     "tested": 0,
+     "top": 0,
+     "active_30d": 1,
+     "under_tested_30d": 0,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 0.0,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [
     {
@@ -2398,7 +2711,20 @@
     "spend": 0,
     "tagged_ads": 0,
     "ads": 0,
-    "judged": 0
+    "judged": 0,
+    "funnel": {
+     "launched": 3,
+     "under_tested": 3,
+     "tested": 0,
+     "top": 0,
+     "active_30d": 1,
+     "under_tested_30d": 0,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 0.0,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [
     {
@@ -2490,7 +2816,20 @@
     "idx_30": 1.032,
     "cpa_30d": 92.97,
     "share_then": 0.0039,
-    "share_now": 0.0126
+    "share_now": 0.0126,
+    "funnel": {
+     "launched": 15,
+     "under_tested": 7,
+     "tested": 8,
+     "top": 1,
+     "active_30d": 4,
+     "under_tested_30d": 2,
+     "tested_30d": 2,
+     "top_30d": 0
+    },
+    "spend_14d": 292.86,
+    "purchases_14d": 3,
+    "roas_14d": 0.64
    },
    "hooks": [
     {
@@ -2610,7 +2949,20 @@
     "idx_30": 1.171,
     "cpa_30d": 104.9,
     "share_then": 0.1124,
-    "share_now": 0.1075
+    "share_now": 0.1075,
+    "funnel": {
+     "launched": 47,
+     "under_tested": 19,
+     "tested": 28,
+     "top": 2,
+     "active_30d": 14,
+     "under_tested_30d": 7,
+     "tested_30d": 7,
+     "top_30d": 0
+    },
+    "spend_14d": 2501.94,
+    "purchases_14d": 27,
+    "roas_14d": 0.71
    },
    "hooks": [
     {
@@ -2710,7 +3062,20 @@
     "idx_30": 0.863,
     "cpa_30d": 170.88,
     "share_then": 0.0176,
-    "share_now": 0.0132
+    "share_now": 0.0132,
+    "funnel": {
+     "launched": 7,
+     "under_tested": 3,
+     "tested": 4,
+     "top": 1,
+     "active_30d": 2,
+     "under_tested_30d": 1,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 307.58,
+    "purchases_14d": 3,
+    "roas_14d": 0.78
    },
    "hooks": [
     {
@@ -2861,7 +3226,20 @@
     "idx_30": 1.066,
     "cpa_30d": 40.69,
     "share_then": 0.0175,
-    "share_now": 0.0016
+    "share_now": 0.0016,
+    "funnel": {
+     "launched": 9,
+     "under_tested": 4,
+     "tested": 5,
+     "top": 1,
+     "active_30d": 2,
+     "under_tested_30d": 1,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 36.63,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [
     {
@@ -3039,7 +3417,20 @@
     "idx_30": 0.975,
     "cpa_30d": null,
     "share_then": 0.0083,
-    "share_now": 0.0012
+    "share_now": 0.0012,
+    "funnel": {
+     "launched": 12,
+     "under_tested": 5,
+     "tested": 7,
+     "top": 1,
+     "active_30d": 3,
+     "under_tested_30d": 1,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 29.07,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [],
    "evidence": null,
@@ -3108,7 +3499,20 @@
     "idx_30": 0.958,
     "cpa_30d": null,
     "share_then": 0.0017,
-    "share_now": 0.0021
+    "share_now": 0.0021,
+    "funnel": {
+     "launched": 18,
+     "under_tested": 12,
+     "tested": 6,
+     "top": 1,
+     "active_30d": 3,
+     "under_tested_30d": 1,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 49.93,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [],
    "evidence": null,
@@ -3199,7 +3603,20 @@
     "idx_30": null,
     "cpa_30d": null,
     "share_then": 0.0,
-    "share_now": 0.0
+    "share_now": 0.0,
+    "funnel": {
+     "launched": 3,
+     "under_tested": 3,
+     "tested": 0,
+     "top": 0,
+     "active_30d": 1,
+     "under_tested_30d": 0,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 0.0,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [
     {
@@ -3212,7 +3629,7 @@
      "borrowed": true
     },
     {
-     "hook": "I finally went on that hike with your dad. Wait \u2014 seriously?? How were your knees?",
+     "hook": "I finally went on that hike with your dad. Wait — seriously?? How were your knees?",
      "ad": "Boneflex-static-7.20.26-2_7.png",
      "ad_id": 2240,
      "spend": 7626,
@@ -3306,7 +3723,20 @@
     "idx_30": 1.0,
     "cpa_30d": null,
     "share_then": 0.0,
-    "share_now": 0.0
+    "share_now": 0.0,
+    "funnel": {
+     "launched": 3,
+     "under_tested": 3,
+     "tested": 0,
+     "top": 0,
+     "active_30d": 1,
+     "under_tested_30d": 0,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 0.0,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [
     {
@@ -3319,7 +3749,7 @@
      "borrowed": true
     },
     {
-     "hook": "I finally went on that hike with your dad. Wait \u2014 seriously?? How were your knees?",
+     "hook": "I finally went on that hike with your dad. Wait — seriously?? How were your knees?",
      "ad": "Boneflex-static-7.20.26-2_7.png",
      "ad_id": 2240,
      "spend": 7626,
@@ -3410,7 +3840,20 @@
     "spend": 0,
     "tagged_ads": 0,
     "ads": 0,
-    "judged": 0
+    "judged": 0,
+    "funnel": {
+     "launched": 3,
+     "under_tested": 3,
+     "tested": 0,
+     "top": 0,
+     "active_30d": 1,
+     "under_tested_30d": 0,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 0.0,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [
     {
@@ -3497,7 +3940,20 @@
     "spend": 0,
     "tagged_ads": 0,
     "ads": 0,
-    "judged": 0
+    "judged": 0,
+    "funnel": {
+     "launched": 3,
+     "under_tested": 3,
+     "tested": 0,
+     "top": 0,
+     "active_30d": 1,
+     "under_tested_30d": 0,
+     "tested_30d": 1,
+     "top_30d": 0
+    },
+    "spend_14d": 0.0,
+    "purchases_14d": 0,
+    "roas_14d": null
    },
    "hooks": [
     {

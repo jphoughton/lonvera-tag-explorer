@@ -984,3 +984,69 @@ button.pri-ptile { cursor: pointer; } button.pri-ptile:hover { background: var(-
 .pri-row.pri-briefed { background: rgba(26, 127, 55, .05); } .pri-row.pri-briefed .pri-c:not(.pri-c-brief):not(.pri-c-tog) { opacity: .62; } .pri-row.pri-briefed .pri-c:first-child { box-shadow: inset 3px 0 0 #1a7f37; }
 .pri-bprint { font-size: 8px; font-weight: 700; color: #000; white-space: nowrap; }
 .pri-top .pri-lead { max-width: none; }
+
+/* ---- /priorities contrast pass (2026-11-10): white cards with a shadow and a clearer border on the cream page, one accent per product, solid selected chips ----
+   New tokens: --lv-pri-card (card surface), --lv-pri-card-line / --lv-pri-card-line-strong, --lv-pri-card-shadow, --lv-pri-panel-bg (tinted panel behind the detail cards), --lv-pri-label (AA gray for labels on white), product accents. */
+:root { --lv-pri-card: #ffffff; --lv-pri-card-line: #cfc4b0; --lv-pri-card-line-strong: #9c917d; --lv-pri-card-shadow: 0 1px 2px rgba(40, 30, 15, .10), 0 2px 8px rgba(40, 30, 15, .07); --lv-pri-panel-bg: #efe8da; --lv-pri-label: #5a5247;
+  --lv-pri-prod-vb: var(--lv-product-bull, #a63d02); --lv-pri-prod-bl: color-mix(in srgb, var(--lv-product-liver, #5f983a) 76%, #000); --lv-pri-prod-bf: var(--lv-product-bone, #2863ab); --lv-pri-selected: #1c1915; --lv-pri-good: #17692e; --lv-pri-good-bg: #e3f3e7; --lv-pri-bad: #b42318; --lv-pri-bad-bg: #fbe7e4; }
+.pri-ptile, .pri-stat, .pri-fbar, .pri-about, .pri-tile, .pri-card, .pri-sc { background: var(--lv-pri-card); border-color: var(--lv-pri-card-line); box-shadow: var(--lv-pri-card-shadow); }
+.pri-sc { box-shadow: none; background: #fff; border: 1px solid var(--lv-pri-card-line); }
+.pri-label, .pri-flabel, .pri-sub, .pri-k, .pri-activen, .pri-hookn { color: var(--lv-pri-label); }
+.pri-ptile { --pc: var(--lv-pri-prod-vb); border-top: 5px solid var(--pc); border-radius: 10px; padding: 12px 14px 14px; gap: 10px; }
+.pri-ptile[data-prod="beef-liver"] { --pc: var(--lv-pri-prod-bl); } .pri-ptile[data-prod="boneflex"] { --pc: var(--lv-pri-prod-bf); }
+button.pri-ptile:hover { background: #fffdf8; border-color: var(--lv-pri-card-line-strong); }
+.pri-ptile[aria-pressed="true"] { background: #fff; border-color: var(--pc); box-shadow: 0 0 0 2px var(--pc), var(--lv-pri-card-shadow); }
+.pri-pname { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 800; color: var(--pc); }
+.pri-pdot { width: 10px; height: 10px; border-radius: 50%; background: var(--pc); display: inline-block; }
+.pri-pblock { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--lv-pri-card-line); }
+.pri-pblock-30 { background: #faf7f1; margin: 0 -8px -6px; padding: 8px 8px 8px; border-radius: 8px; border-top: 1px solid var(--lv-pri-card-line); }
+.pri-pbh { font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--pc); }
+.pri-pstats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 6px; }
+.pri-pblock-30 .pri-pstats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pri-pstat strong { font-size: 18px; color: var(--lv-ink, #1c1915); }
+.pri-pstat .pri-label { font-size: 10px; letter-spacing: .04em; }
+.pri-delta { justify-self: start; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 9px; white-space: nowrap; }
+.pri-delta-up { color: var(--lv-pri-good); background: var(--lv-pri-good-bg); } .pri-delta-down { color: var(--lv-pri-bad); background: var(--lv-pri-bad-bg); } .pri-delta-flat { color: var(--lv-pri-label); background: #eee8dc; }
+.pri-hit { display: grid; gap: 5px; }
+.pri-hit-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 12px; }
+.pri-hit-h strong { font-size: 18px; color: var(--lv-ink, #1c1915); font-variant-numeric: tabular-nums; }
+.pri-hit-l { font-size: 12px; color: var(--lv-ink-2, #3d372f); font-variant-numeric: tabular-nums; }
+.pri-fbar2 { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: #e9e2d5; gap: 1px; }
+.pri-fbar2 > span { flex-basis: 0; min-width: 0; } .pri-fb-u { background: #cfc4b0; } .pri-fb-m { background: #8c8375; } .pri-fb-t { background: var(--pc); min-width: 4px !important; flex-basis: 4px !important; }
+.pri-mhelp { font-size: 13px; background: var(--lv-pri-card); border: 1px solid var(--lv-pri-card-line); border-radius: 8px; box-shadow: var(--lv-pri-card-shadow); }
+.pri-mhelp > summary { cursor: pointer; padding: 7px 12px; font-weight: 650; list-style: none; display: flex; align-items: center; gap: 8px; }
+.pri-mhelp > summary::-webkit-details-marker { display: none; }
+.pri-mq { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--lv-pri-card-line-strong); display: inline-grid; place-items: center; font-size: 12px; font-weight: 800; color: var(--lv-pri-label); }
+.pri-mhelp[open] .pri-mq, .pri-mhelp > summary:hover .pri-mq { background: var(--lv-pri-selected); color: #fff; border-color: var(--lv-pri-selected); }
+.pri-mhelp > summary:focus-visible { outline: 2px solid var(--lv-focus, #c75123); outline-offset: 2px; border-radius: 8px; }
+.pri-mhelp ul { margin: 0; padding: 4px 14px 12px 32px; display: grid; gap: 4px; color: var(--lv-ink-2, #3d372f); line-height: 1.45; }
+/* status tiles keep their status colour; the active one is filled, inactive ones show a faint tint of it */
+.pri-stat { border-left-width: 5px; background: color-mix(in srgb, var(--tone) 7%, #fff); }
+button.pri-stat:hover { background: color-mix(in srgb, var(--tone) 14%, #fff); }
+.pri-stat[aria-pressed="true"] { background: var(--tone); color: #fff; box-shadow: 0 0 0 2px var(--tone), var(--lv-pri-card-shadow); }
+.pri-stat-k { color: inherit; }
+/* filter bar and chips: unselected = white with an outline, selected = solid dark fill */
+.pri-fbar { border-color: var(--lv-pri-card-line-strong); }
+.pri-fbar .pri-chipbtn, .pri-chipbtn { background: #fff; color: var(--lv-ink-2, #3d372f); border: 1px solid var(--lv-pri-card-line-strong); }
+.pri-fbar .pri-chipbtn:hover { background: #f3ede1; }
+.pri-fbar .pri-chipbtn[aria-pressed="true"], .pri-chipbtn[aria-pressed="true"] { background: var(--lv-pri-selected); border-color: var(--lv-pri-selected); color: #fff; font-weight: 700; }
+.pri-fbar .pri-search input, .pri-weekl select, .pri-viewsel, .pri-fselect { background: #fff; border-color: var(--lv-pri-card-line-strong); }
+/* headings and table header */
+.pri-section h3, .pri-product h2 { font-weight: 800; }
+.pri-section h3 { padding: 6px 0 4px; border-bottom: 2px solid var(--lv-pri-card-line-strong); margin-bottom: 6px; }
+.pri-table th { opacity: 1; color: var(--lv-ink-2, #3d372f); font-weight: 800; background: #efe8da; border-bottom: 2px solid var(--lv-pri-card-line-strong); }
+.pri-row { border-bottom: 1px solid var(--lv-pri-card-line); background: #fff; } .pri-row:hover, .pri-row.pri-open { background: #fbf7ee; }
+/* expanded detail: white cards on a tinted panel */
+.pri-detail > td { background: var(--lv-pri-panel-bg); border-bottom: 2px solid var(--lv-pri-card-line-strong); }
+.pri-detail .pri-panel { padding: 0; }
+@media (max-width: 600px) { .pri-pstats, .pri-pblock-30 .pri-pstats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pri-pblock-30 { margin: 0 -6px -4px; } }
+@media print { .pri-ptile, .pri-stat, .pri-card, .pri-tile, .pri-sc { box-shadow: none; } .pri-table th { background: none; } }
+
+.pri-r14 { font-weight: 700; font-variant-numeric: tabular-nums; padding: 1px 6px; border-radius: 6px; white-space: nowrap; }
+.pri-r14-up { color: var(--lv-pri-good); background: var(--lv-pri-good-bg); } .pri-r14-down { color: var(--lv-pri-bad); background: var(--lv-pri-bad-bg); } .pri-r14-flat { color: var(--lv-ink, #1c1915); background: #eee8dc; }
+.pri-c-spend14, .pri-c-roas14 { white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (min-width: 761px) and (max-width: 1320px) {
+  .pri-main .pri-c-product { width: 6%; } .pri-main .pri-c-concepts { width: 6%; } .pri-main .pri-c-key { width: 11%; }
+  .pri-main .pri-c-cluster, .pri-main .pri-c-icp, .pri-main .pri-c-pain { width: 10%; } .pri-main .pri-c-story { width: 12%; } .pri-main .pri-c-spend14, .pri-main .pri-c-roas14 { width: 7%; white-space: normal; }
+}
+@media (max-width: 760px) { .pri-r14 { display: inline-block; } }
