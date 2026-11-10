@@ -169,3 +169,110 @@ def test_view_names_special_characters_default_rename_and_csv_filename(client, s
     assert client.patch("/api/priorities/views/" + "A" * 30, json={"name": "x"}).status_code == 404
     assert client.patch("/api/priorities/views/" + v["token"], data="x", content_type="text/plain").status_code == 400
     assert client.patch("/api/priorities/views/" + v["token"], json={"name": 5}).status_code == 400
+
+
+# ---------------------------------------------------------------------------------------------------------------- manual concepts (migration 199)
+
+@pytest.fixture()
+def manual(pg):
+    import app.api as api_mod
+    api_mod._manual_limiter = None                         # each test starts with a fresh write window
+    pg.execute("DELETE FROM creative_priorities_manual")
+    pg.commit()
+    yield
+    pg.execute("DELETE FROM creative_priorities_manual")
+    pg.commit()
+
+
+GOOD = {"product": "beef-liver", "section": "new", "cluster": "Hair Thinning", "icp": "BL3 Thinning and Drained", "pain_point": "Hair Loss", "story": "", "notes": "Try the shower-drain angle.\nSecond line.", "why_now": "Competitor ran it"}
+
+
+def test_manual_options_come_from_the_catalogs_and_cascade(client):
+    d = client.get("/api/priorities/manual/options").get_json()
+    assert [p["slug"] for p in d["products"]] == ["vita-bull", "beef-liver", "boneflex"]
+    assert [s["key"] for s in d["sections"]] == ["iterate", "faded", "new", "other"]
+    bl = d["tree"]["beef-liver"]
+    assert "Hair Thinning" in bl and "BL3 Thinning and Drained" in bl["Hair Thinning"] and "Hair Loss" in bl["Hair Thinning"]["BL3 Thinning and Drained"]
+    assert all(isinstance(x, str) for st in bl["Hair Thinning"]["BL3 Thinning and Drained"].values() for x in st)
+    assert d["limits"]["notes"] == 2000
+
+
+def test_manual_crud_and_flags(client, snaps, manual):
+    r = client.post("/api/priorities/manual", json=GOOD)
+    assert r.status_code == 201
+    row = r.get_json()
+    assert row["manual"] and row["key"] == f"manual:{row['id']}" and row["status"] == "MANUAL" and row["done"] is False and row["new_values"] == []
+    assert row["notes"] == "Try the shower-drain angle.\nSecond line." and row["product_name"] == "Beef Liver" and row["created_at"]
+    new = client.post("/api/priorities/manual", json={**GOOD, "cluster": "Brand New Cluster", "icp": "Someone", "pain_point": "Itch", "story": "A story"}).get_json()
+    assert new["new_values"] == ["cluster", "ICP", "pain point", "story"]
+    g = client.get(f"/api/priorities/manual/{row['id']}").get_json()
+    assert g["id"] == row["id"]
+    p = client.patch(f"/api/priorities/manual/{row['id']}", json={"notes": "edited", "section": "other"}).get_json()
+    assert p["notes"] == "edited" and p["section"] == "other" and p["done"] is False
+    d = client.patch(f"/api/priorities/manual/{row['id']}", json={"status": "done"}).get_json()
+    assert d["done"] is True and d["done_at"]
+    assert client.patch(f"/api/priorities/manual/{row['id']}", json={"status": "open"}).get_json()["done_at"] is None
+    assert [x["id"] for x in client.get("/api/priorities/manual").get_json()["rows"]] == [new["id"], row["id"]]
+    client.patch(f"/api/priorities/manual/{row['id']}", json={"status": "done"})
+    assert [x["id"] for x in client.get("/api/priorities/manual").get_json()["rows"]] == [new["id"]]
+    assert len(client.get("/api/priorities/manual?include_done=1").get_json()["rows"]) == 2
+    assert client.delete(f"/api/priorities/manual/{row['id']}").status_code == 204
+    assert client.delete(f"/api/priorities/manual/{row['id']}").status_code == 404
+    assert client.get(f"/api/priorities/manual/{row['id']}").status_code == 404
+    assert client.patch("/api/priorities/manual/999999", json={"notes": "x"}).status_code == 404
+
+
+def test_manual_validation_and_limits(client, manual):
+    bad = lambda **kw: client.post("/api/priorities/manual", json={**GOOD, **kw}).status_code
+    assert bad(product="nope") == 400 and bad(section="stop") == 400 and bad(cluster="  ") == 400 and bad(icp="") == 400 and bad(pain_point=None) == 400
+    assert bad(notes="x" * 2001) == 400 and bad(why_now="x" * 301) == 400 and bad(cluster="x" * 201) == 400 and bad(notes=5) == 400 and bad(extra="x") == 400
+    assert bad(notes="x" * 2000) == 201
+    assert client.post("/api/priorities/manual", data="x", content_type="text/plain").status_code == 400
+    assert client.post("/api/priorities/manual", json=GOOD, headers={"Origin": "http://evil.example"}).status_code == 403
+    assert client.patch("/api/priorities/manual/1", json={"status": "weird"}).status_code == 400
+    assert client.patch("/api/priorities/manual/1", json={}).status_code == 400
+    assert client.post("/api/priorities/manual", json={**GOOD, "cluster": "  A   B  \x00"}).get_json()["cluster"] == "A B"
+
+
+def test_manual_rate_limit(client, manual, app):
+    import app.api as api_mod
+    api_mod._manual_limiter = None
+    app.config["PRIORITIES_MANUAL_PER_MIN"] = 3
+    try:
+        codes = [client.post("/api/priorities/manual", json=GOOD).status_code for _ in range(5)]
+    finally:
+        app.config["PRIORITIES_MANUAL_PER_MIN"] = 0
+        api_mod._manual_limiter = None
+    assert codes[:3] == [201, 201, 201] and 429 in codes
+
+
+def test_manual_requires_login(anon):
+    assert anon.get("/api/priorities/manual").status_code == 401
+    assert anon.post("/api/priorities/manual", json=GOOD).status_code == 401
+    assert anon.get("/api/priorities/manual/options").status_code == 401
+
+
+def test_manual_rows_ride_on_every_snapshot_and_csv_and_views(client, snaps, manual, views):
+    m = client.post("/api/priorities/manual", json={**GOOD, "notes": "=HYPERLINK(1)"}).get_json()
+    for wk in ("2026-11-08", "2026-11-01"):                       # not tied to a week
+        d = client.get(f"/api/priorities?week={wk}").get_json()
+        assert [r["key"] for r in d["rows"] if r.get("manual")] == [m["key"]] and len(d["rows"]) == 2
+    full = list(csv.reader(io.StringIO(client.get("/api/priorities.csv?week=2026-11-08").get_data(as_text=True))))
+    head = full[0]
+    assert head[:4] == ["market_cluster", "icp", "pain_point", "story"] and head[-2:] == ["source", "notes"] and len(full) == 3
+    by = {r[head.index("source")]: r for r in full[1:]}
+    assert set(by) == {"auto", "manual"} and by["manual"][head.index("notes")] == "'=HYPERLINK(1)" and by["manual"][head.index("status")] == "MANUAL" and by["auto"][head.index("notes")] == ""
+    sel = list(csv.reader(io.StringIO(client.get("/api/priorities.csv", query_string={"week": "2026-11-08", "id": m["key"]}).get_data(as_text=True))))
+    assert len(sel) == 2 and sel[1][head.index("source")] == "manual"
+    # done rows leave the full CSV but can still be exported when selected
+    client.patch(f"/api/priorities/manual/{m['id']}", json={"status": "done"})
+    assert len(list(csv.reader(io.StringIO(client.get("/api/priorities.csv?week=2026-11-08").get_data(as_text=True))))) == 2
+    assert len(list(csv.reader(io.StringIO(client.get("/api/priorities.csv", query_string={"week": "2026-11-08", "id": m["key"]}).get_data(as_text=True))))) == 2
+    # a saved view freezes the manual row
+    v = client.post("/api/priorities/views", json={"week": "2026-11-08", "ids": [m["key"], _key(ROW)]}).get_json()
+    assert v["count"] == 2 and v["missing"] == 0
+    client.patch(f"/api/priorities/manual/{m['id']}", json={"notes": "changed later"})
+    fr = [r for r in client.get("/api/priorities/views/" + v["token"]).get_json()["rows"] if r.get("manual")][0]
+    assert fr["notes"] == "=HYPERLINK(1)"
+    vc = list(csv.reader(io.StringIO(client.get(f"/api/priorities/views/{v['token']}/csv").get_data(as_text=True))))
+    assert {r[head.index("source")] for r in vc[1:]} == {"auto", "manual"}

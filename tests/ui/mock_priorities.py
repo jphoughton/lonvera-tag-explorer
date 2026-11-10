@@ -13,13 +13,70 @@ FIXTURE = Path(__file__).resolve().parent / "priorities_fixture.json"
 
 
 def register(app, deps):
+    # manual concepts, in memory (same validation / rows / options as app/priorities_manual.py)
+    manual: dict[int, dict] = {}
+    seq = [0]
+
+    def recs():
+        return sorted(manual.values(), key=lambda r: (r["created_at"], r["id"]), reverse=True)
+
+    def merged(include_done=True):
+        from app import priorities_manual as pm
+        return pm.merge(json.loads(FIXTURE.read_text()), recs(), include_done=include_done)
+
     @app.get("/api/priorities")
     def priorities_mock():
         if request.args.get("fail") == "1":
             return jsonify(error="query timed out"), 503
         if request.args.get("empty") == "1":
             return jsonify(error="No creative priorities snapshot exists yet."), 404
-        return jsonify(json.loads(FIXTURE.read_text()))
+        return jsonify(merged())
+
+    @app.get("/api/priorities/manual/options")
+    def priorities_manual_options_mock():
+        from app import priorities_manual as pm
+        return jsonify(pm.options())
+
+    @app.get("/api/priorities/manual")
+    def priorities_manual_list_mock():
+        from app import priorities_manual as pm
+        return jsonify(rows=[pm.to_row(r) for r in recs() if request.args.get("include_done") in ("1", "true") or r["status"] == "open"])
+
+    @app.post("/api/priorities/manual")
+    def priorities_manual_create_mock():
+        from app import priorities_manual as pm, queries as q
+        try:
+            f = pm.clean(request.get_json(silent=True))
+        except q.ApiError as e:
+            return jsonify(error=str(e)), e.status
+        seq[0] += 1
+        now = dt.datetime.now(dt.timezone.utc).isoformat()
+        rec = {"id": seq[0], **f, "status": "open", "created_at": now, "updated_at": now, "done_at": None, **pm.new_flags(f["product"], f["cluster"], f["icp"], f["pain_point"], f["story"])}
+        manual[rec["id"]] = rec
+        return jsonify(pm.to_row(rec)), 201
+
+    @app.patch("/api/priorities/manual/<int:rid>")
+    def priorities_manual_update_mock(rid):
+        from app import priorities_manual as pm, queries as q
+        if rid not in manual:
+            return jsonify(error="Manual concept not found."), 404
+        try:
+            f = pm.clean(request.get_json(silent=True), partial=True)
+        except q.ApiError as e:
+            return jsonify(error=str(e)), e.status
+        rec = manual[rid]
+        rec.update(f)
+        rec.update(pm.new_flags(rec["product"], rec["cluster"], rec["icp"], rec["pain_point"], rec["story"]))
+        rec["updated_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+        if "status" in f:
+            rec["done_at"] = rec["updated_at"] if f["status"] == "done" else None
+        return jsonify(pm.to_row(rec))
+
+    @app.delete("/api/priorities/manual/<int:rid>")
+    def priorities_manual_delete_mock(rid):
+        if manual.pop(rid, None) is None:
+            return jsonify(error="Manual concept not found."), 404
+        return "", 204
 
 
     @app.get("/api/priorities.csv")
@@ -27,7 +84,8 @@ def register(app, deps):
         """Same filtering as the real route (app.creative_priorities.filter_rows) over the fixture."""
         from app import creative_priorities as cpr
         from etl import creative_priorities as cp
-        snap = cpr.filter_rows(json.loads(FIXTURE.read_text()), request.args.getlist("id"))
+        ids = request.args.getlist("id")
+        snap = cpr.filter_rows(merged(include_done=bool(ids)), ids)
         return Response(cp.to_csv(snap), mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="creative-priorities-{snap["week_start"]}.csv"'})
 
     # saved views, in memory (same shape as app/creative_priorities.py)
@@ -35,7 +93,7 @@ def register(app, deps):
 
     def snap_of(ids):
         from app import creative_priorities as cpr
-        return cpr.filter_rows(json.loads(FIXTURE.read_text()), ids)
+        return cpr.filter_rows(merged(), ids)
 
     @app.post("/api/priorities/views")
     def priorities_view_create_mock():

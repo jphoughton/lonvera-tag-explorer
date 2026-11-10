@@ -1101,24 +1101,27 @@ SECTION_TITLES = {"faded": "Was working, now isn't (FADED / COLLAPSED / STOPPED)
 CSV_COLS = ["market_cluster", "icp", "pain_point", "story", "product", "section", "market_cluster_description", "icp_description", "pain_point_description", "status", "rank", "concepts", "week_start",
             "then_vs_now", "when_it_worked", "how_it_stopped", "diagnosis", "revive_play", "former_winner_ads", "what_others_are_running", "emotional_trigger", "ingredients", "line_code", "confidence", "flags", "score",
             "spend", "roas", "cpa", "roas_index", "ads", "hit_rate", "hit_rate_index", "spend_30d", "roas_30d", "spend_prior30", "roas_prior30", "launches_30d", "nc_roas", "nc_cpa",
-            "hook_1", "hook_2", "hook_3", "why"]
+            "hook_1", "hook_2", "hook_3", "why", "source", "notes"]
 
 
 def to_csv(snapshot: dict) -> str:
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
     w.writerow(CSV_COLS)
-    for r in sorted(snapshot["rows"], key=lambda r: (PRODUCTS.index(r["product"]) if r["product"] in PRODUCTS else 99, SECTION_ORDER.index(r["section"]), r["rank"])):
+    for r in sorted(snapshot["rows"], key=lambda r: (PRODUCTS.index(r["product"]) if r["product"] in PRODUCTS else 99, SECTION_ORDER.index(r["section"]) if r["section"] in SECTION_ORDER else len(SECTION_ORDER), r["rank"])):
         m = r["metrics"]
         g = lambda k: m.get(k)
         hk = [h["hook"] + (f" [{h['line_code']}]" if h.get("borrowed") else "") for h in r["hooks"]] + ["", "", ""]
         comp = (r.get("competitor") or {}).get("text", "")
-        w.writerow([r["cluster"], r["icp"], r["pain_point"], r["story"] or "", r["product_name"], r["section"], r["cluster_description"], r["icp_description"], r["pain_description"], r.get("status", ""), r["rank"],
+        row = ([r["cluster"], r["icp"], r["pain_point"], r["story"] or "", r["product_name"], r["section"], r["cluster_description"], r["icp_description"], r["pain_description"], r.get("status", ""), r["rank"],
                     r["concepts"], snapshot["week_start"], r.get("then_now", ""), r.get("when_it_worked", ""), r.get("how_it_stopped", ""), r.get("diagnosis", ""), r.get("revive_play", ""),
                     " | ".join(f"{w_['ad']} ({w_['kind']}, ${w_['spend']:,} at {w_['roas']}x, peak week {w_['peak_week']}" + (f", stopped {w_['stopped']}" if w_.get("stopped") else "") + ")" for w_ in r.get("former_winners", [])),
                     comp, r["emotional_trigger"] or "", r["ingredients"], r["line_code"], r["confidence"],
                     "; ".join(r["flags"]), r["score"], g("spend"), g("roas"), g("cpa"), g("roas_index"), g("ads"), g("hit_rate"), g("hit_rate_index"), g("spend_30d"), g("roas_30d"), g("spend_prior30"),
-                    g("roas_prior30"), g("launches_30d"), g("nc_roas"), g("nc_cpa"), hk[0], hk[1], hk[2], r["why"]])
+                    g("roas_prior30"), g("launches_30d"), g("nc_roas"), g("nc_cpa"), hk[0], hk[1], hk[2], r["why"], "manual" if r.get("manual") else "auto", r.get("notes", "")])
+        if r.get("manual"):          # typed by hand: a leading = + - @ would run as a formula when the CSV is opened in Sheets / Excel
+            row = ["'" + c if isinstance(c, str) and c[:1] in ("=", "+", "-", "@", "\t") else c for c in row]
+        w.writerow(row)
     return buf.getvalue()
 
 

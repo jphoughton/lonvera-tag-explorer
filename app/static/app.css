@@ -821,3 +821,58 @@ th[aria-sort="ascending"] .pri-arrow { opacity: 1; } th[aria-sort="descending"] 
   .pri-stoplist { break-inside: avoid; margin-top: 8px; } .pri-stoplist h3 { font-size: 11px; margin: 0 0 2px; }
   .pri-stoplist ul { margin: 0; padding-left: 14px; font-size: 9px; columns: 2; } .pri-stoplist li { break-inside: avoid; margin: 0 0 1px; }
 }
+
+/* ---------- /priorities: manual concepts (Add concept form, Manual rows) ---------- */
+.pri-page { --pri-manual: #0f766e; --pri-manual-bg: #def3ef; }
+.pri-sec-other { background: #475467; }
+.pri-st-manual { color: var(--pri-manual); }
+.pri-mbadge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; background: var(--pri-manual-bg); color: var(--pri-manual); border: 1px solid var(--pri-manual); vertical-align: middle; }
+.pri-row.pri-manual > .pri-c-tog { box-shadow: inset 4px 0 0 var(--pri-manual); }
+.pri-row.pri-manual { background: rgba(15, 118, 110, .06); }
+.pri-row.pri-manual.pri-done { opacity: .6; }
+.pri-row.pri-manual.pri-done .pri-c-cluster, .pri-row.pri-manual.pri-done .pri-c-icp, .pri-row.pri-manual.pri-done .pri-c-pain { text-decoration: line-through; }
+.pri-showdone { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; }
+.pri-mpanel .pri-mhead { margin: 2px 0 6px; }
+.pri-mpanel .pri-mhead .pri-mbadge { margin-left: 0; }
+.pri-mfields { grid-template-columns: repeat(4, 1fr); }
+.pri-mblock { margin: 8px 0; }
+.pri-mtext { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.45; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line-soft); border-left: 3px solid var(--pri-manual); border-radius: 4px; max-width: 80ch; }
+.pri-mnew { color: var(--warn); background: var(--warn-bg); padding: 4px 8px; border-radius: 4px; display: inline-block; }
+.pri-mactions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 2px; }
+.pri-mdel { color: var(--bad); border-color: var(--bad); }
+.pri-mdel:hover { background: var(--bad-bg); }
+.pri-mnote { margin: 8px 0; padding: 6px 10px; border-left: 3px solid var(--pri-manual); background: var(--pri-manual-bg); border-radius: 0 4px 4px 0; }
+.pri-mnote .pri-mbadge { margin: 0 0 4px; }
+.pri-mnote-item { margin: 2px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pri-dlg { border: 0; border-radius: 10px; padding: 0; width: min(720px, calc(100vw - 24px)); max-height: calc(100vh - 24px); box-shadow: 0 12px 40px rgba(16, 24, 40, .28); color: var(--text); background: var(--panel); }
+.pri-dlg::backdrop { background: rgba(16, 24, 40, .45); }
+.pri-form { display: flex; flex-direction: column; max-height: calc(100vh - 24px); overflow: auto; padding: 0 20px 0; }
+.pri-dhead { display: flex; align-items: center; justify-content: space-between; padding: 16px 0 4px; }
+.pri-dhead h2 { font-size: 17px; }
+.pri-dclose { appearance: none; border: 0; background: none; font-size: 24px; line-height: 1; cursor: pointer; color: var(--muted); padding: 2px 8px; border-radius: 4px; }
+.pri-dclose:hover { background: var(--head-bg); color: var(--text); }
+.pri-dlead { margin: 0 0 12px; font-size: 12px; line-height: 1.45; }
+.pri-dgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.pri-fld { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pri-fld.pri-wide { grid-column: 1 / -1; }
+.pri-fld > label { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.pri-fld select, .pri-fld input[type=text], .pri-fld textarea { font: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); width: 100%; min-width: 0; }
+.pri-fld textarea { resize: vertical; min-height: 96px; line-height: 1.4; }
+.pri-fld select:disabled { background: var(--head-bg); color: var(--muted); }
+.pri-fld select:focus-visible, .pri-fld input:focus-visible, .pri-fld textarea:focus-visible, .pri-dclose:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pri-newval { border-style: dashed !important; }
+.pri-count { font-weight: 400; text-transform: none; letter-spacing: 0; }
+.pri-ferr { margin: 10px 0 0; }
+.pri-dfoot { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0 16px; margin-top: 12px; background: var(--panel); border-top: 1px solid var(--line-soft); }
+@media (max-width: 760px) {
+  .pri-row.pri-manual { border-left: 4px solid var(--pri-manual); }
+  .pri-row.pri-manual > .pri-c-tog { box-shadow: none; }
+  .pri-mfields { grid-template-columns: 1fr; }
+  .pri-dgrid { grid-template-columns: 1fr; }
+  .pri-form { padding: 0 14px; }
+  .pri-dfoot .btn { flex: 1; padding: 9px 10px; }
+}
+@media print {
+  .pri-dlg { display: none !important; }
+  .pri-mbadge { border: 1px solid #444; color: #000; background: none; font-size: 7px; padding: 0 4px; margin-left: 3px; }
+}

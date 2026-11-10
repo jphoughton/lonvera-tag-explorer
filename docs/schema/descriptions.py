@@ -1361,6 +1361,18 @@ rel("public.creative_priorities_views", group="creative", kind="table",
           "week_start": "The snapshot week (Sunday, Pacific) the rows came from.", "keys": "Stable row keys of the selected rows.",
           "payload": "JSON object: the selected rows plus the snapshot's baselines, legend and competitor as-of date.", "created_at": "When the view was saved."})
 
+rel("public.creative_priorities_manual", group="creative", kind="table",
+    purpose="Concepts added by hand on /priorities (Add concept): product, market cluster, ICP, pain point, story, notes and a why-now line. Not tied to a weekly snapshot: a row stays on the sheet every week until it is marked done or deleted.",
+    grain="one row per manual concept", source="the /priorities page via POST /api/priorities/manual (app/priorities_manual.py)", refresh="on demand (a person adds, edits, marks done or deletes)", coverage="from the day the migration was deployed",
+    caveats=["No author column: the app has no login of its own, only timestamps.",
+             "A cluster / ICP / pain point / story that is not in the Communication Overview catalog is stored as typed and flagged with the new_* columns (a proposal, not a line of ours)."],
+    cols={"id": "Primary key (bigserial).", "product": "'vita-bull' | 'beef-liver' | 'boneflex'.", "section": "Page section the concept sits in: 'iterate' | 'faded' | 'new' | 'other'.",
+          "cluster": "Market cluster (catalog value or typed).", "icp": "ICP (catalog value or typed).", "pain_point": "Pain point (catalog value or typed).", "story": "Story; empty when none.",
+          "notes": "Free-text notes, up to 2,000 characters, line breaks kept.", "why_now": "Optional short why-now / what-to-test line, up to 300 characters.", "status": "'open' (shown) or 'done' (hidden until Show done is ticked).",
+          "new_cluster": "True when the cluster is not in the catalog for that product.", "new_icp": "True when the ICP is not in the catalog under that cluster.",
+          "new_pain_point": "True when the pain point is not in the catalog under that ICP.", "new_story": "True when the story is typed text not in the catalog for that pain point.",
+          "created_at": "When the concept was added.", "updated_at": "When it was last edited or its status changed.", "done_at": "When it was marked done; NULL while open."})
+
 rel("public.unmatched_meta", group="rollups", kind="table",
     purpose="Meta families that map to no live tracker family, with the product guessed for them and their windowed and since-launch numbers. Closes the gap between ad_metrics and the account total.",
     grain="one row per Meta family (meta_family_key)", source="etl.build_metrics from meta_ads, ad_daily, meta_ad_lifetime, meta_campaigns, products.meta_regex",
