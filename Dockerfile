@@ -15,6 +15,12 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
+# Headless Chromium for etl.competitor_ads (public Meta Ad Library). Browsers live outside /root so the non-root runtime user can launch them.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN playwright install --with-deps chromium \
+ && chmod -R a+rX /ms-playwright \
+ && rm -rf /var/lib/apt/lists/*
+
 # Node + the Claude Code CLI (pinned): etl.auto_tag shells out to `claude -p` (auth = CLAUDE_CODE_OAUTH_TOKEN env var on the etl service). Node is copied from the
 # official node image (the python image keeps python in /usr/local, so only node + npm are taken, not the whole tree).
 COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node

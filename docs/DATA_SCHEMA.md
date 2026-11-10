@@ -109,7 +109,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
 | Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily) |
 | Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets) |
-| Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
+| Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.competitor_brands`](#publiccompetitor_brands), [`public.competitor_ads`](#publiccompetitor_ads), [`public.competitor_concept_class`](#publiccompetitor_concept_class), [`public.competitor_concepts`](#publiccompetitor_concepts), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
 | Pipeline bookkeeping | [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta) |
 | Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow) | [`public.proj_feed_config`](#publicproj_feed_config), [`public.proj_feed_runs`](#publicproj_feed_runs), [`public.proj_feed_attempts`](#publicproj_feed_attempts), [`public.proj_feed_verify`](#publicproj_feed_verify), [`public.proj_feed_verify_runs`](#publicproj_feed_verify_runs), [`public.proj_feed_levers`](#publicproj_feed_levers), [`public.proj_feed_orders`](#publicproj_feed_orders), [`public.proj_feedx_orders`](#publicproj_feedx_orders), [`public.proj_feed_amazon`](#publicproj_feed_amazon), [`public.proj_feedx_amazon`](#publicproj_feedx_amazon), [`public.proj_feed_platform`](#publicproj_feed_platform), [`public.proj_feedx_platform`](#publicproj_feedx_platform), [`public.proj_feed_attribution`](#publicproj_feed_attribution), [`public.proj_feedx_attribution`](#publicproj_feedx_attribution), [`public.proj_feed_traffic`](#publicproj_feed_traffic), [`public.proj_feedx_traffic`](#publicproj_feedx_traffic), [`public.proj_feed_meta_reach`](#publicproj_feed_meta_reach), [`public.proj_feedx_meta_reach`](#publicproj_feedx_meta_reach), [`public.proj_feed_product_reach`](#publicproj_feed_product_reach), [`public.proj_feedx_product_reach`](#publicproj_feedx_product_reach), [`public.proj_feed_nc_product`](#publicproj_feed_nc_product), [`public.proj_feedx_nc_product`](#publicproj_feedx_nc_product), [`public.proj_feed_anyclick`](#publicproj_feed_anyclick), [`public.proj_feedx_anyclick`](#publicproj_feedx_anyclick), [`public.proj_feed_bids`](#publicproj_feed_bids), [`public.proj_feedx_bids`](#publicproj_feedx_bids), [`public.proj_feed_meta_day`](#publicproj_feed_meta_day), [`public.proj_feed_meta_product`](#publicproj_feed_meta_product), [`public.proj_pacing_hourly`](#publicproj_pacing_hourly), [`public.proj_pacing_setting`](#publicproj_pacing_setting), [`public.proj_units_daily`](#publicproj_units_daily), [`public.proj_feedx_units_daily`](#publicproj_feedx_units_daily), [`public.proj_demand_snapshot`](#publicproj_demand_snapshot), [`public.proj_feedx_demand_snapshot`](#publicproj_feedx_demand_snapshot), [`public.proj_feedx_intl_nonus_daily`](#publicproj_feedx_intl_nonus_daily), [`public.proj_feed_nc_hourly`](#publicproj_feed_nc_hourly), [`public.proj_live_today_snapshots`](#publicproj_live_today_snapshots), [`public.proj_amazon_mtd_snapshots`](#publicproj_amazon_mtd_snapshots), [`public.proj_feedx_intl_estimate`](#publicproj_feedx_intl_estimate), [`public.proj_meta_spend_monthly`](#publicproj_meta_spend_monthly) |
 | Projection engine tables (finance, inventory, cohorts; NOT exposed in analytics) | [`public.proj_scenarios`](#publicproj_scenarios), [`public.proj_series`](#publicproj_series), [`public.proj_actuals`](#publicproj_actuals), [`public.proj_audit`](#publicproj_audit), [`public.proj_scenario_history`](#publicproj_scenario_history), [`public.proj_refresh_runs`](#publicproj_refresh_runs), [`public.proj_cohorts`](#publicproj_cohorts), [`public.proj_cohort_cum`](#publicproj_cohort_cum), [`public.proj_cohort_uploads`](#publicproj_cohort_uploads), [`public.proj_curve_goal`](#publicproj_curve_goal), [`public.proj_pnl_drivers`](#publicproj_pnl_drivers), [`public.proj_pnl_settings`](#publicproj_pnl_settings), [`public.proj_pnl_cogs_sku`](#publicproj_pnl_cogs_sku), [`public.proj_pnl_qb_map`](#publicproj_pnl_qb_map), [`public.proj_pnl_vendors`](#publicproj_pnl_vendors), [`public.proj_upload_history`](#publicproj_upload_history), [`public.proj_po`](#publicproj_po), [`public.proj_fba_transfer`](#publicproj_fba_transfer), [`public.proj_vendor_lead`](#publicproj_vendor_lead), [`public.proj_vendor_cogs`](#publicproj_vendor_cogs), [`public.proj_product_cost`](#publicproj_product_cost), [`public.proj_reorder_param`](#publicproj_reorder_param), [`public.proj_stock_snapshot`](#publicproj_stock_snapshot), [`public.proj_supply_history`](#publicproj_supply_history), [`public.proj_units_monthly`](#publicproj_units_monthly), [`public.proj_units_country`](#publicproj_units_country), [`public.proj_units_loads`](#publicproj_units_loads) |
@@ -2366,6 +2366,130 @@ GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 | `spend` | numeric | no | Scaling spend in the window, dollars. |
 | `purchases` | numeric | no | Purchases in Scaling campaigns in the window (the basis's meaning: Meta purchases, Upstack new customers, or Upstack orders). |
 | `revenue` | numeric | no | Purchase value in the window, dollars (the basis's meaning). |
+
+### public.competitor_brands
+
+*table*
+
+**Purpose.** The competitor brands whose Meta ads are watched weekly (Heart & Soil, Primal Viking, My Marrow ...): exact search phrases for the public Ad Library, the advertiser-name regex that keeps only the brand's own page, and the freshness of the last scrape. Editable: insert / update rows to add or retire a brand (etl.competitor_ads only seeds missing brands).
+
+- **Grain:** primary key `(brand)`; one row per brand
+- **Source:** seeded by etl.competitor_ads (BRANDS constant), edited by hand; last_* columns written by each run
+- **Refresh:** weekly (Sundays Pacific, etl.competitor_ads)
+- **Coverage:** 18 brands seeded 2026-11-09
+- **Caveat:** last_error is set when the brand failed in the latest run (blocked, age-gated, layout change); its rows are then carried forward and flagged stale in competitor_concepts.
+- **Caveat:** Brands whose ads are age-gated for logged-out visitors (Hims, Keeps, Men's Edge, Reclaim Co) cannot be read and are not seeded.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `brand` | text | no | Brand name (primary key), as shown in the views. |
+| `product_type` | text | no | Free text: what the brand sells (beef organ capsules, joint supplement ...). |
+| `search_phrases` | text[] | no | Exact phrases searched in the Ad Library (brand name, landing domain); results are filtered by name_match. |
+| `name_match` | text | no | Case-insensitive regex the advertiser (page) name must match; creator ads named 'X with Brand' are dropped. |
+| `active` | boolean | no | False retires the brand without deleting its history. |
+| `last_attempt_at` | timestamptz | yes | Last time a run tried this brand. |
+| `last_ok_at` | timestamptz | yes | Last time the brand loaded without error. |
+| `last_error` | text | yes | Reason the last attempt failed; NULL after a good run. |
+| `last_ad_count` | integer | yes | Active US ads read in the last good run (a top slice by impressions: capped at about 150 cards per phrase). |
+
+### public.competitor_ads
+
+*table*
+
+**Purpose.** Weekly snapshot of the ACTIVE US Meta ads of each watched competitor, one row per Library ID, read from the public Meta Ad Library with headless Chromium. No spend, impressions or performance exist for these ads: days_running and variant_count are the only strength signals.
+
+- **Grain:** primary key `(week_start, library_id)`; one row per (week_start, library_id)
+- **References:** `(brand)` -> `public.competitor_brands(brand)`
+- **Source:** etl.competitor_ads: public Ad Library cards (exact-phrase search, impressions-sorted, advertiser filtered)
+- **Refresh:** weekly, Sundays Pacific; a failed brand has its previous week copied forward (carried_from set)
+- **Coverage:** from 2026-11-09; about 100-150 ads per large brand (a top slice, not a census)
+- **Caveat:** The Library lazy-loads: each phrase returns at most about 150 cards, so large brands (Heart & Soil about 1,000 ads) are a top slice by impressions.
+- **Caveat:** start_date resets when a brand re-uploads an ad, so days_running understates the age of re-uploaded creatives.
+- **Caveat:** format is 'video' when the card has a video, else 'image' (carousels are not distinguishable from images). hook is the first sentence of the copy (video speech and on-image text are not read).
+- **Caveat:** Cards with 'N ads use this creative and text' count N in variant_count.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `week_start` | date | no | Monday (Pacific) of the week of the run. |
+| `library_id` | text | no | Meta Ad Library ID. |
+| `brand` | text | no | competitor_brands.brand. |
+| `advertiser` | text | yes | Page name shown on the card. |
+| `start_date` | date | yes | 'Started running on' date (resets on re-upload). |
+| `days_running` | integer | yes | seen_on minus start_date. |
+| `variant_count` | integer | no | Ads sharing this creative and text (card says 'N ads use this creative and text'), else 1. |
+| `format` | text | yes | 'video' or 'image'. |
+| `primary_text` | text | yes | Ad copy as shown (up to 2,500 characters). |
+| `headline` | text | yes | Card headline (first line after the landing domain that is not a button label). |
+| `hook` | text | yes | First sentence of the copy, else the headline. |
+| `landing_url` | text | yes | Landing domain and path (tracking query removed). |
+| `concept_key` | text | no | Brand + hash of the first 160 characters of normalised copy: groups near-duplicate copy into one concept. |
+| `seen_on` | date | no | Date the Library was read (Pacific); for carried rows the original date. |
+| `carried_from` | date | yes | NULL for fresh rows; for carried-forward rows the week_start they were copied from. |
+
+### public.competitor_concept_class
+
+*table*
+
+**Purpose.** Lonvera taxonomy classification of each competitor concept (concept_key), made once by headless Claude from the copy text and cached, so only new concepts use plan usage: an existing line (product / cluster / ICP / pain point from the autotag catalogs), a NEW angle with suggested cluster / ICP / pain point, or out of category.
+
+- **Grain:** primary key `(concept_key)`; one row per concept_key
+- **Source:** etl.competitor_ads classification step (claude -p, text only, batches of 8 concepts, catalogs etl/autotag/catalogs/*.json)
+- **Refresh:** weekly; concepts already classified are never re-asked
+- **Coverage:** from 2026-11-09
+- **Caveat:** Text only: the model never sees the image or video, so low confidence is common for statics whose message is on the image.
+- **Caveat:** line_code is NULL for NEW angles (cluster / icp / pain_point hold the suggestion) and for out-of-category ads (mapped_product 'none').
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `concept_key` | text | no | competitor_ads.concept_key (primary key). |
+| `brand` | text | no | Brand. |
+| `mapped_product` | text | yes | 'vita-bull' \| 'beef-liver' \| 'boneflex' \| 'none': the Lonvera product the angle competes with. |
+| `line_code` | text | yes | Catalog line code (L.. Vital Bull, B.. Beef Liver, BF.. Boneflex) or NULL. |
+| `cluster` | text | yes | Market cluster (catalog value, or suggested for NEW). |
+| `icp` | text | yes | ICP (catalog value, or suggested for NEW). |
+| `pain_point` | text | yes | Pain point (catalog value, or suggested for NEW). |
+| `confidence` | text | yes | high \| medium \| low. |
+| `is_new_angle` | boolean | no | True when no catalog line covers the angle. |
+| `new_angle_label` | text | yes | 4-8 word label of a NEW angle. |
+| `why` | text | yes | The model's reason, 15 words or fewer. |
+| `model` | text | yes | Model id used. |
+| `classified_at` | timestamptz | no | When it was classified. |
+
+### public.competitor_concepts
+
+*view*
+
+**Purpose.** What competitors run on Meta right now, grouped by concept (near-duplicate copy), with the Lonvera line each maps to. The contract read by the weekly Creative priorities one-sheeter. Latest week: WHERE week_start = (SELECT max(week_start) FROM competitor_concepts).
+
+- **Grain:** one row per (week_start, brand, concept_key)
+- **Source:** public.competitor_ads x competitor_brands x competitor_concept_class
+- **Refresh:** weekly (Sundays Pacific)
+- **Coverage:** from 2026-11-09
+- **Caveat:** No spend, impressions or ROAS: days_running (max across the concept's ads) and variant_count (ads sharing the creative) are proxies, and start dates reset on re-upload.
+- **Caveat:** is_stale = the brand failed to load this week and the rows are the last good snapshot carried forward, or the data is older than 8 days.
+- **Caveat:** Unclassified concepts show confidence 'low' and NULL mapped_product / line_code. For NEW angles cluster / icp / pain_point are the model's suggestion.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `week_start` | date |  | Monday (Pacific) of the run week. |
+| `brand` | text |  | Brand. |
+| `concept_key` | text |  | Concept (near-duplicate copy of one brand). |
+| `first_ad_start_date` | date |  | Earliest start date among the concept's ads. |
+| `days_running` | integer |  | Max days running among the concept's ads (as of as_of). |
+| `variant_count` | integer |  | Ads sharing the creative / copy, summed over the concept's cards. |
+| `format` | text |  | 'video' or 'image' of the longest-running ad. |
+| `hook` | text |  | First sentence of the longest-running ad's copy. |
+| `primary_text_excerpt` | text |  | First 280 characters of that ad's copy. |
+| `mapped_product` | text |  | 'vita-bull' \| 'beef-liver' \| 'boneflex' \| 'none' \| NULL. |
+| `line_code` | text |  | Lonvera catalog line, NULL for NEW / out-of-category / unclassified. |
+| `cluster` | text |  | Market cluster. |
+| `icp` | text |  | ICP. |
+| `pain_point` | text |  | Pain point. |
+| `confidence` | text |  | high \| medium \| low (unclassified = low). |
+| `is_new_angle` | boolean |  | No catalog line covers it. |
+| `new_angle_label` | text |  | Label of the NEW angle. |
+| `as_of` | date |  | Date the Library was read. |
+| `is_stale` | boolean |  | Carried forward or older than 8 days. |
 
 ### public.unmatched_meta
 

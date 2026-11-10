@@ -16,7 +16,7 @@ Flow (Sundays, Pacific; any day with --week): for every active brand in competit
   4. classify concepts with no competitor_concept_class row (cap --limit, default 150): batches of BATCH concepts per `claude -p` call, text only, answer =
      an existing Lonvera line code (product / cluster / ICP / pain point from etl/autotag/catalogs) or NEW with a suggested cluster / ICP / pain point, or OUT (not our category).
      Stops early on auth / usage limit; non-fatal for the nightly pipeline (scripts/deploy/run_etl.sh).
-Usage: python -m etl.competitor_ads [--brand NAME] [--limit N] [--dry-run] [--week YYYY-MM-DD] [--no-classify] [--max-cards N]"""
+Usage: python -m etl.competitor_ads [--if-sunday] [--brand NAME] [--limit N] [--dry-run] [--week YYYY-MM-DD] [--no-classify] [--max-cards N]"""
 from __future__ import annotations
 
 import argparse
@@ -143,7 +143,7 @@ def parse_card(raw: dict) -> dict | None:
 
 def library_url(phrase: str) -> str:
     q = {"active_status": "active", "ad_type": "all", "country": "US", "media_type": "all", "sort_data[direction]": "desc",
-         "sort_data[mode]": "relevancy_monthly_grouped", "q": f'"{phrase}"', "search_type": "keyword_exact_phrase"}
+         "sort_data[mode]": "total_impressions", "q": f'"{phrase}"', "search_type": "keyword_exact_phrase"}
     return LIBRARY + "?" + urllib.parse.urlencode(q)
 
 
@@ -210,6 +210,7 @@ def ensure_brands(conn):
 def load_brand(br, browser, max_cards: int, sleep=time.sleep) -> list[dict]:
     """Ad dicts of the brand: one search per phrase, advertiser filter, de-duplicated by Library ID. Fails only when every phrase hits a wall."""
     rx = re.compile(br["name_match"], re.I)
+    wl = re.compile(r"\bwith\s+.*(?:" + br["name_match"] + ")", re.I)         # whitelisted creator ads ("Jane with Primal Queen") are the creator's page, not the brand's
     ads: dict[str, dict] = {}
     walls: list[str] = []
     for i, phrase in enumerate(br["search_phrases"]):
@@ -223,7 +224,7 @@ def load_brand(br, browser, max_cards: int, sleep=time.sleep) -> list[dict]:
             continue
         for raw in cards:
             c = parse_card(raw)
-            if c and rx.search(c["advertiser"]):
+            if c and rx.search(c["advertiser"]) and not wl.search(c["advertiser"]):
                 ads.setdefault(c["library_id"], c)
     if not ads and walls:
         raise BrandFailed("; ".join(walls)[:200])
@@ -451,8 +452,12 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="scrape and count; no writes, no claude")
     ap.add_argument("--week", type=dt.date.fromisoformat, help="week_start to write (default: Monday of this week, Pacific)")
     ap.add_argument("--no-classify", action="store_true")
+    ap.add_argument("--if-sunday", action="store_true", help="do nothing unless today is Sunday in Pacific time (the nightly pipeline calls it every night)")
     ap.add_argument("--max-cards", type=int, default=MAX_CARDS)
     a = ap.parse_args()
+    if a.if_sunday and dt.datetime.now(PT).weekday() != 6:
+        db.log("competitor_ads: not Sunday (Pacific), skipped")
+        return
     with db.JobRun("competitor_ads") as job, db.connect() as conn:
         st = run(conn, a.brand, a.limit, a.dry_run, a.week, not a.no_classify, a.max_cards)
         job.stats = st
