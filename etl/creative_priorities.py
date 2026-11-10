@@ -953,7 +953,7 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
             weak_line = any("whole line weakening" in d_ for d_ in diag)
             play = (f"{n} concept{'s' if n != 1 else ''} this week: " if n else "Lower priority this week (no concepts allocated): ") + (
                 ("rework the angle (new story or ICP framing) keeping the structure of the winning hooks " if weak_line else "remake the former winners' hooks with new scenes, openings and proof ") +
-                (("(" + "; ".join(f"\"{w_['hook'][:90]}\" ({w_['ad']}, peak week of {w_['peak_week']})" for w_ in top) + ")") if top else "(no hook text stored for the former winners; open them from the list)") +
+                (("(" + "; ".join(f"\"{w_['hook'][:90]}\" ({w_['ad']}" + (f", peak week of {w_['peak_week']}" if w_['peak_week'] else "") + ")" for w_ in top) + ")") if top else "(no hook text stored for the former winners; open them from the list)") +
                 f"; test small before scaling against the product's {x(b['roas_30d'])} last-30-day ROAS.")
             fl = risk_flags(m)
             if stt is None:
