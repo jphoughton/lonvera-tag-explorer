@@ -1377,6 +1377,37 @@ rel("public.creative_priorities_manual", group="creative", kind="table",
           "new_pain_point": "True when the pain point is not in the catalog under that ICP.", "new_story": "True when the story is typed text not in the catalog for that pain point.",
           "created_at": "When the concept was added.", "updated_at": "When it was last edited or its status changed.", "done_at": "When it was marked done; NULL while open."})
 
+rel("public.creative_priorities_assignments", group="creative", kind="table",
+    purpose="Production assignments from /priorities: a concept given to a vendor to make for a week (Assign to vendor), with the brief link, the creative link, the stage timestamps and the Creative Tracker Concept IDs of the ads that came out of it. The concept itself stays in the ideation list unchanged.",
+    grain="one row per concept x vendor x week (open rows are unique; a dropped row can be assigned again)", source="the /priorities and /priorities/production pages and the vendor link page via /api/priorities/assignments (app/priorities_assign.py)",
+    refresh="on demand (a person assigns, adds links, marks ready or launched, drops; a vendor adds a creative link and a note)", coverage="from the day the migration was deployed",
+    caveats=["The stage is not stored: it is derived at read time from the links, the timestamps and the status of the linked Creative Tracker rows (the tracker wins when it is further along).",
+             "Nothing here is written to the Google Sheet or Meta. The tag text is copied from the row at assign time, so history survives a taxonomy reload; line_id has no foreign key on purpose.",
+             "created_by and updated_by hold the signed-in user, or vendor:<name> for a write made on a vendor link page."],
+    cols={"id": "Primary key (bigserial).",
+          "concept_key": "Stable concept handle: 'line:<taxonomy_lines.id>' when the row has a line, 'manual:<id>' for a manual concept, else 'text:<product>|<cluster>|<icp>|<pain point>' (lowercased, spaces collapsed).",
+          "text_key": "The text form of the key ('text:<product>|<cluster>|<icp>|<pain point>'), always stored, so a proposal that later becomes a real line still matches.",
+          "product": "'vita-bull' | 'beef-liver' | 'boneflex'.", "vendor": "Vendor, spelled as in the Creative Tracker Vendor column (Madre, Victoria, TrybeDCShop, TrybeOrion, 10xROAS, Internal, PuredMedia, CreateMastery, OpenProgram).",
+          "line_id": "taxonomy_lines.id at assign time; NULL for manual or proposed concepts. No foreign key.", "manual_id": "creative_priorities_manual.id for a manual concept; NULL otherwise.",
+          "line_code": "Line code (for example BL12) at assign time; empty when none.", "cluster": "Market cluster at assign time.", "icp": "ICP at assign time.", "pain_point": "Pain point at assign time.",
+          "story": "Story at assign time; empty when none.", "section_at_assign": "Action the concept had when assigned: 'revive' | 'make_more' | 'test' | 'add' | 'stop' | 'hold' (rows written before 2026-11-10 hold the old section names 'faded' | 'iterate' | 'new' | 'proposal' | 'competitor' | 'rest' | 'other', shown as the new Action).",
+          "note": "Note typed when assigning or changing the assignment.", "vendor_note": "Note typed by the vendor on their own link page.",
+          "for_week": "The Monday of the week the vendor works on it (a CHECK enforces a Monday).", "brief_url": "Link to the brief; NULL until added.", "creative_url": "Link to the finished creative; NULL until added.",
+          "brief_at": "When the brief link was first added; NULL until then.", "creative_at": "When the creative link was first added; NULL until then.",
+          "ready_at": "When someone clicked Ready to launch; NULL if not (or cleared).", "launched_at": "When it was marked launched by hand; NULL if not. A linked tracker row with status 8 or 9 also counts as launched.",
+          "dropped_at": "When the assignment was dropped (soft cancel); NULL while active. Rows are never deleted.",
+          "tracker_concept_ids": "Creative Tracker Concept IDs of the ads made from this assignment, entered by hand.", "created_at": "When the assignment was created.", "updated_at": "When it was last changed.",
+          "created_by": "Who created the assignment: the signed-in user name; NULL when none.",
+          "updated_by": "Who last changed it: the signed-in user name, or vendor:<name> for a write made on a vendor link page; NULL when none."})
+
+rel("public.creative_priorities_vendor_links", group="creative", kind="table",
+    purpose="One permanent unguessable link per vendor for the vendor page /priorities/vendor/<token>, where the vendor sees only their own concepts and adds a creative link and a note.",
+    grain="one row per vendor (vendor is the primary key)", source="the Production page via /api/priorities/vendor-links (app/priorities_assign.py)",
+    refresh="on demand (a link is created on first use and replaced by Reset link)", coverage="from the day the migration was deployed",
+    caveats=["The link is the access: the page needs no login. Reset link replaces the token and the old link stops working."],
+    cols={"vendor": "Vendor name (primary key), as in creative_priorities_assignments.vendor.", "token": "Unguessable link token (unique).",
+          "created_at": "When the link was first created.", "rotated_at": "When the token was last replaced by Reset link; NULL if never."})
+
 rel("public.unmatched_meta", group="rollups", kind="table",
     purpose="Meta families that map to no live tracker family, with the product guessed for them and their windowed and since-launch numbers. Closes the gap between ad_metrics and the account total.",
     grain="one row per Meta family (meta_family_key)", source="etl.build_metrics from meta_ads, ad_daily, meta_ad_lifetime, meta_campaigns, products.meta_regex",
@@ -1991,3 +2022,59 @@ ANALYTICS_SCHEMA_COMMENT = (
     "(3) the last loaded day is yesterday Pacific and the last 3-7 days still move; (4) upstack_* is NULL, not 0, on days Upstack was not pulled; "
     "(5) ratios from sums; creative_tracker metrics sit on the first row of each ad family."
 )
+
+rel("public.creative_launch_settings", group="creative", kind="table",
+    purpose='Per-product launch settings for creating paused Meta ads from /priorities production: where the ads go (account, campaign, template ad set), the budget and bid for a new ad set, the default Page, pixel, landing page, URL tags, call to action and the default ad copy.',
+    grain='one row per product (product is the primary key)', source='the launch module (app/priorities_launch.py) and the launch worker (settings screen)',
+    refresh='on demand (edited by a person)', coverage="from the day the migration was deployed",
+    caveats=['No rows are seeded: the account and campaign ids are entered in the app before anything can launch.', 'Amounts are stored in cents; a launch always creates ads and ad sets PAUSED.'],
+    cols={'product': 'Product the settings apply to (primary key), spelled as in creative_priorities_assignments.product.', 'account_id': 'Meta ad account id the ads are created in.', 'campaign_id': 'Campaign the new ad sets go into.', 'template_adset_id': 'Existing ad set that a new ad set is cloned from (targeting, optimization, attribution).', 'daily_budget_cents': 'Daily budget of a new ad set, in cents (default 10000 = $100).', 'bid_amount_cents': 'Bid amount of a new ad set, in cents (default 6800 = $68).', 'default_page_id': 'Facebook Page the ads run as when the draft does not name one.', 'pixel_id': 'Meta pixel id for the product.', 'landing_url': 'Landing page link the ads point to.', 'url_tags': 'URL parameters appended to the link; NULL means the built-in default tags.', 'cta_image': 'Call to action for image ads (default LEARN_MORE).', 'cta_video': 'Call to action for video ads (default SHOP_NOW).', 'primary_texts': 'Default primary texts, used when neither the draft nor the best existing ad supplies any.', 'headlines': 'Default headlines, used when neither the draft nor the best existing ad supplies any.', 'description': 'Default link description; NULL when none.', 'updated_at': 'When the settings were last changed.', 'updated_by': 'Signed-in user who last changed them; NULL when none.'})
+
+rel("public.creative_launch_pages", group="creative", kind="table",
+    purpose='The Facebook Pages (with their Instagram accounts) an ad can run as when launching from /priorities production.',
+    grain='one row per Page (page_id is the primary key)', source='the launch module (app/priorities_launch.py) and the launch worker (settings screen)',
+    refresh='on demand (edited by a person)', coverage="from the day the migration was deployed",
+    caveats=['name_token is the short text put at the end of the ad name for ads on this Page.'],
+    cols={'page_id': 'Facebook Page id (primary key).', 'name': 'Page name shown in the launch screen.', 'instagram_user_id': 'Instagram account id linked to the Page; NULL when none.', 'name_token': 'Short token added to the ad name for this Page (for example lonvera).', 'active': 'True while the Page may be chosen; false hides it from the picker.'})
+
+rel("public.creative_launch_vendor_prefixes", group="creative", kind="table",
+    purpose='Concept ID prefix per vendor, used when the app mints Concept IDs for launched creative (for example Lonvera-BeefLiver-Static-A12).',
+    grain='one row per vendor (vendor is the primary key)', source='the launch module (app/priorities_launch.py) and the launch worker (settings screen); seeded by migration 203',
+    refresh='on demand (edited by a person)', coverage="from the day the migration was deployed",
+    caveats=['Seeded with Madre = Lonvera, Victoria = Victoria, 10xROAS = 10x, Internal = Internal; a vendor with no row falls back to its name without punctuation.'],
+    cols={'vendor': 'Vendor name (primary key), spelled as in creative_priorities_assignments.vendor.', 'prefix': 'Text put at the start of the Concept ID.'})
+
+rel("public.creative_launch_drafts", group="creative", kind="table",
+    purpose='The editable launch form for one assignment: the folder or file link, the tag values (Style, Fidelity, Type, Proof, Page) and the copy overrides, saved as the person types.',
+    grain='one row per assignment (assignment_id is the primary key)', source='the launch module (app/priorities_launch.py) and the launch worker (launch screen)',
+    refresh='on demand (saved while a person edits)', coverage="from the day the migration was deployed",
+    caveats=['fields is free-form JSON validated on read; an unknown key is ignored.'],
+    cols={'assignment_id': 'creative_priorities_assignments.id this draft belongs to (primary key, foreign key).', 'fields': 'The draft as JSON (link, style, fidelity, type, proof, page, primary texts, headlines).', 'updated_at': 'When the draft was last saved.', 'updated_by': 'Signed-in user who last saved it; NULL when none.'})
+
+rel("public.creative_launch_jobs", group="creative", kind="table",
+    purpose='One prepare or launch run for an assignment, with the exact plan it was approved against and its outcome.',
+    grain='one row per run (id is the primary key); at most one open (queued or running) run per assignment', source='the launch module (app/priorities_launch.py) and the launch worker',
+    refresh='on demand (a person queues a run; the worker updates it)', coverage="from the day the migration was deployed",
+    caveats=['A launch only runs the plan whose plan_hash the person approved.', 'dry_run true means nothing is sent to Meta beyond validation.'],
+    cols={'id': 'Primary key (bigserial).', 'assignment_id': 'creative_priorities_assignments.id the run is for (foreign key).', 'kind': "'prepare' (list files, mint IDs, build the plan) or 'launch' (create the paused ads).", 'state': "'queued' | 'running' | 'done' | 'failed' | 'cancelled'.", 'plan': 'The plan as JSON (one entry per ad plus the destination and PAUSED status).', 'plan_hash': 'sha256 of the canonical plan JSON; the launch must carry the same hash that was approved.', 'dry_run': 'True when the run only validates and sends nothing live.', 'requested_by': 'Signed-in user who queued the run.', 'error': 'Scrubbed error text when the run failed; NULL otherwise.', 'created_at': 'When the run was queued.', 'started_at': 'When the worker picked it up; NULL until then.', 'finished_at': 'When it finished; NULL until then.'})
+
+rel("public.creative_launch_ads", group="creative", kind="table",
+    purpose='One row per file launched as an ad, with its Concept ID, ad name and the Meta ids created step by step, so a half-finished run can be resumed without duplicating anything.',
+    grain='one row per assignment x Drive file; Concept IDs are unique across all rows', source='the launch module (app/priorities_launch.py) and the launch worker',
+    refresh='on demand (the worker updates the row after each Meta step)', coverage="from the day the migration was deployed",
+    caveats=['Concept IDs are minted once and never reused.', 'state moves planned, media_uploaded, creative_created, created; failed keeps the scrubbed error.'],
+    cols={'id': 'Primary key (bigserial).', 'assignment_id': 'creative_priorities_assignments.id (foreign key).', 'job_id': 'creative_launch_jobs.id of the run that last touched the row (foreign key); NULL when none.', 'drive_file_id': 'Google Drive file id of the source file.', 'file_name': 'Name of the source file.', 'kind': "'image' or 'video'.", 'concept_id': 'Concept ID minted for the ad (unique).', 'ad_name': 'Ad name sent to Meta (matches the Creative Tracker Name column format).', 'state': "'planned' | 'media_uploaded' | 'creative_created' | 'created' | 'failed'.", 'meta_image_hash': 'Meta image hash after upload; NULL for videos or before upload.', 'meta_video_id': 'Meta video id after upload; NULL for images or before upload.', 'meta_creative_id': 'Meta ad creative id; NULL until created.', 'meta_ad_id': 'Meta ad id; NULL until created.', 'meta_adset_id': 'Ad set the ad was created in; NULL until created.', 'error': 'Scrubbed error text when the step failed; NULL otherwise.', 'created_at': 'When the row was planned.', 'updated_at': 'When the row last changed.'})
+
+rel("public.creative_launch_adsets", group="creative", kind="table",
+    purpose='The paused ad set the launch created for a product, vendor and week, so later launches of the same combination reuse it.',
+    grain='one row per product x vendor x week (the primary key)', source='the launch module (app/priorities_launch.py) and the launch worker',
+    refresh='on demand (written when an ad set is first created)', coverage="from the day the migration was deployed",
+    caveats=['Ad set name is <Product>_<Vendor>_<week>_Production.'],
+    cols={'product': 'Product (part of the primary key).', 'vendor': 'Vendor (part of the primary key).', 'for_week': 'Monday of the week the work is for (part of the primary key).', 'meta_adset_id': 'Meta ad set id created for the combination.', 'created_at': 'When the ad set was created.'})
+
+rel("public.creative_launch_audit", group="creative", kind="table",
+    purpose='Append-only log of launch actions: settings changed, plan prepared, launch requested, ads created, cancelled.',
+    grain='one row per action (id is the primary key)', source='the launch module (app/priorities_launch.py) and the launch worker',
+    refresh='on demand (a row per action)', coverage="from the day the migration was deployed",
+    caveats=['Never updated or deleted.'],
+    cols={'id': 'Primary key (bigserial).', 'at': 'When the action happened.', 'actor': 'Signed-in user or worker name.', 'action': 'Short action name.', 'assignment_id': 'Assignment the action concerns; NULL when none. No foreign key, so the log outlives its subject.', 'detail': 'Action details as JSON, never containing a token.'})

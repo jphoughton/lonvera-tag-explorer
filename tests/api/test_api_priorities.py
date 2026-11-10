@@ -9,6 +9,8 @@ import pytest
 
 from etl import creative_priorities as cp
 
+cpv_norm = cp.norm_key                      # a snapshot saved before 2026-11-10 stores iterate / faded / ...; keys, sections and statuses read in the new vocabulary
+
 ROW = {"section": "iterate", "product": "vita-bull", "product_name": "Vita Bull", "rank": 1, "line_id": 1, "line_code": "L01", "cluster": "Energy", "icp": "Given Up Guy", "pain_point": "Low T",
        "story": "He decided feeling worn out is just turning 50, and stopped trying.", "emotional_trigger": "Fear", "ingredients": "Zinc", "concepts": 3, "score": 70.0, "confidence": "high", "flags": [],
        "why": "because", "status": "WORKING NOW", "cluster_description": "The Energy market.", "icp_description": "The specific person.", "pain_description": "The problem.", "components": {},
@@ -62,7 +64,7 @@ def test_csv_download(client, snaps):
     rows = list(csv.reader(io.StringIO(r.get_data(as_text=True))))
     assert rows[0][:4] == ["market_cluster", "icp", "pain_point", "story"]
     assert rows[1][:4] == ["Energy", "Given Up Guy", "Low T", ROW["story"]]            # the story is complete, nothing truncated
-    assert rows[1][4:6] == ["Vita Bull", "iterate"] and rows[1][6:9] == ["The Energy market.", "The specific person.", "The problem."]
+    assert rows[1][4:6] == ["Vita Bull", "make_more"] and rows[1][6:9] == ["The Energy market.", "The specific person.", "The problem."]
 
 
 def test_requires_login(anon, snaps):
@@ -190,7 +192,7 @@ GOOD = {"product": "beef-liver", "section": "new", "cluster": "Hair Thinning", "
 def test_manual_options_come_from_the_catalogs_and_cascade(client):
     d = client.get("/api/priorities/manual/options").get_json()
     assert [p["slug"] for p in d["products"]] == ["vita-bull", "beef-liver", "boneflex"]
-    assert [s["key"] for s in d["sections"]] == ["iterate", "faded", "new", "other"]
+    assert [s["key"] for s in d["sections"]] == ["revive", "make_more", "test", "hold"]
     bl = d["tree"]["beef-liver"]
     assert "Hair Thinning" in bl and "BL3 Thinning and Drained" in bl["Hair Thinning"] and "Hair Loss" in bl["Hair Thinning"]["BL3 Thinning and Drained"]
     assert all(isinstance(x, str) for st in bl["Hair Thinning"]["BL3 Thinning and Drained"].values() for x in st)
@@ -208,7 +210,7 @@ def test_manual_crud_and_flags(client, snaps, manual):
     g = client.get(f"/api/priorities/manual/{row['id']}").get_json()
     assert g["id"] == row["id"]
     p = client.patch(f"/api/priorities/manual/{row['id']}", json={"notes": "edited", "section": "other"}).get_json()
-    assert p["notes"] == "edited" and p["section"] == "other" and p["done"] is False
+    assert p["notes"] == "edited" and p["section"] == "hold" and p["done"] is False
     d = client.patch(f"/api/priorities/manual/{row['id']}", json={"status": "done"}).get_json()
     assert d["done"] is True and d["done_at"]
     assert client.patch(f"/api/priorities/manual/{row['id']}", json={"status": "open"}).get_json()["done_at"] is None
@@ -259,7 +261,7 @@ def test_manual_rows_ride_on_every_snapshot_and_csv_and_views(client, snaps, man
         assert [r["key"] for r in d["rows"] if r.get("manual")] == [m["key"]] and len(d["rows"]) == 2
     full = list(csv.reader(io.StringIO(client.get("/api/priorities.csv?week=2026-11-08").get_data(as_text=True))))
     head = full[0]
-    assert head[:4] == ["market_cluster", "icp", "pain_point", "story"] and head[head.index("source"):head.index("source") + 2] == ["source", "notes"] and head[-4:-2] == ["spend_14d", "roas_14d"] and len(full) == 3
+    assert head[:4] == ["market_cluster", "icp", "pain_point", "story"] and head[head.index("source"):head.index("source") + 2] == ["source", "notes"] and head[-5:-3] == ["spend_14d", "roas_14d"] and head[-1] == "add_source" and len(full) == 3
     by = {r[head.index("source")]: r for r in full[1:]}
     assert set(by) == {"auto", "manual"} and by["manual"][head.index("notes")] == "'=HYPERLINK(1)" and by["manual"][head.index("status")] == "MANUAL" and by["auto"][head.index("notes")] == ""
     sel = list(csv.reader(io.StringIO(client.get("/api/priorities.csv", query_string={"week": "2026-11-08", "id": m["key"]}).get_data(as_text=True))))
@@ -296,7 +298,7 @@ def test_rows_view_reports_kind_keys_and_legacy_default(client, two_rows, views)
     v = client.post("/api/priorities/views", json={"ids": [_key(ROW), _key(ROW2)]}).get_json()
     assert v["kind"] == "rows" and v["count"] == 2
     g = client.get("/api/priorities/views/" + v["token"]).get_json()["view"]
-    assert g["kind"] == "rows" and g["filters"] is None and sorted(g["keys"]) == sorted([_key(ROW), _key(ROW2)]) and g["count"] == 2
+    assert g["kind"] == "rows" and g["filters"] is None and sorted(g["keys"]) == sorted([cpv_norm(_key(ROW)), cpv_norm(_key(ROW2))]) and g["count"] == 2
     assert client.post("/api/priorities/views", json={"ids": [_key(ROW)], "kind": "nope"}).status_code == 400
 
 
@@ -304,7 +306,7 @@ def test_filter_view_stores_filters_freezes_the_matching_rows_and_lists_its_kind
     v = client.post("/api/priorities/views", json={"name": "VB live", "kind": "filters", "filters": {"products": ["vita-bull"], "sections": [], "q": " low ", "key": "pain", "dir": -1, "status": "WORKING NOW", "junk": 1}}).get_json()
     assert v["kind"] == "filters" and v["count"] == 1
     g = client.get("/api/priorities/views/" + v["token"]).get_json()
-    assert g["view"]["kind"] == "filters" and g["view"]["filters"] == {"products": ["vita-bull"], "sections": [], "q": "low", "key": "pain", "dir": -1, "status": "WORKING NOW", "statuses": []} and g["view"]["keys"] == []
+    assert g["view"]["kind"] == "filters" and g["view"]["filters"] == {"products": ["vita-bull"], "sections": [], "q": "low", "key": "pain", "dir": -1, "status": "Working", "statuses": []} and g["view"]["keys"] == []
     assert [r["icp"] for r in g["rows"]] == ["Given Up Guy"]                              # frozen copy = the rows matching at save time
     lst = client.get("/api/priorities/views").get_json()["views"]
     assert lst[0]["kind"] == "filters" and lst[0]["filters"]["products"] == ["vita-bull"] and lst[0]["count"] == 1
@@ -361,7 +363,7 @@ def test_briefed_toggle_persists_for_everyone_with_a_timestamp_and_note(client, 
     r = _briefed(client, v["token"], key=_key(ROW), briefed=True, note="  sent to   Madre 11/12  ")
     assert r.status_code == 200 and r.get_json()["briefed"] is True and r.get_json()["note"] == "sent to Madre 11/12" and re.match(r"\d{4}-\d\d-\d\dT", r.get_json()["at"])
     b = client.get("/api/priorities/views/" + v["token"]).get_json()["view"]["briefed"]
-    assert list(b) == [_key(ROW)] and b[_key(ROW)]["note"] == "sent to Madre 11/12"
+    assert list(b) == [cpv_norm(_key(ROW))] and b[cpv_norm(_key(ROW))]["note"] == "sent to Madre 11/12"
     csvt = list(csv.reader(io.StringIO(client.get(f"/api/priorities/views/{v['token']}/csv").get_data(as_text=True))))
     assert csvt[0][-3:] == ["briefed", "briefed_at", "briefed_note"]
     by_icp = {r_[1]: r_ for r_ in csvt[1:]}
@@ -415,11 +417,48 @@ def test_briefed_has_its_own_rate_limit_and_needs_login(anon, client, two_rows, 
 def test_filter_view_stores_a_list_of_statuses_and_old_single_status_still_filters(client, snaps, manual, views):
     from app import creative_priorities as cpv
     f = cpv.clean_filters({"products": [], "sections": [], "statuses": ["RISING", "WORKING NOW"], "q": ""})
-    assert f["statuses"] == ["RISING", "WORKING NOW"] and f["status"] is None
+    assert f["statuses"] == ["Rising", "Working"] and f["status"] is None
     rows = [{"product": "vita-bull", "section": "iterate", "status": s} for s in ("RISING", "WORKING NOW", "NOT WORKING")]
-    assert [r["status"] for r in cpv.apply_filters(rows, f)] == ["RISING", "WORKING NOW"]
+    assert [r["status"] for r in cpv.apply_filters(rows, f)] == ["RISING", "WORKING NOW"]        # stored (old) statuses still match the new labels
     old = cpv.clean_filters({"products": [], "sections": [], "status": "NOT WORKING"})        # a view saved before multi-select
     assert [r["status"] for r in cpv.apply_filters(rows, old)] == ["NOT WORKING"]
     assert cpv.apply_filters(rows, cpv.clean_filters({})) == rows
     with pytest.raises(Exception):
         cpv.clean_filters({"statuses": "RISING"})
+
+
+# ----------------------------------------------------------------------------------------------- Action / Status redesign: old stored data keeps working (2026-11-10)
+def test_payload_carries_the_definitions_with_real_thresholds(client, snaps):
+    d = client.get("/api/priorities?week=2026-11-08").get_json()
+    assert [a["key"] for a in d["definitions"]["actions"]] == ["revive", "make_more", "test", "add", "stop", "hold"]
+    assert [s["label"] for s in d["definitions"]["statuses"]] == ["Working", "Rising", "Fading", "Not working", "Average", "Too early", "Untested"]
+    assert "$5,000" in " ".join(s["rule"] for s in d["definitions"]["statuses"])
+    assert d["rows"][0]["section"] == "make_more" and d["rows"][0]["status"] == "Working"                  # stored as iterate / WORKING NOW
+
+
+def test_a_view_saved_with_old_keys_still_opens_briefs_and_unbriefs(client, two_rows, views, pg):
+    old_key = _key(ROW)                                                                                        # product|iterate|...: how every view saved before the redesign stores it
+    pg.execute("INSERT INTO creative_priorities_views (token, name, week_start, keys, payload, kind, briefed) VALUES (%s,%s,'2026-11-08',%s,%s,'rows',%s)",
+               ("O" * 30, "Old view", [old_key], json.dumps({"week_start": "2026-11-08", "baselines": {}, "rows": [ROW]}), json.dumps({old_key: {"at": "2026-11-09T10:00:00+00:00", "note": "sent"}})))
+    pg.commit()
+    g = client.get("/api/priorities/views/" + "O" * 30).get_json()
+    new_key = cpv_norm(old_key)
+    assert new_key != old_key and g["view"]["keys"] == [new_key] and list(g["view"]["briefed"]) == [new_key]
+    assert g["rows"][0]["section"] == "make_more" and g["rows"][0]["status"] == "Working"
+    assert _briefed(client, "O" * 30, key=old_key, briefed=False).status_code == 200                           # an old key from a bookmark still addresses the row
+    assert client.get("/api/priorities/views/" + "O" * 30).get_json()["view"]["briefed"] == {}
+    assert _briefed(client, "O" * 30, key=new_key, briefed=True, note="again").status_code == 200
+    stored = pg.execute("SELECT briefed FROM creative_priorities_views WHERE token = %s", ("O" * 30,)).fetchone()[0]
+    assert list(stored) == [new_key]                                                                           # old and new forms never both stored
+    csvt = list(csv.reader(io.StringIO(client.get(f"/api/priorities/views/{'O' * 30}/csv", query_string={"id": old_key}).get_data(as_text=True))))
+    assert len(csvt) == 2 and csvt[1][csvt[0].index("section")] == "make_more"
+
+
+def test_selected_rows_csv_and_filters_accept_old_section_names(client, two_rows):
+    old_key = _key(ROW)
+    r = client.get("/api/priorities.csv", query_string={"week": "2026-11-08", "id": old_key})
+    rows = list(csv.reader(io.StringIO(r.get_data(as_text=True))))
+    assert len(rows) == 2 and rows[1][rows[0].index("section")] == "make_more"
+    from app import creative_priorities as cpv
+    f = cpv.clean_filters({"products": [], "sections": ["iterate", "proposal", "make_more"], "statuses": ["RUNNING AS USUAL"], "q": ""})
+    assert f["sections"] == ["make_more", "add"] and f["statuses"] == ["Average"]

@@ -1,22 +1,20 @@
-// Creative priorities (/priorities): the weekly one-sheeter as tables. Each section (Was working now isn't / Iterate / New / Proposed new clusters / Competitor angles / Stop) is a table with one
-// row per concept, ALL COLLAPSED on load (nothing is remembered). A row shows Market Cluster | ICP | Pain Point | Story (full text) | Status | Concepts | one key number; the chevron button (or a click on
+// Creative priorities (/priorities): the weekly one-sheeter as one table. Every concept has exactly one Action (Revive / Make more / Test / Add to sheet / Stop / Hold; JSON field `section`) and one Status
+// (Working / Rising / Fading / Not working / Average / Too early / Untested); the rules are printed on the page from the API's `definitions`. One row per concept, ALL COLLAPSED on load (nothing is remembered). A row shows Market Cluster | ICP | Pain Point | Story (full text) | Status | Concepts | one key number; the chevron button (or a click on
 // the row) opens a detail panel directly under it with everything else. Print CSS expands every panel. Class names and test ids start with `pri-` (never ad-, ads-, sponsor, banner, promo).
 import { h, fmt, isNum, href, navigate, qs } from '../util.js';
 import { api } from '../api.js';
 import { showControls } from '../controls.js';
 import { dayOf, manualPanel, addManualNotes, manualStrip, manualControls } from './priorities_manual.js';
+import { assignControls } from './priorities_assign.js';
 
 const PRODUCT_ORDER = ['vita-bull', 'beef-liver', 'boneflex'];
 const value_keys = ['product', 'section', 'cluster', 'icp', 'pain', 'story', 'status', 'concepts', 'key', 'spend14', 'roas14'];
-const SECTIONS = [['faded', 'Was working, now isn’t', 'Lines with a sustained strong stretch (3+ weeks above the product average) that are now below average, collapsed or idle: when it worked, how it stopped, the former winners, a hedged diagnosis and a revive play.'],
-                  ['iterate', 'Iterate on what is working', 'WORKING NOW and RISING lines: their ads beat the product average on enough spend; more concepts should help.'],
-                  ['new', 'New and untested clusters', 'Lines with no ads (or almost none), ranked by evidence the demand exists (our adjacent winners, other products, competitors).'],
-                  ['proposal', 'Proposed new market clusters', 'Drafts in the Communication Overview shape for Josh’s approval (NEW CLUSTER or a new line inside an existing cluster). Evidence is competitor activity and our adjacent results only; no performance is claimed.'],
-                  ['competitor', 'Competitor angles we have not made', 'Angles competitors run that are not on our Communication Overview. Running a long time is a signal, not proof it performs.'],
-                  ['stop', 'Stop or deprioritise', 'NOT WORKING and never worked: enough spend, weak over its history.'],
-                  ['rest', 'Everything else', 'Every other line on the sheet, with its numbers: lines running as usual, too early, untested, or not working but not on an action list this week, plus one row per product for ads not mapped to a line, so the table adds up to the product tiles.'],
-                  ['other', 'Other', 'Concepts added by hand that do not fit a section above.']];
-const STATUS_CLASS = { 'FADED': 'fade', 'COLLAPSED': 'bad', 'STOPPED': 'flat', 'WORKING NOW': 'ok', 'RISING': 'up', 'FADING / WAS WORKING': 'fade', 'NOT WORKING': 'bad', 'AVERAGE': 'flat', 'RUNNING AS USUAL': 'flat', 'NO LINE': 'flat', 'TOO EARLY': 'flat', 'UNTESTED / UNDER-TESTED': 'new', 'PROPOSED (draft)': 'new', 'MANUAL': 'manual' };
+const SECTIONS = [['revive', 'Revive'], ['make_more', 'Make more'], ['test', 'Test'], ['add', 'Add to sheet'], ['stop', 'Stop'], ['hold', 'Hold']];
+let DEFS = {};                                                                      // the rules from the API payload (real thresholds), set in render
+const actionRule = (k) => ((DEFS.actions || []).find((a) => a.key === k) || {}).rule || '';
+const statusRule = (l) => ((DEFS.statuses || []).find((x) => x.label === l) || {}).rule || '';
+const STATUS_CLASS = { 'Working': 'ok', 'Rising': 'up', 'Fading': 'fade', 'Not working': 'bad', 'Average': 'flat', 'Too early': 'flat', 'Untested': 'new', 'No line': 'flat', 'MANUAL': 'manual' };
+const STATUS_ORDER = ['Working', 'Rising', 'Fading', 'Not working', 'Average', 'Too early', 'Untested'];
 const roasX = (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–');
 const pct = (v) => (isNum(v) ? fmt.pct(v) : '–');
 // share of n in d as text, one decimal under 10% ("2.2%"), none above ("54%"); a dash when there is no denominator
@@ -27,37 +25,38 @@ const compact$ = (v) => (v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e4 
 // stat cards for the detail panel: [[group, [[label, value, sub?], ...]], ...]; labels and values are the same facts the old inline row showed
 function numbers(r) {
   const m = r.metrics || {};
-  if (r.section === 'rest' && r.line_id == null) {                                   // ads not mapped to a line: plain numbers
+  if (r.section === 'hold' && r.line_id == null && !r.manual) {                       // ads not mapped to a line: plain numbers
     return [['All time', [['Spend', fmt.money(m.spend)], ['ROAS (all time)', roasX(m.roas)], ['CPA (all time)', fmt.money(m.cpa)], ['Purchases', fmt.int(m.purchases)], ['Ads with spend', fmt.int(m.ads)]]],
       ['Last 30 days', [['Spend', fmt.money(m.spend_30d)], ['ROAS', roasX(m.roas_30d)], ['CPA', fmt.money(m.cpa_30d)], ['Purchases', fmt.int(m.purchases_30d)]]],
       ['Last 14 days', [['Spend', fmt.money(m.spend_14d)], ['ROAS', roasX(m.roas_14d)], ['Purchases', fmt.int(m.purchases_14d)]]]];
   }
-  if (r.section === 'iterate' || r.section === 'faded' || r.section === 'stop' || r.section === 'rest') {
+  if (r.line_id != null && r.section !== 'test' && r.section !== 'add') {            // every line row with results, Hold included, shows the same number tiles
     return [['Performance', [['Spend', fmt.money(m.spend)], ['ROAS (all time)', roasX(m.roas)], ['CPA (all time)', fmt.money(m.cpa)], ['Upstack new-customer ROAS', roasX(m.nc_roas)], ['ROAS, strong tags only', roasX(m.roas_strong_tags)]]],
       ['Testing', m.funnel
         ? [['Ads launched', fmt.int(m.funnel.launched)], ['Hit rate ($10K+ spend)', share(m.funnel.top, m.funnel.launched), `(${fmt.int(m.funnel.top)} of ${fmt.int(m.funnel.launched)} launched ads)`], ['New ads, 30 days', fmt.int(m.launches_30d)]]
         : [['Ads tested ($100+)', fmt.int(m.judged)], ['Ads that reached $1,000', `${m.hits} of ${m.mature}`, `(${pct(m.hit_rate)} of ads that spent $100+ and launched 14+ days ago)`], ['New ads, 30 days', fmt.int(m.launches_30d)]]],
       ['Live', [...(isNum(m.spend_14d) ? [['Last 14 days', roasX(m.roas_14d), `on ${fmt.money(m.spend_14d)}${isNum(m.roas_14d) ? '' : ' (under $100: no ratio)'}`]] : []), ['Last 30 days', roasX(m.roas_30d), `on ${fmt.money(m.spend_30d)}`], ['Prior 30 days', roasX(m.roas_prior30), `on ${fmt.money(m.spend_prior30)}`], ['Live ads', fmt.int(m.live_ads)]].concat(m.funnel && m.funnel.active_30d != null ? [['Launched in last 30 days', fmt.int(m.funnel.launched_30d != null ? m.funnel.launched_30d : m.funnel.active_30d)], ['Of those, $10K+ so far', fmt.int(m.funnel.top_launched_30d != null ? m.funnel.top_launched_30d : m.funnel.top_30d)]] : [])]];
   }
-  if (r.section === 'competitor' || r.section === 'proposal') return [];
+  if (r.section === 'add') return [];
   return [['Performance', [['Ads tagged', fmt.int(m.tagged_ads)], ['Spend so far', fmt.money(m.spend)]]]];
 }
 
-// the one number on the collapsed row
+// the one number on the collapsed row: plain English, the product named, both numbers labelled
 function keyNumber(r, d) {
   if (r.manual) return r.why_now || `Added ${dayOf(r.created_at)}`;
   const m = r.metrics || {};
   const b = (d.baselines || {})[r.product] || {};
-  if (r.section === 'faded') {
-    const now = m.spend_30d >= 250 ? roasX(m.roas_30d) + ' now' : 'idle now';
-    return r.stretch ? `ROAS ${roasX(r.stretch.roas)} at peak \u2192 ${now}` : `No weekly peak; lifetime ${roasX(m.roas)} \u2192 ${now}`;
+  const pn = b.product_name || r.product_name || 'Product';
+  const avg = (v) => `${pn} average ${roasX(v)}.`;
+  if (r.section === 'revive') {
+    const now = m.spend_30d >= 250 ? roasX(m.roas_30d) + ' now.' : 'Off now.';
+    return r.stretch ? `${roasX(r.stretch.roas)} at peak. ${now}` : `${roasX(m.roas)} since launch. ${now}`;
   }
-  if (r.section === 'iterate') return `${roasX(m.roas_30d)} last 30 days vs ${roasX(b.roas_30d)} product`;
-  if (r.section === 'stop') return `${roasX(m.roas)} lifetime vs ${roasX(b.roas)} product`;
-  if (r.competitor) return r.competitor.text;
-  if (r.section === 'rest') return m.spend >= 100 ? `${roasX(m.roas)} lifetime on ${fmt.money(m.spend)}` : `${fmt.money(m.spend)} spent`;
-  if (r.section === 'new') return m.spend > 0 ? `${fmt.money(m.spend)} spent so far` : 'No spend yet';
-  return 'Draft';
+  if (r.section === 'make_more') return `${roasX(m.roas_30d)} last 30 days. ${avg(b.roas_30d)}`;
+  if (r.section === 'add') return r.competitor ? r.competitor.text : 'Draft';
+  if (r.section === 'test') return m.spend > 0 ? `${fmt.money(m.spend)} spent so far` : 'No spend yet';
+  if (m.spend >= 100) return `${roasX(m.roas)} since launch. ${avg(b.roas)}`;                       // stop and hold
+  return m.spend > 0 ? `${fmt.money(m.spend)} spent so far` : 'No spend yet';
 }
 
 // ---------- detail panel (the expanded row) ----------
@@ -200,11 +199,11 @@ function detail(r, d) {
   if (faded && why && why.endsWith(`${r.when_it_worked} ${r.how_it_stopped}`)) why = why.slice(0, why.length - `${r.when_it_worked} ${r.how_it_stopped}`.length).trim();
   const flagPills = (r.flags || []).map((f) => h('span', { class: 'pri-pill pri-pill-fade' }, f));
   const play = faded ? h('section', { class: 'pri-cta', 'data-testid': 'pri-play' }, h('h4', { class: 'pri-cta-h' }, h('span', { 'aria-hidden': 'true' }, '→ '), 'Revive play: '), h('p', null, r.revive_play))
-    : hookList(r, r.section === 'proposal' ? 'Competitor hooks seen' : r.section === 'new' ? 'Hooks to borrow (same product, adjacent winner)' : 'Proven hooks to iterate from', 'pri-cta');
+    : hookList(r, r.section === 'add' ? 'Competitor hooks seen' : r.section === 'test' ? 'Hooks to borrow (same product, adjacent winner)' : r.section === 'make_more' ? 'Proven hooks to iterate from' : 'Hooks from the best ads on this line', 'pri-cta');
   const hooksLow = faded ? hookList(r, 'Hooks from the working period') : null;
   return h('div', { class: 'pri-panel pri-tone-' + tone },
     h('div', { class: 'pri-id' },
-      h('div', { class: 'pri-chips' }, h('span', { class: 'pri-chip-prod' }, (base.product_name || r.product_name || r.product)), h('span', { class: 'pri-sec pri-sec-' + r.section }, SECTION_LABEL[r.section]), h('span', { class: 'pri-status pri-st-' + tone }, r.status)),
+      h('div', { class: 'pri-chips' }, h('span', { class: 'pri-chip-prod' }, (base.product_name || r.product_name || r.product)), h('span', { class: 'pri-sec pri-sec-' + r.section, title: actionRule(r.section) }, SECTION_LABEL[r.section]), r.section === 'add' && r.source ? h('span', { class: 'pri-pill pri-pill-flat', 'data-testid': 'pri-source' }, r.source) : null, h('span', { class: 'pri-status pri-st-' + tone, title: statusRule(r.status) }, r.status)),
       h('div', { class: 'pri-tiles' }, tile('Market Cluster', r.cluster, r.cluster_description), tile('ICP', r.icp, r.icp_description), tile('Pain Point', r.pain_point, r.pain_description),
         r.story ? h('div', { class: 'pri-tile pri-tile-story' }, h('div', { class: 'pri-tile-h' }, h('span', { class: 'pri-label' }, 'Story')), h('div', { class: 'pri-story' }, r.story)) : null)),
     h('div', { class: 'pri-verdict' }, h('div', { class: 'pri-verdict-k' }, keyNumber(r, d || { baselines: {} })), why ? h('p', { class: 'pri-verdict-why', 'data-testid': 'pri-why' }, why) : null),
@@ -252,17 +251,17 @@ function nameDialog({ title, initial, okLabel, kinds = null, kind = null, note =
 }
 
 // the panel under a row: manual rows have their own render function; an auto row gets the notes of any manual concept with the same four tags appended
-const restPanel = (r, d) => h('div', { class: 'pri-panel pri-tone-' + toneOf(r), 'data-testid': 'pri-rest-panel' },
-  h('div', { class: 'pri-chips' }, h('strong', { class: 'pri-chip-prod' }, r.product_name), h('span', { class: 'pri-sec pri-sec-rest' }, 'Everything else'), h('span', { class: 'pri-status pri-st-' + toneOf(r) }, r.status)),
-  r.line_id != null ? h('div', { class: 'pri-tiles' }, tile('Market Cluster', r.cluster, r.cluster_description), tile('ICP', r.icp, r.icp_description), tile('Pain Point', r.pain_point, r.pain_description)) : null,
+const unmappedPanel = (r, d) => h('div', { class: 'pri-panel pri-tone-' + toneOf(r), 'data-testid': 'pri-rest-panel' },
+  h('div', { class: 'pri-chips' }, h('strong', { class: 'pri-chip-prod' }, r.product_name), h('span', { class: 'pri-sec pri-sec-hold' }, 'Hold'), h('span', { class: 'pri-status pri-st-' + toneOf(r) }, r.status)),
   r.story ? h('p', { class: 'pri-story' }, r.story) : null, r.why ? h('p', null, r.why) : null, statCards(r),
-  (r.unmapped_ads || []).length ? h('div', { class: 'pri-card', 'data-testid': 'pri-unmapped' }, h('div', { class: 'pri-h' }, 'Biggest ads without a line yet'), h('ul', null, r.unmapped_ads.map((a) => h('li', null, `${a.ad}: ${fmt.money(a.spend)} all time, ${fmt.money(a.spend_14d)} last 14 days`)))) : null);
-const panelFor = (r, d, mctl) => { if (r.manual) return manualPanel(r, mctl); if (r.section === 'rest') return restPanel(r, d); const p = detail(r, d); addManualNotes(p, r, d); return p; };
+  (r.unmapped_ads || []).length ? h('div', { class: 'pri-card', 'data-testid': 'pri-unmapped' }, h('div', { class: 'pri-h' }, 'Biggest ads without a line yet'), h('ul', null, r.unmapped_ads.map((a) => h('li', null, `${a.ad}: ${fmt.money(a.spend)} since launch, ${fmt.money(a.spend_14d)} last 14 days`)))) : null);
+// every row gets the same panel (hooks, winning ads, trend, number tiles, competitor badges where present), Hold included; only the "ads not mapped to a line" row has its own simple one
+const withProd = (p, r, actl) => { if (actl) p.append(actl.history(r)); return p; };                           // production history under every concept's panel (priorities_assign.js); none on the public view page
+const panelFor = (r, d, mctl, actl) => { if (r.manual) return withProd(manualPanel(r, mctl), r, actl); if (r.section === 'hold' && r.line_id == null) return unmappedPanel(r, d); const p = detail(r, d); addManualNotes(p, r, d); return withProd(p, r, actl); };
 
-const SECTION_LABEL = { faded: 'Was working, now isn’t', iterate: 'Iterate on what is working', new: 'New and untested', proposal: 'Proposed new cluster', competitor: 'Competitor angle', stop: 'Stop', rest: 'Everything else', other: 'Other' };
+const SECTION_LABEL = Object.fromEntries(SECTIONS);
 const SECTION_ORDER = SECTIONS.map(([k]) => k);
-const SECTION_NOTE = Object.fromEntries(SECTIONS.map(([k, , sub]) => [k, sub]));
-const COLS = [['product', 'Product'], ['section', 'Section'], ['cluster', 'Market Cluster'], ['icp', 'ICP'], ['pain', 'Pain Point'], ['story', 'Story'], ['status', 'Status'], ['concepts', 'Concepts'], ['key', 'Key number'], ['spend14', 'Spend \u00b7 14d'], ['roas14', 'ROAS \u00b7 14d']];
+const COLS = [['product', 'Product'], ['section', 'Action'], ['cluster', 'Market Cluster'], ['icp', 'ICP'], ['pain', 'Pain Point'], ['story', 'Story'], ['status', 'Status'], ['concepts', 'Concepts'], ['key', 'Key number'], ['spend14', 'Spend \u00b7 14d'], ['roas14', 'ROAS \u00b7 14d']];
 
 // last 14 days (Meta-reported, raw purchase value / spend, not shrunk): spend always shown when the row has data, ROAS only with $100+ spend in the window (else a dash)
 const has14 = (r) => !r.manual && r.metrics && isNum(r.metrics.spend_14d);
@@ -299,26 +298,27 @@ function setOpen(btn, panelRow, open) {
 }
 
 // one row (collapsed) + its detail row (hidden). `printed` rows have no toggle and an always-visible detail (the print-only copy).
-function rowPair(r, d, printed = false, onPick = null, mctl = null) {
+function rowPair(r, d, printed = false, onPick = null, mctl = null, actl = null) {
   const id = 'pri-detail-' + (++uid);
   const name = `${r.cluster}, ${r.icp}, ${r.pain_point}`;
   const cell = (label, cls, ...kids) => h('td', { class: 'pri-c pri-c-' + cls, 'data-label': label }, ...kids);
-  const lazy = r.section === 'rest' && !printed;                                    // the 100+ "Everything else" panels are built on first open
-  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, h('td', { colspan: '12' }, lazy ? null : panelFor(r, d, r._from ? null : mctl)));
-  if (lazy) detailRow._build = () => { detailRow.firstChild.replaceChildren(panelFor(r, d, r._from ? null : mctl)); detailRow._build = null; };
+  const lazy = r.section === 'hold' && !printed;                                    // the 100+ Hold panels are built on first open (the content is the same full panel)
+  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, h('td', { colspan: String(12 + (actl ? 1 : 0)) }, lazy ? null : panelFor(r, d, r._from ? null : mctl, actl)));
+  if (lazy) detailRow._build = () => { detailRow.firstChild.replaceChildren(panelFor(r, d, r._from ? null : mctl, actl)); detailRow._build = null; };
   const btn = h('button', { type: 'button', class: 'pri-toggle', 'aria-expanded': 'false', 'aria-controls': id, 'aria-label': 'Expand: ' + name, 'data-name': name, 'data-testid': 'pri-toggle' },
     h('span', { class: 'pri-chev', 'aria-hidden': 'true' }, '▸'));
   const pick = h('input', { type: 'checkbox', class: 'pri-pick', 'data-testid': 'pri-pick', 'aria-label': 'Select: ' + name, onchange: (e) => onPick && onPick(r, e.target.checked) });
   const tr = h('tr', { class: 'pri-row' + (r.manual ? ' pri-manual' + (r.done ? ' pri-done' : '') : ''), 'data-testid': 'pri-card', 'data-section': r.section, 'data-product': r.product, 'data-source': r.manual ? 'manual' : 'auto' },
     h('td', { class: 'pri-c pri-c-tog' }, printed || !onPick ? null : pick, printed ? null : btn),
     cell('Product', 'product', (d.baselines[r.product] || {}).product_name || r.product),
-    cell('Section', 'section', h('span', { class: 'pri-sec pri-sec-' + r.section, title: SECTION_NOTE[r.section] }, SECTION_LABEL[r.section]), r.manual ? h('span', { class: 'pri-mbadge', 'data-testid': 'pri-manual-badge' }, 'Manual') : null),
+    cell('Action', 'section', h('span', { class: 'pri-sec pri-sec-' + r.section, title: actionRule(r.section) }, SECTION_LABEL[r.section]), r.section === 'add' && r.source ? h('span', { class: 'pri-src', 'data-testid': 'pri-source' }, r.source) : null, r.manual ? h('span', { class: 'pri-mbadge', 'data-testid': 'pri-manual-badge' }, 'Manual') : null),
     cell('Market Cluster', 'cluster', r.cluster, r._from ? h('span', { class: 'pri-from', 'data-testid': 'pri-from', title: 'No longer in the current snapshot: the numbers are the frozen copy saved with the view' }, ' from ' + r._from) : null), cell('ICP', 'icp', r.icp), cell('Pain Point', 'pain', r.pain_point), cell('Story', 'story', r.story || '–'),
     cell('Status', 'status', h('span', { class: 'pri-status pri-st-' + (STATUS_CLASS[r.status] || 'flat'), 'data-testid': 'pri-status' }, r.manual && r.done ? 'MANUAL (done)' : r.status)),
-    cell('Concepts', 'concepts', r.manual || r.section === 'rest' ? '\u2013' : r.concepts ? `${r.concepts} concept${r.concepts === 1 ? '' : 's'}` : 'None'),
+    cell('Concepts', 'concepts', r.manual || r.section === 'hold' ? '\u2013' : r.concepts ? `${r.concepts} concept${r.concepts === 1 ? '' : 's'}` : 'None'),
     cell('Key number', 'key', keyNumber(r, d)),
     cell('Spend \u00b7 14d', 'spend14', has14(r) ? fmt.money(r.metrics.spend_14d) : '\u2013'),
-    cell('ROAS \u00b7 14d', 'roas14', roas14Cell(r, d)));
+    cell('ROAS \u00b7 14d', 'roas14', roas14Cell(r, d)),
+    actl ? cell('In production', 'prod', actl.cell(r)) : null);
   if (!printed) {
     const toggle = () => setOpen(btn, detailRow, btn.getAttribute('aria-expanded') !== 'true');
     btn.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
@@ -328,6 +328,7 @@ function rowPair(r, d, printed = false, onPick = null, mctl = null) {
 }
 
 function render(d, view = null, opts = {}) {
+  DEFS = d.definitions || {};
   const vm = opts.vm || { views: [], active: null, mode: 'latest', notice: null };
   const readonly = !!view;                                                               // a saved view: only its rows, no selection or editing, pinned to its stored snapshot
   const slugs = PRODUCT_ORDER.filter((s) => d.rows.some((r) => r.product === s));
@@ -339,7 +340,8 @@ function render(d, view = null, opts = {}) {
   const sel = readonly ? new Set(d.rows.map(keyOf)) : loadSel(d.week_start, new Set(d.rows.map(keyOf)), tok);
   const isSel = (r) => sel.has(keyOf(r));
   const mctl = manualControls(d, readonly, opts, (r) => { sel.delete(keyOf(r)); saveSel(d.week_start, sel, tok); });
-  const pairs = d.rows.map((r) => rowPair(r, d, false, readonly ? null : (row, on) => { if (on) sel.add(keyOf(row)); else sel.delete(keyOf(row)); selChanged(); }, mctl));
+  const actl = readonly ? null : assignControls({ d, keyOf, selected: () => d.rows.filter(isSel), refresh: () => apply() });          // production hooks: none on a public saved view
+  const pairs = d.rows.map((r) => rowPair(r, d, false, readonly ? null : (row, on) => { if (on) sel.add(keyOf(row)); else sel.delete(keyOf(row)); selChanged(); }, mctl, actl));
   let shownList = [];
   const carry = opts.carry || {};
   const sf = act && act.view.kind === 'filters' && act.view.filters ? act.view.filters : null;      // a filter view starts from its saved filters (applied live to whatever rows exist now)
@@ -351,7 +353,7 @@ function render(d, view = null, opts = {}) {
   if (opts.ref) opts.ref.state = state;
   const value = {
     product: (r) => pOrder[r.product], section: (r) => sOrder[r.section], cluster: (r) => r.cluster.toLowerCase(), icp: (r) => r.icp.toLowerCase(), pain: (r) => r.pain_point.toLowerCase(),
-    story: (r) => (r.story || '').toLowerCase(), status: (r) => r.status.toLowerCase(), concepts: (r) => r.concepts || 0, key: (r) => keyNumber(r, d).toLowerCase(), spend14: (r) => (has14(r) ? r.metrics.spend_14d : -1), roas14: (r) => { const v = roas14Of(r); return v === null ? -1 : v; }, briefed: (r) => (isBriefed(r) ? 1 : 0),
+    story: (r) => (r.story || '').toLowerCase(), status: (r) => r.status.toLowerCase(), concepts: (r) => r.concepts || 0, key: (r) => keyNumber(r, d).toLowerCase(), spend14: (r) => (has14(r) ? r.metrics.spend_14d : -1), roas14: (r) => { const v = roas14Of(r); return v === null ? -1 : v; }, prod: (r) => (actl ? actl.text(r).toLowerCase() : ''), briefed: (r) => (isBriefed(r) ? 1 : 0),
   };
   const tbody = h('tbody', { 'data-testid': 'pri-body' });
   const count = h('span', { class: 'pri-shown', 'aria-live': 'polite', 'data-testid': 'pri-shown' });
@@ -394,7 +396,7 @@ function render(d, view = null, opts = {}) {
     else if (sel.size > 0 || !state.onlySel) selHint.textContent = '';
     const q = state.q.trim().toLowerCase();
     const eligible = pairs.filter((p) => state.showDone || !p.r.done);                               // done manual concepts stay hidden until Show done is ticked
-    let list = eligible.filter((p) => state.products.has(p.r.product) && state.sections.has(p.r.section) && (!state.statuses.size || state.statuses.has(p.r.status)) && (!state.onlySel || sel.has(keyOf(p.r))) && (state.brief === 'all' || (state.brief === 'done') === isBriefed(p.r))
+    let list = eligible.filter((p) => state.products.has(p.r.product) && state.sections.has(p.r.section) && (!state.statuses.size || state.statuses.has(p.r.status)) && (!state.onlySel || sel.has(keyOf(p.r))) && !(actl && actl.hidden(p.r)) && (state.brief === 'all' || (state.brief === 'done') === isBriefed(p.r))
       && (!q || [p.r.cluster, p.r.icp, p.r.pain_point, p.r.story].some((t) => (t || '').toLowerCase().includes(q))));
     const def = (a, b) => (sOrder[a.r.section] - sOrder[b.r.section]) || (pOrder[a.r.product] - pOrder[b.r.product]) || (a.r.rank - b.r.rank);
     if (state.key) {
@@ -434,9 +436,9 @@ function render(d, view = null, opts = {}) {
   const actionsHost = h('div', { class: 'pri-actions pri-hd-screen' });                                                                 // Add concept + export, filled by buildTop
   const searchIn = h('input', { type: 'search', 'data-testid': 'pri-search', placeholder: 'cluster, ICP, pain point or story', value: state.q, oninput: (e) => { state.q = e.target.value; apply(); } });
   uiSync.push(() => { if (searchIn.value !== state.q) searchIn.value = state.q; });
-  const nActive = () => (slugs.every((x) => state.products.has(x)) ? 0 : 1) + (sections.every((x) => state.sections.has(x)) ? 0 : 1) + (state.statuses.size ? 1 : 0) + (state.q.trim() ? 1 : 0) + (state.onlySel ? 1 : 0) + (state.brief !== 'all' ? 1 : 0);
+  const nActive = () => (slugs.every((x) => state.products.has(x)) ? 0 : 1) + (sections.every((x) => state.sections.has(x)) ? 0 : 1) + (state.statuses.size ? 1 : 0) + (state.q.trim() ? 1 : 0) + (state.onlySel ? 1 : 0) + (state.brief !== 'all' ? 1 : 0) + (actl && actl.hideOn() ? 1 : 0);
   const clearBtn = h('button', { type: 'button', class: 'pri-clear', 'data-testid': 'pri-clear-filters', onclick: () => {
-    slugs.forEach((x) => state.products.add(x)); sections.forEach((x) => state.sections.add(x)); state.statuses.clear(); state.q = ''; state.onlySel = false; state.brief = 'all'; apply();
+    slugs.forEach((x) => state.products.add(x)); sections.forEach((x) => state.sections.add(x)); state.statuses.clear(); state.q = ''; state.onlySel = false; state.brief = 'all'; if (actl) actl.setHide(false); apply();
   } }, 'Clear filters');
   const activeNote = h('span', { class: 'pri-activen', 'data-testid': 'pri-active-filters', 'aria-live': 'polite' });
   uiSync.push(() => { const n = nActive(); clearBtn.hidden = n === 0; activeNote.textContent = n ? `${n} filter${n === 1 ? '' : 's'} on` : ''; });
@@ -451,19 +453,19 @@ function render(d, view = null, opts = {}) {
   const briefRow = hasBriefed ? frow('Briefed', h('div', { class: 'pri-briefctl' }, h('span', { class: 'pri-seg', role: 'group', 'aria-label': 'Briefed filter' }, segBrief('all', 'All'), segBrief('open', 'Not briefed'), segBrief('done', 'Briefed')), hideBtn, briefProgress, briefErr)) : null;
   const filters = h('div', { class: 'pri-fbar', role: 'group', 'aria-label': 'Filters', 'data-testid': 'pri-filters' },
     prodRow, briefRow,
-    readonly ? null : frow('Section', h('div', { class: 'pri-fgroup', role: 'group', 'aria-label': 'Section' }, sections.map((k) => chip(state.sections, k, SECTION_LABEL[k], 'pri-f-section-' + k, sections, 'pri-cc-sec-' + k)))),
+    readonly ? null : frow('Action', h('div', { class: 'pri-fgroup', role: 'group', 'aria-label': 'Action' }, sections.map((k) => chip(state.sections, k, SECTION_LABEL[k], 'pri-f-section-' + k, sections, 'pri-cc-sec-' + k)))),
     d.stats && d.stats.status_counts_total ? frow('Status', statusHost) : null,
     h('div', { class: 'pri-frow pri-frow-inline' },
       readonly ? null : h('label', { class: 'pri-fl pri-search' }, h('span', { class: 'pri-flabel' }, 'Search'), searchIn),
       d.rows.some((r) => r.manual && r.done) ? h('label', { class: 'pri-showdone' }, h('input', { type: 'checkbox', 'data-testid': 'pri-show-done', checked: state.showDone,
         onchange: (e) => { state.showDone = e.target.checked; apply(); } }), ' Show done') : null,
-      readonly ? null : selChip, activeNote, clearBtn, actionsHost));
+      readonly ? null : selChip, actl ? actl.hideLabel : null, activeNote, clearBtn, actionsHost));
 
   const allBox = h('input', { type: 'checkbox', class: 'pri-pick', 'data-testid': 'pri-pick-all', 'aria-label': 'Select all shown rows', onchange: (e) => {
     shownList.forEach((p) => { if (e.target.checked) sel.add(keyOf(p.r)); else sel.delete(keyOf(p.r)); });
     selChanged();
   } });
-  const head = h('thead', null, h('tr', null, h('th', { class: 'pri-th-tog' }, h('span', { class: 'pri-vh' }, 'Open'), readonly ? null : allBox), (hasBriefed ? [...COLS, ['briefed', 'Briefed']] : COLS).map(([k, label]) => {
+  const head = h('thead', null, h('tr', null, h('th', { class: 'pri-th-tog' }, h('span', { class: 'pri-vh' }, 'Open'), readonly ? null : allBox), [...COLS, ...(actl ? [['prod', 'In production']] : []), ...(hasBriefed ? [['briefed', 'Briefed']] : [])].map(([k, label]) => {
     const b = h('button', { type: 'button', class: 'pri-sort', 'data-testid': 'pri-sort-' + k, onclick: () => {
       if (state.key === k) state.dir = -state.dir; else { state.key = k; state.dir = 1; }
       apply();
@@ -483,7 +485,7 @@ function render(d, view = null, opts = {}) {
       h('td', { class: 'pri-c pri-c-tlabel', colspan: '10' }, h('strong', null, label), h('span', { class: 'pri-k' }, ` (${t.n} row${t.n === 1 ? '' : 's'} with data)`)),
       cell('Spend \u00b7 14d', 'spend14', h('strong', { 'data-testid': 'pri-total-spend' }, fmt.money(t.spend))),
       cell('ROAS \u00b7 14d', 'roas14', h('strong', { 'data-testid': 'pri-total-roas' }, t.roas === null ? '\u2013' : roasX(t.roas))),
-      hasBriefed ? h('td', null) : null);
+      actl ? h('td', null) : null, hasBriefed ? h('td', null) : null);
     const out = [];
     if (prods.length > 1) prods.forEach((x) => out.push(trow('pri-tot-' + x, (d.baselines[x] || {}).product_name || x, sum14(rows.filter((r) => r.product === x)), x)));
     out.push(trow('pri-tot-all', prods.length > 1 ? 'Total, all products shown' : 'Total shown', sum14(rows)));
@@ -511,7 +513,7 @@ function render(d, view = null, opts = {}) {
     h('p', { class: 'pri-lead', 'data-testid': 'pri-comp-asof' }, d.competitors_as_of ? `Competitor ads: Meta Ad Library, as of ${d.competitors_as_of}; refreshed weekly. Running a long time is a signal, not proven performance.`
       + ((d.competitor_stale || []).length ? ` Stale (last pull failed, last good data kept): ${d.competitor_stale.join(', ')}.` : '') : 'No competitor ads loaded yet.')];
   const legend = (tid) => h('dl', { class: 'pri-legend', 'data-testid': tid }, (d.legend || []).flatMap((x) => [h('dt', null, x.tag), h('dd', null, x.meaning)]));
-  const counts = d.stats && d.stats.status_counts_total ? Object.entries(d.stats.status_counts_total) : [];
+  const counts = d.stats && d.stats.status_counts_total ? Object.entries(d.stats.status_counts_total).sort((a, b) => (STATUS_ORDER.indexOf(a[0]) + 1 || 99) - (STATUS_ORDER.indexOf(b[0]) + 1 || 99)) : [];
   const baseLine = (b) => b.funnel
     ? ` ALL TIME: ROAS ${roasX(b.roas)}, CPA ${fmt.money(b.cpa)}. LAST 30 DAYS: ROAS ${roasX(b.roas_30d)}, CPA ${fmt.money(b.cpa_30d)}`
       + (isNum(b.spend_14d) ? `. LAST 14 DAYS: ROAS ${roasX(b.roas_14d)}, CPA ${fmt.money(b.cpa_14d)}, spend ${fmt.money(b.spend_14d)}` : '')
@@ -519,6 +521,11 @@ function render(d, view = null, opts = {}) {
       + ((b.cohorts || [])[0] ? `; launched in last 30 days ${share(b.cohorts[0].top, b.cohorts[0].launched)} (${fmt.int(b.cohorts[0].top)} of ${fmt.int(b.cohorts[0].launched)})` : '')
       + (b.cohort_14d ? `; launched in last 14 days ${share(b.cohort_14d.top, b.cohort_14d.launched)} (${fmt.int(b.cohort_14d.top)} of ${fmt.int(b.cohort_14d.launched)})` : '') + '.'
     : ` average ROAS ${roasX(b.roas)} all time, ${roasX(b.roas_30d)} last 30 days, CPA ${fmt.money(b.cpa)}, hit rate ${pct(b.hit_rate)}`;
+  // the rule for every Action and every Status, with the real thresholds from the API; open by default, can be collapsed
+  const defsBlock = h('details', { class: 'pri-defs', open: true, 'data-testid': 'pri-defs' }, h('summary', null, 'What these mean'),
+    h('div', { class: 'pri-defs-b' },
+      h('div', null, h('h3', null, 'Action: what to do with a concept'), h('dl', { 'data-testid': 'pri-defs-actions' }, (d.definitions ? d.definitions.actions : []).flatMap((a) => [h('dt', null, a.label), h('dd', null, a.rule)]))),
+      h('div', null, h('h3', null, 'Status: how the line is doing'), h('dl', { 'data-testid': 'pri-defs-statuses' }, (d.definitions ? d.definitions.statuses : []).flatMap((x) => [h('dt', null, x.label), h('dd', null, x.rule)])))));
   const buildTop = () => {
     const sub = `Week of ${d.week_start} · Data through ${d.data_through} · ` + (d.competitors_as_of ? `Competitor ads as of ${d.competitors_as_of}` : 'No competitor ads loaded yet');
     // status strip: the 'Lines by status' counts as chips with numbers; click = filter the table by that status
@@ -591,7 +598,7 @@ function render(d, view = null, opts = {}) {
           h('h1', { 'data-testid': 'pri-title' }, readonly ? `Creative priorities: ${view.name}` : act ? `Creative priorities: ${act.view.name}` : 'Creative priorities'),
           h('p', { class: 'pri-sub pri-hd-screen', 'data-testid': 'pri-sub' }, sub)),
         readonly ? null : h('div', { class: 'pri-headctl pri-hd-screen' },
-          act ? null : h('label', { class: 'pri-weekl' }, h('span', { class: 'pri-flabel' }, 'Week'), weekSel), viewbar)),
+          act ? null : h('label', { class: 'pri-weekl' }, h('span', { class: 'pri-flabel' }, 'Week'), weekSel), viewbar, h('a', { class: 'pri-prodlink', href: href('/priorities/production', {}), 'data-testid': 'pri-prod-link' }, 'Production'))),
       readonly ? h('p', { class: 'pri-lead', 'data-testid': 'pri-view-note' }, `Saved view of ${d.rows.length} concept${d.rows.length === 1 ? '' : 's'}, snapshot week of ${d.week_start} (frozen: it does not change when a newer snapshot arrives). `,
         h('a', { href: href('/priorities', {}), 'data-testid': 'pri-open-full' }, 'Open full priorities'), ' ',
         h('a', { href: viewUrl(view.token), 'data-testid': 'pri-open-live' }, 'Open as a view with the latest data'), ' ',
@@ -611,7 +618,8 @@ function render(d, view = null, opts = {}) {
         h('div', { class: 'pri-ptiles', role: 'group', 'aria-label': 'Products' }, slugs.map(prodTile)),
         h('div', { class: 'pri-abouts' },
           about('What these tags mean', 'pri-about-tags', legend('pri-legend-ui')),
-          about('About these numbers', 'pri-about-numbers', ...notes()))),
+          about('About these numbers', 'pri-about-numbers', ...notes())),
+        defsBlock),
       // print copy of the intro: every sentence, the legend and the three product lines, exactly as before (hidden on screen)
       h('div', { class: 'pri-printintro', 'data-testid': 'pri-printintro' }, ...notes(),
         counts.length ? h('p', { class: 'pri-lead', 'data-testid': 'pri-counts' }, 'Lines by status: ' + counts.map(([k, v]) => `${k} ${v}`).join(', ')) : null,
@@ -657,6 +665,7 @@ function render(d, view = null, opts = {}) {
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-copy', onclick: () => copyText() }, 'Copy as text'),
     selOnlyBtn,
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-save', onclick: () => saveViewDialog('rows') }, 'Save view'),
+    actl ? actl.button : null,
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-clear', onclick: () => { sel.clear(); selChanged(); } }, 'Clear'), copyNote);
 
   // the View switcher: All concepts + each saved view; choosing one filters this same table in place (URL ?view=<token>); Save view sits beside it
@@ -725,7 +734,7 @@ function render(d, view = null, opts = {}) {
   }
   function copyText() {
     const rows = d.rows.filter(isSel).sort((a, b) => (pOrder[a.product] - pOrder[b.product]) || (sOrder[a.section] - sOrder[b.section]) || (a.rank - b.rank));
-    const text = rows.map((r) => [`Product: ${(d.baselines[r.product] || {}).product_name || r.product}`, `Section: ${SECTION_LABEL[r.section]}`,
+    const text = rows.map((r) => [`Product: ${(d.baselines[r.product] || {}).product_name || r.product}`, `Action: ${SECTION_LABEL[r.section]}${r.source ? ' (' + r.source + ')' : ''}`,
       `Market Cluster: ${r.cluster}`, `ICP: ${r.icp}`, `Pain Point: ${r.pain_point}`, `Story: ${r.story || '\u2013'}`, `Status: ${r.status}`, `Key number: ${keyNumber(r, d)}`,
       `Concepts to brief: ${r.concepts || 0}`, ...(hasBriefed ? [`Briefed: ${isBriefed(r) ? briefTxt(r).replace('Briefed ', 'yes, ') : 'no'}`] : []), ...strip(r, true).map((t, i) => (i === 0 ? 'Notes: ' : '') + t)].join('\n')).join('\n\n');
     const done = (ok) => { copyNote.textContent = ok ? `Copied ${rows.length} row${rows.length === 1 ? '' : 's'}.` : 'Copy failed: select the text and copy by hand.'; };
@@ -746,20 +755,20 @@ function render(d, view = null, opts = {}) {
   const strip0 = (r, full = false) => {
     if (r.manual) return manualStrip(r, full ? 0 : 300);
     const m = r.metrics || {};
-    if (r.section === 'faded') {
+    if (r.section === 'revive') {
       const st = r.stretch;
       const then = st ? `Worked ${st.start} to ${st.end}: ROAS ${roasX(st.roas)} on ${fmt.money(st.spend)}` : 'Strong before the weekly data began (2026-05-06)';
       const now = m.spend_30d >= 250 ? `now ${roasX(m.roas_30d)} on ${fmt.money(m.spend_30d)}${st && isNum(m.roas_30d) && st.roas ? ` (${Math.round((m.roas_30d / st.roas - 1) * 100)}%)` : ''}` : 'now idle (no spend in 30 days)';
       return [`${then} \u2192 ${now}.`, trim(r.revive_play, 230)];
     }
-    if (r.section === 'iterate') return [trim(r.why, 260)];
+    if (r.section === 'make_more') return [trim(r.why, 260)];
     const out = [];
     if (r.competitor) out.push(`Others: ${r.competitor.text} (running a long time, not proven performance).`);
     const why = trim(r.why, r.competitor ? 170 : 250);
     out.push(why.charAt(0).toUpperCase() + why.slice(1));
     return out.slice(0, 2);
   };
-  const PRINT_STATUS = { 'UNTESTED / UNDER-TESTED': 'UNTESTED', 'PROPOSED (draft)': 'DRAFT', 'FADING / WAS WORKING': 'FADING' };
+  const PRINT_STATUS = { 'Untested': 'UNTESTED', 'Fading': 'FADING', 'Working': 'WORKING', 'Rising': 'RISING', 'Average': 'AVERAGE', 'Not working': 'NOT WORKING', 'Too early': 'TOO EARLY' };
   const printCell = (cls, ...kids) => h('td', { class: 'pri-c pri-c-' + cls }, ...kids);
   const printRow = (r) => h('tbody', { class: 'pri-rg', 'data-testid': 'pri-print-row' },
     h('tr', { class: 'pri-row' }, printCell('section', h('span', { class: 'pri-sec pri-sec-' + r.section }, SECTION_LABEL[r.section]), hasBriefed && isBriefed(r) ? h('span', { class: 'pri-bprint', 'data-testid': 'pri-print-briefed' }, ' \u2713 briefed') : null, r.manual ? h('span', { class: 'pri-mbadge' }, 'Manual') : null), printCell('cluster', r.cluster), printCell('icp', r.icp), printCell('pain', r.pain_point),
@@ -771,7 +780,7 @@ function render(d, view = null, opts = {}) {
   const printBlocks = h('div', { class: 'pri-print', 'data-testid': 'pri-print-copy', 'aria-hidden': 'true' });
   const buildPrint = () => printBlocks.replaceChildren(...slugs.flatMap((s) => {
     const picking = sel.size > 0;
-    const mine = d.rows.filter((r) => r.product === s && (picking ? isSel(r) : (!r.done && r.section !== 'rest'))).sort((a, b) => (sOrder[a.section] - sOrder[b.section]) || (a.rank - b.rank));
+    const mine = d.rows.filter((r) => r.product === s && (picking ? isSel(r) : (!r.done && r.section !== 'hold'))).sort((a, b) => (sOrder[a.section] - sOrder[b.section]) || (a.rank - b.rank));
     if (picking && !mine.length) return [];                                          // product sections with no selected rows are omitted
     const shown = mine.filter((r) => r.section !== 'stop' && (picking || r.concepts > 0 || r.manual));
     const stops = mine.filter((r) => r.section === 'stop');
@@ -782,8 +791,8 @@ function render(d, view = null, opts = {}) {
       h('table', { class: 'pri-table pri-ptable' }, h('colgroup', null, widths.map((w) => h('col', { style: { width: w + '%' } }))), printHead(), shown.map(printRow)),
       (() => { const t = sum14(shown); return t.n ? h('p', { class: 'pri-pnote pri-ptotal', 'data-testid': 'pri-print-total' }, `Total last 14 days, ${t.n} row${t.n === 1 ? '' : 's'} with data: ${fmt.money(t.spend)} at ${t.roas === null ? '\u2013' : roasX(t.roas)}` + (isNum(b.spend_14d) ? ` (product: ${fmt.money(b.spend_14d)} at ${roasX(b.roas_14d)})` : '') + '.') : null; })(),
       skipped > 0 ? h('p', { class: 'pri-pnote' }, `${skipped} more line${skipped === 1 ? '' : 's'} with no concepts to brief this week are on the page, not printed.`) : null,
-      stops.length ? h('div', { class: 'pri-stoplist', 'data-testid': 'pri-stoplist' }, h('h3', null, `Stop or deprioritise (${stops.length})`),
-        h('ul', null, stops.map((r) => h('li', null, h('strong', null, `${r.cluster} / ${r.icp} / ${r.pain_point}`), `: ${roasX((r.metrics || {}).roas)} lifetime vs ${roasX(b.roas)} product, ${fmt.money((r.metrics || {}).spend)} spent.`)))) : null)];
+      stops.length ? h('div', { class: 'pri-stoplist', 'data-testid': 'pri-stoplist' }, h('h3', null, `Stop (${stops.length})`),
+        h('ul', null, stops.map((r) => h('li', null, h('strong', null, `${r.cluster} / ${r.icp} / ${r.pain_point}`), `: ${roasX((r.metrics || {}).roas)} since launch vs ${roasX(b.roas)} product, ${fmt.money((r.metrics || {}).spend)} spent.`)))) : null)];
   }));
 
   apply();

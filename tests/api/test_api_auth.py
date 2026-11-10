@@ -339,6 +339,20 @@ def test_the_api_is_read_only(app, client, app_factory):
         if extra and not rule.rule.startswith(("/api/projection/", "/api/priorities/")):         # the projection editor and the /priorities saved views + manual concepts write through their own read-write pool; the metrics API never does
             writers[rule.rule] = extra
     assert writers == {"/api/login": {"POST"}, "/api/logout": {"POST"}}   # /api/priorities/* writers (saved views, manual concepts) use their own pool and are excluded above
+    # 1b. the production write routes are exactly these (all on the app's own read-write pool, all behind the Origin check and a rate limit); the vendor ones are the only login-exempt API paths
+    prod = {(r.rule, m) for r in app.url_map.iter_rules() if r.rule.startswith(("/api/priorities/assignments", "/api/priorities/vendor")) for m in set(r.methods) - {"GET", "HEAD", "OPTIONS"}}
+    assert prod == {("/api/priorities/assignments", "POST"), ("/api/priorities/assignments/<int:aid>", "PATCH"), ("/api/priorities/vendor-links", "POST"),
+                    ("/api/priorities/vendor-links/<vendor>/reset", "POST"), ("/api/priorities/vendor/<token>/<int:aid>", "PATCH"),
+                    # launch (dark unless META_LAUNCH_ENABLED; three gates; never login-exempt): settings, the draft, prepare, confirm and cancel only queue rows in Postgres
+                    ("/api/priorities/assignments/<int:aid>/launch/draft", "PUT"), ("/api/priorities/assignments/<int:aid>/launch/prepare", "POST"),
+                    ("/api/priorities/assignments/<int:aid>/launch/confirm", "POST"), ("/api/priorities/assignments/<int:aid>/launch/cancel", "POST")}
+    launch_put = {(r.rule, m) for r in app.url_map.iter_rules() if r.rule.startswith("/api/priorities/launch") for m in set(r.methods) - {"GET", "HEAD", "OPTIONS"}}
+    assert launch_put == {("/api/priorities/launch/settings/<product>", "PUT")}
+    from app import auth as auth_mod
+    tok = "A" * 30
+    assert all(auth_mod.PUBLIC_API_RE.fullmatch(p) for p in (f"/api/priorities/vendor/{tok}", f"/api/priorities/vendor/{tok}/12"))
+    assert not any(auth_mod.PUBLIC_API_RE.fullmatch(p) for p in ("/api/priorities/vendor/short", f"/api/priorities/vendor/{tok}/x", f"/api/priorities/vendor/{tok}/1/2", "/api/priorities/vendor-links",
+                                                                  "/api/priorities/assignments", f"/api/priorities/views/{tok}", "/api/priorities", f"/api/priorities/vendor/{tok}/"))
     for url in ("/api/products", "/api/products/vita-bull/rollup", "/api/products/vita-bull/tree", "/api/products/vita-bull/trend", "/api/ads/1000",
                 "/api/status", "/media/1"):
         for method in ("post", "put", "patch", "delete"):

@@ -15,6 +15,7 @@ import { allCampaignsPage } from './js/pages/all_campaigns.js';
 import { promotionsPage } from './js/pages/promotions.js';
 import { trendsPage } from './js/pages/trends.js';
 import { prioritiesPage, prioritiesViewPage } from './js/pages/priorities.js';
+import { productionPage, vendorPage } from './js/pages/priorities_production.js';
 import { lookupPage } from './js/pages/lookup.js';
 
 // Platform pages: '/' is the home of the chosen platform (platform=all overview, google, else Meta's products) and '/campaigns' its Campaigns view.
@@ -29,6 +30,8 @@ const routes = [
   { re: /^\/trends\/?$/, page: trendsPage },
   { re: /^\/priorities\/?$/, page: prioritiesPage },
   { re: /^\/priorities\/v\/([A-Za-z0-9_-]+)\/?$/, page: prioritiesViewPage },
+  { re: /^\/priorities\/production\/?$/, page: productionPage },
+  { re: /^\/priorities\/vendor\/([A-Za-z0-9_-]+)\/?$/, page: vendorPage, bare: true, public: true },       // a vendor's own link: no login, no app navigation
   { re: /^\/lookup\/?$/, page: lookupPage },
   { re: /^\/p\/([^/]+)\/?$/, page: productPage },
   { re: /^\/ad\/([^/]+)\/?$/, page: adPage },
@@ -63,7 +66,7 @@ function parentUrl() {
     if (p.cluster) return href(base, G);
     return platformUrl('/', 'meta', G);                      // a product's parent is Meta's Products table, not the All roll-up
   }
-  if (/^\/priorities\/v\//.test(path)) return href('/priorities', {});
+  if (/^\/priorities\/v\//.test(path) || path === '/priorities/production') return href('/priorities', {});
   if (path === '/campaigns') return platformUrl('/', currentPlatform(), G);
   if (path === '/promotions' || path === '/trends' || path === '/priorities' || path === '/lookup') return href('/', G);
   if (path === '/' && p.type) return platformUrl('/', 'google', G);
@@ -145,6 +148,7 @@ async function render(opts = {}) {
   setParentHint(null);
   const path = location.pathname;
   const route = routes.find((r) => r.re.test(path));
+  document.body.classList.toggle('pri-bare', !!(route && route.bare));          // vendor page: topbar hidden
   const root = view();
   const params = route && !route.public ? normalize(currentParams()) : currentParams();
   updateBack();

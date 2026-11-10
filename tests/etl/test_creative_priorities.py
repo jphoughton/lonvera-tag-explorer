@@ -67,7 +67,7 @@ def test_pacific_sunday_gate():
 
 def test_iterate_picks_only_lines_clearly_above_the_product_average():
     r = cp.compute(scenario(), WEEK)
-    it = [x for x in r["rows"] if x["section"] == "iterate" and x["product"] == "vita-bull"]
+    it = [x for x in r["rows"] if x["section"] == "make_more" and x["product"] == "vita-bull"]
     assert [x["line_id"] for x in it] == [1]                                  # L2 below the bar, L3 thin
     assert it[0]["metrics"]["roas"] == 1.5 and it[0]["metrics"]["judged"] == 8
     assert it[0]["concepts"] == cp.CONCEPTS_ITERATE or it[0]["concepts"] == cp.MAX_PER_ITERATE_ROW
@@ -75,7 +75,7 @@ def test_iterate_picks_only_lines_clearly_above_the_product_average():
 
 def test_new_lines_have_no_ads_and_skip_lines_added_after_tagging():
     r = cp.compute(scenario(), WEEK)
-    nw = [x for x in r["rows"] if x["section"] == "new" and x["product"] == "vita-bull"]
+    nw = [x for x in r["rows"] if x["section"] == "test" and x["product"] == "vita-bull"]
     ids = [x["line_id"] for x in nw]
     assert 7 not in ids and 1 not in ids and 2 not in ids and 3 not in ids   # tested lines and the added-after-tagging line never appear
     assert set(ids) <= {4, 5, 6}
@@ -84,7 +84,7 @@ def test_new_lines_have_no_ads_and_skip_lines_added_after_tagging():
 
 def test_new_line_ranked_by_evidence_adjacent_winner_first_and_hooks_only_from_same_product():
     r = cp.compute(scenario(), WEEK)
-    nw = {x["line_id"]: x for x in r["rows"] if x["section"] == "new" and x["product"] == "vita-bull"}
+    nw = {x["line_id"]: x for x in r["rows"] if x["section"] == "test" and x["product"] == "vita-bull"}
     assert nw[4]["evidence"]["adjacent"]["line_code"] == "VI01" and nw[4]["evidence"]["adjacent"]["same"] == "ICP"
     assert [h["hook"] for h in nw[4]["hooks"]] == ["hook 0", "hook 1"]        # borrowed from the adjacent winner, labelled
     assert all(h["borrowed"] for h in nw[4]["hooks"])
@@ -97,7 +97,7 @@ def test_new_line_ranked_by_evidence_adjacent_winner_first_and_hooks_only_from_s
 def test_numbers_are_never_invented_for_untested_lines():
     r = cp.compute(scenario(), WEEK)
     for x in r["rows"]:
-        if x["section"] == "new":
+        if x["section"] == "test":
             assert x["metrics"]["roas"] is None and x["metrics"]["cpa"] is None
 
 
@@ -109,7 +109,7 @@ def test_shrinkage_keeps_a_lucky_small_line_out():
     inp["win"]["meta"].update({f["family_key"]: {**Z, "s_all": 870, "r_all": 870 * 1.2, "p_all": 11} for f in inp["families"] if f["line_id"] == 20})
     inp["win"]["nc"] = dict(inp["win"]["meta"])
     r = cp.compute(inp, WEEK)
-    assert 20 not in [x["line_id"] for x in r["rows"] if x["section"] == "iterate"]
+    assert 20 not in [x["line_id"] for x in r["rows"] if x["section"] == "make_more"]
 
 
 def test_shrunk_roas_and_rate():
@@ -132,9 +132,9 @@ def test_weak_tags_flag_and_penalty():
         if f["line_id"] == 1:
             f["tag_conf"] = "low"
     r = cp.compute(inp, WEEK)
-    row = [x for x in r["rows"] if x["section"] == "iterate" and x["line_id"] == 1][0]
+    row = [x for x in r["rows"] if x["section"] == "make_more" and x["line_id"] == 1][0]
     assert "weak tags" in row["flags"]
-    strong = [x for x in cp.compute(scenario(), WEEK)["rows"] if x["section"] == "iterate" and x["line_id"] == 1][0]
+    strong = [x for x in cp.compute(scenario(), WEEK)["rows"] if x["section"] == "make_more" and x["line_id"] == 1][0]
     assert row["score"] < strong["score"]
 
 
@@ -143,7 +143,7 @@ def test_auto_tagged_rows_count_as_weak():
     for f in inp["families"]:
         if f["line_id"] == 1:
             f["tagger"] = "auto-claude-sonnet-5-5"
-    row = [x for x in cp.compute(inp, WEEK)["rows"] if x["section"] == "iterate" and x["line_id"] == 1][0]
+    row = [x for x in cp.compute(inp, WEEK)["rows"] if x["section"] == "make_more" and x["line_id"] == 1][0]
     assert "weak tags" in row["flags"]
 
 
@@ -190,7 +190,7 @@ def test_line_already_in_the_pipeline_is_not_new():
     inp["families"] += [fam("vita-bull", 5, 0, 1.0) for _ in range(cp.NEW_MAX_TAGGED + 1)]            # tagged briefs with no spend yet
     inp["win"]["meta"].update({f["family_key"]: dict(Z) for f in inp["families"] if f["line_id"] == 5})
     inp["win"]["nc"] = dict(inp["win"]["meta"])
-    assert 5 not in [x["line_id"] for x in cp.compute(inp, WEEK)["rows"] if x["section"] == "new"]
+    assert 5 not in [x["line_id"] for x in cp.compute(inp, WEEK)["rows"] if x["section"] == "test"]
 
 
 def test_strong_tag_roas_ignores_weak_tags():
@@ -245,13 +245,13 @@ def test_sections_follow_status_and_revive_says_when_and_how_much():
     for x in r["rows"]:
         by.setdefault(x["section"], []).append(x["line_code"])
     # no weekly history in this scenario: only the lifetime-strong lines (classify FADING) reach the faded section, flagged as having no sustained weekly peak
-    assert set(by["iterate"]) == {"VI01", "VI04"} and set(by["faded"]) == {"VI02", "VI05"} and by["stop"] == ["VI03"]
-    fd = [x for x in r["rows"] if x["section"] == "faded" and x["line_code"] == "VI02"][0]
-    assert fd["status"] == "FADED" and "no sustained weekly peak" in fd["flags"] and "Then (days 31-90)" in fd["then_now"] and "consistent with" in fd["diagnosis"].lower()
-    dormant = [x for x in r["rows"] if x["section"] == "faded" and x["line_code"] == "VI05"][0]
-    assert dormant["status"] == "STOPPED" and "spend moved away" in dormant["diagnosis"]
+    assert set(by["make_more"]) == {"VI01", "VI04"} and set(by["revive"]) == {"VI02", "VI05"} and by["stop"] == ["VI03"]
+    fd = [x for x in r["rows"] if x["section"] == "revive" and x["line_code"] == "VI02"][0]
+    assert fd["revive_kind"] == "FADED" and "no sustained weekly peak" in fd["flags"] and "Then (days 31-90)" in fd["then_now"] and "consistent with" in fd["diagnosis"].lower()
+    dormant = [x for x in r["rows"] if x["section"] == "revive" and x["line_code"] == "VI05"][0]
+    assert dormant["revive_kind"] == "STOPPED" and dormant["status"] == "Fading" and "spend moved away" in dormant["diagnosis"]
     stop = [x for x in r["rows"] if x["section"] == "stop"][0]
-    assert stop["concepts"] == 0 and sum(x["concepts"] for x in r["rows"] if x["section"] == "faded") <= cp.CONCEPTS_FADED
+    assert stop["concepts"] == 0 and sum(x["concepts"] for x in r["rows"] if x["section"] == "revive") <= cp.CONCEPTS_FADED
 
 
 def test_thin_lines_are_too_early_not_judged():
@@ -269,7 +269,7 @@ def comp_rows(**kw):
 
 def test_no_competitor_file_means_no_competitor_section_or_signal():
     r = cp.compute(scenario(), WEEK)
-    assert not [x for x in r["rows"] if x["section"] == "competitor"] and all(x["competitor"] is None for x in r["rows"]) and r["competitors_as_of"] is None
+    assert not [x for x in r["rows"] if x["section"] == "add" and x["source"] == "Competitor"] and all(x["competitor"] is None for x in r["rows"]) and r["competitors_as_of"] is None
 
 
 def test_competitor_signal_lifts_an_untested_line_and_unmatched_angles_get_their_own_section():
@@ -278,12 +278,12 @@ def test_competitor_signal_lifts_an_untested_line_and_unmatched_angles_get_their
         comp_rows(brand="A", line_code="VI05"), comp_rows(brand="B", days=120, icp="Night Waker", pain_point="Sleep"), comp_rows(brand="C", days=75, line_code="VI05"),
         comp_rows(brand="D", cluster="Brand New Market", icp="New Guy", pain_point="New Pain", new=True), comp_rows(brand="E", cluster="Brand New Market", icp="New Guy", pain_point="New Pain", days=70, new=True)]}
     r = cp.compute(inp, WEEK)
-    base = {x["line_code"]: x for x in cp.compute(scenario(), WEEK)["rows"] if x["section"] == "new"}
-    new = {x["line_code"]: x for x in r["rows"] if x["section"] == "new"}
+    base = {x["line_code"]: x for x in cp.compute(scenario(), WEEK)["rows"] if x["section"] == "test"}
+    new = {x["line_code"]: x for x in r["rows"] if x["section"] == "test"}
     l5 = new["VI05"]
     assert l5["competitor"]["competitors"] == 3 and l5["competitor"]["long_running"] == 3 and "running 60+ days" in l5["competitor"]["text"]
     assert l5["score"] > base["VI05"]["score"] and "not proven performance" in l5["why"]
-    comp = [x for x in r["rows"] if x["section"] == "competitor"]
+    comp = [x for x in r["rows"] if x["section"] == "add" and x["source"] == "Competitor"]
     assert len(comp) == 1 and comp[0]["cluster"] == "Brand New Market" and comp[0]["competitor"]["competitors"] == 2 and comp[0]["line_code"] == "not on sheet"
     assert r["competitors_as_of"] == "2026-11-08"
 
@@ -380,22 +380,22 @@ def test_proposals_are_ranked_by_evidence_and_never_carry_performance_numbers(tm
     inp["competitors"] = {"as_of": "2026-11-08", "source": "t", "loaded_at": None, "rows": [
         comp_rows(brand="A", cluster="Chest Fat", icp="x", pain_point="y", days=90), comp_rows(brand="B", cluster="Chest Fat", icp="x", pain_point="y", days=70)]}
     r = cp.compute(inp, WEEK)
-    pr = [x for x in r["rows"] if x["section"] == "proposal"]
+    pr = [x for x in r["rows"] if x["section"] == "add" and x["source"] == "Our draft"]
     assert [x["icp"] for x in pr] == ["Chest Guy", "Night Owl"]                   # the draft whose ICP exists on the sheet dropped out; competitor + adjacent evidence ranks first
     first = pr[0]
-    assert first["line_code"] == "DRAFT" and first["status"].startswith("PROPOSED") and "NEW CLUSTER" in first["flags"] and "DRAFT for approval" in first["flags"]
+    assert first["line_code"] == "DRAFT" and first["status"] == "Untested" and "NEW CLUSTER" in first["flags"] and "DRAFT for approval" in first["flags"]
     assert first["competitor"]["competitors"] == 2 and "not proven performance" in first["why"] and first["story"] == "He is lean except his chest."
     assert first["metrics"]["spend"] == 0 and "roas" not in first["metrics"] and first["concepts"] == 1
     assert "Competitors run it" not in pr[1]["why"]
     # the competitor section does not repeat an angle already drafted
     inp["competitors"]["rows"].append(comp_rows(brand="C", cluster="Other Angle", icp="z", pain_point="w", new=True))
     r2 = cp.compute(inp, WEEK)
-    assert [x["cluster"] for x in r2["rows"] if x["section"] == "competitor"] == ["Other Angle"]
+    assert [x["cluster"] for x in r2["rows"] if x["section"] == "add" and x["source"] == "Competitor"] == ["Other Angle"]
 
 
 def test_proposals_without_a_competitor_file_still_show_adjacent_evidence_only(tmp_path, monkeypatch):
     proposal_scenario(tmp_path, monkeypatch)
-    pr = [x for x in cp.compute(scenario(), WEEK)["rows"] if x["section"] == "proposal"]
+    pr = [x for x in cp.compute(scenario(), WEEK)["rows"] if x["section"] == "add" and x["source"] == "Our draft"]
     assert pr and all(x["competitor"] is None for x in pr) and "Adjacent results of ours: VI01" in pr[0]["why"]
 
 
@@ -404,9 +404,9 @@ def test_csv_and_markdown_carry_proposals(tmp_path, monkeypatch):
     r = cp.compute(scenario(), WEEK)
     rows = list(csv.reader(io.StringIO(cp.to_csv(r))))
     h = rows[0]
-    prop = [dict(zip(h, x)) for x in rows[1:] if dict(zip(h, x))["section"] == "proposal"]
-    assert prop and prop[0]["status"].startswith("PROPOSED") and prop[0]["story"] and "NEW CLUSTER" in prop[0]["flags"]
-    assert "Proposed new market clusters" in cp.to_markdown(r)
+    prop = [dict(zip(h, x)) for x in rows[1:] if dict(zip(h, x))["section"] == "add" and dict(zip(h, x))["add_source"] == "Our draft"]
+    assert prop and prop[0]["status"] == "Untested" and prop[0]["story"] and "NEW CLUSTER" in prop[0]["flags"]
+    assert "Add to sheet: " in cp.to_markdown(r) and "Our draft" in cp.to_markdown(r)
 
 
 # ---------------------------------------------------------------------------------------------------------------- was working, now isn't (weekly history)
@@ -494,13 +494,13 @@ def test_weekly_history_puts_was_working_lines_first_and_never_worked_in_stop():
     by = {}
     for x in r["rows"]:
         by.setdefault(x["section"], {})[x["line_code"]] = x
-    assert set(by["faded"]) == {"VI01", "VI04"} and set(by["stop"]) == {"VI03"} and "VI02" not in by["faded"]
-    a = by["faded"]["VI01"]
-    assert a["status"] in ("COLLAPSED", "FADED") and a["stretch"]["start"] == "2026-09-14" and a["stretch"]["weeks"] == 4
+    assert set(by["revive"]) == {"VI01", "VI04"} and set(by["stop"]) == {"VI03"} and "VI02" not in by["revive"]
+    a = by["revive"]["VI01"]
+    assert a["revive_kind"] in ("COLLAPSED", "FADED") and a["stretch"]["start"] == "2026-09-14" and a["stretch"]["weeks"] == 4
     assert "Weeks of 2026-09-14 to 2026-10-11" in a["when_it_worked"] and "Last 30 days" in a["how_it_stopped"] and "from the peak" in a["how_it_stopped"]
     assert "consistent with" in a["diagnosis"] and a["revive_play"].startswith(("1 concept", "2 concepts", "3 concepts")) and "hook" in a["revive_play"]
     assert a["hooks"] and a["former_winners"] and a["winners_summary"]["winners"] == 6
-    assert by["faded"]["VI04"]["status"] == "STOPPED" and "spend moved away" in by["faded"]["VI04"]["diagnosis"]
+    assert by["revive"]["VI04"]["revive_kind"] == "STOPPED" and "spend moved away" in by["revive"]["VI04"]["diagnosis"]
     assert r["stats"]["faded_by_kind"]["STOPPED"] == 1 and r["stats"]["faded_candidates"] == 2
 
 
@@ -508,11 +508,11 @@ def test_faded_rows_lead_csv_and_markdown_and_carry_the_story_columns():
     r = cp.compute(faded_inp(), WEEK)
     rows = list(csv.reader(io.StringIO(cp.to_csv(r))))
     h = rows[0]
-    assert dict(zip(h, rows[1]))["section"] == "faded"                                      # the first data row is a was-working-now-isn't row
+    assert dict(zip(h, rows[1]))["section"] == "revive"                                      # the first data row is a was-working-now-isn't row
     first = dict(zip(h, rows[1]))
     assert first["when_it_worked"] and first["how_it_stopped"] and first["diagnosis"] and first["revive_play"] and first["former_winner_ads"]
     md = cp.to_markdown(r)
-    assert md.index("Was working, now isn't") < md.index("Iterate on what is working") or "Iterate on what is working" not in md
+    assert md.index("Revive: ") < md.index("Make more: ") or "Make more: " not in md
     assert "Revive play:" in md and "Former winner:" in md
 
 
@@ -551,7 +551,7 @@ def test_row_funnel_and_14_day_numbers_with_a_100_dollar_floor():
     assert low["spend_14d"] == 80 and low["roas_14d"] is None            # under $100 in the window: spend shown, no ratio
     csvrows = list(csv.reader(io.StringIO(cp.to_csv(r))))
     h = csvrows[0]
-    assert h[-4:-2] == ["spend_14d", "roas_14d"] and "ads_10k_plus_spend" in h
+    assert h[-5:-3] == ["spend_14d", "roas_14d"] and h[-1] == "add_source" and "ads_10k_plus_spend" in h
 
 
 def test_scoring_still_uses_the_1000_dollar_hit_not_the_10k_display_hit():
@@ -594,12 +594,12 @@ def test_everything_else_rows_cover_every_line_and_the_rows_add_up_to_the_tile()
     inp = scenario()
     inp["win"]["meta"][[f for f in inp["families"] if f["product"] == "vita-bull"][0]["family_key"]].update(s14=300.0, p14=3.0, r14=240.0)
     r = cp.compute(inp, WEEK)
-    rest = [x for x in r["rows"] if x["section"] == "rest"]
+    rest = [x for x in r["rows"] if x["section"] == "hold"]
     assert rest and all(x["concepts"] == 0 and x["hooks"] == [] for x in rest)
     # a line appears once: either as an action row or under Everything else
-    ids = [x["line_id"] for x in r["rows"] if x["line_id"] is not None and x["section"] in ("iterate", "faded", "stop", "new", "rest")]
+    ids = [x["line_id"] for x in r["rows"] if x["line_id"] is not None and x["section"] in ("make_more", "revive", "stop", "test", "hold")]
     assert len(ids) == len(set(ids))
-    assert cp.STATUS_USUAL == "RUNNING AS USUAL" and "AVERAGE" not in r["stats"]["status_counts_total"] and "RUNNING AS USUAL" in r["stats"]["status_counts_total"]
+    assert "AVERAGE" not in r["stats"]["status_counts_total"] and "RUNNING AS USUAL" not in r["stats"]["status_counts_total"] and "Average" in r["stats"]["status_counts_total"]
     assert all(x["status"] != "AVERAGE" for x in rest)
     assert not any(x["line_code"] == "no line" and x["product"] == "vita-bull" for x in r["rows"])      # nothing unmapped for Vita Bull: no catch-all row (the untagged Beef Liver filler does get one)
     # an unmapped ad family makes the reconciling row appear, and rows then add up to the product's tile
@@ -611,5 +611,58 @@ def test_everything_else_rows_cover_every_line_and_the_rows_add_up_to_the_tile()
     r2 = cp.compute(inp2, WEEK)
     un = next(x for x in r2["rows"] if x["line_code"] == "no line" and x["product"] == "vita-bull")
     assert un["cluster"] == "Ads without a line yet" and un["unmapped_ads"] and un["metrics"]["spend_14d"] == 50.0
-    tot = sum(x["metrics"]["spend_14d"] for x in r2["rows"] if x["product"] == "vita-bull" and (x["section"] == "rest" or x["section"] in ("iterate", "faded", "stop", "new")) and x["line_id"] is not None or x is un)
+    tot = sum(x["metrics"]["spend_14d"] for x in r2["rows"] if x["product"] == "vita-bull" and (x["section"] == "hold" or x["section"] in ("make_more", "revive", "stop", "test")) and x["line_id"] is not None or x is un)
     assert round(tot, 2) == r2["baselines"]["vita-bull"]["spend_14d"]
+
+
+# ----------------------------------------------------------------------------------------------- Action / Status redesign (2026-11-10)
+def test_old_snapshots_read_in_the_new_vocabulary_and_old_keys_resolve():
+    old = {"week_start": "2026-11-01", "rows": [
+        {"section": "faded", "status": "COLLAPSED", "product": "vita-bull", "cluster": "C", "icp": "I", "pain_point": "P"},
+        {"section": "iterate", "status": "WORKING NOW"}, {"section": "new", "status": "UNTESTED / UNDER-TESTED"}, {"section": "rest", "status": "RUNNING AS USUAL"},
+        {"section": "proposal", "status": "PROPOSED (draft)"}, {"section": "competitor", "status": "UNTESTED / UNDER-TESTED"}, {"section": "stop", "status": "NOT WORKING"}],
+        "stats": {"status_counts_total": {"RUNNING AS USUAL": 3, "WORKING NOW": 2, "FADING / WAS WORKING": 1, "AVERAGE": 0}}}
+    n = cp.norm_snapshot(old)
+    assert [r["section"] for r in n["rows"]] == ["revive", "make_more", "test", "hold", "add", "add", "stop"]
+    assert [r["status"] for r in n["rows"]] == ["Fading", "Working", "Untested", "Average", "Untested", "Untested", "Not working"]
+    assert n["rows"][0]["revive_kind"] == "COLLAPSED" and n["rows"][4]["source"] == "Our draft" and n["rows"][5]["source"] == "Competitor"
+    assert n["stats"]["status_counts_total"] == {"Average": 3, "Working": 2, "Fading": 1}
+    assert cp.norm_snapshot(n) == n                                             # idempotent
+    assert old["rows"][0]["section"] == "faded"                                 # the stored snapshot is never rewritten
+    assert cp.norm_key("vita-bull|faded|C|I|P") == "vita-bull|revive|C|I|P" == cp.norm_key("vita-bull|revive|C|I|P")
+    assert cp.norm_key("vita-bull|proposal|C|I|P") == "vita-bull|add|C|I|P" and cp.norm_key("manual:7") == "manual:7"
+    assert cp.key_variants("vita-bull|add|C|I|P") == ["vita-bull|add|C|I|P", "vita-bull|proposal|C|I|P", "vita-bull|competitor|C|I|P"]
+
+
+def test_make_more_lists_every_working_or_rising_line_with_no_row_cap():
+    inp = scenario()
+    lines, fams = inp["lines"], inp["families"]
+    for i in range(30, 42):                                                      # 12 more clearly strong lines on Vita Bull
+        lines.append(line(i, "vita-bull", "Energy", f"Strong {i}", "Pain"))
+        fams += [fam("vita-bull", i, 1500, 1.6, s30=300, r30=500, sp30=300, rp30=400) for _ in range(5)]
+    for f in fams:
+        if "_w" in f:
+            inp["win"]["meta"][f["family_key"]] = f.pop("_w")
+            inp["win"]["nc"][f["family_key"]] = dict(inp["win"]["meta"][f["family_key"]])
+    r = cp.compute(inp, WEEK)
+    mm = [x for x in r["rows"] if x["section"] == "make_more" and x["product"] == "vita-bull"]
+    assert len(mm) > 8 and sum(x["concepts"] for x in mm) <= cp.CONCEPTS_ITERATE
+    assert [x["rank"] for x in mm] == list(range(1, len(mm) + 1)) and all(x["status"] in ("Working", "Rising") for x in mm)
+
+
+def test_every_line_row_carries_the_same_detail_including_hold():
+    r = cp.compute(scenario(), WEEK)
+    hold = [x for x in r["rows"] if x["section"] == "hold" and x["line_id"] is not None]
+    assert hold
+    for x in hold:
+        assert {"hooks", "former_winners", "winners_summary", "stretch", "then_now"} <= set(x)
+    assert set(x["status"] for x in r["rows"] if x["line_id"] is not None) <= set(cp.STATUS_LABELS)
+
+
+def test_definitions_use_the_real_thresholds():
+    d = cp.definitions()
+    assert [a["key"] for a in d["actions"]] == list(cp.ACTIONS) and [s["label"] for s in d["statuses"]] == list(cp.STATUS_LABELS)
+    txt = " ".join(a["rule"] for a in d["actions"]) + " ".join(s["rule"] for s in d["statuses"])
+    assert "$5,000" in txt and "$1,000" in txt and "15%" in txt and "$200" in txt
+    assert "{" not in txt and "None" not in txt
+    assert "$7,000" in " ".join(s["rule"] for s in cp.definitions({"MIN_LINE_SPEND": 7000.0})["statuses"])

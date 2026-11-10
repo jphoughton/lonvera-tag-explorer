@@ -725,7 +725,9 @@ def _bad(e):
 @app.before_request
 def guard():
     p = request.path
-    if (p.startswith("/api/") and p != "/api/login") or p.startswith("/media/"):
+    if p.startswith("/api/priorities/vendor/"):
+        pass                                   # a vendor's own link is login-exempt (the token is the credential), same as the real app
+    elif (p.startswith("/api/") and p != "/api/login") or p.startswith("/media/"):
         if not AUTH_DISABLED and request.cookies.get("sid") != "ok":
             return jsonify(error="unauthorized"), 401
     g.active = request.args.get("active") == "1"
@@ -1985,12 +1987,20 @@ import mock_priorities  # noqa: E402  (Creative priorities: /api/priorities from
 
 mock_priorities.register(app, dict(Bad=Bad))
 
+import mock_priorities_assign  # noqa: E402  (Production: /api/priorities/assignments, vendor-links, vendor/<token>, in memory)
+
+mock_priorities_assign.register(app, dict(Bad=Bad))
+
+import mock_priorities_launch  # noqa: E402  (Production launch to Meta: /api/priorities/.../launch and the `launch` flag on the assignments list, in memory, off by default)
+
+mock_priorities_launch.register(app, dict(Bad=Bad))
+
 
 def shell(*_a, **_k):
     return send_from_directory(STATIC, "index.html")
 
 
-for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/priorities", "/priorities/v/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
+for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/priorities", "/priorities/v/<tok>", "/priorities/production", "/priorities/vendor/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
     app.add_url_rule(rule, endpoint="shell" + rule, view_func=shell)
 
 
