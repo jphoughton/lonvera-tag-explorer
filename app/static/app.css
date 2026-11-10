@@ -674,6 +674,7 @@ p, .tts-bulk-note, .tts-foot, .note-line, .sv-lead { max-width: 50ch; }
   #topbar, #controls, #stale-banner, #source, .pri-bar { display: none !important; }
   .pri-page { max-width: none; }
   .pri-product { break-before: page; page-break-before: always; margin-top: 0; }
+  .pri-page { zoom: .8; }   /* the faded cards are taller than one landscape page at full size, which defeats break-inside: avoid and orphans the heading */
   .pri-product h2, .pri-section h3 { break-after: avoid; page-break-after: avoid; }
   .pri-card { padding: 8px 10px; margin-bottom: 8px; }
   .pri-value { font-size: 15px; } .pri-t-story .pri-value { font-size: 14px; } .pri-desc, .pri-second { font-size: 10px; }
