@@ -1352,6 +1352,15 @@ rel("public.creative_priorities_snapshots", group="creative", kind="table",
           "baselines": "JSON object by product slug: the product's own averages (ROAS since launch / last 30 days, CPA, hit rate, new ads in 30 days) the lines are compared with.",
           "rows": "JSON array of the ranked rows (iterate and new sections, all products).", "stats": "JSON object: candidate counts, skipped counts, tagged and untagged spend, data_through."})
 
+rel("public.creative_priorities_views", group="creative", kind="table",
+    purpose="Saved views of the creative priorities sheet: the rows someone selected on /priorities, frozen with the snapshot's baselines and legend, opened by an unguessable link /priorities/v/<token>.",
+    grain="one row per saved view (token is unique)", source="app/creative_priorities.py (Save view on /priorities), copied from creative_priorities_snapshots",
+    refresh="written on demand by the app; never rebuilt", coverage="from the day migration 198 was applied",
+    caveats=["payload is a frozen copy: a view does not change when a later snapshot replaces its week. The link is the access (the app has no password)."],
+    cols={"id": "Surrogate key (primary key).", "token": "Unguessable link token (unique).", "name": "View name, '' when unnamed; shown as the page title and used in the CSV file name.",
+          "week_start": "The snapshot week (Sunday, Pacific) the rows came from.", "keys": "Stable row keys of the selected rows.",
+          "payload": "JSON object: the selected rows plus the snapshot's baselines, legend and competitor as-of date.", "created_at": "When the view was saved."})
+
 rel("public.unmatched_meta", group="rollups", kind="table",
     purpose="Meta families that map to no live tracker family, with the product guessed for them and their windowed and since-launch numbers. Closes the gap between ad_metrics and the account total.",
     grain="one row per Meta family (meta_family_key)", source="etl.build_metrics from meta_ads, ad_daily, meta_ad_lifetime, meta_campaigns, products.meta_regex",

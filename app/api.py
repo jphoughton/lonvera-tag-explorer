@@ -374,9 +374,80 @@ def priorities():
 
 @bp.get("/api/priorities.csv")
 def priorities_csv():
-    """The same snapshot as a CSV download (week=YYYY-MM-DD, default the latest)."""
-    week, text = cpr.csv_text(db.get_conn(), _arg("week"))
+    """The same snapshot as a CSV download (week=YYYY-MM-DD, default the latest). Repeated id=<row key> keeps only those rows (same columns); no id = every row."""
+    week, text = cpr.csv_text(db.get_conn(), _arg("week"), request.args.getlist("id"))
     return Response(text, mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="creative-priorities-{week}.csv"'})
+
+
+_view_limiter = None
+
+
+def _views_write_guard():
+    """Saved-view writes: same-origin only, JSON only, per-IP sliding window (30 per minute, like the projection writes), a larger body cap than the app-wide 64 KB (500 row keys)."""
+    global _view_limiter
+    from urllib.parse import urlsplit
+    from .projection.limits import SlidingWindow
+    origin = request.headers.get("Origin")
+    if origin is not None and urlsplit(origin).netloc.lower() != request.host.lower():
+        raise q.ApiError(403, "origin mismatch")
+    if _view_limiter is None:
+        _view_limiter = SlidingWindow(int(current_app.config.get("PRIORITIES_VIEWS_PER_MIN") or 30), 60)
+    wait = _view_limiter.hit(request.remote_addr or "unknown")
+    if wait:
+        resp = jsonify(error="rate_limited", retry_after=wait)
+        resp.status_code = 429
+        resp.headers["Retry-After"] = str(wait)
+        return resp
+    request.max_content_length = cpr.VIEW_BODY_BYTES
+    return None
+
+
+@bp.post("/api/priorities/views")
+def priorities_view_create():
+    """Save the selected rows as a view: {name?, week?, ids: [row key,...]} -> {token, url, count, missing}. The link is the access (the app has no password)."""
+    blocked = _views_write_guard()
+    if blocked is not None:
+        return blocked
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        raise q.ApiError(400, "JSON object body required")
+    return jsonify(cpr.create_view(db.get_conn(), body)), 201
+
+
+@bp.get("/api/priorities/views")
+def priorities_views():
+    return jsonify(views=cpr.list_views())
+
+
+@bp.get("/api/priorities/views/<token>")
+def priorities_view(token: str):
+    return jsonify(cpr.get_view(token))
+
+
+@bp.get("/api/priorities/views/<token>/csv")
+def priorities_view_csv(token: str):
+    name_slug, text = cpr.view_csv(token)
+    return Response(text, mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{name_slug}.csv"'})
+
+
+@bp.patch("/api/priorities/views/<token>")
+def priorities_view_rename(token: str):
+    blocked = _views_write_guard()
+    if blocked is not None:
+        return blocked
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        raise q.ApiError(400, "JSON object body required")
+    return jsonify(cpr.rename_view(token, body.get("name")))
+
+
+@bp.delete("/api/priorities/views/<token>")
+def priorities_view_delete(token: str):
+    blocked = _views_write_guard()
+    if blocked is not None:
+        return blocked
+    cpr.delete_view(token)
+    return "", 204
 
 
 @bp.get("/api/trends")

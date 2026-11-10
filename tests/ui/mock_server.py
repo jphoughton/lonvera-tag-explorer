@@ -1990,7 +1990,7 @@ def shell(*_a, **_k):
     return send_from_directory(STATIC, "index.html")
 
 
-for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/priorities", "/lookup", "/p/<slug>", "/ad/<rid>"):
+for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/priorities", "/priorities/v/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
     app.add_url_rule(rule, endpoint="shell" + rule, view_func=shell)
 
 

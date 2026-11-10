@@ -188,3 +188,243 @@ def test_stacked_layout_at_375px_has_no_sideways_scroll(browser, base_url):
     assert p.locator("[data-testid=pri-body] tr.pri-row").first.evaluate("e => getComputedStyle(e).display") == "block"
     p.screenshot(path=str(SHOTS / "priorities_375.png"))
     c.close()
+
+
+# ---------------------------------------------------------------------------------------------------------------- row selection
+
+import csv  # noqa: E402
+import io  # noqa: E402
+import json  # noqa: E402
+
+PICK = "[data-testid=pri-body] [data-testid=pri-pick]"
+TOOLS = "[data-testid=pri-seltools]"
+
+
+def pick_rows(page, *idx):
+    for i in idx:
+        page.locator(PICK).nth(i).check()
+
+
+def csv_of(download):
+    return list(csv.reader(io.StringIO(open(download.path(), encoding="utf-8").read())))
+
+
+def test_selection_toolbar_counts_and_a_checkbox_click_does_not_expand_the_row(page):
+    goto(page)
+    assert page.locator(TOOLS).is_hidden()
+    pick_rows(page, 0, 3)
+    assert page.locator(TOOLS).is_visible() and page.locator("[data-testid=pri-sel-count]").text_content() == "2 selected"
+    assert page.locator("[data-testid=pri-body] " + DETAIL + ":visible").count() == 0                              # ticking a box never toggles the row
+    assert page.locator(PICK).nth(0).locator("xpath=ancestor::tr").evaluate("e => e.classList.contains('pri-open')") is False
+    page.locator(PICK).nth(0).uncheck()
+    assert page.locator("[data-testid=pri-sel-count]").text_content() == "1 selected"
+
+
+def test_select_all_visible_respects_filters_and_selection_survives_filter_sort_and_expand(page):
+    goto(page)
+    page.locator("[data-testid=pri-f-product-boneflex]").click()
+    page.locator("[data-testid=pri-f-product-beef-liver]").click()
+    n = visible_rows(page)
+    page.locator("[data-testid=pri-pick-all]").check()
+    assert page.locator("[data-testid=pri-sel-count]").text_content() == f"{n} selected"
+    page.locator("[data-testid=pri-f-product-boneflex]").click()                                                     # more rows visible: the header box is now partial
+    page.locator("[data-testid=pri-f-product-beef-liver]").click()
+    assert visible_rows(page) == 30 and page.locator("[data-testid=pri-sel-count]").text_content() == f"{n} selected"
+    assert page.locator("[data-testid=pri-pick-all]").evaluate("e => e.indeterminate") is True
+    page.locator("[data-testid=pri-sort-pain]").click()
+    page.locator("[data-testid=pri-all-expand]").click()
+    assert page.locator(PICK + ":checked").count() == n
+    page.locator("[data-testid=pri-pick-all]").check()                                                               # all 30 visible now
+    assert page.locator("[data-testid=pri-sel-count]").text_content() == "30 selected"
+    page.locator("[data-testid=pri-pick-all]").uncheck()
+    assert page.locator(TOOLS).is_hidden()
+
+
+def test_selected_only_csv_has_the_same_columns_and_only_those_rows(page):
+    goto(page)
+    with page.expect_download() as dl:
+        page.locator("[data-testid=pri-csv]").click()
+    full = csv_of(dl.value)
+    assert len(full) == 31
+    pick_rows(page, 0, 4, 9)
+    names = [page.locator(PICK).nth(i).locator("xpath=ancestor::tr").locator(".pri-c-pain").text_content() for i in (0, 4, 9)]
+    with page.expect_download() as dl:
+        page.locator("[data-testid=pri-sel-csv]").click()
+    sel = csv_of(dl.value)
+    assert sel[0] == full[0] and len(sel) == 4
+    assert sorted(r[2] for r in sel[1:]) == sorted(names)
+    assert all(r in full for r in sel[1:])
+    page.locator("[data-testid=pri-sel-clear]").click()                                                             # nothing selected: the top button exports everything again
+    with page.expect_download() as dl:
+        page.locator("[data-testid=pri-csv]").click()
+    assert len(csv_of(dl.value)) == 31
+
+
+def test_print_layout_shows_only_selected_rows_and_omits_empty_products(page):
+    goto(page)
+    first_vb = page.locator("[data-testid=pri-body] tr.pri-row[data-product=vita-bull]").first
+    idx = page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("rows => rows.findIndex(r => r.dataset.product === 'vita-bull')")
+    pick_rows(page, idx)
+    pain = first_vb.locator(".pri-c-pain").text_content()
+    page.emulate_media(media="print")
+    assert page.locator("[data-testid=pri-print-copy] section.pri-product").count() == 1                              # the other two products have no selected row
+    assert page.locator("[data-testid=pri-print-copy] [data-testid=pri-print-row]").count() == 1
+    assert pain in page.locator("[data-testid=pri-print-copy] [data-testid=pri-print-row]").text_content()
+    assert page.locator("[data-testid=pri-print-copy] .pri-strip").count() == 1
+    assert page.locator(TOOLS).is_hidden()
+    page.emulate_media(media="screen")
+    page.locator("[data-testid=pri-sel-clear]").click()
+    page.emulate_media(media="print")
+    assert page.locator("[data-testid=pri-print-copy] section.pri-product").count() == 3
+
+
+def test_copy_as_text_has_one_block_per_row(page):
+    goto(page)
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+    pick_rows(page, 0, 1)
+    page.locator("[data-testid=pri-sel-copy]").click()
+    page.wait_for_function("() => document.querySelector('[data-testid=pri-copy-note]').textContent.startsWith('Copied')")
+    text = page.evaluate("() => navigator.clipboard.readText()")
+    blocks = text.split("\n\n")
+    assert len(blocks) == 2
+    for b in blocks:
+        for label in ("Product: ", "Section: ", "Market Cluster: ", "ICP: ", "Pain Point: ", "Story: ", "Status: ", "Key number: "):
+            assert label in b
+
+
+def test_clear_empties_the_selection_and_persistence_survives_a_reload(page):
+    goto(page)
+    pick_rows(page, 2, 5)
+    page.reload()
+    page.wait_for_selector("[data-testid=pri-page]")
+    idle(page)
+    assert page.locator("[data-testid=pri-sel-count]").text_content() == "2 selected"
+    assert [page.locator(PICK).nth(i).is_checked() for i in (2, 5)] == [True, True]
+    page.locator("[data-testid=pri-sel-clear]").click()
+    assert page.locator(TOOLS).is_hidden() and page.locator(PICK + ":checked").count() == 0
+    page.reload()
+    page.wait_for_selector("[data-testid=pri-page]")
+    idle(page)
+    assert page.locator(TOOLS).is_hidden()
+
+
+def test_selection_toolbar_at_375px_has_no_sideways_scroll(browser, base_url):
+    c = browser.new_context(viewport={"width": 375, "height": 812}, base_url=base_url)
+    c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+    p = c.new_page()
+    p.goto("/priorities")
+    p.wait_for_selector("[data-testid=pri-page]")
+    idle(p)
+    p.locator(PICK).nth(0).check()
+    p.locator("[data-testid=pri-view-name]").fill("a fairly long view name for a phone")
+    assert p.locator(TOOLS).is_visible()
+    assert not p.evaluate("() => document.documentElement.scrollWidth > innerWidth")
+    p.locator("[data-testid=pri-sel-save]").click()
+    p.wait_for_selector("[data-testid=pri-view-link]")
+    assert not p.evaluate("() => document.documentElement.scrollWidth > innerWidth")
+    p.screenshot(path=str(SHOTS / "priorities_select_375.png"))
+    c.close()
+
+
+# ---------------------------------------------------------------------------------------------------------------- saved views
+
+def save_view(page, name, *idx):
+    pick_rows(page, *idx)
+    page.locator("[data-testid=pri-view-name]").fill(name)
+    page.locator("[data-testid=pri-sel-save]").click()
+    page.wait_for_selector("[data-testid=pri-view-link]")
+    return page.locator("[data-testid=pri-view-link]").get_attribute("href")
+
+
+def test_save_view_open_link_shows_only_those_rows_read_only_with_csv_and_print(page, browser, base_url):
+    goto(page)
+    pains = [page.locator(PICK).nth(i).locator("xpath=ancestor::tr").locator(".pri-c-pain").text_content() for i in (1, 6, 7)]
+    url = save_view(page, "Round 1 briefs", 1, 6, 7)
+    assert url.startswith("/priorities/v/") and len(url.rsplit("/", 1)[1]) >= 22
+    assert "3 concepts" in page.locator("[data-testid=pri-linkbox]").text_content() and page.locator("[data-testid=pri-linkbox] [data-testid=pri-copy-link]").is_visible()
+    c = browser.new_context(viewport={"width": 1440, "height": 900}, base_url=base_url)                                # a fresh context: no selection, no sessionStorage
+    c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+    v = c.new_page()
+    v.goto(url)
+    v.wait_for_selector("[data-testid=pri-page]")
+    idle(v)
+    assert "Round 1 briefs" in v.locator("[data-testid=pri-title]").text_content()
+    assert "snapshot week of" in v.locator("[data-testid=pri-view-note]").text_content()
+    assert v.locator("[data-testid=pri-body] tr.pri-row").count() == 3
+    assert sorted(v.locator("[data-testid=pri-body] .pri-c-pain").all_text_contents()) == sorted(pains)
+    assert v.locator(PICK).count() == 0 and v.locator(TOOLS).count() == 0 and v.locator("[data-testid=pri-search]").count() == 0 and v.locator("[data-testid=pri-week]").count() == 0
+    assert v.locator("[data-testid=pri-open-full]").get_attribute("href") == "/priorities"
+    with v.expect_download() as dl:
+        v.locator("[data-testid=pri-csv]").click()
+    assert len(csv_of(dl.value)) == 4
+    v.emulate_media(media="print")
+    assert v.locator("[data-testid=pri-print-copy] [data-testid=pri-print-row]").count() == 3
+    v.close()
+    c.close()
+
+
+@pytest.mark.allow_errors
+def test_unknown_view_token_is_a_friendly_404_page(page):
+    page.goto("/priorities/v/" + "x" * 30)
+    page.wait_for_selector("[data-testid=pri-empty]")
+    assert "does not exist" in page.locator("[data-testid=pri-empty]").text_content()
+
+
+def test_saved_views_list_reopens_and_deletes(page):
+    goto(page)
+    save_view(page, "Delete me", 0)
+    page.locator("[data-testid=pri-views] summary").click()
+    row = page.locator("[data-testid=pri-view-row]", has_text="Delete me").first
+    row.wait_for()
+    assert "1 concept" in row.text_content() and "snapshot" in row.text_content()
+    href = row.locator("a").first.get_attribute("href")
+    page.once("dialog", lambda dlg: dlg.accept())
+    row.locator("[data-testid=pri-view-delete]").click()
+    page.wait_for_function("(h) => ![...document.querySelectorAll('[data-testid=pri-view-row] a')].some(a => a.getAttribute('href') === h)", arg=href)
+    r = page.request.get(page.url.split("/priorities")[0] + "/api/priorities/views/" + href.rsplit("/", 1)[1])
+    assert r.status == 404
+
+
+def test_save_view_name_is_prefilled_free_text_and_becomes_title_tab_title_and_csv_filename(page):
+    import re
+    goto(page)
+    nm = page.locator("[data-testid=pri-view-name]")
+    assert re.fullmatch(r"Priorities - \d{1,2}/\d{1,2}/\d{2}", nm.input_value())
+    pick_rows(page, 0, 1)
+    nm.fill("  Madre - 11/10/26 Priorities  ")
+    page.locator("[data-testid=pri-sel-save]").click()
+    page.wait_for_selector("[data-testid=pri-view-link]")
+    url = page.locator("[data-testid=pri-view-link]").get_attribute("href")
+    page.goto(url)
+    page.wait_for_selector("[data-testid=pri-title]")
+    idle(page)
+    assert page.locator("[data-testid=pri-title]").text_content() == "Creative priorities: Madre - 11/10/26 Priorities"
+    assert page.title().startswith("Madre - 11/10/26 Priorities")
+    with page.expect_download() as dl:
+        page.locator("[data-testid=pri-csv]").click()
+    assert dl.value.suggested_filename == "madre-11-10-26-priorities.csv"
+    # rename from the view page: same link, new title
+    page.once("dialog", lambda d: d.accept("Round 2 / <b>x</b>"))
+    page.locator("[data-testid=pri-rename]").click()
+    page.wait_for_function("() => document.querySelector('[data-testid=pri-title]').textContent.includes('Round 2')")
+    assert page.title().startswith("Round 2 / <b>x</b>") and page.url.endswith(url)
+    page.reload()
+    page.wait_for_selector("[data-testid=pri-title]")
+    assert page.locator("[data-testid=pri-title]").text_content() == "Creative priorities: Round 2 / <b>x</b>" and page.locator("[data-testid=pri-title] b").count() == 0
+
+
+def test_empty_name_gets_the_default_and_rename_from_the_dropdown(page):
+    import re
+    goto(page)
+    pick_rows(page, 2)
+    page.locator("[data-testid=pri-view-name]").fill("   ")
+    page.locator("[data-testid=pri-sel-save]").click()
+    page.wait_for_selector("[data-testid=pri-view-link]")
+    url = page.locator("[data-testid=pri-view-link]").get_attribute("href")
+    page.locator("[data-testid=pri-views] summary").click()
+    row = page.locator("[data-testid=pri-view-row]").filter(has=page.locator(f"a[href='{url}']"))
+    row.wait_for()
+    assert re.match(r"Priorities - \d{1,2}/\d{1,2}/\d{2}", row.locator("a").first.text_content())
+    page.once("dialog", lambda d: d.accept("Renamed - 1/2/27"))
+    row.locator("[data-testid=pri-view-rename]").click()
+    page.wait_for_function("(u) => { const a = document.querySelector(`[data-testid=pri-view-row] a[href='${u}']`); return a && a.textContent === 'Renamed - 1/2/27'; }", arg=url)
