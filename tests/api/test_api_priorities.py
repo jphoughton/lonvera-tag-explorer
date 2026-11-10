@@ -10,7 +10,7 @@ from etl import creative_priorities as cp
 
 ROW = {"section": "iterate", "product": "vita-bull", "product_name": "Vita Bull", "rank": 1, "line_id": 1, "line_code": "L01", "cluster": "Energy", "icp": "Given Up Guy", "pain_point": "Low T",
        "story": "He decided feeling worn out is just turning 50, and stopped trying.", "emotional_trigger": "Fear", "ingredients": "Zinc", "concepts": 3, "score": 70.0, "confidence": "high", "flags": [],
-       "why": "because", "cluster_description": "The Energy market.", "icp_description": "The specific person.", "pain_description": "The problem.", "components": {},
+       "why": "because", "status": "WORKING NOW", "cluster_description": "The Energy market.", "icp_description": "The specific person.", "pain_description": "The problem.", "components": {},
        "metrics": {"spend": 1000, "purchases": 12, "roas": 1.2, "cpa": 83.3, "roas_index": 1.1, "ads": 5, "judged": 5, "hits": 3, "mature": 5, "hit_rate": 0.6, "hit_rate_index": 1.1, "spend_30d": 100,
                    "roas_30d": 1.1, "spend_prior30": 90, "roas_prior30": 1.0, "spend_7d": 20, "launches_30d": 1, "launch_share_30d": 0.1, "spend_share": 0.2, "live_ads": 1, "winners_live": 0,
                    "nc_roas": 1.0, "nc_cpa": 90, "nc_purchases": 10, "nc_roas_index": 1.0, "nc_roas_30d": 1.0},

@@ -1,7 +1,7 @@
 #!/bin/sh
 # ETL service entrypoint (Railway cron): migrate, then the daily refresh. Exits non-zero on failure so the
 # Railway deployment is marked failed (visible in the dashboard / notifications).
-# Usage: run_etl.sh                -> python -m etl.run_daily, then etl.upstack_daily (Upstack source), then etl.stage_moves (Test to scale tables), then etl.projection_daily, then etl.amazon_mtd, then etl.creative_priorities --if-sunday (non-fatal), then etl.auto_tag (non-fatal) (all always run; non-zero if any failed)
+# Usage: run_etl.sh                -> python -m etl.run_daily, then etl.upstack_daily (Upstack source), then etl.stage_moves (Test to scale tables), then etl.projection_daily, then etl.amazon_mtd, then etl.creative_priorities --if-sunday (non-fatal; runs AFTER the competitor step when that exists, it reads the competitor_concepts view), then etl.auto_tag (non-fatal) (all always run; non-zero if any failed)
 #        run_etl.sh <module> [args] -> python -m etl.<module> [args]   (manual one-offs, e.g. `meta_pull --days 185`)
 set -eu
 

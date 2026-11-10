@@ -43,7 +43,8 @@ def snapshot(conn, raw_week: str | None) -> dict:
 def payload(conn, raw_week: str | None) -> dict:
     from etl import creative_priorities as cp
     snap = snapshot(conn, raw_week)
-    return {**snap, "weeks": weeks(conn), "legend": [{"tag": a, "meaning": b} for a, b in cp.LEGEND]}
+    comp = (snap.get("stats") or {}).get("competitors")
+    return {**snap, "competitors_as_of": comp["as_of"] if comp else None, "competitor_stale": (comp or {}).get("stale_brands", []), "weeks": weeks(conn), "legend": [{"tag": a, "meaning": b} for a, b in cp.LEGEND]}
 
 
 def csv_text(conn, raw_week: str | None) -> tuple[str, str]:
