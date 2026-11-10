@@ -543,3 +543,238 @@ def test_expanded_panels_at_375px_do_not_scroll_sideways_and_selection_still_wor
     p.locator(PICK).first.check()
     assert p.locator(TOOLS).is_visible()
     c.close()
+
+
+# ---------------------------------------------------------------------------------------------------------------- manual concepts (Add concept)
+
+FORM = "[data-testid=pri-form]"
+MROW = "[data-testid=pri-body] tr.pri-row[data-source=manual]"
+
+
+def add_concept(page, product="beef-liver", cluster="Ancestral Nutrition", icp="Curious Beginner", pain="General Vitality / Aging Well", notes="Lead with the farm-to-liver story.\nSecond line.", why="Competitor launched it", section="new"):
+    page.locator("[data-testid=pri-add-concept]").click()
+    page.wait_for_selector(FORM)
+    page.select_option("[data-testid=pri-f-product]", product)
+    page.select_option("[data-testid=pri-f-cluster]", cluster)
+    page.select_option("[data-testid=pri-f-icp]", icp)
+    page.select_option("[data-testid=pri-f-pain]", pain)
+    page.select_option("[data-testid=pri-f-section]", section)
+    page.fill("[data-testid=pri-f-notes]", notes)
+    page.fill("[data-testid=pri-f-why]", why)
+    page.locator("[data-testid=pri-f-save]").click()
+    page.wait_for_selector(FORM, state="detached")
+    idle(page)
+
+
+def delete_all_manual(page):
+    """The mock server keeps manual concepts for the whole session: remove them so other tests see the 30-row fixture."""
+    page.goto("/priorities")
+    page.wait_for_selector("[data-testid=pri-page]")
+    idle(page)
+    ids = page.evaluate("async () => (await (await fetch('/api/priorities/manual?include_done=1')).json()).rows.map(r => r.id)")
+    for i in ids:
+        page.evaluate("async (i) => fetch('/api/priorities/manual/' + i, { method: 'DELETE' })", i)
+
+
+def test_manual_form_dependent_dropdowns_and_other_new(page):
+    goto(page)
+    page.locator("[data-testid=pri-add-concept]").click()
+    page.wait_for_selector(FORM)
+    assert page.locator("[data-testid=pri-f-cluster]").is_disabled() and page.locator("[data-testid=pri-f-icp]").is_disabled()
+    page.select_option("[data-testid=pri-f-product]", "vita-bull")
+    vb = page.locator("[data-testid=pri-f-cluster] option").all_text_contents()
+    page.select_option("[data-testid=pri-f-product]", "beef-liver")
+    bl = page.locator("[data-testid=pri-f-cluster] option").all_text_contents()
+    assert "Ancestral Nutrition" in bl and bl != vb and bl[-1] == "Other / new…"                                    # filtered by product, always ends with Other / new
+    assert page.locator("[data-testid=pri-f-icp]").is_disabled()
+    page.select_option("[data-testid=pri-f-cluster]", "Ancestral Nutrition")
+    icps = page.locator("[data-testid=pri-f-icp] option").all_text_contents()
+    assert "Curious Beginner" in icps and "Hair Thinning" not in icps
+    page.select_option("[data-testid=pri-f-icp]", "Curious Beginner")
+    assert "General Vitality / Aging Well" in page.locator("[data-testid=pri-f-pain] option").all_text_contents()
+    page.select_option("[data-testid=pri-f-pain]", "General Vitality / Aging Well")
+    stories = page.locator("[data-testid=pri-f-story] option").all_text_contents()
+    assert len(stories) >= 3 and stories[0] == "No story" and stories[-1] == "Other / new…"
+    # a brand-new cluster: the text box opens and the ICP list collapses to a typed value
+    page.select_option("[data-testid=pri-f-cluster]", "__new__")
+    assert page.locator("[data-testid=pri-f-cluster-new]").is_visible()
+    assert page.locator("[data-testid=pri-f-icp]").input_value() == "" or page.locator("[data-testid=pri-f-icp] option").count() >= 2
+    page.locator("[data-testid=pri-f-cluster-new]").fill("Brand New Cluster")
+    assert page.locator("[data-testid=pri-f-icp-new]").is_visible() and page.locator("[data-testid=pri-f-pain-new]").is_visible() and page.locator("[data-testid=pri-f-story-new]").is_visible()
+    page.locator("[data-testid=pri-f-icp-new]").fill("Someone New")
+    page.locator("[data-testid=pri-f-pain-new]").fill("A New Itch")
+    page.locator("[data-testid=pri-f-story-new]").fill("<b>Typed</b> story")
+    page.locator("[data-testid=pri-f-save]").click()
+    page.wait_for_selector(FORM, state="detached")
+    idle(page)
+    row = page.locator(MROW).first
+    assert row.locator(".pri-c-cluster").text_content() == "Brand New Cluster" and row.locator(".pri-c-story").text_content() == "<b>Typed</b> story"          # escaped, not rendered
+    row.locator("[data-testid=pri-toggle]").click()
+    assert "cluster, ICP, pain point, story" in page.locator("[data-testid=pri-manual-new]").text_content()
+    delete_all_manual(page)
+
+
+def test_manual_form_validation_cancel_and_escape(page):
+    goto(page)
+    page.locator("[data-testid=pri-add-concept]").click()
+    page.wait_for_selector(FORM)
+    page.locator("[data-testid=pri-f-save]").click()
+    assert "Fill in: Product, Market Cluster, ICP, Pain Point" in page.locator("[data-testid=pri-f-error]").text_content()
+    assert page.locator(FORM).count() == 1
+    page.fill("[data-testid=pri-f-notes]", "x" * 50)
+    assert page.locator("[data-testid=pri-f-count]").text_content() == "50 / 2000"
+    page.keyboard.press("Escape")
+    page.wait_for_selector(FORM, state="detached")
+    assert page.locator(MROW).count() == 0
+
+
+def test_add_manual_concept_appears_in_the_table_with_badge_panel_and_note_in_the_matching_auto_row(page):
+    goto(page)
+    add_concept(page)
+    assert page.locator("[data-testid=pri-shown]").text_content() == "31 of 31 concepts shown"
+    row = page.locator(MROW)
+    assert row.count() == 1
+    assert row.locator("[data-testid=pri-manual-badge]").text_content() == "Manual" and row.locator("[data-testid=pri-status]").text_content() == "MANUAL"
+    assert row.locator(".pri-c-cluster").text_content() == "Ancestral Nutrition" and row.locator(".pri-c-product").text_content() == "Beef Liver"
+    assert row.locator(".pri-c-section .pri-sec").text_content() == "New and untested" and row.locator(".pri-c-key").text_content() == "Competitor launched it"
+    assert row.evaluate("e => getComputedStyle(e.querySelector('.pri-c-tog')).boxShadow") != "none"                       # distinct left border
+    page.locator("[data-testid=pri-body] [data-testid=pri-card][data-source=manual] [data-testid=pri-toggle]").click()
+    panel = page.locator("[data-testid=pri-manual-panel]")
+    assert panel.is_visible()
+    assert panel.locator("[data-testid=pri-manual-notes]").text_content() == "Lead with the farm-to-liver story.\nSecond line."
+    assert panel.locator("[data-testid=pri-manual-why]").text_content() == "Competitor launched it"
+    assert "Added " in panel.locator("[data-testid=pri-manual-meta]").text_content()
+    assert [b.text_content() for b in panel.locator(".pri-mactions button").all()] == ["Edit", "Mark done", "Delete"]
+    # the auto row for the same product + cluster + ICP + pain point carries the note inside its own panel
+    auto = page.locator("[data-testid=pri-body] tr.pri-row[data-source=auto]").filter(has_text="General Vitality / Aging Well").filter(has_text="Curious Beginner").first
+    auto.locator("[data-testid=pri-toggle]").click()
+    assert "Lead with the farm-to-liver story." in page.locator("[data-testid=pri-manual-note]").first.text_content()
+    page.locator("[data-testid=pri-search]").fill("Ancestral")
+    page.locator(MROW).scroll_into_view_if_needed()
+    page.screenshot(path=str(SHOTS / "priorities_manual_row_1280.png"))
+    page.locator("[data-testid=pri-search]").fill("")
+    delete_all_manual(page)
+
+
+def test_manual_row_filters_search_sort_selection_csv_print_and_copy(page):
+    goto(page)
+    add_concept(page, notes="Unique-notes-marker for print")
+    # filters / search / sort
+    page.locator("[data-testid=pri-search]").fill("Ancestral")
+    assert page.locator(MROW).count() == 1
+    page.locator("[data-testid=pri-search]").fill("")
+    page.locator("[data-testid=pri-f-section-new]").click()
+    assert page.locator(MROW).count() == 0
+    page.locator("[data-testid=pri-f-section-new]").click()
+    page.locator("[data-testid=pri-f-product-vita-bull]").click()
+    assert page.locator(MROW).count() == 1                                                                              # a Beef Liver concept is not filtered by the Vita Bull chip
+    page.locator("[data-testid=pri-f-product-beef-liver]").click()
+    assert page.locator(MROW).count() == 0
+    page.locator("[data-testid=pri-f-product-beef-liver]").click()
+    page.locator("[data-testid=pri-f-product-vita-bull]").click()
+    page.locator("[data-testid=pri-sort-status]").click()
+    assert page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("rows => rows.map(r => r.dataset.source)").count("manual") == 1
+    # selection + CSV: the manual row is exported with source=manual in the appended columns
+    idx = page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("rows => rows.findIndex(r => r.dataset.source === 'manual')")
+    pick_rows(page, idx, 0 if idx else 1)
+    with page.expect_download() as dl:
+        page.locator("[data-testid=pri-sel-csv]").click()
+    sel = csv_of(dl.value)
+    head = sel[0]
+    assert head[:4] == ["market_cluster", "icp", "pain_point", "story"] and head[-2:] == ["source", "notes"] and len(sel) == 3
+    assert sorted(r[head.index("source")] for r in sel[1:]) == ["auto", "manual"]
+    assert [r for r in sel[1:] if r[head.index("source")] == "manual"][0][head.index("notes")] == "Unique-notes-marker for print"
+    # print layout: the compact strip shows the notes
+    page.emulate_media(media="print")
+    assert "Unique-notes-marker for print" in page.locator("[data-testid=pri-print-copy]").text_content()
+    page.emulate_media(media="screen")
+    # copy as text
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+    page.locator("[data-testid=pri-sel-copy]").click()
+    page.wait_for_function("() => document.querySelector('[data-testid=pri-copy-note]').textContent.startsWith('Copied')")
+    text = page.evaluate("() => navigator.clipboard.readText()")
+    assert "Status: MANUAL" in text and "Notes: Unique-notes-marker for print" in text and "Section: New and untested" in text
+    delete_all_manual(page)
+
+
+def test_manual_row_in_a_saved_view_is_frozen(page):
+    goto(page)
+    add_concept(page, notes="Frozen notes")
+    idx = page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("rows => rows.findIndex(r => r.dataset.source === 'manual')")
+    pick_rows(page, idx)
+    page.locator("[data-testid=pri-sel-save]").click()
+    page.wait_for_selector("[data-testid=pri-view-link]")
+    link = page.locator("[data-testid=pri-view-link]").get_attribute("href")
+    page.locator(MROW).locator("[data-testid=pri-toggle]").click()
+    page.locator("[data-testid=pri-manual-edit]").click()
+    page.fill("[data-testid=pri-f-notes]", "Edited later")
+    page.locator("[data-testid=pri-f-save]").click()
+    page.wait_for_selector(FORM, state="detached")
+    idle(page)
+    page.goto(link)
+    page.wait_for_selector("[data-testid=pri-page]")
+    idle(page)
+    assert page.locator("[data-testid=pri-body] tr.pri-row").count() == 1 and page.locator("[data-testid=pri-manual-badge]").count() == 1
+    page.locator("[data-testid=pri-toggle]").click()
+    assert page.locator("[data-testid=pri-manual-notes]").text_content() == "Frozen notes"                                  # frozen copy, not the edit
+    assert page.locator("[data-testid=pri-manual-edit]").count() == 0 and page.locator("[data-testid=pri-add-concept]").count() == 0     # read-only
+    delete_all_manual(page)
+
+
+def test_edit_done_show_done_and_delete_with_confirm(page):
+    goto(page)
+    add_concept(page)
+    page.locator(MROW).locator("[data-testid=pri-toggle]").click()
+    page.locator("[data-testid=pri-manual-edit]").click()
+    page.wait_for_selector(FORM)
+    assert page.locator("[data-testid=pri-f-cluster]").input_value() == "Ancestral Nutrition" and page.locator("[data-testid=pri-f-notes]").input_value().startswith("Lead with")
+    page.fill("[data-testid=pri-f-notes]", "Edited notes")
+    page.select_option("[data-testid=pri-f-section]", "other")
+    page.locator("[data-testid=pri-f-save]").click()
+    page.wait_for_selector(FORM, state="detached")
+    idle(page)
+    row = page.locator(MROW)
+    assert row.locator(".pri-c-section .pri-sec").text_content() == "Other"
+    row.locator("[data-testid=pri-toggle]").click()
+    assert page.locator("[data-testid=pri-manual-notes]").text_content() == "Edited notes"
+    # mark done: hidden by default, back with Show done
+    page.locator("[data-testid=pri-manual-done]").click()
+    page.wait_for_function("() => document.querySelectorAll('tr[data-source=manual]').length === 0")
+    assert page.locator(MROW).count() == 0 and page.locator("[data-testid=pri-shown]").text_content() == "30 of 30 concepts shown"
+    page.locator("[data-testid=pri-show-done]").check()
+    assert page.locator(MROW).count() == 1 and page.locator(MROW).locator("[data-testid=pri-status]").text_content() == "MANUAL (done)"
+    page.locator(MROW).locator("[data-testid=pri-toggle]").click()
+    assert page.locator("[data-testid=pri-manual-done]").text_content() == "Reopen"
+    page.locator("[data-testid=pri-manual-done]").click()
+    page.wait_for_function("() => document.querySelectorAll('tr[data-source=manual]:not(.pri-done)').length === 1")
+    assert page.locator(MROW).count() == 1 and page.locator("[data-testid=pri-show-done]").count() == 0
+    # delete: dismissing the confirm keeps it, accepting removes it
+    page.locator(MROW).locator("[data-testid=pri-toggle]").click()
+    page.once("dialog", lambda d: d.dismiss())
+    page.locator("[data-testid=pri-manual-delete]").click()
+    assert page.locator(MROW).count() == 1
+    page.once("dialog", lambda d: d.accept())
+    page.locator("[data-testid=pri-manual-delete]").click()
+    page.wait_for_function("() => document.querySelectorAll('tr[data-source=manual]').length === 0")
+    assert page.locator("[data-testid=pri-shown]").text_content() == "30 of 30 concepts shown"
+
+
+def test_manual_form_screenshots_at_1280_and_375(browser, base_url):
+    for w, h_, name in ((1280, 900, "priorities_manual_form_1280.png"), (375, 812, "priorities_manual_form_375.png")):
+        c = browser.new_context(viewport={"width": w, "height": h_}, base_url=base_url)
+        c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+        p = c.new_page()
+        p.goto("/priorities")
+        p.wait_for_selector("[data-testid=pri-page]")
+        idle(p)
+        p.locator("[data-testid=pri-add-concept]").click()
+        p.wait_for_selector(FORM)
+        p.select_option("[data-testid=pri-f-product]", "beef-liver")
+        p.select_option("[data-testid=pri-f-cluster]", "Ancestral Nutrition")
+        p.select_option("[data-testid=pri-f-icp]", "Curious Beginner")
+        p.select_option("[data-testid=pri-f-pain]", "General Vitality / Aging Well")
+        p.fill("[data-testid=pri-f-notes]", "Lead with the farm-to-liver story. Show the sourcing, then the label.")
+        assert not p.evaluate("() => document.documentElement.scrollWidth > innerWidth")
+        assert p.locator("[data-testid=pri-f-save]").is_visible()
+        p.screenshot(path=str(SHOTS / name))
+        c.close()

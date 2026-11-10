@@ -4,6 +4,7 @@
 import { h, fmt, isNum, href, navigate, qs } from '../util.js';
 import { api } from '../api.js';
 import { showControls } from '../controls.js';
+import { dayOf, manualPanel, addManualNotes, manualStrip, manualControls } from './priorities_manual.js';
 
 const PRODUCT_ORDER = ['vita-bull', 'beef-liver', 'boneflex'];
 const SECTIONS = [['faded', 'Was working, now isn’t', 'Lines with a sustained strong stretch (3+ weeks above the product average) that are now below average, collapsed or idle: when it worked, how it stopped, the former winners, a hedged diagnosis and a revive play.'],
@@ -11,8 +12,9 @@ const SECTIONS = [['faded', 'Was working, now isn’t', 'Lines with a sustained 
                   ['new', 'New and untested clusters', 'Lines with no ads (or almost none), ranked by evidence the demand exists (our adjacent winners, other products, competitors).'],
                   ['proposal', 'Proposed new market clusters', 'Drafts in the Communication Overview shape for Josh’s approval (NEW CLUSTER or a new line inside an existing cluster). Evidence is competitor activity and our adjacent results only; no performance is claimed.'],
                   ['competitor', 'Competitor angles we have not made', 'Angles competitors run that are not on our Communication Overview. Running a long time is a signal, not proof it performs.'],
-                  ['stop', 'Stop or deprioritise', 'NOT WORKING and never worked: enough spend, weak over its history.']];
-const STATUS_CLASS = { 'FADED': 'fade', 'COLLAPSED': 'bad', 'STOPPED': 'flat', 'WORKING NOW': 'ok', 'RISING': 'up', 'FADING / WAS WORKING': 'fade', 'NOT WORKING': 'bad', 'AVERAGE': 'flat', 'TOO EARLY': 'flat', 'UNTESTED / UNDER-TESTED': 'new', 'PROPOSED (draft)': 'new' };
+                  ['stop', 'Stop or deprioritise', 'NOT WORKING and never worked: enough spend, weak over its history.'],
+                  ['other', 'Other', 'Concepts added by hand that do not fit a section above.']];
+const STATUS_CLASS = { 'FADED': 'fade', 'COLLAPSED': 'bad', 'STOPPED': 'flat', 'WORKING NOW': 'ok', 'RISING': 'up', 'FADING / WAS WORKING': 'fade', 'NOT WORKING': 'bad', 'AVERAGE': 'flat', 'TOO EARLY': 'flat', 'UNTESTED / UNDER-TESTED': 'new', 'PROPOSED (draft)': 'new', 'MANUAL': 'manual' };
 const roasX = (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–');
 const pct = (v) => (isNum(v) ? fmt.pct(v) : '–');
 
@@ -30,6 +32,7 @@ function numbers(r) {
 
 // the one number on the collapsed row
 function keyNumber(r, d) {
+  if (r.manual) return r.why_now || `Added ${dayOf(r.created_at)}`;
   const m = r.metrics || {};
   const b = (d.baselines || {})[r.product] || {};
   if (r.section === 'faded') {
@@ -201,12 +204,15 @@ function detail(r, d) {
       h('span', { class: 'pri-pill pri-pill-flat' }, 'Line ' + r.line_code), h('span', { class: 'pri-pill pri-pill-flat' }, 'Confidence: ' + r.confidence), h('span', { class: 'pri-pill pri-pill-flat' }, 'Score ' + r.score)));
 }
 
-const SECTION_LABEL = { faded: 'Was working, now isn’t', iterate: 'Iterate on what is working', new: 'New and untested', proposal: 'Proposed new cluster', competitor: 'Competitor angle', stop: 'Stop' };
+// the panel under a row: manual rows have their own render function; an auto row gets the notes of any manual concept with the same four tags appended
+const panelFor = (r, d, mctl) => { if (r.manual) return manualPanel(r, mctl); const p = detail(r, d); addManualNotes(p, r, d); return p; };
+
+const SECTION_LABEL = { faded: 'Was working, now isn’t', iterate: 'Iterate on what is working', new: 'New and untested', proposal: 'Proposed new cluster', competitor: 'Competitor angle', stop: 'Stop', other: 'Other' };
 const SECTION_ORDER = SECTIONS.map(([k]) => k);
 const SECTION_NOTE = Object.fromEntries(SECTIONS.map(([k, , sub]) => [k, sub]));
 const COLS = [['product', 'Product'], ['section', 'Section'], ['cluster', 'Market Cluster'], ['icp', 'ICP'], ['pain', 'Pain Point'], ['story', 'Story'], ['status', 'Status'], ['concepts', 'Concepts'], ['key', 'Key number']];
 
-const keyOf = (r) => [r.product, r.section, r.cluster, r.icp, r.pain_point].join('|');      // stable row key: unique per row in a snapshot; the server uses the same join for ?id=
+const keyOf = (r) => r.key || [r.product, r.section, r.cluster, r.icp, r.pain_point].join('|');      // stable row key: unique per row in a snapshot; the server uses the same join for ?id=
 const storeKey = (week) => 'pri-selected-' + week;
 function loadSel(week, valid) {
   try { return new Set((JSON.parse(sessionStorage.getItem(storeKey(week))) || []).filter((k) => valid.has(k))); } catch (e) { return new Set(); }
@@ -222,21 +228,21 @@ function setOpen(btn, panelRow, open) {
 }
 
 // one row (collapsed) + its detail row (hidden). `printed` rows have no toggle and an always-visible detail (the print-only copy).
-function rowPair(r, d, printed = false, onPick = null) {
+function rowPair(r, d, printed = false, onPick = null, mctl = null) {
   const id = 'pri-detail-' + (++uid);
   const name = `${r.cluster}, ${r.icp}, ${r.pain_point}`;
   const cell = (label, cls, ...kids) => h('td', { class: 'pri-c pri-c-' + cls, 'data-label': label }, ...kids);
-  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, h('td', { colspan: '10' }, detail(r, d)));
+  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, h('td', { colspan: '10' }, panelFor(r, d, mctl)));
   const btn = h('button', { type: 'button', class: 'pri-toggle', 'aria-expanded': 'false', 'aria-controls': id, 'aria-label': 'Expand: ' + name, 'data-name': name, 'data-testid': 'pri-toggle' },
     h('span', { class: 'pri-chev', 'aria-hidden': 'true' }, '▸'));
   const pick = h('input', { type: 'checkbox', class: 'pri-pick', 'data-testid': 'pri-pick', 'aria-label': 'Select: ' + name, onchange: (e) => onPick && onPick(r, e.target.checked) });
-  const tr = h('tr', { class: 'pri-row', 'data-testid': 'pri-card', 'data-section': r.section, 'data-product': r.product },
+  const tr = h('tr', { class: 'pri-row' + (r.manual ? ' pri-manual' + (r.done ? ' pri-done' : '') : ''), 'data-testid': 'pri-card', 'data-section': r.section, 'data-product': r.product, 'data-source': r.manual ? 'manual' : 'auto' },
     h('td', { class: 'pri-c pri-c-tog' }, printed || !onPick ? null : pick, printed ? null : btn),
     cell('Product', 'product', (d.baselines[r.product] || {}).product_name || r.product),
-    cell('Section', 'section', h('span', { class: 'pri-sec pri-sec-' + r.section, title: SECTION_NOTE[r.section] }, SECTION_LABEL[r.section])),
+    cell('Section', 'section', h('span', { class: 'pri-sec pri-sec-' + r.section, title: SECTION_NOTE[r.section] }, SECTION_LABEL[r.section]), r.manual ? h('span', { class: 'pri-mbadge', 'data-testid': 'pri-manual-badge' }, 'Manual') : null),
     cell('Market Cluster', 'cluster', r.cluster), cell('ICP', 'icp', r.icp), cell('Pain Point', 'pain', r.pain_point), cell('Story', 'story', r.story || '–'),
-    cell('Status', 'status', h('span', { class: 'pri-status pri-st-' + (STATUS_CLASS[r.status] || 'flat'), 'data-testid': 'pri-status' }, r.status)),
-    cell('Concepts', 'concepts', r.concepts ? `${r.concepts} concept${r.concepts === 1 ? '' : 's'}` : 'None'),
+    cell('Status', 'status', h('span', { class: 'pri-status pri-st-' + (STATUS_CLASS[r.status] || 'flat'), 'data-testid': 'pri-status' }, r.manual && r.done ? 'MANUAL (done)' : r.status)),
+    cell('Concepts', 'concepts', r.manual ? '\u2013' : r.concepts ? `${r.concepts} concept${r.concepts === 1 ? '' : 's'}` : 'None'),
     cell('Key number', 'key', keyNumber(r, d)));
   if (!printed) {
     const toggle = () => setOpen(btn, detailRow, btn.getAttribute('aria-expanded') !== 'true');
@@ -246,7 +252,7 @@ function rowPair(r, d, printed = false, onPick = null) {
   return { tr, detailRow, r, pick };
 }
 
-function render(d, view = null) {
+function render(d, view = null, opts = {}) {
   const readonly = !!view;                                                               // a saved view: only its rows, no selection or editing, pinned to its stored snapshot
   const slugs = PRODUCT_ORDER.filter((s) => d.rows.some((r) => r.product === s));
   const sections = SECTION_ORDER.filter((k) => d.rows.some((r) => r.section === k));
@@ -254,9 +260,12 @@ function render(d, view = null) {
   const sOrder = Object.fromEntries(SECTION_ORDER.map((s, i) => [s, i]));
   const sel = readonly ? new Set(d.rows.map(keyOf)) : loadSel(d.week_start, new Set(d.rows.map(keyOf)));
   const isSel = (r) => sel.has(keyOf(r));
-  const pairs = d.rows.map((r) => rowPair(r, d, false, readonly ? null : (row, on) => { if (on) sel.add(keyOf(row)); else sel.delete(keyOf(row)); selChanged(); }));
+  const mctl = manualControls(d, readonly, opts, (r) => { sel.delete(keyOf(r)); saveSel(d.week_start, sel); });
+  const pairs = d.rows.map((r) => rowPair(r, d, false, readonly ? null : (row, on) => { if (on) sel.add(keyOf(row)); else sel.delete(keyOf(row)); selChanged(); }, mctl));
   let shownList = [];
-  const state = { products: new Set(slugs), sections: new Set(sections), q: '', key: null, dir: 1 };
+  const carry = opts.carry || {};
+  const state = { products: new Set(slugs), sections: new Set(sections), q: carry.q || '', key: carry.key || null, dir: carry.dir || 1, showDone: !!carry.showDone };
+  if (opts.ref) opts.ref.state = state;
   const value = {
     product: (r) => pOrder[r.product], section: (r) => sOrder[r.section], cluster: (r) => r.cluster.toLowerCase(), icp: (r) => r.icp.toLowerCase(), pain: (r) => r.pain_point.toLowerCase(),
     story: (r) => (r.story || '').toLowerCase(), status: (r) => r.status.toLowerCase(), concepts: (r) => r.concepts || 0, key: (r) => keyNumber(r, d).toLowerCase(),
@@ -267,7 +276,8 @@ function render(d, view = null) {
 
   function apply() {
     const q = state.q.trim().toLowerCase();
-    let list = pairs.filter((p) => state.products.has(p.r.product) && state.sections.has(p.r.section)
+    const eligible = pairs.filter((p) => state.showDone || !p.r.done);                               // done manual concepts stay hidden until Show done is ticked
+    let list = eligible.filter((p) => state.products.has(p.r.product) && state.sections.has(p.r.section)
       && (!q || [p.r.cluster, p.r.icp, p.r.pain_point, p.r.story].some((t) => (t || '').toLowerCase().includes(q))));
     const def = (a, b) => (sOrder[a.r.section] - sOrder[b.r.section]) || (pOrder[a.r.product] - pOrder[b.r.product]) || (a.r.rank - b.r.rank);
     if (state.key) {
@@ -276,7 +286,7 @@ function render(d, view = null) {
     } else list = list.sort(def);
     tbody.replaceChildren(...list.flatMap((p) => [p.tr, p.detailRow]));
     shownList = list;
-    count.textContent = `${list.length} of ${pairs.length} concepts shown`;
+    count.textContent = `${list.length} of ${eligible.length} concepts shown`;
     syncPicks();
     for (const [k, b] of Object.entries(sortBtns)) b.closest('th').setAttribute('aria-sort', state.key === k ? (state.dir === 1 ? 'ascending' : 'descending') : 'none');
     return list;
@@ -294,8 +304,10 @@ function render(d, view = null) {
   const filters = h('div', { class: 'pri-filters', role: 'group', 'aria-label': 'Filters' },
     h('div', { class: 'pri-fgroup', role: 'group', 'aria-label': 'Product' }, h('span', { class: 'pri-k' }, 'Product '), slugs.map((s) => chip(state.products, s, d.baselines[s].product_name, 'pri-f-product-' + s))),
     h('div', { class: 'pri-fgroup', role: 'group', 'aria-label': 'Section' }, h('span', { class: 'pri-k' }, 'Section '), sections.map((k) => chip(state.sections, k, SECTION_LABEL[k], 'pri-f-section-' + k))),
-    h('label', { class: 'pri-search' }, h('span', { class: 'pri-k' }, 'Search '), h('input', { type: 'search', 'data-testid': 'pri-search', placeholder: 'cluster, ICP, pain point or story',
-      oninput: (e) => { state.q = e.target.value; apply(); } })));
+    h('label', { class: 'pri-search' }, h('span', { class: 'pri-k' }, 'Search '), h('input', { type: 'search', 'data-testid': 'pri-search', placeholder: 'cluster, ICP, pain point or story', value: state.q,
+      oninput: (e) => { state.q = e.target.value; apply(); } })),
+    d.rows.some((r) => r.manual && r.done) ? h('label', { class: 'pri-showdone' }, h('input', { type: 'checkbox', 'data-testid': 'pri-show-done', checked: state.showDone,
+      onchange: (e) => { state.showDone = e.target.checked; apply(); } }), ' Show done') : null);
 
   const allBox = h('input', { type: 'checkbox', class: 'pri-pick', 'data-testid': 'pri-pick-all', 'aria-label': 'Select all shown rows', onchange: (e) => {
     shownList.forEach((p) => { if (e.target.checked) sel.add(keyOf(p.r)); else sel.delete(keyOf(p.r)); });
@@ -332,6 +344,7 @@ function render(d, view = null) {
         } catch (e) { window.alert('Could not rename: ' + (e.message || 'error')); }
       } }, 'Rename')) : null,
     h('div', { class: 'pri-bar' }, readonly ? null : [h('label', { for: 'pri-week' }, 'Week '), weekSel],
+      readonly || !opts.reload ? null : h('button', { type: 'button', class: 'btn primary', 'data-testid': 'pri-add-concept', onclick: () => mctl.add() }, 'Add concept'),
       csvLink,
       h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-print', onclick: () => window.print() }, printLabel),
       h('span', { class: 'pri-expbar' },
@@ -419,7 +432,7 @@ function render(d, view = null) {
     const rows = d.rows.filter(isSel).sort((a, b) => (pOrder[a.product] - pOrder[b.product]) || (sOrder[a.section] - sOrder[b.section]) || (a.rank - b.rank));
     const text = rows.map((r) => [`Product: ${(d.baselines[r.product] || {}).product_name || r.product}`, `Section: ${SECTION_LABEL[r.section]}`,
       `Market Cluster: ${r.cluster}`, `ICP: ${r.icp}`, `Pain Point: ${r.pain_point}`, `Story: ${r.story || '\u2013'}`, `Status: ${r.status}`, `Key number: ${keyNumber(r, d)}`,
-      `Concepts to brief: ${r.concepts || 0}`, ...strip(r).map((t, i) => (i === 0 ? 'Notes: ' : '') + t)].join('\n')).join('\n\n');
+      `Concepts to brief: ${r.concepts || 0}`, ...strip(r, true).map((t, i) => (i === 0 ? 'Notes: ' : '') + t)].join('\n')).join('\n\n');
     const done = (ok) => { copyNote.textContent = ok ? `Copied ${rows.length} row${rows.length === 1 ? '' : 's'}.` : 'Copy failed: select the text and copy by hand.'; };
     const fallback = () => {
       const ta = h('textarea', { style: { position: 'fixed', opacity: '0' } }); ta.value = text; document.body.appendChild(ta); ta.select();
@@ -431,7 +444,8 @@ function render(d, view = null) {
   // print copy (hidden on screen): a compact one-sheeter. Intro on its own first page; per product a fresh page with the headline columns, a 2-3 line strip under each row that has concepts to brief, the
   // Stop list as plain lines. Rows never split across pages, the header repeats on every page, fixed column widths.
   const trim = (t, n) => { t = String(t || ''); return t.length <= n ? t : t.slice(0, n).replace(/\s+\S*$/, '') + '\u2026'; };
-  const strip = (r) => {
+  const strip = (r, full = false) => {
+    if (r.manual) return manualStrip(r, full ? 0 : 300);
     const m = r.metrics || {};
     if (r.section === 'faded') {
       const st = r.stretch;
@@ -449,18 +463,18 @@ function render(d, view = null) {
   const PRINT_STATUS = { 'UNTESTED / UNDER-TESTED': 'UNTESTED', 'PROPOSED (draft)': 'DRAFT', 'FADING / WAS WORKING': 'FADING' };
   const printCell = (cls, ...kids) => h('td', { class: 'pri-c pri-c-' + cls }, ...kids);
   const printRow = (r) => h('tbody', { class: 'pri-rg', 'data-testid': 'pri-print-row' },
-    h('tr', { class: 'pri-row' }, printCell('section', h('span', { class: 'pri-sec pri-sec-' + r.section }, SECTION_LABEL[r.section])), printCell('cluster', r.cluster), printCell('icp', r.icp), printCell('pain', r.pain_point),
+    h('tr', { class: 'pri-row' }, printCell('section', h('span', { class: 'pri-sec pri-sec-' + r.section }, SECTION_LABEL[r.section]), r.manual ? h('span', { class: 'pri-mbadge' }, 'Manual') : null), printCell('cluster', r.cluster), printCell('icp', r.icp), printCell('pain', r.pain_point),
       printCell('story', r.story || '\u2013'), printCell('status', h('span', { class: 'pri-status pri-st-' + (STATUS_CLASS[r.status] || 'flat') }, PRINT_STATUS[r.status] || r.status)),
-      printCell('concepts', r.concepts ? String(r.concepts) : '\u2013'), printCell('key', keyNumber(r, d))),
+      printCell('concepts', r.manual ? '\u2013' : r.concepts ? String(r.concepts) : '\u2013'), printCell('key', keyNumber(r, d))),
     h('tr', { class: 'pri-strip' }, h('td', { colspan: '8' }, strip(r).map((t) => h('div', null, t)))));
   const widths = [10, 13, 13, 14, 22, 8, 7, 13];
   const printHead = () => h('thead', null, h('tr', null, COLS.filter(([k]) => k !== 'product').map(([k, label]) => h('th', { scope: 'col' }, k === 'concepts' ? 'To brief' : label))));
   const printBlocks = h('div', { class: 'pri-print', 'data-testid': 'pri-print-copy', 'aria-hidden': 'true' });
   const buildPrint = () => printBlocks.replaceChildren(...slugs.flatMap((s) => {
     const picking = sel.size > 0;
-    const mine = d.rows.filter((r) => r.product === s && (!picking || isSel(r))).sort((a, b) => (sOrder[a.section] - sOrder[b.section]) || (a.rank - b.rank));
+    const mine = d.rows.filter((r) => r.product === s && (picking ? isSel(r) : !r.done)).sort((a, b) => (sOrder[a.section] - sOrder[b.section]) || (a.rank - b.rank));
     if (picking && !mine.length) return [];                                          // product sections with no selected rows are omitted
-    const shown = mine.filter((r) => r.section !== 'stop' && (picking || r.concepts > 0));
+    const shown = mine.filter((r) => r.section !== 'stop' && (picking || r.concepts > 0 || r.manual));
     const stops = mine.filter((r) => r.section === 'stop');
     const b = d.baselines[s];
     const skipped = picking ? 0 : mine.length - shown.length - stops.length;
@@ -489,7 +503,12 @@ export async function prioritiesPage(ctx) {
     }
     throw e;
   }
-  ctx.mount(render(d));
+  const ref = {};
+  const reload = async () => {                                                                   // after a manual concept is added / edited / done / deleted: fetch again, keep the search, sort and Show done
+    const nd = await api('/api/priorities', ctx.params.week ? { week: ctx.params.week } : {});
+    ctx.mount(render(nd, null, { reload, ref, carry: ref.state }));
+  };
+  ctx.mount(render(d, null, { reload, ref }));
 }
 
 export async function prioritiesViewPage(ctx) {

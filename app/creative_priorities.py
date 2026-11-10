@@ -8,7 +8,7 @@ import secrets
 
 from psycopg.types.json import Jsonb
 
-from . import queries as q
+from . import priorities_manual as pm, queries as q
 
 NOT_BUILT = "No creative priorities snapshot exists yet. It is written on Sundays by the nightly etl; run python -m etl.creative_priorities to write the current week."
 
@@ -46,13 +46,15 @@ def snapshot(conn, raw_week: str | None) -> dict:
 
 def payload(conn, raw_week: str | None) -> dict:
     from etl import creative_priorities as cp
-    snap = snapshot(conn, raw_week)
+    snap = pm.merge(snapshot(conn, raw_week), pm.list_records(conn))        # manual concepts are not tied to a week: they ride along on every snapshot (done ones flagged, hidden by the page)
     comp = (snap.get("stats") or {}).get("competitors")
     return {**snap, "competitors_as_of": comp["as_of"] if comp else None, "competitor_stale": (comp or {}).get("stale_brands", []), "weeks": weeks(conn), "legend": [{"tag": a, "meaning": b} for a, b in cp.LEGEND]}
 
 
 def row_key(r: dict) -> str:
-    """The stable row key (same join as the page): product|section|cluster|icp|pain_point, unique per row within a snapshot."""
+    """The stable row key (same join as the page): product|section|cluster|icp|pain_point, unique per row within a snapshot; a manual concept is manual:<id>."""
+    if r.get("manual"):
+        return str(r["key"])
     return "|".join(str(r.get(k)) for k in ("product", "section", "cluster", "icp", "pain_point"))
 
 
@@ -66,7 +68,8 @@ def filter_rows(snap: dict, ids: list[str] | None) -> dict:
 
 def csv_text(conn, raw_week: str | None, ids: list[str] | None = None) -> tuple[str, str]:
     from etl import creative_priorities as cp
-    snap = filter_rows(snapshot(conn, raw_week), ids)
+    snap = snapshot(conn, raw_week)
+    snap = filter_rows(pm.merge(snap, pm.list_records(conn), include_done=bool(ids)), ids)       # with no selection the full CSV leaves done manual concepts out; a selected one is exported
     return snap["week_start"], cp.to_csv(snap)
 
 

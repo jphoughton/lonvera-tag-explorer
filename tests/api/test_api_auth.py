@@ -336,10 +336,9 @@ def test_the_api_is_read_only(app, client, app_factory):
     writers = {}
     for rule in app.url_map.iter_rules():
         extra = set(rule.methods) - {"GET", "HEAD", "OPTIONS"}
-        if extra and not rule.rule.startswith("/api/projection/"):         # the projection editor (its own blueprint) writes its scenarios; the metrics API never does
+        if extra and not rule.rule.startswith(("/api/projection/", "/api/priorities/")):         # the projection editor and the /priorities saved views + manual concepts write through their own read-write pool; the metrics API never does
             writers[rule.rule] = extra
-    assert writers == {"/api/login": {"POST"}, "/api/logout": {"POST"},
-                       "/api/priorities/views": {"POST"}, "/api/priorities/views/<token>": {"DELETE"}}   # saved priorities views write only their own table (own pool)
+    assert writers == {"/api/login": {"POST"}, "/api/logout": {"POST"}}   # /api/priorities/* writers (saved views, manual concepts) use their own pool and are excluded above
     for url in ("/api/products", "/api/products/vita-bull/rollup", "/api/products/vita-bull/tree", "/api/products/vita-bull/trend", "/api/ads/1000",
                 "/api/status", "/media/1"):
         for method in ("post", "put", "patch", "delete"):

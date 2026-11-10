@@ -7256,6 +7256,132 @@
    "examples": []
   },
   {
+   "name": "public.creative_priorities_manual",
+   "schema": "public",
+   "relation": "creative_priorities_manual",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "Concepts added by hand on /priorities (Add concept): product, market cluster, ICP, pain point, story, notes and a why-now line. Not tied to a weekly snapshot: a row stays on the sheet every week until it is marked done or deleted.",
+   "grain": "one row per manual concept",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "the /priorities page via POST /api/priorities/manual (app/priorities_manual.py)",
+   "refresh": "on demand (a person adds, edits, marks done or deletes)",
+   "coverage": "from the day the migration was deployed",
+   "caveats": [
+    "No author column: the app has no login of its own, only timestamps.",
+    "A cluster / ICP / pain point / story that is not in the Communication Overview catalog is stored as typed and flagged with the new_* columns (a proposal, not a line of ours)."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Primary key (bigserial)."
+    },
+    {
+     "name": "product",
+     "type": "text",
+     "nullable": false,
+     "description": "'vita-bull' | 'beef-liver' | 'boneflex'."
+    },
+    {
+     "name": "section",
+     "type": "text",
+     "nullable": false,
+     "description": "Page section the concept sits in: 'iterate' | 'faded' | 'new' | 'other'."
+    },
+    {
+     "name": "cluster",
+     "type": "text",
+     "nullable": false,
+     "description": "Market cluster (catalog value or typed)."
+    },
+    {
+     "name": "icp",
+     "type": "text",
+     "nullable": false,
+     "description": "ICP (catalog value or typed)."
+    },
+    {
+     "name": "pain_point",
+     "type": "text",
+     "nullable": false,
+     "description": "Pain point (catalog value or typed)."
+    },
+    {
+     "name": "story",
+     "type": "text",
+     "nullable": false,
+     "description": "Story; empty when none."
+    },
+    {
+     "name": "notes",
+     "type": "text",
+     "nullable": false,
+     "description": "Free-text notes, up to 2,000 characters, line breaks kept."
+    },
+    {
+     "name": "why_now",
+     "type": "text",
+     "nullable": false,
+     "description": "Optional short why-now / what-to-test line, up to 300 characters."
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "nullable": false,
+     "description": "'open' (shown) or 'done' (hidden until Show done is ticked)."
+    },
+    {
+     "name": "new_cluster",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True when the cluster is not in the catalog for that product."
+    },
+    {
+     "name": "new_icp",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True when the ICP is not in the catalog under that cluster."
+    },
+    {
+     "name": "new_pain_point",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True when the pain point is not in the catalog under that ICP."
+    },
+    {
+     "name": "new_story",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True when the story is typed text not in the catalog for that pain point."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the concept was added."
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When it was last edited or its status changed."
+    },
+    {
+     "name": "done_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When it was marked done; NULL while open."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.unmatched_meta",
    "schema": "public",
    "relation": "unmatched_meta",

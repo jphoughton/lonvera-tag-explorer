@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, creative_priorities as cpr, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import auth, creative_priorities as cpr, priorities_manual as pman, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -447,6 +447,74 @@ def priorities_view_delete(token: str):
     if blocked is not None:
         return blocked
     cpr.delete_view(token)
+    return "", 204
+
+
+_manual_limiter = None
+
+
+def _manual_guard():
+    """Manual-concept writes: same-origin only, its own per-IP sliding window (60 per minute, PRIORITIES_MANUAL_PER_MIN), a 32 KB body cap."""
+    global _manual_limiter
+    from urllib.parse import urlsplit
+    from .projection.limits import SlidingWindow
+    origin = request.headers.get("Origin")
+    if origin is not None and urlsplit(origin).netloc.lower() != request.host.lower():
+        raise q.ApiError(403, "origin mismatch")
+    if _manual_limiter is None:
+        _manual_limiter = SlidingWindow(int(current_app.config.get("PRIORITIES_MANUAL_PER_MIN") or 60), 60)
+    wait = _manual_limiter.hit(request.remote_addr or "unknown")
+    if wait:
+        resp = jsonify(error="rate_limited", retry_after=wait)
+        resp.status_code = 429
+        resp.headers["Retry-After"] = str(wait)
+        return resp
+    request.max_content_length = pman.BODY_BYTES
+    return None
+
+
+@bp.get("/api/priorities/manual/options")
+def priorities_manual_options():
+    """Dropdown options for the Add concept form: products, sections and the Communication Overview tree product -> cluster -> ICP -> pain point -> [stories]."""
+    return jsonify(pman.options())
+
+
+@bp.get("/api/priorities/manual")
+def priorities_manual_list():
+    """Manual concepts as page rows (include_done=1 also returns the done ones)."""
+    recs = pman.list_records(db.get_conn(), include_done=request.args.get("include_done") in ("1", "true"))
+    return jsonify(rows=[pman.to_row(r) for r in recs])
+
+
+@bp.post("/api/priorities/manual")
+def priorities_manual_create():
+    """Add a manual concept: {product, section, cluster, icp, pain_point, story?, notes?, why_now?}; a tag that is not in the catalog is stored as typed and flagged new."""
+    blocked = _manual_guard()
+    if blocked is not None:
+        return blocked
+    return jsonify(pman.to_row(pman.create(request.get_json(silent=True)))), 201
+
+
+@bp.get("/api/priorities/manual/<int:rid>")
+def priorities_manual_get(rid: int):
+    return jsonify(pman.to_row(pman.get_record(rid)))
+
+
+@bp.patch("/api/priorities/manual/<int:rid>")
+def priorities_manual_update(rid: int):
+    """Change any of the fields, or status open|done."""
+    blocked = _manual_guard()
+    if blocked is not None:
+        return blocked
+    return jsonify(pman.to_row(pman.update(rid, request.get_json(silent=True))))
+
+
+@bp.delete("/api/priorities/manual/<int:rid>")
+def priorities_manual_delete(rid: int):
+    blocked = _manual_guard()
+    if blocked is not None:
+        return blocked
+    pman.delete(rid)
     return "", 204
 
 
