@@ -376,7 +376,8 @@ def priorities():
 def priorities_csv():
     """The same snapshot as a CSV download (week=YYYY-MM-DD, default the latest). Repeated id=<row key> keeps only those rows (same columns); no id = every row."""
     week, text = cpr.csv_text(db.get_conn(), _arg("week"), request.args.getlist("id"))
-    return Response(text, mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="creative-priorities-{week}.csv"'})
+    fname = cpr.slug(_arg("name")) if _arg("name") else f"creative-priorities-{week}"       # name= (the active view's name) becomes the file name
+    return Response(text, mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{fname}.csv"'})
 
 
 _view_limiter = None
@@ -404,7 +405,7 @@ def _views_write_guard():
 
 @bp.post("/api/priorities/views")
 def priorities_view_create():
-    """Save the selected rows as a view: {name?, week?, ids: [row key,...]} -> {token, url, count, missing}. The link is the access (the app has no password)."""
+    """Save a view: {name?, week?, kind?: rows|filters, ids: [row key,...] (rows) or filters: {products, sections, q, key, dir} (filters)} -> {token, url, count, missing, kind}. The link is the access (the app has no password)."""
     blocked = _views_write_guard()
     if blocked is not None:
         return blocked
@@ -426,8 +427,20 @@ def priorities_view(token: str):
 
 @bp.get("/api/priorities/views/<token>/csv")
 def priorities_view_csv(token: str):
-    name_slug, text = cpr.view_csv(token)
+    name_slug, text = cpr.view_csv(token, request.args.getlist("id"))
     return Response(text, mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{name_slug}.csv"'})
+
+
+@bp.put("/api/priorities/views/<token>")
+def priorities_view_update(token: str):
+    """Update this view: replace its rows ({ids}) or filters ({filters}) with the current ones, from the latest snapshot. Name, kind and link stay."""
+    blocked = _views_write_guard()
+    if blocked is not None:
+        return blocked
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        raise q.ApiError(400, "JSON object body required")
+    return jsonify(cpr.update_view(db.get_conn(), token, body))
 
 
 @bp.patch("/api/priorities/views/<token>")

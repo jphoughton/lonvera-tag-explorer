@@ -1769,7 +1769,7 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 
 *table*
 
-**Purpose.** Saved views of the creative priorities sheet: the rows someone selected on /priorities, frozen with the snapshot's baselines and legend, opened by an unguessable link /priorities/v/<token>.
+**Purpose.** Saved views of the creative priorities sheet: the rows someone selected on /priorities (or a saved filter state), switchable in place with /priorities?view=<token> and frozen with the snapshot's baselines and legend on the share link /priorities/v/<token>.
 
 - **Grain:** primary key `(id)`; one row per saved view (token is unique)
 - **Source:** app/creative_priorities.py (Save view on /priorities), copied from creative_priorities_snapshots
@@ -1786,6 +1786,9 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `keys` | text[] | no | Stable row keys of the selected rows. |
 | `payload` | jsonb | no | JSON object: the selected rows plus the snapshot's baselines, legend and competitor as-of date. |
 | `created_at` | timestamptz | no | When the view was saved. |
+| `kind` | text | no | 'rows' (a fixed set of selected rows, shown with the latest numbers where the row still exists) or 'filters' (a saved filter state applied live to the current snapshot). |
+| `filters` | jsonb | yes | JSON object for kind 'filters': products (slugs), sections (keys), q (search text), key and dir (sort). NULL for kind 'rows'. |
+| `updated_at` | timestamptz | yes | When the view was last replaced by Update this view; NULL if never. |
 
 ### public.creative_priorities_manual
 

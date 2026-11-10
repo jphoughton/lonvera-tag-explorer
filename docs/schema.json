@@ -7196,7 +7196,7 @@
    "relation": "creative_priorities_views",
    "kind": "table",
    "group": "creative",
-   "purpose": "Saved views of the creative priorities sheet: the rows someone selected on /priorities, frozen with the snapshot's baselines and legend, opened by an unguessable link /priorities/v/<token>.",
+   "purpose": "Saved views of the creative priorities sheet: the rows someone selected on /priorities (or a saved filter state), switchable in place with /priorities?view=<token> and frozen with the snapshot's baselines and legend on the share link /priorities/v/<token>.",
    "grain": "one row per saved view (token is unique)",
    "primary_key": [
     "id"
@@ -7251,6 +7251,24 @@
      "type": "timestamp with time zone",
      "nullable": false,
      "description": "When the view was saved."
+    },
+    {
+     "name": "kind",
+     "type": "text",
+     "nullable": false,
+     "description": "'rows' (a fixed set of selected rows, shown with the latest numbers where the row still exists) or 'filters' (a saved filter state applied live to the current snapshot)."
+    },
+    {
+     "name": "filters",
+     "type": "jsonb",
+     "nullable": true,
+     "description": "JSON object for kind 'filters': products (slugs), sections (keys), q (search text), key and dir (sort). NULL for kind 'rows'."
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the view was last replaced by Update this view; NULL if never."
     }
    ],
    "examples": []

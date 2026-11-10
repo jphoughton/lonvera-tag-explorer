@@ -276,3 +276,73 @@ def test_manual_rows_ride_on_every_snapshot_and_csv_and_views(client, snaps, man
     assert fr["notes"] == "=HYPERLINK(1)"
     vc = list(csv.reader(io.StringIO(client.get(f"/api/priorities/views/{v['token']}/csv").get_data(as_text=True))))
     assert {r[head.index("source")] for r in vc[1:]} == {"auto", "manual"}
+
+
+# ---------------------------------------------------------------------------------------------------------------- view kinds: rows / filters, update, csv name
+
+ROW2 = {**ROW, "section": "stop", "icp": "Plateau Man", "pain_point": "Flat energy", "product": "beef-liver", "product_name": "Beef Liver", "story": "He stopped noticing the fog.", "concepts": 0}
+
+
+@pytest.fixture()
+def two_rows(pg, snaps):
+    from app import api as api_mod
+    api_mod._view_limiter = None                                                                                   # 30 writes a minute per IP: each test starts a fresh window
+    pg.execute("UPDATE creative_priorities_snapshots SET rows = %s, baselines = %s WHERE week_start = '2026-11-08'",
+               (json.dumps([ROW, ROW2]), json.dumps({"vita-bull": {"product_name": "Vita Bull"}, "beef-liver": {"product_name": "Beef Liver"}})))
+    pg.commit()
+
+
+def test_rows_view_reports_kind_keys_and_legacy_default(client, two_rows, views):
+    v = client.post("/api/priorities/views", json={"ids": [_key(ROW), _key(ROW2)]}).get_json()
+    assert v["kind"] == "rows" and v["count"] == 2
+    g = client.get("/api/priorities/views/" + v["token"]).get_json()["view"]
+    assert g["kind"] == "rows" and g["filters"] is None and sorted(g["keys"]) == sorted([_key(ROW), _key(ROW2)]) and g["count"] == 2
+    assert client.post("/api/priorities/views", json={"ids": [_key(ROW)], "kind": "nope"}).status_code == 400
+
+
+def test_filter_view_stores_filters_freezes_the_matching_rows_and_lists_its_kind(client, two_rows, views):
+    v = client.post("/api/priorities/views", json={"name": "VB live", "kind": "filters", "filters": {"products": ["vita-bull"], "sections": [], "q": " low ", "key": "pain", "dir": -1, "junk": 1}}).get_json()
+    assert v["kind"] == "filters" and v["count"] == 1
+    g = client.get("/api/priorities/views/" + v["token"]).get_json()
+    assert g["view"]["kind"] == "filters" and g["view"]["filters"] == {"products": ["vita-bull"], "sections": [], "q": "low", "key": "pain", "dir": -1} and g["view"]["keys"] == []
+    assert [r["icp"] for r in g["rows"]] == ["Given Up Guy"]                              # frozen copy = the rows matching at save time
+    lst = client.get("/api/priorities/views").get_json()["views"]
+    assert lst[0]["kind"] == "filters" and lst[0]["filters"]["products"] == ["vita-bull"] and lst[0]["count"] == 1
+    nothing = client.post("/api/priorities/views", json={"kind": "filters", "filters": {"q": "zzzz"}}).get_json()
+    assert nothing["count"] == 0
+    for bad in (None, "x", {"products": "vita-bull"}, {"q": "x" * 201}, {"sections": [1]}, {"dir": 1, "key": "k" * 40}):
+        assert client.post("/api/priorities/views", json={"kind": "filters", "filters": bad}).status_code == 400, bad
+
+
+def test_update_view_replaces_rows_or_filters_keeps_name_token_and_kind(client, two_rows, views):
+    v = client.post("/api/priorities/views", json={"name": "Keep me", "ids": [_key(ROW), _key(ROW2)]}).get_json()
+    u = client.put("/api/priorities/views/" + v["token"], json={"ids": [_key(ROW2)]})
+    assert u.status_code == 200 and u.get_json()["count"] == 1 and u.get_json()["kind"] == "rows"
+    g = client.get("/api/priorities/views/" + v["token"]).get_json()
+    assert g["view"]["name"] == "Keep me" and g["view"]["keys"] == [_key(ROW2)] and [r["icp"] for r in g["rows"]] == ["Plateau Man"]
+    f = client.post("/api/priorities/views", json={"name": "F", "kind": "filters", "filters": {"products": ["vita-bull"]}}).get_json()
+    u = client.put("/api/priorities/views/" + f["token"], json={"filters": {"products": ["beef-liver"], "q": "fog"}, "kind": "rows", "ids": [_key(ROW)]})     # kind cannot be switched
+    assert u.status_code == 200 and u.get_json()["kind"] == "filters"
+    g = client.get("/api/priorities/views/" + f["token"]).get_json()
+    assert g["view"]["filters"]["products"] == ["beef-liver"] and [r["icp"] for r in g["rows"]] == ["Plateau Man"]
+    assert client.put("/api/priorities/views/" + v["token"], json={"ids": []}).status_code == 400
+    assert client.put("/api/priorities/views/" + v["token"], json={"ids": ["nope|a|b|c|d"]}).status_code == 400
+    assert client.put("/api/priorities/views/" + v["token"], data="x", content_type="text/plain").status_code == 400
+    assert client.put("/api/priorities/views/" + "A" * 30, json={"ids": [_key(ROW)]}).status_code == 404
+    assert client.put("/api/priorities/views/" + v["token"], json={"ids": [_key(ROW)]}, headers={"Origin": "http://evil.example"}).status_code == 403
+    client.delete("/api/priorities/views/" + v["token"])
+    assert client.put("/api/priorities/views/" + v["token"], json={"ids": [_key(ROW)]}).status_code == 404         # a deleted view cannot be updated; GET is 404 too (the page shows 'deleted')
+    assert client.get("/api/priorities/views/" + v["token"]).status_code == 404
+
+
+def test_csv_name_param_and_view_csv_id_filter(client, two_rows, views):
+    r = client.get("/api/priorities.csv", query_string={"week": "2026-11-08", "name": "Madre - 11/10/26 Priorities"})
+    assert 'filename="madre-11-10-26-priorities.csv"' in r.headers["Content-Disposition"]
+    v = client.post("/api/priorities/views", json={"name": "Two", "ids": [_key(ROW), _key(ROW2)]}).get_json()
+    full = list(csv.reader(io.StringIO(client.get(f"/api/priorities/views/{v['token']}/csv").get_data(as_text=True))))
+    one = list(csv.reader(io.StringIO(client.get(f"/api/priorities/views/{v['token']}/csv", query_string={"id": _key(ROW2)}).get_data(as_text=True))))
+    assert len(full) == 3 and len(one) == 2 and one[1][1] == "Plateau Man"
+
+
+def test_view_write_routes_need_login(anon, two_rows):
+    assert anon.put("/api/priorities/views/" + "A" * 30, json={"ids": ["a"]}).status_code == 401

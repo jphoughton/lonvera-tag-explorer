@@ -7,6 +7,7 @@ import { showControls } from '../controls.js';
 import { dayOf, manualPanel, addManualNotes, manualStrip, manualControls } from './priorities_manual.js';
 
 const PRODUCT_ORDER = ['vita-bull', 'beef-liver', 'boneflex'];
+const value_keys = ['product', 'section', 'cluster', 'icp', 'pain', 'story', 'status', 'concepts', 'key'];
 const SECTIONS = [['faded', 'Was working, now isn’t', 'Lines with a sustained strong stretch (3+ weeks above the product average) that are now below average, collapsed or idle: when it worked, how it stopped, the former winners, a hedged diagnosis and a revive play.'],
                   ['iterate', 'Iterate on what is working', 'WORKING NOW and RISING lines: their ads beat the product average on enough spend; more concepts should help.'],
                   ['new', 'New and untested clusters', 'Lines with no ads (or almost none), ranked by evidence the demand exists (our adjacent winners, other products, competitors).'],
@@ -204,6 +205,39 @@ function detail(r, d) {
       h('span', { class: 'pri-pill pri-pill-flat' }, 'Line ' + r.line_code), h('span', { class: 'pri-pill pri-pill-flat' }, 'Confidence: ' + r.confidence), h('span', { class: 'pri-pill pri-pill-flat' }, 'Score ' + r.score)));
 }
 
+// ---------- saved views: helpers ----------
+const LAST_VIEW = 'pri-last-view';
+const FLASH = 'pri-flash';
+const lastView = { get() { try { return localStorage.getItem(LAST_VIEW) || ''; } catch (e) { return ''; } }, set(t) { try { if (t) localStorage.setItem(LAST_VIEW, t); else localStorage.removeItem(LAST_VIEW); } catch (e) { /* blocked */ } } };
+const flash = { set(t) { try { sessionStorage.setItem(FLASH, t); } catch (e) { /* blocked */ } }, take() { try { const t = sessionStorage.getItem(FLASH); sessionStorage.removeItem(FLASH); return t; } catch (e) { return null; } } };
+const defaultViewName = () => { const t = new Date(); return `Priorities - ${t.getMonth() + 1}/${t.getDate()}/${String(t.getFullYear() % 100).padStart(2, '0')}`; };
+const viewUrl = (tok, extra) => href('/priorities', { view: tok, ...(extra || {}) });
+
+// One small modal for naming a view (Save view, Rename): focused, prefilled and selected input, Enter saves, Esc cancels, 120 characters, empty -> the default name.
+// `kinds` = [[value, label, disabled?], ...] adds a radio group (what to save). Resolves {name, kind} or null.
+function nameDialog({ title, initial, okLabel, kinds = null, kind = null, note = null }) {
+  return new Promise((resolve) => {
+    const input = h('input', { type: 'text', class: 'pri-name', maxlength: '120', 'aria-label': 'View name', 'data-testid': 'pri-view-name', placeholder: 'Madre - 11/10/26 Priorities', value: initial || '' });
+    let chosen = kind || (kinds && (kinds.find((k) => !k[2]) || kinds[0])[0]);
+    const radios = kinds ? h('fieldset', { class: 'pri-kinds' }, h('legend', { class: 'pri-k' }, 'What to save'), kinds.map(([v, label, dis]) => h('label', { class: 'pri-kind' },
+      h('input', { type: 'radio', name: 'pri-kind', value: v, checked: v === chosen, disabled: !!dis, 'data-testid': 'pri-kind-' + v, onchange: () => { chosen = v; } }), ' ', label))) : null;
+    const cancel = h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-dialog-cancel' }, 'Cancel');
+    const form = h('form', { method: 'dialog', class: 'pri-dform', onsubmit: (e) => { e.preventDefault(); done({ name: input.value.trim() || defaultViewName(), kind: chosen }); } },
+      h('h2', { class: 'pri-dtitle', id: 'pri-dtitle' }, title), note ? h('p', { class: 'pri-k' }, note) : null, radios,
+      h('label', { class: 'pri-dlabel' }, h('span', { class: 'pri-k' }, 'Name'), input),
+      h('div', { class: 'pri-dbtns' }, cancel, h('button', { type: 'submit', class: 'btn pri-primary', 'data-testid': 'pri-dialog-save' }, okLabel || 'Save')));
+    const dlg = h('dialog', { class: 'pri-dialog', 'aria-labelledby': 'pri-dtitle', 'data-testid': 'pri-name-dialog' }, form);
+    let finished = false;
+    function done(v) { if (finished) return; finished = true; try { dlg.close(); } catch (e) { /* already closed */ } dlg.remove(); resolve(v); }
+    cancel.addEventListener('click', () => done(null));
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); done(null); });                       // Esc
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) done(null); });                      // click on the backdrop
+    document.body.appendChild(dlg);
+    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+    input.focus(); input.select();
+  });
+}
+
 // the panel under a row: manual rows have their own render function; an auto row gets the notes of any manual concept with the same four tags appended
 const panelFor = (r, d, mctl) => { if (r.manual) return manualPanel(r, mctl); const p = detail(r, d); addManualNotes(p, r, d); return p; };
 
@@ -213,11 +247,11 @@ const SECTION_NOTE = Object.fromEntries(SECTIONS.map(([k, , sub]) => [k, sub]));
 const COLS = [['product', 'Product'], ['section', 'Section'], ['cluster', 'Market Cluster'], ['icp', 'ICP'], ['pain', 'Pain Point'], ['story', 'Story'], ['status', 'Status'], ['concepts', 'Concepts'], ['key', 'Key number']];
 
 const keyOf = (r) => r.key || [r.product, r.section, r.cluster, r.icp, r.pain_point].join('|');      // stable row key: unique per row in a snapshot; the server uses the same join for ?id=
-const storeKey = (week) => 'pri-selected-' + week;
-function loadSel(week, valid) {
-  try { return new Set((JSON.parse(sessionStorage.getItem(storeKey(week))) || []).filter((k) => valid.has(k))); } catch (e) { return new Set(); }
+const storeKey = (week, tok) => 'pri-selected-' + week + (tok ? '-' + tok : '');
+function loadSel(week, valid, tok) {
+  try { return new Set((JSON.parse(sessionStorage.getItem(storeKey(week, tok))) || []).filter((k) => valid.has(k))); } catch (e) { return new Set(); }
 }
-function saveSel(week, sel) { try { sessionStorage.setItem(storeKey(week), JSON.stringify([...sel])); } catch (e) { /* storage blocked: selection just is not remembered */ } }
+function saveSel(week, sel, tok) { try { sessionStorage.setItem(storeKey(week, tok), JSON.stringify([...sel])); } catch (e) { /* storage blocked: selection just is not remembered */ } }
 
 let uid = 0;
 function setOpen(btn, panelRow, open) {
@@ -232,7 +266,7 @@ function rowPair(r, d, printed = false, onPick = null, mctl = null) {
   const id = 'pri-detail-' + (++uid);
   const name = `${r.cluster}, ${r.icp}, ${r.pain_point}`;
   const cell = (label, cls, ...kids) => h('td', { class: 'pri-c pri-c-' + cls, 'data-label': label }, ...kids);
-  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, h('td', { colspan: '10' }, panelFor(r, d, mctl)));
+  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, h('td', { colspan: '10' }, panelFor(r, d, r._from ? null : mctl)));
   const btn = h('button', { type: 'button', class: 'pri-toggle', 'aria-expanded': 'false', 'aria-controls': id, 'aria-label': 'Expand: ' + name, 'data-name': name, 'data-testid': 'pri-toggle' },
     h('span', { class: 'pri-chev', 'aria-hidden': 'true' }, '▸'));
   const pick = h('input', { type: 'checkbox', class: 'pri-pick', 'data-testid': 'pri-pick', 'aria-label': 'Select: ' + name, onchange: (e) => onPick && onPick(r, e.target.checked) });
@@ -240,7 +274,7 @@ function rowPair(r, d, printed = false, onPick = null, mctl = null) {
     h('td', { class: 'pri-c pri-c-tog' }, printed || !onPick ? null : pick, printed ? null : btn),
     cell('Product', 'product', (d.baselines[r.product] || {}).product_name || r.product),
     cell('Section', 'section', h('span', { class: 'pri-sec pri-sec-' + r.section, title: SECTION_NOTE[r.section] }, SECTION_LABEL[r.section]), r.manual ? h('span', { class: 'pri-mbadge', 'data-testid': 'pri-manual-badge' }, 'Manual') : null),
-    cell('Market Cluster', 'cluster', r.cluster), cell('ICP', 'icp', r.icp), cell('Pain Point', 'pain', r.pain_point), cell('Story', 'story', r.story || '–'),
+    cell('Market Cluster', 'cluster', r.cluster, r._from ? h('span', { class: 'pri-from', 'data-testid': 'pri-from', title: 'No longer in the current snapshot: the numbers are the frozen copy saved with the view' }, ' from ' + r._from) : null), cell('ICP', 'icp', r.icp), cell('Pain Point', 'pain', r.pain_point), cell('Story', 'story', r.story || '–'),
     cell('Status', 'status', h('span', { class: 'pri-status pri-st-' + (STATUS_CLASS[r.status] || 'flat'), 'data-testid': 'pri-status' }, r.manual && r.done ? 'MANUAL (done)' : r.status)),
     cell('Concepts', 'concepts', r.manual ? '\u2013' : r.concepts ? `${r.concepts} concept${r.concepts === 1 ? '' : 's'}` : 'None'),
     cell('Key number', 'key', keyNumber(r, d)));
@@ -253,18 +287,26 @@ function rowPair(r, d, printed = false, onPick = null, mctl = null) {
 }
 
 function render(d, view = null, opts = {}) {
+  const vm = opts.vm || { views: [], active: null, mode: 'latest', notice: null };
   const readonly = !!view;                                                               // a saved view: only its rows, no selection or editing, pinned to its stored snapshot
   const slugs = PRODUCT_ORDER.filter((s) => d.rows.some((r) => r.product === s));
   const sections = SECTION_ORDER.filter((k) => d.rows.some((r) => r.section === k));
   const pOrder = Object.fromEntries(PRODUCT_ORDER.map((s, i) => [s, i]));
   const sOrder = Object.fromEntries(SECTION_ORDER.map((s, i) => [s, i]));
-  const sel = readonly ? new Set(d.rows.map(keyOf)) : loadSel(d.week_start, new Set(d.rows.map(keyOf)));
+  const act = vm.active || null;                                                           // the saved view switched on in place (/priorities?view=<token>), else null = All concepts
+  const tok = act ? act.view.token : '';
+  const sel = readonly ? new Set(d.rows.map(keyOf)) : loadSel(d.week_start, new Set(d.rows.map(keyOf)), tok);
   const isSel = (r) => sel.has(keyOf(r));
-  const mctl = manualControls(d, readonly, opts, (r) => { sel.delete(keyOf(r)); saveSel(d.week_start, sel); });
+  const mctl = manualControls(d, readonly, opts, (r) => { sel.delete(keyOf(r)); saveSel(d.week_start, sel, tok); });
   const pairs = d.rows.map((r) => rowPair(r, d, false, readonly ? null : (row, on) => { if (on) sel.add(keyOf(row)); else sel.delete(keyOf(row)); selChanged(); }, mctl));
   let shownList = [];
   const carry = opts.carry || {};
-  const state = { products: new Set(slugs), sections: new Set(sections), q: carry.q || '', key: carry.key || null, dir: carry.dir || 1, showDone: !!carry.showDone };
+  const sf = act && act.view.kind === 'filters' && act.view.filters ? act.view.filters : null;      // a filter view starts from its saved filters (applied live to whatever rows exist now)
+  const pick0 = (saved, all) => { const keep = (saved || []).filter((x) => all.includes(x)); return new Set(keep.length ? keep : all); };
+  const state = { products: pick0(sf && sf.products, slugs), sections: pick0(sf && sf.sections, sections), q: carry.q || (sf ? sf.q || '' : ''), key: carry.key || (sf && value_keys.includes(sf.key) ? sf.key : null),
+                  dir: carry.dir || (sf && sf.dir === -1 ? -1 : 1), showDone: !!carry.showDone };
+  const allOn = (set, all) => (all.every((x) => set.has(x)) ? [] : all.filter((x) => set.has(x)));
+  const currentFilters = () => ({ products: allOn(state.products, slugs), sections: allOn(state.sections, sections), q: state.q.trim(), key: state.key, dir: state.dir });
   if (opts.ref) opts.ref.state = state;
   const value = {
     product: (r) => pOrder[r.product], section: (r) => sOrder[r.section], cluster: (r) => r.cluster.toLowerCase(), icp: (r) => r.icp.toLowerCase(), pain: (r) => r.pain_point.toLowerCase(),
@@ -273,6 +315,7 @@ function render(d, view = null, opts = {}) {
   const tbody = h('tbody', { 'data-testid': 'pri-body' });
   const count = h('span', { class: 'pri-shown', 'aria-live': 'polite', 'data-testid': 'pri-shown' });
   const sortBtns = {};
+  const viewCount = h('span', { 'data-testid': 'pri-view-count' });
 
   function apply() {
     const q = state.q.trim().toLowerCase();
@@ -287,6 +330,8 @@ function render(d, view = null, opts = {}) {
     tbody.replaceChildren(...list.flatMap((p) => [p.tr, p.detailRow]));
     shownList = list;
     count.textContent = `${list.length} of ${eligible.length} concepts shown`;
+    const nView = act && act.view.kind === 'filters' ? list.length : eligible.length;
+    viewCount.textContent = `${nView} concept${nView === 1 ? '' : 's'}`;
     syncPicks();
     for (const [k, b] of Object.entries(sortBtns)) b.closest('th').setAttribute('aria-sort', state.key === k ? (state.dir === 1 ? 'ascending' : 'descending') : 'none');
     return list;
@@ -294,7 +339,7 @@ function render(d, view = null, opts = {}) {
   const setAll = (open) => apply().forEach((p) => setOpen(p.tr.querySelector('.pri-toggle'), p.detailRow, open));          // Expand / Collapse all act on the filtered rows
 
   const chip = (set, key, label, testid) => {
-    const b = h('button', { type: 'button', class: 'pri-chipbtn', 'aria-pressed': 'true', 'data-testid': testid, onclick: () => {
+    const b = h('button', { type: 'button', class: 'pri-chipbtn', 'aria-pressed': String(set.has(key)), 'data-testid': testid, onclick: () => {
       if (set.has(key)) set.delete(key); else set.add(key);
       b.setAttribute('aria-pressed', String(set.has(key)));
       apply();
@@ -325,17 +370,20 @@ function render(d, view = null, opts = {}) {
 
   const weekSel = h('select', { id: 'pri-week', 'data-testid': 'pri-week', 'aria-label': 'Week', onchange: (e) => navigate(href('/priorities', { week: e.target.value })) },
     d.weeks.map((w) => h('option', { value: w.week_start, selected: w.week_start === d.week_start }, 'Week of ' + w.week_start)));
-  const csvBase = readonly ? `/api/priorities/views/${view.token}/csv` : '/api/priorities.csv' + qs({ week: d.week_start });
-  const csvUrl = () => csvBase + (sel.size ? [...sel].map((k) => '&id=' + encodeURIComponent(k)).join('') : '');
+  const frozenMode = !!act && vm.mode === 'frozen';
+  const csvBase = readonly ? `/api/priorities/views/${view.token}/csv` : frozenMode ? `/api/priorities/views/${tok}/csv` : '/api/priorities.csv' + qs({ week: d.week_start, name: act ? act.view.name : '' });
+  const csvUrl = () => csvBase + (sel.size ? (csvBase.includes('?') ? '&' : '?') + [...sel].map((k) => 'id=' + encodeURIComponent(k)).join('&') : '');
   const csvLink = h('a', { class: 'btn', href: csvBase, download: '', 'data-testid': 'pri-csv' }, 'Download CSV');
   const printLabel = h('span', null, 'Print / save as PDF');
   const top = h('div', { class: 'pri-top' },
-    h('h1', { 'data-testid': 'pri-title' }, readonly ? `Creative priorities: ${view.name}` : 'Creative priorities'),
+    h('h1', { 'data-testid': 'pri-title' }, readonly ? `Creative priorities: ${view.name}` : act ? `Creative priorities: ${act.view.name}` : 'Creative priorities'),
     readonly ? h('p', { class: 'pri-lead', 'data-testid': 'pri-view-note' }, `Saved view of ${d.rows.length} concept${d.rows.length === 1 ? '' : 's'}, snapshot week of ${d.week_start} (frozen: it does not change when a newer snapshot arrives). `,
       h('a', { href: href('/priorities', {}), 'data-testid': 'pri-open-full' }, 'Open full priorities'), ' ',
+      h('a', { href: viewUrl(view.token), 'data-testid': 'pri-open-live' }, 'Open as a view with the latest data'), ' ',
       h('button', { type: 'button', class: 'btn pri-screen-note', 'data-testid': 'pri-rename', onclick: async () => {
-        const nn = window.prompt('Rename this saved view (the link stays the same)', view.name);
-        if (nn === null) return;
+        const dr = await nameDialog({ title: 'Rename this view', initial: view.name, okLabel: 'Rename', note: 'The link stays the same.' });
+        if (dr === null) return;
+        const nn = dr.name;
         try {
           const r = await api('/api/priorities/views/' + view.token, {}, { method: 'PATCH', body: { name: nn } });
           view.name = r.name;
@@ -343,7 +391,7 @@ function render(d, view = null, opts = {}) {
           document.title = `${r.name} \u00b7 Creative priorities \u00b7 Marketing metrics`;
         } catch (e) { window.alert('Could not rename: ' + (e.message || 'error')); }
       } }, 'Rename')) : null,
-    h('div', { class: 'pri-bar' }, readonly ? null : [h('label', { for: 'pri-week' }, 'Week '), weekSel],
+    h('div', { class: 'pri-bar' }, readonly || act ? null : [h('label', { for: 'pri-week' }, 'Week '), weekSel],
       readonly || !opts.reload ? null : h('button', { type: 'button', class: 'btn primary', 'data-testid': 'pri-add-concept', onclick: () => mctl.add() }, 'Add concept'),
       csvLink,
       h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-print', onclick: () => window.print() }, printLabel),
@@ -362,53 +410,81 @@ function render(d, view = null, opts = {}) {
   const selCount = h('strong', { 'data-testid': 'pri-sel-count' });
   const copyNote = h('span', { class: 'pri-k', 'aria-live': 'polite', 'data-testid': 'pri-copy-note' });
   const selCsv = h('a', { class: 'btn', href: csvBase, download: '', 'data-testid': 'pri-sel-csv' }, 'Download CSV');
-  const defaultName = () => { const t = new Date(); return `Priorities - ${t.getMonth() + 1}/${t.getDate()}/${String(t.getFullYear() % 100).padStart(2, '0')}`; };
-  const nameIn = h('input', { type: 'text', class: 'pri-name', maxlength: '120', placeholder: 'View name', 'aria-label': 'View name', value: defaultName(), 'data-testid': 'pri-view-name' });
-  const linkBox = h('div', { class: 'pri-linkbox', hidden: true, 'data-testid': 'pri-linkbox' });
+  const linkBox = h('div', { class: 'pri-linkbox', hidden: true, 'data-testid': 'pri-linkbox', role: 'status' });
   const abs = (u) => location.origin + u;
-  const copyLinkBtn = (u) => h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-copy-link', onclick: (e) => {
+  const copyLinkBtn = (u, label = 'Copy link') => h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-copy-link', onclick: (e) => {
     const t = abs(u);
-    const ok = () => { e.target.textContent = 'Copied'; setTimeout(() => { e.target.textContent = 'Copy link'; }, 1500); };
+    const ok = () => { e.target.textContent = 'Copied'; setTimeout(() => { e.target.textContent = label; }, 1500); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, () => window.prompt('Copy this link', t)); else window.prompt('Copy this link', t);
-  } }, 'Copy link');
-  async function saveView() {
-    if (!sel.size) return;
+  } }, label);
+  // Save view (both kinds) opens the naming dialog; `preferKind` is what the button that opened it stands for
+  async function saveViewDialog(preferKind) {
+    const hasSel = sel.size > 0;
+    const dr = await nameDialog({ title: 'Save view', initial: defaultViewName(), okLabel: 'Save view', kind: preferKind === 'rows' && hasSel ? 'rows' : preferKind === 'filters' ? 'filters' : (hasSel ? 'rows' : 'filters'),
+      kinds: [['rows', `Selected rows (${sel.size} selected)`, !hasSel], ['filters', 'Current filters (product, section, search, sort), applied live']] });
+    if (dr === null) return;
+    const body = { name: dr.name, week: d.week_start, kind: dr.kind };
+    if (dr.kind === 'rows') body.ids = [...sel]; else body.filters = currentFilters();
     try {
-      const v = await api('/api/priorities/views', {}, { method: 'POST', body: { name: nameIn.value, week: d.week_start, ids: [...sel] } });
+      const v = await api('/api/priorities/views', {}, { method: 'POST', body });
       linkBox.hidden = false;
-      linkBox.replaceChildren(h('span', null, `Saved ${v.count} concept${v.count === 1 ? '' : 's'}${v.missing ? ` (${v.missing} no longer in this snapshot)` : ''}: `),
-        h('a', { href: v.url, 'data-testid': 'pri-view-link' }, abs(v.url)), ' ', copyLinkBtn(v.url));
-      refreshViews();
+      linkBox.replaceChildren(h('span', { 'data-testid': 'pri-saved-name' }, `Saved “${v.name}” `), h('span', { class: 'pri-k' }, `${v.kind === 'filters' ? `${v.count} concept${v.count === 1 ? '' : 's'} match now; new matches appear automatically` : `${v.count} concept${v.count === 1 ? '' : 's'}${v.missing ? ` (${v.missing} no longer in this snapshot)` : ''}`}. `),
+        h('a', { href: viewUrl(v.token), 'data-testid': 'pri-view-open' }, 'Open it'), ' ', h('a', { href: v.url, 'data-testid': 'pri-view-link' }, abs(v.url)), ' ', copyLinkBtn(v.url));
+      vm.views.unshift({ token: v.token, name: v.name, kind: v.kind, count: v.count });
+      viewSel.append(h('option', { value: v.token }, viewLabel(v)));
     } catch (e) {
       linkBox.hidden = false;
       linkBox.replaceChildren(h('span', { class: 'pri-err', 'data-testid': 'pri-view-error' }, 'Could not save the view: ' + (e.message || 'error')));
     }
   }
-  // saved views list (reopen, copy link, delete)
-  const viewsList = h('div', { 'data-testid': 'pri-views-list' }, 'Loading\u2026');
-  async function refreshViews() {
-    try {
-      const { views } = await api('/api/priorities/views');
-      viewsList.replaceChildren(...(views.length ? views.map((v) => h('div', { class: 'pri-vrow', 'data-testid': 'pri-view-row' },
-        h('a', { href: v.url }, v.name || 'Untitled view'), h('span', { class: 'pri-k' }, ` ${v.count} concept${v.count === 1 ? '' : 's'}, snapshot ${v.week_start}, saved ${v.created_at.slice(0, 10)} `),
-        copyLinkBtn(v.url), ' ', h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-view-rename', onclick: async () => {
-          const nn = window.prompt('Rename this saved view', v.name);
-          if (nn === null) return;
-          try { await api('/api/priorities/views/' + v.token, {}, { method: 'PATCH', body: { name: nn } }); } catch (e) { window.alert('Could not rename: ' + (e.message || 'error')); }
-          refreshViews();
-        } }, 'Rename'), ' ', h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-view-delete', 'aria-label': 'Delete view ' + (v.name || v.token), onclick: async () => {
-          if (!window.confirm('Delete this saved view? Anyone with its link will lose access.')) return;
-          try { await api('/api/priorities/views/' + v.token, {}, { method: 'DELETE' }); } catch (e) { /* already gone */ }
-          refreshViews();
-        } }, 'Delete'))) : [h('span', { class: 'pri-k' }, 'No saved views yet.')]));
-    } catch (e) { viewsList.replaceChildren(h('span', { class: 'pri-k' }, 'Could not load saved views.')); }
-  }
-  const viewsBox = h('details', { class: 'pri-views', 'data-testid': 'pri-views', ontoggle: (e) => { if (e.target.open) refreshViews(); } }, h('summary', null, 'Saved views'), viewsList);
   const toolbar = h('div', { class: 'pri-seltools', role: 'region', 'aria-label': 'Selected rows', hidden: true, 'data-testid': 'pri-seltools' }, selCount, selCsv,
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-print', onclick: () => window.print() }, 'Print / PDF'),
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-copy', onclick: () => copyText() }, 'Copy as text'),
-    nameIn, h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-save', onclick: () => saveView() }, 'Save view'),
+    h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-save', onclick: () => saveViewDialog('rows') }, 'Save view'),
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-clear', onclick: () => { sel.clear(); selChanged(); } }, 'Clear'), copyNote);
+
+  // the View switcher: All concepts + each saved view; choosing one filters this same table in place (URL ?view=<token>); Save view sits beside it
+  const viewLabel = (v) => `${v.name || 'Untitled view'} (${v.kind === 'filters' ? 'filters' : `${v.count} concept${v.count === 1 ? '' : 's'}`})`;
+  const viewSel = h('select', { id: 'pri-view-select', class: 'pri-viewsel', 'data-testid': 'pri-view-select', 'aria-label': 'View', onchange: (e) => {
+    const t = e.target.value;
+    lastView.set(t);
+    navigate(t ? viewUrl(t) : href('/priorities', {}));
+  } }, h('option', { value: '' }, 'All concepts'), vm.views.map((v) => h('option', { value: v.token, selected: v.token === tok }, viewLabel(v))));
+  const goRefresh = () => navigate(location.pathname + location.search, { replace: true });
+  async function activeAction(fn, okMsg) {
+    try { await fn(); flash.set(okMsg); goRefresh(); } catch (e) { window.alert('Could not do that: ' + (e.message || 'error')); }
+  }
+  const viewTools = act ? (() => {
+    const v = act.view; const kindF = v.kind === 'filters';
+    const fromN = d.rows.filter((r) => r._from).length;
+    return h('div', { class: 'pri-activebar', role: 'region', 'aria-label': 'Active view', 'data-testid': 'pri-activebar' },
+      h('div', { class: 'pri-activeline' }, h('span', null, 'Viewing: ', h('strong', { 'data-testid': 'pri-view-name-shown' }, v.name || 'Untitled view'), ' (', viewCount, ')'),
+        ' · ', h('a', { href: href('/priorities', {}), 'data-testid': 'pri-back-all', onclick: (e) => { e.preventDefault(); lastView.set(''); navigate(href('/priorities', {})); } }, 'Back to all'),
+        h('span', { class: 'pri-k' }, kindF ? ' Saved filters, applied live: new matching concepts appear.' : ' A fixed set of concepts.'),
+        fromN ? h('span', { class: 'pri-k', 'data-testid': 'pri-from-note' }, ` ${fromN} no longer in the current snapshot (shown from ${v.week_start}).`) : null),
+      h('div', { class: 'pri-activebtns' },
+        h('label', { class: 'pri-datamode' }, h('span', { class: 'pri-k' }, 'Data '), h('select', { 'data-testid': 'pri-data-mode', 'aria-label': 'Frozen as saved or latest data', onchange: (e) => navigate(viewUrl(tok, e.target.value === 'frozen' ? { data: 'frozen' } : {})) },
+          h('option', { value: 'latest', selected: !frozenMode }, 'Latest data'), h('option', { value: 'frozen', selected: frozenMode }, `Frozen as saved (${v.week_start})`))),
+        h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-view-update', title: kindF ? 'Replace this view’s filters with the filters now on the page' : 'Replace this view’s rows with the rows now selected', onclick: () => {
+          if (!kindF && !sel.size) { window.alert('Tick the rows to keep in this view, then Update this view.'); return; }
+          activeAction(() => api('/api/priorities/views/' + tok, {}, { method: 'PUT', body: kindF ? { filters: currentFilters() } : { ids: [...sel] } }), `Updated “${v.name}”.`);
+        } }, 'Update this view'),
+        h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-active-rename', onclick: async () => {
+          const dr = await nameDialog({ title: 'Rename this view', initial: v.name, okLabel: 'Rename', note: 'The link stays the same.' });
+          if (dr === null) return;
+          activeAction(() => api('/api/priorities/views/' + tok, {}, { method: 'PATCH', body: { name: dr.name } }), `Renamed to “${dr.name}”.`);
+        } }, 'Rename'),
+        copyLinkBtn(`/priorities/v/${tok}`, 'Copy share link'),
+        h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-active-delete', onclick: async () => {
+          if (!window.confirm(`Delete the view “${v.name}”? Anyone with its link will lose access.`)) return;
+          try { await api('/api/priorities/views/' + tok, {}, { method: 'DELETE' }); } catch (e) { /* already gone */ }
+          lastView.set(''); flash.set(`Deleted “${v.name}”.`); navigate(href('/priorities', {}));
+        } }, 'Delete')));
+  })() : null;
+  const viewbar = h('div', { class: 'pri-viewbar', role: 'group', 'aria-label': 'Saved views', 'data-testid': 'pri-viewbar' },
+    h('label', { class: 'pri-viewlabel', for: 'pri-view-select' }, 'View'), viewSel,
+    h('button', { type: 'button', class: 'btn pri-primary', 'data-testid': 'pri-save-open', onclick: () => saveViewDialog(null) }, 'Save view'),
+    vm.notice ? h('span', { class: 'pri-notice', 'data-testid': 'pri-view-notice', role: 'status' }, vm.notice) : null);
   function syncPicks() {
     pairs.forEach((p) => { p.pick.checked = isSel(p.r); });
     const n = shownList.filter((p) => isSel(p.r)).length;
@@ -417,7 +493,7 @@ function render(d, view = null, opts = {}) {
   }
   function selChanged() {
     if (readonly) { buildPrint(); return; }
-    saveSel(d.week_start, sel);
+    saveSel(d.week_start, sel, tok);
     syncPicks();
     const n = sel.size;
     toolbar.hidden = n === 0;
@@ -488,14 +564,29 @@ function render(d, view = null, opts = {}) {
 
   apply();
   selChanged();
-  return h('div', { class: 'page pri-page', 'data-testid': 'pri-page' }, top, base, h('div', { class: 'pri-screen' }, readonly ? null : viewsBox, readonly ? null : filters, readonly ? null : toolbar, readonly ? null : linkBox, count, table), printBlocks);
+  return h('div', { class: 'page pri-page', 'data-testid': 'pri-page' }, top, base, h('div', { class: 'pri-screen' }, readonly ? null : viewbar, readonly ? null : viewTools, readonly ? null : filters, readonly ? null : toolbar, readonly ? null : linkBox, count, table), printBlocks);
+}
+
+// the page data for an active view: live rows where the key still exists (latest mode) else the frozen copy; a row that left the current snapshot falls back to its frozen copy, marked `_from`.
+function effective(d, act, mode) {
+  const v = act.view; const frozen = act.rows;
+  const { view, ...frozenData } = act;
+  if (mode === 'frozen') return { ...frozenData, weeks: d.weeks, competitors_as_of: act.competitors_as_of };
+  const baselines = { ...(act.baselines || {}), ...(d.baselines || {}) };
+  if (v.kind === 'filters') return { ...d, baselines };
+  const live = new Map(d.rows.map((r) => [keyOf(r), r])); const fz = new Map(frozen.map((r) => [keyOf(r), r]));
+  const rows = (v.keys.length ? v.keys : frozen.map(keyOf)).map((k) => live.get(k) || (fz.get(k) ? { ...fz.get(k), _from: v.week_start } : null)).filter(Boolean);
+  return { ...d, baselines, rows };
 }
 
 export async function prioritiesPage(ctx) {
   showControls(false);
+  let token = ctx.params.view || '';
+  const mode = ctx.params.data === 'frozen' ? 'frozen' : 'latest';
+  const fetchSnap = () => api('/api/priorities', token || !ctx.params.week ? {} : { week: ctx.params.week }, { signal: ctx.signal });
   let d;
   try {
-    d = await api('/api/priorities', ctx.params.week ? { week: ctx.params.week } : {}, { signal: ctx.signal });
+    d = await fetchSnap();
   } catch (e) {
     if (e && e.status === 404) {
       ctx.mount(h('div', { class: 'page pri-page' }, h('h1', null, 'Creative priorities'), h('p', { 'data-testid': 'pri-empty' }, e.message)));
@@ -503,12 +594,27 @@ export async function prioritiesPage(ctx) {
     }
     throw e;
   }
+  let views = [];
+  try { views = (await api('/api/priorities/views', {}, { signal: ctx.signal })).views || []; } catch (e) { if (e && e.name === 'AbortError') throw e; views = []; }
+  let notice = flash.take();
+  if (!token) {                                                                    // remembered view: only when the URL names none
+    const last = lastView.get();
+    if (last && views.some((v) => v.token === last)) { token = last; navigate(viewUrl(last, mode === 'frozen' ? { data: 'frozen' } : {}), { replace: true, render: false }); } else if (last) lastView.set('');
+  }
+  let act = null;
+  if (token) {
+    try { act = await api('/api/priorities/views/' + encodeURIComponent(token), {}, { signal: ctx.signal }); } catch (e) {
+      if (e && e.status === 404) { lastView.set(''); notice = 'That saved view was deleted or does not exist, so all concepts are shown.'; navigate(href('/priorities', {}), { replace: true, render: false }); token = ''; } else throw e;
+    }
+  }
   const ref = {};
-  const reload = async () => {                                                                   // after a manual concept is added / edited / done / deleted: fetch again, keep the search, sort and Show done
-    const nd = await api('/api/priorities', ctx.params.week ? { week: ctx.params.week } : {});
-    ctx.mount(render(nd, null, { reload, ref, carry: ref.state }));
+  const vm = { views, active: act, mode, notice };
+  const reload = async () => {                                                     // after a manual concept is added / edited / done / deleted: fetch again, keep the view, search, sort and Show done
+    const nd = await fetchSnap();
+    ctx.mount(render(act ? effective(nd, act, mode) : nd, null, { reload, ref, carry: ref.state, vm }));
   };
-  ctx.mount(render(d, null, { reload, ref }));
+  ctx.mount(render(act ? effective(d, act, mode) : d, null, { reload, ref, vm }));
+  if (act) document.title = `${act.view.name} · Creative priorities · Marketing metrics`;
 }
 
 export async function prioritiesViewPage(ctx) {
@@ -518,7 +624,7 @@ export async function prioritiesViewPage(ctx) {
     d = await api('/api/priorities/views/' + encodeURIComponent(ctx.match[1]), {}, { signal: ctx.signal });
   } catch (e) {
     if (e && e.status === 404) {
-      ctx.mount(h('div', { class: 'page pri-page' }, h('h1', null, 'Creative priorities'), h('p', { 'data-testid': 'pri-empty' }, 'This saved view does not exist or was deleted. '), h('a', { href: href('/priorities', {}) }, 'Open full priorities')));
+      ctx.mount(h('div', { class: 'page pri-page' }, h('h1', null, 'Creative priorities'), h('p', { 'data-testid': 'pri-empty' }, 'This view was deleted (or the link is wrong): it no longer exists. '), h('a', { href: href('/priorities', {}) }, 'Open full priorities')));
       return;
     }
     throw e;

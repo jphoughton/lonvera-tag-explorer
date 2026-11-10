@@ -102,53 +102,127 @@ def _views_conn():
     return rwdb.get_rw()
 
 
-def _view_payload(snap: dict, ids: list[str], comp_snapshot: dict) -> dict:
-    keep = set(ids)
-    rows = [r for r in snap["rows"] if row_key(r) in keep]
-    return {**comp_snapshot, "rows": rows}
+FILTER_KEYS = ("products", "sections", "q", "key", "dir")
+
+
+def clean_filters(raw) -> dict:
+    """The saved filter state: products / sections (lists of short strings; empty = all), q (search text), key (sort column or None), dir (1 or -1). Anything else is dropped."""
+    if not isinstance(raw, dict):
+        raise q.ApiError(400, "filters must be an object")
+    out: dict = {}
+    for k in ("products", "sections"):
+        v = raw.get(k) or []
+        if not isinstance(v, list) or len(v) > 30 or not all(isinstance(x, str) and 0 < len(x) <= 60 for x in v):
+            raise q.ApiError(400, f"filters.{k} must be a short list of strings")
+        out[k] = list(dict.fromkeys(v))
+    qq = raw.get("q") or ""
+    if not isinstance(qq, str) or len(qq) > 200:
+        raise q.ApiError(400, "filters.q must be text of at most 200 characters")
+    out["q"] = qq.strip()
+    key = raw.get("key")
+    if key is not None and (not isinstance(key, str) or len(key) > 30):
+        raise q.ApiError(400, "filters.key must be a column name")
+    out["key"] = key or None
+    out["dir"] = -1 if raw.get("dir") == -1 else 1
+    return out
+
+
+def apply_filters(rows: list[dict], f: dict) -> list[dict]:
+    """Rows matching a saved filter state (same rules as the page: product and section membership, search over cluster / ICP / pain point / story). Order is kept."""
+    prods, secs, needle = set(f.get("products") or []), set(f.get("sections") or []), (f.get("q") or "").strip().lower()
+    return [r for r in rows if (not prods or r.get("product") in prods) and (not secs or r.get("section") in secs)
+            and (not needle or any(needle in str(r.get(k) or "").lower() for k in ("cluster", "icp", "pain_point", "story")))]
+
+
+def build_view(full: dict, body: dict) -> dict:
+    """Validate a create / update body against the full snapshot payload and return the record to store: kind, filters, keys, payload (frozen rows + baselines etc.), name, missing.
+    kind 'rows' needs ids (row keys); kind 'filters' needs filters (frozen rows = those matching right now)."""
+    kind = body.get("kind") or "rows"
+    if kind not in ("rows", "filters"):
+        raise q.ApiError(400, "kind must be rows or filters")
+    filters = None
+    if kind == "rows":
+        ids = body.get("ids")
+        if not isinstance(ids, list) or not ids or not all(isinstance(i, str) and 0 < len(i) <= 600 for i in ids):
+            raise q.ApiError(400, "ids must be a non-empty list of row keys")
+        ids = list(dict.fromkeys(ids))
+        if len(ids) > MAX_VIEW_ROWS:
+            raise q.ApiError(400, f"A saved view holds at most {MAX_VIEW_ROWS} rows.")
+        keep = set(ids)
+        rows = [r for r in full["rows"] if row_key(r) in keep]
+        if not rows:
+            raise q.ApiError(400, "None of the selected rows exist in that snapshot.")
+        missing = len(ids) - len(rows)
+    else:
+        filters = clean_filters(body.get("filters"))
+        rows = apply_filters(full["rows"], filters)
+        missing = 0
+        if len(rows) > MAX_VIEW_ROWS:
+            rows = rows[:MAX_VIEW_ROWS]
+    meta = {k: v for k, v in full.items() if k not in ("rows", "weeks", "stats")}
+    return {"kind": kind, "filters": filters, "keys": [row_key(r) for r in rows] if kind == "rows" else [], "payload": {**meta, "rows": rows}, "missing": missing, "count": len(rows),
+            "week_start": full["week_start"]}
 
 
 def create_view(conn, body: dict) -> dict:
-    ids = body.get("ids")
-    if not isinstance(ids, list) or not ids or not all(isinstance(i, str) and 0 < len(i) <= 600 for i in ids):
-        raise q.ApiError(400, "ids must be a non-empty list of row keys")
-    ids = list(dict.fromkeys(ids))
-    if len(ids) > MAX_VIEW_ROWS:
-        raise q.ApiError(400, f"A saved view holds at most {MAX_VIEW_ROWS} rows.")
     name = clean_name(body.get("name"))
     full = payload(conn, body.get("week") if isinstance(body.get("week"), str) else None)
-    view = _view_payload(full, ids, {k: v for k, v in full.items() if k not in ("rows", "weeks", "stats")})
-    if not view["rows"]:
-        raise q.ApiError(400, "None of the selected rows exist in that snapshot.")
-    kept = [row_key(r) for r in view["rows"]]
+    v = build_view(full, body)
     token = secrets.token_urlsafe(24)
     with _views_conn() as w:
-        w.execute("INSERT INTO creative_priorities_views (token, name, week_start, keys, payload) VALUES (%s,%s,%s,%s,%s)",
-                  (token, name, full["week_start"], kept, Jsonb(view)))
-    return {"token": token, "url": f"/priorities/v/{token}", "name": name, "count": len(kept), "missing": len(ids) - len(kept), "week_start": full["week_start"]}
+        w.execute("INSERT INTO creative_priorities_views (token, name, week_start, keys, payload, kind, filters) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                  (token, name, full["week_start"], v["keys"], Jsonb(v["payload"]), v["kind"], Jsonb(v["filters"]) if v["filters"] is not None else None))
+    return {"token": token, "url": f"/priorities/v/{token}", "name": name, "count": v["count"], "missing": v["missing"], "week_start": full["week_start"], "kind": v["kind"]}
+
+
+def update_view(conn, token: str, body: dict) -> dict:
+    """Replace a view's rows / filters (and frozen copy) with the given ones, from the latest snapshot; the token, name and kind stay. Body: ids (kind rows) or filters (kind filters)."""
+    if not TOKEN_RE.fullmatch(token or ""):
+        raise q.ApiError(404, "Saved view not found.")
+    with _views_conn() as w:
+        cur = w.execute("SELECT kind FROM creative_priorities_views WHERE token = %s", (token,)).fetchone()
+    if cur is None:
+        raise q.ApiError(404, "Saved view not found.")
+    full = payload(conn, None)
+    v = build_view(full, {**body, "kind": cur["kind"]})
+    with _views_conn() as w:
+        n = w.execute("UPDATE creative_priorities_views SET week_start=%s, keys=%s, payload=%s, filters=%s, updated_at=now() WHERE token=%s",
+                      (full["week_start"], v["keys"], Jsonb(v["payload"]), Jsonb(v["filters"]) if v["filters"] is not None else None, token)).rowcount
+    if not n:
+        raise q.ApiError(404, "Saved view not found.")
+    return {"token": token, "count": v["count"], "missing": v["missing"], "week_start": full["week_start"], "kind": v["kind"]}
 
 
 def list_views(limit: int = 50) -> list[dict]:
     with _views_conn() as w:
-        cur = w.execute("SELECT token, name, week_start, cardinality(keys) AS n, created_at FROM creative_priorities_views ORDER BY created_at DESC LIMIT %s", (limit,))
-        return [{"token": r["token"], "name": r["name"], "week_start": r["week_start"].isoformat(), "count": r["n"], "created_at": r["created_at"].isoformat(), "url": f"/priorities/v/{r['token']}"} for r in cur.fetchall()]
+        cur = w.execute("SELECT token, name, week_start, kind, filters, jsonb_array_length(payload->'rows') AS n, created_at FROM creative_priorities_views ORDER BY lower(name), created_at DESC LIMIT %s", (limit,))
+        return [{"token": r["token"], "name": r["name"], "week_start": r["week_start"].isoformat(), "count": r["n"], "kind": r["kind"], "filters": r["filters"], "created_at": r["created_at"].isoformat(),
+                 "url": f"/priorities/v/{r['token']}"} for r in cur.fetchall()]
+
+
+def view_response(r: dict) -> dict:
+    """The GET body for one stored view (shared with the UI test mock): the frozen payload plus a `view` block (name, kind, filters, row keys)."""
+    p = r["payload"]
+    return {**p, "weeks": [], "view": {"token": r["token"], "name": r["name"], "week_start": r["week_start"].isoformat() if hasattr(r["week_start"], "isoformat") else r["week_start"],
+                                       "created_at": r["created_at"].isoformat() if hasattr(r["created_at"], "isoformat") else r["created_at"], "count": len(p["rows"]),
+                                       "kind": r.get("kind") or "rows", "filters": r.get("filters"), "keys": list(r.get("keys") or [])}}
 
 
 def get_view(token: str) -> dict:
     if not TOKEN_RE.fullmatch(token or ""):
         raise q.ApiError(404, "Saved view not found.")
     with _views_conn() as w:
-        r = w.execute("SELECT token, name, week_start, payload, created_at FROM creative_priorities_views WHERE token = %s", (token,)).fetchone()
+        r = w.execute("SELECT token, name, week_start, payload, kind, filters, keys, created_at FROM creative_priorities_views WHERE token = %s", (token,)).fetchone()
     if r is None:
         raise q.ApiError(404, "Saved view not found.")
-    return {**r["payload"], "weeks": [], "view": {"token": r["token"], "name": r["name"], "week_start": r["week_start"].isoformat(), "created_at": r["created_at"].isoformat(), "count": len(r["payload"]["rows"])}}
+    return view_response(r)
 
 
-def view_csv(token: str) -> tuple[str, str]:
-    """(file slug, csv text): the slug is the slugified view name."""
+def view_csv(token: str, ids: list[str] | None = None) -> tuple[str, str]:
+    """(file slug, csv text): the slug is the slugified view name; ids (row keys) keep only those of the view's frozen rows."""
     from etl import creative_priorities as cp
     v = get_view(token)
-    return slug(v["view"]["name"]), cp.to_csv({**v, "stats": {}})
+    return slug(v["view"]["name"]), cp.to_csv(filter_rows({**v, "stats": {}}, ids))
 
 
 def rename_view(token: str, raw_name) -> dict:

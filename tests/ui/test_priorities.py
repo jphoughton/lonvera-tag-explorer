@@ -316,10 +316,11 @@ def test_selection_toolbar_at_375px_has_no_sideways_scroll(browser, base_url):
     p.wait_for_selector("[data-testid=pri-page]")
     idle(p)
     p.locator(PICK).nth(0).check()
-    p.locator("[data-testid=pri-view-name]").fill("a fairly long view name for a phone")
     assert p.locator(TOOLS).is_visible()
     assert not p.evaluate("() => document.documentElement.scrollWidth > innerWidth")
     p.locator("[data-testid=pri-sel-save]").click()
+    p.locator("[data-testid=pri-view-name]").fill("a fairly long view name for a phone")
+    p.keyboard.press("Enter")
     p.wait_for_selector("[data-testid=pri-view-link]")
     assert not p.evaluate("() => document.documentElement.scrollWidth > innerWidth")
     p.screenshot(path=str(SHOTS / "priorities_select_375.png"))
@@ -328,106 +329,369 @@ def test_selection_toolbar_at_375px_has_no_sideways_scroll(browser, base_url):
 
 # ---------------------------------------------------------------------------------------------------------------- saved views
 
+DLG = "[data-testid=pri-name-dialog]"
+NAME = "[data-testid=pri-view-name]"
+VSEL = "[data-testid=pri-view-select]"
+BAR = "[data-testid=pri-activebar]"
+
+
 def save_view(page, name, *idx):
+    """Tick rows, click Save view in the selection toolbar, name it in the dialog, Enter."""
     pick_rows(page, *idx)
-    page.locator("[data-testid=pri-view-name]").fill(name)
     page.locator("[data-testid=pri-sel-save]").click()
-    page.wait_for_selector("[data-testid=pri-view-link]")
-    return page.locator("[data-testid=pri-view-link]").get_attribute("href")
+    page.locator(DLG).wait_for()
+    page.locator(NAME).fill(name)
+    return _submit_and_link(page, lambda: page.keyboard.press("Enter"))
 
 
-def test_save_view_open_link_shows_only_those_rows_read_only_with_csv_and_print(page, browser, base_url):
+def _submit_and_link(page, submit):
+    link = page.locator("[data-testid=pri-view-link]")
+    old = link.get_attribute("href") if link.count() else None
+    submit()
+    page.wait_for_function("(old) => { const a = document.querySelector('[data-testid=pri-view-link]'); return a && a.getAttribute('href') !== old; }", arg=old)
+    return link.get_attribute("href")
+
+
+def save_filter_view(page, name):
+    page.locator("[data-testid=pri-save-open]").click()
+    page.locator(DLG).wait_for()
+    page.locator("[data-testid=pri-kind-filters]").check()
+    page.locator(NAME).fill(name)
+    return _submit_and_link(page, lambda: page.locator("[data-testid=pri-dialog-save]").click())
+
+
+def tok(url):
+    return url.rsplit("/", 1)[1]
+
+
+def open_view(page, token, extra=""):
+    page.goto(f"/priorities?view={token}{extra}")
+    page.wait_for_selector("[data-testid=pri-page], [data-testid=pri-empty]")
+    idle(page)
+
+
+def rows_text(page, col="pain"):
+    return page.locator(f"[data-testid=pri-body] {ROW} .pri-c-{col}").all_text_contents()
+
+
+def drop(page, keys=(), edit=None):
+    r = page.request.post(page.url.split("/priorities")[0] + "/__test/priorities/drop", data={"keys": list(keys), "edit": edit or {}})
+    assert r.ok
+
+
+def key_of_row(page, i):
+    return page.evaluate("""(i) => { const r = document.querySelectorAll('[data-testid=pri-body] [data-testid=pri-card]')[i];
+      const c = (k) => r.querySelector('.pri-c-' + k).childNodes[0].textContent.trim();
+      return [r.dataset.product, r.dataset.section, c('cluster'), c('icp'), c('pain')].join('|'); }""", i)
+
+
+@pytest.fixture(autouse=True)
+def _clean_views(page):
+    yield
+    try:
+        base = page.url.split("/priorities")[0]
+        drop(page)
+        for v in page.request.get(base + "/api/priorities/views").json()["views"]:
+            page.request.delete(base + "/api/priorities/views/" + v["token"])
+        page.evaluate("() => { try { localStorage.clear(); sessionStorage.clear(); } catch (e) {} }")
+    except Exception:
+        pass
+
+
+def test_save_view_opens_a_naming_dialog_with_a_focused_prefilled_selected_input_enter_saves_esc_cancels(page):
+    import re
+    goto(page)
+    pick_rows(page, 0, 1)
+    page.locator("[data-testid=pri-sel-save]").click()
+    dlg = page.locator(DLG)
+    dlg.wait_for()
+    inp = page.locator(NAME)
+    assert re.fullmatch(r"Priorities - \d{1,2}/\d{1,2}/\d{2}", inp.input_value())
+    assert inp.get_attribute("maxlength") == "120" and "Madre" in inp.get_attribute("placeholder")
+    assert page.evaluate("() => document.activeElement.dataset.testid") == "pri-view-name"
+    assert page.evaluate("() => { const i = document.activeElement; return i.selectionStart === 0 && i.selectionEnd === i.value.length; }")
+    assert dlg.locator("[data-testid=pri-dialog-save]").is_visible() and dlg.locator("[data-testid=pri-dialog-cancel]").is_visible()
+    page.keyboard.press("Escape")
+    assert dlg.count() == 0 and page.locator("[data-testid=pri-linkbox]").is_hidden()                   # Esc cancels, nothing saved
+    page.locator("[data-testid=pri-sel-save]").click()
+    page.locator(DLG).wait_for()
+    page.locator("[data-testid=pri-dialog-cancel]").click()
+    assert page.locator(DLG).count() == 0 and page.locator("[data-testid=pri-linkbox]").is_hidden()
+    page.locator("[data-testid=pri-sel-save]").click()
+    page.locator(NAME).fill("   ")
+    page.keyboard.press("Enter")                                                                           # empty -> default name
+    page.wait_for_selector("[data-testid=pri-saved-name]")
+    assert re.search(r"Saved .Priorities - \d{1,2}/\d{1,2}/\d{2}.", page.locator("[data-testid=pri-saved-name]").text_content())
+    page.locator("[data-testid=pri-sel-save]").click()
+    page.locator(NAME).fill("x" * 300)
+    assert len(page.locator(NAME).input_value()) == 120                                                    # 120 character cap
+    page.locator(NAME).fill("  Madre - 11/10/26 Priorities  ")
+    page.keyboard.press("Enter")
+    page.wait_for_function("() => document.querySelector('[data-testid=pri-saved-name]').textContent.includes('Madre - 11/10/26 Priorities')")
+    box = page.locator("[data-testid=pri-linkbox]")
+    assert box.locator("[data-testid=pri-copy-link]").is_visible() and box.locator("[data-testid=pri-view-open]").is_visible()
+    page.locator("[data-testid=pri-views]").count() == 0
+    opts = page.locator(VSEL + " option").all_text_contents()
+    assert opts[0] == "All concepts" and any("Madre - 11/10/26 Priorities (2 concepts)" == o for o in opts)       # the name is in the dropdown right away
+
+
+def test_switching_to_a_rows_view_filters_the_same_table_in_place_and_back_to_all(page):
     goto(page)
     pains = [page.locator(PICK).nth(i).locator("xpath=ancestor::tr").locator(".pri-c-pain").text_content() for i in (1, 6, 7)]
     url = save_view(page, "Round 1 briefs", 1, 6, 7)
-    assert url.startswith("/priorities/v/") and len(url.rsplit("/", 1)[1]) >= 22
-    assert "3 concepts" in page.locator("[data-testid=pri-linkbox]").text_content() and page.locator("[data-testid=pri-linkbox] [data-testid=pri-copy-link]").is_visible()
-    c = browser.new_context(viewport={"width": 1440, "height": 900}, base_url=base_url)                                # a fresh context: no selection, no sessionStorage
-    c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
-    v = c.new_page()
-    v.goto(url)
-    v.wait_for_selector("[data-testid=pri-page]")
-    idle(v)
-    assert "Round 1 briefs" in v.locator("[data-testid=pri-title]").text_content()
-    assert "snapshot week of" in v.locator("[data-testid=pri-view-note]").text_content()
-    assert v.locator("[data-testid=pri-body] tr.pri-row").count() == 3
-    assert sorted(v.locator("[data-testid=pri-body] .pri-c-pain").all_text_contents()) == sorted(pains)
-    assert v.locator(PICK).count() == 0 and v.locator(TOOLS).count() == 0 and v.locator("[data-testid=pri-search]").count() == 0 and v.locator("[data-testid=pri-week]").count() == 0
-    assert v.locator("[data-testid=pri-open-full]").get_attribute("href") == "/priorities"
-    with v.expect_download() as dl:
-        v.locator("[data-testid=pri-csv]").click()
-    assert len(csv_of(dl.value)) == 4
-    v.emulate_media(media="print")
-    assert v.locator("[data-testid=pri-print-copy] [data-testid=pri-print-row]").count() == 3
-    v.close()
-    c.close()
+    assert url.startswith("/priorities/v/") and len(tok(url)) >= 22
+    t = tok(url)
+    goto(page)
+    assert visible_rows(page) == 30 and page.locator(VSEL).input_value() == "" and page.locator(BAR).count() == 0
+    page.locator(VSEL).select_option(t)
+    page.wait_for_selector(BAR)
+    idle(page)
+    assert f"view={t}" in page.url
+    assert visible_rows(page) == 3 and sorted(rows_text(page)) == sorted(pains)
+    assert "Viewing: Round 1 briefs (3 concepts)" in page.locator(BAR).text_content().replace("\u00a0", " ")
+    assert page.locator("[data-testid=pri-title]").text_content() == "Creative priorities: Round 1 briefs" and page.title().startswith("Round 1 briefs")
+    assert page.locator(VSEL).input_value() == t
+    # same table: expandable panels, checkboxes, toolbar, search, sort, exports and print all work on the filtered set
+    page.locator("[data-testid=pri-toggle]").first.click()
+    assert page.locator(DETAIL + ":visible").count() == 1
+    pick_rows(page, 0, 1)
+    assert page.locator(TOOLS).is_visible() and "2 selected" in page.locator("[data-testid=pri-sel-count]").text_content()
+    with page.expect_download() as dl:
+        page.locator("[data-testid=pri-sel-csv]").click()
+    assert len(csv_of(dl.value)) == 3 and dl.value.suggested_filename == "round-1-briefs.csv"
+    page.locator("[data-testid=pri-search]").fill(pains[0][:6])
+    assert 1 <= visible_rows(page) <= 3
+    page.locator("[data-testid=pri-search]").fill("")
+    page.locator("[data-testid=pri-sort-pain]").click()
+    assert rows_text(page) == sorted(rows_text(page), key=str.lower)
+    page.emulate_media(media="print")
+    assert page.locator("[data-testid=pri-print-copy] [data-testid=pri-print-row]").count() == 2         # only the 2 ticked rows print
+    page.emulate_media(media="screen")
+    # back to all
+    page.locator("[data-testid=pri-back-all]").click()
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=pri-body] [data-testid=pri-card]').length === 30")
+    assert "view=" not in page.url and page.locator(BAR).count() == 0 and page.locator(VSEL).input_value() == ""
+
+
+@pytest.mark.allow_errors
+def test_view_url_is_bookmarkable_last_view_is_remembered_only_without_a_view_param_and_unknown_token_falls_back(page):
+    goto(page)
+    t1 = tok(save_view(page, "Alpha view", 0))
+    t2 = tok(save_view(page, "Beta view", 2, 3))
+    goto(page)
+    page.locator(VSEL).select_option(t2)                                                                    # choosing a view remembers it for this browser
+    page.wait_for_selector(BAR)
+    idle(page)
+    assert visible_rows(page) == 3                                                                          # Beta = rows 0 (still ticked), 2 and 3
+    goto(page)                                                                                              # no ?view: the remembered one (Beta) applies and the URL says so
+    assert f"view={t2}" in page.url and visible_rows(page) == 3 and page.locator(VSEL).input_value() == t2
+    open_view(page, t1)                                                                                     # explicit ?view wins over the remembered one
+    assert visible_rows(page) == 1
+    page.locator(VSEL).select_option("")                                                                    # All concepts is one click away and is remembered too
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=pri-body] [data-testid=pri-card]').length === 30")
+    goto(page)
+    assert "view=" not in page.url and visible_rows(page) == 30
+    open_view(page, "Z" * 30)                                                                               # unknown token: friendly message, all concepts
+    assert visible_rows(page) == 30 and "deleted or does not exist" in page.locator("[data-testid=pri-view-notice]").text_content()
+    assert "view=" not in page.url
+
+
+def test_latest_data_vs_frozen_as_saved_and_a_row_missing_from_the_current_snapshot_falls_back_to_its_frozen_copy(page):
+    goto(page)
+    k = [key_of_row(page, i) for i in (1, 6, 7)]
+    t = tok(save_view(page, "Fallback view", 1, 6, 7))
+    saved = {kk: page.locator(f"[data-testid=pri-body] {ROW}").nth(i).locator(".pri-c-concepts").text_content() for kk, i in zip(k, (1, 6, 7))}
+    drop(page, keys=[k[0]], edit={k[1]: {"concepts": 77}})
+    open_view(page, t)
+    assert visible_rows(page) == 3                                                                          # default = Latest data
+    by_key = {key_of_row(page, i): i for i in range(3)}
+    row1 = page.locator(f"[data-testid=pri-body] {ROW}").nth(by_key[k[1]])
+    assert "77 concepts" in row1.locator(".pri-c-concepts").text_content() and saved[k[1]] != "77 concepts"
+    gone = page.locator(f"[data-testid=pri-body] {ROW}").nth(by_key[k[0]])
+    assert "from 20" in gone.locator("[data-testid=pri-from]").text_content() and saved[k[0]] == gone.locator(".pri-c-concepts").text_content()
+    assert "no longer in the current snapshot" in page.locator("[data-testid=pri-from-note]").text_content()
+    page.locator("[data-testid=pri-data-mode]").select_option("frozen")                                     # Frozen as saved: every number as saved, no badges
+    page.wait_for_function("() => location.search.includes('data=frozen')")
+    idle(page)
+    assert visible_rows(page) == 3 and page.locator("[data-testid=pri-from]").count() == 0
+    assert [saved[kk] for kk in k] == [page.locator(f"[data-testid=pri-body] {ROW}").nth({key_of_row(page, i): i for i in range(3)}[kk]).locator(".pri-c-concepts").text_content() for kk in k]
+    # the share link page stays frozen whatever the current snapshot says
+    page.goto(f"/priorities/v/{t}")
+    page.wait_for_selector("[data-testid=pri-view-note]")
+    idle(page)
+    assert page.locator("[data-testid=pri-body] tr.pri-row").count() == 3 and "frozen" in page.locator("[data-testid=pri-view-note]").text_content()
+    assert "77 concepts" not in " ".join(page.locator("[data-testid=pri-body] .pri-c-concepts").all_text_contents())
+
+
+def test_filter_view_saves_the_current_filters_and_applies_them_live_to_new_matching_concepts(page):
+    goto(page)
+    page.locator("[data-testid=pri-f-product-beef-liver]").click()
+    page.locator("[data-testid=pri-f-product-boneflex]").click()                                            # Vita Bull only
+    page.locator("[data-testid=pri-f-section-stop]").click()                                                 # ... without Stop
+    page.locator("[data-testid=pri-sort-pain]").click()
+    n = visible_rows(page)
+    assert 0 < n < 30
+    vb = page.locator(f"[data-testid=pri-body] {ROW}").evaluate_all("els => els.map(e => [e.dataset.product, e.dataset.section])")
+    assert all(p == "vita-bull" and sct != "stop" for p, sct in vb)
+    first_key = key_of_row(page, 0)
+    # a concept is missing at save time; it is back later and the view picks it up by itself
+    drop(page, keys=[first_key])
+    page.reload()
+    page.wait_for_selector("[data-testid=pri-page]")
+    idle(page)
+    page.locator("[data-testid=pri-f-product-beef-liver]").click()
+    page.locator("[data-testid=pri-f-product-boneflex]").click()
+    page.locator("[data-testid=pri-f-section-stop]").click()
+    page.locator("[data-testid=pri-sort-pain]").click()
+    assert visible_rows(page) == n - 1
+    page.locator("[data-testid=pri-save-open]").click()
+    page.locator(DLG).wait_for()
+    assert page.locator("[data-testid=pri-kind-rows]").is_disabled() and page.locator("[data-testid=pri-kind-filters]").is_checked()   # nothing ticked: filters is the default
+    page.locator(NAME).fill("Vita Bull live")
+    page.keyboard.press("Enter")
+    page.wait_for_selector("[data-testid=pri-view-link]")
+    t = tok(page.locator("[data-testid=pri-view-link]").get_attribute("href"))
+    drop(page)                                                                                                # the dropped concept returns
+    open_view(page, t)
+    assert visible_rows(page) == n and "Vita Bull live" in page.locator(BAR).text_content()
+    assert page.locator("[data-testid=pri-f-product-vita-bull]").get_attribute("aria-pressed") == "true" and page.locator("[data-testid=pri-f-product-beef-liver]").get_attribute("aria-pressed") == "false"
+    assert page.locator("[data-testid=pri-f-section-stop]").get_attribute("aria-pressed") == "false"
+    assert page.locator("[data-testid=pri-sort-pain]").locator("xpath=ancestor::th").get_attribute("aria-sort") == "ascending"
+    assert "applied live" in page.locator(BAR).text_content()
+    page.locator("[data-testid=pri-data-mode]").select_option("frozen")                                      # frozen = the concepts that matched when it was saved
+    page.wait_for_function("() => location.search.includes('data=frozen')")
+    idle(page)
+    assert visible_rows(page) == n - 1
+
+
+def test_update_this_view_replaces_rows_or_filters_and_rename_and_delete_work_on_the_active_view(page):
+    import re
+    goto(page)
+    t = tok(save_view(page, "Editable", 0, 1, 2))
+    open_view(page, t)
+    page.locator("[data-testid=pri-view-update]").click()                                                   # a rows view needs ticked rows
+    assert visible_rows(page) == 3
+    pick_rows(page, 1)
+    page.locator("[data-testid=pri-view-update]").click()
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=pri-body] [data-testid=pri-card]').length === 1")
+    assert "Updated" in page.locator("[data-testid=pri-view-notice]").text_content() and "(1 concept)" in page.locator(BAR).text_content()
+    assert page.request.get(page.url.split("/priorities")[0] + f"/api/priorities/views/{t}").json()["view"]["count"] == 1
+    # rename: a dialog, same link, name everywhere
+    page.locator("[data-testid=pri-active-rename]").click()
+    page.locator(DLG).wait_for()
+    assert page.locator(NAME).input_value() == "Editable"
+    page.locator(NAME).fill("Renamed 11/10")
+    page.keyboard.press("Enter")
+    page.wait_for_function("() => document.querySelector('[data-testid=pri-title]').textContent.includes('Renamed 11/10')")
+    assert f"view={t}" in page.url and page.title().startswith("Renamed 11/10")
+    assert page.locator(VSEL + " option:checked").text_content().startswith("Renamed 11/10")
+    # a filter view updates to the filters now on the page
+    page.locator(VSEL).select_option("")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=pri-body] [data-testid=pri-card]').length === 30")
+    page.locator("[data-testid=pri-f-product-boneflex]").click()
+    page.locator("[data-testid=pri-search]").fill("a")
+    tf = tok(save_filter_view(page, "Filtered"))
+    open_view(page, tf)
+    page.locator("[data-testid=pri-search]").fill("")
+    page.locator("[data-testid=pri-f-product-boneflex]").click()
+    page.locator("[data-testid=pri-f-product-beef-liver]").click()
+    page.locator("[data-testid=pri-view-update]").click()
+    page.wait_for_function("() => document.querySelector('[data-testid=pri-view-notice]')")
+    f = page.request.get(page.url.split("/priorities")[0] + f"/api/priorities/views/{tf}").json()["view"]["filters"]
+    assert f["q"] == "" and "beef-liver" not in f["products"] and f["products"]
+    # delete the active view: confirm, back to all, gone from the dropdown
+    page.once("dialog", lambda d: d.accept())
+    page.locator("[data-testid=pri-active-delete]").click()
+    page.wait_for_function("() => !location.search.includes('view=')")
+    idle(page)
+    assert visible_rows(page) == 30 and "Deleted" in page.locator("[data-testid=pri-view-notice]").text_content()
+    assert not any("Filtered" in o for o in page.locator(VSEL + " option").all_text_contents())
+    assert page.request.get(page.url.split("/priorities")[0] + f"/api/priorities/views/{tf}").status == 404
+
+
+@pytest.mark.allow_errors
+def test_deleted_view_share_page_says_it_was_deleted(page):
+    goto(page)
+    t = tok(save_view(page, "Short lived", 0))
+    page.request.delete(page.url.split("/priorities")[0] + f"/api/priorities/views/{t}")
+    page.goto(f"/priorities/v/{t}")
+    page.wait_for_selector("[data-testid=pri-empty]")
+    assert "was deleted" in page.locator("[data-testid=pri-empty]").text_content()
+    assert page.locator("a", has_text="Open full priorities").count() == 1
 
 
 @pytest.mark.allow_errors
 def test_unknown_view_token_is_a_friendly_404_page(page):
     page.goto("/priorities/v/" + "x" * 30)
     page.wait_for_selector("[data-testid=pri-empty]")
-    assert "does not exist" in page.locator("[data-testid=pri-empty]").text_content()
+    assert "was deleted" in page.locator("[data-testid=pri-empty]").text_content()
 
 
-def test_saved_views_list_reopens_and_deletes(page):
+def test_share_page_is_frozen_names_csv_after_the_view_name_and_renames_with_the_dialog(page, browser, base_url):
     goto(page)
-    save_view(page, "Delete me", 0)
-    page.locator("[data-testid=pri-views] summary").click()
-    row = page.locator("[data-testid=pri-view-row]", has_text="Delete me").first
-    row.wait_for()
-    assert "1 concept" in row.text_content() and "snapshot" in row.text_content()
-    href = row.locator("a").first.get_attribute("href")
-    page.once("dialog", lambda dlg: dlg.accept())
-    row.locator("[data-testid=pri-view-delete]").click()
-    page.wait_for_function("(h) => ![...document.querySelectorAll('[data-testid=pri-view-row] a')].some(a => a.getAttribute('href') === h)", arg=href)
-    r = page.request.get(page.url.split("/priorities")[0] + "/api/priorities/views/" + href.rsplit("/", 1)[1])
-    assert r.status == 404
+    pains = [page.locator(PICK).nth(i).locator("xpath=ancestor::tr").locator(".pri-c-pain").text_content() for i in (1, 6)]
+    url = save_view(page, "  Madre - 11/10/26 Priorities  ", 1, 6)
+    c = browser.new_context(viewport={"width": 1440, "height": 900}, base_url=base_url)                    # a fresh context: no selection, no storage
+    c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+    v = c.new_page()
+    v.goto(url)
+    v.wait_for_selector("[data-testid=pri-page]")
+    idle(v)
+    assert v.locator("[data-testid=pri-title]").text_content() == "Creative priorities: Madre - 11/10/26 Priorities" and v.title().startswith("Madre - 11/10/26 Priorities")
+    assert sorted(v.locator("[data-testid=pri-body] .pri-c-pain").all_text_contents()) == sorted(pains)
+    assert v.locator(PICK).count() == 0 and v.locator(TOOLS).count() == 0 and v.locator("[data-testid=pri-search]").count() == 0 and v.locator(VSEL).count() == 0
+    with v.expect_download() as dl:
+        v.locator("[data-testid=pri-csv]").click()
+    assert dl.value.suggested_filename == "madre-11-10-26-priorities.csv" and len(csv_of(dl.value)) == 3
+    v.locator("[data-testid=pri-rename]").click()
+    v.locator(DLG).wait_for()
+    v.locator(NAME).fill("Round 2 / <b>x</b>")
+    v.keyboard.press("Enter")
+    v.wait_for_function("() => document.querySelector('[data-testid=pri-title]').textContent.includes('Round 2')")
+    assert v.title().startswith("Round 2 / <b>x</b>") and v.url.endswith(url)
+    v.reload()
+    v.wait_for_selector("[data-testid=pri-title]")
+    assert v.locator("[data-testid=pri-title]").text_content() == "Creative priorities: Round 2 / <b>x</b>" and v.locator("[data-testid=pri-title] b").count() == 0
+    v.close()
+    c.close()
 
 
-def test_save_view_name_is_prefilled_free_text_and_becomes_title_tab_title_and_csv_filename(page):
-    import re
-    goto(page)
-    nm = page.locator("[data-testid=pri-view-name]")
-    assert re.fullmatch(r"Priorities - \d{1,2}/\d{1,2}/\d{2}", nm.input_value())
-    pick_rows(page, 0, 1)
-    nm.fill("  Madre - 11/10/26 Priorities  ")
-    page.locator("[data-testid=pri-sel-save]").click()
-    page.wait_for_selector("[data-testid=pri-view-link]")
-    url = page.locator("[data-testid=pri-view-link]").get_attribute("href")
-    page.goto(url)
-    page.wait_for_selector("[data-testid=pri-title]")
-    idle(page)
-    assert page.locator("[data-testid=pri-title]").text_content() == "Creative priorities: Madre - 11/10/26 Priorities"
-    assert page.title().startswith("Madre - 11/10/26 Priorities")
-    with page.expect_download() as dl:
-        page.locator("[data-testid=pri-csv]").click()
-    assert dl.value.suggested_filename == "madre-11-10-26-priorities.csv"
-    # rename from the view page: same link, new title
-    page.once("dialog", lambda d: d.accept("Round 2 / <b>x</b>"))
-    page.locator("[data-testid=pri-rename]").click()
-    page.wait_for_function("() => document.querySelector('[data-testid=pri-title]').textContent.includes('Round 2')")
-    assert page.title().startswith("Round 2 / <b>x</b>") and page.url.endswith(url)
-    page.reload()
-    page.wait_for_selector("[data-testid=pri-title]")
-    assert page.locator("[data-testid=pri-title]").text_content() == "Creative priorities: Round 2 / <b>x</b>" and page.locator("[data-testid=pri-title] b").count() == 0
+def test_view_bar_dialog_and_active_view_fit_375px_and_the_share_page_does_not_overflow_at_desktop_widths(browser, base_url):
+    for w, h_ in ((375, 812), (1009, 800), (1280, 800)):
+        c = browser.new_context(viewport={"width": w, "height": h_}, base_url=base_url)
+        c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+        p = c.new_page()
+        p.goto("/priorities")
+        p.wait_for_selector("[data-testid=pri-page]")
+        idle(p)
+        pick_rows(p, 0, 1)
+        p.locator("[data-testid=pri-sel-save]").click()
+        p.locator(DLG).wait_for()
+        assert p.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+        box = p.locator(DLG).bounding_box()
+        assert box["x"] >= 0 and box["x"] + box["width"] <= w
+        p.locator(NAME).fill(f"Width {w}")
+        p.keyboard.press("Enter")
+        p.wait_for_selector("[data-testid=pri-view-link]")
+        url = p.locator("[data-testid=pri-view-link]").get_attribute("href")
+        p.goto("/priorities?view=" + tok(url))
+        p.wait_for_selector(BAR)
+        idle(p)
+        sw, cw = p.evaluate("() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]")
+        assert sw <= cw, ("active view", w, sw, cw)
+        p.goto(url)
+        p.wait_for_selector("[data-testid=pri-view-note]")
+        idle(p)
+        sw, cw = p.evaluate("() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]")
+        assert sw <= cw, ("share page", w, sw, cw)
+        if w == 375:
+            p.screenshot(path=str(SHOTS / "priorities_view_375.png"))
+        p.goto("/priorities")
+        p.evaluate("() => { try { localStorage.clear(); } catch (e) {} }")
+        for v in p.request.get(base_url + "/api/priorities/views").json()["views"]:
+            p.request.delete(base_url + "/api/priorities/views/" + v["token"])
+        c.close()
 
-
-def test_empty_name_gets_the_default_and_rename_from_the_dropdown(page):
-    import re
-    goto(page)
-    pick_rows(page, 2)
-    page.locator("[data-testid=pri-view-name]").fill("   ")
-    page.locator("[data-testid=pri-sel-save]").click()
-    page.wait_for_selector("[data-testid=pri-view-link]")
-    url = page.locator("[data-testid=pri-view-link]").get_attribute("href")
-    page.locator("[data-testid=pri-views] summary").click()
-    row = page.locator("[data-testid=pri-view-row]").filter(has=page.locator(f"a[href='{url}']"))
-    row.wait_for()
-    assert re.match(r"Priorities - \d{1,2}/\d{1,2}/\d{2}", row.locator("a").first.text_content())
-    page.once("dialog", lambda d: d.accept("Renamed - 1/2/27"))
-    row.locator("[data-testid=pri-view-rename]").click()
-    page.wait_for_function("(u) => { const a = document.querySelector(`[data-testid=pri-view-row] a[href='${u}']`); return a && a.textContent === 'Renamed - 1/2/27'; }", arg=url)
 
 # ---------------------------------------------------------------------------------------------------------------- redesigned detail panel
 

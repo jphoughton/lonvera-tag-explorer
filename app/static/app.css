@@ -685,8 +685,25 @@ th[aria-sort="ascending"] .pri-arrow { opacity: 1; } th[aria-sort="descending"] 
 .pri-linkbox { margin: 6px 0; padding: 8px 10px; border: 1px solid #1a7f37; border-radius: 8px; font-size: 13px; overflow-wrap: anywhere; }
 .pri-linkbox[hidden] { display: none; }
 .pri-err { color: #b42318; }
-.pri-views { margin: 8px 0; font-size: 13px; } .pri-views summary { cursor: pointer; font-weight: 700; }
-.pri-vrow { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--border, #d8d8d8); }
+/* view switcher: View dropdown + Save view, the Viewing bar of the active view, the naming dialog */
+.pri-viewbar { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin: 10px 0 6px; padding: 8px 10px; border: 1px solid var(--border, #d8d8d8); border-radius: 8px; background: rgba(127, 127, 127, .05); }
+.pri-viewlabel { font-weight: 700; font-size: 13px; }
+.pri-viewsel { font: inherit; font-size: 14px; padding: 5px 8px; min-width: 240px; max-width: 100%; }
+.pri-primary { background: #0b6bcb; border-color: #0b6bcb; color: #fff; }
+.pri-notice { font-size: 13px; color: #8a4b00; overflow-wrap: anywhere; }
+.pri-activebar { margin: 6px 0; padding: 8px 12px; border: 1px solid #0b6bcb; border-left-width: 5px; border-radius: 8px; background: rgba(11, 107, 203, .07); font-size: 13px; display: grid; gap: 8px; }
+.pri-activeline { overflow-wrap: anywhere; }
+.pri-activebtns { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.pri-datamode select { font: inherit; padding: 4px 6px; max-width: 100%; }
+.pri-from { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 9px; font-size: 11px; font-weight: 600; color: #8a4b00; background: rgba(179, 89, 0, .13); white-space: nowrap; }
+.pri-dialog { border: 1px solid var(--border, #bbb); border-radius: 10px; padding: 18px 20px; width: min(440px, calc(100vw - 32px)); max-width: calc(100vw - 32px); box-sizing: border-box; color: inherit; background: var(--bg, #fff); }
+.pri-dialog::backdrop { background: rgba(0, 0, 0, .4); }
+.pri-dform { display: grid; gap: 12px; margin: 0; }
+.pri-dtitle { margin: 0; font-size: 18px; }
+.pri-dlabel { display: grid; gap: 4px; }
+.pri-dlabel .pri-name { width: 100%; box-sizing: border-box; font-size: 16px; padding: 8px 10px; }
+.pri-kinds { border: 0; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; } .pri-kinds legend { padding: 0; }
+.pri-dbtns { display: flex; justify-content: flex-end; gap: 8px; }
 .pri-toggle { background: none; border: 1px solid var(--border, #bbb); border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font: inherit; color: inherit; }
 .pri-toggle:focus-visible { outline: 2px solid #0b6bcb; outline-offset: 2px; }
 .pri-chev { display: inline-block; transition: transform .12s; }
@@ -782,6 +799,17 @@ th[aria-sort="ascending"] .pri-arrow { opacity: 1; } th[aria-sort="descending"] 
 .pri-k { color: var(--lv-muted, #665d53); }
 .pri-status { font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 2px 8px; border-radius: 10px; border: 1px solid currentColor; white-space: nowrap; display: inline-block; }
 .pri-st-ok { color: #1a7f37; } .pri-st-up { color: #0b6bcb; } .pri-st-fade { color: #b35900; } .pri-st-bad { color: #b42318; } .pri-st-flat { color: #667085; } .pri-st-new { color: #7a3db8; }
+@media (min-width: 761px) and (max-width: 1320px) {                /* between phone and wide desktop the table must still fit: smaller minimums, smaller padding, long text wraps */
+  .pri-main { table-layout: fixed; }
+  .pri-main .pri-c-section, .pri-main .pri-c-cluster, .pri-main .pri-c-icp, .pri-main .pri-c-pain, .pri-main .pri-c-story { min-width: 0; }
+  .pri-main .pri-c { padding: 6px 5px; font-size: 12px; overflow-wrap: anywhere; }
+  .pri-main .pri-c-product { white-space: normal; }
+  .pri-main th { padding: 6px 5px; }
+  .pri-main .pri-c-tog, .pri-main .pri-th-tog { width: 52px; }
+  .pri-main .pri-c-product { width: 7%; } .pri-main .pri-c-section { width: 10%; } .pri-main .pri-c-status { width: 9%; } .pri-main .pri-c-concepts { width: 7%; } .pri-main .pri-c-key { width: 15%; }
+  .pri-main .pri-c-cluster, .pri-main .pri-c-icp, .pri-main .pri-c-pain { width: 11%; } .pri-main .pri-c-story { width: 17%; }
+  .pri-main .pri-detail > td { padding-left: 14px; }
+}
 @media (max-width: 760px) {
   .pri-table, .pri-table tbody, .pri-table tr, .pri-table td { display: block; width: 100%; box-sizing: border-box; }
   .pri-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
