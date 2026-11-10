@@ -105,11 +105,14 @@ def test_clean_patch_rejects():
     bad(pa.clean_patch, {"vendor": "madre"})
 
 
-def test_clean_vendor_patch_only_two_fields():
+def test_clean_vendor_patch_only_its_fields():
     assert pa.clean_vendor_patch({"creative_url": "https://drive.google.com/x", "vendor_note": " done \n "}) == {"creative_url": "https://drive.google.com/x", "vendor_note": "done"}
     assert pa.clean_vendor_patch({"creative_url": ""}) == {"creative_url": None}
-    for k in ("brief_url", "vendor", "note", "for_week", "ready", "launched", "dropped", "tracker_concept_ids"):
+    for k in ("brief_url", "vendor", "note", "for_week", "launched", "dropped", "tracker_concept_ids"):
         bad(pa.clean_vendor_patch, {k: "x"}, msg="unknown field")
+    assert pa.clean_vendor_patch({"ready": True}) == {"ready": True} and pa.clean_vendor_patch({"ready": False}) == {"ready": False}
+    for v in ("true", 1, None, "yes"):
+        bad(pa.clean_vendor_patch, {"ready": v}, msg="true or false")
     bad(pa.clean_vendor_patch, {"vendor_note": "x" * 1001})
     bad(pa.clean_vendor_patch, {"creative_url": "ftp://x"})
 
@@ -187,3 +190,10 @@ def test_summary_computes_stage_when_missing_and_breaks_week_ties_by_id():
     assert pa.summary_for_row([a, t]) == "Madre, week of 11/9: brief sent, +1 earlier"
     rows = [A("Madre", D(2026, 11, 9), "assigned", 1), A("Victoria", D(2026, 11, 9), "assigned", 2)]
     assert pa.summary_for_row(rows).startswith("Victoria")
+
+
+def test_vendors_are_the_nine_tracker_spellings():
+    assert pa.VENDORS == ["Madre", "Victoria", "TrybeDCShop", "TrybeOrion", "10xROAS", "Internal", "PuredMedia", "CreateMastery", "OpenProgram"]
+    for v in ("PuredMedia", "CreateMastery", "OpenProgram"):
+        assert pa.clean_create({"vendor": v, "for_week": "2026-11-09"})["vendor"] == v
+    bad(pa.clean_create, {"vendor": "Other", "for_week": "2026-11-09"})

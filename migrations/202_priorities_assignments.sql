@@ -29,7 +29,9 @@ CREATE TABLE IF NOT EXISTS creative_priorities_assignments (
   dropped_at          timestamptz,
   tracker_concept_ids text[]      NOT NULL DEFAULT '{}',
   created_at          timestamptz NOT NULL DEFAULT now(),
-  updated_at          timestamptz NOT NULL DEFAULT now()
+  updated_at          timestamptz NOT NULL DEFAULT now(),
+  created_by          text,
+  updated_by          text
 );
 CREATE UNIQUE INDEX IF NOT EXISTS creative_priorities_assignments_open_uq ON creative_priorities_assignments (concept_key, vendor, for_week) WHERE dropped_at IS NULL;
 CREATE INDEX IF NOT EXISTS creative_priorities_assignments_concept_idx ON creative_priorities_assignments (concept_key);
@@ -43,12 +45,12 @@ CREATE TABLE IF NOT EXISTS creative_priorities_vendor_links (
 );
 
 -- ---------------------------------------------------------------- comments
-COMMENT ON TABLE public.creative_priorities_assignments IS 'Production assignments from /priorities: a concept given to a vendor to make for a week (Assign to vendor), with the brief link, the creative link, the stage timestamps and the Creative Tracker Concept IDs of the ads that came out of it. The concept itself stays in the ideation list unchanged. Grain: one row per concept x vendor x week (open rows are unique; a dropped row can be assigned again). Source: the /priorities and /priorities/production pages and the vendor link page via /api/priorities/assignments (app/priorities_assign.py). Refresh: on demand (a person assigns, adds links, marks ready or launched, drops; a vendor adds a creative link and a note). Coverage: from the day the migration was deployed. Caveats: The stage is not stored: it is derived at read time from the links, the timestamps and the status of the linked Creative Tracker rows (the tracker wins when it is further along). | Nothing here is written to the Google Sheet or Meta. The tag text is copied from the row at assign time, so history survives a taxonomy reload; line_id has no foreign key on purpose. | No author column: the app has no login of its own, only timestamps.';
+COMMENT ON TABLE public.creative_priorities_assignments IS 'Production assignments from /priorities: a concept given to a vendor to make for a week (Assign to vendor), with the brief link, the creative link, the stage timestamps and the Creative Tracker Concept IDs of the ads that came out of it. The concept itself stays in the ideation list unchanged. Grain: one row per concept x vendor x week (open rows are unique; a dropped row can be assigned again). Source: the /priorities and /priorities/production pages and the vendor link page via /api/priorities/assignments (app/priorities_assign.py). Refresh: on demand (a person assigns, adds links, marks ready or launched, drops; a vendor adds a creative link and a note). Coverage: from the day the migration was deployed. Caveats: The stage is not stored: it is derived at read time from the links, the timestamps and the status of the linked Creative Tracker rows (the tracker wins when it is further along). | Nothing here is written to the Google Sheet or Meta. The tag text is copied from the row at assign time, so history survives a taxonomy reload; line_id has no foreign key on purpose. | created_by and updated_by hold the signed-in user, or vendor:<name> for a write made on a vendor link page.';
 COMMENT ON COLUMN public.creative_priorities_assignments.id IS 'Primary key (bigserial).';
 COMMENT ON COLUMN public.creative_priorities_assignments.concept_key IS 'Stable concept handle: ''line:<taxonomy_lines.id>'' when the row has a line, ''manual:<id>'' for a manual concept, else ''text:<product>|<cluster>|<icp>|<pain point>'' (lowercased, spaces collapsed).';
 COMMENT ON COLUMN public.creative_priorities_assignments.text_key IS 'The text form of the key (''text:<product>|<cluster>|<icp>|<pain point>''), always stored, so a proposal that later becomes a real line still matches.';
 COMMENT ON COLUMN public.creative_priorities_assignments.product IS '''vita-bull'' | ''beef-liver'' | ''boneflex''.';
-COMMENT ON COLUMN public.creative_priorities_assignments.vendor IS 'Vendor, spelled as in the Creative Tracker Vendor column (Madre, Victoria, TrybeDCShop, TrybeOrion, 10xROAS, Internal).';
+COMMENT ON COLUMN public.creative_priorities_assignments.vendor IS 'Vendor, spelled as in the Creative Tracker Vendor column (Madre, Victoria, TrybeDCShop, TrybeOrion, 10xROAS, Internal, PuredMedia, CreateMastery, OpenProgram).';
 COMMENT ON COLUMN public.creative_priorities_assignments.line_id IS 'taxonomy_lines.id at assign time; NULL for manual or proposed concepts. No foreign key.';
 COMMENT ON COLUMN public.creative_priorities_assignments.manual_id IS 'creative_priorities_manual.id for a manual concept; NULL otherwise.';
 COMMENT ON COLUMN public.creative_priorities_assignments.line_code IS 'Line code (for example BL12) at assign time; empty when none.';
@@ -70,6 +72,8 @@ COMMENT ON COLUMN public.creative_priorities_assignments.dropped_at IS 'When the
 COMMENT ON COLUMN public.creative_priorities_assignments.tracker_concept_ids IS 'Creative Tracker Concept IDs of the ads made from this assignment, entered by hand.';
 COMMENT ON COLUMN public.creative_priorities_assignments.created_at IS 'When the assignment was created.';
 COMMENT ON COLUMN public.creative_priorities_assignments.updated_at IS 'When it was last changed.';
+COMMENT ON COLUMN public.creative_priorities_assignments.created_by IS 'Who created the assignment: the signed-in user name; NULL when none.';
+COMMENT ON COLUMN public.creative_priorities_assignments.updated_by IS 'Who last changed it: the signed-in user name, or vendor:<name> for a write made on a vendor link page; NULL when none.';
 COMMENT ON TABLE public.creative_priorities_vendor_links IS 'One permanent unguessable link per vendor for the vendor page /priorities/vendor/<token>, where the vendor sees only their own concepts and adds a creative link and a note. Grain: one row per vendor (vendor is the primary key). Source: the Production page via /api/priorities/vendor-links (app/priorities_assign.py). Refresh: on demand (a link is created on first use and replaced by Reset link). Coverage: from the day the migration was deployed. Caveats: The link is the access: the page needs no login. Reset link replaces the token and the old link stops working.';
 COMMENT ON COLUMN public.creative_priorities_vendor_links.vendor IS 'Vendor name (primary key), as in creative_priorities_assignments.vendor.';
 COMMENT ON COLUMN public.creative_priorities_vendor_links.token IS 'Unguessable link token (unique).';

@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import threading
 import time
 from datetime import timedelta
@@ -22,6 +23,7 @@ bp = Blueprint("auth", __name__)
 
 PROTECTED_PREFIXES = ("/api/", "/media/")
 PUBLIC_API = {"/api/login", "/api/logout"}
+PUBLIC_API_RE = re.compile(r"/api/priorities/vendor/[A-Za-z0-9_-]{22,64}(/[0-9]+)?")      # the vendor link page: the unguessable link is the access (see app/priorities_assign.py); nothing else is public
 GENERIC_LOGIN_ERROR = "invalid username or password"
 MAX_USERNAME_LEN = 64
 
@@ -133,7 +135,7 @@ def is_authenticated() -> bool:
 
 def _guard():
     path = request.path
-    if path in PUBLIC_API or not path.startswith(PROTECTED_PREFIXES):
+    if path in PUBLIC_API or PUBLIC_API_RE.fullmatch(path) or not path.startswith(PROTECTED_PREFIXES):
         return None
     if not is_authenticated():
         return jsonify(error="unauthorized"), 401

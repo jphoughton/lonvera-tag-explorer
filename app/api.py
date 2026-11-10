@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, creative_priorities as cpr, priorities_manual as pman, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import auth, creative_priorities as cpr, priorities_assign as pas, priorities_manual as pman, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -543,6 +543,83 @@ def priorities_manual_delete(rid: int):
         return blocked
     pman.delete(rid)
     return "", 204
+
+
+_assign_limiter = None
+_vendor_limiter = None
+
+
+def _json_body() -> dict:
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        raise q.ApiError(400, "JSON object body required")
+    return body
+
+
+@bp.get("/api/priorities/assignments")
+def priorities_assignments():
+    """Production assignments: ?week=YYYY-MM-DD (snaps to its Monday) &vendor=<name> &include_closed=1 (adds launched and dropped) -> {rows, vendors, weeks}. Each row: the table fields plus stage,
+    stage_label, tracker_status, suggested_concept_ids and ads [{concept_id, ad_family, status, launch_date, spend, roas, ad_url}]. See app/priorities_assign.py."""
+    return jsonify(pas.list_assignments(db.get_conn(), week=_arg("week"), vendor=_arg("vendor"), include_closed=request.args.get("include_closed") in ("1", "true")))
+
+
+@bp.post("/api/priorities/assignments")
+def priorities_assignments_create():
+    """Assign concepts: {keys: [row keys], snapshot_week?, vendor, for_week, note?} -> {created: [assignment], skipped: [{key, reason}]}. Rows come from the stored snapshot; duplicates are skipped."""
+    blocked = _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
+    if blocked is not None:
+        return blocked
+    return jsonify(pas.create_assignments(db.get_conn(), _json_body(), auth.current_user())), 201
+
+
+@bp.patch("/api/priorities/assignments/<int:aid>")
+def priorities_assignment_update(aid: int):
+    """Change any of vendor, for_week, note, brief_url, creative_url, tracker_concept_ids, ready, launched, dropped (the last three booleans set or clear their timestamp). There is no delete."""
+    blocked = _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
+    if blocked is not None:
+        return blocked
+    return jsonify(pas.update_assignment(db.get_conn(), aid, _json_body(), auth.current_user()))
+
+
+@bp.get("/api/priorities/vendor-links")
+def priorities_vendor_links():
+    """Every vendor link made so far -> {links: [{vendor, token, url, created_at, rotated_at}], vendors}."""
+    return jsonify(pas.list_links(db.get_conn()))
+
+
+@bp.post("/api/priorities/vendor-links")
+def priorities_vendor_link_create():
+    """{vendor} -> that vendor's permanent link (made on first use: 201, then 200)."""
+    blocked = _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
+    if blocked is not None:
+        return blocked
+    link, created = pas.get_or_create_link(_json_body().get("vendor"))
+    return jsonify(link), 201 if created else 200
+
+
+@bp.post("/api/priorities/vendor-links/<vendor>/reset")
+def priorities_vendor_link_reset(vendor: str):
+    """Replace the vendor's token; the old link stops working."""
+    blocked = _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
+    if blocked is not None:
+        return blocked
+    return jsonify(pas.reset_link(vendor))
+
+
+@bp.get("/api/priorities/vendor/<token>")
+def priorities_vendor(token: str):
+    """The vendor link page's data (no login; the link is the access): that vendor's open assignments plus those launched in the last four weeks, with spend and return of their own ads,
+    never the internal note or another vendor's rows -> {vendor, rows, weeks}."""
+    return jsonify(pas.vendor_rows(db.get_conn(), token))
+
+
+@bp.patch("/api/priorities/vendor/<token>/<int:aid>")
+def priorities_vendor_update(token: str, aid: int):
+    """A vendor edits their own row: {creative_url?, vendor_note?, ready?} only; another vendor's row is a 404."""
+    blocked = _views_write_guard("_vendor_limiter", "PRIORITIES_VENDOR_PER_MIN", 60)
+    if blocked is not None:
+        return blocked
+    return jsonify(pas.vendor_update(db.get_conn(), token, aid, _json_body()))
 
 
 @bp.get("/api/trends")

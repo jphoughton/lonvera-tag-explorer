@@ -7423,7 +7423,7 @@
    "caveats": [
     "The stage is not stored: it is derived at read time from the links, the timestamps and the status of the linked Creative Tracker rows (the tracker wins when it is further along).",
     "Nothing here is written to the Google Sheet or Meta. The tag text is copied from the row at assign time, so history survives a taxonomy reload; line_id has no foreign key on purpose.",
-    "No author column: the app has no login of its own, only timestamps."
+    "created_by and updated_by hold the signed-in user, or vendor:<name> for a write made on a vendor link page."
    ],
    "like": null,
    "columns": [
@@ -7455,7 +7455,7 @@
      "name": "vendor",
      "type": "text",
      "nullable": false,
-     "description": "Vendor, spelled as in the Creative Tracker Vendor column (Madre, Victoria, TrybeDCShop, TrybeOrion, 10xROAS, Internal)."
+     "description": "Vendor, spelled as in the Creative Tracker Vendor column (Madre, Victoria, TrybeDCShop, TrybeOrion, 10xROAS, Internal, PuredMedia, CreateMastery, OpenProgram)."
     },
     {
      "name": "line_id",
@@ -7582,6 +7582,18 @@
      "type": "timestamp with time zone",
      "nullable": false,
      "description": "When it was last changed."
+    },
+    {
+     "name": "created_by",
+     "type": "text",
+     "nullable": true,
+     "description": "Who created the assignment: the signed-in user name; NULL when none."
+    },
+    {
+     "name": "updated_by",
+     "type": "text",
+     "nullable": true,
+     "description": "Who last changed it: the signed-in user name, or vendor:<name> for a write made on a vendor link page; NULL when none."
     }
    ],
    "examples": []

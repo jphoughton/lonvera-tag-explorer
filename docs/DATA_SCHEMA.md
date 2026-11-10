@@ -1836,7 +1836,7 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 - **Coverage:** from the day the migration was deployed
 - **Caveat:** The stage is not stored: it is derived at read time from the links, the timestamps and the status of the linked Creative Tracker rows (the tracker wins when it is further along).
 - **Caveat:** Nothing here is written to the Google Sheet or Meta. The tag text is copied from the row at assign time, so history survives a taxonomy reload; line_id has no foreign key on purpose.
-- **Caveat:** No author column: the app has no login of its own, only timestamps.
+- **Caveat:** created_by and updated_by hold the signed-in user, or vendor:<name> for a write made on a vendor link page.
 
 | Column | Type | Null | Meaning |
 |---|---|---|---|
@@ -1844,7 +1844,7 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `concept_key` | text | no | Stable concept handle: 'line:<taxonomy_lines.id>' when the row has a line, 'manual:<id>' for a manual concept, else 'text:<product>\|<cluster>\|<icp>\|<pain point>' (lowercased, spaces collapsed). |
 | `text_key` | text | no | The text form of the key ('text:<product>\|<cluster>\|<icp>\|<pain point>'), always stored, so a proposal that later becomes a real line still matches. |
 | `product` | text | no | 'vita-bull' \| 'beef-liver' \| 'boneflex'. |
-| `vendor` | text | no | Vendor, spelled as in the Creative Tracker Vendor column (Madre, Victoria, TrybeDCShop, TrybeOrion, 10xROAS, Internal). |
+| `vendor` | text | no | Vendor, spelled as in the Creative Tracker Vendor column (Madre, Victoria, TrybeDCShop, TrybeOrion, 10xROAS, Internal, PuredMedia, CreateMastery, OpenProgram). |
 | `line_id` | integer | yes | taxonomy_lines.id at assign time; NULL for manual or proposed concepts. No foreign key. |
 | `manual_id` | bigint | yes | creative_priorities_manual.id for a manual concept; NULL otherwise. |
 | `line_code` | text | no | Line code (for example BL12) at assign time; empty when none. |
@@ -1866,6 +1866,8 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `tracker_concept_ids` | text[] | no | Creative Tracker Concept IDs of the ads made from this assignment, entered by hand. |
 | `created_at` | timestamptz | no | When the assignment was created. |
 | `updated_at` | timestamptz | no | When it was last changed. |
+| `created_by` | text | yes | Who created the assignment: the signed-in user name; NULL when none. |
+| `updated_by` | text | yes | Who last changed it: the signed-in user name, or vendor:<name> for a write made on a vendor link page; NULL when none. |
 
 ### public.creative_priorities_vendor_links
 
