@@ -108,7 +108,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
 | Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily) |
-| Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links) |
+| Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links), [`public.creative_launch_settings`](#publiccreative_launch_settings), [`public.creative_launch_pages`](#publiccreative_launch_pages), [`public.creative_launch_vendor_prefixes`](#publiccreative_launch_vendor_prefixes), [`public.creative_launch_drafts`](#publiccreative_launch_drafts), [`public.creative_launch_jobs`](#publiccreative_launch_jobs), [`public.creative_launch_ads`](#publiccreative_launch_ads), [`public.creative_launch_adsets`](#publiccreative_launch_adsets), [`public.creative_launch_audit`](#publiccreative_launch_audit) |
 | Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.competitor_brands`](#publiccompetitor_brands), [`public.competitor_ads`](#publiccompetitor_ads), [`public.competitor_concept_class`](#publiccompetitor_concept_class), [`public.competitor_concepts`](#publiccompetitor_concepts), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
 | Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta) |
 | Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow) | [`public.proj_feed_config`](#publicproj_feed_config), [`public.proj_feed_runs`](#publicproj_feed_runs), [`public.proj_feed_attempts`](#publicproj_feed_attempts), [`public.proj_feed_verify`](#publicproj_feed_verify), [`public.proj_feed_verify_runs`](#publicproj_feed_verify_runs), [`public.proj_feed_levers`](#publicproj_feed_levers), [`public.proj_feed_orders`](#publicproj_feed_orders), [`public.proj_feedx_orders`](#publicproj_feedx_orders), [`public.proj_feed_amazon`](#publicproj_feed_amazon), [`public.proj_feedx_amazon`](#publicproj_feedx_amazon), [`public.proj_feed_platform`](#publicproj_feed_platform), [`public.proj_feedx_platform`](#publicproj_feedx_platform), [`public.proj_feed_attribution`](#publicproj_feed_attribution), [`public.proj_feedx_attribution`](#publicproj_feedx_attribution), [`public.proj_feed_traffic`](#publicproj_feed_traffic), [`public.proj_feedx_traffic`](#publicproj_feedx_traffic), [`public.proj_feed_meta_reach`](#publicproj_feed_meta_reach), [`public.proj_feedx_meta_reach`](#publicproj_feedx_meta_reach), [`public.proj_feed_product_reach`](#publicproj_feed_product_reach), [`public.proj_feedx_product_reach`](#publicproj_feedx_product_reach), [`public.proj_feed_nc_product`](#publicproj_feed_nc_product), [`public.proj_feedx_nc_product`](#publicproj_feedx_nc_product), [`public.proj_feed_anyclick`](#publicproj_feed_anyclick), [`public.proj_feedx_anyclick`](#publicproj_feedx_anyclick), [`public.proj_feed_bids`](#publicproj_feed_bids), [`public.proj_feedx_bids`](#publicproj_feedx_bids), [`public.proj_feed_meta_day`](#publicproj_feed_meta_day), [`public.proj_feed_meta_product`](#publicproj_feed_meta_product), [`public.proj_pacing_hourly`](#publicproj_pacing_hourly), [`public.proj_pacing_setting`](#publicproj_pacing_setting), [`public.proj_units_daily`](#publicproj_units_daily), [`public.proj_feedx_units_daily`](#publicproj_feedx_units_daily), [`public.proj_demand_snapshot`](#publicproj_demand_snapshot), [`public.proj_feedx_demand_snapshot`](#publicproj_feedx_demand_snapshot), [`public.proj_feedx_intl_nonus_daily`](#publicproj_feedx_intl_nonus_daily), [`public.proj_feed_nc_hourly`](#publicproj_feed_nc_hourly), [`public.proj_live_today_snapshots`](#publicproj_live_today_snapshots), [`public.proj_amazon_mtd_snapshots`](#publicproj_amazon_mtd_snapshots), [`public.proj_feedx_intl_estimate`](#publicproj_feedx_intl_estimate), [`public.proj_meta_spend_monthly`](#publicproj_meta_spend_monthly) |
@@ -1887,6 +1887,200 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `token` | text | no | Unguessable link token (unique). |
 | `created_at` | timestamptz | no | When the link was first created. |
 | `rotated_at` | timestamptz | yes | When the token was last replaced by Reset link; NULL if never. |
+
+### public.creative_launch_settings
+
+*table*
+
+**Purpose.** Per-product launch settings for creating paused Meta ads from /priorities production: where the ads go (account, campaign, template ad set), the budget and bid for a new ad set, the default Page, pixel, landing page, URL tags, call to action and the default ad copy.
+
+- **Grain:** primary key `(product)`; one row per product (product is the primary key)
+- **Source:** the launch module (app/priorities_launch.py) and the launch worker (settings screen)
+- **Refresh:** on demand (edited by a person)
+- **Coverage:** from the day the migration was deployed
+- **Caveat:** No rows are seeded: the account and campaign ids are entered in the app before anything can launch.
+- **Caveat:** Amounts are stored in cents; a launch always creates ads and ad sets PAUSED.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `product` | text | no | Product the settings apply to (primary key), spelled as in creative_priorities_assignments.product. |
+| `account_id` | text | yes | Meta ad account id the ads are created in. |
+| `campaign_id` | text | yes | Campaign the new ad sets go into. |
+| `template_adset_id` | text | yes | Existing ad set that a new ad set is cloned from (targeting, optimization, attribution). |
+| `daily_budget_cents` | integer | no | Daily budget of a new ad set, in cents (default 10000 = $100). |
+| `bid_amount_cents` | integer | no | Bid amount of a new ad set, in cents (default 6800 = $68). |
+| `default_page_id` | text | yes | Facebook Page the ads run as when the draft does not name one. |
+| `pixel_id` | text | yes | Meta pixel id for the product. |
+| `landing_url` | text | yes | Landing page link the ads point to. |
+| `url_tags` | text | yes | URL parameters appended to the link; NULL means the built-in default tags. |
+| `cta_image` | text | no | Call to action for image ads (default LEARN_MORE). |
+| `cta_video` | text | no | Call to action for video ads (default SHOP_NOW). |
+| `primary_texts` | text[] | no | Default primary texts, used when neither the draft nor the best existing ad supplies any. |
+| `headlines` | text[] | no | Default headlines, used when neither the draft nor the best existing ad supplies any. |
+| `description` | text | yes | Default link description; NULL when none. |
+| `updated_at` | timestamptz | no | When the settings were last changed. |
+| `updated_by` | text | yes | Signed-in user who last changed them; NULL when none. |
+
+### public.creative_launch_pages
+
+*table*
+
+**Purpose.** The Facebook Pages (with their Instagram accounts) an ad can run as when launching from /priorities production.
+
+- **Grain:** primary key `(page_id)`; one row per Page (page_id is the primary key)
+- **Source:** the launch module (app/priorities_launch.py) and the launch worker (settings screen)
+- **Refresh:** on demand (edited by a person)
+- **Coverage:** from the day the migration was deployed
+- **Caveat:** name_token is the short text put at the end of the ad name for ads on this Page.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `page_id` | text | no | Facebook Page id (primary key). |
+| `name` | text | no | Page name shown in the launch screen. |
+| `instagram_user_id` | text | yes | Instagram account id linked to the Page; NULL when none. |
+| `name_token` | text | yes | Short token added to the ad name for this Page (for example lonvera). |
+| `active` | boolean | no | True while the Page may be chosen; false hides it from the picker. |
+
+### public.creative_launch_vendor_prefixes
+
+*table*
+
+**Purpose.** Concept ID prefix per vendor, used when the app mints Concept IDs for launched creative (for example Lonvera-BeefLiver-Static-A12).
+
+- **Grain:** primary key `(vendor)`; one row per vendor (vendor is the primary key)
+- **Source:** the launch module (app/priorities_launch.py) and the launch worker (settings screen); seeded by migration 203
+- **Refresh:** on demand (edited by a person)
+- **Coverage:** from the day the migration was deployed
+- **Caveat:** Seeded with Madre = Lonvera, Victoria = Victoria, 10xROAS = 10x, Internal = Internal; a vendor with no row falls back to its name without punctuation.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `vendor` | text | no | Vendor name (primary key), spelled as in creative_priorities_assignments.vendor. |
+| `prefix` | text | no | Text put at the start of the Concept ID. |
+
+### public.creative_launch_drafts
+
+*table*
+
+**Purpose.** The editable launch form for one assignment: the folder or file link, the tag values (Style, Fidelity, Type, Proof, Page) and the copy overrides, saved as the person types.
+
+- **Grain:** primary key `(assignment_id)`; one row per assignment (assignment_id is the primary key)
+- **References:** `(assignment_id)` -> `public.creative_priorities_assignments(id)`
+- **Source:** the launch module (app/priorities_launch.py) and the launch worker (launch screen)
+- **Refresh:** on demand (saved while a person edits)
+- **Coverage:** from the day the migration was deployed
+- **Caveat:** fields is free-form JSON validated on read; an unknown key is ignored.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `assignment_id` | bigint | no | creative_priorities_assignments.id this draft belongs to (primary key, foreign key). |
+| `fields` | jsonb | no | The draft as JSON (link, style, fidelity, type, proof, page, primary texts, headlines). |
+| `updated_at` | timestamptz | no | When the draft was last saved. |
+| `updated_by` | text | yes | Signed-in user who last saved it; NULL when none. |
+
+### public.creative_launch_jobs
+
+*table*
+
+**Purpose.** One prepare or launch run for an assignment, with the exact plan it was approved against and its outcome.
+
+- **Grain:** primary key `(id)`; one row per run (id is the primary key); at most one open (queued or running) run per assignment
+- **References:** `(assignment_id)` -> `public.creative_priorities_assignments(id)`
+- **Source:** the launch module (app/priorities_launch.py) and the launch worker
+- **Refresh:** on demand (a person queues a run; the worker updates it)
+- **Coverage:** from the day the migration was deployed
+- **Caveat:** A launch only runs the plan whose plan_hash the person approved.
+- **Caveat:** dry_run true means nothing is sent to Meta beyond validation.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Primary key (bigserial). |
+| `assignment_id` | bigint | no | creative_priorities_assignments.id the run is for (foreign key). |
+| `kind` | text | no | 'prepare' (list files, mint IDs, build the plan) or 'launch' (create the paused ads). |
+| `state` | text | no | 'queued' \| 'running' \| 'done' \| 'failed' \| 'cancelled'. |
+| `plan` | jsonb | yes | The plan as JSON (one entry per ad plus the destination and PAUSED status). |
+| `plan_hash` | text | yes | sha256 of the canonical plan JSON; the launch must carry the same hash that was approved. |
+| `dry_run` | boolean | no | True when the run only validates and sends nothing live. |
+| `requested_by` | text | yes | Signed-in user who queued the run. |
+| `error` | text | yes | Scrubbed error text when the run failed; NULL otherwise. |
+| `created_at` | timestamptz | no | When the run was queued. |
+| `started_at` | timestamptz | yes | When the worker picked it up; NULL until then. |
+| `finished_at` | timestamptz | yes | When it finished; NULL until then. |
+
+### public.creative_launch_ads
+
+*table*
+
+**Purpose.** One row per file launched as an ad, with its Concept ID, ad name and the Meta ids created step by step, so a half-finished run can be resumed without duplicating anything.
+
+- **Grain:** primary key `(id)`; one row per assignment x Drive file; Concept IDs are unique across all rows
+- **References:** `(assignment_id)` -> `public.creative_priorities_assignments(id)`; `(job_id)` -> `public.creative_launch_jobs(id)`
+- **Source:** the launch module (app/priorities_launch.py) and the launch worker
+- **Refresh:** on demand (the worker updates the row after each Meta step)
+- **Coverage:** from the day the migration was deployed
+- **Caveat:** Concept IDs are minted once and never reused.
+- **Caveat:** state moves planned, media_uploaded, creative_created, created; failed keeps the scrubbed error.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Primary key (bigserial). |
+| `assignment_id` | bigint | no | creative_priorities_assignments.id (foreign key). |
+| `job_id` | bigint | yes | creative_launch_jobs.id of the run that last touched the row (foreign key); NULL when none. |
+| `drive_file_id` | text | no | Google Drive file id of the source file. |
+| `file_name` | text | no | Name of the source file. |
+| `kind` | text | no | 'image' or 'video'. |
+| `concept_id` | text | no | Concept ID minted for the ad (unique). |
+| `ad_name` | text | no | Ad name sent to Meta (matches the Creative Tracker Name column format). |
+| `state` | text | no | 'planned' \| 'media_uploaded' \| 'creative_created' \| 'created' \| 'failed'. |
+| `meta_image_hash` | text | yes | Meta image hash after upload; NULL for videos or before upload. |
+| `meta_video_id` | text | yes | Meta video id after upload; NULL for images or before upload. |
+| `meta_creative_id` | text | yes | Meta ad creative id; NULL until created. |
+| `meta_ad_id` | text | yes | Meta ad id; NULL until created. |
+| `meta_adset_id` | text | yes | Ad set the ad was created in; NULL until created. |
+| `error` | text | yes | Scrubbed error text when the step failed; NULL otherwise. |
+| `created_at` | timestamptz | no | When the row was planned. |
+| `updated_at` | timestamptz | no | When the row last changed. |
+
+### public.creative_launch_adsets
+
+*table*
+
+**Purpose.** The paused ad set the launch created for a product, vendor and week, so later launches of the same combination reuse it.
+
+- **Grain:** primary key `(product, vendor, for_week)`; one row per product x vendor x week (the primary key)
+- **Source:** the launch module (app/priorities_launch.py) and the launch worker
+- **Refresh:** on demand (written when an ad set is first created)
+- **Coverage:** from the day the migration was deployed
+- **Caveat:** Ad set name is <Product>_<Vendor>_<week>_Production.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `product` | text | no | Product (part of the primary key). |
+| `vendor` | text | no | Vendor (part of the primary key). |
+| `for_week` | date | no | Monday of the week the work is for (part of the primary key). |
+| `meta_adset_id` | text | no | Meta ad set id created for the combination. |
+| `created_at` | timestamptz | no | When the ad set was created. |
+
+### public.creative_launch_audit
+
+*table*
+
+**Purpose.** Append-only log of launch actions: settings changed, plan prepared, launch requested, ads created, cancelled.
+
+- **Grain:** primary key `(id)`; one row per action (id is the primary key)
+- **Source:** the launch module (app/priorities_launch.py) and the launch worker
+- **Refresh:** on demand (a row per action)
+- **Coverage:** from the day the migration was deployed
+- **Caveat:** Never updated or deleted.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Primary key (bigserial). |
+| `at` | timestamptz | no | When the action happened. |
+| `actor` | text | yes | Signed-in user or worker name. |
+| `action` | text | no | Short action name. |
+| `assignment_id` | bigint | yes | Assignment the action concerns; NULL when none. No foreign key, so the log outlives its subject. |
+| `detail` | jsonb | yes | Action details as JSON, never containing a token. |
 
 ## Derived creative-family roll-ups (rebuilt in full by etl.build_metrics)
 
