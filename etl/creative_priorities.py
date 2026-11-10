@@ -55,7 +55,8 @@ SIZE_FULL = 25000.0                    # spend at which the size component reach
 CONCEPTS_ITERATE = 10                  # new concepts to brief per product per week: iterate section
 CONCEPTS_REVIVE = 4                    # ... revive section
 CONCEPTS_NEW = 6                       # ... and new section (together 20 per product, the weekly brief size)
-TOP_REVIVE, TOP_STOP, TOP_COMPETITOR = 4, 5, 3
+TOP_REVIVE, TOP_STOP, TOP_COMPETITOR, TOP_PROPOSAL = 4, 5, 3, 5
+W_PROP_ADJ, W_PROP_COMP = 0.5, 0.5     # proposed new clusters: score = 100 x (0.5 adjacent results + 0.5 competitor activity)
 MAX_PER_REVIVE_ROW = 3
 TOP_ITERATE, TOP_NEW = 8, 6            # rows per product per section
 MAX_PER_ITERATE_ROW, MAX_PER_NEW_ROW = 5, 2
@@ -257,6 +258,18 @@ def competitors_from_file(path: str, as_of: dt.date | None = None) -> dict:
     with open(path, newline="") as fh:
         rows = parse_competitor_csv(fh.read())
     return {"loaded_at": None, "as_of": (as_of or dt.date.fromtimestamp(os.path.getmtime(path))).isoformat(), "source": os.path.basename(path), "rows": rows}
+
+
+PROPOSALS_PATH = __file__.rsplit("/", 1)[0] + "/creative_priorities_proposals.json"
+
+
+def load_proposals() -> list[dict]:
+    """Draft new market clusters / lines (Communication Overview shape, story 15 words or fewer) kept in etl/creative_priorities_proposals.json. Josh approves drafts by adding them to the sheet;
+    a draft whose ICP already exists on the sheet for that product drops out by itself."""
+    try:
+        return json.load(open(PROPOSALS_PATH))
+    except (OSError, ValueError):
+        return []
 
 
 def _slug(s: str) -> str:
@@ -596,6 +609,8 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
                 lw[wk] = (a_ + sp, b_ + rv)
     comp = inp.get("competitors")
     comp_by_line, comp_unmatched = map_competitors(comp, lines)
+    proposals = load_proposals()
+    code_to_lid = {l_["line_code"]: lid_ for lid_, l_ in lines.items()}
     comp_sum = {lid: comp_summary(rows_) for lid, rows_ in comp_by_line.items()}
 
     def comp_component(lid: int) -> float:
@@ -859,11 +874,50 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
                 fl.append(f"{m['tagged_ads']} ad(s) already tagged, ${m['spend']:,.0f} spent")
             hooks = hooks_for(l["id"], borrowed_from=nw["adj_src"], limit=2) if nw["adj_src"] else []      # copy only from the same product's adjacent winner: another product's hooks do not transfer
             rows.append(common("new", i, l, m, b, n, nw["score"], "medium" if ((adj_l and cr_l) or (cs and (adj_l or cr_l))) else "low", fl, why, nw["comp"], hooks, ev))
-        # competitor angles that are not on our sheet at all
+        # proposed new market clusters (drafts for Josh's approval); evidence = adjacent results of ours + competitor activity, never invented numbers
+        claimed: list[str] = []
+        have_icps = {norm(x_["icp"]) for x_ in lines.values() if x_["product"] == slug}
+        props = []
+        for pr in proposals:
+            if pr["product"] != slug or norm(pr["icp"]) in have_icps:
+                continue
+            claimed += [t.lower() for t in pr["match_terms"]]
+            adj_items, adj_best = [], 0.0
+            for code in pr["adjacent_lines"]:
+                lid2 = code_to_lid.get(code)
+                if lid2 is None:
+                    continue
+                m2 = metrics[lid2]
+                e = comp_econ(m2) * comp_size(m2) * (1.0 - WEAK_PENALTY * m2["weak_share"]) * proven_factor(m2)
+                adj_best = max(adj_best, e)
+                adj_items.append({"line_code": code, "status": m2["status"], "spend": money(m2["spend"]), "roas": m2["roas"], "roas_index": round(m2["idx_launch"], 3) if m2["idx_launch"] is not None else None})
+            mrows = []
+            if comp:
+                for r in comp["rows"]:
+                    if _slug(r["product"]) == _slug(slug) and any(t.lower() in " ".join((r["cluster"], r["icp"], r["pain_point"], r["hook"], r.get("new_angle_label", ""))).lower() for t in pr["match_terms"]):
+                        mrows.append({**r, "brand": (r["brand"] or "").split(" (")[0].strip()})
+            cs = comp_summary(mrows)
+            props.append({"pr": pr, "score": 100 * (W_PROP_ADJ * adj_best + W_PROP_COMP * comp_score(cs)), "adj_items": adj_items, "cs": cs, "adj": adj_best})
+        props.sort(key=lambda t: (-t["score"], t["pr"]["cluster"], t["pr"]["icp"]))
+        for i, t in enumerate(props[:TOP_PROPOSAL], start=1):
+            pr, cs = t["pr"], t["cs"]
+            parts = ["Draft for Josh's approval (add to the Communication Overview if approved)."]
+            if t["adj_items"]:
+                parts.append("Adjacent results of ours: " + "; ".join(f"{a_['line_code']} {a_['status'].lower()}" + (f" at {a_['roas']:.2f}x on ${a_['spend']:,.0f}" if a_["roas"] is not None else "") for a_ in t["adj_items"]) + ".")
+            if cs:
+                parts.append("Competitors run it: " + cs["text"] + " (running a long time, not proven performance).")
+            parts.append(pr["source"])
+            rows.append({"section": "proposal", "product": slug, "rank": i, "line_id": None, "line_code": "DRAFT", "cluster": pr["cluster"], "icp": pr["icp"], "pain_point": pr["pain_point"],
+                         "emotional_trigger": None, "story": pr["story"], "ingredients": "", "concepts": 1, "score": round(t["score"], 1), "confidence": "medium" if (cs and t["adj"] > 0) else "low",
+                         "flags": [pr["flag"], "DRAFT for approval", "no performance numbers: evidence is competitor activity and our adjacent results only"], "why": " ".join(parts), "status": "PROPOSED (draft)",
+                         "then_now": "", "competitor": cs, "components": {"adjacent": round(t["adj"], 3), "competitors": round(comp_score(cs), 3)}, "metrics": {"spend": 0, "tagged_ads": 0, "ads": 0, "judged": 0},
+                         "hooks": [{"hook": c_["hook"], "ad": c_["brand"], "ad_id": None, "spend": None, "roas": None, "line_code": c_["brand"], "borrowed": True} for c_ in (cs["hooks"] if cs else [])][:2],
+                         "evidence": {"adjacent_lines": t["adj_items"]}, "cluster_description": pr["cluster_description"], "icp_description": pr["icp_description"], "pain_description": pr["pain_description"]})
+        # competitor angles that are not on our sheet at all (those already drafted as a proposal above are not repeated)
         if comp:
             groups: dict[tuple, list] = {}
             for r in comp_unmatched:
-                if r["product"] == slug and (r["cluster"] or r["icp"] or r["pain_point"]):
+                if r["product"] == slug and (r["cluster"] or r["icp"] or r["pain_point"]) and not any(t in " ".join((r["cluster"], r["icp"], r["pain_point"], r["hook"])).lower() for t in claimed):
                     groups.setdefault((_nm(r["cluster"]), _nm(r["icp"]), _nm(r["pain_point"])), []).append(r)
             ranked = sorted(groups.values(), key=lambda g_: (-comp_score(comp_summary(g_)), -len(g_), g_[0]["cluster"]))[:TOP_COMPETITOR]
             for i, g_ in enumerate(ranked, start=1):
@@ -903,9 +957,9 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
 
 
 # ----------------------------------------------------------------------------------------------------------------------- output
-SECTION_ORDER = ("iterate", "revive", "new", "competitor", "stop")
+SECTION_ORDER = ("iterate", "revive", "new", "proposal", "competitor", "stop")
 SECTION_TITLES = {"iterate": "Iterate on what is working (WORKING NOW / RISING)", "revive": "Revive or rework (FADING / WAS WORKING)", "new": "New and untested clusters",
-                  "competitor": "Competitor angles we have not made (not on our sheet)", "stop": "Stop or deprioritise (NOT WORKING)"}
+                  "proposal": "Proposed new market clusters and lines (drafts for Josh's approval)", "competitor": "Competitor angles we have not made (not on our sheet)", "stop": "Stop or deprioritise (NOT WORKING)"}
 CSV_COLS = ["market_cluster", "icp", "pain_point", "story", "market_cluster_description", "icp_description", "pain_point_description", "status", "product", "section", "rank", "concepts", "week_start",
             "then_vs_now", "what_others_are_running", "suggested_approach", "emotional_trigger", "ingredients", "line_code", "confidence", "flags", "score",
             "spend", "roas", "cpa", "roas_index", "ads", "hit_rate", "hit_rate_index", "spend_30d", "roas_30d", "spend_prior30", "roas_prior30", "launches_30d", "nc_roas", "nc_cpa",

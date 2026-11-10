@@ -99,28 +99,47 @@ Why: same cluster on L26 (Declining Testosterone) spent $301,095 at 1.02x, index
 Hooks: 50% OFF FLASH SALE 4 HOURS LEFT / 50% OFF
 
 
-### Competitor angles we have not made (not on our sheet)
+### Proposed new market clusters and lines (drafts for Josh's approval)
 
-**1. Alcohol & Liver Support (men) → Over-30 Drinker (alcohol hits harder) → Liver Health / Detox**  [UNTESTED / UNDER-TESTED]  
-Story: Competitor hook: Anyone else feel like alcohol hits way harder after 30?  
-_Cluster: As mapped from the competitor ads; not a cluster on our sheet. ICP: As mapped from the competitor ads. Pain point: As mapped from the competitor ads._  
-What others are running: 1 competitor, 1 concept, 1 running 60+ days (Primal Viking) (running a long time, not proven performance)  
-_1 concept(s) | confidence low | not on our Communication Overview; competitor signal is running a long time, not proven performance_  
-Why: Competitors run this angle: 1 competitor, 1 concept, 1 running 60+ days (Primal Viking). We have no line for it.  
+**1. Chest Fat (cortisol / estrogen) → Man-Boobs & Chest Fat → Weight Gain / Stubborn Belly Fat**  [PROPOSED (draft)]  
+Story: He's lean everywhere except his chest, and a loose shirt hides it daily.  
+_Cluster: Proposed market: men with chest fat who read it as a hormone and stress problem. ICP: The man who trains and eats well but cannot shift chest fat. Pain point: Stubborn chest and belly fat he blames on cortisol and estrogen._  
+What others are running: 2 competitors, 3 concepts, 2 running 60+ days (Primal Viking) (running a long time, not proven performance)  
+_1 concept(s) | confidence medium | NEW CLUSTER; DRAFT for approval; no performance numbers: evidence is competitor activity and our adjacent results only_  
+Why: Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: L24 working now at 0.93x on $295,669; L23 not working at 0.76x on $487,092. Competitors run it: 2 competitors, 3 concepts, 2 running 60+ days (Primal Viking) (running a long time, not proven performance). Competitor angle (Primal Viking since June, Primal Edge copying); no Vital Bull line.  
+Hooks: 60% OFF: one shot to send them to Valhalla. Beer belly and man boobs forever gone. / New Study Reveals Man Boobs Melter #1 / You are NOT fat, you are inflamed from high cortisol
 
-**2. Ancestral Nutrition → Category Comparer (wild organ vs beef organ) → Ingredient Quality / Sourcing**  [UNTESTED / UNDER-TESTED]  
-Story: Competitor hook: REINDEER vs BEEF ORGANS for MALES 30-55+: why reindeer organs crush beef organs  
-_Cluster: As mapped from the competitor ads; not a cluster on our sheet. ICP: As mapped from the competitor ads. Pain point: As mapped from the competitor ads._  
-What others are running: 1 competitor, 1 concept, 1 running 60+ days (Primal Viking) (running a long time, not proven performance)  
-_1 concept(s) | confidence low | not on our Communication Overview; competitor signal is running a long time, not proven performance_  
-Why: Competitors run this angle: 1 competitor, 1 concept, 1 running 60+ days (Primal Viking). We have no line for it.  
-
-**3. GLP-1 Companion (men) → Men on GLP-1 (lighter but weaker, stairs harder) → Low Energy / Muscle & Nutrient Loss**  [UNTESTED / UNDER-TESTED]  
-Story: Competitor hook: Your GLP-1 is working... so why do you feel worse than you did before? / Men on GLP-1: do not just cut calories. Cover your nutrients.  
-_Cluster: As mapped from the competitor ads; not a cluster on our sheet. ICP: As mapped from the competitor ads. Pain point: As mapped from the competitor ads._  
+**2. GLP-1 Companion (men) → Men on GLP-1 → Low Energy / Muscle & Nutrient Loss**  [PROPOSED (draft)]  
+Story: Thirty pounds lighter on the shot, yet the stairs feel harder than before.  
+_Cluster: Proposed market: men losing weight on a GLP-1 shot who feel weaker and drained. ICP: The man on a GLP-1 who is lighter on the scale but weaker in daily life. Pain point: Energy, muscle and nutrients drop along with the weight._  
 What others are running: 1 competitor, 1 concept, 0 running 60+ days (running a long time, not proven performance)  
-_1 concept(s) | confidence low | not on our Communication Overview; competitor signal is running a long time, not proven performance_  
-Why: Competitors run this angle: 1 competitor, 1 concept, 0 running 60+ days. We have no line for it.  
+_1 concept(s) | confidence medium | NEW CLUSTER; DRAFT for approval; no performance numbers: evidence is competitor activity and our adjacent results only_  
+Why: Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: L26 working now at 1.02x on $301,095; L24 working now at 0.93x on $295,669. Competitors run it: 1 competitor, 1 concept, 0 running 60+ days (running a long time, not proven performance). Competitor angle (Ancestral, men on GLP-1); Vital Bull has no GLP-1 cluster.  
+Hooks: Your GLP-1 is working... so why do you feel worse than you did before? / Men on GLP-1: do not just cut calories. Cover your nutrients.
+
+**3. Ancestral Nutrition → Category Comparer → Ingredient Quality / Sourcing**  [PROPOSED (draft)]  
+Story: Reindeer, bison or beef organs: he wants to know which dose is real.  
+_Cluster: Existing market: men who want the nutrients of organ meats. ICP: The buyer who compares organ supplements on source and dose before buying. Pain point: Not knowing which brand's sourcing and dose is honest._  
+What others are running: 1 competitor, 2 concepts, 2 running 60+ days (Primal Viking) (running a long time, not proven performance)  
+_1 concept(s) | confidence low | NEW LINE inside Ancestral Nutrition; DRAFT for approval; no performance numbers: evidence is competitor activity and our adjacent results only_  
+Why: Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: L36 average at 0.94x on $737,782; L35 average at 0.95x on $444,000. Competitors run it: 1 competitor, 2 concepts, 2 running 60+ days (Primal Viking) (running a long time, not proven performance). Competitor angle (Primal Viking reindeer vs beef since May, Primal Edge, Beef Organ Guide); our Label Reader lines are the nearest.  
+Hooks: REINDEER vs BEEF ORGANS for MALES 30-55+: why reindeer organs crush beef organs / BEER BELLY!?!? Burn it off in WEEKS with secret superfood Primal Viking Reindeer Organs
+
+**4. Alcohol & Liver Support (men) → Over-30 Drinker → Liver Health / Detox**  [PROPOSED (draft)]  
+Story: Two beers used to be nothing; now alcohol flattens him for days.  
+_Cluster: Proposed market: men for whom drinking now costs energy and recovery. ICP: The man over thirty whose body no longer handles alcohol like it did. Pain point: Alcohol hits harder and the liver feels tired._  
+What others are running: 1 competitor, 1 concept, 1 running 60+ days (Primal Viking) (running a long time, not proven performance)  
+_1 concept(s) | confidence low | NEW CLUSTER; DRAFT for approval; no performance numbers: evidence is competitor activity and our adjacent results only_  
+Why: Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: B42 average at 0.95x on $835,398; B45 average at 0.89x on $851,173. Competitors run it: 1 competitor, 1 concept, 1 running 60+ days (Primal Viking) (running a long time, not proven performance). Competitor angle (Primal Viking); Beef Liver's alcohol lines are our largest, none exists for Vital Bull.  
+Hooks: Anyone else feel like alcohol hits way harder after 30?
+
+**5. Liver & Belly (men 55+) → Fatty-Liver Belly Man 55+ → Liver Health / Detox**  [PROPOSED (draft)]  
+Story: Doctor looks at his belt and says it's not the beer, it's the liver.  
+_Cluster: Proposed market: men over 55 whose belly and low energy point to a fatty liver. ICP: The older man told his belly is a liver problem, not a beer problem. Pain point: A growing belly and low energy tied to a tired liver._  
+What others are running: 1 competitor, 1 concept, 0 running 60+ days (running a long time, not proven performance)  
+_1 concept(s) | confidence low | NEW CLUSTER; DRAFT for approval; no performance numbers: evidence is competitor activity and our adjacent results only_  
+Why: Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: B42 average at 0.95x on $835,398; B44 average at 0.93x on $478,144. Competitors run it: 1 competitor, 1 concept, 0 running 60+ days (running a long time, not proven performance). Competitor angle (Forge, doctor-story advertorials started Nov 3-5); Beef Liver's belly line is below average, so test the male version small.  
+Hooks: My doctor pushed the chart aside, looked at my belt, and said: "That is not beer, Mike. That is a liver that got tired."
 
 
 ### Stop or deprioritise (NOT WORKING)
@@ -245,28 +264,47 @@ _1 concept(s) | confidence low | 1 ad(s) already tagged, $0 spent_
 Why: same pain point on vita-bull L14 spent $50,767 at 1.10x, index 1.21.  
 
 
-### Competitor angles we have not made (not on our sheet)
+### Proposed new market clusters and lines (drafts for Josh's approval)
 
-**1. Fertility & Postpartum → Mom Feeding Kids Whole Foods (kids' nutrition) → Nutrient Deficiency**  [UNTESTED / UNDER-TESTED]  
-Story: Competitor hook: What I give my kids every day (that is not processed)  
-_Cluster: As mapped from the competitor ads; not a cluster on our sheet. ICP: As mapped from the competitor ads. Pain point: As mapped from the competitor ads._  
+**1. Thyroid → Thyroid Suspect → Low Energy / Afternoon Crash**  [PROPOSED (draft)]  
+Story: Tired, foggy and stuck on weight, she suspects her thyroid is running on empty.  
+_Cluster: Proposed market: women who link tiredness, fog and weight to their thyroid. ICP: The woman over 30 chasing symptoms and wondering about her thyroid. Pain point: Constant tiredness, brain fog and stubborn weight._  
+What others are running: 2 competitors, 2 concepts, 1 running 60+ days (Heart & Soil) (running a long time, not proven performance)  
+_1 concept(s) | confidence low | NEW CLUSTER; DRAFT for approval; no performance numbers: evidence is competitor activity and our adjacent results only_  
+Why: Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: B34 average at 0.84x on $32,980. Competitors run it: 2 competitors, 2 concepts, 1 running 60+ days (Heart & Soil) (running a long time, not proven performance). Competitor angle (Heart & Soil and Ancestral thyroid funnels).  
+Hooks: Always tired, foggy, or stuck with stubborn weight? You might be chasing symptoms while ignoring the real culprit: your thyroid. / Ladies, you are not "imagining" it. Your thyroid might be running on empty.
+
+**2. Fertility & Postpartum → Mom Feeding Kids Whole Foods → Nutrient Deficiency (Iron / B12 / Vitamin A)**  [PROPOSED (draft)]  
+Story: She cooks everything from scratch, yet her kids still miss iron and B12.  
+_Cluster: Existing market: mothers around pregnancy and early parenting. ICP: The mother who feeds her children whole foods and worries about gaps. Pain point: Iron and B12 shortfalls in a household that already eats well._  
 What others are running: 1 competitor, 1 concept, 1 running 60+ days (Love Ya Guts) (running a long time, not proven performance)  
-_1 concept(s) | confidence low | not on our Communication Overview; competitor signal is running a long time, not proven performance_  
-Why: Competitors run this angle: 1 competitor, 1 concept, 1 running 60+ days (Love Ya Guts). We have no line for it.  
+_1 concept(s) | confidence low | NEW LINE inside Fertility & Postpartum; DRAFT for approval; no performance numbers: evidence is competitor activity and our adjacent results only_  
+Why: Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: B13 average at 0.90x on $85,494. Competitors run it: 1 competitor, 1 concept, 1 running 60+ days (Love Ya Guts) (running a long time, not proven performance). Competitor angle (Love Ya Guts, Ancestral and Folqs postpartum wave).  
+Hooks: What I give my kids every day (that is not processed)
 
-**2. Thyroid → Thyroid Suspect (tired, foggy, stubborn weight) → Low Energy / Afternoon Crash**  [UNTESTED / UNDER-TESTED]  
-Story: Competitor hook: Always tired, foggy, or stuck with stubborn weight? You might be chasing symptoms while ignoring the real culprit: your thyroid.  
-_Cluster: As mapped from the competitor ads; not a cluster on our sheet. ICP: As mapped from the competitor ads. Pain point: As mapped from the competitor ads._  
+**3. Women's Cycle & Hormones → Cycle Struggler → Hormone Decline (Testosterone / Estrogen)**  [PROPOSED (draft)]  
+Story: Only two good weeks a month, and cramps and short cycles eat the rest.  
+_Cluster: Proposed market: women whose monthly cycle drives their energy and mood. ICP: The woman with cramps, short cycles and PMS who feels good only part of the month. Pain point: Hormone swings she feels in energy, mood and her cycle._  
 What others are running: 1 competitor, 1 concept, 1 running 60+ days (Heart & Soil) (running a long time, not proven performance)  
-_1 concept(s) | confidence low | not on our Communication Overview; competitor signal is running a long time, not proven performance_  
-Why: Competitors run this angle: 1 competitor, 1 concept, 1 running 60+ days (Heart & Soil). We have no line for it.  
+_1 concept(s) | confidence low | NEW CLUSTER; DRAFT for approval; no performance numbers: evidence is competitor activity and our adjacent results only_  
+Why: Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: B13 average at 0.90x on $85,494; B07 average at 0.92x on $447,302. Competitors run it: 1 competitor, 1 concept, 1 running 60+ days (Heart & Soil) (running a long time, not proven performance). Competitor angle (Heart & Soil Her Package, 17+ ads since Sep 1); closest of ours is B20 Perimenopause Prepper.  
+Hooks: When your hormones are fed, everything works better.
 
-**3. Women's Cycle & Hormones → Cycle Struggler (cramps, short cycles, PMS) → Hormone Decline (Testosterone / Estrogen)**  [UNTESTED / UNDER-TESTED]  
-Story: Competitor hook: When your hormones are fed, everything works better.  
-_Cluster: As mapped from the competitor ads; not a cluster on our sheet. ICP: As mapped from the competitor ads. Pain point: As mapped from the competitor ads._  
-What others are running: 1 competitor, 1 concept, 1 running 60+ days (Heart & Soil) (running a long time, not proven performance)  
-_1 concept(s) | confidence low | not on our Communication Overview; competitor signal is running a long time, not proven performance_  
-Why: Competitors run this angle: 1 competitor, 1 concept, 1 running 60+ days (Heart & Soil). We have no line for it.  
+**4. Collagen → Thinning-Skin Senior → Skin / Acne / Glow**  [PROPOSED (draft)]  
+Story: Bruises keep showing up on thin skin, and she blames age or her pills.  
+_Cluster: Existing market: collagen and beauty-from-within buyers. ICP: The older woman whose skin has thinned and bruises easily. Pain point: Thin, fragile skin she writes off as age or medication._  
+What others are running: 1 competitor, 1 concept, 0 running 60+ days (running a long time, not proven performance)  
+_1 concept(s) | confidence low | NEW LINE inside Collagen; DRAFT for approval; no performance numbers: evidence is competitor activity and our adjacent results only_  
+Why: Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: B32 too early at 1.01x on $19,490. Competitors run it: 1 competitor, 1 concept, 0 running 60+ days (running a long time, not proven performance). Competitor angle (NativePath).  
+Hooks: "I must just be clumsy." "It is my age." "It is probably my medication." If you have ever caught yourself thinking...
+
+**5. Grey Hair → Premature Graying → Early Grays Noticer / Hair Loss**  [PROPOSED (draft)]  
+Story: The first grays showed up at thirty-two, and nobody ever mentioned copper.  
+_Cluster: Proposed market: people seeing grey hair early who want a nutrient reason. ICP: The person who found their first grays well before expected. Pain point: Early grey hair, tied in the ad to a copper gap._  
+What others are running: 1 competitor, 1 concept, 0 running 60+ days (running a long time, not proven performance)  
+_1 concept(s) | confidence low | NEW CLUSTER; DRAFT for approval; no performance numbers: evidence is competitor activity and our adjacent results only_  
+Why: Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: B07 average at 0.92x on $447,302; B06 average at 0.90x on $329,379. Competitors run it: 1 competitor, 1 concept, 0 running 60+ days (running a long time, not proven performance). Competitor angle (Ancestral creator video Oct 29); the pain point exists on the tracker Lists tab but not on our sheet.  
+Hooks: Nobody ever told me to think about copper. Then the first grays showed up.
 
 
 ### Stop or deprioritise (NOT WORKING)
@@ -446,21 +484,37 @@ Why: same cluster on BF12 (Offer / Price-Led) spent $102,153 at 1.05x, index 1.2
 Hooks: This is gonna be the last day to get Boneflex for a crazy price like this. / If you've been thinking about trying boneflex, do it now.
 
 
-### Competitor angles we have not made (not on our sheet)
+### Proposed new market clusters and lines (drafts for Josh's approval)
 
-**1. Language → Audience: Spanish-speaking joint buyer (celebrity-endorsed) → Joint Pain & Mobility Loss**  [UNTESTED / UNDER-TESTED]  
-Story: Competitor hook: OmegaXL te puede cambiar la vida para mejor! (Ana Maria Polo shares the secret to combat joint pain)  
-_Cluster: As mapped from the competitor ads; not a cluster on our sheet. ICP: As mapped from the competitor ads. Pain point: As mapped from the competitor ads._  
-What others are running: 1 competitor, 1 concept, 1 running 60+ days (OmegaXL) (running a long time, not proven performance)  
-_1 concept(s) | confidence low | not on our Communication Overview; competitor signal is running a long time, not proven performance_  
-Why: Competitors run this angle: 1 competitor, 1 concept, 1 running 60+ days (OmegaXL). We have no line for it.  
-
-**2. Menopause → Women's Bone-Marrow Joint Buyer → Joint Pain & Mobility Loss (bone marrow is the mechanism; direct Boneflex competitor)**  [UNTESTED / UNDER-TESTED]  
-Story: Competitor hook: More than joint relief  
-_Cluster: As mapped from the competitor ads; not a cluster on our sheet. ICP: As mapped from the competitor ads. Pain point: As mapped from the competitor ads._  
+**1. Menopause → Women's Bone-Marrow Joint Buyer → Joint Pain & Mobility Loss**  [PROPOSED (draft)]  
+Story: Menopause made her joints ache, and stairs now feel like something to dread.  
+_Cluster: Existing market: women whose joints changed with menopause. ICP: The woman who buys on bone marrow as the reason her joints hurt. Pain point: Joint pain and stair fear that started in menopause._  
 What others are running: 1 competitor, 1 concept, 1 running 60+ days (Primal Queen) (running a long time, not proven performance)  
-_1 concept(s) | confidence low | not on our Communication Overview; competitor signal is running a long time, not proven performance_  
-Why: Competitors run this angle: 1 competitor, 1 concept, 1 running 60+ days (Primal Queen). We have no line for it.  
+_1 concept(s) | confidence medium | NEW LINE inside Menopause; DRAFT for approval; no performance numbers: evidence is competitor activity and our adjacent results only_  
+Why: Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: BF51 working now at 1.64x on $29,244; BF53 average at 0.75x on $270,269. Competitors run it: 1 competitor, 1 concept, 1 running 60+ days (Primal Queen) (running a long time, not proven performance). Competitor angle (My Marrow, Primal Queen Marrow, direct Boneflex competitors); our bone-marrow line BF51 reads strongest on Boneflex.  
+Hooks: More than joint relief
+
+**2. Spanish-Language Joint Buyer → Spanish-speaking joint buyer → Joint Pain & Mobility Loss**  [PROPOSED (draft)]  
+Story: A familiar TV voice tells her, in Spanish, how her knees can feel again.  
+_Cluster: Proposed market: Spanish-speaking joint buyers reached in their own language. ICP: The Spanish-speaking buyer who trusts a known personality. Pain point: Joint pain, in the buyer's own language and voice._  
+What others are running: 1 competitor, 1 concept, 1 running 60+ days (OmegaXL) (running a long time, not proven performance)  
+_1 concept(s) | confidence medium | NEW CLUSTER; DRAFT for approval; no performance numbers: evidence is competitor activity and our adjacent results only_  
+Why: Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: BF18 working now at 1.53x on $78,699; BF25 average at 0.72x on $231,755. Competitors run it: 1 competitor, 1 concept, 1 running 60+ days (OmegaXL) (running a long time, not proven performance). Competitor angle (OmegaXL, 8 ads since Feb 19).  
+Hooks: OmegaXL te puede cambiar la vida para mejor! (Ana Maria Polo shares the secret to combat joint pain)
+
+**3. Stack Consolidation → Eight-Bottle Stacker → Offer / Price-Led**  [PROPOSED (draft)]  
+Story: Eight bottles crowd her counter, and none delivered what the label promised.  
+_Cluster: Proposed market: buyers who want one product to replace a cabinet of supplements. ICP: The buyer with a shelf of joint and wellness bottles. Pain point: Money and counter space spent on stacks that did not work._  
+_1 concept(s) | confidence low | NEW CLUSTER; DRAFT for approval; no performance numbers: evidence is competitor activity and our adjacent results only_  
+Why: Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: BF12 working now at 1.05x on $102,153; BF27 working now at 1.24x on $179,514. Competitor angle (Folqs eight-organ pouch, Haka 'tried everything'); our Build-My-Stack offer lines are working.  
+
+**4. Aging in Place & Mobility → Busy-Mom Routine Builder → General Vitality / Aging Well**  [PROPOSED (draft)]  
+Story: No time for eight bottles, so she wants one simple joint routine.  
+_Cluster: Existing market: people keeping mobile as they age. ICP: The busy mother who wants fewer, better supplements. Pain point: Too many bottles and too little time._  
+What others are running: 1 competitor, 1 concept, 0 running 60+ days (running a long time, not proven performance)  
+_1 concept(s) | confidence medium | NEW LINE inside Aging in Place & Mobility; DRAFT for approval; no performance numbers: evidence is competitor activity and our adjacent results only_  
+Why: Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: BF12 working now at 1.05x on $102,153. Competitors run it: 1 competitor, 1 concept, 0 running 60+ days (running a long time, not proven performance). Competitor angle (Relief Factor).  
+Hooks: Busy moms do not need more supplements. We need the right ones, at the right time.
 
 
 ### Stop or deprioritise (NOT WORKING)

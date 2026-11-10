@@ -9,9 +9,10 @@ const PRODUCT_ORDER = ['vita-bull', 'beef-liver', 'boneflex'];
 const SECTIONS = [['iterate', 'Iterate on what is working', 'WORKING NOW and RISING lines: their ads beat the product average on enough spend; more concepts should help.'],
                   ['revive', 'Revive or rework', 'FADING / WAS WORKING: strong earlier or over its lifetime, now below the product average or idle.'],
                   ['new', 'New and untested clusters', 'Lines with no ads (or almost none), ranked by evidence the demand exists (our adjacent winners, other products, competitors).'],
+                  ['proposal', 'Proposed new market clusters', 'Drafts in the Communication Overview shape for Josh\u2019s approval (NEW CLUSTER or a new line inside an existing cluster). Evidence is competitor activity and our adjacent results only; no performance is claimed.'],
                   ['competitor', 'Competitor angles we have not made', 'Angles competitors run that are not on our Communication Overview. Running a long time is a signal, not proof it performs.'],
                   ['stop', 'Stop or deprioritise', 'NOT WORKING: enough spend, weak over its history.']];
-const STATUS_CLASS = { 'WORKING NOW': 'ok', 'RISING': 'up', 'FADING / WAS WORKING': 'fade', 'NOT WORKING': 'bad', 'AVERAGE': 'flat', 'TOO EARLY': 'flat', 'UNTESTED / UNDER-TESTED': 'new' };
+const STATUS_CLASS = { 'WORKING NOW': 'ok', 'RISING': 'up', 'FADING / WAS WORKING': 'fade', 'NOT WORKING': 'bad', 'AVERAGE': 'flat', 'TOO EARLY': 'flat', 'UNTESTED / UNDER-TESTED': 'new', 'PROPOSED (draft)': 'new' };
 const roasX = (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–');
 const pct = (v) => (isNum(v) ? fmt.pct(v) : '–');
 
@@ -33,9 +34,9 @@ function numbers(r) {
 }
 
 function card(r) {
-  const hooks = r.hooks && r.hooks.length ? h('div', { class: 'pri-hooks' }, h('span', { class: 'pri-k' }, r.section === 'new' ? 'Hooks to borrow (same product, adjacent winner)' : r.section === 'revive' ? 'Old winners\u2019 hooks' : 'Proven hooks to iterate from'),
+  const hooks = r.hooks && r.hooks.length ? h('div', { class: 'pri-hooks' }, h('span', { class: 'pri-k' }, r.section === 'proposal' ? 'Competitor hooks seen' : r.section === 'new' ? 'Hooks to borrow (same product, adjacent winner)' : r.section === 'revive' ? 'Old winners\u2019 hooks' : 'Proven hooks to iterate from'),
     h('ul', null, r.hooks.map((k) => h('li', null, k.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(k.ad_id), {}), title: k.ad }, k.hook) : k.hook,
-      h('span', { class: 'pri-hookn' }, ` ${fmt.money(k.spend)} at ${roasX(k.roas)}`))))) : null;
+      k.spend != null ? h('span', { class: 'pri-hookn' }, ` ${fmt.money(k.spend)} at ${roasX(k.roas)}`) : h('span', { class: 'pri-hookn' }, ` (${k.line_code})`))))) : null;
   return h('article', { class: 'pri-card pri-' + r.section, 'data-testid': 'pri-card' },
     h('div', { class: 'pri-head' }, h('span', { class: 'pri-rank' }, '#' + r.rank), h('span', { class: 'pri-status pri-st-' + (STATUS_CLASS[r.status] || 'flat'), 'data-testid': 'pri-status' }, r.status),
       h('span', { class: 'pri-concepts' }, r.concepts ? `${r.concepts} new concept${r.concepts === 1 ? '' : 's'} this week` : 'No new concepts'),
@@ -79,6 +80,7 @@ function render(d) {
     SECTIONS.map(([k, title, sub]) => {
       const rows = byProduct[s].filter((r) => r.section === k).sort((a, b) => a.rank - b.rank);
       if (k === 'competitor' && !d.competitors_as_of) return null;
+      if (k === 'proposal' && !rows.length) return null;
       return h('div', { class: 'pri-section', 'data-testid': 'pri-section-' + k },
         h('h3', null, title, h('span', { class: 'pri-sub' }, ' ' + sub)),
         rows.length ? rows.map(card) : h('p', { class: 'pri-none' }, 'Nothing qualifies this week.'));

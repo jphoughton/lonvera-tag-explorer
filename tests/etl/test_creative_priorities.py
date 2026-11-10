@@ -346,3 +346,64 @@ def test_loader_reads_the_latest_week_and_flags_stale_brands(fixture_view):
     inp["competitors"] = d
     r = cp.compute(inp, WEEK)
     assert r["stats"]["competitors"]["stale_brands"] == ["Gone"] and r["competitors_as_of"] == "2026-11-08"
+
+
+# ---------------------------------------------------------------------------------------------------------------- proposed new market clusters
+def test_every_draft_proposal_is_well_formed():
+    import json
+    from etl import auto_tag as at
+    props = cp.load_proposals()
+    assert len(props) >= 10
+    codes = {c["line"] for s in cp.PRODUCTS for c in at.load_catalog(s)}
+    for p in props:
+        assert p["product"] in cp.PRODUCTS and len(p["story"].split()) <= 15 and p["story"].endswith(".")
+        assert p["flag"].startswith(("NEW CLUSTER", "NEW LINE")) and p["match_terms"] and p["cluster_description"] and p["icp_description"] and p["pain_description"]
+        assert set(p["adjacent_lines"]) <= codes, p["adjacent_lines"]
+
+
+def proposal_scenario(tmp_path, monkeypatch):
+    import json
+    f = tmp_path / "props.json"
+    f.write_text(json.dumps([
+        {"product": "vita-bull", "flag": "NEW CLUSTER", "cluster": "Chest Fat", "icp": "Chest Guy", "pain_point": "Belly", "story": "He is lean except his chest.", "cluster_description": "c", "icp_description": "i",
+         "pain_description": "p", "match_terms": ["chest fat"], "adjacent_lines": ["VI01"], "source": "src A"},
+        {"product": "vita-bull", "flag": "NEW LINE inside Energy", "cluster": "Energy", "icp": "Night Owl", "pain_point": "Sleep", "story": "He sleeps badly.", "cluster_description": "c", "icp_description": "i",
+         "pain_description": "p", "match_terms": ["night owl"], "adjacent_lines": ["VI02"], "source": "src B"},
+        {"product": "vita-bull", "flag": "NEW CLUSTER", "cluster": "X", "icp": "Given Up Guy", "pain_point": "Y", "story": "Already on the sheet.", "cluster_description": "c", "icp_description": "i",
+         "pain_description": "p", "match_terms": ["zzz"], "adjacent_lines": [], "source": "dup"}]))
+    monkeypatch.setattr(cp, "PROPOSALS_PATH", str(f))
+
+
+def test_proposals_are_ranked_by_evidence_and_never_carry_performance_numbers(tmp_path, monkeypatch):
+    proposal_scenario(tmp_path, monkeypatch)
+    inp = scenario()
+    inp["competitors"] = {"as_of": "2026-11-08", "source": "t", "loaded_at": None, "rows": [
+        comp_rows(brand="A", cluster="Chest Fat", icp="x", pain_point="y", days=90), comp_rows(brand="B", cluster="Chest Fat", icp="x", pain_point="y", days=70)]}
+    r = cp.compute(inp, WEEK)
+    pr = [x for x in r["rows"] if x["section"] == "proposal"]
+    assert [x["icp"] for x in pr] == ["Chest Guy", "Night Owl"]                   # the draft whose ICP exists on the sheet dropped out; competitor + adjacent evidence ranks first
+    first = pr[0]
+    assert first["line_code"] == "DRAFT" and first["status"].startswith("PROPOSED") and "NEW CLUSTER" in first["flags"] and "DRAFT for approval" in first["flags"]
+    assert first["competitor"]["competitors"] == 2 and "not proven performance" in first["why"] and first["story"] == "He is lean except his chest."
+    assert first["metrics"]["spend"] == 0 and "roas" not in first["metrics"] and first["concepts"] == 1
+    assert "Competitors run it" not in pr[1]["why"]
+    # the competitor section does not repeat an angle already drafted
+    inp["competitors"]["rows"].append(comp_rows(brand="C", cluster="Other Angle", icp="z", pain_point="w", new=True))
+    r2 = cp.compute(inp, WEEK)
+    assert [x["cluster"] for x in r2["rows"] if x["section"] == "competitor"] == ["Other Angle"]
+
+
+def test_proposals_without_a_competitor_file_still_show_adjacent_evidence_only(tmp_path, monkeypatch):
+    proposal_scenario(tmp_path, monkeypatch)
+    pr = [x for x in cp.compute(scenario(), WEEK)["rows"] if x["section"] == "proposal"]
+    assert pr and all(x["competitor"] is None for x in pr) and "Adjacent results of ours: VI01" in pr[0]["why"]
+
+
+def test_csv_and_markdown_carry_proposals(tmp_path, monkeypatch):
+    proposal_scenario(tmp_path, monkeypatch)
+    r = cp.compute(scenario(), WEEK)
+    rows = list(csv.reader(io.StringIO(cp.to_csv(r))))
+    h = rows[0]
+    prop = [dict(zip(h, x)) for x in rows[1:] if dict(zip(h, x))["section"] == "proposal"]
+    assert prop and prop[0]["status"].startswith("PROPOSED") and prop[0]["story"] and "NEW CLUSTER" in prop[0]["flags"]
+    assert "Proposed new market clusters" in cp.to_markdown(r)

@@ -25,6 +25,10 @@ Read-only input: the view `competitor_concepts` (written by the separate competi
 * Running a long time is a signal, **not** proven performance; the sheet says so.
 * Dry run with a file instead: `--dry-run --competitors-file FILE [--as-of DATE]` (a competitor CSV, or a .json of normalised rows).
 
+## Proposed new market clusters (drafts)
+The sheet is not limited to existing lines. `etl/creative_priorities_proposals.json` holds drafts in the Communication Overview shape (product, market cluster, ICP, pain point, a story of 15 words or fewer in the existing voice, one-line descriptions, flag **NEW CLUSTER** or **NEW LINE inside <cluster>**, adjacent lines of ours as evidence, and match terms for competitor evidence). Seeded from the competitor pull's NEW lines and the ten angles Lonvera is not running (men on GLP-1, women's cycle and hormones, chest fat as cortisol / estrogen, "not beer, a tired liver" for men 55+, wild vs farmed, bone marrow for menopause joints, premature grays / copper, postpartum and kids' nutrition, stack consolidation, Spanish-language joints). Edit the file to add or retire drafts; a draft whose ICP already exists on the sheet for that product drops out by itself, so approving one (adding it to the Communication Overview) removes it.
+They appear as status PROPOSED (draft), top 5 per product, 1 concept each, ranked 50% by the adjacent lines' results (economics x size, working lines only) and 50% by competitor activity (long-running concepts and brands matching the draft). Evidence is competitor activity and our adjacent results only: **no performance numbers are claimed for a proposal.** Drafts are for Josh's approval; they are stored in the weekly snapshot and the CSV (section `proposal`) like every other row.
+
 ## Iterate: who qualifies and how it is ranked (all constants at the top of `etl/creative_priorities.py`)
 Qualifies when its status is WORKING NOW or RISING (see above; this already requires spend >= $5,000, >= 40 purchases and >= 4 ads that reached $100, a shrunk ROAS index so luck on a small sample cannot qualify, and a 30-day index at or above the product's).
 
