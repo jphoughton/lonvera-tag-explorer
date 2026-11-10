@@ -676,7 +676,7 @@ p, .tts-bulk-note, .tts-foot, .note-line, .sv-lead { max-width: 50ch; }
 th[aria-sort="ascending"] .pri-arrow::after, th[aria-sort="descending"] .pri-arrow::after { content: none; }
 th[aria-sort="ascending"] .pri-arrow { opacity: 1; } th[aria-sort="descending"] .pri-arrow { opacity: 1; }
 .pri-sec { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; display: inline-block; color: #fff; }
-.pri-sec-faded { background: #b35900; } .pri-sec-iterate { background: #1a7f37; } .pri-sec-new { background: #7a3db8; } .pri-sec-proposal { background: #5b3fb5; } .pri-sec-competitor { background: #0b6bcb; } .pri-sec-stop { background: #667085; }
+.pri-sec-faded { background: var(--lv-pri-sec-faded, #b35900); } .pri-sec-iterate { background: var(--lv-pri-sec-iterate, #1a7f37); } .pri-sec-new { background: var(--lv-pri-sec-new, #7a3db8); } .pri-sec-proposal { background: var(--lv-pri-sec-proposal, #5b3fb5); } .pri-sec-competitor { background: var(--lv-pri-sec-competitor, #0b6bcb); } .pri-sec-stop { background: var(--lv-pri-sec-stop, #667085); }
 .pri-c-tog, .pri-th-tog { width: 64px; padding-right: 0; white-space: nowrap; }
 .pri-pick { width: 18px; height: 18px; margin: 0 8px 0 0; vertical-align: middle; cursor: pointer; }
 .pri-seltools { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; margin: 6px 0; background: var(--bg, #fff); border: 1px solid var(--lv-action, #c75123); border-radius: 8px; box-shadow: 0 2px 6px rgba(0, 0, 0, .12); }
@@ -708,7 +708,7 @@ th[aria-sort="ascending"] .pri-arrow { opacity: 1; } th[aria-sort="descending"] 
 .pri-stat { --tone: #667085; display: inline-flex; align-items: baseline; gap: 8px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--lv-line, #dcd3c3); border-left: 4px solid var(--tone); background: var(--lv-surface, #fbf8f3); color: var(--lv-ink, #1c1915); font: inherit; text-align: left; }
 button.pri-stat { cursor: pointer; } button.pri-stat:hover { background: var(--lv-hover, #f3ede1); }
 .pri-stat[aria-pressed="true"] { background: var(--tone); color: #fff; border-color: var(--tone); }
-.pri-stat-ok { --tone: #1a7f37; } .pri-stat-up { --tone: #0b6bcb; } .pri-stat-fade { --tone: #b35900; } .pri-stat-bad { --tone: #b42318; } .pri-stat-flat { --tone: #667085; } .pri-stat-new { --tone: #7a3db8; }
+.pri-stat-ok { --tone: var(--lv-pri-st-ok, #1a7f37); } .pri-stat-up { --tone: var(--lv-pri-st-up, #0b6bcb); } .pri-stat-fade { --tone: var(--lv-pri-st-fade, #b35900); } .pri-stat-bad { --tone: var(--lv-pri-st-bad, #b42318); } .pri-stat-flat { --tone: var(--lv-pri-st-flat, #667085); } .pri-stat-new { --tone: var(--lv-pri-st-new, #7a3db8); }
 .pri-stat-n { font-size: 20px; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1; } .pri-stat-k { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 .pri-ptiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
 .pri-ptile { display: grid; gap: 8px; text-align: left; padding: 10px 14px; border: 1px solid var(--lv-line, #dcd3c3); border-radius: 10px; background: var(--lv-surface, #fbf8f3); color: var(--lv-ink, #1c1915); font: inherit; min-width: 0; }
@@ -988,6 +988,8 @@ button.pri-ptile { cursor: pointer; } button.pri-ptile:hover { background: var(-
 /* ---- /priorities contrast pass (2026-11-10): white cards with a shadow and a clearer border on the cream page, one accent per product, solid selected chips ----
    New tokens: --lv-pri-card (card surface), --lv-pri-card-line / --lv-pri-card-line-strong, --lv-pri-card-shadow, --lv-pri-panel-bg (tinted panel behind the detail cards), --lv-pri-label (AA gray for labels on white), product accents. */
 :root { --lv-pri-card: #ffffff; --lv-pri-card-line: #cfc4b0; --lv-pri-card-line-strong: #9c917d; --lv-pri-card-shadow: 0 1px 2px rgba(40, 30, 15, .10), 0 2px 8px rgba(40, 30, 15, .07); --lv-pri-panel-bg: #efe8da; --lv-pri-label: #5a5247;
+  --lv-pri-sec-faded: #b35900; --lv-pri-sec-iterate: #1a7f37; --lv-pri-sec-new: #7a3db8; --lv-pri-sec-proposal: #5b3fb5; --lv-pri-sec-competitor: #0b6bcb; --lv-pri-sec-stop: #667085;
+  --lv-pri-st-ok: #1a7f37; --lv-pri-st-up: #0b6bcb; --lv-pri-st-fade: #b35900; --lv-pri-st-bad: #b42318; --lv-pri-st-flat: #667085; --lv-pri-st-new: #7a3db8;
   --lv-pri-prod-vb: var(--lv-product-bull, #a63d02); --lv-pri-prod-bl: color-mix(in srgb, var(--lv-product-liver, #5f983a) 76%, #000); --lv-pri-prod-bf: var(--lv-product-bone, #2863ab); --lv-pri-selected: #1c1915; --lv-pri-good: #17692e; --lv-pri-good-bg: #e3f3e7; --lv-pri-bad: #b42318; --lv-pri-bad-bg: #fbe7e4; }
 .pri-ptile, .pri-stat, .pri-fbar, .pri-about, .pri-tile, .pri-card, .pri-sc { background: var(--lv-pri-card); border-color: var(--lv-pri-card-line); box-shadow: var(--lv-pri-card-shadow); }
 .pri-sc { box-shadow: none; background: #fff; border: 1px solid var(--lv-pri-card-line); }
@@ -1050,3 +1052,44 @@ button.pri-stat:hover { background: color-mix(in srgb, var(--tone) 14%, #fff); }
   .pri-main .pri-c-cluster, .pri-main .pri-c-icp, .pri-main .pri-c-pain { width: 10%; } .pri-main .pri-c-story { width: 12%; } .pri-main .pri-c-spend14, .pri-main .pri-c-roas14 { width: 7%; white-space: normal; }
 }
 @media (max-width: 760px) { .pri-r14 { display: inline-block; } }
+
+/* filter chips: off = white with a colour dot and a coloured border, on = solid colour with white text; nothing narrowed = every chip off (neutral) */
+.pri-cc { --cc: var(--lv-pri-label); display: inline-flex; align-items: center; gap: 6px; }
+.pri-cc-vita-bull { --cc: var(--lv-pri-prod-vb); } .pri-cc-beef-liver { --cc: var(--lv-pri-prod-bl); } .pri-cc-boneflex { --cc: var(--lv-pri-prod-bf); }
+.pri-cc-sec-faded { --cc: var(--lv-pri-sec-faded); } .pri-cc-sec-iterate { --cc: var(--lv-pri-sec-iterate); } .pri-cc-sec-new { --cc: var(--lv-pri-sec-new); }
+.pri-cc-sec-proposal { --cc: var(--lv-pri-sec-proposal); } .pri-cc-sec-competitor { --cc: var(--lv-pri-sec-competitor); } .pri-cc-sec-stop { --cc: var(--lv-pri-sec-stop); }
+.pri-cdot { width: 9px; height: 9px; border-radius: 50%; background: var(--cc); flex: none; }
+.pri-fbar .pri-cc, .pri-cc { background: #fff; color: var(--lv-ink, #1c1915); border: 1.5px solid var(--cc); font-weight: 600; }
+.pri-fbar .pri-cc:hover { background: color-mix(in srgb, var(--cc) 8%, #fff); }
+.pri-fbar .pri-cc[data-on="true"], .pri-cc[data-on="true"] { background: var(--cc); border-color: var(--cc); color: #fff; font-weight: 700; }
+.pri-cc[data-on="true"] .pri-cdot { background: #fff; }
+.pri-fbar .pri-selchip, .pri-fbar .pri-selchip[aria-pressed="true"] { --cc: var(--lv-pri-selected); background: #fff; border-color: var(--lv-pri-card-line-strong); color: var(--lv-ink, #1c1915); }
+.pri-fbar .pri-selchip[aria-pressed="true"] { background: var(--lv-pri-selected); color: #fff; border-color: var(--lv-pri-selected); }
+.pri-selwrap { position: relative; display: inline-flex; align-items: center; max-width: 100%; }
+.pri-selwrap .pri-fselect { padding-left: 26px; }
+.pri-sdot { position: absolute; left: 9px; width: 10px; height: 10px; border-radius: 50%; background: transparent; border: 1.5px solid var(--lv-pri-card-line-strong); pointer-events: none; }
+.pri-sdot-ok { background: var(--lv-pri-st-ok); border-color: var(--lv-pri-st-ok); } .pri-sdot-up { background: var(--lv-pri-st-up); border-color: var(--lv-pri-st-up); } .pri-sdot-fade { background: var(--lv-pri-st-fade); border-color: var(--lv-pri-st-fade); }
+.pri-sdot-bad { background: var(--lv-pri-st-bad); border-color: var(--lv-pri-st-bad); } .pri-sdot-flat { background: var(--lv-pri-st-flat); border-color: var(--lv-pri-st-flat); } .pri-sdot-new { background: var(--lv-pri-st-new); border-color: var(--lv-pri-st-new); }
+.pri-opt-ok { color: var(--lv-pri-st-ok); } .pri-opt-up { color: var(--lv-pri-st-up); } .pri-opt-fade { color: var(--lv-pri-st-fade); } .pri-opt-bad { color: var(--lv-pri-st-bad); } .pri-opt-flat { color: var(--lv-pri-st-flat); } .pri-opt-new { color: var(--lv-pri-st-new); }
+.pri-fgroup { flex-wrap: wrap; }
+.pri-fbar .pri-cc[aria-pressed][data-on="false"] { background: #fff; border-color: var(--cc); color: var(--lv-ink, #1c1915); font-weight: 600; }
+.pri-fbar .pri-cc[aria-pressed][data-on="true"] { background: var(--cc); border-color: var(--cc); color: #fff; font-weight: 700; }
+.pri-pbn { font-size: 11px; margin-top: -4px; }
+.pri-cohorts { display: grid; gap: 8px; padding-top: 8px; border-top: 1px dashed var(--lv-pri-card-line-strong); }
+.pri-cohort { display: grid; gap: 4px; padding: 6px 8px; background: #fff; border: 1px solid var(--lv-pri-card-line); border-radius: 8px; }
+/* status counts and the actions now live in the filter bar */
+.pri-fbar .pri-stats { gap: 6px; }
+.pri-fbar .pri-stat { padding: 4px 10px; }
+.pri-fbar .pri-actions { margin: 0 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+@media (max-width: 760px) { .pri-fbar .pri-actions { margin-left: 0; width: 100%; } .pri-fbar .pri-actions .pri-add { flex: 1 1 100%; } }
+.pri-pblock-14 { margin-top: -4px; }
+.pri-cohort .pri-hit-l { font-size: 11px; color: var(--lv-pri-label); }
+.pri-tfoot .pri-trow td { background: #efe8da; border-top: 2px solid var(--lv-pri-card-line-strong); padding-top: 8px; padding-bottom: 8px; font-variant-numeric: tabular-nums; }
+.pri-tfoot .pri-trow.pri-tot-vita-bull td { background: color-mix(in srgb, var(--lv-pri-prod-vb) 10%, #fff); border-top: 1px solid var(--lv-pri-prod-vb); }
+.pri-tfoot .pri-trow.pri-tot-beef-liver td { background: color-mix(in srgb, var(--lv-pri-prod-bl) 10%, #fff); border-top: 1px solid var(--lv-pri-prod-bl); }
+.pri-tfoot .pri-trow.pri-tot-boneflex td { background: color-mix(in srgb, var(--lv-pri-prod-bf) 10%, #fff); border-top: 1px solid var(--lv-pri-prod-bf); }
+.pri-tfoot .pri-trow.pri-tot-all td { font-size: 14px; }
+.pri-recon { margin: 8px 0 14px; font-size: 12.5px; display: grid; gap: 3px; color: var(--lv-ink-2, #3d372f); }
+.pri-recon-n { font-size: 11.5px; }
+@media (max-width: 760px) { .pri-tfoot, .pri-tfoot tr { display: block; } .pri-tfoot .pri-c-tlabel { display: block; } }
+@media print { .pri-recon, .pri-tfoot { display: none; } .pri-ptotal { font-weight: 700; font-size: 10px; } }

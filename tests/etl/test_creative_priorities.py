@@ -551,8 +551,40 @@ def test_row_funnel_and_14_day_numbers_with_a_100_dollar_floor():
     assert low["spend_14d"] == 80 and low["roas_14d"] is None            # under $100 in the window: spend shown, no ratio
     csvrows = list(csv.reader(io.StringIO(cp.to_csv(r))))
     h = csvrows[0]
-    assert h[-2:] == ["spend_14d", "roas_14d"] and "ads_10k_plus_spend" in h
+    assert h[-4:-2] == ["spend_14d", "roas_14d"] and "ads_10k_plus_spend" in h
 
 
 def test_scoring_still_uses_the_1000_dollar_hit_not_the_10k_display_hit():
     assert cp.HIT_SPEND == 1000.0 and cp.TOP_SPEND == 10000.0
+
+
+def test_launch_cohorts_split_new_ads_by_spend_to_date():
+    inp = scenario()
+    vb = [f for f in inp["families"] if f["product"] == "vita-bull"]
+    for i, f in enumerate(vb[:6]):
+        f["eff_launch"] = THROUGH - dt.timedelta(days=[1, 5, 29, 30, 45, 70][i])
+        f["has_launch"] = True
+        f["spend_launch"] = [50.0, 500.0, 12000.0, 20000.0, 90.0, 300.0][i]
+    r = cp.compute(inp, WEEK)
+    c = r["baselines"]["vita-bull"]["cohorts"]
+    assert [x["label"] for x in c] == ["Launched in the last 30 days", "Launched 31 to 60 days ago", "Launched 61 to 90 days ago"]
+    assert (c[0]["launched"], c[0]["under_tested"], c[0]["tested"], c[0]["top"]) == (3, 1, 2, 1)
+    assert (c[1]["launched"], c[1]["under_tested"], c[1]["top"]) == (2, 1, 1) and c[2]["launched"] == 1 and c[2]["top"] == 0
+
+
+def test_14_day_product_block_and_unmapped_spend():
+    inp = scenario()
+    vb = [f for f in inp["families"] if f["product"] == "vita-bull"]
+    for f in vb:
+        inp["win"]["meta"][f["family_key"]].update(s14=100.0, p14=1.0, r14=80.0)
+    for f in vb[:2]:
+        f["line_id"] = None                                          # ads with no line
+    vb[0]["eff_launch"] = THROUGH - dt.timedelta(days=3)
+    vb[0]["has_launch"] = True
+    r = cp.compute(inp, WEEK)
+    b = r["baselines"]["vita-bull"]
+    assert b["spend_14d"] == 100.0 * len(vb) and b["spend_14d_no_line"] == 200.0 and b["live_14d"] == len(vb) and b["purchases_14d"] == len(vb)
+    assert round(b["roas_14d"], 3) == 0.8 and b["cpa_14d"] == 100.0 and b["value_14d"] == 80.0 * len(vb)
+    assert b["cohort_14d"]["launched"] >= 1 and b["cohort_14d"]["label"] == "Launched in the last 14 days"
+    m = next(x for x in r["rows"] if x["line_id"] == 1)["metrics"]
+    assert m["value_14d"] == 80.0 * m["purchases_14d"] and m["spend_14d"] == 100.0 * m["purchases_14d"]

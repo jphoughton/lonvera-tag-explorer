@@ -38,8 +38,56 @@
    "purchases": 58483,
    "live_ads": 51,
    "data_through": "2026-11-09",
-   "spend_14d": 113427.84,
-   "roas_14d": 0.7492
+   "spend_14d": 23294.62,
+   "roas_14d": 0.7899999999999999,
+   "cohorts": [
+    {
+     "label": "Launched in the last 30 days",
+     "from_days": 0,
+     "to_days": 29,
+     "launched": 300,
+     "spent": 200,
+     "under_tested": 180,
+     "tested": 120,
+     "top": 2
+    },
+    {
+     "label": "Launched 31 to 60 days ago",
+     "from_days": 30,
+     "to_days": 59,
+     "launched": 260,
+     "spent": 180,
+     "under_tested": 150,
+     "tested": 110,
+     "top": 3
+    },
+    {
+     "label": "Launched 61 to 90 days ago",
+     "from_days": 60,
+     "to_days": 89,
+     "launched": 220,
+     "spent": 160,
+     "under_tested": 120,
+     "tested": 100,
+     "top": 7
+    }
+   ],
+   "spend_14d_no_line": 2329.46,
+   "purchases_14d": 245,
+   "value_14d": 18402.75,
+   "cpa_14d": 95.0,
+   "live_14d": 77,
+   "new_ads_14d": 130,
+   "cohort_14d": {
+    "label": "Launched in the last 14 days",
+    "from_days": 0,
+    "to_days": 13,
+    "launched": 210,
+    "spent": 150,
+    "under_tested": 190,
+    "tested": 20,
+    "top": 0
+   }
   },
   "beef-liver": {
    "product_name": "Beef Liver",
@@ -74,8 +122,56 @@
    "purchases": 85785,
    "live_ads": 51,
    "data_through": "2026-11-09",
-   "spend_14d": 130036.1,
-   "roas_14d": 0.7135
+   "spend_14d": 66285.9,
+   "roas_14d": 0.7999999999999999,
+   "cohorts": [
+    {
+     "label": "Launched in the last 30 days",
+     "from_days": 0,
+     "to_days": 29,
+     "launched": 300,
+     "spent": 200,
+     "under_tested": 180,
+     "tested": 120,
+     "top": 2
+    },
+    {
+     "label": "Launched 31 to 60 days ago",
+     "from_days": 30,
+     "to_days": 59,
+     "launched": 260,
+     "spent": 180,
+     "under_tested": 150,
+     "tested": 110,
+     "top": 3
+    },
+    {
+     "label": "Launched 61 to 90 days ago",
+     "from_days": 60,
+     "to_days": 89,
+     "launched": 220,
+     "spent": 160,
+     "under_tested": 120,
+     "tested": 100,
+     "top": 7
+    }
+   ],
+   "spend_14d_no_line": 6628.59,
+   "purchases_14d": 697,
+   "value_14d": 53028.72,
+   "cpa_14d": 95.0,
+   "live_14d": 77,
+   "new_ads_14d": 130,
+   "cohort_14d": {
+    "label": "Launched in the last 14 days",
+    "from_days": 0,
+    "to_days": 13,
+    "launched": 210,
+    "spent": 150,
+    "under_tested": 190,
+    "tested": 20,
+    "top": 0
+   }
   },
   "boneflex": {
    "product_name": "Boneflex",
@@ -110,8 +206,56 @@
    "purchases": 29559,
    "live_ads": 43,
    "data_through": "2026-11-09",
-   "spend_14d": 52202.24,
-   "roas_14d": 0.6353
+   "spend_14d": 8045.03,
+   "roas_14d": 0.7799999999999999,
+   "cohorts": [
+    {
+     "label": "Launched in the last 30 days",
+     "from_days": 0,
+     "to_days": 29,
+     "launched": 300,
+     "spent": 200,
+     "under_tested": 180,
+     "tested": 120,
+     "top": 2
+    },
+    {
+     "label": "Launched 31 to 60 days ago",
+     "from_days": 30,
+     "to_days": 59,
+     "launched": 260,
+     "spent": 180,
+     "under_tested": 150,
+     "tested": 110,
+     "top": 1
+    },
+    {
+     "label": "Launched 61 to 90 days ago",
+     "from_days": 60,
+     "to_days": 89,
+     "launched": 220,
+     "spent": 160,
+     "under_tested": 120,
+     "tested": 100,
+     "top": 2
+    }
+   ],
+   "spend_14d_no_line": 804.5,
+   "purchases_14d": 84,
+   "value_14d": 6275.12,
+   "cpa_14d": 95.0,
+   "live_14d": 77,
+   "new_ads_14d": 130,
+   "cohort_14d": {
+    "label": "Launched in the last 14 days",
+    "from_days": 0,
+    "to_days": 13,
+    "launched": 210,
+    "spent": 150,
+    "under_tested": 190,
+    "tested": 20,
+    "top": 0
+   }
   }
  },
  "rows": [
@@ -206,11 +350,14 @@
      "active_30d": 2,
      "under_tested_30d": 1,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 42.0,
     "purchases_14d": 7,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [
     {
@@ -319,11 +466,14 @@
      "active_30d": 16,
      "under_tested_30d": 8,
      "tested_30d": 8,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 7,
+     "top_launched_30d": 0
     },
     "spend_14d": 3071.74,
     "purchases_14d": 34,
-    "roas_14d": 0.57
+    "roas_14d": 0.57,
+    "value_14d": 1750.89
    },
    "hooks": [
     {
@@ -432,11 +582,14 @@
      "active_30d": 15,
      "under_tested_30d": 7,
      "tested_30d": 7,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 7,
+     "top_launched_30d": 0
     },
     "spend_14d": 1191.06,
     "purchases_14d": 13,
-    "roas_14d": 0.64
+    "roas_14d": 0.64,
+    "value_14d": 762.28
    },
    "hooks": [
     {
@@ -660,11 +813,14 @@
      "active_30d": 15,
      "under_tested_30d": 7,
      "tested_30d": 7,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 6,
+     "top_launched_30d": 0
     },
     "spend_14d": 1970.54,
     "purchases_14d": 21,
-    "roas_14d": 0.71
+    "roas_14d": 0.71,
+    "value_14d": 1399.08
    },
    "hooks": [
     {
@@ -887,11 +1043,14 @@
      "active_30d": 54,
      "under_tested_30d": 27,
      "tested_30d": 27,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 23,
+     "top_launched_30d": 0
     },
     "spend_14d": 3023.6,
     "purchases_14d": 33,
-    "roas_14d": 0.78
+    "roas_14d": 0.78,
+    "value_14d": 2358.41
    },
    "hooks": [],
    "evidence": null,
@@ -968,11 +1127,14 @@
      "active_30d": 18,
      "under_tested_30d": 9,
      "tested_30d": 9,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 8,
+     "top_launched_30d": 0
     },
     "spend_14d": 18.91,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [],
    "evidence": null,
@@ -1053,11 +1215,14 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [
     {
@@ -1171,11 +1336,14 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [
     {
@@ -1284,11 +1452,14 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [
     {
@@ -1391,11 +1562,14 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [
     {
@@ -1503,11 +1677,14 @@
      "active_30d": 20,
      "under_tested_30d": 10,
      "tested_30d": 10,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 13,
+     "top_launched_30d": 0
     },
     "spend_14d": 9513.48,
     "purchases_14d": 105,
-    "roas_14d": 0.57
+    "roas_14d": 0.57,
+    "value_14d": 5422.68
    },
    "hooks": [
     {
@@ -1645,11 +1822,14 @@
      "active_30d": 21,
      "under_tested_30d": 10,
      "tested_30d": 10,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 10,
+     "top_launched_30d": 0
     },
     "spend_14d": 7028.34,
     "purchases_14d": 78,
-    "roas_14d": 0.64
+    "roas_14d": 0.64,
+    "value_14d": 4498.14
    },
    "hooks": [
     {
@@ -1787,11 +1967,14 @@
      "active_30d": 9,
      "under_tested_30d": 4,
      "tested_30d": 4,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 9,
+     "top_launched_30d": 0
     },
     "spend_14d": 562.71,
     "purchases_14d": 6,
-    "roas_14d": 0.71
+    "roas_14d": 0.71,
+    "value_14d": 399.52
    },
    "hooks": [
     {
@@ -2009,11 +2192,14 @@
      "active_30d": 8,
      "under_tested_30d": 4,
      "tested_30d": 4,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 15,
+     "top_launched_30d": 0
     },
     "spend_14d": 1160.92,
     "purchases_14d": 12,
-    "roas_14d": 0.78
+    "roas_14d": 0.78,
+    "value_14d": 905.52
    },
    "hooks": [
     {
@@ -2188,11 +2374,14 @@
      "active_30d": 54,
      "under_tested_30d": 27,
      "tested_30d": 27,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 29,
+     "top_launched_30d": 0
     },
     "spend_14d": 6513.04,
     "purchases_14d": 72,
-    "roas_14d": 0.85
+    "roas_14d": 0.85,
+    "value_14d": 5536.08
    },
    "hooks": [],
    "evidence": null,
@@ -2286,11 +2475,14 @@
      "active_30d": 15,
      "under_tested_30d": 7,
      "tested_30d": 7,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 11,
+     "top_launched_30d": 0
     },
     "spend_14d": 1733.34,
     "purchases_14d": 19,
-    "roas_14d": 0.92
+    "roas_14d": 0.92,
+    "value_14d": 1594.67
    },
    "hooks": [],
    "evidence": null,
@@ -2397,11 +2589,14 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [],
    "evidence": {
@@ -2524,11 +2719,14 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 2.53,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [],
    "evidence": {
@@ -2618,11 +2816,14 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [
     {
@@ -2720,11 +2921,14 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [
     {
@@ -2825,11 +3029,14 @@
      "active_30d": 4,
      "under_tested_30d": 2,
      "tested_30d": 2,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 3,
+     "top_launched_30d": 0
     },
     "spend_14d": 292.86,
     "purchases_14d": 3,
-    "roas_14d": 0.64
+    "roas_14d": 0.64,
+    "value_14d": 187.43
    },
    "hooks": [
     {
@@ -2958,11 +3165,14 @@
      "active_30d": 14,
      "under_tested_30d": 7,
      "tested_30d": 7,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 9,
+     "top_launched_30d": 0
     },
     "spend_14d": 2501.94,
     "purchases_14d": 27,
-    "roas_14d": 0.71
+    "roas_14d": 0.71,
+    "value_14d": 1776.38
    },
    "hooks": [
     {
@@ -3071,11 +3281,14 @@
      "active_30d": 2,
      "under_tested_30d": 1,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 307.58,
     "purchases_14d": 3,
-    "roas_14d": 0.78
+    "roas_14d": 0.78,
+    "value_14d": 239.91
    },
    "hooks": [
     {
@@ -3235,11 +3448,14 @@
      "active_30d": 2,
      "under_tested_30d": 1,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 36.63,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [
     {
@@ -3426,11 +3642,14 @@
      "active_30d": 3,
      "under_tested_30d": 1,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 2,
+     "top_launched_30d": 0
     },
     "spend_14d": 29.07,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [],
    "evidence": null,
@@ -3508,11 +3727,14 @@
      "active_30d": 3,
      "under_tested_30d": 1,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 3,
+     "top_launched_30d": 0
     },
     "spend_14d": 49.93,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [],
    "evidence": null,
@@ -3612,11 +3834,14 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [
     {
@@ -3732,11 +3957,14 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [
     {
@@ -3849,11 +4077,14 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [
     {
@@ -3949,11 +4180,14 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
-    "roas_14d": null
+    "roas_14d": null,
+    "value_14d": 0.0
    },
    "hooks": [
     {

@@ -259,7 +259,7 @@ def test_manual_rows_ride_on_every_snapshot_and_csv_and_views(client, snaps, man
         assert [r["key"] for r in d["rows"] if r.get("manual")] == [m["key"]] and len(d["rows"]) == 2
     full = list(csv.reader(io.StringIO(client.get("/api/priorities.csv?week=2026-11-08").get_data(as_text=True))))
     head = full[0]
-    assert head[:4] == ["market_cluster", "icp", "pain_point", "story"] and head[head.index("source"):head.index("source") + 2] == ["source", "notes"] and head[-2:] == ["spend_14d", "roas_14d"] and len(full) == 3
+    assert head[:4] == ["market_cluster", "icp", "pain_point", "story"] and head[head.index("source"):head.index("source") + 2] == ["source", "notes"] and head[-4:-2] == ["spend_14d", "roas_14d"] and len(full) == 3
     by = {r[head.index("source")]: r for r in full[1:]}
     assert set(by) == {"auto", "manual"} and by["manual"][head.index("notes")] == "'=HYPERLINK(1)" and by["manual"][head.index("status")] == "MANUAL" and by["auto"][head.index("notes")] == ""
     sel = list(csv.reader(io.StringIO(client.get("/api/priorities.csv", query_string={"week": "2026-11-08", "id": m["key"]}).get_data(as_text=True))))
