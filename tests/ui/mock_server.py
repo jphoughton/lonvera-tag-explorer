@@ -1981,12 +1981,16 @@ import mock_lookup  # noqa: E402  (Tag lookup: /api/tag-lookup, built on the rea
 
 mock_lookup.register(app, dict(Bad=Bad))
 
+import mock_priorities  # noqa: E402  (Creative priorities: /api/priorities from a trimmed real snapshot)
+
+mock_priorities.register(app, dict(Bad=Bad))
+
 
 def shell(*_a, **_k):
     return send_from_directory(STATIC, "index.html")
 
 
-for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/lookup", "/p/<slug>", "/ad/<rid>"):
+for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/priorities", "/lookup", "/p/<slug>", "/ad/<rid>"):
     app.add_url_rule(rule, endpoint="shell" + rule, view_func=shell)
 
 
