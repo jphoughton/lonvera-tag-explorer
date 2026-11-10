@@ -426,8 +426,19 @@ def priorities_view(token: str):
 
 @bp.get("/api/priorities/views/<token>/csv")
 def priorities_view_csv(token: str):
-    week, text = cpr.view_csv(token)
-    return Response(text, mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="creative-priorities-view-{week}.csv"'})
+    name_slug, text = cpr.view_csv(token)
+    return Response(text, mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{name_slug}.csv"'})
+
+
+@bp.patch("/api/priorities/views/<token>")
+def priorities_view_rename(token: str):
+    blocked = _views_write_guard()
+    if blocked is not None:
+        return blocked
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        raise q.ApiError(400, "JSON object body required")
+    return jsonify(cpr.rename_view(token, body.get("name")))
 
 
 @bp.delete("/api/priorities/views/<token>")

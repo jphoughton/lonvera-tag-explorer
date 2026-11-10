@@ -39,13 +39,14 @@ def register(app, deps):
 
     @app.post("/api/priorities/views")
     def priorities_view_create_mock():
+        from app import creative_priorities as cpr
         body = request.get_json(silent=True) or {}
         ids = body.get("ids") or []
         snap = snap_of(ids)
         if not snap["rows"]:
             return jsonify(error="None of the selected rows exist in that snapshot."), 400
         tok = secrets.token_urlsafe(24)
-        views[tok] = {"snap": snap, "name": " ".join(str(body.get("name") or "").split())[:120], "created": dt.datetime.now(dt.timezone.utc).isoformat()}
+        views[tok] = {"snap": snap, "name": cpr.clean_name(body.get("name")), "created": dt.datetime.now(dt.timezone.utc).isoformat()}
         return jsonify(token=tok, url=f"/priorities/v/{tok}", name=views[tok]["name"], count=len(snap["rows"]), missing=len(set(ids)) - len(snap["rows"]), week_start=snap["week_start"]), 201
 
     @app.get("/api/priorities/views")
@@ -67,7 +68,17 @@ def register(app, deps):
         v = views.get(token)
         if v is None:
             return jsonify(error="Saved view not found."), 404
-        return Response(cp.to_csv(v["snap"]), mimetype="text/csv")
+        from app import creative_priorities as cpr
+        return Response(cp.to_csv(v["snap"]), mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{cpr.slug(v["name"])}.csv"'})
+
+    @app.patch("/api/priorities/views/<token>")
+    def priorities_view_rename_mock(token):
+        from app import creative_priorities as cpr
+        v = views.get(token)
+        if v is None:
+            return jsonify(error="Saved view not found."), 404
+        v["name"] = cpr.clean_name((request.get_json(silent=True) or {}).get("name"))
+        return jsonify(token=token, name=v["name"])
 
     @app.delete("/api/priorities/views/<token>")
     def priorities_view_delete_mock(token):

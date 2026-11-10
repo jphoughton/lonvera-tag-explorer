@@ -3,6 +3,7 @@ import csv
 import datetime as dt
 import io
 import json
+import re
 
 import pytest
 
@@ -145,3 +146,26 @@ def test_csv_ids_filter_keeps_columns(client, snaps):
     sel = list(csv.reader(io.StringIO(client.get("/api/priorities.csv", query_string={"week": "2026-11-08", "id": _key(ROW)}).get_data(as_text=True))))
     none = list(csv.reader(io.StringIO(client.get("/api/priorities.csv", query_string={"week": "2026-11-08", "id": "zzz"}).get_data(as_text=True))))
     assert sel == full and none == [full[0]]
+
+
+def test_view_names_special_characters_default_rename_and_csv_filename(client, snaps, views):
+    name = "Madre - 11/10/26 Priorities"
+    v = client.post("/api/priorities/views", json={"week": "2026-11-08", "ids": [_key(ROW)], "name": f"  {name}  "}).get_json()
+    assert v["name"] == name
+    assert client.get("/api/priorities/views/" + v["token"]).get_json()["view"]["name"] == name
+    r = client.get(f"/api/priorities/views/{v['token']}/csv")
+    assert 'filename="madre-11-10-26-priorities.csv"' in r.headers["Content-Disposition"]
+    assert client.post("/api/priorities/views", json={"ids": [_key(ROW)], "name": "x" * 300}).get_json()["name"] == "x" * 120
+    for empty in ("", "   ", None):
+        d = client.post("/api/priorities/views", json={"ids": [_key(ROW)], "name": empty}).get_json()["name"]
+        assert re.fullmatch(r"Priorities - \d{1,2}/\d{1,2}/\d{2}", d), d
+    # rename keeps the token and the frozen rows
+    p = client.patch("/api/priorities/views/" + v["token"], json={"name": "  Boss <b>cut</b> & co / 2  "})
+    assert p.status_code == 200 and p.get_json() == {"token": v["token"], "name": "Boss <b>cut</b> & co / 2"}
+    g = client.get("/api/priorities/views/" + v["token"]).get_json()
+    assert g["view"]["name"] == "Boss <b>cut</b> & co / 2" and len(g["rows"]) == 1
+    assert [x["name"] for x in client.get("/api/priorities/views").get_json()["views"] if x["token"] == v["token"]] == ["Boss <b>cut</b> & co / 2"]
+    assert re.fullmatch(r"Priorities - \d{1,2}/\d{1,2}/\d{2}", client.patch("/api/priorities/views/" + v["token"], json={"name": ""}).get_json()["name"])
+    assert client.patch("/api/priorities/views/" + "A" * 30, json={"name": "x"}).status_code == 404
+    assert client.patch("/api/priorities/views/" + v["token"], data="x", content_type="text/plain").status_code == 400
+    assert client.patch("/api/priorities/views/" + v["token"], json={"name": 5}).status_code == 400

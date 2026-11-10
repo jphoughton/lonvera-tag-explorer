@@ -383,3 +383,48 @@ def test_saved_views_list_reopens_and_deletes(page):
     page.wait_for_function("(h) => ![...document.querySelectorAll('[data-testid=pri-view-row] a')].some(a => a.getAttribute('href') === h)", arg=href)
     r = page.request.get(page.url.split("/priorities")[0] + "/api/priorities/views/" + href.rsplit("/", 1)[1])
     assert r.status == 404
+
+
+def test_save_view_name_is_prefilled_free_text_and_becomes_title_tab_title_and_csv_filename(page):
+    import re
+    goto(page)
+    nm = page.locator("[data-testid=pri-view-name]")
+    assert re.fullmatch(r"Priorities - \d{1,2}/\d{1,2}/\d{2}", nm.input_value())
+    pick_rows(page, 0, 1)
+    nm.fill("  Madre - 11/10/26 Priorities  ")
+    page.locator("[data-testid=pri-sel-save]").click()
+    page.wait_for_selector("[data-testid=pri-view-link]")
+    url = page.locator("[data-testid=pri-view-link]").get_attribute("href")
+    page.goto(url)
+    page.wait_for_selector("[data-testid=pri-title]")
+    idle(page)
+    assert page.locator("[data-testid=pri-title]").text_content() == "Creative priorities: Madre - 11/10/26 Priorities"
+    assert page.title().startswith("Madre - 11/10/26 Priorities")
+    with page.expect_download() as dl:
+        page.locator("[data-testid=pri-csv]").click()
+    assert dl.value.suggested_filename == "madre-11-10-26-priorities.csv"
+    # rename from the view page: same link, new title
+    page.once("dialog", lambda d: d.accept("Round 2 / <b>x</b>"))
+    page.locator("[data-testid=pri-rename]").click()
+    page.wait_for_function("() => document.querySelector('[data-testid=pri-title]').textContent.includes('Round 2')")
+    assert page.title().startswith("Round 2 / <b>x</b>") and page.url.endswith(url)
+    page.reload()
+    page.wait_for_selector("[data-testid=pri-title]")
+    assert page.locator("[data-testid=pri-title]").text_content() == "Creative priorities: Round 2 / <b>x</b>" and page.locator("[data-testid=pri-title] b").count() == 0
+
+
+def test_empty_name_gets_the_default_and_rename_from_the_dropdown(page):
+    import re
+    goto(page)
+    pick_rows(page, 2)
+    page.locator("[data-testid=pri-view-name]").fill("   ")
+    page.locator("[data-testid=pri-sel-save]").click()
+    page.wait_for_selector("[data-testid=pri-view-link]")
+    url = page.locator("[data-testid=pri-view-link]").get_attribute("href")
+    page.locator("[data-testid=pri-views] summary").click()
+    row = page.locator("[data-testid=pri-view-row]").filter(has=page.locator(f"a[href='{url}']"))
+    row.wait_for()
+    assert re.match(r"Priorities - \d{1,2}/\d{1,2}/\d{2}", row.locator("a").first.text_content())
+    page.once("dialog", lambda d: d.accept("Renamed - 1/2/27"))
+    row.locator("[data-testid=pri-view-rename]").click()
+    page.wait_for_function("(u) => { const a = document.querySelector(`[data-testid=pri-view-row] a[href='${u}']`); return a && a.textContent === 'Renamed - 1/2/27'; }", arg=url)

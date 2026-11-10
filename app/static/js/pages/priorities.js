@@ -188,9 +188,19 @@ function render(d, view = null) {
   const csvLink = h('a', { class: 'btn', href: csvBase, download: '', 'data-testid': 'pri-csv' }, 'Download CSV');
   const printLabel = h('span', null, 'Print / save as PDF');
   const top = h('div', { class: 'pri-top' },
-    h('h1', { 'data-testid': 'pri-title' }, readonly ? `Creative priorities: ${view.name || 'Saved view'}` : 'Creative priorities'),
+    h('h1', { 'data-testid': 'pri-title' }, readonly ? `Creative priorities: ${view.name}` : 'Creative priorities'),
     readonly ? h('p', { class: 'pri-lead', 'data-testid': 'pri-view-note' }, `Saved view of ${d.rows.length} concept${d.rows.length === 1 ? '' : 's'}, snapshot week of ${d.week_start} (frozen: it does not change when a newer snapshot arrives). `,
-      h('a', { href: href('/priorities', {}), 'data-testid': 'pri-open-full' }, 'Open full priorities')) : null,
+      h('a', { href: href('/priorities', {}), 'data-testid': 'pri-open-full' }, 'Open full priorities'), ' ',
+      h('button', { type: 'button', class: 'btn pri-screen-note', 'data-testid': 'pri-rename', onclick: async () => {
+        const nn = window.prompt('Rename this saved view (the link stays the same)', view.name);
+        if (nn === null) return;
+        try {
+          const r = await api('/api/priorities/views/' + view.token, {}, { method: 'PATCH', body: { name: nn } });
+          view.name = r.name;
+          document.querySelector('[data-testid=pri-title]').textContent = `Creative priorities: ${r.name}`;
+          document.title = `${r.name} \u00b7 Creative priorities \u00b7 Marketing metrics`;
+        } catch (e) { window.alert('Could not rename: ' + (e.message || 'error')); }
+      } }, 'Rename')) : null,
     h('div', { class: 'pri-bar' }, readonly ? null : [h('label', { for: 'pri-week' }, 'Week '), weekSel],
       csvLink,
       h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-print', onclick: () => window.print() }, printLabel),
@@ -209,7 +219,8 @@ function render(d, view = null) {
   const selCount = h('strong', { 'data-testid': 'pri-sel-count' });
   const copyNote = h('span', { class: 'pri-k', 'aria-live': 'polite', 'data-testid': 'pri-copy-note' });
   const selCsv = h('a', { class: 'btn', href: csvBase, download: '', 'data-testid': 'pri-sel-csv' }, 'Download CSV');
-  const nameIn = h('input', { type: 'text', class: 'pri-name', maxlength: '120', placeholder: 'View name (optional)', 'aria-label': 'View name', 'data-testid': 'pri-view-name' });
+  const defaultName = () => { const t = new Date(); return `Priorities - ${t.getMonth() + 1}/${t.getDate()}/${String(t.getFullYear() % 100).padStart(2, '0')}`; };
+  const nameIn = h('input', { type: 'text', class: 'pri-name', maxlength: '120', placeholder: 'View name', 'aria-label': 'View name', value: defaultName(), 'data-testid': 'pri-view-name' });
   const linkBox = h('div', { class: 'pri-linkbox', hidden: true, 'data-testid': 'pri-linkbox' });
   const abs = (u) => location.origin + u;
   const copyLinkBtn = (u) => h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-copy-link', onclick: (e) => {
@@ -237,7 +248,12 @@ function render(d, view = null) {
       const { views } = await api('/api/priorities/views');
       viewsList.replaceChildren(...(views.length ? views.map((v) => h('div', { class: 'pri-vrow', 'data-testid': 'pri-view-row' },
         h('a', { href: v.url }, v.name || 'Untitled view'), h('span', { class: 'pri-k' }, ` ${v.count} concept${v.count === 1 ? '' : 's'}, snapshot ${v.week_start}, saved ${v.created_at.slice(0, 10)} `),
-        copyLinkBtn(v.url), ' ', h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-view-delete', 'aria-label': 'Delete view ' + (v.name || v.token), onclick: async () => {
+        copyLinkBtn(v.url), ' ', h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-view-rename', onclick: async () => {
+          const nn = window.prompt('Rename this saved view', v.name);
+          if (nn === null) return;
+          try { await api('/api/priorities/views/' + v.token, {}, { method: 'PATCH', body: { name: nn } }); } catch (e) { window.alert('Could not rename: ' + (e.message || 'error')); }
+          refreshViews();
+        } }, 'Rename'), ' ', h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-view-delete', 'aria-label': 'Delete view ' + (v.name || v.token), onclick: async () => {
           if (!window.confirm('Delete this saved view? Anyone with its link will lose access.')) return;
           try { await api('/api/priorities/views/' + v.token, {}, { method: 'DELETE' }); } catch (e) { /* already gone */ }
           refreshViews();
@@ -359,4 +375,5 @@ export async function prioritiesViewPage(ctx) {
     throw e;
   }
   ctx.mount(render(d, d.view));
+  document.title = `${d.view.name} \u00b7 Creative priorities \u00b7 Marketing metrics`;
 }

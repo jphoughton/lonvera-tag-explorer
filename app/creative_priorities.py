@@ -77,6 +77,23 @@ TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{22,64}")
 VIEW_BODY_BYTES = 256 * 1024
 
 
+def default_name(day: dt.date | None = None) -> str:
+    d = day or dt.date.today()
+    return f"Priorities - {d.month}/{d.day}/{d.year % 100:02d}"
+
+
+def clean_name(raw, day: dt.date | None = None) -> str:
+    """Free text (slashes, dashes, spaces all fine), whitespace collapsed, trimmed, at most 120 characters; empty becomes 'Priorities - M/D/YY'."""
+    if raw is not None and not isinstance(raw, str):
+        raise q.ApiError(400, "name must be text")
+    name = " ".join((raw or "").split())[:MAX_NAME].strip()
+    return name or default_name(day)
+
+
+def slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:80] or "view"
+
+
 def _views_conn():
     from .projection import rwdb          # its own read-write pool: the app's pool is read-only
     return rwdb.get_rw()
@@ -95,10 +112,7 @@ def create_view(conn, body: dict) -> dict:
     ids = list(dict.fromkeys(ids))
     if len(ids) > MAX_VIEW_ROWS:
         raise q.ApiError(400, f"A saved view holds at most {MAX_VIEW_ROWS} rows.")
-    name = body.get("name") or ""
-    if not isinstance(name, str):
-        raise q.ApiError(400, "name must be text")
-    name = " ".join(name.split())[:MAX_NAME]
+    name = clean_name(body.get("name"))
     full = payload(conn, body.get("week") if isinstance(body.get("week"), str) else None)
     view = _view_payload(full, ids, {k: v for k, v in full.items() if k not in ("rows", "weeks", "stats")})
     if not view["rows"]:
@@ -128,9 +142,22 @@ def get_view(token: str) -> dict:
 
 
 def view_csv(token: str) -> tuple[str, str]:
+    """(file slug, csv text): the slug is the slugified view name."""
     from etl import creative_priorities as cp
     v = get_view(token)
-    return v["week_start"], cp.to_csv({**v, "stats": {}})
+    return slug(v["view"]["name"]), cp.to_csv({**v, "stats": {}})
+
+
+def rename_view(token: str, raw_name) -> dict:
+    """Change the name only; the token (the link) stays. Empty -> the default name."""
+    if not TOKEN_RE.fullmatch(token or ""):
+        raise q.ApiError(404, "Saved view not found.")
+    name = clean_name(raw_name)
+    with _views_conn() as w:
+        n = w.execute("UPDATE creative_priorities_views SET name = %s WHERE token = %s", (name, token)).rowcount
+    if not n:
+        raise q.ApiError(404, "Saved view not found.")
+    return {"token": token, "name": name}
 
 
 def delete_view(token: str) -> None:
