@@ -90,6 +90,44 @@ def register(app, deps):
         weeks = sorted({r["for_week"].isoformat() for r in S["rows"].values()}, reverse=True)
         return jsonify(rows=rows, vendors=VENDORS, weeks=weeks)
 
+    @app.post("/api/priorities/assignments")
+    def assign_create():
+        """Same rules as app.priorities_assign.create_assignments: the rows come from the (mock) snapshot by row key, a duplicate (same concept, vendor, week, not dropped) is skipped with a reason."""
+        from app import creative_priorities as cpr
+        from etl.creative_priorities import norm_key
+        body = request.get_json(silent=True) or {}
+        try:
+            f = pa.clean_create(body)
+            keys = body.get("keys")
+            if not isinstance(keys, list) or not keys or not all(isinstance(k, str) and 0 < len(k) <= 400 for k in keys):
+                raise q.ApiError(400, "keys must be a list of concept row keys")
+            if len(set(keys)) > pa.MAX_KEYS:
+                raise q.ApiError(400, f"at most {pa.MAX_KEYS} concepts at a time")
+        except q.ApiError as e:
+            return err(e)
+        by_key = {cpr.row_key(r): r for r in app.config["PRI_LIVE"]()["rows"]}
+        created, skipped = [], []
+        for k in dict.fromkeys(keys):
+            r = by_key.get(norm_key(k))
+            if r is None:
+                skipped.append({"key": k, "reason": "not in this week's list"})
+                continue
+            if not (r.get("cluster") or "").strip() and not (r.get("pain_point") or "").strip():
+                skipped.append({"key": k, "reason": "no cluster or pain point"})
+                continue
+            ck = pa.concept_key(r)
+            if any(a.get("concept_key") == ck and a["vendor"] == f["vendor"] and a["for_week"] == f["for_week"] and not a["dropped_at"] for a in S["rows"].values()):
+                skipped.append({"key": k, "reason": "already assigned to this vendor for that week"})
+                continue
+            S["seq"] += 1
+            rec = {"story": r.get("story") or "", "note": f["note"], "vendor_note": "", "brief_url": None, "creative_url": None, "tracker_concept_ids": [], "created_by": "josh", "updated_by": "josh", "ready_at": None,
+                   "launched_at": None, "dropped_at": None, "created_at": now(), "updated_at": now(), "_suggested": [], "id": S["seq"], "concept_key": ck, "text_key": pa.text_key(r), "vendor": f["vendor"],
+                   "for_week": f["for_week"], "product": r["product"], "line_id": r.get("line_id"), "manual_id": r["id"] if r.get("manual") else None, "line_code": r.get("line_code") or "", "cluster": r.get("cluster") or "",
+                   "icp": r.get("icp") or "", "pain_point": r.get("pain_point") or "", "section_at_assign": r.get("section") or ""}
+            S["rows"][rec["id"]] = rec
+            created.append(view(rec))
+        return jsonify(created=created, skipped=skipped), 201
+
     @app.patch("/api/priorities/assignments/<int:aid>")
     def assign_patch(aid):
         r = S["rows"].get(aid)

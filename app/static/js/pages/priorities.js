@@ -5,6 +5,7 @@ import { h, fmt, isNum, href, navigate, qs } from '../util.js';
 import { api } from '../api.js';
 import { showControls } from '../controls.js';
 import { dayOf, manualPanel, addManualNotes, manualStrip, manualControls } from './priorities_manual.js';
+import { assignControls } from './priorities_assign.js';
 
 const PRODUCT_ORDER = ['vita-bull', 'beef-liver', 'boneflex'];
 const value_keys = ['product', 'section', 'cluster', 'icp', 'pain', 'story', 'status', 'concepts', 'key', 'spend14', 'roas14'];
@@ -255,7 +256,8 @@ const unmappedPanel = (r, d) => h('div', { class: 'pri-panel pri-tone-' + toneOf
   r.story ? h('p', { class: 'pri-story' }, r.story) : null, r.why ? h('p', null, r.why) : null, statCards(r),
   (r.unmapped_ads || []).length ? h('div', { class: 'pri-card', 'data-testid': 'pri-unmapped' }, h('div', { class: 'pri-h' }, 'Biggest ads without a line yet'), h('ul', null, r.unmapped_ads.map((a) => h('li', null, `${a.ad}: ${fmt.money(a.spend)} since launch, ${fmt.money(a.spend_14d)} last 14 days`)))) : null);
 // every row gets the same panel (hooks, winning ads, trend, number tiles, competitor badges where present), Hold included; only the "ads not mapped to a line" row has its own simple one
-const panelFor = (r, d, mctl) => { if (r.manual) return manualPanel(r, mctl); if (r.section === 'hold' && r.line_id == null) return unmappedPanel(r, d); const p = detail(r, d); addManualNotes(p, r, d); return p; };
+const withProd = (p, r, actl) => { if (actl) p.append(actl.history(r)); return p; };                           // production history under every concept's panel (priorities_assign.js); none on the public view page
+const panelFor = (r, d, mctl, actl) => { if (r.manual) return withProd(manualPanel(r, mctl), r, actl); if (r.section === 'hold' && r.line_id == null) return unmappedPanel(r, d); const p = detail(r, d); addManualNotes(p, r, d); return withProd(p, r, actl); };
 
 const SECTION_LABEL = Object.fromEntries(SECTIONS);
 const SECTION_ORDER = SECTIONS.map(([k]) => k);
@@ -296,13 +298,13 @@ function setOpen(btn, panelRow, open) {
 }
 
 // one row (collapsed) + its detail row (hidden). `printed` rows have no toggle and an always-visible detail (the print-only copy).
-function rowPair(r, d, printed = false, onPick = null, mctl = null) {
+function rowPair(r, d, printed = false, onPick = null, mctl = null, actl = null) {
   const id = 'pri-detail-' + (++uid);
   const name = `${r.cluster}, ${r.icp}, ${r.pain_point}`;
   const cell = (label, cls, ...kids) => h('td', { class: 'pri-c pri-c-' + cls, 'data-label': label }, ...kids);
   const lazy = r.section === 'hold' && !printed;                                    // the 100+ Hold panels are built on first open (the content is the same full panel)
-  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, h('td', { colspan: '12' }, lazy ? null : panelFor(r, d, r._from ? null : mctl)));
-  if (lazy) detailRow._build = () => { detailRow.firstChild.replaceChildren(panelFor(r, d, r._from ? null : mctl)); detailRow._build = null; };
+  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, h('td', { colspan: String(12 + (actl ? 1 : 0)) }, lazy ? null : panelFor(r, d, r._from ? null : mctl, actl)));
+  if (lazy) detailRow._build = () => { detailRow.firstChild.replaceChildren(panelFor(r, d, r._from ? null : mctl, actl)); detailRow._build = null; };
   const btn = h('button', { type: 'button', class: 'pri-toggle', 'aria-expanded': 'false', 'aria-controls': id, 'aria-label': 'Expand: ' + name, 'data-name': name, 'data-testid': 'pri-toggle' },
     h('span', { class: 'pri-chev', 'aria-hidden': 'true' }, '▸'));
   const pick = h('input', { type: 'checkbox', class: 'pri-pick', 'data-testid': 'pri-pick', 'aria-label': 'Select: ' + name, onchange: (e) => onPick && onPick(r, e.target.checked) });
@@ -315,7 +317,8 @@ function rowPair(r, d, printed = false, onPick = null, mctl = null) {
     cell('Concepts', 'concepts', r.manual || r.section === 'hold' ? '\u2013' : r.concepts ? `${r.concepts} concept${r.concepts === 1 ? '' : 's'}` : 'None'),
     cell('Key number', 'key', keyNumber(r, d)),
     cell('Spend \u00b7 14d', 'spend14', has14(r) ? fmt.money(r.metrics.spend_14d) : '\u2013'),
-    cell('ROAS \u00b7 14d', 'roas14', roas14Cell(r, d)));
+    cell('ROAS \u00b7 14d', 'roas14', roas14Cell(r, d)),
+    actl ? cell('In production', 'prod', actl.cell(r)) : null);
   if (!printed) {
     const toggle = () => setOpen(btn, detailRow, btn.getAttribute('aria-expanded') !== 'true');
     btn.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
@@ -337,7 +340,8 @@ function render(d, view = null, opts = {}) {
   const sel = readonly ? new Set(d.rows.map(keyOf)) : loadSel(d.week_start, new Set(d.rows.map(keyOf)), tok);
   const isSel = (r) => sel.has(keyOf(r));
   const mctl = manualControls(d, readonly, opts, (r) => { sel.delete(keyOf(r)); saveSel(d.week_start, sel, tok); });
-  const pairs = d.rows.map((r) => rowPair(r, d, false, readonly ? null : (row, on) => { if (on) sel.add(keyOf(row)); else sel.delete(keyOf(row)); selChanged(); }, mctl));
+  const actl = readonly ? null : assignControls({ d, keyOf, selected: () => d.rows.filter(isSel), refresh: () => apply() });          // production hooks: none on a public saved view
+  const pairs = d.rows.map((r) => rowPair(r, d, false, readonly ? null : (row, on) => { if (on) sel.add(keyOf(row)); else sel.delete(keyOf(row)); selChanged(); }, mctl, actl));
   let shownList = [];
   const carry = opts.carry || {};
   const sf = act && act.view.kind === 'filters' && act.view.filters ? act.view.filters : null;      // a filter view starts from its saved filters (applied live to whatever rows exist now)
@@ -349,7 +353,7 @@ function render(d, view = null, opts = {}) {
   if (opts.ref) opts.ref.state = state;
   const value = {
     product: (r) => pOrder[r.product], section: (r) => sOrder[r.section], cluster: (r) => r.cluster.toLowerCase(), icp: (r) => r.icp.toLowerCase(), pain: (r) => r.pain_point.toLowerCase(),
-    story: (r) => (r.story || '').toLowerCase(), status: (r) => r.status.toLowerCase(), concepts: (r) => r.concepts || 0, key: (r) => keyNumber(r, d).toLowerCase(), spend14: (r) => (has14(r) ? r.metrics.spend_14d : -1), roas14: (r) => { const v = roas14Of(r); return v === null ? -1 : v; }, briefed: (r) => (isBriefed(r) ? 1 : 0),
+    story: (r) => (r.story || '').toLowerCase(), status: (r) => r.status.toLowerCase(), concepts: (r) => r.concepts || 0, key: (r) => keyNumber(r, d).toLowerCase(), spend14: (r) => (has14(r) ? r.metrics.spend_14d : -1), roas14: (r) => { const v = roas14Of(r); return v === null ? -1 : v; }, prod: (r) => (actl ? actl.text(r).toLowerCase() : ''), briefed: (r) => (isBriefed(r) ? 1 : 0),
   };
   const tbody = h('tbody', { 'data-testid': 'pri-body' });
   const count = h('span', { class: 'pri-shown', 'aria-live': 'polite', 'data-testid': 'pri-shown' });
@@ -392,7 +396,7 @@ function render(d, view = null, opts = {}) {
     else if (sel.size > 0 || !state.onlySel) selHint.textContent = '';
     const q = state.q.trim().toLowerCase();
     const eligible = pairs.filter((p) => state.showDone || !p.r.done);                               // done manual concepts stay hidden until Show done is ticked
-    let list = eligible.filter((p) => state.products.has(p.r.product) && state.sections.has(p.r.section) && (!state.statuses.size || state.statuses.has(p.r.status)) && (!state.onlySel || sel.has(keyOf(p.r))) && (state.brief === 'all' || (state.brief === 'done') === isBriefed(p.r))
+    let list = eligible.filter((p) => state.products.has(p.r.product) && state.sections.has(p.r.section) && (!state.statuses.size || state.statuses.has(p.r.status)) && (!state.onlySel || sel.has(keyOf(p.r))) && !(actl && actl.hidden(p.r)) && (state.brief === 'all' || (state.brief === 'done') === isBriefed(p.r))
       && (!q || [p.r.cluster, p.r.icp, p.r.pain_point, p.r.story].some((t) => (t || '').toLowerCase().includes(q))));
     const def = (a, b) => (sOrder[a.r.section] - sOrder[b.r.section]) || (pOrder[a.r.product] - pOrder[b.r.product]) || (a.r.rank - b.r.rank);
     if (state.key) {
@@ -432,9 +436,9 @@ function render(d, view = null, opts = {}) {
   const actionsHost = h('div', { class: 'pri-actions pri-hd-screen' });                                                                 // Add concept + export, filled by buildTop
   const searchIn = h('input', { type: 'search', 'data-testid': 'pri-search', placeholder: 'cluster, ICP, pain point or story', value: state.q, oninput: (e) => { state.q = e.target.value; apply(); } });
   uiSync.push(() => { if (searchIn.value !== state.q) searchIn.value = state.q; });
-  const nActive = () => (slugs.every((x) => state.products.has(x)) ? 0 : 1) + (sections.every((x) => state.sections.has(x)) ? 0 : 1) + (state.statuses.size ? 1 : 0) + (state.q.trim() ? 1 : 0) + (state.onlySel ? 1 : 0) + (state.brief !== 'all' ? 1 : 0);
+  const nActive = () => (slugs.every((x) => state.products.has(x)) ? 0 : 1) + (sections.every((x) => state.sections.has(x)) ? 0 : 1) + (state.statuses.size ? 1 : 0) + (state.q.trim() ? 1 : 0) + (state.onlySel ? 1 : 0) + (state.brief !== 'all' ? 1 : 0) + (actl && actl.hideOn() ? 1 : 0);
   const clearBtn = h('button', { type: 'button', class: 'pri-clear', 'data-testid': 'pri-clear-filters', onclick: () => {
-    slugs.forEach((x) => state.products.add(x)); sections.forEach((x) => state.sections.add(x)); state.statuses.clear(); state.q = ''; state.onlySel = false; state.brief = 'all'; apply();
+    slugs.forEach((x) => state.products.add(x)); sections.forEach((x) => state.sections.add(x)); state.statuses.clear(); state.q = ''; state.onlySel = false; state.brief = 'all'; if (actl) actl.setHide(false); apply();
   } }, 'Clear filters');
   const activeNote = h('span', { class: 'pri-activen', 'data-testid': 'pri-active-filters', 'aria-live': 'polite' });
   uiSync.push(() => { const n = nActive(); clearBtn.hidden = n === 0; activeNote.textContent = n ? `${n} filter${n === 1 ? '' : 's'} on` : ''; });
@@ -455,13 +459,13 @@ function render(d, view = null, opts = {}) {
       readonly ? null : h('label', { class: 'pri-fl pri-search' }, h('span', { class: 'pri-flabel' }, 'Search'), searchIn),
       d.rows.some((r) => r.manual && r.done) ? h('label', { class: 'pri-showdone' }, h('input', { type: 'checkbox', 'data-testid': 'pri-show-done', checked: state.showDone,
         onchange: (e) => { state.showDone = e.target.checked; apply(); } }), ' Show done') : null,
-      readonly ? null : selChip, activeNote, clearBtn, actionsHost));
+      readonly ? null : selChip, actl ? actl.hideLabel : null, activeNote, clearBtn, actionsHost));
 
   const allBox = h('input', { type: 'checkbox', class: 'pri-pick', 'data-testid': 'pri-pick-all', 'aria-label': 'Select all shown rows', onchange: (e) => {
     shownList.forEach((p) => { if (e.target.checked) sel.add(keyOf(p.r)); else sel.delete(keyOf(p.r)); });
     selChanged();
   } });
-  const head = h('thead', null, h('tr', null, h('th', { class: 'pri-th-tog' }, h('span', { class: 'pri-vh' }, 'Open'), readonly ? null : allBox), (hasBriefed ? [...COLS, ['briefed', 'Briefed']] : COLS).map(([k, label]) => {
+  const head = h('thead', null, h('tr', null, h('th', { class: 'pri-th-tog' }, h('span', { class: 'pri-vh' }, 'Open'), readonly ? null : allBox), [...COLS, ...(actl ? [['prod', 'In production']] : []), ...(hasBriefed ? [['briefed', 'Briefed']] : [])].map(([k, label]) => {
     const b = h('button', { type: 'button', class: 'pri-sort', 'data-testid': 'pri-sort-' + k, onclick: () => {
       if (state.key === k) state.dir = -state.dir; else { state.key = k; state.dir = 1; }
       apply();
@@ -481,7 +485,7 @@ function render(d, view = null, opts = {}) {
       h('td', { class: 'pri-c pri-c-tlabel', colspan: '10' }, h('strong', null, label), h('span', { class: 'pri-k' }, ` (${t.n} row${t.n === 1 ? '' : 's'} with data)`)),
       cell('Spend \u00b7 14d', 'spend14', h('strong', { 'data-testid': 'pri-total-spend' }, fmt.money(t.spend))),
       cell('ROAS \u00b7 14d', 'roas14', h('strong', { 'data-testid': 'pri-total-roas' }, t.roas === null ? '\u2013' : roasX(t.roas))),
-      hasBriefed ? h('td', null) : null);
+      actl ? h('td', null) : null, hasBriefed ? h('td', null) : null);
     const out = [];
     if (prods.length > 1) prods.forEach((x) => out.push(trow('pri-tot-' + x, (d.baselines[x] || {}).product_name || x, sum14(rows.filter((r) => r.product === x)), x)));
     out.push(trow('pri-tot-all', prods.length > 1 ? 'Total, all products shown' : 'Total shown', sum14(rows)));
@@ -594,7 +598,7 @@ function render(d, view = null, opts = {}) {
           h('h1', { 'data-testid': 'pri-title' }, readonly ? `Creative priorities: ${view.name}` : act ? `Creative priorities: ${act.view.name}` : 'Creative priorities'),
           h('p', { class: 'pri-sub pri-hd-screen', 'data-testid': 'pri-sub' }, sub)),
         readonly ? null : h('div', { class: 'pri-headctl pri-hd-screen' },
-          act ? null : h('label', { class: 'pri-weekl' }, h('span', { class: 'pri-flabel' }, 'Week'), weekSel), viewbar)),
+          act ? null : h('label', { class: 'pri-weekl' }, h('span', { class: 'pri-flabel' }, 'Week'), weekSel), viewbar, h('a', { class: 'pri-prodlink', href: href('/priorities/production', {}), 'data-testid': 'pri-prod-link' }, 'Production'))),
       readonly ? h('p', { class: 'pri-lead', 'data-testid': 'pri-view-note' }, `Saved view of ${d.rows.length} concept${d.rows.length === 1 ? '' : 's'}, snapshot week of ${d.week_start} (frozen: it does not change when a newer snapshot arrives). `,
         h('a', { href: href('/priorities', {}), 'data-testid': 'pri-open-full' }, 'Open full priorities'), ' ',
         h('a', { href: viewUrl(view.token), 'data-testid': 'pri-open-live' }, 'Open as a view with the latest data'), ' ',
@@ -661,6 +665,7 @@ function render(d, view = null, opts = {}) {
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-copy', onclick: () => copyText() }, 'Copy as text'),
     selOnlyBtn,
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-save', onclick: () => saveViewDialog('rows') }, 'Save view'),
+    actl ? actl.button : null,
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-clear', onclick: () => { sel.clear(); selChanged(); } }, 'Clear'), copyNote);
 
   // the View switcher: All concepts + each saved view; choosing one filters this same table in place (URL ?view=<token>); Save view sits beside it
