@@ -428,3 +428,118 @@ def test_empty_name_gets_the_default_and_rename_from_the_dropdown(page):
     page.once("dialog", lambda d: d.accept("Renamed - 1/2/27"))
     row.locator("[data-testid=pri-view-rename]").click()
     page.wait_for_function("(u) => { const a = document.querySelector(`[data-testid=pri-view-row] a[href='${u}']`); return a && a.textContent === 'Renamed - 1/2/27'; }", arg=url)
+
+# ---------------------------------------------------------------------------------------------------------------- redesigned detail panel
+
+FIXTURE = json.loads((__import__("pathlib").Path(__file__).resolve().parent / "priorities_fixture.json").read_text())
+
+
+def _money(v):
+    return "$" + format(int(v + 0.5), ",")
+
+
+def _roas(v):
+    return f"{v:.2f}x"
+
+
+def open_all(page):
+    page.get_by_role("button", name="Expand all").first.click()
+
+
+def test_every_fact_is_still_in_every_expanded_panel(page):
+    """the redesign moves and prioritises facts; nothing may be dropped: compare each panel's text with its snapshot row"""
+    import re
+    goto(page)
+    open_all(page)
+    panels = page.locator("[data-testid=pri-body] " + DETAIL)
+    assert panels.count() == len(FIXTURE["rows"])
+    rows = page.locator("[data-testid=pri-body] " + ROW)
+    norm = lambda t: re.sub(r"\s+", " ", t.replace("×", "x"))  # noqa: E731
+    for i in range(rows.count()):
+        key = rows.nth(i).locator(".pri-c-pain").text_content().strip()
+        txt = norm(panels.nth(i).text_content())
+        r = next(x for x in FIXTURE["rows"] if x["pain_point"] == key and x["cluster"] in rows.nth(i).locator(".pri-c-cluster").text_content())
+        for f in (r["cluster"], r["icp"], r["pain_point"], r["story"], r["status"], r["then_now"], r.get("diagnosis") or "", r.get("revive_play") or "", r.get("when_it_worked") or "", r.get("how_it_stopped") or "",
+                  r["cluster_description"], r["icp_description"], r["pain_description"], f"Line {r['line_code']}", f"Confidence: {r['confidence']}", f"Score {r['score']:g}"):
+            assert norm(f) in txt, (r["section"], r["pain_point"], f)
+        for fl in r["flags"]:
+            assert fl in txt
+        if r["section"] in ("iterate", "faded", "stop"):
+            m = r["metrics"]
+            for label in ("Spend", "ROAS", "CPA", "Upstack new-customer ROAS", "ROAS, strong tags only", "Ads tested", "Hit rate", "New ads, 30 days", "Last 30 days", "Prior 30 days", "Live ads"):
+                assert label.lower() in txt.lower(), (label, r["pain_point"])
+            assert _money(m["spend"]) in txt and f"{m['hits']}/{m['mature']}" in txt and _money(m["spend_30d"]) in txt and _money(m["spend_prior30"]) in txt
+        else:
+            assert "Ads tagged" in txt or r["section"] == "proposal" or r["section"] == "competitor"
+        for w in r.get("former_winners") or []:
+            assert norm(w["ad"]) in txt and _money(w["spend"]) in txt and _roas(w["roas"]) in txt and w["peak_week"] in txt and w["kind"] in txt and (w["stopped"] or "") in txt
+        for k in r["hooks"]:
+            assert norm(k["hook"]) in txt
+        if r["competitor"]:
+            c = r["competitor"]
+            assert str(c["competitors"]) in txt and str(c["concepts"]) in txt and f"{c['long_running']} running 60+ days" in txt and "not proven performance" in txt
+        if r.get("winners_summary"):
+            ws = r["winners_summary"]
+            assert f"{ws['still_working']} of {ws['winners']} winning ads still working" in txt
+
+
+def test_faded_summary_sentence_is_not_printed_twice(page):
+    goto(page)
+    page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
+    txt = page.locator("[data-testid=pri-body] " + DETAIL).first.text_content()
+    r = FIXTURE["rows"][[x["section"] for x in FIXTURE["rows"]].index("faded")]
+    assert txt.count(r["when_it_worked"]) == 1 and txt.count(r["how_it_stopped"]) == 1
+
+
+def test_detail_panel_has_identity_verdict_cta_and_grouped_stat_cards(page):
+    goto(page)
+    page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
+    p = page.locator("[data-testid=pri-body] " + DETAIL).first
+    assert p.locator(".pri-tile").count() == 4 and p.locator(".pri-verdict").is_visible()
+    assert p.locator("[data-testid=pri-play]").is_visible() and p.locator(".pri-cta").count() == 1
+    box = lambda sel: p.locator(sel).first.bounding_box()["y"]  # noqa: E731
+    assert box(".pri-verdict") < box(".pri-cta") < box(".pri-thennow") < box(".pri-statsec")                           # verdict, then the call to action, then evidence, then the numbers
+    assert p.locator(".pri-statsec h4").all_text_contents() == ["Performance", "Testing", "Live"]
+    assert p.locator(".pri-tn").count() == 3 and p.locator(".pri-bar-row").count() >= 2
+    assert p.locator(".pri-step").count() == 3 and p.locator(".pri-foot .pri-pill").count() >= 3
+
+
+def test_long_definitions_hide_behind_a_keyboard_operable_disclosure(page):
+    goto(page)
+    page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
+    p = page.locator("[data-testid=pri-body] " + DETAIL).first
+    s = p.locator(".pri-help summary").first
+    assert s.get_attribute("aria-label").startswith("What is")
+    assert not p.locator(".pri-helptext").first.is_visible()
+    s.focus()
+    page.keyboard.press("Enter")
+    assert p.locator(".pri-helptext").first.is_visible()
+
+
+def test_former_winners_and_hooks_show_three_then_show_all(page):
+    goto(page)
+    page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
+    p = page.locator("[data-testid=pri-body] " + DETAIL).first
+    assert p.locator(".pri-w:visible").count() == 3 and p.locator(".pri-w").count() == 5
+    btn = p.locator(".pri-winners .pri-more")
+    assert btn.get_attribute("aria-expanded") == "false"
+    btn.click()
+    assert p.locator(".pri-w:visible").count() == 5 and btn.get_attribute("aria-expanded") == "true"
+    btn.click()
+    assert p.locator(".pri-w:visible").count() == 3
+
+
+def test_expanded_panels_at_375px_do_not_scroll_sideways_and_selection_still_works(browser, base_url):
+    c = browser.new_context(viewport={"width": 375, "height": 812}, base_url=base_url)
+    c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+    p = c.new_page()
+    p.goto("/priorities")
+    p.wait_for_selector("[data-testid=pri-page]")
+    idle(p)
+    p.get_by_role("button", name="Expand all").first.click()
+    assert not p.evaluate("() => document.documentElement.scrollWidth > innerWidth")
+    wide = p.evaluate("() => [...document.querySelectorAll('.pri-panel')].filter(e => e.scrollWidth > e.clientWidth + 1).length")
+    assert wide == 0
+    p.locator(PICK).first.check()
+    assert p.locator(TOOLS).is_visible()
+    c.close()

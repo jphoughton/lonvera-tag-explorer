@@ -16,17 +16,16 @@ const STATUS_CLASS = { 'FADED': 'fade', 'COLLAPSED': 'bad', 'STOPPED': 'flat', '
 const roasX = (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–');
 const pct = (v) => (isNum(v) ? fmt.pct(v) : '–');
 
-function stat(k, v) { return h('span', { class: 'pri-stat' }, h('span', { class: 'pri-k' }, k), ' ', h('strong', null, v)); }
-
+// stat cards for the detail panel: [[group, [[label, value, sub?], ...]], ...]; labels and values are the same facts the old inline row showed
 function numbers(r) {
-  const m = r.metrics;
+  const m = r.metrics || {};
   if (r.section === 'iterate' || r.section === 'faded' || r.section === 'stop') {
-    return [stat('Spend', fmt.money(m.spend)), stat('ROAS', roasX(m.roas)), stat('CPA', fmt.money(m.cpa)), stat('Ads tested', fmt.int(m.judged)),
-      stat('Hit rate', `${pct(m.hit_rate)} (${m.hits}/${m.mature})`), stat('Last 30 days', `${roasX(m.roas_30d)} on ${fmt.money(m.spend_30d)}`), stat('Prior 30 days', `${roasX(m.roas_prior30)} on ${fmt.money(m.spend_prior30)}`),
-      stat('New ads, 30 days', fmt.int(m.launches_30d)), stat('Live ads', fmt.int(m.live_ads)), stat('Upstack new-customer ROAS', roasX(m.nc_roas)), stat('ROAS, strong tags only', roasX(m.roas_strong_tags))];
+    return [['Performance', [['Spend', fmt.money(m.spend)], ['ROAS', roasX(m.roas)], ['CPA', fmt.money(m.cpa)], ['Upstack new-customer ROAS', roasX(m.nc_roas)], ['ROAS, strong tags only', roasX(m.roas_strong_tags)]]],
+      ['Testing', [['Ads tested', fmt.int(m.judged)], ['Hit rate', pct(m.hit_rate), `(${m.hits}/${m.mature})`], ['New ads, 30 days', fmt.int(m.launches_30d)]]],
+      ['Live', [['Last 30 days', roasX(m.roas_30d), `on ${fmt.money(m.spend_30d)}`], ['Prior 30 days', roasX(m.roas_prior30), `on ${fmt.money(m.spend_prior30)}`], ['Live ads', fmt.int(m.live_ads)]]]];
   }
   if (r.section === 'competitor' || r.section === 'proposal') return [];
-  return [stat('Ads tagged', fmt.int(m.tagged_ads)), stat('Spend so far', fmt.money(m.spend))];
+  return [['Performance', [['Ads tagged', fmt.int(m.tagged_ads)], ['Spend so far', fmt.money(m.spend)]]]];
 }
 
 // the one number on the collapsed row
@@ -44,31 +43,162 @@ function keyNumber(r, d) {
   return 'Draft';
 }
 
-function labelled(label, value, desc) {
-  return h('div', { class: 'pri-tag' }, h('div', { class: 'pri-label' }, label), h('div', { class: 'pri-dval' }, value || '–'), desc ? h('div', { class: 'pri-desc' }, desc) : null);
+// ---------- detail panel (the expanded row) ----------
+// Reading order: identity strip -> verdict -> the thing to act on (revive play / hooks) -> then vs now -> timeline -> former winners -> competitors -> stat cards -> footer pills.
+// Every fact the panel always carried is still here; long definitions sit behind keyboard-operable "?" disclosures and long lists behind "Show all".
+const toneOf = (r) => STATUS_CLASS[r.status] || 'flat';
+const TAG_HELP = { 'Market Cluster': 'cluster_description', 'ICP': 'icp_description', 'Pain Point': 'pain_description' };
+
+function tile(label, value, desc) {
+  return h('div', { class: 'pri-tile' },
+    h('div', { class: 'pri-tile-h' }, h('span', { class: 'pri-label' }, label),
+      desc ? h('details', { class: 'pri-help' }, h('summary', { 'aria-label': `What is ${label}?`, title: `What is ${label}?` }, '?'), h('p', { class: 'pri-helptext' }, desc)) : null),
+    h('div', { class: 'pri-tname' }, value || '–'));
 }
 
-function detail(r) {
-  const hooks = r.hooks && r.hooks.length ? h('div', { class: 'pri-hooks' }, h('span', { class: 'pri-k' }, r.section === 'proposal' ? 'Competitor hooks seen' : r.section === 'faded' ? 'Hooks from the working period'
-    : r.section === 'new' ? 'Hooks to borrow (same product, adjacent winner)' : 'Proven hooks to iterate from'),
-    h('ul', null, r.hooks.map((k) => h('li', null, k.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(k.ad_id), {}), title: k.ad }, k.hook) : k.hook,
-      k.spend != null ? h('span', { class: 'pri-hookn' }, ` ${fmt.money(k.spend)} at ${roasX(k.roas)}`) : h('span', { class: 'pri-hookn' }, ` (${k.line_code})`))))) : null;
-  return h('div', { class: 'pri-panel' },
-    h('div', { class: 'pri-descs' }, labelled('Market Cluster', r.cluster, r.cluster_description), labelled('ICP', r.icp, r.icp_description), labelled('Pain Point', r.pain_point, r.pain_description)),
-    r.then_now ? h('p', { class: 'pri-thennow', 'data-testid': 'pri-thennow' }, r.then_now) : null,
-    r.when_it_worked ? h('div', { class: 'pri-story-block', 'data-testid': 'pri-faded' },
-      h('p', null, h('strong', null, 'When it worked: '), r.when_it_worked), h('p', null, h('strong', null, 'When and how it stopped: '), r.how_it_stopped),
-      h('p', null, h('strong', null, 'Diagnosis (consistent with): '), r.diagnosis), h('p', { 'data-testid': 'pri-play' }, h('strong', null, 'Revive play: '), r.revive_play),
-      r.former_winners && r.former_winners.length ? h('div', null, h('span', { class: 'pri-k' }, 'Former winning ads'), h('ul', null, r.former_winners.map((w) => h('li', null,
-        w.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(w.ad_id), {}) }, w.ad) : w.ad,
-        ` (${w.kind}) ${fmt.money(w.spend)} at ${roasX(w.roas)}${w.peak_week ? ', peak week of ' + w.peak_week : ''}${w.stopped ? ', stopped ' + w.stopped : ''}`)))) : null,
-      r.winners_summary ? h('p', { class: 'pri-k' }, `${r.winners_summary.still_working} of ${r.winners_summary.winners} winning ads still working; new ads in the last 30 days: ${r.winners_summary.launches_last_30d}${r.winners_summary.launches_in_peak != null ? ' (' + r.winners_summary.launches_in_peak + ' launched during the working stretch)' : ''}.`) : null) : null,
-    r.competitor ? h('p', { class: 'pri-others', 'data-testid': 'pri-others' }, h('span', { class: 'pri-k' }, 'What others are running: '), h('strong', null, r.competitor.text), ' (running a long time, not proven performance)') : null,
-    h('div', { class: 'pri-stats' }, numbers(r)),
-    h('p', { class: 'pri-why' }, r.why),
-    r.flags && r.flags.length ? h('p', { class: 'pri-flags' }, 'Flags: ' + r.flags.join('; ')) : null,
-    h('p', { class: 'pri-k' }, `Line ${r.line_code}. Confidence: ${r.confidence}. Score ${r.score}.`),
-    hooks);
+// first `n` items always shown, the rest behind a toggle (the hidden items stay in the DOM)
+function limited(items, n, what) {
+  if (items.length <= n) return items;
+  const extra = items.slice(n);
+  extra.forEach((el) => el.setAttribute('hidden', ''));
+  const btn = h('button', { type: 'button', class: 'pri-more', 'aria-expanded': 'false' }, `Show all ${items.length} ${what}`);
+  btn.addEventListener('click', () => {
+    const open = btn.getAttribute('aria-expanded') !== 'true';
+    btn.setAttribute('aria-expanded', String(open));
+    extra.forEach((el) => { if (open) el.removeAttribute('hidden'); else el.setAttribute('hidden', ''); });
+    btn.textContent = open ? 'Show fewer' : `Show all ${items.length} ${what}`;
+  });
+  return [...items, btn];
+}
+
+function roasPill(v, ref) {
+  const cls = !isNum(v) || !isNum(ref) ? 'flat' : v >= ref ? 'ok' : 'fade';
+  return h('span', { class: 'pri-pill pri-pill-' + cls }, roasX(v));
+}
+
+// one then/now tile: label, then value -> now value, delta chip (good = green, bad = red, tiny change = grey)
+function tnTile(label, then, now, fmtv, lowerIsBetter, nowNote) {
+  let delta = null; let tone = 'flat';
+  if (isNum(then) && isNum(now) && then !== 0) {
+    const ch = (now - then) / then;
+    const good = lowerIsBetter ? ch < 0 : ch > 0;
+    tone = Math.abs(ch) < 0.03 ? 'flat' : good ? 'ok' : 'bad';
+    delta = `${ch > 0 ? '▲' : ch < 0 ? '▼' : '▬'} ${Math.abs(Math.round(ch * 100))}%`;
+  }
+  return h('div', { class: 'pri-tn' }, h('div', { class: 'pri-label' }, label),
+    h('div', { class: 'pri-tn-vals' }, h('span', { class: 'pri-tn-then' }, fmtv(then)), h('span', { class: 'pri-arrow-r', 'aria-hidden': 'true' }, '→'), h('strong', { class: 'pri-tn-now' }, nowNote || fmtv(now))),
+    delta ? h('span', { class: 'pri-delta pri-delta-' + tone }, delta) : null);
+}
+
+// ROAS bars: peak / then / now with a tick for the product average over the same weeks
+function roasBars(r, base) {
+  const m = r.metrics || {};
+  const rows = [];
+  if (r.stretch && isNum(r.stretch.roas)) rows.push(['Peak', r.stretch.roas, r.stretch.product_roas, `Peak weeks ${r.stretch.start} to ${r.stretch.end}`]);
+  if (isNum(m.roas_then)) rows.push(['Then', m.roas_then, base.roas_then, 'Days 31-90']);
+  if (isNum(m.roas_30d)) rows.push(['Now', m.roas_30d, base.roas_30d, 'Last 30 days']);
+  if (rows.length < 2) return null;
+  const max = Math.max(...rows.flatMap((x) => [x[1], x[2]].filter(isNum))) * 1.12;
+  const w = (v) => Math.max(0, Math.min(100, (v / max) * 100)).toFixed(1) + '%';
+  return h('div', { class: 'pri-bars', role: 'img', 'aria-label': 'ROAS ' + rows.map((x) => `${x[0].toLowerCase()} ${roasX(x[1])}${isNum(x[2]) ? ` against product ${roasX(x[2])}` : ''}`).join(', ') },
+    h('div', { class: 'pri-bars-h pri-label' }, 'ROAS vs product average (tick)'),
+    rows.map(([k, v, ref, tip]) => h('div', { class: 'pri-bar-row', title: tip },
+      h('span', { class: 'pri-bar-k' }, k),
+      h('span', { class: 'pri-bar-track' }, h('span', { class: 'pri-bar-fill pri-bar-' + (isNum(ref) && v >= ref ? 'ok' : 'bad'), style: { width: w(v) } }), isNum(ref) ? h('span', { class: 'pri-bar-tick', style: { left: w(ref) } }) : null),
+      h('span', { class: 'pri-bar-v' }, roasX(v)))));
+}
+
+function thenNow(r, base) {
+  const m = r.metrics || {};
+  if (!r.then_now) return null;
+  const idle = isNum(m.spend_30d) && m.spend_30d < 250;
+  const any = [m.roas_then, m.roas_30d, m.cpa_then, m.cpa_30d].some(isNum);
+  return h('section', { class: 'pri-card pri-thennow', 'data-testid': 'pri-thennow', 'aria-label': 'Then versus now' },
+    h('h4', { class: 'pri-h' }, 'Then vs Now ', h('span', { class: 'pri-hnote' }, 'days 31-90 vs last 30 days')),
+    any ? h('div', { class: 'pri-tns' },
+      tnTile('ROAS', m.roas_then, m.roas_30d, roasX, false, idle ? 'idle' : null),
+      tnTile('CPA', m.cpa_then, m.cpa_30d, fmt.money, true, idle ? 'idle' : null),
+      tnTile('Share of product spend', m.share_then, m.share_now, pct, false)) : null,
+    any ? roasBars(r, base) : null,
+    h('p', { class: 'pri-tn-text' }, r.then_now));
+}
+
+function step(n, label, text, cls) {
+  return h('li', { class: 'pri-step ' + (cls || '') }, h('span', { class: 'pri-step-n', 'aria-hidden': 'true' }, n), h('div', null, h('h5', { class: 'pri-step-h' }, label), h('p', null, text)));
+}
+
+function hookList(r, title, cls) {
+  if (!(r.hooks && r.hooks.length)) return null;
+  const items = r.hooks.map((k) => h('li', { class: 'pri-hook' },
+    h('q', { class: 'pri-quote' }, k.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(k.ad_id), {}), title: k.ad }, k.hook) : k.hook),
+    k.spend != null ? h('span', { class: 'pri-hookn' }, ' ', fmt.money(k.spend), ' at ', roasPill(k.roas, null)) : h('span', { class: 'pri-hookn' }, ` (${k.line_code})`)));
+  return h('section', { class: 'pri-card pri-hooks ' + (cls || ''), 'data-testid': 'pri-hooks' }, h('h4', { class: 'pri-h' }, title), h('ul', { class: 'pri-list' }, limited(items, 3, 'hooks')));
+}
+
+function winnersTable(r, base) {
+  const ws = r.former_winners;
+  if (!(ws && ws.length)) return null;
+  const rows = ws.map((w) => h('tr', { class: 'pri-w' },
+    h('td', { class: 'pri-w-name' }, w.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(w.ad_id), {}) }, w.ad) : w.ad),
+    h('td', { class: 'pri-w-num', 'data-label': 'Spend' }, fmt.money(w.spend)),
+    h('td', { 'data-label': 'ROAS' }, roasPill(w.roas, base.roas)),
+    h('td', { class: 'pri-w-peak', 'data-label': 'Peak week of' }, w.peak_week || '–'),
+    h('td', { 'data-label': 'Status' }, h('span', { class: 'pri-badge pri-badge-' + (w.kind === 'stopped' ? 'bad' : 'fade') }, w.kind === 'stopped' && w.stopped ? 'stopped ' + w.stopped : w.kind), w.kind !== 'stopped' && w.stopped ? h('span', { class: 'pri-hookn' }, ' stopped ' + w.stopped) : null)));
+  const shown = limited(rows, 3, 'ads');
+  const trs = shown.filter((x) => x.tagName === 'TR'); const btn = shown.find((x) => x.tagName === 'BUTTON');
+  const ws2 = r.winners_summary;
+  return h('section', { class: 'pri-card pri-winners', 'data-testid': 'pri-winners' }, h('h4', { class: 'pri-h' }, 'Former winning ads'),
+    h('table', { class: 'pri-wt' }, h('tbody', null, h('tr', { class: 'pri-wth' }, ['Ad', 'Spend', 'ROAS', 'Peak week of', 'Status'].map((t) => h('th', { scope: 'col' }, t))), trs)), btn || null,
+    ws2 ? h('p', { class: 'pri-hookn pri-wsum' }, `${ws2.still_working} of ${ws2.winners} winning ads still working; new ads in the last 30 days: ${ws2.launches_last_30d}${ws2.launches_in_peak != null ? ' (' + ws2.launches_in_peak + ' launched during the working stretch)' : ''}.`) : null);
+}
+
+function competitorBadges(c) {
+  const b = (n, t, cls) => h('span', { class: 'pri-badge ' + (cls || 'pri-badge-info') }, h('strong', null, String(n)), ' ' + t);
+  return h('section', { class: 'pri-card pri-others', 'data-testid': 'pri-others', 'aria-label': 'What others are running: ' + c.text },
+    h('h4', { class: 'pri-h' }, 'What others are running'),
+    h('div', { class: 'pri-badges' }, b(c.competitors, c.competitors === 1 ? 'competitor' : 'competitors'), b(c.concepts, c.concepts === 1 ? 'concept' : 'concepts'), b(c.long_running, 'running 60+ days', c.long_running ? 'pri-badge-ok' : 'pri-badge-flat'),
+      (c.brands || []).length ? h('span', { class: 'pri-hookn' }, (c.brands || []).join(', ')) : null),
+    h('p', { class: 'pri-hookn' }, '(running a long time, not proven performance)'));
+}
+
+function statCards(r) {
+  const groups = numbers(r);
+  if (!groups.length) return null;
+  return h('section', { class: 'pri-card pri-statsec', 'aria-label': 'Numbers' }, groups.map(([g, items]) => h('div', { class: 'pri-sg' }, h('h4', { class: 'pri-label' }, g),
+    h('dl', { class: 'pri-cards' }, items.map(([k, v, sub]) => h('div', { class: 'pri-sc' }, h('dt', { class: 'pri-label' }, k), h('dd', null, h('strong', null, v), sub ? ' ' : null, sub ? h('span', { class: 'pri-hookn' }, sub) : null)))))));
+}
+
+// two columns of cards; a column with nothing in it is left out so the other one uses the full width
+function cols(...groups) {
+  const cs = groups.map((g) => g.filter(Boolean)).filter((g) => g.length).map((g) => h('div', { class: 'pri-col' }, g));
+  return cs.length ? h('div', { class: 'pri-cols' }, cs) : null;
+}
+
+function detail(r, d) {
+  const base = ((d && d.baselines) || {})[r.product] || {};
+  const tone = toneOf(r);
+  const faded = !!r.when_it_worked;
+  // the summary sentence of a faded row is "<STATUS prefix> <when it worked> <how it stopped>": show only the prefix, the timeline below carries the rest word for word
+  let why = r.why;
+  if (faded && why && why.endsWith(`${r.when_it_worked} ${r.how_it_stopped}`)) why = why.slice(0, why.length - `${r.when_it_worked} ${r.how_it_stopped}`.length).trim();
+  const flagPills = (r.flags || []).map((f) => h('span', { class: 'pri-pill pri-pill-fade' }, f));
+  const play = faded ? h('section', { class: 'pri-cta', 'data-testid': 'pri-play' }, h('h4', { class: 'pri-cta-h' }, h('span', { 'aria-hidden': 'true' }, '→ '), 'Revive play: '), h('p', null, r.revive_play))
+    : hookList(r, r.section === 'proposal' ? 'Competitor hooks seen' : r.section === 'new' ? 'Hooks to borrow (same product, adjacent winner)' : 'Proven hooks to iterate from', 'pri-cta');
+  const hooksLow = faded ? hookList(r, 'Hooks from the working period') : null;
+  return h('div', { class: 'pri-panel pri-tone-' + tone },
+    h('div', { class: 'pri-id' },
+      h('div', { class: 'pri-chips' }, h('span', { class: 'pri-chip-prod' }, (base.product_name || r.product_name || r.product)), h('span', { class: 'pri-sec pri-sec-' + r.section }, SECTION_LABEL[r.section]), h('span', { class: 'pri-status pri-st-' + tone }, r.status)),
+      h('div', { class: 'pri-tiles' }, tile('Market Cluster', r.cluster, r.cluster_description), tile('ICP', r.icp, r.icp_description), tile('Pain Point', r.pain_point, r.pain_description),
+        r.story ? h('div', { class: 'pri-tile pri-tile-story' }, h('div', { class: 'pri-tile-h' }, h('span', { class: 'pri-label' }, 'Story')), h('div', { class: 'pri-story' }, r.story)) : null)),
+    h('div', { class: 'pri-verdict' }, h('div', { class: 'pri-verdict-k' }, keyNumber(r, d || { baselines: {} })), why ? h('p', { class: 'pri-verdict-why', 'data-testid': 'pri-why' }, why) : null),
+    play,
+    cols([thenNow(r, base), faded ? h('section', { class: 'pri-card', 'data-testid': 'pri-faded', 'aria-label': 'How it played out' }, h('h4', { class: 'pri-h' }, 'Timeline'),
+          h('ol', { class: 'pri-steps' }, step('1', 'When it worked: ', r.when_it_worked, 'pri-step-ok'), step('2', 'When and how it stopped: ', r.how_it_stopped, 'pri-step-bad'), step('3', 'Diagnosis (consistent with): ', r.diagnosis, 'pri-step-flat'))) : null],
+      [winnersTable(r, base), r.competitor ? competitorBadges(r.competitor) : null]),
+    statCards(r),
+    hooksLow,
+    h('div', { class: 'pri-foot' }, flagPills.length ? h('span', { class: 'pri-foot-g' }, h('span', { class: 'pri-k' }, 'Flags'), flagPills) : null,
+      h('span', { class: 'pri-pill pri-pill-flat' }, 'Line ' + r.line_code), h('span', { class: 'pri-pill pri-pill-flat' }, 'Confidence: ' + r.confidence), h('span', { class: 'pri-pill pri-pill-flat' }, 'Score ' + r.score)));
 }
 
 const SECTION_LABEL = { faded: 'Was working, now isn’t', iterate: 'Iterate on what is working', new: 'New and untested', proposal: 'Proposed new cluster', competitor: 'Competitor angle', stop: 'Stop' };
@@ -96,7 +226,7 @@ function rowPair(r, d, printed = false, onPick = null) {
   const id = 'pri-detail-' + (++uid);
   const name = `${r.cluster}, ${r.icp}, ${r.pain_point}`;
   const cell = (label, cls, ...kids) => h('td', { class: 'pri-c pri-c-' + cls, 'data-label': label }, ...kids);
-  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, h('td', { colspan: '10' }, detail(r)));
+  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, h('td', { colspan: '10' }, detail(r, d)));
   const btn = h('button', { type: 'button', class: 'pri-toggle', 'aria-expanded': 'false', 'aria-controls': id, 'aria-label': 'Expand: ' + name, 'data-name': name, 'data-testid': 'pri-toggle' },
     h('span', { class: 'pri-chev', 'aria-hidden': 'true' }, '▸'));
   const pick = h('input', { type: 'checkbox', class: 'pri-pick', 'data-testid': 'pri-pick', 'aria-label': 'Select: ' + name, onchange: (e) => onPick && onPick(r, e.target.checked) });
