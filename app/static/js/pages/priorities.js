@@ -34,8 +34,8 @@ function keyNumber(r, d) {
   const m = r.metrics || {};
   const b = (d.baselines || {})[r.product] || {};
   if (r.section === 'faded') {
-    const peak = r.stretch ? roasX(r.stretch.roas) : 'n/a';
-    return `ROAS ${peak} at peak → ${m.spend_30d >= 250 ? roasX(m.roas_30d) : 'idle'} now`;
+    const now = m.spend_30d >= 250 ? roasX(m.roas_30d) + ' now' : 'idle now';
+    return r.stretch ? `ROAS ${roasX(r.stretch.roas)} at peak \u2192 ${now}` : `No weekly peak; lifetime ${roasX(m.roas)} \u2192 ${now}`;
   }
   if (r.section === 'iterate') return `${roasX(m.roas_30d)} last 30 days vs ${roasX(b.roas_30d)} product`;
   if (r.section === 'stop') return `${roasX(m.roas)} lifetime vs ${roasX(b.roas)} product`;
@@ -182,12 +182,46 @@ function render(d) {
     h('dl', { class: 'pri-legend', 'data-testid': 'pri-legend' }, (d.legend || []).flatMap((x) => [h('dt', null, x.tag), h('dd', null, x.meaning)])));
   const base = h('div', { class: 'pri-base' }, slugs.map((s) => { const b = d.baselines[s]; return h('div', null, h('strong', null, b.product_name), ` average ROAS ${roasX(b.roas)} since launch, ${roasX(b.roas_30d)} last 30 days, CPA ${fmt.money(b.cpa)}, hit rate ${pct(b.hit_rate)}`); }));
 
-  // print copy: one product per page, every panel open, Section column kept; hidden on screen
-  const printHead = () => h('thead', null, h('tr', null, h('th', { class: 'pri-vh' }, 'Open'), COLS.filter(([k]) => k !== 'product').map(([, label]) => h('th', { scope: 'col' }, label))));
-  const printBlocks = h('div', { class: 'pri-print', 'data-testid': 'pri-print-copy', 'aria-hidden': 'true' }, slugs.map((s) => h('section', { class: 'pri-product', 'data-testid': 'pri-product-' + s },
-    h('h2', null, d.baselines[s].product_name),
-    h('table', { class: 'pri-table' }, printHead(),
-      h('tbody', null, d.rows.filter((r) => r.product === s).sort((a, b) => (sOrder[a.section] - sOrder[b.section]) || (a.rank - b.rank)).flatMap((r) => { const p = rowPair(r, d, true); p.tr.querySelector('.pri-c-product').remove(); return [p.tr, p.detailRow]; }))))));
+  // print copy (hidden on screen): a compact one-sheeter. Intro on its own first page; per product a fresh page with the headline columns, a 2-3 line strip under each row that has concepts to brief, the
+  // Stop list as plain lines. Rows never split across pages, the header repeats on every page, fixed column widths.
+  const trim = (t, n) => { t = String(t || ''); return t.length <= n ? t : t.slice(0, n).replace(/\s+\S*$/, '') + '\u2026'; };
+  const strip = (r) => {
+    const m = r.metrics || {};
+    if (r.section === 'faded') {
+      const st = r.stretch;
+      const then = st ? `Worked ${st.start} to ${st.end}: ROAS ${roasX(st.roas)} on ${fmt.money(st.spend)}` : 'Strong before the weekly data began (2026-05-06)';
+      const now = m.spend_30d >= 250 ? `now ${roasX(m.roas_30d)} on ${fmt.money(m.spend_30d)}${st && isNum(m.roas_30d) && st.roas ? ` (${Math.round((m.roas_30d / st.roas - 1) * 100)}%)` : ''}` : 'now idle (no spend in 30 days)';
+      return [`${then} \u2192 ${now}.`, trim(r.revive_play, 230)];
+    }
+    if (r.section === 'iterate') return [trim(r.why, 260)];
+    const out = [];
+    if (r.competitor) out.push(`Others: ${r.competitor.text} (running a long time, not proven performance).`);
+    const why = trim(r.why, r.competitor ? 170 : 250);
+    out.push(why.charAt(0).toUpperCase() + why.slice(1));
+    return out.slice(0, 2);
+  };
+  const PRINT_STATUS = { 'UNTESTED / UNDER-TESTED': 'UNTESTED', 'PROPOSED (draft)': 'DRAFT', 'FADING / WAS WORKING': 'FADING' };
+  const printCell = (cls, ...kids) => h('td', { class: 'pri-c pri-c-' + cls }, ...kids);
+  const printRow = (r) => h('tbody', { class: 'pri-rg', 'data-testid': 'pri-print-row' },
+    h('tr', { class: 'pri-row' }, printCell('section', h('span', { class: 'pri-sec pri-sec-' + r.section }, SECTION_LABEL[r.section])), printCell('cluster', r.cluster), printCell('icp', r.icp), printCell('pain', r.pain_point),
+      printCell('story', r.story || '\u2013'), printCell('status', h('span', { class: 'pri-status pri-st-' + (STATUS_CLASS[r.status] || 'flat') }, PRINT_STATUS[r.status] || r.status)),
+      printCell('concepts', r.concepts ? String(r.concepts) : '\u2013'), printCell('key', keyNumber(r, d))),
+    h('tr', { class: 'pri-strip' }, h('td', { colspan: '8' }, strip(r).map((t) => h('div', null, t)))));
+  const widths = [10, 13, 13, 14, 22, 8, 7, 13];
+  const printHead = () => h('thead', null, h('tr', null, COLS.filter(([k]) => k !== 'product').map(([k, label]) => h('th', { scope: 'col' }, k === 'concepts' ? 'To brief' : label))));
+  const printBlocks = h('div', { class: 'pri-print', 'data-testid': 'pri-print-copy', 'aria-hidden': 'true' }, slugs.map((s) => {
+    const mine = d.rows.filter((r) => r.product === s).sort((a, b) => (sOrder[a.section] - sOrder[b.section]) || (a.rank - b.rank));
+    const shown = mine.filter((r) => r.section !== 'stop' && r.concepts > 0);
+    const stops = mine.filter((r) => r.section === 'stop');
+    const b = d.baselines[s];
+    const skipped = mine.length - shown.length - stops.length;
+    return h('section', { class: 'pri-product', 'data-testid': 'pri-product-' + s },
+      h('h2', null, `${b.product_name}`, h('span', { class: 'pri-h2note' }, ` average ROAS ${roasX(b.roas)} since launch, ${roasX(b.roas_30d)} last 30 days, CPA ${fmt.money(b.cpa)}`)),
+      h('table', { class: 'pri-table pri-ptable' }, h('colgroup', null, widths.map((w) => h('col', { style: { width: w + '%' } }))), printHead(), shown.map(printRow)),
+      skipped > 0 ? h('p', { class: 'pri-pnote' }, `${skipped} more line${skipped === 1 ? '' : 's'} with no concepts to brief this week are on the page, not printed.`) : null,
+      stops.length ? h('div', { class: 'pri-stoplist', 'data-testid': 'pri-stoplist' }, h('h3', null, `Stop or deprioritise (${stops.length})`),
+        h('ul', null, stops.map((r) => h('li', null, h('strong', null, `${r.cluster} / ${r.icp} / ${r.pain_point}`), `: ${roasX((r.metrics || {}).roas)} lifetime vs ${roasX(b.roas)} product, ${fmt.money((r.metrics || {}).spend)} spent.`)))) : null);
+  }));
 
   apply();
   return h('div', { class: 'page pri-page', 'data-testid': 'pri-page' }, top, base, h('div', { class: 'pri-screen' }, filters, count, table), printBlocks);

@@ -710,17 +710,25 @@ th[aria-sort="ascending"] .pri-arrow { opacity: 1; } th[aria-sort="descending"] 
   .pri-legend { grid-template-columns: 1fr; }
 }
 @media print {
-  @page { size: landscape; margin: 10mm; }
-  #topbar, #controls, #stale-banner, #source, .pri-bar, .pri-expbar, .pri-screen, .pri-top .pri-bar { display: none !important; }
+  @page { size: landscape; margin: 9mm; }
+  #topbar, #controls, #stale-banner, #source, .pri-bar, .pri-expbar, .pri-screen, .pri-top .pri-bar, .pri-screen-note { display: none !important; }
+  .pri-page { max-width: none; font-size: 11px; }
+  .pri-page h1 { font-size: 20px; margin: 0 0 6px; }
+  .pri-lead { font-size: 11px; max-width: none; }
   .pri-print { display: block !important; }
-  .pri-screen-note { display: none; }
-  .pri-print .pri-c-tog, .pri-print th:first-child { display: none; }
-  .pri-page { max-width: none; }
-  .pri-detail[hidden] { display: table-row !important; }
-  .pri-detail > td { padding-left: 10px; }
-  .pri-product { break-before: page; page-break-before: always; margin-top: 0; }
-  .pri-product:first-of-type { break-before: auto; page-break-before: auto; }
-  .pri-row, .pri-detail { break-inside: avoid; page-break-inside: avoid; cursor: default; }
-  .pri-table { font-size: 10px; } .pri-panel, .pri-desc { font-size: 9.5px; }
+  .pri-print .pri-product { break-before: page; page-break-before: always; margin: 0; }      /* the intro (title, legend, baselines) is page 1 on its own; every product starts a fresh page */
+  .pri-print h2 { font-size: 15px; margin: 0 0 4px; } .pri-h2note { font-size: 10px; font-weight: 400; opacity: .75; }
+  .pri-ptable { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 9px; }
+  .pri-ptable thead { display: table-header-group; }                                       /* the header row repeats on every page */
+  .pri-ptable th { padding: 3px 5px; font-size: 8px; border-bottom: 1.5px solid #444; overflow-wrap: break-word; }
+  .pri-ptable tbody.pri-rg { break-inside: avoid; page-break-inside: avoid; }                /* a row and its strip never split across pages */
+  .pri-ptable .pri-row { cursor: default; border-bottom: 0; }
+  .pri-ptable .pri-c { padding: 3px 5px 1px; overflow-wrap: break-word; }
+  .pri-ptable .pri-c-section { min-width: 0; } .pri-ptable .pri-c-cluster, .pri-ptable .pri-c-icp, .pri-ptable .pri-c-pain { min-width: 0; }
+  .pri-ptable .pri-strip td { padding: 0 5px 4px 5px; font-size: 8.5px; line-height: 1.3; border-bottom: 1px solid #bbb; opacity: .9; }
+  .pri-sec, .pri-status { font-size: 8px; padding: 1px 5px; white-space: normal; }
   .pri-status { border: 1px solid #444; color: #000 !important; }
+  .pri-pnote { font-size: 9px; opacity: .7; margin: 4px 0; }
+  .pri-stoplist { break-inside: avoid; margin-top: 8px; } .pri-stoplist h3 { font-size: 11px; margin: 0 0 2px; }
+  .pri-stoplist ul { margin: 0; padding-left: 14px; font-size: 9px; columns: 2; } .pri-stoplist li { break-inside: avoid; margin: 0 0 1px; }
 }

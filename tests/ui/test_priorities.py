@@ -136,26 +136,43 @@ def test_open_state_survives_sorting_and_nothing_is_remembered_across_reloads(pa
     assert page.locator("[data-testid=pri-body] " + DETAIL + ":visible").count() == 0
 
 
-def test_print_css_shows_every_panel_one_product_per_page_with_the_section_column(page):
+def test_print_is_a_compact_one_sheeter_not_a_dump_of_every_panel(page):
     goto(page)
     page.emulate_media(media="print")
     assert page.locator("[data-testid=pri-print-copy]").is_visible() and not page.locator("[data-testid=pri-table]").is_visible()
+    assert page.locator(".pri-bar").is_hidden() and page.locator("[data-testid=pri-search]").is_hidden()
     blocks = page.locator("[data-testid=pri-print-copy] section.pri-product")
     assert blocks.count() == 3
-    assert all(b.evaluate("e => getComputedStyle(e).breakBefore") in ("page", "auto") for b in blocks.all())
-    assert blocks.nth(1).evaluate("e => getComputedStyle(e).breakBefore") == "page"
-    details = page.locator("[data-testid=pri-print-copy] " + DETAIL)
-    assert details.count() == 30 and all(d.is_visible() for d in details.all())                                          # every panel open in print
-    heads = [t.strip().replace(" ⇅", "") for t in page.locator("[data-testid=pri-print-copy] table").first.locator("thead th").all_text_contents()]
-    assert "Section" in heads and "Product" not in heads
-    assert page.locator(".pri-bar").is_hidden()
+    assert all(b.evaluate("e => getComputedStyle(e).breakBefore") == "page" for b in blocks.all())                    # every product, the first too, starts a fresh page (the intro is page 1)
+    assert page.locator("[data-testid=pri-print-copy] .pri-detail").count() == 0                                       # no full detail panels in print
+    tab = page.locator("[data-testid=pri-print-copy] table").first
+    assert tab.evaluate("e => getComputedStyle(e).tableLayout") == "fixed"
+    assert tab.locator("thead").evaluate("e => getComputedStyle(e).display") == "table-header-group"                   # the header repeats on every page
+    heads = [t.strip() for t in tab.locator("thead th").all_text_contents()]
+    assert heads == ["Section", "Market Cluster", "ICP", "Pain Point", "Story", "Status", "To brief", "Key number"]
+    groups = page.locator("[data-testid=pri-print-row]")
+    assert groups.count() > 0 and all(g.evaluate("e => getComputedStyle(e).breakInside") == "avoid" for g in groups.all())      # a row and its strip never split
+    # only rows with concepts to brief are printed; the Stop list is plain lines
+    assert all(c.strip() not in ("\u2013", "") for c in page.locator("[data-testid=pri-print-copy] .pri-c-concepts").all_text_contents())
+    assert page.locator("[data-testid=pri-stoplist] li").count() > 0 and page.locator("[data-testid=pri-print-copy] .pri-sec-stop").count() == 0
+    strips = page.locator("[data-testid=pri-print-copy] .pri-strip td").all_text_contents()
+    assert strips and all(len(s) <= 700 for s in strips)
     page.screenshot(path=str(SHOTS / "priorities_print.png"), full_page=False)
 
 
-def test_screen_detail_is_hidden_by_default_in_the_stylesheet_but_shown_by_the_print_rule(page):
+def test_real_pdf_is_short_and_every_product_starts_a_page(page):
+    import re
+    goto(page)
+    page.emulate_media(media="print")
+    pdf = page.pdf(prefer_css_page_size=True, print_background=True)
+    pages = len(re.findall(rb"/Type\s*/Page(?!s)", pdf))
+    assert 4 <= pages <= 8, pages                                                                                       # intro + 3 products, a few pages each
+
+
+def test_screen_detail_is_hidden_by_default_in_the_stylesheet_and_print_has_no_panel_dump(page):
     goto(page)
     css = page.evaluate("() => [...document.styleSheets].flatMap(s => { try { return [...s.cssRules]; } catch (e) { return []; } }).map(r => r.cssText).join('\\n')")
-    assert ".pri-detail[hidden]" in css and "display: table-row" in css and "pri-print" in css
+    assert ".pri-detail[hidden]" in css and "table-header-group" in css and "pri-print" in css
 
 
 def test_stacked_layout_at_375px_has_no_sideways_scroll(browser, base_url):
