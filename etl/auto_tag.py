@@ -10,7 +10,7 @@ linemap tag: human / cycle tags are never overwritten or marked not-current. Re-
 --retag-today the day's own auto rows are replaced (never any other version). Videos: cover image + copy + hook + transcript start only (method
 'cover + copy (auto)', confidence capped at medium); no picture: method 'text only (auto)', capped at medium.
 Safety: missing token / auth error / usage limit -> the run stops early and is recorded failed in etl_runs (the nightly pipeline carries on, see
-scripts/deploy/run_etl.sh); hard cap per run (--limit, default 150 ads); 3 tries per ad with backoff.
+scripts/deploy/run_etl.sh); hard cap per run (--limit, default 400 ads); 3 tries per ad with backoff.
 Usage: python -m etl.auto_tag [--product slug] [--limit N] [--dry-run] [--retag-today] [--no-assets]"""
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from . import db
 
 PRODUCTS = ("vita-bull", "beef-liver", "boneflex")
 MODEL = "claude-sonnet-5-5"
-DEFAULT_LIMIT = 150
+DEFAULT_LIMIT = 400
 RECENT_DAYS = 60                       # no spend yet: still a candidate when launched this recently
 MAX_TRIES = 3
 BACKOFF = (5, 20)                      # seconds before try 2 and 3
@@ -389,7 +389,7 @@ def run(conn, slugs=PRODUCTS, limit: int = DEFAULT_LIMIT, dry_run: bool = False,
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--product", choices=PRODUCTS)
-    ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help="hard cap on ads (claude calls' units) per run (default 150)")
+    ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help="hard cap on ads (claude calls' units) per run (default 400)")
     ap.add_argument("--dry-run", action="store_true", help="count candidates and show sample units; no claude call, no writes")
     ap.add_argument("--retag-today", action="store_true", help="also redo the rows tagged by today's own auto version (never other versions)")
     ap.add_argument("--no-assets", action="store_true", help="do not try to fetch missing thumbnails from Meta first")
