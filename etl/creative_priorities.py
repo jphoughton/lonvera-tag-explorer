@@ -3,7 +3,9 @@
 Every Communication Overview line (taxonomy_lines; the line a tagger chose, ad_tags tag_set 'linemap') gets a performance STATUS from rates (ROAS index to the product's own
 average, last 30 days vs days 31-90 and lifetime): WORKING NOW, RISING, FADING / WAS WORKING, NOT WORKING, AVERAGE, TOO EARLY, UNTESTED / UNDER-TESTED. Sections per product:
   iterate  WORKING NOW / RISING lines that look under-iterated -> more concepts.
-  revive   FADING lines: strong earlier or lifetime, now below the product average; with the old winners' hooks and a 'consistent with' read of why.
+  faded    WAS WORKING, NOW ISN'T (leads the sheet): lines with a sustained strong stretch in the weekly history (3+ consecutive weeks above the product average with enough spend)
+           that are now below average, collapsed or idle; with when it worked, how well, when and how it stopped, the former winning ads and hooks, a 'consistent with'
+           diagnosis and a revive play. Lines that never worked and are NOT WORKING go to the Stop list.
   new      lines with no ads (or almost none) ranked by evidence that the demand exists: an adjacent winner (same ICP / cluster) on the same product, the same pain point /
            cluster working on another product, competitors running it a long time (optional file), Josh's cluster order and whether the line has a story.
   competitor  angles competitors run that are not on our sheet at all (optional competitor file).
@@ -52,12 +54,12 @@ ECON_FLOOR, ECON_SPAN = 0.95, 0.45     # economics component = clamp((blended in
 HIT_FLOOR, HIT_SPAN = 0.75, 1.25       # hit-rate component = clamp((hit-rate index - 0.75) / 1.25)
 SIZE_FULL = 25000.0                    # spend at which the size component reaches 1 (log scale from MIN_LINE_SPEND)
 
-CONCEPTS_ITERATE = 10                  # new concepts to brief per product per week: iterate section
-CONCEPTS_REVIVE = 4                    # ... revive section
+CONCEPTS_ITERATE = 8                   # new concepts to brief per product per week: iterate section
+CONCEPTS_FADED = 6                     # ... was-working-now-isn't section (the lead section)
 CONCEPTS_NEW = 6                       # ... and new section (together 20 per product, the weekly brief size)
-TOP_REVIVE, TOP_STOP, TOP_COMPETITOR, TOP_PROPOSAL = 4, 5, 3, 5
+TOP_FADED, TOP_STOP, TOP_COMPETITOR, TOP_PROPOSAL = 8, 5, 3, 5
 W_PROP_ADJ, W_PROP_COMP = 0.5, 0.5     # proposed new clusters: score = 100 x (0.5 adjacent results + 0.5 competitor activity)
-MAX_PER_REVIVE_ROW = 3
+MAX_PER_FADED_ROW = 3                  # concepts go to the top rows of the faded list only (budget 6); the rest are listed with 0
 TOP_ITERATE, TOP_NEW = 8, 6            # rows per product per section
 MAX_PER_ITERATE_ROW, MAX_PER_NEW_ROW = 5, 2
 
@@ -82,6 +84,15 @@ RISE_RATIO, FALL_RATIO = 1.15, 0.85    # now / then at or above = rising; at or 
 THEN_GOOD = 1.05                       # then-window (or lifetime INDEX_BAR) index at/above = it was working
 NOT_WORK_LIFE = 0.95                   # lifetime index under this and bad now = not working
 ROLL_WEEKS, ROLL_MIN_SPEND = 4, 1000.0 # 'faded since': rolling 4-week windows with at least this line spend
+STRETCH_WEEKS = 3                      # a 'working' stretch = this many consecutive weeks each at or above the product's weekly ROAS ...
+STRETCH_WEEK_MIN = 200.0               # ... with at least this line spend per week ...
+STRETCH_MIN_SPEND = 2000.0             # ... and at least this spend over the stretch
+STRETCH_MIN_INDEX = 1.10               # ... and the stretch's ROAS at least this many times the product's over the same weeks
+FADED_THIN_SPEND = 5000.0              # peak stretch under this spend is flagged thin
+COLLAPSE_IDX, COLLAPSE_RATIO = 0.90, 0.70   # COLLAPSED: now index under 0.90 and ROAS at most 0.70x the peak ROAS
+WINNER_MIN_SPEND = 1000.0              # an ad is a (former) winner at this lifetime spend with ROAS at or above the product's
+DECAY_RATIO = 0.80                     # a live winner whose last-30-day ROAS is under this share of its lifetime ROAS has decayed
+TOP_WINNERS = 5
 COMP_LONG_DAYS = 60                    # a competitor ad running this long counts as long-running
 W_ADJ_C, W_CROSS_C, W_COMP_C, W_ORDER_C, W_STORY_C = 0.40, 0.15, 0.25, 0.12, 0.08   # new-line weights when a competitor file is loaded
 ST_WORKING, ST_RISING, ST_FADING, ST_NOT, ST_AVG, ST_EARLY, ST_UNTESTED = ("WORKING NOW", "RISING", "FADING / WAS WORKING", "NOT WORKING", "AVERAGE", "TOO EARLY", "UNTESTED / UNDER-TESTED")
@@ -148,7 +159,7 @@ FROM {table} f CROSS JOIN t GROUP BY f.family_key
 """
 
 WEEKLY_SQL = """
-SELECT family_key, date_trunc('week', day)::date AS wk, sum(spend) AS spend, sum(revenue) AS revenue FROM family_daily GROUP BY 1, 2
+SELECT family_key, date_trunc('week', day)::date AS wk, sum(spend) AS spend, sum(revenue) AS revenue, sum(purchases) AS purchases FROM family_daily GROUP BY 1, 2
 """
 
 LINE_SQL = """
@@ -176,8 +187,8 @@ def load_inputs(conn) -> dict:
         wc = [d.name for d in cur.description]
         win[key] = {r[0]: dict(zip(wc, r)) for r in cur.fetchall()}
     weekly: dict = {}
-    for fk, wk, sp, rv in conn.execute(WEEKLY_SQL).fetchall():
-        weekly.setdefault(fk, {})[wk] = (_f(sp), _f(rv))
+    for fk, wk, sp, rv, pu in conn.execute(WEEKLY_SQL).fetchall():
+        weekly.setdefault(fk, {})[wk] = (_f(sp), _f(rv), _f(pu))
     return {"through": through, "lines": lines, "families": fams, "win": win, "weekly": weekly, "competitors": load_competitors(conn)}
 
 
@@ -368,6 +379,82 @@ def last_at_or_above(weekly_line: dict, weekly_prod: dict) -> dict | None:
         if ps and pr and (lr / ls) >= (pr / ps):
             best = {"window_end": (win[-1] + dt.timedelta(days=6)).isoformat(), "weeks_since": len(weeks) - 1 - i}
     return best
+
+def best_stretch(weekly_line: dict, weekly_prod: dict) -> dict | None:
+    """The line's best sustained working stretch: maximal runs of consecutive weeks, each with line spend >= STRETCH_WEEK_MIN and weekly ROAS at or above the product's weekly ROAS,
+    at least STRETCH_WEEKS long, spend >= STRETCH_MIN_SPEND and ROAS index (over the same weeks) >= STRETCH_MIN_INDEX. Of those, the run that earned the most revenue above the product
+    average. Weeks are Mondays; the window ends on the Sunday of the last week."""
+    weeks = sorted(weekly_prod)
+    runs, cur = [], []
+    for w in weeks:
+        ls, lr = weekly_line.get(w, (0.0, 0.0, 0.0))[:2]
+        ps, pr = weekly_prod[w][:2]
+        ok = ls >= STRETCH_WEEK_MIN and ps > 0 and pr > 0 and (lr / ls) >= (pr / ps)
+        if ok and (not cur or (w - cur[-1]).days == 7):
+            cur.append(w)
+        else:
+            if len(cur) >= STRETCH_WEEKS:
+                runs.append(cur)
+            cur = [w] if ok else []
+    if len(cur) >= STRETCH_WEEKS:
+        runs.append(cur)
+    best = None
+    for run in runs:
+        ls = sum(weekly_line[w][0] for w in run)
+        lr = sum(weekly_line[w][1] for w in run)
+        lp = sum((weekly_line[w][2] if len(weekly_line[w]) > 2 else 0.0) for w in run)
+        ps = sum(weekly_prod[w][0] for w in run)
+        pr = sum(weekly_prod[w][1] for w in run)
+        if ls < STRETCH_MIN_SPEND or not ps or not pr:
+            continue
+        idx = (lr / ls) / (pr / ps)
+        if idx < STRETCH_MIN_INDEX:
+            continue
+        excess = lr - (pr / ps) * ls
+        if best is None or excess > best["excess"]:
+            best = {"start": run[0].isoformat(), "end": (run[-1] + dt.timedelta(days=6)).isoformat(), "weeks": len(run), "spend": round(ls, 2), "revenue": round(lr, 2), "roas": round(lr / ls, 4),
+                    "cpa": round(ls / lp, 2) if lp else None, "index": round(idx, 3), "excess": round(excess, 2), "product_roas": round(pr / ps, 4)}
+    return best
+
+
+def faded_kind(m: dict, stretch: dict | None) -> str | None:
+    """STOPPED (no spend in the last 30 days), COLLAPSED (now index under 0.90 and ROAS at most 0.70x the peak) or FADED (now below the product average) for a line that had a working
+    stretch; None when it has no stretch or is at or above the product average now."""
+    if stretch is None:
+        return None
+    now = m["idx_30"] if (m["idx_30"] is not None and m["spend_30d"] >= DORMANT_SPEND) else None
+    if now is None:
+        return "STOPPED"
+    if now >= NOW_GOOD:
+        return None
+    if now < COLLAPSE_IDX and m["roas_30d"] is not None and m["roas_30d"] <= COLLAPSE_RATIO * stretch["roas"]:
+        return "COLLAPSED"
+    return "FADED"
+
+
+def former_winners(fams: list[dict], base_roas: float, weekly: dict, through: dt.date) -> tuple[list[dict], int, int]:
+    """Ads of a line that reached WINNER_MIN_SPEND with lifetime ROAS at or above the product's and are no longer working: stopped (no spend in the last 3 days) or decayed (live, but
+    last-30-day ROAS under DECAY_RATIO x its lifetime ROAS or almost no spend). -> (non-working winners by revenue above average, winners in all, winners still working)."""
+    out, total, healthy = [], 0, 0
+    for f in fams:
+        sp = f["spend_launch"]
+        if sp < WINNER_MIN_SPEND or not base_roas or f["revenue_launch"] / sp < base_roas:
+            continue
+        total += 1
+        roas = f["revenue_launch"] / sp
+        s30, r30 = _f(f["w"]["s30"]), _f(f["w"]["r30"])
+        r30x = r30 / s30 if s30 >= DORMANT_SPEND else None
+        if f["live3"] and r30x is not None and r30x >= DECAY_RATIO * roas:
+            healthy += 1
+            continue
+        wk = weekly.get(f["family_key"]) or {}
+        peak = max(wk.items(), key=lambda kv: kv[1][1] - base_roas * kv[1][0])[0] if wk else None
+        out.append({"ad": f["display"], "ad_id": f["tracker_row_id"], "hook": f["hook"], "spend": round(sp), "roas": round(roas, 2), "kind": "decayed" if f["live3"] else "stopped",
+                    "peak_week": peak.isoformat() if peak else None, "stopped": f["last_spend_day"].isoformat() if (f["last_spend_day"] and not f["live3"]) else None,
+                    "roas_30d": round(r30x, 2) if r30x is not None else None, "excess": f["revenue_launch"] - base_roas * sp})
+    out.sort(key=lambda w: -w["excess"])
+    return out, total, healthy
+
 
 # ----------------------------------------------------------------------------------------------------------------------- computation
 def _blank():
@@ -599,14 +686,15 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
     line_weekly: dict[int, dict] = {}
     weekly = inp.get("weekly") or {}
     for f in fams:
-        for wk, (sp, rv) in (weekly.get(f["family_key"]) or {}).items():
+        for wk, t_ in (weekly.get(f["family_key"]) or {}).items():
+            sp, rv, pu = t_[0], t_[1], (t_[2] if len(t_) > 2 else 0.0)
             pw = prod_weekly.setdefault(f["product"], {})
-            a_, b_ = pw.get(wk, (0.0, 0.0))
-            pw[wk] = (a_ + sp, b_ + rv)
+            a_, b_, c_ = pw.get(wk, (0.0, 0.0, 0.0))
+            pw[wk] = (a_ + sp, b_ + rv, c_ + pu)
             if f["line_id"] in lines:
                 lw = line_weekly.setdefault(f["line_id"], {})
-                a_, b_ = lw.get(wk, (0.0, 0.0))
-                lw[wk] = (a_ + sp, b_ + rv)
+                a_, b_, c_ = lw.get(wk, (0.0, 0.0, 0.0))
+                lw[wk] = (a_ + sp, b_ + rv, c_ + pu)
     comp = inp.get("competitors")
     comp_by_line, comp_unmatched = map_competitors(comp, lines)
     proposals = load_proposals()
@@ -625,7 +713,6 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
 
     # ------------------------------------------------------------------------------------------------ iterate / revive / stop
     iterate: list[dict] = []
-    revive: list[dict] = []
     stop: list[dict] = []
     for lid, l in lines.items():
         m = metrics[lid]
@@ -638,15 +725,32 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
             c = {"econ": comp_econ(m), "hit": clamp(((m["hit_idx"] or 0) - HIT_FLOOR) / HIT_SPAN), "room": room, "momentum": mom, "size": comp_size(m)}
             score = 100 * (W_ECON * c["econ"] + W_HIT * c["hit"] + W_ROOM * c["room"] + W_MOM * c["momentum"] + W_SIZE * c["size"]) * (1.0 - WEAK_PENALTY * m["weak_share"])
             iterate.append({"line": l, "m": m, "score": score, "comp": c})
-        elif st == ST_FADING:
-            best = max(m["idx_launch"] or 0.0, m["idx_then"] if (m["idx_then"] is not None and m["spend_then"] >= MIN_THEN_SPEND) else 0.0)
-            now = m["idx_30"] if (m["idx_30"] is not None and m["spend_30d"] >= DORMANT_SPEND) else None
-            decline = 1.0 if now is None else clamp((1.0 - now / best) / 0.5) if best else 0.0
-            c = {"was_strong": clamp((best - ECON_FLOOR) / ECON_SPAN), "decline": decline, "size": comp_size(m)}
-            score = 100 * (0.4 * c["size"] + 0.4 * c["was_strong"] + 0.2 * c["decline"]) * (1.0 - WEAK_PENALTY * m["weak_share"])
-            revive.append({"line": l, "m": m, "score": score, "comp": c})
-        elif st == ST_NOT:
-            stop.append({"line": l, "m": m, "score": m["spend"], "comp": {}})
+    # ---- was working, now isn't: weekly history decides (lines with a sustained strong stretch that are now below average, collapsed or idle); never-worked NOT WORKING lines go to Stop
+    faded: list[dict] = []
+    for lid, l in lines.items():
+        m = metrics[lid]
+        if m["status"] in (ST_WORKING, ST_RISING, ST_UNTESTED):
+            continue
+        stt = best_stretch(line_weekly.get(lid, {}), prod_weekly.get(l["product"], {}))
+        kind = faded_kind(m, stt)
+        if kind is None and stt is None and m["status"] == ST_FADING:        # strong over its lifetime (history before the weekly data) and now idle or below average
+            kind = "STOPPED" if m["spend_30d"] < DORMANT_SPEND else "FADED"
+        if kind is None:
+            continue
+        b0 = base[l["product"]]
+        wins, wtotal, whealthy = former_winners(fams_by_line.get(lid, []), b0["roas"], weekly, through)
+        now_r = m["roas_30d"] if m["spend_30d"] >= DORMANT_SPEND else None
+        peak_r = stt["roas"] if stt else (m["roas"] or 0.0)
+        drop = clamp(1.0 - (now_r / peak_r)) if (now_r is not None and peak_r) else 1.0
+        size = clamp(math.log10(max(stt["excess"] if stt else max((m["idx_launch"] or 1.0) - 1.0, 0.0) * m["spend"], 1000.0) / 1000.0) / math.log10(100))
+        strength = clamp((((stt["index"] if stt else m["idx_launch"]) or 1.0) - 1.0) / 0.6)
+        score = 100 * (0.45 * size + 0.30 * strength + 0.25 * min(1.0, drop / 0.6)) * (1.0 - WEAK_PENALTY * m["weak_share"])
+        faded.append({"line": l, "m": m, "score": score, "kind": kind, "stretch": stt, "wins": wins, "wtotal": wtotal, "whealthy": whealthy, "drop": drop, "comp": {"size": size, "strength": strength, "drop": drop}})
+    faded_ids = {f_["line"]["id"] for f_ in faded}
+    for lid, l in lines.items():
+        if metrics[lid]["status"] == ST_NOT and lid not in faded_ids:
+            stop.append({"line": l, "m": metrics[lid], "score": metrics[lid]["spend"], "comp": {}})
+
 
     # ------------------------------------------------------------------------------------------------ new
     proven_lines = [(lid, metrics[lid]) for lid in lines if metrics[lid]["spend"] >= MIN_LINE_SPEND and (metrics[lid]["idx_launch"] or 0) >= INDEX_BAR and proven_factor(metrics[lid]) > 0]
@@ -763,21 +867,6 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
         return (f"Then (days {THEN_FROM}-{THEN_TO}): ROAS {x(m['roas_then'])}, CPA {usd(m['cpa_then'])}, {pct(m['share_then'])} of product spend. "
                 f"Now (30 days): ROAS {x(m['roas_30d'])}, CPA {usd(m['cpa_30d'])}, {pct(m['share_now'])} of product spend. Lifetime ROAS {x(m['roas'])}.")
 
-    def approach(m: dict, b: dict) -> str:
-        n_new = m["launches_30d"]
-        if m["spend_30d"] < DORMANT_SPEND:
-            return ("No spend in the last 30 days: consistent with a retired winner, not a decline in delivery. Remake the old winners' hooks with new scenes and proof, then test cheaply.")
-        new_roas = ratio(m["new_rev30"], m["new_spend30"]) if m["new_spend30"] >= 500 else None
-        old_roas = ratio(m["old_rev30"], m["old_spend30"]) if m["old_spend30"] >= 500 else None
-        if n_new <= 1 or m["launch_share_30d"] < 0.5 * m["spend_share"]:
-            return (f"Only {n_new} new ad{'s' if n_new != 1 else ''} in 30 days against {pct(m['spend_share'])} of the product's lifetime spend: consistent with creative fatigue and no fresh iterations. "
-                    "Remake the old winners' hooks with new scenes, openings and proof.")
-        if new_roas is not None and b["roas_30d"] and new_roas < NOW_BAD * b["roas_30d"] and (old_roas is None or old_roas < NOW_BAD * b["roas_30d"]):
-            return (f"{n_new} new ads launched in 30 days and they also run below the product average ({x(new_roas)} vs {x(b['roas_30d'])}): consistent with the whole line weakening, not only old creative wearing out. "
-                    "Rework the angle (new story or ICP framing) and test it small before scaling.")
-        return (f"Mixed: new ads {x(new_roas)} and older ads {x(old_roas)} over the last 30 days against a product average of {x(b['roas_30d'])}: consistent with partial fatigue. "
-                "Refresh the older winners' hooks and keep what the newer ads show works.")
-
     def faded_info(lid: int, m: dict, slug: str) -> dict | None:
         last = last_at_or_above(line_weekly.get(lid, {}), prod_weekly.get(slug, {}))
         chg = None
@@ -787,11 +876,11 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
                 "idx_now": round(m["idx_30"], 3) if (m["idx_30"] is not None and m["spend_30d"] >= DORMANT_SPEND) else None}
 
     rows: list[dict] = []
-    by_product = {sl: {"iterate": [], "revive": [], "stop": [], "new": []} for sl in PRODUCTS}
+    by_product = {sl: {"iterate": [], "faded": [], "stop": [], "new": []} for sl in PRODUCTS}
     for it in iterate:
         by_product[it["line"]["product"]]["iterate"].append(it)
-    for it in revive:
-        by_product[it["line"]["product"]]["revive"].append(it)
+    for it in faded:
+        by_product[it["line"]["product"]]["faded"].append(it)
     for it in stop:
         by_product[it["line"]["product"]]["stop"].append(it)
     for nw in new_rows:
@@ -818,25 +907,74 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
             why = (f"ROAS {m['roas']:.2f}x vs {b['roas']:.2f}x for the product (index {m['idx_launch']:.2f}); {pct(m['hit_rate'])} of {m['mature']} mature ads reached ${HIT_SPEND:,.0f} vs {pct(b['hit_rate'])}; "
                    f"{pct(m['launch_share_30d'])} of the product's new ads in 30 days vs {pct(m['spend_share'])} of its spend.")
             rows.append(common("iterate", i, l, m, b, n, it["score"], conf_level(m, [z for z in fl if z in ("thin sample", "weak tags", "few ads") or z.startswith("Upstack")]), fl, why, it["comp"], hooks_for(l["id"])))
-        rv = sorted(by_product[slug]["revive"], key=lambda r: (-r["score"], r["line"]["sort_order"], r["line"]["id"]))[:TOP_REVIVE]
-        alloc = allocate([max(r["score"], 1.0) for r in rv], CONCEPTS_REVIVE, 1, MAX_PER_REVIVE_ROW)
-        for i, (it, n) in enumerate(zip(rv, alloc), start=1):
-            l, m = it["line"], it["m"]
+        fd = sorted(by_product[slug]["faded"], key=lambda r: (-r["score"], r["line"]["sort_order"], r["line"]["id"]))[:TOP_FADED]
+        budget_rows = min(len(fd), CONCEPTS_FADED)
+        alloc = allocate([max(r["score"], 1.0) for r in fd[:budget_rows]], CONCEPTS_FADED, 1, MAX_PER_FADED_ROW) + [0] * (len(fd) - budget_rows)
+        for i, (it, n) in enumerate(zip(fd, alloc), start=1):
+            l, m, stt, wins = it["line"], it["m"], it["stretch"], it["wins"]
             fi = faded_info(l["id"], m, slug)
+            now_on = m["spend_30d"] >= DORMANT_SPEND
+            peak_txt = ""
+            if stt:
+                peak_txt = (f"Weeks of {stt['start']} to {stt['end']} ({stt['weeks']} weeks): ROAS {x(stt['roas'])} vs {x(stt['product_roas'])} for the product over the same weeks (index {stt['index']:.2f}), "
+                            f"CPA {usd(stt['cpa'])}, {usd(stt['spend'])} spend.")
+            else:
+                peak_txt = f"No sustained weekly stretch (the strong results predate the weekly data on 2026-05-06 or were spread thin); lifetime ROAS {x(m['roas'])} vs {x(b['roas'])} for the product on {usd(m['spend'])}."
+            now_txt = (f"Last 30 days: ROAS {x(m['roas_30d'])} (index {m['idx_30']:.2f}), CPA {usd(m['cpa_30d'])}, {usd(m['spend_30d'])} spend" if now_on else "No spend in the last 30 days")
+            if stt and now_on and m["roas_30d"] is not None and stt["roas"]:
+                now_txt += f"; ROAS {round((m['roas_30d'] / stt['roas'] - 1) * 100):+d}% from the peak"
             last = fi["last_at_or_above"]
-            bits = []
-            if fi["idx_then"] is not None and fi["idx_now"] is not None:
-                bits.append(f"ROAS index to the product {fi['idx_then']:.2f} (days {THEN_FROM}-{THEN_TO}) to {fi['idx_now']:.2f} (last 30 days)" + (f", ROAS {fi['roas_change_pct']:+d}%" if fi["roas_change_pct"] is not None else ""))
-            elif fi["idx_now"] is None:
-                bits.append("no spend in the last 30 days")
-            bits.append(f"lifetime ROAS {x(m['roas'])} vs {x(b['roas'])} for the product")
             if last:
-                bits.append(f"last at or above the product average in the {ROLL_WEEKS} weeks ending {last['window_end']} ({last['weeks_since']} week{'s' if last['weeks_since'] != 1 else ''} ago)")
+                now_txt += f"; last at or above the product average in the {ROLL_WEEKS} weeks ending {last['window_end']} ({last['weeks_since']} week{'s' if last['weeks_since'] != 1 else ''} ago)"
+            now_txt += "."
+            launches_peak = None
+            if stt:
+                s0, e0 = dt.date.fromisoformat(stt["start"]), dt.date.fromisoformat(stt["end"])
+                launches_peak = sum(1 for f_ in fams_by_line.get(l["id"], []) if f_["first_day"] and not f_["before_start"] and s0 <= f_["first_day"] <= e0)
+                peak_rate = launches_peak * 30.0 / (stt["weeks"] * 7)
+            else:
+                peak_rate = None
+            diag = []
+            nw = len(wins)
+            if not now_on:
+                diag.append(f"No spend in the last 30 days ({nw} of {it['wtotal']} winning ads stopped or decayed): consistent with spend moved away or the ads switched off, not with a delivery decline")
+            elif m["share_now"] < 0.5 * m["share_then"] and (m["idx_30"] or 0) >= COLLAPSE_IDX:
+                diag.append(f"Share of the product's spend fell from {pct(m['share_then'])} to {pct(m['share_now'])} while the line still runs at index {m['idx_30']:.2f}: consistent with spend moved to other lines")
+            new_roas = ratio(m["new_rev30"], m["new_spend30"]) if m["new_spend30"] >= 500 else None
+            decayed_live = [w_ for w_ in wins if w_["kind"] == "decayed"]
+            if now_on and m["launches_30d"] <= max(1, 0.5 * (peak_rate or 0)) and (decayed_live or m["old_spend30"] >= 500):
+                diag.append(f"Few new ads ({m['launches_30d']} in the last 30 days" + (f" against about {peak_rate:.0f} per 30 days in the working stretch" if peak_rate else "") + f") and the ads still running are {len(decayed_live)} decayed winner(s) of {it['wtotal']}: consistent with the same ads fatiguing and no fresh iterations")
+            if now_on and new_roas is not None and b["roas_30d"] and new_roas < NOW_BAD * b["roas_30d"]:
+                diag.append(f"{m['launches_30d']} new ads launched in the last 30 days run at {x(new_roas)} vs {x(b['roas_30d'])} for the product: consistent with the whole line weakening even with fresh ads")
+            if not diag:
+                diag.append("No single pattern stands out in the numbers (new ads, ad fatigue and spend share all look ordinary): consistent with partial fatigue; refresh the former winners and watch the next two weeks")
+            diagnosis = "; ".join(diag[:2]) + "."
+            top = [w_ for w_ in wins if w_["hook"]][:2]
+            weak_line = any("whole line weakening" in d_ for d_ in diag)
+            play = (f"{n} concept{'s' if n != 1 else ''} this week: " if n else "Lower priority this week (no concepts allocated): ") + (
+                ("rework the angle (new story or ICP framing) keeping the structure of the winning hooks " if weak_line else "remake the former winners' hooks with new scenes, openings and proof ") +
+                (("(" + "; ".join(f"\"{w_['hook'][:90]}\" ({w_['ad']}, peak week of {w_['peak_week']})" for w_ in top) + ")") if top else "(no hook text stored for the former winners; open them from the list)") +
+                f"; test small before scaling against the product's {x(b['roas_30d'])} last-30-day ROAS.")
             fl = risk_flags(m)
-            r = common("revive", i, l, m, b, n, it["score"], conf_level(m, [z for z in fl if z in ("thin sample", "weak tags", "few ads") or z.startswith("Upstack")]), fl,
-                       "Was working, now " + ("idle" if fi["idx_now"] is None else "below the product average") + ": " + "; ".join(bits) + ".", it["comp"], hooks_for(l["id"]))
+            if stt is None:
+                fl.append("no sustained weekly peak")
+            elif stt["spend"] < FADED_THIN_SPEND:
+                fl.append(f"thin: peak stretch only {usd(stt['spend'])}")
+            if stt and stt["roas"] < 1.0:
+                fl.append(f"peak ROAS {x(stt['roas'])} was above the product average but under 1.0x")
+            r = common("faded", i, l, m, b, n, it["score"], conf_level(m, [z for z in fl if z in ("thin sample", "weak tags", "few ads") or z.startswith("Upstack")]), fl,
+                       f"{it['kind']}: was working, now isn't. {peak_txt} {now_txt}", it["comp"],
+                       [{"hook": w_["hook"], "ad": w_["ad"], "ad_id": w_["ad_id"], "spend": w_["spend"], "roas": w_["roas"], "line_code": l["line_code"], "borrowed": False} for w_ in wins if w_["hook"]][:3])
+            r["status"] = it["kind"]
+            r["when_it_worked"] = peak_txt
+            r["how_it_stopped"] = now_txt
+            r["diagnosis"] = diagnosis
+            r["revive_play"] = play
+            r["stretch"] = it["stretch"]
             r["faded"] = fi
-            r["approach"] = approach(m, b)
+            r["former_winners"] = [{k_: v_ for k_, v_ in w_.items() if k_ != "excess"} for w_ in wins[:TOP_WINNERS]]
+            r["winners_summary"] = {"winners": it["wtotal"], "not_working": nw, "stopped": sum(1 for w_ in wins if w_["kind"] == "stopped"), "decayed": len(decayed_live), "still_working": it["whealthy"],
+                                    "live_share": round(it["whealthy"] / it["wtotal"], 3) if it["wtotal"] else None, "launches_in_peak": launches_peak, "launches_last_30d": m["launches_30d"]}
             rows.append(r)
         sp_ = sorted(by_product[slug]["stop"], key=lambda r: (-r["score"], r["line"]["id"]))[:TOP_STOP]
         for i, it in enumerate(sp_, start=1):
@@ -944,7 +1082,7 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
     auto_fams = sum(1 for f in fams if (f["tagger"] or "").startswith("auto-"))
     thresholds = {k: v for k, v in globals().items() if k.isupper() and isinstance(v, (int, float)) and not isinstance(v, bool)}
     out_stats = {"data_through": through.isoformat(), "week_start": week.isoformat(), "status_counts": status_counts, "status_counts_total": {st: sum(c[st] for c in status_counts.values()) for st in STATUSES},
-                 "iterate_candidates": len(iterate), "revive_candidates": len(revive), "stop_candidates": len(stop), "new_candidates": len(new_rows),
+                 "iterate_candidates": len(iterate), "faded_candidates": len(faded), "faded_by_kind": {k_: sum(1 for f_ in faded if f_["kind"] == k_) for k_ in ("FADED", "COLLAPSED", "STOPPED")}, "stop_candidates": len(stop), "new_candidates": len(new_rows),
                  "competitors": ({"as_of": comp["as_of"], "source": comp.get("source"), "rows": len(comp["rows"]), "matched_rows": sum(len(v) for v in comp_by_line.values()), "unmatched_rows": len(comp_unmatched),
                                   "brands": len({r["brand"] for r in comp["rows"]}), "stale_brands": comp.get("stale_brands", [])} if comp else None),
                  "tagged_spend": {s: round(v) for s, v in tagged_spend.items()}, "untagged_spend": {s: round(v) for s, v in untagged_spend.items()}, "auto_tagged_families": auto_fams,
@@ -957,11 +1095,11 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
 
 
 # ----------------------------------------------------------------------------------------------------------------------- output
-SECTION_ORDER = ("iterate", "revive", "new", "proposal", "competitor", "stop")
-SECTION_TITLES = {"iterate": "Iterate on what is working (WORKING NOW / RISING)", "revive": "Revive or rework (FADING / WAS WORKING)", "new": "New and untested clusters",
+SECTION_ORDER = ("faded", "iterate", "new", "proposal", "competitor", "stop")
+SECTION_TITLES = {"faded": "Was working, now isn't (FADED / COLLAPSED / STOPPED)", "iterate": "Iterate on what is working (WORKING NOW / RISING)", "new": "New and untested clusters",
                   "proposal": "Proposed new market clusters and lines (drafts for Josh's approval)", "competitor": "Competitor angles we have not made (not on our sheet)", "stop": "Stop or deprioritise (NOT WORKING)"}
 CSV_COLS = ["market_cluster", "icp", "pain_point", "story", "market_cluster_description", "icp_description", "pain_point_description", "status", "product", "section", "rank", "concepts", "week_start",
-            "then_vs_now", "what_others_are_running", "suggested_approach", "emotional_trigger", "ingredients", "line_code", "confidence", "flags", "score",
+            "then_vs_now", "when_it_worked", "how_it_stopped", "diagnosis", "revive_play", "former_winner_ads", "what_others_are_running", "emotional_trigger", "ingredients", "line_code", "confidence", "flags", "score",
             "spend", "roas", "cpa", "roas_index", "ads", "hit_rate", "hit_rate_index", "spend_30d", "roas_30d", "spend_prior30", "roas_prior30", "launches_30d", "nc_roas", "nc_cpa",
             "hook_1", "hook_2", "hook_3", "why"]
 
@@ -976,7 +1114,9 @@ def to_csv(snapshot: dict) -> str:
         hk = [h["hook"] + (f" [{h['line_code']}]" if h.get("borrowed") else "") for h in r["hooks"]] + ["", "", ""]
         comp = (r.get("competitor") or {}).get("text", "")
         w.writerow([r["cluster"], r["icp"], r["pain_point"], r["story"] or "", r["cluster_description"], r["icp_description"], r["pain_description"], r.get("status", ""), r["product_name"], r["section"], r["rank"],
-                    r["concepts"], snapshot["week_start"], r.get("then_now", ""), comp, r.get("approach", ""), r["emotional_trigger"] or "", r["ingredients"], r["line_code"], r["confidence"],
+                    r["concepts"], snapshot["week_start"], r.get("then_now", ""), r.get("when_it_worked", ""), r.get("how_it_stopped", ""), r.get("diagnosis", ""), r.get("revive_play", ""),
+                    " | ".join(f"{w_['ad']} ({w_['kind']}, ${w_['spend']:,} at {w_['roas']}x, peak week {w_['peak_week']}" + (f", stopped {w_['stopped']}" if w_.get("stopped") else "") + ")" for w_ in r.get("former_winners", [])),
+                    comp, r["emotional_trigger"] or "", r["ingredients"], r["line_code"], r["confidence"],
                     "; ".join(r["flags"]), r["score"], g("spend"), g("roas"), g("cpa"), g("roas_index"), g("ads"), g("hit_rate"), g("hit_rate_index"), g("spend_30d"), g("roas_30d"), g("spend_prior30"),
                     g("roas_prior30"), g("launches_30d"), g("nc_roas"), g("nc_cpa"), hk[0], hk[1], hk[2], r["why"]])
     return buf.getvalue()
@@ -1021,10 +1161,15 @@ def to_markdown(snapshot: dict) -> str:
                     extra += f" | hit rate {pct(m.get('hit_rate'))}"
                 L.append(f"_{extra} | confidence {r['confidence']}{' | ' + '; '.join(r['flags']) if r['flags'] else ''}_  ")
                 L.append(f"Why: {r['why']}  ")
-                if r.get("approach"):
-                    L.append(f"Suggested approach: {r['approach']}  ")
+                if r.get("when_it_worked"):
+                    L.append(f"When it worked: {r['when_it_worked']}  ")
+                    L.append(f"When and how it stopped: {r['how_it_stopped']}  ")
+                    L.append(f"Diagnosis (consistent with): {r['diagnosis']}  ")
+                    L.append(f"Revive play: {r['revive_play']}  ")
+                    for w_ in r.get("former_winners", [])[:3]:
+                        L.append(f"- Former winner: {w_['ad']} ({w_['kind']}), ${w_['spend']:,} at {w_['roas']}x, peak week {w_['peak_week']}" + (f", stopped {w_['stopped']}" if w_.get("stopped") else "") + (f": {w_['hook']}" if w_["hook"] else "") + "  ")
                 if r["hooks"]:
-                    L.append(("Old winners' hooks: " if sec == "revive" else "Hooks: ") + " / ".join(h["hook"] for h in r["hooks"]))
+                    L.append(("Hooks from the working period: " if sec == "faded" else "Hooks: ") + " / ".join(h["hook"] for h in r["hooks"]))
                 L.append("")
     return "\n".join(L) + "\n"
 

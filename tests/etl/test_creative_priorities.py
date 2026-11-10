@@ -244,14 +244,14 @@ def test_sections_follow_status_and_revive_says_when_and_how_much():
     by = {}
     for x in r["rows"]:
         by.setdefault(x["section"], []).append(x["line_code"])
-    assert set(by["iterate"]) == {"VI01", "VI04"} and set(by["revive"]) == {"VI02", "VI05"} and by["stop"] == ["VI03"]
-    rv = [x for x in r["rows"] if x["section"] == "revive" and x["line_code"] == "VI02"][0]
-    assert rv["faded"]["roas_change_pct"] < 0 and "last 30 days" in rv["why"] and rv["status"] == cp.ST_FADING
-    assert "consistent with" in rv["approach"] and "Then (days 31-90)" in rv["then_now"]
-    dormant = [x for x in r["rows"] if x["section"] == "revive" and x["line_code"] == "VI05"][0]
-    assert "retired winner" in dormant["approach"]
+    # no weekly history in this scenario: only the lifetime-strong lines (classify FADING) reach the faded section, flagged as having no sustained weekly peak
+    assert set(by["iterate"]) == {"VI01", "VI04"} and set(by["faded"]) == {"VI02", "VI05"} and by["stop"] == ["VI03"]
+    fd = [x for x in r["rows"] if x["section"] == "faded" and x["line_code"] == "VI02"][0]
+    assert fd["status"] == "FADED" and "no sustained weekly peak" in fd["flags"] and "Then (days 31-90)" in fd["then_now"] and "consistent with" in fd["diagnosis"].lower()
+    dormant = [x for x in r["rows"] if x["section"] == "faded" and x["line_code"] == "VI05"][0]
+    assert dormant["status"] == "STOPPED" and "spend moved away" in dormant["diagnosis"]
     stop = [x for x in r["rows"] if x["section"] == "stop"][0]
-    assert stop["concepts"] == 0 and sum(x["concepts"] for x in r["rows"] if x["section"] == "revive") <= cp.CONCEPTS_REVIVE
+    assert stop["concepts"] == 0 and sum(x["concepts"] for x in r["rows"] if x["section"] == "faded") <= cp.CONCEPTS_FADED
 
 
 def test_thin_lines_are_too_early_not_judged():
@@ -293,7 +293,7 @@ def test_csv_has_status_and_competitor_columns():
     inp["competitors"] = {"as_of": "2026-11-08", "source": "t", "loaded_at": None, "rows": [comp_rows(line_code="VI05")]}
     rows = list(csv.reader(io.StringIO(cp.to_csv(cp.compute(inp, WEEK)))))
     h = rows[0]
-    assert h[7] == "status" and "what_others_are_running" in h and "suggested_approach" in h
+    assert h[7] == "status" and "what_others_are_running" in h and "diagnosis" in h
     assert any(dict(zip(h, r))["what_others_are_running"] for r in rows[1:])
 
 
@@ -407,3 +407,110 @@ def test_csv_and_markdown_carry_proposals(tmp_path, monkeypatch):
     prop = [dict(zip(h, x)) for x in rows[1:] if dict(zip(h, x))["section"] == "proposal"]
     assert prop and prop[0]["status"].startswith("PROPOSED") and prop[0]["story"] and "NEW CLUSTER" in prop[0]["flags"]
     assert "Proposed new market clusters" in cp.to_markdown(r)
+
+
+# ---------------------------------------------------------------------------------------------------------------- was working, now isn't (weekly history)
+MON = dt.date(2026, 9, 14)
+
+
+def weeks(n):
+    return [MON + dt.timedelta(days=7 * i) for i in range(n)]
+
+
+def wk_series(pattern):
+    """[(spend, roas)] per week -> {monday: (spend, revenue, purchases)}"""
+    return {w: (sp, sp * ro, sp / 80) for w, (sp, ro) in zip(weeks(len(pattern)), pattern)}
+
+
+def test_best_stretch_finds_the_sustained_run_and_its_dates():
+    prod = wk_series([(1000, 1.0)] * 8)
+    line = wk_series([(500, 1.5)] * 4 + [(500, 0.5)] * 4)
+    s = cp.best_stretch(line, prod)
+    assert s["start"] == "2026-09-14" and s["end"] == "2026-10-11" and s["weeks"] == 4
+    assert s["roas"] == 1.5 and s["index"] == 1.5 and s["spend"] == 2000 and s["cpa"] == 80.0 and s["excess"] == 1000
+
+
+def test_best_stretch_needs_three_consecutive_weeks_enough_spend_and_a_real_edge():
+    prod = wk_series([(1000, 1.0)] * 8)
+    assert cp.best_stretch(wk_series([(500, 1.5), (500, 1.5), (500, 0.5), (500, 1.5), (500, 1.5), (500, 0.5)]), prod) is None        # runs of 2
+    assert cp.best_stretch(wk_series([(100, 1.5)] * 6), prod) is None                                                              # weeks under the weekly minimum
+    assert cp.best_stretch(wk_series([(300, 1.5)] * 3), prod) is None                                                              # $900 total < $2,000
+    assert cp.best_stretch(wk_series([(500, 1.05)] * 6), prod) is None                                                             # above average but under the 1.10 edge
+    line = wk_series([(700, 1.5)] * 3 + [(0, 0)] + [(700, 1.5)] * 3)
+    assert cp.best_stretch(line, prod)["weeks"] == 3                                                                               # a gap week breaks the run
+
+
+def test_faded_kind_stopped_collapsed_faded_or_none():
+    stt = {"roas": 1.5}
+    base = {"spend_30d": 2000.0, "idx_30": 0.8, "roas_30d": 0.9}
+    assert cp.faded_kind(base, None) is None
+    assert cp.faded_kind({**base, "spend_30d": 10.0}, stt) == "STOPPED"
+    assert cp.faded_kind({**base, "idx_30": 0.8, "roas_30d": 0.9}, stt) == "COLLAPSED"
+    assert cp.faded_kind({**base, "idx_30": 0.95, "roas_30d": 1.3}, stt) == "FADED"
+    assert cp.faded_kind({**base, "idx_30": 1.02, "roas_30d": 1.6}, stt) is None
+
+
+def test_former_winners_stopped_or_decayed_with_peak_week():
+    b_roas = 1.0
+    live = {"w": {"s30": 600.0, "r30": 300.0}, "live3": True}
+    stopped = {"w": {"s30": 0.0, "r30": 0.0}, "live3": False}
+    healthy = {"w": {"s30": 600.0, "r30": 700.0}, "live3": True}
+    mk = lambda extra, spend, roas, key: {**extra, "family_key": key, "tracker_row_id": 1, "display": key, "hook": f"hook {key}", "spend_launch": spend, "revenue_launch": spend * roas, "last_spend_day": dt.date(2026, 10, 1)}
+    fams = [mk(live, 4000, 1.4, "dec"), mk(stopped, 6000, 1.2, "stp"), mk(healthy, 3000, 1.3, "ok"), mk(stopped, 500, 2.0, "small"), mk(stopped, 5000, 0.8, "weak")]
+    weekly = {"stp": {MON: (100, 90, 1), MON + dt.timedelta(days=7): (100, 200, 2)}}
+    out, total, healthy_n = cp.former_winners(fams, b_roas, weekly, THROUGH)
+    assert [w["ad"] for w in out] == ["stp", "dec"] or [w["ad"] for w in out] == ["dec", "stp"]
+    assert total == 3 and healthy_n == 1
+    stp = [w for w in out if w["ad"] == "stp"][0]
+    assert stp["kind"] == "stopped" and stp["stopped"] == "2026-10-01" and stp["peak_week"] == "2026-09-21"
+    dec = [w for w in out if w["ad"] == "dec"][0]
+    assert dec["kind"] == "decayed" and dec["roas_30d"] == 0.5
+
+
+def faded_inp():
+    """Vita Bull: line 1 worked for 4 weeks then fell off while fresh ads also underperform; line 2 is steady; line 3 never worked; line 4 worked then went idle."""
+    lines = [line(i, "vita-bull", "Cl", f"Icp{i}", f"Pain{i}") for i in range(1, 5)]
+    fams = []
+    weekly = {}
+
+    def add(lid, pat, now_roas, s30, n=6, hook=True):
+        for k in range(n):
+            f = fam("vita-bull", lid, 3000, 1.2 if lid in (1, 4) else 0.9 if lid == 2 else 0.5, hook=f"hook {lid}-{k}" if hook else None, s30=s30 / n, r30=s30 / n * now_roas,
+                    first=dt.date(2026, 5, 20), live=s30 > 0)
+            f["_w"].update({"s60": 100.0, "r60": 100.0 * pat[0][1], "p60": 1.2})
+            fams.append(f)
+            weekly[f["family_key"]] = {w: (sp / n, sp / n * ro, sp / n / 80) for w, (sp, ro) in zip(weeks(len(pat)), pat)}
+    add(1, [(600, 1.6)] * 4 + [(600, 0.5)] * 4, 0.5, 2400)
+    add(2, [(600, 0.9)] * 8, 0.95, 2400)
+    add(3, [(600, 0.5)] * 8, 0.5, 2400)
+    add(4, [(600, 1.6)] * 4 + [(0, 0)] * 4, 0.0, 0.0)
+    inp = build(lines, fams)
+    inp["weekly"] = weekly
+    return inp
+
+
+def test_weekly_history_puts_was_working_lines_first_and_never_worked_in_stop():
+    r = cp.compute(faded_inp(), WEEK)
+    by = {}
+    for x in r["rows"]:
+        by.setdefault(x["section"], {})[x["line_code"]] = x
+    assert set(by["faded"]) == {"VI01", "VI04"} and set(by["stop"]) == {"VI03"} and "VI02" not in by["faded"]
+    a = by["faded"]["VI01"]
+    assert a["status"] in ("COLLAPSED", "FADED") and a["stretch"]["start"] == "2026-09-14" and a["stretch"]["weeks"] == 4
+    assert "Weeks of 2026-09-14 to 2026-10-11" in a["when_it_worked"] and "Last 30 days" in a["how_it_stopped"] and "from the peak" in a["how_it_stopped"]
+    assert "consistent with" in a["diagnosis"] and a["revive_play"].startswith(("1 concept", "2 concepts", "3 concepts")) and "hook" in a["revive_play"]
+    assert a["hooks"] and a["former_winners"] and a["winners_summary"]["winners"] == 6
+    assert by["faded"]["VI04"]["status"] == "STOPPED" and "spend moved away" in by["faded"]["VI04"]["diagnosis"]
+    assert r["stats"]["faded_by_kind"]["STOPPED"] == 1 and r["stats"]["faded_candidates"] == 2
+
+
+def test_faded_rows_lead_csv_and_markdown_and_carry_the_story_columns():
+    r = cp.compute(faded_inp(), WEEK)
+    rows = list(csv.reader(io.StringIO(cp.to_csv(r))))
+    h = rows[0]
+    assert dict(zip(h, rows[1]))["section"] == "faded"                                      # the first data row is a was-working-now-isn't row
+    first = dict(zip(h, rows[1]))
+    assert first["when_it_worked"] and first["how_it_stopped"] and first["diagnosis"] and first["revive_play"] and first["former_winner_ads"]
+    md = cp.to_markdown(r)
+    assert md.index("Was working, now isn't") < md.index("Iterate on what is working") or "Iterate on what is working" not in md
+    assert "Revive play:" in md and "Former winner:" in md
