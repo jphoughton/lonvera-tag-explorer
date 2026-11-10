@@ -1285,6 +1285,19 @@ rel("public.scaling_benchmarks", group="rollups", kind="table",
           "purchases": "Purchases in Scaling campaigns in the window (the basis's meaning: Meta purchases, Upstack new customers, or Upstack orders).",
           "revenue": "Purchase value in the window, dollars (the basis's meaning)."})
 
+rel("public.creative_priorities_snapshots", group="creative", kind="table",
+    purpose="The weekly creative priorities one-sheeter: per product, the market cluster / ICP / pain point / story lines to iterate on (ads that work) and to produce for the first time, with the number of new concepts to brief and the numbers behind each row. One snapshot per week, kept as produced.",
+    grain="one row per week (week_start = the Sunday, Pacific)", source="etl.creative_priorities from ad_metrics, family_daily (and the _upstack_nc twin), creative_stage_moves, ad_tags (linemap), taxonomy_lines, line_ingredients, ad_hooks",
+    refresh="Sundays, in the nightly etl (gated on Pacific time, non-fatal); by hand with python -m etl.creative_priorities [--week YYYY-MM-DD]; re-running a week replaces its snapshot",
+    coverage="from the week the migration was deployed; one row per Sunday",
+    caveats=["Scored on Meta-reported numbers; the Upstack new-customer ROAS only raises a flag. Prioritisation, not a causal claim.",
+             "rows is a JSON array; each element carries section ('iterate' | 'new'), product, rank, the line (cluster, icp, pain_point, story), concepts, score, confidence, flags, why, metrics and hooks. Scoring and thresholds: docs/CREATIVE_PRIORITIES.md."],
+    cols={"week_start": "The Sunday (Pacific) the snapshot belongs to (primary key).", "built_at": "When the snapshot was last written.",
+          "data_through": "Last day of Meta data the snapshot used.", "basis": "Numbers basis of the scoring: 'meta' (Meta-reported).",
+          "thresholds": "JSON object: every threshold and weight constant of etl/creative_priorities.py as used for this snapshot.",
+          "baselines": "JSON object by product slug: the product's own averages (ROAS since launch / last 30 days, CPA, hit rate, new ads in 30 days) the lines are compared with.",
+          "rows": "JSON array of the ranked rows (iterate and new sections, all products).", "stats": "JSON object: candidate counts, skipped counts, tagged and untagged spend, data_through."})
+
 rel("public.unmatched_meta", group="rollups", kind="table",
     purpose="Meta families that map to no live tracker family, with the product guessed for them and their windowed and since-launch numbers. Closes the gap between ad_metrics and the account total.",
     grain="one row per Meta family (meta_family_key)", source="etl.build_metrics from meta_ads, ad_daily, meta_ad_lifetime, meta_campaigns, products.meta_regex",

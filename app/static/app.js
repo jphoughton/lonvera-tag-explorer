@@ -14,6 +14,7 @@ import { allPlatformsPage } from './js/pages/platforms.js';
 import { allCampaignsPage } from './js/pages/all_campaigns.js';
 import { promotionsPage } from './js/pages/promotions.js';
 import { trendsPage } from './js/pages/trends.js';
+import { prioritiesPage } from './js/pages/priorities.js';
 import { lookupPage } from './js/pages/lookup.js';
 
 // Platform pages: '/' is the home of the chosen platform (platform=all overview, google, else Meta's products) and '/campaigns' its Campaigns view.
@@ -26,6 +27,7 @@ const routes = [
   { re: /^\/campaigns\/?$/, page: campaignsRoute },
   { re: /^\/promotions\/?$/, page: promotionsPage },
   { re: /^\/trends\/?$/, page: trendsPage },
+  { re: /^\/priorities\/?$/, page: prioritiesPage },
   { re: /^\/lookup\/?$/, page: lookupPage },
   { re: /^\/p\/([^/]+)\/?$/, page: productPage },
   { re: /^\/ad\/([^/]+)\/?$/, page: adPage },
@@ -61,7 +63,7 @@ function parentUrl() {
     return platformUrl('/', 'meta', G);                      // a product's parent is Meta's Products table, not the All roll-up
   }
   if (path === '/campaigns') return platformUrl('/', currentPlatform(), G);
-  if (path === '/promotions' || path === '/trends' || path === '/lookup') return href('/', G);
+  if (path === '/promotions' || path === '/trends' || path === '/priorities' || path === '/lookup') return href('/', G);
   if (path === '/' && p.type) return platformUrl('/', 'google', G);
   if (/^\/ad\//.test(path)) return getParentHint() || platformUrl('/', 'meta', G);
   return null;
@@ -214,6 +216,7 @@ buildShell({ onBack: goBack });
   tags.after(h('a', { class: 'navlink', href: '/projection', target: '_self' }, 'Projections'));
   tags.after(h('a', { class: 'navlink', href: '/promotions', 'data-testid': 'nav-test-to-scale' }, 'Test to scale'));
   tags.after(h('a', { class: 'navlink', href: '/lookup', 'data-testid': 'nav-lookup' }, 'Tag lookup'));
+  tags.after(h('a', { class: 'navlink', href: '/priorities', 'data-testid': 'nav-priorities' }, 'Creative priorities'));
   tags.after(h('a', { class: 'navlink', href: '/trends', 'data-testid': 'nav-trends' }, 'Trends'));
 }
 render({ restore: true });
