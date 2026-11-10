@@ -1991,6 +1991,10 @@ import mock_priorities_assign  # noqa: E402  (Production: /api/priorities/assign
 
 mock_priorities_assign.register(app, dict(Bad=Bad))
 
+import mock_priorities_launch  # noqa: E402  (Production launch to Meta: /api/priorities/.../launch and the `launch` flag on the assignments list, in memory, off by default)
+
+mock_priorities_launch.register(app, dict(Bad=Bad))
+
 
 def shell(*_a, **_k):
     return send_from_directory(STATIC, "index.html")
