@@ -72,3 +72,76 @@ def test_requires_login(anon, snaps):
 def test_page_route_serves_the_shell(client):
     r = client.get("/priorities")
     assert r.status_code == 200 and b"topbar" in r.data
+
+
+# ---------------------------------------------------------------------------------------------------------------- saved views
+
+def _key(r):
+    return "|".join(r[k] for k in ("product", "section", "cluster", "icp", "pain_point"))
+
+
+@pytest.fixture()
+def views(pg):
+    pg.execute("DELETE FROM creative_priorities_views")
+    pg.commit()
+    yield
+    pg.execute("DELETE FROM creative_priorities_views")
+    pg.commit()
+
+
+def test_view_create_open_csv_delete_and_unknown_token(client, snaps, views):
+    r = client.post("/api/priorities/views", json={"name": "  Round   1 ", "week": "2026-11-08", "ids": [_key(ROW), "vita-bull|iterate|gone|gone|gone"]})
+    assert r.status_code == 201
+    v = r.get_json()
+    assert len(v["token"]) >= 22 and v["url"] == "/priorities/v/" + v["token"] and v["name"] == "Round 1" and v["count"] == 1 and v["missing"] == 1
+    d = client.get("/api/priorities/views/" + v["token"]).get_json()
+    assert d["view"]["name"] == "Round 1" and d["week_start"] == "2026-11-08" and [x["icp"] for x in d["rows"]] == ["Given Up Guy"] and d["baselines"]["vita-bull"]["product_name"] == "Vita Bull"
+    assert [x["token"] for x in client.get("/api/priorities/views").get_json()["views"]] == [v["token"]]
+    c = client.get(f"/api/priorities/views/{v['token']}/csv")
+    rows = list(csv.reader(io.StringIO(c.get_data(as_text=True))))
+    full = list(csv.reader(io.StringIO(client.get("/api/priorities.csv?week=2026-11-08").get_data(as_text=True))))
+    assert c.status_code == 200 and rows == full                                                      # same columns, same row
+    assert client.delete("/api/priorities/views/" + v["token"]).status_code == 204
+    assert client.get("/api/priorities/views/" + v["token"]).status_code == 404
+    assert client.delete("/api/priorities/views/" + v["token"]).status_code == 404
+    assert client.get("/api/priorities/views/short").status_code == 404 and client.get("/api/priorities/views/" + "A" * 30).status_code == 404
+
+
+def test_view_is_pinned_to_the_snapshot_it_was_saved_from(client, snaps, views, pg):
+    v = client.post("/api/priorities/views", json={"week": "2026-11-08", "ids": [_key(ROW)]}).get_json()
+    pg.execute("UPDATE creative_priorities_snapshots SET rows = %s WHERE week_start = '2026-11-08'", (json.dumps([{**ROW, "icp": "Changed", "concepts": 9}]),))
+    pg.commit()
+    d = client.get("/api/priorities/views/" + v["token"]).get_json()
+    assert d["rows"][0]["icp"] == "Given Up Guy" and d["rows"][0]["concepts"] == 3                      # later snapshot edits do not reach the view
+    assert client.get("/api/priorities?week=2026-11-08").get_json()["rows"][0]["icp"] == "Changed"
+
+
+def test_view_create_validation_cap_and_rate_limit(client, snaps, views, app):
+    assert client.post("/api/priorities/views", json={"ids": []}).status_code == 400
+    assert client.post("/api/priorities/views", json={"ids": "x"}).status_code == 400
+    assert client.post("/api/priorities/views", json={"ids": ["nope|a|b|c|d"]}).status_code == 400            # nothing in the snapshot
+    assert client.post("/api/priorities/views", json={"ids": [f"k{i}" for i in range(501)]}).status_code == 400
+    assert client.post("/api/priorities/views", data="x", content_type="text/plain").status_code == 400
+    assert client.post("/api/priorities/views", json={"ids": [_key(ROW)]}, headers={"Origin": "http://evil.example"}).status_code == 403
+    import app.api as api_mod
+    api_mod._view_limiter = None
+    app.config["PRIORITIES_VIEWS_PER_MIN"] = 3
+    try:
+        codes = [client.post("/api/priorities/views", json={"ids": [_key(ROW)]}).status_code for _ in range(5)]
+    finally:
+        app.config["PRIORITIES_VIEWS_PER_MIN"] = 0
+        api_mod._view_limiter = None
+    assert codes[:2] == [201, 201] and 429 in codes
+
+
+def test_view_requires_login_and_page_route_serves_the_shell(anon, client):
+    assert anon.get("/api/priorities/views").status_code == 401
+    assert anon.post("/api/priorities/views", json={"ids": ["a"]}).status_code == 401
+    assert client.get("/priorities/v/" + "A" * 30).status_code == 200
+
+
+def test_csv_ids_filter_keeps_columns(client, snaps):
+    full = list(csv.reader(io.StringIO(client.get("/api/priorities.csv?week=2026-11-08").get_data(as_text=True))))
+    sel = list(csv.reader(io.StringIO(client.get("/api/priorities.csv", query_string={"week": "2026-11-08", "id": _key(ROW)}).get_data(as_text=True))))
+    none = list(csv.reader(io.StringIO(client.get("/api/priorities.csv", query_string={"week": "2026-11-08", "id": "zzz"}).get_data(as_text=True))))
+    assert sel == full and none == [full[0]]

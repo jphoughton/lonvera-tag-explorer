@@ -14,7 +14,7 @@ import { allPlatformsPage } from './js/pages/platforms.js';
 import { allCampaignsPage } from './js/pages/all_campaigns.js';
 import { promotionsPage } from './js/pages/promotions.js';
 import { trendsPage } from './js/pages/trends.js';
-import { prioritiesPage } from './js/pages/priorities.js';
+import { prioritiesPage, prioritiesViewPage } from './js/pages/priorities.js';
 import { lookupPage } from './js/pages/lookup.js';
 
 // Platform pages: '/' is the home of the chosen platform (platform=all overview, google, else Meta's products) and '/campaigns' its Campaigns view.
@@ -28,6 +28,7 @@ const routes = [
   { re: /^\/promotions\/?$/, page: promotionsPage },
   { re: /^\/trends\/?$/, page: trendsPage },
   { re: /^\/priorities\/?$/, page: prioritiesPage },
+  { re: /^\/priorities\/v\/([A-Za-z0-9_-]+)\/?$/, page: prioritiesViewPage },
   { re: /^\/lookup\/?$/, page: lookupPage },
   { re: /^\/p\/([^/]+)\/?$/, page: productPage },
   { re: /^\/ad\/([^/]+)\/?$/, page: adPage },
@@ -62,6 +63,7 @@ function parentUrl() {
     if (p.cluster) return href(base, G);
     return platformUrl('/', 'meta', G);                      // a product's parent is Meta's Products table, not the All roll-up
   }
+  if (/^\/priorities\/v\//.test(path)) return href('/priorities', {});
   if (path === '/campaigns') return platformUrl('/', currentPlatform(), G);
   if (path === '/promotions' || path === '/trends' || path === '/priorities' || path === '/lookup') return href('/', G);
   if (path === '/' && p.type) return platformUrl('/', 'google', G);
