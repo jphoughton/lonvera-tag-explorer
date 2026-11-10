@@ -7,13 +7,13 @@ import secrets
 
 from flask import jsonify, request
 
-VENDORS = ["Madre", "Victoria", "TrybeDCShop", "TrybeOrion", "10xROAS", "Internal", "PuredMedia", "CreateMastery", "OpenProgram"]
 SEED_TOKENS = {"Madre": "tok-madre-0000000000000000", "Victoria": "tok-victoria-00000000000000"}
 
 
 def register(app, deps):
     from app import priorities_assign as pa, queries as q
 
+    VENDORS = list(pa.VENDORS)
     S: dict = {}
 
     def now():
@@ -25,7 +25,7 @@ def register(app, deps):
     def reset():
         mon = this_monday()
         nxt = mon + dt.timedelta(days=7)
-        base = {"story": "", "note": "", "vendor_note": "", "brief_url": None, "creative_url": None, "tracker_concept_ids": [], "ready_at": None, "launched_at": None, "dropped_at": None, "created_at": now(), "_suggested": []}
+        base = {"story": "", "note": "", "vendor_note": "", "brief_url": None, "creative_url": None, "tracker_concept_ids": [], "created_by": "josh", "updated_by": "josh", "ready_at": None, "launched_at": None, "dropped_at": None, "created_at": now(), "_suggested": []}
         rows = [
             {**base, "id": 1, "vendor": "Madre", "for_week": mon, "product": "vita-bull", "cluster": "ED / Performance", "icp": "Bedroom Upgrade Seeker", "pain_point": "General Vitality / Aging Well", "story": "He wants the old spark back."},
             {**base, "id": 2, "vendor": "Madre", "for_week": mon, "product": "beef-liver", "cluster": "Hair Thinning", "icp": "Thinning and Drained", "pain_point": "Hair Loss", "brief_url": "https://docs.google.com/document/d/brief2", "creative_url": "https://drive.google.com/drive/folders/creative2"},
@@ -35,6 +35,7 @@ def register(app, deps):
         S["rows"] = {r["id"]: r for r in rows}
         S["seq"] = 4
         S["tokens"] = dict(SEED_TOKENS)
+        S["links"] = {v: {"token": t, "created_at": now(), "rotated_at": None} for v, t in SEED_TOKENS.items()}
         S["tracker"] = {"Lonvera-VitalBull-Static-5.4": {"concept_id": "Lonvera-VitalBull-Static-5.4", "ad_family": "Lonvera-VitalBull-Static-5.4", "status": "8 - Launched", "launch_date": (mon - dt.timedelta(days=9)).isoformat(), "spend": 1240.4, "roas": 1.8},
                         "Lonvera-Boneflex-Static-1.1": {"concept_id": "Lonvera-Boneflex-Static-1.1", "ad_family": "Lonvera-Boneflex-Static-1.1", "status": "5 - Briefed", "launch_date": None, "spend": None, "roas": None}}
 
@@ -59,9 +60,9 @@ def register(app, deps):
         out.update(stage=stage, stage_label=pa.stage_label(stage), tracker_status=statuses[0] if statuses else None, tracker_concept_ids=list(r["tracker_concept_ids"]))
         out["suggested_concept_ids"] = [c for c in r["_suggested"] if c not in r["tracker_concept_ids"]]
         out["ads"] = ads_of(r)
-        if vendor_side:                                     # a vendor sees own rows, their ads' spend and return, but not the internal note and no ad page links (those need a login)
-            out.pop("note", None)
-            out.pop("suggested_concept_ids", None)
+        if vendor_side:                                     # a vendor sees own rows, their ads' spend and return, but nothing in INTERNAL_ONLY and no ad page links (those need a login)
+            for k in pa.INTERNAL_ONLY:
+                out.pop(k, None)
             out["ads"] = [{k: v for k, v in a.items() if k != "ad_url"} for a in out["ads"]]
         return out
 
@@ -101,21 +102,28 @@ def register(app, deps):
         apply(r, f)
         return jsonify(view(r))
 
+    def link(v):
+        l = S["links"][v]
+        return {"vendor": v, "token": l["token"], "url": f"/priorities/vendor/{l['token']}", "created_at": l["created_at"], "rotated_at": l["rotated_at"]}
+
     @app.post("/api/priorities/vendor-links")
     def vlink_create():
         v = (request.get_json(silent=True) or {}).get("vendor")
         if v not in VENDORS:
             return jsonify(error="vendor must be one of: " + ", ".join(VENDORS)), 400
-        tok = S["tokens"].setdefault(v, secrets.token_urlsafe(24))
-        return jsonify(vendor=v, token=tok, url=f"/priorities/vendor/{tok}")
+        created = v not in S["links"]
+        if created:
+            S["links"][v] = {"token": S["tokens"].setdefault(v, secrets.token_urlsafe(24)), "created_at": now(), "rotated_at": None}
+        return jsonify(link(v)), 201 if created else 200
 
     @app.post("/api/priorities/vendor-links/<vendor>/reset")
     def vlink_reset(vendor):
         if vendor not in VENDORS:
-            return jsonify(error="Unknown vendor."), 404
+            return jsonify(error="vendor must be one of: " + ", ".join(VENDORS)), 400
         tok = secrets.token_urlsafe(24)
         S["tokens"][vendor] = tok
-        return jsonify(vendor=vendor, token=tok, url=f"/priorities/vendor/{tok}")
+        S["links"][vendor] = {"token": tok, "created_at": S["links"].get(vendor, {}).get("created_at") or now(), "rotated_at": now()}
+        return jsonify(link(vendor))
 
     def vendor_of(token):
         return next((v for v, t in S["tokens"].items() if t == token), None)
@@ -127,7 +135,7 @@ def register(app, deps):
             return jsonify(error="not_found"), 404
         rows = [view(r, True) for r in sorted(S["rows"].values(), key=lambda r: (r["for_week"], r["id"]), reverse=True) if r["vendor"] == v]
         rows = [r for r in rows if r["stage"] not in ("dropped",)]
-        return jsonify(vendor=v, rows=rows)
+        return jsonify(vendor=v, rows=rows, weeks=sorted({r["for_week"] for r in rows}, reverse=True))
 
     @app.patch("/api/priorities/vendor/<token>/<int:aid>")
     def vendor_patch(token, aid):
@@ -135,18 +143,16 @@ def register(app, deps):
         r = S["rows"].get(aid)
         if v is None or r is None or r["vendor"] != v:
             return jsonify(error="not_found"), 404
-        body = dict(request.get_json(silent=True) or {})
-        ready = body.pop("ready", None)
         try:
-            f = pa.clean_vendor_patch(body)
-            if ready is not None and not isinstance(ready, bool):
-                raise q.ApiError(400, "ready must be true or false")
-            if ready and not (f.get("creative_url") or r["creative_url"]):
-                raise q.ApiError(400, "add the creative link first")
+            f = pa.clean_vendor_patch(request.get_json(silent=True))
+            if not f:
+                raise q.ApiError(400, "nothing to update")
+            if r["dropped_at"]:
+                raise q.ApiError(409, "This concept was dropped.")
+            if f.get("ready") and not (f["creative_url"] if "creative_url" in f else r["creative_url"]):
+                raise q.ApiError(400, "Add the creative link before marking it ready to launch.")
         except q.ApiError as e:
             return err(e)
-        if ready is not None:
-            f["ready"] = ready
         apply(r, f)
         return jsonify(view(r, True))
 
