@@ -6,13 +6,13 @@ import { api } from '../api.js';
 import { showControls } from '../controls.js';
 
 const PRODUCT_ORDER = ['vita-bull', 'beef-liver', 'boneflex'];
-const SECTIONS = [['iterate', 'Iterate on what is working', 'WORKING NOW and RISING lines: their ads beat the product average on enough spend; more concepts should help.'],
-                  ['revive', 'Revive or rework', 'FADING / WAS WORKING: strong earlier or over its lifetime, now below the product average or idle.'],
+const SECTIONS = [['faded', 'Was working, now isn\u2019t', 'Lines with a sustained strong stretch (3+ weeks above the product average) that are now below average, collapsed or idle: when it worked, how it stopped, the former winners, a hedged diagnosis and a revive play.'],
+                  ['iterate', 'Iterate on what is working', 'WORKING NOW and RISING lines: their ads beat the product average on enough spend; more concepts should help.'],
                   ['new', 'New and untested clusters', 'Lines with no ads (or almost none), ranked by evidence the demand exists (our adjacent winners, other products, competitors).'],
                   ['proposal', 'Proposed new market clusters', 'Drafts in the Communication Overview shape for Josh\u2019s approval (NEW CLUSTER or a new line inside an existing cluster). Evidence is competitor activity and our adjacent results only; no performance is claimed.'],
                   ['competitor', 'Competitor angles we have not made', 'Angles competitors run that are not on our Communication Overview. Running a long time is a signal, not proof it performs.'],
                   ['stop', 'Stop or deprioritise', 'NOT WORKING: enough spend, weak over its history.']];
-const STATUS_CLASS = { 'WORKING NOW': 'ok', 'RISING': 'up', 'FADING / WAS WORKING': 'fade', 'NOT WORKING': 'bad', 'AVERAGE': 'flat', 'TOO EARLY': 'flat', 'UNTESTED / UNDER-TESTED': 'new', 'PROPOSED (draft)': 'new' };
+const STATUS_CLASS = { 'FADED': 'fade', 'COLLAPSED': 'bad', 'STOPPED': 'flat', 'WORKING NOW': 'ok', 'RISING': 'up', 'FADING / WAS WORKING': 'fade', 'NOT WORKING': 'bad', 'AVERAGE': 'flat', 'TOO EARLY': 'flat', 'UNTESTED / UNDER-TESTED': 'new', 'PROPOSED (draft)': 'new' };
 const roasX = (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–');
 const pct = (v) => (isNum(v) ? fmt.pct(v) : '–');
 
@@ -24,7 +24,7 @@ function stat(k, v) { return h('span', { class: 'pri-stat' }, h('span', { class:
 
 function numbers(r) {
   const m = r.metrics;
-  if (r.section === 'iterate' || r.section === 'revive' || r.section === 'stop') {
+  if (r.section === 'iterate' || r.section === 'faded' || r.section === 'stop') {
     return [stat('Spend', fmt.money(m.spend)), stat('ROAS', roasX(m.roas)), stat('CPA', fmt.money(m.cpa)), stat('Ads tested', fmt.int(m.judged)),
       stat('Hit rate', `${pct(m.hit_rate)} (${m.hits}/${m.mature})`), stat('Last 30 days', `${roasX(m.roas_30d)} on ${fmt.money(m.spend_30d)}`), stat('Prior 30 days', `${roasX(m.roas_prior30)} on ${fmt.money(m.spend_prior30)}`),
       stat('New ads, 30 days', fmt.int(m.launches_30d)), stat('Live ads', fmt.int(m.live_ads)), stat('Upstack new-customer ROAS', roasX(m.nc_roas)), stat('ROAS, strong tags only', roasX(m.roas_strong_tags))];
@@ -34,7 +34,7 @@ function numbers(r) {
 }
 
 function card(r) {
-  const hooks = r.hooks && r.hooks.length ? h('div', { class: 'pri-hooks' }, h('span', { class: 'pri-k' }, r.section === 'proposal' ? 'Competitor hooks seen' : r.section === 'new' ? 'Hooks to borrow (same product, adjacent winner)' : r.section === 'revive' ? 'Old winners\u2019 hooks' : 'Proven hooks to iterate from'),
+  const hooks = r.hooks && r.hooks.length ? h('div', { class: 'pri-hooks' }, h('span', { class: 'pri-k' }, r.section === 'proposal' ? 'Competitor hooks seen' : r.section === 'faded' ? 'Hooks from the working period' : r.section === 'new' ? 'Hooks to borrow (same product, adjacent winner)' : 'Proven hooks to iterate from'),
     h('ul', null, r.hooks.map((k) => h('li', null, k.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(k.ad_id), {}), title: k.ad }, k.hook) : k.hook,
       k.spend != null ? h('span', { class: 'pri-hookn' }, ` ${fmt.money(k.spend)} at ${roasX(k.roas)}`) : h('span', { class: 'pri-hookn' }, ` (${k.line_code})`))))) : null;
   return h('article', { class: 'pri-card pri-' + r.section, 'data-testid': 'pri-card' },
@@ -51,7 +51,12 @@ function card(r) {
       r.competitor ? h('p', { class: 'pri-others', 'data-testid': 'pri-others' }, h('span', { class: 'pri-k' }, 'What others are running: '), h('strong', null, r.competitor.text), ' (running a long time, not proven performance)') : null,
       h('div', { class: 'pri-stats' }, numbers(r)),
       h('p', { class: 'pri-why' }, r.why),
-      r.approach ? h('p', { class: 'pri-approach', 'data-testid': 'pri-approach' }, h('span', { class: 'pri-k' }, 'Suggested approach: '), r.approach) : null,
+      r.when_it_worked ? h('div', { class: 'pri-story-block', 'data-testid': 'pri-faded' },
+        h('p', null, h('strong', null, 'When it worked: '), r.when_it_worked), h('p', null, h('strong', null, 'When and how it stopped: '), r.how_it_stopped),
+        h('p', null, h('strong', null, 'Diagnosis (consistent with): '), r.diagnosis), h('p', { 'data-testid': 'pri-play' }, h('strong', null, 'Revive play: '), r.revive_play),
+        r.former_winners && r.former_winners.length ? h('div', null, h('span', { class: 'pri-k' }, 'Former winning ads'), h('ul', null, r.former_winners.map((w) => h('li', null,
+          w.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(w.ad_id), {}) }, w.ad) : w.ad, ` (${w.kind}) ${fmt.money(w.spend)} at ${roasX(w.roas)}${w.peak_week ? ', peak week of ' + w.peak_week : ''}${w.stopped ? ', stopped ' + w.stopped : ''}`)))) : null,
+        r.winners_summary ? h('p', { class: 'pri-k' }, `${r.winners_summary.still_working} of ${r.winners_summary.winners} winning ads still working; new ads in the last 30 days: ${r.winners_summary.launches_last_30d}${r.winners_summary.launches_in_peak != null ? ' (' + r.winners_summary.launches_in_peak + ' launched during the working stretch)' : ''}.`) : null) : null,
       r.flags && r.flags.length ? h('p', { class: 'pri-flags' }, 'Flags: ' + r.flags.join('; ')) : null,
       hooks));
 }
