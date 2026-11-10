@@ -304,7 +304,7 @@ def test_filter_view_stores_filters_freezes_the_matching_rows_and_lists_its_kind
     v = client.post("/api/priorities/views", json={"name": "VB live", "kind": "filters", "filters": {"products": ["vita-bull"], "sections": [], "q": " low ", "key": "pain", "dir": -1, "status": "WORKING NOW", "junk": 1}}).get_json()
     assert v["kind"] == "filters" and v["count"] == 1
     g = client.get("/api/priorities/views/" + v["token"]).get_json()
-    assert g["view"]["kind"] == "filters" and g["view"]["filters"] == {"products": ["vita-bull"], "sections": [], "q": "low", "key": "pain", "dir": -1, "status": "WORKING NOW"} and g["view"]["keys"] == []
+    assert g["view"]["kind"] == "filters" and g["view"]["filters"] == {"products": ["vita-bull"], "sections": [], "q": "low", "key": "pain", "dir": -1, "status": "WORKING NOW", "statuses": []} and g["view"]["keys"] == []
     assert [r["icp"] for r in g["rows"]] == ["Given Up Guy"]                              # frozen copy = the rows matching at save time
     lst = client.get("/api/priorities/views").get_json()["views"]
     assert lst[0]["kind"] == "filters" and lst[0]["filters"]["products"] == ["vita-bull"] and lst[0]["count"] == 1
@@ -410,3 +410,16 @@ def test_briefed_has_its_own_rate_limit_and_needs_login(anon, client, two_rows, 
     finally:
         app.config["PRIORITIES_BRIEFED_PER_MIN"] = old
         api_mod._briefed_limiter = None
+
+
+def test_filter_view_stores_a_list_of_statuses_and_old_single_status_still_filters(client, snaps, manual, views):
+    from app import creative_priorities as cpv
+    f = cpv.clean_filters({"products": [], "sections": [], "statuses": ["RISING", "WORKING NOW"], "q": ""})
+    assert f["statuses"] == ["RISING", "WORKING NOW"] and f["status"] is None
+    rows = [{"product": "vita-bull", "section": "iterate", "status": s} for s in ("RISING", "WORKING NOW", "NOT WORKING")]
+    assert [r["status"] for r in cpv.apply_filters(rows, f)] == ["RISING", "WORKING NOW"]
+    old = cpv.clean_filters({"products": [], "sections": [], "status": "NOT WORKING"})        # a view saved before multi-select
+    assert [r["status"] for r in cpv.apply_filters(rows, old)] == ["NOT WORKING"]
+    assert cpv.apply_filters(rows, cpv.clean_filters({})) == rows
+    with pytest.raises(Exception):
+        cpv.clean_filters({"statuses": "RISING"})

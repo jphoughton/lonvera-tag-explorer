@@ -98,8 +98,7 @@ def test_expand_all_and_collapse_all_act_on_the_filtered_rows(page):
 
 def test_product_and_section_filters_are_multi_select_and_search_matches_the_four_tag_fields(page):
     goto(page)
-    page.locator("[data-testid=pri-f-product-boneflex]").click()
-    page.locator("[data-testid=pri-f-product-beef-liver]").click()
+    page.locator("[data-testid=pri-f-product-vita-bull]").click()
     products = set(page.locator("[data-testid=pri-body] .pri-c-product").all_text_contents())
     assert products == {"Vita Bull"}
     page.locator("[data-testid=pri-f-product-boneflex]").click()
@@ -222,8 +221,7 @@ def test_selection_toolbar_counts_and_a_checkbox_click_does_not_expand_the_row(p
 
 def test_select_all_visible_respects_filters_and_selection_survives_filter_sort_and_expand(page):
     goto(page)
-    page.locator("[data-testid=pri-f-product-boneflex]").click()
-    page.locator("[data-testid=pri-f-product-beef-liver]").click()
+    page.locator("[data-testid=pri-f-product-vita-bull]").click()
     n = visible_rows(page)
     page.locator("[data-testid=pri-pick-all]").check()
     assert page.locator("[data-testid=pri-sel-count]").text_content() == f"{n} selected"
@@ -525,23 +523,21 @@ def test_latest_data_vs_frozen_as_saved_and_a_row_missing_from_the_current_snaps
 
 def test_filter_view_saves_the_current_filters_and_applies_them_live_to_new_matching_concepts(page):
     goto(page)
-    page.locator("[data-testid=pri-f-product-beef-liver]").click()
-    page.locator("[data-testid=pri-f-product-boneflex]").click()                                            # Vita Bull only
-    page.locator("[data-testid=pri-f-section-stop]").click()                                                 # ... without Stop
+    page.locator("[data-testid=pri-f-product-vita-bull]").click()                                            # Vita Bull only
+    page.locator("[data-testid=pri-f-section-iterate]").click()                                              # ... and only Iterate
     page.locator("[data-testid=pri-sort-pain]").click()
     n = visible_rows(page)
     assert 0 < n < 30
     vb = page.locator(f"[data-testid=pri-body] {ROW}").evaluate_all("els => els.map(e => [e.dataset.product, e.dataset.section])")
-    assert all(p == "vita-bull" and sct != "stop" for p, sct in vb)
+    assert all(p == "vita-bull" and sct == "iterate" for p, sct in vb)
     first_key = key_of_row(page, 0)
     # a concept is missing at save time; it is back later and the view picks it up by itself
     drop(page, keys=[first_key])
     page.reload()
     page.wait_for_selector("[data-testid=pri-page]")
     idle(page)
-    page.locator("[data-testid=pri-f-product-beef-liver]").click()
-    page.locator("[data-testid=pri-f-product-boneflex]").click()
-    page.locator("[data-testid=pri-f-section-stop]").click()
+    page.locator("[data-testid=pri-f-product-vita-bull]").click()
+    page.locator("[data-testid=pri-f-section-iterate]").click()
     page.locator("[data-testid=pri-sort-pain]").click()
     assert visible_rows(page) == n - 1
     page.locator("[data-testid=pri-save-open]").click()
@@ -555,7 +551,7 @@ def test_filter_view_saves_the_current_filters_and_applies_them_live_to_new_matc
     open_view(page, t)
     assert visible_rows(page) == n and "Vita Bull live" in page.locator(BAR).text_content()
     assert page.locator("[data-testid=pri-f-product-vita-bull]").get_attribute("aria-pressed") == "true" and page.locator("[data-testid=pri-f-product-beef-liver]").get_attribute("aria-pressed") == "false"
-    assert page.locator("[data-testid=pri-f-section-stop]").get_attribute("aria-pressed") == "false"
+    assert page.locator("[data-testid=pri-f-section-iterate]").get_attribute("aria-pressed") == "true" and page.locator("[data-testid=pri-f-section-stop]").get_attribute("aria-pressed") == "false"
     assert page.locator("[data-testid=pri-sort-pain]").locator("xpath=ancestor::th").get_attribute("aria-sort") == "ascending"
     assert "applied live" in page.locator(BAR).text_content()
     page.locator("[data-testid=pri-data-mode]").select_option("frozen")                                      # frozen = the concepts that matched when it was saved
@@ -593,8 +589,7 @@ def test_update_this_view_replaces_rows_or_filters_and_rename_and_delete_work_on
     tf = tok(save_filter_view(page, "Filtered"))
     open_view(page, tf)
     page.locator("[data-testid=pri-search]").fill("")
-    page.locator("[data-testid=pri-f-product-boneflex]").click()
-    page.locator("[data-testid=pri-f-product-beef-liver]").click()
+    page.locator("[data-testid=pri-f-product-vita-bull]").click()
     page.locator("[data-testid=pri-view-update]").click()
     page.wait_for_function("() => document.querySelector('[data-testid=pri-view-notice]')")
     f = page.request.get(page.url.split("/priorities")[0] + f"/api/priorities/views/{tf}").json()["view"]["filters"]
@@ -730,10 +725,10 @@ def test_every_fact_is_still_in_every_expanded_panel(page):
             assert fl in txt
         if r["section"] in ("iterate", "faded", "stop"):
             m = r["metrics"]
-            for label in ("Spend", "ROAS (all time)", "CPA (all time)", "Upstack new-customer ROAS", "ROAS, strong tags only", "Ads launched", "Under $100 spend", "Ads tested ($100+)", "Ads that reached $10K+", "New ads, 30 days", "Launched in last 30 days", "Of those, $10K+ so far", "Last 30 days", "Prior 30 days", "Live ads"):
+            for label in ("Spend", "ROAS (all time)", "CPA (all time)", "Upstack new-customer ROAS", "ROAS, strong tags only", "Ads launched", "Hit rate ($10K+ spend)", "New ads, 30 days", "Launched in last 30 days", "Of those, $10K+ so far", "Last 30 days", "Prior 30 days", "Live ads"):
                 assert label.lower() in txt.lower(), (label, r["pain_point"])
             fn = m["funnel"]
-            assert f"{fn['launched']:,}" in txt and f"{fn['tested']:,}" in txt and f"{fn['top']:,}" in txt and "launched =" in txt
+            assert f"{fn['launched']:,}" in txt and f"{fn['top']:,} of {fn['launched']:,} launched ads" in txt and "Under $100 spend" not in txt
             assert _money(m["spend"]) in txt and _money(m["spend_30d"]) in txt and _money(m["spend_prior30"]) in txt
         else:
             assert "Ads tagged" in txt or r["section"] == "proposal" or r["section"] == "competitor"
@@ -929,15 +924,15 @@ def test_manual_row_filters_search_sort_selection_csv_print_and_copy(page):
     page.locator("[data-testid=pri-search]").fill("Ancestral")
     assert page.locator(MROW).count() == 1
     page.locator("[data-testid=pri-search]").fill("")
-    page.locator("[data-testid=pri-f-section-new]").click()
+    page.locator("[data-testid=pri-f-section-stop]").click()                                                            # only Stop: the manual concept (section New) is not in it
     assert page.locator(MROW).count() == 0
-    page.locator("[data-testid=pri-f-section-new]").click()
+    page.locator("[data-testid=pri-f-section-stop]").click()
     page.locator("[data-testid=pri-f-product-vita-bull]").click()
-    assert page.locator(MROW).count() == 1                                                                              # a Beef Liver concept is not filtered by the Vita Bull chip
+    assert page.locator(MROW).count() == 0                                                                              # only Vita Bull: a Beef Liver concept is filtered out
     page.locator("[data-testid=pri-f-product-beef-liver]").click()
-    assert page.locator(MROW).count() == 0
+    assert page.locator(MROW).count() == 1                                                                              # Vita Bull + Beef Liver: union
     page.locator("[data-testid=pri-f-product-beef-liver]").click()
-    page.locator("[data-testid=pri-f-product-vita-bull]").click()
+    page.locator("[data-testid=pri-f-product-vita-bull]").click()                                                       # nothing selected: everything again
     page.locator("[data-testid=pri-sort-status]").click()
     assert page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("rows => rows.map(r => r.dataset.source)").count("manual") == 1
     # selection + CSV: the manual row is exported with source=manual in the appended columns
@@ -1130,18 +1125,20 @@ def test_product_tiles_show_the_four_numbers_and_filter_by_product(page):
         fn, f3 = b["funnel"], b["funnel_30d"]
         assert b["product_name"] in txt and _roas(b["roas"]) in txt and _roas(b["roas_30d"]) in txt and _money(b["cpa"]) in txt and _money(b["cpa_30d"]) in txt, (slug, txt)
         assert "All time" in txt and "Last 30 days" in txt and "ROAS (all time)" in txt and "CPA (all time)" in txt and "ROAS (30 days)" in txt and "vs all time" in txt, (slug, txt)
-        assert f"Launched {fn['launched']:,} \u00b7 under $100: {fn['under_tested']:,}" in t.locator("[data-testid=pri-funnel]").text_content(), slug
-        assert f"$100+: {fn['tested']:,} \u00b7 $10K+: {fn['top']:,}" in txt and f"{fn['top']:,} of {fn['launched']:,}" in txt and f"{fn['top']:,} of {fn['tested']:,}" in txt, (slug, txt)
-        cs = t.locator("[data-testid=pri-cohorts] [data-testid=pri-cohort]")
-        assert cs.count() == 3 and t.locator("[data-testid=pri-funnel-bar]").count() == 5
-        for i, c in enumerate(b["cohorts"]):
-            ct = cs.nth(i).text_content()
-            assert c["label"] in ct and f"{c['top']:,} of {c['launched']:,}" in ct and f"under $100: {c['under_tested']:,}" in ct and f"({c['spent']:,} with spend)" in ct, (slug, ct)
-        assert "Activity in the window" in txt and "spend to date" in txt
+        strip = t.locator("[data-testid=pri-hitstrip]")
+        c30, c14 = b["cohorts"][0], b["cohort_14d"]
+        st = strip.text_content()
+        for tid, n, m, lab in (("pri-hit-all", fn["top"], fn["launched"], "Lifetime"), ("pri-hit-30", c30["top"], c30["launched"], "Launched in last 30 days"), ("pri-hit-14", c14["top"], c14["launched"], "Launched in last 14 days")):
+            cell = strip.locator(f"[data-testid={tid}]").text_content()
+            assert lab in cell and f"{n:,} of {m:,} launched ads" in cell and (f"{100 * n / m:.1f}%" if 0 < 100 * n / m < 10 else f"{round(100 * n / m)}%") in cell, (slug, tid, cell)
+        assert "Hit rate (ads that reached $10K+ spend)" in st
+        for gone in ("under $100", "with spend", "Ads by launch date", "31 to 60", "61 to 90", "of tested"):
+            assert gone.lower() not in txt.lower(), (slug, gone)
+        assert t.locator("[data-testid=pri-funnel-bar]").count() == 0 and t.locator("[data-testid=pri-cohort]").count() == 0
+        assert "Activity in the window" in txt
         b14 = t.locator("[data-testid=pri-pblock-14d]")
-        c14 = b["cohort_14d"]
-        assert "Last 14 days" in b14.text_content() and "ROAS (14 days)" in b14.text_content() and _money(b["spend_14d"]) in b14.text_content() and f"{c14['top']:,} of {c14['launched']:,}" in b14.text_content()
-        assert txt.index("All time") < txt.index("Last 30 days") < txt.index("Last 14 days")
+        assert "Last 14 days" in b14.text_content() and "ROAS (14 days)" in b14.text_content() and _money(b["spend_14d"]) in b14.text_content()
+        assert txt.index("All time") < txt.index("Last 30 days") < txt.index("Last 14 days") < txt.index("Hit rate (ads that reached")
     page.locator("[data-testid=pri-ptile][data-product='beef-liver']").click()
     assert set(page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("els => els.map(e => e.dataset.product)")) == {"beef-liver"}
     assert page.locator("[data-testid=pri-f-product-beef-liver]").get_attribute("aria-pressed") == "true" and page.locator("[data-testid=pri-f-product-vita-bull]").get_attribute("aria-pressed") == "false"
@@ -1168,10 +1165,10 @@ def test_disclosures_keep_every_word_and_the_clear_filters_link_resets_everythin
     for s_ in FIXTURE["baselines"].values():
         fn_ = s_["funnel"]
         flat = intro.replace("×", "x")
-        assert f"{s_['product_name']} ALL TIME: ROAS {_roas(s_['roas'])}, CPA {_money(s_['cpa'])}; Launched {fn_['launched']:,} \u00b7 under $100: {fn_['under_tested']:,}" in flat, s_["product_name"]
-        assert f"$10K+: {fn_['top']:,}" in flat and f"LAST 30 DAYS: ROAS {_roas(s_['roas_30d'])}, CPA {_money(s_['cpa_30d'])}" in flat
-        c0 = s_["cohorts"][0]
-        assert f"launched in the last 30 days: {c0['top']:,} of {c0['launched']:,} hit $10K+" in flat
+        assert f"{s_['product_name']} ALL TIME: ROAS {_roas(s_['roas'])}, CPA {_money(s_['cpa'])}. LAST 30 DAYS: ROAS {_roas(s_['roas_30d'])}, CPA {_money(s_['cpa_30d'])}" in flat, s_["product_name"]
+        c0, c14 = s_["cohorts"][0], s_["cohort_14d"]
+        assert f"Hit rate (ads that reached $10K+ spend): lifetime" in flat and f"({fn_['top']:,} of {fn_['launched']:,} launched ads)" in flat
+        assert f"({c0['top']:,} of {c0['launched']:,})" in flat and f"({c14['top']:,} of {c14['launched']:,})" in flat and "under $100" not in flat.lower()
 
 
 def test_metric_help_defines_every_metric_and_is_keyboard_operable(page):
@@ -1181,7 +1178,7 @@ def test_metric_help_defines_every_metric_and_is_keyboard_operable(page):
     h.locator("summary").focus()
     page.keyboard.press("Enter")
     txt = h.text_content()
-    for frag in ("ROAS", "CPA", "Launched", "Tested", "Hit", "$10,000", "$100", "Last 30 days", "Upstack new-customer ROAS", "Data through 2026-11-08"):
+    for frag in ("ROAS", "CPA", "Launched", "Hit rate", "Hit", "$10,000", "$100", "Last 30 days", "Upstack new-customer ROAS", "Data through 2026-11-08"):
         assert frag in txt, frag
     assert h.locator("ul").is_visible()
 
@@ -1388,7 +1385,7 @@ def test_share_page_has_product_filter_with_counts_briefed_toggle_progress_and_h
     assert visible_rows(p) == len(idx) - 2 and p.locator("[data-testid=pri-hide-briefed]").get_attribute("aria-pressed") == "true"
     first = next(iter(want))
     other = [k for k in want if k != first]
-    p.locator(f"[data-testid=pri-f-product-{other[0]}]").click()                                                                      # composes with the product chips
+    p.locator(f"[data-testid=pri-f-product-{first}]").click()                                                                      # composes with the product chips
     assert all(x == first for x in p.locator(f"[data-testid=pri-body] {ROW}").evaluate_all("els => els.map(e => e.dataset.product)"))
     assert "of" in p.locator(PROG).text_content() and p.locator("[data-testid=pri-active-filters]").text_content().startswith("2 filter")
     p.locator("[data-testid=pri-clear-filters]").click()
@@ -1573,3 +1570,47 @@ def test_print_copy_leaves_out_everything_else(page):
     _with_rest_rows(page)
     goto(page)
     assert page.locator("[data-testid=pri-print-copy] [data-testid=pri-print-row]").filter(has_text="Rest A").count() == 0
+
+
+def test_chips_start_unselected_show_everything_and_select_to_narrow(page):
+    goto(page)
+    total = visible_rows(page)
+    chips = page.locator("[data-testid^=pri-f-product-], [data-testid^=pri-f-section-]")
+    assert chips.count() >= 8 and all(c.get_attribute("data-on") == "false" for c in chips.all())            # none selected: every chip outlined / off
+    assert page.locator("[data-testid=pri-stat][aria-pressed=true]").count() == 0 and page.locator("[data-testid=pri-clear-filters]").is_hidden()
+    def prods(): return set(page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("els => els.map(e => e.dataset.product)"))
+    def secs(): return set(page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("els => els.map(e => e.dataset.section)"))
+    page.locator("[data-testid=pri-f-product-vita-bull]").click()                                              # first click = just that one
+    assert prods() == {"vita-bull"} and page.locator("[data-testid=pri-f-product-vita-bull]").get_attribute("data-on") == "true" and page.locator("[data-testid=pri-f-product-boneflex]").get_attribute("data-on") == "false"
+    page.locator("[data-testid=pri-f-product-boneflex]").click()                                               # second = union inside the group
+    assert prods() == {"vita-bull", "boneflex"}
+    page.locator("[data-testid=pri-f-section-stop]").click()                                                   # across groups = AND
+    assert prods() <= {"vita-bull", "boneflex"} and secs() == {"stop"} and "2 filters on" in page.locator("[data-testid=pri-active-filters]").text_content()
+    page.locator("[data-testid=pri-f-section-stop]").click()                                                   # deselect
+    assert len(secs()) > 1
+    page.locator("[data-testid=pri-f-product-vita-bull]").click()
+    page.locator("[data-testid=pri-f-product-boneflex]").click()                                               # both deselected: no product filter again
+    assert prods() == {"vita-bull", "beef-liver", "boneflex"}
+    page.locator("[data-testid=pri-stat][data-status='RISING']").click()                                       # status behaves the same: only that status, then add another
+    assert set(page.locator("[data-testid=pri-body] [data-testid=pri-status]").all_text_contents()) == {"RISING"}
+    page.locator("[data-testid=pri-stat][data-status='WORKING NOW']").click()
+    assert set(page.locator("[data-testid=pri-body] [data-testid=pri-status]").all_text_contents()) == {"RISING", "WORKING NOW"}
+    page.locator("[data-testid=pri-clear-filters]").click()
+    assert visible_rows(page) == total and page.locator("[data-testid=pri-stat][aria-pressed=true]").count() == 0
+    assert all(c.get_attribute("data-on") == "false" for c in chips.all())
+    page.locator("[data-testid=pri-f-product-vita-bull]").click()                                              # deselecting the last selected chip returns to no filter
+    page.locator("[data-testid=pri-f-product-vita-bull]").click()
+    assert visible_rows(page) == total
+
+
+def test_filter_view_round_trips_selected_chips_including_statuses(page):
+    goto(page)
+    page.locator("[data-testid=pri-f-product-vita-bull]").click()
+    page.locator("[data-testid=pri-stat][data-status='RISING']").click()
+    page.locator("[data-testid=pri-stat][data-status='WORKING NOW']").click()
+    n = visible_rows(page)
+    t = tok(save_filter_view(page, "Chips round trip"))
+    open_view(page, t)
+    assert visible_rows(page) == n
+    assert page.locator("[data-testid=pri-f-product-vita-bull]").get_attribute("data-on") == "true" and page.locator("[data-testid=pri-f-product-beef-liver]").get_attribute("data-on") == "false"
+    assert page.locator("[data-testid=pri-stat][data-status='RISING']").get_attribute("aria-pressed") == "true" and page.locator("[data-testid=pri-stat][data-status='WORKING NOW']").get_attribute("aria-pressed") == "true"
