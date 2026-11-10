@@ -1135,3 +1135,12 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 .prod-saved { font-size: 13px; }
 @media (max-width: 600px) { .prod-controls { flex-direction: column; align-items: stretch; } .prod-dl { grid-template-columns: 1fr; } }
 .prod-page .pri-flabel, .prod-page .pri-sub { font-size: 12px; }
+
+/* Action chips (2026-11-10): revive / make_more / test / add / stop / hold reuse the colours of the sections they replaced */
+.pri-sec-revive { background: var(--lv-pri-sec-faded, #b35900); } .pri-sec-make_more { background: var(--lv-pri-sec-iterate, #1a7f37); } .pri-sec-test { background: var(--lv-pri-sec-new, #7a3db8); }
+.pri-sec-add { background: var(--lv-pri-sec-competitor, #0b6bcb); } .pri-sec-hold { background: var(--lv-pri-sec-rest, #6b6459); }
+.pri-cc-sec-revive { --cc: var(--lv-pri-sec-faded); } .pri-cc-sec-make_more { --cc: var(--lv-pri-sec-iterate); } .pri-cc-sec-test { --cc: var(--lv-pri-sec-new); } .pri-cc-sec-add { --cc: var(--lv-pri-sec-competitor); }
+.pri-cc-sec-stop { --cc: var(--lv-pri-sec-stop); } .pri-cc-sec-hold { --cc: var(--lv-pri-sec-rest); }
+.pri-defs { margin: 8px 0 0; } .pri-defs-b { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 4px 28px; margin-top: 6px; }
+.pri-defs dl { margin: 0; } .pri-defs dt { font-weight: 700; margin-top: 6px; } .pri-defs dd { margin: 1px 0 0; color: var(--lv-muted, #475467); }
+.pri-defs h3 { margin: 4px 0 0; font-size: 13px; text-transform: none; letter-spacing: 0; }

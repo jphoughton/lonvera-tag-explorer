@@ -137,7 +137,7 @@ export async function openConceptForm({ row = null, onSaved }) {
     h('p', { class: 'pri-k pri-dlead' }, 'Pick from the Communication Overview, or choose “Other / new…” on any list to propose a new value. Manual concepts stay on the sheet until you mark them done or delete them.'),
     h('div', { class: 'pri-dgrid' },
       h('div', { class: 'pri-fld' }, h('label', { for: 'pri-f-product' }, 'Product'), product),
-      h('div', { class: 'pri-fld' }, h('label', { for: 'pri-f-section' }, 'Section'), section),
+      h('div', { class: 'pri-fld' }, h('label', { for: 'pri-f-section' }, 'Action'), section),
       cluster.el, icp.el, pain.el, story.el,
       h('div', { class: 'pri-fld pri-wide' }, h('label', { for: 'pri-f-notes' }, 'Notes ', count), notes),
       h('div', { class: 'pri-fld pri-wide' }, h('label', { for: 'pri-f-why' }, 'Why now / what to test ', h('span', { class: 'pri-k' }, '(optional)')), why)),

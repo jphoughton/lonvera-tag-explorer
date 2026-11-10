@@ -86,13 +86,15 @@ def test_ckey_on_every_row_and_stable_across_sections(client, snaps):
     b = client.get("/api/priorities?week=2026-11-08").get_json()["rows"]
     assert [r["ckey"] for r in a] == ["line:1", "text:vita-bull|hair thinning|denise|shedding", "text:vita-bull||x|"]
     assert [r["ckey"] for r in b] == [r["ckey"] for r in a]
-    assert a[0]["section"] == "iterate" and b[0]["section"] == "faded"            # the section moved, the concept key did not
+    assert a[0]["section"] == "make_more" and b[0]["section"] == "revive"          # the section moved (stored as iterate / faded, read as the new Action), the concept key did not
 
 
 def test_ckey_is_added_to_rows_and_nothing_else_changes(client, snaps, pg):
     d = client.get("/api/priorities?week=2026-11-08").get_json()
     stored = pg.execute("SELECT rows FROM creative_priorities_snapshots WHERE week_start = '2026-11-08'").fetchone()[0]
-    assert [{k: v for k, v in r.items() if k != "ckey"} for r in d["rows"]] == stored
+    from etl import creative_priorities as cpm
+    assert [{k: v for k, v in r.items() if k != "ckey"} for r in d["rows"]] == cpm.norm_snapshot({"rows": stored})["rows"]       # only the old->new vocabulary read map; storage itself is untouched
+    assert stored[0]["section"] == "faded" and d["rows"][0]["section"] == "revive"
 
 
 def test_saved_view_rows_carry_ckey(client, snaps, pg):
@@ -126,7 +128,7 @@ def test_assign_creates_rows_from_the_server_snapshot_and_skips_duplicates(clien
     assert [c["concept_key"] for c in d["created"]] == ["line:1", "text:vita-bull|hair thinning|denise|shedding"] and d["skipped"] == []
     c = d["created"][0]
     assert c["for_week"] == MONDAY and c["vendor"] == "Madre" and c["note"] == "brief sent" and c["stage"] == "assigned" and c["stage_label"] == "Assigned"
-    assert (c["product"], c["cluster"], c["icp"], c["pain_point"], c["line_id"], c["line_code"], c["section_at_assign"]) == ("vita-bull", "Energy", "Given Up Guy", "Low T", 1, "L01", "faded")
+    assert (c["product"], c["cluster"], c["icp"], c["pain_point"], c["line_id"], c["line_code"], c["section_at_assign"]) == ("vita-bull", "Energy", "Given Up Guy", "Low T", 1, "L01", "revive")
     assert c["story"] == ROW["story"] and c["created_by"] == "JoshHoughton" and c["updated_by"] == "JoshHoughton"
     assert c["ads"] == [] and c["suggested_concept_ids"] == [] and c["tracker_status"] is None and c["tracker_concept_ids"] == []
     again = assign(client, keys, "Madre", MONDAY).get_json()
@@ -452,3 +454,13 @@ def test_write_rate_limits(client, anon, app, snaps):
         app.config["PRIORITIES_ASSIGN_PER_MIN"], app.config["PRIORITIES_VENDOR_PER_MIN"] = old
         api_mod._assign_limiter = None
         api_mod._vendor_limiter = None
+
+
+def test_assign_accepts_an_old_section_key_and_stores_the_new_action(client, snaps, pg):
+    r = assign(client, [_key({**LINE_ROW, "section": "faded"})], "Madre", MONDAY)          # product|faded|...: a key from before the redesign
+    assert r.status_code == 201 and r.get_json()["skipped"] == []
+    assert pg.execute("SELECT section_at_assign FROM creative_priorities_assignments").fetchone()[0] == "revive"
+    pg.execute("UPDATE creative_priorities_assignments SET section_at_assign = 'proposal'")
+    pg.commit()
+    got = client.get("/api/priorities/assignments").get_json()
+    assert [a["section_at_assign"] for a in got["rows"]] == ["add"]                  # an old stored value shows as the new Action

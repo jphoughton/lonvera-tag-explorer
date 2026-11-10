@@ -40,8 +40,9 @@ def snapshot(conn, raw_week: str | None) -> dict:
         row = conn.execute("SELECT week_start, built_at, data_through, basis, thresholds, baselines, rows, stats FROM creative_priorities_snapshots ORDER BY week_start DESC LIMIT 1").fetchone()
         if row is None:
             raise q.ApiError(404, NOT_BUILT)
-    return {"week_start": row["week_start"].isoformat(), "built_at": row["built_at"].isoformat(), "data_through": row["data_through"].isoformat(), "basis": row["basis"],
-            "thresholds": row["thresholds"], "baselines": row["baselines"], "rows": row["rows"], "stats": row["stats"]}
+    from etl import creative_priorities as cp
+    return cp.norm_snapshot({"week_start": row["week_start"].isoformat(), "built_at": row["built_at"].isoformat(), "data_through": row["data_through"].isoformat(), "basis": row["basis"],
+                             "thresholds": row["thresholds"], "baselines": row["baselines"], "rows": row["rows"], "stats": row["stats"]})     # old snapshots read in the Action / Status vocabulary; storage is untouched
 
 
 def payload(conn, raw_week: str | None) -> dict:
@@ -49,7 +50,8 @@ def payload(conn, raw_week: str | None) -> dict:
     snap = pm.merge(snapshot(conn, raw_week), pm.list_records(conn))        # manual concepts are not tied to a week: they ride along on every snapshot (done ones flagged, hidden by the page)
     snap = {**snap, "rows": with_ckey(snap["rows"])}
     comp = (snap.get("stats") or {}).get("competitors")
-    return {**snap, "competitors_as_of": comp["as_of"] if comp else None, "competitor_stale": (comp or {}).get("stale_brands", []), "weeks": weeks(conn), "legend": [{"tag": a, "meaning": b} for a, b in cp.LEGEND]}
+    return {**snap, "competitors_as_of": comp["as_of"] if comp else None, "competitor_stale": (comp or {}).get("stale_brands", []), "weeks": weeks(conn), "legend": [{"tag": a, "meaning": b} for a, b in cp.LEGEND],
+            "definitions": cp.definitions(snap.get("thresholds"))}
 
 
 def with_ckey(rows: list[dict]) -> list[dict]:
@@ -61,14 +63,16 @@ def row_key(r: dict) -> str:
     """The stable row key (same join as the page): product|section|cluster|icp|pain_point, unique per row within a snapshot; a manual concept is manual:<id>."""
     if r.get("manual"):
         return str(r["key"])
-    return "|".join(str(r.get(k)) for k in ("product", "section", "cluster", "icp", "pain_point"))
+    from etl import creative_priorities as cp
+    return "|".join(str(cp.norm_section(r.get(k)) if k == "section" else r.get(k)) for k in ("product", "section", "cluster", "icp", "pain_point"))
 
 
 def filter_rows(snap: dict, ids: list[str] | None) -> dict:
     """Snapshot restricted to the rows whose key is in ids (None or empty = everything)."""
     if not ids:
         return snap
-    keep = set(ids)
+    from etl import creative_priorities as cp
+    keep = {cp.norm_key(i) for i in ids}                      # an old-section key (a bookmarked selection, a saved view) still finds its row
     return {**snap, "rows": [r for r in snap["rows"] if row_key(r) in keep]}
 
 
@@ -122,6 +126,8 @@ def clean_filters(raw) -> dict:
         if not isinstance(v, list) or len(v) > 30 or not all(isinstance(x, str) and 0 < len(x) <= 60 for x in v):
             raise q.ApiError(400, f"filters.{k} must be a short list of strings")
         out[k] = list(dict.fromkeys(v))
+    from etl import creative_priorities as cp
+    out["sections"] = list(dict.fromkeys(cp.norm_section(x) for x in out["sections"]))
     qq = raw.get("q") or ""
     if not isinstance(qq, str) or len(qq) > 200:
         raise q.ApiError(400, "filters.q must be text of at most 200 characters")
@@ -138,15 +144,18 @@ def clean_filters(raw) -> dict:
     sts = raw.get("statuses") or []
     if not isinstance(sts, list) or len(sts) > 20 or not all(isinstance(x, str) and 0 < len(x) <= 60 for x in sts):
         raise q.ApiError(400, "filters.statuses must be a short list of status names")
-    out["statuses"] = list(dict.fromkeys(sts))
+    from etl import creative_priorities as cp
+    out["statuses"] = list(dict.fromkeys(cp.norm_status(x) for x in sts))
+    out["status"] = cp.norm_status(out["status"]) if out["status"] else None
     return out
 
 
 def apply_filters(rows: list[dict], f: dict) -> list[dict]:
     """Rows matching a saved filter state (same rules as the page: product and section membership, search over cluster / ICP / pain point / story). Order is kept."""
-    prods, secs, needle = set(f.get("products") or []), set(f.get("sections") or []), (f.get("q") or "").strip().lower()
-    statuses = set(f.get("statuses") or []) | ({f["status"]} if f.get("status") else set())
-    return [r for r in rows if (not prods or r.get("product") in prods) and (not secs or r.get("section") in secs) and (not statuses or r.get("status") in statuses)
+    from etl import creative_priorities as cp
+    prods, secs, needle = set(f.get("products") or []), {cp.norm_section(x) for x in (f.get("sections") or [])}, (f.get("q") or "").strip().lower()
+    statuses = {cp.norm_status(x) for x in (f.get("statuses") or [])} | ({cp.norm_status(f["status"])} if f.get("status") else set())
+    return [r for r in rows if (not prods or r.get("product") in prods) and (not secs or r.get("section") in secs) and (not statuses or cp.norm_status(r.get("status")) in statuses)
             and (not needle or any(needle in str(r.get(k) or "").lower() for k in ("cluster", "icp", "pain_point", "story")))]
 
 
@@ -164,7 +173,8 @@ def build_view(full: dict, body: dict) -> dict:
         ids = list(dict.fromkeys(ids))
         if len(ids) > MAX_VIEW_ROWS:
             raise q.ApiError(400, f"A saved view holds at most {MAX_VIEW_ROWS} rows.")
-        keep = set(ids)
+        from etl import creative_priorities as cp
+        keep = {cp.norm_key(i) for i in ids}
         rows = [r for r in full["rows"] if row_key(r) in keep]
         if not rows:
             raise q.ApiError(400, "None of the selected rows exist in that snapshot.")
@@ -218,10 +228,17 @@ def list_views(limit: int = 50) -> list[dict]:
 
 def view_response(r: dict) -> dict:
     """The GET body for one stored view (shared with the UI test mock): the frozen payload plus a `view` block (name, kind, filters, row keys)."""
-    p = {**r["payload"], "rows": with_ckey(r["payload"]["rows"])}
+    from etl import creative_priorities as cp
+    p = cp.norm_snapshot(r["payload"])                        # a frozen payload saved before the Action / Status redesign reads in the new vocabulary (stored copy untouched)
+    p = {**p, "rows": with_ckey(p["rows"]), "definitions": cp.definitions(p.get("thresholds"))}
+    flt = r.get("filters")
+    if isinstance(flt, dict):
+        flt = {**flt, "sections": list(dict.fromkeys(cp.norm_section(x) for x in flt.get("sections") or [])), "statuses": list(dict.fromkeys(cp.norm_status(x) for x in flt.get("statuses") or [])),
+               "status": cp.norm_status(flt["status"]) if flt.get("status") else None}
+    briefed = {cp.norm_key(k): v for k, v in (r.get("briefed") or {}).items()}
     return {**p, "weeks": [], "view": {"token": r["token"], "name": r["name"], "week_start": r["week_start"].isoformat() if hasattr(r["week_start"], "isoformat") else r["week_start"],
                                        "created_at": r["created_at"].isoformat() if hasattr(r["created_at"], "isoformat") else r["created_at"], "count": len(p["rows"]),
-                                       "kind": r.get("kind") or "rows", "filters": r.get("filters"), "keys": list(r.get("keys") or []), "briefed": r.get("briefed") or {}}}
+                                       "kind": r.get("kind") or "rows", "filters": flt, "keys": list(dict.fromkeys(cp.norm_key(k) for k in (r.get("keys") or []))), "briefed": briefed}}
 
 
 def get_view(token: str) -> dict:
@@ -263,18 +280,22 @@ def set_briefed(conn, token: str, body: dict) -> dict:
     Stored per view + row key with a timestamp, so everyone with the link sees the same state."""
     if not TOKEN_RE.fullmatch(token or ""):
         raise q.ApiError(404, "Saved view not found.")
+    from etl import creative_priorities as cp
     key, flag, note = clean_briefed(body)
+    key = cp.norm_key(key)
     with _views_conn() as w:
         r = w.execute("SELECT kind, keys, payload FROM creative_priorities_views WHERE token = %s", (token,)).fetchone()
     if r is None:
         raise q.ApiError(404, "Saved view not found.")
-    valid = set(r["keys"]) | {row_key(x) for x in r["payload"]["rows"]}
+    valid = {cp.norm_key(k) for k in r["keys"]} | {row_key(x) for x in r["payload"]["rows"]}
     if key not in valid and r["kind"] == "filters":
         valid |= {row_key(x) for x in payload(conn, None)["rows"]}
     if key not in valid:
         raise q.ApiError(404, "That concept is not in this view.")
     now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
     with _views_conn() as w:
+        for k_ in cp.key_variants(key)[1:]:                    # state stored under an old-section key is replaced / removed together with the new one
+            w.execute("UPDATE creative_priorities_views SET briefed = briefed - %s::text WHERE token = %s", (k_, token))
         if flag:
             w.execute("UPDATE creative_priorities_views SET briefed = briefed || jsonb_build_object(%s::text, %s::jsonb) WHERE token = %s", (key, Jsonb({"at": now, "note": note}), token))
         else:
