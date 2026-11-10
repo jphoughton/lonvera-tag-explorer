@@ -175,6 +175,10 @@ Notes
 * To expose more (say `proj_feed_nc_product`), add a view to `analytics` in a new migration and describe it; to expose less, drop its view. Nothing else grants access.
 * Verify the documented schema against production without writing: `railway run -s etl sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" .venv/bin/python scripts/gen_schema_doc.py --verify-live'` (opens a READ ONLY session).
 
+## Failure and staleness alerts (hourly cron service `alerts`)
+
+`python -m etl.alerts` checks every job and key table once an hour and posts to Slack (`SLACK_ALERT_WEBHOOK_URL`, set on the `alerts` service only). Start command `scripts/deploy/run_alerts.sh`, cron `0 * * * *`, `DATABASE_URL` by reference to `etl`; create it with `scripts/deploy/apply_alerts_service.py`. Checks, thresholds, setup and how to add or silence a check: `docs/ALERTS.md`.
+
 ## Live today (hourly cron service `live`)
 
 Fills the "Meta spend today" and "NC revenue today" cards on Projections > Pacing without typing: once an hour it asks Upstack for the Pacific day so far (Meta spend, Google spend, total spend, new-customer revenue, new customers) and stores one snapshot row in `proj_live_today_snapshots` (migration 192, history kept 90 days). The page reads the newest row through `GET /api/projection/pacing/live-today`.

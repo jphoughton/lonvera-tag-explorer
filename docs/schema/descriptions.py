@@ -1389,6 +1389,17 @@ for _b, _lbl in (("nc", "Upstack new customers"), ("all", "Upstack all orders"))
 # public: ops
 # =====================================================================================================================================
 
+rel("public.alert_state", group="ops", kind="table",
+    purpose="De-duplication state of the failure and staleness alerts sent to Slack by etl.alerts: one row per check (a job that failed, a table that went stale, the web health check ...), so the job alerts once when a problem appears, repeats every 24 hours while it lasts, and sends one 'recovered' line when it clears.",
+    grain="one row per check id", source="etl.alerts (hourly Railway cron service `alerts`)", refresh="hourly", coverage="from the first run of the alerts service",
+    caveats=["resolved_at is NULL while the problem is open; a problem that comes back reopens the same row (first_seen restarts, alert_count restarts).",
+             "last_alerted is NULL when the problem was seen but no message could be sent (for example SLACK_ALERT_WEBHOOK_URL is not set yet): the alert goes out on the first run after the webhook works."],
+    cols={"check_id": "Stable id of the check, for example job:run_daily, fresh:meta, web:health (primary key).", "first_seen": "When the current problem was first seen.",
+          "last_seen": "Last run that still saw the problem (or the run that saw it clear, when resolved).", "last_alerted": "When Slack was last told about it; NULL if never delivered.",
+          "resolved_at": "When the problem cleared; NULL while open.", "alert_count": "Messages sent for the current problem.",
+          "fingerprint": "Short text that changes when the problem changes shape (for example another feed started failing); a change re-alerts at once.",
+          "last_message": "Text of the last alert (what broke, since when, how to fix)."})
+
 rel("public.etl_runs", group="ops", kind="table",
     purpose="Log of every pipeline job run. analytics.etl_runs is the same table with the error cut to 500 characters.",
     grain="one row per job run", source="etl.db.JobRun (own autocommit connection, so a failed job still leaves a 'failed' row)", refresh="one row per run",
