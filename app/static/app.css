@@ -639,49 +639,88 @@ p, .tts-bulk-note, .tts-foot, .note-line, .sv-lead { max-width: 50ch; }
 .tl-foot, .tl-empty { color: var(--muted); font-size: 12px; margin-top: 8px; }
 @media (max-width: 600px) { .tl-list { grid-template-columns: 1fr; } .tl-input { flex-basis: 100%; } }
 
-/* ---- Creative priorities (/priorities): the brief cards; Market Cluster -> ICP -> Pain Point -> Story lead, numbers follow ---- */
-.pri-page { max-width: 1180px; }
+/* ---- Creative priorities (/priorities): one table per section, one row per concept, all collapsed; the chevron button opens the detail panel under the row ---- */
+.pri-page { max-width: 1280px; }
 .pri-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.pri-expbar { display: inline-flex; gap: 6px; }
 .pri-lead { margin: 6px 0; font-size: 13px; }
 .pri-legend { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 10px 0; font-size: 13px; }
-.pri-legend dt { font-weight: 700; }
-.pri-legend dd { margin: 0; }
+.pri-legend dt { font-weight: 700; } .pri-legend dd { margin: 0; }
 .pri-base { font-size: 12px; margin: 8px 0 14px; display: grid; gap: 2px; }
 .pri-product { margin-top: 22px; }
-.pri-section h3 { margin: 14px 0 8px; }
+.pri-section { margin: 14px 0 18px; }
+.pri-section h3 { margin: 0 0 4px; }
 .pri-sub { font-weight: 400; font-size: 12px; opacity: .75; }
-.pri-card { border: 1px solid var(--border, #d8d8d8); border-radius: 8px; padding: 12px 14px; margin: 0 0 12px; break-inside: avoid; page-break-inside: avoid; }
-.pri-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; font-size: 12px; margin-bottom: 8px; }
-.pri-rank { font-weight: 700; font-size: 15px; }
-.pri-concepts { font-weight: 700; }
-.pri-code { margin-left: auto; opacity: .6; }
-.pri-conf { text-transform: capitalize; opacity: .8; }
-.pri-brief { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1.4fr; gap: 8px; align-items: start; }
-.pri-arrow { font-size: 22px; line-height: 1.4; opacity: .5; padding-top: 14px; }
+.pri-section > .pri-expbar { margin: 2px 0 6px; }
+.pri-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.pri-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pri-table th { text-align: left; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; opacity: .7; padding: 6px 8px; border-bottom: 2px solid var(--border, #d8d8d8); }
+.pri-row { cursor: pointer; border-bottom: 1px solid var(--border, #d8d8d8); }
+.pri-row:hover, .pri-row.pri-open { background: rgba(127, 127, 127, .07); }
+.pri-c { padding: 8px; vertical-align: top; overflow-wrap: break-word; }
+.pri-c-section { min-width: 150px; }
+.pri-c-cluster, .pri-c-icp, .pri-c-pain { min-width: 120px; }
+.pri-c-cluster, .pri-c-icp, .pri-c-pain { font-weight: 700; }
+.pri-c-story { min-width: 220px; }
+.pri-c-product { white-space: nowrap; }
+.pri-print { display: none; }
+.pri-filters { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 10px 0 6px; font-size: 13px; }
+.pri-fgroup { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pri-chipbtn { border: 1px solid var(--border, #bbb); background: none; color: inherit; border-radius: 14px; padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.pri-chipbtn[aria-pressed="true"] { background: #0b6bcb; border-color: #0b6bcb; color: #fff; }
+.pri-chipbtn:focus-visible, .pri-sort:focus-visible, .pri-search input:focus-visible { outline: 2px solid #0b6bcb; outline-offset: 2px; }
+.pri-search input { font: inherit; padding: 4px 8px; min-width: 240px; max-width: 100%; }
+.pri-shown { font-size: 12px; opacity: .7; }
+.pri-sort { background: none; border: 0; padding: 0; font: inherit; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: inherit; cursor: pointer; opacity: .85; }
+.pri-arrow { opacity: .5; }
+th[aria-sort="ascending"] .pri-arrow::after, th[aria-sort="descending"] .pri-arrow::after { content: none; }
+th[aria-sort="ascending"] .pri-arrow { opacity: 1; } th[aria-sort="descending"] .pri-arrow { opacity: 1; }
+.pri-sec { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; display: inline-block; color: #fff; }
+.pri-sec-faded { background: #b35900; } .pri-sec-iterate { background: #1a7f37; } .pri-sec-new { background: #7a3db8; } .pri-sec-proposal { background: #5b3fb5; } .pri-sec-competitor { background: #0b6bcb; } .pri-sec-stop { background: #667085; }
+.pri-c-tog { width: 34px; padding-right: 0; }
+.pri-toggle { background: none; border: 1px solid var(--border, #bbb); border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font: inherit; color: inherit; }
+.pri-toggle:focus-visible { outline: 2px solid #0b6bcb; outline-offset: 2px; }
+.pri-chev { display: inline-block; transition: transform .12s; }
+.pri-toggle[aria-expanded="true"] .pri-chev { transform: rotate(90deg); }
+.pri-rank { font-weight: 400; opacity: .6; }
+.pri-detail > td { padding: 4px 12px 14px 42px; border-bottom: 1px solid var(--border, #d8d8d8); background: rgba(127, 127, 127, .04); }
+.pri-descs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 4px 0 8px; }
 .pri-label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; opacity: .65; }
-.pri-value { font-size: 19px; font-weight: 700; line-height: 1.25; margin: 2px 0 4px; overflow-wrap: anywhere; }
-.pri-t-story .pri-value { font-size: 17px; font-weight: 600; }
-.pri-desc { font-size: 12px; line-height: 1.35; opacity: .8; overflow-wrap: anywhere; }
-.pri-second { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border, #d8d8d8); font-size: 12px; }
-.pri-stats { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.pri-dval { font-weight: 700; margin: 2px 0; }
+.pri-desc { font-size: 12px; line-height: 1.35; opacity: .8; }
+.pri-panel { font-size: 12px; }
+.pri-panel p { margin: 5px 0; }
+.pri-stats { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 6px 0; }
 .pri-k { opacity: .65; }
-.pri-why, .pri-flags { margin: 6px 0 0; }
-.pri-hooks ul { margin: 2px 0 0; padding-left: 18px; }
+.pri-hooks ul, .pri-story-block ul { margin: 2px 0 4px; padding-left: 18px; }
 .pri-hookn { opacity: .6; }
-@media (max-width: 900px) { .pri-brief { grid-template-columns: 1fr; } .pri-arrow { display: none; } }
+.pri-story-block { margin: 6px 0; padding: 6px 10px; border-left: 3px solid #b35900; }
+.pri-status { font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 2px 8px; border-radius: 10px; border: 1px solid currentColor; white-space: nowrap; display: inline-block; }
+.pri-st-ok { color: #1a7f37; } .pri-st-up { color: #0b6bcb; } .pri-st-fade { color: #b35900; } .pri-st-bad { color: #b42318; } .pri-st-flat { color: #667085; } .pri-st-new { color: #7a3db8; }
+@media (max-width: 760px) {
+  .pri-table, .pri-table tbody, .pri-table tr, .pri-table td { display: block; width: 100%; box-sizing: border-box; }
+  .pri-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .pri-row { padding: 6px 0; }
+  .pri-c { padding: 3px 8px; }
+  .pri-c[data-label]::before { content: attr(data-label) ": "; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; opacity: .6; }
+  .pri-c-tog { width: auto; }
+  .pri-detail[hidden] { display: none; }
+  .pri-detail > td { padding: 4px 10px 12px; }
+  .pri-descs { grid-template-columns: 1fr; }
+  .pri-legend { grid-template-columns: 1fr; }
+}
 @media print {
   @page { size: landscape; margin: 10mm; }
-  #topbar, #controls, #stale-banner, #source, .pri-bar { display: none !important; }
+  #topbar, #controls, #stale-banner, #source, .pri-bar, .pri-expbar, .pri-screen, .pri-top .pri-bar { display: none !important; }
+  .pri-print { display: block !important; }
+  .pri-screen-note { display: none; }
+  .pri-print .pri-c-tog, .pri-print th:first-child { display: none; }
   .pri-page { max-width: none; }
+  .pri-detail[hidden] { display: table-row !important; }
+  .pri-detail > td { padding-left: 10px; }
   .pri-product { break-before: page; page-break-before: always; margin-top: 0; }
   .pri-product:first-of-type { break-before: auto; page-break-before: auto; }
-  .pri-card { padding: 8px 10px; margin-bottom: 8px; }
-  .pri-value { font-size: 15px; } .pri-t-story .pri-value { font-size: 14px; } .pri-desc, .pri-second { font-size: 10px; }
-  .pri-brief { grid-template-columns: 1fr auto 1fr auto 1fr auto 1.4fr; }
-  .pri-arrow { display: block; }
+  .pri-row, .pri-detail { break-inside: avoid; page-break-inside: avoid; cursor: default; }
+  .pri-table { font-size: 10px; } .pri-panel, .pri-desc { font-size: 9.5px; }
+  .pri-status { border: 1px solid #444; color: #000 !important; }
 }
-.pri-status { font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 2px 8px; border-radius: 10px; border: 1px solid currentColor; }
-.pri-st-ok { color: #1a7f37; } .pri-st-up { color: #0b6bcb; } .pri-st-fade { color: #b35900; } .pri-st-bad { color: #b42318; } .pri-st-flat { color: #667085; } .pri-st-new { color: #7a3db8; }
-.pri-thennow, .pri-others, .pri-approach { margin: 4px 0; }
-@media print { .pri-status { border: 1px solid #444; color: #000 !important; } }
-.pri-story-block { margin: 6px 0; padding: 6px 10px; border-left: 3px solid #b35900; } .pri-story-block p { margin: 3px 0; } .pri-story-block ul { margin: 2px 0 4px; padding-left: 18px; }

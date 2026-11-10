@@ -157,7 +157,7 @@ def test_descriptions_and_legend_come_from_the_overview_text():
 def test_csv_leads_with_the_four_tags_then_their_descriptions():
     r = cp.compute(scenario(), WEEK)
     rows = list(csv.reader(io.StringIO(cp.to_csv(r))))
-    assert rows[0][:7] == ["market_cluster", "icp", "pain_point", "story", "market_cluster_description", "icp_description", "pain_point_description"]
+    assert rows[0][:9] == ["market_cluster", "icp", "pain_point", "story", "product", "section", "market_cluster_description", "icp_description", "pain_point_description"]
     first = dict(zip(rows[0], rows[1]))
     assert first["story"] and first["market_cluster"]
     assert len(rows) == 1 + len(r["rows"])
@@ -293,7 +293,7 @@ def test_csv_has_status_and_competitor_columns():
     inp["competitors"] = {"as_of": "2026-11-08", "source": "t", "loaded_at": None, "rows": [comp_rows(line_code="VI05")]}
     rows = list(csv.reader(io.StringIO(cp.to_csv(cp.compute(inp, WEEK)))))
     h = rows[0]
-    assert h[7] == "status" and "what_others_are_running" in h and "diagnosis" in h
+    assert h[9] == "status" and "what_others_are_running" in h and "diagnosis" in h
     assert any(dict(zip(h, r))["what_others_are_running"] for r in rows[1:])
 
 

@@ -1098,7 +1098,7 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
 SECTION_ORDER = ("faded", "iterate", "new", "proposal", "competitor", "stop")
 SECTION_TITLES = {"faded": "Was working, now isn't (FADED / COLLAPSED / STOPPED)", "iterate": "Iterate on what is working (WORKING NOW / RISING)", "new": "New and untested clusters",
                   "proposal": "Proposed new market clusters and lines (drafts for Josh's approval)", "competitor": "Competitor angles we have not made (not on our sheet)", "stop": "Stop or deprioritise (NOT WORKING)"}
-CSV_COLS = ["market_cluster", "icp", "pain_point", "story", "market_cluster_description", "icp_description", "pain_point_description", "status", "product", "section", "rank", "concepts", "week_start",
+CSV_COLS = ["market_cluster", "icp", "pain_point", "story", "product", "section", "market_cluster_description", "icp_description", "pain_point_description", "status", "rank", "concepts", "week_start",
             "then_vs_now", "when_it_worked", "how_it_stopped", "diagnosis", "revive_play", "former_winner_ads", "what_others_are_running", "emotional_trigger", "ingredients", "line_code", "confidence", "flags", "score",
             "spend", "roas", "cpa", "roas_index", "ads", "hit_rate", "hit_rate_index", "spend_30d", "roas_30d", "spend_prior30", "roas_prior30", "launches_30d", "nc_roas", "nc_cpa",
             "hook_1", "hook_2", "hook_3", "why"]
@@ -1113,7 +1113,7 @@ def to_csv(snapshot: dict) -> str:
         g = lambda k: m.get(k)
         hk = [h["hook"] + (f" [{h['line_code']}]" if h.get("borrowed") else "") for h in r["hooks"]] + ["", "", ""]
         comp = (r.get("competitor") or {}).get("text", "")
-        w.writerow([r["cluster"], r["icp"], r["pain_point"], r["story"] or "", r["cluster_description"], r["icp_description"], r["pain_description"], r.get("status", ""), r["product_name"], r["section"], r["rank"],
+        w.writerow([r["cluster"], r["icp"], r["pain_point"], r["story"] or "", r["product_name"], r["section"], r["cluster_description"], r["icp_description"], r["pain_description"], r.get("status", ""), r["rank"],
                     r["concepts"], snapshot["week_start"], r.get("then_now", ""), r.get("when_it_worked", ""), r.get("how_it_stopped", ""), r.get("diagnosis", ""), r.get("revive_play", ""),
                     " | ".join(f"{w_['ad']} ({w_['kind']}, ${w_['spend']:,} at {w_['roas']}x, peak week {w_['peak_week']}" + (f", stopped {w_['stopped']}" if w_.get("stopped") else "") + ")" for w_ in r.get("former_winners", [])),
                     comp, r["emotional_trigger"] or "", r["ingredients"], r["line_code"], r["confidence"],

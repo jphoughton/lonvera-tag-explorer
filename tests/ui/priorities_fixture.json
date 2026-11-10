@@ -1,0 +1,3591 @@
+{
+ "week_start": "2026-11-08",
+ "built_at": "2026-11-09T12:00:00+00:00",
+ "data_through": "2026-11-08",
+ "basis": "meta",
+ "thresholds": {},
+ "baselines": {
+  "vita-bull": {
+   "product_name": "Vita Bull",
+   "roas": 0.9029,
+   "cpa": 86.2,
+   "spend": 5041237.38,
+   "roas_30d": 0.7492,
+   "roas_prior30": 0.7547,
+   "roas_then": 0.7593,
+   "hit_rate": 0.5888,
+   "judged": 591,
+   "hits": 348,
+   "new_ads_30d": 491,
+   "nc_roas": 0.6179
+  },
+  "beef-liver": {
+   "product_name": "Beef Liver",
+   "roas": 0.9057,
+   "cpa": 67.37,
+   "spend": 5779382.43,
+   "roas_30d": 0.7135,
+   "roas_prior30": 0.7466,
+   "roas_then": 0.7026,
+   "hit_rate": 0.5234,
+   "judged": 491,
+   "hits": 257,
+   "new_ads_30d": 682,
+   "nc_roas": 0.6111
+  },
+  "boneflex": {
+   "product_name": "Boneflex",
+   "roas": 0.8678,
+   "cpa": 78.49,
+   "spend": 2320099.69,
+   "roas_30d": 0.6353,
+   "roas_prior30": 0.7786,
+   "roas_then": 0.696,
+   "hit_rate": 0.4713,
+   "judged": 314,
+   "hits": 148,
+   "new_ads_30d": 366,
+   "nc_roas": 0.6669
+  }
+ },
+ "rows": [
+  {
+   "section": "iterate",
+   "product": "vita-bull",
+   "rank": 1,
+   "line_id": 14,
+   "line_code": "L14",
+   "cluster": "ED / Performance",
+   "icp": "Bedroom Upgrade Seeker",
+   "pain_point": "General Vitality / Aging Well",
+   "emotional_trigger": "Pride",
+   "story": "At 45 he wants to perform like the man he used to be.",
+   "ingredients": "Vitamin B12 + Heme Iron",
+   "concepts": 2,
+   "score": 51.4,
+   "confidence": "medium",
+   "flags": [
+    "few ads"
+   ],
+   "why": "ROAS 1.10x vs 0.90x for the product (index 1.21); 100% of 3 mature ads reached $1,000 vs 59%; 0% of the product's new ads in 30 days vs 1% of its spend.",
+   "status": "WORKING NOW",
+   "then_now": "Then (days 31-90): ROAS 0.91x, CPA $90, 1% of product spend. Now (30 days): ROAS 0.91x, CPA $80, 1% of product spend. Lifetime ROAS 1.10x.",
+   "competitor": {
+    "competitors": 1,
+    "concepts": 1,
+    "long_running": 0,
+    "brands": [
+     "Heart & Soil"
+    ],
+    "long_brands": [],
+    "text": "1 competitor, 1 concept, 0 running 60+ days",
+    "hooks": [
+     {
+      "brand": "Heart & Soil",
+      "hook": "Whole Package delivers the foundational nutrients your body has been missing for natural performance support.",
+      "days": 18,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "econ": 0.431,
+    "hit": 0.439,
+    "room": 0.596,
+    "momentum": 0.42,
+    "size": 1.0
+   },
+   "metrics": {
+    "spend": 50766.58,
+    "purchases": 651,
+    "roas": 1.1017,
+    "cpa": 77.98,
+    "roas_index": 1.21,
+    "ads": 5,
+    "tagged_ads": 5,
+    "roas_strong_tags": 1.0882,
+    "judged": 4,
+    "hits": 3,
+    "mature": 3,
+    "hit_rate": 1.0,
+    "hit_rate_index": 1.299,
+    "spend_30d": 1435.45,
+    "roas_30d": 0.9086,
+    "spend_prior30": 1504.79,
+    "roas_prior30": 0.9875,
+    "spend_7d": 381.63,
+    "launches_30d": 2,
+    "launch_share_30d": 0.0041,
+    "spend_share": 0.0101,
+    "live_ads": 2,
+    "winners_live": 1,
+    "nc_roas": 0.6794,
+    "nc_cpa": 105.08,
+    "nc_purchases": 81,
+    "nc_roas_index": 1.077,
+    "nc_roas_30d": 0.8457,
+    "roas_then": 0.9112,
+    "cpa_then": 90.11,
+    "spend_then": 3243.89,
+    "idx_then": 1.113,
+    "idx_30": 1.078,
+    "cpa_30d": 79.75,
+    "share_then": 0.0058,
+    "share_now": 0.0138
+   },
+   "hooks": [
+    {
+     "hook": "ENERGY, MUSCLE, AND DRIVE ARE ALL BACK.",
+     "ad": "bullStatic-flex1 - EH  - LongFormLP",
+     "ad_id": 2351,
+     "spend": 44965,
+     "roas": 1.1,
+     "line_code": "L14",
+     "borrowed": false
+    },
+    {
+     "hook": "MY WIFE ASKED IF I WAS TAKING SOMETHING...",
+     "ad": "Bull-79",
+     "ad_id": 2296,
+     "spend": 1359,
+     "roas": 1.56,
+     "line_code": "L14",
+     "borrowed": false
+    },
+    {
+     "hook": "Over 40? Your prime isn't over. Start your comeback.",
+     "ad": "bull-static-8.21.26-batch1_9",
+     "ad_id": 2335,
+     "spend": 3983,
+     "roas": 0.98,
+     "line_code": "L14",
+     "borrowed": false
+    }
+   ],
+   "evidence": null,
+   "product_name": "Vita Bull",
+   "cluster_description": "The ED / Performance market for Vita Bull: 2 ICP(s) in the Communication Overview (Soft in the Wrong Places, Bedroom Upgrade Seeker).",
+   "icp_description": "The specific person in this market: Bedroom Upgrade Seeker, who also appears with Sexual Performance / Libido Decline, Low Energy / Afternoon Crash.",
+   "pain_description": "The problem they feel: General Vitality / Aging Well. The emotion behind it: Pride. Ingredient angle (Vitamin B12 + Heme Iron): B12 shortfall behind the worn-out feeling."
+  },
+  {
+   "section": "iterate",
+   "product": "vita-bull",
+   "rank": 2,
+   "line_id": 24,
+   "line_code": "L24",
+   "cluster": "Muscle & Strength",
+   "icp": "Physique / Body Composition",
+   "pain_point": "Muscle Recovery / Athletic Performance",
+   "emotional_trigger": "Frustration",
+   "story": "He trains four days a week but looks the same as last year.",
+   "ingredients": "Collagen + Zinc",
+   "concepts": 2,
+   "score": 50.8,
+   "confidence": "high",
+   "flags": [],
+   "why": "ROAS 0.93x vs 0.90x for the product (index 1.03); 75% of 16 mature ads reached $1,000 vs 59%; 2% of the product's new ads in 30 days vs 6% of its spend.",
+   "status": "WORKING NOW",
+   "then_now": "Then (days 31-90): ROAS 0.94x, CPA $77, 7% of product spend. Now (30 days): ROAS 1.04x, CPA $78, 7% of product spend. Lifetime ROAS 0.93x.",
+   "competitor": null,
+   "components": {
+    "econ": 0.463,
+    "hit": 0.375,
+    "room": 0.583,
+    "momentum": 0.644,
+    "size": 1.0
+   },
+   "metrics": {
+    "spend": 295669.39,
+    "purchases": 3604,
+    "roas": 0.9312,
+    "cpa": 82.04,
+    "roas_index": 1.031,
+    "ads": 35,
+    "tagged_ads": 35,
+    "roas_strong_tags": 0.9193,
+    "judged": 32,
+    "hits": 12,
+    "mature": 16,
+    "hit_rate": 0.75,
+    "hit_rate_index": 1.219,
+    "spend_30d": 6826.09,
+    "roas_30d": 1.0414,
+    "spend_prior30": 18477.32,
+    "roas_prior30": 0.9107,
+    "spend_7d": 926.88,
+    "launches_30d": 12,
+    "launch_share_30d": 0.0244,
+    "spend_share": 0.0587,
+    "live_ads": 3,
+    "winners_live": 1,
+    "nc_roas": 0.6916,
+    "nc_cpa": 101.95,
+    "nc_purchases": 717,
+    "nc_roas_index": 1.115,
+    "nc_roas_30d": 0.7235,
+    "roas_then": 0.9434,
+    "cpa_then": 77.2,
+    "spend_then": 38830.19,
+    "idx_then": 1.228,
+    "idx_30": 1.285,
+    "cpa_30d": 78.46,
+    "share_then": 0.0697,
+    "share_now": 0.0657
+   },
+   "hooks": [
+    {
+     "hook": "The 30-day glute & quad rescue: how to keep the weight loss and save your muscle",
+     "ad": "Bull-460-V2-Hook2",
+     "ad_id": 2019,
+     "spend": 13966,
+     "roas": 1.27,
+     "line_code": "L24",
+     "borrowed": false
+    },
+    {
+     "hook": "Hopping on ts gotta be illegal",
+     "ad": "Bull-42-Flex",
+     "ad_id": 2841,
+     "spend": 15709,
+     "roas": 1.08,
+     "line_code": "L24",
+     "borrowed": false
+    },
+    {
+     "hook": "When your teenage son asks if you're on steroids...",
+     "ad": "bull-54-jacked4",
+     "ad_id": 2864,
+     "spend": 2074,
+     "roas": 1.91,
+     "line_code": "L24",
+     "borrowed": false
+    }
+   ],
+   "evidence": null,
+   "product_name": "Vita Bull",
+   "cluster_description": "The Muscle & Strength market for Vita Bull: 2 ICP(s) in the Communication Overview (VB3 Same Effort, Less Back, Physique / Body Composition).",
+   "icp_description": "The specific person in this market: Physique / Body Composition, who also appears with Weight Gain / Stubborn Belly Fat, Declining Testosterone.",
+   "pain_description": "The problem they feel: Muscle Recovery / Athletic Performance. The emotion behind it: Frustration. Ingredient angle (Collagen + Zinc): Slow repair of tendons, ligaments and sore muscle."
+  },
+  {
+   "section": "faded",
+   "product": "vita-bull",
+   "rank": 1,
+   "line_id": 8,
+   "line_code": "L08",
+   "cluster": "TRT & Men's Clinics",
+   "icp": "Natural Testosterone Support",
+   "pain_point": "Distrust of Synthetic Solutions",
+   "emotional_trigger": "Distrust",
+   "story": "Every supplement ad promises testosterone, and he assumes it's another pill that does nothing.",
+   "ingredients": "Whole-food general / none",
+   "concepts": 1,
+   "score": 47.4,
+   "confidence": "high",
+   "flags": [
+    "thin: peak stretch only $2,549"
+   ],
+   "why": "COLLAPSED: was working, now isn't. Weeks of 2026-05-04 to 2026-05-31 (4 weeks): ROAS 1.18x vs 0.80x for the product over the same weeks (index 1.47), CPA $58, $2,549 spend. Last 30 days: ROAS 0.50x (index 0.83), CPA $132, $2,647 spend; ROAS -57% from the peak; last at or above the product average in the 4 weeks ending 2026-07-19 (16 weeks ago).",
+   "status": "COLLAPSED",
+   "then_now": "Then (days 31-90): ROAS 0.68x, CPA $100, 5% of product spend. Now (30 days): ROAS 0.50x, CPA $132, 3% of product spend. Lifetime ROAS 0.93x.",
+   "competitor": null,
+   "components": {
+    "size": 0.0,
+    "strength": 0.79,
+    "drop": 0.574
+   },
+   "metrics": {
+    "spend": 284014.2,
+    "purchases": 3245,
+    "roas": 0.9321,
+    "cpa": 87.52,
+    "roas_index": 1.032,
+    "ads": 35,
+    "tagged_ads": 40,
+    "roas_strong_tags": 0.9312,
+    "judged": 30,
+    "hits": 14,
+    "mature": 20,
+    "hit_rate": 0.7,
+    "hit_rate_index": 1.157,
+    "spend_30d": 2646.79,
+    "roas_30d": 0.5025,
+    "spend_prior30": 6323.77,
+    "roas_prior30": 0.6496,
+    "spend_7d": 823.31,
+    "launches_30d": 14,
+    "launch_share_30d": 0.0285,
+    "spend_share": 0.0563,
+    "live_ads": 3,
+    "winners_live": 1,
+    "nc_roas": 0.5376,
+    "nc_cpa": 125.72,
+    "nc_purchases": 351,
+    "nc_roas_index": 0.877,
+    "nc_roas_30d": 0.377,
+    "roas_then": 0.6761,
+    "cpa_then": 100.19,
+    "spend_then": 26249.06,
+    "idx_then": 0.9,
+    "idx_30": 0.831,
+    "cpa_30d": 132.34,
+    "share_then": 0.0471,
+    "share_now": 0.0255
+   },
+   "hooks": [
+    {
+     "hook": "If you want your biceps to pop out of t-shirts, take beef testicles.",
+     "ad": "Bull-73-1",
+     "ad_id": 3874,
+     "spend": 112082,
+     "roas": 1.01,
+     "line_code": "L08",
+     "borrowed": false
+    },
+    {
+     "hook": "If you want your biceps to pop out of t-shirts, take beef testicles.",
+     "ad": "Bull-73-1 - EH  - LongFormLP",
+     "ad_id": 3110,
+     "spend": 13505,
+     "roas": 1.07,
+     "line_code": "L08",
+     "borrowed": false
+    },
+    {
+     "hook": "detox skin focus energy",
+     "ad": "Bull-48 Flex - MenOfIron",
+     "ad_id": 2292,
+     "spend": 11427,
+     "roas": 1.02,
+     "line_code": "L08",
+     "borrowed": false
+    }
+   ],
+   "evidence": null,
+   "when_it_worked": "Weeks of 2026-05-04 to 2026-05-31 (4 weeks): ROAS 1.18x vs 0.80x for the product over the same weeks (index 1.47), CPA $58, $2,549 spend.",
+   "how_it_stopped": "Last 30 days: ROAS 0.50x (index 0.83), CPA $132, $2,647 spend; ROAS -57% from the peak; last at or above the product average in the 4 weeks ending 2026-07-19 (16 weeks ago).",
+   "diagnosis": "No single pattern stands out in the numbers (new ads, ad fatigue and spend share all look ordinary): consistent with partial fatigue; refresh the former winners and watch the next two weeks.",
+   "revive_play": "1 concept this week: remake the former winners' hooks with new scenes, openings and proof (\"If you want your biceps to pop out of t-shirts, take beef testicles.\" (Bull-73-1, peak week of 2026-10-19); \"If you want your biceps to pop out of t-shirts, take beef testicles.\" (Bull-73-1 - EH  - LongFormLP, peak week of 2026-05-11)); test small before scaling against the product's 0.75x last-30-day ROAS.",
+   "stretch": {
+    "start": "2026-05-04",
+    "end": "2026-05-31",
+    "weeks": 4,
+    "spend": 2549.05,
+    "revenue": 3005.27,
+    "roas": 1.179,
+    "cpa": 57.93,
+    "index": 1.474,
+    "excess": 966.49,
+    "product_roas": 0.7998
+   },
+   "faded": {
+    "last_at_or_above": {
+     "window_end": "2026-07-19",
+     "weeks_since": 16
+    },
+    "roas_change_pct": -26,
+    "idx_then": 0.9,
+    "idx_now": 0.831
+   },
+   "former_winners": [
+    {
+     "ad": "Bull-73-1",
+     "ad_id": 3874,
+     "hook": "If you want your biceps to pop out of t-shirts, take beef testicles.",
+     "spend": 112082,
+     "roas": 1.01,
+     "kind": "stopped",
+     "peak_week": "2026-10-19",
+     "stopped": "2026-10-22",
+     "roas_30d": 0.24
+    },
+    {
+     "ad": "Bull-73-1 - EH  - LongFormLP",
+     "ad_id": 3110,
+     "hook": "If you want your biceps to pop out of t-shirts, take beef testicles.",
+     "spend": 13505,
+     "roas": 1.07,
+     "kind": "stopped",
+     "peak_week": "2026-05-11",
+     "stopped": "2026-10-26",
+     "roas_30d": null
+    },
+    {
+     "ad": "Bull-48 Flex - MenOfIron",
+     "ad_id": 2292,
+     "hook": "detox skin focus energy",
+     "spend": 11427,
+     "roas": 1.02,
+     "kind": "stopped",
+     "peak_week": "2026-10-19",
+     "stopped": "2026-10-23",
+     "roas_30d": null
+    },
+    {
+     "ad": "hf_20260302_190801_966540aa-0bb6-4eee-8012-a4ef69c444cf",
+     "ad_id": 2951,
+     "hook": "Other supplements: results in 4-6 weeks. Vital Bull: Results Day 1",
+     "spend": 2271,
+     "roas": 1.31,
+     "kind": "stopped",
+     "peak_week": "2026-10-12",
+     "stopped": "2026-10-13",
+     "roas_30d": null
+    },
+    {
+     "ad": "Bull-73-1 - EH - advertorialV3",
+     "ad_id": 3115,
+     "hook": "If you want your biceps to pop out of T-shirts, take beef testicles",
+     "spend": 3957,
+     "roas": 1.06,
+     "kind": "stopped",
+     "peak_week": "2026-10-19",
+     "stopped": "2026-10-22",
+     "roas_30d": null
+    }
+   ],
+   "winners_summary": {
+    "winners": 9,
+    "not_working": 9,
+    "stopped": 9,
+    "decayed": 0,
+    "still_working": 0,
+    "live_share": 0.0,
+    "launches_in_peak": 1,
+    "launches_last_30d": 14
+   },
+   "product_name": "Vita Bull",
+   "cluster_description": "The TRT & Men's Clinics market for Vita Bull: 3 ICP(s) in the Communication Overview (TRT Considerer, Peptide Clinic Shopper, Natural Testosterone Support).",
+   "icp_description": "The specific person in this market: Natural Testosterone Support, who also appears with Declining Testosterone, Ingredient Quality / Sourcing.",
+   "pain_description": "The problem they feel: Distrust of Synthetic Solutions. The emotion behind it: Distrust. Ingredient angle (Whole-food general / none): None: pill skepticism, answered by food-form nutrients."
+  },
+  {
+   "section": "faded",
+   "product": "vita-bull",
+   "rank": 2,
+   "line_id": 6,
+   "line_code": "L06",
+   "cluster": "TRT & Men's Clinics",
+   "icp": "Peptide Clinic Shopper",
+   "pain_point": "Offer / Price-Led",
+   "emotional_trigger": "Frustration",
+   "story": "He's pricing peptide clinics at hundreds a month and wants something simpler first.",
+   "ingredients": "Whole-food general / none",
+   "concepts": 1,
+   "score": 36.1,
+   "confidence": "medium",
+   "flags": [
+    "weak tags"
+   ],
+   "why": "FADED: was working, now isn't. Weeks of 2026-05-04 to 2026-06-28 (8 weeks): ROAS 1.20x vs 0.81x for the product over the same weeks (index 1.48), CPA $64, $10,013 spend. Last 30 days: ROAS 0.69x (index 0.95), CPA $107, $4,379 spend; ROAS -42% from the peak; last at or above the product average in the 4 weeks ending 2026-09-06 (9 weeks ago).",
+   "status": "FADED",
+   "then_now": "Then (days 31-90): ROAS 0.75x, CPA $99, 5% of product spend. Now (30 days): ROAS 0.69x, CPA $107, 4% of product spend. Lifetime ROAS 1.08x.",
+   "competitor": {
+    "competitors": 1,
+    "concepts": 2,
+    "long_running": 0,
+    "brands": [
+     "Forge"
+    ],
+    "long_brands": [],
+    "text": "1 competitor, 2 concepts, 0 running 60+ days",
+    "hooks": [
+     {
+      "brand": "Forge",
+      "hook": "BIGGEST FALL SALE EVER! 50% OFF + EXTRA 20% OFF with code FALL20",
+      "days": 39,
+      "url": ""
+     },
+     {
+      "brand": "Forge",
+      "hook": "I almost missed what was inside this box. No extension, no second round and no secret discount after Halloween.",
+      "days": 18,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "size": 0.296,
+    "strength": 0.805,
+    "drop": 0.422
+   },
+   "metrics": {
+    "spend": 184463.76,
+    "purchases": 2365,
+    "roas": 1.0798,
+    "cpa": 78.0,
+    "roas_index": 1.193,
+    "ads": 31,
+    "tagged_ads": 31,
+    "roas_strong_tags": 1.0158,
+    "judged": 31,
+    "hits": 23,
+    "mature": 29,
+    "hit_rate": 0.7931,
+    "hit_rate_index": 1.305,
+    "spend_30d": 4378.97,
+    "roas_30d": 0.6946,
+    "spend_prior30": 14033.28,
+    "roas_prior30": 0.6943,
+    "spend_7d": 245.06,
+    "launches_30d": 3,
+    "launch_share_30d": 0.0061,
+    "spend_share": 0.0366,
+    "live_ads": 5,
+    "winners_live": 1,
+    "nc_roas": 0.7064,
+    "nc_cpa": 98.5,
+    "nc_purchases": 617,
+    "nc_roas_index": 1.138,
+    "nc_roas_30d": 0.5223,
+    "roas_then": 0.7505,
+    "cpa_then": 98.96,
+    "spend_then": 25630.83,
+    "idx_then": 0.989,
+    "idx_30": 0.954,
+    "cpa_30d": 106.8,
+    "share_then": 0.046,
+    "share_now": 0.0421
+   },
+   "hooks": [
+    {
+     "hook": "50% OFF",
+     "ad": "Brief14-ABTest",
+     "ad_id": 3143,
+     "spend": 39234,
+     "roas": 1.17,
+     "line_code": "L06",
+     "borrowed": false
+    },
+    {
+     "hook": "We're Sorry. Guys, we honestly didn't see this coming... this is huge.",
+     "ad": "RolyPoly-04-11 - LV - Long Form Text - Static - V2 - ST - Harry",
+     "ad_id": 3767,
+     "spend": 33693,
+     "roas": 1.08,
+     "line_code": "L06",
+     "borrowed": false
+    },
+    {
+     "hook": "What do you mean the sale end today?",
+     "ad": "holidaySale",
+     "ad_id": 3233,
+     "spend": 6477,
+     "roas": 1.48,
+     "line_code": "L06",
+     "borrowed": false
+    }
+   ],
+   "evidence": null,
+   "when_it_worked": "Weeks of 2026-05-04 to 2026-06-28 (8 weeks): ROAS 1.20x vs 0.81x for the product over the same weeks (index 1.48), CPA $64, $10,013 spend.",
+   "how_it_stopped": "Last 30 days: ROAS 0.69x (index 0.95), CPA $107, $4,379 spend; ROAS -42% from the peak; last at or above the product average in the 4 weeks ending 2026-09-06 (9 weeks ago).",
+   "diagnosis": "No single pattern stands out in the numbers (new ads, ad fatigue and spend share all look ordinary): consistent with partial fatigue; refresh the former winners and watch the next two weeks.",
+   "revive_play": "1 concept this week: remake the former winners' hooks with new scenes, openings and proof (\"50% OFF\" (Brief14-ABTest, peak week of 2026-10-19); \"We're Sorry. Guys, we honestly didn't see this coming... this is huge.\" (RolyPoly-04-11 - LV - Long Form Text - Static - V2 - ST - Harry, peak week of 2026-05-04)); test small before scaling against the product's 0.75x last-30-day ROAS.",
+   "stretch": {
+    "start": "2026-05-04",
+    "end": "2026-06-28",
+    "weeks": 8,
+    "spend": 10012.68,
+    "revenue": 12022.97,
+    "roas": 1.2008,
+    "cpa": 63.78,
+    "index": 1.483,
+    "excess": 3913.22,
+    "product_roas": 0.8099
+   },
+   "faded": {
+    "last_at_or_above": {
+     "window_end": "2026-09-06",
+     "weeks_since": 9
+    },
+    "roas_change_pct": -7,
+    "idx_then": 0.989,
+    "idx_now": 0.954
+   },
+   "former_winners": [
+    {
+     "ad": "Brief14-ABTest",
+     "ad_id": 3143,
+     "hook": "50% OFF",
+     "spend": 39234,
+     "roas": 1.17,
+     "kind": "decayed",
+     "peak_week": "2026-10-19",
+     "stopped": null,
+     "roas_30d": null
+    },
+    {
+     "ad": "RolyPoly-04-11 - LV - Long Form Text - Static - V2 - ST - Harry",
+     "ad_id": 3767,
+     "hook": "We're Sorry. Guys, we honestly didn't see this coming... this is huge.",
+     "spend": 33693,
+     "roas": 1.08,
+     "kind": "stopped",
+     "peak_week": "2026-05-04",
+     "stopped": "2026-10-25",
+     "roas_30d": null
+    },
+    {
+     "ad": "holidaySale",
+     "ad_id": 3233,
+     "hook": "What do you mean the sale end today?",
+     "spend": 6477,
+     "roas": 1.48,
+     "kind": "stopped",
+     "peak_week": "2026-10-26",
+     "stopped": "2026-10-27",
+     "roas_30d": null
+    },
+    {
+     "ad": "shuttingItDown - DM",
+     "ad_id": 3276,
+     "hook": "What do you mean the sale end today? Yes, the sale ends today.",
+     "spend": 12344,
+     "roas": 1.18,
+     "kind": "stopped",
+     "peak_week": "2026-10-05",
+     "stopped": "2026-10-23",
+     "roas_30d": 1.47
+    },
+    {
+     "ad": "Brief 3-Bull-398",
+     "ad_id": 3467,
+     "hook": "Triple discount. Right now you can grab VitalBull at a massive triple discount.",
+     "spend": 6327,
+     "roas": 1.43,
+     "kind": "decayed",
+     "peak_week": "2026-05-18",
+     "stopped": null,
+     "roas_30d": 1.01
+    }
+   ],
+   "winners_summary": {
+    "winners": 15,
+    "not_working": 15,
+    "stopped": 13,
+    "decayed": 2,
+    "still_working": 0,
+    "live_share": 0.0,
+    "launches_in_peak": 2,
+    "launches_last_30d": 3
+   },
+   "product_name": "Vita Bull",
+   "cluster_description": "The TRT & Men's Clinics market for Vita Bull: 3 ICP(s) in the Communication Overview (TRT Considerer, Peptide Clinic Shopper, Natural Testosterone Support).",
+   "icp_description": "The specific person in this market: Peptide Clinic Shopper, who also appears with Declining Testosterone, Muscle Recovery / Athletic Performance.",
+   "pain_description": "The problem they feel: Offer / Price-Led. The emotion behind it: Frustration. Ingredient angle (Whole-food general / none): None: price objection, not a nutrient gap."
+  },
+  {
+   "section": "stop",
+   "product": "vita-bull",
+   "rank": 1,
+   "line_id": 23,
+   "line_code": "L23",
+   "cluster": "Muscle & Strength",
+   "icp": "Physique / Body Composition",
+   "pain_point": "Weight Gain / Stubborn Belly Fat",
+   "emotional_trigger": "Shame",
+   "story": "He eats clean and lifts, but the belly stays and muscle won't build.",
+   "ingredients": "Choline",
+   "concepts": 0,
+   "score": 0.0,
+   "confidence": "medium",
+   "flags": [
+    "Upstack new-customer ROAS below product average"
+   ],
+   "why": "Spent $487,092 over 108 tested ads at 0.76x against 0.90x for the product (index 0.85); last 30 days index 0.89. Consistent with a line that is weak over its history.",
+   "status": "NOT WORKING",
+   "then_now": "Then (days 31-90): ROAS 0.63x, CPA $111, 7% of product spend. Now (30 days): ROAS 0.63x, CPA $112, 6% of product spend. Lifetime ROAS 0.76x.",
+   "competitor": {
+    "competitors": 2,
+    "concepts": 4,
+    "long_running": 3,
+    "brands": [
+     "Primal Edge",
+     "Primal Viking"
+    ],
+    "long_brands": [
+     "Primal Viking"
+    ],
+    "text": "2 competitors, 4 concepts, 3 running 60+ days (Primal Viking)",
+    "hooks": [
+     {
+      "brand": "Primal Viking",
+      "hook": "60% OFF: one shot to send them to Valhalla. Beer belly and man boobs forever gone.",
+      "days": 172,
+      "url": ""
+     },
+     {
+      "brand": "Primal Viking",
+      "hook": "BEER BELLY!?!? Burn it off in WEEKS with secret superfood Primal Viking Reindeer Organs",
+      "days": 159,
+      "url": ""
+     }
+    ]
+   },
+   "components": {},
+   "metrics": {
+    "spend": 487091.88,
+    "purchases": 4765,
+    "roas": 0.7635,
+    "cpa": 102.22,
+    "roas_index": 0.846,
+    "ads": 113,
+    "tagged_ads": 114,
+    "roas_strong_tags": 0.7594,
+    "judged": 108,
+    "hits": 50,
+    "mature": 86,
+    "hit_rate": 0.5814,
+    "hit_rate_index": 0.988,
+    "spend_30d": 6719.12,
+    "roas_30d": 0.6324,
+    "spend_prior30": 17209.25,
+    "roas_prior30": 0.63,
+    "spend_7d": 1335.15,
+    "launches_30d": 18,
+    "launch_share_30d": 0.0367,
+    "spend_share": 0.0966,
+    "live_ads": 7,
+    "winners_live": 0,
+    "nc_roas": 0.5059,
+    "nc_cpa": 127.85,
+    "nc_purchases": 1082,
+    "nc_roas_index": 0.822,
+    "nc_roas_30d": 0.4182,
+    "roas_then": 0.6264,
+    "cpa_then": 111.14,
+    "spend_then": 37899.22,
+    "idx_then": 0.836,
+    "idx_30": 0.886,
+    "cpa_30d": 111.99,
+    "share_then": 0.068,
+    "share_now": 0.0647
+   },
+   "hooks": [],
+   "evidence": null,
+   "product_name": "Vita Bull",
+   "cluster_description": "The Muscle & Strength market for Vita Bull: 2 ICP(s) in the Communication Overview (VB3 Same Effort, Less Back, Physique / Body Composition).",
+   "icp_description": "The specific person in this market: Physique / Body Composition, who also appears with Muscle Recovery / Athletic Performance, Declining Testosterone.",
+   "pain_description": "The problem they feel: Weight Gain / Stubborn Belly Fat. The emotion behind it: Shame. Ingredient angle (Choline): Fat backing up in the liver when choline runs low."
+  },
+  {
+   "section": "stop",
+   "product": "vita-bull",
+   "rank": 2,
+   "line_id": 15,
+   "line_code": "L15",
+   "cluster": "Prostate / Urinary",
+   "icp": "The Night Waker",
+   "pain_point": "Prostate / Urinary Health",
+   "emotional_trigger": "Frustration",
+   "story": "He wakes two or three times a night to pee and drags all day.",
+   "ingredients": "Zinc",
+   "concepts": 0,
+   "score": 0.0,
+   "confidence": "medium",
+   "flags": [
+    "Upstack new-customer ROAS below product average"
+   ],
+   "why": "Spent $128,380 over 37 tested ads at 0.75x against 0.90x for the product (index 0.83); no spend in the last 30 days. Consistent with a line that is weak over its history.",
+   "status": "NOT WORKING",
+   "then_now": "Then (days 31-90): ROAS 0.31x, CPA $199, 0% of product spend. Now (30 days): ROAS 0.00x, CPA n/a, 0% of product spend. Lifetime ROAS 0.75x.",
+   "competitor": null,
+   "components": {},
+   "metrics": {
+    "spend": 128380.34,
+    "purchases": 1188,
+    "roas": 0.7466,
+    "cpa": 108.06,
+    "roas_index": 0.83,
+    "ads": 38,
+    "tagged_ads": 48,
+    "roas_strong_tags": 0.7466,
+    "judged": 37,
+    "hits": 13,
+    "mature": 17,
+    "hit_rate": 0.7647,
+    "hit_rate_index": 1.242,
+    "spend_30d": 42.03,
+    "roas_30d": 0.0,
+    "spend_prior30": 794.82,
+    "roas_prior30": 0.318,
+    "spend_7d": 0.0,
+    "launches_30d": 13,
+    "launch_share_30d": 0.0265,
+    "spend_share": 0.0255,
+    "live_ads": 0,
+    "winners_live": 0,
+    "nc_roas": 0.311,
+    "nc_cpa": 199.72,
+    "nc_purchases": 61,
+    "nc_roas_index": 0.588,
+    "nc_roas_30d": 0.0,
+    "roas_then": 0.3076,
+    "cpa_then": 198.69,
+    "spend_then": 2781.61,
+    "idx_then": 0.687,
+    "idx_30": 0.983,
+    "cpa_30d": null,
+    "share_then": 0.005,
+    "share_now": 0.0004
+   },
+   "hooks": [],
+   "evidence": null,
+   "product_name": "Vita Bull",
+   "cluster_description": "The Prostate / Urinary market for Vita Bull: 2 ICP(s) in the Communication Overview (The Night Waker, Prostate Worrier).",
+   "icp_description": "The specific person in this market: The Night Waker, who also appears with Low Energy / Afternoon Crash, Mental Fog / Mood Instability.",
+   "pain_description": "The problem they feel: Prostate / Urinary Health. The emotion behind it: Frustration. Ingredient angle (Zinc): Low zinc in the prostate, where it concentrates."
+  },
+  {
+   "section": "new",
+   "product": "vita-bull",
+   "rank": 1,
+   "line_id": 4,
+   "line_code": "L04",
+   "cluster": "TRT & Men's Clinics",
+   "icp": "Peptide Clinic Shopper",
+   "pain_point": "Declining Testosterone",
+   "emotional_trigger": "Desire",
+   "story": "He wants his old drive back and is comparing peptide clinic plans.",
+   "ingredients": "Zinc + Cholesterol (hormone substrate)",
+   "concepts": 2,
+   "score": 25.8,
+   "confidence": "low",
+   "flags": [],
+   "why": "same cluster on L07 (Declining Testosterone) spent $310,181 at 0.96x, index 1.06, rising.",
+   "status": "UNTESTED / UNDER-TESTED",
+   "then_now": "Then (days 31-90): ROAS n/a, CPA n/a, 0% of product spend. Now (30 days): ROAS n/a, CPA n/a, 0% of product spend. Lifetime ROAS n/a.",
+   "competitor": null,
+   "components": {
+    "adjacent": 0.169,
+    "cross_product": 0.0,
+    "competitors": 0.0,
+    "cluster_order": 0.919,
+    "story": 1.0
+   },
+   "metrics": {
+    "roas": null,
+    "cpa": null,
+    "roas_index": null,
+    "hit_rate": null,
+    "hit_rate_index": null,
+    "roas_30d": null,
+    "roas_prior30": null,
+    "nc_roas": null,
+    "nc_cpa": null,
+    "nc_roas_index": null,
+    "nc_roas_30d": null,
+    "roas_strong_tags": null,
+    "spend": 0.0,
+    "purchases": 0,
+    "ads": 0,
+    "tagged_ads": 0,
+    "judged": 0,
+    "hits": 0,
+    "mature": 0,
+    "spend_30d": 0.0,
+    "spend_prior30": 0.0,
+    "spend_7d": 0.0,
+    "launches_30d": 0,
+    "launch_share_30d": 0.0,
+    "spend_share": 0.0,
+    "live_ads": 0,
+    "winners_live": 0,
+    "nc_purchases": 0,
+    "roas_then": null,
+    "cpa_then": null,
+    "spend_then": 0.0,
+    "idx_then": null,
+    "idx_30": null,
+    "cpa_30d": null,
+    "share_then": 0.0,
+    "share_now": 0.0
+   },
+   "hooks": [
+    {
+     "hook": "4-in-1 male optimization",
+     "ad": "breakdown-3 - MenOfIron-AracadyAdvertorial",
+     "ad_id": 2260,
+     "spend": 28604,
+     "roas": 1.19,
+     "line_code": "L07",
+     "borrowed": true
+    },
+    {
+     "hook": "What do you mean the sale end today?",
+     "ad": "shuttingItDown - EH",
+     "ad_id": 3875,
+     "spend": 26312,
+     "roas": 1.21,
+     "line_code": "L07",
+     "borrowed": true
+    }
+   ],
+   "evidence": {
+    "adjacent": {
+     "product": "vita-bull",
+     "line_code": "L07",
+     "icp": "Natural Testosterone Support",
+     "cluster": "TRT & Men's Clinics",
+     "pain_point": "Declining Testosterone",
+     "spend": 310180.52,
+     "roas": 0.9608,
+     "roas_index": 1.064,
+     "same": "cluster",
+     "status": "RISING"
+    },
+    "cross_product": null
+   },
+   "product_name": "Vita Bull",
+   "cluster_description": "The TRT & Men's Clinics market for Vita Bull: 3 ICP(s) in the Communication Overview (TRT Considerer, Peptide Clinic Shopper, Natural Testosterone Support).",
+   "icp_description": "The specific person in this market: Peptide Clinic Shopper, who also appears with Muscle Recovery / Athletic Performance, Offer / Price-Led.",
+   "pain_description": "The problem they feel: Declining Testosterone. The emotion behind it: Desire. Ingredient angle (Zinc + Cholesterol (hormone substrate)): Zinc depletion that slows testosterone production."
+  },
+  {
+   "section": "new",
+   "product": "vita-bull",
+   "rank": 2,
+   "line_id": 5,
+   "line_code": "L05",
+   "cluster": "TRT & Men's Clinics",
+   "icp": "Peptide Clinic Shopper",
+   "pain_point": "Muscle Recovery / Athletic Performance",
+   "emotional_trigger": "Comparison",
+   "story": "Guys at his gym are on peptides and recovering faster than he is.",
+   "ingredients": "Collagen + Zinc",
+   "concepts": 2,
+   "score": 25.5,
+   "confidence": "low",
+   "flags": [],
+   "why": "same cluster on L07 (Declining Testosterone) spent $310,181 at 0.96x, index 1.06, rising.",
+   "status": "UNTESTED / UNDER-TESTED",
+   "then_now": "Then (days 31-90): ROAS n/a, CPA n/a, 0% of product spend. Now (30 days): ROAS n/a, CPA n/a, 0% of product spend. Lifetime ROAS n/a.",
+   "competitor": null,
+   "components": {
+    "adjacent": 0.169,
+    "cross_product": 0.0,
+    "competitors": 0.0,
+    "cluster_order": 0.892,
+    "story": 1.0
+   },
+   "metrics": {
+    "roas": null,
+    "cpa": null,
+    "roas_index": null,
+    "hit_rate": null,
+    "hit_rate_index": null,
+    "roas_30d": null,
+    "roas_prior30": null,
+    "nc_roas": null,
+    "nc_cpa": null,
+    "nc_roas_index": null,
+    "nc_roas_30d": null,
+    "roas_strong_tags": null,
+    "spend": 0.0,
+    "purchases": 0,
+    "ads": 0,
+    "tagged_ads": 0,
+    "judged": 0,
+    "hits": 0,
+    "mature": 0,
+    "spend_30d": 0.0,
+    "spend_prior30": 0.0,
+    "spend_7d": 0.0,
+    "launches_30d": 0,
+    "launch_share_30d": 0.0,
+    "spend_share": 0.0,
+    "live_ads": 0,
+    "winners_live": 0,
+    "nc_purchases": 0,
+    "roas_then": null,
+    "cpa_then": null,
+    "spend_then": 0.0,
+    "idx_then": null,
+    "idx_30": null,
+    "cpa_30d": null,
+    "share_then": 0.0,
+    "share_now": 0.0
+   },
+   "hooks": [
+    {
+     "hook": "4-in-1 male optimization",
+     "ad": "breakdown-3 - MenOfIron-AracadyAdvertorial",
+     "ad_id": 2260,
+     "spend": 28604,
+     "roas": 1.19,
+     "line_code": "L07",
+     "borrowed": true
+    },
+    {
+     "hook": "What do you mean the sale end today?",
+     "ad": "shuttingItDown - EH",
+     "ad_id": 3875,
+     "spend": 26312,
+     "roas": 1.21,
+     "line_code": "L07",
+     "borrowed": true
+    }
+   ],
+   "evidence": {
+    "adjacent": {
+     "product": "vita-bull",
+     "line_code": "L07",
+     "icp": "Natural Testosterone Support",
+     "cluster": "TRT & Men's Clinics",
+     "pain_point": "Declining Testosterone",
+     "spend": 310180.52,
+     "roas": 0.9608,
+     "roas_index": 1.064,
+     "same": "cluster",
+     "status": "RISING"
+    },
+    "cross_product": null
+   },
+   "product_name": "Vita Bull",
+   "cluster_description": "The TRT & Men's Clinics market for Vita Bull: 3 ICP(s) in the Communication Overview (TRT Considerer, Peptide Clinic Shopper, Natural Testosterone Support).",
+   "icp_description": "The specific person in this market: Peptide Clinic Shopper, who also appears with Declining Testosterone, Offer / Price-Led.",
+   "pain_description": "The problem they feel: Muscle Recovery / Athletic Performance. The emotion behind it: Comparison. Ingredient angle (Collagen + Zinc): Slow repair of tendons, ligaments and sore muscle."
+  },
+  {
+   "section": "proposal",
+   "product": "vita-bull",
+   "rank": 1,
+   "line_id": null,
+   "line_code": "DRAFT",
+   "cluster": "Chest Fat (cortisol / estrogen)",
+   "icp": "Man-Boobs & Chest Fat",
+   "pain_point": "Weight Gain / Stubborn Belly Fat",
+   "emotional_trigger": null,
+   "story": "He's lean everywhere except his chest, and a loose shirt hides it daily.",
+   "ingredients": "",
+   "concepts": 1,
+   "score": 54.7,
+   "confidence": "medium",
+   "flags": [
+    "NEW CLUSTER",
+    "DRAFT for approval",
+    "no performance numbers: evidence is competitor activity and our adjacent results only"
+   ],
+   "why": "Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: L24 working now at 0.93x on $295,669; L23 not working at 0.76x on $487,092. Competitors run it: 2 competitors, 3 concepts, 2 running 60+ days (Primal Viking) (running a long time, not proven performance). Competitor angle (Primal Viking since June, Primal Edge copying); no Vital Bull line.",
+   "status": "PROPOSED (draft)",
+   "then_now": "",
+   "competitor": {
+    "competitors": 2,
+    "concepts": 3,
+    "long_running": 2,
+    "brands": [
+     "Primal Edge",
+     "Primal Viking"
+    ],
+    "long_brands": [
+     "Primal Viking"
+    ],
+    "text": "2 competitors, 3 concepts, 2 running 60+ days (Primal Viking)",
+    "hooks": [
+     {
+      "brand": "Primal Viking",
+      "hook": "60% OFF: one shot to send them to Valhalla. Beer belly and man boobs forever gone.",
+      "days": 172,
+      "url": ""
+     },
+     {
+      "brand": "Primal Viking",
+      "hook": "New Study Reveals Man Boobs Melter #1 / You are NOT fat, you are inflamed from high cortisol",
+      "days": 159,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "adjacent": 0.427,
+    "competitors": 0.667
+   },
+   "metrics": {
+    "spend": 0,
+    "tagged_ads": 0,
+    "ads": 0,
+    "judged": 0
+   },
+   "hooks": [
+    {
+     "hook": "60% OFF: one shot to send them to Valhalla. Beer belly and man boobs forever gone.",
+     "ad": "Primal Viking",
+     "ad_id": null,
+     "spend": null,
+     "roas": null,
+     "line_code": "Primal Viking",
+     "borrowed": true
+    },
+    {
+     "hook": "New Study Reveals Man Boobs Melter #1 / You are NOT fat, you are inflamed from high cortisol",
+     "ad": "Primal Viking",
+     "ad_id": null,
+     "spend": null,
+     "roas": null,
+     "line_code": "Primal Viking",
+     "borrowed": true
+    }
+   ],
+   "evidence": {
+    "adjacent_lines": [
+     {
+      "line_code": "L24",
+      "status": "WORKING NOW",
+      "spend": 295669.39,
+      "roas": 0.9312,
+      "roas_index": 1.031
+     },
+     {
+      "line_code": "L23",
+      "status": "NOT WORKING",
+      "spend": 487091.88,
+      "roas": 0.7635,
+      "roas_index": 0.846
+     }
+    ]
+   },
+   "cluster_description": "Proposed market: men with chest fat who read it as a hormone and stress problem.",
+   "icp_description": "The man who trains and eats well but cannot shift chest fat.",
+   "pain_description": "Stubborn chest and belly fat he blames on cortisol and estrogen.",
+   "product_name": "Vita Bull"
+  },
+  {
+   "section": "proposal",
+   "product": "vita-bull",
+   "rank": 2,
+   "line_id": null,
+   "line_code": "DRAFT",
+   "cluster": "GLP-1 Companion (men)",
+   "icp": "Men on GLP-1",
+   "pain_point": "Low Energy / Muscle & Nutrient Loss",
+   "emotional_trigger": null,
+   "story": "Thirty pounds lighter on the shot, yet the stairs feel harder than before.",
+   "ingredients": "",
+   "concepts": 1,
+   "score": 28.0,
+   "confidence": "medium",
+   "flags": [
+    "NEW CLUSTER",
+    "DRAFT for approval",
+    "no performance numbers: evidence is competitor activity and our adjacent results only"
+   ],
+   "why": "Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: L26 working now at 1.02x on $301,095; L24 working now at 0.93x on $295,669. Competitors run it: 1 competitor, 1 concept, 0 running 60+ days (running a long time, not proven performance). Competitor angle (Ancestral, men on GLP-1); Vital Bull has no GLP-1 cluster.",
+   "status": "PROPOSED (draft)",
+   "then_now": "",
+   "competitor": {
+    "competitors": 1,
+    "concepts": 1,
+    "long_running": 0,
+    "brands": [
+     "Ancestral Supplements"
+    ],
+    "long_brands": [],
+    "text": "1 competitor, 1 concept, 0 running 60+ days",
+    "hooks": [
+     {
+      "brand": "Ancestral Supplements",
+      "hook": "Your GLP-1 is working... so why do you feel worse than you did before? / Men on GLP-1: do not just cut calories. Cover your nutrients.",
+      "days": 30,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "adjacent": 0.427,
+    "competitors": 0.133
+   },
+   "metrics": {
+    "spend": 0,
+    "tagged_ads": 0,
+    "ads": 0,
+    "judged": 0
+   },
+   "hooks": [
+    {
+     "hook": "Your GLP-1 is working... so why do you feel worse than you did before? / Men on GLP-1: do not just cut calories. Cover your nutrients.",
+     "ad": "Ancestral Supplements",
+     "ad_id": null,
+     "spend": null,
+     "roas": null,
+     "line_code": "Ancestral Supplements",
+     "borrowed": true
+    }
+   ],
+   "evidence": {
+    "adjacent_lines": [
+     {
+      "line_code": "L26",
+      "status": "WORKING NOW",
+      "spend": 301095.39,
+      "roas": 1.0171,
+      "roas_index": 1.125
+     },
+     {
+      "line_code": "L24",
+      "status": "WORKING NOW",
+      "spend": 295669.39,
+      "roas": 0.9312,
+      "roas_index": 1.031
+     }
+    ]
+   },
+   "cluster_description": "Proposed market: men losing weight on a GLP-1 shot who feel weaker and drained.",
+   "icp_description": "The man on a GLP-1 who is lighter on the scale but weaker in daily life.",
+   "pain_description": "Energy, muscle and nutrients drop along with the weight.",
+   "product_name": "Vita Bull"
+  },
+  {
+   "section": "iterate",
+   "product": "beef-liver",
+   "rank": 1,
+   "line_id": 98,
+   "line_code": "B58",
+   "cluster": "Ancestral Nutrition",
+   "icp": "Curious Beginner",
+   "pain_point": "General Vitality / Aging Well",
+   "emotional_trigger": "Desire",
+   "story": "A friend swears by liver capsules, so curiosity wins out over skepticism.",
+   "ingredients": "Whole-food general / none",
+   "concepts": 5,
+   "score": 54.7,
+   "confidence": "high",
+   "flags": [],
+   "why": "ROAS 1.05x vs 0.91x for the product (index 1.16); 65% of 23 mature ads reached $1,000 vs 52%; 6% of the product's new ads in 30 days vs 8% of its spend.",
+   "status": "RISING",
+   "then_now": "Then (days 31-90): ROAS 0.87x, CPA $77, 1% of product spend. Now (30 days): ROAS 0.98x, CPA $73, 15% of product spend. Lifetime ROAS 1.05x.",
+   "competitor": null,
+   "components": {
+    "econ": 0.656,
+    "hit": 0.368,
+    "room": 0.305,
+    "momentum": 0.618,
+    "size": 1.0
+   },
+   "metrics": {
+    "spend": 475662.36,
+    "purchases": 8164,
+    "roas": 1.0478,
+    "cpa": 58.26,
+    "roas_index": 1.156,
+    "ads": 63,
+    "tagged_ads": 70,
+    "roas_strong_tags": 1.0578,
+    "judged": 40,
+    "hits": 15,
+    "mature": 23,
+    "hit_rate": 0.6522,
+    "hit_rate_index": 1.21,
+    "spend_30d": 21141.06,
+    "roas_30d": 0.98,
+    "spend_prior30": 3859.79,
+    "roas_prior30": 0.8769,
+    "spend_7d": 6574.61,
+    "launches_30d": 39,
+    "launch_share_30d": 0.0572,
+    "spend_share": 0.0823,
+    "live_ads": 7,
+    "winners_live": 1,
+    "nc_roas": 0.6626,
+    "nc_cpa": 109.97,
+    "nc_purchases": 242,
+    "nc_roas_index": 1.077,
+    "nc_roas_30d": 0.7237,
+    "roas_then": 0.8741,
+    "cpa_then": 77.45,
+    "spend_then": 3872.35,
+    "idx_then": 1.148,
+    "idx_30": 1.334,
+    "cpa_30d": 72.9,
+    "share_then": 0.013,
+    "share_now": 0.1452
+   },
+   "hooks": [
+    {
+     "hook": "Have you guys seen that video of that guy crying after he took beef liver",
+     "ad": "ced20",
+     "ad_id": 3870,
+     "spend": 76313,
+     "roas": 1.28,
+     "line_code": "B58",
+     "borrowed": false
+    },
+    {
+     "hook": "Bloating and frequent fart, this is the liver's distress signal to you, weight gain, mouth odor",
+     "ad": "GingerLadyAging",
+     "ad_id": 2457,
+     "spend": 5491,
+     "roas": 1.46,
+     "line_code": "B58",
+     "borrowed": false
+    },
+    {
+     "hook": "If your forehead looks like this and your nails look like this and your hair is thinning...",
+     "ad": "if you look like this",
+     "ad_id": 2511,
+     "spend": 32016,
+     "roas": 1.0,
+     "line_code": "B58",
+     "borrowed": false
+    }
+   ],
+   "evidence": null,
+   "product_name": "Beef Liver",
+   "cluster_description": "The Ancestral Nutrition market for Beef Liver: 3 ICP(s) in the Communication Overview (Primal Living, Label Reader, Curious Beginner).",
+   "icp_description": "The specific person in this market: Curious Beginner, who also appears with Off-Putting Taste / Hard to Eat.",
+   "pain_description": "The problem they feel: General Vitality / Aging Well. The emotion behind it: Desire. Ingredient angle (Whole-food general / none): None: general nutrient density from whole food."
+  },
+  {
+   "section": "iterate",
+   "product": "beef-liver",
+   "rank": 2,
+   "line_id": 96,
+   "line_code": "B56",
+   "cluster": "Ancestral Nutrition",
+   "icp": "Label Reader",
+   "pain_point": "Offer / Price-Led",
+   "emotional_trigger": "Comparison",
+   "story": "Price per serving gets compared across brands before anything goes in the cart.",
+   "ingredients": "Whole-food general / none",
+   "concepts": 3,
+   "score": 40.8,
+   "confidence": "medium",
+   "flags": [
+    "weak tags"
+   ],
+   "why": "ROAS 1.11x vs 0.91x for the product (index 1.22); 66% of 38 mature ads reached $1,000 vs 52%; 2% of the product's new ads in 30 days vs 6% of its spend.",
+   "status": "WORKING NOW",
+   "then_now": "Then (days 31-90): ROAS 0.93x, CPA $78, 20% of product spend. Now (30 days): ROAS 0.98x, CPA $77, 11% of product spend. Lifetime ROAS 1.11x.",
+   "competitor": {
+    "competitors": 3,
+    "concepts": 3,
+    "long_running": 1,
+    "brands": [
+     "Ancestral Supplements",
+     "NativePath",
+     "Primal Queen"
+    ],
+    "long_brands": [
+     "Primal Queen"
+    ],
+    "text": "3 competitors, 3 concepts, 1 running 60+ days (Primal Queen)",
+    "hooks": [
+     {
+      "brand": "Primal Queen",
+      "hook": "Buy 1 Primal Queen at Target, Get 1 FREE",
+      "days": 130,
+      "url": ""
+     },
+     {
+      "brand": "NativePath",
+      "hook": "Claim Your FREE Collagen",
+      "days": 18,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "econ": 0.716,
+    "hit": 0.386,
+    "room": 0.609,
+    "momentum": 0.52,
+    "size": 1.0
+   },
+   "metrics": {
+    "spend": 346791.27,
+    "purchases": 5327,
+    "roas": 1.108,
+    "cpa": 65.1,
+    "roas_index": 1.222,
+    "ads": 49,
+    "tagged_ads": 49,
+    "roas_strong_tags": null,
+    "judged": 42,
+    "hits": 25,
+    "mature": 38,
+    "hit_rate": 0.6579,
+    "hit_rate_index": 1.232,
+    "spend_30d": 15618.54,
+    "roas_30d": 0.9805,
+    "spend_prior30": 20896.5,
+    "roas_prior30": 0.9613,
+    "spend_7d": 3269.5,
+    "launches_30d": 16,
+    "launch_share_30d": 0.0235,
+    "spend_share": 0.06,
+    "live_ads": 13,
+    "winners_live": 6,
+    "nc_roas": 0.8111,
+    "nc_cpa": 88.96,
+    "nc_purchases": 2631,
+    "nc_roas_index": 1.324,
+    "nc_roas_30d": 0.7727,
+    "roas_then": 0.926,
+    "cpa_then": 77.68,
+    "spend_then": 58027.58,
+    "idx_then": 1.305,
+    "idx_30": 1.323,
+    "cpa_30d": 76.56,
+    "share_then": 0.1951,
+    "share_now": 0.1073
+   },
+   "hooks": [
+    {
+     "hook": "This is going to be the last day to get Lonvera beef liver capsules for a crazy price",
+     "ad": "Liver-359",
+     "ad_id": 1998,
+     "spend": 31809,
+     "roas": 1.56,
+     "line_code": "B56",
+     "borrowed": false
+    },
+    {
+     "hook": "Buy 2 Get 3 Free. Last chance 52% off sale",
+     "ad": "hf_20260309_232356_02788a65-7e29-41b1-ae9d-50a83964d67e",
+     "ad_id": 2002,
+     "spend": 31471,
+     "roas": 1.31,
+     "line_code": "B56",
+     "borrowed": false
+    },
+    {
+     "hook": "Only $19 A Bottle",
+     "ad": "hf_20260210_022843_58bd2a42-9b9b-49b2-ac0b-5971e9e2cf8c",
+     "ad_id": 2003,
+     "spend": 37993,
+     "roas": 1.17,
+     "line_code": "B56",
+     "borrowed": false
+    }
+   ],
+   "evidence": null,
+   "product_name": "Beef Liver",
+   "cluster_description": "The Ancestral Nutrition market for Beef Liver: 3 ICP(s) in the Communication Overview (Primal Living, Label Reader, Curious Beginner).",
+   "icp_description": "The specific person in this market: Label Reader, who also appears with Ingredient Quality / Sourcing.",
+   "pain_description": "The problem they feel: Offer / Price-Led. The emotion behind it: Comparison. Ingredient angle (Whole-food general / none): None: price objection, not a nutrient gap."
+  },
+  {
+   "section": "faded",
+   "product": "beef-liver",
+   "rank": 1,
+   "line_id": 94,
+   "line_code": "B54",
+   "cluster": "Ancestral Nutrition",
+   "icp": "Primal Living",
+   "pain_point": "Distrust of Synthetic Solutions",
+   "emotional_trigger": "Pride",
+   "story": "He avoids anything synthetic and wants supplements made from real food.",
+   "ingredients": "Whole-food general / none",
+   "concepts": 2,
+   "score": 36.9,
+   "confidence": "medium",
+   "flags": [
+    "weak tags",
+    "no sustained weekly peak"
+   ],
+   "why": "FADED: was working, now isn't. No sustained weekly stretch (the strong results predate the weekly data on 2026-05-06 or were spread thin); lifetime ROAS 1.04x vs 0.91x for the product on $52,519. Last 30 days: ROAS 0.37x (index 0.84), CPA $156, $1,250 spend; last at or above the product average in the 4 weeks ending 2026-10-11 (4 weeks ago).",
+   "status": "FADED",
+   "then_now": "Then (days 31-90): ROAS 1.05x, CPA $71, 1% of product spend. Now (30 days): ROAS 0.37x, CPA $156, 1% of product spend. Lifetime ROAS 1.04x.",
+   "competitor": {
+    "competitors": 3,
+    "concepts": 3,
+    "long_running": 2,
+    "brands": [
+     "Ancestral Supplements",
+     "Heart & Soil",
+     "Primal Queen"
+    ],
+    "long_brands": [
+     "Heart & Soil",
+     "Primal Queen"
+    ],
+    "text": "3 competitors, 3 concepts, 2 running 60+ days (Heart & Soil, Primal Queen)",
+    "hooks": [
+     {
+      "brand": "Primal Queen",
+      "hook": "Not all nutrients are absorbed the same. Your body absorbs vitamins best when they come from real food, not synthetic.",
+      "days": 203,
+      "url": ""
+     },
+     {
+      "brand": "Heart & Soil",
+      "hook": "Ditch synthetic vitamins: say goodbye to gummy vitamins.",
+      "days": 69,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "size": 0.438,
+    "strength": 0.239,
+    "drop": 0.65
+   },
+   "metrics": {
+    "spend": 52519.2,
+    "purchases": 750,
+    "roas": 1.0417,
+    "cpa": 70.03,
+    "roas_index": 1.143,
+    "ads": 42,
+    "tagged_ads": 50,
+    "roas_strong_tags": 0.7125,
+    "judged": 18,
+    "hits": 6,
+    "mature": 10,
+    "hit_rate": 0.6,
+    "hit_rate_index": 1.105,
+    "spend_30d": 1250.46,
+    "roas_30d": 0.3651,
+    "spend_prior30": 1070.82,
+    "roas_prior30": 1.0146,
+    "spend_7d": 245.23,
+    "launches_30d": 15,
+    "launch_share_30d": 0.022,
+    "spend_share": 0.0091,
+    "live_ads": 3,
+    "winners_live": 0,
+    "nc_roas": 0.9209,
+    "nc_cpa": 81.23,
+    "nc_purchases": 78,
+    "nc_roas_index": 1.364,
+    "nc_roas_30d": 0.2421,
+    "roas_then": 1.051,
+    "cpa_then": 70.53,
+    "spend_then": 1974.91,
+    "idx_then": 1.219,
+    "idx_30": 0.837,
+    "cpa_30d": 156.31,
+    "share_then": 0.0066,
+    "share_now": 0.0086
+   },
+   "hooks": [
+    {
+     "hook": "Hold on, you're telling me people are still paying full price for lab-made vitamins?",
+     "ad": "Liver-309-Brief1V1",
+     "ad_id": 1997,
+     "spend": 26440,
+     "roas": 1.16,
+     "line_code": "B54",
+     "borrowed": false
+    },
+    {
+     "hook": "Beef liver in = mucus out",
+     "ad": "mucusOut - ImmunityLander",
+     "ad_id": 3747,
+     "spend": 4352,
+     "roas": 1.35,
+     "line_code": "B54",
+     "borrowed": false
+    },
+    {
+     "hook": "The sale ends today. This is the last chance to get the best sale they have ever had",
+     "ad": "holidaySalesEnd",
+     "ad_id": 3259,
+     "spend": 2087,
+     "roas": 1.22,
+     "line_code": "B54",
+     "borrowed": false
+    }
+   ],
+   "evidence": null,
+   "when_it_worked": "No sustained weekly stretch (the strong results predate the weekly data on 2026-05-06 or were spread thin); lifetime ROAS 1.04x vs 0.91x for the product on $52,519.",
+   "how_it_stopped": "Last 30 days: ROAS 0.37x (index 0.84), CPA $156, $1,250 spend; last at or above the product average in the 4 weeks ending 2026-10-11 (4 weeks ago).",
+   "diagnosis": "15 new ads launched in the last 30 days run at 0.36x vs 0.71x for the product: consistent with the whole line weakening even with fresh ads.",
+   "revive_play": "2 concepts this week: rework the angle (new story or ICP framing) keeping the structure of the winning hooks (\"Hold on, you're telling me people are still paying full price for lab-made vitamins?\" (Liver-309-Brief1V1, peak week of 2026-08-03); \"Beef liver in = mucus out\" (mucusOut - ImmunityLander, peak week of 2026-10-19)); test small before scaling against the product's 0.71x last-30-day ROAS.",
+   "stretch": null,
+   "faded": {
+    "last_at_or_above": {
+     "window_end": "2026-10-11",
+     "weeks_since": 4
+    },
+    "roas_change_pct": -65,
+    "idx_then": 1.219,
+    "idx_now": 0.837
+   },
+   "former_winners": [
+    {
+     "ad": "Liver-309-Brief1V1",
+     "ad_id": 1997,
+     "hook": "Hold on, you're telling me people are still paying full price for lab-made vitamins?",
+     "spend": 26440,
+     "roas": 1.16,
+     "kind": "decayed",
+     "peak_week": "2026-08-03",
+     "stopped": null,
+     "roas_30d": 0.52
+    },
+    {
+     "ad": "mucusOut - ImmunityLander",
+     "ad_id": 3747,
+     "hook": "Beef liver in = mucus out",
+     "spend": 4352,
+     "roas": 1.35,
+     "kind": "stopped",
+     "peak_week": "2026-10-19",
+     "stopped": "2026-10-23",
+     "roas_30d": null
+    },
+    {
+     "ad": "holidaySalesEnd",
+     "ad_id": 3259,
+     "hook": "The sale ends today. This is the last chance to get the best sale they have ever had",
+     "spend": 2087,
+     "roas": 1.22,
+     "kind": "stopped",
+     "peak_week": "2026-10-19",
+     "stopped": "2026-10-25",
+     "roas_30d": null
+    },
+    {
+     "ad": "RolyPoly - Liver- 21-10 - LN - Meme Format - Static - V3 - ST - Harry",
+     "ad_id": 3765,
+     "hook": "Noooo!! You need the big pharma little blue pill slop to get it up!!!",
+     "spend": 5217,
+     "roas": 1.0,
+     "kind": "stopped",
+     "peak_week": "2026-10-19",
+     "stopped": "2026-10-24",
+     "roas_30d": null
+    },
+    {
+     "ad": "Liver-77 Flex",
+     "ad_id": 2863,
+     "hook": "In 1956 they deliberately removed the one food that kept humans connected to their divine purpose",
+     "spend": 2192,
+     "roas": 0.91,
+     "kind": "stopped",
+     "peak_week": "2026-10-26",
+     "stopped": "2026-10-27",
+     "roas_30d": null
+    }
+   ],
+   "winners_summary": {
+    "winners": 5,
+    "not_working": 5,
+    "stopped": 4,
+    "decayed": 1,
+    "still_working": 0,
+    "live_share": 0.0,
+    "launches_in_peak": null,
+    "launches_last_30d": 15
+   },
+   "product_name": "Beef Liver",
+   "cluster_description": "The Ancestral Nutrition market for Beef Liver: 3 ICP(s) in the Communication Overview (Primal Living, Label Reader, Curious Beginner).",
+   "icp_description": "The specific person in this market: Primal Living, who also appears with Nutrient Deficiency (Iron / B12 / Vitamin A).",
+   "pain_description": "The problem they feel: Distrust of Synthetic Solutions. The emotion behind it: Pride. Ingredient angle (Whole-food general / none): None: pill skepticism, answered by food-form nutrients."
+  },
+  {
+   "section": "faded",
+   "product": "beef-liver",
+   "rank": 2,
+   "line_id": 74,
+   "line_code": "B34",
+   "cluster": "Energy & Multivitamin",
+   "icp": "The Wired-Tired",
+   "pain_point": "Low Energy / Afternoon Crash",
+   "emotional_trigger": "Frustration",
+   "story": "Third coffee in hand, she's still dragging at 3pm.",
+   "ingredients": "Vitamin B12 + Heme Iron",
+   "concepts": 2,
+   "score": 36.8,
+   "confidence": "medium",
+   "flags": [
+    "weak tags",
+    "thin: peak stretch only $2,709"
+   ],
+   "why": "FADED: was working, now isn't. Weeks of 2026-06-29 to 2026-07-26 (4 weeks): ROAS 1.18x vs 0.76x for the product over the same weeks (index 1.55), CPA $62, $2,709 spend. Last 30 days: ROAS 0.65x (index 0.96), CPA $103, $2,580 spend; ROAS -44% from the peak; last at or above the product average in the 4 weeks ending 2026-09-13 (8 weeks ago).",
+   "status": "FADED",
+   "then_now": "Then (days 31-90): ROAS 0.65x, CPA $114, 2% of product spend. Now (30 days): ROAS 0.65x, CPA $103, 2% of product spend. Lifetime ROAS 0.84x.",
+   "competitor": {
+    "competitors": 3,
+    "concepts": 3,
+    "long_running": 1,
+    "brands": [
+     "Ancestral Supplements",
+     "Primal Queen",
+     "Sol Supplements"
+    ],
+    "long_brands": [
+     "Primal Queen"
+    ],
+    "text": "3 competitors, 3 concepts, 1 running 60+ days (Primal Queen)",
+    "hooks": [
+     {
+      "brand": "Primal Queen",
+      "hook": "\"The female-focused beef organ superfoods in Primal Queen made a huge difference in my life! I feel more energized and even have less bloating.\"",
+      "days": 242,
+      "url": ""
+     },
+     {
+      "brand": "Ancestral Supplements",
+      "hook": "If you are tired of dragging through the day, crashing by 3pm, and wondering where your spark went.",
+      "days": 26,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "size": 0.026,
+    "strength": 0.913,
+    "drop": 0.444
+   },
+   "metrics": {
+    "spend": 32979.81,
+    "purchases": 393,
+    "roas": 0.841,
+    "cpa": 83.92,
+    "roas_index": 0.934,
+    "ads": 74,
+    "tagged_ads": 109,
+    "roas_strong_tags": 0.7487,
+    "judged": 17,
+    "hits": 4,
+    "mature": 12,
+    "hit_rate": 0.3333,
+    "hit_rate_index": 0.728,
+    "spend_30d": 2579.82,
+    "roas_30d": 0.6538,
+    "spend_prior30": 2990.92,
+    "roas_prior30": 0.4575,
+    "spend_7d": 1033.03,
+    "launches_30d": 50,
+    "launch_share_30d": 0.0733,
+    "spend_share": 0.0057,
+    "live_ads": 12,
+    "winners_live": 1,
+    "nc_roas": 0.7789,
+    "nc_cpa": 93.55,
+    "nc_purchases": 232,
+    "nc_roas_index": 1.246,
+    "nc_roas_30d": 0.3033,
+    "roas_then": 0.6494,
+    "cpa_then": 114.14,
+    "spend_then": 6620.0,
+    "idx_then": 0.945,
+    "idx_30": 0.958,
+    "cpa_30d": 103.19,
+    "share_then": 0.0223,
+    "share_now": 0.0177
+   },
+   "hooks": [
+    {
+     "hook": "Real Energy From Grass-Fed Beef Liver. 70% OFF \u2013 OVERSTOCKED",
+     "ad": "LiverSpringSale_vert_5.6_3",
+     "ad_id": 2029,
+     "spend": 16601,
+     "roas": 0.92,
+     "line_code": "B34",
+     "borrowed": false
+    },
+    {
+     "hook": "Double DISCOUNT Ends TONIGHT",
+     "ad": "tt-liver-16",
+     "ad_id": 2996,
+     "spend": 2770,
+     "roas": 0.98,
+     "line_code": "B34",
+     "borrowed": false
+    },
+    {
+     "hook": "Real Energy From Grass-Fed Beef Liver",
+     "ad": "biggestSaleEver",
+     "ad_id": 2190,
+     "spend": 1131,
+     "roas": 1.06,
+     "line_code": "B34",
+     "borrowed": false
+    }
+   ],
+   "evidence": null,
+   "when_it_worked": "Weeks of 2026-06-29 to 2026-07-26 (4 weeks): ROAS 1.18x vs 0.76x for the product over the same weeks (index 1.55), CPA $62, $2,709 spend.",
+   "how_it_stopped": "Last 30 days: ROAS 0.65x (index 0.96), CPA $103, $2,580 spend; ROAS -44% from the peak; last at or above the product average in the 4 weeks ending 2026-09-13 (8 weeks ago).",
+   "diagnosis": "50 new ads launched in the last 30 days run at 0.58x vs 0.71x for the product: consistent with the whole line weakening even with fresh ads.",
+   "revive_play": "2 concepts this week: rework the angle (new story or ICP framing) keeping the structure of the winning hooks (\"Real Energy From Grass-Fed Beef Liver. 70% OFF \u2013 OVERSTOCKED\" (LiverSpringSale_vert_5.6_3, peak week of 2026-05-18); \"Double DISCOUNT Ends TONIGHT\" (tt-liver-16, peak week of 2026-10-19)); test small before scaling against the product's 0.71x last-30-day ROAS.",
+   "stretch": {
+    "start": "2026-06-29",
+    "end": "2026-07-26",
+    "weeks": 4,
+    "spend": 2708.65,
+    "revenue": 3183.81,
+    "roas": 1.1754,
+    "cpa": 61.56,
+    "index": 1.548,
+    "excess": 1127.32,
+    "product_roas": 0.7592
+   },
+   "faded": {
+    "last_at_or_above": {
+     "window_end": "2026-09-13",
+     "weeks_since": 8
+    },
+    "roas_change_pct": 1,
+    "idx_then": 0.945,
+    "idx_now": 0.958
+   },
+   "former_winners": [
+    {
+     "ad": "LiverSpringSale_vert_5.6_3",
+     "ad_id": 2029,
+     "hook": "Real Energy From Grass-Fed Beef Liver. 70% OFF \u2013 OVERSTOCKED",
+     "spend": 16601,
+     "roas": 0.92,
+     "kind": "stopped",
+     "peak_week": "2026-05-18",
+     "stopped": "2026-10-26",
+     "roas_30d": null
+    },
+    {
+     "ad": "tt-liver-16",
+     "ad_id": 2996,
+     "hook": "Double DISCOUNT Ends TONIGHT",
+     "spend": 2770,
+     "roas": 0.98,
+     "kind": "stopped",
+     "peak_week": "2026-10-19",
+     "stopped": "2026-10-25",
+     "roas_30d": null
+    },
+    {
+     "ad": "biggestSaleEver",
+     "ad_id": 2190,
+     "hook": "Real Energy From Grass-Fed Beef Liver",
+     "spend": 1131,
+     "roas": 1.06,
+     "kind": "stopped",
+     "peak_week": "2026-06-29",
+     "stopped": "2026-10-25",
+     "roas_30d": null
+    }
+   ],
+   "winners_summary": {
+    "winners": 4,
+    "not_working": 3,
+    "stopped": 3,
+    "decayed": 0,
+    "still_working": 1,
+    "live_share": 0.25,
+    "launches_in_peak": 0,
+    "launches_last_30d": 50
+   },
+   "product_name": "Beef Liver",
+   "cluster_description": "The Energy & Multivitamin market for Beef Liver: 3 ICP(s) in the Communication Overview (The Wired-Tired, AG1 Defector, The Night-Shift Nurse).",
+   "icp_description": "The specific person in this market: The Wired-Tired, who also appears with Mental Fog / Mood Instability.",
+   "pain_description": "The problem they feel: Low Energy / Afternoon Crash. The emotion behind it: Frustration. Ingredient angle (Vitamin B12 + Heme Iron): B12 shortfall behind the energy crash."
+  },
+  {
+   "section": "stop",
+   "product": "beef-liver",
+   "rank": 1,
+   "line_id": 81,
+   "line_code": "B41",
+   "cluster": "Alcohol & Liver Support",
+   "icp": "BL1 Weekend Face",
+   "pain_point": "Alcohol Face",
+   "emotional_trigger": "Shame",
+   "story": "Monday morning he sees a puffy, red face after a weekend of drinks.",
+   "ingredients": "Vitamin A / Retinol + Choline",
+   "concepts": 0,
+   "score": 0.0,
+   "confidence": "medium",
+   "flags": [
+    "Upstack new-customer ROAS below product average"
+   ],
+   "why": "Spent $971,974 over 109 tested ads at 0.80x against 0.91x for the product (index 0.89); last 30 days index 0.88. Consistent with a line that is weak over its history.",
+   "status": "NOT WORKING",
+   "then_now": "Then (days 31-90): ROAS 0.59x, CPA $102, 15% of product spend. Now (30 days): ROAS 0.61x, CPA $101, 10% of product spend. Lifetime ROAS 0.80x.",
+   "competitor": null,
+   "components": {},
+   "metrics": {
+    "spend": 971973.6,
+    "purchases": 13131,
+    "roas": 0.8046,
+    "cpa": 74.02,
+    "roas_index": 0.889,
+    "ads": 143,
+    "tagged_ads": 145,
+    "roas_strong_tags": 0.8046,
+    "judged": 109,
+    "hits": 52,
+    "mature": 95,
+    "hit_rate": 0.5474,
+    "hit_rate_index": 1.044,
+    "spend_30d": 14473.43,
+    "roas_30d": 0.612,
+    "spend_prior30": 12945.78,
+    "roas_prior30": 0.6839,
+    "spend_7d": 4294.38,
+    "launches_30d": 50,
+    "launch_share_30d": 0.0733,
+    "spend_share": 0.1682,
+    "live_ads": 15,
+    "winners_live": 1,
+    "nc_roas": 0.5174,
+    "nc_cpa": 115.71,
+    "nc_purchases": 2496,
+    "nc_roas_index": 0.848,
+    "nc_roas_30d": 0.473,
+    "roas_then": 0.587,
+    "cpa_then": 102.02,
+    "spend_then": 46010.91,
+    "idx_then": 0.844,
+    "idx_30": 0.879,
+    "cpa_30d": 100.51,
+    "share_then": 0.1547,
+    "share_now": 0.0994
+   },
+   "hooks": [],
+   "evidence": null,
+   "product_name": "Beef Liver",
+   "cluster_description": "The Alcohol & Liver Support market for Beef Liver: 3 ICP(s) in the Communication Overview (BL1 Weekend Face, Beer Drinker, Wine-Mom Wind-Down).",
+   "icp_description": "The specific person in this market: BL1 Weekend Face, who also appears with Liver Health / Detox, Low Energy / Afternoon Crash.",
+   "pain_description": "The problem they feel: Alcohol Face. The emotion behind it: Shame. Ingredient angle (Vitamin A / Retinol + Choline): Alcohol-depleted vitamin A behind puffy, dull skin."
+  },
+  {
+   "section": "stop",
+   "product": "beef-liver",
+   "rank": 2,
+   "line_id": 89,
+   "line_code": "B49",
+   "cluster": "Weight Loss & Belly Fat",
+   "icp": "BL2 The Stubborn Gut",
+   "pain_point": "Weight Gain / Stubborn Belly Fat",
+   "emotional_trigger": "Shame",
+   "story": "The belly won't budge, though he eats better and trains.",
+   "ingredients": "Choline",
+   "concepts": 0,
+   "score": 0.0,
+   "confidence": "medium",
+   "flags": [],
+   "why": "Spent $243,143 over 30 tested ads at 0.77x against 0.91x for the product (index 0.85); last 30 days index 0.87. Consistent with a line that is weak over its history.",
+   "status": "NOT WORKING",
+   "then_now": "Then (days 31-90): ROAS 0.60x, CPA $98, 4% of product spend. Now (30 days): ROAS 0.56x, CPA $92, 3% of product spend. Lifetime ROAS 0.77x.",
+   "competitor": {
+    "competitors": 1,
+    "concepts": 1,
+    "long_running": 1,
+    "brands": [
+     "Primal Queen"
+    ],
+    "long_brands": [
+     "Primal Queen"
+    ],
+    "text": "1 competitor, 1 concept, 1 running 60+ days (Primal Queen)",
+    "hooks": [
+     {
+      "brand": "Primal Queen",
+      "hook": "Feel Full Sooner, Naturally",
+      "days": 88,
+      "url": ""
+     }
+    ]
+   },
+   "components": {},
+   "metrics": {
+    "spend": 243143.15,
+    "purchases": 3068,
+    "roas": 0.7714,
+    "cpa": 79.25,
+    "roas_index": 0.853,
+    "ads": 55,
+    "tagged_ads": 66,
+    "roas_strong_tags": 0.7716,
+    "judged": 30,
+    "hits": 6,
+    "mature": 20,
+    "hit_rate": 0.3,
+    "hit_rate_index": 0.644,
+    "spend_30d": 3851.87,
+    "roas_30d": 0.5633,
+    "spend_prior30": 4455.04,
+    "roas_prior30": 0.5629,
+    "spend_7d": 606.64,
+    "launches_30d": 17,
+    "launch_share_30d": 0.0249,
+    "spend_share": 0.0421,
+    "live_ads": 6,
+    "winners_live": 0,
+    "nc_roas": 0.5334,
+    "nc_cpa": 113.06,
+    "nc_purchases": 451,
+    "nc_roas_index": 0.879,
+    "nc_roas_30d": 0.4999,
+    "roas_then": 0.6047,
+    "cpa_then": 97.94,
+    "spend_then": 12242.03,
+    "idx_then": 0.884,
+    "idx_30": 0.872,
+    "cpa_30d": 91.71,
+    "share_then": 0.0412,
+    "share_now": 0.0265
+   },
+   "hooks": [],
+   "evidence": null,
+   "product_name": "Beef Liver",
+   "cluster_description": "The Weight Loss & Belly Fat market for Beef Liver: 2 ICP(s) in the Communication Overview (BL2 The Stubborn Gut, Failed Dieter).",
+   "icp_description": "The specific person in this market: BL2 The Stubborn Gut, who also appears with Liver Health / Detox.",
+   "pain_description": "The problem they feel: Weight Gain / Stubborn Belly Fat. The emotion behind it: Shame. Ingredient angle (Choline): Liver fat that keeps the belly stubborn."
+  },
+  {
+   "section": "new",
+   "product": "beef-liver",
+   "rank": 1,
+   "line_id": 66,
+   "line_code": "B26",
+   "cluster": "Collagen",
+   "icp": "One-Scoop Everything Buyer",
+   "pain_point": "Hair Loss",
+   "emotional_trigger": "Frustration",
+   "story": "She drinks collagen daily for hair and skin, and sees nothing change.",
+   "ingredients": "Biotin + Heme Iron",
+   "concepts": 1,
+   "score": 29.4,
+   "confidence": "medium",
+   "flags": [],
+   "why": "same cluster on boneflex BF12 spent $102,153 at 1.05x, index 1.20; competitors run it: 2 competitors, 2 concepts, 1 running 60+ days (Paleovalley) (running a long time, not proven performance).",
+   "status": "UNTESTED / UNDER-TESTED",
+   "then_now": "Then (days 31-90): ROAS n/a, CPA n/a, 0% of product spend. Now (30 days): ROAS n/a, CPA n/a, 0% of product spend. Lifetime ROAS n/a.",
+   "competitor": {
+    "competitors": 2,
+    "concepts": 2,
+    "long_running": 1,
+    "brands": [
+     "NativePath",
+     "Paleovalley"
+    ],
+    "long_brands": [
+     "Paleovalley"
+    ],
+    "text": "2 competitors, 2 concepts, 1 running 60+ days (Paleovalley)",
+    "hooks": [
+     {
+      "brand": "Paleovalley",
+      "hook": "Wondering why your nails keep splitting? Why your hair seems thinner than it used to?",
+      "days": 118,
+      "url": ""
+     },
+     {
+      "brand": "NativePath",
+      "hook": "Your hair does not grow from your hair... it grows from your skin.",
+      "days": 18,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "adjacent": 0.0,
+    "cross_product": 0.189,
+    "competitors": 0.467,
+    "cluster_order": 0.576,
+    "story": 1.0
+   },
+   "metrics": {
+    "roas": null,
+    "cpa": null,
+    "roas_index": null,
+    "hit_rate": null,
+    "hit_rate_index": null,
+    "roas_30d": null,
+    "roas_prior30": null,
+    "nc_roas": null,
+    "nc_cpa": null,
+    "nc_roas_index": null,
+    "nc_roas_30d": null,
+    "roas_strong_tags": null,
+    "spend": 0.0,
+    "purchases": 0,
+    "ads": 0,
+    "tagged_ads": 0,
+    "judged": 0,
+    "hits": 0,
+    "mature": 0,
+    "spend_30d": 0.0,
+    "spend_prior30": 0.0,
+    "spend_7d": 0.0,
+    "launches_30d": 0,
+    "launch_share_30d": 0.0,
+    "spend_share": 0.0,
+    "live_ads": 0,
+    "winners_live": 0,
+    "nc_purchases": 0,
+    "roas_then": null,
+    "cpa_then": null,
+    "spend_then": 0.0,
+    "idx_then": null,
+    "idx_30": null,
+    "cpa_30d": null,
+    "share_then": 0.0,
+    "share_now": 0.0
+   },
+   "hooks": [],
+   "evidence": {
+    "adjacent": null,
+    "cross_product": {
+     "product": "boneflex",
+     "line_code": "BF12",
+     "icp": "Build-My-Stack",
+     "cluster": "Collagen",
+     "pain_point": "Offer / Price-Led",
+     "spend": 102153.22,
+     "roas": 1.0486,
+     "roas_index": 1.203,
+     "same": "cluster",
+     "status": "WORKING NOW"
+    }
+   },
+   "product_name": "Beef Liver",
+   "cluster_description": "The Collagen market for Beef Liver: 2 ICP(s) in the Communication Overview (One-Scoop Everything Buyer, Powder Churner).",
+   "icp_description": "The specific person in this market: One-Scoop Everything Buyer, who also appears with Distrust of Synthetic Solutions.",
+   "pain_description": "The problem they feel: Hair Loss. The emotion behind it: Frustration. Ingredient angle (Biotin + Heme Iron): Biotin gap behind weak hair and nails."
+  },
+  {
+   "section": "new",
+   "product": "beef-liver",
+   "rank": 2,
+   "line_id": 78,
+   "line_code": "B38",
+   "cluster": "Energy & Multivitamin",
+   "icp": "AG1 Defector",
+   "pain_point": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+   "emotional_trigger": "Comparison",
+   "story": "She finds out her greens powder left out iron, B12 and vitamin A.",
+   "ingredients": "Heme Iron + Vitamin B12",
+   "concepts": 1,
+   "score": 28.2,
+   "confidence": "medium",
+   "flags": [
+    "1 ad(s) already tagged, $6 spent"
+   ],
+   "why": "same cluster on vita-bull L26 spent $301,095 at 1.02x, index 1.13; competitors run it: 2 competitors, 2 concepts, 1 running 60+ days (Primal Queen) (running a long time, not proven performance).",
+   "status": "UNTESTED / UNDER-TESTED",
+   "then_now": "Then (days 31-90): ROAS n/a, CPA n/a, 0% of product spend. Now (30 days): ROAS 0.00x, CPA n/a, 0% of product spend. Lifetime ROAS 0.00x.",
+   "competitor": {
+    "competitors": 2,
+    "concepts": 2,
+    "long_running": 1,
+    "brands": [
+     "Folqs",
+     "Primal Queen"
+    ],
+    "long_brands": [
+     "Primal Queen"
+    ],
+    "text": "2 competitors, 2 concepts, 1 running 60+ days (Primal Queen)",
+    "hooks": [
+     {
+      "brand": "Primal Queen",
+      "hook": "[QUIZ] Are You Missing the Nutrients You Need?",
+      "days": 69,
+      "url": ""
+     },
+     {
+      "brand": "Folqs",
+      "hook": "Eight bottles, one pouch. The supplement cabinet just got smaller.",
+      "days": 14,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "adjacent": 0.0,
+    "cross_product": 0.253,
+    "competitors": 0.467,
+    "cluster_order": 0.394,
+    "story": 1.0
+   },
+   "metrics": {
+    "roas": null,
+    "cpa": null,
+    "roas_index": null,
+    "hit_rate": null,
+    "hit_rate_index": null,
+    "roas_30d": null,
+    "roas_prior30": null,
+    "nc_roas": null,
+    "nc_cpa": null,
+    "nc_roas_index": null,
+    "nc_roas_30d": null,
+    "roas_strong_tags": null,
+    "spend": 5.63,
+    "purchases": 0,
+    "ads": 1,
+    "tagged_ads": 1,
+    "judged": 0,
+    "hits": 0,
+    "mature": 0,
+    "spend_30d": 5.63,
+    "spend_prior30": 0.0,
+    "spend_7d": 0.0,
+    "launches_30d": 1,
+    "launch_share_30d": 0.0,
+    "spend_share": 0.0,
+    "live_ads": 0,
+    "winners_live": 0,
+    "nc_purchases": 0,
+    "roas_then": null,
+    "cpa_then": null,
+    "spend_then": 0.0,
+    "idx_then": 1.0,
+    "idx_30": 0.998,
+    "cpa_30d": null,
+    "share_then": 0.0,
+    "share_now": 0.0
+   },
+   "hooks": [],
+   "evidence": {
+    "adjacent": null,
+    "cross_product": {
+     "product": "vita-bull",
+     "line_code": "L26",
+     "icp": "Given Up Guy",
+     "cluster": "Energy & Multivitamin",
+     "pain_point": "Declining Testosterone",
+     "spend": 301095.39,
+     "roas": 1.0171,
+     "roas_index": 1.125,
+     "same": "cluster",
+     "status": "WORKING NOW"
+    }
+   },
+   "product_name": "Beef Liver",
+   "cluster_description": "The Energy & Multivitamin market for Beef Liver: 3 ICP(s) in the Communication Overview (The Wired-Tired, AG1 Defector, The Night-Shift Nurse).",
+   "icp_description": "The specific person in this market: AG1 Defector, who also appears with Distrust of Synthetic Solutions, Offer / Price-Led.",
+   "pain_description": "The problem they feel: Nutrient Deficiency (Iron / B12 / Vitamin A). The emotion behind it: Comparison. Ingredient angle (Heme Iron + Vitamin B12): Low ferritin (stored iron), which heme iron refills."
+  },
+  {
+   "section": "proposal",
+   "product": "beef-liver",
+   "rank": 1,
+   "line_id": null,
+   "line_code": "DRAFT",
+   "cluster": "Thyroid",
+   "icp": "Thyroid Suspect",
+   "pain_point": "Low Energy / Afternoon Crash",
+   "emotional_trigger": null,
+   "story": "Tired, foggy and stuck on weight, she suspects her thyroid is running on empty.",
+   "ingredients": "",
+   "concepts": 1,
+   "score": 23.3,
+   "confidence": "low",
+   "flags": [
+    "NEW CLUSTER",
+    "DRAFT for approval",
+    "no performance numbers: evidence is competitor activity and our adjacent results only"
+   ],
+   "why": "Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: B34 average at 0.84x on $32,980. Competitors run it: 2 competitors, 2 concepts, 1 running 60+ days (Heart & Soil) (running a long time, not proven performance). Competitor angle (Heart & Soil and Ancestral thyroid funnels).",
+   "status": "PROPOSED (draft)",
+   "then_now": "",
+   "competitor": {
+    "competitors": 2,
+    "concepts": 2,
+    "long_running": 1,
+    "brands": [
+     "Ancestral Supplements",
+     "Heart & Soil"
+    ],
+    "long_brands": [
+     "Heart & Soil"
+    ],
+    "text": "2 competitors, 2 concepts, 1 running 60+ days (Heart & Soil)",
+    "hooks": [
+     {
+      "brand": "Heart & Soil",
+      "hook": "Always tired, foggy, or stuck with stubborn weight? You might be chasing symptoms while ignoring the real culprit: your thyroid.",
+      "days": 69,
+      "url": ""
+     },
+     {
+      "brand": "Ancestral Supplements",
+      "hook": "Ladies, you are not \"imagining\" it. Your thyroid might be running on empty.",
+      "days": 50,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "adjacent": 0.0,
+    "competitors": 0.467
+   },
+   "metrics": {
+    "spend": 0,
+    "tagged_ads": 0,
+    "ads": 0,
+    "judged": 0
+   },
+   "hooks": [
+    {
+     "hook": "Always tired, foggy, or stuck with stubborn weight? You might be chasing symptoms while ignoring the real culprit: your thyroid.",
+     "ad": "Heart & Soil",
+     "ad_id": null,
+     "spend": null,
+     "roas": null,
+     "line_code": "Heart & Soil",
+     "borrowed": true
+    },
+    {
+     "hook": "Ladies, you are not \"imagining\" it. Your thyroid might be running on empty.",
+     "ad": "Ancestral Supplements",
+     "ad_id": null,
+     "spend": null,
+     "roas": null,
+     "line_code": "Ancestral Supplements",
+     "borrowed": true
+    }
+   ],
+   "evidence": {
+    "adjacent_lines": [
+     {
+      "line_code": "B34",
+      "status": "AVERAGE",
+      "spend": 32979.81,
+      "roas": 0.841,
+      "roas_index": 0.934
+     }
+    ]
+   },
+   "cluster_description": "Proposed market: women who link tiredness, fog and weight to their thyroid.",
+   "icp_description": "The woman over 30 chasing symptoms and wondering about her thyroid.",
+   "pain_description": "Constant tiredness, brain fog and stubborn weight.",
+   "product_name": "Beef Liver"
+  },
+  {
+   "section": "proposal",
+   "product": "beef-liver",
+   "rank": 2,
+   "line_id": null,
+   "line_code": "DRAFT",
+   "cluster": "Fertility & Postpartum",
+   "icp": "Mom Feeding Kids Whole Foods",
+   "pain_point": "Nutrient Deficiency (Iron / B12 / Vitamin A)",
+   "emotional_trigger": null,
+   "story": "She cooks everything from scratch, yet her kids still miss iron and B12.",
+   "ingredients": "",
+   "concepts": 1,
+   "score": 16.7,
+   "confidence": "low",
+   "flags": [
+    "NEW LINE inside Fertility & Postpartum",
+    "DRAFT for approval",
+    "no performance numbers: evidence is competitor activity and our adjacent results only"
+   ],
+   "why": "Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: B13 average at 0.90x on $85,494. Competitors run it: 1 competitor, 1 concept, 1 running 60+ days (Love Ya Guts) (running a long time, not proven performance). Competitor angle (Love Ya Guts, Ancestral and Folqs postpartum wave).",
+   "status": "PROPOSED (draft)",
+   "then_now": "",
+   "competitor": {
+    "competitors": 1,
+    "concepts": 1,
+    "long_running": 1,
+    "brands": [
+     "Love Ya Guts"
+    ],
+    "long_brands": [
+     "Love Ya Guts"
+    ],
+    "text": "1 competitor, 1 concept, 1 running 60+ days (Love Ya Guts)",
+    "hooks": [
+     {
+      "brand": "Love Ya Guts",
+      "hook": "What I give my kids every day (that is not processed)",
+      "days": 104,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "adjacent": 0.0,
+    "competitors": 0.333
+   },
+   "metrics": {
+    "spend": 0,
+    "tagged_ads": 0,
+    "ads": 0,
+    "judged": 0
+   },
+   "hooks": [
+    {
+     "hook": "What I give my kids every day (that is not processed)",
+     "ad": "Love Ya Guts",
+     "ad_id": null,
+     "spend": null,
+     "roas": null,
+     "line_code": "Love Ya Guts",
+     "borrowed": true
+    }
+   ],
+   "evidence": {
+    "adjacent_lines": [
+     {
+      "line_code": "B13",
+      "status": "AVERAGE",
+      "spend": 85493.87,
+      "roas": 0.8982,
+      "roas_index": 0.992
+     }
+    ]
+   },
+   "cluster_description": "Existing market: mothers around pregnancy and early parenting.",
+   "icp_description": "The mother who feeds her children whole foods and worries about gaps.",
+   "pain_description": "Iron and B12 shortfalls in a household that already eats well.",
+   "product_name": "Beef Liver"
+  },
+  {
+   "section": "iterate",
+   "product": "boneflex",
+   "rank": 1,
+   "line_id": 153,
+   "line_code": "BF51",
+   "cluster": "Bone Broth & Ancestral Nutrition",
+   "icp": "Primal Living",
+   "pain_point": "Joint Pain & Mobility Loss",
+   "emotional_trigger": "Pride",
+   "story": "He sips bone broth daily and wants the same nutrition in a capsule.",
+   "ingredients": "Collagen + Glucosamine",
+   "concepts": 2,
+   "score": 59.1,
+   "confidence": "high",
+   "flags": [],
+   "why": "ROAS 1.64x vs 0.87x for the product (index 1.82); 67% of 6 mature ads reached $1,000 vs 47%; 2% of the product's new ads in 30 days vs 1% of its spend.",
+   "status": "WORKING NOW",
+   "then_now": "Then (days 31-90): ROAS 1.16x, CPA $74, 0% of product spend. Now (30 days): ROAS 0.73x, CPA $93, 1% of product spend. Lifetime ROAS 1.64x.",
+   "competitor": null,
+   "components": {
+    "econ": 1.0,
+    "hit": 0.399,
+    "room": 0.0,
+    "momentum": 0.5,
+    "size": 1.0
+   },
+   "metrics": {
+    "spend": 29243.76,
+    "purchases": 681,
+    "roas": 1.6421,
+    "cpa": 42.94,
+    "roas_index": 1.822,
+    "ads": 12,
+    "tagged_ads": 13,
+    "roas_strong_tags": 1.6387,
+    "judged": 8,
+    "hits": 4,
+    "mature": 6,
+    "hit_rate": 0.6667,
+    "hit_rate_index": 1.249,
+    "spend_30d": 650.8,
+    "roas_30d": 0.7333,
+    "spend_prior30": 506.17,
+    "roas_prior30": 1.0093,
+    "spend_7d": 349.6,
+    "launches_30d": 8,
+    "launch_share_30d": 0.0219,
+    "spend_share": 0.0126,
+    "live_ads": 3,
+    "winners_live": 0,
+    "nc_roas": 1.1945,
+    "nc_cpa": 58.7,
+    "nc_purchases": 244,
+    "nc_roas_index": 1.674,
+    "nc_roas_30d": 0.7354,
+    "roas_then": 1.1559,
+    "cpa_then": 73.96,
+    "spend_then": 887.57,
+    "idx_then": 1.173,
+    "idx_30": 1.032,
+    "cpa_30d": 92.97,
+    "share_then": 0.0039,
+    "share_now": 0.0126
+   },
+   "hooks": [
+    {
+     "hook": "BONE MARROW IN = JOINT PAIN OUT",
+     "ad": "hf_20260309_233155_d6740ea0-4e0b-4bc8-9222-e7d94937c5a8",
+     "ad_id": 3037,
+     "spend": 18648,
+     "roas": 1.89,
+     "line_code": "BF51",
+     "borrowed": false
+    },
+    {
+     "hook": "What do you mean the Boneflex sale ends today?",
+     "ad": "Boneflex-49-Brief2-A",
+     "ad_id": 3416,
+     "spend": 1949,
+     "roas": 1.69,
+     "line_code": "BF51",
+     "borrowed": false
+    }
+   ],
+   "evidence": null,
+   "product_name": "Boneflex",
+   "cluster_description": "The Bone Broth & Ancestral Nutrition market for Boneflex: 2 ICP(s) in the Communication Overview (Primal Living, Raw-Material Believer).",
+   "icp_description": "The specific person in this market: Primal Living, who also appears with Distrust of Synthetic Solutions.",
+   "pain_description": "The problem they feel: Joint Pain & Mobility Loss. The emotion behind it: Pride. Ingredient angle (Collagen + Glucosamine): Cartilage cushion losing its raw material."
+  },
+  {
+   "section": "iterate",
+   "product": "boneflex",
+   "rank": 2,
+   "line_id": 130,
+   "line_code": "BF27",
+   "cluster": "Glucosamine & Chondroitin",
+   "icp": "BF3 Tried Everything",
+   "pain_point": "Offer / Price-Led",
+   "emotional_trigger": "Frustration",
+   "story": "She's spent hundreds on joint supplements that didn't work.",
+   "ingredients": "Whole-food general / none",
+   "concepts": 1,
+   "score": 40.2,
+   "confidence": "medium",
+   "flags": [
+    "weak tags"
+   ],
+   "why": "ROAS 1.24x vs 0.87x for the product (index 1.42); 62% of 26 mature ads reached $1,000 vs 47%; 3% of the product's new ads in 30 days vs 8% of its spend.",
+   "status": "WORKING NOW",
+   "then_now": "Then (days 31-90): ROAS 0.96x, CPA $74, 11% of product spend. Now (30 days): ROAS 0.79x, CPA $105, 11% of product spend. Lifetime ROAS 1.24x.",
+   "competitor": {
+    "competitors": 2,
+    "concepts": 2,
+    "long_running": 2,
+    "brands": [
+     "Arthrogenix",
+     "Haka Life"
+    ],
+    "long_brands": [
+     "Arthrogenix",
+     "Haka Life"
+    ],
+    "text": "2 competitors, 2 concepts, 2 running 60+ days (Arthrogenix, Haka Life)",
+    "hooks": [
+     {
+      "brand": "Arthrogenix",
+      "hook": "Black Friday Blowout! Our Best Deal Of The Year!",
+      "days": 345,
+      "url": ""
+     },
+     {
+      "brand": "Haka Life",
+      "hook": "GLX3 Green Lipped Mussel oil has helped over 113,000 (later 115k, 125k, 150k) people with joint support since 2018. Only 3 natural ingredients.",
+      "days": 258,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "econ": 0.771,
+    "hit": 0.412,
+    "room": 0.612,
+    "momentum": 0.287,
+    "size": 1.0
+   },
+   "metrics": {
+    "spend": 179513.8,
+    "purchases": 3150,
+    "roas": 1.2396,
+    "cpa": 56.99,
+    "roas_index": 1.423,
+    "ads": 44,
+    "tagged_ads": 45,
+    "roas_strong_tags": null,
+    "judged": 28,
+    "hits": 16,
+    "mature": 26,
+    "hit_rate": 0.6154,
+    "hit_rate_index": 1.265,
+    "spend_30d": 5559.86,
+    "roas_30d": 0.793,
+    "spend_prior30": 10360.47,
+    "roas_prior30": 1.008,
+    "spend_7d": 1060.58,
+    "launches_30d": 11,
+    "launch_share_30d": 0.0301,
+    "spend_share": 0.0774,
+    "live_ads": 7,
+    "winners_live": 1,
+    "nc_roas": 0.9687,
+    "nc_cpa": 72.63,
+    "nc_purchases": 1946,
+    "nc_roas_index": 1.445,
+    "nc_roas_30d": 0.5128,
+    "roas_then": 0.9607,
+    "cpa_then": 73.56,
+    "spend_then": 25820.44,
+    "idx_then": 1.347,
+    "idx_30": 1.171,
+    "cpa_30d": 104.9,
+    "share_then": 0.1124,
+    "share_now": 0.1075
+   },
+   "hooks": [
+    {
+     "hook": "This is gonna be the last day to get it at crazy prices like this.",
+     "ad": "BoneFlex-112-V3-V2",
+     "ad_id": 3532,
+     "spend": 62375,
+     "roas": 1.25,
+     "line_code": "BF27",
+     "borrowed": false
+    },
+    {
+     "hook": "If you've been thinking about trying boneflex, do it now.",
+     "ad": "Boneflex-96",
+     "ad_id": 2008,
+     "spend": 32150,
+     "roas": 1.45,
+     "line_code": "BF27",
+     "borrowed": false
+    },
+    {
+     "hook": "We overstocked - Spring Madness 70% off",
+     "ad": "boneflexSpringSale5.6__20",
+     "ad_id": 2251,
+     "spend": 4584,
+     "roas": 1.64,
+     "line_code": "BF27",
+     "borrowed": false
+    }
+   ],
+   "evidence": null,
+   "product_name": "Boneflex",
+   "cluster_description": "The Glucosamine & Chondroitin market for Boneflex: 3 ICP(s) in the Communication Overview (BF3 Tried Everything, Horse-Pill Quitter, Label Reader).",
+   "icp_description": "The specific person in this market: BF3 Tried Everything, who also appears with Joint Pain & Mobility Loss, Distrust of Synthetic Solutions.",
+   "pain_description": "The problem they feel: Offer / Price-Led. The emotion behind it: Frustration. Ingredient angle (Whole-food general / none): None: price objection, not a nutrient gap."
+  },
+  {
+   "section": "faded",
+   "product": "boneflex",
+   "rank": 1,
+   "line_id": 132,
+   "line_code": "BF29",
+   "cluster": "Glucosamine & Chondroitin",
+   "icp": "Horse-Pill Quitter",
+   "pain_point": "Off-Putting Taste / Hard to Eat",
+   "emotional_trigger": "Relief",
+   "story": "A smaller capsule that isn't a horse pill is already half the appeal.",
+   "ingredients": "Whole-food general / none",
+   "concepts": 2,
+   "score": 65.0,
+   "confidence": "medium",
+   "flags": [
+    "few ads"
+   ],
+   "why": "COLLAPSED: was working, now isn't. Weeks of 2026-05-04 to 2026-05-24 (3 weeks): ROAS 1.28x vs 0.85x for the product over the same weeks (index 1.51), CPA $52, $9,991 spend. Last 30 days: ROAS 0.23x (index 0.86), CPA $171, $684 spend; ROAS -82% from the peak; last at or above the product average in the 4 weeks ending 2026-09-13 (8 weeks ago).",
+   "status": "COLLAPSED",
+   "then_now": "Then (days 31-90): ROAS 0.61x, CPA $104, 2% of product spend. Now (30 days): ROAS 0.23x, CPA $171, 1% of product spend. Lifetime ROAS 1.16x.",
+   "competitor": null,
+   "components": {
+    "size": 0.319,
+    "strength": 0.855,
+    "drop": 0.821
+   },
+   "metrics": {
+    "spend": 74943.73,
+    "purchases": 1300,
+    "roas": 1.1616,
+    "cpa": 57.65,
+    "roas_index": 1.328,
+    "ads": 4,
+    "tagged_ads": 4,
+    "roas_strong_tags": 1.1616,
+    "judged": 4,
+    "hits": 2,
+    "mature": 4,
+    "hit_rate": 0.5,
+    "hit_rate_index": 1.03,
+    "spend_30d": 683.52,
+    "roas_30d": 0.2294,
+    "spend_prior30": 1077.98,
+    "roas_prior30": 0.6603,
+    "spend_7d": 0.0,
+    "launches_30d": 1,
+    "launch_share_30d": 0.0027,
+    "spend_share": 0.0323,
+    "live_ads": 0,
+    "winners_live": 0,
+    "nc_roas": 0.7158,
+    "nc_cpa": 86.87,
+    "nc_purchases": 419,
+    "nc_roas_index": 1.069,
+    "nc_roas_30d": 0.173,
+    "roas_then": 0.6074,
+    "cpa_then": 103.9,
+    "spend_then": 4052.25,
+    "idx_then": 0.921,
+    "idx_30": 0.863,
+    "cpa_30d": 170.88,
+    "share_then": 0.0176,
+    "share_now": 0.0132
+   },
+   "hooks": [
+    {
+     "hook": "Do not buy boneflex, they said it would help with joint stiffness and rebuild cartilage.",
+     "ad": "BoneFlex-29-Hook1",
+     "ad_id": 3342,
+     "spend": 37602,
+     "roas": 1.18,
+     "line_code": "BF29",
+     "borrowed": false
+    },
+    {
+     "hook": "Do not buy boneflex, they said it would help with joint stiffness and rebuild cartilage.",
+     "ad": "BoneFlex-29-Hook1 - Scaled",
+     "ad_id": 3351,
+     "spend": 36810,
+     "roas": 1.16,
+     "line_code": "BF29",
+     "borrowed": false
+    }
+   ],
+   "evidence": null,
+   "when_it_worked": "Weeks of 2026-05-04 to 2026-05-24 (3 weeks): ROAS 1.28x vs 0.85x for the product over the same weeks (index 1.51), CPA $52, $9,991 spend.",
+   "how_it_stopped": "Last 30 days: ROAS 0.23x (index 0.86), CPA $171, $684 spend; ROAS -82% from the peak; last at or above the product average in the 4 weeks ending 2026-09-13 (8 weeks ago).",
+   "diagnosis": "No single pattern stands out in the numbers (new ads, ad fatigue and spend share all look ordinary): consistent with partial fatigue; refresh the former winners and watch the next two weeks.",
+   "revive_play": "2 concepts this week: remake the former winners' hooks with new scenes, openings and proof (\"Do not buy boneflex, they said it would help with joint stiffness and rebuild cartilage.\" (BoneFlex-29-Hook1, peak week of 2026-05-18); \"Do not buy boneflex, they said it would help with joint stiffness and rebuild cartilage.\" (BoneFlex-29-Hook1 - Scaled, peak week of 2026-05-04)); test small before scaling against the product's 0.64x last-30-day ROAS.",
+   "stretch": {
+    "start": "2026-05-04",
+    "end": "2026-05-24",
+    "weeks": 3,
+    "spend": 9991.05,
+    "revenue": 12832.32,
+    "roas": 1.2844,
+    "cpa": 51.5,
+    "index": 1.513,
+    "excess": 4350.78,
+    "product_roas": 0.8489
+   },
+   "faded": {
+    "last_at_or_above": {
+     "window_end": "2026-09-13",
+     "weeks_since": 8
+    },
+    "roas_change_pct": -62,
+    "idx_then": 0.921,
+    "idx_now": 0.863
+   },
+   "former_winners": [
+    {
+     "ad": "BoneFlex-29-Hook1",
+     "ad_id": 3342,
+     "hook": "Do not buy boneflex, they said it would help with joint stiffness and rebuild cartilage.",
+     "spend": 37602,
+     "roas": 1.18,
+     "kind": "stopped",
+     "peak_week": "2026-05-18",
+     "stopped": "2026-10-27",
+     "roas_30d": null
+    },
+    {
+     "ad": "BoneFlex-29-Hook1 - Scaled",
+     "ad_id": 3351,
+     "hook": "Do not buy boneflex, they said it would help with joint stiffness and rebuild cartilage.",
+     "spend": 36810,
+     "roas": 1.16,
+     "kind": "stopped",
+     "peak_week": "2026-05-04",
+     "stopped": "2026-10-25",
+     "roas_30d": 0.3
+    }
+   ],
+   "winners_summary": {
+    "winners": 2,
+    "not_working": 2,
+    "stopped": 2,
+    "decayed": 0,
+    "still_working": 0,
+    "live_share": 0.0,
+    "launches_in_peak": 0,
+    "launches_last_30d": 1
+   },
+   "product_name": "Boneflex",
+   "cluster_description": "The Glucosamine & Chondroitin market for Boneflex: 3 ICP(s) in the Communication Overview (BF3 Tried Everything, Horse-Pill Quitter, Label Reader).",
+   "icp_description": "The specific person in this market: Horse-Pill Quitter, who also appears with Joint Pain & Mobility Loss.",
+   "pain_description": "The problem they feel: Off-Putting Taste / Hard to Eat. The emotion behind it: Relief. Ingredient angle (Whole-food general / none): None: pill size, answered by a smaller capsule."
+  },
+  {
+   "section": "faded",
+   "product": "boneflex",
+   "rank": 2,
+   "line_id": 117,
+   "line_code": "BF14",
+   "cluster": "Pain-Relief Alternatives",
+   "icp": "Pills Off The Table",
+   "pain_point": "Distrust of Synthetic Solutions",
+   "emotional_trigger": "Frustration",
+   "story": "Kidney and blood-pressure meds rule out the painkillers, and gels only mask it.",
+   "ingredients": "Curcumin + MSM",
+   "concepts": 2,
+   "score": 54.3,
+   "confidence": "medium",
+   "flags": [
+    "few ads",
+    "peak ROAS 0.99x was above the product average but under 1.0x"
+   ],
+   "why": "STOPPED: was working, now isn't. Weeks of 2026-06-29 to 2026-09-20 (12 weeks): ROAS 0.99x vs 0.74x for the product over the same weeks (index 1.34), CPA $64, $13,646 spend. No spend in the last 30 days; last at or above the product average in the 4 weeks ending 2026-10-11 (4 weeks ago).",
+   "status": "STOPPED",
+   "then_now": "Then (days 31-90): ROAS 0.98x, CPA $66, 2% of product spend. Now (30 days): ROAS 1.96x, CPA $41, 0% of product spend. Lifetime ROAS 1.09x.",
+   "competitor": null,
+   "components": {
+    "size": 0.27,
+    "strength": 0.573,
+    "drop": 1.0
+   },
+   "metrics": {
+    "spend": 31008.06,
+    "purchases": 517,
+    "roas": 1.0915,
+    "cpa": 59.98,
+    "roas_index": 1.239,
+    "ads": 6,
+    "tagged_ads": 7,
+    "roas_strong_tags": 1.0915,
+    "judged": 5,
+    "hits": 5,
+    "mature": 5,
+    "hit_rate": 1.0,
+    "hit_rate_index": 1.623,
+    "spend_30d": 81.39,
+    "roas_30d": 1.958,
+    "spend_prior30": 1287.94,
+    "roas_prior30": 0.9629,
+    "spend_7d": 10.04,
+    "launches_30d": 0,
+    "launch_share_30d": 0.0,
+    "spend_share": 0.0134,
+    "live_ads": 1,
+    "winners_live": 0,
+    "nc_roas": 0.7389,
+    "nc_cpa": 84.55,
+    "nc_purchases": 289,
+    "nc_roas_index": 1.098,
+    "nc_roas_30d": 1.1665,
+    "roas_then": 0.9785,
+    "cpa_then": 66.04,
+    "spend_then": 4028.28,
+    "idx_then": 1.25,
+    "idx_30": 1.066,
+    "cpa_30d": 40.69,
+    "share_then": 0.0175,
+    "share_now": 0.0016
+   },
+   "hooks": [
+    {
+     "hook": "Relief Like Ibuprofen Without the kidney damage.",
+     "ad": "hf_20260122_214915_fc83892f-c0fe-40fc-8920-18339fb9cfdc",
+     "ad_id": 2742,
+     "spend": 10101,
+     "roas": 1.58,
+     "line_code": "BF14",
+     "borrowed": false
+    },
+    {
+     "hook": "Stop masking it. Start rebuilding it.",
+     "ad": "boneflex_static_7.4_3",
+     "ad_id": 3715,
+     "spend": 10438,
+     "roas": 0.93,
+     "line_code": "BF14",
+     "borrowed": false
+    },
+    {
+     "hook": "Relief Like Ibuprofen. Without the kidney damage.",
+     "ad": "likeIbuprofen",
+     "ad_id": 3108,
+     "spend": 1802,
+     "roas": 0.98,
+     "line_code": "BF14",
+     "borrowed": false
+    }
+   ],
+   "evidence": null,
+   "when_it_worked": "Weeks of 2026-06-29 to 2026-09-20 (12 weeks): ROAS 0.99x vs 0.74x for the product over the same weeks (index 1.34), CPA $64, $13,646 spend.",
+   "how_it_stopped": "No spend in the last 30 days; last at or above the product average in the 4 weeks ending 2026-10-11 (4 weeks ago).",
+   "diagnosis": "No spend in the last 30 days (4 of 4 winning ads stopped or decayed): consistent with spend moved away or the ads switched off, not with a delivery decline.",
+   "revive_play": "2 concepts this week: remake the former winners' hooks with new scenes, openings and proof (\"Relief Like Ibuprofen Without the kidney damage.\" (hf_20260122_214915_fc83892f-c0fe-40fc-8920-18339fb9cfdc, peak week of 2026-06-01); \"Stop masking it. Start rebuilding it.\" (boneflex_static_7.4_3, peak week of 2026-07-13)); test small before scaling against the product's 0.64x last-30-day ROAS.",
+   "stretch": {
+    "start": "2026-06-29",
+    "end": "2026-09-20",
+    "weeks": 12,
+    "spend": 13645.54,
+    "revenue": 13539.73,
+    "roas": 0.9922,
+    "cpa": 63.76,
+    "index": 1.344,
+    "excess": 3463.77,
+    "product_roas": 0.7384
+   },
+   "faded": {
+    "last_at_or_above": {
+     "window_end": "2026-10-11",
+     "weeks_since": 4
+    },
+    "roas_change_pct": null,
+    "idx_then": 1.25,
+    "idx_now": null
+   },
+   "former_winners": [
+    {
+     "ad": "hf_20260122_214915_fc83892f-c0fe-40fc-8920-18339fb9cfdc",
+     "ad_id": 2742,
+     "hook": "Relief Like Ibuprofen Without the kidney damage.",
+     "spend": 10101,
+     "roas": 1.58,
+     "kind": "stopped",
+     "peak_week": "2026-06-01",
+     "stopped": "2026-10-22",
+     "roas_30d": null
+    },
+    {
+     "ad": "boneflex_static_7.4_3",
+     "ad_id": 3715,
+     "hook": "Stop masking it. Start rebuilding it.",
+     "spend": 10438,
+     "roas": 0.93,
+     "kind": "stopped",
+     "peak_week": "2026-07-13",
+     "stopped": "2026-10-25",
+     "roas_30d": null
+    },
+    {
+     "ad": "likeIbuprofen",
+     "ad_id": 3108,
+     "hook": "Relief Like Ibuprofen. Without the kidney damage.",
+     "spend": 1802,
+     "roas": 0.98,
+     "kind": "stopped",
+     "peak_week": "2026-07-06",
+     "stopped": "2026-10-27",
+     "roas_30d": null
+    },
+    {
+     "ad": "Boneflex-107-Hook1",
+     "ad_id": 3544,
+     "hook": "This is why my dad couldn't get rid of his knee pain.",
+     "spend": 1004,
+     "roas": 1.07,
+     "kind": "decayed",
+     "peak_week": "2026-09-14",
+     "stopped": null,
+     "roas_30d": null
+    }
+   ],
+   "winners_summary": {
+    "winners": 4,
+    "not_working": 4,
+    "stopped": 3,
+    "decayed": 1,
+    "still_working": 0,
+    "live_share": 0.0,
+    "launches_in_peak": 3,
+    "launches_last_30d": 0
+   },
+   "product_name": "Boneflex",
+   "cluster_description": "The Pain-Relief Alternatives market for Boneflex: 2 ICP(s) in the Communication Overview (Pills Off The Table, Pharma Avoider).",
+   "icp_description": "The specific person in this market: Pills Off The Table, who also appears with Joint Pain & Mobility Loss, General Vitality / Aging Well.",
+   "pain_description": "The problem they feel: Distrust of Synthetic Solutions. The emotion behind it: Frustration. Ingredient angle (Curcumin + MSM): Inflammatory swelling, without painkillers."
+  },
+  {
+   "section": "stop",
+   "product": "boneflex",
+   "rank": 1,
+   "line_id": 134,
+   "line_code": "BF31",
+   "cluster": "Glucosamine & Chondroitin",
+   "icp": "Label Reader",
+   "pain_point": "Joint Pain & Mobility Loss",
+   "emotional_trigger": "Comparison",
+   "story": "Glucosamine doses get compared across brands before a single dollar is spent.",
+   "ingredients": "Glucosamine + Chondroitin",
+   "concepts": 0,
+   "score": 0.0,
+   "confidence": "medium",
+   "flags": [
+    "weak tags",
+    "few ads"
+   ],
+   "why": "Spent $10,556 over 7 tested ads at 0.67x against 0.87x for the product (index 0.81); no spend in the last 30 days. Consistent with a line that is weak over its history.",
+   "status": "NOT WORKING",
+   "then_now": "Then (days 31-90): ROAS 0.40x, CPA $211, 1% of product spend. Now (30 days): ROAS 0.00x, CPA n/a, 0% of product spend. Lifetime ROAS 0.67x.",
+   "competitor": null,
+   "components": {},
+   "metrics": {
+    "spend": 10556.14,
+    "purchases": 103,
+    "roas": 0.665,
+    "cpa": 102.49,
+    "roas_index": 0.811,
+    "ads": 9,
+    "tagged_ads": 10,
+    "roas_strong_tags": 0.6705,
+    "judged": 7,
+    "hits": 4,
+    "mature": 5,
+    "hit_rate": 0.8,
+    "hit_rate_index": 1.387,
+    "spend_30d": 64.59,
+    "roas_30d": 0.0,
+    "spend_prior30": 139.1,
+    "roas_prior30": 1.0835,
+    "spend_7d": 2.29,
+    "launches_30d": 4,
+    "launch_share_30d": 0.0109,
+    "spend_share": 0.0045,
+    "live_ads": 1,
+    "winners_live": 0,
+    "nc_roas": 0.6131,
+    "nc_cpa": 111.25,
+    "nc_purchases": 44,
+    "nc_roas_index": 0.947,
+    "nc_roas_30d": 0.0,
+    "roas_then": 0.4021,
+    "cpa_then": 211.01,
+    "spend_then": 1899.08,
+    "idx_then": 0.818,
+    "idx_30": 0.975,
+    "cpa_30d": null,
+    "share_then": 0.0083,
+    "share_now": 0.0012
+   },
+   "hooks": [],
+   "evidence": null,
+   "product_name": "Boneflex",
+   "cluster_description": "The Glucosamine & Chondroitin market for Boneflex: 3 ICP(s) in the Communication Overview (BF3 Tried Everything, Horse-Pill Quitter, Label Reader).",
+   "icp_description": "The specific person in this market: Label Reader, who also appears with Ingredient Quality / Sourcing.",
+   "pain_description": "The problem they feel: Joint Pain & Mobility Loss. The emotion behind it: Comparison. Ingredient angle (Glucosamine + Chondroitin): Worn cartilage and thin joint fluid."
+  },
+  {
+   "section": "stop",
+   "product": "boneflex",
+   "rank": 2,
+   "line_id": 116,
+   "line_code": "BF13",
+   "cluster": "Pain-Relief Alternatives",
+   "icp": "Pills Off The Table",
+   "pain_point": "Joint Pain & Mobility Loss",
+   "emotional_trigger": "Fear",
+   "story": "The doctor says no more ibuprofen, ever, and nothing else is left to try.",
+   "ingredients": "Curcumin + MSM",
+   "concepts": 0,
+   "score": 0.0,
+   "confidence": "medium",
+   "flags": [
+    "thin sample",
+    "few ads"
+   ],
+   "why": "Spent $8,710 over 6 tested ads at 0.66x against 0.87x for the product (index 0.82); no spend in the last 30 days. Consistent with a line that is weak over its history.",
+   "status": "NOT WORKING",
+   "then_now": "Then (days 31-90): ROAS 0.69x, CPA $63, 0% of product spend. Now (30 days): ROAS 0.00x, CPA n/a, 0% of product spend. Lifetime ROAS 0.66x.",
+   "competitor": null,
+   "components": {},
+   "metrics": {
+    "spend": 8710.39,
+    "purchases": 98,
+    "roas": 0.6618,
+    "cpa": 88.88,
+    "roas_index": 0.816,
+    "ads": 15,
+    "tagged_ads": 16,
+    "roas_strong_tags": 0.6619,
+    "judged": 6,
+    "hits": 1,
+    "mature": 6,
+    "hit_rate": 0.1667,
+    "hit_rate_index": 0.612,
+    "spend_30d": 110.95,
+    "roas_30d": 0.0,
+    "spend_prior30": 5.15,
+    "roas_prior30": 6.7301,
+    "spend_7d": 0.0,
+    "launches_30d": 8,
+    "launch_share_30d": 0.0219,
+    "spend_share": 0.0038,
+    "live_ads": 0,
+    "winners_live": 0,
+    "nc_roas": 0.5629,
+    "nc_cpa": 104.45,
+    "nc_purchases": 63,
+    "nc_roas_index": 0.887,
+    "nc_roas_30d": 0.0,
+    "roas_then": 0.6862,
+    "cpa_then": 63.24,
+    "spend_then": 379.45,
+    "idx_then": 0.998,
+    "idx_30": 0.958,
+    "cpa_30d": null,
+    "share_then": 0.0017,
+    "share_now": 0.0021
+   },
+   "hooks": [],
+   "evidence": null,
+   "product_name": "Boneflex",
+   "cluster_description": "The Pain-Relief Alternatives market for Boneflex: 2 ICP(s) in the Communication Overview (Pills Off The Table, Pharma Avoider).",
+   "icp_description": "The specific person in this market: Pills Off The Table, who also appears with Distrust of Synthetic Solutions, General Vitality / Aging Well.",
+   "pain_description": "The problem they feel: Joint Pain & Mobility Loss. The emotion behind it: Fear. Ingredient angle (Curcumin + MSM): Inflammatory swelling around the joint."
+  },
+  {
+   "section": "new",
+   "product": "boneflex",
+   "rank": 1,
+   "line_id": 122,
+   "line_code": "BF19",
+   "cluster": "Pickleball & Active Aging",
+   "icp": "BF1 Won't Sit It Out",
+   "pain_point": "Muscle Recovery / Athletic Performance",
+   "emotional_trigger": "Frustration",
+   "story": "He wakes up stiff after every game and loses a day recovering.",
+   "ingredients": "MSM + Collagen",
+   "concepts": 1,
+   "score": 52.1,
+   "confidence": "medium",
+   "flags": [],
+   "why": "same ICP on BF18 (Joint Pain & Mobility Loss) spent $78,699 at 1.53x, index 1.74, working now; competitors run it: 1 competitor, 1 concept, 1 running 60+ days (OmegaXL) (running a long time, not proven performance).",
+   "status": "UNTESTED / UNDER-TESTED",
+   "then_now": "Then (days 31-90): ROAS n/a, CPA n/a, 0% of product spend. Now (30 days): ROAS n/a, CPA n/a, 0% of product spend. Lifetime ROAS n/a.",
+   "competitor": {
+    "competitors": 1,
+    "concepts": 1,
+    "long_running": 1,
+    "brands": [
+     "OmegaXL"
+    ],
+    "long_brands": [
+     "OmegaXL"
+    ],
+    "text": "1 competitor, 1 concept, 1 running 60+ days (OmegaXL)",
+    "hooks": [
+     {
+      "brand": "OmegaXL",
+      "hook": "Tough workout? No problem. Recover faster with OmegaXL Sport!",
+      "days": 248,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "adjacent": 0.695,
+    "cross_product": 0.0,
+    "competitors": 0.333,
+    "cluster_order": 0.667,
+    "story": 1.0
+   },
+   "metrics": {
+    "roas": null,
+    "cpa": null,
+    "roas_index": null,
+    "hit_rate": null,
+    "hit_rate_index": null,
+    "roas_30d": null,
+    "roas_prior30": null,
+    "nc_roas": null,
+    "nc_cpa": null,
+    "nc_roas_index": null,
+    "nc_roas_30d": null,
+    "roas_strong_tags": null,
+    "spend": 0.0,
+    "purchases": 0,
+    "ads": 0,
+    "tagged_ads": 0,
+    "judged": 0,
+    "hits": 0,
+    "mature": 0,
+    "spend_30d": 0.0,
+    "spend_prior30": 0.0,
+    "spend_7d": 0.0,
+    "launches_30d": 0,
+    "launch_share_30d": 0.0,
+    "spend_share": 0.0,
+    "live_ads": 0,
+    "winners_live": 0,
+    "nc_purchases": 0,
+    "roas_then": null,
+    "cpa_then": null,
+    "spend_then": 0.0,
+    "idx_then": null,
+    "idx_30": null,
+    "cpa_30d": null,
+    "share_then": 0.0,
+    "share_now": 0.0
+   },
+   "hooks": [
+    {
+     "hook": "This is your last chance to grab boneflex at a price like this.",
+     "ad": "Boneflex-67-BumperAd2 V2",
+     "ad_id": 2009,
+     "spend": 68225,
+     "roas": 1.61,
+     "line_code": "BF18",
+     "borrowed": true
+    },
+    {
+     "hook": "I finally went on that hike with your dad. Wait \u2014 seriously?? How were your knees?",
+     "ad": "Boneflex-static-7.20.26-2_7.png",
+     "ad_id": 2240,
+     "spend": 7626,
+     "roas": 1.16,
+     "line_code": "BF18",
+     "borrowed": true
+    }
+   ],
+   "evidence": {
+    "adjacent": {
+     "product": "boneflex",
+     "line_code": "BF18",
+     "icp": "BF1 Won't Sit It Out",
+     "cluster": "Pickleball & Active Aging",
+     "pain_point": "Joint Pain & Mobility Loss",
+     "spend": 78698.95,
+     "roas": 1.5259,
+     "roas_index": 1.735,
+     "same": "ICP",
+     "status": "WORKING NOW"
+    },
+    "cross_product": null
+   },
+   "product_name": "Boneflex",
+   "cluster_description": "The Pickleball & Active Aging market for Boneflex: 3 ICP(s) in the Communication Overview (BF1 Won't Sit It Out, Pickleball Diehard, Ex-Runner Longevity).",
+   "icp_description": "The specific person in this market: BF1 Won't Sit It Out, who also appears with Joint Pain & Mobility Loss, General Vitality / Aging Well.",
+   "pain_description": "The problem they feel: Muscle Recovery / Athletic Performance. The emotion behind it: Frustration. Ingredient angle (MSM + Collagen): Post-activity soreness and stiffness."
+  },
+  {
+   "section": "new",
+   "product": "boneflex",
+   "rank": 2,
+   "line_id": 127,
+   "line_code": "BF24",
+   "cluster": "Pickleball & Active Aging",
+   "icp": "Ex-Runner Longevity",
+   "pain_point": "General Vitality / Aging Well",
+   "emotional_trigger": "Pride",
+   "story": "He still thinks of himself as a runner and wants to move like one.",
+   "ingredients": "Collagen + Glucosamine",
+   "concepts": 1,
+   "score": 44.0,
+   "confidence": "medium",
+   "flags": [
+    "1 ad(s) already tagged, $0 spent"
+   ],
+   "why": "same cluster on BF18 (Joint Pain & Mobility Loss) spent $78,699 at 1.53x, index 1.74, working now; same pain point on beef-liver B58 spent $475,662 at 1.05x, index 1.16.",
+   "status": "UNTESTED / UNDER-TESTED",
+   "then_now": "Then (days 31-90): ROAS n/a, CPA n/a, 0% of product spend. Now (30 days): ROAS n/a, CPA n/a, 0% of product spend. Lifetime ROAS n/a.",
+   "competitor": null,
+   "components": {
+    "adjacent": 0.487,
+    "cross_product": 0.645,
+    "competitors": 0.0,
+    "cluster_order": 0.574,
+    "story": 1.0
+   },
+   "metrics": {
+    "roas": null,
+    "cpa": null,
+    "roas_index": null,
+    "hit_rate": null,
+    "hit_rate_index": null,
+    "roas_30d": null,
+    "roas_prior30": null,
+    "nc_roas": null,
+    "nc_cpa": null,
+    "nc_roas_index": null,
+    "nc_roas_30d": null,
+    "roas_strong_tags": null,
+    "spend": 0.0,
+    "purchases": 0,
+    "ads": 0,
+    "tagged_ads": 1,
+    "judged": 0,
+    "hits": 0,
+    "mature": 0,
+    "spend_30d": 0.0,
+    "spend_prior30": 0.0,
+    "spend_7d": 0.0,
+    "launches_30d": 0,
+    "launch_share_30d": 0.0,
+    "spend_share": 0.0,
+    "live_ads": 0,
+    "winners_live": 0,
+    "nc_purchases": 0,
+    "roas_then": null,
+    "cpa_then": null,
+    "spend_then": 0.0,
+    "idx_then": 1.0,
+    "idx_30": 1.0,
+    "cpa_30d": null,
+    "share_then": 0.0,
+    "share_now": 0.0
+   },
+   "hooks": [
+    {
+     "hook": "This is your last chance to grab boneflex at a price like this.",
+     "ad": "Boneflex-67-BumperAd2 V2",
+     "ad_id": 2009,
+     "spend": 68225,
+     "roas": 1.61,
+     "line_code": "BF18",
+     "borrowed": true
+    },
+    {
+     "hook": "I finally went on that hike with your dad. Wait \u2014 seriously?? How were your knees?",
+     "ad": "Boneflex-static-7.20.26-2_7.png",
+     "ad_id": 2240,
+     "spend": 7626,
+     "roas": 1.16,
+     "line_code": "BF18",
+     "borrowed": true
+    }
+   ],
+   "evidence": {
+    "adjacent": {
+     "product": "boneflex",
+     "line_code": "BF18",
+     "icp": "BF1 Won't Sit It Out",
+     "cluster": "Pickleball & Active Aging",
+     "pain_point": "Joint Pain & Mobility Loss",
+     "spend": 78698.95,
+     "roas": 1.5259,
+     "roas_index": 1.735,
+     "same": "cluster",
+     "status": "WORKING NOW"
+    },
+    "cross_product": {
+     "product": "beef-liver",
+     "line_code": "B58",
+     "icp": "Curious Beginner",
+     "cluster": "Ancestral Nutrition",
+     "pain_point": "General Vitality / Aging Well",
+     "spend": 475662.36,
+     "roas": 1.0478,
+     "roas_index": 1.156,
+     "same": "pain point",
+     "status": "RISING"
+    }
+   },
+   "product_name": "Boneflex",
+   "cluster_description": "The Pickleball & Active Aging market for Boneflex: 3 ICP(s) in the Communication Overview (BF1 Won't Sit It Out, Pickleball Diehard, Ex-Runner Longevity).",
+   "icp_description": "The specific person in this market: Ex-Runner Longevity, who also appears with Joint Pain & Mobility Loss.",
+   "pain_description": "The problem they feel: General Vitality / Aging Well. The emotion behind it: Pride. Ingredient angle (Collagen + Glucosamine): Connective tissue wearing down with age."
+  },
+  {
+   "section": "proposal",
+   "product": "boneflex",
+   "rank": 1,
+   "line_id": null,
+   "line_code": "DRAFT",
+   "cluster": "Menopause",
+   "icp": "Women's Bone-Marrow Joint Buyer",
+   "pain_point": "Joint Pain & Mobility Loss",
+   "emotional_trigger": null,
+   "story": "Menopause made her joints ache, and stairs now feel like something to dread.",
+   "ingredients": "",
+   "concepts": 1,
+   "score": 65.5,
+   "confidence": "medium",
+   "flags": [
+    "NEW LINE inside Menopause",
+    "DRAFT for approval",
+    "no performance numbers: evidence is competitor activity and our adjacent results only"
+   ],
+   "why": "Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: BF51 working now at 1.64x on $29,244; BF53 average at 0.75x on $270,269. Competitors run it: 1 competitor, 1 concept, 1 running 60+ days (Primal Queen) (running a long time, not proven performance). Competitor angle (My Marrow, Primal Queen Marrow, direct Boneflex competitors); our bone-marrow line BF51 reads strongest on Boneflex.",
+   "status": "PROPOSED (draft)",
+   "then_now": "",
+   "competitor": {
+    "competitors": 1,
+    "concepts": 1,
+    "long_running": 1,
+    "brands": [
+     "Primal Queen"
+    ],
+    "long_brands": [
+     "Primal Queen"
+    ],
+    "text": "1 competitor, 1 concept, 1 running 60+ days (Primal Queen)",
+    "hooks": [
+     {
+      "brand": "Primal Queen",
+      "hook": "More than joint relief",
+      "days": 126,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "adjacent": 0.977,
+    "competitors": 0.333
+   },
+   "metrics": {
+    "spend": 0,
+    "tagged_ads": 0,
+    "ads": 0,
+    "judged": 0
+   },
+   "hooks": [
+    {
+     "hook": "More than joint relief",
+     "ad": "Primal Queen",
+     "ad_id": null,
+     "spend": null,
+     "roas": null,
+     "line_code": "Primal Queen",
+     "borrowed": true
+    }
+   ],
+   "evidence": {
+    "adjacent_lines": [
+     {
+      "line_code": "BF51",
+      "status": "WORKING NOW",
+      "spend": 29243.76,
+      "roas": 1.6421,
+      "roas_index": 1.822
+     },
+     {
+      "line_code": "BF53",
+      "status": "AVERAGE",
+      "spend": 270268.86,
+      "roas": 0.7477,
+      "roas_index": 0.863
+     }
+    ]
+   },
+   "cluster_description": "Existing market: women whose joints changed with menopause.",
+   "icp_description": "The woman who buys on bone marrow as the reason her joints hurt.",
+   "pain_description": "Joint pain and stair fear that started in menopause.",
+   "product_name": "Boneflex"
+  },
+  {
+   "section": "proposal",
+   "product": "boneflex",
+   "rank": 2,
+   "line_id": null,
+   "line_code": "DRAFT",
+   "cluster": "Spanish-Language Joint Buyer",
+   "icp": "Spanish-speaking joint buyer",
+   "pain_point": "Joint Pain & Mobility Loss",
+   "emotional_trigger": null,
+   "story": "A familiar TV voice tells her, in Spanish, how her knees can feel again.",
+   "ingredients": "",
+   "concepts": 1,
+   "score": 51.4,
+   "confidence": "medium",
+   "flags": [
+    "NEW CLUSTER",
+    "DRAFT for approval",
+    "no performance numbers: evidence is competitor activity and our adjacent results only"
+   ],
+   "why": "Draft for Josh's approval (add to the Communication Overview if approved). Adjacent results of ours: BF18 working now at 1.53x on $78,699; BF25 average at 0.72x on $231,755. Competitors run it: 1 competitor, 1 concept, 1 running 60+ days (OmegaXL) (running a long time, not proven performance). Competitor angle (OmegaXL, 8 ads since Feb 19).",
+   "status": "PROPOSED (draft)",
+   "then_now": "",
+   "competitor": {
+    "competitors": 1,
+    "concepts": 1,
+    "long_running": 1,
+    "brands": [
+     "OmegaXL"
+    ],
+    "long_brands": [
+     "OmegaXL"
+    ],
+    "text": "1 competitor, 1 concept, 1 running 60+ days (OmegaXL)",
+    "hooks": [
+     {
+      "brand": "OmegaXL",
+      "hook": "OmegaXL te puede cambiar la vida para mejor! (Ana Maria Polo shares the secret to combat joint pain)",
+      "days": 263,
+      "url": ""
+     }
+    ]
+   },
+   "components": {
+    "adjacent": 0.695,
+    "competitors": 0.333
+   },
+   "metrics": {
+    "spend": 0,
+    "tagged_ads": 0,
+    "ads": 0,
+    "judged": 0
+   },
+   "hooks": [
+    {
+     "hook": "OmegaXL te puede cambiar la vida para mejor! (Ana Maria Polo shares the secret to combat joint pain)",
+     "ad": "OmegaXL",
+     "ad_id": null,
+     "spend": null,
+     "roas": null,
+     "line_code": "OmegaXL",
+     "borrowed": true
+    }
+   ],
+   "evidence": {
+    "adjacent_lines": [
+     {
+      "line_code": "BF18",
+      "status": "WORKING NOW",
+      "spend": 78698.95,
+      "roas": 1.5259,
+      "roas_index": 1.735
+     },
+     {
+      "line_code": "BF25",
+      "status": "AVERAGE",
+      "spend": 231754.88,
+      "roas": 0.7245,
+      "roas_index": 0.837
+     }
+    ]
+   },
+   "cluster_description": "Proposed market: Spanish-speaking joint buyers reached in their own language.",
+   "icp_description": "The Spanish-speaking buyer who trusts a known personality.",
+   "pain_description": "Joint pain, in the buyer's own language and voice.",
+   "product_name": "Boneflex"
+  }
+ ],
+ "stats": {
+  "status_counts_total": {
+   "WORKING NOW": 10,
+   "RISING": 4,
+   "FADING / WAS WORKING": 3,
+   "NOT WORKING": 16,
+   "AVERAGE": 36,
+   "TOO EARLY": 37,
+   "UNTESTED / UNDER-TESTED": 51
+  },
+  "competitors": {
+   "as_of": "2026-11-09",
+   "source": "comp_seed.csv",
+   "rows": 92,
+   "matched_rows": 71,
+   "unmatched_rows": 13,
+   "brands": 20,
+   "stale_brands": []
+  }
+ },
+ "competitors_as_of": "2026-11-09",
+ "competitor_stale": [],
+ "weeks": [
+  {
+   "week_start": "2026-11-08",
+   "built_at": "2026-11-09T12:00:00+00:00",
+   "data_through": "2026-11-08",
+   "rows": 30
+  },
+  {
+   "week_start": "2026-11-01",
+   "built_at": "2026-11-02T12:00:00+00:00",
+   "data_through": "2026-11-01",
+   "rows": 30
+  }
+ ],
+ "legend": [
+  {
+   "tag": "Market Cluster",
+   "meaning": "The broad audience or topic market the ad speaks to, for example Hair Thinning."
+  },
+  {
+   "tag": "ICP",
+   "meaning": "The specific person (ideal customer profile) inside that market, for example a woman whose ferritin is normal yet she keeps shedding."
+  },
+  {
+   "tag": "Pain Point",
+   "meaning": "The problem that person feels and wants solved."
+  },
+  {
+   "tag": "Story",
+   "meaning": "The scene or narrative the ad tells, 15 words or fewer, written for that person and that pain."
+  }
+ ]
+}
