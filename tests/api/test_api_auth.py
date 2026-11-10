@@ -342,7 +342,12 @@ def test_the_api_is_read_only(app, client, app_factory):
     # 1b. the production write routes are exactly these (all on the app's own read-write pool, all behind the Origin check and a rate limit); the vendor ones are the only login-exempt API paths
     prod = {(r.rule, m) for r in app.url_map.iter_rules() if r.rule.startswith(("/api/priorities/assignments", "/api/priorities/vendor")) for m in set(r.methods) - {"GET", "HEAD", "OPTIONS"}}
     assert prod == {("/api/priorities/assignments", "POST"), ("/api/priorities/assignments/<int:aid>", "PATCH"), ("/api/priorities/vendor-links", "POST"),
-                    ("/api/priorities/vendor-links/<vendor>/reset", "POST"), ("/api/priorities/vendor/<token>/<int:aid>", "PATCH")}
+                    ("/api/priorities/vendor-links/<vendor>/reset", "POST"), ("/api/priorities/vendor/<token>/<int:aid>", "PATCH"),
+                    # launch (dark unless META_LAUNCH_ENABLED; three gates; never login-exempt): settings, the draft, prepare, confirm and cancel only queue rows in Postgres
+                    ("/api/priorities/assignments/<int:aid>/launch/draft", "PUT"), ("/api/priorities/assignments/<int:aid>/launch/prepare", "POST"),
+                    ("/api/priorities/assignments/<int:aid>/launch/confirm", "POST"), ("/api/priorities/assignments/<int:aid>/launch/cancel", "POST")}
+    launch_put = {(r.rule, m) for r in app.url_map.iter_rules() if r.rule.startswith("/api/priorities/launch") for m in set(r.methods) - {"GET", "HEAD", "OPTIONS"}}
+    assert launch_put == {("/api/priorities/launch/settings/<product>", "PUT")}
     from app import auth as auth_mod
     tok = "A" * 30
     assert all(auth_mod.PUBLIC_API_RE.fullmatch(p) for p in (f"/api/priorities/vendor/{tok}", f"/api/priorities/vendor/{tok}/12"))
