@@ -588,3 +588,28 @@ def test_14_day_product_block_and_unmapped_spend():
     assert b["cohort_14d"]["launched"] >= 1 and b["cohort_14d"]["label"] == "Launched in the last 14 days"
     m = next(x for x in r["rows"] if x["line_id"] == 1)["metrics"]
     assert m["value_14d"] == 80.0 * m["purchases_14d"] and m["spend_14d"] == 100.0 * m["purchases_14d"]
+
+
+def test_everything_else_rows_cover_every_line_and_the_rows_add_up_to_the_tile():
+    inp = scenario()
+    inp["win"]["meta"][[f for f in inp["families"] if f["product"] == "vita-bull"][0]["family_key"]].update(s14=300.0, p14=3.0, r14=240.0)
+    r = cp.compute(inp, WEEK)
+    rest = [x for x in r["rows"] if x["section"] == "rest"]
+    assert rest and all(x["concepts"] == 0 and x["hooks"] == [] for x in rest)
+    # a line appears once: either as an action row or under Everything else
+    ids = [x["line_id"] for x in r["rows"] if x["line_id"] is not None and x["section"] in ("iterate", "faded", "stop", "new", "rest")]
+    assert len(ids) == len(set(ids))
+    assert cp.STATUS_USUAL == "RUNNING AS USUAL" and "AVERAGE" not in r["stats"]["status_counts_total"] and "RUNNING AS USUAL" in r["stats"]["status_counts_total"]
+    assert all(x["status"] != "AVERAGE" for x in rest)
+    assert not any(x["line_code"] == "no line" and x["product"] == "vita-bull" for x in r["rows"])      # nothing unmapped for Vita Bull: no catch-all row (the untagged Beef Liver filler does get one)
+    # an unmapped ad family makes the reconciling row appear, and rows then add up to the product's tile
+    inp2 = scenario()
+    vb = [f for f in inp2["families"] if f["product"] == "vita-bull"]
+    vb[0]["line_id"] = None
+    for f in vb:
+        inp2["win"]["meta"][f["family_key"]].update(s14=50.0, p14=1.0, r14=40.0)
+    r2 = cp.compute(inp2, WEEK)
+    un = next(x for x in r2["rows"] if x["line_code"] == "no line" and x["product"] == "vita-bull")
+    assert un["cluster"] == "Ads without a line yet" and un["unmapped_ads"] and un["metrics"]["spend_14d"] == 50.0
+    tot = sum(x["metrics"]["spend_14d"] for x in r2["rows"] if x["product"] == "vita-bull" and (x["section"] == "rest" or x["section"] in ("iterate", "faded", "stop", "new")) and x["line_id"] is not None or x is un)
+    assert round(tot, 2) == r2["baselines"]["vita-bull"]["spend_14d"]

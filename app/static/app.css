@@ -1093,3 +1093,5 @@ button.pri-stat:hover { background: color-mix(in srgb, var(--tone) 14%, #fff); }
 .pri-recon-n { font-size: 11.5px; }
 @media (max-width: 760px) { .pri-tfoot, .pri-tfoot tr { display: block; } .pri-tfoot .pri-c-tlabel { display: block; } }
 @media print { .pri-recon, .pri-tfoot { display: none; } .pri-ptotal { font-weight: 700; font-size: 10px; } }
+:root { --lv-pri-sec-rest: #6b6459; }
+.pri-sec-rest { background: var(--lv-pri-sec-rest, #6b6459); } .pri-cc-sec-rest { --cc: var(--lv-pri-sec-rest); }

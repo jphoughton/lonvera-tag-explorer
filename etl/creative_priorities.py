@@ -100,6 +100,7 @@ TOP_WINNERS = 5
 COMP_LONG_DAYS = 60                    # a competitor ad running this long counts as long-running
 W_ADJ_C, W_CROSS_C, W_COMP_C, W_ORDER_C, W_STORY_C = 0.40, 0.15, 0.25, 0.12, 0.08   # new-line weights when a competitor file is loaded
 ST_WORKING, ST_RISING, ST_FADING, ST_NOT, ST_AVG, ST_EARLY, ST_UNTESTED = ("WORKING NOW", "RISING", "FADING / WAS WORKING", "NOT WORKING", "AVERAGE", "TOO EARLY", "UNTESTED / UNDER-TESTED")
+STATUS_USUAL = "RUNNING AS USUAL"                 # shown for lines whose underlying status is AVERAGE; every other status keeps its real label
 STATUSES = (ST_WORKING, ST_RISING, ST_FADING, ST_NOT, ST_AVG, ST_EARLY, ST_UNTESTED)
 HOOK_MIN_SPEND = 1000.0
 
@@ -1129,6 +1130,39 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
                              "cluster_description": "As mapped from the competitor ads; not a cluster on our sheet.", "icp_description": "As mapped from the competitor ads.", "pain_description": "As mapped from the competitor ads."})
 
 
+    # ---- Everything else: every line that has no action row, plus one "ads not mapped to a line" row per product, so the rows add up to the product tiles (lightweight: numbers only)
+    in_rows = {r["line_id"] for r in rows if r["line_id"] is not None}
+    for slug in PRODUCTS:
+        b = base[slug]
+        rest = sorted([(lid, metrics[lid]) for lid in lines if lines[lid]["product"] == slug and lid not in in_rows and lid in metrics],
+                      key=lambda t: (-t[1]["spend_14d"], -t[1]["spend"], lines[t[0]]["sort_order"], t[0]))
+        for i, (lid, m) in enumerate(rest, start=1):
+            l = lines[lid]
+            if m["spend"] >= JUDGED_SPEND:
+                why = f"Not on an action list this week. Spent {usd(m['spend'])} at {x(m['roas'])} against {x(b['roas'])} for the product; last 14 days {usd(m['spend_14d'])}."
+            else:
+                why = f"Not on an action list this week. Spent {usd(m['spend'])} so far."
+            row = common("rest", i, l, m, b, 0, 0.0, "low", [], why, {}, [])
+            row["status"] = STATUS_USUAL if m["status"] == ST_AVG else m["status"]
+            rows.append(row)
+        nm = [f for f in fams if f["product"] == slug and (f["line_id"] is None or f["line_id"] not in lines)]
+        la, d30_, d14_ = _blank(), _blank(), _blank()
+        for f in nm:
+            _acc(la, f["spend_launch"], f["purchases_launch"], f["revenue_launch"])
+            _acc(d30_, _f(f["w"]["s30"]), _f(f["w"]["p30"]), _f(f["w"]["r30"]))
+            _acc(d14_, _f(f["w"].get("s14")), _f(f["w"].get("p14")), _f(f["w"].get("r14")))
+        mm = {"spend": money(la["spend"]), "purchases": round(la["purchases"]), "roas": ratio(la["revenue"], la["spend"]) if la["spend"] >= JUDGED_SPEND else None, "cpa": ratio(la["spend"], la["purchases"], 2),
+              "spend_30d": money(d30_["spend"]), "purchases_30d": round(d30_["purchases"]), "roas_30d": ratio(d30_["revenue"], d30_["spend"]) if d30_["spend"] >= JUDGED_SPEND else None, "cpa_30d": ratio(d30_["spend"], d30_["purchases"], 2),
+              "spend_14d": money(d14_["spend"]), "purchases_14d": round(d14_["purchases"]), "value_14d": money(d14_["revenue"]), "roas_14d": ratio(d14_["revenue"], d14_["spend"]) if d14_["spend"] >= MIN_14D_SPEND else None,
+              "ads": len(nm), "live_ads": sum(1 for f in nm if f["live3"]), "launches_30d": sum(1 for f in nm if f["new30"])}
+        if not nm:                                                    # on prod every dollar sits on a tagged ad family (0% unmapped); the row exists only when something is unmapped
+            continue
+        top_nm = sorted(nm, key=lambda f: -f["spend_launch"])[:15]
+        rows.append({"section": "rest", "product": slug, "rank": 10 ** 6, "line_id": None, "line_code": "no line", "cluster": "Ads without a line yet", "icp": "Untagged ads", "pain_point": "Not a concept line", "unmapped_ads": [{"ad": f["display"], "spend": money(f["spend_launch"]), "spend_14d": money(_f(f["w"].get("s14"))), "tagger": f.get("tagger") or ""} for f in top_nm],
+                     "emotional_trigger": "", "story": "Meta spend on ads that no line claims yet, kept here so the rows add up to the product tile.", "ingredients": "", "concepts": 0, "score": 0.0, "confidence": "low", "flags": [],
+                     "why": f"{len(nm)} ads with spend carry no line; {usd(la['spend'])} all time.", "status": "NO LINE", "then_now": "", "competitor": None, "components": {}, "metrics": mm, "hooks": [], "evidence": None,
+                     "cluster_description": "Spend that no line tag claims.", "icp_description": "Ads without a tag or without a tracker row.", "pain_description": "Not a concept line; it exists so the rows add up to the product tile."})
+
     names = {l["product"]: l["product_name"] for l in inp["lines"]}
     for r in rows:
         r["product_name"] = names.get(r["product"], r["product"])
@@ -1142,7 +1176,7 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
     untagged_spend = {s: sum(f["spend_launch"] for f in fams if f["product"] == s and f["line_id"] not in lines) for s in PRODUCTS}
     auto_fams = sum(1 for f in fams if (f["tagger"] or "").startswith("auto-"))
     thresholds = {k: v for k, v in globals().items() if k.isupper() and isinstance(v, (int, float)) and not isinstance(v, bool)}
-    out_stats = {"data_through": through.isoformat(), "week_start": week.isoformat(), "status_counts": status_counts, "status_counts_total": {st: sum(c[st] for c in status_counts.values()) for st in STATUSES},
+    out_stats = {"data_through": through.isoformat(), "week_start": week.isoformat(), "status_counts": {sl: {(STATUS_USUAL if st == ST_AVG else st): n for st, n in c.items()} for sl, c in status_counts.items()}, "status_counts_total": {(STATUS_USUAL if st == ST_AVG else st): sum(c[st] for c in status_counts.values()) for st in STATUSES},
                  "iterate_candidates": len(iterate), "faded_candidates": len(faded), "faded_by_kind": {k_: sum(1 for f_ in faded if f_["kind"] == k_) for k_ in ("FADED", "COLLAPSED", "STOPPED")}, "stop_candidates": len(stop), "new_candidates": len(new_rows),
                  "competitors": ({"as_of": comp["as_of"], "source": comp.get("source"), "rows": len(comp["rows"]), "matched_rows": sum(len(v) for v in comp_by_line.values()), "unmatched_rows": len(comp_unmatched),
                                   "brands": len({r["brand"] for r in comp["rows"]}), "stale_brands": comp.get("stale_brands", [])} if comp else None),
@@ -1156,9 +1190,9 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
 
 
 # ----------------------------------------------------------------------------------------------------------------------- output
-SECTION_ORDER = ("faded", "iterate", "new", "proposal", "competitor", "stop")
+SECTION_ORDER = ("faded", "iterate", "new", "proposal", "competitor", "stop", "rest")
 SECTION_TITLES = {"faded": "Was working, now isn't (FADED / COLLAPSED / STOPPED)", "iterate": "Iterate on what is working (WORKING NOW / RISING)", "new": "New and untested clusters",
-                  "proposal": "Proposed new market clusters and lines (drafts for Josh's approval)", "competitor": "Competitor angles we have not made (not on our sheet)", "stop": "Stop or deprioritise (NOT WORKING)"}
+                  "proposal": "Proposed new market clusters and lines (drafts for Josh's approval)", "competitor": "Competitor angles we have not made (not on our sheet)", "stop": "Stop or deprioritise (NOT WORKING)", "rest": "Everything else"}
 CSV_COLS = ["market_cluster", "icp", "pain_point", "story", "product", "section", "market_cluster_description", "icp_description", "pain_point_description", "status", "rank", "concepts", "week_start",
             "then_vs_now", "when_it_worked", "how_it_stopped", "diagnosis", "revive_play", "former_winner_ads", "what_others_are_running", "emotional_trigger", "ingredients", "line_code", "confidence", "flags", "score",
             "spend", "roas", "cpa", "roas_index", "ads", "hit_rate", "hit_rate_index", "spend_30d", "roas_30d", "spend_prior30", "roas_prior30", "launches_30d", "nc_roas", "nc_cpa",
@@ -1232,7 +1266,7 @@ def to_markdown(snapshot: dict) -> str:
         if not pr:
             continue
         L += ["", f"## {pr[0]['product_name']}"]
-        for sec in SECTION_ORDER:
+        for sec in SECTION_ORDER[:-1]:                                  # the markdown brief is the action sections only (not "Everything else")
             sr = [r for r in pr if r["section"] == sec]
             if not sr:
                 continue

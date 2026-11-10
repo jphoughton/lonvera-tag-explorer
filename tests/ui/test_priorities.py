@@ -1512,3 +1512,64 @@ def test_total_row_sums_rows_shown_with_weighted_roas_and_reconciles_to_the_tile
     shown = [r for r in rows if rows[0]["pain_point"][:12].lower() in (r["cluster"] + r["icp"] + r["pain_point"] + (r["story"] or "")).lower()]
     sp2, _ = _fx_sum(shown)
     assert _money(sp2) in page.locator("[data-testid=pri-total-spend]").text_content()
+
+
+def _with_rest_rows(page):
+    """Serve the fixture plus 'Everything else' rows (3 lines + 1 unmapped row for Vita Bull, 1 line for Boneflex), as a newer snapshot would."""
+    def add(route):
+        r = route.fetch()
+        d = r.json()
+        base = FIXTURE["rows"][0]
+        def row(i, product, status, line_id, code, cluster, spend14, unmapped=None):
+            m = {"spend": 5000.0 + i, "purchases": 60, "roas": 0.8, "cpa": 80.0, "spend_30d": 900.0, "purchases_30d": 10, "roas_30d": 0.7, "cpa_30d": 90.0, "spend_14d": spend14, "purchases_14d": 4, "value_14d": spend14 * 0.9,
+                 "roas_14d": 0.9 if spend14 >= 100 else None, "ads": 5, "live_ads": 1, "launches_30d": 0}
+            out = {"section": "rest", "product": product, "product_name": {"vita-bull": "Vita Bull", "boneflex": "Boneflex"}[product], "rank": i, "line_id": line_id, "line_code": code, "cluster": cluster, "icp": f"ICP {i}",
+                   "pain_point": f"Pain {i}", "emotional_trigger": "", "story": f"Story {i}", "ingredients": "", "concepts": 0, "score": 0.0, "confidence": "low", "flags": [], "why": "Not on an action list this week.",
+                   "status": status, "then_now": "", "competitor": None, "components": {}, "metrics": m, "hooks": [], "evidence": None, "cluster_description": "c", "icp_description": "i", "pain_description": "p"}
+            if unmapped:
+                out["unmapped_ads"] = unmapped
+            return out
+        d["rows"] += [row(1, "vita-bull", "RUNNING AS USUAL", 9001, "L9001", "Rest A", 400.0), row(2, "vita-bull", "TOO EARLY", 9002, "L9002", "Rest B", 50.0), row(3, "vita-bull", "RUNNING AS USUAL", 9003, "L9003", "Rest C", 0.0),
+                      row(10 ** 6, "vita-bull", "NO LINE", None, "no line", "Ads without a line yet", 120.0, [{"ad": "Bull-77-Hook2", "spend": 1234.0, "spend_14d": 120.0, "tagger": ""}]),
+                      row(1, "boneflex", "RUNNING AS USUAL", 9004, "L9004", "Rest D", 300.0)]
+        d["stats"]["status_counts_total"] = {"RUNNING AS USUAL": 3, **{k: v for k, v in d["stats"]["status_counts_total"].items() if k != "AVERAGE"}}
+        route.fulfill(response=r, json=d)
+    page.route("**/api/priorities?*", add)
+    page.route("**/api/priorities", add)
+
+
+def test_everything_else_rows_sit_after_the_action_rows_and_open_lazily(page):
+    _with_rest_rows(page)
+    goto(page)
+    assert visible_rows(page) == 35
+    secs = page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("els => els.map(e => e.dataset.section)")
+    assert secs[-5:] == ["rest"] * 5 and "rest" not in secs[:-5]                                    # action sections first, in their old order
+    assert page.locator("[data-testid=pri-f-section-rest]").text_content().strip() == "Everything else"
+    rest_row = page.locator("[data-testid=pri-body] tr.pri-row[data-section=rest]").first
+    detail = rest_row.locator("xpath=following-sibling::tr[1]")
+    assert detail.locator("[data-testid=pri-rest-panel]").count() == 0                              # built on first open only
+    rest_row.locator("[data-testid=pri-toggle]").click()
+    assert detail.locator("[data-testid=pri-rest-panel]").is_visible() and "Last 14 days" in detail.text_content() and "ROAS (all time)" in detail.text_content()
+    assert page.locator("[data-testid=pri-stat][data-status='RUNNING AS USUAL']").count() == 1
+    page.locator("[data-testid=pri-stat][data-status='RUNNING AS USUAL']").click()
+    assert set(page.locator("[data-testid=pri-body] [data-testid=pri-status]").all_text_contents()) == {"RUNNING AS USUAL"} and visible_rows(page) == 3
+
+
+def test_unmapped_row_lists_its_biggest_ads_and_totals_include_everything_else(page):
+    _with_rest_rows(page)
+    goto(page)
+    page.locator("[data-testid=pri-search]").fill("Ads without a line yet")
+    assert visible_rows(page) == 1
+    row = page.locator("[data-testid=pri-body] tr.pri-row").first
+    row.locator("[data-testid=pri-toggle]").click()
+    assert "Bull-77-Hook2" in page.locator("[data-testid=pri-unmapped]").text_content() and _money(120.0) in row.locator(".pri-c-spend14").text_content()
+    page.locator("[data-testid=pri-search]").fill("")
+    base_sp = sum(r["metrics"]["spend_14d"] for r in FIXTURE["rows"] if r["metrics"].get("spend_14d") is not None and not r.get("manual"))
+    expect = base_sp + 400.0 + 50.0 + 0.0 + 120.0 + 300.0
+    assert _money(expect) in page.locator("[data-testid=pri-total] [data-testid=pri-total-spend]").text_content()
+
+
+def test_print_copy_leaves_out_everything_else(page):
+    _with_rest_rows(page)
+    goto(page)
+    assert page.locator("[data-testid=pri-print-copy] [data-testid=pri-print-row]").filter(has_text="Rest A").count() == 0

@@ -14,8 +14,9 @@ const SECTIONS = [['faded', 'Was working, now isn’t', 'Lines with a sustained 
                   ['proposal', 'Proposed new market clusters', 'Drafts in the Communication Overview shape for Josh’s approval (NEW CLUSTER or a new line inside an existing cluster). Evidence is competitor activity and our adjacent results only; no performance is claimed.'],
                   ['competitor', 'Competitor angles we have not made', 'Angles competitors run that are not on our Communication Overview. Running a long time is a signal, not proof it performs.'],
                   ['stop', 'Stop or deprioritise', 'NOT WORKING and never worked: enough spend, weak over its history.'],
+                  ['rest', 'Everything else', 'Every other line on the sheet, with its numbers: lines running as usual, too early, untested, or not working but not on an action list this week, plus one row per product for ads not mapped to a line, so the table adds up to the product tiles.'],
                   ['other', 'Other', 'Concepts added by hand that do not fit a section above.']];
-const STATUS_CLASS = { 'FADED': 'fade', 'COLLAPSED': 'bad', 'STOPPED': 'flat', 'WORKING NOW': 'ok', 'RISING': 'up', 'FADING / WAS WORKING': 'fade', 'NOT WORKING': 'bad', 'AVERAGE': 'flat', 'TOO EARLY': 'flat', 'UNTESTED / UNDER-TESTED': 'new', 'PROPOSED (draft)': 'new', 'MANUAL': 'manual' };
+const STATUS_CLASS = { 'FADED': 'fade', 'COLLAPSED': 'bad', 'STOPPED': 'flat', 'WORKING NOW': 'ok', 'RISING': 'up', 'FADING / WAS WORKING': 'fade', 'NOT WORKING': 'bad', 'AVERAGE': 'flat', 'RUNNING AS USUAL': 'flat', 'NO LINE': 'flat', 'TOO EARLY': 'flat', 'UNTESTED / UNDER-TESTED': 'new', 'PROPOSED (draft)': 'new', 'MANUAL': 'manual' };
 const roasX = (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–');
 const pct = (v) => (isNum(v) ? fmt.pct(v) : '–');
 // share of n in d as text, one decimal under 10% ("2.2%"), none above ("54%"); a dash when there is no denominator
@@ -32,7 +33,12 @@ const funnelBar = (under, tested, top, total, label) => h('div', { class: 'pri-f
 // stat cards for the detail panel: [[group, [[label, value, sub?], ...]], ...]; labels and values are the same facts the old inline row showed
 function numbers(r) {
   const m = r.metrics || {};
-  if (r.section === 'iterate' || r.section === 'faded' || r.section === 'stop') {
+  if (r.section === 'rest' && r.line_id == null) {                                   // ads not mapped to a line: plain numbers
+    return [['All time', [['Spend', fmt.money(m.spend)], ['ROAS (all time)', roasX(m.roas)], ['CPA (all time)', fmt.money(m.cpa)], ['Purchases', fmt.int(m.purchases)], ['Ads with spend', fmt.int(m.ads)]]],
+      ['Last 30 days', [['Spend', fmt.money(m.spend_30d)], ['ROAS', roasX(m.roas_30d)], ['CPA', fmt.money(m.cpa_30d)], ['Purchases', fmt.int(m.purchases_30d)]]],
+      ['Last 14 days', [['Spend', fmt.money(m.spend_14d)], ['ROAS', roasX(m.roas_14d)], ['Purchases', fmt.int(m.purchases_14d)]]]];
+  }
+  if (r.section === 'iterate' || r.section === 'faded' || r.section === 'stop' || r.section === 'rest') {
     return [['Performance', [['Spend', fmt.money(m.spend)], ['ROAS (all time)', roasX(m.roas)], ['CPA (all time)', fmt.money(m.cpa)], ['Upstack new-customer ROAS', roasX(m.nc_roas)], ['ROAS, strong tags only', roasX(m.roas_strong_tags)]]],
       ['Testing', m.funnel
         ? [['Ads launched', fmt.int(m.funnel.launched)], ['Under $100 spend', fmt.int(m.funnel.under_tested), `(${share(m.funnel.under_tested, m.funnel.launched)} of launched)`], ['Ads tested ($100+)', fmt.int(m.funnel.tested)],
@@ -56,6 +62,7 @@ function keyNumber(r, d) {
   if (r.section === 'iterate') return `${roasX(m.roas_30d)} last 30 days vs ${roasX(b.roas_30d)} product`;
   if (r.section === 'stop') return `${roasX(m.roas)} lifetime vs ${roasX(b.roas)} product`;
   if (r.competitor) return r.competitor.text;
+  if (r.section === 'rest') return m.spend >= 100 ? `${roasX(m.roas)} lifetime on ${fmt.money(m.spend)}` : `${fmt.money(m.spend)} spent`;
   if (r.section === 'new') return m.spend > 0 ? `${fmt.money(m.spend)} spent so far` : 'No spend yet';
   return 'Draft';
 }
@@ -252,9 +259,14 @@ function nameDialog({ title, initial, okLabel, kinds = null, kind = null, note =
 }
 
 // the panel under a row: manual rows have their own render function; an auto row gets the notes of any manual concept with the same four tags appended
-const panelFor = (r, d, mctl) => { if (r.manual) return manualPanel(r, mctl); const p = detail(r, d); addManualNotes(p, r, d); return p; };
+const restPanel = (r, d) => h('div', { class: 'pri-panel pri-tone-' + toneOf(r), 'data-testid': 'pri-rest-panel' },
+  h('div', { class: 'pri-chips' }, h('strong', { class: 'pri-chip-prod' }, r.product_name), h('span', { class: 'pri-sec pri-sec-rest' }, 'Everything else'), h('span', { class: 'pri-status pri-st-' + toneOf(r) }, r.status)),
+  r.line_id != null ? h('div', { class: 'pri-tiles' }, tile('Market Cluster', r.cluster, r.cluster_description), tile('ICP', r.icp, r.icp_description), tile('Pain Point', r.pain_point, r.pain_description)) : null,
+  r.story ? h('p', { class: 'pri-story' }, r.story) : null, r.why ? h('p', null, r.why) : null, statCards(r),
+  (r.unmapped_ads || []).length ? h('div', { class: 'pri-card', 'data-testid': 'pri-unmapped' }, h('div', { class: 'pri-h' }, 'Biggest ads without a line yet'), h('ul', null, r.unmapped_ads.map((a) => h('li', null, `${a.ad}: ${fmt.money(a.spend)} all time, ${fmt.money(a.spend_14d)} last 14 days`)))) : null);
+const panelFor = (r, d, mctl) => { if (r.manual) return manualPanel(r, mctl); if (r.section === 'rest') return restPanel(r, d); const p = detail(r, d); addManualNotes(p, r, d); return p; };
 
-const SECTION_LABEL = { faded: 'Was working, now isn’t', iterate: 'Iterate on what is working', new: 'New and untested', proposal: 'Proposed new cluster', competitor: 'Competitor angle', stop: 'Stop', other: 'Other' };
+const SECTION_LABEL = { faded: 'Was working, now isn’t', iterate: 'Iterate on what is working', new: 'New and untested', proposal: 'Proposed new cluster', competitor: 'Competitor angle', stop: 'Stop', rest: 'Everything else', other: 'Other' };
 const SECTION_ORDER = SECTIONS.map(([k]) => k);
 const SECTION_NOTE = Object.fromEntries(SECTIONS.map(([k, , sub]) => [k, sub]));
 const COLS = [['product', 'Product'], ['section', 'Section'], ['cluster', 'Market Cluster'], ['icp', 'ICP'], ['pain', 'Pain Point'], ['story', 'Story'], ['status', 'Status'], ['concepts', 'Concepts'], ['key', 'Key number'], ['spend14', 'Spend \u00b7 14d'], ['roas14', 'ROAS \u00b7 14d']];
@@ -288,6 +300,7 @@ let uid = 0;
 function setOpen(btn, panelRow, open) {
   btn.setAttribute('aria-expanded', String(open));
   btn.setAttribute('aria-label', (open ? 'Collapse: ' : 'Expand: ') + btn.dataset.name);
+  if (open && panelRow._build) panelRow._build();
   panelRow.hidden = !open;
   panelRow.previousElementSibling.classList.toggle('pri-open', open);
 }
@@ -297,7 +310,9 @@ function rowPair(r, d, printed = false, onPick = null, mctl = null) {
   const id = 'pri-detail-' + (++uid);
   const name = `${r.cluster}, ${r.icp}, ${r.pain_point}`;
   const cell = (label, cls, ...kids) => h('td', { class: 'pri-c pri-c-' + cls, 'data-label': label }, ...kids);
-  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, h('td', { colspan: '12' }, panelFor(r, d, r._from ? null : mctl)));
+  const lazy = r.section === 'rest' && !printed;                                    // the 100+ "Everything else" panels are built on first open
+  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, h('td', { colspan: '12' }, lazy ? null : panelFor(r, d, r._from ? null : mctl)));
+  if (lazy) detailRow._build = () => { detailRow.firstChild.replaceChildren(panelFor(r, d, r._from ? null : mctl)); detailRow._build = null; };
   const btn = h('button', { type: 'button', class: 'pri-toggle', 'aria-expanded': 'false', 'aria-controls': id, 'aria-label': 'Expand: ' + name, 'data-name': name, 'data-testid': 'pri-toggle' },
     h('span', { class: 'pri-chev', 'aria-hidden': 'true' }, '▸'));
   const pick = h('input', { type: 'checkbox', class: 'pri-pick', 'data-testid': 'pri-pick', 'aria-label': 'Select: ' + name, onchange: (e) => onPick && onPick(r, e.target.checked) });
@@ -307,7 +322,7 @@ function rowPair(r, d, printed = false, onPick = null, mctl = null) {
     cell('Section', 'section', h('span', { class: 'pri-sec pri-sec-' + r.section, title: SECTION_NOTE[r.section] }, SECTION_LABEL[r.section]), r.manual ? h('span', { class: 'pri-mbadge', 'data-testid': 'pri-manual-badge' }, 'Manual') : null),
     cell('Market Cluster', 'cluster', r.cluster, r._from ? h('span', { class: 'pri-from', 'data-testid': 'pri-from', title: 'No longer in the current snapshot: the numbers are the frozen copy saved with the view' }, ' from ' + r._from) : null), cell('ICP', 'icp', r.icp), cell('Pain Point', 'pain', r.pain_point), cell('Story', 'story', r.story || '–'),
     cell('Status', 'status', h('span', { class: 'pri-status pri-st-' + (STATUS_CLASS[r.status] || 'flat'), 'data-testid': 'pri-status' }, r.manual && r.done ? 'MANUAL (done)' : r.status)),
-    cell('Concepts', 'concepts', r.manual ? '\u2013' : r.concepts ? `${r.concepts} concept${r.concepts === 1 ? '' : 's'}` : 'None'),
+    cell('Concepts', 'concepts', r.manual || r.section === 'rest' ? '\u2013' : r.concepts ? `${r.concepts} concept${r.concepts === 1 ? '' : 's'}` : 'None'),
     cell('Key number', 'key', keyNumber(r, d)),
     cell('Spend \u00b7 14d', 'spend14', has14(r) ? fmt.money(r.metrics.spend_14d) : '\u2013'),
     cell('ROAS \u00b7 14d', 'roas14', roas14Cell(r, d)));
@@ -769,7 +784,7 @@ function render(d, view = null, opts = {}) {
   const printBlocks = h('div', { class: 'pri-print', 'data-testid': 'pri-print-copy', 'aria-hidden': 'true' });
   const buildPrint = () => printBlocks.replaceChildren(...slugs.flatMap((s) => {
     const picking = sel.size > 0;
-    const mine = d.rows.filter((r) => r.product === s && (picking ? isSel(r) : !r.done)).sort((a, b) => (sOrder[a.section] - sOrder[b.section]) || (a.rank - b.rank));
+    const mine = d.rows.filter((r) => r.product === s && (picking ? isSel(r) : (!r.done && r.section !== 'rest'))).sort((a, b) => (sOrder[a.section] - sOrder[b.section]) || (a.rank - b.rank));
     if (picking && !mine.length) return [];                                          // product sections with no selected rows are omitted
     const shown = mine.filter((r) => r.section !== 'stop' && (picking || r.concepts > 0 || r.manual));
     const stops = mine.filter((r) => r.section === 'stop');
