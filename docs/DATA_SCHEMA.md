@@ -108,7 +108,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
 | Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily) |
-| Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views) |
+| Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual) |
 | Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.competitor_brands`](#publiccompetitor_brands), [`public.competitor_ads`](#publiccompetitor_ads), [`public.competitor_concept_class`](#publiccompetitor_concept_class), [`public.competitor_concepts`](#publiccompetitor_concepts), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
 | Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta) |
 | Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow) | [`public.proj_feed_config`](#publicproj_feed_config), [`public.proj_feed_runs`](#publicproj_feed_runs), [`public.proj_feed_attempts`](#publicproj_feed_attempts), [`public.proj_feed_verify`](#publicproj_feed_verify), [`public.proj_feed_verify_runs`](#publicproj_feed_verify_runs), [`public.proj_feed_levers`](#publicproj_feed_levers), [`public.proj_feed_orders`](#publicproj_feed_orders), [`public.proj_feedx_orders`](#publicproj_feedx_orders), [`public.proj_feed_amazon`](#publicproj_feed_amazon), [`public.proj_feedx_amazon`](#publicproj_feedx_amazon), [`public.proj_feed_platform`](#publicproj_feed_platform), [`public.proj_feedx_platform`](#publicproj_feedx_platform), [`public.proj_feed_attribution`](#publicproj_feed_attribution), [`public.proj_feedx_attribution`](#publicproj_feedx_attribution), [`public.proj_feed_traffic`](#publicproj_feed_traffic), [`public.proj_feedx_traffic`](#publicproj_feedx_traffic), [`public.proj_feed_meta_reach`](#publicproj_feed_meta_reach), [`public.proj_feedx_meta_reach`](#publicproj_feedx_meta_reach), [`public.proj_feed_product_reach`](#publicproj_feed_product_reach), [`public.proj_feedx_product_reach`](#publicproj_feedx_product_reach), [`public.proj_feed_nc_product`](#publicproj_feed_nc_product), [`public.proj_feedx_nc_product`](#publicproj_feedx_nc_product), [`public.proj_feed_anyclick`](#publicproj_feed_anyclick), [`public.proj_feedx_anyclick`](#publicproj_feedx_anyclick), [`public.proj_feed_bids`](#publicproj_feed_bids), [`public.proj_feedx_bids`](#publicproj_feedx_bids), [`public.proj_feed_meta_day`](#publicproj_feed_meta_day), [`public.proj_feed_meta_product`](#publicproj_feed_meta_product), [`public.proj_pacing_hourly`](#publicproj_pacing_hourly), [`public.proj_pacing_setting`](#publicproj_pacing_setting), [`public.proj_units_daily`](#publicproj_units_daily), [`public.proj_feedx_units_daily`](#publicproj_feedx_units_daily), [`public.proj_demand_snapshot`](#publicproj_demand_snapshot), [`public.proj_feedx_demand_snapshot`](#publicproj_feedx_demand_snapshot), [`public.proj_feedx_intl_nonus_daily`](#publicproj_feedx_intl_nonus_daily), [`public.proj_feed_nc_hourly`](#publicproj_feed_nc_hourly), [`public.proj_live_today_snapshots`](#publicproj_live_today_snapshots), [`public.proj_amazon_mtd_snapshots`](#publicproj_amazon_mtd_snapshots), [`public.proj_feedx_intl_estimate`](#publicproj_feedx_intl_estimate), [`public.proj_meta_spend_monthly`](#publicproj_meta_spend_monthly) |
@@ -1786,6 +1786,39 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `keys` | text[] | no | Stable row keys of the selected rows. |
 | `payload` | jsonb | no | JSON object: the selected rows plus the snapshot's baselines, legend and competitor as-of date. |
 | `created_at` | timestamptz | no | When the view was saved. |
+
+### public.creative_priorities_manual
+
+*table*
+
+**Purpose.** Concepts added by hand on /priorities (Add concept): product, market cluster, ICP, pain point, story, notes and a why-now line. Not tied to a weekly snapshot: a row stays on the sheet every week until it is marked done or deleted.
+
+- **Grain:** primary key `(id)`; one row per manual concept
+- **Source:** the /priorities page via POST /api/priorities/manual (app/priorities_manual.py)
+- **Refresh:** on demand (a person adds, edits, marks done or deletes)
+- **Coverage:** from the day the migration was deployed
+- **Caveat:** No author column: the app has no login of its own, only timestamps.
+- **Caveat:** A cluster / ICP / pain point / story that is not in the Communication Overview catalog is stored as typed and flagged with the new_* columns (a proposal, not a line of ours).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Primary key (bigserial). |
+| `product` | text | no | 'vita-bull' \| 'beef-liver' \| 'boneflex'. |
+| `section` | text | no | Page section the concept sits in: 'iterate' \| 'faded' \| 'new' \| 'other'. |
+| `cluster` | text | no | Market cluster (catalog value or typed). |
+| `icp` | text | no | ICP (catalog value or typed). |
+| `pain_point` | text | no | Pain point (catalog value or typed). |
+| `story` | text | no | Story; empty when none. |
+| `notes` | text | no | Free-text notes, up to 2,000 characters, line breaks kept. |
+| `why_now` | text | no | Optional short why-now / what-to-test line, up to 300 characters. |
+| `status` | text | no | 'open' (shown) or 'done' (hidden until Show done is ticked). |
+| `new_cluster` | boolean | no | True when the cluster is not in the catalog for that product. |
+| `new_icp` | boolean | no | True when the ICP is not in the catalog under that cluster. |
+| `new_pain_point` | boolean | no | True when the pain point is not in the catalog under that ICP. |
+| `new_story` | boolean | no | True when the story is typed text not in the catalog for that pain point. |
+| `created_at` | timestamptz | no | When the concept was added. |
+| `updated_at` | timestamptz | no | When it was last edited or its status changed. |
+| `done_at` | timestamptz | yes | When it was marked done; NULL while open. |
 
 ## Derived creative-family roll-ups (rebuilt in full by etl.build_metrics)
 
