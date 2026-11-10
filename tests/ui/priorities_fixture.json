@@ -39,7 +39,39 @@
    "live_ads": 51,
    "data_through": "2026-11-09",
    "spend_14d": 113427.84,
-   "roas_14d": 0.7492
+   "roas_14d": 0.7492,
+   "cohorts": [
+    {
+     "label": "Launched in the last 30 days",
+     "from_days": 0,
+     "to_days": 29,
+     "launched": 300,
+     "spent": 200,
+     "under_tested": 180,
+     "tested": 120,
+     "top": 2
+    },
+    {
+     "label": "Launched 31 to 60 days ago",
+     "from_days": 30,
+     "to_days": 59,
+     "launched": 260,
+     "spent": 180,
+     "under_tested": 150,
+     "tested": 110,
+     "top": 3
+    },
+    {
+     "label": "Launched 61 to 90 days ago",
+     "from_days": 60,
+     "to_days": 89,
+     "launched": 220,
+     "spent": 160,
+     "under_tested": 120,
+     "tested": 100,
+     "top": 7
+    }
+   ]
   },
   "beef-liver": {
    "product_name": "Beef Liver",
@@ -75,7 +107,39 @@
    "live_ads": 51,
    "data_through": "2026-11-09",
    "spend_14d": 130036.1,
-   "roas_14d": 0.7135
+   "roas_14d": 0.7135,
+   "cohorts": [
+    {
+     "label": "Launched in the last 30 days",
+     "from_days": 0,
+     "to_days": 29,
+     "launched": 300,
+     "spent": 200,
+     "under_tested": 180,
+     "tested": 120,
+     "top": 2
+    },
+    {
+     "label": "Launched 31 to 60 days ago",
+     "from_days": 30,
+     "to_days": 59,
+     "launched": 260,
+     "spent": 180,
+     "under_tested": 150,
+     "tested": 110,
+     "top": 3
+    },
+    {
+     "label": "Launched 61 to 90 days ago",
+     "from_days": 60,
+     "to_days": 89,
+     "launched": 220,
+     "spent": 160,
+     "under_tested": 120,
+     "tested": 100,
+     "top": 7
+    }
+   ]
   },
   "boneflex": {
    "product_name": "Boneflex",
@@ -111,7 +175,39 @@
    "live_ads": 43,
    "data_through": "2026-11-09",
    "spend_14d": 52202.24,
-   "roas_14d": 0.6353
+   "roas_14d": 0.6353,
+   "cohorts": [
+    {
+     "label": "Launched in the last 30 days",
+     "from_days": 0,
+     "to_days": 29,
+     "launched": 300,
+     "spent": 200,
+     "under_tested": 180,
+     "tested": 120,
+     "top": 2
+    },
+    {
+     "label": "Launched 31 to 60 days ago",
+     "from_days": 30,
+     "to_days": 59,
+     "launched": 260,
+     "spent": 180,
+     "under_tested": 150,
+     "tested": 110,
+     "top": 1
+    },
+    {
+     "label": "Launched 61 to 90 days ago",
+     "from_days": 60,
+     "to_days": 89,
+     "launched": 220,
+     "spent": 160,
+     "under_tested": 120,
+     "tested": 100,
+     "top": 2
+    }
+   ]
   }
  },
  "rows": [
@@ -206,7 +302,9 @@
      "active_30d": 2,
      "under_tested_30d": 1,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 42.0,
     "purchases_14d": 7,
@@ -319,7 +417,9 @@
      "active_30d": 16,
      "under_tested_30d": 8,
      "tested_30d": 8,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 7,
+     "top_launched_30d": 0
     },
     "spend_14d": 3071.74,
     "purchases_14d": 34,
@@ -432,7 +532,9 @@
      "active_30d": 15,
      "under_tested_30d": 7,
      "tested_30d": 7,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 7,
+     "top_launched_30d": 0
     },
     "spend_14d": 1191.06,
     "purchases_14d": 13,
@@ -660,7 +762,9 @@
      "active_30d": 15,
      "under_tested_30d": 7,
      "tested_30d": 7,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 6,
+     "top_launched_30d": 0
     },
     "spend_14d": 1970.54,
     "purchases_14d": 21,
@@ -887,7 +991,9 @@
      "active_30d": 54,
      "under_tested_30d": 27,
      "tested_30d": 27,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 23,
+     "top_launched_30d": 0
     },
     "spend_14d": 3023.6,
     "purchases_14d": 33,
@@ -968,7 +1074,9 @@
      "active_30d": 18,
      "under_tested_30d": 9,
      "tested_30d": 9,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 8,
+     "top_launched_30d": 0
     },
     "spend_14d": 18.91,
     "purchases_14d": 0,
@@ -1053,7 +1161,9 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
@@ -1171,7 +1281,9 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
@@ -1284,7 +1396,9 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
@@ -1391,7 +1505,9 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
@@ -1503,7 +1619,9 @@
      "active_30d": 20,
      "under_tested_30d": 10,
      "tested_30d": 10,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 13,
+     "top_launched_30d": 0
     },
     "spend_14d": 9513.48,
     "purchases_14d": 105,
@@ -1645,7 +1763,9 @@
      "active_30d": 21,
      "under_tested_30d": 10,
      "tested_30d": 10,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 10,
+     "top_launched_30d": 0
     },
     "spend_14d": 7028.34,
     "purchases_14d": 78,
@@ -1787,7 +1907,9 @@
      "active_30d": 9,
      "under_tested_30d": 4,
      "tested_30d": 4,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 9,
+     "top_launched_30d": 0
     },
     "spend_14d": 562.71,
     "purchases_14d": 6,
@@ -2009,7 +2131,9 @@
      "active_30d": 8,
      "under_tested_30d": 4,
      "tested_30d": 4,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 15,
+     "top_launched_30d": 0
     },
     "spend_14d": 1160.92,
     "purchases_14d": 12,
@@ -2188,7 +2312,9 @@
      "active_30d": 54,
      "under_tested_30d": 27,
      "tested_30d": 27,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 29,
+     "top_launched_30d": 0
     },
     "spend_14d": 6513.04,
     "purchases_14d": 72,
@@ -2286,7 +2412,9 @@
      "active_30d": 15,
      "under_tested_30d": 7,
      "tested_30d": 7,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 11,
+     "top_launched_30d": 0
     },
     "spend_14d": 1733.34,
     "purchases_14d": 19,
@@ -2397,7 +2525,9 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
@@ -2524,7 +2654,9 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 2.53,
     "purchases_14d": 0,
@@ -2618,7 +2750,9 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
@@ -2720,7 +2854,9 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
@@ -2825,7 +2961,9 @@
      "active_30d": 4,
      "under_tested_30d": 2,
      "tested_30d": 2,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 3,
+     "top_launched_30d": 0
     },
     "spend_14d": 292.86,
     "purchases_14d": 3,
@@ -2958,7 +3096,9 @@
      "active_30d": 14,
      "under_tested_30d": 7,
      "tested_30d": 7,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 9,
+     "top_launched_30d": 0
     },
     "spend_14d": 2501.94,
     "purchases_14d": 27,
@@ -3071,7 +3211,9 @@
      "active_30d": 2,
      "under_tested_30d": 1,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 307.58,
     "purchases_14d": 3,
@@ -3235,7 +3377,9 @@
      "active_30d": 2,
      "under_tested_30d": 1,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 36.63,
     "purchases_14d": 0,
@@ -3426,7 +3570,9 @@
      "active_30d": 3,
      "under_tested_30d": 1,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 2,
+     "top_launched_30d": 0
     },
     "spend_14d": 29.07,
     "purchases_14d": 0,
@@ -3508,7 +3654,9 @@
      "active_30d": 3,
      "under_tested_30d": 1,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 3,
+     "top_launched_30d": 0
     },
     "spend_14d": 49.93,
     "purchases_14d": 0,
@@ -3612,7 +3760,9 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
@@ -3732,7 +3882,9 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
@@ -3849,7 +4001,9 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,
@@ -3949,7 +4103,9 @@
      "active_30d": 1,
      "under_tested_30d": 0,
      "tested_30d": 1,
-     "top_30d": 0
+     "top_30d": 0,
+     "launched_30d": 1,
+     "top_launched_30d": 0
     },
     "spend_14d": 0.0,
     "purchases_14d": 0,

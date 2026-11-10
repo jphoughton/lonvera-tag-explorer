@@ -730,10 +730,10 @@ def test_every_fact_is_still_in_every_expanded_panel(page):
             assert fl in txt
         if r["section"] in ("iterate", "faded", "stop"):
             m = r["metrics"]
-            for label in ("Spend", "ROAS (all time)", "CPA (all time)", "Upstack new-customer ROAS", "ROAS, strong tags only", "Ads launched", "Under $100 spend", "Ads tested ($100+)", "Ads that reached $10K+", "New ads, 30 days", "Last 30 days", "Prior 30 days", "Live ads"):
+            for label in ("Spend", "ROAS (all time)", "CPA (all time)", "Upstack new-customer ROAS", "ROAS, strong tags only", "Ads launched", "Under $100 spend", "Ads tested ($100+)", "Ads that reached $10K+", "New ads, 30 days", "Launched in last 30 days", "Of those, $10K+ so far", "Last 30 days", "Prior 30 days", "Live ads"):
                 assert label.lower() in txt.lower(), (label, r["pain_point"])
             fn = m["funnel"]
-            assert f"{fn['launched']:,}" in txt and f"{fn['tested']:,}" in txt and f"{fn['top']:,}" in txt and "of launched" in txt
+            assert f"{fn['launched']:,}" in txt and f"{fn['tested']:,}" in txt and f"{fn['top']:,}" in txt and "launched =" in txt
             assert _money(m["spend"]) in txt and _money(m["spend_30d"]) in txt and _money(m["spend_prior30"]) in txt
         else:
             assert "Ads tagged" in txt or r["section"] == "proposal" or r["section"] == "competitor"
@@ -947,7 +947,7 @@ def test_manual_row_filters_search_sort_selection_csv_print_and_copy(page):
         page.locator("[data-testid=pri-sel-csv]").click()
     sel = csv_of(dl.value)
     head = sel[0]
-    assert head[:4] == ["market_cluster", "icp", "pain_point", "story"] and head[head.index("source"):head.index("source") + 2] == ["source", "notes"] and head[-2:] == ["spend_14d", "roas_14d"] and len(sel) == 3
+    assert head[:4] == ["market_cluster", "icp", "pain_point", "story"] and head[head.index("source"):head.index("source") + 2] == ["source", "notes"] and head[-4:-2] == ["spend_14d", "roas_14d"] and len(sel) == 3
     assert sorted(r[head.index("source")] for r in sel[1:]) == ["auto", "manual"]
     assert [r for r in sel[1:] if r[head.index("source")] == "manual"][0][head.index("notes")] == "Unique-notes-marker for print"
     # print layout: the compact strip shows the notes
@@ -1130,7 +1130,12 @@ def test_product_tiles_show_the_four_numbers_and_filter_by_product(page):
         assert "All time" in txt and "Last 30 days" in txt and "ROAS (all time)" in txt and "CPA (all time)" in txt and "ROAS (30 days)" in txt and "vs all time" in txt, (slug, txt)
         assert f"Launched {fn['launched']:,} \u00b7 under $100: {fn['under_tested']:,}" in t.locator("[data-testid=pri-funnel]").text_content(), slug
         assert f"$100+: {fn['tested']:,} \u00b7 $10K+: {fn['top']:,}" in txt and f"{fn['top']:,} of {fn['launched']:,}" in txt and f"{fn['top']:,} of {fn['tested']:,}" in txt, (slug, txt)
-        assert f"{f3['active']:,} ads spent" in t.locator("[data-testid=pri-funnel-30d]").text_content() and t.locator("[data-testid=pri-funnel-bar]").count() == 2
+        cs = t.locator("[data-testid=pri-cohort]")
+        assert cs.count() == 3 and t.locator("[data-testid=pri-funnel-bar]").count() == 4
+        for i, c in enumerate(b["cohorts"]):
+            ct = cs.nth(i).text_content()
+            assert c["label"] in ct and f"{c['top']:,} of {c['launched']:,}" in ct and f"under $100: {c['under_tested']:,}" in ct and f"({c['spent']:,} with spend)" in ct, (slug, ct)
+        assert "Activity in the window" in txt and "spend to date" in txt
     page.locator("[data-testid=pri-ptile][data-product='beef-liver']").click()
     assert set(page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("els => els.map(e => e.dataset.product)")) == {"beef-liver"}
     assert page.locator("[data-testid=pri-f-product-beef-liver]").get_attribute("aria-pressed") == "true" and page.locator("[data-testid=pri-f-product-vita-bull]").get_attribute("aria-pressed") == "false"
@@ -1159,6 +1164,8 @@ def test_disclosures_keep_every_word_and_the_clear_filters_link_resets_everythin
         flat = intro.replace("×", "x")
         assert f"{s_['product_name']} ALL TIME: ROAS {_roas(s_['roas'])}, CPA {_money(s_['cpa'])}; Launched {fn_['launched']:,} \u00b7 under $100: {fn_['under_tested']:,}" in flat, s_["product_name"]
         assert f"$10K+: {fn_['top']:,}" in flat and f"LAST 30 DAYS: ROAS {_roas(s_['roas_30d'])}, CPA {_money(s_['cpa_30d'])}" in flat
+        c0 = s_["cohorts"][0]
+        assert f"launched in the last 30 days: {c0['top']:,} of {c0['launched']:,} hit $10K+" in flat
 
 
 def test_metric_help_defines_every_metric_and_is_keyboard_operable(page):
@@ -1179,7 +1186,7 @@ def test_tiles_without_funnel_fields_still_render(page):
         r = route.fetch()
         d = r.json()
         for b in d["baselines"].values():
-            for k in ("funnel", "funnel_30d", "cpa_30d", "spend_30d", "purchases_30d", "purchases", "live_ads"):
+            for k in ("funnel", "funnel_30d", "cohorts", "cpa_30d", "spend_30d", "purchases_30d", "purchases", "live_ads"):
                 b.pop(k, None)
         for row in d["rows"]:
             row["metrics"].pop("funnel", None)

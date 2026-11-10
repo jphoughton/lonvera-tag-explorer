@@ -42,6 +42,7 @@ MIN_LINE_ADS = 4                       # ... and ads that reached JUDGED_SPEND
 JUDGED_SPEND = 100.0                   # an ad counts as tested once it spent this much
 HIT_SPEND = 1000.0                     # SCORING ONLY: the hit rate inside the score counts an ad as a hit at this spend (hits / mature tested ads); $10,000 left 0 statuses unchanged but moved 14 scores / 5 ranks on sparse counts, so scoring stays here
 MIN_14D_SPEND = 100.0                  # last-14-day ROAS is shown only with at least this much spend in the 14 days (raw purchase value / spend, not shrunk)
+COHORT_LABELS = ("Launched in the last 30 days", "Launched 31 to 60 days ago", "Launched 61 to 90 days ago")
 TOP_SPEND = 10000.0                    # DISPLAY: what Josh calls a hit (2026-11-10): an ad that reached $10,000 spend; shown as $10K+ / launched ads
 MATURE_DAYS = 14                       # ads younger than this are left out of the hit-rate denominator (no time to reach $1,000)
 SHRINK_SPEND = 2500.0                  # ROAS shrinks toward the product average with this many dollars of prior spend
@@ -141,7 +142,7 @@ FAM_SQL = """
 SELECT m.family_key, m.tracker_row_id, p.slug AS product, g.line_id, g.confidence AS tag_conf, g.method AS tag_method, g.tagger,
        m.spend_launch, m.purchases_launch, m.revenue_launch, m.live,
        cs.first_day, cs.last_spend_day, COALESCE(cs.launched_before_data_start, false) AS before_start, COALESCE(cs.display, m.family_key) AS display,
-       hk.hook, hk.confidence AS hook_conf, (m.launch_date IS NOT NULL) AS has_launch
+       hk.hook, hk.confidence AS hook_conf, (m.launch_date IS NOT NULL) AS has_launch, COALESCE(m.launch_date::date, CASE WHEN cs.launched_before_data_start THEN NULL ELSE cs.first_day::date END) AS eff_launch
 FROM ad_metrics m
 JOIN products p ON p.id = m.product_id AND p.slug = ANY(%s)
 LEFT JOIN ad_tags g ON g.tracker_row_id = m.tracker_row_id AND g.tag_set = 'linemap' AND g.is_current
@@ -171,6 +172,15 @@ SELECT p.slug, count(*) AS launched, count(*) FILTER (WHERE COALESCE(m.spend_lau
 FROM ad_metrics m JOIN products p ON p.id = m.product_id AND p.slug = ANY(%s)
 WHERE m.is_first_row AND (m.launch_date IS NOT NULL OR m.spend_launch > 0)
 GROUP BY p.slug
+"""
+
+COHORT_SQL = """
+SELECT slug, bucket, count(*) AS launched, count(*) FILTER (WHERE sp > 0) AS spent, count(*) FILTER (WHERE sp < %s) AS under_tested, count(*) FILTER (WHERE sp >= %s) AS tested, count(*) FILTER (WHERE sp >= %s) AS top
+FROM (SELECT p.slug, COALESCE(m.spend_launch, 0) AS sp, (%s::date - COALESCE(m.launch_date::date, CASE WHEN cs.launched_before_data_start THEN NULL ELSE cs.first_day::date END)) AS age
+      FROM ad_metrics m JOIN products p ON p.id = m.product_id AND p.slug = ANY(%s) LEFT JOIN creative_stage_moves cs ON cs.family_key = m.family_key
+      WHERE m.is_first_row AND (m.launch_date IS NOT NULL OR m.spend_launch > 0)) x
+CROSS JOIN LATERAL (SELECT CASE WHEN x.age BETWEEN 0 AND 29 THEN 0 WHEN x.age BETWEEN 30 AND 59 THEN 1 WHEN x.age BETWEEN 60 AND 89 THEN 2 END AS bucket) b
+WHERE bucket IS NOT NULL GROUP BY slug, bucket
 """
 
 WEEKLY_SQL = """
@@ -205,7 +215,10 @@ def load_inputs(conn) -> dict:
     for fk, wk, sp, rv, pu in conn.execute(WEEKLY_SQL).fetchall():
         weekly.setdefault(fk, {})[wk] = (_f(sp), _f(rv), _f(pu))
     funnel = {r[0]: {"launched": r[1], "under_tested": r[2], "tested": r[3], "top": r[4]} for r in conn.execute(FUNNEL_SQL, (JUDGED_SPEND, JUDGED_SPEND, TOP_SPEND, list(PRODUCTS))).fetchall()}
-    return {"through": through, "lines": lines, "families": fams, "win": win, "weekly": weekly, "funnel": funnel, "competitors": load_competitors(conn)}
+    cohorts: dict = {}
+    for r in conn.execute(COHORT_SQL, (JUDGED_SPEND, JUDGED_SPEND, TOP_SPEND, through, list(PRODUCTS))).fetchall():
+        cohorts.setdefault(r[0], {})[r[1]] = {"launched": r[2], "spent": r[3], "under_tested": r[4], "tested": r[5], "top": r[6]}
+    return {"cohorts": cohorts, "through": through, "lines": lines, "families": fams, "win": win, "weekly": weekly, "funnel": funnel, "competitors": load_competitors(conn)}
 
 
 
@@ -603,6 +616,13 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
                                                       "tested": sum(1 for f in pf if f["judged"]), "top": sum(1 for f in pf if f["top"])}
         b["funnel"] = fn
         # last 30 days: ads that spent in the window, how many stayed under $100 of window spend, got $100+, got $10K+ inside the window
+        ch = (inp.get("cohorts") or {}).get(slug)
+        if ch is None:                                            # no SQL cohorts (tests, old inputs): derive from the families in hand
+            ch = {}
+            for bk in (0, 1, 2):
+                lo = [f for f in pf if f.get("eff_launch") is not None and bk * 30 <= (through - f["eff_launch"]).days < bk * 30 + 30 and f["launched"]]
+                ch[bk] = {"launched": len(lo), "spent": sum(1 for f in lo if f["spend_launch"] > 0), "under_tested": sum(1 for f in lo if f["spend_launch"] < JUDGED_SPEND), "tested": sum(1 for f in lo if f["spend_launch"] >= JUDGED_SPEND), "top": sum(1 for f in lo if f["top"])}
+        b["cohorts"] = [{"label": lab, "from_days": bk * 30, "to_days": bk * 30 + 29, **ch.get(bk, {"launched": 0, "spent": 0, "under_tested": 0, "tested": 0, "top": 0})} for bk, lab in enumerate(COHORT_LABELS)]
         s30s = [_f(f["w"]["s30"]) for f in pf if _f(f["w"]["s30"]) > 0]
         b["funnel30"] = {"active": len(s30s), "under_tested": sum(1 for v in s30s if v < JUDGED_SPEND), "tested": sum(1 for v in s30s if v >= JUDGED_SPEND), "top": sum(1 for v in s30s if v >= TOP_SPEND)}
         b["roas"] = ratio(b["launch"]["revenue"], b["launch"]["spend"]) or 0.0
@@ -664,6 +684,7 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
         idx_30 = (shrunk_roas(r30, s30, b["roas_30d"]) / b["roas_30d"]) if b["roas_30d"] else None
         s30w = [_f(f["w"]["s30"]) for f in fm if _f(f["w"]["s30"]) > 0]
         funnel_line = {"launched": sum(1 for f in fm if f["launched"]), "under_tested": sum(1 for f in fm if f["launched"] and not f["judged"]), "tested": sum(1 for f in fm if f["judged"]), "top": sum(1 for f in fm if f["top"]),
+                       "launched_30d": sum(1 for f in fm if f["launched"] and f.get("eff_launch") is not None and 0 <= (through - f["eff_launch"]).days < 30), "top_launched_30d": sum(1 for f in fm if f["top"] and f.get("eff_launch") is not None and 0 <= (through - f["eff_launch"]).days < 30),
                        "active_30d": len(s30w), "under_tested_30d": sum(1 for v in s30w if v < JUDGED_SPEND), "tested_30d": sum(1 for v in s30w if v >= JUDGED_SPEND), "top_30d": sum(1 for v in s30w if v >= TOP_SPEND)}
         hr = hits / len(mature) if mature else None
         hit_idx = (shrunk_rate(hits, len(mature), b["hit_rate"]) / b["hit_rate"]) if b["hit_rate"] else None
@@ -1109,7 +1130,7 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
             r.update(describe(inp["lines"], lines[r["line_id"]]))
     baselines = {s: {"product_name": names.get(s, s), "roas": round(b["roas"], 4), "cpa": b["cpa"], "spend": money(b["launch"]["spend"]), "roas_30d": round(b["roas_30d"], 4), "roas_prior30": round(b["roas_prior30"], 4), "roas_then": round(b["roas_then"], 4),
                      "hit_rate": round(b["hit_rate"], 4), "judged": b["judged"], "hits": b["hits"], "hit_spend": TOP_SPEND, "tested_spend": JUDGED_SPEND,
-                     "spend_14d": money(b["d14"]["spend"]), "roas_14d": ratio(b["d14"]["revenue"], b["d14"]["spend"]), "funnel": b["funnel"], "funnel_30d": b["funnel30"], "spend_30d": money(b["d30"]["spend"]), "purchases_30d": round(b["d30"]["purchases"]), "cpa_30d": ratio(b["d30"]["spend"], b["d30"]["purchases"], 2),
+                     "spend_14d": money(b["d14"]["spend"]), "roas_14d": ratio(b["d14"]["revenue"], b["d14"]["spend"]), "funnel": b["funnel"], "funnel_30d": b["funnel30"], "cohorts": b["cohorts"], "spend_30d": money(b["d30"]["spend"]), "purchases_30d": round(b["d30"]["purchases"]), "cpa_30d": ratio(b["d30"]["spend"], b["d30"]["purchases"], 2),
                      "purchases": round(b["launch"]["purchases"]), "live_ads": sum(1 for f in fams if f["product"] == s and f["live3"]), "data_through": str(through), "new_ads_30d": b["new30"], "nc_roas": round(b["nc_roas"], 4)} for s, b in base.items()}
     tagged_spend = {s: sum(f["spend_launch"] for f in fams if f["product"] == s and f["line_id"] in lines) for s in PRODUCTS}
     untagged_spend = {s: sum(f["spend_launch"] for f in fams if f["product"] == s and f["line_id"] not in lines) for s in PRODUCTS}
@@ -1136,7 +1157,7 @@ CSV_COLS = ["market_cluster", "icp", "pain_point", "story", "product", "section"
             "then_vs_now", "when_it_worked", "how_it_stopped", "diagnosis", "revive_play", "former_winner_ads", "what_others_are_running", "emotional_trigger", "ingredients", "line_code", "confidence", "flags", "score",
             "spend", "roas", "cpa", "roas_index", "ads", "hit_rate", "hit_rate_index", "spend_30d", "roas_30d", "spend_prior30", "roas_prior30", "launches_30d", "nc_roas", "nc_cpa",
             "hook_1", "hook_2", "hook_3", "why", "source", "notes",
-            "ads_launched", "ads_under_100_spend", "ads_100_plus_spend", "ads_10k_plus_spend", "hit_rate_10k_of_launched", "hit_rate_10k_of_tested", "spend_14d", "roas_14d"]
+            "ads_launched", "ads_under_100_spend", "ads_100_plus_spend", "ads_10k_plus_spend", "hit_rate_10k_of_launched", "hit_rate_10k_of_tested", "spend_14d", "roas_14d", "ads_launched_last_30d", "ads_10k_plus_of_launched_last_30d"]
 
 
 def _row_key(r: dict) -> str:
@@ -1168,7 +1189,7 @@ def to_csv(snapshot: dict, briefed: dict | None = None) -> str:
                     " | ".join(f"{w_['ad']} ({w_['kind']}, ${w_['spend']:,} at {w_['roas']}x, peak week {w_['peak_week']}" + (f", stopped {w_['stopped']}" if w_.get("stopped") else "") + ")" for w_ in r.get("former_winners", [])),
                     comp, r["emotional_trigger"] or "", r["ingredients"], r["line_code"], r["confidence"],
                     "; ".join(r["flags"]), r["score"], g("spend"), g("roas"), g("cpa"), g("roas_index"), g("ads"), g("hit_rate"), g("hit_rate_index"), g("spend_30d"), g("roas_30d"), g("spend_prior30"),
-                    g("roas_prior30"), g("launches_30d"), g("nc_roas"), g("nc_cpa"), hk[0], hk[1], hk[2], r["why"], "manual" if r.get("manual") else "auto", r.get("notes", "")] + _funnel_cells(m.get("funnel")) + [g("spend_14d") if g("spend_14d") is not None else "", g("roas_14d") if g("roas_14d") is not None else ""])
+                    g("roas_prior30"), g("launches_30d"), g("nc_roas"), g("nc_cpa"), hk[0], hk[1], hk[2], r["why"], "manual" if r.get("manual") else "auto", r.get("notes", "")] + _funnel_cells(m.get("funnel")) + [g("spend_14d") if g("spend_14d") is not None else "", g("roas_14d") if g("roas_14d") is not None else "", *(((m.get("funnel") or {}).get("launched_30d", ""), (m.get("funnel") or {}).get("top_launched_30d", "")))])
         formula = lambda c: "'" + c if isinstance(c, str) and c[:1] in ("=", "+", "-", "@", "\t") else c
         if r.get("manual"):          # typed by hand: a leading = + - @ would run as a formula when the CSV is opened in Sheets / Excel
             row = [formula(c) for c in row]
@@ -1196,8 +1217,8 @@ def to_markdown(snapshot: dict) -> str:
         fn, f3 = b.get("funnel"), b.get("funnel_30d")
         if fn:
             L.append(f"- {b['product_name']} average, ALL TIME: ROAS {b['roas']:.2f}x, CPA {cpa}; ads launched {fn['launched']:,}: under ${JUDGED_SPEND:,.0f} spend {fn['under_tested']:,} ({_pc(fn['under_tested'], fn['launched'])}), "
-                     f"${JUDGED_SPEND:,.0f}+ {fn['tested']:,}, ${TOP_SPEND:,.0f}+ (hits) {fn['top']:,}; hit rate {_pc(fn['top'], fn['launched'], 1)} of launched, {_pc(fn['top'], fn['tested'], 1)} of tested. "
-                     f"LAST 30 DAYS: ROAS {b['roas_30d']:.2f}x, CPA {'n/a' if b.get('cpa_30d') is None else '${:.0f}'.format(b['cpa_30d'])}; {f3['active']:,} ads spent, {f3['top']:,} reached ${TOP_SPEND:,.0f}+ within the window; {b['new_ads_30d']} new ads")
+                     f"${JUDGED_SPEND:,.0f}+ {fn['tested']:,}, ${TOP_SPEND:,.0f}+ (hits) {fn['top']:,}; {fn['top']:,} of {fn['launched']:,} launched ads hit ${TOP_SPEND:,.0f}+ spend ({_pc(fn['top'], fn['launched'], 1)}); {fn['top']:,} of {fn['tested']:,} ads that spent ${JUDGED_SPEND:,.0f}+ ({_pc(fn['top'], fn['tested'], 1)}). "
+                     f"LAST 30 DAYS: ROAS {b['roas_30d']:.2f}x, CPA {'n/a' if b.get('cpa_30d') is None else '${:.0f}'.format(b['cpa_30d'])}; {b['new_ads_30d']} new ads with spend; " + "; ".join(f"{c['label'].lower()}: {c['top']:,} of {c['launched']:,} already hit ${TOP_SPEND:,.0f}+ (under ${JUDGED_SPEND:,.0f}: {c['under_tested']:,}, ${JUDGED_SPEND:,.0f}+: {c['tested']:,})" for c in b.get('cohorts', [])))
         else:
             L.append(f"- {b['product_name']} average: ROAS {b['roas']:.2f}x all time, {b['roas_30d']:.2f}x last 30 days, CPA {cpa}, {b['new_ads_30d']} new ads in 30 days")
     for slug in PRODUCTS:
