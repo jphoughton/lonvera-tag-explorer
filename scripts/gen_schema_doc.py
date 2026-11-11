@@ -45,7 +45,7 @@ MIGRATIONS = {"013": ROOT / "migrations" / "013_schema_comments_analytics.sql", 
               "202": ROOT / "migrations" / "202_priorities_assignments.sql", "203": ROOT / "migrations" / "203_creative_launch.sql",
               "204": ROOT / "migrations" / "204_assignment_format.sql", "205": ROOT / "migrations" / "205_api_keys.sql",
               "206": ROOT / "migrations" / "206_klaviyo_metrics.sql", "207": ROOT / "migrations" / "207_landing_pages.sql",
-              "220": ROOT / "migrations" / "220_brain_mcp.sql", "221": ROOT / "migrations" / "221_brain_open_app.sql", "240": ROOT / "migrations" / "240_meta_breakdowns.sql"}
+              "210": ROOT / "migrations" / "210_shopify_orders.sql", "220": ROOT / "migrations" / "220_brain_mcp.sql", "221": ROOT / "migrations" / "221_brain_open_app.sql", "240": ROOT / "migrations" / "240_meta_breakdowns.sql"}
 # the Test to scale views (created by migration 015, after 013 runs on a fresh database): they and their comments live in migration 015
 # (migration 016 turned them into tables and added the placements tables; 015's own comment section is frozen history)
 LATE_STAGE_MOVES = {f"public.{n}{b}" for n in ("creative_stage_moves", "creative_scaling_placements") for b in ("", "_upstack_nc", "_upstack_all")}
@@ -68,6 +68,8 @@ LATE_LAUNCH = {f"public.creative_launch_{n}" for n in ("settings", "pages", "ven
 LATE_FORMATS = {"public.creative_formats"}
 # the scoped API keys (created by migration 205): the table and its comments live in migration 205
 LATE_APIKEYS = {"public.api_keys"}
+# the order-level Shopify orders and lines of the last 120 days (created by migration 210): the tables and their comments live in migration 210
+LATE_ORDERS120 = {"public.shopify_orders", "public.shopify_order_lines"}
 # the Klaviyo flow and campaign tables (created by migration 206): they and their comments live in migration 206
 LATE_KLAVIYO = {"public.klaviyo_campaigns", "public.klaviyo_flows", "public.klaviyo_flow_messages", "public.klaviyo_daily", "public.klaviyo_message_content", "public.klaviyo_message_performance"}
 # the landing page copy store and ad to page map (created by migration 207): tables, the top-ads view and their comments live in migration 207
@@ -327,6 +329,8 @@ def scope_of(r: dict) -> str:
         return "204"
     if r["name"] in LATE_APIKEYS:
         return "205"
+    if r["name"] in LATE_ORDERS120:
+        return "210"
     if r["name"] in LATE_KLAVIYO:
         return "206"
     if r["name"] in LATE_LANDING:
@@ -356,7 +360,7 @@ def comment_sql(model: dict, scope: str = "all", d=None) -> str:
 
 def migration_text(which: str, model: dict, d=None) -> str:
     """013, 015 and 190 keep their hand-written DDL (everything above COMMENTS_MARKER) and get the comment section rewritten; 191 is comments only."""
-    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "220", "221", "240"):
+    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "240"):
         path = MIGRATIONS[which]
         if not path.exists():
             raise SystemExit(f"{path} must exist with its hand-written DDL and the comments marker before comments can be emitted")
@@ -425,7 +429,7 @@ def main(argv=None) -> int:
     g.add_argument("--write", action="store_true")
     g.add_argument("--check", action="store_true")
     g.add_argument("--problems", action="store_true")
-    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "220", "221", "all"))
+    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "all"))
     g.add_argument("--emit-migration", choices=sorted(MIGRATIONS))
     g.add_argument("--verify-live", action="store_true")
     ap.add_argument("--out", help="with --comments: write to this file instead of stdout")

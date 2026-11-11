@@ -14124,6 +14124,298 @@
    "examples": []
   },
   {
+   "name": "public.shopify_orders",
+   "schema": "public",
+   "relation": "shopify_orders",
+   "kind": "table",
+   "group": "orders",
+   "purpose": "Order-level Shopify orders of the last 120 days (rolling), one row per order, with money, status, source, discount codes and ship-to country / region. The place to answer order-level questions (refunds, rebills, gifts, discounts) that the daily roll-ups hide.",
+   "grain": "one row per Shopify order (order_id is the primary key)",
+   "primary_key": [
+    "order_id"
+   ],
+   "foreign_keys": [],
+   "source": "ExpandFi warehouse, merchant 1452, table shopify_orders (read-only), loaded by python -m etl.shopify_orders (etl/shopify_orders.py); fields come from the order's raw Shopify JSON",
+   "refresh": "nightly (feeds service 21:00 UTC): the trailing 14 days are re-pulled every run, the whole 120 days every Sunday (Pacific) and on the first load; orders older than 120 days are deleted",
+   "coverage": "orders processed in the last 120 Pacific days, including today so far; the warehouse trails Shopify by minutes to hours",
+   "caveats": [
+    "No personal data is stored: no email, name, address or phone. customer_id is the Shopify customer id (NULL when the order has none); the ship-to is country and region only.",
+    "order_date is the Pacific day of processed_at. The warehouse's own created_at is the sync time of a September backfill and is NOT used.",
+    "is_new_customer = this is the customer's first Shopify order EVER (customer key = Shopify customer id, else the lower-cased email, as in the new-customer revenue feed), judged over the whole warehouse history, not only the 120 days.",
+    "refunded_amount = total_price - current_total_price (never below 0): Shopify's current total already nets refunds and order edits, and the warehouse's refund transactions are empty for many refunds. It is a net-down amount, not a refund ledger.",
+    "Orders restated after they fall out of the trailing 14 days are picked up by the Sunday full 120-day pull, so a late refund can lag up to a week.",
+    "is_rebill = source_name is subscription_contract_checkout_one. is_trybe_gift = the order carries the tag trybe (the $0 gift orders). Gift, test and cancelled orders are kept and flagged, never dropped; filter on the flags.",
+    "Revenue by product is NOT the sum of total_price by product: use shopify_order_lines.line_net for a split."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "order_id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Shopify order id (primary key). Not the ExpandFi row id."
+    },
+    {
+     "name": "order_number",
+     "type": "text",
+     "nullable": true,
+     "description": "Human-readable order number as the store shows it."
+    },
+    {
+     "name": "processed_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the order was processed (UTC instant)."
+    },
+    {
+     "name": "order_date",
+     "type": "date",
+     "nullable": false,
+     "description": "Pacific calendar day of processed_at; the day to group by."
+    },
+    {
+     "name": "customer_id",
+     "type": "text",
+     "nullable": true,
+     "description": "Shopify customer id; NULL when the order has none. No other customer data is stored."
+    },
+    {
+     "name": "is_new_customer",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True when this is the customer's first Shopify order ever."
+    },
+    {
+     "name": "currency",
+     "type": "text",
+     "nullable": true,
+     "description": "Order currency code (shop currency)."
+    },
+    {
+     "name": "subtotal_price",
+     "type": "numeric(12,2)",
+     "nullable": true,
+     "description": "Order subtotal after discounts, before shipping and tax."
+    },
+    {
+     "name": "total_discounts",
+     "type": "numeric(12,2)",
+     "nullable": true,
+     "description": "Sum of all discounts on the order."
+    },
+    {
+     "name": "shipping_price",
+     "type": "numeric(12,2)",
+     "nullable": true,
+     "description": "Shipping charged (shop money)."
+    },
+    {
+     "name": "total_tax",
+     "type": "numeric(12,2)",
+     "nullable": true,
+     "description": "Tax charged."
+    },
+    {
+     "name": "total_price",
+     "type": "numeric(12,2)",
+     "nullable": true,
+     "description": "Order total at checkout: subtotal + shipping + tax."
+    },
+    {
+     "name": "current_total_price",
+     "type": "numeric(12,2)",
+     "nullable": true,
+     "description": "Order total after refunds and edits, as Shopify reports it now."
+    },
+    {
+     "name": "refunded_amount",
+     "type": "numeric(12,2)",
+     "nullable": true,
+     "description": "total_price minus current_total_price, never below 0 (see the caveat)."
+    },
+    {
+     "name": "financial_status",
+     "type": "text",
+     "nullable": true,
+     "description": "Shopify financial status (paid, refunded, partially_refunded, voided, ...)."
+    },
+    {
+     "name": "fulfillment_status",
+     "type": "text",
+     "nullable": true,
+     "description": "Shopify fulfillment status; NULL = unfulfilled."
+    },
+    {
+     "name": "source_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Shopify source name (web, subscription_contract_checkout_one for rebills, tiktok, or an app id)."
+    },
+    {
+     "name": "app_id",
+     "type": "text",
+     "nullable": true,
+     "description": "Shopify app id that created the order; NULL when none."
+    },
+    {
+     "name": "tags",
+     "type": "text",
+     "nullable": true,
+     "description": "Order tags, comma separated, as Shopify stores them."
+    },
+    {
+     "name": "discount_codes",
+     "type": "text",
+     "nullable": true,
+     "description": "Discount codes used, comma separated; NULL when none."
+    },
+    {
+     "name": "ship_country",
+     "type": "text",
+     "nullable": true,
+     "description": "Ship-to ISO country code; NULL when the order has no shipping address."
+    },
+    {
+     "name": "ship_region",
+     "type": "text",
+     "nullable": true,
+     "description": "Ship-to province / state code; NULL when none."
+    },
+    {
+     "name": "cancelled_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the order was cancelled; NULL when it was not."
+    },
+    {
+     "name": "is_cancelled",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True when cancelled_at is set."
+    },
+    {
+     "name": "is_test",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True for a Shopify test order."
+    },
+    {
+     "name": "is_rebill",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True for a subscription rebill (source_name subscription_contract_checkout_one)."
+    },
+    {
+     "name": "is_trybe_gift",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True when the order has the tag trybe (free sample / gift orders)."
+    },
+    {
+     "name": "line_count",
+     "type": "integer",
+     "nullable": false,
+     "description": "Number of line items stored in shopify_order_lines for this order."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When this row was last written by the loader."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.shopify_order_lines",
+   "schema": "public",
+   "relation": "shopify_order_lines",
+   "kind": "table",
+   "group": "orders",
+   "purpose": "Line items of shopify_orders: one row per product line with SKU, product bucket, quantity, price and discount.",
+   "grain": "one row per order line (order_id, line_no is the primary key; line_no counts from 1 in the order's own line order)",
+   "primary_key": [
+    "order_id",
+    "line_no"
+   ],
+   "foreign_keys": [
+    {
+     "columns": [
+      "order_id"
+     ],
+     "references": "public.shopify_orders",
+     "referenced_columns": [
+      "order_id"
+     ]
+    }
+   ],
+   "source": "the line_items array of the same ExpandFi shopify_orders rows, loaded together with shopify_orders by python -m etl.shopify_orders",
+   "refresh": "with shopify_orders (nightly 21:00 UTC); a re-pulled order has its lines replaced, an order that leaves the 120-day window takes its lines with it",
+   "coverage": "the same orders as shopify_orders",
+   "caveats": [
+    "product is mapped from the SKU prefix: LV-VBULL = VitaBull, LV-BLC180 and DPCD1-GN180001 = BeefLiver, DPCD1-GN187001 = Boneflex, LV-VBELLE = VitaBelle, DPCD1-GN179001 = VitaFlow, anything else = Other.",
+    "line_net = max(price x quantity - line_discount, 0); the order's total_price also carries shipping and tax and order-level discounts, so the lines do not add up to it."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "order_id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Shopify order id; foreign key to shopify_orders.order_id (cascade delete)."
+    },
+    {
+     "name": "line_no",
+     "type": "integer",
+     "nullable": false,
+     "description": "Position of the line in the order, from 1."
+    },
+    {
+     "name": "sku",
+     "type": "text",
+     "nullable": true,
+     "description": "SKU as sold; NULL when the line has none."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Line title as it shows on the order."
+    },
+    {
+     "name": "product",
+     "type": "text",
+     "nullable": false,
+     "description": "Product bucket mapped from the SKU (VitaBull, BeefLiver, Boneflex, VitaBelle, VitaFlow, Other)."
+    },
+    {
+     "name": "quantity",
+     "type": "integer",
+     "nullable": false,
+     "description": "Units on the line."
+    },
+    {
+     "name": "price",
+     "type": "numeric(12,2)",
+     "nullable": true,
+     "description": "Unit price before discount."
+    },
+    {
+     "name": "line_discount",
+     "type": "numeric(12,2)",
+     "nullable": true,
+     "description": "Total discount on the line (all units)."
+    },
+    {
+     "name": "line_net",
+     "type": "numeric(12,2)",
+     "nullable": true,
+     "description": "price x quantity minus line_discount, never below 0."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.klaviyo_campaigns",
    "schema": "public",
    "relation": "klaviyo_campaigns",
