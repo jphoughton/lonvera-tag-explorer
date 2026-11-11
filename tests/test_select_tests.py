@@ -241,8 +241,8 @@ def test_a_projection_page_script_is_tied_to_the_browser_tests_of_its_folder(tmp
     files = dict(BASE)
     files["app/static/js/trend.js"] = "export const t = 1;\n"
     files["app/static/js/projection/demo_trend.js"] = "import { t } from '../trend.js';\n"
-    files["tests/projection/demo/conftest.py"] = "import playwright\n"
-    files["tests/projection/demo/test_demo_page.py"] = "def test_d(page):\n    page.goto('/projection/demo')\n"
+    files["tests/projection/demo/conftest.py"] = "import pytest\n"
+    files["tests/projection/demo/test_demo_page.py"] = "from playwright.sync_api import sync_playwright\ndef test_d(page):\n    page.goto('/projection/demo')\n"
     files["tests/projection/demo/test_demo_model.py"] = "def test_m():\n    pass\n"
     files.update({f"tests/etl/test_pad{i}.py": "def test_p():\n    pass\n" for i in range(8)})
     r = make(tmp_path, files)
