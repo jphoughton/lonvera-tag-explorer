@@ -13699,6 +13699,687 @@
     }
    ],
    "examples": []
+  },
+  {
+   "name": "public.klaviyo_campaigns",
+   "schema": "public",
+   "relation": "klaviyo_campaigns",
+   "kind": "table",
+   "group": "ops",
+   "purpose": "Dimension: one row per Klaviyo campaign (email and SMS) with its name, status, send time and subject. Names the parent ids of klaviyo_daily.",
+   "grain": "one row per campaign (id is the primary key; Klaviyo campaign id)",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "Klaviyo API GET /campaigns/ with campaign-messages, both channels, via python -m etl.klaviyo (etl/klaviyo.py)",
+   "refresh": "nightly with the daily ETL (whole list re-upserted every run)",
+   "coverage": "every campaign Klaviyo lists, regardless of the metric window",
+   "caveats": [
+    "raw holds the Klaviyo attributes and the campaign's messages (id, label, subject); an A/B campaign has several messages and subject is the first one's.",
+    "A campaign that sent in the window but is no longer listed shows in klaviyo_daily as '(unknown campaign message ...)'."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "text",
+     "nullable": false,
+     "description": "Klaviyo campaign id (primary key)."
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "nullable": true,
+     "description": "Campaign name."
+    },
+    {
+     "name": "channel",
+     "type": "text",
+     "nullable": false,
+     "description": "'email' or 'sms'."
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "nullable": true,
+     "description": "Klaviyo status text, for example Sent, Draft, Queued without Recipients."
+    },
+    {
+     "name": "send_time",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "Scheduled send time (UTC); NULL when not scheduled."
+    },
+    {
+     "name": "subject",
+     "type": "text",
+     "nullable": true,
+     "description": "Subject line of the first message; NULL for SMS and drafts without one."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the campaign was created in Klaviyo."
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the campaign was last edited in Klaviyo."
+    },
+    {
+     "name": "raw",
+     "type": "jsonb",
+     "nullable": true,
+     "description": "Klaviyo attributes plus the campaign's messages, as JSON."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When this row was last written."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.klaviyo_flows",
+   "schema": "public",
+   "relation": "klaviyo_flows",
+   "kind": "table",
+   "group": "ops",
+   "purpose": "Dimension: one row per Klaviyo flow with its name, status and trigger type. Names the parent ids of klaviyo_daily.",
+   "grain": "one row per flow (id is the primary key; Klaviyo flow id)",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "Klaviyo API GET /flows/ via python -m etl.klaviyo (etl/klaviyo.py)",
+   "refresh": "nightly with the daily ETL (whole list re-upserted every run)",
+   "coverage": "every flow Klaviyo lists (draft, manual and live), regardless of the metric window",
+   "caveats": [
+    "raw is the Klaviyo attribute object as returned."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "text",
+     "nullable": false,
+     "description": "Klaviyo flow id (primary key)."
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "nullable": true,
+     "description": "Flow name."
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "nullable": true,
+     "description": "draft, manual or live."
+    },
+    {
+     "name": "trigger_type",
+     "type": "text",
+     "nullable": true,
+     "description": "What starts the flow, for example Metric, List, Segment, Date."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the flow was created."
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the flow was last edited."
+    },
+    {
+     "name": "raw",
+     "type": "jsonb",
+     "nullable": true,
+     "description": "Klaviyo attributes as JSON."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When this row was last written."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.klaviyo_flow_messages",
+   "schema": "public",
+   "relation": "klaviyo_flow_messages",
+   "kind": "table",
+   "group": "ops",
+   "purpose": "Dimension: one row per message (email or SMS step) inside a Klaviyo flow, with its name and subject. Names the message_id of klaviyo_daily flow rows.",
+   "grain": "one row per flow message (id is the primary key; Klaviyo flow message id)",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "Klaviyo API GET /flows/{id}/flow-actions/ then /flow-actions/{id}/flow-messages/ via python -m etl.klaviyo (etl/klaviyo.py)",
+   "refresh": "nightly with the daily ETL, for live flows and flows that had activity in the pulled window",
+   "coverage": "messages of every live flow and of flows with sends, opens, clicks or orders in any pulled window",
+   "caveats": [
+    "Messages of draft or manual flows that were silent in every pulled window are not fetched, so they are missing here.",
+    "Messages deleted from a flow are not listed; their old metrics in klaviyo_daily keep the message_id with no name."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "text",
+     "nullable": false,
+     "description": "Klaviyo flow message id (primary key)."
+    },
+    {
+     "name": "flow_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Parent flow (klaviyo_flows.id). No foreign key."
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "nullable": true,
+     "description": "Message name in the flow builder."
+    },
+    {
+     "name": "channel",
+     "type": "text",
+     "nullable": true,
+     "description": "'email' or 'sms' as Klaviyo reports it, lowercased."
+    },
+    {
+     "name": "subject",
+     "type": "text",
+     "nullable": true,
+     "description": "Email subject line; NULL for SMS."
+    },
+    {
+     "name": "raw",
+     "type": "jsonb",
+     "nullable": true,
+     "description": "Klaviyo attributes plus the flow action id, as JSON."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When this row was last written."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.klaviyo_daily",
+   "schema": "public",
+   "relation": "klaviyo_daily",
+   "kind": "table",
+   "group": "ops",
+   "purpose": "Klaviyo email and SMS performance by Pacific day, campaign or flow, message and channel: sends, delivered, opens, clicks, unsubscribes and Klaviyo-attributed orders and revenue.",
+   "grain": "one row per day (Pacific) x source ('campaign' | 'flow') x parent_id x message_id x channel (that is the primary key; message_id is '' where Klaviyo gives none)",
+   "primary_key": [
+    "day",
+    "source",
+    "parent_id",
+    "message_id",
+    "channel"
+   ],
+   "foreign_keys": [],
+   "source": "Klaviyo metric-aggregates (Received / Bounced / Opened / Clicked / Marked as Spam / Unsubscribed events by $flow and $message, SMS equivalents, and Placed Order - Upstackified by $attributed_flow / $attributed_message) via python -m etl.klaviyo (etl/klaviyo.py)",
+   "refresh": "nightly with the daily ETL; the trailing 14 complete Pacific days are replaced each run so late opens, clicks and orders land",
+   "coverage": "complete Pacific days through yesterday; history from the first backfill (120 days at launch)",
+   "caveats": [
+    "unique_opens and unique_clicks are per-day uniques: do not add them across days or messages; sums run 20-55% above Klaviyo's single-window uniques.",
+    "orders and revenue are Klaviyo-attributed conversions of the metric 'Placed Order - Upstackified' (S6xLbC, the CheckoutChamp / Upstack server feed), dated by the day the order happened, not the day the message was sent; Shopify's own Placed Order metric reads about 10% lower.",
+    "Clicks exclude clicks Klaviyo flags as bots. sends = delivered + bounced.",
+    "Klaviyo does not expose SMS unsubscribes per flow, and campaign SMS unsubscribes are matched by campaign name with no message (message_id ''); about 2K keyword-STOP unsubscribes have no campaign and are not in this table.",
+    "SMS rows have no opens, unique_opens or spam_complaints (0).",
+    "Sends, delivered and revenue reconcile within about 3% of Klaviyo's own campaign and flow value reports."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Calendar day in America/Los_Angeles (event date)."
+    },
+    {
+     "name": "source",
+     "type": "text",
+     "nullable": false,
+     "description": "'campaign' or 'flow'."
+    },
+    {
+     "name": "parent_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Klaviyo campaign id or flow id (klaviyo_campaigns.id / klaviyo_flows.id). No foreign key."
+    },
+    {
+     "name": "message_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Klaviyo message id (campaign message or flow message); '' when the row has none (SMS unsubscribes by campaign name)."
+    },
+    {
+     "name": "channel",
+     "type": "text",
+     "nullable": false,
+     "description": "'email' or 'sms'."
+    },
+    {
+     "name": "parent_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Name of the campaign or flow when loaded (denormalised); '(unknown ...)' when Klaviyo no longer lists it."
+    },
+    {
+     "name": "sends",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Messages Klaviyo tried to send that day (delivered plus bounced)."
+    },
+    {
+     "name": "delivered",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Messages delivered."
+    },
+    {
+     "name": "bounced",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Emails bounced or SMS that failed to deliver."
+    },
+    {
+     "name": "opens",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Email opens (includes Apple Mail Privacy Protection machine opens); 0 for SMS."
+    },
+    {
+     "name": "unique_opens",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Distinct recipients who opened that day (per-day unique, not additive); 0 for SMS."
+    },
+    {
+     "name": "clicks",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Clicks, bot clicks excluded."
+    },
+    {
+     "name": "unique_clicks",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Distinct recipients who clicked that day (per-day unique, not additive)."
+    },
+    {
+     "name": "unsubscribes",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Unsubscribes counted that day (email: clicked-to-unsubscribe events; SMS: campaign-level only)."
+    },
+    {
+     "name": "spam_complaints",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Emails marked as spam; 0 for SMS."
+    },
+    {
+     "name": "orders",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Orders Klaviyo attributes to the message, dated by order day."
+    },
+    {
+     "name": "revenue",
+     "type": "numeric(14,2)",
+     "nullable": false,
+     "description": "Revenue of those orders in dollars (Placed Order - Upstackified value), dated by order day."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When this row was last written."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.klaviyo_message_content",
+   "schema": "public",
+   "relation": "klaviyo_message_content",
+   "kind": "table",
+   "group": "ops",
+   "purpose": "The copy of every Klaviyo message (campaign message or flow message) that had activity in a pulled window, or that sits in a live flow: subject, preview text, full email HTML, readable body text and the message links. Joins to klaviyo_daily on message_id.",
+   "grain": "one row per message (message_id is the primary key; Klaviyo campaign message id or flow message id)",
+   "primary_key": [
+    "message_id"
+   ],
+   "foreign_keys": [],
+   "source": "Klaviyo API: GET /campaign-messages/{id}/template/ and /flow-messages/{id}/template/ (email HTML), the message definitions from GET /campaigns/ and /flow-actions/{id}/flow-messages/ (subject, preview, sender, SMS body), via python -m etl.klaviyo (etl/klaviyo.py)",
+   "refresh": "nightly with the daily ETL, for messages with activity in the trailing 14 days and every message of a live flow",
+   "coverage": "messages with activity in any pulled window (120 days at launch) plus live-flow messages; not every message Klaviyo has ever held",
+   "caveats": [
+    "Only the latest copy is kept: when a message is edited the row is overwritten and fetched_at moves (content_hash changes); the history of edits is not kept, so old performance reads against the current copy.",
+    "Messages whose template Klaviyo no longer returns (deleted campaigns or templates) have a row with NULL html and body_text and raw.fetch_error set.",
+    "body_text is extracted from the HTML (head, scripts and styles dropped, link text kept, whitespace collapsed); image-only emails have little or no text, and image_count says how many real images the email carries. For SMS body_text is the message body and html is NULL.",
+    "image_count excludes tracking pixels and 1-pixel images."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "message_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Klaviyo message id (primary key); equals klaviyo_daily.message_id."
+    },
+    {
+     "name": "source",
+     "type": "text",
+     "nullable": false,
+     "description": "'campaign' or 'flow'."
+    },
+    {
+     "name": "parent_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Campaign id or flow id of the message. No foreign key."
+    },
+    {
+     "name": "channel",
+     "type": "text",
+     "nullable": false,
+     "description": "'email' or 'sms'."
+    },
+    {
+     "name": "subject",
+     "type": "text",
+     "nullable": true,
+     "description": "Email subject line; NULL for SMS."
+    },
+    {
+     "name": "preview_text",
+     "type": "text",
+     "nullable": true,
+     "description": "Email preview text; NULL for SMS or when none is set."
+    },
+    {
+     "name": "from_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Sender name of the email."
+    },
+    {
+     "name": "from_email",
+     "type": "text",
+     "nullable": true,
+     "description": "Sender address of the email."
+    },
+    {
+     "name": "template_id",
+     "type": "text",
+     "nullable": true,
+     "description": "Klaviyo template id the email renders from; NULL for SMS or when the template was not returned."
+    },
+    {
+     "name": "editor_type",
+     "type": "text",
+     "nullable": true,
+     "description": "Klaviyo editor of the template: SIMPLE (plain text email), CODE, DRAG_AND_DROP, USER_DRAFTED; NULL for SMS."
+    },
+    {
+     "name": "html",
+     "type": "text",
+     "nullable": true,
+     "description": "Full template HTML of the email; NULL for SMS or when not returned."
+    },
+    {
+     "name": "body_text",
+     "type": "text",
+     "nullable": true,
+     "description": "Readable plain text of the email (or the SMS body); NULL when nothing could be fetched or the email is images only."
+    },
+    {
+     "name": "image_count",
+     "type": "integer",
+     "nullable": true,
+     "description": "Real images in the email (tracking pixels excluded); 1 for an SMS with a picture."
+    },
+    {
+     "name": "link_urls",
+     "type": "text[]",
+     "nullable": true,
+     "description": "Distinct http(s) links in the message, in order of appearance."
+    },
+    {
+     "name": "content_hash",
+     "type": "text",
+     "nullable": true,
+     "description": "sha256 of the HTML (email) or body (SMS); changes when the message is edited."
+    },
+    {
+     "name": "fetched_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the content last changed in our copy (moves only when content_hash changes)."
+    },
+    {
+     "name": "raw",
+     "type": "jsonb",
+     "nullable": true,
+     "description": "The message definition as Klaviyo returns it (without the body / html), plus fetch_error when the template could not be fetched."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.klaviyo_message_performance",
+   "schema": "public",
+   "relation": "klaviyo_message_performance",
+   "kind": "view",
+   "group": "ops",
+   "purpose": "One row per Klaviyo message with its copy (subject, preview text, body text) and its totals and rates over everything in klaviyo_daily: the table to read which copy earns.",
+   "grain": "one row per message_id (campaign or flow message with at least one klaviyo_daily row)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "klaviyo_daily (grouped by message_id) joined to klaviyo_message_content",
+   "refresh": "live (a view over klaviyo_daily; moves with the nightly Klaviyo load)",
+   "coverage": "the days loaded in klaviyo_daily (120 days at launch, then trailing); first_send_day is the first loaded day with sends, not the message's real first send",
+   "caveats": [
+    "unique_opens_daily_sum and unique_clicks_daily_sum are sums of per-day uniques, not window uniques: a person who opens on two days counts twice. open_rate_daily_uniques and click_rate_daily_uniques are built on them and read a little high; use them to compare messages, not as Klaviyo's reported rates.",
+    "Orders and revenue are Klaviyo-attributed conversions of 'Placed Order - Upstackified', dated by the order day, so a message can show revenue with no sends when it sent before the loaded window.",
+    "Rates are NULL when delivered is 0. SMS messages have no opens. Messages without fetched copy have NULL subject / body_text and has_copy false.",
+    "SMS campaign unsubscribes are matched to the campaign, not the message, so they are not in this view."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "message_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Klaviyo message id."
+    },
+    {
+     "name": "source",
+     "type": "text",
+     "nullable": null,
+     "description": "'campaign' or 'flow'."
+    },
+    {
+     "name": "parent_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign id or flow id."
+    },
+    {
+     "name": "channel",
+     "type": "text",
+     "nullable": null,
+     "description": "'email' or 'sms'."
+    },
+    {
+     "name": "parent_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign or flow name."
+    },
+    {
+     "name": "subject",
+     "type": "text",
+     "nullable": null,
+     "description": "Email subject (current copy); NULL for SMS or when not fetched."
+    },
+    {
+     "name": "preview_text",
+     "type": "text",
+     "nullable": null,
+     "description": "Email preview text (current copy)."
+    },
+    {
+     "name": "body_text",
+     "type": "text",
+     "nullable": null,
+     "description": "Readable body text (current copy)."
+    },
+    {
+     "name": "image_count",
+     "type": "integer",
+     "nullable": null,
+     "description": "Real images in the email."
+    },
+    {
+     "name": "editor_type",
+     "type": "text",
+     "nullable": null,
+     "description": "Klaviyo template editor type."
+    },
+    {
+     "name": "first_send_day",
+     "type": "date",
+     "nullable": null,
+     "description": "First loaded day with sends."
+    },
+    {
+     "name": "last_send_day",
+     "type": "date",
+     "nullable": null,
+     "description": "Last loaded day with sends."
+    },
+    {
+     "name": "sends",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Sum of sends."
+    },
+    {
+     "name": "delivered",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Sum of delivered."
+    },
+    {
+     "name": "bounced",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Sum of bounced or failed."
+    },
+    {
+     "name": "opens",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Sum of opens (includes machine opens)."
+    },
+    {
+     "name": "unique_opens_daily_sum",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Sum of per-day unique opens (not a window unique)."
+    },
+    {
+     "name": "clicks",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Sum of clicks, bots excluded."
+    },
+    {
+     "name": "unique_clicks_daily_sum",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Sum of per-day unique clicks (not a window unique)."
+    },
+    {
+     "name": "unsubscribes",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Sum of unsubscribes."
+    },
+    {
+     "name": "spam_complaints",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Sum of spam complaints."
+    },
+    {
+     "name": "orders",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Sum of attributed orders."
+    },
+    {
+     "name": "revenue",
+     "type": "numeric(14,2)",
+     "nullable": null,
+     "description": "Sum of attributed revenue in dollars."
+    },
+    {
+     "name": "open_rate_daily_uniques",
+     "type": "numeric",
+     "nullable": null,
+     "description": "unique_opens_daily_sum / delivered; NULL when delivered is 0."
+    },
+    {
+     "name": "click_rate_daily_uniques",
+     "type": "numeric",
+     "nullable": null,
+     "description": "unique_clicks_daily_sum / delivered; NULL when delivered is 0."
+    },
+    {
+     "name": "orders_per_delivered",
+     "type": "numeric",
+     "nullable": null,
+     "description": "orders / delivered; NULL when delivered is 0."
+    },
+    {
+     "name": "revenue_per_delivered",
+     "type": "numeric",
+     "nullable": null,
+     "description": "revenue / delivered in dollars; NULL when delivered is 0."
+    },
+    {
+     "name": "has_copy",
+     "type": "boolean",
+     "nullable": null,
+     "description": "True when body_text was fetched for the message."
+    }
+   ],
+   "examples": []
   }
  ],
  "excluded": [
