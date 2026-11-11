@@ -107,7 +107,9 @@ def test_stale_combines_reasons_and_falls_back_to_etl_runs(client, pg, monkeypat
     set_meta(pg, last_ok_at=None, refresh_status=None)                            # nothing recorded by the ETL yet: the last ok etl_runs row stands in
     s = stale(client)
     assert s["last_ok_at"] is not None and s["age_hours"] is not None and s["refresh_status"] is None
-    freeze(monkeypatch, 2026, 11, 10, 20)
+    # the seeded etl_runs rows are stamped with the real now(), so the frozen clock is set relative to that stamp (40 hours after it), never to a fixed date
+    t = (dt.datetime.fromisoformat(s["last_ok_at"]) + dt.timedelta(hours=40)).astimezone(dt.timezone.utc)
+    freeze(monkeypatch, t.year, t.month, t.day, t.hour, t.minute)
     s = stale(client)
     assert s["is_stale"] is True and "Data runs through Nov 2, 2026" in s["reason"] and "hours ago" in s["reason"]
 
