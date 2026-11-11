@@ -1,4 +1,4 @@
-// Marketing metrics, platform All, Campaigns view: every Meta and Google campaign in one table. Each row says which platform it is, its product (Meta) or campaign
+// Campaigns (platform All): every Meta and Google campaign in one table. Each row says which platform it is, its product (Meta) or campaign
 // type (Google) and the basis it is counted on. Spend, impressions and clicks are totalled; purchases and revenue are not added across platforms (both platforms credit
 // the same orders), so the platform subtotals carry them. The chart above is the platform trend of the same filters.
 import { h, enc, fmt, href, apiWindow, sparkParams, globalParams, stageBadge, liveDot, onCmpRefresh } from '../util.js';
@@ -8,14 +8,17 @@ import { metricColumns, fixTotal, FLAT_KEYS, trendColumn } from '../columns.js';
 import { setRangeInfo, setPendingNote } from '../controls.js';
 import { createTrendPanel } from '../trend.js';
 import { breadcrumbs, columnsChips, filterBar, saveFilterToUrl, makeFilter, saveSortToUrl, sortFromUrl, viewSwitch } from '../components.js';
-import { platformTrendSource } from './platforms.js';
+import { platformTrendSource, tuckChartOptions } from './platforms.js';
 import { totalsStrip } from '../kpis.js';
+import { pageHeader } from '../ui/pagehead.js';
+import { filterRow } from '../ui/pagefilters.js';
 
 const NONE = 'none';
 const NEUTRAL = { purchases: 'Purchases / orders', revenue: 'Revenue', roas: 'ROAS', cpa: 'Cost per purchase', link_clicks: 'Clicks' };
 const NEUTRAL_TITLE = {
   purchases: 'What the row counts, see its Numbers column: purchases as the platform attributes them, or Upstack new customers / orders',
-  revenue: 'Conversion value or order totals of what the row counts', roas: 'Revenue / spend', cpa: 'Spend / purchases (or new customers, or orders)', link_clicks: 'Meta link clicks; Google all clicks',
+  revenue: 'Conversion value or order totals of what the row counts', roas: 'Return on ad spend (ROAS): revenue / spend',
+  ctr: 'Click-through rate (CTR): clicks / impressions', cpc: 'Cost per click (CPC): spend / clicks', cpa: 'Spend / purchases (or new customers, or orders)', link_clicks: 'Meta link clicks; Google all clicks',
 };
 
 const metaAdsHref = (G, r) => {
@@ -37,11 +40,11 @@ export async function allCampaignsPage(ctx) {
   const product = p.product || null;
   const ctype = p.type || null;
   const wp = apiWindow(p);
-  document.title = 'All campaigns · Marketing metrics';
+  document.title = 'Campaigns · Lonvera';
   const filt = { ...(only ? { only } : {}), ...(product ? { product } : {}), ...(ctype ? { type: ctype } : {}) };
   const d = await api('/api/campaigns/all', { ...wp, ...sparkParams(p), ...filt }, { signal });
   if (!ctx.alive()) return;
-  if (p.compare || p.cfrom) setPendingNote('Comparison shows in the totals strip only; the chart, the table and the Stage / Active only filters do not apply to All platforms.');
+  if (p.compare || p.cfrom) setPendingNote('Comparison shows in the totals strip only; the chart, the table and the Stage / Active only filters do not apply to Campaigns.');
   setRangeInfo(p, d.window_info, null, { unclassified: false });
 
   const flat = metricColumns({ getM: (r) => r.m, getTotalM: (t) => fixTotal(t && t.m), keys: FLAT_KEYS }).map((c) => {
@@ -108,11 +111,12 @@ export async function allCampaignsPage(ctx) {
   const strip = totalsStrip({ p, signal, filt });
   const winLines = Object.entries(d.platform_windows || {}).map(([k, w]) => `${k === 'meta' ? 'Meta' : 'Google'}: ${w.from === w.to ? fmt.day(w.from) : `${fmt.day(w.from)} – ${fmt.day(w.to)}`}`);
   const differ = new Set(Object.values(d.platform_windows || {}).map((w) => `${w.from}|${w.to}`)).size > 1;
+  tuckChartOptions(panel);
   ctx.mount(h('div', { class: 'page', 'data-level': 'all-campaigns' },
-    h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'All campaigns'), h('span', { class: 'badge muted-badge' }, 'Meta and Google'), h('span', { class: 'spacer' }), viewSwitch('campaigns', G, 'all')),
-      h('div', { class: 'note-line' }, 'Every Meta and Google campaign in one table. Each row is counted on the basis in its Numbers column.')),
-    h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Marketing metrics', href: href('/', { ...G, platform: null }) }, { label: 'All campaigns' }])),
-    h('div', { class: 'ctl-row' }, platformCtl, productCtl, typeCtl),
+    pageHeader({ title: 'Campaigns', badge: 'Meta and Google', actions: viewSwitch('campaigns', G, 'all'),
+      description: 'Every Meta and Google campaign in one table. Each row is counted on the basis in its Numbers column. NC means new customer.' }),
+    h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Lonvera', href: href('/', { ...G, platform: null }) }, { label: 'Campaigns' }])),
+    filterRow(platformCtl, productCtl, typeCtl),
     strip.el,
     panel.el,
     h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Campaigns'), columnsChips(), filterUi.el),

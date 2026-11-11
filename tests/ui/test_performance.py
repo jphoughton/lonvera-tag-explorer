@@ -1,4 +1,4 @@
-"""Overview (All platforms), Google, Campaigns, totals strip and platform trends.
+"""Overview, Google, Campaigns, totals strip and platform trends.
 
 Split out of tests/ui/test_ui.py with no assertion changes. Shared helpers live in ui_helpers.py. Run: see the docstring of conftest.py.
 """
@@ -9,6 +9,14 @@ import pytest
 from playwright.sync_api import expect
 from conftest import IS_MOCK, PASSWORD, SHOTS, USERNAME
 from ui_helpers import *  # noqa: F401,F403
+
+def open_chart_options(page):
+    """Bars, Line, Swap, Split bars by and Numbers sit in the closed 'Chart options' disclosure; open it (no-op when already open)."""
+    det = page.locator("[data-testid=chart-options]").first
+    if det.get_attribute("open") is None:
+        det.locator("summary").click()
+    expect(det).to_have_attribute("open", "")
+
 
 @pytest.mark.mock_only
 def test_platform_picker_google_page_and_back(page):
@@ -90,7 +98,7 @@ def test_google_campaigns_view_has_the_campaigns_first_and_types_as_a_filter(pag
 def test_all_platforms_overview(page):
     goto_product(page, "?window=14d&stage=scaling&compare=prev")
     platform_btn(page, "all").click()
-    expect(page.locator("h1")).to_have_text("All platforms")
+    expect(page.locator("h1")).to_have_text("Overview")
     assert "stage" not in qparams(page) and "platform" not in qparams(page)                             # All is the default of the bare root
     expect(page.locator("#stage-ctl")).to_be_hidden()
     expect(page.locator("#source-ctl")).to_be_hidden()                                                  # each platform's own numbers and Upstack are side by side: no switch
@@ -104,7 +112,7 @@ def test_all_platforms_overview(page):
     spend = [num(x) for x in col(page, "spend", "platform-overview")]
     assert spend[0] == spend[1] == spend[2] and spend[3] == spend[4] == spend[5] and spend[0] > 0 and spend[3] > 0    # spend is the platform's in every row
     expect(page.locator("[data-testid=platform-overview] th[data-col=purchases]")).to_contain_text("Purchases / orders")
-    expect(page.locator("#range-note")).to_contain_text("do not apply to All platforms")
+    expect(page.locator("#range-note")).to_contain_text("do not apply to Overview")
     page.locator("[data-testid=platform-overview] a", has_text="Campaigns →").first.click()              # Meta's campaigns
     expect(page).to_have_url(re.compile(r"/campaigns"))
     expect(page.locator("[data-testid=platform-campaigns]")).to_be_visible()
@@ -186,6 +194,7 @@ def test_platform_campaigns_chart_split_grain_and_campaign_narrowing(page):
     goto_home(page, "?window=30d")
     page.locator("#view-switch [data-platform-view=campaigns]").click()
     wait_trend(page)
+    open_chart_options(page)
     info = trend_info(page)
     assert [d["label"] for d in bars_ds(info)] == ["Spend"] and line_ds(info)[0]["label"].startswith("ROAS")
     table_total = num(foot_value(page, "spend", "platform-campaigns"))
@@ -229,6 +238,7 @@ def test_platform_campaigns_chart_split_grain_and_campaign_narrowing(page):
 def test_all_platforms_chart_platform_series_numbers_and_links(page):
     page.goto("/?platform=all&window=30d")
     wait_trend(page)
+    open_chart_options(page)
     info = trend_info(page)
     assert [d["label"] for d in bars_ds(info)] == ["Spend"]                                            # the default is the total: one bar per day = Meta + Google spend, not broken out
     assert [b.get_attribute("data-split") for b in page.locator("#trend-split .seg").all()] == ["none", "platform"]
@@ -257,12 +267,12 @@ def test_all_platforms_chart_platform_series_numbers_and_links(page):
     assert "Upstack attribution is drawn only where Upstack has it" in page.locator("#trend-note").inner_text()
     assert abs(chart_sum(trend_info(page), "Meta") - own_spend) <= 1                                   # spend is the platform's on every basis
     expect(page.locator("#view-switch [data-platform-view=campaigns]")).to_have_text("Campaigns")
-    page.locator("#view-switch [data-platform-view=campaigns]").click()                                # All platforms -> All campaigns
+    page.locator("#view-switch [data-platform-view=campaigns]").click()                                # Overview -> Campaigns
     expect(page).to_have_url(re.compile(r"/campaigns\?"))
     assert qparams(page)["platform"] == "all"
-    expect(page.locator("h1")).to_have_text("All campaigns")
+    expect(page.locator("h1")).to_have_text("Campaigns")
     page.locator("#view-switch [data-platform-view=home]").click()                                     # and back
-    expect(page.locator("h1")).to_have_text("All platforms")
+    expect(page.locator("h1")).to_have_text("Overview")
     shot(page, "15_all_platforms_chart")
 
 
@@ -347,6 +357,7 @@ def test_totals_strip_and_total_line_on_all_platforms_tie_to_the_chart_and_the_t
     page.goto("/?window=30d")
     wait_strip(page)
     wait_trend(page)
+    open_chart_options(page)
     info = trend_info(page)
     # chart: total spend is the stack, the default Line is the dark total NC ROAS line
     assert [d["label"] for d in line_ds(info)] == ["NC ROAS (total)"] and page.locator("#trend-line").input_value() == "nc_roas_total"
@@ -376,6 +387,7 @@ def test_totals_strip_and_total_line_on_all_platforms_tie_to_the_chart_and_the_t
     lines = page.evaluate("() => Chart.getChart('trend-chart').options.plugins.tooltip.callbacks.afterBody([{dataIndex: 12}])")
     assert [x.split(":")[0] for x in lines] == ["Meta spend", "Google spend", "Total spend", "Total NC ROAS"], lines
     # ROAS as the line: each platform's own line plus the actual total beside them
+    open_chart_options(page)
     pick_metric(page, "line", "roas")
     wait_trend(page)
     assert {d["label"] for d in line_ds(trend_info(page))} == {"ROAS · Meta", "ROAS · Google", "NC ROAS (total)"}
@@ -517,3 +529,62 @@ def test_totals_strip_is_readable_and_never_scrolls_the_page_sideways(page, widt
         assert all(b["w"] >= 200 for b in boxes), boxes
     shot(page, f"17_totals_strip_{width}")
     page.set_viewport_size({"width": 1280, "height": 900})
+
+
+# ------------------------------------------------------------------ calm first view: one header, chart options tucked away
+@pytest.mark.mock_only
+def test_chart_options_are_closed_by_default_keep_grain_and_open_with_a_chart_choice(page):
+    page.goto("/?window=30d")
+    wait_trend(page)
+    det = page.locator("[data-testid=chart-options]")
+    expect(det).to_have_count(1)
+    assert det.get_attribute("open") is None
+    expect(page.locator("#trend-grain [data-grain=week]")).to_be_visible()                              # Grain stays in view
+    for sel in ("#trend-bars", "#trend-line", "#trend-split", "#trend-numbers", "#trend-swap"):
+        expect(page.locator(sel)).to_be_hidden()                                                       # the rest sits behind Chart options
+    expect(page.locator("#trend-panel .trend-controls > .chart-options #trend-split")).to_have_count(1)  # same ids, moved not rebuilt
+    open_chart_options(page)
+    for sel in ("#trend-bars", "#trend-line", "#trend-split", "#trend-numbers", "#trend-swap"):
+        expect(page.locator(sel)).to_be_visible()
+    page.goto("/?window=30d&ts=platform")                                                                # a chart choice in the URL opens it
+    wait_trend(page)
+    expect(page.locator("[data-testid=chart-options]")).to_have_attribute("open", "")
+
+
+@pytest.mark.mock_only
+@pytest.mark.parametrize("path,title,h1", [("/", "Overview", "Overview"), ("/?platform=google", "Google", "Google"), ("/campaigns?platform=all", "Campaigns", "Campaigns"),
+                                           ("/campaigns?platform=meta", "Campaigns", "Campaigns"), ("/?platform=meta", "Meta", "Meta")])
+def test_performance_pages_share_one_header_and_lonvera_title(page, path, title, h1):
+    page.goto(path)
+    page.wait_for_selector(".pagehead h1")
+    expect(page.locator("h1")).to_have_text(h1)
+    assert page.title() == f"{title} · Lonvera", page.title()
+    expect(page.locator(".pagehead .pagehead-actions #view-switch")).to_have_count(1)                   # the view switch lives in the header's action slot
+    assert page.locator(".pagehead .note-line").inner_text().strip()
+    crumbs = page.locator(".crumbrow").all_inner_texts()
+    assert not crumbs or crumbs[0].startswith("Lonvera") or crumbs[0].startswith("Meta"), crumbs
+    page_text = page.locator("#view").inner_text()
+    assert "\u2014" not in page_text, "no em dashes on the page"
+
+
+@pytest.mark.mock_only
+def test_meta_landing_tracker_badge_has_no_em_dash(page):
+    page.goto("/?platform=meta")
+    page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
+    txt = page.locator("[data-testid=products-table]").inner_text()
+    assert "Line-mapped tags" in txt or "Tracker tags, not line-mapped yet" in txt
+    assert "Tracker tags \u2014 not line-mapped yet" not in txt
+
+
+@pytest.mark.mock_only
+def test_google_trend_bars_and_line_are_tucked_into_chart_options(page):
+    page.goto("/?platform=google")
+    expect(page.locator("[data-testid=google-trend] canvas")).to_be_visible()
+    det = page.locator("[data-testid=google-trend] [data-testid=chart-options]")
+    assert det.get_attribute("open") is None
+    expect(page.locator("#g-bars")).to_be_hidden()
+    expect(page.locator("[data-testid=google-trend] [data-grain=week]")).to_be_visible()
+    det.locator("summary").click()
+    expect(page.locator("#g-bars")).to_be_visible()
+    page.locator("#g-bars").select_option("impressions")
+    expect(page.locator("[data-testid=google-trend] canvas")).to_be_visible()
