@@ -363,3 +363,10 @@ def test_override_without_reason_is_retried(conn, tmp_path):
     fake = FakeClaude([(0, envelope(answer(line="BF18")), ""), (0, envelope(answer(line="BF18", override_reason="x-ray shows nothing about bones")), "")])
     st = run(conn, fake)
     assert st["tagged_families"] == 1 and len(fake.calls) == 2
+
+
+def test_instructions_unbriefed_prior_and_opening_outcome_rule():
+    ins = at.instructions("boneflex", at.load_catalog("boneflex"))
+    assert "is a PRIOR only" in ins and "opening pain WINS" in ins and "valid override with a reason" in ins
+    assert "Strong default" in ins and "flatly contradicts" in ins
+    assert "OPENS on, not the one it closes on" in ins
