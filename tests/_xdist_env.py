@@ -127,6 +127,26 @@ def _release_connections_after_module():
         gc.collect()                  # connections held only by finished fixtures' objects close here instead of at the end of the worker
 
 
+# ---- order independence: TEST_FILE_ORDER=reverse | random:SEED runs the test FILES in another order (tests inside a file keep theirs). Files that share a session database
+# (a conftest's fixture) must not depend on which file ran before them: under xdist the order on a worker changes with timing, so a hidden dependence shows up as a
+# different failure on every run. Serial order is the one humans see; this makes the other orders reproducible. ----
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(config, items):
+    mode = os.environ.get("TEST_FILE_ORDER")
+    if not mode:
+        return
+    import random
+    files = list(dict.fromkeys(i.nodeid.split("::", 1)[0] for i in items))
+    if mode == "reverse":
+        files.reverse()
+    elif mode.startswith("random:"):
+        random.Random(int(mode.split(":", 1)[1])).shuffle(files)
+    else:
+        raise pytest.UsageError(f"TEST_FILE_ORDER must be reverse or random:SEED, not {mode!r}")
+    pos = {f: n for n, f in enumerate(files)}
+    items.sort(key=lambda it: pos[it.nodeid.split("::", 1)[0]])
+
+
 # ---- scheduling: whole files stay together (their module-scoped databases and mock servers hold state), except the few huge files that are split in
 # contiguous chunks so that one worker does not carry the whole run. (pytest-xdist 3.8's own `loadgroup` does not work with pytest 9.2: it sets the
 # private Item._nodeid, which pytest 9 no longer reads - so this is a LoadFileScheduling with a finer scope.) ----
