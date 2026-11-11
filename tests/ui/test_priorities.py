@@ -1882,6 +1882,111 @@ def test_public_saved_view_has_no_production_column_checkbox_or_history(page, fr
     assert page.locator(".pri-c-prod").count() == 2
 
 
+# ---------- click-in drill-downs (every block of the expanded panel opens its own insights) ----------
+def open_first(page):
+    goto(page)
+    page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
+    return page.locator("[data-testid=pri-body] " + DETAIL).first
+
+
+def test_every_block_has_a_keyboard_accessible_see_more_that_opens_its_own_drill_down_lazily(page):
+    reqs = []
+    page.on("request", lambda r: reqs.append(r.url) if "/insights" in r.url else None)
+    p = open_first(page)
+    assert reqs == []                                                                              # nothing loaded until a block is opened
+    # one see-more per then-vs-now tile (3), timeline step (3), hook (3) + all hooks, winning ad (5), stat tile (Performance + Testing + Live)
+    for sel, n in ((".pri-thennow", 3), (".pri-steps", 3), (".pri-winners", 5)):
+        assert p.locator(sel + " [data-testid=pri-seemore]").count() == n, sel
+    assert p.locator(".pri-hooks [data-testid=pri-seemore]").count() >= 3 and p.locator(".pri-statsec [data-testid=pri-seemore]").count() >= 10
+    btn = p.locator(".pri-thennow [data-testid=pri-seemore]").first
+    assert btn.get_attribute("aria-expanded") == "false" and btn.get_attribute("aria-controls")
+    btn.focus()
+    page.keyboard.press("Enter")                                                                   # a real button: Enter opens it
+    drill = p.locator(".pri-thennow [data-testid=pri-drill]")
+    drill.wait_for(state="visible")
+    assert btn.get_attribute("aria-expanded") == "true" and len(reqs) == 1 and "block=then_now" in reqs[0] and "window=90" in reqs[0]
+    drill.locator("[data-testid=pri-drill-ads]").wait_for(state="visible")
+    assert drill.locator("[data-testid=pri-drill-ads] tbody tr").count() == 3
+    assert drill.locator("[data-testid=pri-drill-ads] a[href^='/ad/']").count() == 3               # each ad links to its page
+    assert drill.locator("[data-testid=pri-drill-ads] th").all_text_contents() == ["Ad", "Spend", "ROAS", "Purchases", "Launched", "Hook"]
+    assert drill.locator("[data-testid=pri-drill-trend] tbody tr:visible").count() == 12 and drill.locator("[data-testid=pri-drill-trend] tbody tr").count() == 14
+    drill.get_by_role("button", name="Show all 14 weeks").click()
+    assert drill.locator("[data-testid=pri-drill-trend] tbody tr:visible").count() == 14
+    drill.get_by_role("button", name="Last 30 days").click()                                       # the window switch reloads
+    page.wait_for_function("() => document.querySelector('.pri-thennow [data-window=\"30\"]').getAttribute('aria-pressed') === 'true'")
+    assert any("window=30" in r for r in reqs)
+    page.keyboard.press("Escape")                                                                  # Esc closes and returns focus to the button
+    assert not drill.is_visible() and btn.get_attribute("aria-expanded") == "false"
+    btn.click()
+    assert drill.is_visible() and len([r for r in reqs if "window=90" in r]) == 1                  # cached: reopening does not ask again
+
+
+def test_winning_ad_and_hook_drill_down_to_that_one_ad_with_its_weekly_trend(page):
+    p = open_first(page)
+    p.locator(".pri-winners [data-testid=pri-seemore]").first.click()
+    d = p.locator(".pri-winners [data-testid=pri-drill]")
+    d.wait_for(state="visible")
+    d.locator("[data-testid=pri-drill-trend]").wait_for(state="visible")
+    assert "Former winning ad" in d.locator(".pri-drill-h").inner_text() and d.locator(".pri-win").count() == 0
+    assert d.locator("[data-testid=pri-drill-trend]").is_visible() and d.locator("a[href^='/ad/']").count() == 1
+    p.locator(".pri-hooks [data-testid=pri-seemore]").first.click()
+    h = p.locator(".pri-hooks [data-testid=pri-drill]")
+    h.wait_for(state="visible")
+    h.locator("[data-testid=pri-drill-trend]").wait_for(state="visible")
+    assert "Hook" in h.locator(".pri-drill-h").inner_text()
+    p.locator(".pri-hooks [data-testid=pri-seemore]").last.click()                                 # "All hooks on this line": hooks table + ads + trend
+    h.locator("[data-testid=pri-drill-hooks]").wait_for(state="visible")
+    assert h.locator("[data-testid=pri-drill-ads]").is_visible()
+
+
+def test_stat_tile_and_timeline_step_open_their_own_drill_down_and_switch_between_buttons(page):
+    p = open_first(page)
+    live = p.locator(".pri-sg", has_text="Live")
+    live.locator("[data-testid=pri-seemore]").first.click()
+    d = live.locator("[data-testid=pri-drill]")
+    d.wait_for(state="visible")
+    first = d.locator(".pri-drill-h").inner_text()
+    live.locator("[data-testid=pri-seemore]").nth(1).click()                                       # another tile of the group reuses the one region
+    page.wait_for_function("(t) => document.querySelector('.pri-sg:nth-of-type(3) .pri-drill-h, .pri-statsec .pri-sg:last-child .pri-drill-h').textContent !== t", arg=first)
+    assert d.is_visible() and live.locator("[data-testid=pri-seemore][aria-expanded=true]").count() == 1
+    p.locator(".pri-steps [data-testid=pri-seemore]").first.click()
+    t = p.locator("[data-testid=pri-faded] [data-testid=pri-drill]")
+    t.wait_for(state="visible")
+    assert "When it worked" in t.locator(".pri-drill-h").inner_text()
+    t.locator("[data-testid=pri-drill-close]").click()
+    assert not t.is_visible()
+
+
+def test_empty_hooks_and_winners_say_so_in_plain_english(page):
+    goto(page)
+    stop = page.locator("[data-testid=pri-body] " + ROW + "[data-section=stop]").first
+    stop.locator("[data-testid=pri-toggle]").click()
+    p = stop.locator("xpath=following-sibling::tr[1]")
+    assert p.locator("[data-testid=pri-hooks-empty]").inner_text().endswith("No hooks found for the ads on this line yet.")
+    assert "No former winning ads on this line yet." in p.locator("[data-testid=pri-winners-empty]").inner_text()
+
+
+def test_drill_down_at_375px_has_no_sideways_scroll(browser, base_url):
+    c = browser.new_context(viewport={"width": 375, "height": 812}, base_url=base_url)
+    c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+    p = c.new_page()
+    delete_all_manual(p)                                                                                # manual concepts left by other tests widen the table on their own
+    p.goto("/priorities")
+    p.wait_for_selector("[data-testid=pri-page]")
+    idle(p)
+    row = p.locator("[data-testid=pri-body] tr.pri-row[data-source=auto]").first                    # other tests may have left manual concepts in the mock: use a fixture row
+    row.locator("[data-testid=pri-toggle]").click()
+    panel = row.locator("xpath=following-sibling::tr[1]")
+    width = lambda: p.evaluate("() => document.documentElement.scrollWidth")  # noqa: E731
+    before = width()                                                                                   # whatever the table itself already needs at 375px (earlier tests leave state in the shared mock)
+    panel.locator(".pri-thennow [data-testid=pri-seemore]").first.click()
+    panel.locator("[data-testid=pri-drill-ads]").wait_for(state="visible")
+    panel.get_by_role("button", name="Show all 14 weeks").click()
+    assert width() <= max(before, 375) + 1, (before, width())                                          # opening a drill-down adds no sideways scroll
+    assert p.evaluate("() => { const d = document.querySelector('.pri-drill:not([hidden])'); const r = d.getBoundingClientRect().right; return [...d.querySelectorAll('*')].every((e) => !e.offsetParent || e.getBoundingClientRect().right <= r + 1); }")
+    assert p.evaluate("() => { const d = document.querySelector('.pri-drill:not([hidden])'); return d.scrollWidth <= d.clientWidth + 1; }")
+    c.close()
+
 def test_add_is_not_an_action_and_new_ideas_sit_under_test_after_the_sheet_lines(page):
     goto(page)
     page.locator("[data-testid=pri-sort-section]").click()                                                            # Action header = the old order (grouping is off while a column sort is on)

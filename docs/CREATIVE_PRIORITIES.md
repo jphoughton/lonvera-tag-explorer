@@ -138,6 +138,10 @@ Score = 50% adjacent winner + 20% cross-product + 20% Josh's cluster order + 10%
 
 **What it does not do.** Nothing in Production writes to the Creative Tracker sheet or any other Google Sheet, and nothing talks to Meta: the sheet stays the record of the ad, the app only records who was asked to make which concept and reads the tracker back. The only writes are to the app's own tables (assignments, vendor links) and the nightly line tags above.
 
+## Drill-downs behind each panel block
+
+Every block of the expanded row panel (then vs now tiles, timeline steps, hooks, former winning ads, Performance / Testing / Live tiles) has a "See more" button that opens an inline table, loaded on first open from `GET /api/priorities/lines/<line_id>/insights?block=<then_now|timeline|hooks|winners|performance|testing|live|ad>&window=<7|30|90|all>[&ad_id=<tracker row id>]` (read-only, Postgres only, Meta basis; see `app/priorities_insights.py`, `app/static/js/pages/priorities_drill.js`). It returns the top 10 ads on the line for the window (name linked to /ad/<id>, spend, ROAS, purchases, launch date, hook), the weekly trend and the best hooks; with `ad_id` it returns that one ad. A line with no hooks or no former winning ads now says so in the panel instead of omitting the block. Rows without a line in the database (manual concepts, the unmapped row, competitor drafts) have no drill-down.
+
 ## Grouped hierarchy and sticky bars (2026-11-10)
 
 - **Grouped view = the default.** With no column sort chosen the rows run product, market cluster, ICP, pain point in the Communication Overview sheet order. Each row of the snapshot carries `sheet_pos` (the line's `taxonomy_lines.sort_order`, written by `etl/creative_priorities.py`; `app/creative_priorities.with_sheet_pos` fills it from the live taxonomy for older snapshots and frozen view rows). A row with no sheet position (new idea, manual concept, "no line") goes after the on-sheet rows of its ICP, an ICP that is not on the sheet after the on-sheet ICPs of its cluster, a cluster that is not on the sheet after the on-sheet clusters of its product. Inside one pain point the old Action / rank order stays.
