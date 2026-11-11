@@ -235,6 +235,20 @@ def test_healthz_reports_db_failure(app_factory):
     assert r.status_code == 503 and r.get_json() == {"ok": False}
 
 
+def test_healthz_reports_revision_when_the_file_exists(app_factory, monkeypatch, tmp_path):
+    import app as app_pkg
+    rev = tmp_path / "REVISION"
+    monkeypatch.setattr(app_pkg, "REVISION_FILE", str(rev))
+    assert app_factory().test_client().get("/healthz").get_json() == {"ok": True}                  # no file: shape unchanged
+    rev.write_text("0123456789abcdef0123456789abcdef01234567\n")
+    r = app_factory().test_client().get("/healthz")
+    assert r.status_code == 200 and r.get_json() == {"ok": True, "rev": "0123456789abcdef0123456789abcdef01234567"}
+    rev.write_text("ffffffffffffffffffffffffffffffffffffffff\n")                                       # read once at start: a running app keeps its value
+    a = app_factory()
+    rev.write_text("changed\n")
+    assert a.test_client().get("/healthz").get_json()["rev"] == "f" * 40
+
+
 def test_large_json_is_gzipped_when_accepted(client):
     import gzip
     import json

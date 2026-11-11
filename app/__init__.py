@@ -19,6 +19,16 @@ from .queries import ApiError
 
 log = logging.getLogger("tagexp")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+# scripts/deploy/ship.sh writes the shipped git sha into REVISION at the repo root before upload; /healthz reports it as `rev` so a deploy can tell the new container from the old one.
+REVISION_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "REVISION")
+
+
+def _read_revision() -> str | None:
+    try:
+        with open(REVISION_FILE, encoding="utf-8") as fh:
+            return fh.readline().strip() or None
+    except OSError:
+        return None
 
 # The HTML shell: scripts only from this origin (Chart.js is vendored), ad previews may be framed from Meta, images from here or data: URIs.
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; "
@@ -56,6 +66,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.secret_key = app.config["SECRET_KEY"]
     app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
     app.json = ApiJSONProvider(app)
+    app.config["REVISION"] = _read_revision()                   # read once at start; None (and no `rev` field) when the file is absent
     if app.config["TRUST_PROXY"]:
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)       # one trusted hop (Railway edge)
 
@@ -79,7 +90,10 @@ def _register_pages(app: Flask) -> None:
     @app.get("/healthz")
     def healthz():
         ok = db.ping()
-        return (jsonify(ok=True), 200) if ok else (jsonify(ok=False), 503)
+        if not ok:
+            return jsonify(ok=False), 503
+        rev = app.config.get("REVISION")
+        return (jsonify(ok=True, rev=rev), 200) if rev else (jsonify(ok=True), 200)
 
     @app.get("/robots.txt")
     def robots():

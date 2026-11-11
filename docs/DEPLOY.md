@@ -83,11 +83,11 @@ What it does:
 - Makes ONE `git archive` of that sha in a temp directory, leaving out `tests`, `docs` and `analysis`, and removes the directory when it exits.
 - Auto mode reads the last shipped sha per service from `~/lonvera-tag-explorer-data/shipped.json` (created on the first real ship). A service with no entry is deployed. Otherwise it deploys the service only when `git diff --name-only <last>..<sha>` touches code that service uses, and prints the reason for every service.
 - Runs the chosen `railway up` calls at the same time, each logging to `~/lonvera-tag-explorer-data/ship-logs/<utc time>-<sha>/<service>.log`. The explicit `-p`, `-e` and `-s` flags mean no `railway link` is needed. It prints a line as each service finishes, exits non-zero and prints the log tail of any that failed.
-- After web deploys it polls `/healthz` until 200 (up to 300 s). `railway up -c` returns when the build ends, so the poll is what waits for the new container.
-- Writes the sha for each service that deployed (and, for web, passed the health poll) to the state file. A failed service keeps its old sha, so the next auto run retries it.
+- Writes the shipped sha into a `REVISION` file in the archive. `/healthz` returns it as `rev` (read once at app start; the field is left out when the file is absent). After web deploys, the script polls `/healthz` until it answers 200 AND `rev` equals the shipped sha (up to 300 s), so the old container answering 200 never counts as live. Cron services have no HTTP, so it polls their newest deployment (`railway deployment list -s <svc> --json`, run from `~/lonvera-tag-explorer-data/ship-link`, which the script links to the project once; that is only a local CLI pointer) until SUCCESS, and fails on FAILED, CRASHED or REMOVED. `SHIP_HEALTH_TIMEOUT` and `SHIP_POLL_SECONDS` override the 300 and 5 second defaults.
+- Writes the sha for each service that passed its check to the state file. A failed service keeps its old sha, so the next auto run retries it. If web fails (build failed, or the new rev never appears) the script prints web's log tails, exits non-zero and leaves the state file untouched.
 - Prints a timing line per phase (tests, archive, and per service: upload and queue, build, deploy, plus the health poll) and a final table with total wall clock. The per-service phases come from when each line of `railway up` output arrived, matched on words like "build" and "deploy", so a phase shows `n/a` if the CLI's wording changes. The full log is kept for reading by hand.
 - `--with-tests` runs `scripts/test.sh --fast` (plain pytest if that script does not exist) before any `railway up`. A failure stops everything and nothing deploys. It tests the checkout it runs in, so that checkout must be at the shipped sha.
-- `--dry-run` does everything except `railway up`, the health poll and the state write.
+- `--dry-run` does everything except `railway up`, the verification polls and the state write.
 
 What counts as "code a service uses" (auto mode). When unsure, the service is included.
 
@@ -100,7 +100,7 @@ What counts as "code a service uses" (auto mode). When unsure, the service is in
 
 The import reading is done by a small Python helper inside `ship.sh` that walks the archive. It also knows the three places the import graph cannot see (the `importlib` loads in `app/projection/` and `etl/feeds/feed.py`, and `snapshot_read`); if you add another load-by-name, add it to `dynamic_edges()` in `ship.sh`. Files deleted between the two shas count as relevant to every service except backup.
 
-Limits: the real parallel deploy, the health poll against Railway and the phase markers have been exercised only with a stubbed `railway` and `curl`. After the first real run, read one log in `ship-logs/` and check the phase line.
+Limits: the real parallel deploy, the verification polls against Railway (the JSON shape of `deployment list` was read from the live CLI, nothing was deployed) and the phase markers have been exercised only with a stubbed `railway` and `curl`. After the first real run, read one log in `ship-logs/` and check the phase line.
 
 ### Slim web image (`IMAGE_FLAVOR`)
 

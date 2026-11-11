@@ -5,7 +5,7 @@
 #   --ref       what to ship (default origin/build/v1). Must be an ancestor of (or equal to) origin/build/v1 unless --force: only merged code ships.
 #   --services  auto (default) = deploy only the services whose code changed since the sha last shipped to them (see docs/DEPLOY.md);
 #               all = every service; or a comma list. An explicit list or `all` deploys those services whatever the diff says.
-#   --dry-run   do everything except `railway up`, the healthz poll and the state write; print the exact commands instead.
+#   --dry-run   do everything except `railway up`, the verification polls and the state write; print the exact commands instead.
 #   --force     allow a ref that is not on origin/build/v1.
 #   --with-tests  run scripts/test.sh --fast (else plain pytest) BEFORE any `railway up`; a failure aborts, nothing deploys. The checkout must be at the shipped sha.
 #
@@ -16,7 +16,8 @@ set -euo pipefail
 PROJECT_ID="5ea06da2-cc55-4bb7-ac5c-8462d0d95338"
 ENVIRONMENT="production"
 HEALTH_URL="https://web-production-358da.up.railway.app/healthz"
-HEALTH_TIMEOUT=300
+HEALTH_TIMEOUT="${SHIP_HEALTH_TIMEOUT:-300}"   # seconds to wait for the new web revision / each cron deployment (env override is for tests)
+POLL_SECONDS="${SHIP_POLL_SECONDS:-5}"
 ALL_SERVICES="web etl feeds live alerts backup"
 STATE_FILE="${SHIP_STATE:-$HOME/lonvera-tag-explorer-data/shipped.json}"
 BASE_REF="origin/build/v1"
@@ -109,6 +110,7 @@ mkdir -p "$SRC"
 t_arch=$SECONDS
 git -C "$REPO" archive --format=tar "$SHA" -- . ':(exclude)tests' ':(exclude)docs' ':(exclude)analysis' | tar -x -C "$SRC"
 [ -f "$SRC/Dockerfile" ] || die "archive of $SHORT has no Dockerfile"
+printf '%s\n' "$SHA" > "$SRC/REVISION"     # /healthz reports this as `rev`, so the deploy check can tell the new container from the old one
 phase "archive" "$((SECONDS - t_arch))"
 
 # ---- which services need this sha -----------------------------------------
@@ -353,7 +355,7 @@ elif [ "$DRY_RUN" -eq 1 ]; then
     echo "  $(up_cmd "$svc")"
   done
   case " $DEPLOY_LIST " in
-    *" web "*) echo "ship: DRY RUN, then poll $HEALTH_URL until 200 (timeout ${HEALTH_TIMEOUT}s)" ;;
+    *" web "*) echo "ship: DRY RUN, then poll $HEALTH_URL until HTTP 200 and rev == $SHA (timeout ${HEALTH_TIMEOUT}s)" ;;
   esac
   echo "ship: DRY RUN, then write $SHORT for [$DEPLOY_LIST] to $STATE_FILE"
 else
@@ -400,27 +402,95 @@ else
   done
   OK_LIST="${OK_LIST# }"; FAILED="${FAILED# }"
 
-  # web healthcheck: `railway up -c` returns when the build is done, so poll until the new container answers
-  case " $OK_LIST " in
-    *" web "*)
-      echo "ship: polling $HEALTH_URL (up to ${HEALTH_TIMEOUT}s)"
-      hstart=$SECONDS; healthy=0
-      while [ $((SECONDS - hstart)) -lt "$HEALTH_TIMEOUT" ]; do
-        code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$HEALTH_URL" || true)"
-        if [ "$code" = "200" ]; then healthy=1; break; fi
-        sleep 5
+  # Verify the NEW code is serving. `railway up -c` returns when the build ends, so:
+  #   web  = poll /healthz until HTTP 200 AND its `rev` equals the shipped sha (the old container answers 200 without it); also stop early if web's newest deployment FAILED/CRASHED
+  #   cron services (no HTTP) = poll the service's newest deployment (created after this ship started) until SUCCESS; FAILED/CRASHED fails
+  # `railway deployment list` has no -p flag, so it runs from a directory linked once to the project (local CLI pointer only, changes nothing on Railway).
+  LINK_DIR="$(dirname "$STATE_FILE")/ship-link"
+  deployment_status() {  # $1 service -> newest deployment status created since this ship began (or NONE / UNKNOWN)
+    ( cd "$LINK_DIR" && railway deployment list -s "$1" -e "$ENVIRONMENT" --limit 5 --json 2>/dev/null ) | python3 -c '
+import json, sys, datetime
+since = int(sys.argv[1]) - 10
+try:
+    rows = json.load(sys.stdin)
+except ValueError:
+    print("UNKNOWN"); sys.exit(0)
+best = None
+for r in rows:
+    try:
+        t = datetime.datetime.strptime(r["createdAt"][:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=datetime.timezone.utc).timestamp()
+    except (KeyError, ValueError):
+        continue
+    if t >= since and (best is None or t > best[0]):
+        best = (t, r.get("status", "UNKNOWN"))
+print(best[1] if best else "NONE")
+' "$VERIFY_SINCE" || echo UNKNOWN
+  }
+  web_rev() {  # prints "<http code> <rev or ->"
+    local out code body rev
+    out="$(curl -s --max-time 10 -w '\n%{http_code}' "$HEALTH_URL" 2>/dev/null || true)"
+    code="$(printf '%s' "$out" | tail -n 1)"
+    body="$(printf '%s' "$out" | sed '$d')"
+    rev="$(printf '%s' "$body" | sed -n 's/.*"rev" *: *"\([0-9a-fA-F]*\)".*/\1/p')"
+    echo "${code:-000} ${rev:--}"
+  }
+  web_fail_logs() {
+    echo "----- web: last 40 lines of the railway up log -----" >&2
+    tail -n 40 "$LOG_DIR/web.log" | cut -f2- >&2 || true
+    echo "----- web: last 50 lines of the service log -----" >&2
+    ( cd "$LINK_DIR" && railway logs -s web -e "$ENVIRONMENT" --lines 50 ) >&2 2>&1 || true
+    echo "-----" >&2
+  }
+
+  if [ -n "$OK_LIST" ]; then
+    mkdir -p "$LINK_DIR"
+    ( cd "$LINK_DIR" && railway link -p "$PROJECT_ID" -e "$ENVIRONMENT" >/dev/null 2>&1 ) || echo "ship: warning: could not link $LINK_DIR; deployment status checks may be UNKNOWN" >&2
+    VERIFY_SINCE="$(date +%s)"
+    for svc in $OK_LIST; do b="$(cat "$TMP/$svc.begin" 2>/dev/null || true)"; [ -n "$b" ] && [ "$b" -lt "$VERIFY_SINCE" ] && VERIFY_SINCE="$b"; done
+    PENDING="$OK_LIST"
+    echo "ship: verifying [$PENDING]: web must report rev ${SHORT}, cron services must reach deployment status SUCCESS (up to ${HEALTH_TIMEOUT}s)"
+    vstart=$SECONDS
+    while [ -n "$PENDING" ] && [ $((SECONDS - vstart)) -lt "$HEALTH_TIMEOUT" ]; do
+      STILL=""
+      for svc in $PENDING; do
+        if [ "$svc" = "web" ]; then
+          read -r code rev <<EOF3
+$(web_rev)
+EOF3
+          if [ "$code" = "200" ] && [ "$rev" = "$SHA" ]; then
+            w=$((SECONDS - vstart)); echo "ship: web healthz 200 with rev ${SHORT} after ${w}s"; phase "healthcheck (web)" "$w"; continue
+          fi
+          st="$(deployment_status web)"
+          case "$st" in FAILED|CRASHED) echo "ship: web deployment status $st" >&2; FAILED="$FAILED web"; continue ;; esac
+          STILL="$STILL web"
+        else
+          st="$(deployment_status "$svc")"
+          case "$st" in
+            SUCCESS) echo "ship: $svc deployment SUCCESS after $((SECONDS - vstart))s" ;;
+            FAILED|CRASHED|REMOVED) echo "ship: $svc deployment status $st" >&2; FAILED="$FAILED $svc" ;;
+            *) STILL="$STILL $svc" ;;
+          esac
+        fi
       done
-      waited=$((SECONDS - hstart))
-      if [ "$healthy" -eq 1 ]; then
-        echo "ship: healthz 200 after ${waited}s"
-        phase "healthcheck (web)" "$waited"
+      PENDING="${STILL# }"
+      [ -n "$PENDING" ] && sleep "$POLL_SECONDS"
+    done
+    for svc in $PENDING; do
+      if [ "$svc" = "web" ]; then
+        echo "ship: web did not serve rev ${SHORT} within ${HEALTH_TIMEOUT}s (last healthz: $(web_rev))" >&2
       else
-        echo "ship: healthz did not return 200 within ${HEALTH_TIMEOUT}s (last code ${code:-none})" >&2
-        FAILED="$FAILED web"; FAILED="${FAILED# }"
-        OK_LIST="$(printf '%s' " $OK_LIST " | sed 's/ web / /' | sed 's/^ //; s/ $//')"
+        echo "ship: $svc deployment did not reach SUCCESS within ${HEALTH_TIMEOUT}s (last status $(deployment_status "$svc"))" >&2
       fi
-      ;;
-  esac
+      FAILED="$FAILED $svc"
+    done
+    FAILED="${FAILED# }"
+    # only services that passed their check are recorded
+    NEWOK=""
+    for svc in $OK_LIST; do case " $FAILED " in *" $svc "*) ;; *) NEWOK="$NEWOK $svc" ;; esac; done
+    OK_LIST="${NEWOK# }"
+    # web failed: print its logs and leave the state file completely untouched (services that did pass get redeployed, harmlessly, on the next run)
+    case " $FAILED " in *" web "*) web_fail_logs; echo "ship: web failed, state file not touched" >&2; OK_LIST="" ;; esac
+  fi
 
   if [ -n "$OK_LIST" ]; then
     # shellcheck disable=SC2086
