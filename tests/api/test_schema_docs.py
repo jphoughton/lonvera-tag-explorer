@@ -111,7 +111,8 @@ def test_every_relation_and_column_has_a_description_independent_check(sdb):
     desc_cols = {k: gen.resolve_cols(k, D.REL) for k in D.REL}
     rows = q(sdb, """SELECT t.table_schema, t.table_name, c.column_name FROM information_schema.tables t
                      JOIN information_schema.columns c ON c.table_schema = t.table_schema AND c.table_name = t.table_name
-                     WHERE t.table_schema IN ('public', 'analytics') AND t.table_type IN ('BASE TABLE', 'VIEW')""")
+                     WHERE t.table_schema IN ('public', 'analytics') AND t.table_type IN ('BASE TABLE', 'VIEW')
+                       AND NOT EXISTS (SELECT 1 FROM pg_class pc WHERE pc.oid = format('%I.%I', t.table_schema, t.table_name)::regclass AND pc.relispartition)""")  # partitions of a documented table are not separate relations
     missing_rel, missing_col = set(), []
     for sch, rel, col in rows:
         key = f"{sch}.{rel}"

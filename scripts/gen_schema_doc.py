@@ -44,7 +44,7 @@ MIGRATIONS = {"013": ROOT / "migrations" / "013_schema_comments_analytics.sql", 
               "196": ROOT / "migrations" / "196_creative_priorities.sql", "197": ROOT / "migrations" / "197_alert_state.sql", "199": ROOT / "migrations" / "199_priorities_manual.sql",
               "202": ROOT / "migrations" / "202_priorities_assignments.sql", "203": ROOT / "migrations" / "203_creative_launch.sql",
               "204": ROOT / "migrations" / "204_assignment_format.sql", "205": ROOT / "migrations" / "205_api_keys.sql",
-              "220": ROOT / "migrations" / "220_brain_mcp.sql"}
+              "220": ROOT / "migrations" / "220_brain_mcp.sql", "240": ROOT / "migrations" / "240_meta_breakdowns.sql"}
 # the Test to scale views (created by migration 015, after 013 runs on a fresh database): they and their comments live in migration 015
 # (migration 016 turned them into tables and added the placements tables; 015's own comment section is frozen history)
 LATE_STAGE_MOVES = {f"public.{n}{b}" for n in ("creative_stage_moves", "creative_scaling_placements") for b in ("", "_upstack_nc", "_upstack_all")}
@@ -69,6 +69,8 @@ LATE_FORMATS = {"public.creative_formats"}
 LATE_APIKEYS = {"public.api_keys"}
 # the hosted brain endpoint's agent keys and audit log (created by migration 220): they and their comments live in migration 220
 LATE_BRAIN = {"public.brain_keys", "public.brain_audit"}
+# the Meta breakdown pull (created by migration 240): the three tables, the analytics view and their comments live in migration 240
+LATE_BREAKDOWNS = {"public.meta_breakdown_daily", "public.meta_breakdown_coverage", "public.meta_breakdown_progress", "analytics.meta_breakdown_daily"}
 PROJ_GROUPS = {"proj_feeds", "proj_engine"}
 SCHEMAS = ("public", "analytics")
 KIND = {"r": "table", "p": "table", "v": "view", "m": "view"}
@@ -104,7 +106,7 @@ def introspect(conn) -> dict[str, dict]:
             """SELECT n.nspname, c.relname, c.relkind, a.attname, format_type(a.atttypid, a.atttypmod), a.attnotnull
                FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
-               WHERE n.nspname = ANY(%s) AND c.relkind IN ('r', 'p', 'v', 'm')
+               WHERE n.nspname = ANY(%s) AND c.relkind IN ('r', 'p', 'v', 'm') AND NOT c.relispartition        -- partitions of a documented table are not separate relations
                ORDER BY n.nspname, c.relname, a.attnum""", (list(SCHEMAS),)).fetchall():
         r = rels.setdefault(f"{sch}.{name}", {"schema": sch, "name": name, "kind": KIND[relkind], "columns": [], "primary_key": [], "foreign_keys": []})
         r["columns"].append({"name": attname, "type": typ, "nullable": (not notnull) if r["kind"] == "table" else None})
@@ -322,6 +324,8 @@ def scope_of(r: dict) -> str:
         return "205"
     if r["name"] in LATE_BRAIN:
         return "220"
+    if r["name"] in LATE_BREAKDOWNS:
+        return "240"
     return "191" if r["group"] in PROJ_GROUPS else "013"
 
 
@@ -343,7 +347,7 @@ def comment_sql(model: dict, scope: str = "all", d=None) -> str:
 
 def migration_text(which: str, model: dict, d=None) -> str:
     """013, 015 and 190 keep their hand-written DDL (everything above COMMENTS_MARKER) and get the comment section rewritten; 191 is comments only."""
-    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "220"):
+    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "220", "240"):
         path = MIGRATIONS[which]
         if not path.exists():
             raise SystemExit(f"{path} must exist with its hand-written DDL and the comments marker before comments can be emitted")
