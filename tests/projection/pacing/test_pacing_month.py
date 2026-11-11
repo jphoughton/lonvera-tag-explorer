@@ -199,3 +199,40 @@ def test_sheet_row_map_covers_every_table_row(nov):
     keys = {r["key"] for r in nov[0]["rows"]}
     assert set(SHEET_ROWS) - keys == set()
     assert len(set(SHEET_ROWS.values())) == len(SHEET_ROWS)
+
+
+# ---------------------------------------------------------------------------------------------------------------- ratios across feeds that lag differently
+
+def _lag_frame(meta_last):
+    """Nov 1-10 of made-up days: orders every day (NC revenue 100, 2 new customers), Meta spend 50 and Google 10 only through `meta_last`."""
+    fr = feeds.Frame(dt.date(2026, 11, 1), dt.date(2026, 11, 10))
+    for d in periods.iter_days(fr.start, fr.end):
+        row = {"o_nc_rev": 100.0, "o_nc_orders": 2.0, "o_total_rev": 150.0}
+        fr.present.setdefault("orders", set()).add(d)
+        if d <= meta_last:
+            row.update(m_spend=50.0, g_spend=10.0)
+            fr.present.setdefault("meta", set()).add(d)
+            fr.present.setdefault("google", set()).add(d)
+        fr.days[d] = __import__("collections").defaultdict(float, row)
+    return fr
+
+
+def test_ratio_rows_read_only_the_days_both_feeds_have_while_amounts_keep_every_day(book):
+    fr = _lag_frame(dt.date(2026, 11, 9))
+    today = dt.date(2026, 11, 11)                                  # data through Nov 10
+    summary = M.pacing_month(fr, dt.date(2026, 11, 1), today, book, None, {})
+    by = {r["key"]: r for r in summary["rows"]}
+    assert by["nc_rev"]["mtd"] == 1000.0 and by["dtc_ad_spend"]["mtd"] == 9 * 60.0 and by["nc_count"]["mtd"] == 20.0     # amounts: every loaded day
+    assert by["nc_roas"]["mtd"] == pytest.approx(900.0 / 540.0)    # NOT 1000 / 540: Nov 10 revenue has no spend yet
+    assert by["nc_roas2"]["mtd"] == pytest.approx(900.0 / 540.0)
+    assert by["nc_cpa"]["mtd"] == pytest.approx(540.0 / 18.0) and by["nc_cpa2"]["mtd"] == pytest.approx(540.0 / 18.0)
+    assert by["nc_roas"]["ratio_thru"] == "2026-11-09" and "through Nov 9" in by["nc_roas"]["note"] and "every loaded day" in by["nc_roas"]["note"]
+    assert by["nc_roas"]["projection"] == by["nc_roas"]["mtd"]
+    assert by["dtc_nc_aov"]["mtd"] == 50.0 and "ratio_thru" not in by["dtc_nc_aov"]        # one feed on both sides: unchanged
+
+
+def test_ratios_are_unchanged_when_every_feed_is_current(book):
+    fr = _lag_frame(dt.date(2026, 11, 10))
+    summary = M.pacing_month(fr, dt.date(2026, 11, 1), dt.date(2026, 11, 11), book, None, {})
+    by = {r["key"]: r for r in summary["rows"]}
+    assert by["nc_roas"]["mtd"] == pytest.approx(1000.0 / 600.0) and "ratio_thru" not in by["nc_roas"]

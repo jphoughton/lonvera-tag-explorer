@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Any
 
 from .feeds import Frame
-from .periods import data_through as dthru, days_elapsed as dels, days_in_month, month_end, month_start
+from .periods import data_through as dthru, days_elapsed as dels, days_in_month, iter_days, month_end, month_start
 from .rollup import Period, aggregate, project
 from ..financing import calc as fin_calc, model as fin_model, params as fin_params
 from . import levers as lv
@@ -56,6 +56,8 @@ class Ctx:
     dim: int
     frac: float                # share of the month elapsed
     levers: Levers = field(default_factory=Levers)
+    fr: Frame | None = None    # the frame the sums came from (ratios across feeds are cut to the days every feed has)
+    thr: date | None = None    # last day counted in mtd
 
     @property
     def remaining(self) -> int:
@@ -125,15 +127,72 @@ def amount_row(c: Ctx, spec: Spec, a: Amt, plan_only: bool = False) -> dict:
     return _row(spec, a.mtd, a.l7, a.goal, proj, should, needed, c.levers)
 
 
-def ratio_row(c: Ctx, spec: Spec, num: Amt, den: Amt, scale: float = 1.0) -> dict:
-    """num / den. The projection is the MTD ratio; the needed ratio is the incremental num / incremental den the rest of the month requires."""
+def ratio_row(c: Ctx, spec: Spec, num: Amt, den: Amt, scale: float = 1.0, like: tuple[Amt, Amt, date | None, int, int] | None = None) -> dict:
+    """num / den. The projection is the MTD ratio; the needed ratio is the incremental num / incremental den the rest of the month requires.
+    `like` = (num, den, last day, days used, days loaded) over only the days every feed behind the ratio has: the ratio then reads those, the amounts keep all days."""
     f = lambda n, d: (n / d * scale) if d else None                                  # noqa: E731
-    mtd, l7 = f(num.mtd, den.mtd), f(num.l7, den.l7)
+    rn, rd = (like[0], like[1]) if like else (num, den)
+    mtd, l7 = f(rn.mtd, rd.mtd), f(rn.l7, rd.l7)
     goal = f(num.goal, den.goal) if num.goal is not None and den.goal is not None else None
     needed = None
     if num.goal is not None and den.goal is not None and den.goal - den.mtd > 0:
         needed = (num.goal - num.mtd) / (den.goal - den.mtd) * scale
-    return _row(spec, mtd, l7, goal, mtd, goal, needed, c.levers)
+    row = _row(spec, mtd, l7, goal, mtd, goal, needed, c.levers)
+    if like:
+        thru, used, loaded = like[2], like[3], like[4]
+        row["ratio_thru"] = thru.isoformat() if thru else None
+        row["note"] = (spec.note + " " if spec.note else "") + (f"Ratio uses the {used} of {loaded} loaded days that every source behind it has"
+                                                                 + (f" (through {thru.strftime('%b')} {thru.day})" if thru else "") + "; the amounts include every loaded day.")
+    return row
+
+
+def _amts(c: Ctx) -> dict[str, Amt]:
+    """The measured amounts the ratio rows divide, from the sums held by `c` (so a ctx cut to some days gives the amounts of those days)."""
+    g = lambda name: c.book.goal(name, c.month)                                      # noqa: E731
+    nc = base_amt(c, "o_nc_rev", g("nc_rev"))
+    ncc = base_amt(c, "o_nc_orders", g("nc_orders"))
+    meta = base_amt(c, "m_spend", g("spend_meta"))
+    goog = base_amt(c, "g_spend", g("spend_google"))
+    aads = base_amt(c, "a_ad_spend", g("spend_amazon"))
+    tik = plan_amt(c, g("spend_tiktok"))
+    adv = meta + goog + aads + tik
+    adv.goal = g("spend_total")
+    dtc_ad = meta + goog
+    dtc_ad.goal = g("dtc_ad_spend")
+    co_rev = Amt(nc.mtd + c.mtd["a_nc_rev"], nc.l7 + c.l7["a_nc_rev"] / c.levers.last_days, None)
+    co_cus = Amt(ncc.mtd + c.mtd["a_nc_orders"], ncc.l7 + c.l7["a_nc_orders"] / c.levers.last_days, None)
+    co_adv = Amt(adv.mtd, adv.l7, None)
+    return {"nc": nc, "ncc": ncc, "dtc_ad": dtc_ad, "co_rev": co_rev, "co_cus": co_cus, "co_adv": co_adv}
+
+
+FEEDS_NC_ROAS = ("orders", "meta", "google")
+FEEDS_COMPANY = ("orders", "amazon", "meta", "google")
+
+
+def _like(c: Ctx, feeds: tuple[str, ...]) -> tuple[Ctx, date | None, int, int] | None:
+    """A ctx over only the days every feed in `feeds` has a row (within the elapsed days / the recent window), or None when that is every elapsed day
+    (nothing to cut) or the frame is unknown. Returns (ctx, last such day, days used, days loaded)."""
+    if c.fr is None or c.thr is None or not c.elapsed:
+        return None
+    present = [p for p in (c.fr.present.get(f) for f in feeds) if p]            # a feed with no row anywhere in the frame is not loaded at all: nothing to align to
+    if not present:
+        return None
+    month_days = [d for d in iter_days(c.month, c.thr)]
+    common = [d for d in month_days if all(d in p for p in present)]
+    if len(common) == len(month_days):
+        return None
+    cs = set(common)
+    mtd: dict = defaultdict(float)
+    for d in common:
+        for k, v in (c.fr.days.get(d) or {}).items():
+            mtd[k] += v
+    l7: dict = defaultdict(float)
+    for k in range(c.levers.last_days):
+        d = c.thr - timedelta(days=k)
+        if d in cs:
+            for key, v in (c.fr.days.get(d) or {}).items():
+                l7[key] += v
+    return replace(c, mtd=mtd, l7=l7), (max(common) if common else None), len(common), len(month_days)
 
 
 def build_rows(c: Ctx) -> list[dict]:
@@ -177,12 +236,22 @@ def build_rows(c: Ctx) -> list[dict]:
     rows: list[dict] = []
     add = rows.append
     S_ = Spec
+    cuts: dict[tuple, Any] = {}
+
+    def rr(spec: Spec, num: Amt, den: Amt, nk: str, dk: str, feeds: tuple[str, ...]) -> dict:
+        """A ratio whose two sides come from different feeds: read over the days all of them have (amounts keep every loaded day)."""
+        if feeds not in cuts:
+            cut = _like(c, feeds)
+            cuts[feeds] = None if cut is None else (_amts(cut[0]), cut[1], cut[2], cut[3])
+        cut = cuts[feeds]
+        like = None if cut is None else (cut[0][nk], cut[0][dk], cut[1], cut[2], cut[3])
+        return ratio_row(c, spec, num, den, 1.0, like)
     add(amount_row(c, S_("total_rev", "Revenue", "REVENUE", "money", "up", 0, "subtotal", "DTC + Amazon + estimated sales tax (net of tax)"), total))
     add(amount_row(c, S_("dtc_rev", "DTC revenue", "REVENUE", "money", "up", 1, note="Shopify total revenue"), dtc))
     add(amount_row(c, S_("nc_rev", "DTC new-customer revenue", "REVENUE", "money", "up", 1), nc))
     add(amount_row(c, S_("repeat_rev", "DTC repeat revenue", "REVENUE", "money", "up", 1), rep))
-    add(ratio_row(c, S_("nc_roas", "DTC NC ROAS", "REVENUE", "x", "up", 1, "ratio", "New-customer revenue / DTC ad spend"), nc, dtc_ad))
-    add(ratio_row(c, S_("nc_cpa", "DTC NC CPA", "REVENUE", "money2", "down", 1, "ratio", "DTC ad spend / new customers"), dtc_ad, ncc))
+    add(rr(S_("nc_roas", "DTC NC ROAS", "REVENUE", "x", "up", 1, "ratio", "New-customer revenue / DTC ad spend"), nc, dtc_ad, "nc", "dtc_ad", FEEDS_NC_ROAS))
+    add(rr(S_("nc_cpa", "DTC NC CPA", "REVENUE", "money2", "down", 1, "ratio", "DTC ad spend / new customers"), dtc_ad, ncc, "dtc_ad", "ncc", FEEDS_NC_ROAS))
     add(ratio_row(c, S_("dtc_nc_aov", "DTC NC AOV", "REVENUE", "money2", "up", 1, "ratio",
                         "New-customer revenue / new customers, month to date. Goal: the plan's new-customer revenue / the plan's new customers (the plan's AOV)."), nc, ncc))
     add(amount_row(c, S_("amazon_rev", "Amazon revenue", "REVENUE", "money", "up", 1), amz))
@@ -227,18 +296,18 @@ def build_rows(c: Ctx) -> list[dict]:
     add(amount_row(c, S_("nc_count", "New customers", "NEW CUSTOMERS (DTC)", "int", "up", 0), ncc))
     add(amount_row(c, S_("dtc_ad_spend", "DTC ad spend", "NEW CUSTOMERS (DTC)", "money", "down", 0, note="Meta + Google"), dtc_ad))
     add(amount_row(c, S_("nc_rev2", "DTC new-customer revenue", "NEW CUSTOMERS (DTC)", "money", "up", 0), nc))
-    add(ratio_row(c, S_("nc_cpa2", "NC CPA", "NEW CUSTOMERS (DTC)", "money2", "down", 0, "ratio"), dtc_ad, ncc))
+    add(rr(S_("nc_cpa2", "NC CPA", "NEW CUSTOMERS (DTC)", "money2", "down", 0, "ratio"), dtc_ad, ncc, "dtc_ad", "ncc", FEEDS_NC_ROAS))
     add(ratio_row(c, S_("nc_aov", "NC AOV", "NEW CUSTOMERS (DTC)", "money2", "up", 0, "ratio", "New-customer revenue / new customers"), nc, ncc))
-    add(ratio_row(c, S_("nc_roas2", "NC ROAS", "NEW CUSTOMERS (DTC)", "x", "up", 0, "ratio"), nc, dtc_ad))
+    add(rr(S_("nc_roas2", "NC ROAS", "NEW CUSTOMERS (DTC)", "x", "up", 0, "ratio"), nc, dtc_ad, "nc", "dtc_ad", FEEDS_NC_ROAS))
 
     co_rev = Amt(nc.mtd + c.mtd["a_nc_rev"], nc.l7 + c.l7["a_nc_rev"] / c.levers.last_days, None)
     co_cus = Amt(ncc.mtd + c.mtd["a_nc_orders"], ncc.l7 + c.l7["a_nc_orders"] / c.levers.last_days, None)
     co_adv = Amt(adv.mtd, adv.l7, None)
     add(_proj_only(c, S_("co_nc_rev", "Company new-customer revenue", "COMPANY-WIDE (DTC + AMAZON)", "money", None, 0), co_rev))
     add(_proj_only(c, S_("co_nc_count", "Company new customers", "COMPANY-WIDE (DTC + AMAZON)", "int", None, 0), co_cus))
-    add(ratio_row(c, S_("co_nc_cpa", "Company NC CPA", "COMPANY-WIDE (DTC + AMAZON)", "money2", None, 0, "ratio", "All advertising / company new customers"), co_adv, co_cus))
-    add(ratio_row(c, S_("co_nc_aov", "Company NC AOV", "COMPANY-WIDE (DTC + AMAZON)", "money2", None, 0, "ratio"), co_rev, co_cus))
-    add(ratio_row(c, S_("co_nc_roas", "Company NC ROAS", "COMPANY-WIDE (DTC + AMAZON)", "x", None, 0, "ratio"), co_rev, co_adv))
+    add(rr(S_("co_nc_cpa", "Company NC CPA", "COMPANY-WIDE (DTC + AMAZON)", "money2", None, 0, "ratio", "All advertising / company new customers"), co_adv, co_cus, "co_adv", "co_cus", FEEDS_COMPANY))
+    add(rr(S_("co_nc_aov", "Company NC AOV", "COMPANY-WIDE (DTC + AMAZON)", "money2", None, 0, "ratio"), co_rev, co_cus, "co_rev", "co_cus", ("orders", "amazon")))
+    add(rr(S_("co_nc_roas", "Company NC ROAS", "COMPANY-WIDE (DTC + AMAZON)", "x", None, 0, "ratio"), co_rev, co_adv, "co_rev", "co_adv", FEEDS_COMPANY))
     return rows
 
 
@@ -351,7 +420,7 @@ def month_context(fr: Frame, month: date, today: date, book: TargetBook) -> Ctx:
         if row:
             for key, v in row.items():
                 l7[key] += v
-    return Ctx(month, book, mtd, l7, elapsed, dim, elapsed / dim if dim else 0.0, L)
+    return Ctx(month, book, mtd, l7, elapsed, dim, elapsed / dim if dim else 0.0, L, fr, thr)
 
 
 def month_state(month: date, actual_through: date | None, elapsed: int, dim: int) -> str:

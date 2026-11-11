@@ -308,3 +308,63 @@ def test_status_refresh_also_fetches_ads_new_in_this_run(conn, tmp_path, monkeyp
     monkeypatch.setattr(meta_api, "fetch_ad_meta", lambda tok, ids, batch=50, pace=0, strict=False: seen.setdefault("ids", sorted(ids)) and {})
     status_refresh.fetch_updates(conn, "tok", extra_ids=["1", "999"])
     assert "999" in seen["ids"]                      # an ad the pull is about to insert is refreshed in the same run
+
+
+# ---------------- a failing lifetime pull must not block the daily rows ----------------
+def test_run_daily_lifetime_failure_still_writes_daily_rows_and_fails_the_run(conn, tmp_path, monkeypatch):
+    snap = base(conn, tmp_path, [trow("R", "rfam", "VitaBull")])
+    put_ad(conn, "1", "rfam"); put_life(conn, "1", "rfam", 123.0)
+    conn.execute("INSERT INTO meta_family_map (meta_family_key, meta_family, tracker_family_key, rule) VALUES ('rfam','rfam','rfam','exact')")
+    conn.commit()
+    stub_graph(monkeypatch, rows=[apirow("2026-11-01", "1", "rfam"), apirow("2026-11-02", "1", "rfam", spend=42.0)])
+
+    def boom(tok, until=None):
+        raise meta_api.TooBig("Please reduce the amount of data you're asking for")
+    monkeypatch.setattr(lifetime_pull, "pull", boom)
+    with pytest.raises(db_mod.JobFailed, match="lifetime pull failed"):
+        run_daily.run(days=2, snapshot_dir=str(snap), until=D(2026, 11, 2))
+    # the daily Meta rows landed
+    assert float(conn.execute("SELECT sum(spend) FROM ad_daily WHERE day = '2026-11-02'").fetchone()[0]) == 42.0
+    assert conn.execute("SELECT value FROM app_meta WHERE key='data_through'").fetchone()[0] == "2026-11-02"
+    # the previous lifetime table is untouched
+    assert float(conn.execute("SELECT sum(spend) FROM meta_ad_lifetime").fetchone()[0]) == 123.0
+    # the failure still surfaces: a failed lifetime_pull job run, a failed run_daily, refresh_status failed with the reason
+    assert conn.execute("SELECT status FROM etl_runs WHERE job='lifetime_pull' ORDER BY id DESC LIMIT 1").fetchone()[0] == "failed"
+    assert conn.execute("SELECT status FROM etl_runs WHERE job='build_metrics' ORDER BY id DESC LIMIT 1").fetchone()[0] == "ok"
+    assert conn.execute("SELECT status FROM etl_runs WHERE job='run_daily' ORDER BY id DESC LIMIT 1").fetchone()[0] == "failed"
+    am = dict(conn.execute("SELECT key, value FROM app_meta").fetchall())
+    assert am["refresh_status"] == "failed" and "lifetime pull failed" in am["last_error"] and "last_ok_at" not in am
+
+
+def test_pull_lifetime_retries_too_big_from_the_async_report(monkeypatch):
+    monkeypatch.setattr(meta_api, "LIFETIME_RETRY_SLEEP", 0)
+    calls = {"paged": 0, "async": 0}
+
+    def paged(*a, **k):
+        calls["paged"] += 1
+        raise meta_api.TooBig("reduce")
+
+    def async_report(tok, acct, an, extra):
+        calls["async"] += 1
+        if calls["async"] < 3:
+            raise meta_api.TooBig("reduce")                       # twice too big, then it works
+        return [{"day": D(2026, 11, 2), "ad_id": "1", "ad_name": "x", "campaign_id": "", "campaign_name": "", "adset_id": "", "adset_name": "",
+                 "spend": 1.0, "purchases": 0, "value": 0, "clicks": 0}]
+    monkeypatch.setattr(meta_api, "_paged", paged)
+    monkeypatch.setattr(meta_api, "_async_report", async_report)
+    rows = meta_api.pull_lifetime("tok", "act_1", "Acct", D(2025, 1, 1), D(2026, 11, 2))
+    assert calls["async"] == 3 and len(rows) == 1 and rows[0]["account"] == "Acct"
+
+
+def test_pull_lifetime_gives_up_after_three_too_big_attempts_as_a_graph_error(monkeypatch):
+    monkeypatch.setattr(meta_api, "LIFETIME_RETRY_SLEEP", 0)
+    n = {"async": 0}
+
+    def async_report(*a, **k):
+        n["async"] += 1
+        raise meta_api.TooBig("reduce")
+    monkeypatch.setattr(meta_api, "_paged", lambda *a, **k: (_ for _ in ()).throw(meta_api.TooBig("reduce")))
+    monkeypatch.setattr(meta_api, "_async_report", async_report)
+    with pytest.raises(meta_api.GraphError, match="too big after 3 attempts"):
+        meta_api.pull_lifetime("tok", "act_1", "Acct", D(2025, 1, 1), D(2026, 11, 2))
+    assert n["async"] == 3

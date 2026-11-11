@@ -35,6 +35,7 @@ class Frame:
     preach: dict[tuple[str, str, str], float] = field(default_factory=dict)      # (grain, key, product slug) -> unique outbound clicks
     meta_source: dict[date, str] = field(default_factory=dict)                   # day -> 'app' | 'sheet'
     last_day: dict[str, date | None] = field(default_factory=dict)               # feed -> last day with data in the loaded range
+    present: dict[str, set] = field(default_factory=dict)                        # feed -> the days that have a row (ratios across feeds use the days both have)
 
     def day(self, d: date) -> dict:
         return self.days[d]
@@ -51,6 +52,7 @@ def load_frame(conn, start: date, end: date) -> Frame:
     D = fr.days
 
     def seen(feed: str, d: date) -> None:
+        fr.present.setdefault(feed, set()).add(d)
         if fr.last_day.get(feed) is None or d > fr.last_day[feed]:
             fr.last_day[feed] = d
 
@@ -71,6 +73,7 @@ def load_frame(conn, start: date, end: date) -> Frame:
         if p != "Meta (Facebook/Instagram)":
             b["pl_nonmeta_spend"] += _f(r["spend"])
         if p == "Google Ads":
+            seen("google", r["day"])
             b["g_spend"] += _f(r["spend"])
             b["g_purchases"] += _f(r["purchases"])
             b["g_value"] += _f(r["purchase_value"])
