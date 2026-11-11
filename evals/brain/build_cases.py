@@ -30,8 +30,8 @@ def f(x: float, n: int = 2) -> str:
 C: list[dict] = []
 
 
-def case(type_, ids, question, expected, must=(), must_not=(), notes=""):
-    C.append({"type": type_, "source_item_ids": list(ids), "question": question, "as_of": AS_OF, "expected_answer": expected, "must_mention": list(must), "must_not": list(must_not), "grading_notes": notes})
+def case(type_, ids, question, expected, must=(), must_not=(), notes="", split=None):
+    C.append({"split": split, "type": type_, "source_item_ids": list(ids), "question": question, "as_of": AS_OF, "expected_answer": expected, "must_mention": list(must), "must_not": list(must_not), "grading_notes": notes})
 
 
 # ------------------------------------------------------------------------------------------------- (a) where is X
@@ -40,13 +40,13 @@ case("a", ["L2-311"], "Which database view holds Meta spend, clicks and purchase
 case("a", ["L2-268", "T_20-25"], "Where in the database can I get Meta reach and frequency, and may I add up the daily rows to get a monthly figure?",
      "analytics.meta_reach, stored at day / week / month grain; reach is de-duplicated per period so it must never be summed across days or weeks; read the month row.", ["meta_reach", "not summed", "month"], ["sum the daily reach"], "Account level only (both ad accounts); nothing below account level.")
 case("a", ["S_secondary-184"], "I need Meta campaign spend for March 2026. Which view has it?",
-     "analytics.meta_campaign_daily_history: campaign x day back to 2024-12-31, the only Meta data before 2026-05-06 (campaign grain, no ad sets or ads). meta_campaign_daily starts 2026-05-06.", ["meta_campaign_daily_history", "2024-12-31"], ["meta_ad_daily has it"])
+     "analytics.meta_campaign_daily_history: campaign x day back to 2024-12-31, the only Meta data before 2026-05-06 (campaign grain, no ad sets or ads). meta_campaign_daily starts 2026-05-06.", ["meta_campaign_daily_history"], ["meta_ad_daily has it"], "The date is context only; the view name is the answer.")
 case("a", ["L2-231"], "Where do I find Google's own spend and conversions by campaign, and Upstack's attributed new customers for Google? How far back does each go?",
      "analytics.google_campaign_daily; Google's own numbers from 2024-03-25, Upstack columns from 2025-05-13 (NULL before). No ad group, ad or keyword grain exists.", ["google_campaign_daily", "2025-05-13", "2024-03-25"])
 case("a", ["T_26-46"], "Which view gives the business's ACTUAL new-customer revenue per day, as opposed to what Meta or Google report, and which column is it?",
      "analytics.orders_daily, column new_customer_revenue (Upstack order-level, Pacific days, counted once; gross of tax and refunds). It is the numerator of Total NC ROAS.", ["orders_daily", "new_customer_revenue"])
 case("a", ["T_18-48", "T_18-73"], "How do I check, before quoting a number, which data sources are loaded through which day?",
-     "Query analytics.data_coverage (source, first_day, last_day, loaded_at) or call the freshness tool; the last loaded day is yesterday (Pacific).", ["data_coverage", "yesterday"])
+     "Query analytics.data_coverage (source, first_day, last_day, loaded_at) or call the freshness tool; the last loaded day is yesterday (Pacific).", ["data_coverage or the freshness tool"], [], "Either the data_coverage view or the freshness tool is a full answer; yesterday as the last loaded day is a bonus.")
 case("a", ["L2-292", "L2-291"], "Which view tells me whether a pipeline job failed or ran late, and since when does it have history?",
      "analytics.etl_runs: one row per job run with status, data_through, error; history since the first production run on 2026-11-04 (UTC).", ["etl_runs", "2026-11-04"])
 case("a", ["L2-300", "L2-295"], "Where in the database is the hook (opening line) of each ad stored, and which view should I use to ask which hook, cluster or ICP performs?",
@@ -79,8 +79,8 @@ case("b", ["L2-314"], "How is '% reached scaling' computed on the Test to scale 
      "(testers that have moved) / (testers); testers = launched creatives that began in testing. It is a cohort rate, so creatives launched in the last days have had no time to scale and recent weeks read low.", ["testers", "no time"])
 case("b", ["T_18-48"], "In the analytics views, what does 'last 30 days' mean and what is the latest day I can trust?",
      "The 30 days ending at data_coverage.last_day, which is yesterday (Pacific); today is not loaded. The last 3 to 7 days still move because Meta restates conversions.", ["yesterday", "last_day"])
-case("b", ["T_20-55", "T_20-57"], "Why is upstack_new_customers NULL on some days of meta_ad_daily and what does NULL mean for sums and ratios?",
-     "Upstack was not pulled on those days (Meta before 2026-05-06; Google before 2025-05-13). NULL is not zero: do not treat it as a zero-purchase day in a ratio.", ["not zero", "2026-05-06"])
+case("b", ["T_20-55", "T_20-57"], "Why are the upstack_* columns NULL on early Google days in platform_daily / google_campaign_daily, and what does NULL mean for sums and ratios?",
+     "Upstack was not pulled for Google before 2025-05-13, so upstack_* is NULL there (meta_ad_daily itself starts 2026-05-06, when Upstack Meta data starts, so it has no such NULLs). NULL is not zero: do not treat it as a zero-conversion day or divide by it.", ["2025-05-13", "not zero"])
 case("b", ["T_11-84", "T_11-85"], "In creative_tracker, how do I sum spend or count ads without double counting?",
      "Since-launch metrics sit on the FIRST row of each ad family (is_first_row): sum rows, and count unique ads with count(distinct family_key).", ["first row", "family_key"])
 case("b", ["L2-231", "L2-232"], "Meta shows more purchases and a higher ROAS than Upstack's new-customer numbers. Which basis counts returning customers and which one is the 'NC' in NC ROAS?",
@@ -147,6 +147,26 @@ case("c", ["T_24-6"], "As of 2026-11-10: for October 2026, what were Boneflex's 
 case("c", ["T_26-33"], "As of 2026-11-10: what was total revenue (all orders) for October 2026 and what share of it was new-customer revenue?",
      f"Total revenue ${f(octo['t'])} from {int(octo['o']):,} orders; new-customer revenue ${f(octo['r'])} = {octo['r'] / octo['t'] * 100:.1f}% (analytics.orders_daily; gross).", [f(octo["t"], 0), f"{octo['r'] / octo['t'] * 100:.0f}%"])
 
+# added before the baseline run finished (split fixed explicitly so the earlier assignments do not move)
+wk2 = q1("select sum(new_customer_revenue) filter (where day between '2026-10-19' and '2026-10-25') r2, sum(new_customer_revenue) filter (where day between '2026-10-12' and '2026-10-18') r1 from analytics.orders_daily")[0]
+sp2 = q1("select sum(spend) filter (where day between '2026-10-19' and '2026-10-25') s2, sum(spend) filter (where day between '2026-10-12' and '2026-10-18') s1 from analytics.platform_daily")[0]
+case("c", ["T_20-58"], "As of 2026-11-10: what was Total NC ROAS in the week Mon 2026-10-19 to Sun 2026-10-25, and in the week before it (Oct 12-18)?",
+     f"Oct 19-25: {wk2['r2'] / sp2['s2']:.2f}x (${f(wk2['r2'])} / ${f(sp2['s2'])}); Oct 12-18: {wk2['r1'] / sp2['s1']:.2f}x (${f(wk2['r1'])} / ${f(sp2['s1'])}). Actual new-customer revenue over Meta + Google spend, ratio of sums.",
+     [f"{wk2['r2'] / sp2['s2']:.2f}", f"{wk2['r1'] / sp2['s1']:.2f}"], [], "Within 2%.", split="tune")
+bl = prod["beef-liver"]
+bl_nc = q1("select sum(upstack_new_customers) n from analytics.meta_ad_daily where product_slug='beef-liver' and day between '2026-10-01' and '2026-10-31'")[0]["n"]
+case("c", ["T_23-1"], "As of 2026-11-10: what was Beef Liver's new-customer CPA on Meta spend in October 2026, using Upstack-attributed new customers?",
+     f"${bl['sp'] / bl_nc:.2f} = ${f(bl['sp'])} Meta spend / {int(bl_nc):,} Upstack-attributed new customers (meta_ad_daily, product_slug = 'beef-liver').", [f"{bl['sp'] / bl_nc:.0f}"], [], "Within 2%. Meta-reported CPA is a different basis.", split="tune")
+pm = {r["product_slug"]: r for r in q1("select product_slug, sum(spend) sp, sum(meta_revenue) mr, sum(upstack_new_customer_revenue) ncr from analytics.meta_ad_daily where day between '2026-10-01' and '2026-10-31' group by 1")}
+best_meta = max(pm, key=lambda k: pm[k]["mr"] / pm[k]["sp"])
+best_nc = max(pm, key=lambda k: pm[k]["ncr"] / pm[k]["sp"])
+case("c", ["T_21-45", "T_24-6"], "As of 2026-11-10: which of the three products had the best ROAS on Meta spend in October 2026?",
+     f"It depends on the basis, and the answer must say so. Meta-reported ROAS: {best_meta} best ({', '.join(f'{k} {pm[k]['mr'] / pm[k]['sp']:.2f}' for k in pm)}). Upstack new-customer ROAS: {best_nc} best ({', '.join(f'{k} {pm[k]['ncr'] / pm[k]['sp']:.2f}' for k in pm)}).",
+     [best_meta, best_nc, "basis"], ["one product is best on every basis"], "Full credit needs both bases named with the right winner on each; a single unlabeled ranking is partial.", split="tune")
+msep = q1("select sum(spend) filter (where platform='meta') m, sum(spend) filter (where platform='google') g from analytics.platform_daily where day between '2026-09-01' and '2026-09-30'")[0]
+case("c", ["L2-319"], "As of 2026-11-10: what was September 2026 Meta spend, and what share of Meta plus Google spend was Meta?",
+     f"Meta ${f(msep['m'])}; share {msep['m'] / (msep['m'] + msep['g']) * 100:.1f}% of ${f(msep['m'] + msep['g'])} (platform_daily).", [f(msep["m"], 0), f"{msep['m'] / (msep['m'] + msep['g']) * 100:.0f}%"], [], "Within 2%.", split="test")
+
 # ------------------------------------------------------------------------------------------------- (d) why / causal with a verified answer
 case("d", ["T_08-48", "T_17-9", "T_08-49"], "As of 2026-11-10: Meta spend fell from about $35K a day on 2026-09-13 to about $15K on 2026-09-15. What caused the cliff, and how sure are we?",
      "Consistent with the 2026-09-14 bid tightening on the scaling ad sets (cost caps cut / ROAS floors raised, e.g. Vita Bull cap $68.50 to $65 and tROAS 0.95 to 1.00): delivery is bid-limited, the cut halved delivery without improving efficiency. The change log is not in the database, so the DB shows the drop but not the cause; confidence is 'consistent with' unless a control exists.",
@@ -181,7 +201,7 @@ case("d", ["L2-241", "T_17-36"], "As of 2026-11-10: is it still true that Lonver
 
 # ------------------------------------------------------------------------------------------------- (e) how the app works
 case("e", ["L2-310", "L2-345"], "Which Railway service runs the nightly data load, at what schedule (UTC), and what are its first steps?",
-     "Service `etl`, cron 0 13 * * * UTC, via scripts/deploy/run_etl.sh: etl.migrate, then etl.run_daily, etl.upstack_daily, etl.stage_moves, etl.projection_daily, etl.amazon_mtd, then non-fatal steps.", ["etl", "0 13 * * *", "run_daily"])
+     "Service `etl`, cron 0 13 * * * UTC, via scripts/deploy/run_etl.sh: etl.migrate, then etl.run_daily, etl.upstack_daily, etl.stage_moves, etl.projection_daily, etl.amazon_mtd, then non-fatal steps.", ["etl", "0 13 * * *", "run_daily"], [], "etl.migrate (a start-script step) is a bonus, not required.")
 case("e", ["L2-310", "L2-313"], "When does the `feeds` service run and what does it do?",
      "Railway cron `0 21 * * *` UTC via scripts/deploy/run_feeds.sh: etl.feeds run (Upstack, Warehance, Meta, ExpandFi feeds), etl.amazon_mtd, then etl.feeds verify.", ["0 21 * * *", "feeds"])
 case("e", ["L2-320"], "How do the 'Meta spend today' and 'NC revenue today' cards on the Pacing page fill themselves, and how often?",
@@ -212,13 +232,13 @@ def main() -> None:
     rng = random.Random(SEED)
     split = {}
     for t in "abcde":
-        ids = [c["id"] for c in C if c["type"] == t]
+        ids = [c["id"] for c in C if c["type"] == t and not c["split"]]
         rng.shuffle(ids)
         n_test = round(len(ids) * TEST_SHARE)
         for j, cid in enumerate(ids):
             split[cid] = "test" if j < n_test else "tune"
     for c in C:
-        c["split"] = split[c["id"]]
+        c["split"] = c["split"] or split[c["id"]]
     cols = ["id", "split", "type", "source_item_ids", "question", "as_of", "expected_answer", "must_mention", "must_not", "grading_notes"]
     (HERE / "cases.jsonl").write_text("\n".join(json.dumps({k: c[k] for k in cols}, ensure_ascii=False) for c in C) + "\n")
     held = sorted({i for c in C for i in c["source_item_ids"]})

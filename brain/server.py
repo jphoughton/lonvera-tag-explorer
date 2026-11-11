@@ -10,9 +10,9 @@ from __future__ import annotations
 import asyncio
 
 from . import tools as T
+from .instructions import INSTRUCTIONS as INSTR
 
-INSTRUCTIONS = ("Lonvera data brain. For any data question: catalog first, then search or metric, then describe, then sql. Name the basis of every metric (Meta-reported, Upstack new customers, "
-                "Upstack all orders). A cause needs a like-for-like control, and counts are not rates.")
+INSTRUCTIONS = INSTR
 
 
 def build_server(brain: T.Brain | None = None):

@@ -15,14 +15,29 @@ _TOKEN = re.compile(r"[a-z0-9_]+")
 _STOP = frozenset("a an and are as at be by for from how in is it of on or that the this to was what when where which who why with".split())
 
 
+# Query-side synonyms (weight 0.5): the shorthand Josh and the docs use for the same thing. Keys and values are tokens after singularising.
+SYNONYMS = {
+    "nc": ["new", "customer", "first", "order"], "cpa": ["cost", "acquisition", "purchase"], "cac": ["cost", "acquisition", "customer"], "roas": ["return", "revenue", "spend"],
+    "mer": ["revenue", "spend", "total"], "cpm": ["cost", "thousand", "impression"], "cpc": ["cost", "click"], "ctr": ["click", "impression"], "ltv": ["lifetime", "value", "cohort"],
+    "tof": ["cold"], "dtc": ["shopify"], "ad": ["creative"], "creative": ["ad"], "hit": ["reached", "threshold"], "scaling": ["scale", "stage"], "testing": ["test", "stage"],
+    "frequency": ["reach", "impression"], "cancel": ["cancelled", "cancellation"], "refund": ["net", "gross"], "bid": ["cap", "cost", "floor"], "backup": ["dump", "restore"],
+    "cron": ["schedule", "service"], "schedule": ["cron", "service"], "nightly": ["daily", "cron"], "endpoint": ["route", "api"], "page": ["route", "url"], "launch": ["first", "spend", "family"],
+}
+
+
+def _norm(t: str) -> str:
+    return t[:-1] if len(t) > 3 and t.endswith("s") and not t.endswith("ss") else t
+
+
 def tokens(text: str) -> list[str]:
     out = []
     for t in _TOKEN.findall((text or "").lower()):
         if t in _STOP:
             continue
+        t = _norm(t)
         out.append(t)
         if "_" in t:
-            out.extend(p for p in t.split("_") if p and p not in _STOP)
+            out.extend(_norm(p) for p in t.split("_") if p and p not in _STOP)
     return out
 
 
@@ -43,9 +58,15 @@ class Index:
         self.idf = {t: math.log(1 + (n - f + 0.5) / (f + 0.5)) for t, f in df.items()}
 
     def search(self, query: str, limit: int = 10, kinds: set[str] | None = None) -> list[tuple[float, dict]]:
-        q = list(dict.fromkeys(tokens(query)))
-        if not q:
+        base = list(dict.fromkeys(tokens(query)))
+        if not base:
             return []
+        w = {t: 1.0 for t in base}
+        for t in base:
+            for x in SYNONYMS.get(t, []):
+                x = _norm(x)
+                w.setdefault(x, 0.5)
+        q = list(w)
         scored = []
         for i, d in enumerate(self.docs):
             if kinds and d["kind"] not in kinds:
@@ -55,24 +76,30 @@ class Index:
             for t in q:
                 f = tf.get(t, 0)
                 if f:
-                    s += self.idf.get(t, 0) * f * (self.K1 + 1) / (f + self.K1 * (1 - self.B + self.B * self.len[i] / self.avg))
+                    s += w[t] * self.idf.get(t, 0) * f * (self.K1 + 1) / (f + self.K1 * (1 - self.B + self.B * self.len[i] / self.avg))
             if s > 0:
                 scored.append((s, d))
         scored.sort(key=lambda x: -x[0])
         return scored[:limit]
 
 
-def snippet(text: str, query: str, width: int = 260) -> str:
+def snippet(text: str, query: str, width: int = 360) -> str:
+    """The window of `width` characters that holds the most distinct query words (ties: the earliest), so a definition is not cut off by an earlier stray match."""
     text = re.sub(r"\s+", " ", text or "").strip()
+    if len(text) <= width:
+        return text
     low = text.lower()
-    pos = -1
-    for t in dict.fromkeys(tokens(query)):
-        p = low.find(t)
-        if p >= 0 and (pos < 0 or p < pos):
-            pos = p
-    start = max(0, pos - width // 3) if pos >= 0 else 0
-    s = text[start:start + width]
-    return ("..." if start else "") + s + ("..." if start + width < len(text) else "")
+    toks = list(dict.fromkeys(tokens(query)))
+    pos = sorted({m.start() for t in toks for m in re.finditer(re.escape(t), low)})
+    best, best_n = 0, -1
+    for p0 in pos or [0]:
+        start = max(0, p0 - width // 6)
+        win = low[start:start + width]
+        n = 100 * sum(1 for t in toks if t in win) + sum(win.count(t) for t in toks)
+        if n > best_n:
+            best, best_n = start, n
+    s = text[best:best + width]
+    return ("..." if best else "") + s + ("..." if best + width < len(text) else "")
 
 
 ENV_HOLDOUT = "BRAIN_HOLDOUT_FILE"       # eval only: a file of ledger item ids whose answers the brain must not see (the hosted server never sets it)
@@ -132,8 +159,8 @@ def _md_chunks(path: Path, rel: str, holdout: "Holdout | None" = None) -> list[d
     def flush():
         body = "\n".join(buf).strip()
         if body:
-            for k in range(0, len(body), 1800):                  # long sections become several hits
-                out.append({"kind": "doc", "ref": f"{rel}#{head}" if head != path.stem else rel, "path": rel, "line": start, "title": head, "text": body[k:k + 1800]})
+            for k in range(0, len(body), 1000):                  # long sections become several hits
+                out.append({"kind": "doc", "ref": f"{rel}#{head}" if head != path.stem else rel, "path": rel, "line": start, "title": head, "text": body[k:k + 1000]})
 
     fence = False
     for n, line in enumerate(lines, 1):

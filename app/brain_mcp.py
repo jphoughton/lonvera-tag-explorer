@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 from flask import Blueprint, current_app, g, jsonify, request
 
 from brain import rundb
+from brain.instructions import INSTRUCTIONS  # shared with the local stdio server
 from brain import tools as T
 
 from . import api_keys, auth, db
@@ -36,9 +37,6 @@ TOUCH_EVERY_SEC = 60
 RATE_PER_MIN = 120
 OPEN_KEYS_PER_DAY = 50
 MAX_BATCH = 20
-INSTRUCTIONS = ("Lonvera data brain. For any data question: call catalog first, then search or metric, then describe, then sql. Name the basis of every metric (Meta-reported, Upstack "
-                "new customers, Upstack all orders). Spend adds across platforms; purchases and revenue never do. A cause needs a like-for-like control, and counts are not rates. "
-                "Call past_questions before re-answering a 'why did X move' question.")
 
 
 # ------------------------------------------------------------------------------------------------------------------------------ keys

@@ -57,11 +57,11 @@ Return ONLY a JSON object: {{"verdict": "correct|partial|wrong", "score": 0|1|2,
 lock = threading.Lock()
 
 
-def mcp_config(holdout: Path | None, tmp: Path) -> Path:
-    env = {"PYTHONPATH": str(ROOT)}
+def mcp_config(holdout: Path | None, tmp: Path, root: Path) -> Path:
+    env = {"PYTHONPATH": str(root)}
     if holdout:
         env["BRAIN_HOLDOUT_FILE"] = str(holdout)
-    cfg = {"mcpServers": {"lonvera-brain": {"command": PY, "args": ["-m", "brain.server"], "cwd": str(ROOT), "env": env}}}
+    cfg = {"mcpServers": {"lonvera-brain": {"command": PY, "args": ["-m", "brain.server"], "cwd": str(root), "env": env}}}
     p = tmp / "mcp.json"
     p.write_text(json.dumps(cfg))
     return p
@@ -141,6 +141,7 @@ def main() -> None:
     ap.add_argument("--run", required=True)
     ap.add_argument("--only", default="")
     ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--root", default=str(ROOT), help="repo checkout the brain server runs from (a git-archive of an older commit measures an older brain)")
     ap.add_argument("--no-holdout", action="store_true", help="debug only: leaves the answers visible")
     a = ap.parse_args()
     cases = [json.loads(ln) for ln in (HERE / "cases.jsonl").read_text().splitlines() if ln.strip()]
@@ -155,7 +156,7 @@ def main() -> None:
     done = {json.loads(ln)["id"] for ln in out.read_text().splitlines()} if out.exists() else set()
     todo = [c for c in cases if c["id"] not in done]
     tmp = Path(tempfile.mkdtemp(prefix="brain-eval-"))
-    cfg = mcp_config(None if a.no_holdout else HERE / "holdout.json", tmp)
+    cfg = mcp_config(None if a.no_holdout else HERE / "holdout.json", tmp, Path(a.root))
     cwd = tmp / "cwd"
     cwd.mkdir()
     print(f"[{a.run}] {len(todo)} cases to run ({len(done)} already done), jobs={a.jobs}, holdout={'OFF' if a.no_holdout else 'on'}", flush=True)

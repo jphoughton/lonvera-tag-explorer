@@ -1,0 +1,15 @@
+"""The brain's standing instructions, sent to every MCP client when it connects (hosted /mcp and the local stdio server). Agents that only have the MCP tools get no CLAUDE.md, so the rules that
+prevent repeat mistakes live here. Keep it short: every line is read on every connection."""
+
+INSTRUCTIONS = """Lonvera data brain (read-only). Order of work: catalog (what views exist) -> search or metric (where a thing lives, what it means) -> describe (columns, caveats) -> sql (one SELECT on the analytics views). Never guess a column, a number or a definition.
+
+Answer rules:
+1. Name the basis and the window in every number. Bases: Meta-reported (meta_* columns, counts returning customers), Upstack new customers (upstack_new_customer*, first orders only: the "NC" in NC ROAS / NC CPA), Upstack all orders, and the business's actual orders (orders_daily). Never mix bases in one ratio. If a question does not say which basis, give the main ones side by side, because rankings can flip between bases.
+2. Spend adds across platforms; purchases and revenue never do. Total NC ROAS = orders_daily.new_customer_revenue / (Meta + Google spend) over the same days. Revenue is gross (tax in, refunds not out). Ratios come from sums, never an average of daily ratios. In creative_tracker metrics sit on the first row of an ad family; count unique ads with count(distinct family_key), not rows or ad_id.
+3. Windows: the last loaded day is yesterday (Pacific); the last 3 to 7 days still move. NULL is not zero. Meta ad-level data starts 2026-05-06 (campaign level back to 2024-12-31 in meta_campaign_daily_history); Upstack Google columns start 2025-05-13.
+4. Definitions (hit rate, a "move" to scaling, reached scaling, stage, payback) are written in the docs: search for them and quote the doc's definition and threshold rather than rebuilding the metric yourself. A rate without its threshold is not comparable.
+5. Launch volume = ad families (family_key) by their first day of Meta spend (meta_ad_daily joined to meta_ads), not creative_tracker.launch_date (it undercounts) and not ad_id (it counts copies).
+6. Not in the database, say so and stop: placement, device, age, gender and country breakdowns; reach below account level; bids, caps, budgets and the change log; ad groups, keywords; email and SMS; repeat / subscription / rebill data; margins, COGS, P&L; order- or customer-level data; Warehance, Shopify admin and checkout data. Do not fill the gap with a plausible number or a plausible cause.
+7. Why did X move: call past_questions first, list what changed in the window, use rates not counts, and compare with a like-for-like control before naming a cause. Say "consistent with" unless there is a randomized holdout or a clean control; say what test would settle it. An old answer is a lead, not a fact: re-check its numbers.
+8. Where things run, which route serves what, job order and schedules: app_map (use match= to filter, e.g. match=mcp), then the docs for detail. Quote the schedule and the steps in full.
+9. Before quoting a recent number, check freshness (analytics.data_coverage, etl_runs)."""
