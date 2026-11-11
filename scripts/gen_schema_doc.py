@@ -45,7 +45,7 @@ MIGRATIONS = {"013": ROOT / "migrations" / "013_schema_comments_analytics.sql", 
               "202": ROOT / "migrations" / "202_priorities_assignments.sql", "203": ROOT / "migrations" / "203_creative_launch.sql",
               "204": ROOT / "migrations" / "204_assignment_format.sql", "205": ROOT / "migrations" / "205_api_keys.sql",
               "207": ROOT / "migrations" / "207_landing_pages.sql",
-              "220": ROOT / "migrations" / "220_brain_mcp.sql"}
+              "220": ROOT / "migrations" / "220_brain_mcp.sql", "221": ROOT / "migrations" / "221_brain_open_app.sql"}
 # the Test to scale views (created by migration 015, after 013 runs on a fresh database): they and their comments live in migration 015
 # (migration 016 turned them into tables and added the placements tables; 015's own comment section is frozen history)
 LATE_STAGE_MOVES = {f"public.{n}{b}" for n in ("creative_stage_moves", "creative_scaling_placements") for b in ("", "_upstack_nc", "_upstack_all")}
@@ -70,7 +70,7 @@ LATE_FORMATS = {"public.creative_formats"}
 LATE_APIKEYS = {"public.api_keys"}
 # the landing page copy store and ad to page map (created by migration 207): tables, the top-ads view and their comments live in migration 207
 LATE_LANDING = {f"public.{n}" for n in ("landing_pages", "landing_page_versions", "landing_page_ads", "landing_page_ad_checks", "landing_page_top_ads")}
-# the hosted brain endpoint's agent keys and audit log (created by migration 220): they and their comments live in migration 220
+# the hosted brain endpoint's agent keys and audit log (created by migration 220, reworked by 221 for the open app): their comments live in migration 221 (220's comment section is frozen history)
 LATE_BRAIN = {"public.brain_keys", "public.brain_audit"}
 PROJ_GROUPS = {"proj_feeds", "proj_engine"}
 SCHEMAS = ("public", "analytics")
@@ -326,7 +326,7 @@ def scope_of(r: dict) -> str:
     if r["name"] in LATE_LANDING:
         return "207"
     if r["name"] in LATE_BRAIN:
-        return "220"
+        return "221"
     return "191" if r["group"] in PROJ_GROUPS else "013"
 
 
@@ -348,7 +348,7 @@ def comment_sql(model: dict, scope: str = "all", d=None) -> str:
 
 def migration_text(which: str, model: dict, d=None) -> str:
     """013, 015 and 190 keep their hand-written DDL (everything above COMMENTS_MARKER) and get the comment section rewritten; 191 is comments only."""
-    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "207", "220"):
+    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "207", "220", "221"):
         path = MIGRATIONS[which]
         if not path.exists():
             raise SystemExit(f"{path} must exist with its hand-written DDL and the comments marker before comments can be emitted")
@@ -417,7 +417,7 @@ def main(argv=None) -> int:
     g.add_argument("--write", action="store_true")
     g.add_argument("--check", action="store_true")
     g.add_argument("--problems", action="store_true")
-    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "207", "220", "all"))
+    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "207", "220", "221", "all"))
     g.add_argument("--emit-migration", choices=sorted(MIGRATIONS))
     g.add_argument("--verify-live", action="store_true")
     ap.add_argument("--out", help="with --comments: write to this file instead of stdout")
