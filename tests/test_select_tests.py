@@ -248,3 +248,16 @@ def test_a_projection_page_script_is_tied_to_the_browser_tests_of_its_folder(tmp
     r = make(tmp_path, files)
     _, tests, _ = pick(r, "app/static/js/trend.js")
     assert "tests/projection/demo/test_demo_page.py" in tests and "tests/projection/demo/test_demo_model.py" not in tests
+
+
+def test_core_projection_tests_are_tied_to_every_module_package(tmp_path):
+    files = dict(BASE)
+    files["app/projection/registry.py"] = "def discover():\n    return {}\n"
+    files["app/projection/zeta/__init__.py"] = "X = 1\n"
+    files["app/projection/zeta/table.py"] = "def t():\n    return 1\n"
+    files["app/projection/zeta/__init__.py"] = "from . import table\n"
+    files["tests/projection/core/test_core_every_page.py"] = "def test_all(client):\n    client.get('/anything')\n"
+    files.update({f"tests/etl/test_pad{i}.py": "def test_p():\n    pass\n" for i in range(8)})
+    r = make(tmp_path, files)
+    _, tests, _ = pick(r, "app/projection/zeta/table.py")
+    assert "tests/projection/core/test_core_every_page.py" in tests
