@@ -65,6 +65,55 @@ curl -s https://web-production-358da.up.railway.app/healthz     # {"ok":true}
 
 First-time bring-up order: `web` (creates schema) then local backfill (below) then `etl`.
 
+## Ship script (`scripts/deploy/ship.sh`)
+
+One command ships merged code to every service that needs it, in parallel. It replaces the by-hand loop of `git archive`, `railway link` and one `railway up` per service.
+
+```bash
+scripts/deploy/ship.sh --dry-run                  # show what would ship and the exact railway commands, change nothing
+scripts/deploy/ship.sh                            # ship origin/build/v1 to the services whose code changed
+scripts/deploy/ship.sh --services web,etl         # force these services whatever the diff says
+scripts/deploy/ship.sh --services all --with-tests
+scripts/deploy/ship.sh --ref <sha> --force        # a ref that is not on origin/build/v1 (normally refused: only merged code ships)
+```
+
+What it does:
+
+- Resolves the ref to a sha and refuses it unless it is on `origin/build/v1` (`--force` overrides).
+- Makes ONE `git archive` of that sha in a temp directory, leaving out `tests` and `analysis` (nothing at runtime reads them) but NOT `docs`: the hosted `/mcp` brain reads `docs/schema.json`, `docs/app_map.json`, `docs/**/*.md` and `docs/questions/*` at runtime. Before any upload (also in `--dry-run`) it fails if the archive lacks `docs/schema.json` or `docs/app_map.json`. Auto mode treats a change under `docs/` or `brain/` as a web change. The archive is removed the directory when it exits.
+- Auto mode reads the last shipped sha per service from `~/lonvera-tag-explorer-data/shipped.json` (created on the first real ship). A service with no entry is deployed. Otherwise it deploys the service only when `git diff --name-only <last>..<sha>` touches code that service uses, and prints the reason for every service.
+- Runs the chosen `railway up` calls at the same time, each logging to `~/lonvera-tag-explorer-data/ship-logs/<utc time>-<sha>/<service>.log`. The explicit `-p`, `-e` and `-s` flags mean no `railway link` is needed. It prints a line as each service finishes, exits non-zero and prints the log tail of any that failed.
+- Writes the shipped sha into a `REVISION` file in the archive. `/healthz` returns it as `rev` (read once at app start; the field is left out when the file is absent). After web deploys, the script polls `/healthz` until it answers 200 AND `rev` equals the shipped sha (up to 300 s), so the old container answering 200 never counts as live. Cron services have no HTTP, so it polls their newest deployment (`railway deployment list -s <svc> --json`, run from `~/lonvera-tag-explorer-data/ship-link`, which the script links to the project once; that is only a local CLI pointer) until SUCCESS, and fails on FAILED, CRASHED or REMOVED. `SHIP_HEALTH_TIMEOUT` and `SHIP_POLL_SECONDS` override the 300 and 5 second defaults.
+- Writes the sha for each service that passed its check to the state file. A failed service keeps its old sha, so the next auto run retries it. If web fails (build failed, or the new rev never appears) the script prints web's log tails, exits non-zero and leaves the state file untouched.
+- Prints a timing line per phase (tests, archive, and per service: upload and queue, build, deploy, plus the health poll) and a final table with total wall clock. The per-service phases come from when each line of `railway up` output arrived, matched on words like "build" and "deploy", so a phase shows `n/a` if the CLI's wording changes. The full log is kept for reading by hand.
+- `--with-tests` runs `scripts/test.sh --fast` (plain pytest if that script does not exist) before any `railway up`. A failure stops everything and nothing deploys. It tests the checkout it runs in, so that checkout must be at the shipped sha.
+- `--dry-run` does everything except `railway up`, the verification polls and the state write.
+
+What counts as "code a service uses" (auto mode). When unsure, the service is included.
+
+| Service | Redeploys when these change |
+|---|---|
+| all but backup | `Dockerfile`, `.dockerignore`, `requirements.txt`, `migrations/` (every service runs `etl.migrate` on start), `scripts/projection/` (loaded by name by the projection code) |
+| web | `app/`, `wsgi.py`, `scripts/deploy/start_web.sh`, and every `etl` module reachable from the web code (found by reading the imports, plus the projection modules that are loaded by name) |
+| etl, feeds, live, alerts | `scripts/deploy/run_<service>.sh` and every module reachable from the `etl.*` modules that script runs, including the `app.projection` code they import; non-Python files under `etl/` (catalogs, JSON) |
+| backup | `scripts/deploy/backup/`, `scripts/deploy/run_backup.sh`, `etl/backup.py` and what it imports (today only `etl/db.py`) |
+
+The import reading is done by a small Python helper inside `ship.sh` that walks the archive. It also knows the three places the import graph cannot see (the `importlib` loads in `app/projection/` and `etl/feeds/feed.py`, and `snapshot_read`); if you add another load-by-name, add it to `dynamic_edges()` in `ship.sh`. Files deleted between the two shas count as relevant to every service except backup.
+
+Limits: the real parallel deploy, the verification polls against Railway (the JSON shape of `deployment list` was read from the live CLI, nothing was deployed) and the phase markers have been exercised only with a stubbed `railway` and `curl`. After the first real run, read one log in `ship-logs/` and check the phase line.
+
+### Slim web image (`IMAGE_FLAVOR`)
+
+The root `Dockerfile` has two flavors. `jobs` is the default and is the same image as before (Python deps, headless Chromium, Node, Claude Code CLI, code): etl, feeds, live and alerts use it. `web` is Python deps plus code only. Nothing in `app/`, `etl.migrate` or `start_web.sh` uses Playwright, Node or the Claude CLI (the only Playwright import is in `etl/competitor_ads.py` and the only `claude` call is in `etl/auto_tag.py`, both cron jobs), so the web service does not need them. The `playwright` pip package stays in `requirements.txt` for both flavors; only the browser download is skipped.
+
+One-time setting (owner step, not applied by any script here): on the `web` service only, set the variable `IMAGE_FLAVOR` to `web`. Railway passes service variables to the Docker build as build arguments, and the Dockerfile declares `ARG IMAGE_FLAVOR` before its first `FROM`. Use `--skip-deploys` so setting it does not trigger a build by itself:
+
+```bash
+printf '%s' web | railway variable set -s web IMAGE_FLAVOR --stdin --skip-deploys
+```
+
+Leave it unset on etl, feeds, live and alerts. Roll back by deleting the variable and shipping web again. After the first web ship with it set, check that the build log shows no `playwright install` step and that `curl -s https://web-production-358da.up.railway.app/healthz` returns `{"ok":true}`. If the build log still shows the Chromium layers, Railway did not pass the variable as a build argument; the fallback is a second Dockerfile for web selected with the web service's `dockerfilePath` setting, the same way the backup service works.
+
 ## Daily refresh
 
 - `etl` is a Railway cron service: at 13:00 UTC Railway starts the container, runs `scripts/deploy/run_etl.sh` (`etl.migrate` then `etl.run_daily` = tracker_sync, meta_pull trailing 7 days, family mapping, build_metrics), and the container exits. A non-zero exit marks that execution Failed. If a run is still going at the next tick Railway skips the new run.
