@@ -9,6 +9,7 @@ It deliberately never writes `etl_runs` (an hourly row there would hide a stale 
 | Check id | Fires when | Threshold |
 | --- | --- | --- |
 | `job:run_daily`, `job:upstack_daily`, `job:stage_moves` | latest run failed; latest run still `running` after 6 h (killed / crashed); no successful run in time; never ran | nightly: 36 h |
+| `job:meta_breakdowns` | same, silent until the first row exists; the `breakdowns` service runs every 2 h but writes no row in the quiet hours (12:30-15:30 UTC) or when another run holds the lock | 9 h |
 | `job:auto_tag`, `job:backup` | same, but silent until the first row exists (not deployed yet) | nightly: 36 h |
 | `job:competitor_ads`, `job:creative_priorities` | same; Sunday jobs (the nightly run is a no-op other days and writes no row) | 8 days |
 | `job:feeds` | newest successful attempt in `proj_feed_attempts`, or a feed whose latest pull failed (feeds named) | 36 h |

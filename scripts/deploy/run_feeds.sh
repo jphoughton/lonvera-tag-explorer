@@ -1,5 +1,5 @@
 #!/bin/sh
-# `feeds` service entrypoint (Railway cron, 21:00 UTC): migrate, pull every feed that is in shadow or direct mode, then the Amazon month-to-date snapshot (etl.amazon_mtd), then (during the dual-run) verify the
+# `feeds` service entrypoint (Railway cron, 21:00 UTC): migrate, pull every feed that is in shadow or direct mode, then the Amazon month-to-date snapshot (etl.amazon_mtd), then the 120-day Shopify orders (etl.shopify_orders), then (during the dual-run) verify the
 # shadow tables against the sheet-fed tables. Exits non-zero when a pull failed, a direct-mode feed is stale, or verification found a failed day, so the
 # Railway deployment shows Failed and the dashboard notification fires. Idempotent: every pull replaces its trailing window.
 # Usage: run_feeds.sh                       -> run, then verify (FEEDS_VERIFY=0 skips verify)
@@ -14,15 +14,21 @@ if [ "$#" -eq 0 ]; then
   # like every step) and never leaves a wrong number on the page: Pacing computes live when the snapshot is missing or stale.
   amz_rc=0
   python -m etl.amazon_mtd || amz_rc=$?
+  # Shopify orders of the last 120 days (etl.shopify_orders -> shopify_orders / shopify_order_lines, docs/SHOPIFY_ORDERS.md): after the feeds so they share the run's
+  # ExpandFi login (a second refresh would rotate the token again). Its own etl_runs row ('shopify_orders'); a failure turns this deployment red below.
+  ord_rc=0
+  python -m etl.shopify_orders || ord_rc=$?
   ver_rc=0
   if [ "${FEEDS_VERIFY:-1}" != "0" ]; then
     python -m etl.feeds verify || ver_rc=$?
   fi
   [ "$run_rc" -eq 0 ] || echo "[run_feeds] etl.feeds run failed (exit ${run_rc})" >&2
   [ "$amz_rc" -eq 0 ] || echo "[run_feeds] etl.amazon_mtd failed (exit ${amz_rc})" >&2
+  [ "$ord_rc" -eq 0 ] || echo "[run_feeds] etl.shopify_orders failed (exit ${ord_rc})" >&2
   [ "$ver_rc" -eq 0 ] || echo "[run_feeds] etl.feeds verify failed (exit ${ver_rc})" >&2
   if [ "$run_rc" -ne 0 ]; then exit "$run_rc"; fi
   if [ "$ver_rc" -ne 0 ]; then exit "$ver_rc"; fi
+  if [ "$ord_rc" -ne 0 ]; then exit "$ord_rc"; fi
   exit "$amz_rc"
 fi
 exec python -m etl.feeds "$@"

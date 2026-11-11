@@ -17,6 +17,7 @@ import { trendsPage } from './js/pages/trends.js';
 import { prioritiesPage, prioritiesViewPage } from './js/pages/priorities.js';
 import { productionPage, vendorPage } from './js/pages/priorities_production.js';
 import { lookupPage } from './js/pages/lookup.js';
+import { connectAgentPage } from './js/pages/connect_agent.js';
 
 // Platform pages: '/' is the home of the chosen platform (platform=all overview, google, else Meta's products) and '/campaigns' its Campaigns view.
 // Google's campaigns are part of its one page, so its Campaigns view is the same page with the campaigns table first.
@@ -33,6 +34,7 @@ const routes = [
   { re: /^\/priorities\/production\/?$/, page: productionPage },
   { re: /^\/priorities\/vendor\/([A-Za-z0-9_-]+)\/?$/, page: vendorPage, bare: true, public: true },       // a vendor's own link: no login, no app navigation
   { re: /^\/lookup\/?$/, page: lookupPage },
+  { re: /^\/connect-agent\/?$/, page: connectAgentPage },
   { re: /^\/p\/([^/]+)\/?$/, page: productPage },
   { re: /^\/ad\/([^/]+)\/?$/, page: adPage },
 ];

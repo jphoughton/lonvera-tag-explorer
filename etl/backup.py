@@ -42,7 +42,7 @@ DEFAULT_KEEP_DAYS = 7
 KEEP_MIN = 3                                   # the newest this-many good dumps are never pruned, whatever their age
 # Row counts compared between the live database and the restored dump. Tables missing on the live side are skipped (older schema); missing on the restored side = failure.
 KEY_TABLES = ["ad_metrics", "ad_tags", "etl_runs", "ad_daily", "ad_daily_upstack", "meta_ads", "tracker_rows", "creative_assets", "app_meta",
-              "family_daily", "upstack_attr_daily", "meta_ad_lifetime", "creative_stage_moves", "family_content", "meta_family_map"]
+              "family_daily", "upstack_attr_daily", "meta_ad_lifetime", "creative_stage_moves", "family_content", "meta_family_map", "shopify_orders", "shopify_order_lines"]
 COUNT_TOLERANCE = 0.02                         # relative slack beyond the live before/after window (the ETL replaces trailing windows)
 COUNT_SLACK_ROWS = 5
 PG_BIN_CANDIDATES = ["/usr/lib/postgresql/18/bin", "/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/17/bin", "/opt/homebrew/opt/postgresql@17/bin"]
