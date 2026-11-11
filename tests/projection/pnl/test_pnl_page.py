@@ -149,7 +149,9 @@ def test_upload_preview_shows_changes_and_unmapped_before_anything_is_saved(page
     before = pg.execute("SELECT count(*) AS n FROM proj_actuals").fetchone()["n"]
     page.select_option('dialog select[aria-label="Line for Shopify Sales"]', "dtc_rev")
     page.click('dialog button:has-text("Map")')
-    page.wait_for_selector("dialog >> text=Commit", timeout=10000)
+    # the FIRST preview (before the mapping) already has a Commit button for the 24 cells that are mapped; wait for the preview that includes the new mapping (27 cells),
+    # otherwise the click can carry the old preview's hash and the server answers 409 "the loaded data changed since the preview"
+    page.wait_for_selector('dialog button:text-is("Commit 27 cells")', timeout=10000)
     assert pg.execute("SELECT count(*) AS n FROM proj_actuals").fetchone()["n"] == before               # still nothing written
     page.click('dialog button:has-text("Commit")')
     page.wait_for_selector("dialog", state="detached", timeout=10000)
