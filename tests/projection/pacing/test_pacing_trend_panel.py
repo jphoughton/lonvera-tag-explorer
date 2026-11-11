@@ -83,7 +83,7 @@ def pressed(page, sel):
 
 def test_panel_sits_under_the_header_above_the_cards_with_the_default_state(browser, base_url):
     ctx, page, errors, reqs = open_page(browser, base_url)
-    page.wait_for_function("document.querySelector('#trend-status').textContent === '' && document.querySelector('#trend-note').textContent.includes('Since launch')")
+    page.wait_for_function("document.querySelector('#trend-status')?.textContent === '' && document.querySelector('#trend-note')?.textContent.includes('Since launch')")
     kids = page.evaluate("[...document.querySelector('.pg-page').children].map(c => c.id || c.className).slice(0, 3)")
     assert kids[1] == "trend-panel pg-trendpanel" or "trend" in kids[1]
     assert page.evaluate("document.querySelector('.pg-page').children[0].querySelector('h1.pg-h1') !== null")
@@ -108,7 +108,7 @@ def test_controls_change_the_request_and_the_chart(browser, base_url):
     ctx, page, errors, reqs = open_page(browser, base_url)
     page.wait_for_selector("#trend-chart")
     page.click("#trend-grain .seg[data-grain='week']")
-    page.wait_for_function("document.querySelector('#trend-grain .seg[aria-pressed=true]').dataset.grain === 'week'")
+    page.wait_for_function("document.querySelector('#trend-grain .seg[aria-pressed=true]')?.dataset.grain === 'week'")
     assert reqs[-1]["grain"] == "week"
     page.click("#trend-split .seg[data-split='platform']")
     page.wait_for_timeout(300)
@@ -153,7 +153,7 @@ def test_hide_persists_across_a_reload_and_does_not_touch_the_marketing_key(brow
 
 def test_api_failure_shows_the_error_line_not_a_blank_panel(browser, base_url):
     ctx, page, errors, reqs = open_page(browser, base_url, mode="fail")
-    page.wait_for_function("document.querySelector('#trend-note').textContent.includes('Trend failed to load')")
+    page.wait_for_function("document.querySelector('#trend-note')?.textContent.includes('Trend failed to load')")
     assert "boom" in page.locator("#trend-note").inner_text()
     assert page.locator(".pacing-card").count() == 6                  # the rest of the page is unaffected
     ctx.close()
@@ -161,7 +161,7 @@ def test_api_failure_shows_the_error_line_not_a_blank_panel(browser, base_url):
 
 def test_phone_width_has_no_sideways_scroll_and_the_chart_fits(browser, base_url):
     ctx, page, errors, reqs = open_page(browser, base_url, size=(375, 812))
-    page.wait_for_function("document.querySelector('#trend-status').textContent === ''")
+    page.wait_for_function("document.querySelector('#trend-status')?.textContent === ''")
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     box = page.locator("#trend-panel").bounding_box()
     assert box["x"] >= 0 and box["x"] + box["width"] <= 375 + 1

@@ -54,7 +54,7 @@ def test_adding_a_brief_link_moves_the_stage_to_brief_sent(page):
     assert stage(page, 1) == "Assigned"
     row(page, 1).locator("[data-testid=prod-edit-brief_url]").click()
     fill_dialog(page, "https://docs.google.com/document/d/abc")
-    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-stage]\").textContent.trim() === 'Brief sent'")
+    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-stage]\")?.textContent.trim() === 'Brief sent'")
     a = row(page, 1).locator("[data-testid=prod-brief_url]")
     assert a.get_attribute("href") == "https://docs.google.com/document/d/abc" and a.get_attribute("target") == "_blank" and "noopener" in a.get_attribute("rel")
 
@@ -64,7 +64,7 @@ def test_a_bad_link_is_refused_with_a_message(page):
     goto(page)
     row(page, 1).locator("[data-testid=prod-edit-brief_url]").click()
     fill_dialog(page, "javascript:alert(1)")
-    page.wait_for_function("() => document.querySelector('[data-testid=prod-msg]').textContent.length > 0")
+    page.wait_for_function("() => document.querySelector('[data-testid=prod-msg]')?.textContent.length > 0")
     assert "http" in page.locator("[data-testid=prod-msg]").text_content()
     assert stage(page, 1) == "Assigned"
 
@@ -74,7 +74,7 @@ def test_ready_button_only_with_a_creative_link_and_then_stage_is_ready(page):
     assert row(page, 1).locator("[data-testid=prod-ready]").count() == 0          # no creative link
     assert row(page, 2).locator("[data-testid=prod-ready]").count() == 1
     row(page, 2).locator("[data-testid=prod-ready]").click()
-    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='2'] [data-testid=prod-stage]\").textContent.trim() === 'Ready to launch'")
+    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='2'] [data-testid=prod-stage]\")?.textContent.trim() === 'Ready to launch'")
     assert row(page, 2).locator("[data-testid=prod-ready]").count() == 0
 
 
@@ -88,7 +88,7 @@ def test_concept_id_links_ads_and_shows_the_result(page):
     # add a Concept ID by hand to row 1, and use the suggestion on row 3
     row(page, 1).locator("[data-testid=prod-add-cid]").click()
     fill_dialog(page, "Lonvera-VitalBull-Static-5.4", "cid")
-    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-stage]\").textContent.trim() === 'Launched'")
+    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-stage]\")?.textContent.trim() === 'Launched'")
     row(page, 3).locator("[data-testid=prod-suggest]").click()
     page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='3'] [data-testid=prod-cid]\")")
     assert row(page, 3).locator("[data-testid=prod-suggest]").count() == 0
@@ -116,7 +116,7 @@ def test_change_vendor_and_drop_with_confirm(page):
     row(page, 1).locator("[data-testid=prod-change]").click()
     page.select_option("[data-testid=prod-dialog] [data-testid=prod-field-vendor]", "Victoria")
     page.click("[data-testid=prod-dialog-ok]")
-    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-vendor]\").textContent === 'Victoria'")
+    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-vendor]\")?.textContent === 'Victoria'")
     row(page, 1).locator("[data-testid=prod-drop]").click()
     page.click("[data-testid=prod-dialog-cancel]")                                 # cancel keeps it
     assert row(page, 1).count() == 1
@@ -135,10 +135,10 @@ def test_vendor_links_copy_and_reset_with_confirm(page, ctx):
     page.locator("[data-vendor=Madre] [data-testid=prod-reset-link]").click()
     page.click("[data-testid=prod-dialog-cancel]")                                 # cancel: link unchanged
     page.locator("[data-vendor=Madre] [data-testid=prod-copy-link]").click()
-    page.wait_for_function(f"() => document.querySelector('[data-testid=prod-vendor-url]').textContent.endsWith('{MADRE}')")
+    page.wait_for_function(f"() => document.querySelector('[data-testid=prod-vendor-url]')?.textContent.endsWith('{MADRE}')")
     page.locator("[data-vendor=Madre] [data-testid=prod-reset-link]").click()
     page.click("[data-testid=prod-dialog-ok]")
-    page.wait_for_function(f"() => !document.querySelector('[data-testid=prod-vendor-url]').textContent.endsWith('{MADRE}')")
+    page.wait_for_function(f"() => {{ const e = document.querySelector('[data-testid=prod-vendor-url]'); return !!e && !e.textContent.endsWith('{MADRE}'); }}")
 
 
 def test_vendor_page_shows_only_its_rows_saves_a_creative_link_and_has_no_app_navigation(anon_page, base_url):
@@ -157,13 +157,13 @@ def test_vendor_page_shows_only_its_rows_saves_a_creative_link_and_has_no_app_na
     card.locator("[data-testid=prod-in-creative]").fill("https://drive.google.com/drive/folders/new1")
     card.locator("[data-testid=prod-in-note]").fill("Two cuts attached")
     card.locator("[data-testid=prod-save]").click()
-    page.wait_for_function("() => document.querySelector(\"[data-id='1'] [data-testid=prod-saved]\").textContent === 'Saved'")
+    page.wait_for_function("() => document.querySelector(\"[data-id='1'] [data-testid=prod-saved]\")?.textContent === 'Saved'")
     assert page.locator("[data-testid=prod-card][data-id='1'] [data-testid=prod-stage]").text_content() == "Creative delivered"
     assert page.locator("[data-testid=prod-card][data-id='1'] [data-testid=prod-vready]").count() == 1
     page.locator("[data-testid=prod-card][data-id='1'] [data-testid=prod-vready]").click()
-    page.wait_for_function("() => document.querySelector(\"[data-id='1'] [data-testid=prod-stage]\").textContent === 'Ready to launch'")
+    page.wait_for_function("() => document.querySelector(\"[data-id='1'] [data-testid=prod-stage]\")?.textContent === 'Ready to launch'")
     page.locator("[data-testid=prod-card][data-id='1'] [data-testid=prod-vunready]").click()
-    page.wait_for_function("() => document.querySelector(\"[data-id='1'] [data-testid=prod-stage]\").textContent === 'Creative delivered'")
+    page.wait_for_function("() => document.querySelector(\"[data-id='1'] [data-testid=prod-stage]\")?.textContent === 'Creative delivered'")
 
 
 def test_vendor_page_shows_spend_and_return_for_its_own_launched_rows_only(anon_page):
@@ -221,15 +221,15 @@ def test_format_column_shows_the_choice_and_internal_users_change_it_inline(page
     opts = fmt(page, 1).locator("option").all_text_contents()
     assert opts[0] == "No format chosen" and opts[1] == "F1 Long animated story, openly AI, told by the character (90s to 3 min)" and len(opts) == 7
     fmt(page, 1).select_option("F5")
-    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-format]\").value === 'F5'")
-    page.wait_for_function("() => document.querySelector('[data-testid=prod-msg]').textContent === 'Format saved.'")
+    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-format]\")?.value === 'F5'")
+    page.wait_for_function("() => document.querySelector('[data-testid=prod-msg]')?.textContent === 'Format saved.'")
     page.reload()
     page.wait_for_selector("[data-testid=prod-page]")
     idle(page)
     assert fmt(page, 1).input_value() == "F5"                                                  # it was saved, not just drawn
     fmt(page, 1).select_option("")
-    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-format]\").value === ''")
-    page.wait_for_function("() => document.querySelector('[data-testid=prod-msg]').textContent === 'Format removed.'")
+    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-format]\")?.value === ''")
+    page.wait_for_function("() => document.querySelector('[data-testid=prod-msg]')?.textContent === 'Format removed.'")
     assert stage(page, 1) == "Assigned"                                                         # the other cells are unchanged
     assert "—" not in page.locator("[data-testid=prod-page]").text_content()
 
@@ -278,9 +278,9 @@ def test_production_row_expands_to_the_priorities_panel_with_ten_examples(page):
     assert links.count() == 10 and links.first.get_attribute("href").startswith("/ad/")
     row(page, 1).locator("[data-testid=pri-x-toggle]").click()                         # collapse
     assert btn.get_attribute("aria-expanded") == "false"
-    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-detail-row][data-id='1']\").hidden")
+    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-detail-row][data-id='1']\")?.hidden")
     row(page, 1).locator("[data-testid=pri-x-name]").click()                           # the concept name opens it again, without a second request
-    page.wait_for_function("() => !document.querySelector(\"[data-testid=prod-detail-row][data-id='1']\").hidden")
+    page.wait_for_function("() => { const e = document.querySelector(\"[data-testid=prod-detail-row][data-id='1']\"); return !!e && !e.hidden; }")
     assert btn.get_attribute("aria-expanded") == "true" and len([u for u in reqs if "/assignments/1/detail" in u]) == 1
     assert "—" not in page.locator("[data-testid=prod-detail-row][data-id='1']").text_content()
 
@@ -300,7 +300,7 @@ def test_an_open_row_stays_open_after_a_save(page):
     page.locator("[data-testid=prod-detail-row][data-id='1'] .pri-panel").wait_for()
     row(page, 1).locator("[data-testid=prod-edit-brief_url]").click()
     fill_dialog(page, "https://docs.google.com/document/d/abc")
-    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-stage]\").textContent.trim() === 'Brief sent'")
+    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-stage]\")?.textContent.trim() === 'Brief sent'")
     page.locator("[data-testid=prod-detail-row][data-id='1'] .pri-panel").wait_for()
     assert row(page, 1).locator("[data-testid=pri-x-toggle]").get_attribute("aria-expanded") == "true"
 
@@ -329,7 +329,7 @@ def test_vendor_card_expands_with_examples_but_no_ad_links_and_no_internal_notes
         assert panel.locator("[data-testid=pri-example]").nth(n).locator("a").count() == 0
     assert panel.locator("[data-testid=pri-example]").nth(3).locator("a").count() == 0       # no link on file: plain text
     card.locator("[data-testid=pri-x-name]").click()                                   # name collapses it
-    page.wait_for_function("() => document.querySelector(\"[data-id='1'] [data-testid=prod-detail]\").hidden")
+    page.wait_for_function("() => document.querySelector(\"[data-id='1'] [data-testid=prod-detail]\")?.hidden")
     assert btn.get_attribute("aria-expanded") == "false"
     page.locator("[data-testid=prod-card][data-id='2'] [data-testid=pri-x-toggle]").click()
     page.locator("[data-testid=prod-card][data-id='2'] [data-testid=pri-no-numbers]").wait_for()

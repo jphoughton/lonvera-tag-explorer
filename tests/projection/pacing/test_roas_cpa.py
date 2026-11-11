@@ -229,7 +229,7 @@ def card(page):
 
 
 def wait_for(page, text):
-    page.wait_for_function("(t) => document.querySelector(\"[data-box='roascpa'] .pacing-roascpa-out\").innerText.includes(t)", arg=text)
+    page.wait_for_function("(t) => document.querySelector(\"[data-box='roascpa'] .pacing-roascpa-out\")?.innerText.includes(t)", arg=text)
 
 
 def test_card_with_live_values(browser, base_url, snaps, nc, last28):          # noqa: F811

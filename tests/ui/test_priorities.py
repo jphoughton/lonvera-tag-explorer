@@ -289,7 +289,7 @@ def test_copy_as_text_has_one_block_per_row(page):
     page.context.grant_permissions(["clipboard-read", "clipboard-write"])
     pick_rows(page, 0, 1)
     page.locator("[data-testid=pri-sel-copy]").click()
-    page.wait_for_function("() => document.querySelector('[data-testid=pri-copy-note]').textContent.startsWith('Copied')")
+    page.wait_for_function("() => document.querySelector('[data-testid=pri-copy-note]')?.textContent.startsWith('Copied')")
     text = page.evaluate("() => navigator.clipboard.readText()")
     blocks = text.split("\n\n")
     assert len(blocks) == 2
@@ -434,7 +434,7 @@ def test_save_view_opens_a_naming_dialog_with_a_focused_prefilled_selected_input
     assert len(page.locator(NAME).input_value()) == 120                                                    # 120 character cap
     page.locator(NAME).fill("  Madre - 11/10/26 Priorities  ")
     page.keyboard.press("Enter")
-    page.wait_for_function("() => document.querySelector('[data-testid=pri-saved-name]').textContent.includes('Madre - 11/10/26 Priorities')")
+    page.wait_for_function("() => document.querySelector('[data-testid=pri-saved-name]')?.textContent.includes('Madre - 11/10/26 Priorities')")
     box = page.locator("[data-testid=pri-linkbox]")
     assert box.locator("[data-testid=pri-copy-link]").is_visible() and box.locator("[data-testid=pri-view-open]").is_visible()
     page.locator("[data-testid=pri-views]").count() == 0
@@ -589,7 +589,7 @@ def test_update_this_view_replaces_rows_or_filters_and_rename_and_delete_work_on
     assert page.locator(NAME).input_value() == "Editable"
     page.locator(NAME).fill("Renamed 11/10")
     page.keyboard.press("Enter")
-    page.wait_for_function("() => document.querySelector('[data-testid=pri-title]').textContent.includes('Renamed 11/10')")
+    page.wait_for_function("() => document.querySelector('[data-testid=pri-title]')?.textContent.includes('Renamed 11/10')")
     assert f"view={t}" in page.url and page.title().startswith("Renamed 11/10")
     assert page.locator(VSEL + " option:checked").text_content().startswith("Renamed 11/10")
     # a filter view updates to the filters now on the page
@@ -653,7 +653,7 @@ def test_share_page_is_frozen_names_csv_after_the_view_name_and_renames_with_the
     v.locator(DLG).wait_for()
     v.locator(NAME).fill("Round 2 / <b>x</b>")
     v.keyboard.press("Enter")
-    v.wait_for_function("() => document.querySelector('[data-testid=pri-title]').textContent.includes('Round 2')")
+    v.wait_for_function("() => document.querySelector('[data-testid=pri-title]')?.textContent.includes('Round 2')")
     assert v.title().startswith("Round 2 / <b>x</b>") and v.url.endswith(url)
     v.reload()
     v.wait_for_selector("[data-testid=pri-title]")
@@ -969,7 +969,7 @@ def test_manual_row_filters_search_sort_selection_csv_print_and_copy(page):
     # copy as text
     page.context.grant_permissions(["clipboard-read", "clipboard-write"])
     page.locator("[data-testid=pri-sel-copy]").click()
-    page.wait_for_function("() => document.querySelector('[data-testid=pri-copy-note]').textContent.startsWith('Copied')")
+    page.wait_for_function("() => document.querySelector('[data-testid=pri-copy-note]')?.textContent.startsWith('Copied')")
     text = page.evaluate("() => navigator.clipboard.readText()")
     assert "Status: MANUAL" in text and "Notes: Unique-notes-marker for print" in text and "Action: Test" in text
     delete_all_manual(page)
@@ -1380,10 +1380,10 @@ def test_share_page_has_product_filter_with_counts_briefed_toggle_progress_and_h
     assert p.locator(PROG).text_content() == f"0 of {len(idx)} briefed" and p.locator(BRIEF).count() == len(idx)
     assert "null" not in p.locator("[data-testid=pri-body]").text_content()
     p.locator(BRIEF).nth(0).click()
-    p.wait_for_function("() => document.querySelector('[data-testid=pri-brief-progress]').textContent.startsWith('1 of')")
+    p.wait_for_function("() => document.querySelector('[data-testid=pri-brief-progress]')?.textContent.startsWith('1 of')")
     assert p.locator("tr.pri-row.pri-briefed").count() == 1 and p.locator(BRIEF).nth(0).get_attribute("aria-pressed") == "true"
     p.locator(BRIEF).nth(1).click()
-    p.wait_for_function("() => document.querySelector('[data-testid=pri-brief-progress]').textContent.startsWith('2 of')")
+    p.wait_for_function("() => document.querySelector('[data-testid=pri-brief-progress]')?.textContent.startsWith('2 of')")
     # state is on the server: a reload and a second browser both see it
     p.reload()
     p.wait_for_selector("[data-testid=pri-view-note]")
@@ -1438,7 +1438,7 @@ def test_briefed_in_the_view_switcher_not_on_all_concepts_frozen_and_manual_rows
     open_view(page, t)
     assert page.locator(PROG).text_content() == "0 of 3 briefed" and page.locator(BRIEF).count() == 3
     page.locator(MROW).locator(BRIEF).click()                                                                    # a manual row can be briefed too
-    page.wait_for_function("() => document.querySelector('[data-testid=pri-brief-progress]').textContent.startsWith('1 of')")
+    page.wait_for_function("() => document.querySelector('[data-testid=pri-brief-progress]')?.textContent.startsWith('1 of')")
     assert page.locator(MROW).get_attribute("class").count("pri-briefed") == 1
     page.locator("[data-testid=pri-f-product-vita-bull]").text_content()
     page.locator("[data-testid=pri-data-mode]").select_option("frozen")                                          # frozen vs latest: the checkmark belongs to the view, so it stays
@@ -1756,7 +1756,7 @@ def test_assigning_two_rows_keeps_them_listed_unchanged_and_shows_in_production(
     rows = page.locator("[data-testid=pri-body] " + ROW)
     after = [(rows.nth(i).locator(".pri-c-section").text_content(), rows.nth(i).locator(".pri-c-status").text_content(), rows.nth(i).locator(".pri-c-pain").text_content()) for i in (0, 1)]
     assert after == before                                                                                  # same Action and Status
-    page.wait_for_function("() => document.querySelectorAll('[data-testid=pri-body] tr.pri-row')[0].querySelector('.pri-c-prod').textContent.includes('Madre')")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=pri-body] tr.pri-row')[0]?.querySelector('.pri-c-prod')?.textContent.includes('Madre')")
     assert _cell(page, 0) == f"Madre, week of {_md(nm)}: Assigned" and _cell(page, 1) == f"Madre, week of {_md(nm)}: Assigned" and _cell(page, 2) == "–"
     page.screenshot(path=str(SHOTS / "priorities_in_production.png"), full_page=False)
 
@@ -1780,7 +1780,7 @@ def test_assigning_the_same_concepts_again_is_skipped_with_the_reason(page, fres
     _assign(page, "Victoria")                                                                               # another vendor is fine
     assert page.locator("[data-testid=pri-as-created]").text_content().startswith("1 concept assigned to Victoria")
     page.locator("[data-testid=pri-as-ok]").click()
-    page.wait_for_function("() => document.querySelectorAll('[data-testid=pri-body] tr.pri-row')[0].querySelector('.pri-c-prod').textContent.includes('earlier')")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=pri-body] tr.pri-row')[0]?.querySelector('.pri-c-prod')?.textContent.includes('earlier')")
 
 
 def test_row_detail_shows_the_production_history_for_every_kind_of_row(page, fresh_assign):
@@ -1831,7 +1831,7 @@ def test_hide_already_assigned_checkbox_is_off_by_default_and_hides_only_when_ti
     _tick(page, 0, 1)
     _assign(page, "Madre")                                                                                  # for next week: still counts as assigned (this week or later)
     page.locator("[data-testid=pri-as-ok]").click()
-    page.wait_for_function("() => document.querySelector('.pri-c-prod').textContent.includes('Madre')")
+    page.wait_for_function("() => document.querySelector('.pri-c-prod')?.textContent.includes('Madre')")
     assert visible_rows(page) == 30                                                                         # assigning alone never hides anything
     box.check()
     assert visible_rows(page) == 28 and "28 of 30 concepts shown" == page.locator("[data-testid=pri-shown]").text_content() and "1 filter on" in page.locator("[data-testid=pri-active-filters]").text_content()
@@ -1941,7 +1941,7 @@ def test_every_block_has_a_keyboard_accessible_see_more_that_opens_its_own_drill
     drill.get_by_role("button", name="Show all 14 weeks").click()
     assert drill.locator("[data-testid=pri-drill-trend] tbody tr:visible").count() == 14
     drill.get_by_role("button", name="Last 30 days").click()                                       # the window switch reloads
-    page.wait_for_function("() => document.querySelector('.pri-thennow [data-window=\"30\"]').getAttribute('aria-pressed') === 'true'")
+    page.wait_for_function("() => document.querySelector('.pri-thennow [data-window=\"30\"]')?.getAttribute('aria-pressed') === 'true'")
     assert any("window=30" in r for r in reqs)
     page.keyboard.press("Escape")                                                                  # Esc closes and returns focus to the button
     assert not drill.is_visible() and btn.get_attribute("aria-expanded") == "false"
@@ -1975,7 +1975,7 @@ def test_stat_tile_and_timeline_step_open_their_own_drill_down_and_switch_betwee
     d.wait_for(state="visible")
     first = d.locator(".pri-drill-h").inner_text()
     live.locator("[data-testid=pri-seemore]").nth(1).click()                                       # another tile of the group reuses the one region
-    page.wait_for_function("(t) => document.querySelector('.pri-sg:nth-of-type(3) .pri-drill-h, .pri-statsec .pri-sg:last-child .pri-drill-h').textContent !== t", arg=first)
+    page.wait_for_function("(t) => { const e = document.querySelector('.pri-sg:nth-of-type(3) .pri-drill-h, .pri-statsec .pri-sg:last-child .pri-drill-h'); return !!e && e.textContent !== t; }", arg=first)
     assert d.is_visible() and live.locator("[data-testid=pri-seemore][aria-expanded=true]").count() == 1
     p.locator(".pri-steps [data-testid=pri-seemore]").first.click()
     t = p.locator("[data-testid=pri-faded] [data-testid=pri-drill]")
