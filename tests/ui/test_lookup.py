@@ -157,3 +157,17 @@ def test_a_phone_width_has_no_sideways_scroll_and_text_is_at_least_12px(page):
     assert small == [], small
     page.screenshot(path=str(SHOTS / "lookup_375.png"), full_page=True)
 
+
+
+def test_results_read_as_the_top_bar_search_results_with_grouping(page):
+    goto(page)
+    assert page.locator("[data-testid=tl-head] h1").inner_text() == "Tag lookup" and "top bar" in page.locator("[data-testid=tl-head] .note-line").inner_text()
+    assert page.title() == "Tag lookup \u00b7 Lonvera"
+    page.locator("[data-testid=nav-lookup-input]").fill("Lonvera-Boneflex-Video-2.1")                    # the shell's search box lands on the same results page
+    page.locator("[data-testid=nav-lookup-input]").press("Enter")
+    page.wait_for_selector("[data-testid=tl-results]")
+    idle(page)
+    assert "Lonvera-Boneflex-Video-2.1" in page.locator("[data-testid=tl-results-head]").inner_text()
+    assert page.locator("[data-testid=tl-input]").input_value() == "Lonvera-Boneflex-Video-2.1"
+    assert "Ideal customer profile (ICP)" in page.locator(CARD).text_content()
+    assert "\u2014" not in page.locator(".tl-page").text_content()

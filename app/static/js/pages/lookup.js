@@ -3,6 +3,7 @@
 import { h, href, navigate, safeUrl, badge, confBadge } from '../util.js';
 import { api } from '../api.js';
 import { showControls } from '../controls.js';
+import { pageHeader } from '../ui/pagehead.js';
 
 const EXAMPLE = 'Bull-526-Hook2 - Copy';
 const KIND_TEXT = {
@@ -23,7 +24,7 @@ function searchForm({ value = '', onSearch, id = 'tl-q', testid = 'tl' }) {
   const go = h('button', { type: 'submit', class: 'btn primary', 'data-testid': testid + '-go' }, 'Look up');
   const clear = h('button', { type: 'button', class: 'btn', 'data-testid': testid + '-clear', hidden: !value, onclick: () => { input.value = ''; clear.hidden = true; input.focus(); if (onSearch) onSearch(''); } }, 'Clear');
   input.addEventListener('input', () => { clear.hidden = input.value === ''; });
-  const form = h('form', { class: 'tl-form', role: 'search', 'data-testid': testid + '-form', onsubmit: (e) => { e.preventDefault(); const t = input.value.trim(); if (t) onSearch(t); else input.focus(); } },
+  const form = h('form', { class: 'tl-form card', role: 'search', 'data-testid': testid + '-form', onsubmit: (e) => { e.preventDefault(); const t = input.value.trim(); if (t) onSearch(t); else input.focus(); } },
     h('label', { class: 'tl-label', for: id }, 'Look up an ad by its platform name'), h('div', { class: 'tl-row' }, input, go, clear));
   return { el: form, input };
 }
@@ -53,7 +54,7 @@ function newBlock(m) {
       h('span', { class: 'tl-linename', 'data-testid': 'tl-line-name' }, t.line_name || ''),
       confBadge(t.confidence), t.method ? badge(t.method, 'method', 'How the ad was tagged') : null),
     t.caveat ? h('div', { class: 'tl-caveat', 'data-testid': 'tl-caveat' }, t.caveat) : null,
-    dl([['Market cluster', t.cluster], ['ICP', t.icp], ['Pain point', t.pain_point], ['Emotional trigger', t.emotional_trigger], ['Ingredient', ingredientsNode(t.ingredients)]]),
+    dl([['Market cluster', t.cluster], ['Ideal customer profile (ICP)', t.icp], ['Pain point', t.pain_point], ['Emotional trigger', t.emotional_trigger], ['Ingredient', ingredientsNode(t.ingredients)]]),
     t.seen ? h('div', { class: 'tl-block' }, h('div', { class: 'tl-k' }, 'What was seen'), h('p', { class: 'tl-prose' }, t.seen)) : null,
     t.why ? h('div', { class: 'tl-block' }, h('div', { class: 'tl-k' }, 'Why this line'), h('p', { class: 'tl-prose' }, t.why)) : null,
     t.runner_up ? h('div', { class: 'tl-block' }, h('div', { class: 'tl-k' }, 'Runner-up line'), h('p', { class: 'tl-prose' }, t.runner_up)) : null,
@@ -91,15 +92,19 @@ function noMatch(d) {
     h('p', { class: 'tl-muted' }, 'Check the spelling or paste the name straight from Ads Manager.'));
 }
 
-function results(d) {
+function results(d, text) {
   if (d.match_kind === 'none') return noMatch(d);
   const n = d.total_matches;
   return h('div', { class: 'tl-results', 'data-testid': 'tl-results' },
-    h('div', { class: 'tl-summary', 'data-testid': 'tl-summary', 'data-kind': d.match_kind }, h('strong', null, `${n} tracker row${n === 1 ? '' : 's'}. `), KIND_TEXT[d.match_kind] || '',
-      d.truncated ? ` Showing the first ${d.matches.length}.` : ''),
-    d.notes.map((t) => h('div', { class: 'tl-note', 'data-testid': 'tl-note' }, t)),
-    platformNote(d),
-    d.matches.map(matchCard),
+    h('h2', { class: 'tl-h tl-results-head', 'data-testid': 'tl-results-head' }, `Results for \u201c${text}\u201d`),
+    h('section', { class: 'tl-group tl-how', 'aria-label': 'How it matched' },
+      h('div', { class: 'tl-summary', 'data-testid': 'tl-summary', 'data-kind': d.match_kind }, h('strong', null, `${n} tracker row${n === 1 ? '' : 's'}. `), KIND_TEXT[d.match_kind] || '',
+        d.truncated ? ` Showing the first ${d.matches.length}.` : ''),
+      d.notes.map((t) => h('div', { class: 'tl-note', 'data-testid': 'tl-note' }, t)),
+      platformNote(d)),
+    h('section', { class: 'tl-group', 'aria-label': 'Tracker rows' },
+      h('h3', { class: 'tl-sub' }, n === 1 ? 'Tracker row and its tags' : 'Tracker rows and their tags'),
+      d.matches.map(matchCard)),
     h('div', { class: 'tl-foot' }, 'New tags come from the image and video tagging of each ad.'));
 }
 
@@ -123,16 +128,16 @@ async function load(text, signal) {
 export async function lookupPage(ctx) {
   const { params: p, signal } = ctx;
   showControls(false);
-  document.title = 'Tag lookup · Marketing metrics';
+  document.title = 'Tag lookup · Lonvera';
   const text = (p.q || '').trim();
   const out = h('div', { class: 'tl-out', 'aria-live': 'polite', 'data-testid': 'tl-out' });
   const form = searchForm({ value: text, onSearch: goLookup });
   const page = h('div', { class: 'page tl-page', 'data-testid': 'tl-page' },
-    h('div', { class: 'pagehead' }, h('h1', null, 'Tag lookup'), h('div', { class: 'note-line' }, 'Paste an ad name exactly as Ads Manager shows it. A Meta ad id, a Concept ID or an Ad Family works too.')),
+    pageHeader({ title: 'Tag lookup', description: 'The results page for the tag search in the top bar. Paste an ad name exactly as Ads Manager shows it. A Meta ad id, a Concept ID or an Ad Family works too.', testid: 'tl-head' }),
     form.el, out);
   ctx.mount(page);
   if (!text) {
-    out.append(h('div', { class: 'tl-empty', 'data-testid': 'tl-empty' }, h('p', { class: 'tl-prose' }, 'The new tags come from the image and video tagging of Vita Bull, Beef Liver and Boneflex ads.')));
+    out.append(h('div', { class: 'tl-empty', 'data-testid': 'tl-empty' }, h('p', { class: 'tl-prose' }, 'Nothing searched yet. Type an ad name above or in the top bar. The new tags come from the image and video tagging of Vita Bull, Beef Liver and Boneflex ads.')));
     form.input.focus();
     return;
   }
@@ -141,7 +146,7 @@ export async function lookupPage(ctx) {
     try {
       const d = await load(text, signal);
       if (!ctx.alive()) return;
-      out.replaceChildren(results(d));
+      out.replaceChildren(results(d, text));
     } catch (e) {
       if (!ctx.alive() || (e && e.name === 'AbortError')) return;
       out.replaceChildren(h('div', { class: 'errorbox', role: 'alert', 'data-testid': 'tl-error' }, h('strong', null, 'Could not look that up. '), h('span', null, e && e.message ? e.message : String(e)),
