@@ -2,6 +2,7 @@
 Mocked HTTP only: `requests.get` / `requests.post` are replaced, and a guard fails any test that reaches the real network."""
 import datetime as dt
 import json
+import os
 import re
 import socket
 from urllib.parse import parse_qs, urlparse
@@ -12,6 +13,7 @@ import requests
 from etl import db, meta_api, meta_breakdowns as mb
 
 D = dt.date
+TEST_URL = os.environ.get("TEST_DATABASE_URL", "postgresql://localhost/tagexp_test")
 ACCT = meta_api.ACCOUNTS[0]
 ONE = [ACCT]
 
@@ -464,7 +466,7 @@ def test_budget_stops_before_the_next_set(bd, monkeypatch):
 
 def test_job_is_recorded_and_main_runs_nightly_window(bd, monkeypatch):
     Fake().install(monkeypatch)
-    monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/tagexp_test")
+    monkeypatch.setenv("DATABASE_URL", TEST_URL)
     monkeypatch.setattr(mb.meta_api, "get_token", lambda: "TOKEN")
     monkeypatch.setattr(mb.time, "sleep", lambda s: None)
     assert mb.main(["--sets", "age", "--days", "2", "--until", "2026-11-05"]) == 0
@@ -526,7 +528,7 @@ def test_quiet_hours_beginning_mid_run_stop_cleanly_commit_and_resume(bd, monkey
 
 def test_main_auto_in_quiet_hours_exits_zero_and_starts_nothing(bd, monkeypatch, capsys):
     f = Fake().install(monkeypatch)
-    monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/tagexp_test")
+    monkeypatch.setenv("DATABASE_URL", TEST_URL)
     monkeypatch.setattr(mb.meta_api, "get_token", lambda: "TOKEN")
     monkeypatch.setattr(mb.time, "sleep", lambda s: None)
     now = dt.datetime.now(UTC)
@@ -544,9 +546,9 @@ def test_second_run_exits_zero_when_the_advisory_lock_is_held(bd, monkeypatch, c
     f = Fake().install(monkeypatch)
     monkeypatch.setattr(mb.time, "sleep", lambda s: None)
     monkeypatch.setattr(mb.meta_api, "get_token", lambda: "TOKEN")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/tagexp_test")
+    monkeypatch.setenv("DATABASE_URL", TEST_URL)
     monkeypatch.setenv("META_BREAKDOWNS_QUIET_UTC", "off")
-    with psycopg.connect("postgresql://localhost/tagexp_test", autocommit=True) as other:
+    with psycopg.connect(TEST_URL, autocommit=True) as other:
         other.execute("SELECT pg_advisory_lock(%s)", (mb.LOCK_KEY,))
         assert mb.main(["--auto"]) == 0
         out = [line for line in capsys.readouterr().out.splitlines() if "lock" in line]
@@ -557,7 +559,7 @@ def test_second_run_exits_zero_when_the_advisory_lock_is_held(bd, monkeypatch, c
 
 def test_wall_clock_budget_ends_a_run_with_exit_zero(bd, monkeypatch):
     f = Fake().install(monkeypatch)
-    monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/tagexp_test")
+    monkeypatch.setenv("DATABASE_URL", TEST_URL)
     monkeypatch.setenv("META_BREAKDOWNS_QUIET_UTC", "off")
     monkeypatch.setattr(mb.meta_api, "get_token", lambda: "TOKEN")
     monkeypatch.setattr(mb.time, "sleep", lambda s: None)
