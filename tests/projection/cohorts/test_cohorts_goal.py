@@ -1,6 +1,7 @@
 """The Goal curve: every save and restore is its own dated snapshot, the Goal replaced stays restorable, and each step is audited and versioned."""
 from __future__ import annotations
 
+import os
 import shutil
 from datetime import date
 from pathlib import Path
@@ -125,7 +126,7 @@ def test_the_seeder_style_replace_is_idempotent_and_keeps_other_snapshots(cohort
 
 
 def test_the_migration_gives_old_snapshots_ids_in_date_order_and_can_run_twice(tmp_path):
-    name = "tagexp_proj_cohorts_mig"
+    name = "tagexp_proj_cohorts_mig" + os.environ.get("TEST_WORKER_SUFFIX", "")
     with psycopg.connect(f"{PG_BASE}/postgres", autocommit=True) as c:
         c.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
         c.execute(f'CREATE DATABASE "{name}"')

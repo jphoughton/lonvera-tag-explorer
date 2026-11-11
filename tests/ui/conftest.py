@@ -37,6 +37,19 @@ def _up(url):
         return False
 
 
+def _wait_up(proc, url, what, timeout=90):
+    """poll /healthz until the mock answers; a slow start on a loaded machine is waited out, a crashed one fails at once"""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _up(url):
+            return
+        if proc.poll() is not None:
+            raise RuntimeError(f"{what} exited with code {proc.returncode} before it answered")
+        time.sleep(0.1)
+    proc.terminate()
+    raise RuntimeError(f"{what} did not start within {timeout}s")
+
+
 @pytest.fixture(scope="session")
 def base_url():
     env = os.environ.get("UI_BASE_URL")
@@ -48,13 +61,7 @@ def base_url():
     proc = None
     if not _up(url):
         proc = subprocess.Popen([sys.executable, str(HERE / "mock_server.py"), str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for _ in range(60):
-            if _up(url):
-                break
-            time.sleep(0.25)
-        else:
-            proc.terminate()
-            raise RuntimeError("mock server did not start")
+        _wait_up(proc, url, "mock server")
     yield url
     if proc:
         proc.terminate()
@@ -74,13 +81,7 @@ def noauth_url():
     proc = None
     if not _up(url):
         proc = subprocess.Popen([sys.executable, str(HERE / "mock_server.py"), str(port)], env={**os.environ, "MOCK_AUTH": "disabled"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for _ in range(60):
-            if _up(url):
-                break
-            time.sleep(0.25)
-        else:
-            proc.terminate()
-            raise RuntimeError("no-auth mock server did not start")
+        _wait_up(proc, url, "no-auth mock server")
     yield url
     if proc:
         proc.terminate()
