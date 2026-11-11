@@ -145,20 +145,24 @@ def ads_to_check(conn, days: int, refresh: bool = False) -> list[tuple[str, floa
     return [(r[0], float(r[1])) for r in rows]
 
 
-def fetch_creatives(tok, ad_ids: list[str], graph_get, batch: int = 50, pace: float = 0.4, sleep=time.sleep) -> dict[str, dict]:
-    """{ad_id: {'links': [raw urls], 'story_id': str|None, 'error': str|None}} from the Graph; one failing batch is bisected so a bad id costs only itself."""
+def fetch_creatives(tok, ad_ids: list[str], graph_get, batch: int = 50, pace: float = 0.4, sleep=time.sleep) -> tuple[dict[str, dict], str | None]:
+    """({ad_id: {'links': [raw urls], 'story_id': str|None, 'error': str|None}}, stop reason). One failing batch is bisected so a bad id costs only itself; a rate limit or a rejected
+    token stops the pull at once (the ads not reached are simply absent, and the stop reason says why), because retrying smaller batches would only spend more of the limit."""
     out: dict[str, dict] = {}
+    stop: list[str] = []
 
     def one(chunk):
         try:
             j = graph_get(f"{G}/", {"ids": ",".join(chunk), "fields": CREATIVE_FIELDS, "access_token": tok}, "ad creative", max_retries=4)
         except Exception as e:                              # noqa: BLE001
-            if "TokenRejected" in type(e).__name__:
-                raise
+            if "TokenRejected" in type(e).__name__ or "RateLimited" in type(e).__name__:
+                stop.append(db.scrub(e)[:160])
+                return
             if len(chunk) > 1:
                 mid = len(chunk) // 2
                 one(chunk[:mid])
-                one(chunk[mid:])
+                if not stop:
+                    one(chunk[mid:])
             else:
                 out[chunk[0]] = {"links": [], "story_id": None, "error": db.scrub(e)[:160]}
             return
@@ -169,26 +173,29 @@ def fetch_creatives(tok, ad_ids: list[str], graph_get, batch: int = 50, pace: fl
 
     for i in range(0, len(ad_ids), batch):
         one(ad_ids[i:i + batch])
+        if stop:
+            break
         sleep(pace)
-    return out
+    return out, (stop[0] if stop else None)
 
 
-def fetch_post_links(tok, story_ids: list[str], graph_get, pace: float = 0.3, sleep=time.sleep) -> dict[str, list[str]]:
-    """{story_id: [raw urls]} from each Page post's call to action. Posts of our own Page need a permission the token lacks (error 10): those are simply absent from the result."""
+def fetch_post_links(tok, story_ids: list[str], graph_get, pace: float = 0.3, sleep=time.sleep) -> tuple[dict[str, list[str]], str | None]:
+    """({story_id: [raw urls]}, stop reason) from each Page post's call to action. Posts of our own Page need a permission the token lacks (error 10): those are simply absent from the
+    result. A rate limit or rejected token stops the pass and keeps what was found."""
     out: dict[str, list[str]] = {}
     for sid in story_ids:
         try:
             j = graph_get(f"{G}/{sid}", {"fields": "call_to_action", "access_token": tok}, "post cta", max_retries=3)
         except Exception as e:                              # noqa: BLE001
             if "TokenRejected" in type(e).__name__ or "RateLimited" in type(e).__name__:
-                raise
+                return out, db.scrub(e)[:160]
             sleep(pace)
             continue
         links = _link_from_cta((j or {}).get("call_to_action"))
         if links:
             out[sid] = links
         sleep(pace)
-    return out
+    return out, None
 
 
 def fetch_preview_links(tok, ad_id: str, graph_get, http_get) -> list[str]:
@@ -206,13 +213,18 @@ def resolve_ads(conn, tok, ads: list[tuple[str, float]], graph_get, http_get, ma
     stats = {"ads": len(ads), "creative": 0, "post": 0, "preview": 0, "no_link": 0, "error": 0, "pages": 0, "left_for_next_run": 0}
     if not ads:
         return stats
-    creatives = fetch_creatives(tok, [a for a, _ in ads], graph_get, sleep=sleep)
+    creatives, stopped = fetch_creatives(tok, [a for a, _ in ads], graph_get, sleep=sleep)
+    if stopped:
+        stats["stopped"] = stopped
     result: dict[str, tuple[str, list[str], str | None]] = {}        # ad_id -> (source, raw links, detail)
     need_post: dict[str, str] = {}
     for ad_id, _ in ads:
         c = creatives.get(ad_id)
         if c is None:
-            result[ad_id] = ("error", [], "not returned by Meta")
+            if not stopped:
+                result[ad_id] = ("error", [], "not returned by Meta")
+            else:
+                stats["left_for_next_run"] += 1                                 # the pull stopped before this ad: not recorded, the next run tries it
         elif c["links"] and any(normalise_url(u) for u in c["links"]):
             result[ad_id] = ("creative", c["links"], None)
         elif c["error"]:
@@ -222,7 +234,9 @@ def resolve_ads(conn, tok, ads: list[tuple[str, float]], graph_get, http_get, ma
         else:
             result[ad_id] = ("no_link", [], "creative has no link and no Page post")
     if need_post:
-        post_links = fetch_post_links(tok, sorted(set(need_post.values())), graph_get, sleep=sleep)
+        post_links, pstop = fetch_post_links(tok, sorted(set(need_post.values())), graph_get, sleep=sleep)
+        if pstop:
+            stats["stopped"] = pstop
         for ad_id, sid in need_post.items():
             if sid in post_links and any(normalise_url(u) for u in post_links[sid]):
                 result[ad_id] = ("post", post_links[sid], None)
@@ -234,7 +248,7 @@ def resolve_ads(conn, tok, ads: list[tuple[str, float]], graph_get, http_get, ma
     for ad_id, _ in ads:                                                        # biggest spenders first
         if ad_id in result:
             continue
-        if previews_used >= max_previews:
+        if previews_used >= max_previews or stats.get("stopped"):
             stats["left_for_next_run"] += 1                                     # not recorded as checked: the next run tries it
             continue
         previews_used += 1

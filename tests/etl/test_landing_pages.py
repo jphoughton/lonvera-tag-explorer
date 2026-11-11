@@ -265,3 +265,22 @@ def test_top_ads_view_ranks_by_spend_in_7_and_30_day_windows(conn):
     a1_30 = rows[3]
     assert (float(a1_30[3]), float(a1_30[4]), float(a1_30[5]), float(a1_30[6]), a1_30[7]) == (150.0, 3.0, 200.0, 1.333, "Ad one")
     assert float(rows[0][6]) == 3.0
+
+
+class RateLimited(Exception):
+    pass
+
+
+def test_a_rate_limit_stops_the_pull_and_leaves_the_rest_unchecked(conn):
+    seed_spend(conn, [("A1", 1, 100, 2, 200), ("A2", 1, 90, 0, 0), ("A3", 1, 80, 0, 0)])
+    calls = []
+
+    def graph(url, params, what, max_retries=7, sleep=None):
+        calls.append(params["ids"])
+        if "A2" in params["ids"]:
+            raise RateLimited("HTTP 400 code 80004: too many calls")
+        return {"A1": {"creative": {"object_story_spec": {"link_data": {"link": "https://lonvera.com/pages/ok"}}}}}
+    ads = lp.ads_to_check(conn, 30)
+    st = lp.resolve_ads(conn, "tok", ads, graph, Http(), 5, sleep=lambda s: None)
+    assert "80004" in st["stopped"] and st["left_for_next_run"] >= 1 and len(calls) == 1                  # no bisecting: that would only spend more of the limit
+    assert conn.execute("SELECT count(*) FROM landing_page_ad_checks").fetchone()[0] == 0                 # nothing recorded as checked
