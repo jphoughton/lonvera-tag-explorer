@@ -8,7 +8,10 @@ Rules (the same ones the rest of the app follows):
   * Days are Pacific days (the date as stored); weeks are ISO weeks Monday-Sunday (labelled W45 + date range); months are calendar months.
   * Every ratio is a ratio of the period's sums, never an average of daily ratios. Spend adds across platforms, purchases and revenue never do.
   * Total NC ROAS = actual new-customer revenue (upstack_orders_daily) / Meta + Google spend of the same days (app/platforms.py, docs/PLATFORMS.md).
-  * NULL is not zero: a metric whose source does not cover EVERY day of the period shows a dash with the reason, never a zero or a partial sum.
+  * NULL is not zero: a metric whose source does not cover EVERY day of a CLOSED period shows a dash with the reason, never a zero or a partial sum.
+    In the OPEN (partial) period a lagging source never blanks a metric: each metric runs over the days every source it needs covers (period start through
+    min(last loaded day, newest day all its sources hold)), row['thru'][key] says where it runs through when that is earlier than the row's covered_end,
+    and its comparison base uses the same number of elapsed days. A period no source covers at all still dashes.
   * Like for like: the open (partial) period is flagged 'so far' and compared with the SAME elapsed days of the previous period, never with the full one.
     Reach is not additive (Meta de-duplicates it), so it is only ever read from the feed's own day / week / month rows.
 """
@@ -188,6 +191,17 @@ class Cov:
                 if d not in self.present:
                     return f"{label} has no data for {_d(d, True)}."
         return None
+
+    def through(self, a: dt.date, b: dt.date) -> dt.date | None:
+        """The last day t in [a, b] such that every day of [a, t] is covered; None when even day a is not."""
+        if self.first is None or self.last is None or a < self.first or a > self.last:
+            return None
+        t = min(b, self.last)
+        if self.present is not None:
+            for d in daterange(a, t):
+                if d not in self.present:
+                    return d - dt.timedelta(days=1) if d > a else None
+        return t
 
 
 def coverage(conn, today: dt.date) -> dict[str, Cov]:
@@ -583,30 +597,52 @@ def assemble(opt: dict, today: dt.date, cov: dict[str, Cov], through: dt.date, p
     interval, n, numbers = opt["interval"], opt["periods"], opt["numbers"]
     catalog = build_catalog(numbers)
 
-    def values_for(a: dt.date, b: dt.date) -> tuple[dict[str, float | None], dict[str, str]]:
-        S = sums(fr, a, b)
+    def values_for(a: dt.date, b: dt.date, partial: bool = False, shift: dict[str, dt.date] | None = None) -> tuple[dict[str, float | None], dict[str, str], dict[str, dt.date]]:
+        """Metric values over [a, b]. Strict (closed periods, bases): a source gap makes a dash. partial (open period): each metric runs over the days
+        [a, min(b, last day every source it needs covers)] and thru[key] says where that is when it is earlier than b. shift (bases): per metric, the
+        window is [a, a + days of that metric's current window - 1], the same elapsed days."""
         vals: dict[str, float | None] = {}
         why: dict[str, str] = {}
+        thru: dict[str, dt.date] = {}
         cache: dict[str, str | None] = {}
+        S_cache: dict[dt.date, dict[str, float]] = {}
         for m in catalog:
             if m["fn"] is None:
                 continue
+            end = b
+            if shift is not None:
+                if m["key"] not in shift:
+                    continue
+                end = shift[m["key"]]
             reason = None
-            for src in m["needs"]:
-                if src not in cache:
-                    cache[src] = cov[src].why_not(SOURCE_LABELS[src], a, b)
-                if cache[src]:
-                    reason = cache[src]
-                    break
+            if partial:
+                for src in m["needs"]:
+                    t = cov[src].through(a, b)
+                    if t is None:
+                        reason = cov[src].why_not(SOURCE_LABELS[src], a, b) or f"{SOURCE_LABELS[src]} has no data for {_d(a, True)}."
+                        break
+                    end = min(end, t)
+                if not reason and end < b:
+                    thru[m["key"]] = end
+            else:
+                for src in m["needs"]:
+                    ck = (src, end)
+                    if ck not in cache:
+                        cache[ck] = cov[src].why_not(SOURCE_LABELS[src], a, end)
+                    if cache[ck]:
+                        reason = cache[ck]
+                        break
             if reason:
                 vals[m["key"]] = None
                 why[m["key"]] = reason
                 continue
-            v = m["fn"](S)
+            if end not in S_cache:
+                S_cache[end] = sums(fr, a, end)
+            v = m["fn"](S_cache[end])
             vals[m["key"]] = _num(v)
             if v is None:
                 why[m["key"]] = "Undefined: the denominator is zero in this period."
-        return vals, why
+        return vals, why, thru
 
     kind_of = {m["key"]: m["kind"] for m in catalog}
     rows = []
@@ -621,16 +657,20 @@ def assemble(opt: dict, today: dt.date, cov: dict[str, Cov], through: dt.date, p
         if p["state"] == "not_loaded":
             for m in catalog:
                 v[m["key"]] = None
-            row.update(v=v, d={}, why={}, reach_through=None)
+            row.update(v=v, d={}, why={}, thru={}, reach_through=None)
             rows.append(row)
             continue
-        cur_v, cur_why = values_for(p["start"], p["covered_end"])
+        cur_v, cur_why, thru = values_for(p["start"], p["covered_end"], partial=p["open"])
         v.update(cur_v)
         why.update(cur_why)
         base_v: dict[str, float | None] = {}
         base_why: dict[str, str] = {}
         if c["kind"] != "none":
-            base_v, base_why = values_for(c["start"], c["end"])
+            shift = None
+            if p["open"] and thru:
+                # like for like: the base runs the same number of elapsed days as each shortened metric window
+                shift = {m["key"]: c["start"] + ((thru.get(m["key"], p["covered_end"]) - p["start"]).days * dt.timedelta(days=1)) for m in catalog if m["fn"] is not None}
+            base_v, base_why, _ = values_for(c["start"], c["end"], shift=shift)
         for m in catalog:
             k = m["key"]
             if m["fn"] is None:
@@ -674,7 +714,7 @@ def assemble(opt: dict, today: dt.date, cov: dict[str, Cov], through: dt.date, p
                 d[k] = change_of(kind_of[k], v.get(k), pv.get(k))
                 if d[k] is None and v.get(k) is not None:
                     why[k + ":d"] = "The previous period has no reach row." if not prow else "No comparison value."
-        row.update(v=v, d={k: x for k, x in d.items() if x is not None}, why=why, reach_through=rrow["end"].isoformat() if rrow and p["open"] else None)
+        row.update(v=v, d={k: x for k, x in d.items() if x is not None}, why=why, thru={k: t.isoformat() for k, t in thru.items()}, reach_through=rrow["end"].isoformat() if rrow and p["open"] else None)
         rows.append(row)
 
     layout = build_layout(interval, numbers, catalog)

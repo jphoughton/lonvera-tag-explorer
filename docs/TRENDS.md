@@ -59,7 +59,7 @@ A period is **open** when it ends after the last loaded day (the newest of Meta,
 
 ## Dashes
 
-A metric is shown only when every source it needs covers **every** day of the period: otherwise a dash with the reason on hover (period starts before the source, source loaded only through a date, a gap such as Meta's missing 2025-03-04 to 2025-03-13). A zero is a real zero only where the source has a day without rows by nature (a day without orders is absent in the orders feed and counts as 0). The "Data through" chips show each source's newest day and turn red when it is two or more days behind yesterday.
+A metric of a **closed** period is shown only when every source it needs covers **every** day of the period: otherwise a dash with the reason on hover (period starts before the source, source loaded only through a date, a gap such as Meta's missing 2025-03-04 to 2025-03-13). A zero is a real zero only where the source has a day without rows by nature (a day without orders is absent in the orders feed and counts as 0). **Open periods never dash because one source lags.** Each metric runs over the days every source it needs covers (period start through the earlier of the last loaded day and the newest day all of its sources hold), so a ratio such as NC ROAS never divides revenue of a day by spend that has not loaded. When that window ends before the row's covered end, the payload carries `thru[metric]` (ISO date) and the cell shows a small "thru Nov 9" suffix with a hover explanation; its comparison base uses the same number of elapsed days. A period no source covers at all is still a dash. The "Data through" chips show each source's newest day and turn red when it is two or more days behind yesterday.
 
 ## Performance
 

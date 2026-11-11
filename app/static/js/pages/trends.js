@@ -154,7 +154,8 @@ function buildTable({ d, plan, byKey, on, lineKey, onLine, delta }) {
         return;
       }
       cols.push({ band: b, first, key: c.key, m, num: true, cell: (r) => ({ text: fmtValue(m.kind, r.v[c.key]), v: r.v[c.key],
-        title: isNum(r.v[c.key]) ? (r.reach_through && ['reach', 'frequency', 'uoc', 'uoc_ctr'].includes(c.key) ? `Reach covers ${fmt.day(r.start)} to ${fmt.day(r.reach_through)} (it runs a day past the loaded spend).` : null) : (r.why[c.key] || null) }) });
+        thru: isNum(r.v[c.key]) && r.thru && r.thru[c.key] ? r.thru[c.key] : null,
+        title: isNum(r.v[c.key]) ? (r.thru && r.thru[c.key] ? `Runs through ${fmt.day(r.thru[c.key])}: a source it needs has not loaded later days yet.` : r.reach_through && ['reach', 'frequency', 'uoc', 'uoc_ctr'].includes(c.key) ? `Reach covers ${fmt.day(r.start)} to ${fmt.day(r.reach_through)} (it runs a day past the loaded spend).` : null) : (r.why[c.key] || null) }) });
       if (delta) {
         const dh = h('th', { class: `num trn-colhead trn-dhead-cell trn-b-${b.tone} ${tone}`, 'data-col': c.key + ':d' }, h('span', { class: 'trn-dhead', title: `Change in ${c.label} against the previous period (like for like for the open one)` }, 'Δ'));
         band2.push(dh);
@@ -172,7 +173,7 @@ function buildTable({ d, plan, byKey, on, lineKey, onLine, delta }) {
       h('td', { class: 'trn-pcol', title: periodTitle(r) }, periodCell(r)));
     for (const c of cols) {
       const x = r.state === 'not_loaded' ? { text: '–', cls: 'trn-none' } : c.cell(r);
-      const td = h('td', { class: ['num', c.first ? 'trn-bfirst' : '', x.tint ? 'trn-tint ' + x.cls : ''].join(' ').trim(), title: x.title || null }, x.node || h('span', { class: 'trn-val' + (x.tint ? ' ' + x.cls : ''), 'data-v': isNum(x.v) ? String(x.v) : '', 'data-dir': x.dir || null }, x.text));
+      const td = h('td', { class: ['num', c.first ? 'trn-bfirst' : '', x.tint ? 'trn-tint ' + x.cls : ''].join(' ').trim(), title: x.title || null }, x.node || h('span', { class: 'trn-val' + (x.tint ? ' ' + x.cls : ''), 'data-v': isNum(x.v) ? String(x.v) : '', 'data-dir': x.dir || null }, x.text), x.thru ? h('span', { class: 'trn-thru', 'data-thru': x.thru }, ' thru ' + fmt.day(x.thru)) : null);
       tr.append(td);
     }
     tbody.append(tr);

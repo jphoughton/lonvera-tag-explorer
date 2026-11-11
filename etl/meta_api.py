@@ -21,6 +21,9 @@ LOCAL_TOK_DIR = "/Users/joshhoughton/Desktop/Google Sheets/lonvera_creative_key"
 INSIGHT_FIELDS = "ad_id,ad_name,campaign_id,campaign_name,adset_id,adset_name,spend,impressions,actions,action_values,inline_link_clicks,date_start,date_stop"
 
 
+LIFETIME_RETRY_SLEEP = 60                                               # seconds x attempt between async retries (tests set 0)
+
+
 class TooBig(Exception):
     pass
 
@@ -252,12 +255,14 @@ def pull_lifetime(tok, acct, an, since: dt.date, until: dt.date) -> list[dict]:
             return rows
         except TokenRejected:
             raise
-        except GraphError as e:
+        except (GraphError, TooBig) as e:                                # TooBig from the async path is transient too (Meta sizes the report per run)
             last = e
             db.log(f"  {an} lifetime attempt {attempt} failed: {db.scrub(e)[:140]}")
-            if "async" not in str(e) or attempt == 3:
+            if not (isinstance(e, TooBig) or "async" in str(e)) or attempt == 3:
                 break
-            time.sleep(60 * attempt)
+            time.sleep(LIFETIME_RETRY_SLEEP * attempt)
+    if isinstance(last, TooBig):
+        raise GraphError(f"{an}: lifetime report too big after 3 attempts: {db.scrub(last)[:160]}")
     raise last or GraphError(f"{an}: lifetime pull failed")
 
 

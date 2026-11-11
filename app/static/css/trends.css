@@ -58,3 +58,5 @@ td.trn-empty { padding: 18px; color: var(--muted); }
 /* readable line length for prose blocks */
 p, .tts-bulk-note, .tts-foot, .note-line, .sv-lead { max-width: 50ch; }
 
+
+.trn-thru { font-size: 12px; color: var(--muted, #6b7280); white-space: nowrap; }

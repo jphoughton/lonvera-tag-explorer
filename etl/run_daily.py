@@ -2,6 +2,8 @@
   1. tracker_sync (metadata only; a refusal is remembered and fails the run at the end, the Meta part still runs on the last good tracker rows)
   2. READ phase (no database writes): Meta ad x day for the trailing 28 days (Meta restates conversions for weeks), all-time ad lifetime ending at the last
      complete day, ad status/name/created for every ad with delivery in the last 60 days or a non-terminal status
+  (a failing lifetime pull, e.g. Meta 'TooBig', does NOT block the daily rows: it is recorded as a failed lifetime_pull job run, the previous lifetime
+   table is left untouched, the WRITE phase still runs, and the run is marked failed with the error at the end)
   3. WRITE phase, ONE transaction: replace those days, replace lifetime, update ads, resync names, resolve new/unmatched Meta families, rebuild metrics
 Any Meta failure (token rejected -> error 'meta token rejected', rate limit, reconcile failure ...) aborts before step 3: existing data stays untouched, the run is
 recorded failed in etl_runs, exit code 1. There is NO sheet fallback. app_meta: last_ok_at = finish time of the last FULLY successful run, refresh_status
@@ -75,6 +77,7 @@ def run(days: int = DEFAULT_DAYS, snapshot_dir=None, until: dt.date | None = Non
                 results["meta_pull"] = {"ok": True, "days": days, "since": since.isoformat(), "until": u.isoformat()}
             except Exception as e:                                            # noqa: BLE001
                 raise meta_failure(e, "meta pull") from None
+            agg, lifetime_error = None, None
             try:
                 with db.JobRun("lifetime_pull") as r:
                     agg, recon = lifetime_pull.pull(tok, u)
@@ -82,10 +85,14 @@ def run(days: int = DEFAULT_DAYS, snapshot_dir=None, until: dt.date | None = Non
                     r.stats = {"ads": len(agg), "recon": recon}
                 results["lifetime_pull"] = {"ok": True, "ads": len(agg)}
             except Exception as e:                                            # noqa: BLE001
-                raise meta_failure(e, "lifetime pull") from None
+                # the daily Meta rows must still land: keep the previous lifetime table untouched, write everything else, and fail the run at the end
+                agg = None
+                lifetime_error = str(meta_failure(e, "lifetime pull"))
+                results["lifetime_pull"] = {"ok": False, "error": lifetime_error}
+                db.log(f"  {lifetime_error} (the daily rows are still written; lifetime data stays as it was; the run will be marked failed)")
             try:
                 with db.JobRun("status_refresh") as r:
-                    new_ids = {a["ad_id"] for agg_, _, _ in pending for a in agg_.values()} | set(agg)
+                    new_ids = {a["ad_id"] for agg_, _, _ in pending for a in agg_.values()} | set(agg or {})
                     srows, sst = status_refresh.fetch_updates(conn, tok, extra_ids=new_ids)
                     r.stats = sst
                 results["status_refresh"] = {"ok": True, **{k: sst[k] for k in ("asked", "status_changed", "renamed", "created_changed")}}
@@ -96,7 +103,8 @@ def run(days: int = DEFAULT_DAYS, snapshot_dir=None, until: dt.date | None = Non
             with db.JobRun("build_metrics") as r:
                 pending_stats = {"rows_inserted": 0, "rows_deleted": 0}
                 meta_pull.apply_pending(conn, pending, pending_stats)
-                lifetime_pull.load(conn, agg)
+                if agg is not None:
+                    lifetime_pull.load(conn, agg)
                 status_refresh.apply_updates(conn, srows)
                 names.resync(conn)
                 results["resolve"] = {"ok": True, **resolve_families.resolve(conn)}
@@ -107,8 +115,9 @@ def run(days: int = DEFAULT_DAYS, snapshot_dir=None, until: dt.date | None = Non
                 top.data_through = r.data_through
             results["build_metrics"] = {"ok": True, "data_through": st["data_through"], "launch_total": st["launch_total"],
                                         "rows_replaced": pending_stats["rows_inserted"]}
-            if tracker_error:
-                raise db.JobFailed(tracker_error)
+            errors = [e for e in (tracker_error, lifetime_error) if e]
+            if errors:
+                raise db.JobFailed("; ".join(errors)[:480])
     except Exception as e:                                                    # noqa: BLE001
         msg = str(e) if isinstance(e, db.JobFailed) else f"{type(e).__name__}: {e}"
         mark("failed", msg)
