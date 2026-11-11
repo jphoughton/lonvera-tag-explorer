@@ -1,4 +1,4 @@
-"""Scoped API keys (app/api_keys.py, app/auth.py, migration 204): a key reads everything the app serves and writes only the two production assignment routes.
+"""Scoped API keys (app/api_keys.py, app/auth.py, migration 205): a key reads everything the app serves and writes only the two production assignment routes.
 Everything about a key is checked here: scope, revoked / malformed keys, no cookie fallback, the launch gate, login, vendor link tokens, the hash at rest, last_used_at, the failed-lookup
 throttle, the Origin check and the response cache."""
 import hashlib

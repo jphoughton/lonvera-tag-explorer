@@ -1,4 +1,4 @@
-"""Manage scoped API keys (table api_keys, migration 204; what a key may do is in app/api_keys.py).
+"""Manage scoped API keys (table api_keys, migration 205; what a key may do is in app/api_keys.py).
 
     python -m etl.api_keys create --name <name> [--out <file>]   make a key; the key is printed ONCE to stdout (or written to <file> with mode 0600) and can never be shown again
     python -m etl.api_keys list                                  name, prefix, created, last used, revoked (never the key or its hash)
@@ -39,7 +39,7 @@ def create_key(conn, name: str, created_by: str | None = None) -> tuple[str, str
         raise CliError(f"a key named {name!r} already exists (revoked keys keep their name; pick another)") from None
     except psycopg.errors.UndefinedTable:
         conn.rollback()
-        raise CliError("migration 204 has not been applied to this database (python -m etl.migrate)") from None
+        raise CliError("migration 205 has not been applied to this database (python -m etl.migrate)") from None
     conn.commit()
     return raw, raw[:8]
 

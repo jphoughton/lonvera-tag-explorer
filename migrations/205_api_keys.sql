@@ -1,4 +1,4 @@
--- 204: scoped API keys for the Tag Explorer API. A key is handed to a colleague who needs to read what the app serves and to assign items on the production board (/priorities/production), nothing else.
+-- 205: scoped API keys for the Tag Explorer API. A key is handed to a colleague who needs to read what the app serves and to assign items on the production board (/priorities/production), nothing else.
 -- Only the sha256 hash of the key is stored (key_hash); the key itself is shown once when it is made (python -m etl.api_keys create) and can never be read back. prefix is the first 8 characters of the key, for display only.
 -- scope 'read_assign' means: every GET under /api/ and /media/, plus POST /api/priorities/assignments and PATCH /api/priorities/assignments/<id>. The scope is enforced in app/auth.py and app/api_keys.py.
 -- Written by etl/api_keys.py (create, revoke) and touched by app/api_keys.py (last_used_at, at most once a minute). Additive and idempotent.

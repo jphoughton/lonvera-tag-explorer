@@ -1,4 +1,4 @@
-"""Scoped API keys (table api_keys, migration 204).
+"""Scoped API keys (table api_keys, migration 205).
 
 A key looks like lvk_ plus 40 characters from secrets.token_urlsafe (240 bits). Only its sha256 hash is stored. The scope 'read_assign' lets a key read everything the app serves (GET and HEAD) and
 make exactly two writes: POST /api/priorities/assignments and PATCH /api/priorities/assignments/<aid>. Nothing else is writable with a key (see ALLOWED_WRITES). app/auth.py enforces this in its
