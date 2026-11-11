@@ -115,7 +115,7 @@ def etl_jobs() -> list[dict]:
             continue
         n += 1
         jobs.append({"service": "feeds", "order": n, "module": mod, "args": arg.strip(), "fatal": True, "note": ""})
-    for svc, script in (("live", "run_live.sh"), ("alerts", "run_alerts.sh"), ("backup", "run_backup.sh"), ("launch worker (no service)", "run_launch_worker.sh")):
+    for svc, script in (("live", "run_live.sh"), ("alerts", "run_alerts.sh"), ("backup", "run_backup.sh"), ("breakdowns", "run_breakdowns.sh"), ("launch worker (no service)", "run_launch_worker.sh")):
         for mod in dict.fromkeys(_modules_in(DEPLOY / script)):
             if mod != "etl.migrate":
                 jobs.append({"service": svc, "order": 1, "module": mod, "args": "", "fatal": True, "note": ""})
@@ -147,6 +147,8 @@ def services() -> list[dict]:
         out.append({"name": name, "kind": "cron", "start": inst.get("startCommand"), "schedule": _py_assign(p, "DEFAULT_CRON"), "healthcheck": None, "source": f"scripts/deploy/{p.name}"})
     out.append({"name": "live", "kind": "cron", "start": "scripts/deploy/run_live.sh (etl.live_today)", "schedule": None, "healthcheck": None,
                 "source": "scripts/deploy/run_live.sh; no apply script in the repo, so the schedule is not verifiable here (project notes say hourly)"})
+    out.append({"name": "breakdowns", "kind": "cron", "start": "scripts/deploy/run_breakdowns.sh (etl.meta_breakdowns --auto)", "schedule": None, "healthcheck": None,
+                "source": "scripts/deploy/run_breakdowns.sh; no apply script in the repo, so the Railway service and its schedule (proposed: 0 */2 * * *) are not verifiable here"})
     out.append({"name": "launch worker", "kind": "none", "start": "scripts/deploy/run_launch_worker.sh (etl.launch_worker)", "schedule": None, "healthcheck": None,
                 "source": "code exists, wired to no Railway service"})
     out.append({"name": "Postgres", "kind": "database", "start": None, "schedule": None, "healthcheck": None, "source": "docs/DEPLOY.md"})

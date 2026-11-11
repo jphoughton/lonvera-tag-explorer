@@ -42,6 +42,14 @@
    "source": "scripts/deploy/apply_backup_service.py"
   },
   {
+   "name": "breakdowns",
+   "kind": "cron",
+   "start": "scripts/deploy/run_breakdowns.sh (etl.meta_breakdowns --auto)",
+   "schedule": null,
+   "healthcheck": null,
+   "source": "scripts/deploy/run_breakdowns.sh; no apply script in the repo, so the Railway service and its schedule (proposed: 0 */2 * * *) are not verifiable here"
+  },
+  {
    "name": "feeds",
    "kind": "cron",
    "start": "scripts/deploy/run_feeds.sh",
@@ -204,6 +212,14 @@
    "note": ""
   },
   {
+   "service": "breakdowns",
+   "order": 1,
+   "module": "etl.meta_breakdowns",
+   "args": "",
+   "fatal": true,
+   "note": ""
+  },
+  {
    "service": "launch worker (no service)",
    "order": 1,
    "module": "etl.launch_worker",
@@ -304,6 +320,10 @@
   {
    "module": "etl.meta_api",
    "summary": "Minimal read-only Meta Graph client: token loading, GET with retry/backoff on rate limits (incl. code 80004), insights pull with split/async"
+  },
+  {
+   "module": "etl.meta_breakdowns",
+   "summary": "Meta Ads breakdowns: every Insights API breakdown, pulled at ad x day grain (read only) into meta_breakdown_daily, with meta_breakdown_coverage saying what exists."
   },
   {
    "module": "etl.meta_pull",
@@ -698,6 +718,28 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": ""
+  },
+  {
+   "rule": "/api/meta/breakdowns",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.meta_breakdowns",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "One breakdown set (set=age | age,gender | region ...) aggregated over start..end by its dimensions: spend, impressions, clicks, purchases, revenue, ROAS, cost per"
+  },
+  {
+   "rule": "/api/meta/breakdowns/coverage",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.meta_breakdowns_coverage",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "What the nightly Meta breakdown pull holds, per set and level: status (ok / unsupported / error), first and last day, rows, last error (app/meta_breakdowns.py)."
   },
   {
    "rule": "/api/platforms/kpis",

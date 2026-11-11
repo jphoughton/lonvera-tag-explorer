@@ -8204,6 +8204,429 @@
    "examples": []
   },
   {
+   "name": "public.meta_breakdown_daily",
+   "schema": "public",
+   "relation": "meta_breakdown_daily",
+   "kind": "table",
+   "group": "meta",
+   "purpose": "Meta Ads results split by one breakdown set (age, gender, country, region, dma, placement, device, hour of day, creative asset ...), pulled at AD grain from the Insights API for both ad accounts. Partitioned by month on day.",
+   "grain": "one row per day x ad account x level (ad; campaign or account only for a set Meta refused at ad level) x entity x breakdown set x dimension values",
+   "primary_key": [
+    "day",
+    "account_id",
+    "level",
+    "entity_id",
+    "breakdown_set",
+    "dims_key"
+   ],
+   "foreign_keys": [],
+   "source": "Meta Marketing API Insights (read only), etl.meta_breakdowns",
+   "refresh": "every 2 hours by the dedicated `breakdowns` service: the backfill (newest 30-day window first) until finished, then the trailing 7 days once a day",
+   "coverage": "see meta_breakdown_coverage for the first and last day and the level per set",
+   "caveats": [
+    "purchases and purchase_value are Meta-reported (they count returning customers, not Upstack new customers).",
+    "Reach and unique outbound clicks are per row (one ad, one day, one dimension value): never sum them across days, ads or sets.",
+    "Action breakdown sets (action_device, action_destination ...) split only purchases and purchase_value; their spend, impressions and click columns are NULL.",
+    "Rows of different breakdown sets are different cuts of the same spend: never add across sets.",
+    "Meta can return a row for a day with purchases but no spend (view-through), so keep rows with zero spend.",
+    "Up to three dimension values per row sit in dim1, dim2, dim3 in the order of the names in breakdown_set (age,gender: dim1 = age, dim2 = gender); asset breakdowns store the JSON text Meta returned."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Calendar day as returned by Meta (each ad account buckets days in its own time zone: Lonvera Main Pacific, Lonvera BackUp Eastern)."
+    },
+    {
+     "name": "account_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta ad account id with the act_ prefix."
+    },
+    {
+     "name": "level",
+     "type": "text",
+     "nullable": false,
+     "description": "Grain of the entity: ad (the default for every set), campaign or account (only for a set Meta refused at the finer level)."
+    },
+    {
+     "name": "entity_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Ad id, campaign id or ad account id, depending on level."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": true,
+     "description": "Campaign of the entity (NULL at account level)."
+    },
+    {
+     "name": "adset_id",
+     "type": "text",
+     "nullable": true,
+     "description": "Ad set of the entity (ad level only)."
+    },
+    {
+     "name": "breakdown_set",
+     "type": "text",
+     "nullable": false,
+     "description": "Comma-separated breakdown names that were requested together, for example age,gender or publisher_platform,platform_position,impression_device."
+    },
+    {
+     "name": "dim1",
+     "type": "text",
+     "nullable": true,
+     "description": "Value of the first name in breakdown_set (text)."
+    },
+    {
+     "name": "dim2",
+     "type": "text",
+     "nullable": true,
+     "description": "Value of the second name in breakdown_set, NULL when the set has one name."
+    },
+    {
+     "name": "dim3",
+     "type": "text",
+     "nullable": true,
+     "description": "Value of the third name in breakdown_set, NULL when the set has fewer than three."
+    },
+    {
+     "name": "dims_key",
+     "type": "text",
+     "nullable": false,
+     "description": "Stable text form of the dimension values (names sorted, name=value joined with a vertical bar, percent-escaped) used in the primary key."
+    },
+    {
+     "name": "spend",
+     "type": "numeric(14,2)",
+     "nullable": true,
+     "description": "Meta spend in account currency (US dollars). NULL for action breakdown sets."
+    },
+    {
+     "name": "impressions",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Meta impressions. NULL for action breakdown sets."
+    },
+    {
+     "name": "reach",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Accounts reached on that day within the row. Not additive across days, ads or sets. NULL for action breakdown sets or when Meta would not return it with the breakdown."
+    },
+    {
+     "name": "clicks",
+     "type": "bigint",
+     "nullable": true,
+     "description": "All clicks (Meta clicks field), not only link clicks. NULL for action breakdown sets."
+    },
+    {
+     "name": "inline_link_clicks",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Link clicks (Meta inline_link_clicks). NULL for action breakdown sets."
+    },
+    {
+     "name": "outbound_clicks",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Outbound clicks (clicks that left Meta; Meta outbound_clicks, action type outbound_click). NULL for action breakdown sets."
+    },
+    {
+     "name": "unique_outbound_clicks",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Unique outbound clicks within the row (Meta unique_outbound_clicks). Not additive across days or ads. NULL for action breakdown sets."
+    },
+    {
+     "name": "purchases",
+     "type": "numeric(12,2)",
+     "nullable": true,
+     "description": "Meta-reported purchases (omni_purchase, else purchase, else pixel purchase), same rule as ad_daily."
+    },
+    {
+     "name": "purchase_value",
+     "type": "numeric(14,2)",
+     "nullable": true,
+     "description": "Meta-reported purchase value (same action type rule), gross dollars."
+    },
+    {
+     "name": "pulled_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When this row was last written by the pull."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.meta_breakdown_coverage",
+   "schema": "public",
+   "relation": "meta_breakdown_coverage",
+   "kind": "table",
+   "group": "meta",
+   "purpose": "What the breakdown pull holds per breakdown set and level: whether Meta accepted the request, the first and last day held, the row count and the last error.",
+   "grain": "one row per breakdown set x level",
+   "primary_key": [
+    "breakdown_set",
+    "level"
+   ],
+   "foreign_keys": [],
+   "source": "etl.meta_breakdowns (written after every window)",
+   "refresh": "nightly and after every backfill window",
+   "coverage": "from the first run",
+   "caveats": [
+    "A set Meta refuses at ad level gets a status unsupported row at level ad (with the reason in last_error) and is pulled at campaign, then account level; each level has its own row.",
+    "status unsupported is asked again every 14 days. status error means a transient or unexpected failure, so the set may have gaps.",
+    "first_day, last_day and rows are read from meta_breakdown_daily after each window, so during a backfill first_day moves back window by window."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "breakdown_set",
+     "type": "text",
+     "nullable": false,
+     "description": "Breakdown set name, as in meta_breakdown_daily.breakdown_set."
+    },
+    {
+     "name": "level",
+     "type": "text",
+     "nullable": false,
+     "description": "Level the set was requested at: ad, campaign or account."
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "nullable": false,
+     "description": "ok = Meta accepted it and rows are held; unsupported = Meta refused the request at this level; error = failed for another reason (see last_error)."
+    },
+    {
+     "name": "first_day",
+     "type": "date",
+     "nullable": true,
+     "description": "Earliest day held in meta_breakdown_daily for this set and level."
+    },
+    {
+     "name": "last_day",
+     "type": "date",
+     "nullable": true,
+     "description": "Latest day held in meta_breakdown_daily for this set and level."
+    },
+    {
+     "name": "last_error",
+     "type": "text",
+     "nullable": true,
+     "description": "Scrubbed text of the last refusal or failure; NULL when the last check was clean."
+    },
+    {
+     "name": "rows",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Rows held in meta_breakdown_daily for this set and level."
+    },
+    {
+     "name": "checked_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the set was last requested."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.meta_breakdown_progress",
+   "schema": "public",
+   "relation": "meta_breakdown_progress",
+   "kind": "table",
+   "group": "meta",
+   "purpose": "Resume bookkeeping of the breakdown backfill: one row per finished window of one breakdown set at one level for one ad account, so running the same backfill again skips what is done.",
+   "grain": "one row per breakdown set x level x ad account x window",
+   "primary_key": [
+    "breakdown_set",
+    "level",
+    "account_id",
+    "window_start",
+    "window_end"
+   ],
+   "foreign_keys": [],
+   "source": "etl.meta_breakdowns (backfill and --auto mode; the plain trailing-days pull does not write it)",
+   "refresh": "written as each window x set finishes",
+   "coverage": "backfill windows and the three bookkeeping rows",
+   "caveats": [
+    "A window is skipped on a rerun when a recorded window covers it. The backfill anchor is stored here on the first --auto run, so a resume after midnight needs no arguments.",
+    "Three bookkeeping rows have breakdown_set __anchor__ (window_start = oldest day, window_end = the backfill's --until day, rows = max days), __backfill_done__ (the backfill finished) and __caught_up__ (window_end = the last day the daily catch-up covered); level and account_id are '-'.",
+    "Safe to delete (or run with --restart): the next backfill simply starts over and pulls again (upserts)."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "breakdown_set",
+     "type": "text",
+     "nullable": false,
+     "description": "Breakdown set name."
+    },
+    {
+     "name": "level",
+     "type": "text",
+     "nullable": false,
+     "description": "Level the window was pulled at."
+    },
+    {
+     "name": "account_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta ad account id."
+    },
+    {
+     "name": "window_start",
+     "type": "date",
+     "nullable": false,
+     "description": "First day of the finished window (the oldest day for the __anchor__ row)."
+    },
+    {
+     "name": "window_end",
+     "type": "date",
+     "nullable": false,
+     "description": "Last day of the finished window."
+    },
+    {
+     "name": "rows",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Rows written for the window (both accounts are separate rows)."
+    },
+    {
+     "name": "done_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the window finished."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "analytics.meta_breakdown_daily",
+   "schema": "analytics",
+   "relation": "meta_breakdown_daily",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Meta results split by ten everyday breakdowns (audience segment, age, gender, age x gender, country, region, publisher platform, platform position, device platform, hour of day), one row per day x ad x breakdown x value. Meta-reported numbers.",
+   "grain": "one row per (day, account, ad_id, breakdown, value); NO aggregation above ad",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.meta_breakdown_daily (etl.meta_breakdowns, Meta Insights API) joined to the ten breakdown names",
+   "refresh": "nightly, trailing 7 days re-pulled; older windows come from the backfill (newest first)",
+   "coverage": "first and last day per breakdown: min(day) / max(day) over this view (a backfill moves first_day back window by window, up to 365 days; a breakdown Meta only serves for a shorter period stops earlier); ad_id and adset_id are NULL only where Meta refused a breakdown at ad level",
+   "caveats": [
+    "Every one of the ten breakdowns is requested at AD level; ad_id and adset_id are NULL only for a breakdown Meta refused at ad level (then campaign_id is set and ad_id and adset_id are NULL; at account level campaign_id is NULL too). Query this view with ad_id IS NOT NULL (or read public.meta_breakdown_coverage: status and level per breakdown) to see which breakdowns have ad-level rows.",
+    "purchases and purchase_value are Meta-reported (count returning customers); they are not Upstack new customers and must not be mixed with them in one ratio.",
+    "reach and unique_outbound_clicks are per row (one ad, one day, one value): never sum them across days, ads or values. spend, impressions, link_clicks, purchases and purchase_value are additive within one breakdown.",
+    "Different breakdowns are different cuts of the same spend: sum within one breakdown only, never across breakdowns.",
+    "value for age_gender is 'age|gender' (for example '25-34|female'); hourly values are Meta's advertiser-time-zone hour buckets ('00:00:00 - 00:59:59').",
+    "Meta can return purchases for a day with no spend (view-through): keep those rows."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": null,
+     "description": "Calendar day as returned by Meta (Lonvera Main Pacific, Lonvera BackUp Eastern)."
+    },
+    {
+     "name": "account",
+     "type": "text",
+     "nullable": null,
+     "description": "Lonvera Main or Lonvera BackUp."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Meta campaign id (NULL only for a breakdown held at account level)."
+    },
+    {
+     "name": "adset_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Meta ad set id (NULL only for a breakdown Meta refused at ad level)."
+    },
+    {
+     "name": "ad_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Meta ad id (NULL only for a breakdown Meta refused at ad level: campaign or account rows)."
+    },
+    {
+     "name": "breakdown",
+     "type": "text",
+     "nullable": null,
+     "description": "audience_segment (from user_segment_key) | age | gender | age_gender | country | region | publisher_platform | platform_position | device_platform | hourly (advertiser time zone). All ten are requested at ad level."
+    },
+    {
+     "name": "value",
+     "type": "text",
+     "nullable": null,
+     "description": "The text value of the breakdown ('25-34', 'female', 'US', 'facebook', '25-34|female' for age_gender, an hour bucket for hourly)."
+    },
+    {
+     "name": "spend",
+     "type": "numeric(14,2)",
+     "nullable": null,
+     "description": "Meta spend, dollars."
+    },
+    {
+     "name": "impressions",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Meta impressions."
+    },
+    {
+     "name": "reach",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Accounts reached on the day within the row (not additive; NULL when Meta would not return it with the breakdown)."
+    },
+    {
+     "name": "link_clicks",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Meta link clicks (inline_link_clicks)."
+    },
+    {
+     "name": "unique_outbound_clicks",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Unique outbound clicks within the row (not additive)."
+    },
+    {
+     "name": "purchases",
+     "type": "numeric(12,2)",
+     "nullable": null,
+     "description": "Meta-reported purchases."
+    },
+    {
+     "name": "purchase_value",
+     "type": "numeric(14,2)",
+     "nullable": null,
+     "description": "Meta-reported purchase value, dollars."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Spend and Meta ROAS by age, last 7 complete days",
+     "sql": "SELECT value AS age, round(sum(spend), 2) AS spend, sum(purchases) AS purchases, round(sum(purchase_value) / NULLIF(sum(spend), 0), 2) AS meta_roas\nFROM analytics.meta_breakdown_daily WHERE breakdown = 'age' AND day >= current_date - 7 AND day < current_date GROUP BY 1 ORDER BY 1;"
+    },
+    {
+     "title": "Which breakdowns have ad-level rows, and how far back each goes",
+     "sql": "SELECT breakdown, ad_id IS NOT NULL AS ad_level, min(day) AS first_day, max(day) AS last_day, count(*) AS rows\nFROM analytics.meta_breakdown_daily GROUP BY 1, 2 ORDER BY 1, 2;"
+    }
+   ]
+  },
+  {
    "name": "public.etl_runs",
    "schema": "public",
    "relation": "etl_runs",

@@ -103,8 +103,8 @@ One section per relation, grouped as in the table below. Column types, nullabili
 
 | Group | Relations |
 |---|---|
-| analytics schema: the read-only views (start here) | [`analytics.meta_ads`](#analyticsmeta_ads), [`analytics.meta_ad_daily`](#analyticsmeta_ad_daily), [`analytics.meta_adset_daily`](#analyticsmeta_adset_daily), [`analytics.meta_campaign_daily`](#analyticsmeta_campaign_daily), [`analytics.meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`analytics.meta_reach`](#analyticsmeta_reach), [`analytics.google_campaign_daily`](#analyticsgoogle_campaign_daily), [`analytics.platform_daily`](#analyticsplatform_daily), [`analytics.orders_daily`](#analyticsorders_daily), [`analytics.creative_tracker`](#analyticscreative_tracker), [`analytics.data_coverage`](#analyticsdata_coverage), [`analytics.etl_runs`](#analyticsetl_runs) |
-| Meta (Facebook / Instagram) ads: ads, campaigns, daily results | [`public.ad_daily`](#publicad_daily), [`public.meta_ads`](#publicmeta_ads), [`public.meta_campaigns`](#publicmeta_campaigns), [`public.meta_ad_lifetime`](#publicmeta_ad_lifetime), [`public.ad_lifetime`](#publicad_lifetime), [`public.meta_family_map`](#publicmeta_family_map), [`public.landing_pages`](#publiclanding_pages), [`public.landing_page_versions`](#publiclanding_page_versions), [`public.landing_page_ads`](#publiclanding_page_ads), [`public.landing_page_top_ads`](#publiclanding_page_top_ads) |
+| analytics schema: the read-only views (start here) | [`analytics.meta_ads`](#analyticsmeta_ads), [`analytics.meta_ad_daily`](#analyticsmeta_ad_daily), [`analytics.meta_adset_daily`](#analyticsmeta_adset_daily), [`analytics.meta_campaign_daily`](#analyticsmeta_campaign_daily), [`analytics.meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`analytics.meta_reach`](#analyticsmeta_reach), [`analytics.google_campaign_daily`](#analyticsgoogle_campaign_daily), [`analytics.platform_daily`](#analyticsplatform_daily), [`analytics.orders_daily`](#analyticsorders_daily), [`analytics.creative_tracker`](#analyticscreative_tracker), [`analytics.data_coverage`](#analyticsdata_coverage), [`analytics.etl_runs`](#analyticsetl_runs), [`analytics.meta_breakdown_daily`](#analyticsmeta_breakdown_daily) |
+| Meta (Facebook / Instagram) ads: ads, campaigns, daily results | [`public.ad_daily`](#publicad_daily), [`public.meta_ads`](#publicmeta_ads), [`public.meta_campaigns`](#publicmeta_campaigns), [`public.meta_ad_lifetime`](#publicmeta_ad_lifetime), [`public.ad_lifetime`](#publicad_lifetime), [`public.meta_family_map`](#publicmeta_family_map), [`public.meta_breakdown_daily`](#publicmeta_breakdown_daily), [`public.meta_breakdown_coverage`](#publicmeta_breakdown_coverage), [`public.meta_breakdown_progress`](#publicmeta_breakdown_progress), [`public.landing_pages`](#publiclanding_pages), [`public.landing_page_versions`](#publiclanding_page_versions), [`public.landing_page_ads`](#publiclanding_page_ads), [`public.landing_page_top_ads`](#publiclanding_page_top_ads) |
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
 | Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily), [`public.shopify_orders`](#publicshopify_orders), [`public.shopify_order_lines`](#publicshopify_order_lines) |
@@ -780,6 +780,54 @@ SELECT id, job, started_at, status, data_through, rows_written FROM analytics.et
 SELECT id, job, started_at, error FROM analytics.etl_runs WHERE status = 'failed' AND started_at > now() - interval '7 days' ORDER BY id DESC;
 ```
 
+### analytics.meta_breakdown_daily
+
+*view*
+
+**Purpose.** Meta results split by ten everyday breakdowns (audience segment, age, gender, age x gender, country, region, publisher platform, platform position, device platform, hour of day), one row per day x ad x breakdown x value. Meta-reported numbers.
+
+- **Grain:** one row per (day, account, ad_id, breakdown, value); NO aggregation above ad
+- **Source:** public.meta_breakdown_daily (etl.meta_breakdowns, Meta Insights API) joined to the ten breakdown names
+- **Refresh:** nightly, trailing 7 days re-pulled; older windows come from the backfill (newest first)
+- **Coverage:** first and last day per breakdown: min(day) / max(day) over this view (a backfill moves first_day back window by window, up to 365 days; a breakdown Meta only serves for a shorter period stops earlier); ad_id and adset_id are NULL only where Meta refused a breakdown at ad level
+- **Caveat:** Every one of the ten breakdowns is requested at AD level; ad_id and adset_id are NULL only for a breakdown Meta refused at ad level (then campaign_id is set and ad_id and adset_id are NULL; at account level campaign_id is NULL too). Query this view with ad_id IS NOT NULL (or read public.meta_breakdown_coverage: status and level per breakdown) to see which breakdowns have ad-level rows.
+- **Caveat:** purchases and purchase_value are Meta-reported (count returning customers); they are not Upstack new customers and must not be mixed with them in one ratio.
+- **Caveat:** reach and unique_outbound_clicks are per row (one ad, one day, one value): never sum them across days, ads or values. spend, impressions, link_clicks, purchases and purchase_value are additive within one breakdown.
+- **Caveat:** Different breakdowns are different cuts of the same spend: sum within one breakdown only, never across breakdowns.
+- **Caveat:** value for age_gender is 'age|gender' (for example '25-34|female'); hourly values are Meta's advertiser-time-zone hour buckets ('00:00:00 - 00:59:59').
+- **Caveat:** Meta can return purchases for a day with no spend (view-through): keep those rows.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date |  | Calendar day as returned by Meta (Lonvera Main Pacific, Lonvera BackUp Eastern). |
+| `account` | text |  | Lonvera Main or Lonvera BackUp. |
+| `campaign_id` | text |  | Meta campaign id (NULL only for a breakdown held at account level). |
+| `adset_id` | text |  | Meta ad set id (NULL only for a breakdown Meta refused at ad level). |
+| `ad_id` | text |  | Meta ad id (NULL only for a breakdown Meta refused at ad level: campaign or account rows). |
+| `breakdown` | text |  | audience_segment (from user_segment_key) \| age \| gender \| age_gender \| country \| region \| publisher_platform \| platform_position \| device_platform \| hourly (advertiser time zone). All ten are requested at ad level. |
+| `value` | text |  | The text value of the breakdown ('25-34', 'female', 'US', 'facebook', '25-34\|female' for age_gender, an hour bucket for hourly). |
+| `spend` | numeric(14,2) |  | Meta spend, dollars. |
+| `impressions` | bigint |  | Meta impressions. |
+| `reach` | bigint |  | Accounts reached on the day within the row (not additive; NULL when Meta would not return it with the breakdown). |
+| `link_clicks` | bigint |  | Meta link clicks (inline_link_clicks). |
+| `unique_outbound_clicks` | bigint |  | Unique outbound clicks within the row (not additive). |
+| `purchases` | numeric(12,2) |  | Meta-reported purchases. |
+| `purchase_value` | numeric(14,2) |  | Meta-reported purchase value, dollars. |
+
+*Spend and Meta ROAS by age, last 7 complete days*
+
+```sql
+SELECT value AS age, round(sum(spend), 2) AS spend, sum(purchases) AS purchases, round(sum(purchase_value) / NULLIF(sum(spend), 0), 2) AS meta_roas
+FROM analytics.meta_breakdown_daily WHERE breakdown = 'age' AND day >= current_date - 7 AND day < current_date GROUP BY 1 ORDER BY 1;
+```
+
+*Which breakdowns have ad-level rows, and how far back each goes*
+
+```sql
+SELECT breakdown, ad_id IS NOT NULL AS ad_level, min(day) AS first_day, max(day) AS last_day, count(*) AS rows
+FROM analytics.meta_breakdown_daily GROUP BY 1, 2 ORDER BY 1, 2;
+```
+
 ## Meta (Facebook / Instagram) ads: ads, campaigns, daily results
 
 ### public.ad_daily
@@ -983,6 +1031,96 @@ SELECT l.ad_id, a.ad_name, round(l.spend) AS spend, round(l.conv_value / NULLIF(
 ```sql
 SELECT coalesce(rule, '(unmatched)') AS rule, count(*) AS families FROM meta_family_map GROUP BY 1 ORDER BY 2 DESC;
 ```
+
+### public.meta_breakdown_daily
+
+*table*
+
+**Purpose.** Meta Ads results split by one breakdown set (age, gender, country, region, dma, placement, device, hour of day, creative asset ...), pulled at AD grain from the Insights API for both ad accounts. Partitioned by month on day.
+
+- **Grain:** primary key `(day, account_id, level, entity_id, breakdown_set, dims_key)`; one row per day x ad account x level (ad; campaign or account only for a set Meta refused at ad level) x entity x breakdown set x dimension values
+- **Source:** Meta Marketing API Insights (read only), etl.meta_breakdowns
+- **Refresh:** every 2 hours by the dedicated `breakdowns` service: the backfill (newest 30-day window first) until finished, then the trailing 7 days once a day
+- **Coverage:** see meta_breakdown_coverage for the first and last day and the level per set
+- **Caveat:** purchases and purchase_value are Meta-reported (they count returning customers, not Upstack new customers).
+- **Caveat:** Reach and unique outbound clicks are per row (one ad, one day, one dimension value): never sum them across days, ads or sets.
+- **Caveat:** Action breakdown sets (action_device, action_destination ...) split only purchases and purchase_value; their spend, impressions and click columns are NULL.
+- **Caveat:** Rows of different breakdown sets are different cuts of the same spend: never add across sets.
+- **Caveat:** Meta can return a row for a day with purchases but no spend (view-through), so keep rows with zero spend.
+- **Caveat:** Up to three dimension values per row sit in dim1, dim2, dim3 in the order of the names in breakdown_set (age,gender: dim1 = age, dim2 = gender); asset breakdowns store the JSON text Meta returned.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date | no | Calendar day as returned by Meta (each ad account buckets days in its own time zone: Lonvera Main Pacific, Lonvera BackUp Eastern). |
+| `account_id` | text | no | Meta ad account id with the act_ prefix. |
+| `level` | text | no | Grain of the entity: ad (the default for every set), campaign or account (only for a set Meta refused at the finer level). |
+| `entity_id` | text | no | Ad id, campaign id or ad account id, depending on level. |
+| `campaign_id` | text | yes | Campaign of the entity (NULL at account level). |
+| `adset_id` | text | yes | Ad set of the entity (ad level only). |
+| `breakdown_set` | text | no | Comma-separated breakdown names that were requested together, for example age,gender or publisher_platform,platform_position,impression_device. |
+| `dim1` | text | yes | Value of the first name in breakdown_set (text). |
+| `dim2` | text | yes | Value of the second name in breakdown_set, NULL when the set has one name. |
+| `dim3` | text | yes | Value of the third name in breakdown_set, NULL when the set has fewer than three. |
+| `dims_key` | text | no | Stable text form of the dimension values (names sorted, name=value joined with a vertical bar, percent-escaped) used in the primary key. |
+| `spend` | numeric(14,2) | yes | Meta spend in account currency (US dollars). NULL for action breakdown sets. |
+| `impressions` | bigint | yes | Meta impressions. NULL for action breakdown sets. |
+| `reach` | bigint | yes | Accounts reached on that day within the row. Not additive across days, ads or sets. NULL for action breakdown sets or when Meta would not return it with the breakdown. |
+| `clicks` | bigint | yes | All clicks (Meta clicks field), not only link clicks. NULL for action breakdown sets. |
+| `inline_link_clicks` | bigint | yes | Link clicks (Meta inline_link_clicks). NULL for action breakdown sets. |
+| `outbound_clicks` | bigint | yes | Outbound clicks (clicks that left Meta; Meta outbound_clicks, action type outbound_click). NULL for action breakdown sets. |
+| `unique_outbound_clicks` | bigint | yes | Unique outbound clicks within the row (Meta unique_outbound_clicks). Not additive across days or ads. NULL for action breakdown sets. |
+| `purchases` | numeric(12,2) | yes | Meta-reported purchases (omni_purchase, else purchase, else pixel purchase), same rule as ad_daily. |
+| `purchase_value` | numeric(14,2) | yes | Meta-reported purchase value (same action type rule), gross dollars. |
+| `pulled_at` | timestamptz | no | When this row was last written by the pull. |
+
+### public.meta_breakdown_coverage
+
+*table*
+
+**Purpose.** What the breakdown pull holds per breakdown set and level: whether Meta accepted the request, the first and last day held, the row count and the last error.
+
+- **Grain:** primary key `(breakdown_set, level)`; one row per breakdown set x level
+- **Source:** etl.meta_breakdowns (written after every window)
+- **Refresh:** nightly and after every backfill window
+- **Coverage:** from the first run
+- **Caveat:** A set Meta refuses at ad level gets a status unsupported row at level ad (with the reason in last_error) and is pulled at campaign, then account level; each level has its own row.
+- **Caveat:** status unsupported is asked again every 14 days. status error means a transient or unexpected failure, so the set may have gaps.
+- **Caveat:** first_day, last_day and rows are read from meta_breakdown_daily after each window, so during a backfill first_day moves back window by window.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `breakdown_set` | text | no | Breakdown set name, as in meta_breakdown_daily.breakdown_set. |
+| `level` | text | no | Level the set was requested at: ad, campaign or account. |
+| `status` | text | no | ok = Meta accepted it and rows are held; unsupported = Meta refused the request at this level; error = failed for another reason (see last_error). |
+| `first_day` | date | yes | Earliest day held in meta_breakdown_daily for this set and level. |
+| `last_day` | date | yes | Latest day held in meta_breakdown_daily for this set and level. |
+| `last_error` | text | yes | Scrubbed text of the last refusal or failure; NULL when the last check was clean. |
+| `rows` | bigint | no | Rows held in meta_breakdown_daily for this set and level. |
+| `checked_at` | timestamptz | no | When the set was last requested. |
+
+### public.meta_breakdown_progress
+
+*table*
+
+**Purpose.** Resume bookkeeping of the breakdown backfill: one row per finished window of one breakdown set at one level for one ad account, so running the same backfill again skips what is done.
+
+- **Grain:** primary key `(breakdown_set, level, account_id, window_start, window_end)`; one row per breakdown set x level x ad account x window
+- **Source:** etl.meta_breakdowns (backfill and --auto mode; the plain trailing-days pull does not write it)
+- **Refresh:** written as each window x set finishes
+- **Coverage:** backfill windows and the three bookkeeping rows
+- **Caveat:** A window is skipped on a rerun when a recorded window covers it. The backfill anchor is stored here on the first --auto run, so a resume after midnight needs no arguments.
+- **Caveat:** Three bookkeeping rows have breakdown_set __anchor__ (window_start = oldest day, window_end = the backfill's --until day, rows = max days), __backfill_done__ (the backfill finished) and __caught_up__ (window_end = the last day the daily catch-up covered); level and account_id are '-'.
+- **Caveat:** Safe to delete (or run with --restart): the next backfill simply starts over and pulls again (upserts).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `breakdown_set` | text | no | Breakdown set name. |
+| `level` | text | no | Level the window was pulled at. |
+| `account_id` | text | no | Meta ad account id. |
+| `window_start` | date | no | First day of the finished window (the oldest day for the __anchor__ row). |
+| `window_end` | date | no | Last day of the finished window. |
+| `rows` | bigint | no | Rows written for the window (both accounts are separate rows). |
+| `done_at` | timestamptz | no | When the window finished. |
 
 ### public.landing_pages
 
