@@ -274,24 +274,86 @@ class Repo:
                 self.edges[t] |= pkgs
 
     def _add_route_edges(self) -> None:
-        """a test that requests /api/trends depends on the module that defines that route"""
-        routes: dict[str, set[str]] = defaultdict(set)         # "/api/trends" -> modules defining a route below it
+        """A test that requests /api/trends depends on (1) the module that defines that route and (2) every module its handler uses. (2) matters because the
+        handlers live in a hub (app/api.py) while the work is done in small modules (app/google.py): the hub is never walked through, so the tie has to be made here,
+        per handler: handler -> the modules it (or a helper function of the same file it calls) names -> the tests that request that handler's route."""
+        routes: dict[str, set[str]] = defaultdict(set)         # "/api/trends" -> modules the handlers below it use (and that define them)
         for f in self.files:
-            if f.endswith(".py") and f.startswith(("app/", "brain/")) and f in self.mod_of:
-                src = self.text(f)
-                prefixes = URL_PREFIX_RE.findall(src) or [""]
-                for m in ROUTE_RE.finditer(src):
+            if not (f.endswith(".py") and f.startswith(("app/", "brain/")) and f in self.mod_of):
+                continue
+            src = self.text(f)
+            try:
+                tree = ast.parse(src)
+            except SyntaxError:
+                continue
+            prefixes = URL_PREFIX_RE.findall(src) or [""]
+            alias: dict[str, str] = {}                           # local name -> module file ("gg" -> app/google.py)
+            funcs: dict[str, ast.AST] = {}
+            for n in tree.body:
+                if isinstance(n, ast.ImportFrom):
+                    pkg = f[:-3].split("/")[:-1]
+                    base_parts = pkg[: len(pkg) - (n.level - 1)] if n.level > 1 else pkg
+                    base = ".".join(base_parts + ([n.module] if n.module else [])) if n.level else (n.module or "")
+                    for a_ in n.names:
+                        for cand in (f"{base}.{a_.name}", base):
+                            r = self._resolve(cand) if cand else None
+                            if r and r != f:
+                                alias[a_.asname or a_.name] = r
+                                break
+                elif isinstance(n, ast.Import):
+                    for a_ in n.names:
+                        r = self._resolve(a_.name)
+                        if r and r != f:
+                            alias[a_.asname or a_.name.split(".")[0]] = r
+                elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    funcs[n.name] = n
+
+            def uses(fn: ast.AST, seen: set[str]) -> set[str]:
+                out: set[str] = set()
+                for node in ast.walk(fn):
+                    if isinstance(node, ast.Name):
+                        if node.id in alias:
+                            out.add(alias[node.id])
+                        elif node.id in funcs and node.id not in seen and funcs[node.id] is not fn:
+                            seen.add(node.id)
+                            out |= uses(funcs[node.id], seen)
+                return out
+
+            for name, fn in funcs.items():
+                for dec in getattr(fn, "decorator_list", []):
+                    seg = ast.get_source_segment(src, dec) or ""
+                    m = ROUTE_RE.search(seg if seg.startswith(".") else "." + seg)
+                    if not m:
+                        continue
                     path = m.group(1).rstrip("/")
                     for pre in prefixes:
                         full = path if path.startswith(pre) else pre.rstrip("/") + path
-                        segs = [s for s in full.split("/") if s][:2]
+                        segs = [x for x in full.split("/") if x][:2]
                         if len(segs) == 2 and segs[0] == "api":
                             routes["/" + "/".join(segs)].add(f)
+                            routes["/" + "/".join(segs)] |= uses(fn, {name})
         for t in self.tests:
             src = self.text(t)
             for prefix, mods in routes.items():
                 if re.search(re.escape(prefix) + r"(?![A-Za-z0-9_-])", src):
                     self.edges[t] |= mods
+        self._name_ties()
+
+    def _name_ties(self) -> None:
+        """tests/api/test_api_google.py exercises app/google.py through the app: a test file named after a module (stem, with or without a trailing s) depends on it"""
+        stems: dict[str, list[str]] = defaultdict(list)
+        for m, f in self.py.items():
+            if f.startswith(("app/", "etl/")) and f.count("/") == 1 and not f.endswith("__init__.py"):
+                stems[Path(f).stem].append(f)
+        for t in self.tests:
+            base = Path(t).stem[len("test_"):]
+            for stem, files in stems.items():
+                if len(stem) < 4:
+                    continue
+                s1 = stem[:-1] if stem.endswith("s") else stem
+                if re.search(r"(^|_)" + re.escape(stem) + r"(_|$)", base) or re.search(r"(^|_)" + re.escape(s1) + r"(s)?(_|$)", base):
+                    for f in files:
+                        self.edges[t].add(f)
 
     def _add_shell_edges(self) -> None:
         """UI tests load the shell (index.html, app.js, app.css) and the page scripts of the routes they open; projection browser tests load projection.html"""
