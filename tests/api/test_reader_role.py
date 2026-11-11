@@ -169,7 +169,8 @@ def test_reader_can_select_every_analytics_view_and_every_documented_example(clu
     with connect_reader(read_url(outfile)) as c:
         views = [r[0] for r in c.execute("SELECT table_name FROM information_schema.views WHERE table_schema = 'analytics' ORDER BY 1").fetchall()]
         assert len(views) >= 12
-        assert {v for v in D.REL if v.startswith("analytics.") and v not in D.DEFERRED} == {f"analytics.{v}" for v in views}      # every documented analytics view exists and is readable, none is missing
+        documented = {v for v in D.REL if v.startswith("analytics.")}
+        assert documented - D.DEFERRED <= {f"analytics.{v}" for v in views} <= documented         # every documented view exists (the deferred ones when their source does)      # every documented analytics view exists and is readable, none is missing
         for v in views:
             c.execute(f"SELECT count(*) FROM analytics.{v}").fetchone()
         assert c.execute("SELECT count(*) FROM meta_ad_daily").fetchone()[0] > 0                    # search_path = analytics

@@ -47,6 +47,8 @@ MIGRATIONS = {"013": ROOT / "migrations" / "013_schema_comments_analytics.sql", 
               "196": ROOT / "migrations" / "196_creative_priorities.sql", "197": ROOT / "migrations" / "197_alert_state.sql", "199": ROOT / "migrations" / "199_priorities_manual.sql",
               "202": ROOT / "migrations" / "202_priorities_assignments.sql", "203": ROOT / "migrations" / "203_creative_launch.sql",
               "204": ROOT / "migrations" / "204_assignment_format.sql", "205": ROOT / "migrations" / "205_api_keys.sql",
+              "207": ROOT / "migrations" / "207_landing_pages.sql",
+              "220": ROOT / "migrations" / "220_brain_mcp.sql", "221": ROOT / "migrations" / "221_brain_open_app.sql",
               "230": ROOT / "migrations" / "230_analytics_brain_views.sql"}
 # the Test to scale views (created by migration 015, after 013 runs on a fresh database): they and their comments live in migration 015
 # (migration 016 turned them into tables and added the placements tables; 015's own comment section is frozen history)
@@ -70,6 +72,10 @@ LATE_LAUNCH = {f"public.creative_launch_{n}" for n in ("settings", "pages", "ven
 LATE_FORMATS = {"public.creative_formats"}
 # the scoped API keys (created by migration 205): the table and its comments live in migration 205
 LATE_APIKEYS = {"public.api_keys"}
+# the landing page copy store and ad to page map (created by migration 207): tables, the top-ads view and their comments live in migration 207
+LATE_LANDING = {f"public.{n}" for n in ("landing_pages", "landing_page_versions", "landing_page_ads", "landing_page_ad_checks", "landing_page_top_ads")}
+# the hosted brain endpoint's agent keys and audit log (created by migration 220, reworked by 221 for the open app): their comments live in migration 221 (220's comment section is frozen history)
+LATE_BRAIN = {"public.brain_keys", "public.brain_audit"}
 PROJ_GROUPS = {"proj_feeds", "proj_engine"}
 SCHEMAS = ("public", "analytics")
 KIND = {"r": "table", "p": "table", "v": "view", "m": "view"}
@@ -400,6 +406,10 @@ def scope_of(r: dict, d=None) -> str:
         return "204"
     if r["name"] in LATE_APIKEYS:
         return "205"
+    if r["name"] in LATE_LANDING:
+        return "207"
+    if r["name"] in LATE_BRAIN:
+        return "221"
     return "191" if r["group"] in PROJ_GROUPS else "013"
 
 
@@ -432,19 +442,40 @@ def _first_last(d, spec: dict) -> tuple[str, str]:
 
 
 def catalog_sql(d=None) -> str:
-    """CREATE OR REPLACE VIEW statements for analytics.catalog (one row per analytics view: domain, description, grain, first / last day, row estimate) and
-    analytics.metric_glossary (the METRICS list). Both are generated from docs/schema/descriptions.py and need no database."""
+    """CREATE OR REPLACE VIEW statements for analytics.catalog and analytics.metric_glossary (the METRICS list); both are generated from docs/schema/descriptions.py and need no database.
+
+    analytics.catalog reads the live metadata (every view in the analytics schema, at query time) and joins what descriptions.py knows about each view: domain, description, grain and the
+    first / last day of its base table. A view that no migration has told the catalog about still appears, with domain 'unassigned', its COMMENT's first part as description and no days, so a
+    view added by a later migration is listed without touching this one. Views that may not exist yet (migration 231's, and the ones in descriptions.EXTRA_DOMAINS) carry only domain /
+    description / grain here (no day lookups, because their base tables may be missing); a view that is not in the schema yet simply does not match any live row."""
     d = d or load_descriptions()
     rows = []
+    deferred = set(getattr(d, "DEFERRED", ()))
     for key, spec in d.REL.items():
-        if not key.startswith("analytics.") or key in getattr(d, "DEFERRED", ()):
-            continue                        # deferred views are added to the catalog by migration 231 itself
+        if not key.startswith("analytics."):
+            continue
         name = key.split(".", 1)[1]
-        first, last = _first_last(d, spec)
-        est = (f"(SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.{spec['base']}'::regclass)" if spec.get("base") else "NULL::bigint")
+        if key in deferred:
+            first, last, est = "NULL::date", "NULL::date", "NULL::bigint"
+        else:
+            first, last = _first_last(d, spec)
+            est = (f"(SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.{spec['base']}'::regclass)" if spec.get("base") else "NULL::bigint")
         rows.append(f"SELECT {_lit(name)}::text AS view_name, {_lit(spec['domain'])}::text AS domain, {_lit(spec['purpose'].strip())}::text AS description, "
                     f"{_lit(spec['grain'].strip())}::text AS grain, {first} AS first_day, {last} AS last_day, {est} AS row_estimate")
-    out = ["CREATE OR REPLACE VIEW analytics.catalog AS\n" + "\nUNION ALL\n".join(rows) + ";"]
+    for name, domain in sorted(getattr(d, "EXTRA_DOMAINS", {}).items()):
+        rows.append(f"SELECT {_lit(name)}::text, {_lit(domain)}::text, NULL::text, NULL::text, NULL::date, NULL::date, NULL::bigint")
+    out = ["CREATE OR REPLACE VIEW analytics.catalog AS\n"
+           "SELECT c.relname::text AS view_name,\n"
+           "       COALESCE(k.domain, 'unassigned') AS domain,\n"
+           "       COALESCE(k.description, split_part(obj_description(c.oid, 'pg_class'), ' Grain: ', 1)) AS description,\n"
+           "       k.grain,\n"
+           "       k.first_day,\n"
+           "       k.last_day,\n"
+           "       COALESCE(k.row_estimate, (SELECT NULLIF(t.reltuples, -1)::bigint FROM pg_class t WHERE t.oid = to_regclass('public.' || c.relname))) AS row_estimate\n"
+           "FROM pg_class c\n"
+           "JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'analytics'\n"
+           "LEFT JOIN (\n" + "\nUNION ALL\n".join(rows) + "\n) k(view_name, domain, description, grain, first_day, last_day, row_estimate) ON k.view_name = c.relname\n"
+           "WHERE c.relkind = 'v';"]
 
     def arr(xs):
         return "ARRAY[" + ", ".join(_lit(x) for x in xs) + "]::text[]"
@@ -457,7 +488,7 @@ def catalog_sql(d=None) -> str:
 
 def migration_text(which: str, model: dict, d=None) -> str:
     """013, 015 and 190 keep their hand-written DDL (everything above COMMENTS_MARKER) and get the comment section rewritten; 191 is comments only."""
-    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "230"):
+    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "207", "220", "221", "230"):
         path = MIGRATIONS[which]
         if not path.exists():
             raise SystemExit(f"{path} must exist with its hand-written DDL and the comments marker before comments can be emitted")
@@ -529,7 +560,7 @@ def main(argv=None) -> int:
     g.add_argument("--write", action="store_true")
     g.add_argument("--check", action="store_true")
     g.add_argument("--problems", action="store_true")
-    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "230", "all"))
+    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "207", "220", "221", "230", "all"))
     g.add_argument("--catalog-sql", action="store_true")
     g.add_argument("--emit-migration", choices=sorted(MIGRATIONS))
     g.add_argument("--verify-live", action="store_true")

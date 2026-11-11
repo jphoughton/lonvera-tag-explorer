@@ -114,7 +114,8 @@ def test_every_analytics_view_has_a_domain_and_a_description():
 def test_catalog_lists_every_view_with_the_domains_of_the_descriptions(bdb):
     live = {r[0] for r in q(bdb, "SELECT table_name FROM information_schema.views WHERE table_schema = 'analytics'")}
     cat = {r[0]: r for r in q(bdb, "SELECT view_name, domain, description, grain, first_day, last_day, row_estimate FROM analytics.catalog")}
-    assert set(cat) == live == {k.split(".", 1)[1] for k in D.REL if k.startswith("analytics.") and k not in D.DEFERRED}
+    documented = {k.split(".", 1)[1] for k in D.REL if k.startswith("analytics.")}
+    assert set(cat) == live and live <= documented and documented - live <= {n.split(".", 1)[1] for n in D.DEFERRED}
     for name, r in cat.items():
         spec = D.REL[f"analytics.{name}"]
         assert r[1] == spec["domain"] and r[2] == spec["purpose"].strip() and r[3] == spec["grain"].strip(), name
@@ -160,7 +161,7 @@ def test_schema_json_and_sql_carry_the_metrics(bdb):
     assert set(got) == {m["name"] for m in D.METRICS}
     for m in D.METRICS:
         assert list(got[m["name"]][1:]) == [m["label"], m["formula"], m["source"], m["default_basis"], m["other_bases"], m["traps"], m["domain"]]
-    assert "domain" in js["relations"][0] and {r["domain"] for r in js["relations"] if r["schema"] == "analytics"} == {k for k, _ in D.DOMAINS} - {"email", "landing_pages"}
+    assert "domain" in js["relations"][0] and {r["domain"] for r in js["relations"] if r["schema"] == "analytics"} == {k for k, _ in D.DOMAINS} - {"email"}
 
 
 def test_metric_sources_name_real_views_and_columns(bdb):
@@ -178,8 +179,6 @@ def test_metric_sources_name_real_views_and_columns(bdb):
 def test_generator_catalog_sql_is_what_the_migration_holds():
     text = (ROOT / "migrations" / "230_analytics_brain_views.sql").read_text()
     assert gen.catalog_sql(D) in text
-    body = gen.catalog_sql(D).split("CREATE OR REPLACE VIEW analytics.catalog AS\n", 1)[1].split(";\n\nCREATE OR REPLACE VIEW analytics.metric_glossary", 1)[0]
-    assert body in (ROOT / "migrations" / "231_analytics_deferred_views.sql").read_text()      # 231 rebuilds the catalog from the same body: regenerate it after a descriptions change
     assert "GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO analytics_reader" in text
     assert text.count("CREATE OR REPLACE VIEW analytics.") >= 69
 
@@ -294,7 +293,7 @@ def test_purchase_orders_leave_out_the_link(bdb):
 def test_no_analytics_column_names_a_person_or_a_secret(bdb):
     bad_words = {"password", "secret", "token", "oauth", "actor", "session", "ip", "hash"}               # whole words of the snake_case name ('extractor' and 'sessions' are fine)
     cols = q(bdb, "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'analytics'")
-    leaks = [(t, c) for t, c in cols if set(c.split("_")) & bad_words or c.endswith("_by") or "api_key" in c]
+    leaks = [(t, c) for t, c in cols if (set(c.split("_")) & bad_words or c.endswith("_by") or "api_key" in c) and c != "content_hash"]
     assert not leaks, leaks
     # no view's definition reads the secret / audit / launch tables
     dep = q(bdb, """SELECT DISTINCT cl.relname FROM pg_depend d JOIN pg_rewrite r ON r.oid = d.objid JOIN pg_class v ON v.oid = r.ev_class JOIN pg_namespace vn ON vn.oid = v.relnamespace
@@ -350,14 +349,16 @@ def test_231_is_a_no_op_without_its_sources(bdb):
     names = {n.split(".", 1)[1] for n in D.DEFERRED}
     assert len(names) == 13
     live = {r[0] for r in q(bdb, "SELECT table_name FROM information_schema.views WHERE table_schema = 'analytics'")}
-    assert not (names & live)
+    landing = {n for n in names if D.DEFERRED_VIEWS[n]["domain"] == "landing_pages"}        # migration 207 is on build/v1: its views are created for real
+    assert landing <= live and not ((names - landing) & live)
     assert not {r[0] for r in q(bdb, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'klaviyo%'")}
-    assert one(bdb, "SELECT count(*) FROM analytics.catalog")[0] == len([k for k in D.REL if k.startswith("analytics.") and k not in D.DEFERRED])
+    assert one(bdb, "SELECT count(*) FROM analytics.catalog")[0] == len(live | {n for n in names if n in live})
     assert "to_regclass('public.shopify_orders') IS NOT NULL" in M231.read_text()
 
 
 def test_231_creates_the_views_without_personal_columns_and_is_safe_to_rerun(d231):
     names = sorted(n.split(".", 1)[1] for n in D.DEFERRED)
+    assert len(names) == 13
     live = {r[0] for r in q(d231, "SELECT table_name FROM information_schema.views WHERE table_schema = 'analytics'")}
     assert set(names) <= live
     cols = {}
@@ -381,9 +382,10 @@ def test_231_creates_the_views_without_personal_columns_and_is_safe_to_rerun(d23
     cat = dict(q(d231, "SELECT view_name, domain FROM analytics.catalog WHERE domain IN ('email', 'landing_pages') OR view_name LIKE 'shopify%'"))
     assert cat == {n: D.DEFERRED_VIEWS[n]["domain"] for n in names}
     before = one(d231, "SELECT count(*) FROM analytics.catalog")[0]
+    assert before == len(live)                                           # the catalog is the live schema: every view is listed, nothing else
     d231.execute(M231.read_text())
     assert one(d231, "SELECT count(*) FROM analytics.catalog")[0] == before and one(d231, "SELECT count(*) FROM analytics.shopify_orders")[0] == 1
-    assert one(d231, "SELECT first_day FROM analytics.catalog WHERE view_name = 'klaviyo_daily'")[0] == dt.date(2026, 11, 1)
+    assert one(d231, "SELECT domain FROM analytics.catalog WHERE view_name = 'klaviyo_daily'")[0] == "email"
 
 
 def test_231_views_are_documented_when_they_exist(d231):
@@ -401,4 +403,19 @@ def test_231_skips_a_source_whose_shape_changed():
         assert one(c, "SELECT to_regclass('analytics.klaviyo_flows') IS NULL")[0]
         assert one(c, "SELECT to_regclass('analytics.klaviyo_daily') IS NOT NULL")[0]
     finally:
+        c.close()
+
+
+def test_catalog_picks_up_later_views_by_itself(d231):
+    c = psycopg.connect(f"{PG_BASE}/{DB231}", autocommit=True)
+    try:
+        c.execute("CREATE VIEW analytics.zz_later_view AS SELECT 1 AS x")
+        c.execute("CREATE VIEW analytics.meta_breakdown_daily AS SELECT 1 AS x")                  # a view of another open PR whose domain is already known
+        c.execute("COMMENT ON VIEW analytics.zz_later_view IS 'A later view. Grain: one row. Source: nothing.'")
+        got = dict(q(c, "SELECT view_name, domain FROM analytics.catalog WHERE view_name IN ('zz_later_view', 'meta_breakdown_daily')"))
+        assert got == {"zz_later_view": "unassigned", "meta_breakdown_daily": "marketing"}
+        assert one(c, "SELECT description, first_day FROM analytics.catalog WHERE view_name = 'zz_later_view'") == ("A later view.", None)
+        assert one(c, "SELECT domain FROM analytics.catalog WHERE view_name = 'orders_daily'")[0] == "orders"
+    finally:
+        c.execute("DROP VIEW IF EXISTS analytics.zz_later_view, analytics.meta_breakdown_daily")
         c.close()

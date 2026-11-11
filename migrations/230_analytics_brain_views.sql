@@ -1010,6 +1010,16 @@ $grant$;
 -- ---------------------------------------------------------------- comments
 -- analytics.catalog and analytics.metric_glossary: generated from docs/schema/descriptions.py (domains, descriptions, grains, METRICS)
 CREATE OR REPLACE VIEW analytics.catalog AS
+SELECT c.relname::text AS view_name,
+       COALESCE(k.domain, 'unassigned') AS domain,
+       COALESCE(k.description, split_part(obj_description(c.oid, 'pg_class'), ' Grain: ', 1)) AS description,
+       k.grain,
+       k.first_day,
+       k.last_day,
+       COALESCE(k.row_estimate, (SELECT NULLIF(t.reltuples, -1)::bigint FROM pg_class t WHERE t.oid = to_regclass('public.' || c.relname))) AS row_estimate
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'analytics'
+LEFT JOIN (
 SELECT 'meta_ads'::text AS view_name, 'marketing'::text AS domain, 'Dimension: one row per Meta ad (every ad the pipeline has ever seen: 42K, most ARCHIVED or DELETED) with its campaign, ad set, product, status and all-time totals. Join to the daily views on ad_id (they already carry the main names).'::text AS description, 'one row per Meta ad_id'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, (SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.meta_ads'::regclass) AS row_estimate
 UNION ALL
 SELECT 'meta_ad_daily'::text AS view_name, 'marketing'::text AS domain, 'The main Meta fact view: one row per Meta ad per day with Meta-reported results AND Upstack-attributed new customers / orders side by side, plus the ad''s names, campaign, ad set, stage and product. Roll up from here; never add purchases to Google''s.'::text AS description, 'one row per (day, ad_id)'::text AS grain, (SELECT min(day) FROM public.ad_daily)::date AS first_day, (SELECT max(day) FROM public.ad_daily)::date AS last_day, (SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.ad_daily'::regclass) AS row_estimate
@@ -1170,7 +1180,39 @@ SELECT 'competitor_concepts'::text AS view_name, 'competitors'::text AS domain, 
 UNION ALL
 SELECT 'catalog'::text AS view_name, 'pipeline'::text AS domain, 'One row per analytics view: its domain, what it is, its grain, the first and last day it covers where it has days, and a row-count estimate. Start here to find which view answers a question.'::text AS description, 'one row per analytics view (this view itself is listed too)'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
 UNION ALL
-SELECT 'metric_glossary'::text AS view_name, 'pipeline'::text AS domain, 'The canonical definition of every headline metric (ROAS, CPA, NC ROAS, CPM, frequency, hit rate, payback, ...): formula, the view and columns that hold the inputs, the default basis, the other bases and the traps. The same rows as the ''metrics'' key of docs/schema.json.'::text AS description, 'one row per metric name'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate;
+SELECT 'metric_glossary'::text AS view_name, 'pipeline'::text AS domain, 'The canonical definition of every headline metric (ROAS, CPA, NC ROAS, CPM, frequency, hit rate, payback, ...): formula, the view and columns that hold the inputs, the default basis, the other bases and the traps. The same rows as the ''metrics'' key of docs/schema.json.'::text AS description, 'one row per metric name'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
+UNION ALL
+SELECT 'klaviyo_daily'::text AS view_name, 'email'::text AS domain, 'Klaviyo email and SMS performance by Pacific day, campaign or flow, message and channel: sends, delivered, opens, clicks, unsubscribes and Klaviyo-attributed orders and revenue.'::text AS description, 'one row per day (Pacific) x source (''campaign'' | ''flow'') x parent_id x message_id x channel (that is the primary key; message_id is '''' where Klaviyo gives none)'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
+UNION ALL
+SELECT 'klaviyo_campaigns'::text AS view_name, 'email'::text AS domain, 'Dimension: one row per Klaviyo campaign (email and SMS) with its name, status, send time and subject. Names the parent ids of klaviyo_daily.'::text AS description, 'one row per campaign (id is the primary key; Klaviyo campaign id)'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
+UNION ALL
+SELECT 'klaviyo_flows'::text AS view_name, 'email'::text AS domain, 'Dimension: one row per Klaviyo flow with its name, status and trigger type. Names the parent ids of klaviyo_daily.'::text AS description, 'one row per flow (id is the primary key; Klaviyo flow id)'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
+UNION ALL
+SELECT 'klaviyo_flow_messages'::text AS view_name, 'email'::text AS domain, 'Dimension: one row per message (email or SMS step) inside a Klaviyo flow, with its name and subject. Names the message_id of klaviyo_daily flow rows.'::text AS description, 'one row per flow message (id is the primary key; Klaviyo flow message id)'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
+UNION ALL
+SELECT 'klaviyo_message_content'::text AS view_name, 'email'::text AS domain, 'The copy of every Klaviyo message (campaign message or flow message) that had activity in a pulled window, or that sits in a live flow: subject, preview text, full email HTML, readable body text and the message links. Joins to klaviyo_daily on message_id.'::text AS description, 'one row per message (message_id is the primary key; Klaviyo campaign message id or flow message id)'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
+UNION ALL
+SELECT 'klaviyo_message_performance'::text AS view_name, 'email'::text AS domain, 'One row per Klaviyo message with its copy (subject, preview text, body text) and its totals and rates over everything in klaviyo_daily: the table to read which copy earns.'::text AS description, 'one row per message_id (campaign or flow message with at least one klaviyo_daily row)'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
+UNION ALL
+SELECT 'landing_pages'::text AS view_name, 'landing_pages'::text AS domain, 'Every landing page (sales page, advertorial, product page, funnel step) that at least one Meta ad sends people to, with when we last read it.'::text AS description, 'one row per normalised page address (id is the primary key; url is unique)'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
+UNION ALL
+SELECT 'landing_page_versions'::text AS view_name, 'landing_pages'::text AS domain, 'The copy of a landing page as it was on a given read: title, description, ordered text blocks with heading level, buttons, prices, guarantee sentences, review snippets and image alt text.'::text AS description, 'one row per (landing page, content hash): a new row exists only when the copy changed (id is the primary key)'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
+UNION ALL
+SELECT 'landing_page_ads'::text AS view_name, 'landing_pages'::text AS domain, 'Which Meta ad sends people to which landing page, and how that link was found.'::text AS description, 'one row per (ad, landing page) (ad_id + landing_page_id is the primary key)'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
+UNION ALL
+SELECT 'landing_page_ad_checks'::text AS view_name, 'landing_pages'::text AS domain, 'Ads that etl/landing_pages.py has already looked at, so an ad with no readable link is not asked about every night.'::text AS description, 'one row per ad (ad_id is the primary key)'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
+UNION ALL
+SELECT 'landing_page_top_ads'::text AS view_name, 'landing_pages'::text AS domain, 'The ads that drive each landing page, ranked by spend over the last 7 and the last 30 days, with Meta-reported purchases, revenue and ROAS (revenue divided by spend).'::text AS description, 'one row per (landing page, window_days, ad): window_days is 7 or 30; only ads with spend in the window appear'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
+UNION ALL
+SELECT 'shopify_orders'::text AS view_name, 'orders'::text AS domain, 'Order-level Shopify orders of the last 120 days (rolling), one row per order, with money, status, source, discount codes and ship-to country / region. The place to answer order-level questions (refunds, rebills, gifts, discounts) that the daily roll-ups hide.'::text AS description, 'one row per Shopify order (order_id is the primary key)'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
+UNION ALL
+SELECT 'shopify_order_lines'::text AS view_name, 'orders'::text AS domain, 'Line items of shopify_orders: one row per product line with SKU, product bucket, quantity, price and discount.'::text AS description, 'one row per order line (order_id, line_no is the primary key; line_no counts from 1 in the order''s own line order)'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, NULL::bigint AS row_estimate
+UNION ALL
+SELECT 'meta_breakdown_coverage'::text, 'marketing'::text, NULL::text, NULL::text, NULL::date, NULL::date, NULL::bigint
+UNION ALL
+SELECT 'meta_breakdown_daily'::text, 'marketing'::text, NULL::text, NULL::text, NULL::date, NULL::date, NULL::bigint
+) k(view_name, domain, description, grain, first_day, last_day, row_estimate) ON k.view_name = c.relname
+WHERE c.relkind = 'v';
 
 CREATE OR REPLACE VIEW analytics.metric_glossary AS
 SELECT g.name::text, g.label::text, g.formula::text, g.source::text, g.default_basis::text, g.other_bases, g.traps, g.domain::text
