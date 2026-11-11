@@ -52,6 +52,8 @@ def pytest_configure(config):
         return
     import psycopg
     name = os.environ["TEST_DATABASE_URL"].rsplit("/", 1)[1]
+    if _WORKER == "gw0":
+        _reap_dead_runs(_admin_url())
     try:
         with psycopg.connect(_admin_url(), autocommit=True) as c:
             if not c.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone():
@@ -60,6 +62,28 @@ def pytest_configure(config):
         if STRICT:
             raise       # scripts/test.sh expects Postgres: say so now instead of letting every fixture skip its tests
         # otherwise no local Postgres: the fixtures skip their tests themselves
+
+
+def _reap_dead_runs(admin_url: str) -> None:
+    """drop the databases of parallel runs that are gone (killed or crashed): their names end in _<controller pid>_gw<N> and that pid no longer exists"""
+    import re
+
+    import psycopg
+    try:
+        with psycopg.connect(admin_url, autocommit=True) as c:
+            names = [r[0] for r in c.execute("SELECT datname FROM pg_database WHERE datname ~ '_[0-9]+_gw[0-9]+$'").fetchall()]
+            for name in names:
+                pid = int(re.search(r"_([0-9]+)_gw[0-9]+$", name).group(1))
+                try:
+                    os.kill(pid, 0)
+                    continue                                            # that run is still alive (this one, or another session's)
+                except ProcessLookupError:
+                    pass
+                except PermissionError:
+                    continue
+                c.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+    except psycopg.Error:
+        pass
 
 
 def pytest_unconfigure(config):
@@ -137,9 +161,14 @@ def pytest_xdist_make_scheduler(config, log):
     return SplitFileScheduling(config, log)
 
 
-# ---- "sorry, too many clients already": Postgres here allows 100 connections for every worker AND every other session's test run. A refused connect is
-# retried with a short back-off (up to ~2 minutes) instead of failing the test or silently skipping it behind the fixtures' "no Postgres" skip. ----
-def _retry_on_too_many_clients():
+# ---- shared resources: Postgres allows 100 connections for every worker AND every other session's test run, and the macOS ephemeral port range is shared too. A refused
+# connect is a "busy machine", not a failed test: it is retried with a short back-off for up to 10 minutes (and says so on stderr every 30 s), then it fails loudly. ----
+BUSY_ERRORS = ("too many clients", "Can't assign requested address")
+BUSY_WAIT_MAX = 600
+
+
+def _retry_when_the_machine_is_busy():
+    import sys
     import time
 
     import psycopg
@@ -147,13 +176,17 @@ def _retry_on_too_many_clients():
     orig = psycopg.Connection.connect.__func__
 
     def connect(cls, *args, **kwargs):
-        delay, waited = 0.2, 0.0
+        delay, waited, told = 0.2, 0.0, 0.0
         while True:
             try:
                 return orig(cls, *args, **kwargs)
             except psycopg.OperationalError as e:
-                if "too many clients" not in str(e) or waited > 120:
+                msg = str(e)
+                if not any(b in msg for b in BUSY_ERRORS) or waited > BUSY_WAIT_MAX:
                     raise
+                if waited - told >= 30:
+                    told = waited
+                    print(f"[{_WORKER}] waiting for a free Postgres connection / local port ({waited:.0f}s): {msg.splitlines()[0][:120]}", file=sys.stderr, flush=True)
                 time.sleep(delay)
                 waited += delay
                 delay = min(delay * 1.5, 2.0)
@@ -162,5 +195,5 @@ def _retry_on_too_many_clients():
 
 
 if _WORKER:
-    _retry_on_too_many_clients()
+    _retry_when_the_machine_is_busy()
 

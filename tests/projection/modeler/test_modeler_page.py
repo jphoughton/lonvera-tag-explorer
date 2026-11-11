@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from conftest import AOV, CPA, P, SPEND, copy_of, fy_months, make_app, put_cells
-from tests._servers import make_server
+from tests._servers import loopback, make_server, origin
 
 sync_api = pytest.importorskip("playwright.sync_api")
 ROOT = Path(__file__).resolve().parents[3]
@@ -21,9 +21,9 @@ MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "No
 @pytest.fixture()
 def server(mdb):
     app = make_app(mdb, AUTH_DISABLED=True)
-    srv = make_server("127.0.0.1", 0, app, threaded=True)
+    srv = make_server(loopback(), 0, app, threaded=True)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{srv.server_port}"
+    yield origin(srv.server_port)
     srv.shutdown()
     app.extensions["pool"].close()
 

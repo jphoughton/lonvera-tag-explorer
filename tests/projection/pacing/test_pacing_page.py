@@ -4,7 +4,7 @@ import threading
 import pytest
 
 playwright = pytest.importorskip("playwright.sync_api")
-from tests._servers import make_server                                   # noqa: E402
+from tests._servers import loopback, make_server, origin  # noqa: E402
 
 from pacing_support import make_app                                         # noqa: E402
 
@@ -12,10 +12,10 @@ from pacing_support import make_app                                         # no
 @pytest.fixture()
 def base_url(api_app, pacing_db):
     app = make_app(pacing_db, AUTH_DISABLED=True)
-    srv = make_server("127.0.0.1", 0, app, threaded=True)
+    srv = make_server(loopback(), 0, app, threaded=True)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
-    yield f"http://127.0.0.1:{srv.server_port}"
+    yield origin(srv.server_port)
     srv.shutdown()
     app.extensions["pool"].close()
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 import threading
 
 import pytest
-from tests._servers import make_server
+from tests._servers import loopback, make_server, origin
 
 from conftest import make_app
 
@@ -14,9 +14,9 @@ sync_api = pytest.importorskip("playwright.sync_api")
 @pytest.fixture()
 def server(vdb):
     app = make_app(vdb, AUTH_DISABLED=True)
-    srv = make_server("127.0.0.1", 0, app, threaded=True)
+    srv = make_server(loopback(), 0, app, threaded=True)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{srv.server_port}"
+    yield origin(srv.server_port)
     srv.shutdown()
     app.extensions["pool"].close()
 

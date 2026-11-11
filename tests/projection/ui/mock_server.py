@@ -11,6 +11,7 @@ Test hooks (mock only): GET /__mock/state, POST /__mock/reset, POST /__mock/buil
 POST /__mock/fail_next {n}.
 """
 import copy
+import os
 import sys
 import threading
 from datetime import datetime, timezone
@@ -521,4 +522,4 @@ if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5191
     sys.path.insert(0, str(ROOT))
     from tests._servers import make_server          # keep-alive server: werkzeug's closes every connection, which exhausts the ephemeral ports in a parallel run
-    make_server("127.0.0.1", port, app).serve_forever()
+    make_server(os.environ.get("MOCK_HOST", "127.0.0.1"), port, app).serve_forever()

@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 pw = pytest.importorskip("playwright.sync_api")
 
-from tests._servers import make_server                       # noqa: E402
+from tests._servers import loopback, make_server, origin  # noqa: E402
 
 from app.projection.pnl import store                            # noqa: E402
 from pnl_support import TODAY, seed_basic                           # noqa: E402
@@ -38,10 +38,10 @@ def server(app, upstream_pkg, monkeypatch, pg):
                              ("accounting", "accounting", None), ("fulfillment services", "fulfillment_services", None), ("facebook ads", "mkt_facebook_ads", None)])
     pg.execute("INSERT INTO proj_pnl_settings (key, value) VALUES ('upload', %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
                (Jsonb({"low_ratio": 0.001, "high_ratio": 1000.0, "required_families": REQUIRED}),))
-    srv = make_server("127.0.0.1", 0, app, threaded=True)
+    srv = make_server(loopback(), 0, app, threaded=True)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
-    yield f"http://127.0.0.1:{srv.server_port}"
+    yield origin(srv.server_port)
     srv.shutdown()
 
 

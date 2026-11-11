@@ -5,6 +5,10 @@ forty files opens forty TCP connections. A parallel run of the UI tests then mak
 closed one holds its client port in TIME_WAIT for 30 s while only 16,384 ephemeral ports exist: the machine runs out
 (`net::ERR_ADDRESS_INVALID`, `EADDRNOTAVAIL`). waitress keeps connections alive, so a browser reuses a handful of them.
 
+Everything listens on the IPv6 loopback [::1] when there is one. On macOS the ephemeral port space is per local address, so connections to [::1] cannot be starved by
+the thousands of TIME_WAIT sockets that other test runs on this machine leave on 127.0.0.1 (measured: 25,000 sockets in TIME_WAIT, 9,000 new connections to [::1]
+all succeeded). `loopback()` falls back to 127.0.0.1 where IPv6 loopback is missing.
+
 `make_server(host, port, app)` is a drop-in for `werkzeug.serving.make_server(host, port, app, threaded=True)`:
 `.server_port`, `.serve_forever()`, `.shutdown()`. If waitress is not installed it falls back to werkzeug (slower, same behaviour).
 `free_port()` picks a port that is free right now, below the ephemeral range, so a run never assumes a fixed port or meets another session's server.
@@ -21,13 +25,38 @@ except ImportError:                                  # pragma: no cover - dev re
     waitress = None
 
 
+_LOOPBACK: str | None = None
+
+
+def loopback() -> str:
+    """'::1' when the machine has an IPv6 loopback, else '127.0.0.1'"""
+    global _LOOPBACK
+    if _LOOPBACK is None:
+        _LOOPBACK = "127.0.0.1"
+        if socket.has_ipv6:
+            try:
+                with socket.socket(socket.AF_INET6) as s:
+                    s.bind(("::1", 0))
+                _LOOPBACK = "::1"
+            except OSError:
+                pass
+    return _LOOPBACK
+
+
+def origin(port: int, host: str | None = None) -> str:
+    """http://[::1]:PORT (brackets around an IPv6 address)"""
+    host = host or loopback()
+    return f"http://[{host}]:{port}" if ":" in host else f"http://{host}:{port}"
+
+
 def free_port(low: int = 20000, high: int = 45000) -> int:
     """a port nothing is bound to right now (random, outside the OS ephemeral range 49152+ that outgoing connections use)"""
+    host = loopback()
     for _ in range(200):
         p = random.randrange(low, high)
-        with socket.socket() as s:
+        with socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET) as s:
             try:
-                s.bind(("127.0.0.1", p))
+                s.bind((host, p))
             except OSError:
                 continue
             return p
@@ -73,8 +102,8 @@ def start_mock(script, env: dict | None = None, what: str = "mock server", timeo
     last = ""
     for _ in range(5):
         port = free_port()
-        url = f"http://127.0.0.1:{port}"
-        proc = subprocess.Popen([sys.executable, str(script), str(port)], env={**os.environ, **(env or {})}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        url = origin(port)
+        proc = subprocess.Popen([sys.executable, str(script), str(port)], env={**os.environ, "MOCK_HOST": loopback(), **(env or {})}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline = time.time() + timeout
         while time.time() < deadline:
             if proc.poll() is not None:

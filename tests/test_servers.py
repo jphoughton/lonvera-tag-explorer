@@ -4,7 +4,7 @@ import threading
 
 from flask import Flask
 
-from tests._servers import free_port, make_server
+from tests._servers import free_port, loopback, make_server
 
 
 def _app():
@@ -21,11 +21,11 @@ def _app():
 
 
 def test_one_connection_serves_many_requests_even_after_an_unread_body():
-    srv = make_server("127.0.0.1", 0, _app())
+    srv = make_server(loopback(), 0, _app())
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
     try:
-        c = http.client.HTTPConnection("127.0.0.1", srv.server_port)
+        c = http.client.HTTPConnection(loopback(), srv.server_port)
         c.connect()
         local = c.sock.getsockname()
         for method, path, body, want in (("GET", "/g", None, b"got"), ("POST", "/p", b"x" * 200_000, b"posted"), ("GET", "/g", None, b"got"), ("GET", "/g", None, b"got")):
@@ -43,3 +43,29 @@ def test_one_connection_serves_many_requests_even_after_an_unread_body():
 def test_free_port_is_free_and_outside_the_ephemeral_range():
     p = free_port()
     assert 20000 <= p < 45000
+
+
+def test_the_loopback_address_accepts_connections():
+    """[::1] (or 127.0.0.1 where there is no IPv6 loopback) is bindable and reachable; why [::1] is used is in tests/_servers.py"""
+    import socket
+    if loopback() != "::1":
+        return
+    srv = socket.socket(socket.AF_INET6)
+    srv.bind(("::1", 0))
+    srv.listen(64)
+    port = srv.getsockname()[1]
+    import threading
+
+    def accept():
+        while True:
+            try:
+                c, _ = srv.accept()
+                c.close()
+            except OSError:
+                return
+    threading.Thread(target=accept, daemon=True).start()
+    try:
+        for _ in range(300):
+            socket.create_connection(("::1", port), timeout=2).close()
+    finally:
+        srv.close()

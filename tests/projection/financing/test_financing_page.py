@@ -4,7 +4,7 @@ from __future__ import annotations
 import threading
 
 import pytest
-from tests._servers import make_server
+from tests._servers import loopback, make_server, origin
 
 from app.projection import registry, stubs
 
@@ -20,10 +20,10 @@ def only_financing(monkeypatch):
 @pytest.fixture()
 def server(app_factory):
     app = app_factory(AUTH_DISABLED=True)
-    srv = make_server("127.0.0.1", 0, app, threaded=True)
+    srv = make_server(loopback(), 0, app, threaded=True)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
-    yield f"http://127.0.0.1:{srv.server_port}"
+    yield origin(srv.server_port)
     srv.shutdown()
 
 
