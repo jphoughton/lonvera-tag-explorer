@@ -1916,6 +1916,34 @@ def test_public_saved_view_has_no_production_column_checkbox_or_history(page, fr
     assert page.locator(".pri-c-prod").count() == 2
 
 
+def test_assign_dialog_has_an_optional_format_select_and_sends_the_choice(page, fresh_assign):
+    goto(page)
+    _tick(page, 0)
+    page.locator("[data-testid=pri-sel-assign]").click()
+    sel = page.locator("[data-testid=pri-as-format]")
+    page.wait_for_selector("[data-testid=pri-as-format]")
+    opts = sel.locator("option").all_text_contents()
+    assert opts[0] == "No format chosen" and len(opts) == 7                                                   # blank plus the six formats
+    assert opts[1] == "F1 Long animated story, openly AI, told by the character (90s to 3 min)" and opts[4] == "F4 Whiteboard explainer (60 to 90s)"
+    assert sel.input_value() == "" and "Format (optional)" in page.locator("[data-testid=pri-as-dialog]").text_content()
+    assert "—" not in page.locator("[data-testid=pri-as-dialog]").text_content()
+    sel.select_option("F4")
+    page.locator("[data-testid=pri-as-ok]").click()
+    page.wait_for_selector("[data-testid=pri-as-result] p")
+    assert page.locator("[data-testid=pri-as-created]").text_content().startswith("1 concept assigned to Madre")
+    assert page.locator("[data-testid=pri-as-format]").is_disabled()
+    rows = page.request.get("/api/priorities/assignments").json()["rows"]
+    mine = [r for r in rows if r["id"] > 4]
+    assert len(mine) == 1 and mine[0]["format_code"] == "F4" and mine[0]["format_name"] == "Whiteboard explainer"
+    page.locator("[data-testid=pri-as-ok]").click()
+    page.wait_for_selector("[data-testid=pri-as-dialog]", state="detached")
+    _tick(page, 1)
+    _assign(page, "Madre")                                                                                    # leaving it on "No format chosen" sends no format
+    rows = page.request.get("/api/priorities/assignments").json()["rows"]
+    assert sorted(r["format_code"] or "" for r in rows if r["id"] > 4) == ["", "F4"]
+
+
+
 # ---------- click-in drill-downs (every block of the expanded panel opens its own insights) ----------
 def open_first(page):
     goto(page)

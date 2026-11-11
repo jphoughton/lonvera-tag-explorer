@@ -18,6 +18,7 @@ import { trendsPage } from './js/pages/trends.js';
 import { prioritiesPage, prioritiesViewPage } from './js/pages/priorities.js';
 import { productionPage, vendorPage } from './js/pages/priorities_production.js';
 import { lookupPage } from './js/pages/lookup.js';
+import { connectAgentPage } from './js/pages/connect_agent.js';
 
 // Platform pages: '/' is the home of the chosen platform (platform=all overview, google, else Meta's products) and '/campaigns' its Campaigns view.
 // Google's campaigns are part of its one page, so its Campaigns view is the same page with the campaigns table first.
@@ -26,7 +27,7 @@ const campaignsRoute = (ctx) => { const pl = currentPlatform(); return pl === 'g
 // page functions by id; the URL patterns, Back targets, filters and defaults of each page are in js/pageconfig.js (PAGES)
 const PAGE_FNS = {
   login: loginPage, home: homePage, campaigns: campaignsRoute, promotions: promotionsPage, trends: trendsPage, priorities: prioritiesPage, 'priorities-view': prioritiesViewPage,
-  production: productionPage, vendor: vendorPage, lookup: lookupPage, product: productPage, ad: adPage,
+  production: productionPage, vendor: vendorPage, lookup: lookupPage, 'connect-agent': connectAgentPage, product: productPage, ad: adPage,
 };
 const routes = PAGES.map((r) => ({ ...r, page: PAGE_FNS[r.id] }));
 

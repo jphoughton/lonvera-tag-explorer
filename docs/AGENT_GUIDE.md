@@ -10,6 +10,8 @@ Orientation for a brand-new AI agent or colleague. Fast-scan reference, not a tu
 - Default branch `build/v1`. Never commit to it directly: branch, pull request, merge. Tests green on the exact tip means merge, deploy and verify live (this app only).
 - Test suite: 8 to 9 minutes, run one at a time. Command in section 8.
 - Read-only data access for agents: the `analytics` database views (section 4) or the HTTP API with an API key (section 5).
+- Business context: every question, hypothesis and cause-effect claim Josh has raised about Lonvera, with answers and open items, lives in `docs/questions/README.md` (read it before diagnosing a metric move).
+- Services, schedules, pages, routes and the job order are generated from the code in `docs/APP_MAP.md`. The lonvera-brain MCP tools (`/mcp`, key from `/connect-agent`; local: `python -m brain.server`) search all of these docs, define the metrics and run read-only SQL; start with `CLAUDE.md`.
 
 Live URL: https://web-production-358da.up.railway.app
 
@@ -23,7 +25,7 @@ Live URL: https://web-production-358da.up.railway.app
 |---|---|---|---|---|
 | `web` | Flask API and the single-page app (gunicorn, 2 workers x 8 threads), healthcheck `/healthz` | image default `scripts/deploy/start_web.sh` (runs `python -m etl.migrate`, then gunicorn) | always on | `Dockerfile`, `railway.json` |
 | `etl` | Nightly refresh, in order: `etl.run_daily`, `etl.upstack_daily`, `etl.stage_moves`, `etl.projection_daily`, `etl.amazon_mtd`, then non-fatal: `etl.competitor_ads --if-sunday`, `etl.creative_priorities --if-sunday`, `etl.assignment_tags`, `etl.auto_tag` | `scripts/deploy/run_etl.sh` | `0 13 * * *` | `run_etl.sh`, `apply_service_config.py` |
-| `feeds` | Pulls Upstack, Warehance, Meta reach and ExpandFi feeds into `proj_feedx_*` and `proj_feed_*` tables, then `etl.amazon_mtd`, then `etl.feeds verify` | `scripts/deploy/run_feeds.sh` | `0 21 * * *` | `apply_feeds_service.py` |
+| `feeds` | Pulls Upstack, Warehance, Meta reach and ExpandFi feeds into `proj_feedx_*` and `proj_feed_*` tables, then `etl.amazon_mtd`, then `etl.shopify_orders` (120-day order tables, docs/SHOPIFY_ORDERS.md), then `etl.feeds verify` | `scripts/deploy/run_feeds.sh` | `0 21 * * *` | `apply_feeds_service.py` |
 | `live` | Hourly Upstack pull of the Pacific day so far into `proj_live_today_snapshots` | `scripts/deploy/run_live.sh` (`python -m etl.live_today`) | `0 * * * *` (from project notes; the repo has no `apply_live_service.py`, so UNVERIFIED in-repo) | `run_live.sh`, `etl/live_today.py` |
 | `alerts` | Hourly read-only health checks, one Slack message per problem | `scripts/deploy/run_alerts.sh` | `0 * * * *` | `apply_alerts_service.py`, `docs/ALERTS.md` |
 | `backup` | Nightly `pg_dump` to Google Drive, restore check, prune. Own image `scripts/deploy/backup/Dockerfile` | `scripts/deploy/run_backup.sh` | `30 8 * * *` | `apply_backup_service.py`, `docs/BACKUP.md` |
@@ -186,6 +188,7 @@ Read endpoints (all GET, grouped; generated from the Flask routes):
 | Products and tags | `/api/products`, `/api/products/<slug>/rollup`, `/families`, `/tree`, `/coverage`, `/ads`, `/campaigns`, `/trend`, `/stage-daily`, `/unmatched` |
 | Ads | `/api/ads/<id>`, `/api/ads/<id>/preview`, `/api/meta-ads/<ad_id>/preview`, `/media/<asset_id>`, `/api/tag-lookup` |
 | Campaigns and platforms | `/api/campaigns`, `/api/campaigns/trend`, `/api/campaigns/all`, `/api/platforms/kpis`, `/api/platforms/trend`, `/api/platforms/overview`, `/api/google/rollup`, `/api/google/trend`, `/api/source/tieout` |
+| Landing pages | `/api/landing-pages`, `/api/landing-pages/<id>` (copy of each page the ads point to, with the top ads per page; see `docs/LANDING_PAGES.md`) |
 | Test to scale and trends | `/api/promotions`, `/api/promotions/scale`, `/api/trends`, `/api/trends/plan` |
 | Creative priorities | `/api/priorities?week=YYYY-MM-DD`, `/api/priorities.csv`, `/api/priorities/views` and `/views/<token>`, `/api/priorities/manual` and `/manual/options` |
 | Production board | `/api/priorities/assignments`, `/api/priorities/vendor-links` (login only, keys refused), `/api/priorities/vendor/<token>` (public link), `/api/priorities/launch/settings`, `/api/priorities/assignments/<id>/launch` |

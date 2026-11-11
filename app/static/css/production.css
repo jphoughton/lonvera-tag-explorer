@@ -14,7 +14,9 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 .prod-url { font-family: var(--mono, ui-monospace, monospace); user-select: all; }
 .prod-scroll { overflow-x: auto; max-width: 100%; }
 .pri-page.prod-page { max-width: 1480px; }                      /* the table needs more than Priorities' 1280px cap to show the Actions column at 1440 */
-.prod-table { font-size: 13px; min-width: 1240px; }
+.prod-table { font-size: 13px; min-width: 1420px; }
+.prod-c-fmt { min-width: 170px; }
+.prod-fmt { width: 100%; max-width: 200px; font-size: 13px; }
 .prod-table th { font-size: 12px; }
 /* keep a real table at phone width (it scrolls inside .prod-scroll) instead of the stacked rows /priorities uses */
 .prod-page .prod-table { display: table; width: 100%; }

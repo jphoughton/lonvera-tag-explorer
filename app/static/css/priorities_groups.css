@@ -7,18 +7,24 @@
 .pri-groupbtn { padding: 4px 12px; font-weight: 650; }
 .pri-groupbtn[aria-pressed="true"] { background: var(--lv-pri-selected, #1c1915); border-color: var(--lv-pri-selected, #1c1915); color: #fff; }
 .pri-groupbtn:focus-visible { outline: 2px solid var(--lv-focus, #c75123); outline-offset: 2px; }
-/* each row carries --h (the hue of its cluster name): cluster = strongest fill, ICP = lighter tint, every other cell = faint tint; all dark-ink-safe (lightness 85 / 92 / 97) */
-.pri-grouped .pri-row > td { background: hsl(var(--h) 60% 97%); }
-.pri-grouped .pri-row > td.pri-merged { text-align: center; vertical-align: middle; font-weight: 700; padding: 8px; cursor: default; }
-.pri-grouped .pri-row > td.pri-c-product.pri-merged { background: #efe8da; font-weight: 800; }
+/* each row carries --h (the hue of its cluster name): cluster = strongest fill, ICP = lighter tint; all dark-ink-safe (lightness 85 / 92). Product is a heading row, not a column; checkbox / expand cells stay plain so the colour starts at the cluster cell. */
+.pri-grouped .pri-c-product, .pri-grouped .pri-th-product { display: none; }
+.pri-grouped .pri-row, .pri-grouped .pri-row:hover, .pri-grouped .pri-row.pri-open { background: #fff; }      /* white rows: only the cluster and ICP cells carry colour (white in every state: hover, open and selected are never cluster-coloured; an open row gets a neutral rule left of its checkbox) */
+.pri-grouped .pri-row > td.pri-c-tog { background: transparent; }
+.pri-grouped .pri-row.pri-open > td.pri-c-tog { background: linear-gradient(#1c1915, #1c1915) left top / 3px 100% no-repeat; }
+.pri-grouped .pri-row > td.pri-merged { text-align: center; vertical-align: top; font-weight: 700; padding: 8px; cursor: default; }
+.pri-grouped .pri-merged > .pri-lbl { display: block; position: sticky; top: calc(var(--header-h) + var(--pri-bar-h, 0px) + var(--pri-head-h, 50px) + 8px); }
 .pri-grouped .pri-row > td.pri-c-cluster.pri-merged { background: hsl(var(--h) 55% 85%); }
 .pri-grouped .pri-row > td.pri-c-icp.pri-merged { background: hsl(var(--h) 55% 92%); }
-.pri-grouped .pri-row > td.pri-c-product.pri-merged, .pri-grouped .pri-row > td.pri-c-cluster.pri-merged, .pri-grouped .pri-row > td.pri-c-icp.pri-merged { border-bottom-color: transparent; }
-/* separators: heavier between clusters, heaviest between products, light between ICPs (inset lines, so they work on merged cells too) */
+.pri-grouped .pri-row > td.pri-c-cluster.pri-merged, .pri-grouped .pri-row > td.pri-c-icp.pri-merged { border-bottom-color: transparent; }
+/* product heading row: full width, bold name + count, heaviest rule above it */
+.pri-prodhead > td { padding: 12px 8px 8px 12px; font-size: 15px; color: var(--lv-ink, #1c1915); background: transparent; border-top: 4px solid #1c1915; border-bottom: 1px solid rgba(28, 25, 21, .32); }
+.pri-prodhead strong { font-weight: 800; }
+/* separators: heavier between clusters, light between ICPs (inset lines, so they work on merged cells too); the product heading carries the heaviest rule */
 .pri-grouped .pri-g-icp > td { box-shadow: inset 0 1px 0 rgba(28, 25, 21, .32); }
 .pri-grouped .pri-g-cl > td { box-shadow: inset 0 3px 0 rgba(28, 25, 21, .62); }
-.pri-grouped .pri-g-prod > td { box-shadow: inset 0 4px 0 #1c1915; }
-.pri-grouped .pri-detail > td.pri-d-sp { background: var(--lv-pri-panel-bg, #fbf7ee); padding: 0; }
+.pri-grouped .pri-g-prod > td { box-shadow: none; }
+.pri-grouped .pri-detail > td.pri-d-sp { background: transparent; padding: 0; }
 .pri-grouped .pri-detail > td:not(.pri-d-sp) { padding-left: 14px; }
 /* selection bar: pinned under the app header; the column header pins under the bar (--pri-bar-h is the bar's measured height, set by a ResizeObserver) */
 .pri-seltools { top: var(--header-h); margin: 0 0 8px; z-index: 6; align-items: baseline; gap: 8px 10px; }
@@ -28,7 +34,6 @@
 .pri-selacts { display: contents; }
 .pri-selmore { display: none; }
 @media (min-width: 761px) {
-  .pri-grouped .pri-row:hover > td:not(.pri-merged), .pri-grouped .pri-row.pri-open > td:not(.pri-merged) { background: hsl(var(--h) 55% 93%); }
   .pri-main thead th { position: sticky; top: calc(var(--header-h) + var(--pri-bar-h, 0px)); z-index: 4; }
   .pri-grouped .pri-hid { display: none; }
 }
@@ -46,6 +51,8 @@
   .pri-main .pri-row > td.pri-c-product { background: #efe8da; }
   .pri-grouped .pri-row > td.pri-merged { text-align: left; vertical-align: top; padding: 3px 8px; font-weight: 700; }
   .pri-grouped .pri-row > td.pri-merged, .pri-grouped .pri-g-prod > td, .pri-grouped .pri-g-cl > td, .pri-grouped .pri-g-icp > td { box-shadow: none; }
+  .pri-grouped .pri-merged > .pri-lbl { position: static; display: inline; }
+  .pri-table tr.pri-prodhead { display: block; margin-top: 10px; } .pri-prodhead > td { display: block; }
   .pri-detail > td.pri-d-sp { display: none; }
 }
 

@@ -45,6 +45,7 @@ export const PAGES = [
   { id: 'production', re: /^\/priorities\/production\/?$/, filters: [], parent: () => href('/priorities', {}) },
   { id: 'vendor', re: /^\/priorities\/vendor\/([A-Za-z0-9_-]+)\/?$/, bare: true, public: true, filters: [] },       // a vendor's own link: no login, no app navigation
   { id: 'lookup', re: /^\/lookup\/?$/, filters: [], parent: toOverview },
+  { id: 'connect-agent', re: /^\/connect-agent\/?$/, filters: [], parent: toOverview },
   { id: 'product', re: /^\/p\/([^/]+)\/?$/, filters: ALL_FILTERS, parent: productParent },
   { id: 'ad', re: /^\/ad\/([^/]+)\/?$/, filters: ALL_FILTERS, parent: ({ G }) => getParentHint() || platformUrl('/', 'meta', G) },
 ];

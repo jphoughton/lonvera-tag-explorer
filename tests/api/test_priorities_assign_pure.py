@@ -72,7 +72,7 @@ def test_clean_url_limit_is_2000():
 # ---- create / patch
 def test_clean_create():
     out = pa.clean_create({"vendor": "Madre", "for_week": "2026-11-11", "note": "  rush \r\n second ", "keys": ["x"], "snapshot_week": "2026-11-08"})
-    assert out == {"vendor": "Madre", "for_week": D(2026, 11, 9), "note": "rush\nsecond"}
+    assert out == {"vendor": "Madre", "for_week": D(2026, 11, 9), "note": "rush\nsecond", "format_code": None}
     assert pa.clean_create({"vendor": "10xROAS", "for_week": "2026-11-09"})["note"] == ""
 
 
@@ -197,3 +197,21 @@ def test_vendors_are_the_nine_tracker_spellings():
     for v in ("PuredMedia", "CreateMastery", "OpenProgram"):
         assert pa.clean_create({"vendor": v, "for_week": "2026-11-09"})["vendor"] == v
     bad(pa.clean_create, {"vendor": "Other", "for_week": "2026-11-09"})
+
+
+# ---------------------------------------------------------------------------------------------------------------- creative format
+def test_format_code_is_cleaned_and_checked_against_the_active_list():
+    assert pa.clean_create({"vendor": "Madre", "for_week": "2026-11-09"})["format_code"] is None
+    assert pa.clean_create({"vendor": "Madre", "for_week": "2026-11-09", "format_code": " F2 "})["format_code"] == "F2"
+    assert pa.clean_create({"vendor": "Madre", "for_week": "2026-11-09", "format_code": ""})["format_code"] is None
+    assert pa.clean_patch({"format_code": None}) == {"format_code": None} and pa.clean_patch({"format_code": "  "}) == {"format_code": None} and pa.clean_patch({"format_code": "F4"}) == {"format_code": "F4"}
+    assert "format_code" not in pa.clean_patch({"note": "x"})
+    with pytest.raises(q.ApiError) as e:
+        pa.clean_patch({"format_code": 3})
+    assert e.value.status == 400
+    assert pa.check_format(None, pa.FORMATS) is None and pa.check_format("F6", pa.FORMATS) == "F6"
+    with pytest.raises(q.ApiError) as e:
+        pa.check_format("F7", pa.FORMATS[:2])
+    assert e.value.status == 400 and "F1, F2" in e.value.message
+    with pytest.raises(q.ApiError):
+        pa.clean_vendor_patch({"format_code": "F1"})                                    # not a vendor field

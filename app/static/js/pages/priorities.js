@@ -116,8 +116,9 @@ function rowPair(r, d, printed = false, onPick = null, mctl = null, actl = null)
     h('span', { class: 'pri-chev', 'aria-hidden': 'true' }, '▸'));
   const pick = h('input', { type: 'checkbox', class: 'pri-pick', 'data-testid': 'pri-pick', 'aria-label': 'Select: ' + name, onchange: (e) => onPick && onPick(r, e.target.checked) });
   const cProduct = cell('Product', 'product', (d.baselines[r.product] || {}).product_name || r.product);
-  const cCluster = cell('Market Cluster', 'cluster', r.cluster, r._from ? h('span', { class: 'pri-from', 'data-testid': 'pri-from', title: 'No longer in the current snapshot: the numbers are the frozen copy saved with the view' }, ' from ' + r._from) : null);
-  const cIcp = cell('ICP', 'icp', r.icp);
+  const lbl = (...k) => h('span', { class: 'pri-lbl' }, ...k);                       // the label inside a merged cell: sticks under the pinned header while the cell is taller than the viewport
+  const cCluster = cell('Market Cluster', 'cluster', lbl(r.cluster), r._from ? h('span', { class: 'pri-from', 'data-testid': 'pri-from', title: 'No longer in the current snapshot: the numbers are the frozen copy saved with the view' }, ' from ' + r._from) : null);
+  const cIcp = cell('ICP', 'icp', lbl(r.icp));
   const tr = h('tr', { class: 'pri-row' + (r.manual ? ' pri-manual' + (r.done ? ' pri-done' : '') : ''), 'data-testid': 'pri-card', 'data-section': r.section, 'data-product': r.product, 'data-source': r.manual ? 'manual' : 'auto', 'data-cluster-hue': String(hueOf(r.cluster)) },
     h('td', { class: 'pri-c pri-c-tog' }, printed || !onPick ? null : pick, printed ? null : btn),
     cProduct, cCluster, cIcp, cell('Pain Point', 'pain', r.pain_point),
@@ -185,7 +186,19 @@ function render(d, view = null, opts = {}) {
   const nCols = () => 12 + (actl ? 1 : 0) + (hasBriefed ? 1 : 0);
   function relayout() {                                                                      // a merged cell covers its rows plus the detail rows that are open (a closed detail row has no height)
     runs.forEach((g) => g.cell.setAttribute('rowspan', String(g.members.reduce((n, p) => n + 1 + (p.detailRow.hidden ? 0 : 1), 0))));
+    centerLabels();
   }
+  // a merged cell is top-aligned (a sticky child needs room to move); the label starts centred in its cell via a top margin, then sticks under the pinned header once the cell is taller than the viewport
+  function centerLabels() {
+    const wide = window.matchMedia('(min-width: 761px)').matches;
+    const ls = runs.map((g) => g.cell.firstElementChild).filter(Boolean);
+    ls.forEach((l) => { l.style.marginTop = ''; });
+    if (!wide) return;
+    const room = window.innerHeight - 160;                                       // a cell taller than the screen keeps its label at the top, where it sticks under the pinned header
+    const m = ls.map((l) => { const td = l.parentElement; const cs = getComputedStyle(td); const th = td.getBoundingClientRect().height; return th > room ? 0 : Math.max(0, Math.round((th - l.getBoundingClientRect().height) / 2 - parseFloat(cs.paddingTop))); });
+    ls.forEach((l, i) => { l.style.marginTop = m[i] + 'px'; });
+  }
+  window.addEventListener('resize', () => { if (runs.length) centerLabels(); });
   function applyGroups(list) {
     const on = !state.key;
     table.classList.toggle('pri-grouped', on);
@@ -196,7 +209,18 @@ function render(d, view = null, opts = {}) {
     });
     runs = [];
     if (!on) return;
-    const level = [['product', (r) => r.product, 'pri-g-prod'], ['cluster', (r) => r.product + '|' + r.cluster, 'pri-g-cl'], ['icp', (r) => r.product + '|' + r.cluster + '|' + r.icp, 'pri-g-icp']];
+    // product = a heading row above its block (not a merged cell); cluster and ICP are the merged cells
+    const pk = (r) => r.product;
+    for (let i = 0; i < list.length; i += 1) {
+      if (i > 0 && pk(list[i - 1].r) === pk(list[i].r)) continue;
+      let n = 0; while (i + n < list.length && pk(list[i + n].r) === pk(list[i].r)) n += 1;
+      const name = (d.baselines[list[i].r.product] || {}).product_name || list[i].r.product;
+      const hr = h('tr', { class: 'pri-prodhead', 'data-testid': 'pri-prodhead', 'data-product': list[i].r.product, 'data-count': String(n) },
+        h('td', { colspan: String(nCols() - 1) }, h('strong', null, name), ` \u00b7 ${n} concept${n === 1 ? '' : 's'}`));
+      tbody.insertBefore(hr, list[i].tr);
+      list[i].tr.classList.add('pri-g-prod');
+    }
+    const level = [['cluster', (r) => r.product + '|' + r.cluster, 'pri-g-cl'], ['icp', (r) => r.product + '|' + r.cluster + '|' + r.icp, 'pri-g-icp']];
     level.forEach(([name, kf, cls]) => {
       let i = 0;
       while (i < list.length) {
@@ -349,7 +373,7 @@ function render(d, view = null, opts = {}) {
     const prods = slugs.filter((x) => rows.some((r) => r.product === x && has14(r)));
     const cell = (label, cls, ...kids) => h('td', { class: 'pri-c pri-c-' + cls, 'data-label': label }, ...kids);
     const trow = (cls, label, t, slug) => h('tr', { class: 'pri-trow ' + cls, 'data-testid': slug ? 'pri-subtotal' : 'pri-total', 'data-product': slug || '' },
-      h('td', { class: 'pri-c pri-c-tlabel', colspan: '10' }, h('strong', null, label), h('span', { class: 'pri-k' }, ` (${t.n} row${t.n === 1 ? '' : 's'} with data)`)),
+      h('td', { class: 'pri-c pri-c-tlabel', colspan: state.key ? '10' : '9' }, h('strong', null, label), h('span', { class: 'pri-k' }, ` (${t.n} row${t.n === 1 ? '' : 's'} with data)`)),
       cell('Spend \u00b7 14d', 'spend14', h('strong', { 'data-testid': 'pri-total-spend' }, fmt.money(t.spend))),
       cell('ROAS \u00b7 14d', 'roas14', h('strong', { 'data-testid': 'pri-total-roas' }, t.roas === null ? '\u2013' : roasX(t.roas))),
       actl ? h('td', null) : null, hasBriefed ? h('td', null) : null);
@@ -690,7 +714,10 @@ function render(d, view = null, opts = {}) {
   // sticky offsets: the selection bar pins under the app header, the column header pins under the bar. The bar's real height goes into a CSS variable (ResizeObserver: it wraps, and the phone layout is shorter), 0 while the bar is hidden.
   const syncBarH = () => screen.style.setProperty('--pri-bar-h', (toolbar.hidden ? 0 : Math.round(toolbar.getBoundingClientRect().height)) + 'px');
   if (!readonly && typeof ResizeObserver !== 'undefined') new ResizeObserver(syncBarH).observe(toolbar);
-  syncBarH();
+  const syncHeadH = () => screen.style.setProperty('--pri-head-h', Math.round(head.getBoundingClientRect().height) + 'px');
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(syncHeadH).observe(head);
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { if (runs.length) centerLabels(); }).observe(table);
+  syncBarH(); syncHeadH();
   return h('div', { class: 'page pri-page', 'data-testid': 'pri-page' }, topEl, screen, printBlocks);
 }
 

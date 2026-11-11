@@ -44,6 +44,7 @@ const RESOLVE = [
   { re: /^\/priorities(\/|$)/, section: 'creative', page: 'priorities' },
   { re: /^\/promotions\/?$/, section: 'creative', page: 'test-to-scale' },
   { re: /^\/lookup\/?$/, section: 'creative', page: null },
+  { re: /^\/connect-agent\/?$/, section: null, page: null },
   { re: /^\/trends\/?$/, section: 'performance', page: 'trends' },
   { re: /^\/campaigns\/?$/, section: 'performance', page: 'campaigns' },
   { re: /^\/(p|ad)\//, section: 'performance', page: 'meta' },
