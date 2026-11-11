@@ -7503,7 +7503,7 @@
      "name": "section_at_assign",
      "type": "text",
      "nullable": false,
-     "description": "Action the concept had when assigned: 'revive' | 'make_more' | 'test' | 'stop' | 'hold' (rows written before 2026-11-10 hold the old section names 'faded' | 'iterate' | 'new' | 'add' | 'proposal' | 'competitor' | 'rest' | 'other', shown as the new Action)."
+     "description": "Action the concept had when assigned: 'revive' | 'make_more' | 'test' | 'add' | 'stop' | 'hold' (rows written before 2026-11-10 hold the old section names 'faded' | 'iterate' | 'new' | 'proposal' | 'competitor' | 'rest' | 'other', shown as the new Action)."
     },
     {
      "name": "note",

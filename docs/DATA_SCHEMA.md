@@ -1852,7 +1852,7 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `icp` | text | no | ICP at assign time. |
 | `pain_point` | text | no | Pain point at assign time. |
 | `story` | text | no | Story at assign time; empty when none. |
-| `section_at_assign` | text | no | Action the concept had when assigned: 'revive' \| 'make_more' \| 'test' \| 'stop' \| 'hold' (rows written before 2026-11-10 hold the old section names 'faded' \| 'iterate' \| 'new' \| 'add' \| 'proposal' \| 'competitor' \| 'rest' \| 'other', shown as the new Action). |
+| `section_at_assign` | text | no | Action the concept had when assigned: 'revive' \| 'make_more' \| 'test' \| 'add' \| 'stop' \| 'hold' (rows written before 2026-11-10 hold the old section names 'faded' \| 'iterate' \| 'new' \| 'proposal' \| 'competitor' \| 'rest' \| 'other', shown as the new Action). |
 | `note` | text | no | Note typed when assigning or changing the assignment. |
 | `vendor_note` | text | no | Note typed by the vendor on their own link page. |
 | `for_week` | date | no | The Monday of the week the vendor works on it (a CHECK enforces a Monday). |
