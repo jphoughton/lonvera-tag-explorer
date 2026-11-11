@@ -9,25 +9,27 @@ import { setRangeInfo } from '../controls.js';
 import { breadcrumbs, viewSwitch, srcBadge } from '../components.js';
 import { trendChart, BAR_COLOR, LINE_COLOR } from '../charts.js';
 import { ownStrip } from '../kpis.js';
+import { pageHeader } from '../ui/pagehead.js';
+import { filterRow } from '../ui/pagefilters.js';
 
 const TYPES = ['Shopping', 'Search', 'Performance Max', 'Demand Gen', 'Other'];
 const KEYS = ['spend', 'spend_share', 'impressions', 'link_clicks', 'ctr', 'cpc', 'cpm', 'conv_rate', 'purchases', 'revenue', 'roas', 'cpa'];
 
 const BARS = [['spend', () => 'Spend', 'money'], ['purchases', () => metricLabel('purchases', 'Purchases'), 'int'], ['revenue', () => metricLabel('revenue', 'Revenue'), 'money'],
   ['link_clicks', () => 'Clicks', 'int'], ['impressions', () => 'Impressions', 'int']];
-const LINES = [['roas', () => metricLabel('roas', 'ROAS'), 'roas'], ['cpa', () => metricLabel('cpa', 'CPA'), 'money'], ['ctr', () => 'CTR', 'rate'], ['cpc', () => 'CPC', 'money2'],
-  ['conv_rate', () => 'Conv rate', 'rate']];
+const LINES = [['roas', () => metricLabel('roas', 'ROAS'), 'roas'], ['cpa', () => metricLabel('cpa', 'CPA'), 'money'], ['ctr', () => 'Click-through rate (CTR)', 'rate'], ['cpc', () => 'Cost per click (CPC)', 'money2'],
+  ['conv_rate', () => 'Conversion rate', 'rate']];
 
 // Google's own words for the columns: clicks are all clicks, the numbers are Google's whichever source is chosen for purchases / revenue
 function googleColumns(info) {
   const own = !info || !info.source || info.source.key !== 'upstack';
   const basis = info && info.source && info.source.basis;
   const t = {
-    spend: 'Google spend in the selected range', impressions: 'Google impressions', link_clicks: 'Google clicks (all clicks)', ctr: 'CTR = clicks / impressions', cpc: 'Cost per click = spend / clicks',
+    spend: 'Google spend in the selected range', impressions: 'Google impressions', link_clicks: 'Google clicks (all clicks)', ctr: 'Click-through rate (CTR) = clicks / impressions', cpc: 'Cost per click (CPC) = spend / clicks',
     cpm: 'Cost per 1,000 impressions', conv_rate: own ? 'Purchases / clicks' : (basis === 'nc' ? 'New customers / clicks' : 'Orders / clicks'),
     purchases: own ? 'Purchases as Google counts them' : (basis === 'nc' ? 'Upstack new customers credited to the campaign (first orders; any-click, 30-day window)' : 'Upstack orders credited to the campaign (new and returning customers; any-click, 30-day window)'),
     revenue: own ? 'Conversion value as Google reports it' : (basis === 'nc' ? 'Upstack new-customer revenue (order totals)' : 'Upstack revenue of the credited orders (order totals)'),
-    roas: 'Revenue / spend', cpa: 'Spend / purchases',
+    roas: 'Return on ad spend (ROAS) = revenue / spend', cpa: 'Cost per acquisition (CPA) = spend / purchases',
   };
   return metricColumns({ keys: KEYS }).map((c) => {
     if (c.key === 'link_clicks') c.label = () => 'Clicks';
@@ -49,7 +51,7 @@ function colChips() {
     return b;
   };
   return h('div', { class: 'ctl colchips' }, srcBadge(), h('span', { class: 'ctl-name' }, 'Columns'),
-    h('span', { class: 'chips', role: 'group', 'aria-label': 'Columns' }, mk('traffic', 'Traffic', 'Impressions, Clicks, CTR, CPC'), mk('advanced', 'Advanced', 'CPM, Conv rate')));
+    h('span', { class: 'chips', role: 'group', 'aria-label': 'Columns' }, mk('traffic', 'Traffic', 'Impressions, Clicks, Click-through rate (CTR), Cost per click (CPC)'), mk('advanced', 'Advanced', 'Cost per 1,000 impressions (CPM), Conversion rate')));
 }
 
 function typeBadge(t) { return h('span', { class: 'badge muted-badge', title: 'Campaign type, read from the campaign name' }, t); }
@@ -116,9 +118,11 @@ function trendPanel(p, scope, signal) {
   const el = h('div', { class: 'card trendcard', 'data-testid': 'google-trend' },
     h('div', { class: 'card-head' }, h('h3', 'Trend')),
     h('div', { class: 'ctl-row' },
-      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Bars'), barSel),
-      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Line'), lineSel),
-      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Grain'), h('span', { class: 'segs' }, grainBtns))),
+      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Grain'), h('span', { class: 'segs' }, grainBtns)),
+      h('details', { class: 'chart-options', 'data-testid': 'chart-options' }, h('summary', { title: 'Choose the bars and the line' }, 'Chart options'),
+        h('div', { class: 'chart-options-body' },
+          h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Bars'), barSel),
+          h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Line'), lineSel)))),
     h('div', { class: 'chartbox' }, canvas), note);
   return { el, load };
 }
@@ -130,7 +134,7 @@ export async function googlePage(ctx) {
   const type = TYPES.includes(p.type) ? p.type : null;
   const campaignsView = location.pathname === '/campaigns';
   const base = basePath();
-  document.title = (campaignsView ? 'Google campaigns' : 'Google') + ' · Marketing metrics';
+  document.title = (campaignsView ? 'Google campaigns' : 'Google') + ' · Lonvera';
   const [types, camps] = await Promise.all([
     api('/api/google/rollup', { group: 'type', ...wp }, { signal }),
     api('/api/google/rollup', { group: 'campaign', ...(type ? { type } : {}), ...wp }, { signal }),
@@ -138,7 +142,7 @@ export async function googlePage(ctx) {
   if (!ctx.alive()) return;
   setRangeInfo(p, types.window_info, types.compare_info || null, { unclassified: false });
   const panel = trendPanel(p, type ? { type } : {}, signal);
-  const root = { label: 'Marketing metrics', href: href('/', { ...G, platform: null }) };
+  const root = { label: 'Lonvera', href: href('/', { ...G, platform: null }) };
   const crumbs = [root, { label: campaignsView ? 'Google campaigns' : 'Google', href: type ? href(base, G) : null }, ...(type ? [{ label: type }] : [])];
   if (crumbs.length === 2) crumbs[1].href = null;
   const tTypes = typesTable(types.rows, types.total.m, G, types.window_info);
@@ -151,12 +155,12 @@ export async function googlePage(ctx) {
   const campHead = h('div', { class: 'tablehead' }, h('h2', { id: 'campaigns-title' }, type ? `Campaigns · ${type}` : 'Campaigns'),
     campaignsView ? colChips() : null, type && !campaignsView ? h('a', { class: 'btnlink', href: href(base, G) }, 'All types') : null);
   ctx.mount(h('div', { class: 'page', 'data-level': campaignsView ? 'google-campaigns' : 'google' },
-    h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', campaignsView ? 'Campaigns' : 'Google'), h('span', { class: 'badge muted-badge', title: 'Read from Upstack: its Google ad-platform feed and its attribution' }, 'Google · Upstack-fed · campaign level'),
-      h('span', { class: 'spacer' }), viewSwitch(campaignsView ? 'campaigns' : 'home', G, 'google'))),
+    pageHeader({ title: campaignsView ? 'Campaigns' : 'Google', badge: 'Google, campaign level', actions: viewSwitch(campaignsView ? 'campaigns' : 'home', G, 'google'),
+      description: campaignsView ? 'Every Google campaign, read from Upstack. Pick a campaign type to narrow the table.' : 'Google spend and results by campaign type and campaign, read from Upstack’s Google feed and attribution. ROAS means return on ad spend.' }),
     h('div', { class: 'crumbrow' }, breadcrumbs(crumbs)),
     ownStrip('google', type ? `Google · ${type}` : 'Google', camps.total.m, types.window_info),
     panel.el,
-    campaignsView ? h('div', { class: 'ctl-row' }, typeChips) : null,
+    campaignsView ? filterRow(typeChips) : null,
     campaignsView ? null : h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Campaign types'), colChips()),
     campaignsView ? null : h('div', { class: 'note-line' }, 'Upstack exposes no Google campaign type, so it is read from the campaign name (Shopping, Search, Performance Max, Demand Gen; a name that says none of them is Other).'),
     campaignsView ? null : tTypes.el,
