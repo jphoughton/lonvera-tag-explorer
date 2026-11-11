@@ -250,6 +250,10 @@
    "summary": "Read-only Google Drive access for the ad launch worker: turn a pasted Drive link into a list of image and video files, and stream one file to disk. Uses the"
   },
   {
+   "module": "etl.landing_pages",
+   "summary": "Landing pages: which page each Meta ad sends people to, and the copy on every such page."
+  },
+  {
    "module": "etl.launch_worker",
    "summary": "Launch worker for /priorities production (package P5): turns queued `creative_launch_jobs` rows into a plan (prepare) or into PAUSED Meta ads (launch)."
   },
@@ -615,6 +619,28 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": ""
+  },
+  {
+   "rule": "/api/landing-pages",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.landing_pages",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Every landing page Meta ads send people to, with its current copy summary and its top ads by spend. window=7|30 (default 30), top=<1..25> (default 5). See docs/LANDING_PAGES.md."
+  },
+  {
+   "rule": "/api/landing-pages/<int:page_id>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.landing_page",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "One landing page: the full stored copy of its current version, the list of versions, and its top ads (window=7|30, top=<1..25>)."
   },
   {
    "rule": "/api/login",

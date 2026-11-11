@@ -188,6 +188,7 @@ Read endpoints (all GET, grouped; generated from the Flask routes):
 | Products and tags | `/api/products`, `/api/products/<slug>/rollup`, `/families`, `/tree`, `/coverage`, `/ads`, `/campaigns`, `/trend`, `/stage-daily`, `/unmatched` |
 | Ads | `/api/ads/<id>`, `/api/ads/<id>/preview`, `/api/meta-ads/<ad_id>/preview`, `/media/<asset_id>`, `/api/tag-lookup` |
 | Campaigns and platforms | `/api/campaigns`, `/api/campaigns/trend`, `/api/campaigns/all`, `/api/platforms/kpis`, `/api/platforms/trend`, `/api/platforms/overview`, `/api/google/rollup`, `/api/google/trend`, `/api/source/tieout` |
+| Landing pages | `/api/landing-pages`, `/api/landing-pages/<id>` (copy of each page the ads point to, with the top ads per page; see `docs/LANDING_PAGES.md`) |
 | Test to scale and trends | `/api/promotions`, `/api/promotions/scale`, `/api/trends`, `/api/trends/plan` |
 | Creative priorities | `/api/priorities?week=YYYY-MM-DD`, `/api/priorities.csv`, `/api/priorities/views` and `/views/<token>`, `/api/priorities/manual` and `/manual/options` |
 | Production board | `/api/priorities/assignments`, `/api/priorities/vendor-links` (login only, keys refused), `/api/priorities/vendor/<token>` (public link), `/api/priorities/launch/settings`, `/api/priorities/assignments/<id>/launch` |
