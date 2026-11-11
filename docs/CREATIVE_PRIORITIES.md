@@ -184,3 +184,5 @@ curl -X PATCH -H "Authorization: Bearer $KEY" -H "Content-Type: application/json
   https://web-production-358da.up.railway.app/api/priorities/assignments/12
 ```
 The usual write protections still apply to key requests: JSON bodies only, a request that carries an `Origin` header from another site is refused (scripts that send no `Origin` header are fine), and at most 60 assignment writes a minute per address.
+
+The launch to Meta feature (dark by default, everything created paused) is described in [PRODUCTION_LAUNCH.md](PRODUCTION_LAUNCH.md), including the checklist to switch it on.
