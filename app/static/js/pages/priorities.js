@@ -114,7 +114,7 @@ function rowPair(r, d, printed = false, onPick = null, mctl = null, actl = null)
   const pick = h('input', { type: 'checkbox', class: 'pri-pick', 'data-testid': 'pri-pick', 'aria-label': 'Select: ' + name, onchange: (e) => onPick && onPick(r, e.target.checked) });
   const cProduct = cell('Product', 'product', (d.baselines[r.product] || {}).product_name || r.product);
   const lbl = (...k) => h('span', { class: 'pri-lbl' }, ...k);                       // the label inside a merged cell: sticks under the pinned header while the cell is taller than the viewport
-  const cCluster = cell('Market Cluster', 'cluster', lbl(r.cluster, r._from ? h('span', { class: 'pri-from', 'data-testid': 'pri-from', title: 'No longer in the current snapshot: the numbers are the frozen copy saved with the view' }, ' from ' + r._from) : null));
+  const cCluster = cell('Market Cluster', 'cluster', lbl(r.cluster), r._from ? h('span', { class: 'pri-from', 'data-testid': 'pri-from', title: 'No longer in the current snapshot: the numbers are the frozen copy saved with the view' }, ' from ' + r._from) : null);
   const cIcp = cell('ICP', 'icp', lbl(r.icp));
   const tr = h('tr', { class: 'pri-row' + (r.manual ? ' pri-manual' + (r.done ? ' pri-done' : '') : ''), 'data-testid': 'pri-card', 'data-section': r.section, 'data-product': r.product, 'data-source': r.manual ? 'manual' : 'auto', 'data-cluster-hue': String(hueOf(r.cluster)) },
     h('td', { class: 'pri-c pri-c-tog' }, printed || !onPick ? null : pick, printed ? null : btn),
