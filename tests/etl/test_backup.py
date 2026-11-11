@@ -127,6 +127,7 @@ def make_runner(restore_rc=0, dump_rc=0, dump_major="18.6"):
 def env(conn, dburl, monkeypatch, tmp_path):
     monkeypatch.setenv("DATABASE_URL", dburl)
     monkeypatch.setattr(backup, "_tool", lambda n: "/x/" + n)
+    monkeypatch.setattr(backup, "VERIFY_DB_PREFIX", f"backup_verify{os.environ.get('TEST_WORKER_SUFFIX', '')}_{os.getpid()}_")          # a name no other run or session holds
     live = {"ad_metrics": 10, "ad_tags": 5, "etl_runs": 3, "app_meta": 0}
     state = {"restored": dict(live)}
 

@@ -45,7 +45,7 @@ def server(tmp_path_factory):
         r = subprocess.run([py, *args], cwd=ROOT, env=env, capture_output=True, text=True, timeout=300)
         if r.returncode:
             pytest.skip(f"could not prepare the page database ({' '.join(args)}): {r.stderr[-300:]}")
-    from werkzeug.serving import make_server
+    from tests._servers import make_server
     from app import create_app
     from app.projection import rwdb
     app = create_app({"DATABASE_URL": DB_URL, "AUTH_DISABLED": True, "SECRET_KEY": "test-secret-key", "DEV_INSECURE_COOKIES": True, "DB_POOL_MAX": 4,

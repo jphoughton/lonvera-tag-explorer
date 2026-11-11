@@ -272,6 +272,9 @@ class Drive:
 
 
 # ---------------------------------------------------------------- the run
+VERIFY_DB_PREFIX = "backup_verify_"           # scratch database the dump is restored into (a module constant so a test can give its run a name of its own)
+
+
 def _dump(url: str, path: str, runner) -> None:
     cp = runner([_tool("pg_dump"), "-Fc", "--no-owner", "--no-acl", "-f", path], env=_pg_env(url))
     if cp.returncode or not os.path.exists(path) or os.path.getsize(path) == 0:
@@ -279,7 +282,7 @@ def _dump(url: str, path: str, runner) -> None:
 
 
 def _verify_restore(dump_path: str, live_url: str, before: dict, after: dict, stats: dict, scratch_factory, runner, today: dt.date, tmp_base) -> None:
-    dbname = f"backup_verify_{today:%Y%m%d}"
+    dbname = f"{VERIFY_DB_PREFIX}{today:%Y%m%d}"
     t0 = time.time()
     with scratch_factory(tmp_base) as sp:
         with db.connect(sp.url("postgres"), autocommit=True) as c:

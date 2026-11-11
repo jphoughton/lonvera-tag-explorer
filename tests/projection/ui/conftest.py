@@ -4,15 +4,13 @@
     ~/lonvera-tag-explorer/.venv/bin/python -m pytest tests/projection/ui
 """
 import json
-import socket
-import subprocess
-import sys
-import time
 import urllib.request
 from pathlib import Path
 
 import pytest
 from playwright.sync_api import sync_playwright
+
+from tests._servers import start_mock
 
 HERE = Path(__file__).resolve().parent
 SHOTS = HERE / "shots"
@@ -23,27 +21,9 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "allow_errors: do not fail on console errors (deliberate 401 / 429 / 500 responses)")
 
 
-def _free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 @pytest.fixture(scope="session")
 def base_url():
-    port = _free_port()
-    url = f"http://127.0.0.1:{port}"
-    proc = subprocess.Popen([sys.executable, str(HERE / "mock_server.py"), str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    deadline = time.time() + 90                      # a slow start on a loaded machine is waited out, a crashed mock fails at once
-    while True:
-        try:
-            with urllib.request.urlopen(url + "/healthz", timeout=1):
-                break
-        except Exception:
-            if proc.poll() is not None or time.time() > deadline:
-                proc.terminate()
-                raise RuntimeError("mock server did not start")
-            time.sleep(0.1)
+    proc, url = start_mock(HERE / "mock_server.py", what="mock server")        # a free port of its own, waited for until /healthz answers
     yield url
     proc.terminate()
 

@@ -4,7 +4,7 @@ import threading
 import pytest
 
 playwright = pytest.importorskip("playwright.sync_api")
-from werkzeug.serving import make_server                                   # noqa: E402
+from tests._servers import make_server                                   # noqa: E402
 
 from pacing_support import make_app                                         # noqa: E402
 

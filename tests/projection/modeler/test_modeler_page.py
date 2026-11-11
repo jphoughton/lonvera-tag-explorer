@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from conftest import AOV, CPA, P, SPEND, copy_of, fy_months, make_app, put_cells
-from werkzeug.serving import make_server
+from tests._servers import make_server
 
 sync_api = pytest.importorskip("playwright.sync_api")
 ROOT = Path(__file__).resolve().parents[3]

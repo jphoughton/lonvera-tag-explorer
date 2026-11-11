@@ -11,6 +11,11 @@ import os
 
 _WORKER = os.environ.get("PYTEST_XDIST_WORKER")          # "gw0", "gw1", ... ; unset in serial runs and in the xdist controller
 
+# scripts/test.sh sets TEST_STRICT=1: it expects Postgres and Chromium, so a fixture that skips for "not available" is a FAILURE there (a saturated or
+# broken machine must never show up as a green run full of skips). A plain `pytest tests` keeps the friendly skip.
+STRICT = os.environ.get("TEST_STRICT") == "1"
+ENVIRONMENT_SKIPS = ("Postgres not available", "Chromium not available", "could not prepare the page database", "could not start a scratch Postgres")
+
 # env var -> default database name used by the fixture that reads it (kept in step with the conftest files)
 _DB_VARS = {
     "TEST_API_DB": "tagexp_apitest",
@@ -31,13 +36,10 @@ _DB_VARS = {
 
 if _WORKER:
     _suffix = f"_{os.getppid()}_{_WORKER}"           # parent pid = the xdist controller: a second run (or another session) never shares a name
-    _idx = int("".join(ch for ch in _WORKER if ch.isdigit()) or 0)
     os.environ["TEST_WORKER_SUFFIX"] = _suffix
     for _var, _default in _DB_VARS.items():
         os.environ[_var] = os.environ.get(_var, _default) + _suffix
     os.environ["TEST_DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", os.environ.get("TEST_PG_BASE", "postgresql://localhost") + "/tagexp_test") + _suffix      # etl tests
-    os.environ["UI_MOCK_PORT"] = str(int(os.environ.get("UI_MOCK_PORT", "5099")) + _idx)
-    os.environ["UI_NOAUTH_MOCK_PORT"] = str(int(os.environ.get("UI_NOAUTH_MOCK_PORT", "5300")) + _idx)       # 5300+ so it never meets 5099+idx
 
 
 # ---- database housekeeping for a worker: the etl tests expect their database to exist already, and every worker removes its own at the end ----
@@ -55,7 +57,9 @@ def pytest_configure(config):
             if not c.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone():
                 c.execute(f'CREATE DATABASE "{name}"')
     except psycopg.OperationalError:
-        pass            # no local Postgres: the fixtures skip their tests themselves
+        if STRICT:
+            raise       # scripts/test.sh expects Postgres: say so now instead of letting every fixture skip its tests
+        # otherwise no local Postgres: the fixtures skip their tests themselves
 
 
 def pytest_unconfigure(config):
@@ -74,6 +78,17 @@ def pytest_unconfigure(config):
 import gc  # noqa: E402
 
 import pytest  # noqa: E402
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    rep = outcome.get_result()
+    if STRICT and rep.skipped and any(m in str(rep.longrepr) for m in ENVIRONMENT_SKIPS):
+        reason = str(rep.longrepr[-1]) if isinstance(rep.longrepr, tuple) else str(rep.longrepr)
+        rep.outcome = "failed"
+        rep.longrepr = f"TEST_STRICT: this test was skipped because the environment is missing something scripts/test.sh requires: {reason}"
+
 
 
 @pytest.fixture(scope="module", autouse=True)

@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 pw = pytest.importorskip("playwright.sync_api")
 
-from werkzeug.serving import make_server                       # noqa: E402
+from tests._servers import make_server                       # noqa: E402
 
 from app.projection.pnl import store                            # noqa: E402
 from pnl_support import TODAY, seed_basic                           # noqa: E402

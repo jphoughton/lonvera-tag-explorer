@@ -4,7 +4,7 @@ from __future__ import annotations
 import threading
 
 import pytest
-from werkzeug.serving import make_server
+from tests._servers import make_server
 
 from app.projection import registry, stubs
 
