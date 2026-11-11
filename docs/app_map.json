@@ -134,6 +134,14 @@
   {
    "service": "etl",
    "order": 9,
+   "module": "etl.klaviyo",
+   "args": "--days",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 10,
    "module": "etl.auto_tag",
    "args": "",
    "fatal": false,
@@ -248,6 +256,10 @@
   {
    "module": "etl.drive_io",
    "summary": "Read-only Google Drive access for the ad launch worker: turn a pasted Drive link into a list of image and video files, and stream one file to disk. Uses the"
+  },
+  {
+   "module": "etl.klaviyo",
+   "summary": "Klaviyo flow + campaign metrics -> klaviyo_daily (+ klaviyo_campaigns / klaviyo_flows / klaviyo_flow_messages). Read-only against Klaviyo (GET lists, POST metric-aggregates)."
   },
   {
    "module": "etl.landing_pages",
