@@ -163,7 +163,7 @@ def _key_guard(raw: str):
         return _too_many(wait)                           # refused before any key is looked at
     try:
         row = api_keys.lookup(db.get_conn(), raw)
-    except psycopg.errors.UndefinedTable:                # migration 204 not applied yet: no key can be valid
+    except psycopg.errors.UndefinedTable:                # migration 205 not applied yet: no key can be valid
         db.get_conn().rollback()
         row = None
     if row is None:
