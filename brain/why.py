@@ -1409,7 +1409,13 @@ def compact(res: dict, top: int = 6) -> dict:
             o["control"] = c["reading"]
         return o
     ch = res.get("changes_in_window") or {}
-    out = {k: res.get(k) for k in ("metric", "window", "comparison", "scope", "headline", "reading", "unexplained", "known_cause_matches", "next_questions", "coverage_notes", "budget_exhausted") if res.get(k) not in (None, [], {})}
+    root = res.get("metric")
+    kcs = sorted(res.get("known_cause_matches") or [], key=lambda m: (m.get("node") != root, m.get("status") == "refuted"))   # the asked metric's own causes first, refuted ones last
+    out = {k: res.get(k) for k in ("metric", "window", "comparison", "scope", "headline") if res.get(k) not in (None, [], {})}
+    out["known_causes_to_report"] = [{k: m.get(k) for k in ("node", "claim", "status", "confidence", "between", "note") if m.get(k)} for m in kcs[:8]]
+    out["how_to_answer"] = ("Lead with the headline numbers; then report EACH known cause above in its own words and confidence (a refuted one is a finding too: say it was ruled out); then say what is not in the database (next_questions / coverage_notes). "
+                            "Do not add a cause that is not listed unless you tested it with a control.")
+    out.update({k: res.get(k) for k in ("reading", "unexplained", "next_questions", "coverage_notes", "budget_exhausted") if res.get(k) not in (None, [], {})})
     out["findings"] = [one(f) for f in (res.get("findings") or [])[:top]]
     out["refuted"] = [f.get("sentence") or (f.get("label_reason")) for f in (res.get("refuted_candidates") or [])[:6]]
     out["changes_in_window"] = {"counts": ch.get("counts"), "window_for_dated_events": ch.get("window_for_dated_events"),

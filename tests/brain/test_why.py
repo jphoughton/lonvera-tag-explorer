@@ -395,3 +395,12 @@ def test_meta_history_fills_windows_before_platform_daily_starts():
     w.add_meta_history(out)
     assert out["cmp"]["meta_spend"] == 500.0 and out["cmp"]["spend"] == 520.0 and out["cmp"]["meta_days"] == 30.0
     assert out["cur"]["meta_spend"] == 1000.0 and out["cur"]["spend"] == 1000.0
+
+
+def test_compact_puts_the_asked_metrics_known_causes_first_and_refuted_last():
+    res = {"metric": "cpm", "headline": "h", "findings": [], "refuted_candidates": [], "changes_in_window": {}, "guardrails_checked": [],
+           "known_cause_matches": [{"node": "nc_cpa", "claim": "child", "status": "verified", "confidence": "consistent with"}, {"node": "cpm", "claim": "own refuted", "status": "refuted", "confidence": "refuted"},
+                                   {"node": "cpm", "claim": "own", "status": "verified", "confidence": "consistent with"}]}
+    c = W.compact(res)
+    assert [k["claim"] for k in c["known_causes_to_report"]] == ["own", "own refuted", "child"]
+    assert "EACH known cause" in c["how_to_answer"]
