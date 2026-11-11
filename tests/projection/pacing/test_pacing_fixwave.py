@@ -271,6 +271,8 @@ def test_pacing_needs_the_pnl_in_its_compute_signature():
 
 def test_every_date_path_uses_the_pacific_clock(monkeypatch):
     monkeypatch.delenv(periods.ENV_AS_OF, raising=False)
+    from app.projection import clock
+    monkeypatch.delenv(clock.PIN_ENV, raising=False)             # other modules' fixtures pin PROJECTION_TODAY in os.environ; this test is about the unpinned clock
     import datetime as _dt
     real = periods.datetime
 
@@ -279,6 +281,7 @@ def test_every_date_path_uses_the_pacific_clock(monkeypatch):
         def now(cls, tz=None):
             return _dt.datetime(2026, 11, 4, 6, 10, tzinfo=_dt.timezone.utc).astimezone(tz) if tz else _dt.datetime(2026, 11, 4, 6, 10)
     monkeypatch.setattr(periods, "datetime", Frozen)
+    monkeypatch.setattr(clock, "datetime", Frozen)
     assert periods.as_of() == dt.date(2026, 11, 3)                                                                # 06:10 UTC on Nov 4 is still Nov 3 in Los Angeles
     assert periods.today_pacific() == dt.date(2026, 11, 3)
     monkeypatch.setattr(periods, "datetime", real)
