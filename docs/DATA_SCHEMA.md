@@ -107,10 +107,10 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | Meta (Facebook / Instagram) ads: ads, campaigns, daily results | [`public.ad_daily`](#publicad_daily), [`public.meta_ads`](#publicmeta_ads), [`public.meta_campaigns`](#publicmeta_campaigns), [`public.meta_ad_lifetime`](#publicmeta_ad_lifetime), [`public.ad_lifetime`](#publicad_lifetime), [`public.meta_family_map`](#publicmeta_family_map), [`public.landing_pages`](#publiclanding_pages), [`public.landing_page_versions`](#publiclanding_page_versions), [`public.landing_page_ads`](#publiclanding_page_ads), [`public.landing_page_top_ads`](#publiclanding_page_top_ads) |
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
-| Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily) |
+| Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily), [`public.shopify_orders`](#publicshopify_orders), [`public.shopify_order_lines`](#publicshopify_order_lines) |
 | Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_formats`](#publiccreative_formats), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links), [`public.creative_launch_settings`](#publiccreative_launch_settings), [`public.creative_launch_pages`](#publiccreative_launch_pages), [`public.creative_launch_vendor_prefixes`](#publiccreative_launch_vendor_prefixes), [`public.creative_launch_drafts`](#publiccreative_launch_drafts), [`public.creative_launch_jobs`](#publiccreative_launch_jobs), [`public.creative_launch_ads`](#publiccreative_launch_ads), [`public.creative_launch_adsets`](#publiccreative_launch_adsets), [`public.creative_launch_audit`](#publiccreative_launch_audit) |
 | Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.competitor_brands`](#publiccompetitor_brands), [`public.competitor_ads`](#publiccompetitor_ads), [`public.competitor_concept_class`](#publiccompetitor_concept_class), [`public.competitor_concepts`](#publiccompetitor_concepts), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
-| Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta), [`public.api_keys`](#publicapi_keys), [`public.landing_page_ad_checks`](#publiclanding_page_ad_checks), [`public.brain_keys`](#publicbrain_keys), [`public.brain_audit`](#publicbrain_audit) |
+| Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta), [`public.api_keys`](#publicapi_keys), [`public.klaviyo_campaigns`](#publicklaviyo_campaigns), [`public.klaviyo_flows`](#publicklaviyo_flows), [`public.klaviyo_flow_messages`](#publicklaviyo_flow_messages), [`public.klaviyo_daily`](#publicklaviyo_daily), [`public.klaviyo_message_content`](#publicklaviyo_message_content), [`public.klaviyo_message_performance`](#publicklaviyo_message_performance), [`public.landing_page_ad_checks`](#publiclanding_page_ad_checks), [`public.brain_keys`](#publicbrain_keys), [`public.brain_audit`](#publicbrain_audit) |
 | Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow) | [`public.proj_feed_config`](#publicproj_feed_config), [`public.proj_feed_runs`](#publicproj_feed_runs), [`public.proj_feed_attempts`](#publicproj_feed_attempts), [`public.proj_feed_verify`](#publicproj_feed_verify), [`public.proj_feed_verify_runs`](#publicproj_feed_verify_runs), [`public.proj_feed_levers`](#publicproj_feed_levers), [`public.proj_feed_orders`](#publicproj_feed_orders), [`public.proj_feedx_orders`](#publicproj_feedx_orders), [`public.proj_feed_amazon`](#publicproj_feed_amazon), [`public.proj_feedx_amazon`](#publicproj_feedx_amazon), [`public.proj_feed_platform`](#publicproj_feed_platform), [`public.proj_feedx_platform`](#publicproj_feedx_platform), [`public.proj_feed_attribution`](#publicproj_feed_attribution), [`public.proj_feedx_attribution`](#publicproj_feedx_attribution), [`public.proj_feed_traffic`](#publicproj_feed_traffic), [`public.proj_feedx_traffic`](#publicproj_feedx_traffic), [`public.proj_feed_meta_reach`](#publicproj_feed_meta_reach), [`public.proj_feedx_meta_reach`](#publicproj_feedx_meta_reach), [`public.proj_feed_product_reach`](#publicproj_feed_product_reach), [`public.proj_feedx_product_reach`](#publicproj_feedx_product_reach), [`public.proj_feed_nc_product`](#publicproj_feed_nc_product), [`public.proj_feedx_nc_product`](#publicproj_feedx_nc_product), [`public.proj_feed_anyclick`](#publicproj_feed_anyclick), [`public.proj_feedx_anyclick`](#publicproj_feedx_anyclick), [`public.proj_feed_bids`](#publicproj_feed_bids), [`public.proj_feedx_bids`](#publicproj_feedx_bids), [`public.proj_feed_meta_day`](#publicproj_feed_meta_day), [`public.proj_feed_meta_product`](#publicproj_feed_meta_product), [`public.proj_pacing_hourly`](#publicproj_pacing_hourly), [`public.proj_pacing_setting`](#publicproj_pacing_setting), [`public.proj_units_daily`](#publicproj_units_daily), [`public.proj_feedx_units_daily`](#publicproj_feedx_units_daily), [`public.proj_demand_snapshot`](#publicproj_demand_snapshot), [`public.proj_feedx_demand_snapshot`](#publicproj_feedx_demand_snapshot), [`public.proj_feedx_intl_nonus_daily`](#publicproj_feedx_intl_nonus_daily), [`public.proj_feed_nc_hourly`](#publicproj_feed_nc_hourly), [`public.proj_live_today_snapshots`](#publicproj_live_today_snapshots), [`public.proj_amazon_mtd_snapshots`](#publicproj_amazon_mtd_snapshots), [`public.proj_feedx_intl_estimate`](#publicproj_feedx_intl_estimate), [`public.proj_meta_spend_monthly`](#publicproj_meta_spend_monthly) |
 | Projection engine tables (finance, inventory, cohorts; NOT exposed in analytics) | [`public.proj_scenarios`](#publicproj_scenarios), [`public.proj_series`](#publicproj_series), [`public.proj_actuals`](#publicproj_actuals), [`public.proj_audit`](#publicproj_audit), [`public.proj_scenario_history`](#publicproj_scenario_history), [`public.proj_refresh_runs`](#publicproj_refresh_runs), [`public.proj_cohorts`](#publicproj_cohorts), [`public.proj_cohort_cum`](#publicproj_cohort_cum), [`public.proj_cohort_uploads`](#publicproj_cohort_uploads), [`public.proj_curve_goal`](#publicproj_curve_goal), [`public.proj_pnl_drivers`](#publicproj_pnl_drivers), [`public.proj_pnl_settings`](#publicproj_pnl_settings), [`public.proj_pnl_cogs_sku`](#publicproj_pnl_cogs_sku), [`public.proj_pnl_qb_map`](#publicproj_pnl_qb_map), [`public.proj_pnl_vendors`](#publicproj_pnl_vendors), [`public.proj_upload_history`](#publicproj_upload_history), [`public.proj_po`](#publicproj_po), [`public.proj_fba_transfer`](#publicproj_fba_transfer), [`public.proj_vendor_lead`](#publicproj_vendor_lead), [`public.proj_vendor_cogs`](#publicproj_vendor_cogs), [`public.proj_product_cost`](#publicproj_product_cost), [`public.proj_reorder_param`](#publicproj_reorder_param), [`public.proj_stock_snapshot`](#publicproj_stock_snapshot), [`public.proj_supply_history`](#publicproj_supply_history), [`public.proj_units_monthly`](#publicproj_units_monthly), [`public.proj_units_country`](#publicproj_units_country), [`public.proj_units_loads`](#publicproj_units_loads) |
 
@@ -1571,6 +1571,82 @@ GROUP BY 1 ORDER BY 2 DESC;
 ```sql
 SELECT * FROM upstack_orders_daily ORDER BY day DESC LIMIT 7;
 ```
+
+### public.shopify_orders
+
+*table*
+
+**Purpose.** Order-level Shopify orders of the last 120 days (rolling), one row per order, with money, status, source, discount codes and ship-to country / region. The place to answer order-level questions (refunds, rebills, gifts, discounts) that the daily roll-ups hide.
+
+- **Grain:** primary key `(order_id)`; one row per Shopify order (order_id is the primary key)
+- **Source:** ExpandFi warehouse, merchant 1452, table shopify_orders (read-only), loaded by python -m etl.shopify_orders (etl/shopify_orders.py); fields come from the order's raw Shopify JSON
+- **Refresh:** nightly (feeds service 21:00 UTC): the trailing 14 days are re-pulled every run, the whole 120 days every Sunday (Pacific) and on the first load; orders older than 120 days are deleted
+- **Coverage:** orders processed in the last 120 Pacific days, including today so far; the warehouse trails Shopify by minutes to hours
+- **Caveat:** No personal data is stored: no email, name, address or phone. customer_id is the Shopify customer id (NULL when the order has none); the ship-to is country and region only.
+- **Caveat:** order_date is the Pacific day of processed_at. The warehouse's own created_at is the sync time of a September backfill and is NOT used.
+- **Caveat:** is_new_customer = this is the customer's first Shopify order EVER (customer key = Shopify customer id, else the lower-cased email, as in the new-customer revenue feed), judged over the whole warehouse history, not only the 120 days.
+- **Caveat:** refunded_amount = total_price - current_total_price (never below 0): Shopify's current total already nets refunds and order edits, and the warehouse's refund transactions are empty for many refunds. It is a net-down amount, not a refund ledger.
+- **Caveat:** Orders restated after they fall out of the trailing 14 days are picked up by the Sunday full 120-day pull, so a late refund can lag up to a week.
+- **Caveat:** is_rebill = source_name is subscription_contract_checkout_one. is_trybe_gift = the order carries the tag trybe (the $0 gift orders). Gift, test and cancelled orders are kept and flagged, never dropped; filter on the flags.
+- **Caveat:** Revenue by product is NOT the sum of total_price by product: use shopify_order_lines.line_net for a split.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `order_id` | bigint | no | Shopify order id (primary key). Not the ExpandFi row id. |
+| `order_number` | text | yes | Human-readable order number as the store shows it. |
+| `processed_at` | timestamptz | no | When the order was processed (UTC instant). |
+| `order_date` | date | no | Pacific calendar day of processed_at; the day to group by. |
+| `customer_id` | text | yes | Shopify customer id; NULL when the order has none. No other customer data is stored. |
+| `is_new_customer` | boolean | no | True when this is the customer's first Shopify order ever. |
+| `currency` | text | yes | Order currency code (shop currency). |
+| `subtotal_price` | numeric(12,2) | yes | Order subtotal after discounts, before shipping and tax. |
+| `total_discounts` | numeric(12,2) | yes | Sum of all discounts on the order. |
+| `shipping_price` | numeric(12,2) | yes | Shipping charged (shop money). |
+| `total_tax` | numeric(12,2) | yes | Tax charged. |
+| `total_price` | numeric(12,2) | yes | Order total at checkout: subtotal + shipping + tax. |
+| `current_total_price` | numeric(12,2) | yes | Order total after refunds and edits, as Shopify reports it now. |
+| `refunded_amount` | numeric(12,2) | yes | total_price minus current_total_price, never below 0 (see the caveat). |
+| `financial_status` | text | yes | Shopify financial status (paid, refunded, partially_refunded, voided, ...). |
+| `fulfillment_status` | text | yes | Shopify fulfillment status; NULL = unfulfilled. |
+| `source_name` | text | yes | Shopify source name (web, subscription_contract_checkout_one for rebills, tiktok, or an app id). |
+| `app_id` | text | yes | Shopify app id that created the order; NULL when none. |
+| `tags` | text | yes | Order tags, comma separated, as Shopify stores them. |
+| `discount_codes` | text | yes | Discount codes used, comma separated; NULL when none. |
+| `ship_country` | text | yes | Ship-to ISO country code; NULL when the order has no shipping address. |
+| `ship_region` | text | yes | Ship-to province / state code; NULL when none. |
+| `cancelled_at` | timestamptz | yes | When the order was cancelled; NULL when it was not. |
+| `is_cancelled` | boolean | no | True when cancelled_at is set. |
+| `is_test` | boolean | no | True for a Shopify test order. |
+| `is_rebill` | boolean | no | True for a subscription rebill (source_name subscription_contract_checkout_one). |
+| `is_trybe_gift` | boolean | no | True when the order has the tag trybe (free sample / gift orders). |
+| `line_count` | integer | no | Number of line items stored in shopify_order_lines for this order. |
+| `loaded_at` | timestamptz | no | When this row was last written by the loader. |
+
+### public.shopify_order_lines
+
+*table*
+
+**Purpose.** Line items of shopify_orders: one row per product line with SKU, product bucket, quantity, price and discount.
+
+- **Grain:** primary key `(order_id, line_no)`; one row per order line (order_id, line_no is the primary key; line_no counts from 1 in the order's own line order)
+- **References:** `(order_id)` -> `public.shopify_orders(order_id)`
+- **Source:** the line_items array of the same ExpandFi shopify_orders rows, loaded together with shopify_orders by python -m etl.shopify_orders
+- **Refresh:** with shopify_orders (nightly 21:00 UTC); a re-pulled order has its lines replaced, an order that leaves the 120-day window takes its lines with it
+- **Coverage:** the same orders as shopify_orders
+- **Caveat:** product is mapped from the SKU prefix: LV-VBULL = VitaBull, LV-BLC180 and DPCD1-GN180001 = BeefLiver, DPCD1-GN187001 = Boneflex, LV-VBELLE = VitaBelle, DPCD1-GN179001 = VitaFlow, anything else = Other.
+- **Caveat:** line_net = max(price x quantity - line_discount, 0); the order's total_price also carries shipping and tax and order-level discounts, so the lines do not add up to it.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `order_id` | bigint | no | Shopify order id; foreign key to shopify_orders.order_id (cascade delete). |
+| `line_no` | integer | no | Position of the line in the order, from 1. |
+| `sku` | text | yes | SKU as sold; NULL when the line has none. |
+| `product_name` | text | yes | Line title as it shows on the order. |
+| `product` | text | no | Product bucket mapped from the SKU (VitaBull, BeefLiver, Boneflex, VitaBelle, VitaFlow, Other). |
+| `quantity` | integer | no | Units on the line. |
+| `price` | numeric(12,2) | yes | Unit price before discount. |
+| `line_discount` | numeric(12,2) | yes | Total discount on the line (all units). |
+| `line_net` | numeric(12,2) | yes | price x quantity minus line_discount, never below 0. |
 
 ## Creative tracker, tags, hooks, content
 
@@ -3183,6 +3259,197 @@ SELECT key, left(value, 80) AS value, updated_at FROM app_meta WHERE key NOT LIK
 | `created_by` | text | yes | Operating-system user who ran the create command; NULL when unknown. |
 | `last_used_at` | timestamptz | yes | When the key last made a request (updated at most once a minute); NULL while unused. |
 | `revoked_at` | timestamptz | yes | When the key was revoked; NULL while active. A revoked key is refused with 401. |
+
+### public.klaviyo_campaigns
+
+*table*
+
+**Purpose.** Dimension: one row per Klaviyo campaign (email and SMS) with its name, status, send time and subject. Names the parent ids of klaviyo_daily.
+
+- **Grain:** primary key `(id)`; one row per campaign (id is the primary key; Klaviyo campaign id)
+- **Source:** Klaviyo API GET /campaigns/ with campaign-messages, both channels, via python -m etl.klaviyo (etl/klaviyo.py)
+- **Refresh:** nightly with the daily ETL (whole list re-upserted every run)
+- **Coverage:** every campaign Klaviyo lists, regardless of the metric window
+- **Caveat:** raw holds the Klaviyo attributes and the campaign's messages (id, label, subject); an A/B campaign has several messages and subject is the first one's.
+- **Caveat:** A campaign that sent in the window but is no longer listed shows in klaviyo_daily as '(unknown campaign message ...)'.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | text | no | Klaviyo campaign id (primary key). |
+| `name` | text | yes | Campaign name. |
+| `channel` | text | no | 'email' or 'sms'. |
+| `status` | text | yes | Klaviyo status text, for example Sent, Draft, Queued without Recipients. |
+| `send_time` | timestamptz | yes | Scheduled send time (UTC); NULL when not scheduled. |
+| `subject` | text | yes | Subject line of the first message; NULL for SMS and drafts without one. |
+| `created_at` | timestamptz | yes | When the campaign was created in Klaviyo. |
+| `updated_at` | timestamptz | yes | When the campaign was last edited in Klaviyo. |
+| `raw` | jsonb | yes | Klaviyo attributes plus the campaign's messages, as JSON. |
+| `loaded_at` | timestamptz | no | When this row was last written. |
+
+### public.klaviyo_flows
+
+*table*
+
+**Purpose.** Dimension: one row per Klaviyo flow with its name, status and trigger type. Names the parent ids of klaviyo_daily.
+
+- **Grain:** primary key `(id)`; one row per flow (id is the primary key; Klaviyo flow id)
+- **Source:** Klaviyo API GET /flows/ via python -m etl.klaviyo (etl/klaviyo.py)
+- **Refresh:** nightly with the daily ETL (whole list re-upserted every run)
+- **Coverage:** every flow Klaviyo lists (draft, manual and live), regardless of the metric window
+- **Caveat:** raw is the Klaviyo attribute object as returned.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | text | no | Klaviyo flow id (primary key). |
+| `name` | text | yes | Flow name. |
+| `status` | text | yes | draft, manual or live. |
+| `trigger_type` | text | yes | What starts the flow, for example Metric, List, Segment, Date. |
+| `created_at` | timestamptz | yes | When the flow was created. |
+| `updated_at` | timestamptz | yes | When the flow was last edited. |
+| `raw` | jsonb | yes | Klaviyo attributes as JSON. |
+| `loaded_at` | timestamptz | no | When this row was last written. |
+
+### public.klaviyo_flow_messages
+
+*table*
+
+**Purpose.** Dimension: one row per message (email or SMS step) inside a Klaviyo flow, with its name and subject. Names the message_id of klaviyo_daily flow rows.
+
+- **Grain:** primary key `(id)`; one row per flow message (id is the primary key; Klaviyo flow message id)
+- **Source:** Klaviyo API GET /flows/{id}/flow-actions/ then /flow-actions/{id}/flow-messages/ via python -m etl.klaviyo (etl/klaviyo.py)
+- **Refresh:** nightly with the daily ETL, for live flows and flows that had activity in the pulled window
+- **Coverage:** messages of every live flow and of flows with sends, opens, clicks or orders in any pulled window
+- **Caveat:** Messages of draft or manual flows that were silent in every pulled window are not fetched, so they are missing here.
+- **Caveat:** Messages deleted from a flow are not listed; their old metrics in klaviyo_daily keep the message_id with no name.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | text | no | Klaviyo flow message id (primary key). |
+| `flow_id` | text | no | Parent flow (klaviyo_flows.id). No foreign key. |
+| `name` | text | yes | Message name in the flow builder. |
+| `channel` | text | yes | 'email' or 'sms' as Klaviyo reports it, lowercased. |
+| `subject` | text | yes | Email subject line; NULL for SMS. |
+| `raw` | jsonb | yes | Klaviyo attributes plus the flow action id, as JSON. |
+| `loaded_at` | timestamptz | no | When this row was last written. |
+
+### public.klaviyo_daily
+
+*table*
+
+**Purpose.** Klaviyo email and SMS performance by Pacific day, campaign or flow, message and channel: sends, delivered, opens, clicks, unsubscribes and Klaviyo-attributed orders and revenue.
+
+- **Grain:** primary key `(day, source, parent_id, message_id, channel)`; one row per day (Pacific) x source ('campaign' | 'flow') x parent_id x message_id x channel (that is the primary key; message_id is '' where Klaviyo gives none)
+- **Source:** Klaviyo metric-aggregates (Received / Bounced / Opened / Clicked / Marked as Spam / Unsubscribed events by $flow and $message, SMS equivalents, and Placed Order - Upstackified by $attributed_flow / $attributed_message) via python -m etl.klaviyo (etl/klaviyo.py)
+- **Refresh:** nightly with the daily ETL; the trailing 14 complete Pacific days are replaced each run so late opens, clicks and orders land
+- **Coverage:** complete Pacific days through yesterday; history from the first backfill (120 days at launch)
+- **Caveat:** unique_opens and unique_clicks are per-day uniques: do not add them across days or messages; sums run 20-55% above Klaviyo's single-window uniques.
+- **Caveat:** orders and revenue are Klaviyo-attributed conversions of the metric 'Placed Order - Upstackified' (S6xLbC, the CheckoutChamp / Upstack server feed), dated by the day the order happened, not the day the message was sent; Shopify's own Placed Order metric reads about 10% lower.
+- **Caveat:** Clicks exclude clicks Klaviyo flags as bots. sends = delivered + bounced.
+- **Caveat:** Klaviyo does not expose SMS unsubscribes per flow, and campaign SMS unsubscribes are matched by campaign name with no message (message_id ''); about 2K keyword-STOP unsubscribes have no campaign and are not in this table.
+- **Caveat:** SMS rows have no opens, unique_opens or spam_complaints (0).
+- **Caveat:** Sends, delivered and revenue reconcile within about 3% of Klaviyo's own campaign and flow value reports.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date | no | Calendar day in America/Los_Angeles (event date). |
+| `source` | text | no | 'campaign' or 'flow'. |
+| `parent_id` | text | no | Klaviyo campaign id or flow id (klaviyo_campaigns.id / klaviyo_flows.id). No foreign key. |
+| `message_id` | text | no | Klaviyo message id (campaign message or flow message); '' when the row has none (SMS unsubscribes by campaign name). |
+| `channel` | text | no | 'email' or 'sms'. |
+| `parent_name` | text | yes | Name of the campaign or flow when loaded (denormalised); '(unknown ...)' when Klaviyo no longer lists it. |
+| `sends` | bigint | no | Messages Klaviyo tried to send that day (delivered plus bounced). |
+| `delivered` | bigint | no | Messages delivered. |
+| `bounced` | bigint | no | Emails bounced or SMS that failed to deliver. |
+| `opens` | bigint | no | Email opens (includes Apple Mail Privacy Protection machine opens); 0 for SMS. |
+| `unique_opens` | bigint | no | Distinct recipients who opened that day (per-day unique, not additive); 0 for SMS. |
+| `clicks` | bigint | no | Clicks, bot clicks excluded. |
+| `unique_clicks` | bigint | no | Distinct recipients who clicked that day (per-day unique, not additive). |
+| `unsubscribes` | bigint | no | Unsubscribes counted that day (email: clicked-to-unsubscribe events; SMS: campaign-level only). |
+| `spam_complaints` | bigint | no | Emails marked as spam; 0 for SMS. |
+| `orders` | bigint | no | Orders Klaviyo attributes to the message, dated by order day. |
+| `revenue` | numeric(14,2) | no | Revenue of those orders in dollars (Placed Order - Upstackified value), dated by order day. |
+| `loaded_at` | timestamptz | no | When this row was last written. |
+
+### public.klaviyo_message_content
+
+*table*
+
+**Purpose.** The copy of every Klaviyo message (campaign message or flow message) that had activity in a pulled window, or that sits in a live flow: subject, preview text, full email HTML, readable body text and the message links. Joins to klaviyo_daily on message_id.
+
+- **Grain:** primary key `(message_id)`; one row per message (message_id is the primary key; Klaviyo campaign message id or flow message id)
+- **Source:** Klaviyo API: GET /campaign-messages/{id}/template/ and /flow-messages/{id}/template/ (email HTML), the message definitions from GET /campaigns/ and /flow-actions/{id}/flow-messages/ (subject, preview, sender, SMS body), via python -m etl.klaviyo (etl/klaviyo.py)
+- **Refresh:** nightly with the daily ETL, for messages with activity in the trailing 14 days and every message of a live flow
+- **Coverage:** messages with activity in any pulled window (120 days at launch) plus live-flow messages; not every message Klaviyo has ever held
+- **Caveat:** Only the latest copy is kept: when a message is edited the row is overwritten and fetched_at moves (content_hash changes); the history of edits is not kept, so old performance reads against the current copy.
+- **Caveat:** Messages whose template Klaviyo no longer returns (deleted campaigns or templates) have a row with NULL html and body_text and raw.fetch_error set.
+- **Caveat:** body_text is extracted from the HTML (head, scripts and styles dropped, link text kept, whitespace collapsed); image-only emails have little or no text, and image_count says how many real images the email carries. For SMS body_text is the message body and html is NULL.
+- **Caveat:** image_count excludes tracking pixels and 1-pixel images.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `message_id` | text | no | Klaviyo message id (primary key); equals klaviyo_daily.message_id. |
+| `source` | text | no | 'campaign' or 'flow'. |
+| `parent_id` | text | no | Campaign id or flow id of the message. No foreign key. |
+| `channel` | text | no | 'email' or 'sms'. |
+| `subject` | text | yes | Email subject line; NULL for SMS. |
+| `preview_text` | text | yes | Email preview text; NULL for SMS or when none is set. |
+| `from_name` | text | yes | Sender name of the email. |
+| `from_email` | text | yes | Sender address of the email. |
+| `template_id` | text | yes | Klaviyo template id the email renders from; NULL for SMS or when the template was not returned. |
+| `editor_type` | text | yes | Klaviyo editor of the template: SIMPLE (plain text email), CODE, DRAG_AND_DROP, USER_DRAFTED; NULL for SMS. |
+| `html` | text | yes | Full template HTML of the email; NULL for SMS or when not returned. |
+| `body_text` | text | yes | Readable plain text of the email (or the SMS body); NULL when nothing could be fetched or the email is images only. |
+| `image_count` | integer | yes | Real images in the email (tracking pixels excluded); 1 for an SMS with a picture. |
+| `link_urls` | text[] | yes | Distinct http(s) links in the message, in order of appearance. |
+| `content_hash` | text | yes | sha256 of the HTML (email) or body (SMS); changes when the message is edited. |
+| `fetched_at` | timestamptz | no | When the content last changed in our copy (moves only when content_hash changes). |
+| `raw` | jsonb | yes | The message definition as Klaviyo returns it (without the body / html), plus fetch_error when the template could not be fetched. |
+
+### public.klaviyo_message_performance
+
+*view*
+
+**Purpose.** One row per Klaviyo message with its copy (subject, preview text, body text) and its totals and rates over everything in klaviyo_daily: the table to read which copy earns.
+
+- **Grain:** one row per message_id (campaign or flow message with at least one klaviyo_daily row)
+- **Source:** klaviyo_daily (grouped by message_id) joined to klaviyo_message_content
+- **Refresh:** live (a view over klaviyo_daily; moves with the nightly Klaviyo load)
+- **Coverage:** the days loaded in klaviyo_daily (120 days at launch, then trailing); first_send_day is the first loaded day with sends, not the message's real first send
+- **Caveat:** unique_opens_daily_sum and unique_clicks_daily_sum are sums of per-day uniques, not window uniques: a person who opens on two days counts twice. open_rate_daily_uniques and click_rate_daily_uniques are built on them and read a little high; use them to compare messages, not as Klaviyo's reported rates.
+- **Caveat:** Orders and revenue are Klaviyo-attributed conversions of 'Placed Order - Upstackified', dated by the order day, so a message can show revenue with no sends when it sent before the loaded window.
+- **Caveat:** Rates are NULL when delivered is 0. SMS messages have no opens. Messages without fetched copy have NULL subject / body_text and has_copy false.
+- **Caveat:** SMS campaign unsubscribes are matched to the campaign, not the message, so they are not in this view.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `message_id` | text |  | Klaviyo message id. |
+| `source` | text |  | 'campaign' or 'flow'. |
+| `parent_id` | text |  | Campaign id or flow id. |
+| `channel` | text |  | 'email' or 'sms'. |
+| `parent_name` | text |  | Campaign or flow name. |
+| `subject` | text |  | Email subject (current copy); NULL for SMS or when not fetched. |
+| `preview_text` | text |  | Email preview text (current copy). |
+| `body_text` | text |  | Readable body text (current copy). |
+| `image_count` | integer |  | Real images in the email. |
+| `editor_type` | text |  | Klaviyo template editor type. |
+| `first_send_day` | date |  | First loaded day with sends. |
+| `last_send_day` | date |  | Last loaded day with sends. |
+| `sends` | bigint |  | Sum of sends. |
+| `delivered` | bigint |  | Sum of delivered. |
+| `bounced` | bigint |  | Sum of bounced or failed. |
+| `opens` | bigint |  | Sum of opens (includes machine opens). |
+| `unique_opens_daily_sum` | bigint |  | Sum of per-day unique opens (not a window unique). |
+| `clicks` | bigint |  | Sum of clicks, bots excluded. |
+| `unique_clicks_daily_sum` | bigint |  | Sum of per-day unique clicks (not a window unique). |
+| `unsubscribes` | bigint |  | Sum of unsubscribes. |
+| `spam_complaints` | bigint |  | Sum of spam complaints. |
+| `orders` | bigint |  | Sum of attributed orders. |
+| `revenue` | numeric(14,2) |  | Sum of attributed revenue in dollars. |
+| `open_rate_daily_uniques` | numeric |  | unique_opens_daily_sum / delivered; NULL when delivered is 0. |
+| `click_rate_daily_uniques` | numeric |  | unique_clicks_daily_sum / delivered; NULL when delivered is 0. |
+| `orders_per_delivered` | numeric |  | orders / delivered; NULL when delivered is 0. |
+| `revenue_per_delivered` | numeric |  | revenue / delivered in dollars; NULL when delivered is 0. |
+| `has_copy` | boolean |  | True when body_text was fetched for the message. |
 
 ### public.landing_page_ad_checks
 
