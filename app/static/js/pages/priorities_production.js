@@ -5,6 +5,8 @@ import { h, fmt, isNum, href, navigate } from '../util.js';
 import { api } from '../api.js';
 import { showControls } from '../controls.js';
 import { expander } from './priorities_panel.js';
+import { pageHeader } from '../ui/pagehead.js';
+import { filterRow, seg, selectCtl, checkCtl } from '../ui/pagefilters.js';
 
 const STAGES = { assigned: 'Assigned', brief_sent: 'Brief sent', creative_in: 'Creative delivered', ready: 'Ready to launch', launched: 'Launched', dropped: 'Dropped' };
 const VENDOR_FALLBACK = ['Madre', 'Victoria', 'TrybeDCShop', 'TrybeOrion', '10xROAS', 'Internal', 'PuredMedia', 'CreateMastery', 'OpenProgram'];
@@ -66,7 +68,7 @@ function askDialog({ title, note = null, fields = [], okLabel = 'Save', danger =
 // ---------------------------------------------------------------------------------------------------------------- Production page
 export async function productionPage(ctx) {
   showControls(false);
-  const st = { week: ctx.params.week || '', vendor: ctx.params.vendor || '', closed: ctx.params.closed === '1' };
+  const st = { week: ctx.params.week || '', vendor: ctx.params.vendor || '', closed: ctx.params.closed === '1', stage: ctx.params.stage || '' };
   let data = { rows: [], vendors: [], weeks: [] };
   const msg = h('p', { class: 'prod-msg', role: 'status', 'data-testid': 'prod-msg' });
   const say = (t, bad) => { msg.textContent = t || ''; msg.classList.toggle('pri-err', !!bad); };
@@ -146,14 +148,25 @@ export async function productionPage(ctx) {
     const b = [];
     if (r.creative_url && r.stage !== 'ready' && r.stage !== 'launched') b.push(h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-ready', onclick: () => patch(r.id, { ready: true }, 'Marked ready to launch.') }, 'Ready to launch'));
     if (r.stage !== 'launched') b.push(h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-launched', onclick: () => patch(r.id, { launched: true }, 'Marked launched.') }, 'Mark launched'));
-    b.push(h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-change', onclick: () => change(r) }, 'Change vendor or week'));
-    b.push(h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-drop', onclick: () => drop(r) }, 'Drop'));
+    // Less common actions sit behind "More" so each row shows one or two buttons, not four.
+    b.push(h('details', { class: 'prod-more', 'data-testid': 'prod-more' }, h('summary', null, 'More'),
+      h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-change', onclick: () => change(r) }, 'Change vendor or week'),
+      h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-drop', onclick: () => drop(r) }, 'Drop')));
     return h('td', { class: 'prod-c prod-acts' }, b);
   }
 
+  const readyCell = (r) => {
+    const on = r.stage === 'ready' || r.stage === 'launched' || !!r.ready_at;
+    const t = on ? 'Ready' + (r.ready_at ? ' ' + md(r.ready_at) : '') : (r.creative_url ? 'Not yet' : 'Needs creative');
+    return h('td', { class: 'prod-c prod-nowrap', 'data-testid': 'prod-ready-state', 'data-ready': on ? '1' : '0' }, on ? h('span', { class: 'prod-yes' }, t) : h('span', { class: 'prod-no' }, t));
+  };
+  const adsOf = (r) => (r.ads || []).filter((a) => a.launch_date);
+  const spendOf = (r) => { const a = adsOf(r); return a.length ? a.reduce((s, x) => s + (isNum(x.spend) ? x.spend : 0), 0) : null; };
+  const returnOf = (r) => { const a = adsOf(r); const sp = spendOf(r); if (!a.length || !(sp > 0)) return null; return a.reduce((s, x) => s + (isNum(x.spend) && isNum(x.roas) ? x.spend * x.roas : 0), 0) / sp; };
+
   function row(r) {
     const host = h('div', { class: 'prod-xd', 'data-testid': 'prod-detail' });
-    const wrap = h('tr', { class: 'prod-detailrow', 'data-testid': 'prod-detail-row', 'data-id': r.id }, h('td', { colspan: '10', class: 'prod-xcell' }, host));
+    const wrap = h('tr', { class: 'prod-detailrow', 'data-testid': 'prod-detail-row', 'data-id': r.id }, h('td', { colspan: '12', class: 'prod-xcell' }, host));
     const x = expander({ key: 'a' + r.id, fetchDetail: () => api(`/api/priorities/assignments/${r.id}/detail`, {}, { signal: ctx.signal }), host, wrap, startOpen: openIds.has(r.id), onToggle: (o) => { if (o) openIds.add(r.id); else openIds.delete(r.id); } });
     const main = h('tr', { class: 'prod-row', 'data-testid': 'prod-row', 'data-id': r.id, 'data-stage': r.stage },
       h('td', { class: 'prod-c prod-nowrap', 'data-testid': 'prod-week' }, weekLabel(r.for_week).replace('Week of ', '')),
@@ -161,38 +174,47 @@ export async function productionPage(ctx) {
       h('td', { class: 'prod-c', 'data-testid': 'prod-product' }, productName(r.product)),
       h('td', { class: 'prod-c prod-concept', 'data-testid': 'prod-concept' }, h('strong', null, x.nameButton(r.pain_point || r.cluster)), h('div', { class: 'pri-sub' }, [r.cluster, r.icp].filter(Boolean).join(' / ')), r.note ? h('div', { class: 'pri-sub' }, 'Note: ' + r.note) : null, r.vendor_note ? h('div', { class: 'pri-sub', 'data-testid': 'prod-vnote' }, 'Vendor note: ' + r.vendor_note) : null, h('div', null, x.button())),
       linkCell(r, 'brief_url', 'Brief'), linkCell(r, 'creative_url', 'Creative'),
-      h('td', { class: 'prod-c prod-nowrap', 'data-testid': 'prod-stage' }, stageLabel(r)),
+      h('td', { class: 'prod-c' }, h('span', { class: 'prod-pill prod-st-' + r.stage, 'data-testid': 'prod-stage' }, stageLabel(r)), h('div', { class: 'pri-sub prod-result', 'data-testid': 'prod-result' }, resultText(r))),
+      readyCell(r),
       adsCell(r),
-      h('td', { class: 'prod-c', 'data-testid': 'prod-result' }, resultText(r)),
+      h('td', { class: 'prod-c prod-num', 'data-testid': 'prod-spend' }, spendOf(r) === null ? '–' : fmt.money(spendOf(r))),
+      h('td', { class: 'prod-c prod-num', 'data-testid': 'prod-return' }, returnOf(r) === null ? '–' : fmt.roas(returnOf(r))),
       actions(r));
     return [main, wrap];
   }
 
   function draw() {
     const weeks = [...new Set([...(data.weeks || []), ...(st.week ? [st.week] : [])])].sort().reverse();
-    const sel = (label, key, opts, val, onchange) => h('label', { class: 'prod-ctl' }, h('span', { class: 'pri-flabel' }, label),
-      h('select', { class: 'pri-fselect', 'data-testid': 'prod-' + key, onchange: (e) => onchange(e.target.value) }, opts.map(([v, l]) => h('option', { value: v, selected: v === val }, l))));
-    const refresh = () => { navigate(href('/priorities/production', { week: st.week, vendor: st.vendor, closed: st.closed ? 1 : '' }), { replace: true, render: false }); load().catch((e) => { if (!(e && e.name === 'AbortError')) say(e.message || 'Could not load.', true); }); };
-    const controls = h('div', { class: 'prod-controls' },
-      sel('Week', 'week', [['', 'All weeks'], ...weeks.map((w) => [w, weekLabel(w)])], st.week, (v) => { st.week = v; refresh(); }),
-      sel('Vendor', 'vendor', [['', 'All vendors'], ...vendorNames().map((v) => [v, v])], st.vendor, (v) => { st.vendor = v; refresh(); }),
-      h('label', { class: 'prod-check' }, h('input', { type: 'checkbox', 'data-testid': 'prod-closed', checked: st.closed, onchange: (e) => { st.closed = e.target.checked; refresh(); } }), ' Show launched and dropped'));
-    const links = h('div', { class: 'prod-links', 'data-testid': 'prod-links' }, h('div', { class: 'pri-flabel' }, 'Vendor links'),
+    const refresh = () => { navigate(href('/priorities/production', { week: st.week, vendor: st.vendor, closed: st.closed ? 1 : '', stage: st.stage }), { replace: true, render: false }); load().catch((e) => { if (!(e && e.name === 'AbortError')) say(e.message || 'Could not load.', true); }); };
+    const all = data.rows || [];
+    const keys = Object.keys(STAGES).filter((k) => st.closed || (k !== 'launched' && k !== 'dropped'));
+    const count = (k) => all.filter((r) => r.stage === k).length;
+    const shown = st.stage ? all.filter((r) => r.stage === st.stage) : all;
+    const controls = filterRow(
+      selectCtl({ name: 'Week', options: [['', 'All weeks'], ...weeks.map((w) => [w, weekLabel(w)])], value: st.week, onChange: (v) => { st.week = v; refresh(); }, testid: 'prod-week' }),
+      selectCtl({ name: 'Vendor', options: [['', 'All vendors'], ...vendorNames().map((v) => [v, v])], value: st.vendor, onChange: (v) => { st.vendor = v; refresh(); }, testid: 'prod-vendor' }),
+      checkCtl({ label: 'Show launched and dropped', checked: st.closed, onChange: (v) => { st.closed = v; if (!v && (st.stage === 'launched' || st.stage === 'dropped')) st.stage = ''; refresh(); }, testid: 'prod-closed' }),
+      seg({ name: 'Status', options: [['', `All ${all.length}`, 'Every concept in the list', 'prod-stagebtn-all'], ...keys.map((k) => [k, `${STAGES[k]} ${count(k)}`, `Only concepts at: ${STAGES[k]}`, 'prod-stagebtn-' + k])], value: st.stage, onChange: (v) => { st.stage = v; refresh(); }, testid: 'prod-stage-filter' }));
+    const links = h('details', { class: 'prod-links', 'data-testid': 'prod-links' }, h('summary', null, `Vendor links (${vendorNames().length})`),
+      h('p', { class: 'pri-sub' }, 'Each vendor gets one private page that lists only their concepts. Copy the link to send it. Reset makes the old link stop working.'),
       h('div', { class: 'prod-linkrow' }, vendorNames().map((v) => h('span', { class: 'prod-vl', 'data-vendor': v },
-        h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-copy-link', onclick: () => vendorLink(v, false) }, 'Copy link for ' + v), ' ',
+        h('span', { class: 'prod-vname' }, v),
+        h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-copy-link', 'aria-label': 'Copy link for ' + v, onclick: () => vendorLink(v, false) }, 'Copy link'),
         h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-reset-link', 'aria-label': 'Reset link for ' + v, onclick: () => vendorLink(v, true) }, 'Reset link')))));
-    const heads = ['Week of', 'Vendor', 'Product', 'Concept', 'Brief', 'Creative', 'Stage', 'Ads', 'Result', ''];
-    const table = (data.rows || []).length
+    const heads = [['Week of'], ['Vendor'], ['Product'], ['Concept'], ['Brief'], ['Creative'], ['Stage'], ['Ready', 'Ready to launch: creative delivered and checked'], ['Ads'], ['Spend', 'Total ad spend on the launched ads'], ['Return', 'Return on ad spend: revenue per dollar spent'], ['']];
+    const table = shown.length
       ? h('div', { class: 'prod-scroll', 'data-testid': 'prod-scroll' }, h('table', { class: 'pri-table prod-table', 'data-testid': 'prod-table' },
-        h('thead', null, h('tr', null, heads.map((x) => h('th', { scope: 'col' }, x)))), h('tbody', null, data.rows.flatMap(row))))
-      : h('p', { 'data-testid': 'prod-empty' }, 'Nothing here yet. On Creative priorities, tick concepts and click Assign to vendor.');
-    body.replaceChildren(h('div', { class: 'pri-titlerow' }, h('div', { class: 'pri-titlecol' }, h('h1', null, 'Production'), h('p', { class: 'pri-sub' }, 'Concepts given to vendors to make, by week. Status of launched ads comes from the Creative Tracker.')),
-      h('a', { href: href('/priorities', {}), 'data-testid': 'prod-back' }, 'Back to Creative priorities')), controls, links, msg, table);
+        h('thead', null, h('tr', null, heads.map(([x, t]) => h('th', { scope: 'col', title: t || null }, x)))), h('tbody', null, shown.flatMap(row))))
+      : h('p', { 'data-testid': 'prod-empty' }, all.length ? 'No concepts at this status.' : 'Nothing here yet. On Priorities, tick concepts and click Assign to vendor.');
+    body.replaceChildren(
+      pageHeader({ title: 'Production', description: 'Concepts given to vendors to make, by week. Spend and return come from the Creative Tracker once an ad is launched.', testid: 'prod-head',
+        actions: [h('a', { class: 'btn small', href: href('/priorities', {}), 'data-testid': 'prod-back' }, 'Back to Priorities')] }),
+      controls, links, msg, table);
   }
   root.append(body);
   await load();
   ctx.mount(root);
-  document.title = 'Production · Creative priorities · Marketing metrics';
+  document.title = 'Production · Lonvera';
 }
 
 // ---------------------------------------------------------------------------------------------------------------- vendor page (login-exempt, no app navigation)
@@ -210,9 +232,12 @@ export async function vendorPage(ctx) {
     const rows = d.rows || [];
     const weeks = [...new Set(rows.map((r) => r.for_week))].sort().reverse();
     const title = `${d.vendor}: concepts to make`;
-    document.title = title;
-    root.replaceChildren(h('h1', null, title), rows.length ? null : h('p', { 'data-testid': 'prod-empty' }, 'Nothing to make right now.'),
-      ...weeks.map((w) => h('section', { class: 'prod-week', 'data-testid': 'prod-weekgroup' }, h('h2', null, weekLabel(w)), rows.filter((r) => r.for_week === w).map(card))));
+    document.title = title + ' · Lonvera';
+    const todo = rows.filter((r) => r.stage !== 'launched' && r.stage !== 'dropped' && r.stage !== 'ready').length;
+    root.replaceChildren(...[h('header', { class: 'prod-vhead' }, h('h1', null, title),
+      rows.length ? h('p', { class: 'prod-vhelp', 'data-testid': 'prod-vhelp' }, `${todo} to make. For each one: open the brief, make the creative, paste the link to your files, then tap Ready to launch.`) : null),
+      rows.length ? null : h('p', { 'data-testid': 'prod-empty' }, 'Nothing to make right now.'),
+      ...weeks.map((w) => h('section', { class: 'prod-week', 'data-testid': 'prod-weekgroup' }, h('h2', null, weekLabel(w)), rows.filter((r) => r.for_week === w).map(card)))].filter(Boolean));
   };
   const save = async (r, body, saved) => {
     try { await api(`/api/priorities/vendor/${tok}/${r.id}`, {}, { method: 'PATCH', body }); d = await api('/api/priorities/vendor/' + tok, {}); draw(); flash(r.id, saved); } catch (e) { flash(r.id, e.message || 'Could not save.', true); }
@@ -226,12 +251,12 @@ export async function vendorPage(ctx) {
     const host = h('div', { class: 'prod-xd prod-xd-v', 'data-testid': 'prod-detail' });
     const x = expander({ key: 'v' + r.id, fetchDetail: () => api(`/api/priorities/vendor/${tok}/${r.id}/detail`, {}, { signal: ctx.signal }), host, startOpen: openIds.has(r.id), onToggle: (o) => { if (o) openIds.add(r.id); else openIds.delete(r.id); } });
     return h('article', { class: 'prod-card', 'data-testid': 'prod-card', 'data-id': r.id, 'data-stage': r.stage },
-      h('h3', null, x.nameButton(r.pain_point || r.cluster)), h('p', { class: 'pri-sub' }, [productName(r.product), r.cluster, r.icp].filter(Boolean).join(' / ')),
+      h('div', { class: 'prod-ctop' }, h('h3', null, x.nameButton(r.pain_point || r.cluster)), h('span', { class: 'prod-pill prod-st-' + r.stage, 'data-testid': 'prod-stage' }, stageLabel(r))),
+      h('p', { class: 'pri-sub' }, [productName(r.product), r.cluster, r.icp].filter(Boolean).join(' / ')),
       h('div', null, x.button()), host,
       r.story ? h('p', { class: 'prod-story', 'data-testid': 'prod-story' }, r.story) : null,
       h('dl', { class: 'prod-dl' },
         dt('Brief', r.brief_url ? link(r.brief_url, short(r.brief_url), { 'data-testid': 'prod-brief_url' }) : 'Not added yet'),
-        dt('Stage', h('span', { 'data-testid': 'prod-stage' }, stageLabel(r))),
         dt('Ads', (r.ads || []).length ? (r.ads || []).map((a) => h('div', { 'data-testid': 'prod-cid' }, a.ad_url ? link(a.ad_url, a.concept_id) : a.concept_id)) : 'None yet'),
         dt('Result', h('span', { 'data-testid': 'prod-result' }, res || 'Not launched yet'))),
       h('label', { class: 'pri-dlabel' }, h('span', { class: 'pri-k' }, 'Creative link'), link_),
