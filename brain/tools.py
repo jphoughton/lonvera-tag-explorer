@@ -137,7 +137,8 @@ class Brain:
                 scored.append((s, m))
         scored.sort(key=lambda x: -x[0])
         if not scored:
-            return {"loaded": True, "query": name, "matches": [], "note": "no metric matches; try search(text)", "available": [m.get("name") for m in kn.metrics]}
+            return {"loaded": True, "query": name, "matches": [], "note": "no glossary metric matches; the docs hits below may hold the definition", "available": [m.get("name") for m in kn.metrics],
+                    "related": self.search(name, 6)["hits"]}
         top = scored[0][0]
         keep = [m for s, m in scored if s >= max(1.5, top * 0.4)][:12]
         return {"loaded": True, "query": name, "matches": keep}
@@ -155,17 +156,19 @@ class Brain:
         return {"loaded": True, "query": text, "matches": out, "reminder": "Re-check the numbers before reusing an old answer; every 'why did X move' answer needs a like-for-like control."}
 
     # ----------------------------------------------------------------- app_map
-    def app_map(self, section: str | None = None) -> dict:
+    def app_map(self, section: str | None = None, match: str | None = None) -> dict:
         p = Path(self.root or K.DEFAULT_ROOT) / "docs" / "app_map.json"
         try:
             data = json.loads(p.read_text())
         except (OSError, ValueError):
             raise ToolError("docs/app_map.json is missing; run python scripts/gen_app_map.py") from None
-        if section:
-            if section not in data:
-                raise ToolError(f"unknown section {section!r}; sections: {', '.join(data)}")
-            return {section: data[section]}
-        return data
+        if section and section not in data:
+            raise ToolError(f"unknown section {section!r}; sections: {', '.join(data)}")
+        out = {section: data[section]} if section else data
+        if match:
+            m = match.strip().lower()
+            out = {k: [x for x in v if m in json.dumps(x, default=str).lower()] if isinstance(v, list) else v for k, v in out.items()}
+        return out
 
     # ----------------------------------------------------------------- sql / freshness
     def sql(self, query: str, limit: int = 200) -> dict:
@@ -174,7 +177,10 @@ class Brain:
         except SqlRejected as e:
             raise ToolError(f"query rejected: {e}") from None
         except rundb.SqlUnavailable as e:
-            raise ToolError(str(e)) from None
+            msg = str(e)
+            if "does not exist" in msg or "permission denied" in msg:
+                msg += ". Only the analytics views are readable (call catalog); public tables are not."
+            raise ToolError(msg) from None
 
     def why(self, args: dict) -> dict:
         from . import why as W
@@ -216,17 +222,17 @@ def _obj(props: dict | None = None, required: list[str] | None = None) -> dict:
 
 S = {"type": "string"}
 TOOLS: list[Tool] = [
-    Tool("catalog", "Start here for any data question: the domains, then the views with a one-line description, grain and coverage.",
+    Tool("catalog", "Start here for any data question: the queryable analytics views by domain, each with a one-line description, grain and start date. Then search / describe / sql.",
          _obj({"scope": {"type": "string", "enum": ["analytics", "all"], "description": "analytics (default) = what sql can read; all = also the underlying tables"}}), lambda b, a: b.catalog(a.get("scope") or "analytics")),
-    Tool("describe", "Columns, types, descriptions, caveats and an example query for one view or table. Use before writing SQL against it.",
+    Tool("describe", "Columns, types, descriptions, caveats, coverage and an example query for one view. Use before writing SQL. queryable_by_agents=false means sql cannot read it.",
          _obj({"name": {**S, "description": "view name, with or without the analytics. prefix"}}, ["name"]), lambda b, a: b.describe(a.get("name", ""))),
-    Tool("search", "Keyword search across view and column descriptions, the metric glossary, every docs page and past questions. Use when you do not know where something lives.",
+    Tool("search", "Keyword search over views, columns, metric definitions, every docs page (definitions, thresholds, schedules, routes) and past questions. Try synonyms: NC = new customer, CPA, ROAS, CPM.",
          _obj({"text": S, "limit": {"type": "integer", "minimum": 1, "maximum": 25}}, ["text"]), lambda b, a: b.search(a.get("text", ""), a.get("limit") or 10)),
-    Tool("metric", "What a metric means: formula, source, default basis, other bases and traps. Fuzzy: 'roas' lists every ROAS variant. Use before quoting any ratio.",
+    Tool("metric", "What a metric means: formula, source, default basis, other bases and traps. Fuzzy: 'roas' lists every ROAS variant. Use before quoting any ratio. For definitions it lacks, it searches the docs.",
          _obj({"name": S}, ["name"]), lambda b, a: b.metric(a.get("name", ""))),
-    Tool("freshness", "Which data sources are loaded through which day, and any failed pipeline runs in the last 7 days. Use before trusting a recent number.",
+    Tool("freshness", "Reads analytics.data_coverage (each source: first and last loaded day, loaded_at) and failed etl_runs of the last 7 days. Use before trusting a recent number.",
          _obj(), lambda b, a: b.freshness()),
-    Tool("sql", "Run ONE read-only SELECT or WITH query on the analytics views (30 second limit, rows capped). Use after catalog and describe; never guess a column.",
+    Tool("sql", "Run ONE read-only SELECT or WITH on the analytics views only (30 s limit, rows capped). Use after catalog and describe; never guess a column. Name the basis and window in the answer.",
          _obj({"query": S, "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "description": "row cap, default 200"}}, ["query"]), lambda b, a: b.sql(a.get("query", ""), a.get("limit") or 200)),
     Tool("why", "Why did a metric move? Walks the metric tree live (day, week, month grains), follows what moved, finds dated changes, runs controls, ends at a cause or an honest residual. Run FIRST for any why question.",
          _obj({"metric": S, "start": S, "end": S, "compare": {"type": "string", "enum": ["prior_period", "last_month", "last_year", "custom"]}, "compare_start": S, "compare_end": S, "product": S,
@@ -234,10 +240,10 @@ TOOLS: list[Tool] = [
                "max_steps": {"type": "integer", "minimum": 5, "maximum": 80}}), lambda b, a: b.why(a)),
     Tool("why_tree", "The why-tree definition: nodes, formulas, children, materiality, linked past questions, known causes, data gaps. Read-only, runs no SQL.",
          _obj({"include_sql": {"type": "boolean"}}), lambda b, a: b.why_tree(a.get("include_sql", False))),
-    Tool("past_questions", "Search Josh's past business questions and the answers given. Use BEFORE re-answering a 'why did X move' question.",
+    Tool("past_questions", "Search Josh's past business questions and the answers given. Leads for a 'why did X move' question (run why first); old answers are leads to re-check, not facts.",
          _obj({"text": S, "limit": {"type": "integer", "minimum": 1, "maximum": 25}}, ["text"]), lambda b, a: b.past_questions(a.get("text", ""), a.get("limit") or 8)),
-    Tool("app_map", "The app's services, schedules, pages, API routes and ETL jobs (generated from the code). Use to find where something runs or is served.",
-         _obj({"section": {"type": "string", "enum": ["services", "etl_jobs", "pages", "routes"]}}), lambda b, a: b.app_map(a.get("section"))),
+    Tool("app_map", "Services (cron schedules), pages, API routes and ETL job order, from the code. Filter with match=. For how or why something runs, also search the docs (DEPLOY.md, feature pages).",
+         _obj({"section": {"type": "string", "enum": ["services", "etl_jobs", "pages", "routes"]}, "match": {**S, "description": "keep only entries containing this text, e.g. 'mcp', 'feeds', 'promotions'"}}), lambda b, a: b.app_map(a.get("section"), a.get("match"))),
 ]
 BY_NAME = {t.name: t for t in TOOLS}
 
