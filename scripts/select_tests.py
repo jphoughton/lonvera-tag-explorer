@@ -286,7 +286,15 @@ class Repo:
                 tree = ast.parse(src)
             except SyntaxError:
                 continue
-            prefixes = URL_PREFIX_RE.findall(src) or [""]
+            consts = {n.targets[0].id: n.value.value for n in tree.body if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name)
+                      and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str)}
+            prefixes = URL_PREFIX_RE.findall(src)
+            for call in ast.walk(tree):                           # Blueprint(..., url_prefix=PREFIX) with PREFIX a string constant of the file
+                if isinstance(call, ast.Call):
+                    for kw in call.keywords:
+                        if kw.arg == "url_prefix" and isinstance(kw.value, ast.Name) and kw.value.id in consts:
+                            prefixes.append(consts[kw.value.id])
+            prefixes = prefixes or [""]
             alias: dict[str, str] = {}                           # local name -> module file ("gg" -> app/google.py)
             funcs: dict[str, ast.AST] = {}
             for n in tree.body:
@@ -333,11 +341,23 @@ class Repo:
                             routes["/" + "/".join(segs)].add(f)
                             routes["/" + "/".join(segs)] |= uses(fn, {name})
         for t in self.tests:
-            src = self.text(t)
+            src = self._test_text(t)
             for prefix, mods in routes.items():
                 if re.search(re.escape(prefix) + r"(?![A-Za-z0-9_-])", src):
                     self.edges[t] |= mods
         self._name_ties()
+
+    def _test_text(self, t: str) -> str:
+        """the test file plus the helper modules under tests/ it imports (transitively; not conftests): the route a test requests is often a constant in a helper"""
+        seen, todo, out = {t}, [t], []
+        while todo:
+            cur = todo.pop()
+            out.append(self.text(cur))
+            for d in self.edges.get(cur, ()):
+                if d.startswith("tests/") and d not in seen and not d.endswith("conftest.py") and not self.is_test(d) and d.endswith(".py"):
+                    seen.add(d)
+                    todo.append(d)
+        return "\n".join(out)
 
     def _name_ties(self) -> None:
         """tests/api/test_api_google.py exercises app/google.py through the app: a test file named after a module (stem, with or without a trailing s) depends on it"""

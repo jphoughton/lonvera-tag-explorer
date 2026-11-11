@@ -222,3 +222,16 @@ def test_a_test_named_after_a_module_depends_on_it(tmp_path):
     r = make(tmp_path, files)
     _, tests, _ = pick(r, "app/widgets.py")
     assert tests == ["tests/api/test_api_widget_totals.py"]
+
+
+def test_a_route_prefix_held_in_a_constant_and_a_helper_constant_still_tie_the_test_to_the_module(tmp_path):
+    files = dict(BASE)
+    files["app/zed.py"] = ("from flask import Blueprint\nfrom . import zed_core\nPREFIX = '/api/zed'\nbp = Blueprint('z', __name__, url_prefix=PREFIX)\n"
+                           "@bp.post('/items/<x>/restore')\ndef restore(x):\n    return zed_core.restore(x)\n")
+    files["app/zed_core.py"] = "def restore(x):\n    return x\n"
+    files["tests/etl/zed_helpers.py"] = "P = '/api/zed'\n"
+    files["tests/etl/test_zed_restore.py"] = "from zed_helpers import P\n\ndef test_r(client):\n    client.post(f'{P}/items/a/restore')\n"
+    files.update({f"tests/etl/test_pad{i}.py": "def test_p():\n    pass\n" for i in range(8)})
+    r = make(tmp_path, files)
+    _, tests, _ = pick(r, "app/zed_core.py")
+    assert tests == ["tests/etl/test_zed_restore.py"]
