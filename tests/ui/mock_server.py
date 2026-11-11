@@ -2006,6 +2006,4 @@ for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5099
-    from werkzeug.serving import WSGIRequestHandler
-    WSGIRequestHandler.protocol_version = "HTTP/1.1"          # keep-alive: the browser reuses its sockets instead of burning an ephemeral port per request (a parallel run exhausts them)
     app.run(host="127.0.0.1", port=port, debug=False, threaded=True)
