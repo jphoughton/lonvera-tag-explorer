@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, creative_priorities as cpr, priorities_assign as pas, priorities_launch_api as pla, priorities_manual as pman, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import auth, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -565,6 +565,13 @@ def priorities_assignments():
     return jsonify(out)
 
 
+@bp.get("/api/priorities/assignments/<int:aid>/detail")
+def priorities_assignment_detail(aid: int):
+    """The detail panel of one assignment (loaded when its row is expanded): the concept's row from the latest priorities snapshot (or what the assignment stored, with current=false), the product baseline,
+    the definitions and up to 10 example ads by spend -> {assignment_id, current, snapshot_week, row, baselines, definitions, examples, examples_max, message}. See app/priorities_detail.py."""
+    return jsonify(pdt.assignment_detail(db.get_conn(), aid))
+
+
 @bp.post("/api/priorities/assignments")
 def priorities_assignments_create():
     """Assign concepts: {keys: [row keys], snapshot_week?, vendor, for_week, note?, format_code?} -> {created: [assignment], skipped: [{key, reason}]}. Rows come from the stored snapshot; duplicates are skipped."""
@@ -613,6 +620,12 @@ def priorities_vendor(token: str):
     """The vendor link page's data (no login; the link is the access): that vendor's open assignments plus those launched in the last four weeks, with spend and return of their own ads,
     never the internal note or another vendor's rows -> {vendor, rows, weeks}."""
     return jsonify(pas.vendor_rows(db.get_conn(), token))
+
+
+@bp.get("/api/priorities/vendor/<token>/<int:aid>/detail")
+def priorities_vendor_detail(token: str, aid: int):
+    """The same detail panel for a vendor, GET only and only for that vendor's own assignment (another vendor's row, a dropped row or an unknown id is a 404): no ad page links, no manual notes."""
+    return jsonify(pdt.vendor_detail(db.get_conn(), token, aid))
 
 
 @bp.patch("/api/priorities/vendor/<token>/<int:aid>")

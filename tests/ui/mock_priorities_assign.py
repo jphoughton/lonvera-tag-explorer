@@ -201,6 +201,45 @@ def register(app, deps):
         apply(r, f)
         return jsonify(view(r, True))
 
+    # what the real vendor payload carries per example: a https Facebook / Instagram link, else nothing. The last three are links the real server would never send (Drive, plain http, javascript:): the page must still refuse them
+    PUBLIC_URLS = ["https://www.facebook.com/lonvera/posts/101", "https://www.facebook.com/lonvera/posts/102", "https://www.instagram.com/p/Cabc123/", None, "javascript:alert(1)", "https://drive.google.com/file/d/1/view", "http://www.facebook.com/lonvera/posts/9"]
+
+    def detail_payload(r, vendor_side=False):
+        """Same shape and rules as app.priorities_detail.build: the concept's row in the mock snapshot (by concept key, else text key), else what the assignment stored with current=false; up to 10 example
+        ads by spend (ad_id None for a vendor). Examples exist only for a concept that has a row (the mock has no tag table)."""
+        from app import priorities_detail as pdt
+        snap = app.config["PRI_LIVE"]()
+        rec = {**r, "concept_key": r.get("concept_key") or "none", "text_key": r.get("text_key") or pa.text_key(r)}
+        row = pdt._find_row(snap["rows"], rec)
+        ex = []
+        if row is not None:
+            for i in range(12):
+                spend = round(9000 - i * 700 + (i % 3) * 11.5, 2)
+                ex.append({"ad": f"Example ad {i + 1}", "spend": spend, "roas": round(0.6 + ((i * 7) % 10) / 10, 2), "ad_id": None if vendor_side else 1000 + i, "best": False}
+                          | ({"public_url": PUBLIC_URLS[i] if i < len(PUBLIC_URLS) else None} if vendor_side else {}))
+            ex = ex[:pdt.EXAMPLES_MAX]
+            ok = [e for e in ex if e["roas"] is not None and e["spend"] >= pdt.BEST_MIN_SPEND]
+            max(ok, key=lambda e: (e["roas"], e["spend"]))["best"] = True
+        out = {"assignment_id": r["id"], "current": row is not None, "snapshot_week": snap["week_start"], "examples": ex, "examples_max": pdt.EXAMPLES_MAX, "definitions": snap.get("definitions") or {}}
+        if row is None:
+            return {**out, "row": pdt._fallback_row(rec), "baselines": {}, "message": pdt.NO_NUMBERS}
+        return {**out, "row": pdt._vendor_row(row) if vendor_side else row, "baselines": {row["product"]: (snap.get("baselines") or {}).get(row["product"]) or {}}, "message": ""}
+
+    @app.get("/api/priorities/assignments/<int:aid>/detail")
+    def assign_detail(aid):
+        r = S["rows"].get(aid)
+        if r is None:
+            return jsonify(error="Assignment not found."), 404
+        return jsonify(detail_payload(r))
+
+    @app.get("/api/priorities/vendor/<token>/<int:aid>/detail")
+    def vendor_detail(token, aid):
+        v = vendor_of(token)
+        r = S["rows"].get(aid)
+        if v is None or r is None or r["vendor"] != v or r["dropped_at"]:
+            return jsonify(error="not_found"), 404
+        return jsonify(detail_payload(r, True))
+
     @app.post("/__test/assign/reset")
     def assign_reset():
         reset()

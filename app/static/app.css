@@ -741,6 +741,7 @@ button.pri-ptile { cursor: pointer; } button.pri-ptile:hover { background: var(-
 .pri-segbtn:first-child { border-radius: 6px 0 0 6px; margin-left: 0; } .pri-segbtn:last-child { border-radius: 0 6px 6px 0; } .pri-segbtn:hover { background: var(--lv-hover, #f3ede1); }
 .pri-segbtn:focus-visible, .pri-stat:focus-visible, .pri-ptile:focus-visible, .pri-clear:focus-visible { outline: 2px solid var(--lv-focus, #c75123); outline-offset: 2px; }
 @media (max-width: 760px) {
+  .pri-prodlink { width: 100%; text-align: center; white-space: normal; }
   .pri-viewsel { min-width: 0; width: 100%; } .pri-headctl, .pri-viewbar, .pri-viewgrp, .pri-weekl { width: 100%; } .pri-viewbar { align-items: stretch; }
   .pri-pstats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pri-ptiles, .pri-abouts { grid-template-columns: 1fr; }
   .pri-frow { grid-template-columns: 1fr; gap: 4px; } .pri-fl { width: 100%; } .pri-fselect { width: 100%; }
@@ -1140,15 +1141,15 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 
 /* Action chips (2026-11-10): revive / make_more / test / add / stop / hold reuse the colours of the sections they replaced */
 .pri-sec-revive { background: var(--lv-pri-sec-faded, #b35900); } .pri-sec-make_more { background: var(--lv-pri-sec-iterate, #1a7f37); } .pri-sec-test { background: var(--lv-pri-sec-new, #7a3db8); }
-.pri-sec-add { background: var(--lv-pri-sec-competitor, #0b6bcb); } .pri-sec-hold { background: var(--lv-pri-sec-rest, #6b6459); }
-.pri-cc-sec-revive { --cc: var(--lv-pri-sec-faded); } .pri-cc-sec-make_more { --cc: var(--lv-pri-sec-iterate); } .pri-cc-sec-test { --cc: var(--lv-pri-sec-new); } .pri-cc-sec-add { --cc: var(--lv-pri-sec-competitor); }
+.pri-sec-hold { background: var(--lv-pri-sec-rest, #6b6459); }
+.pri-cc-sec-revive { --cc: var(--lv-pri-sec-faded); } .pri-cc-sec-make_more { --cc: var(--lv-pri-sec-iterate); } .pri-cc-sec-test { --cc: var(--lv-pri-sec-new); } .pri-src { display: block; font-size: 12px; margin-top: 2px; } .pri-src-sub { display: block; color: var(--lv-muted, #6b6459); }
 .pri-cc-sec-stop { --cc: var(--lv-pri-sec-stop); } .pri-cc-sec-hold { --cc: var(--lv-pri-sec-rest); }
 .pri-defs { margin: 8px 0 0; } .pri-defs-b { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 4px 28px; margin-top: 6px; }
 .pri-defs dl { margin: 0; } .pri-defs dt { font-weight: 700; margin-top: 6px; } .pri-defs dd { margin: 1px 0 0; color: var(--lv-muted, #475467); }
 .pri-defs h3 { margin: 4px 0 0; font-size: 13px; text-transform: none; letter-spacing: 0; }
 
 /* In production column, Production link and Assign to vendor dialog (2026-11-10) */
-.pri-prodlink { align-self: center; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.pri-prodlink { align-self: flex-end; display: inline-block; text-decoration: none; font-size: 13px; font-weight: 600; padding: 5px 12px; white-space: nowrap; }
 .pri-c-prod { min-width: 150px; font-size: 13px; } .pri-inprod { overflow-wrap: anywhere; }
 .pri-as-out { margin-top: 8px; font-size: 13px; } .pri-as-out ul { margin: 4px 0 6px 18px; padding: 0; }
 .pri-prodhist { margin-top: 10px; }
@@ -1167,3 +1168,63 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 .prod-lin { width: 100%; box-sizing: border-box; font-size: 16px; padding: 8px 10px; }
 .prod-lleft { justify-content: flex-start; flex-wrap: wrap; }
 .prod-ltsv { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 12px; }
+
+/* Production details (2026-11-10): the /priorities detail panel under an assignment, expandable. The table keeps its own horizontal scroll; the panel is pinned to the left edge of the scroll box at phone width. */
+.prod-detailrow[hidden], .prod-xd[hidden] { display: none; }
+.prod-xcell { padding: 0; border-bottom: 2px solid var(--lv-line, #dcd3c3); background: rgba(127, 127, 127, .04); }
+.prod-xd { position: sticky; left: 0; box-sizing: border-box; width: min(1060px, calc(100vw - 32px)); padding: 10px 12px 14px; }
+.prod-xd-v { position: static; width: auto; padding: 4px 0 0; }
+.prod-namebtn { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: inherit; text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; overflow-wrap: anywhere; }
+.prod-namebtn:hover { text-decoration-style: solid; }
+.pri-ex-best { margin-left: 8px; white-space: nowrap; }
+@media (max-width: 760px) { .pri-ex td[data-label="Spend"]::before { content: 'spend '; color: var(--lv-muted, #665d53); } .pri-ex td[data-label="Return on ad spend"]::before { content: 'return '; color: var(--lv-muted, #665d53); } }
+
+/* ---- priorities: grouped hierarchy (product > market cluster > ICP > pain point as merged cells) and sticky bars ---- */
+/* separate borders (not collapsed): a sticky header keeps its bottom border while it moves, and rows draw their own bottom line */
+.pri-main { border-collapse: separate; border-spacing: 0; }
+.pri-main .pri-row > td { border-bottom: 1px solid var(--lv-pri-card-line, #e4dccb); }
+.pri-tbctl { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pri-groupbtn { padding: 4px 12px; font-weight: 650; }
+.pri-groupbtn[aria-pressed="true"] { background: var(--lv-pri-selected, #1c1915); border-color: var(--lv-pri-selected, #1c1915); color: #fff; }
+.pri-groupbtn:focus-visible { outline: 2px solid var(--lv-focus, #c75123); outline-offset: 2px; }
+/* each row carries --h (the hue of its cluster name): cluster = strongest fill, ICP = lighter tint, every other cell = faint tint; all dark-ink-safe (lightness 85 / 92 / 97) */
+.pri-grouped .pri-row > td { background: hsl(var(--h) 60% 97%); }
+.pri-grouped .pri-row > td.pri-merged { text-align: center; vertical-align: middle; font-weight: 700; padding: 8px; cursor: default; }
+.pri-grouped .pri-row > td.pri-c-product.pri-merged { background: #efe8da; font-weight: 800; }
+.pri-grouped .pri-row > td.pri-c-cluster.pri-merged { background: hsl(var(--h) 55% 85%); }
+.pri-grouped .pri-row > td.pri-c-icp.pri-merged { background: hsl(var(--h) 55% 92%); }
+.pri-grouped .pri-row > td.pri-c-product.pri-merged, .pri-grouped .pri-row > td.pri-c-cluster.pri-merged, .pri-grouped .pri-row > td.pri-c-icp.pri-merged { border-bottom-color: transparent; }
+/* separators: heavier between clusters, heaviest between products, light between ICPs (inset lines, so they work on merged cells too) */
+.pri-grouped .pri-g-icp > td { box-shadow: inset 0 1px 0 rgba(28, 25, 21, .32); }
+.pri-grouped .pri-g-cl > td { box-shadow: inset 0 3px 0 rgba(28, 25, 21, .62); }
+.pri-grouped .pri-g-prod > td { box-shadow: inset 0 4px 0 #1c1915; }
+.pri-grouped .pri-detail > td.pri-d-sp { background: var(--lv-pri-panel-bg, #fbf7ee); padding: 0; }
+.pri-grouped .pri-detail > td:not(.pri-d-sp) { padding-left: 14px; }
+/* selection bar: pinned under the app header; the column header pins under the bar (--pri-bar-h is the bar's measured height, set by a ResizeObserver) */
+.pri-seltools { top: var(--topbar-h); margin: 0 0 8px; z-index: 6; align-items: baseline; gap: 8px 10px; }
+.pri-selhead { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; margin-right: 4px; }
+.pri-selhead strong { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.pri-selsplit { font-weight: 650; color: var(--lv-ink-2, #3d372f); font-size: 13px; }
+.pri-selacts { display: contents; }
+.pri-selmore { display: none; }
+@media (min-width: 761px) {
+  .pri-grouped .pri-row:hover > td:not(.pri-merged), .pri-grouped .pri-row.pri-open > td:not(.pri-merged) { background: hsl(var(--h) 55% 93%); }
+  .pri-main thead th { position: sticky; top: calc(var(--topbar-h) + var(--pri-bar-h, 0px)); z-index: 4; }
+  .pri-grouped .pri-hid { display: none; }
+}
+@media (max-width: 760px) {
+  .pri-seltools { top: 0; padding: 6px 8px; flex-wrap: wrap; }
+  .pri-selhead strong { font-size: 15px; } .pri-selsplit { font-size: 12px; }
+  .pri-selmore { display: inline-block; margin-left: auto; }
+  .pri-selacts { display: none; width: 100%; flex-wrap: wrap; gap: 8px; max-height: 45vh; overflow-y: auto; }
+  .pri-seltools.pri-more-open .pri-selacts { display: flex; }
+  .pri-tbctl { width: 100%; }
+  /* stacked cards: every card carries its own cluster as a coloured label, ICP in the lighter tint, and a coloured edge */
+  .pri-main .pri-row { border-left: 5px solid hsl(var(--h) 50% 72%); }
+  .pri-main .pri-row > td.pri-c-cluster { background: hsl(var(--h) 55% 85%); font-weight: 700; }
+  .pri-main .pri-row > td.pri-c-icp { background: hsl(var(--h) 55% 92%); }
+  .pri-main .pri-row > td.pri-c-product { background: #efe8da; }
+  .pri-grouped .pri-row > td.pri-merged { text-align: left; vertical-align: top; padding: 3px 8px; font-weight: 700; }
+  .pri-grouped .pri-row > td.pri-merged, .pri-grouped .pri-g-prod > td, .pri-grouped .pri-g-cl > td, .pri-grouped .pri-g-icp > td { box-shadow: none; }
+  .pri-detail > td.pri-d-sp { display: none; }
+}
