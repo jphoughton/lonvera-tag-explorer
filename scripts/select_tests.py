@@ -386,6 +386,15 @@ class Repo:
         for t in self.tests:
             if t.startswith("tests/projection/") and self.is_browser_test(t):
                 self.edges[t].update(proj_shell)
+        # a projection module's page script is loaded by name at run time (no import names it): the browser tests of that module's folder load it
+        proj_dirs = {Path(t).parts[2] for t in self.tests if t.startswith("tests/projection/") and len(Path(t).parts) > 3}
+        for js in (f for f in self.files if f.startswith(static + "js/projection/") and f.endswith(".js") and "/lib/" not in f):
+            stem = Path(js).stem
+            for d in proj_dirs:
+                if stem == d or stem.startswith(d + "_"):
+                    for t in self.tests:
+                        if t.startswith(f"tests/projection/{d}/") and self.is_browser_test(t):
+                            self.edges[t].add(js)
         appjs = static + "app.js"
         if appjs not in self.files:
             return

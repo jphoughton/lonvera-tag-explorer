@@ -235,3 +235,16 @@ def test_a_route_prefix_held_in_a_constant_and_a_helper_constant_still_tie_the_t
     r = make(tmp_path, files)
     _, tests, _ = pick(r, "app/zed_core.py")
     assert tests == ["tests/etl/test_zed_restore.py"]
+
+
+def test_a_projection_page_script_is_tied_to_the_browser_tests_of_its_folder(tmp_path):
+    files = dict(BASE)
+    files["app/static/js/trend.js"] = "export const t = 1;\n"
+    files["app/static/js/projection/demo_trend.js"] = "import { t } from '../trend.js';\n"
+    files["tests/projection/demo/conftest.py"] = "import playwright\n"
+    files["tests/projection/demo/test_demo_page.py"] = "def test_d(page):\n    page.goto('/projection/demo')\n"
+    files["tests/projection/demo/test_demo_model.py"] = "def test_m():\n    pass\n"
+    files.update({f"tests/etl/test_pad{i}.py": "def test_p():\n    pass\n" for i in range(8)})
+    r = make(tmp_path, files)
+    _, tests, _ = pick(r, "app/static/js/trend.js")
+    assert "tests/projection/demo/test_demo_page.py" in tests and "tests/projection/demo/test_demo_model.py" not in tests
