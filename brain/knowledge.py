@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import threading
 from collections import Counter
@@ -74,11 +75,58 @@ def snippet(text: str, query: str, width: int = 260) -> str:
     return ("..." if start else "") + s + ("..." if start + width < len(text) else "")
 
 
-def _md_chunks(path: Path, rel: str) -> list[dict]:
+ENV_HOLDOUT = "BRAIN_HOLDOUT_FILE"       # eval only: a file of ledger item ids whose answers the brain must not see (the hosted server never sets it)
+_NGRAM = 6
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", (text or "").lower())
+
+
+class Holdout:
+    """Eval-only blind spot. Holds the ids of ledger items to hide and the word n-grams of their answers; any line of text that shares an n-gram with a held-out answer is dropped."""
+
+    def __init__(self, ids: set[str], answers: list[str]):
+        self.ids = ids
+        self.grams: set[tuple[str, ...]] = set()
+        self.sizes: set[int] = set()
+        for a in answers:
+            w = _words(a)
+            if len(w) < 4:
+                continue
+            n = min(_NGRAM, len(w))
+            self.sizes.add(n)
+            self.grams.update(tuple(w[i:i + n]) for i in range(len(w) - n + 1))
+
+    def leaks(self, text: str) -> bool:
+        if not self.grams:
+            return False
+        w = _words(text)
+        for n in self.sizes:
+            for i in range(len(w) - n + 1):
+                if tuple(w[i:i + n]) in self.grams:
+                    return True
+        return False
+
+
+def read_holdout_ids(path: str | Path) -> set[str]:
+    raw = Path(path).expanduser().read_text(encoding="utf-8")
+    try:
+        v = json.loads(raw)
+        if isinstance(v, dict):
+            v = v.get("source_item_ids") or v.get("ids") or []
+        return {str(x) for x in v}
+    except ValueError:
+        return {ln.strip() for ln in raw.splitlines() if ln.strip() and not ln.startswith("#")}
+
+
+def _md_chunks(path: Path, rel: str, holdout: "Holdout | None" = None) -> list[dict]:
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return []
+    if holdout:                                              # blank every line that repeats a held-out answer (keeps fences and line numbers intact)
+        lines = ["" if holdout.leaks(ln) else ln for ln in lines]
     out, head, start, buf = [], path.stem, 1, []
 
     def flush():
@@ -110,6 +158,11 @@ FIELD_ALIASES = {
 }
 
 
+def _answer_text(item: dict) -> str:
+    a = pick(item, "answer")
+    return a if isinstance(a, str) else json.dumps(a) if a else ""
+
+
 def pick(item: dict, field: str):
     for k in FIELD_ALIASES[field]:
         if k in item and item[k] not in (None, ""):
@@ -118,15 +171,22 @@ def pick(item: dict, field: str):
 
 
 class Knowledge:
-    def __init__(self, root: Path | str | None = None):
+    def __init__(self, root: Path | str | None = None, holdout_file: str | None = None):
         self.root = Path(root or DEFAULT_ROOT)
         docs_dir = self.root / "docs"
+        self.holdout: Holdout | None = None
+        all_q = self._load_questions(docs_dir / "questions" / "lonvera_items.jsonl")
+        if holdout_file:
+            ids = read_holdout_ids(holdout_file)
+            self.holdout = Holdout(ids, [str(pick(q, "answer") or "") for q in all_q if str(pick(q, "id")) in ids])
         self.schema = self._json(docs_dir / "schema.json") or {}
         self.relations: list[dict] = self.schema.get("relations") or []
         self.metrics: list[dict] | None = self.schema.get("metrics") if isinstance(self.schema.get("metrics"), list) else None
         self.groups = {g["key"]: g.get("title", g["key"]) for g in self.schema.get("groups") or []}
         self.by_name = {r["name"]: r for r in self.relations}
-        self.questions = self._load_questions(docs_dir / "questions" / "lonvera_items.jsonl")
+        h = self.holdout
+        # held-out items go, and so does any other item whose answer repeats a held-out answer (the ledger has near-duplicate items)
+        self.questions = [q for q in all_q if not h or (str(pick(q, "id")) not in h.ids and not h.leaks(_answer_text(q)))]
         docs: list[dict] = []
         for r in self.relations:
             cols = "; ".join(f"{c['name']}: {c.get('description') or ''}" for c in r.get("columns") or [])
@@ -141,7 +201,9 @@ class Knowledge:
                 rel = p.relative_to(self.root).as_posix()
                 if p.name in SKIP_DOCS and p.parent == docs_dir:
                     continue
-                docs.extend(_md_chunks(p, rel))
+                if h and rel.startswith("docs/questions/"):      # the ledger and the why files hold the answers
+                    continue
+                docs.extend(_md_chunks(p, rel, h))
         for i, it in enumerate(self.questions):
             ans = pick(it, "answer")
             docs.append({"kind": "question", "ref": f"docs/questions/lonvera_items.jsonl#{pick(it, 'id') or i + 1}", "title": str(pick(it, "date") or ""),
@@ -179,9 +241,10 @@ _lock = threading.Lock()
 
 def load(root: Path | str | None = None) -> Knowledge:
     """One Knowledge per root per process (the files are baked into the image and do not change while it runs)."""
-    key = str(Path(root or DEFAULT_ROOT).resolve())
+    hf = (os.environ.get(ENV_HOLDOUT) or "").strip() or None
+    key = f"{Path(root or DEFAULT_ROOT).resolve()}|{hf or ''}"
     with _lock:
         k = _cache.get(key)
         if k is None:
-            k = _cache[key] = Knowledge(key)
+            k = _cache[key] = Knowledge(str(Path(root or DEFAULT_ROOT).resolve()), hf)
         return k
