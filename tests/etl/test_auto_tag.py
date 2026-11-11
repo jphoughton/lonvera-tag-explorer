@@ -297,3 +297,69 @@ def test_catalogs_are_complete():
     assert at.parse_answer(answer(), {"BF18", "BF21"})["runner_up"] == "BF21"
     with pytest.raises(ValueError):
         at.parse_answer(answer(conf="certain"), {"BF18"})
+
+
+# ---- pain-first rule (2026-11-10) ----------------------------------------------------------------------------------------------------
+
+def test_instructions_put_pain_first_and_make_tracker_pain_the_default():
+    ins = at.instructions("boneflex", at.load_catalog("boneflex"))
+    assert ins.index("PAIN POINT first") < ins.index("then the ICP") < ins.index("then the emotional trigger")
+    assert "hints only; often wrong or generic" not in ins and "default answer" in ins
+    assert "kept_tracker_pain" in ins and "override_reason" in ins and "ALWAYS open it" in ins
+    assert "not the pain" in ins and "Low Energy / Afternoon Crash" in ins           # the mechanism-vs-pain rule and its examples
+
+
+def test_tracker_pain_lines_rules():
+    cat = at.load_catalog("boneflex")
+    assert at.tracker_pain_lines(" bone  density LOSS ", cat) == ["BF03", "BF49"]
+    assert at.tracker_pain_lines("No Clear Pain Point", cat) == [] and at.tracker_pain_lines("", cat) == [] and at.tracker_pain_lines(None, cat) == []
+    assert at.tracker_pain_lines("Made Up Pain", cat) == []
+
+
+def test_parse_answer_keeps_or_requires_override_reason():
+    cat = at.load_catalog("boneflex")
+    codes = {c["line"] for c in cat}
+    kept = at.parse_answer(answer(line="BF03", kept_tracker_pain=False, override_reason="ignored"), codes, "Bone Density Loss", cat)
+    assert kept["kept_tracker_pain"] is True and kept["override_reason"] is None            # computed from the chosen line, the model's flag is ignored
+    with pytest.raises(ValueError, match="override_reason"):
+        at.parse_answer(answer(line="BF18"), codes, "Bone Density Loss", cat)
+    ov = at.parse_answer(answer(line="BF18", override_reason="ad opens on stiff knees"), codes, "Bone Density Loss", cat)
+    assert ov["kept_tracker_pain"] is False and ov["override_reason"] == "ad opens on stiff knees"
+    free = at.parse_answer(answer(line="BF18"), codes, "Made Up Pain", cat)                  # no usable tracker pain: nothing to keep or override
+    assert free["kept_tracker_pain"] is None and free["override_reason"] is None
+    assert at.parse_answer(answer(), codes)["kept_tracker_pain"] is None                     # old call shape still works
+
+
+def test_prompt_carries_tracker_pain_and_briefed_flag_and_override_is_stored(conn, tmp_path):
+    sync(conn, tmp_path, [trow("c1", "fam1", "Boneflex", launch=NEW, Type="IMG", pain="Bone Density Loss"),
+                          trow("c2", "fam2", "Boneflex", launch=NEW, Type="IMG", pain="Bone Density Loss"),
+                          trow("c3", "fam3", "Boneflex", launch=NEW, Type="IMG", pain="No Clear Pain Point")])
+    seed_taxonomy(conn)
+    conn.execute("UPDATE tracker_rows SET raw = raw || '{\"Brief Link\": \"https://docs.example/brief\"}'::jsonb WHERE family_key='fam1'")
+    conn.commit()
+    answers = {"fam1": answer(line="BF03"), "fam2": answer(line="BF18", override_reason="stiff knees on the stairs"), "fam3": answer(line="BF18")}
+    seen = []
+
+    def fake(cmd, **kw):
+        p = kw["input"]
+        seen.append(p)
+        key = "fam1" if '"concept_id": "c1"' in p else "fam2" if '"concept_id": "c2"' in p else "fam3"
+        return subprocess.CompletedProcess(cmd, 0, json.dumps(envelope(answers[key])), "")
+
+    run(conn, fake)
+    by = {("c1" if '"concept_id": "c1"' in p else "c2" if '"concept_id": "c2"' in p else "c3"): p for p in seen}
+    assert '"tracker_pain_point": "Bone Density Loss"' in by["c1"] and '"tracker_pain_lines": [\n  "BF03",\n  "BF49"\n ]' in by["c1"] and "BRIEFED" in by["c1"]
+    assert "NOT briefed" in by["c2"]
+    assert '"tracker_pain_point"' not in by["c3"]                                                 # placeholder pain: not a default
+    ex = {r[0]: r[1:] for r in conn.execute("""SELECT t.concept_id, g.extra->>'kept_tracker_pain', g.extra->>'override_reason' FROM ad_tags g
+                                              JOIN tracker_rows t ON t.id = g.tracker_row_id WHERE g.tag_set='linemap'""").fetchall()}
+    assert ex["c1"] == ("true", None) and ex["c2"] == ("false", "stiff knees on the stairs") and ex["c3"] == (None, None)
+
+
+def test_override_without_reason_is_retried(conn, tmp_path):
+    sync(conn, tmp_path, [trow("c1", "fam1", "Boneflex", launch=NEW, Type="IMG", pain="Bone Density Loss")])
+    seed_taxonomy(conn)
+    add_thumb(conn, "fam1")
+    fake = FakeClaude([(0, envelope(answer(line="BF18")), ""), (0, envelope(answer(line="BF18", override_reason="x-ray shows nothing about bones")), "")])
+    st = run(conn, fake)
+    assert st["tagged_families"] == 1 and len(fake.calls) == 2
