@@ -1,4 +1,4 @@
--- 206: landing page copy store and ad to landing page map. etl/landing_pages.py finds the page each Meta ad sends people to (the ad's destination link), reads every such page with a plain public
+-- 207: landing page copy store and ad to landing page map. etl/landing_pages.py finds the page each Meta ad sends people to (the ad's destination link), reads every such page with a plain public
 -- web request, stores the page copy as versions (a new version only when the text changes), and keeps one row per ad and page. View landing_page_top_ads ranks the ads that drive each page by
 -- spend over the last 7 and 30 days, using public.ad_daily (Meta-reported purchases and revenue). Additive and idempotent. Not yet scheduled: see docs/LANDING_PAGES.md.
 CREATE TABLE IF NOT EXISTS landing_pages (

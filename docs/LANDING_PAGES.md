@@ -1,6 +1,6 @@
 # Landing pages: copy store and top ads per page
 
-What it is: every page a Meta ad sends people to, the copy on that page (kept as versions), and which ads drive each page. Migration `206_landing_pages.sql`, job `python -m etl.landing_pages` (`etl/landing_pages.py`), read-only API `GET /api/landing-pages` and `GET /api/landing-pages/<id>` (`app/landing_pages.py`). No page in the UI yet.
+What it is: every page a Meta ad sends people to, the copy on that page (kept as versions), and which ads drive each page. Migration `207_landing_pages.sql`, job `python -m etl.landing_pages` (`etl/landing_pages.py`), read-only API `GET /api/landing-pages` and `GET /api/landing-pages/<id>` (`app/landing_pages.py`). No page in the UI yet.
 
 ## Tables
 

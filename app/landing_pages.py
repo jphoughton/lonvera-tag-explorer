@@ -1,5 +1,5 @@
 """Landing pages (read-only): GET /api/landing-pages lists every page with its current copy summary and its top ads; GET /api/landing-pages/<id> returns the full stored copy.
-All data comes from migration 206 (public.landing_pages, landing_page_versions, landing_page_top_ads); see docs/LANDING_PAGES.md. SQL lives here, the route in app/api.py."""
+All data comes from migration 207 (public.landing_pages, landing_page_versions, landing_page_top_ads); see docs/LANDING_PAGES.md. SQL lives here, the route in app/api.py."""
 from __future__ import annotations
 
 from .queries import ApiError

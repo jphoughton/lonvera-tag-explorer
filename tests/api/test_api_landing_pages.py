@@ -1,4 +1,4 @@
-"""/api/landing-pages and /api/landing-pages/<id>: read-only copy store plus top ads per page (migration 206)."""
+"""/api/landing-pages and /api/landing-pages/<id>: read-only copy store plus top ads per page (migration 207)."""
 import datetime as dt
 import json
 from zoneinfo import ZoneInfo
