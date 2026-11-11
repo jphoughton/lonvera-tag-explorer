@@ -1,6 +1,6 @@
 /* lookup: Tag lookup page and nav search (tl- classes) */
-/* ---------- Tag lookup (/lookup and the small box on the Meta page); classes start tl- ---------- */
-.tl-form { margin: 8px 0 12px; }
+/* ---------- Tag lookup (/lookup); classes start tl- ---------- */
+.tl-form { margin: 8px 0 14px; padding: 10px 12px; }
 .tl-label { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 4px; }
 .tl-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .tl-input { flex: 1 1 320px; min-width: 0; font-size: 14px; padding: 8px 10px; }
@@ -8,6 +8,9 @@
 .tl-compact .tl-input { font-size: 13px; padding: 5px 8px; }
 .tl-page { max-width: 1040px; }
 .tl-out { margin-top: 6px; }
+.tl-results-head { font-size: 18px; margin: 4px 0 8px; overflow-wrap: anywhere; }
+.tl-group { margin: 0 0 14px; }
+.tl-sub { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 12px 0 2px; }
 .tl-prose { max-width: 50ch; margin: 2px 0 6px; overflow-wrap: anywhere; }
 .tl-prose.small, .tl-muted { color: var(--muted); font-size: 12px; }
 .tl-summary { margin: 4px 0 8px; }

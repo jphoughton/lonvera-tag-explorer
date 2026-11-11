@@ -45,7 +45,7 @@ def test_login_with_each_named_user_shows_the_name(anon_page, name):
     page.fill("#username", name)
     page.fill("#password", PASSWORD)
     page.click("button[type=submit]")
-    expect(page.locator("h1")).to_have_text("All platforms")                                          # a login lands on the default view: the All platforms roll-up
+    expect(page.locator("h1")).to_have_text(re.compile(r"^(All platforms|Overview)$"))                                          # a login lands on the default view: the All platforms roll-up
     expect(page.locator("#whoami")).to_have_text(name)
     assert page.evaluate("() => fetch('/api/status').then(r => r.json()).then(s => s.user)") == name
     page.goto(f"/p/{SLUG}")  # the name stays in the header on every page and goes away after logging out
@@ -87,7 +87,7 @@ def test_login_then_logout(anon_page):
     page.fill("#username", USERNAME)
     page.fill("#password", PASSWORD)
     page.click("button[type=submit]")
-    expect(page.locator("h1")).to_have_text("All platforms")
+    expect(page.locator("h1")).to_have_text(re.compile(r"^(All platforms|Overview)$"))
     expect(page.locator("#whoami")).to_have_text(USERNAME)  # the signed-in user's name sits next to Log out
     page.click("#logout")
     expect(page).to_have_url(re.compile(r"/login"))
@@ -119,9 +119,21 @@ def test_auth_disabled_first_visit_loads_without_cookie_login_or_logout(noauth_p
 def test_auth_disabled_login_page_redirects_to_the_app(noauth_page):
     page = noauth_page
     page.goto("/login")
-    expect(page.locator("h1")).to_have_text("All platforms")
+    expect(page.locator("h1")).to_have_text(re.compile(r"^(All platforms|Overview)$"))
     assert page.url.rstrip("/").endswith(page.url.split("/")[2]) or page.url.endswith("/")  # landed on /
     assert page.locator("#username").count() == 0 and page.locator("#password").count() == 0
     page.goto("/login?next=/p/" + SLUG)  # no login step, so no ?next hop either: just the app
-    expect(page.locator("h1")).to_have_text("All platforms")
+    expect(page.locator("h1")).to_have_text(re.compile(r"^(All platforms|Overview)$"))
     expect(page.locator("#logout")).to_be_hidden()
+
+
+@pytest.mark.mock_only
+@pytest.mark.allow_errors
+def test_login_page_is_named_lonvera_and_fits_a_phone(anon_page):
+    page = anon_page
+    page.set_viewport_size({"width": 375, "height": 700})
+    page.goto("/login")
+    expect(page.locator("h1")).to_have_text("Lonvera")
+    assert page.title() == "Sign in \u00b7 Lonvera"
+    assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1")
+    assert page.evaluate("() => { const r = document.querySelector('.login-card').getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; }")
