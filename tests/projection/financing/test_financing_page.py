@@ -4,7 +4,7 @@ from __future__ import annotations
 import threading
 
 import pytest
-from werkzeug.serving import make_server
+from tests._servers import loopback, make_server, origin
 
 from app.projection import registry, stubs
 
@@ -20,10 +20,10 @@ def only_financing(monkeypatch):
 @pytest.fixture()
 def server(app_factory):
     app = app_factory(AUTH_DISABLED=True)
-    srv = make_server("127.0.0.1", 0, app, threaded=True)
+    srv = make_server(loopback(), 0, app, threaded=True)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
-    yield f"http://127.0.0.1:{srv.server_port}"
+    yield origin(srv.server_port)
     srv.shutdown()
 
 
@@ -80,7 +80,7 @@ def test_editing_a_principal_cell_saves_audits_and_redraws(browser, server, pg):
     cell.click()
     page.keyboard.type("75000")
     page.keyboard.press("Enter")
-    page.wait_for_function("() => [...document.querySelectorAll('.pg-table')][0] && document.querySelectorAll('.pg-table')[0].innerText.includes('$2,595,000')", timeout=8000)      # the balance row is recalculated by the server
+    page.wait_for_function("() => [...document.querySelectorAll('.pg-table')][0] && document.querySelectorAll('.pg-table')[0]?.innerText.includes('$2,595,000')", timeout=8000)      # the balance row is recalculated by the server
     assert principal_cell(page, 3).inner_text().startswith("$75,000")
     bal = page.locator(".pg-table").first.locator("tr", has_text="Term loan balance").first.locator("td").nth(3)
     assert bal.inner_text().startswith("$2,595,000")                  # 3,000,000 - 180,000 - 150,000 - 75,000
@@ -108,7 +108,7 @@ def test_payback_recalculation_is_a_what_if_and_save_writes_the_scenario(browser
     assert "Pays back in month 10" in page.locator(".pg-section").nth(2).inner_text()
     page.locator("label", has_text="Average order value (AOV)").first.locator("input").fill("100")
     page.get_by_role("button", name="Recalculate").first.click()
-    page.wait_for_function("() => document.querySelectorAll('.pg-section')[2].innerText.includes('Pays back in month 2')", timeout=8000)
+    page.wait_for_function("() => document.querySelectorAll('.pg-section')[2]?.innerText.includes('Pays back in month 2')", timeout=8000)
     assert pg.execute("SELECT count(*) AS n FROM proj_audit").fetchone()["n"] == 0        # nothing saved yet
     page.get_by_role("button", name="Save to scenario").first.click()
     page.wait_for_selector(".pg-toast.ok", timeout=8000)
@@ -120,7 +120,7 @@ def test_saving_loan_terms_changes_interest(browser, server):
     page, _ = open_page(browser, server)
     page.locator("label", has_text="Annual rate (%)").first.locator("input").fill("12")
     page.get_by_role("button", name="Save loan terms").click()
-    page.wait_for_function("() => document.querySelectorAll('.pg-table')[0].innerText.includes('$30,000')", timeout=8000)
+    page.wait_for_function("() => document.querySelectorAll('.pg-table')[0]?.innerText.includes('$30,000')", timeout=8000)
     interest = page.locator(".pg-table").first.locator("tr", has_text="Term loan interest").first.locator("td").nth(0)
     assert interest.inner_text().startswith("$30,000")
 

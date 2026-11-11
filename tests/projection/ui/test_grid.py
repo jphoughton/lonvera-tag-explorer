@@ -142,7 +142,7 @@ def test_parse_variants_in_cells(page, base_url):
         with page.expect_request(lambda r: r.method == "PUT") as req:
             page.keyboard.press("Enter")
         assert req.value.post_data_json["items"][0]["value"] == pytest.approx(expect_v)
-        page.wait_for_function("document.querySelector('.pg-gstatus').textContent.startsWith('Saved')")
+        page.wait_for_function("document.querySelector('.pg-gstatus')?.textContent.startsWith('Saved')")
 
 
 def test_paste_row_of_values_across_months(page, base_url):
@@ -154,7 +154,7 @@ def test_paste_row_of_values_across_months(page, base_url):
     items = req.value.post_data_json["items"]
     assert [(i["month"], i["value"]) for i in items] == [("2026-12-01", 100000), ("2027-01-01", 110000), ("2027-02-01", 120000), ("2027-03-01", 130000)]
     assert len(put_requests(base_url)) == 1                          # one batched request
-    page.wait_for_function("document.querySelector('.pg-gstatus').textContent === 'Saved 4 cells'")
+    page.wait_for_function("document.querySelector('.pg-gstatus')?.textContent === 'Saved 4 cells'")
     assert cell(page, "spend", PROJ + 3).inner_text() == "$130,000*"
 
 
@@ -167,7 +167,7 @@ def test_paste_block_skips_calculated_rows_and_pastes_into_editor(page, base_url
     items = req.value.post_data_json["items"]
     assert sorted((i["line_key"], i["month"], i["value"]) for i in items) == sorted([
         ("spend", "2026-12-01", 1), ("spend", "2027-01-01", 2), ("nc_cpa", "2026-12-01", 3), ("nc_cpa", "2027-01-01", 4), ("nc_aov", "2026-12-01", 5), ("nc_aov", "2027-01-01", 6)])
-    page.wait_for_function("document.querySelector('.pg-gstatus').textContent.startsWith('Saved')")
+    page.wait_for_function("document.querySelector('.pg-gstatus')?.textContent.startsWith('Saved')")
     # a multi-cell paste while the editor is open pastes into the grid instead
     cell(page, "amazon_rev", PROJ).click()
     with page.expect_request(lambda r: r.method == "PUT") as req2:
@@ -194,7 +194,7 @@ def test_undo_restores_previous_value(page, base_url):
     page.keyboard.press("ControlOrMeta+a")
     page.keyboard.type("999k")
     page.keyboard.press("Enter")
-    page.wait_for_function("document.querySelector('.pg-gstatus').textContent === 'Saved 1 cell'")
+    page.wait_for_function("document.querySelector('.pg-gstatus')?.textContent === 'Saved 1 cell'")
     assert cell(page, "spend", PROJ).inner_text() == "$999,000*"
     with page.expect_request(lambda r: r.method == "PUT") as req:
         page.click("button:has-text('Undo')")
@@ -277,7 +277,7 @@ def test_collapse_survives_an_edit_refresh(page):
     page.keyboard.press("ControlOrMeta+a")
     page.keyboard.type("360k")
     page.keyboard.press("Enter")
-    page.wait_for_function("document.querySelector('.pg-gstatus').textContent === 'Saved 1 cell'")
+    page.wait_for_function("document.querySelector('.pg-gstatus')?.textContent === 'Saved 1 cell'")
     assert page.locator('tr[data-key="h_cost"] .pg-caret').get_attribute("aria-expanded") == "false"
 
 
@@ -350,7 +350,7 @@ def test_demo_grid_status_chips_and_local_edit(page):
     page.keyboard.press("ControlOrMeta+a")
     page.keyboard.type("800000")
     page.keyboard.press("Enter")
-    page.wait_for_function("document.querySelector('.pg-gstatus').textContent === 'Saved 1 cell'")
+    page.wait_for_function("document.querySelector('.pg-gstatus')?.textContent === 'Saved 1 cell'")
     assert cell(page, "nc_rev", 25).inner_text() != before
     # NOI below zero is highlighted by the demo's highlight() callback
     assert page.locator("tr[data-key=noi] td.tone-bad").count() > 0
@@ -366,7 +366,7 @@ def test_update_preserves_scroll_and_selection(page):
     page.keyboard.press("ControlOrMeta+a")
     page.keyboard.type("360k")
     page.keyboard.press("Enter")                                     # saves, the module returns a fresh payload, the grid re-renders
-    page.wait_for_function("document.querySelector('.pg-gstatus').textContent === 'Saved 1 cell'")
+    page.wait_for_function("document.querySelector('.pg-gstatus')?.textContent === 'Saved 1 cell'")
     after = page.evaluate(scroll)
     assert abs(after[0] - before[0]) <= 2 and abs(after[1] - before[1]) <= 30
     assert page.locator("td.pg-sel").count() == 1

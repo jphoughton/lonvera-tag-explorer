@@ -277,8 +277,9 @@ function syncStageChips(p) {
   stageBtns.unclassified.hidden = !(uncVisible || (explicit && set.has('unclassified')));
 }
 
-// reflect URL state in the controls immediately; label/notice arrive with the response (setRangeInfo)
-export function syncControls(p) {
+// reflect URL state in the controls immediately; label/notice arrive with the response (setRangeInfo).
+// keepRangeInfo: the page's own data may already be on the screen (a late /api/status calls this again): leave the label, note and active-ads count that data set.
+export function syncControls(p, { keepRangeInfo = false } = {}) {
   const custom = !!(p.from && p.to);
   const win = custom ? null : (p.window || 'launch');
   presetBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.window === win)));
@@ -286,7 +287,7 @@ export function syncControls(p) {
   syncPlatform();
   syncSource(p);
   activeBtn.setAttribute('aria-pressed', String(p.active === '1'));
-  activeCountEl.textContent = '';
+  if (!keepRangeInfo) activeCountEl.textContent = '';
   fromEl.value = custom ? p.from : '';
   toEl.value = custom ? p.to : '';
   errEl.textContent = '';
@@ -298,9 +299,11 @@ export function syncControls(p) {
   cfromEl.value = ccustom ? p.cfrom : cfromEl.value;
   ctoEl.value = ccustom ? p.cto : ctoEl.value;
   perDayWrap.hidden = !compareOn(p);
-  labelEl.textContent = '';
-  noteEl.replaceChildren();
-  noteEl.className = 'range-note';
+  if (!keepRangeInfo) {
+    labelEl.textContent = '';
+    noteEl.replaceChildren();
+    noteEl.className = 'range-note';
+  }
   if (status) {
     for (const el of [fromEl, toEl, cfromEl, ctoEl]) { el.min = status.daily_start || ''; el.max = status.data_through || ''; }
   }

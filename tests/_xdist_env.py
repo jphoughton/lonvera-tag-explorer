@@ -11,6 +11,11 @@ import os
 
 _WORKER = os.environ.get("PYTEST_XDIST_WORKER")          # "gw0", "gw1", ... ; unset in serial runs and in the xdist controller
 
+# scripts/test.sh sets TEST_STRICT=1: it expects Postgres and Chromium, so a fixture that skips for "not available" is a FAILURE there (a saturated or
+# broken machine must never show up as a green run full of skips). A plain `pytest tests` keeps the friendly skip.
+STRICT = os.environ.get("TEST_STRICT") == "1"
+ENVIRONMENT_SKIPS = ("Postgres not available", "Chromium not available", "could not prepare the page database", "could not start a scratch Postgres", "sheet snapshot not available")
+
 # env var -> default database name used by the fixture that reads it (kept in step with the conftest files)
 _DB_VARS = {
     "TEST_API_DB": "tagexp_apitest",
@@ -31,13 +36,10 @@ _DB_VARS = {
 
 if _WORKER:
     _suffix = f"_{os.getppid()}_{_WORKER}"           # parent pid = the xdist controller: a second run (or another session) never shares a name
-    _idx = int("".join(ch for ch in _WORKER if ch.isdigit()) or 0)
     os.environ["TEST_WORKER_SUFFIX"] = _suffix
     for _var, _default in _DB_VARS.items():
         os.environ[_var] = os.environ.get(_var, _default) + _suffix
     os.environ["TEST_DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", os.environ.get("TEST_PG_BASE", "postgresql://localhost") + "/tagexp_test") + _suffix      # etl tests
-    os.environ["UI_MOCK_PORT"] = str(int(os.environ.get("UI_MOCK_PORT", "5099")) + _idx)
-    os.environ["UI_NOAUTH_MOCK_PORT"] = str(int(os.environ.get("UI_NOAUTH_MOCK_PORT", "5300")) + _idx)       # 5300+ so it never meets 5099+idx
 
 
 # ---- database housekeeping for a worker: the etl tests expect their database to exist already, and every worker removes its own at the end ----
@@ -50,12 +52,38 @@ def pytest_configure(config):
         return
     import psycopg
     name = os.environ["TEST_DATABASE_URL"].rsplit("/", 1)[1]
+    if _WORKER == "gw0":
+        _reap_dead_runs(_admin_url())
     try:
         with psycopg.connect(_admin_url(), autocommit=True) as c:
             if not c.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone():
                 c.execute(f'CREATE DATABASE "{name}"')
     except psycopg.OperationalError:
-        pass            # no local Postgres: the fixtures skip their tests themselves
+        if STRICT:
+            raise       # scripts/test.sh expects Postgres: say so now instead of letting every fixture skip its tests
+        # otherwise no local Postgres: the fixtures skip their tests themselves
+
+
+def _reap_dead_runs(admin_url: str) -> None:
+    """drop the databases of parallel runs that are gone (killed or crashed): their names end in _<controller pid>_gw<N> and that pid no longer exists"""
+    import re
+
+    import psycopg
+    try:
+        with psycopg.connect(admin_url, autocommit=True) as c:
+            names = [r[0] for r in c.execute("SELECT datname FROM pg_database WHERE datname ~ '_[0-9]+_gw[0-9]+$'").fetchall()]
+            for name in names:
+                pid = int(re.search(r"_([0-9]+)_gw[0-9]+$", name).group(1))
+                try:
+                    os.kill(pid, 0)
+                    continue                                            # that run is still alive (this one, or another session's)
+                except ProcessLookupError:
+                    pass
+                except PermissionError:
+                    continue
+                c.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+    except psycopg.Error:
+        pass
 
 
 def pytest_unconfigure(config):
@@ -76,6 +104,17 @@ import gc  # noqa: E402
 import pytest  # noqa: E402
 
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    rep = outcome.get_result()
+    if STRICT and rep.skipped and any(m in str(rep.longrepr) for m in ENVIRONMENT_SKIPS):
+        reason = str(rep.longrepr[-1]) if isinstance(rep.longrepr, tuple) else str(rep.longrepr)
+        rep.outcome = "failed"
+        rep.longrepr = f"TEST_STRICT: this test was skipped because the environment is missing something scripts/test.sh requires: {reason}"
+
+
+
 @pytest.fixture(scope="module", autouse=True)
 def _release_connections_after_module():
     yield
@@ -86,6 +125,26 @@ def _release_connections_after_module():
         except Exception:
             pass
         gc.collect()                  # connections held only by finished fixtures' objects close here instead of at the end of the worker
+
+
+# ---- order independence: TEST_FILE_ORDER=reverse | random:SEED runs the test FILES in another order (tests inside a file keep theirs). Files that share a session database
+# (a conftest's fixture) must not depend on which file ran before them: under xdist the order on a worker changes with timing, so a hidden dependence shows up as a
+# different failure on every run. Serial order is the one humans see; this makes the other orders reproducible. ----
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(config, items):
+    mode = os.environ.get("TEST_FILE_ORDER")
+    if not mode:
+        return
+    import random
+    files = list(dict.fromkeys(i.nodeid.split("::", 1)[0] for i in items))
+    if mode == "reverse":
+        files.reverse()
+    elif mode.startswith("random:"):
+        random.Random(int(mode.split(":", 1)[1])).shuffle(files)
+    else:
+        raise pytest.UsageError(f"TEST_FILE_ORDER must be reverse or random:SEED, not {mode!r}")
+    pos = {f: n for n, f in enumerate(files)}
+    items.sort(key=lambda it: pos[it.nodeid.split("::", 1)[0]])
 
 
 # ---- scheduling: whole files stay together (their module-scoped databases and mock servers hold state), except the few huge files that are split in
@@ -122,9 +181,14 @@ def pytest_xdist_make_scheduler(config, log):
     return SplitFileScheduling(config, log)
 
 
-# ---- "sorry, too many clients already": Postgres here allows 100 connections for every worker AND every other session's test run. A refused connect is
-# retried with a short back-off (up to ~2 minutes) instead of failing the test or silently skipping it behind the fixtures' "no Postgres" skip. ----
-def _retry_on_too_many_clients():
+# ---- shared resources: Postgres allows 100 connections for every worker AND every other session's test run, and the macOS ephemeral port range is shared too. A refused
+# connect is a "busy machine", not a failed test: it is retried with a short back-off for up to 10 minutes (and says so on stderr every 30 s), then it fails loudly. ----
+BUSY_ERRORS = ("too many clients", "Can't assign requested address")
+BUSY_WAIT_MAX = 600
+
+
+def _retry_when_the_machine_is_busy():
+    import sys
     import time
 
     import psycopg
@@ -132,13 +196,17 @@ def _retry_on_too_many_clients():
     orig = psycopg.Connection.connect.__func__
 
     def connect(cls, *args, **kwargs):
-        delay, waited = 0.2, 0.0
+        delay, waited, told = 0.2, 0.0, 0.0
         while True:
             try:
                 return orig(cls, *args, **kwargs)
             except psycopg.OperationalError as e:
-                if "too many clients" not in str(e) or waited > 120:
+                msg = str(e)
+                if not any(b in msg for b in BUSY_ERRORS) or waited > BUSY_WAIT_MAX:
                     raise
+                if waited - told >= 30:
+                    told = waited
+                    print(f"[{_WORKER}] waiting for a free Postgres connection / local port ({waited:.0f}s): {msg.splitlines()[0][:120]}", file=sys.stderr, flush=True)
                 time.sleep(delay)
                 waited += delay
                 delay = min(delay * 1.5, 2.0)
@@ -147,5 +215,52 @@ def _retry_on_too_many_clients():
 
 
 if _WORKER:
-    _retry_on_too_many_clients()
+    _retry_when_the_machine_is_busy()
 
+
+
+# ---- slow machine tolerance: Playwright waits are scaled by TEST_TIMEOUT_FACTOR (scripts/test.sh sets 2). A wait is a condition (poll until it is true), the timeout only
+# says how long a test that is going to FAIL keeps waiting, so a bigger one never changes a result on a machine that keeps up. It matters on this one: other sessions' suites
+# push the load average to 20-30, where a save that takes 3 s alone takes 15 s. Waits under 2 s (checks that something does NOT appear) are left alone. ----
+def _scale_playwright_waits(factor: float) -> None:
+    import functools
+
+    try:
+        from playwright import sync_api as pw
+    except ImportError:
+        return
+
+    def scaled(ms):
+        return ms * factor if isinstance(ms, (int, float)) and ms >= 2000 else ms
+
+    def wrap(cls, name):
+        orig = getattr(cls, name, None)
+        if orig is None:
+            return
+
+        @functools.wraps(orig)
+        def f(self, *a, **kw):
+            if "timeout" in kw:
+                kw["timeout"] = scaled(kw["timeout"])
+            return orig(self, *a, **kw)
+        setattr(cls, name, f)
+
+    for cls in (pw.Page, pw.Frame):
+        for name in ("wait_for_selector", "wait_for_function", "wait_for_url", "wait_for_load_state"):
+            wrap(cls, name)
+    wrap(pw.Locator, "wait_for")
+    orig_ctx = pw.Browser.new_context
+
+    @functools.wraps(orig_ctx)
+    def new_context(self, *a, **kw):
+        c = orig_ctx(self, *a, **kw)
+        c.set_default_timeout(30000 * factor)
+        c.set_default_navigation_timeout(30000 * factor)
+        return c
+    pw.Browser.new_context = new_context
+    pw.expect.set_options(timeout=5000 * factor)
+
+
+_FACTOR = float(os.environ.get("TEST_TIMEOUT_FACTOR", "1") or 1)
+if _WORKER and _FACTOR > 1:
+    _scale_playwright_waits(_FACTOR)

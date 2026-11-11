@@ -1,12 +1,10 @@
 import os
-import subprocess
-import sys
-import time
-import urllib.request
 from pathlib import Path
 
 import pytest
 from playwright.sync_api import sync_playwright
+
+from tests._servers import start_mock
 
 HERE = Path(__file__).resolve().parent
 SHOTS = HERE / "shots"
@@ -29,62 +27,29 @@ def pytest_collection_modifyitems(config, items):
                 it.add_marker(skip)
 
 
-def _up(url):
-    try:
-        with urllib.request.urlopen(url + "/healthz", timeout=1) as r:
-            return r.status == 200
-    except Exception:
-        return False
-
-
-def _wait_up(proc, url, what, timeout=90):
-    """poll /healthz until the mock answers; a slow start on a loaded machine is waited out, a crashed one fails at once"""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if _up(url):
-            return
-        if proc.poll() is not None:
-            raise RuntimeError(f"{what} exited with code {proc.returncode} before it answered")
-        time.sleep(0.1)
-    proc.terminate()
-    raise RuntimeError(f"{what} did not start within {timeout}s")
-
-
 @pytest.fixture(scope="session")
 def base_url():
     env = os.environ.get("UI_BASE_URL")
     if env:
         yield env.rstrip("/")
         return
-    port = int(os.environ.get("UI_MOCK_PORT", "5099"))          # another run on this machine can take the port: set UI_MOCK_PORT
-    url = f"http://127.0.0.1:{port}"
-    proc = None
-    if not _up(url):
-        proc = subprocess.Popen([sys.executable, str(HERE / "mock_server.py"), str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        _wait_up(proc, url, "mock server")
+    proc, url = start_mock(HERE / "mock_server.py", what="mock server")       # a free port of its own: never another run's or session's server
     yield url
-    if proc:
-        proc.terminate()
+    proc.terminate()
 
 
 @pytest.fixture(scope="session")
 def noauth_url():
-    """a server with logins disabled (mock started with MOCK_AUTH=disabled on :5097, or UI_NOAUTH_BASE_URL for a real AUTH_DISABLED=1 server)"""
+    """a server with logins disabled (the mock started with MOCK_AUTH=disabled, or UI_NOAUTH_BASE_URL for a real AUTH_DISABLED=1 server)"""
     env = os.environ.get("UI_NOAUTH_BASE_URL")
     if env:
         yield env.rstrip("/")
         return
     if not IS_MOCK:
         pytest.skip("set UI_NOAUTH_BASE_URL to test an AUTH_DISABLED=1 server")
-    port = int(os.environ.get("UI_NOAUTH_MOCK_PORT", "5097"))
-    url = f"http://127.0.0.1:{port}"
-    proc = None
-    if not _up(url):
-        proc = subprocess.Popen([sys.executable, str(HERE / "mock_server.py"), str(port)], env={**os.environ, "MOCK_AUTH": "disabled"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        _wait_up(proc, url, "no-auth mock server")
+    proc, url = start_mock(HERE / "mock_server.py", env={"MOCK_AUTH": "disabled"}, what="no-auth mock server")
     yield url
-    if proc:
-        proc.terminate()
+    proc.terminate()
 
 
 @pytest.fixture(scope="module")      # one Playwright per process at a time: a session-wide one blocks every later module that starts its own

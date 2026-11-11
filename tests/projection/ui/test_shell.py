@@ -100,7 +100,7 @@ def test_scenario_new_clone_rename_delete(page, base_url):
     act(page, "new")
     page.fill("dialog input", "Bear case")
     page.click("dialog button[type=submit]")
-    page.wait_for_function("document.querySelector('#pg-scenario').value === 'bear-case'")
+    page.wait_for_function("document.querySelector('#pg-scenario')?.value === 'bear-case'")
     assert "scenario=bear-case" in page.url
     page.wait_for_selector(".pg-grid .pg-table")
     expect(page.locator(".pg-title .sub")).to_have_text("Bear case")
@@ -118,7 +118,7 @@ def test_scenario_new_clone_rename_delete(page, base_url):
     assert page.locator("dialog input").input_value() == "Bear case copy"
     page.fill("dialog input", "Bear case B")
     page.click("dialog button[type=submit]")
-    page.wait_for_function("document.querySelector('#pg-scenario').value === 'bear-case-b'")
+    page.wait_for_function("document.querySelector('#pg-scenario')?.value === 'bear-case-b'")
     page.wait_for_selector(".pg-grid .pg-table")
     assert page.locator('tr[data-key="spend"] td[data-c="23"]').inner_text().startswith("$123,000")   # clone carries the edit
     scn = {s["slug"]: s for s in mock_state(base_url)["scenarios"]}
@@ -141,7 +141,7 @@ def test_scenario_new_clone_rename_delete(page, base_url):
     with page.expect_request(lambda r: r.method == "DELETE") as req:
         ok.click()
     assert req.value.post_data_json == {"confirm": "bear-case-b"}
-    page.wait_for_function("document.querySelector('#pg-scenario').value === 'current'")
+    page.wait_for_function("document.querySelector('#pg-scenario')?.value === 'current'")
     assert "bear-case-b" not in [s["slug"] for s in mock_state(base_url)["scenarios"]]
     assert "scenario=current" in page.url
 
@@ -166,10 +166,10 @@ def test_scenario_switch_rerenders_module(page):
     expect(page.locator(".pg-gstatus")).to_contain_text("Saved")
     act(page, "clone")
     page.click("dialog button[type=submit]")
-    page.wait_for_function("document.querySelector('#pg-scenario').value === 'current-plan-copy'")
+    page.wait_for_function("document.querySelector('#pg-scenario')?.value === 'current-plan-copy'")
     page.wait_for_selector(".pg-grid .pg-table")
     page.select_option("#pg-scenario", "current")
-    page.wait_for_function("document.querySelector('.pg-title .sub').textContent === 'Current plan'")
+    page.wait_for_function("document.querySelector('.pg-title .sub')?.textContent === 'Current plan'")
     assert cell(page, "spend", 23).inner_text().startswith("$500,000")
 
 
@@ -516,7 +516,7 @@ def test_plan_of_record_chip_and_grid_strip(page):
     assert order[:2] == ["pg-por", "pg-toolbar"]
     # an edit updates the age in the chip
     edit_cell(page)
-    page.wait_for_function("document.querySelector('#pg-mode .age').textContent.includes('just now')")
+    page.wait_for_function("document.querySelector('#pg-mode .age')?.textContent.includes('just now')")
     # a copy has no plan-of-record chip or strip
     act(page, "clone")
     page.fill("dialog input", "Strip test")
@@ -560,7 +560,7 @@ def test_first_edit_make_a_copy_applies_the_edit_there(fresh_page, base_url):
     p.locator(f"{ASK} [data-choice=copy]").click()
     p.wait_for_function("document.body.dataset.pgScenario === 'copy'")
     p.wait_for_selector(".pg-grid .pg-table")
-    p.wait_for_function("document.querySelector('tr[data-key=\"spend\"] td[data-c=\"28\"]').innerText.startsWith('$777,000')")
+    p.wait_for_function("document.querySelector('tr[data-key=\"spend\"] td[data-c=\"28\"]')?.innerText.startsWith('$777,000')")
     state = mock_state(base_url)
     copies = [s for s in state["scenarios"] if s["slug"] != "current"]
     assert len(copies) == 1 and copies[0]["name"].startswith("What-if") and copies[0]["base_slug"] == "current"
@@ -581,7 +581,7 @@ def test_cancelling_the_choice_changes_nothing(fresh_page, base_url):
     expect(p.locator(ASK)).to_be_visible()
     p.keyboard.press("Escape")
     expect(p.locator(ASK)).to_have_count(0)
-    p.wait_for_function(f"document.querySelector('tr[data-key=\"spend\"] td[data-c=\"28\"]').innerText === {old!r}")
+    p.wait_for_function(f"document.querySelector('tr[data-key=\"spend\"] td[data-c=\"28\"]')?.innerText === {old!r}")
     assert put_series(base_url) == []
     expect(p.locator(".pg-gstatus")).to_have_text("No change made")
     assert p.locator(".pg-toast.error").count() == 0                                   # quiet: no error toast
@@ -620,7 +620,7 @@ def test_history_has_a_one_click_restore_for_the_plan_of_record(page):
     v0 = cell(page, "spend", 28).inner_text()
     edit_cell(page, text="555k")
     expect(page.locator(".pg-gstatus")).to_contain_text("Saved 1 cell")
-    page.wait_for_function("document.querySelector('#pg-version').textContent === 'v2'")
+    page.wait_for_function("document.querySelector('#pg-version')?.textContent === 'v2'")
     act(page, "history")
     quick = page.locator("#pg-por-restore")
     expect(quick).to_be_visible()
@@ -628,8 +628,8 @@ def test_history_has_a_one_click_restore_for_the_plan_of_record(page):
     assert btn.inner_text().startswith("Restore plan of record to v1")
     btn.click()
     page.locator("dialog[open] button", has_text="Restore").last.click()
-    page.wait_for_function("document.querySelector('#pg-version').textContent === 'v3'")
-    page.wait_for_function(f"document.querySelector('tr[data-key=\"spend\"] td[data-c=\"28\"]').innerText === {v0!r}")
+    page.wait_for_function("document.querySelector('#pg-version')?.textContent === 'v3'")
+    page.wait_for_function(f"document.querySelector('tr[data-key=\"spend\"] td[data-c=\"28\"]')?.innerText === {v0!r}")
 
 
 # ---------------------------------------------------------------- versioned writes: a stale tab cannot silently overwrite
@@ -655,8 +655,8 @@ def test_stale_tab_gets_reload_or_overwrite(page, base_url):
     assert "Reload" in ask.locator("button.primary").inner_text()
     ask.locator("[data-choice=reload]").click()
     expect(page.locator(".pg-conflict")).to_have_count(0)
-    page.wait_for_function("document.querySelector('#pg-version').textContent === 'v2'")           # reloaded: the tab now sees v2
-    page.wait_for_function(f"document.querySelector('tr[data-key=\"spend\"] td[data-c=\"28\"]').innerText === {old!r}")
+    page.wait_for_function("document.querySelector('#pg-version')?.textContent === 'v2'")           # reloaded: the tab now sees v2
+    page.wait_for_function(f"document.querySelector('tr[data-key=\"spend\"] td[data-c=\"28\"]')?.innerText === {old!r}")
     assert all(x.get("expected_version") != 2 or x["items"] for x in put_series(base_url))
     # a second stale edit, this time Overwrite
     hook(base_url, "bump", {"scenario": "current"})                                   # server v3, tab thinks v2
@@ -665,7 +665,7 @@ def test_stale_tab_gets_reload_or_overwrite(page, base_url):
     expect(page.locator(".pg-gstatus")).to_contain_text("Saved 1 cell")
     last = put_series(base_url)[-1]
     assert last["expected_version"] == 3 and last["items"][0]["value"] == 654000        # resent on top of the other tab's version
-    page.wait_for_function("document.querySelector('#pg-version').textContent === 'v4'")
+    page.wait_for_function("document.querySelector('#pg-version')?.textContent === 'v4'")
 
 
 # ---------------------------------------------------------------- degraded modules
@@ -730,7 +730,7 @@ def test_out_of_range_input_is_stopped_in_the_cell_after_the_server_says_so(page
     old = cell(page, "amazon_rev", 28).inner_text()
     edit_cell(page, row="amazon_rev", text="9m")                                       # a limit only the server knows: it refuses, the cell goes back, the line is learned
     expect(page.locator(".pg-gstatus")).to_contain_text("Not saved: value must be at most 5,000,000")
-    page.wait_for_function(f"document.querySelector('tr[data-key=\"amazon_rev\"] td[data-c=\"28\"]').innerText === {old!r}")
+    page.wait_for_function(f"document.querySelector('tr[data-key=\"amazon_rev\"] td[data-c=\"28\"]')?.innerText === {old!r}")
     n = len(put_series(base_url))
     cell(page, "amazon_rev", 28).click()
     page.keyboard.press("ControlOrMeta+a")
@@ -812,7 +812,7 @@ def test_detach_is_offered_only_for_a_copy_that_still_follows_its_base(page, bas
     hook(base_url, "built", {"keys": ["drivers"]})
     open_module(page, "drivers")
     page.select_option("#pg-scenario", label="Old clone")
-    page.wait_for_function("document.querySelector('#pg-scenario').selectedOptions[0].textContent === 'Old clone'")
+    page.wait_for_function("document.querySelector('#pg-scenario')?.selectedOptions[0].textContent === 'Old clone'")
     page.click("#pg-menu-btn")
     item = page.locator('#pg-menu-pop [data-act="detach"]')
     expect(item).to_have_text("Detach from Current plan")
@@ -838,29 +838,29 @@ def test_deleted_scenario_can_be_undone_from_the_toast_and_from_history(page, ba
         act(page, "clone")
         page.fill("dialog input", name)
         page.click("dialog button.primary")
-        page.wait_for_function(f"document.querySelector('#pg-scenario').selectedOptions[0].textContent === {name!r}")
+        page.wait_for_function(f"document.querySelector('#pg-scenario')?.selectedOptions[0].textContent === {name!r}")
     # delete "Try two" and undo it from the toast
     act(page, "delete")
     page.fill("dialog input", "try-two")
     page.click("dialog button.danger, dialog button.primary")
-    page.wait_for_function("document.querySelector('#pg-scenario').selectedOptions[0].textContent === 'Current plan'")
+    page.wait_for_function("document.querySelector('#pg-scenario')?.selectedOptions[0].textContent === 'Current plan'")
     toast_btn = page.locator(".pg-toast .pg-toast-act")
     expect(toast_btn).to_have_text("Undo")
     toast_btn.click()
-    page.wait_for_function("document.querySelector('#pg-scenario').selectedOptions[0].textContent === 'Try two'")
+    page.wait_for_function("document.querySelector('#pg-scenario')?.selectedOptions[0].textContent === 'Try two'")
     # delete "Try one" and bring it back from History
     page.select_option("#pg-scenario", label="Try one")
     act(page, "delete")
     page.fill("dialog input", "try-one")
     page.click("dialog button.danger, dialog button.primary")
-    page.wait_for_function("document.querySelector('#pg-scenario').selectedOptions[0].textContent === 'Current plan'")
+    page.wait_for_function("document.querySelector('#pg-scenario')?.selectedOptions[0].textContent === 'Current plan'")
     act(page, "history")
     page.wait_for_selector("#pg-deleted li")
     expect(page.locator("#pg-deleted-head")).to_have_text("Deleted scenarios")
     expect(page.locator("#pg-deleted li").first).to_contain_text("Try one")
     expect(page.locator("#pg-deleted li").first).to_contain_text("30 more days")
     page.click('#pg-deleted [data-act="undelete"]')
-    page.wait_for_function("document.querySelector('#pg-scenario').selectedOptions[0].textContent === 'Try one'")
+    page.wait_for_function("document.querySelector('#pg-scenario')?.selectedOptions[0].textContent === 'Try one'")
     assert page.locator("#pg-drawer").is_hidden() if page.locator("#pg-drawer").count() else True
 
 

@@ -463,7 +463,7 @@ def test_page_shows_the_labelled_number_the_line_and_the_actuals_toggle(browser,
     cell = row.locator("td").nth(1)
     assert "*" in cell.inner_text() and "Actuals only —" in cell.inner_text()
     page.locator(".amz-check input").check()
-    page.wait_for_function("document.querySelector('.amz-meta') && document.querySelector('.amz-meta').innerText.includes('reported days only')")
+    page.wait_for_function("document.querySelector('.amz-meta') && document.querySelector('.amz-meta')?.innerText.includes('reported days only')")
     row = page.locator("table.pacing-table[aria-label='Month pacing against the plan'] tr:has(th:has-text('Amazon revenue'))").first
     assert "Actuals only" not in row.locator("td").nth(1).inner_text()
     assert errors == []

@@ -4,7 +4,7 @@ import threading
 import pytest
 
 playwright = pytest.importorskip("playwright.sync_api")
-from werkzeug.serving import make_server                                   # noqa: E402
+from tests._servers import loopback, make_server, origin  # noqa: E402
 
 from pacing_support import make_app                                         # noqa: E402
 
@@ -12,10 +12,10 @@ from pacing_support import make_app                                         # no
 @pytest.fixture()
 def base_url(api_app, pacing_db):
     app = make_app(pacing_db, AUTH_DISABLED=True)
-    srv = make_server("127.0.0.1", 0, app, threaded=True)
+    srv = make_server(loopback(), 0, app, threaded=True)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
-    yield f"http://127.0.0.1:{srv.server_port}"
+    yield origin(srv.server_port)
     srv.shutdown()
     app.extensions["pool"].close()
 
@@ -87,7 +87,7 @@ def test_intraday_box_projects_end_of_day_spend(browser, base_url):
     ctx, page, errors = open_page(browser, base_url)
     page.fill("[data-box='intraday'] input[type='number']", "7528")
     page.fill("[data-box='intraday'] input[type='time']", "19:52")
-    page.wait_for_function("document.querySelector(\"[data-box='intraday'] .pacing-note\").innerText.includes('Projected end-of-day')")
+    page.wait_for_function("document.querySelector(\"[data-box='intraday'] .pacing-note\")?.innerText.includes('Projected end-of-day')")
     assert "still to go" in page.locator("[data-box='intraday'] .pacing-note").inner_text()
     assert errors == []
     ctx.close()
@@ -128,7 +128,7 @@ def test_variables_panel_edits_a_lever_and_the_page_follows(browser, base_url, c
     page.locator("[data-lever='pace_good'] input").press("Tab")
     page.locator("[data-choice='edit']").click()                                                                  # the shell asks once before the plan of record is edited
     page.wait_for_selector("[data-lever='pace_good'] button:has-text('Reset')")
-    page.wait_for_function("document.querySelector(\".pacing-card[data-key='total_rev'] .pg-chip\").innerText.trim() === 'Behind'")        # 106% is below the new 150% bar
+    page.wait_for_function("document.querySelector(\".pacing-card[data-key='total_rev'] .pg-chip\")?.innerText.trim() === 'Behind'")        # 106% is below the new 150% bar
     assert before == "On pace"
     page.locator("[data-lever='pace_good'] button:has-text('Reset')").click()
     page.wait_for_function("!document.querySelector(\"[data-lever='pace_good'] button\")")
@@ -172,7 +172,7 @@ def test_nc_revenue_card_projects_end_of_day_new_customer_revenue(browser, base_
     assert page.locator(f"{box} h2").inner_text() == "NC revenue today"
     page.fill(f"{box} input[type='number']", "300")
     page.fill(f"{box} input[type='time']", "12:00")
-    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\").innerText.includes('Projected end-of-day')")
+    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\")?.innerText.includes('Projected end-of-day')")
     txt = page.locator(f"{box} .pacing-note[role='status']").inner_text()
     assert "Projected end-of-day NC revenue $1,000*, $700 still to go (30% of a typical day's NC revenue is in by 12:00)." in txt
     assert "last 30 closed days of hourly Shopify first orders" in page.locator(box).inner_text()
@@ -186,7 +186,7 @@ def test_nc_revenue_card_projects_end_of_day_new_customer_revenue(browser, base_
     shot(page, "nc_card_desktop_open.png")
     # a time before anything has landed: a plain sentence, not a number
     page.fill(f"{box} input[type='time']", "05:00")
-    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\").innerText.includes('Too early')")
+    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\")?.innerText.includes('Too early')")
     assert errors == []
     ctx.close()
 
@@ -197,7 +197,7 @@ def test_nc_revenue_card_phone_width_and_dark(browser, base_url, nc):
         box = "[data-box='intraday-nc']"
         page.fill(f"{box} input[type='number']", "300")
         page.fill(f"{box} input[type='time']", "12:00")
-        page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\").innerText.includes('Projected end-of-day')")
+        page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\")?.innerText.includes('Projected end-of-day')")
         page.locator(f"{box} summary").click()
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
         assert page.locator(box).evaluate("el => el.scrollWidth <= el.clientWidth + 1")
@@ -219,12 +219,12 @@ def test_nc_revenue_card_weekday_switch_and_stale_warning(browser, base_url, nc,
     box = "[data-box='intraday-nc']"
     page.fill(f"{box} input[type='number']", "100")
     page.fill(f"{box} input[type='time']", "12:00")
-    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\").innerText.includes('Projected end-of-day')")
+    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\")?.innerText.includes('Projected end-of-day')")
     page.wait_for_selector(f"{box} label.pacing-check", state="visible")
     assert "Projected end-of-day NC revenue $" in page.locator(f"{box} .pacing-note[role='status']").inner_text()
     before = page.locator(f"{box} .pacing-note[role='status']").inner_text()
     page.locator(f"{box} label.pacing-check input").check()                  # Tuesday only: a weekday-shaped curve (40% by noon)
-    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note[role='status']\").innerText.includes('(40% of a typical day')")
+    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note[role='status']\")?.innerText.includes('(40% of a typical day')")
     assert page.locator(f"{box} .pacing-note[role='status']").inner_text() != before
     page.locator(f"{box} summary").click()
     assert "weekdays 40.0% in" in page.locator(f"{box} details").inner_text()
@@ -247,7 +247,7 @@ def test_nc_revenue_card_without_a_curve_says_so(browser, base_url, pacing_db):
     ctx, page, errors = open_page(browser, base_url)
     box = "[data-box='intraday-nc']"
     page.fill(f"{box} input[type='number']", "300")
-    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\").innerText.includes('No closed day')")
+    page.wait_for_function("document.querySelector(\"[data-box='intraday-nc'] .pacing-note\")?.innerText.includes('No closed day')")
     assert "Projected" not in page.locator(f"{box} .pacing-note[role='status']").inner_text().split("No closed day")[0]
     assert errors == []
     ctx.close()

@@ -197,7 +197,7 @@ def main():
         t.step("Name it Bull", True)
         page.click("dialog button[type=submit]")
         t.step("Create the clone", True)
-        page.wait_for_function("document.querySelector('#pg-scenario').selectedOptions[0].textContent === 'Bull'")
+        page.wait_for_function("document.querySelector('#pg-scenario')?.selectedOptions[0].textContent === 'Bull'")
         ready(page, 1.2)
         t.answer["cue"] = {"mode_chip": page.locator("#pg-mode").inner_text() if page.locator("#pg-mode").is_visible() else None, "body": page.evaluate("document.body.dataset.pgScenario"), "cue_strip": page.evaluate("(() => { const c = document.querySelector('.dr-cue'); return c ? c.innerText.replace(/\\s+/g, ' ') : null; })()")}
         t.step("In the copy", shot="in-copy")

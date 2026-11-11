@@ -2,3 +2,4 @@
 pytest==9.2.0
 pytest-xdist==3.8.0
 mcp>=1.9,<2
+waitress==3.0.2

@@ -10,6 +10,32 @@ from playwright.sync_api import expect
 from conftest import IS_MOCK, PASSWORD, SHOTS, USERNAME
 from ui_helpers import *  # noqa: F401,F403
 
+@pytest.mark.mock_only
+def test_a_late_status_answer_does_not_wipe_the_range_label_note_and_active_count(page):
+    """/api/status can come back AFTER the page's own data (a slow machine, a slow first request). The label, note and active-ads count that data set must stay:
+    the re-sync that runs when the status arrives used to clear them and nothing set them again (seen as an empty #range-note / #range-label in about 1 run in 4)."""
+    held = []
+    page.route("**/api/status", lambda route: held.append(route))                   # the status request is held back until the data is on the page
+    page.goto(f"/p/{SLUG}?from=2026-05-06&to=2026-06-10&active=1")
+    wait_rows(page)
+    expect(page.locator("#range-note")).to_contain_text("Impressions are available from Jun 20")
+    expect(page.locator("#active-count")).to_contain_text("active ads")
+    label = page.locator("#range-label").inner_text()
+    assert label.strip()
+    page.wait_for_function("() => true")
+    for _ in range(100):
+        if held:
+            break
+        page.wait_for_timeout(50)
+    assert held, "the page never asked for /api/status"
+    held[0].continue_()
+    page.wait_for_selector("#data-through")                                          # the status arrived: syncControls ran in the same task
+    page.evaluate("() => new Promise((r) => setTimeout(r, 0))")
+    expect(page.locator("#range-note")).to_contain_text("Impressions are available from Jun 20")
+    expect(page.locator("#active-count")).to_contain_text("active ads")
+    assert page.locator("#range-label").inner_text() == label
+
+
 def test_stale_banner_shows_on_every_page_when_stale_and_is_not_dismissible(page):
     page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
@@ -224,7 +250,7 @@ def test_date_presets_update_url_and_refetch(page):
         page.locator(f".seg[data-window='{win}']").click()
         expect(page).to_have_url(re.compile(rf"window={win}(&|$)"))
         wait_pressed(page, "window", win)
-        page.wait_for_function("() => /\\d/.test(document.querySelector('#range-label').textContent)")
+        page.wait_for_function("() => /\\d/.test(document.querySelector('#range-label')?.textContent)")
         assert any(f"window={win}" in u for u in reqs), (win, reqs)
         assert re.search(r"\d+ days?", page.locator("#range-label").inner_text()), page.locator("#range-label").inner_text()
     if IS_MOCK:
@@ -255,13 +281,13 @@ def test_custom_range(page):
     page.click("#range-apply")
     expect(page).to_have_url(re.compile(rf"from={start.isoformat()}&to={end.isoformat()}"))
     assert "window" not in qparams(page)
-    page.wait_for_function("() => /3 days/.test(document.querySelector('#range-label').textContent)")
+    page.wait_for_function("() => /3 days/.test(document.querySelector('#range-label')?.textContent)")
     assert any(f"from={start.isoformat()}" in u and f"to={end.isoformat()}" in u for u in reqs)
     assert page.locator(".seg[aria-pressed=true][data-window]").count() == 0
     page.fill("#range-from", end.isoformat())
     page.fill("#range-to", end.isoformat())
     page.click("#range-apply")
-    page.wait_for_function("() => /1 day/.test(document.querySelector('#range-label').textContent)")
+    page.wait_for_function("() => /1 day/.test(document.querySelector('#range-label')?.textContent)")
     idle(page)
     open_first_row(page)
     expect(page.locator("#level-title")).to_contain_text("Ideal customer profiles in")

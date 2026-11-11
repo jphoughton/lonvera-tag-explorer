@@ -41,6 +41,14 @@ def pinned_date():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _sensitivity_cap_does_not_depend_on_the_machine(monkeypatch):
+    """the sensitivity run stops after CAP_SECONDS of wall clock (15 s) and says `truncated`: on a busy machine the whole run takes longer than that, so the tests
+    that need the complete ranking give it an hour. The cap itself is tested in test_sensitivity_cap_truncates_and_says_so."""
+    from app.projection.variables import sensitivity
+    monkeypatch.setattr(sensitivity.run, "__kwdefaults__", {**sensitivity.run.__kwdefaults__, "cap": 3600.0})
+
+
 @pytest.fixture(scope="session")
 def vdb(tmp_path_factory):
     if not SNAP.exists():

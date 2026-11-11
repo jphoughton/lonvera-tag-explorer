@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 pw = pytest.importorskip("playwright.sync_api")
 
-from werkzeug.serving import make_server                       # noqa: E402
+from tests._servers import loopback, make_server, origin  # noqa: E402
 
 from app.projection.pnl import store                            # noqa: E402
 from pnl_support import TODAY, seed_basic                           # noqa: E402
@@ -38,10 +38,10 @@ def server(app, upstream_pkg, monkeypatch, pg):
                              ("accounting", "accounting", None), ("fulfillment services", "fulfillment_services", None), ("facebook ads", "mkt_facebook_ads", None)])
     pg.execute("INSERT INTO proj_pnl_settings (key, value) VALUES ('upload', %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
                (Jsonb({"low_ratio": 0.001, "high_ratio": 1000.0, "required_families": REQUIRED}),))
-    srv = make_server("127.0.0.1", 0, app, threaded=True)
+    srv = make_server(loopback(), 0, app, threaded=True)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
-    yield f"http://127.0.0.1:{srv.server_port}"
+    yield origin(srv.server_port)
     srv.shutdown()
 
 
@@ -149,7 +149,9 @@ def test_upload_preview_shows_changes_and_unmapped_before_anything_is_saved(page
     before = pg.execute("SELECT count(*) AS n FROM proj_actuals").fetchone()["n"]
     page.select_option('dialog select[aria-label="Line for Shopify Sales"]', "dtc_rev")
     page.click('dialog button:has-text("Map")')
-    page.wait_for_selector("dialog >> text=Commit", timeout=10000)
+    # the FIRST preview (before the mapping) already has a Commit button for the 24 cells that are mapped; wait for the preview that includes the new mapping (27 cells),
+    # otherwise the click can carry the old preview's hash and the server answers 409 "the loaded data changed since the preview"
+    page.wait_for_selector('dialog button:text-is("Commit 27 cells")', timeout=10000)
     assert pg.execute("SELECT count(*) AS n FROM proj_actuals").fetchone()["n"] == before               # still nothing written
     page.click('dialog button:has-text("Commit")')
     page.wait_for_selector("dialog", state="detached", timeout=10000)

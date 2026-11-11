@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from conftest import AOV, CPA, P, SPEND, copy_of, fy_months, make_app, put_cells
-from werkzeug.serving import make_server
+from tests._servers import loopback, make_server, origin
 
 sync_api = pytest.importorskip("playwright.sync_api")
 ROOT = Path(__file__).resolve().parents[3]
@@ -21,9 +21,9 @@ MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "No
 @pytest.fixture()
 def server(mdb):
     app = make_app(mdb, AUTH_DISABLED=True)
-    srv = make_server("127.0.0.1", 0, app, threaded=True)
+    srv = make_server(loopback(), 0, app, threaded=True)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{srv.server_port}"
+    yield origin(srv.server_port)
     srv.shutdown()
     app.extensions["pool"].close()
 
@@ -77,7 +77,7 @@ def cell_text(page, key, iso):
 
 
 def wait_saved(page):
-    page.wait_for_function("document.querySelector('#mo-status') && document.querySelector('#mo-status').textContent.trim() === 'Saved'", timeout=15000)
+    page.wait_for_function("document.querySelector('#mo-status') && document.querySelector('#mo-status')?.textContent.trim() === 'Saved'", timeout=15000)
 
 
 def wait_cell(page, key, iso, text):
@@ -125,7 +125,7 @@ def tldr(page):
 
 
 def wait_tldr_change(page, before):
-    page.wait_for_function("(b) => document.querySelector('.pg-tldr-line').innerText !== b", arg=before, timeout=8000)
+    page.wait_for_function("(b) => { const e = document.querySelector('.pg-tldr-line'); return !!e && e.innerText !== b; }", arg=before, timeout=8000)
 
 
 def run_tool(page, row, op, frm, to, **fields):
@@ -160,7 +160,7 @@ def test_arriving_on_the_plan_of_record_opens_the_working_copy_and_says_so(resto
 def test_choosing_the_plan_of_record_on_purpose_is_kept_and_edits_still_ask_first(restore, browser, server):
     page, msgs = open_page(browser, server)
     page.select_option("#pg-scenario", label="Current plan")
-    page.wait_for_function("document.querySelector('#mo-cue') && document.querySelector('#mo-cue').innerText.includes('Plan of record')", timeout=10000)
+    page.wait_for_function("document.querySelector('#mo-cue') && document.querySelector('#mo-cue')?.innerText.includes('Plan of record')", timeout=10000)
     assert "Your first change asks whether to work on a copy instead." in page.locator("#mo-cue").inner_text()
     before = api(server, "/modeler/state?scenario=current")["outputs"]["years"]
     type_cell(page, SPEND, "2027-03-01", "900000")
@@ -261,7 +261,8 @@ def test_the_quick_edit_tool_sets_a_range_ramps_changes_by_a_percent_and_undoes(
     assert [cell_text(page, CPA, m) for m in ("2027-01-01", "2027-03-01", "2027-05-01")] == ["$95.00", "$85.00", "$75.00"]
     run_tool(page, "nc_aov", "percent", "2027-01-01", "2027-12-01", pct="10")
     wait_cell(page, AOV, "2027-04-01", "$75.90")
-    assert cell_text(page, AOV, "2027-04-01") == "$75.90" and "+10%" in page.locator("#mo-tool-text").inner_text()
+    assert cell_text(page, AOV, "2027-04-01") == "$75.90"
+    page.wait_for_function("document.querySelector('#mo-tool-text')?.innerText.includes('+10%')", timeout=8000)      # the tool's own text follows the check ("Checking...")
     assert saved_cell(server, AOV, "2027-04-01", expect=75.9) == 75.9
     page.click(".pg-toolbar button:has-text('Undo')")                            # undoes the percent change
     wait_cell(page, AOV, "2027-04-01", "$69.00")
@@ -292,12 +293,12 @@ def test_the_tool_describes_the_change_and_shows_the_outputs_before_it_is_applie
     page.select_option("#mo-from", "2027-01-01")
     page.select_option("#mo-to", "2027-12-01")
     page.fill("#mo-f-value", "700000")
-    page.wait_for_function("document.querySelector('#mo-tool-text').innerText.startsWith('Set ad spend to $700,000')", timeout=8000)
+    page.wait_for_function("document.querySelector('#mo-tool-text')?.innerText.startsWith('Set ad spend to $700,000')", timeout=8000)
     assert "Previewing the change below" in page.locator("#mo-status").inner_text()
     assert tldr(page) != line and cell_text(page, SPEND, "2027-01-01") == "$350,000"                         # outputs preview, the grid and the saved plan wait for Apply
     assert saved_years(server)[2027]["ad_spend"] == 4200000.0
     page.fill("#mo-f-value", "")
-    page.wait_for_function("(b) => document.querySelector('.pg-tldr-line').innerText === b", arg=line, timeout=8000)
+    page.wait_for_function("(b) => document.querySelector('.pg-tldr-line')?.innerText === b", arg=line, timeout=8000)
 
 
 def test_a_range_over_closed_months_skips_them_and_the_grid_selection_fills_the_form(restore, browser, server):
@@ -306,7 +307,7 @@ def test_a_range_over_closed_months_skips_them_and_the_grid_selection_fills_the_
     page.select_option("#mo-from", "2026-11-01")
     cell(page, CPA, "2027-02-01").click()
     cell(page, CPA, "2027-04-01").click(modifiers=["Shift"])
-    page.wait_for_function("document.querySelector('#mo-from').value === '2027-02-01' && document.querySelector('#mo-to').value === '2027-04-01'", timeout=5000)
+    page.wait_for_function("document.querySelector('#mo-from')?.value === '2027-02-01' && document.querySelector('#mo-to')?.value === '2027-04-01'", timeout=5000)
     assert page.locator("#mo-row").input_value() == "nc_cpa"
 
 
@@ -321,7 +322,7 @@ def test_the_retention_selector_shows_each_option_and_writes_the_scenario(restor
         assert re.search(r"\d\.\d\dx lifetime . \d\.\d\dx first 12 months", boxes[k].inner_text()), boxes[k].inner_text()
     line = tldr(page)
     cards["goal"].click()
-    page.wait_for_function("document.querySelector('.mo-opt[data-key=goal] .mo-opt-pick').getAttribute('aria-checked') === 'true'", timeout=10000)
+    page.wait_for_function("document.querySelector('.mo-opt[data-key=goal] .mo-opt-pick')?.getAttribute('aria-checked') === 'true'", timeout=10000)
     wait_saved(page)
     assert tldr(page) != line and "Goal" in page.locator("#mo-retention-line").inner_text()
     lev = api(server, "/cohorts/levers?scenario=modeler")["levers"]
@@ -329,9 +330,9 @@ def test_the_retention_selector_shows_each_option_and_writes_the_scenario(restor
     assert api(server, "/cohorts/levers?scenario=current")["levers"]["curve_source"] == "live"
     assert money(years_table(page)["Repeat revenue"][1]) == pytest.approx(next(y for y in api(server, "/modeler/state?scenario=modeler")["outputs"]["years"] if y["year"] == 2027)["repeat_rev"], abs=0.5)
     page.locator(".mo-opt[data-key=asof] .seg", has_text="6 cohorts").click()
-    page.wait_for_function("document.querySelector('.mo-opt[data-key=asof] .mo-opt-pick').getAttribute('aria-checked') === 'false'", timeout=5000)
+    page.wait_for_function("document.querySelector('.mo-opt[data-key=asof] .mo-opt-pick')?.getAttribute('aria-checked') === 'false'", timeout=5000)
     cards["asof"].click()
-    page.wait_for_function("document.querySelector('.mo-opt[data-key=asof] .mo-opt-pick').getAttribute('aria-checked') === 'true'", timeout=10000)
+    page.wait_for_function("document.querySelector('.mo-opt[data-key=asof] .mo-opt-pick')?.getAttribute('aria-checked') === 'true'", timeout=10000)
     wait_saved(page)
     lev = api(server, "/cohorts/levers?scenario=modeler")["levers"]
     assert lev["curve_source"] == "asof" and lev["n_cohorts"] == 6 and lev["asof_month"]
@@ -345,9 +346,9 @@ def test_changing_the_cohorts_averaged_on_the_current_curve_is_saved(restore, br
     page, _ = open_page(browser, server)
     line = page.locator("#mo-retention-line").inner_text()
     page.locator(".mo-opt[data-key=current] .seg", has_text="6 cohorts").click()
-    page.wait_for_function("(b) => document.querySelector('#mo-retention-line').innerText !== b", arg=line, timeout=10000)
+    page.wait_for_function("(b) => { const e = document.querySelector('#mo-retention-line'); return !!e && e.innerText !== b; }", arg=line, timeout=10000)
     assert "last 6 cohorts" in page.locator("#mo-retention-line").inner_text()
-    page.wait_for_function("document.querySelector('#mo-status').textContent.trim() === 'Saved'", timeout=10000)
+    page.wait_for_function("document.querySelector('#mo-status')?.textContent.trim() === 'Saved'", timeout=10000)
     assert api(server, "/cohorts/levers?scenario=modeler")["levers"]["n_cohorts"] == 6
 
 
@@ -355,7 +356,7 @@ def test_switching_scenario_in_the_bar_moves_the_page_to_that_scenario(restore, 
     other = copy_of(client, "Elsewhere")
     page, _ = open_page(browser, server)
     page.select_option("#pg-scenario", value=other)
-    page.wait_for_function("document.querySelector('#mo-cue') && document.querySelector('#mo-cue').innerText.includes('Modeling on: Elsewhere')", timeout=10000)
+    page.wait_for_function("document.querySelector('#mo-cue') && document.querySelector('#mo-cue')?.innerText.includes('Modeling on: Elsewhere')", timeout=10000)
     assert "Working copy" in page.locator("#mo-cue").inner_text()
 
 
@@ -369,13 +370,13 @@ def test_compare_shows_the_plan_of_record_and_up_to_three_others_with_difference
     type_cell(page, SPEND, "2027-01-01", "800000")
     wait_saved(page)
     page.locator(f"#mo-compare input[data-slug={others[0]}]").check()
-    page.wait_for_function("document.querySelector('table.mo-cmp') && document.querySelector('table.mo-cmp').innerText.includes('Other 0')", timeout=10000)
+    page.wait_for_function("document.querySelector('table.mo-cmp') && document.querySelector('table.mo-cmp')?.innerText.includes('Other 0')", timeout=10000)
     rows = page.locator("table.mo-cmp tbody tr").all_inner_texts()
     assert any("Modeler (editing)" in r for r in rows) and any("Other 0" in r for r in rows) and any("plan of record" in r for r in rows)
     assert "vs Modeler" in page.locator("table.mo-cmp").inner_text()
     page.locator(f"#mo-compare input[data-slug={others[1]}]").check()
     page.wait_for_function("document.querySelectorAll('#mo-compare input:checked').length === 3")
-    page.wait_for_function("(s) => document.querySelector(`#mo-compare input[data-slug=${s}]`).disabled", arg=others[2], timeout=10000)
+    page.wait_for_function("(s) => document.querySelector(`#mo-compare input[data-slug=${s}]`)?.disabled", arg=others[2], timeout=10000)
     page.evaluate("window.__copied = null; navigator.clipboard.writeText = async (t) => { window.__copied = t; };")
     page.click("#mo-cmp-copy")
     page.wait_for_function("window.__copied !== null")
@@ -395,12 +396,12 @@ def test_save_as_keeps_the_numbers_and_reset_goes_back_to_the_plan_of_record(res
     page.click("#mo-save-as")
     page.fill("dialog input[type=text]", "Josh nine hundred K")
     page.click("dialog button[type=submit]")
-    page.wait_for_function("document.querySelector('.pg-toasts') && document.querySelector('.pg-toasts').innerText.includes('Saved as')", timeout=8000)
+    page.wait_for_function("document.querySelector('.pg-toasts') && document.querySelector('.pg-toasts')?.innerText.includes('Saved as')", timeout=8000)
     slug = next(s["slug"] for s in api(server, "/scenarios")["scenarios"] if s["name"] == "Josh nine hundred K")
     assert saved_years(server, slug)[2027]["total_revenue"] == pytest.approx(changed[2027]["total_revenue"])
     page.click("#mo-reset")
     page.click("dialog button:has-text('Reset')")
-    page.wait_for_function("document.querySelector('.pg-tldr .pg-kpi .n') && document.querySelector('.pg-tldr .pg-kpi .n').innerText.includes('same as plan')", timeout=15000)
+    page.wait_for_function("document.querySelector('.pg-tldr .pg-kpi .n') && document.querySelector('.pg-tldr .pg-kpi .n')?.innerText.includes('same as plan')", timeout=15000)
     assert saved_years(server)[2027]["total_revenue"] == pytest.approx(saved_years(server, "current")[2027]["total_revenue"])
     assert saved_years(server, slug)[2027]["total_revenue"] == pytest.approx(changed[2027]["total_revenue"])    # the saved copy did not move
     assert [m for m in msgs if "pageerror" in m] == []
@@ -411,7 +412,7 @@ def test_the_ebitda_definition_can_follow_pacing(restore, browser, server):
     assert page.locator("#mo-ebitda-text").inner_text() == "EBITDA is net operating income before interest expense."
     first = years_table(page)["EBITDA"][0]
     page.select_option("#mo-ebitda-def", "pacing")
-    page.wait_for_function("document.querySelector('#mo-ebitda-text').innerText.includes('marketing influencers')", timeout=8000)
+    page.wait_for_function("document.querySelector('#mo-ebitda-text')?.innerText.includes('marketing influencers')", timeout=8000)
     assert years_table(page)["EBITDA"][0] != first
 
 
