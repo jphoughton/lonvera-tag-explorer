@@ -261,7 +261,8 @@ def test_the_quick_edit_tool_sets_a_range_ramps_changes_by_a_percent_and_undoes(
     assert [cell_text(page, CPA, m) for m in ("2027-01-01", "2027-03-01", "2027-05-01")] == ["$95.00", "$85.00", "$75.00"]
     run_tool(page, "nc_aov", "percent", "2027-01-01", "2027-12-01", pct="10")
     wait_cell(page, AOV, "2027-04-01", "$75.90")
-    assert cell_text(page, AOV, "2027-04-01") == "$75.90" and "+10%" in page.locator("#mo-tool-text").inner_text()
+    assert cell_text(page, AOV, "2027-04-01") == "$75.90"
+    page.wait_for_function("document.querySelector('#mo-tool-text')?.innerText.includes('+10%')", timeout=8000)      # the tool's own text follows the check ("Checking...")
     assert saved_cell(server, AOV, "2027-04-01", expect=75.9) == 75.9
     page.click(".pg-toolbar button:has-text('Undo')")                            # undoes the percent change
     wait_cell(page, AOV, "2027-04-01", "$69.00")
