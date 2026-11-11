@@ -52,22 +52,22 @@ HUB_FILES = {
 WALK_BARRIERS = {"app/static/app.js", "app/static/index.html"}
 SMOKE_FILES = ["tests/api/test_api_auth.py", "tests/api/test_schema_docs.py", "tests/test_static_classnames.py"]
 # one UI test per page (node ids; ones that no longer exist are dropped with a note)
-SMOKE_NODES = [
-    "tests/ui/test_ui.py::test_login_flow",                                                                    # login
-    "tests/ui/test_ui.py::test_products_landing",                                                              # products (Meta home)
-    "tests/ui/test_ui.py::test_campaigns_view",                                                                # campaigns
-    "tests/ui/test_ui.py::test_google_campaigns_view_has_the_campaigns_first_and_types_as_a_filter",           # google
-    "tests/ui/test_ui.py::test_all_platforms_overview",                                                        # all platforms
-    "tests/ui/test_ui.py::test_platform_campaigns_view_product_column_and_filter",                             # all campaigns
-    "tests/ui/test_ui.py::test_creative_ad_vocabulary_headings_legend_and_columns",                            # product page
-    "tests/ui/test_ui.py::test_see_the_ad_section_formats_iframe_and_sizes",                                   # ad page
-    "tests/ui/test_promotions.py::test_page_renders_every_section_and_defaults_to_the_last_30_days",           # promotions
-    "tests/ui/test_scale_views.py::test_the_page_opens_on_what_should_be_scaled_and_has_four_tabs",            # scale views
-    "tests/ui/test_trends.py::test_nav_link_and_default_week_view",                                            # trends
-    "tests/ui/test_priorities.py::test_everything_is_collapsed_on_load_and_the_detail_panels_are_hidden",      # priorities
-    "tests/ui/test_priorities_production.py::test_table_renders_with_plain_columns_and_open_rows_only",        # production board
-    "tests/ui/test_lookup.py::test_exact_name_shows_the_new_tags_and_the_link",                                # tag lookup
-    "tests/projection/ui/test_shell.py::test_nav_renders_seven_modules_with_built_state",                      # projection shell
+SMOKE_NAMES = [                       # one test per page; found by function name, so a test file that is split or renamed does not break the smoke set
+    "test_login_flow",                                                                    # login
+    "test_products_landing",                                                              # products (Meta home)
+    "test_campaigns_view",                                                                # campaigns
+    "test_google_campaigns_view_has_the_campaigns_first_and_types_as_a_filter",           # google
+    "test_all_platforms_overview",                                                        # all platforms
+    "test_platform_campaigns_view_product_column_and_filter",                             # all campaigns
+    "test_creative_ad_vocabulary_headings_legend_and_columns",                            # product page
+    "test_see_the_ad_section_formats_iframe_and_sizes",                                   # ad page
+    "test_page_renders_every_section_and_defaults_to_the_last_30_days",                   # promotions
+    "test_the_page_opens_on_what_should_be_scaled_and_has_four_tabs",                     # scale views
+    "test_nav_link_and_default_week_view",                                                # trends
+    "test_everything_is_collapsed_on_load_and_the_detail_panels_are_hidden",              # priorities
+    "test_table_renders_with_plain_columns_and_open_rows_only",                           # production board
+    "test_exact_name_shows_the_new_tags_and_the_link",                                    # tag lookup
+    "test_nav_renders_seven_modules_with_built_state",                                    # projection shell
 ]
 NO_TEST_PREFIXES = ("analysis/", ".claude/", ".mcp.json", "README.md", "CLAUDE.md", ".gitignore", "scripts/auth/")
 
@@ -542,10 +542,16 @@ def select(changed: list[str], repo: Repo) -> tuple[str, list[str], list[str], l
             add(f, "data file mentioned by tests or code", refs)
             continue
         return full(f, "unknown file the selector cannot place")
-    nodes = [n for n in SMOKE_NODES if n.split("::")[0] not in chosen and n.split("::")[0] in repo.files and re.search(r"^def " + re.escape(n.split("::")[1]) + r"\(", repo.text(n.split("::")[0]), re.M)]
-    gone = [n for n in SMOKE_NODES if n.split("::")[0] not in repo.files or not re.search(r"^def " + re.escape(n.split("::")[1]) + r"\(", repo.text(n.split("::")[0]), re.M)]
+    nodes: list[str] = []
+    gone: list[str] = []
+    for name in SMOKE_NAMES:
+        hits = [t for t in repo.tests if re.search(r"^def " + re.escape(name) + r"\(", repo.text(t), re.M)]
+        if not hits:
+            gone.append(name)
+        elif hits[0] not in chosen:                                  # a node of a file that is selected anyway would only run twice
+            nodes.append(f"{hits[0]}::{name}")
     if gone:
-        why.append("note: " + ", ".join(gone) + " no longer exist and were dropped from the smoke set")
+        why.append("note: smoke tests no longer found (renamed or removed): " + ", ".join(gone))
     smoke_files = [t for t in SMOKE_FILES if t in repo.files]
     chosen.update(smoke_files)
     why.append(f"smoke set always: {len(smoke_files)} file(s), {len(nodes)} node(s)")
