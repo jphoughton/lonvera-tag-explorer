@@ -3,10 +3,12 @@
 // The open (partial) period is flagged 'so far' and compared with the same elapsed days of the previous one. Everything comes from /api/trends (the month grain's plan block
 // from /api/trends/plan, the Pacing page's own numbers).
 // Class names and test ids start with `trn-` (never ad-, ads-, sponsor, banner, promo: ad blockers hide those).
-import { h, fmt, isNum, href, setParams } from '../util.js';
+import { h, fmt, isNum, href, setParams, navigate } from '../util.js';
 import { api } from '../api.js';
 import { trendChart, BAR_COLOR, LINE_COLOR } from '../charts.js';
 import { showControls } from '../controls.js';
+import { pageHeader } from '../ui/pagehead.js';
+import { filterRow, seg, chips, numberCtl } from '../ui/pagefilters.js';
 
 const INTERVALS = [['day', 'Day', 'Day over day (DoD)'], ['week', 'Week', 'Week over week (WoW)'], ['month', 'Month', 'Month over month (MoM)']];
 const NUMBERS = [['own', 'Own reporting', "Meta's and Google's own purchases and revenue"], ['nc', 'Upstack new customers', "Upstack any-click attribution, new customers"], ['all', 'Upstack all orders', 'Upstack any-click attribution, all orders']];
@@ -68,12 +70,11 @@ function polClass(pol, v, flat) {
   return (pol === 'up_good') === (v > 0) ? 'trn-good' : 'trn-bad';
 }
 
-// '▲12%' / '▲1.2pp' next to a metric (the 'Change after every column' switch)
+// the change after a metric (the 'Change after every column' switch): the same signed text and colours as the change block at the right
 function changeNode(m, ch) {
   if (!ch) return h('span', { class: 'trn-none' }, '–');
-  const flat = Math.abs(ch.v) < (ch.t === 'pp' ? 0.0005 : 0.005);
-  const txt = flat ? (ch.t === 'pp' ? '0pp' : '0%') : ch.t === 'pp' ? fmt.pp(ch.v * 100, 1) : fmt.pctChange(ch.v);
-  return h('span', { class: 'trn-chg ' + polClass(m.pol, ch.v, flat), 'data-dir': flat ? 'flat' : ch.v > 0 ? 'up' : 'down' }, txt);
+  const x = changeCell(m, ch);
+  return h('span', { class: 'trn-chg ' + x.cls, 'data-dir': x.dir }, x.text);
 }
 
 // the sheet's change block: one signed percent per metric, the cell tinted green or red
@@ -214,7 +215,7 @@ async function loadPlan(p, d, signal) {
 export async function trendsPage(ctx) {
   const { params: p, signal } = ctx;
   showControls(false);                                  // the page has its own period controls: the global range / stage / compare bar does not apply
-  document.title = 'Trends · Marketing metrics';
+  document.title = 'Trends · Lonvera';
   const d = await loadTrends(p, signal);
   if (!ctx.alive()) return;
   const plan = await loadPlan(p, d, signal);
@@ -227,34 +228,42 @@ export async function trendsPage(ctx) {
   const delta = p.delta === '1';
 
   // ---------- controls ----------
-  const link = (changes, text, pressed, testid, title) => h('a', { class: 'seg', href: href('/trends', { ...p, ...changes }), 'aria-pressed': String(pressed), 'data-testid': testid, title: title || null }, text);
-  const ivCtl = h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Interval'),
-    h('span', { class: 'segs', role: 'group', 'aria-label': 'Interval', 'data-testid': 'trn-interval' }, INTERVALS.map(([k, t, ti]) => link({ interval: k === 'week' ? null : k, periods: null, groups: null }, t, iv === k, 'trn-interval-' + k, ti))));
-  const periodsInput = h('input', { type: 'number', min: '2', max: String(MAX_PERIODS[iv]), step: '1', class: 'trn-num', id: 'trn-periods', 'data-testid': 'trn-periods', 'aria-label': 'Number of periods',
-    value: String(d.periods), placeholder: String(DEFAULT_PERIODS[iv]) });
+  // Own | Upstack new customers | Upstack all orders is the page's own three-way choice (the API's `numbers` parameter), drawn with the same components as the shared Numbers from control.
+  const unit = iv === 'day' ? 'days' : iv === 'week' ? 'weeks' : 'months';
+  const ivCtl = seg({ name: 'Interval', testid: 'trn-interval', value: iv, options: INTERVALS.map(([k, t, ti]) => [k, t, ti, 'trn-interval-' + k]),
+    href: (k) => href('/trends', { ...p, interval: k === 'week' ? null : k, periods: null, groups: null }) });
+  const periodsCtl = numberCtl({ name: `Last ${unit}`, value: d.periods, min: 2, step: 1 });
+  const periodsInput = periodsCtl.querySelector('input');
+  Object.assign(periodsInput, { id: 'trn-periods', max: String(MAX_PERIODS[iv]), placeholder: String(DEFAULT_PERIODS[iv]), className: 'trn-num' });
+  periodsInput.setAttribute('data-testid', 'trn-periods');
+  periodsInput.setAttribute('aria-label', 'Number of periods');
   const applyPeriods = () => {
     const n = Math.floor(Number(periodsInput.value));
     setParams({ periods: Number.isFinite(n) && n >= 2 && n <= MAX_PERIODS[iv] && n !== DEFAULT_PERIODS[iv] ? String(n) : null });
   };
   periodsInput.addEventListener('change', applyPeriods);
   periodsInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyPeriods(); });
-  const periodsCtl = h('label', { class: 'ctl' }, h('span', { class: 'ctl-name' }, `Last ${iv === 'day' ? 'days' : iv === 'week' ? 'weeks' : 'months'}`), periodsInput);
-  const numbersCtl = h('div', { class: 'ctl', title: "What Meta's and Google's purchases, revenue and ROAS columns count. Spend, clicks and impressions are the platform's in every case." }, h('span', { class: 'ctl-name' }, 'Numbers from'),
-    h('span', { class: 'segs', role: 'group', 'aria-label': 'Numbers from', 'data-testid': 'trn-numbers' }, NUMBERS.map(([k, t, ti]) => link({ numbers: k === 'own' ? null : k }, t, d.numbers === k, 'trn-numbers-' + k, ti))));
-  const deltaCtl = h('div', { class: 'ctl', title: 'Adds a Δ column after every metric (percent change against the previous period; points for rates). The change block at the right is always there.' }, h('span', { class: 'ctl-name' }, 'Change after every column'),
-    h('span', { class: 'segs', role: 'group', 'aria-label': 'Change after every column', 'data-testid': 'trn-delta' }, link({ delta: null }, 'Off', !delta, 'trn-delta-off'), link({ delta: '1' }, 'On', delta, 'trn-delta-on')));
+  const numbersCtl = seg({ name: 'Numbers from', testid: 'trn-numbers', value: d.numbers, options: NUMBERS.map(([k, t, ti]) => [k, t, ti, 'trn-numbers-' + k]),
+    href: (k) => href('/trends', { ...p, numbers: k === 'own' ? null : k }) });
+  numbersCtl.title = "What Meta's and Google's purchases, revenue and return on ad spend (ROAS) columns count. Spend, clicks and impressions are the platform's in every case.";
+  const deltaCtl = seg({ name: 'Change after every column', testid: 'trn-delta', value: delta ? 'on' : 'off', options: [['off', 'Off', null, 'trn-delta-off'], ['on', 'On', null, 'trn-delta-on']],
+    href: (k) => href('/trends', { ...p, delta: k === 'on' ? '1' : null }) });
+  deltaCtl.title = 'Adds a Δ column after every metric (percent change against the previous period; points for rates). The change block at the right is always there.';
   const allKeys = d.groups.map((g) => g.key);
   const groupHref = (set) => href('/trends', { ...p, groups: set.length === dflt.length && dflt.every((k) => set.includes(k)) ? null : set.join(',') });
-  const groupChip = (g) => {
-    const pressed = on.has(g.key);
-    const next = pressed ? allKeys.filter((x) => on.has(x) && x !== g.key) : allKeys.filter((x) => on.has(x) || x === g.key);
-    return h('a', { class: 'seg', href: groupHref(next), 'aria-pressed': String(pressed), 'data-testid': 'trn-group-' + g.key,
-      title: pressed && on.size === 1 ? 'At least one band stays on' : null, onclick: pressed && on.size === 1 ? (e) => e.preventDefault() : null }, g.label);
-  };
   const allOn = allKeys.every((k) => on.has(k));
-  const allChip = h('a', { class: 'seg', href: allOn ? groupHref(dflt) : groupHref(allKeys), 'aria-pressed': String(allOn), 'data-testid': 'trn-group-all', title: allOn ? 'Back to the default bands' : 'Show every band' }, 'All');
-  const groupsCtl = h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Bands'), h('span', { class: 'segs trn-groups', role: 'group', 'aria-label': 'Bands of columns', 'data-testid': 'trn-groups' }, d.groups.map(groupChip), allChip));
-  const controls = h('div', { class: 'ctl-row trn-controls', 'data-testid': 'trn-controls' }, ivCtl, periodsCtl, numbersCtl, deltaCtl, groupsCtl);
+  const toggleBand = (key) => {
+    if (key === 'all') { navigate(allOn ? groupHref(dflt) : groupHref(allKeys)); return; }
+    const pressed = on.has(key);
+    if (pressed && on.size === 1) return;                                   // at least one band stays on
+    navigate(groupHref(pressed ? allKeys.filter((x) => on.has(x) && x !== key) : allKeys.filter((x) => on.has(x) || x === key)));
+  };
+  const groupsCtl = chips({ name: 'Bands', testid: 'trn-groups', values: [...allKeys.filter((k) => on.has(k)), ...(allOn ? ['all'] : [])], onToggle: toggleBand,
+    options: [...d.groups.map((g) => [g.key, g.label, on.has(g.key) && on.size === 1 ? 'At least one band stays on' : null, 'trn-group-' + g.key]),
+      ['all', 'All', allOn ? 'Back to the default bands' : 'Show every band', 'trn-group-all']] });
+  const controls = h('div', { class: 'trn-controls', 'data-testid': 'trn-controls' },
+    filterRow(ivCtl, periodsCtl, numbersCtl),
+    filterRow(groupsCtl, deltaCtl));
 
   // ---------- freshness ----------
   const fresh = h('div', { class: 'trn-fresh', 'data-testid': 'trn-fresh' }, h('span', { class: 'ctl-name' }, 'Data through'),
@@ -266,8 +275,8 @@ export async function trendsPage(ctx) {
     h('p', { 'data-testid': 'trn-help-short' }, h('strong', null, 'Reading this. '), 'Laid out like the rollup tabs of the Lonvera Projections sheet: oldest period first, the newest last, bands of columns left to right, the change against the previous period in the block at the right. Ratios are ratios of the period\'s sums. ',
       h('span', { class: 'badge trn-sofar' }, 'so far'), ' periods are compared with the same elapsed days of the previous one. A dash is missing data, not zero (hover for why).'),
     h('details', { class: 'trn-more', 'data-testid': 'trn-more' }, h('summary', null, 'Definitions'),
-      h('p', null, `Days are Pacific days, weeks run Monday to Sunday (ISO week numbers), months are calendar months. Every ratio (ROAS, CPA, CPM, CTR, CPC) is the ratio of the period's sums, never an average of daily ratios. `,
-        h('strong', null, 'NC ROAS'), ' is actual new-customer revenue over Meta + Google spend; ', h('strong', null, 'NC CPA'), ' is that spend over actual new customers. In the product bands the ', h('strong', null, 'Total'), ' of NC ROAS and NC CPA divides by Meta spend alone, as the sheet does. ', h('strong', null, 'NC Conversion'), ' is Upstack new customers over Upstack new visitors (the NC Orders and New Visitors columns), which differs from the sheet; the sheet\'s link-click version is NC Conversion (clicks) in the Meta band.'),
+      h('p', null, `Days are Pacific days, weeks run Monday to Sunday (ISO week numbers), months are calendar months. Every ratio (return on ad spend, cost per acquisition, cost per 1,000 views, click-through rate, cost per click) is the ratio of the period's sums, never an average of daily ratios. `,
+        h('strong', null, 'NC ROAS'), ' (new-customer return on ad spend) is actual new-customer revenue over Meta + Google spend; ', h('strong', null, 'NC CPA'), ' (new-customer cost per acquisition) is that spend over actual new customers. In the product bands the ', h('strong', null, 'Total'), ' of NC ROAS and NC CPA divides by Meta spend alone, as the sheet does. ', h('strong', null, 'NC Conversion'), ' is Upstack new customers over Upstack new visitors (the NC Orders and New Visitors columns), which differs from the sheet; the sheet\'s link-click version is NC Conversion (clicks) in the Meta band.'),
       h('p', null, h('strong', null, 'So far. '), 'Month to date is compared with the first days of last month, week to date with the same weekdays of last week, never with the full period. ',
         `Sources load once a day, so today (${fmt.day(d.today)}) has no numbers yet: its row says so instead of showing a misleading change.`),
       h('p', null, h('strong', null, 'Dashes. '), 'The period starts before a source does, or the source has a gap. Reach is de-duplicated by Meta per period, so it is read from Meta\'s own day, week and month rows and has no like-for-like change while the period is open. ',
@@ -289,10 +298,10 @@ export async function trendsPage(ctx) {
   const notes = h('div', { class: 'trn-notes', 'data-testid': 'trn-notes' },
     open ? h('p', { 'data-testid': 'trn-vs' }, h('strong', null, `${open.label} (${open.days_cov} of ${open.days} days, so far)`), open.compare.text ? ` is compared with ${open.compare.text}: ${vsText(open)}.` : ` has no like-for-like comparison: ${open.compare.why}`) : null,
     iv === 'month' && plan ? h('p', { 'data-testid': 'trn-plan-note' }, plan.available ? h('span', null, h('strong', null, 'Projected*: '), plan.caption) : h('span', null, h('strong', null, 'Plan columns are empty. '), plan.reason)) : null,
-    h('p', { class: 'muted', 'data-testid': 'trn-left-out' }, 'Left out because this app has no data for them: the sheet\'s BUSINESS-WIDE and AMAZON bands, EBITDA (LIVE P&L) and the plan block on the day and week views, TikTok spend, the per-product click bands and the bid columns.'));
+    h('p', { class: 'muted', 'data-testid': 'trn-left-out' }, 'Left out because this app has no data for them: the sheet\'s BUSINESS-WIDE and AMAZON bands, EBITDA (earnings before interest, taxes, depreciation and amortization) from the live P&L and the plan block on the day and week views, TikTok spend, the per-product click bands and the bid columns.'));
 
   const page = h('div', { class: 'page trn-page', 'data-testid': 'trn-page' },
-    h('div', { class: 'pagehead' }, h('h1', null, 'Trends'), h('span', { class: 'muted' }, ` ${d.labels[iv]} · last ${d.periods} ${iv === 'day' ? 'days' : iv === 'week' ? 'weeks' : 'months'}`)),
+    pageHeader({ title: 'Trends', testid: 'trn-head', description: `Key numbers by day, week or month, with the plan beside them. Showing ${d.labels[iv].toLowerCase()} figures for the last ${d.periods} ${unit}.` }),
     controls, fresh, help, panel, box, notes);
   ctx.mount(page);
   chartFor(canvas, d, byKey, lineKey);

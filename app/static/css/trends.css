@@ -1,7 +1,7 @@
 /* trends: Trends (trn- classes) */
 /* ---------- Trends (/trends): laid out like the rollup tabs of the Lonvera Projections sheet (periods as rows, labelled bands of columns, change block at the right).
    Class names start with trn- (never ad-, ads-, sponsor, promo, banner: ad blockers hide those). Band colours are the sheet's, darkened where white text on the original fell under 4.5:1. ---------- */
-.trn-controls { margin: 6px 0 8px; }
+.trn-controls { margin: 6px 0 8px; display: flex; flex-direction: column; gap: 6px; }
 input.trn-num { width: 64px; }
 .trn-fresh { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 2px 0 8px; }
 .trn-help { background: var(--panel); border: 1px solid var(--line-soft); border-radius: 6px; padding: 5px 12px; margin: 4px 0 8px; font-size: 12.5px; }
@@ -48,7 +48,7 @@ td.trn-empty { padding: 18px; color: var(--muted); }
 @media (max-width: 640px) {
   .trn-psub { white-space: normal; }
   .trn-pname { flex-wrap: wrap; gap: 2px 6px; }
-  .trn-controls { gap: 6px 10px; }
+  .trn-controls .ctl-row { gap: 6px 10px; }
   .trn-help { font-size: 12px; }
   table.trn-grid td.trn-pcol, table.trn-grid thead tr.trn-bandrow th.trn-corner { min-width: 112px; max-width: 112px; }
   table.trn-grid .trn-bandtitle { left: 120px; }
