@@ -179,7 +179,7 @@ async function render(opts = {}) {
   if (!route.public) {
     showControls(true);
     syncControls(params);
-    if (!getStatus()) loadStatus(abort.signal).then(() => { if (token === my) syncControls(params); }).catch(() => {});
+    if (!getStatus()) loadStatus(abort.signal).then(() => { if (token === my) syncControls(params, { keepRangeInfo: true }); }).catch(() => {});      // the page's data may be in already: its label and note stay
     root.replaceChildren(h('div', { class: 'loading' }, 'Loading…'));
   }
   if (opts.scroll !== false) window.scrollTo(0, 0);

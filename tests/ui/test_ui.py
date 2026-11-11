@@ -340,6 +340,32 @@ def fake_status(page, patch):
     page.route("**/api/status", handler)
 
 
+@pytest.mark.mock_only
+def test_a_late_status_answer_does_not_wipe_the_range_label_note_and_active_count(page):
+    """/api/status can come back AFTER the page's own data (a slow machine, a slow first request). The label, note and active-ads count that data set must stay:
+    the re-sync that runs when the status arrives used to clear them and nothing set them again (seen as an empty #range-note / #range-label in about 1 run in 4)."""
+    held = []
+    page.route("**/api/status", lambda route: held.append(route))                   # the status request is held back until the data is on the page
+    page.goto(f"/p/{SLUG}?from=2026-05-06&to=2026-06-10&active=1")
+    wait_rows(page)
+    expect(page.locator("#range-note")).to_contain_text("Impressions are available from Jun 20")
+    expect(page.locator("#active-count")).to_contain_text("active ads")
+    label = page.locator("#range-label").inner_text()
+    assert label.strip()
+    page.wait_for_function("() => true")
+    for _ in range(100):
+        if held:
+            break
+        page.wait_for_timeout(50)
+    assert held, "the page never asked for /api/status"
+    held[0].continue_()
+    page.wait_for_selector("#data-through")                                          # the status arrived: syncControls ran in the same task
+    page.evaluate("() => new Promise((r) => setTimeout(r, 0))")
+    expect(page.locator("#range-note")).to_contain_text("Impressions are available from Jun 20")
+    expect(page.locator("#active-count")).to_contain_text("active ads")
+    assert page.locator("#range-label").inner_text() == label
+
+
 def test_stale_banner_shows_on_every_page_when_stale_and_is_not_dismissible(page):
     page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
