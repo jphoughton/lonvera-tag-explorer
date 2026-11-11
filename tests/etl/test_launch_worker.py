@@ -188,7 +188,7 @@ def test_prepare_plan_and_hash_accepted_by_confirm(conn):
     assert plan["link_url"] == "https://lonvera.com/p" and plan["daily_budget_cents"] == 10000 and plan["cost_cap_cents"] == 6800
     stored = job(conn, jid)
     assert pl.plan_hash(stored["plan"]) == stored["plan_hash"]
-    assert conn.execute("SELECT count(*) FROM creative_launch_ads").fetchone()[0] == 0          # prepare reserves nothing
+    assert [r[1] for r in ads(conn, aid)] == ["planned"] * 3                                    # prepare reserves the Concept IDs as planned rows
 
 
 def test_prepare_folder_over_ten_files_and_skipped_types(conn):
@@ -262,8 +262,8 @@ def test_dry_run_makes_no_calls_at_all(conn):
         jid = queue(conn, aid, "launch", plan, h, job_dry)
         assert lw.run_once(conn, nope, nope, dry_run=flag) == "launch"
         assert job(conn, jid)["state"] == "done"
-        assert conn.execute("SELECT count(*) FROM creative_launch_ads").fetchone()[0] == 0
-        assert tracker_ids(conn, aid) == [a["concept_id"] for a in plan["ads"]]
+        assert {r[0] for r in conn.execute("SELECT state FROM creative_launch_ads").fetchall()} <= {"planned"}
+        assert tracker_ids(conn, aid) == []
     d = conn.execute("SELECT detail FROM creative_launch_audit WHERE action='launch_dry_run' ORDER BY id DESC LIMIT 1").fetchone()[0]
     assert d["would_create_adset"] is True and len(d["ads"]) == 2
 
@@ -273,7 +273,7 @@ def test_launch_rejects_tampered_plan(conn):
     plan["ads"][0]["ad_name"] = "something else"
     jid = launch(conn, aid, plan, h, FakeMeta(), FakeDrive())
     assert job(conn, jid)["state"] == "failed" and "Prepare again" in job(conn, jid)["error"]
-    assert conn.execute("SELECT count(*) FROM creative_launch_ads").fetchone()[0] == 0
+    assert [r[1] for r in ads(conn, aid)] == ["planned"]
 
 
 def test_per_ad_failure_isolated_then_resume_without_duplicates(conn):
@@ -376,6 +376,8 @@ def test_refuses_when_disabled_or_no_token(monkeypatch):
     monkeypatch.delenv("META_LAUNCH_TOKEN")
     assert lw.main(["--once"]) == 0 and len(logs) == 2 and "META_LAUNCH_TOKEN" in logs[1] and TOKEN not in logs[1]
     assert lw.enabled({"META_LAUNCH_ENABLED": "0", "META_LAUNCH_TOKEN": "x"})[0] is False
+    assert lw.enabled({"META_LAUNCH_ENABLED": "1", "META_LAUNCH_DRY_RUN": "1"})[0] is True
+    assert lw.enabled({"META_LAUNCH_ENABLED": "1", "META_LAUNCH_DRY_RUN": "0"})[0] is False
 
 
 def test_stale_running_job_is_failed(conn):
@@ -401,3 +403,65 @@ def test_never_builds_a_real_client_under_pytest(conn):
     with pytest.raises(RuntimeError, match="Inject a fake"):
         lw.run_once(conn)                                           # no injected clients: refuses instead of reaching for Drive
     assert job(conn, jid)["state"] == "failed"
+
+
+# ------------------------------------------------------------------------------------------------------- crash, cancel, logs
+def test_resume_after_mid_run_crash_is_idempotent(conn):
+    aid, _, plan, h = prepared(conn, [f(1, "a.png"), f(2, "b.png")])
+    meta, drive = FakeMeta(), FakeDrive()
+    real = meta.create_paused_ad
+    state = {"n": 0}
+
+    def dies_on_second(account_id, adset_id, creative_id, name):
+        state["n"] += 1
+        if state["n"] == 2:
+            raise KeyboardInterrupt()                              # a process kill: not an Exception, so nothing in the worker catches it
+        return real(account_id, adset_id, creative_id, name)
+    meta.create_paused_ad = dies_on_second
+    j1 = queue(conn, aid, "launch", plan, h)
+    with pytest.raises(KeyboardInterrupt):
+        lw.run_once(conn, lambda: meta, lambda: drive, sleep=lambda s: None)
+    conn.rollback()
+    assert job(conn, j1)["state"] == "running"
+    assert [r[1] for r in ads(conn, aid)] == ["created", "creative_created"]
+    conn.execute("UPDATE creative_launch_jobs SET started_at = now() - interval '3 hours' WHERE id=%s", (j1,))
+    conn.commit()
+    meta.create_paused_ad = real
+    assert lw.reap_stale(conn) == 1
+    j2 = launch(conn, aid, plan, h, meta, drive)                   # the dead job was failed by reap_stale, the new one resumes
+    assert job(conn, j1)["state"] == "failed" and job(conn, j2)["state"] == "done"
+    assert [r[1] for r in ads(conn, aid)] == ["created", "created"]
+    assert meta.count("create_creative") == 2 and meta.count("upload_image") == 2 and meta.count("clone_adset_paused") == 1
+    assert len({r[2] for r in ads(conn, aid)}) == 2
+
+
+def test_cancelled_queued_job_is_never_picked_up(conn):
+    aid, _, plan, h = prepared(conn, [f(1)])
+    jid = queue(conn, aid, "launch", plan, h)
+    conn.execute("UPDATE creative_launch_jobs SET state='cancelled', finished_at=now() WHERE id=%s", (jid,))
+    conn.commit()
+    meta = FakeMeta()
+    assert lw.run_once(conn, lambda: meta, FakeDrive, sleep=lambda s: None) is None
+    assert meta.calls == [] and job(conn, jid)["state"] == "cancelled" and ads(conn, aid)[0][1] == "planned"
+
+
+def test_no_token_in_logs_errors_or_audit(conn, capsys, monkeypatch):
+    logged = []
+    monkeypatch.setattr(db, "log", lambda *a: logged.append(" ".join(map(str, a))))
+    aid, _, plan, h = prepared(conn, [f(1, "a.png")])
+    meta = FakeMeta()
+    meta.fail[("upload_image", "a.png")] = 1
+    jid = launch(conn, aid, plan, h, meta, FakeDrive())
+    out = capsys.readouterr()
+    blob = " ".join([out.out, out.err, *logged, str(job(conn, jid)["error"]),
+                     *(str(r[0]) for r in conn.execute("SELECT detail::text FROM creative_launch_audit").fetchall()),
+                     *(str(r[6]) for r in ads(conn, aid))])
+    assert TOKEN not in blob and "failed" in blob
+
+
+def test_real_launch_without_token_makes_nothing(conn, monkeypatch):
+    aid, _, plan, h = prepared(conn, [f(1)])
+    monkeypatch.delenv("META_LAUNCH_TOKEN")
+    jid = launch(conn, aid, plan, h, FakeMeta(), FakeDrive())
+    assert job(conn, jid)["state"] == "failed" and "META_LAUNCH_TOKEN" in job(conn, jid)["error"]
+    assert tracker_ids(conn, aid) in (None, [])
