@@ -120,7 +120,7 @@ def test_catalog_lists_every_view_with_the_domains_of_the_descriptions(bdb):
     # first / last day come from the base table; a view with no day axis has none
     assert cat["orders_daily_detail"][4] == dt.date(2026, 11, 1) and cat["orders_daily_detail"][5] == dt.date(2026, 11, 1)
     assert cat["meta_ad_daily"][4] == one(bdb, "SELECT min(day) FROM ad_daily")[0] and cat["meta_ad_daily"][5] == one(bdb, "SELECT max(day) FROM ad_daily")[0]
-    assert cat["taxonomy_lines"][4] is None and cat["products"][5] is None
+    assert cat["tag_taxonomy_lines"][4] is None and cat["tag_products"][5] is None
     assert cat["cohorts_monthly"][4] == dt.date(2026, 1, 1) and cat["cohorts_monthly"][5] == dt.date(2026, 6, 1)
     assert all(r[6] is None or r[6] >= 0 for r in cat.values())
     assert one(bdb, "SELECT count(*) FROM analytics.catalog WHERE domain = 'creative'")[0] >= 8
