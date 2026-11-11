@@ -261,3 +261,16 @@ def test_core_projection_tests_are_tied_to_every_module_package(tmp_path):
     r = make(tmp_path, files)
     _, tests, _ = pick(r, "app/projection/zeta/table.py")
     assert "tests/projection/core/test_core_every_page.py" in tests
+
+
+def test_projection_test_folders_are_tied_to_the_module_of_the_same_name(tmp_path):
+    files = dict(BASE)
+    files["app/projection/modeler/__init__.py"] = "from . import api\n"
+    files["app/projection/modeler/api.py"] = "from . import ops\n"
+    files["app/projection/modeler/ops.py"] = "def op():\n    return 1\n"
+    files["tests/projection/modeler/conftest.py"] = "P = '/api/projection'\n"
+    files["tests/projection/modeler/test_modeler_api.py"] = "def test_a(client):\n    client.get('/x')\n"
+    files.update({f"tests/etl/test_pad{i}.py": "def test_p():\n    pass\n" for i in range(8)})
+    r = make(tmp_path, files)
+    _, tests, _ = pick(r, "app/projection/modeler/ops.py")
+    assert "tests/projection/modeler/test_modeler_api.py" in tests

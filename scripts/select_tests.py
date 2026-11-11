@@ -346,6 +346,7 @@ class Repo:
                 if re.search(re.escape(prefix) + r"(?![A-Za-z0-9_-])", src):
                     self.edges[t] |= mods
         self._name_ties()
+        self._folder_ties()
 
     def _test_text(self, t: str) -> str:
         """the test file plus the helper modules under tests/ it imports (transitively; not conftests): the route a test requests is often a constant in a helper"""
@@ -358,6 +359,17 @@ class Repo:
                     seen.add(d)
                     todo.append(d)
         return "\n".join(out)
+
+    def _folder_ties(self) -> None:
+        """tests/projection/<module>/ exercise app/projection/<module>/ (and etl/projection_<module>.py) through the registry-mounted blueprint, whose URL prefix is
+        built at run time and appears in no handler or test: a folder pairing is the tie"""
+        for t in self.tests:
+            parts = Path(t).parts
+            if len(parts) > 3 and parts[0] == "tests" and parts[1] == "projection":
+                d = parts[2]
+                for f in self.files:
+                    if f.startswith(f"app/projection/{d}/") and f.endswith(".py") or f == f"etl/projection_{d}.py":
+                        self.edges[t].add(f)
 
     def _name_ties(self) -> None:
         """tests/api/test_api_google.py exercises app/google.py through the app: a test file named after a module (stem, with or without a trailing s) depends on it"""
