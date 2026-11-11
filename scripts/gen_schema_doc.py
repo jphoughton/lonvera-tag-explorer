@@ -14,11 +14,11 @@ Usage (DATABASE_URL = any database with every migration applied, e.g. a local sc
     python scripts/gen_schema_doc.py --check                     exit 1 when those files are stale (the test suite does the same)
     python scripts/gen_schema_doc.py --problems                  list undescribed / stale entries and exit 1 if any
     python scripts/gen_schema_doc.py --catalog-sql               CREATE OR REPLACE VIEW statements for analytics.catalog and analytics.metric_glossary (needs no database);
-                                                                 for a METRICS / domain / description change after migration 210 was applied write them (with `--comments 210`) to a NEW migration
-    python scripts/gen_schema_doc.py --comments 013|015|190|191|210|all [--out FILE]
+                                                                 for a METRICS / domain / description change after migration 230 was applied write them (with `--comments 230`) to a NEW migration
+    python scripts/gen_schema_doc.py --comments 013|015|190|191|230|all [--out FILE]
                                                                  COMMENT ON statements; for a description change after migrations 013 / 190 were applied
                                                                  write them to a NEW migration (migrations/NNN_schema_comments_<what>.sql)
-    python scripts/gen_schema_doc.py --emit-migration 013|015|190|191|210  rewrite the comment section of migrations/013_schema_comments_analytics.sql, 015_creative_stage_moves.sql, 190_analytics_pacing_views.sql, 191_schema_comments_proj.sql
+    python scripts/gen_schema_doc.py --emit-migration 013|015|190|191|230  rewrite the comment section of migrations/013_schema_comments_analytics.sql, 015_creative_stage_moves.sql, 190_analytics_pacing_views.sql, 191_schema_comments_proj.sql
                                                                  (only before the migration was applied anywhere: applied migrations are immutable;
                                                                  013 keeps its hand-written DDL and only its comment section is rewritten)
     python scripts/gen_schema_doc.py --verify-live               compare docs/schema.json with the database: every documented column exists with the stated type
@@ -47,7 +47,7 @@ MIGRATIONS = {"013": ROOT / "migrations" / "013_schema_comments_analytics.sql", 
               "196": ROOT / "migrations" / "196_creative_priorities.sql", "197": ROOT / "migrations" / "197_alert_state.sql", "199": ROOT / "migrations" / "199_priorities_manual.sql",
               "202": ROOT / "migrations" / "202_priorities_assignments.sql", "203": ROOT / "migrations" / "203_creative_launch.sql",
               "204": ROOT / "migrations" / "204_assignment_format.sql", "205": ROOT / "migrations" / "205_api_keys.sql",
-              "210": ROOT / "migrations" / "210_analytics_brain_views.sql"}
+              "230": ROOT / "migrations" / "230_analytics_brain_views.sql"}
 # the Test to scale views (created by migration 015, after 013 runs on a fresh database): they and their comments live in migration 015
 # (migration 016 turned them into tables and added the placements tables; 015's own comment section is frozen history)
 LATE_STAGE_MOVES = {f"public.{n}{b}" for n in ("creative_stage_moves", "creative_scaling_placements") for b in ("", "_upstack_nc", "_upstack_all")}
@@ -150,8 +150,8 @@ def problems(live: dict[str, dict], d=None, require_analytics: bool = True) -> l
         if key in d.EXCLUDED:
             out.append(f"{key}: is both described and EXCLUDED")
         if key not in live:
-            if sch == "analytics" and not require_analytics:
-                continue
+            if sch == "analytics" and (not require_analytics or key in getattr(d, "DEFERRED", ())):
+                continue                    # an analytics view that migration 231 creates only when its source table exists
             out.append(f"{key}: described in docs/schema/descriptions.py but it does not exist in the database (stale entry)")
             continue
         r = live[key]
@@ -374,10 +374,10 @@ def _lit(s: str) -> str:
 
 def scope_of(r: dict, d=None) -> str:
     """Which migration carries the comments of a relation: 013 (marketing + core analytics), 190 (analytics views over proj feeds), 191 (proj_* tables),
-    210 (the analytics views of migration 210, and the relations whose text 210 re-writes)."""
+    230 (the analytics views of migration 230, and the relations whose text 230 re-writes)."""
     d = d or load_descriptions()
-    if r["name"] in getattr(d, "SCOPE_210", ()):
-        return "210"
+    if r["name"] in getattr(d, "SCOPE_230", ()):
+        return "230"
     if r["name"] in LATE_ANALYTICS:
         return "190"
     if r["name"] in LATE_STAGE_MOVES:
@@ -407,7 +407,7 @@ def comment_sql(model: dict, scope: str = "all", d=None) -> str:
     """COMMENT ON statements for one migration's scope ('013' | '190' | '191') or everything ('all')."""
     d = d or load_descriptions()
     lines = []
-    if scope in ("210", "all"):
+    if scope in ("230", "all"):
         lines.append(f"COMMENT ON SCHEMA analytics IS {_lit(d.ANALYTICS_SCHEMA_COMMENT)};")
     recomment = getattr(d, "RECOMMENT", {})
     for r in model["relations"]:
@@ -437,8 +437,8 @@ def catalog_sql(d=None) -> str:
     d = d or load_descriptions()
     rows = []
     for key, spec in d.REL.items():
-        if not key.startswith("analytics."):
-            continue
+        if not key.startswith("analytics.") or key in getattr(d, "DEFERRED", ()):
+            continue                        # deferred views are added to the catalog by migration 231 itself
         name = key.split(".", 1)[1]
         first, last = _first_last(d, spec)
         est = (f"(SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.{spec['base']}'::regclass)" if spec.get("base") else "NULL::bigint")
@@ -457,12 +457,12 @@ def catalog_sql(d=None) -> str:
 
 def migration_text(which: str, model: dict, d=None) -> str:
     """013, 015 and 190 keep their hand-written DDL (everything above COMMENTS_MARKER) and get the comment section rewritten; 191 is comments only."""
-    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "210"):
+    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "230"):
         path = MIGRATIONS[which]
         if not path.exists():
             raise SystemExit(f"{path} must exist with its hand-written DDL and the comments marker before comments can be emitted")
         head = path.read_text().split(COMMENTS_MARKER, 1)[0] + COMMENTS_MARKER
-        if which == "210":                                         # the catalog and the glossary are generated, so they sit below the marker, before their comments
+        if which == "230":                                         # the catalog and the glossary are generated, so they sit below the marker, before their comments
             head += "-- analytics.catalog and analytics.metric_glossary: generated from docs/schema/descriptions.py (domains, descriptions, grains, METRICS)\n" + catalog_sql(d) + "\n"
         return head + comment_sql(model, which, d)
     if which == "191":
@@ -529,7 +529,7 @@ def main(argv=None) -> int:
     g.add_argument("--write", action="store_true")
     g.add_argument("--check", action="store_true")
     g.add_argument("--problems", action="store_true")
-    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "210", "all"))
+    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "230", "all"))
     g.add_argument("--catalog-sql", action="store_true")
     g.add_argument("--emit-migration", choices=sorted(MIGRATIONS))
     g.add_argument("--verify-live", action="store_true")

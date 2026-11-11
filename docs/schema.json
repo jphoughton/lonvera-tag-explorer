@@ -93,6 +93,14 @@
   {
    "key": "pipeline",
    "title": "Data freshness, feed health, ETL runs, the catalog and the glossary"
+  },
+  {
+   "key": "email",
+   "title": "Klaviyo campaigns, flows, messages: sends, opens, clicks, orders, revenue and the copy (views created by migration 231 once the Klaviyo tables exist)"
+  },
+  {
+   "key": "landing_pages",
+   "title": "Landing page copy versions and the ads that send people to each page (views created by migration 231 once those tables exist)"
   }
  ],
  "relations": [
@@ -19297,7 +19305,7 @@
    "grain": "one row per analytics view (this view itself is listed too)",
    "primary_key": [],
    "foreign_keys": [],
-   "source": "generated from docs/schema/descriptions.py into migration 210 (descriptions, domains) and the first / last day of each view's base table; row_estimate = pg_class.reltuples",
+   "source": "generated from docs/schema/descriptions.py into migration 230 (descriptions, domains) and the first / last day of each view's base table; row_estimate = pg_class.reltuples",
    "refresh": "first_day / last_day read the base tables live; the descriptions change only with a migration",
    "coverage": "every analytics view",
    "caveats": [
@@ -19371,7 +19379,7 @@
    "grain": "one row per metric name",
    "primary_key": [],
    "foreign_keys": [],
-   "source": "generated from the METRICS list in docs/schema/descriptions.py into migration 210; every formula was taken from the code (the file is named in source or traps)",
+   "source": "generated from the METRICS list in docs/schema/descriptions.py into migration 230; every formula was taken from the code (the file is named in source or traps)",
    "refresh": "changes only with a migration",
    "coverage": "every metric of the glossary (see the Metrics section of docs/DATA_SCHEMA.md)",
    "caveats": [

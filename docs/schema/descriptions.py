@@ -1717,7 +1717,7 @@ rel("public.proj_meta_spend_monthly", group="proj_feeds", kind="view",
     cols={"month": "First day of the month.", "spend": "Meta spend, dollars.", "days": "Days with any ad_daily row.", "last_day": "Last day with data."})
 
 # =====================================================================================================================================
-# public: projection engine (finance, inventory, cohorts). Read through the analytics.projection_* / inventory_* / cohorts_* views (migration 210); the raw tables stay private.
+# public: projection engine (finance, inventory, cohorts). Read through the analytics.projection_* / inventory_* / cohorts_* views (migration 230); the raw tables stay private.
 # =====================================================================================================================================
 
 _ENG = dict(group="proj_engine", kind="table", recomment="relation")
@@ -1813,7 +1813,7 @@ rel("public.proj_units_loads", purpose="One row per units load (seed, refresh, u
 
 
 # =====================================================================================================================================
-# analytics: the views added by migration 210 (every subject area of the database), one `domain` each, plus the catalog and the metric glossary
+# analytics: the views added by migration 230 (every subject area of the database), one `domain` each, plus the catalog and the metric glossary
 # =====================================================================================================================================
 
 DOMAINS = [
@@ -1830,9 +1830,11 @@ DOMAINS = [
     ("pacing", "Daily pacing inputs: live today, Amazon month to date, levers"),
     ("competitors", "Meta Ad Library competitor tracking"),
     ("pipeline", "Data freshness, feed health, ETL runs, the catalog and the glossary"),
+    ("email", "Klaviyo campaigns, flows, messages: sends, opens, clicks, orders, revenue and the copy (views created by migration 231 once the Klaviyo tables exist)"),
+    ("landing_pages", "Landing page copy versions and the ads that send people to each page (views created by migration 231 once those tables exist)"),
 ]
 
-BRAIN_VIEWS: set[str] = set()                   # analytics views created by migration 210 (their comments live in that migration)
+BRAIN_VIEWS: set[str] = set()                   # analytics views created by migration 230 (their comments live in that migration)
 
 
 def _srccols(key: str) -> dict[str, str]:
@@ -1850,7 +1852,7 @@ def _ren(src: str, mapping: dict[str, str]) -> dict[str, str]:
 
 
 def av(name, *, src, domain, purpose, grain, source, refresh, coverage, caveats=(), ren=None, cols=None, examples=(), span=None, base=None):
-    """One analytics view of migration 210. `ren` maps a renamed column to its column in `src` (the text is inherited); `cols` adds or overrides text."""
+    """One analytics view of migration 230. `ren` maps a renamed column to its column in `src` (the text is inherited); `cols` adds or overrides text."""
     c = _ren(src, ren or {})
     c.update(cols or {})
     ex = list(examples)
@@ -2343,7 +2345,7 @@ av("competitor_concepts", src="public.competitor_concepts", domain="competitors"
 BRAIN_VIEWS.update({"analytics.catalog", "analytics.metric_glossary"})
 rel("analytics.catalog", group="analytics", kind="view", domain="pipeline", span=None, base=None,
     purpose="One row per analytics view: its domain, what it is, its grain, the first and last day it covers where it has days, and a row-count estimate. Start here to find which view answers a question.",
-    grain="one row per analytics view (this view itself is listed too)", source="generated from docs/schema/descriptions.py into migration 210 (descriptions, domains) and the first / last day of each view's base table; row_estimate = pg_class.reltuples",
+    grain="one row per analytics view (this view itself is listed too)", source="generated from docs/schema/descriptions.py into migration 230 (descriptions, domains) and the first / last day of each view's base table; row_estimate = pg_class.reltuples",
     refresh="first_day / last_day read the base tables live; the descriptions change only with a migration", coverage="every analytics view",
     caveats=["row_estimate is Postgres's planner estimate of the base table (NULL until the table is first analysed), not a count; run count(*) when you need the exact number.",
              "first_day / last_day are NULL for views without a day axis (dimensions, definitions, scenarios). Read data_coverage for per-source freshness of the marketing data."],
@@ -2355,7 +2357,7 @@ rel("analytics.catalog", group="analytics", kind="view", domain="pipeline", span
 
 rel("analytics.metric_glossary", group="analytics", kind="view", domain="pipeline", span=None, base=None,
     purpose="The canonical definition of every headline metric (ROAS, CPA, NC ROAS, CPM, frequency, hit rate, payback, ...): formula, the view and columns that hold the inputs, the default basis, the other bases and the traps. The same rows as the 'metrics' key of docs/schema.json.",
-    grain="one row per metric name", source="generated from the METRICS list in docs/schema/descriptions.py into migration 210; every formula was taken from the code (the file is named in source or traps)",
+    grain="one row per metric name", source="generated from the METRICS list in docs/schema/descriptions.py into migration 230; every formula was taken from the code (the file is named in source or traps)",
     refresh="changes only with a migration", coverage="every metric of the glossary (see the Metrics section of docs/DATA_SCHEMA.md)",
     caveats=["other_bases and traps are text arrays: unnest them or read them whole. Read the default basis before quoting a number and name the basis in the answer."],
     cols={"name": "Machine name, e.g. nc_roas.", "label": "Display name.", "formula": "The formula in plain words and column names.", "source": "analytics.<view>.<column(s)> that hold the inputs.",
@@ -2364,6 +2366,42 @@ rel("analytics.metric_glossary", group="analytics", kind="view", domain="pipelin
     examples=[("One metric", "SELECT label, formula, source, default_basis, other_bases, traps FROM analytics.metric_glossary WHERE name = 'total_nc_roas';"),
               ("All metrics by domain", "SELECT domain, name, label FROM analytics.metric_glossary ORDER BY domain, name;")])
 
+
+# ---------------------------------------------------------------------------------------------------------------------------- deferred views (migration 231)
+# Views over tables that live on open pull requests (Klaviyo 206, landing pages 207, Shopify orders 210). Migration 231 creates each one only when its source table exists, with the
+# source's own COMMENTs (docs/schema/deferred.py is generated from them), so they are described here but absent from a database that does not have the source yet.
+import pathlib as _pl
+
+_ns: dict = {}
+exec(compile((_pl.Path(__file__).with_name("deferred.py")).read_text(), "deferred.py", "exec"), _ns)
+DEFERRED_VIEWS = _ns["DEFERRED_VIEWS"]
+DEFERRED: set[str] = set()
+
+
+def _split_comment(text: str) -> dict:
+    """The generated comment format: '<purpose> Grain: g. Source: s. Refresh: r. Coverage: c. Caveats: x | y'. Missing parts fall back to a pointer to the purpose."""
+    out, rest = {}, text
+    markers = [("grain", " Grain: "), ("source", " Source: "), ("refresh", " Refresh: "), ("coverage", " Coverage: "), ("caveats", " Caveats: ")]
+    pos = []
+    for key, m in markers:
+        i = rest.find(m, pos[-1][1] if pos else 0)
+        if i >= 0:
+            pos.append((key, i, i + len(m)))
+    out["purpose"] = (rest[: pos[0][1]] if pos else rest).strip()
+    for n, (key, i, j) in enumerate(pos):
+        end = pos[n + 1][1] if n + 1 < len(pos) else len(rest)
+        out[key] = rest[j:end].strip().rstrip(".") if key != "caveats" else rest[j:end].strip()
+    return out
+
+
+for _name, _v in DEFERRED_VIEWS.items():
+    _p = _split_comment(_v["comment"])
+    DEFERRED.add(f"analytics.{_name}")
+    rel(f"analytics.{_name}", group="analytics", kind="view", domain=_v["domain"], span=_v["span"], base=_v["base"], deferred=True,
+        purpose=_p["purpose"], grain=_p.get("grain") or "see the purpose", source=_p.get("source") or f"public.{_name} (migration {_v['source_migration']})",
+        refresh=_p.get("refresh") or "as the source", coverage=_p.get("coverage") or "as the source",
+        caveats=[c.strip() for c in _p["caveats"].split(" | ")] if _p.get("caveats") else [], cols=dict(_v["cols"]),
+        examples=[("First rows", f"SELECT * FROM analytics.{_name} LIMIT 20;"), ("Row count", f"SELECT count(*) AS rows FROM analytics.{_name};")])
 
 # =====================================================================================================================================
 # The existing analytics views: domain and the table that gives their first / last day (for analytics.catalog)
@@ -2385,11 +2423,11 @@ for _k, _dom, _span, _base in [
 ]:
     REL[f"analytics.{_k}"].update(domain=_dom, span=_span, base=_base)
 
-# existing text that said 'not exposed in analytics' for things this migration exposes: their comments are re-written by migration 210 (relation level only)
+# existing text that said 'not exposed in analytics' for things this migration exposes: their comments are re-written by migration 230 (relation level only)
 for _k in ("analytics.orders_daily", "public.proj_feed_orders", "public.proj_feed_amazon", "public.proj_feed_nc_product"):
     REL[_k]["recomment"] = "relation"
-RECOMMENT = {k: v["recomment"] for k, v in REL.items() if v.get("recomment")}      # key -> 'relation' | 'all': comments re-written in migration 210
-SCOPE_210 = BRAIN_VIEWS | set(RECOMMENT)
+RECOMMENT = {k: v["recomment"] for k, v in REL.items() if v.get("recomment")}      # key -> 'relation' | 'all': comments re-written in migration 230
+SCOPE_230 = BRAIN_VIEWS | set(RECOMMENT)
 
 # =====================================================================================================================================
 # METRICS: the canonical glossary (also analytics.metric_glossary and the 'metrics' key of docs/schema.json). Every formula comes from the code named in source / traps.
@@ -2712,6 +2750,9 @@ views only); everything else is the app's own storage. **Start with `select * fr
 | who is making which concept for which week | `analytics.production_assignments`, `analytics.production_formats`, `analytics.priorities_manual_concepts` |
 | competitor ads and concepts | `analytics.competitor_ads`, `analytics.competitor_concepts`, `analytics.competitor_brands` |
 | scenarios, levers, P&L inputs and QuickBooks actuals | `analytics.projection_scenarios`, `analytics.projection_levers`, `analytics.projection_series`, `analytics.projection_actuals`, `analytics.projection_pnl_*` |
+| Klaviyo email / SMS: campaigns, flows, per-message sends, opens, clicks, orders, revenue, copy | `analytics.klaviyo_*` (domain `email`; created by migration 231 once the Klaviyo tables are on this database) |
+| landing page copy versions and the ads that send people to each page | `analytics.landing_pages`, `landing_page_versions`, `landing_page_ads`, `landing_page_top_ads` (domain `landing_pages`; migration 231) |
+| order-level Shopify orders and lines of the last 120 days (no customer data) | `analytics.shopify_orders`, `analytics.shopify_order_lines` (domain `orders`; migration 231) |
 | purchase orders, FBA transfers, stock, units shipped, vendor terms | `analytics.inventory_*` |
 | cohorts, retention curves (Live inputs and Goal), repeat revenue inputs | `analytics.cohorts_monthly`, `analytics.cohorts_curve_cumulative`, `analytics.cohorts_curve_goal` |
 | pacing inputs: today so far, Amazon month to date, levers | `analytics.pacing_live_today`, `analytics.pacing_amazon_month_to_date`, `analytics.pacing_levers` |
@@ -2778,6 +2819,11 @@ Money is dollars. Days are calendar days (Meta: each ad account's own day; every
 * **Email / SMS (Klaviyo) and TikTok Shop** are not in the database. Amazon sales are in `analytics.amazon_daily` (a projection feed), site traffic in `analytics.site_traffic_daily`.
 * **Creative files**: image bytes only in `public.creative_assets` (not exposed); the copy Meta actually runs is `analytics.creative_content`.
 * **Who changed what**: every audit trail (projection, supply, upload, launch) names people and is not exposed.
+
+Migration 231 creates the views for Klaviyo (`klaviyo_daily`, `klaviyo_campaigns`, `klaviyo_flows`, `klaviyo_flow_messages`, `klaviyo_message_content`, `klaviyo_message_performance`), landing pages
+(`landing_pages`, `landing_page_versions`, `landing_page_ads`, `landing_page_ad_checks`, `landing_page_top_ads`) and Shopify orders (`shopify_orders`, `shopify_order_lines`) **only when those tables exist**
+(they ship on separate branches); until then `analytics.catalog` does not list them and this reference does not describe them. They carry their source tables' COMMENTs. Left out of them:
+`shopify_orders.customer_id` and `.tags`, every `raw` json column, `landing_page_versions.blocks / images` and `landing_page_ads.raw_url`.
 
 ## Excluded from the `analytics` schema, and why
 

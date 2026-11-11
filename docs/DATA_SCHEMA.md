@@ -34,6 +34,9 @@ views only); everything else is the app's own storage. **Start with `select * fr
 | who is making which concept for which week | `analytics.production_assignments`, `analytics.production_formats`, `analytics.priorities_manual_concepts` |
 | competitor ads and concepts | `analytics.competitor_ads`, `analytics.competitor_concepts`, `analytics.competitor_brands` |
 | scenarios, levers, P&L inputs and QuickBooks actuals | `analytics.projection_scenarios`, `analytics.projection_levers`, `analytics.projection_series`, `analytics.projection_actuals`, `analytics.projection_pnl_*` |
+| Klaviyo email / SMS: campaigns, flows, per-message sends, opens, clicks, orders, revenue, copy | `analytics.klaviyo_*` (domain `email`; created by migration 231 once the Klaviyo tables are on this database) |
+| landing page copy versions and the ads that send people to each page | `analytics.landing_pages`, `landing_page_versions`, `landing_page_ads`, `landing_page_top_ads` (domain `landing_pages`; migration 231) |
+| order-level Shopify orders and lines of the last 120 days (no customer data) | `analytics.shopify_orders`, `analytics.shopify_order_lines` (domain `orders`; migration 231) |
 | purchase orders, FBA transfers, stock, units shipped, vendor terms | `analytics.inventory_*` |
 | cohorts, retention curves (Live inputs and Goal), repeat revenue inputs | `analytics.cohorts_monthly`, `analytics.cohorts_curve_cumulative`, `analytics.cohorts_curve_goal` |
 | pacing inputs: today so far, Amazon month to date, levers | `analytics.pacing_live_today`, `analytics.pacing_amazon_month_to_date`, `analytics.pacing_levers` |
@@ -101,6 +104,11 @@ Money is dollars. Days are calendar days (Meta: each ad account's own day; every
 * **Creative files**: image bytes only in `public.creative_assets` (not exposed); the copy Meta actually runs is `analytics.creative_content`.
 * **Who changed what**: every audit trail (projection, supply, upload, launch) names people and is not exposed.
 
+Migration 231 creates the views for Klaviyo (`klaviyo_daily`, `klaviyo_campaigns`, `klaviyo_flows`, `klaviyo_flow_messages`, `klaviyo_message_content`, `klaviyo_message_performance`), landing pages
+(`landing_pages`, `landing_page_versions`, `landing_page_ads`, `landing_page_ad_checks`, `landing_page_top_ads`) and Shopify orders (`shopify_orders`, `shopify_order_lines`) **only when those tables exist**
+(they ship on separate branches); until then `analytics.catalog` does not list them and this reference does not describe them. They carry their source tables' COMMENTs. Left out of them:
+`shopify_orders.customer_id` and `.tags`, every `raw` json column, `landing_page_versions.blocks / images` and `landing_page_ads.raw_url`.
+
 ## Excluded from the `analytics` schema, and why
 
 | Relation | Why it is not in `analytics` |
@@ -154,6 +162,8 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | **pacing**: Daily pacing inputs: live today, Amazon month to date, levers | [`pacing_live_today`](#analyticspacing_live_today), [`pacing_amazon_month_to_date`](#analyticspacing_amazon_month_to_date), [`pacing_hourly_spend_curve`](#analyticspacing_hourly_spend_curve), [`pacing_levers`](#analyticspacing_levers), [`pacing_meta_spend_monthly`](#analyticspacing_meta_spend_monthly) |
 | **competitors**: Meta Ad Library competitor tracking | [`competitor_brands`](#analyticscompetitor_brands), [`competitor_ads`](#analyticscompetitor_ads), [`competitor_concepts`](#analyticscompetitor_concepts) |
 | **pipeline**: Data freshness, feed health, ETL runs, the catalog and the glossary | [`data_coverage`](#analyticsdata_coverage), [`etl_runs`](#analyticsetl_runs), [`pipeline_feeds`](#analyticspipeline_feeds), [`pipeline_feed_attempts`](#analyticspipeline_feed_attempts), [`pipeline_feed_verify`](#analyticspipeline_feed_verify), [`pipeline_refresh_runs`](#analyticspipeline_refresh_runs), [`pipeline_alerts`](#analyticspipeline_alerts), [`catalog`](#analyticscatalog), [`metric_glossary`](#analyticsmetric_glossary) |
+| **email**: Klaviyo campaigns, flows, messages: sends, opens, clicks, orders, revenue and the copy (views created by migration 231 once the Klaviyo tables exist) |  |
+| **landing_pages**: Landing page copy versions and the ads that send people to each page (views created by migration 231 once those tables exist) |  |
 
 ## analytics schema: the read-only views (start here)
 
@@ -3385,7 +3395,7 @@ SELECT * FROM analytics.competitor_concepts LIMIT 20;
 
 - **Domain:** pipeline
 - **Grain:** one row per analytics view (this view itself is listed too)
-- **Source:** generated from docs/schema/descriptions.py into migration 210 (descriptions, domains) and the first / last day of each view's base table; row_estimate = pg_class.reltuples
+- **Source:** generated from docs/schema/descriptions.py into migration 230 (descriptions, domains) and the first / last day of each view's base table; row_estimate = pg_class.reltuples
 - **Refresh:** first_day / last_day read the base tables live; the descriptions change only with a migration
 - **Coverage:** every analytics view
 - **Caveat:** row_estimate is Postgres's planner estimate of the base table (NULL until the table is first analysed), not a count; run count(*) when you need the exact number.
@@ -3421,7 +3431,7 @@ SELECT domain, count(*) AS views FROM analytics.catalog GROUP BY 1 ORDER BY 1;
 
 - **Domain:** pipeline
 - **Grain:** one row per metric name
-- **Source:** generated from the METRICS list in docs/schema/descriptions.py into migration 210; every formula was taken from the code (the file is named in source or traps)
+- **Source:** generated from the METRICS list in docs/schema/descriptions.py into migration 230; every formula was taken from the code (the file is named in source or traps)
 - **Refresh:** changes only with a migration
 - **Coverage:** every metric of the glossary (see the Metrics section of docs/DATA_SCHEMA.md)
 - **Caveat:** other_bases and traps are text arrays: unnest them or read them whole. Read the default basis before quoting a number and name the basis in the answer.

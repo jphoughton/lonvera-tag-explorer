@@ -29,7 +29,7 @@ select source, first_day, last_day, loaded_at from analytics.data_coverage;     
 Before you quote any ROAS, CPA, hit rate, payback or revenue number, read its row in `analytics.metric_glossary` (`select * from analytics.metric_glossary where name = 'total_nc_roas'`):
 it names the default basis, the other bases and the traps. The same list is the `metrics` key of `docs/schema.json`.
 
-## You want / Use (13 domains)
+## You want / Use (15 domains)
 
 | You want | Domain | Use |
 |---|---|---|
@@ -41,6 +41,7 @@ it names the default basis, the other bases and the traps. The same list is the 
 | products, taxonomy lines (cluster / ICP / pain point), ingredients, every tag and hook | tags | `tag_products`, `tag_taxonomy_lines`, `tag_line_ingredients`, `tracker_tags`, `tracker_hooks` |
 | the weekly priorities list: lines, status, score, hit rates, thresholds, baselines | priorities | `priorities_concepts`, `priorities_snapshots`, `priorities_baselines`, `priorities_thresholds`, `priorities_manual_concepts` |
 | who is making which concept for which week | production | `production_assignments`, `production_formats` |
+| Klaviyo campaigns, flows and messages; landing page copy and the ads behind each page; Shopify orders and lines (no customer data) | email, landing_pages, orders | `klaviyo_*`, `landing_pages`, `landing_page_versions`, `landing_page_ads`, `landing_page_top_ads`, `shopify_orders`, `shopify_order_lines` (created by migration 231 only when their tables exist on the database; check `analytics.catalog`) |
 | scenarios, levers, P&L inputs, QuickBooks actuals, COGS, retainers | projection | `projection_scenarios`, `projection_levers`, `projection_series`, `projection_actuals`, `projection_pnl_drivers`, `projection_pnl_settings`, `projection_pnl_account_map`, `projection_cogs_sku`, `projection_vendor_retainers` |
 | purchase orders, FBA transfers, vendor terms, stock, units shipped | inventory | `inventory_purchase_orders`, `inventory_fba_transfers`, `inventory_vendor_lead_times`, `inventory_vendor_costs`, `inventory_product_costs`, `inventory_reorder_params`, `inventory_stock_counts`, `inventory_stock_daily`, `inventory_units_daily`, `inventory_units_monthly`, `inventory_units_by_country` |
 | acquisition cohorts, the retention curve inputs (Live) and the Goal curve | cohorts | `cohorts_monthly`, `cohorts_curve_cumulative`, `cohorts_curve_goal` |
