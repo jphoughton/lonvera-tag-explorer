@@ -51,6 +51,31 @@ Also: `meta_reach` (account-level reach / frequency), `meta_campaign_daily_histo
 5. **Ratios from sums, creatives once.** `sum(revenue) / sum(spend)`, never an average of daily ratios. In `creative_tracker` the metrics sit on the FIRST row of each ad family: sum rows, count
    unique ads with `count(distinct family_key)`. Ad / ad set data starts 2026-05-06; before that only campaign grain (`meta_campaign_daily_history`).
 
+## More examples
+
+New ads launched per week = ad families by their FIRST day of Meta spend (not `creative_tracker.launch_date`, which undercounts old ads, and not `ad_id`, which counts copies):
+
+```sql
+select date_trunc('week', fd)::date as week_start, count(*) as new_ad_families
+from (select a.family_key, min(d.day) as fd
+      from analytics.meta_ad_daily d join analytics.meta_ads a using (ad_id)
+      where d.spend > 0 and a.family_key is not null group by 1) t
+group by 1 order by 1;
+```
+
+ROAS by product on both bases (the winner can differ by basis, so show both):
+
+```sql
+select product_slug, sum(spend) as spend,
+       round(sum(meta_revenue) / nullif(sum(spend), 0), 2) as meta_reported_roas,
+       round(sum(upstack_new_customer_revenue) / nullif(sum(spend), 0), 2) as upstack_new_customer_roas
+from analytics.meta_ad_daily where day between '2026-10-01' and '2026-10-31' group by 1;
+```
+
+Testing vs scaling: `stage` is 'testing' when the campaign name contains 'test', otherwise 'scaling'. Group `meta_campaign_daily` by `stage`; cost per new customer = `sum(spend) / sum(upstack_new_customers)` (Upstack basis).
+
+Monthly CPM before 2026-05-06 comes from `meta_campaign_daily_history` (`sum(spend) / sum(impressions) * 1000`); reach and frequency per month come from `meta_reach` at month grain, never from summed days.
+
 ## Not in the database (say so instead of guessing)
 
 Reach / frequency below account level, video and hook-rate metrics, age / gender / placement / country breakdowns, ad budgets and bids, Google ad groups / keywords / search terms, TikTok / Bing,

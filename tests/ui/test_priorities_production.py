@@ -40,7 +40,7 @@ def fill_dialog(page, value, field="url"):
 def test_table_renders_with_plain_columns_and_open_rows_only(page):
     goto(page)
     heads = [t.strip() for t in page.locator("[data-testid=prod-table] thead th").all_text_contents()]
-    assert heads == ["Week of", "Vendor", "Product", "Concept", "Brief", "Creative", "Stage", "Ads", "Result", ""]
+    assert heads == ["Week of", "Vendor", "Product", "Concept", "Brief", "Creative", "Format", "Stage", "Ads", "Result", ""]
     ids = page.locator("[data-testid=prod-row]").evaluate_all("rs => rs.map(r => r.dataset.id)")
     assert ids == ["3", "2", "1"]                                    # newest week first; the launched row 4 is hidden until Show launched and dropped
     assert stage(page, 1) == "Assigned" and stage(page, 2) == "Creative delivered"
@@ -209,3 +209,147 @@ def test_text_is_at_least_12px(page):
     goto(page)
     small = page.evaluate("""() => [...document.querySelectorAll('[data-testid=prod-page] *')].filter(e => e.childNodes.length && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && parseFloat(getComputedStyle(e).fontSize) < 12).map(e => e.tagName + ':' + e.textContent.slice(0, 20))""")
     assert small == []
+
+
+def fmt(page, rid):
+    return row(page, rid).locator("[data-testid=prod-format]")
+
+
+def test_format_column_shows_the_choice_and_internal_users_change_it_inline(page):
+    goto(page)
+    assert fmt(page, 2).input_value() == "F3" and fmt(page, 1).input_value() == ""
+    opts = fmt(page, 1).locator("option").all_text_contents()
+    assert opts[0] == "No format chosen" and opts[1] == "F1 Long animated story, openly AI, told by the character (90s to 3 min)" and len(opts) == 7
+    fmt(page, 1).select_option("F5")
+    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-format]\").value === 'F5'")
+    page.wait_for_function("() => document.querySelector('[data-testid=prod-msg]').textContent === 'Format saved.'")
+    page.reload()
+    page.wait_for_selector("[data-testid=prod-page]")
+    idle(page)
+    assert fmt(page, 1).input_value() == "F5"                                                  # it was saved, not just drawn
+    fmt(page, 1).select_option("")
+    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-format]\").value === ''")
+    page.wait_for_function("() => document.querySelector('[data-testid=prod-msg]').textContent === 'Format removed.'")
+    assert stage(page, 1) == "Assigned"                                                         # the other cells are unchanged
+    assert "—" not in page.locator("[data-testid=prod-page]").text_content()
+
+
+def test_vendor_page_shows_the_format_read_only(anon_page, base_url):
+    page = anon_page
+    page.goto(f"/priorities/vendor/{MADRE}")
+    page.wait_for_selector("[data-testid=prod-vendor-page]")
+    idle(page)
+    assert page.locator("[data-testid=prod-card][data-id='2'] [data-testid=prod-format-text]").text_content() == "F3 Short acted scene with two people (30 to 60s)"
+    assert page.locator("[data-testid=prod-card][data-id='1'] [data-testid=prod-format-text]").text_content() == "Not chosen"
+    assert page.locator("[data-testid=prod-card] select").count() == 0 and page.locator("[data-testid=prod-card] [data-testid=prod-format]").count() == 0       # nothing to change it with
+    r = page.request.patch(f"{base_url}/api/priorities/vendor/{MADRE}/2", data={"format_code": "F1"})
+    assert r.status == 400
+    page.reload()
+    page.wait_for_selector("[data-testid=prod-vendor-page]")
+    idle(page)
+    assert "F3" in page.locator("[data-testid=prod-card][data-id='2'] [data-testid=prod-format-text]").text_content()
+
+
+# ---------------------------------------------------------------------------------------------------------------- details panel (the same panel as /priorities, plus up to 10 example ads)
+def test_production_row_expands_to_the_priorities_panel_with_ten_examples(page):
+    reqs = []
+    page.on("request", lambda r: reqs.append(r.url) if "/detail" in r.url else None)
+    goto(page)
+    assert reqs == []                                                                  # lazy: nothing is fetched until a row is opened
+    btn = row(page, 1).locator("[data-testid=pri-x-toggle]")
+    assert btn.get_attribute("aria-expanded") == "false" and btn.text_content() == "Details"
+    page.locator("[data-testid=prod-detail-row][data-id='1']").evaluate("e => { if (!e.hidden) throw new Error('open'); }")
+    btn.focus()
+    page.keyboard.press("Enter")                                                       # keyboard operable
+    panel = page.locator("[data-testid=prod-detail-row][data-id='1'] .pri-panel")
+    panel.wait_for()
+    assert btn.get_attribute("aria-expanded") == "true" and btn.text_content() == "Hide details"
+    assert len([u for u in reqs if "/assignments/1/detail" in u]) == 1
+    text = panel.text_content()
+    assert "ED / Performance" in text and "Bedroom Upgrade Seeker" in text and "General Vitality / Aging Well" in text      # who it is for
+    assert panel.locator(".pri-tile-story").count() == 1 and panel.locator("[data-testid=pri-hooks]").count() == 1          # story and hooks, as on /priorities
+    assert panel.locator(".pri-sc").count() > 0                                        # the number tiles
+    ex = panel.locator("[data-testid=pri-example]")
+    assert ex.count() == 10
+    spends = ex.evaluate_all("rs => rs.map(r => parseFloat(r.querySelector('.pri-w-num').textContent.replace(/[$,]/g, '')))")
+    assert spends == sorted(spends, reverse=True)
+    assert panel.locator("[data-testid=pri-example-best]").count() == 1
+    links = panel.locator("[data-testid=pri-example-link]")
+    assert links.count() == 10 and links.first.get_attribute("href").startswith("/ad/")
+    row(page, 1).locator("[data-testid=pri-x-toggle]").click()                         # collapse
+    assert btn.get_attribute("aria-expanded") == "false"
+    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-detail-row][data-id='1']\").hidden")
+    row(page, 1).locator("[data-testid=pri-x-name]").click()                           # the concept name opens it again, without a second request
+    page.wait_for_function("() => !document.querySelector(\"[data-testid=prod-detail-row][data-id='1']\").hidden")
+    assert btn.get_attribute("aria-expanded") == "true" and len([u for u in reqs if "/assignments/1/detail" in u]) == 1
+    assert "—" not in page.locator("[data-testid=prod-detail-row][data-id='1']").text_content()
+
+
+def test_production_row_with_no_current_concept_says_so(page):
+    goto(page)
+    row(page, 2).locator("[data-testid=pri-x-toggle]").click()
+    box = page.locator("[data-testid=prod-detail-row][data-id='2']")
+    box.locator("[data-testid=pri-no-numbers]").wait_for()
+    assert box.locator("[data-testid=pri-no-numbers]").text_content() == "No current numbers for this concept."
+    assert "Thinning and Drained" in box.text_content() and box.locator("[data-testid=pri-example]").count() == 0
+
+
+def test_an_open_row_stays_open_after_a_save(page):
+    goto(page)
+    row(page, 1).locator("[data-testid=pri-x-toggle]").click()
+    page.locator("[data-testid=prod-detail-row][data-id='1'] .pri-panel").wait_for()
+    row(page, 1).locator("[data-testid=prod-edit-brief_url]").click()
+    fill_dialog(page, "https://docs.google.com/document/d/abc")
+    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-stage]\").textContent.trim() === 'Brief sent'")
+    page.locator("[data-testid=prod-detail-row][data-id='1'] .pri-panel").wait_for()
+    assert row(page, 1).locator("[data-testid=pri-x-toggle]").get_attribute("aria-expanded") == "true"
+
+
+def test_vendor_card_expands_with_examples_but_no_ad_links_and_no_internal_notes(anon_page):
+    page = anon_page
+    reqs = []
+    page.on("request", lambda r: reqs.append(r.url) if "/detail" in r.url else None)
+    page.goto(f"/priorities/vendor/{MADRE}")
+    page.wait_for_selector("[data-testid=prod-vendor-page]")
+    idle(page)
+    assert reqs == []
+    card = page.locator("[data-testid=prod-card][data-id='1']")
+    btn = card.locator("[data-testid=pri-x-toggle]")
+    btn.click()
+    panel = card.locator(".pri-panel")
+    panel.wait_for()
+    assert btn.get_attribute("aria-expanded") == "true" and len(reqs) == 1 and f"/vendor/{MADRE}/1/detail" in reqs[0]
+    assert "ED / Performance" in panel.text_content() and panel.locator("[data-testid=pri-hooks]").count() == 1
+    assert panel.locator("[data-testid=pri-example]").count() == 10 and panel.locator("[data-testid=pri-example-best]").count() == 1
+    assert panel.locator("a[href^='/ad/']").count() == 0 and panel.locator("a[href*='adsmanager']").count() == 0      # the ad page needs a login, Ads Manager too: neither is ever linked for a vendor
+    pub = panel.locator("[data-testid=pri-example-public]")                           # a link only where the server sent a https Facebook / Instagram one; new tab, no opener
+    assert pub.count() == 3
+    assert pub.evaluate_all("els => els.map(a => [a.getAttribute('href'), a.target, a.rel])") == [["https://www.facebook.com/lonvera/posts/101", "_blank", "noopener noreferrer"], ["https://www.facebook.com/lonvera/posts/102", "_blank", "noopener noreferrer"], ["https://www.instagram.com/p/Cabc123/", "_blank", "noopener noreferrer"]]
+    for n in (4, 5, 6):                                                                       # javascript:, Google Drive and plain http are refused by the page too: plain text
+        assert panel.locator("[data-testid=pri-example]").nth(n).locator("a").count() == 0
+    assert panel.locator("[data-testid=pri-example]").nth(3).locator("a").count() == 0       # no link on file: plain text
+    card.locator("[data-testid=pri-x-name]").click()                                   # name collapses it
+    page.wait_for_function("() => document.querySelector(\"[data-id='1'] [data-testid=prod-detail]\").hidden")
+    assert btn.get_attribute("aria-expanded") == "false"
+    page.locator("[data-testid=prod-card][data-id='2'] [data-testid=pri-x-toggle]").click()
+    page.locator("[data-testid=prod-card][data-id='2'] [data-testid=pri-no-numbers]").wait_for()
+    assert "Note:" not in page.locator("body").text_content()
+
+
+@pytest.mark.parametrize("path", ["/priorities/production", f"/priorities/vendor/{MADRE}"])
+def test_no_sideways_page_scroll_at_375px_with_a_row_open(browser, base_url, path):
+    c = browser.new_context(viewport={"width": 375, "height": 812}, base_url=base_url)
+    try:
+        c.request.post(base_url + "/__test/assign/reset")
+        c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+        pg = c.new_page()
+        pg.goto(path)
+        pg.wait_for_selector("[data-testid=prod-page], [data-testid=prod-vendor-page]")
+        idle(pg)
+        pg.locator("[data-id='1'] [data-testid=pri-x-toggle]").first.click()
+        pg.locator("[data-testid=pri-example]").first.wait_for()
+        assert pg.locator("[data-testid=pri-example]").count() == 10
+        assert pg.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1")
+        assert pg.evaluate("() => document.body.scrollWidth <= window.innerWidth + 1")
+    finally:
+        c.close()

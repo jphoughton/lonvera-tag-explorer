@@ -25,10 +25,10 @@ def register(app, deps):
     def reset():
         mon = this_monday()
         nxt = mon + dt.timedelta(days=7)
-        base = {"story": "", "note": "", "vendor_note": "", "brief_url": None, "creative_url": None, "tracker_concept_ids": [], "created_by": "josh", "updated_by": "josh", "ready_at": None, "launched_at": None, "dropped_at": None, "created_at": now(), "_suggested": []}
+        base = {"story": "", "note": "", "vendor_note": "", "brief_url": None, "creative_url": None, "tracker_concept_ids": [], "created_by": "josh", "updated_by": "josh", "ready_at": None, "launched_at": None, "dropped_at": None, "created_at": now(), "_suggested": [], "format_code": None}
         rows = [
             {**base, "id": 1, "vendor": "Madre", "for_week": mon, "product": "vita-bull", "cluster": "ED / Performance", "icp": "Bedroom Upgrade Seeker", "pain_point": "General Vitality / Aging Well", "story": "He wants the old spark back."},
-            {**base, "id": 2, "vendor": "Madre", "for_week": mon, "product": "beef-liver", "cluster": "Hair Thinning", "icp": "Thinning and Drained", "pain_point": "Hair Loss", "brief_url": "https://docs.google.com/document/d/brief2", "creative_url": "https://drive.google.com/drive/folders/creative2"},
+            {**base, "id": 2, "vendor": "Madre", "for_week": mon, "product": "beef-liver", "cluster": "Hair Thinning", "icp": "Thinning and Drained", "pain_point": "Hair Loss", "brief_url": "https://docs.google.com/document/d/brief2", "creative_url": "https://drive.google.com/drive/folders/creative2", "format_code": "F3"},
             {**base, "id": 3, "vendor": "Victoria", "for_week": nxt, "product": "boneflex", "cluster": "Glucosamine & Chondroitin", "icp": "Tried Everything", "pain_point": "Joint Pain & Mobility Loss", "_suggested": ["Lonvera-Boneflex-Static-1.1"]},
             {**base, "id": 4, "vendor": "Madre", "for_week": mon - dt.timedelta(days=14), "product": "vita-bull", "cluster": "Prostate", "icp": "Prostate Worrier", "pain_point": "Prostate / Urinary Health", "brief_url": "https://docs.google.com/document/d/brief4", "creative_url": "https://drive.google.com/drive/folders/creative4", "ready_at": now(), "tracker_concept_ids": ["Lonvera-VitalBull-Static-5.4"]},
         ]
@@ -52,11 +52,15 @@ def register(app, deps):
                 out.append({**t, "ad_url": f"/ad/{cid}"})
         return out
 
+    FMT = {f["code"]: f for f in pa.FORMATS}
+
     def view(r, vendor_side=False):
         statuses = [a["status"] for a in ads_of(r)]
         stage = pa.stage_of(r, statuses)
         out = {k: v for k, v in r.items() if not k.startswith("_")}
         out["for_week"] = r["for_week"].isoformat()
+        f = FMT.get(r.get("format_code"))
+        out.update(format_code=r.get("format_code"), format_name=f["name"] if f else None, format_length=f["length"] if f else None)      # a vendor sees the format too (read-only)
         out.update(stage=stage, stage_label=pa.stage_label(stage), tracker_status=statuses[0] if statuses else None, tracker_concept_ids=list(r["tracker_concept_ids"]))
         out["suggested_concept_ids"] = [c for c in r["_suggested"] if c not in r["tracker_concept_ids"]]
         out["ads"] = ads_of(r)
@@ -67,7 +71,7 @@ def register(app, deps):
         return out
 
     def apply(r, f):
-        for k in ("vendor", "for_week", "note", "brief_url", "creative_url", "tracker_concept_ids", "vendor_note"):
+        for k in ("vendor", "for_week", "note", "brief_url", "creative_url", "tracker_concept_ids", "vendor_note", "format_code"):
             if k in f:
                 r[k] = f[k]
         for b, col in (("ready", "ready_at"), ("launched", "launched_at"), ("dropped", "dropped_at")):
@@ -88,7 +92,7 @@ def register(app, deps):
                 continue
             rows.append(v)
         weeks = sorted({r["for_week"].isoformat() for r in S["rows"].values()}, reverse=True)
-        return jsonify(rows=rows, vendors=VENDORS, weeks=weeks)
+        return jsonify(rows=rows, vendors=VENDORS, weeks=weeks, formats=[dict(f) for f in pa.FORMATS])
 
     @app.post("/api/priorities/assignments")
     def assign_create():
@@ -98,6 +102,7 @@ def register(app, deps):
         body = request.get_json(silent=True) or {}
         try:
             f = pa.clean_create(body)
+            pa.check_format(f["format_code"], pa.FORMATS)
             keys = body.get("keys")
             if not isinstance(keys, list) or not keys or not all(isinstance(k, str) and 0 < len(k) <= 400 for k in keys):
                 raise q.ApiError(400, "keys must be a list of concept row keys")
@@ -123,7 +128,7 @@ def register(app, deps):
             rec = {"story": r.get("story") or "", "note": f["note"], "vendor_note": "", "brief_url": None, "creative_url": None, "tracker_concept_ids": [], "created_by": "josh", "updated_by": "josh", "ready_at": None,
                    "launched_at": None, "dropped_at": None, "created_at": now(), "updated_at": now(), "_suggested": [], "id": S["seq"], "concept_key": ck, "text_key": pa.text_key(r), "vendor": f["vendor"],
                    "for_week": f["for_week"], "product": r["product"], "line_id": r.get("line_id"), "manual_id": r["id"] if r.get("manual") else None, "line_code": r.get("line_code") or "", "cluster": r.get("cluster") or "",
-                   "icp": r.get("icp") or "", "pain_point": r.get("pain_point") or "", "section_at_assign": r.get("section") or ""}
+                   "icp": r.get("icp") or "", "pain_point": r.get("pain_point") or "", "section_at_assign": r.get("section") or "", "format_code": f["format_code"]}
             S["rows"][rec["id"]] = rec
             created.append(view(rec))
         return jsonify(created=created, skipped=skipped), 201
@@ -135,6 +140,8 @@ def register(app, deps):
             return jsonify(error="Assignment not found."), 404
         try:
             f = pa.clean_patch(request.get_json(silent=True))
+            if "format_code" in f:
+                pa.check_format(f["format_code"], pa.FORMATS)
         except q.ApiError as e:
             return err(e)
         apply(r, f)
@@ -193,6 +200,45 @@ def register(app, deps):
             return err(e)
         apply(r, f)
         return jsonify(view(r, True))
+
+    # what the real vendor payload carries per example: a https Facebook / Instagram link, else nothing. The last three are links the real server would never send (Drive, plain http, javascript:): the page must still refuse them
+    PUBLIC_URLS = ["https://www.facebook.com/lonvera/posts/101", "https://www.facebook.com/lonvera/posts/102", "https://www.instagram.com/p/Cabc123/", None, "javascript:alert(1)", "https://drive.google.com/file/d/1/view", "http://www.facebook.com/lonvera/posts/9"]
+
+    def detail_payload(r, vendor_side=False):
+        """Same shape and rules as app.priorities_detail.build: the concept's row in the mock snapshot (by concept key, else text key), else what the assignment stored with current=false; up to 10 example
+        ads by spend (ad_id None for a vendor). Examples exist only for a concept that has a row (the mock has no tag table)."""
+        from app import priorities_detail as pdt
+        snap = app.config["PRI_LIVE"]()
+        rec = {**r, "concept_key": r.get("concept_key") or "none", "text_key": r.get("text_key") or pa.text_key(r)}
+        row = pdt._find_row(snap["rows"], rec)
+        ex = []
+        if row is not None:
+            for i in range(12):
+                spend = round(9000 - i * 700 + (i % 3) * 11.5, 2)
+                ex.append({"ad": f"Example ad {i + 1}", "spend": spend, "roas": round(0.6 + ((i * 7) % 10) / 10, 2), "ad_id": None if vendor_side else 1000 + i, "best": False}
+                          | ({"public_url": PUBLIC_URLS[i] if i < len(PUBLIC_URLS) else None} if vendor_side else {}))
+            ex = ex[:pdt.EXAMPLES_MAX]
+            ok = [e for e in ex if e["roas"] is not None and e["spend"] >= pdt.BEST_MIN_SPEND]
+            max(ok, key=lambda e: (e["roas"], e["spend"]))["best"] = True
+        out = {"assignment_id": r["id"], "current": row is not None, "snapshot_week": snap["week_start"], "examples": ex, "examples_max": pdt.EXAMPLES_MAX, "definitions": snap.get("definitions") or {}}
+        if row is None:
+            return {**out, "row": pdt._fallback_row(rec), "baselines": {}, "message": pdt.NO_NUMBERS}
+        return {**out, "row": pdt._vendor_row(row) if vendor_side else row, "baselines": {row["product"]: (snap.get("baselines") or {}).get(row["product"]) or {}}, "message": ""}
+
+    @app.get("/api/priorities/assignments/<int:aid>/detail")
+    def assign_detail(aid):
+        r = S["rows"].get(aid)
+        if r is None:
+            return jsonify(error="Assignment not found."), 404
+        return jsonify(detail_payload(r))
+
+    @app.get("/api/priorities/vendor/<token>/<int:aid>/detail")
+    def vendor_detail(token, aid):
+        v = vendor_of(token)
+        r = S["rows"].get(aid)
+        if v is None or r is None or r["vendor"] != v or r["dropped_at"]:
+            return jsonify(error="not_found"), 404
+        return jsonify(detail_payload(r, True))
 
     @app.post("/__test/assign/reset")
     def assign_reset():

@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, creative_priorities as cpr, priorities_assign as pas, priorities_launch_api as pla, priorities_manual as pman, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import auth, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, db, google as gg, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -211,6 +211,19 @@ def campaigns_all_platforms():
     return jsonify(res)
 
 
+@bp.get("/api/meta/breakdowns/coverage")
+def meta_breakdowns_coverage():
+    """What the nightly Meta breakdown pull holds, per set and level: status (ok / unsupported / error), first and last day, rows, last error (app/meta_breakdowns.py)."""
+    return jsonify(mbd.coverage(db.get_conn()))
+
+
+@bp.get("/api/meta/breakdowns")
+def meta_breakdowns():
+    """One breakdown set (set=age | age,gender | region ...) aggregated over start..end by its dimensions: spend, impressions, clicks, purchases, revenue, ROAS, cost per
+    purchase, cost per 1,000 impressions, click rate. Filters: level, product=<slug>, campaign_id. Meta-reported; reach is never summed."""
+    return jsonify(mbd.breakdown(db.get_conn(), request.args))
+
+
 @bp.get("/api/platforms/kpis")
 def platforms_kpis():
     """Totals strip of the All views: Total spend (Meta + Google), actual new-customer revenue counted once, Total NC ROAS (new-customer revenue / total spend over the
@@ -348,6 +361,18 @@ def google_trend():
     return jsonify({"channel": "google", "window_info": info, "compare_info": w.compare_info(gmeta), **res})
 
 
+@bp.get("/api/landing-pages")
+def landing_pages():
+    """Every landing page Meta ads send people to, with its current copy summary and its top ads by spend. window=7|30 (default 30), top=<1..25> (default 5). See docs/LANDING_PAGES.md."""
+    return jsonify(lpg.list_pages(db.get_conn(), request.args))
+
+
+@bp.get("/api/landing-pages/<int:page_id>")
+def landing_page(page_id: int):
+    """One landing page: the full stored copy of its current version, the list of versions, and its top ads (window=7|30, top=<1..25>)."""
+    return jsonify(lpg.page_detail(db.get_conn(), page_id, request.args))
+
+
 @bp.get("/api/promotions")
 def promotions():
     """Test to scale (Meta only): creatives moved from Testing to Scaling in the window, those launched and not scaled, the funnel by launch week and a chart series.
@@ -370,6 +395,16 @@ def promotions_scale():
 def priorities():
     """Creative priorities: the weekly one-sheeter (week=YYYY-MM-DD, default the latest snapshot) plus the list of stored weeks. See app/creative_priorities.py."""
     return jsonify(cpr.payload(db.get_conn(), _arg("week")))
+
+
+@bp.get("/api/priorities/lines/<int:line_id>/insights")
+def priorities_line_insights(line_id: int):
+    """Drill-down behind one block of a /priorities row panel: block=then_now|timeline|hooks|winners|performance|testing|live|ad, window=7|30|90|all (default 30), optional ad_id=<tracker row id>
+    for one ad. Top 10 ads on the line (name, spend, ROAS, purchases, launch date, hook), weekly trend, best hooks. Read-only, Meta basis. See app/priorities_insights.py."""
+    ad = _arg("ad_id")
+    if ad is not None and not ad.isdigit():
+        raise q.ApiError(400, "ad_id must be a number")
+    return jsonify(pins.insights(db.get_conn(), line_id, _arg("block") or "performance", _arg("window") or "30", int(ad) if ad else None))
 
 
 @bp.get("/api/priorities.csv")
@@ -558,16 +593,23 @@ def _json_body() -> dict:
 
 @bp.get("/api/priorities/assignments")
 def priorities_assignments():
-    """Production assignments: ?week=YYYY-MM-DD (snaps to its Monday) &vendor=<name> &include_closed=1 (adds launched and dropped) -> {rows, vendors, weeks}. Each row: the table fields plus stage,
+    """Production assignments: ?week=YYYY-MM-DD (snaps to its Monday) &vendor=<name> &include_closed=1 (adds launched and dropped) -> {rows, vendors, weeks, formats: [{code, name, length}]}. Each row: the table fields plus format_code / format_name / format_length (null when no format was chosen), stage,
     stage_label, tracker_status, suggested_concept_ids and ads [{concept_id, ad_family, status, launch_date, spend, roas, ad_url}]. See app/priorities_assign.py."""
     out = pas.list_assignments(db.get_conn(), week=_arg("week"), vendor=_arg("vendor"), include_closed=request.args.get("include_closed") in ("1", "true"))
     out["launch"] = pla.discovery()                  # {enabled, can_launch, dry_run}: the production page shows launch controls only when enabled (see app/priorities_launch_api.py)
     return jsonify(out)
 
 
+@bp.get("/api/priorities/assignments/<int:aid>/detail")
+def priorities_assignment_detail(aid: int):
+    """The detail panel of one assignment (loaded when its row is expanded): the concept's row from the latest priorities snapshot (or what the assignment stored, with current=false), the product baseline,
+    the definitions and up to 10 example ads by spend -> {assignment_id, current, snapshot_week, row, baselines, definitions, examples, examples_max, message}. See app/priorities_detail.py."""
+    return jsonify(pdt.assignment_detail(db.get_conn(), aid))
+
+
 @bp.post("/api/priorities/assignments")
 def priorities_assignments_create():
-    """Assign concepts: {keys: [row keys], snapshot_week?, vendor, for_week, note?} -> {created: [assignment], skipped: [{key, reason}]}. Rows come from the stored snapshot; duplicates are skipped."""
+    """Assign concepts: {keys: [row keys], snapshot_week?, vendor, for_week, note?, format_code?} -> {created: [assignment], skipped: [{key, reason}]}. Rows come from the stored snapshot; duplicates are skipped."""
     blocked = _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
     if blocked is not None:
         return blocked
@@ -576,7 +618,7 @@ def priorities_assignments_create():
 
 @bp.patch("/api/priorities/assignments/<int:aid>")
 def priorities_assignment_update(aid: int):
-    """Change any of vendor, for_week, note, brief_url, creative_url, tracker_concept_ids, ready, launched, dropped (the last three booleans set or clear their timestamp). There is no delete."""
+    """Change any of vendor, for_week, note, format_code (blank or null clears it), brief_url, creative_url, tracker_concept_ids, ready, launched, dropped (the last three booleans set or clear their timestamp). There is no delete."""
     blocked = _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
     if blocked is not None:
         return blocked
@@ -615,9 +657,15 @@ def priorities_vendor(token: str):
     return jsonify(pas.vendor_rows(db.get_conn(), token))
 
 
+@bp.get("/api/priorities/vendor/<token>/<int:aid>/detail")
+def priorities_vendor_detail(token: str, aid: int):
+    """The same detail panel for a vendor, GET only and only for that vendor's own assignment (another vendor's row, a dropped row or an unknown id is a 404): no ad page links, no manual notes."""
+    return jsonify(pdt.vendor_detail(db.get_conn(), token, aid))
+
+
 @bp.patch("/api/priorities/vendor/<token>/<int:aid>")
 def priorities_vendor_update(token: str, aid: int):
-    """A vendor edits their own row: {creative_url?, vendor_note?, ready?} only; another vendor's row is a 404."""
+    """A vendor edits their own row: {creative_url?, vendor_note?, ready?} only (the creative format is shown to them but is not theirs to change: 400); another vendor's row is a 404."""
     blocked = _views_write_guard("_vendor_limiter", "PRIORITIES_VENDOR_PER_MIN", 60)
     if blocked is not None:
         return blocked

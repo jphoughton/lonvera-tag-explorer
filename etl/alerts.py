@@ -76,6 +76,10 @@ JOBS = [
     JobSpec("auto_tag", NIGHTLY_H, False, fix="Railway > etl logs (new ads stay untagged until it runs)."),
     JobSpec("competitor_ads", WEEKLY_H, False, fix="Railway > etl logs of the last Sunday run (Ad Library scrape or classification)."),
     JobSpec("creative_priorities", WEEKLY_H, False, fix="Railway > etl logs of the last Sunday run."),
+    # the dedicated `breakdowns` service runs every 2 hours but writes no row in the quiet hours (12:30-15:30 UTC) or when another run holds the lock, and a run lasts up to 110 minutes:
+    # the longest normal gap between successful rows is about 5 h, so 6 h cadence = alert after 9 h. Silent until the first row exists.
+    JobSpec("meta_breakdowns", 6, False, fix="Railway > breakdowns service logs (cron every 2 hours; token rejected, or a rate limit that outlasted the waits). The backfill resumes by itself; `python -m etl.meta_breakdowns --auto` on the service restarts it."),
+    JobSpec("shopify_orders", NIGHTLY_H, False, fix="Railway > feeds service logs for etl.shopify_orders (ExpandFi login or warehouse query); the order tables keep the last good rows and shopify_orders.loaded_at shows how old they are."),
     JobSpec("backup", NIGHTLY_H, False, fix="Check the backup service logs on Railway and the last dump in the backup location (docs/ALERTS.md > backup)."),
     JobSpec("feeds", NIGHTLY_H, True, kind="heartbeat:feeds", fix="Railway > feeds service logs (cron 0 21 * * * UTC); `python -m etl.feeds verify` shows per-feed state."),
     JobSpec("live", HOURLY_H, True, kind="heartbeat:live", fix="Railway > live service logs; the Pacing cards fall back to typed values until it recovers."),

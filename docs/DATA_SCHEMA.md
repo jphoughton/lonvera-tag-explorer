@@ -103,14 +103,14 @@ One section per relation, grouped as in the table below. Column types, nullabili
 
 | Group | Relations |
 |---|---|
-| analytics schema: the read-only views (start here) | [`analytics.meta_ads`](#analyticsmeta_ads), [`analytics.meta_ad_daily`](#analyticsmeta_ad_daily), [`analytics.meta_adset_daily`](#analyticsmeta_adset_daily), [`analytics.meta_campaign_daily`](#analyticsmeta_campaign_daily), [`analytics.meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`analytics.meta_reach`](#analyticsmeta_reach), [`analytics.google_campaign_daily`](#analyticsgoogle_campaign_daily), [`analytics.platform_daily`](#analyticsplatform_daily), [`analytics.orders_daily`](#analyticsorders_daily), [`analytics.creative_tracker`](#analyticscreative_tracker), [`analytics.data_coverage`](#analyticsdata_coverage), [`analytics.etl_runs`](#analyticsetl_runs) |
-| Meta (Facebook / Instagram) ads: ads, campaigns, daily results | [`public.ad_daily`](#publicad_daily), [`public.meta_ads`](#publicmeta_ads), [`public.meta_campaigns`](#publicmeta_campaigns), [`public.meta_ad_lifetime`](#publicmeta_ad_lifetime), [`public.ad_lifetime`](#publicad_lifetime), [`public.meta_family_map`](#publicmeta_family_map) |
+| analytics schema: the read-only views (start here) | [`analytics.meta_ads`](#analyticsmeta_ads), [`analytics.meta_ad_daily`](#analyticsmeta_ad_daily), [`analytics.meta_adset_daily`](#analyticsmeta_adset_daily), [`analytics.meta_campaign_daily`](#analyticsmeta_campaign_daily), [`analytics.meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`analytics.meta_reach`](#analyticsmeta_reach), [`analytics.google_campaign_daily`](#analyticsgoogle_campaign_daily), [`analytics.platform_daily`](#analyticsplatform_daily), [`analytics.orders_daily`](#analyticsorders_daily), [`analytics.creative_tracker`](#analyticscreative_tracker), [`analytics.data_coverage`](#analyticsdata_coverage), [`analytics.etl_runs`](#analyticsetl_runs), [`analytics.meta_breakdown_daily`](#analyticsmeta_breakdown_daily) |
+| Meta (Facebook / Instagram) ads: ads, campaigns, daily results | [`public.ad_daily`](#publicad_daily), [`public.meta_ads`](#publicmeta_ads), [`public.meta_campaigns`](#publicmeta_campaigns), [`public.meta_ad_lifetime`](#publicmeta_ad_lifetime), [`public.ad_lifetime`](#publicad_lifetime), [`public.meta_family_map`](#publicmeta_family_map), [`public.meta_breakdown_daily`](#publicmeta_breakdown_daily), [`public.meta_breakdown_coverage`](#publicmeta_breakdown_coverage), [`public.meta_breakdown_progress`](#publicmeta_breakdown_progress), [`public.landing_pages`](#publiclanding_pages), [`public.landing_page_versions`](#publiclanding_page_versions), [`public.landing_page_ads`](#publiclanding_page_ads), [`public.landing_page_top_ads`](#publiclanding_page_top_ads) |
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
-| Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily) |
-| Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links), [`public.creative_launch_settings`](#publiccreative_launch_settings), [`public.creative_launch_pages`](#publiccreative_launch_pages), [`public.creative_launch_vendor_prefixes`](#publiccreative_launch_vendor_prefixes), [`public.creative_launch_drafts`](#publiccreative_launch_drafts), [`public.creative_launch_jobs`](#publiccreative_launch_jobs), [`public.creative_launch_ads`](#publiccreative_launch_ads), [`public.creative_launch_adsets`](#publiccreative_launch_adsets), [`public.creative_launch_audit`](#publiccreative_launch_audit) |
+| Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily), [`public.shopify_orders`](#publicshopify_orders), [`public.shopify_order_lines`](#publicshopify_order_lines) |
+| Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_formats`](#publiccreative_formats), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links), [`public.creative_launch_settings`](#publiccreative_launch_settings), [`public.creative_launch_pages`](#publiccreative_launch_pages), [`public.creative_launch_vendor_prefixes`](#publiccreative_launch_vendor_prefixes), [`public.creative_launch_drafts`](#publiccreative_launch_drafts), [`public.creative_launch_jobs`](#publiccreative_launch_jobs), [`public.creative_launch_ads`](#publiccreative_launch_ads), [`public.creative_launch_adsets`](#publiccreative_launch_adsets), [`public.creative_launch_audit`](#publiccreative_launch_audit) |
 | Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.competitor_brands`](#publiccompetitor_brands), [`public.competitor_ads`](#publiccompetitor_ads), [`public.competitor_concept_class`](#publiccompetitor_concept_class), [`public.competitor_concepts`](#publiccompetitor_concepts), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
-| Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta) |
+| Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta), [`public.api_keys`](#publicapi_keys), [`public.klaviyo_campaigns`](#publicklaviyo_campaigns), [`public.klaviyo_flows`](#publicklaviyo_flows), [`public.klaviyo_flow_messages`](#publicklaviyo_flow_messages), [`public.klaviyo_daily`](#publicklaviyo_daily), [`public.klaviyo_message_content`](#publicklaviyo_message_content), [`public.klaviyo_message_performance`](#publicklaviyo_message_performance), [`public.landing_page_ad_checks`](#publiclanding_page_ad_checks), [`public.brain_keys`](#publicbrain_keys), [`public.brain_audit`](#publicbrain_audit) |
 | Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow) | [`public.proj_feed_config`](#publicproj_feed_config), [`public.proj_feed_runs`](#publicproj_feed_runs), [`public.proj_feed_attempts`](#publicproj_feed_attempts), [`public.proj_feed_verify`](#publicproj_feed_verify), [`public.proj_feed_verify_runs`](#publicproj_feed_verify_runs), [`public.proj_feed_levers`](#publicproj_feed_levers), [`public.proj_feed_orders`](#publicproj_feed_orders), [`public.proj_feedx_orders`](#publicproj_feedx_orders), [`public.proj_feed_amazon`](#publicproj_feed_amazon), [`public.proj_feedx_amazon`](#publicproj_feedx_amazon), [`public.proj_feed_platform`](#publicproj_feed_platform), [`public.proj_feedx_platform`](#publicproj_feedx_platform), [`public.proj_feed_attribution`](#publicproj_feed_attribution), [`public.proj_feedx_attribution`](#publicproj_feedx_attribution), [`public.proj_feed_traffic`](#publicproj_feed_traffic), [`public.proj_feedx_traffic`](#publicproj_feedx_traffic), [`public.proj_feed_meta_reach`](#publicproj_feed_meta_reach), [`public.proj_feedx_meta_reach`](#publicproj_feedx_meta_reach), [`public.proj_feed_product_reach`](#publicproj_feed_product_reach), [`public.proj_feedx_product_reach`](#publicproj_feedx_product_reach), [`public.proj_feed_nc_product`](#publicproj_feed_nc_product), [`public.proj_feedx_nc_product`](#publicproj_feedx_nc_product), [`public.proj_feed_anyclick`](#publicproj_feed_anyclick), [`public.proj_feedx_anyclick`](#publicproj_feedx_anyclick), [`public.proj_feed_bids`](#publicproj_feed_bids), [`public.proj_feedx_bids`](#publicproj_feedx_bids), [`public.proj_feed_meta_day`](#publicproj_feed_meta_day), [`public.proj_feed_meta_product`](#publicproj_feed_meta_product), [`public.proj_pacing_hourly`](#publicproj_pacing_hourly), [`public.proj_pacing_setting`](#publicproj_pacing_setting), [`public.proj_units_daily`](#publicproj_units_daily), [`public.proj_feedx_units_daily`](#publicproj_feedx_units_daily), [`public.proj_demand_snapshot`](#publicproj_demand_snapshot), [`public.proj_feedx_demand_snapshot`](#publicproj_feedx_demand_snapshot), [`public.proj_feedx_intl_nonus_daily`](#publicproj_feedx_intl_nonus_daily), [`public.proj_feed_nc_hourly`](#publicproj_feed_nc_hourly), [`public.proj_live_today_snapshots`](#publicproj_live_today_snapshots), [`public.proj_amazon_mtd_snapshots`](#publicproj_amazon_mtd_snapshots), [`public.proj_feedx_intl_estimate`](#publicproj_feedx_intl_estimate), [`public.proj_meta_spend_monthly`](#publicproj_meta_spend_monthly) |
 | Projection engine tables (finance, inventory, cohorts; NOT exposed in analytics) | [`public.proj_scenarios`](#publicproj_scenarios), [`public.proj_series`](#publicproj_series), [`public.proj_actuals`](#publicproj_actuals), [`public.proj_audit`](#publicproj_audit), [`public.proj_scenario_history`](#publicproj_scenario_history), [`public.proj_refresh_runs`](#publicproj_refresh_runs), [`public.proj_cohorts`](#publicproj_cohorts), [`public.proj_cohort_cum`](#publicproj_cohort_cum), [`public.proj_cohort_uploads`](#publicproj_cohort_uploads), [`public.proj_curve_goal`](#publicproj_curve_goal), [`public.proj_pnl_drivers`](#publicproj_pnl_drivers), [`public.proj_pnl_settings`](#publicproj_pnl_settings), [`public.proj_pnl_cogs_sku`](#publicproj_pnl_cogs_sku), [`public.proj_pnl_qb_map`](#publicproj_pnl_qb_map), [`public.proj_pnl_vendors`](#publicproj_pnl_vendors), [`public.proj_upload_history`](#publicproj_upload_history), [`public.proj_po`](#publicproj_po), [`public.proj_fba_transfer`](#publicproj_fba_transfer), [`public.proj_vendor_lead`](#publicproj_vendor_lead), [`public.proj_vendor_cogs`](#publicproj_vendor_cogs), [`public.proj_product_cost`](#publicproj_product_cost), [`public.proj_reorder_param`](#publicproj_reorder_param), [`public.proj_stock_snapshot`](#publicproj_stock_snapshot), [`public.proj_supply_history`](#publicproj_supply_history), [`public.proj_units_monthly`](#publicproj_units_monthly), [`public.proj_units_country`](#publicproj_units_country), [`public.proj_units_loads`](#publicproj_units_loads) |
 
@@ -780,6 +780,54 @@ SELECT id, job, started_at, status, data_through, rows_written FROM analytics.et
 SELECT id, job, started_at, error FROM analytics.etl_runs WHERE status = 'failed' AND started_at > now() - interval '7 days' ORDER BY id DESC;
 ```
 
+### analytics.meta_breakdown_daily
+
+*view*
+
+**Purpose.** Meta results split by ten everyday breakdowns (audience segment, age, gender, age x gender, country, region, publisher platform, platform position, device platform, hour of day), one row per day x ad x breakdown x value. Meta-reported numbers.
+
+- **Grain:** one row per (day, account, ad_id, breakdown, value); NO aggregation above ad
+- **Source:** public.meta_breakdown_daily (etl.meta_breakdowns, Meta Insights API) joined to the ten breakdown names
+- **Refresh:** nightly, trailing 7 days re-pulled; older windows come from the backfill (newest first)
+- **Coverage:** first and last day per breakdown: min(day) / max(day) over this view (a backfill moves first_day back window by window, up to 365 days; a breakdown Meta only serves for a shorter period stops earlier); ad_id and adset_id are NULL only where Meta refused a breakdown at ad level
+- **Caveat:** Every one of the ten breakdowns is requested at AD level; ad_id and adset_id are NULL only for a breakdown Meta refused at ad level (then campaign_id is set and ad_id and adset_id are NULL; at account level campaign_id is NULL too). Query this view with ad_id IS NOT NULL (or read public.meta_breakdown_coverage: status and level per breakdown) to see which breakdowns have ad-level rows.
+- **Caveat:** purchases and purchase_value are Meta-reported (count returning customers); they are not Upstack new customers and must not be mixed with them in one ratio.
+- **Caveat:** reach and unique_outbound_clicks are per row (one ad, one day, one value): never sum them across days, ads or values. spend, impressions, link_clicks, purchases and purchase_value are additive within one breakdown.
+- **Caveat:** Different breakdowns are different cuts of the same spend: sum within one breakdown only, never across breakdowns.
+- **Caveat:** value for age_gender is 'age|gender' (for example '25-34|female'); hourly values are Meta's advertiser-time-zone hour buckets ('00:00:00 - 00:59:59').
+- **Caveat:** Meta can return purchases for a day with no spend (view-through): keep those rows.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date |  | Calendar day as returned by Meta (Lonvera Main Pacific, Lonvera BackUp Eastern). |
+| `account` | text |  | Lonvera Main or Lonvera BackUp. |
+| `campaign_id` | text |  | Meta campaign id (NULL only for a breakdown held at account level). |
+| `adset_id` | text |  | Meta ad set id (NULL only for a breakdown Meta refused at ad level). |
+| `ad_id` | text |  | Meta ad id (NULL only for a breakdown Meta refused at ad level: campaign or account rows). |
+| `breakdown` | text |  | audience_segment (from user_segment_key) \| age \| gender \| age_gender \| country \| region \| publisher_platform \| platform_position \| device_platform \| hourly (advertiser time zone). All ten are requested at ad level. |
+| `value` | text |  | The text value of the breakdown ('25-34', 'female', 'US', 'facebook', '25-34\|female' for age_gender, an hour bucket for hourly). |
+| `spend` | numeric(14,2) |  | Meta spend, dollars. |
+| `impressions` | bigint |  | Meta impressions. |
+| `reach` | bigint |  | Accounts reached on the day within the row (not additive; NULL when Meta would not return it with the breakdown). |
+| `link_clicks` | bigint |  | Meta link clicks (inline_link_clicks). |
+| `unique_outbound_clicks` | bigint |  | Unique outbound clicks within the row (not additive). |
+| `purchases` | numeric(12,2) |  | Meta-reported purchases. |
+| `purchase_value` | numeric(14,2) |  | Meta-reported purchase value, dollars. |
+
+*Spend and Meta ROAS by age, last 7 complete days*
+
+```sql
+SELECT value AS age, round(sum(spend), 2) AS spend, sum(purchases) AS purchases, round(sum(purchase_value) / NULLIF(sum(spend), 0), 2) AS meta_roas
+FROM analytics.meta_breakdown_daily WHERE breakdown = 'age' AND day >= current_date - 7 AND day < current_date GROUP BY 1 ORDER BY 1;
+```
+
+*Which breakdowns have ad-level rows, and how far back each goes*
+
+```sql
+SELECT breakdown, ad_id IS NOT NULL AS ad_level, min(day) AS first_day, max(day) AS last_day, count(*) AS rows
+FROM analytics.meta_breakdown_daily GROUP BY 1, 2 ORDER BY 1, 2;
+```
+
 ## Meta (Facebook / Instagram) ads: ads, campaigns, daily results
 
 ### public.ad_daily
@@ -983,6 +1031,209 @@ SELECT l.ad_id, a.ad_name, round(l.spend) AS spend, round(l.conv_value / NULLIF(
 ```sql
 SELECT coalesce(rule, '(unmatched)') AS rule, count(*) AS families FROM meta_family_map GROUP BY 1 ORDER BY 2 DESC;
 ```
+
+### public.meta_breakdown_daily
+
+*table*
+
+**Purpose.** Meta Ads results split by one breakdown set (age, gender, country, region, dma, placement, device, hour of day, creative asset ...), pulled at AD grain from the Insights API for both ad accounts. Partitioned by month on day.
+
+- **Grain:** primary key `(day, account_id, level, entity_id, breakdown_set, dims_key)`; one row per day x ad account x level (ad; campaign or account only for a set Meta refused at ad level) x entity x breakdown set x dimension values
+- **Source:** Meta Marketing API Insights (read only), etl.meta_breakdowns
+- **Refresh:** every 2 hours by the dedicated `breakdowns` service: the backfill (newest 30-day window first) until finished, then the trailing 7 days once a day
+- **Coverage:** see meta_breakdown_coverage for the first and last day and the level per set
+- **Caveat:** purchases and purchase_value are Meta-reported (they count returning customers, not Upstack new customers).
+- **Caveat:** Reach and unique outbound clicks are per row (one ad, one day, one dimension value): never sum them across days, ads or sets.
+- **Caveat:** Action breakdown sets (action_device, action_destination ...) split only purchases and purchase_value; their spend, impressions and click columns are NULL.
+- **Caveat:** Rows of different breakdown sets are different cuts of the same spend: never add across sets.
+- **Caveat:** Meta can return a row for a day with purchases but no spend (view-through), so keep rows with zero spend.
+- **Caveat:** Up to three dimension values per row sit in dim1, dim2, dim3 in the order of the names in breakdown_set (age,gender: dim1 = age, dim2 = gender); asset breakdowns store the JSON text Meta returned.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date | no | Calendar day as returned by Meta (each ad account buckets days in its own time zone: Lonvera Main Pacific, Lonvera BackUp Eastern). |
+| `account_id` | text | no | Meta ad account id with the act_ prefix. |
+| `level` | text | no | Grain of the entity: ad (the default for every set), campaign or account (only for a set Meta refused at the finer level). |
+| `entity_id` | text | no | Ad id, campaign id or ad account id, depending on level. |
+| `campaign_id` | text | yes | Campaign of the entity (NULL at account level). |
+| `adset_id` | text | yes | Ad set of the entity (ad level only). |
+| `breakdown_set` | text | no | Comma-separated breakdown names that were requested together, for example age,gender or publisher_platform,platform_position,impression_device. |
+| `dim1` | text | yes | Value of the first name in breakdown_set (text). |
+| `dim2` | text | yes | Value of the second name in breakdown_set, NULL when the set has one name. |
+| `dim3` | text | yes | Value of the third name in breakdown_set, NULL when the set has fewer than three. |
+| `dims_key` | text | no | Stable text form of the dimension values (names sorted, name=value joined with a vertical bar, percent-escaped) used in the primary key. |
+| `spend` | numeric(14,2) | yes | Meta spend in account currency (US dollars). NULL for action breakdown sets. |
+| `impressions` | bigint | yes | Meta impressions. NULL for action breakdown sets. |
+| `reach` | bigint | yes | Accounts reached on that day within the row. Not additive across days, ads or sets. NULL for action breakdown sets or when Meta would not return it with the breakdown. |
+| `clicks` | bigint | yes | All clicks (Meta clicks field), not only link clicks. NULL for action breakdown sets. |
+| `inline_link_clicks` | bigint | yes | Link clicks (Meta inline_link_clicks). NULL for action breakdown sets. |
+| `outbound_clicks` | bigint | yes | Outbound clicks (clicks that left Meta; Meta outbound_clicks, action type outbound_click). NULL for action breakdown sets. |
+| `unique_outbound_clicks` | bigint | yes | Unique outbound clicks within the row (Meta unique_outbound_clicks). Not additive across days or ads. NULL for action breakdown sets. |
+| `purchases` | numeric(12,2) | yes | Meta-reported purchases (omni_purchase, else purchase, else pixel purchase), same rule as ad_daily. |
+| `purchase_value` | numeric(14,2) | yes | Meta-reported purchase value (same action type rule), gross dollars. |
+| `pulled_at` | timestamptz | no | When this row was last written by the pull. |
+
+### public.meta_breakdown_coverage
+
+*table*
+
+**Purpose.** What the breakdown pull holds per breakdown set and level: whether Meta accepted the request, the first and last day held, the row count and the last error.
+
+- **Grain:** primary key `(breakdown_set, level)`; one row per breakdown set x level
+- **Source:** etl.meta_breakdowns (written after every window)
+- **Refresh:** nightly and after every backfill window
+- **Coverage:** from the first run
+- **Caveat:** A set Meta refuses at ad level gets a status unsupported row at level ad (with the reason in last_error) and is pulled at campaign, then account level; each level has its own row.
+- **Caveat:** status unsupported is asked again every 14 days. status error means a transient or unexpected failure, so the set may have gaps.
+- **Caveat:** first_day, last_day and rows are read from meta_breakdown_daily after each window, so during a backfill first_day moves back window by window.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `breakdown_set` | text | no | Breakdown set name, as in meta_breakdown_daily.breakdown_set. |
+| `level` | text | no | Level the set was requested at: ad, campaign or account. |
+| `status` | text | no | ok = Meta accepted it and rows are held; unsupported = Meta refused the request at this level; error = failed for another reason (see last_error). |
+| `first_day` | date | yes | Earliest day held in meta_breakdown_daily for this set and level. |
+| `last_day` | date | yes | Latest day held in meta_breakdown_daily for this set and level. |
+| `last_error` | text | yes | Scrubbed text of the last refusal or failure; NULL when the last check was clean. |
+| `rows` | bigint | no | Rows held in meta_breakdown_daily for this set and level. |
+| `checked_at` | timestamptz | no | When the set was last requested. |
+
+### public.meta_breakdown_progress
+
+*table*
+
+**Purpose.** Resume bookkeeping of the breakdown backfill: one row per finished window of one breakdown set at one level for one ad account, so running the same backfill again skips what is done.
+
+- **Grain:** primary key `(breakdown_set, level, account_id, window_start, window_end)`; one row per breakdown set x level x ad account x window
+- **Source:** etl.meta_breakdowns (backfill and --auto mode; the plain trailing-days pull does not write it)
+- **Refresh:** written as each window x set finishes
+- **Coverage:** backfill windows and the three bookkeeping rows
+- **Caveat:** A window is skipped on a rerun when a recorded window covers it. The backfill anchor is stored here on the first --auto run, so a resume after midnight needs no arguments.
+- **Caveat:** Three bookkeeping rows have breakdown_set __anchor__ (window_start = oldest day, window_end = the backfill's --until day, rows = max days), __backfill_done__ (the backfill finished) and __caught_up__ (window_end = the last day the daily catch-up covered); level and account_id are '-'.
+- **Caveat:** Safe to delete (or run with --restart): the next backfill simply starts over and pulls again (upserts).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `breakdown_set` | text | no | Breakdown set name. |
+| `level` | text | no | Level the window was pulled at. |
+| `account_id` | text | no | Meta ad account id. |
+| `window_start` | date | no | First day of the finished window (the oldest day for the __anchor__ row). |
+| `window_end` | date | no | Last day of the finished window. |
+| `rows` | bigint | no | Rows written for the window (both accounts are separate rows). |
+| `done_at` | timestamptz | no | When the window finished. |
+
+### public.landing_pages
+
+*table*
+
+**Purpose.** Every landing page (sales page, advertorial, product page, funnel step) that at least one Meta ad sends people to, with when we last read it.
+
+- **Grain:** primary key `(id)`; one row per normalised page address (id is the primary key; url is unique)
+- **Source:** etl/landing_pages.py: the destination links found on Meta ad creatives
+- **Refresh:** each run of python -m etl.landing_pages (not scheduled yet; see docs/LANDING_PAGES.md)
+- **Coverage:** pages of ads that had spend in the window of the first run onward
+- **Caveat:** The address is normalised: https, lower-case host, tracking parameters and the part after # removed, no trailing slash. Parameters that change which page loads are kept.
+- **Caveat:** current_version_id points at the newest landing_page_versions row whose copy matches the last read (the copy can go back to an older version if the page is changed back).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Primary key (bigserial). |
+| `url` | text | no | Normalised page address (unique). |
+| `host` | text | no | Host name of the page, lower case. |
+| `path` | text | no | Path and any kept query string of the page. |
+| `first_seen_at` | timestamptz | no | When an ad was first found pointing at this page. |
+| `last_seen_at` | timestamptz | no | When an ad was last found pointing at this page. |
+| `last_fetched_at` | timestamptz | yes | When the page was last read (successfully or not); NULL until the first read. |
+| `last_status` | integer | yes | HTTP status of the last successful read; NULL before the first. |
+| `last_error` | text | yes | Short scrubbed error text when the last read failed; NULL after a good read. |
+| `current_version_id` | bigint | yes | landing_page_versions.id of the copy seen on the last good read. |
+| `active` | boolean | no | False stops the page being read again; set by hand, nothing sets it. |
+
+### public.landing_page_versions
+
+*table*
+
+**Purpose.** The copy of a landing page as it was on a given read: title, description, ordered text blocks with heading level, buttons, prices, guarantee sentences, review snippets and image alt text.
+
+- **Grain:** primary key `(id)`; one row per (landing page, content hash): a new row exists only when the copy changed (id is the primary key)
+- **References:** `(landing_page_id)` -> `public.landing_pages(id)`
+- **Source:** etl/landing_pages.py: a plain public web request per page, parsed with the standard library (headless Chromium for pages built in the browser)
+- **Refresh:** each run of python -m etl.landing_pages; a row is added only when the text hash changes
+- **Coverage:** from the first read of each page
+- **Caveat:** content_hash covers the text only (title, description, text blocks, button text, image alt text), not image addresses or scripts, so changing a picture without changing its alt text is not a new version.
+- **Caveat:** Pages built in the browser have little text in the server HTML; those are read again with Chromium and rendered_in_browser is true. Text shown only after a click or inside an iframe is not captured.
+- **Caveat:** fetched_at is when this exact copy was first seen, not when it was last confirmed (landing_pages.last_fetched_at has that).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Primary key (bigserial). |
+| `landing_page_id` | bigint | no | Page this copy belongs to (landing_pages.id, foreign key). |
+| `content_hash` | text | no | sha256 of the page text (see caveats); unique per page. |
+| `fetched_at` | timestamptz | no | When this copy was first seen. |
+| `http_status` | integer | yes | HTTP status of the read that produced this copy. |
+| `final_url` | text | yes | Address after redirects. |
+| `title` | text | yes | Page title (the title tag, else the Open Graph title). |
+| `meta_description` | text | yes | Meta description (else the Open Graph description). |
+| `rendered_in_browser` | boolean | no | True when the copy came from headless Chromium because the server HTML held almost no text. |
+| `word_count` | integer | no | Words in the page text. |
+| `blocks` | jsonb | no | Ordered text blocks as JSON: [{i, tag, level, text}], level is the heading level 1 to 6 or null, tag is the nearest label tag (h1..h6, p, li, blockquote, button, a, text). |
+| `ctas` | jsonb | no | Button and call to action text as JSON: [{text, href, tag}]. |
+| `prices` | jsonb | no | Dollar amounts found in the text as JSON: [{price, context}]. |
+| `guarantees` | jsonb | no | Sentences that mention a guarantee, refund, money back or risk free, as a JSON array of strings. |
+| `reviews` | jsonb | no | Review or testimonial snippets (quote blocks, star lines, structured data), as a JSON array of strings. |
+| `images` | jsonb | no | Image alt text as JSON: [{alt, src}]. |
+| `full_text` | text | no | All text blocks joined by new lines, for searching. |
+
+### public.landing_page_ads
+
+*table*
+
+**Purpose.** Which Meta ad sends people to which landing page, and how that link was found.
+
+- **Grain:** primary key `(ad_id, landing_page_id)`; one row per (ad, landing page) (ad_id + landing_page_id is the primary key)
+- **References:** `(landing_page_id)` -> `public.landing_pages(id)`
+- **Source:** etl/landing_pages.py: the Meta ad creative, the Page post an ad reuses, or the ad preview
+- **Refresh:** each run of python -m etl.landing_pages (new ads with spend only; --refresh-ads looks at all again)
+- **Coverage:** ads with spend in the 30 days before each run, from the first run onward
+- **Caveat:** An ad whose creative lists several links has one row per page. Its spend counts in full under each page in landing_page_top_ads, so spend must not be added across pages.
+- **Caveat:** ad_id is not a foreign key to meta_ads because ads can be deleted in Meta.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `ad_id` | text | no | Meta ad id. |
+| `landing_page_id` | bigint | no | landing_pages.id (foreign key). |
+| `raw_url` | text | no | The link exactly as Meta returned it (with tracking parameters). |
+| `source` | text | no | How the link was found: 'creative' (the ad's own creative), 'post' (the Page post the ad reuses), or 'preview' (the ad preview). |
+| `first_seen_date` | date | no | Date the ad was first found with this link. |
+| `last_seen_date` | date | no | Date the link was last confirmed. |
+
+### public.landing_page_top_ads
+
+*view*
+
+**Purpose.** The ads that drive each landing page, ranked by spend over the last 7 and the last 30 days, with Meta-reported purchases, revenue and ROAS (revenue divided by spend).
+
+- **Grain:** one row per (landing page, window_days, ad): window_days is 7 or 30; only ads with spend in the window appear
+- **Source:** public.landing_pages, public.landing_page_ads, public.ad_daily (Meta-reported) and public.meta_ads (name)
+- **Refresh:** live view; the ad to page map moves with each run of python -m etl.landing_pages, spend with the nightly Meta pull
+- **Coverage:** ads mapped to a page by the landing page job
+- **Caveat:** Purchases and revenue are what Meta reports (all customers), not Upstack new-customer numbers; join analytics.meta_ad_daily on ad_id when you need those.
+- **Caveat:** An ad that lists several links appears under each page with its full spend: do not add spend across pages.
+- **Caveat:** The window is the last N Pacific calendar days including today, which is a partial day.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `landing_page_id` | bigint |  | landing_pages.id. |
+| `url` | text |  | Normalised page address. |
+| `window_days` | integer |  | 7 or 30. |
+| `ad_id` | text |  | Meta ad id. |
+| `ad_name` | text |  | Ad name from meta_ads; NULL when the ad is not there. |
+| `campaign_id` | text |  | Campaign id from meta_ads; NULL when the ad is not there. |
+| `spend` | numeric |  | Spend in the window, dollars (Meta). |
+| `purchases` | numeric |  | Meta-reported purchases in the window. |
+| `revenue` | numeric |  | Meta-reported purchase revenue in the window, dollars. |
+| `roas` | numeric |  | revenue divided by spend, 3 decimals. |
+| `rank_by_spend` | bigint |  | 1 = biggest spender for this page and window. |
 
 ## Upstack attribution of Meta orders (the Meta | Upstack switch)
 
@@ -1459,6 +1710,82 @@ GROUP BY 1 ORDER BY 2 DESC;
 SELECT * FROM upstack_orders_daily ORDER BY day DESC LIMIT 7;
 ```
 
+### public.shopify_orders
+
+*table*
+
+**Purpose.** Order-level Shopify orders of the last 120 days (rolling), one row per order, with money, status, source, discount codes and ship-to country / region. The place to answer order-level questions (refunds, rebills, gifts, discounts) that the daily roll-ups hide.
+
+- **Grain:** primary key `(order_id)`; one row per Shopify order (order_id is the primary key)
+- **Source:** ExpandFi warehouse, merchant 1452, table shopify_orders (read-only), loaded by python -m etl.shopify_orders (etl/shopify_orders.py); fields come from the order's raw Shopify JSON
+- **Refresh:** nightly (feeds service 21:00 UTC): the trailing 14 days are re-pulled every run, the whole 120 days every Sunday (Pacific) and on the first load; orders older than 120 days are deleted
+- **Coverage:** orders processed in the last 120 Pacific days, including today so far; the warehouse trails Shopify by minutes to hours
+- **Caveat:** No personal data is stored: no email, name, address or phone. customer_id is the Shopify customer id (NULL when the order has none); the ship-to is country and region only.
+- **Caveat:** order_date is the Pacific day of processed_at. The warehouse's own created_at is the sync time of a September backfill and is NOT used.
+- **Caveat:** is_new_customer = this is the customer's first Shopify order EVER (customer key = Shopify customer id, else the lower-cased email, as in the new-customer revenue feed), judged over the whole warehouse history, not only the 120 days.
+- **Caveat:** refunded_amount = total_price - current_total_price (never below 0): Shopify's current total already nets refunds and order edits, and the warehouse's refund transactions are empty for many refunds. It is a net-down amount, not a refund ledger.
+- **Caveat:** Orders restated after they fall out of the trailing 14 days are picked up by the Sunday full 120-day pull, so a late refund can lag up to a week.
+- **Caveat:** is_rebill = source_name is subscription_contract_checkout_one. is_trybe_gift = the order carries the tag trybe (the $0 gift orders). Gift, test and cancelled orders are kept and flagged, never dropped; filter on the flags.
+- **Caveat:** Revenue by product is NOT the sum of total_price by product: use shopify_order_lines.line_net for a split.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `order_id` | bigint | no | Shopify order id (primary key). Not the ExpandFi row id. |
+| `order_number` | text | yes | Human-readable order number as the store shows it. |
+| `processed_at` | timestamptz | no | When the order was processed (UTC instant). |
+| `order_date` | date | no | Pacific calendar day of processed_at; the day to group by. |
+| `customer_id` | text | yes | Shopify customer id; NULL when the order has none. No other customer data is stored. |
+| `is_new_customer` | boolean | no | True when this is the customer's first Shopify order ever. |
+| `currency` | text | yes | Order currency code (shop currency). |
+| `subtotal_price` | numeric(12,2) | yes | Order subtotal after discounts, before shipping and tax. |
+| `total_discounts` | numeric(12,2) | yes | Sum of all discounts on the order. |
+| `shipping_price` | numeric(12,2) | yes | Shipping charged (shop money). |
+| `total_tax` | numeric(12,2) | yes | Tax charged. |
+| `total_price` | numeric(12,2) | yes | Order total at checkout: subtotal + shipping + tax. |
+| `current_total_price` | numeric(12,2) | yes | Order total after refunds and edits, as Shopify reports it now. |
+| `refunded_amount` | numeric(12,2) | yes | total_price minus current_total_price, never below 0 (see the caveat). |
+| `financial_status` | text | yes | Shopify financial status (paid, refunded, partially_refunded, voided, ...). |
+| `fulfillment_status` | text | yes | Shopify fulfillment status; NULL = unfulfilled. |
+| `source_name` | text | yes | Shopify source name (web, subscription_contract_checkout_one for rebills, tiktok, or an app id). |
+| `app_id` | text | yes | Shopify app id that created the order; NULL when none. |
+| `tags` | text | yes | Order tags, comma separated, as Shopify stores them. |
+| `discount_codes` | text | yes | Discount codes used, comma separated; NULL when none. |
+| `ship_country` | text | yes | Ship-to ISO country code; NULL when the order has no shipping address. |
+| `ship_region` | text | yes | Ship-to province / state code; NULL when none. |
+| `cancelled_at` | timestamptz | yes | When the order was cancelled; NULL when it was not. |
+| `is_cancelled` | boolean | no | True when cancelled_at is set. |
+| `is_test` | boolean | no | True for a Shopify test order. |
+| `is_rebill` | boolean | no | True for a subscription rebill (source_name subscription_contract_checkout_one). |
+| `is_trybe_gift` | boolean | no | True when the order has the tag trybe (free sample / gift orders). |
+| `line_count` | integer | no | Number of line items stored in shopify_order_lines for this order. |
+| `loaded_at` | timestamptz | no | When this row was last written by the loader. |
+
+### public.shopify_order_lines
+
+*table*
+
+**Purpose.** Line items of shopify_orders: one row per product line with SKU, product bucket, quantity, price and discount.
+
+- **Grain:** primary key `(order_id, line_no)`; one row per order line (order_id, line_no is the primary key; line_no counts from 1 in the order's own line order)
+- **References:** `(order_id)` -> `public.shopify_orders(order_id)`
+- **Source:** the line_items array of the same ExpandFi shopify_orders rows, loaded together with shopify_orders by python -m etl.shopify_orders
+- **Refresh:** with shopify_orders (nightly 21:00 UTC); a re-pulled order has its lines replaced, an order that leaves the 120-day window takes its lines with it
+- **Coverage:** the same orders as shopify_orders
+- **Caveat:** product is mapped from the SKU prefix: LV-VBULL = VitaBull, LV-BLC180 and DPCD1-GN180001 = BeefLiver, DPCD1-GN187001 = Boneflex, LV-VBELLE = VitaBelle, DPCD1-GN179001 = VitaFlow, anything else = Other.
+- **Caveat:** line_net = max(price x quantity - line_discount, 0); the order's total_price also carries shipping and tax and order-level discounts, so the lines do not add up to it.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `order_id` | bigint | no | Shopify order id; foreign key to shopify_orders.order_id (cascade delete). |
+| `line_no` | integer | no | Position of the line in the order, from 1. |
+| `sku` | text | yes | SKU as sold; NULL when the line has none. |
+| `product_name` | text | yes | Line title as it shows on the order. |
+| `product` | text | no | Product bucket mapped from the SKU (VitaBull, BeefLiver, Boneflex, VitaBelle, VitaFlow, Other). |
+| `quantity` | integer | no | Units on the line. |
+| `price` | numeric(12,2) | yes | Unit price before discount. |
+| `line_discount` | numeric(12,2) | yes | Total discount on the line (all units). |
+| `line_net` | numeric(12,2) | yes | price x quantity minus line_discount, never below 0. |
+
 ## Creative tracker, tags, hooks, content
 
 ### public.products
@@ -1831,6 +2158,7 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 **Purpose.** Production assignments from /priorities: a concept given to a vendor to make for a week (Assign to vendor), with the brief link, the creative link, the stage timestamps and the Creative Tracker Concept IDs of the ads that came out of it. The concept itself stays in the ideation list unchanged.
 
 - **Grain:** primary key `(id)`; one row per concept x vendor x week (open rows are unique; a dropped row can be assigned again)
+- **References:** `(format_code)` -> `public.creative_formats(code)`
 - **Source:** the /priorities and /priorities/production pages and the vendor link page via /api/priorities/assignments (app/priorities_assign.py)
 - **Refresh:** on demand (a person assigns, adds links, marks ready or launched, drops; a vendor adds a creative link and a note)
 - **Coverage:** from the day the migration was deployed
@@ -1868,6 +2196,27 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `updated_at` | timestamptz | no | When it was last changed. |
 | `created_by` | text | yes | Who created the assignment: the signed-in user name; NULL when none. |
 | `updated_by` | text | yes | Who last changed it: the signed-in user name, or vendor:<name> for a write made on a vendor link page; NULL when none. |
+| `format_code` | text | yes | Creative format chosen when assigning or later (creative_formats.code, foreign key); NULL when none was chosen. Set by a signed-in user only; a vendor sees it but cannot change it. |
+
+### public.creative_formats
+
+*table*
+
+**Purpose.** The creative formats a production assignment can be made in (for example Whiteboard explainer): a short list that Josh picks from when assigning a concept to a vendor. Production side only; not part of the concept taxonomy.
+
+- **Grain:** primary key `(code)`; one row per format (code is the primary key)
+- **Source:** seeded by migration 204; edited by hand in the database (no page edits it); read by /api/priorities/assignments (app/priorities_assign.py)
+- **Refresh:** on demand (a format is added or retired by hand)
+- **Coverage:** six formats, F1 to F6, from the day the migration was deployed
+- **Caveat:** A format with active = false stays on the assignments that already use it but can no longer be chosen.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `code` | text | no | Short code (primary key), F1 to F6. |
+| `name` | text | no | What the format is, shown in the pick list. |
+| `length` | text | yes | Typical running time, as text (for example '45 to 90s'); NULL when not set. |
+| `sort` | integer | no | Order in the pick list (ascending). |
+| `active` | boolean | no | True while the format can be chosen on a new assignment. |
 
 ### public.creative_priorities_vendor_links
 
@@ -3023,6 +3372,289 @@ SELECT id, job, started_at, status, data_through FROM etl_runs ORDER BY id DESC 
 ```sql
 SELECT key, left(value, 80) AS value, updated_at FROM app_meta WHERE key NOT LIKE 'reliability:%' ORDER BY key;
 ```
+
+### public.api_keys
+
+*table*
+
+**Purpose.** Scoped API keys for the Tag Explorer API: one row per key handed to a colleague. A key can read everything the app serves and can only assign items on the production board.
+
+- **Grain:** primary key `(id)`; one row per key (id is the primary key; name and key_hash are each unique)
+- **Source:** python -m etl.api_keys create / revoke (etl/api_keys.py); last_used_at is touched by the web app (app/api_keys.py)
+- **Refresh:** on demand (a person creates or revokes a key; last_used_at moves at most once a minute while a key is in use)
+- **Coverage:** from the day the migration was deployed
+- **Caveat:** Only the sha256 hash of the key is stored. The key itself is shown once when it is made and cannot be recovered; make a new key and revoke the old one instead.
+- **Caveat:** A revoked key is never deleted, so the history stays. Assignments made with a key carry created_by / updated_by 'key:<name>' in creative_priorities_assignments.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Primary key (bigserial). |
+| `name` | text | no | Short name of the key, for example the colleague it was given to (unique). Shown in the audit columns as key:<name>. |
+| `key_hash` | text | no | sha256 hex digest of the full key (unique). The key is looked up by this hash. |
+| `prefix` | text | no | First 8 characters of the key ('lvk_' plus 4), for display only. |
+| `scope` | text | no | What the key may do. 'read_assign' (the only scope): every GET, plus POST /api/priorities/assignments and PATCH /api/priorities/assignments/<id>. |
+| `created_at` | timestamptz | no | When the key was made. |
+| `created_by` | text | yes | Operating-system user who ran the create command; NULL when unknown. |
+| `last_used_at` | timestamptz | yes | When the key last made a request (updated at most once a minute); NULL while unused. |
+| `revoked_at` | timestamptz | yes | When the key was revoked; NULL while active. A revoked key is refused with 401. |
+
+### public.klaviyo_campaigns
+
+*table*
+
+**Purpose.** Dimension: one row per Klaviyo campaign (email and SMS) with its name, status, send time and subject. Names the parent ids of klaviyo_daily.
+
+- **Grain:** primary key `(id)`; one row per campaign (id is the primary key; Klaviyo campaign id)
+- **Source:** Klaviyo API GET /campaigns/ with campaign-messages, both channels, via python -m etl.klaviyo (etl/klaviyo.py)
+- **Refresh:** nightly with the daily ETL (whole list re-upserted every run)
+- **Coverage:** every campaign Klaviyo lists, regardless of the metric window
+- **Caveat:** raw holds the Klaviyo attributes and the campaign's messages (id, label, subject); an A/B campaign has several messages and subject is the first one's.
+- **Caveat:** A campaign that sent in the window but is no longer listed shows in klaviyo_daily as '(unknown campaign message ...)'.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | text | no | Klaviyo campaign id (primary key). |
+| `name` | text | yes | Campaign name. |
+| `channel` | text | no | 'email' or 'sms'. |
+| `status` | text | yes | Klaviyo status text, for example Sent, Draft, Queued without Recipients. |
+| `send_time` | timestamptz | yes | Scheduled send time (UTC); NULL when not scheduled. |
+| `subject` | text | yes | Subject line of the first message; NULL for SMS and drafts without one. |
+| `created_at` | timestamptz | yes | When the campaign was created in Klaviyo. |
+| `updated_at` | timestamptz | yes | When the campaign was last edited in Klaviyo. |
+| `raw` | jsonb | yes | Klaviyo attributes plus the campaign's messages, as JSON. |
+| `loaded_at` | timestamptz | no | When this row was last written. |
+
+### public.klaviyo_flows
+
+*table*
+
+**Purpose.** Dimension: one row per Klaviyo flow with its name, status and trigger type. Names the parent ids of klaviyo_daily.
+
+- **Grain:** primary key `(id)`; one row per flow (id is the primary key; Klaviyo flow id)
+- **Source:** Klaviyo API GET /flows/ via python -m etl.klaviyo (etl/klaviyo.py)
+- **Refresh:** nightly with the daily ETL (whole list re-upserted every run)
+- **Coverage:** every flow Klaviyo lists (draft, manual and live), regardless of the metric window
+- **Caveat:** raw is the Klaviyo attribute object as returned.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | text | no | Klaviyo flow id (primary key). |
+| `name` | text | yes | Flow name. |
+| `status` | text | yes | draft, manual or live. |
+| `trigger_type` | text | yes | What starts the flow, for example Metric, List, Segment, Date. |
+| `created_at` | timestamptz | yes | When the flow was created. |
+| `updated_at` | timestamptz | yes | When the flow was last edited. |
+| `raw` | jsonb | yes | Klaviyo attributes as JSON. |
+| `loaded_at` | timestamptz | no | When this row was last written. |
+
+### public.klaviyo_flow_messages
+
+*table*
+
+**Purpose.** Dimension: one row per message (email or SMS step) inside a Klaviyo flow, with its name and subject. Names the message_id of klaviyo_daily flow rows.
+
+- **Grain:** primary key `(id)`; one row per flow message (id is the primary key; Klaviyo flow message id)
+- **Source:** Klaviyo API GET /flows/{id}/flow-actions/ then /flow-actions/{id}/flow-messages/ via python -m etl.klaviyo (etl/klaviyo.py)
+- **Refresh:** nightly with the daily ETL, for live flows and flows that had activity in the pulled window
+- **Coverage:** messages of every live flow and of flows with sends, opens, clicks or orders in any pulled window
+- **Caveat:** Messages of draft or manual flows that were silent in every pulled window are not fetched, so they are missing here.
+- **Caveat:** Messages deleted from a flow are not listed; their old metrics in klaviyo_daily keep the message_id with no name.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | text | no | Klaviyo flow message id (primary key). |
+| `flow_id` | text | no | Parent flow (klaviyo_flows.id). No foreign key. |
+| `name` | text | yes | Message name in the flow builder. |
+| `channel` | text | yes | 'email' or 'sms' as Klaviyo reports it, lowercased. |
+| `subject` | text | yes | Email subject line; NULL for SMS. |
+| `raw` | jsonb | yes | Klaviyo attributes plus the flow action id, as JSON. |
+| `loaded_at` | timestamptz | no | When this row was last written. |
+
+### public.klaviyo_daily
+
+*table*
+
+**Purpose.** Klaviyo email and SMS performance by Pacific day, campaign or flow, message and channel: sends, delivered, opens, clicks, unsubscribes and Klaviyo-attributed orders and revenue.
+
+- **Grain:** primary key `(day, source, parent_id, message_id, channel)`; one row per day (Pacific) x source ('campaign' | 'flow') x parent_id x message_id x channel (that is the primary key; message_id is '' where Klaviyo gives none)
+- **Source:** Klaviyo metric-aggregates (Received / Bounced / Opened / Clicked / Marked as Spam / Unsubscribed events by $flow and $message, SMS equivalents, and Placed Order - Upstackified by $attributed_flow / $attributed_message) via python -m etl.klaviyo (etl/klaviyo.py)
+- **Refresh:** nightly with the daily ETL; the trailing 14 complete Pacific days are replaced each run so late opens, clicks and orders land
+- **Coverage:** complete Pacific days through yesterday; history from the first backfill (120 days at launch)
+- **Caveat:** unique_opens and unique_clicks are per-day uniques: do not add them across days or messages; sums run 20-55% above Klaviyo's single-window uniques.
+- **Caveat:** orders and revenue are Klaviyo-attributed conversions of the metric 'Placed Order - Upstackified' (S6xLbC, the CheckoutChamp / Upstack server feed), dated by the day the order happened, not the day the message was sent; Shopify's own Placed Order metric reads about 10% lower.
+- **Caveat:** Clicks exclude clicks Klaviyo flags as bots. sends = delivered + bounced.
+- **Caveat:** Klaviyo does not expose SMS unsubscribes per flow, and campaign SMS unsubscribes are matched by campaign name with no message (message_id ''); about 2K keyword-STOP unsubscribes have no campaign and are not in this table.
+- **Caveat:** SMS rows have no opens, unique_opens or spam_complaints (0).
+- **Caveat:** Sends, delivered and revenue reconcile within about 3% of Klaviyo's own campaign and flow value reports.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date | no | Calendar day in America/Los_Angeles (event date). |
+| `source` | text | no | 'campaign' or 'flow'. |
+| `parent_id` | text | no | Klaviyo campaign id or flow id (klaviyo_campaigns.id / klaviyo_flows.id). No foreign key. |
+| `message_id` | text | no | Klaviyo message id (campaign message or flow message); '' when the row has none (SMS unsubscribes by campaign name). |
+| `channel` | text | no | 'email' or 'sms'. |
+| `parent_name` | text | yes | Name of the campaign or flow when loaded (denormalised); '(unknown ...)' when Klaviyo no longer lists it. |
+| `sends` | bigint | no | Messages Klaviyo tried to send that day (delivered plus bounced). |
+| `delivered` | bigint | no | Messages delivered. |
+| `bounced` | bigint | no | Emails bounced or SMS that failed to deliver. |
+| `opens` | bigint | no | Email opens (includes Apple Mail Privacy Protection machine opens); 0 for SMS. |
+| `unique_opens` | bigint | no | Distinct recipients who opened that day (per-day unique, not additive); 0 for SMS. |
+| `clicks` | bigint | no | Clicks, bot clicks excluded. |
+| `unique_clicks` | bigint | no | Distinct recipients who clicked that day (per-day unique, not additive). |
+| `unsubscribes` | bigint | no | Unsubscribes counted that day (email: clicked-to-unsubscribe events; SMS: campaign-level only). |
+| `spam_complaints` | bigint | no | Emails marked as spam; 0 for SMS. |
+| `orders` | bigint | no | Orders Klaviyo attributes to the message, dated by order day. |
+| `revenue` | numeric(14,2) | no | Revenue of those orders in dollars (Placed Order - Upstackified value), dated by order day. |
+| `loaded_at` | timestamptz | no | When this row was last written. |
+
+### public.klaviyo_message_content
+
+*table*
+
+**Purpose.** The copy of every Klaviyo message (campaign message or flow message) that had activity in a pulled window, or that sits in a live flow: subject, preview text, full email HTML, readable body text and the message links. Joins to klaviyo_daily on message_id.
+
+- **Grain:** primary key `(message_id)`; one row per message (message_id is the primary key; Klaviyo campaign message id or flow message id)
+- **Source:** Klaviyo API: GET /campaign-messages/{id}/template/ and /flow-messages/{id}/template/ (email HTML), the message definitions from GET /campaigns/ and /flow-actions/{id}/flow-messages/ (subject, preview, sender, SMS body), via python -m etl.klaviyo (etl/klaviyo.py)
+- **Refresh:** nightly with the daily ETL, for messages with activity in the trailing 14 days and every message of a live flow
+- **Coverage:** messages with activity in any pulled window (120 days at launch) plus live-flow messages; not every message Klaviyo has ever held
+- **Caveat:** Only the latest copy is kept: when a message is edited the row is overwritten and fetched_at moves (content_hash changes); the history of edits is not kept, so old performance reads against the current copy.
+- **Caveat:** Messages whose template Klaviyo no longer returns (deleted campaigns or templates) have a row with NULL html and body_text and raw.fetch_error set.
+- **Caveat:** body_text is extracted from the HTML (head, scripts and styles dropped, link text kept, whitespace collapsed); image-only emails have little or no text, and image_count says how many real images the email carries. For SMS body_text is the message body and html is NULL.
+- **Caveat:** image_count excludes tracking pixels and 1-pixel images.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `message_id` | text | no | Klaviyo message id (primary key); equals klaviyo_daily.message_id. |
+| `source` | text | no | 'campaign' or 'flow'. |
+| `parent_id` | text | no | Campaign id or flow id of the message. No foreign key. |
+| `channel` | text | no | 'email' or 'sms'. |
+| `subject` | text | yes | Email subject line; NULL for SMS. |
+| `preview_text` | text | yes | Email preview text; NULL for SMS or when none is set. |
+| `from_name` | text | yes | Sender name of the email. |
+| `from_email` | text | yes | Sender address of the email. |
+| `template_id` | text | yes | Klaviyo template id the email renders from; NULL for SMS or when the template was not returned. |
+| `editor_type` | text | yes | Klaviyo editor of the template: SIMPLE (plain text email), CODE, DRAG_AND_DROP, USER_DRAFTED; NULL for SMS. |
+| `html` | text | yes | Full template HTML of the email; NULL for SMS or when not returned. |
+| `body_text` | text | yes | Readable plain text of the email (or the SMS body); NULL when nothing could be fetched or the email is images only. |
+| `image_count` | integer | yes | Real images in the email (tracking pixels excluded); 1 for an SMS with a picture. |
+| `link_urls` | text[] | yes | Distinct http(s) links in the message, in order of appearance. |
+| `content_hash` | text | yes | sha256 of the HTML (email) or body (SMS); changes when the message is edited. |
+| `fetched_at` | timestamptz | no | When the content last changed in our copy (moves only when content_hash changes). |
+| `raw` | jsonb | yes | The message definition as Klaviyo returns it (without the body / html), plus fetch_error when the template could not be fetched. |
+
+### public.klaviyo_message_performance
+
+*view*
+
+**Purpose.** One row per Klaviyo message with its copy (subject, preview text, body text) and its totals and rates over everything in klaviyo_daily: the table to read which copy earns.
+
+- **Grain:** one row per message_id (campaign or flow message with at least one klaviyo_daily row)
+- **Source:** klaviyo_daily (grouped by message_id) joined to klaviyo_message_content
+- **Refresh:** live (a view over klaviyo_daily; moves with the nightly Klaviyo load)
+- **Coverage:** the days loaded in klaviyo_daily (120 days at launch, then trailing); first_send_day is the first loaded day with sends, not the message's real first send
+- **Caveat:** unique_opens_daily_sum and unique_clicks_daily_sum are sums of per-day uniques, not window uniques: a person who opens on two days counts twice. open_rate_daily_uniques and click_rate_daily_uniques are built on them and read a little high; use them to compare messages, not as Klaviyo's reported rates.
+- **Caveat:** Orders and revenue are Klaviyo-attributed conversions of 'Placed Order - Upstackified', dated by the order day, so a message can show revenue with no sends when it sent before the loaded window.
+- **Caveat:** Rates are NULL when delivered is 0. SMS messages have no opens. Messages without fetched copy have NULL subject / body_text and has_copy false.
+- **Caveat:** SMS campaign unsubscribes are matched to the campaign, not the message, so they are not in this view.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `message_id` | text |  | Klaviyo message id. |
+| `source` | text |  | 'campaign' or 'flow'. |
+| `parent_id` | text |  | Campaign id or flow id. |
+| `channel` | text |  | 'email' or 'sms'. |
+| `parent_name` | text |  | Campaign or flow name. |
+| `subject` | text |  | Email subject (current copy); NULL for SMS or when not fetched. |
+| `preview_text` | text |  | Email preview text (current copy). |
+| `body_text` | text |  | Readable body text (current copy). |
+| `image_count` | integer |  | Real images in the email. |
+| `editor_type` | text |  | Klaviyo template editor type. |
+| `first_send_day` | date |  | First loaded day with sends. |
+| `last_send_day` | date |  | Last loaded day with sends. |
+| `sends` | bigint |  | Sum of sends. |
+| `delivered` | bigint |  | Sum of delivered. |
+| `bounced` | bigint |  | Sum of bounced or failed. |
+| `opens` | bigint |  | Sum of opens (includes machine opens). |
+| `unique_opens_daily_sum` | bigint |  | Sum of per-day unique opens (not a window unique). |
+| `clicks` | bigint |  | Sum of clicks, bots excluded. |
+| `unique_clicks_daily_sum` | bigint |  | Sum of per-day unique clicks (not a window unique). |
+| `unsubscribes` | bigint |  | Sum of unsubscribes. |
+| `spam_complaints` | bigint |  | Sum of spam complaints. |
+| `orders` | bigint |  | Sum of attributed orders. |
+| `revenue` | numeric(14,2) |  | Sum of attributed revenue in dollars. |
+| `open_rate_daily_uniques` | numeric |  | unique_opens_daily_sum / delivered; NULL when delivered is 0. |
+| `click_rate_daily_uniques` | numeric |  | unique_clicks_daily_sum / delivered; NULL when delivered is 0. |
+| `orders_per_delivered` | numeric |  | orders / delivered; NULL when delivered is 0. |
+| `revenue_per_delivered` | numeric |  | revenue / delivered in dollars; NULL when delivered is 0. |
+| `has_copy` | boolean |  | True when body_text was fetched for the message. |
+
+### public.landing_page_ad_checks
+
+*table*
+
+**Purpose.** Ads that etl/landing_pages.py has already looked at, so an ad with no readable link is not asked about every night.
+
+- **Grain:** primary key `(ad_id)`; one row per ad (ad_id is the primary key)
+- **Source:** etl/landing_pages.py
+- **Refresh:** each run of python -m etl.landing_pages
+- **Coverage:** ads with spend in the window of the runs
+- **Caveat:** An ad with result no_link or error is looked at again 14 days after checked_at.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `ad_id` | text | no | Meta ad id (primary key). |
+| `checked_at` | timestamptz | no | When the ad was last looked at. |
+| `result` | text | no | 'linked' (a landing page was found), 'no_link' (none could be read) or 'error' (Meta returned an error). |
+| `detail` | text | yes | Short reason for no_link or error; NULL when linked. |
+
+### public.brain_keys
+
+*table*
+
+**Purpose.** Agent keys for the hosted brain endpoint (/mcp). With sign-in on: one row per user who made a key on the Connect an agent page (a reset replaces it). With the app open (AUTH_DISABLED): one row per key anyone made, with no user. A brain key opens /mcp and nothing else.
+
+- **Grain:** primary key `(id)`; one row per key (id is the primary key; key_hash is unique; username is unique and NULL for open-app keys)
+- **Source:** the Connect an agent page (POST /api/brain/key in app/brain_mcp.py); last_used_at is touched by /mcp
+- **Refresh:** on demand (a person makes a key; last_used_at moves at most once a minute while the key is in use)
+- **Coverage:** from the day migration 220 was deployed; open-app keys from migration 221
+- **Caveat:** Only the sha256 hash of the key is stored. The key is shown once and cannot be recovered; a signed-in user resets it to get a new one (the old one stops working at once). Open-app keys cannot be reset, only made again.
+- **Caveat:** Separate from api_keys: a brain key never works on any /api/ route, and an api_keys key also works on /mcp.
+- **Caveat:** Open-app keys (created_by = 'open-app') are capped at 50 per day for the whole app and keep only a salted hash of the creator's IP, never the IP.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Primary key (bigserial). |
+| `username` | text | yes | App login of the owner (a name from APP_USERS), unique: one key per user. NULL for open-app keys. |
+| `key_hash` | text | no | sha256 hex digest of the full key (unique); the key is looked up by this hash. |
+| `prefix` | text | no | First 8 characters of the key ('lvb_' plus 4), for display only. |
+| `created_at` | timestamptz | no | When the key was made or last reset. |
+| `last_used_at` | timestamptz | yes | When the key last made a /mcp request (at most once a minute); NULL while unused. |
+| `created_by` | text | no | How the key was made: 'signed-in' (a logged-in user, username is set) or 'open-app' (made while AUTH_DISABLED was on, username is NULL). |
+| `creator_hash` | text | yes | For open-app keys: HMAC-SHA256 of the creator's IP address under the app's secret key (first 32 hex characters); never the IP itself. NULL for signed-in keys. |
+
+### public.brain_audit
+
+*table*
+
+**Purpose.** Audit log of the hosted brain endpoint: one row per tool call (who, which tool, how long, how many rows). Never holds the question, the SQL or the result.
+
+- **Grain:** primary key `(id)`; one row per tool call (id is the primary key)
+- **Source:** app/brain_mcp.py, written after every tools/call on /mcp
+- **Refresh:** live (one row per call)
+- **Coverage:** from the day migration 220 was deployed; no pruning
+- **Caveat:** actor is the login name for a signed-in session, 'brain:<username>' for a brain key, 'brain:open-app:<key prefix>' for a key made while the app was open, 'key:<name>' for an API key.
+- **Caveat:** row_count is NULL for tools that return no row list (describe, app_map).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Primary key (bigserial). |
+| `at` | timestamptz | no | When the call finished. |
+| `actor` | text | no | Who called: a login name, 'brain:<username>' (brain key), 'brain:open-app:<prefix>' (open-app brain key) or 'key:<name>' (API key). |
+| `tool` | text | no | Tool name: catalog, describe, search, metric, freshness, sql, past_questions or app_map. |
+| `duration_ms` | integer | no | How long the tool ran, in milliseconds. |
+| `row_count` | integer | yes | Rows (or hits) returned; NULL when the tool returns no list. |
+| `ok` | boolean | no | True when the tool answered, false when it failed or the input was rejected. |
 
 ## Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow)
 

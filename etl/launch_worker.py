@@ -212,6 +212,7 @@ def build_prepare_plan(conn, drive, assignment_id: int) -> dict:
     if all(f["id"] in existing for f in files):
         cids = [existing[f["id"]] for f in files]                       # a re-prepare after a launch keeps the IDs already minted for these files
     else:
+        conn.execute("DELETE FROM creative_launch_ads WHERE assignment_id = %s AND state = 'planned'", (assignment_id,))      # stale reservations from an earlier prepare of a different file set
         taken = {r["concept_id"] for r in _all(conn, "SELECT concept_id FROM creative_launch_ads")}
         taken |= {r["c"] for r in _all(conn, "SELECT concept_id AS c FROM tracker_rows WHERE concept_id IS NOT NULL")}
         taken |= {c for r in _all(conn, "SELECT tracker_concept_ids AS t FROM creative_priorities_assignments") for c in (r["t"] or [])}
@@ -235,6 +236,10 @@ def run_prepare(conn, job, drive) -> None:
         conn.commit()
         return
     h = _app().plan_hash(plan)
+    for ad in plan["ads"]:                                                               # checkpoint rows start 'planned'; an existing row for the same file is left as it is
+        conn.execute("INSERT INTO creative_launch_ads (assignment_id, job_id, drive_file_id, file_name, kind, concept_id, ad_name) VALUES (%s,%s,%s,%s,%s,%s,%s) "
+                     "ON CONFLICT (assignment_id, drive_file_id) DO NOTHING",
+                     (job["assignment_id"], job["id"], ad["file_id"], ad["file_name"], ad["kind"], ad["concept_id"], ad["ad_name"]))
     _finish(conn, job["id"], "done", None, plan, h)
     _audit(conn, "prepare_done", job["assignment_id"], {"job_id": job["id"], "plan_hash": h, "ads": len(plan["ads"]), "skipped": len(plan["skipped"])})
     conn.commit()
@@ -376,8 +381,12 @@ def run_launch(conn, job, meta_factory, drive_factory, dry: bool, sleep=time.sle
     if dry or job["dry_run"]:
         _audit(conn, "launch_dry_run", aid, {"job_id": jid, "would_create_adset": bool(plan["destination"].get("new_adset")), "adset_name": plan["destination"].get("adset_name"),
                                               "ads": [{"concept_id": x["concept_id"], "ad_name": x["ad_name"], "file_name": x["file_name"]} for x in ads]})
-        _append_concept_ids(conn, aid, [x["concept_id"] for x in ads])
-        _finish(conn, jid, "done")
+        _finish(conn, jid, "done")                                                       # ads stay 'planned'; no tracker IDs are written for ads that were never created
+        return
+    if not os.environ.get(mw.TOKEN_ENV):
+        _finish(conn, jid, "failed", f"{mw.TOKEN_ENV} is not set on the worker, so nothing was created.")
+        _audit(conn, "launch_failed", aid, {"job_id": jid, "error": "no token"})
+        conn.commit()
         return
 
     meta, drive = meta_factory(), drive_factory()
@@ -420,12 +429,12 @@ def run_launch(conn, job, meta_factory, drive_factory, dry: bool, sleep=time.sle
 
 # ------------------------------------------------------------------------------------------------------------------- loop
 def enabled(env=None) -> tuple[bool, str]:
-    """(True, '') when launching is switched on and a launch token is set; else (False, the one log line explaining why). The token value is never read beyond its presence."""
+    """(True, '') when launching is switched on and a launch token is set or META_LAUNCH_DRY_RUN=1; else (False, the one log line explaining why). The token value is never read beyond its presence."""
     e = os.environ if env is None else env
     if not _app().launch_enabled(e):
         return False, "launch_worker: launching is not enabled (META_LAUNCH_ENABLED is not 1), nothing to do"
-    if not e.get(mw.TOKEN_ENV):
-        return False, f"launch_worker: {mw.TOKEN_ENV} is not set, nothing to do"
+    if not e.get(mw.TOKEN_ENV) and e.get("META_LAUNCH_DRY_RUN") != "1":
+        return False, f"launch_worker: neither {mw.TOKEN_ENV} nor META_LAUNCH_DRY_RUN=1 is set, nothing to do"
     return True, ""
 
 

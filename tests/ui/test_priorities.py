@@ -11,7 +11,7 @@ pytestmark = pytest.mark.mock_only
 
 ROW = "[data-testid=pri-card]"
 DETAIL = "[data-testid=pri-detail]"
-SEC = ["revive", "make_more", "test", "add", "stop", "hold"]
+SEC = ["revive", "make_more", "test", "stop", "hold"]
 
 
 def idle(page):
@@ -22,6 +22,11 @@ def goto(page, qs=""):
     page.goto("/priorities" + qs)
     page.wait_for_selector("[data-testid=pri-page], [data-testid=pri-empty]")
     idle(page)
+
+
+def by_action(page):
+    """the pre-grouping order (Action, then product, then rank): one click on the Action header, which also turns the merged group cells off"""
+    page.locator("[data-testid=pri-sort-section]").click()
 
 
 def visible_rows(page):
@@ -37,12 +42,13 @@ def test_everything_is_collapsed_on_load_and_the_detail_panels_are_hidden(page):
     assert page.locator("[data-testid=pri-body] " + DETAIL + "[hidden]").count() == 30
     assert page.locator("[data-testid=pri-shown]").text_content() == "30 of 30 concepts shown"
     heads = [t.strip() for t in page.locator("[data-testid=pri-table] thead th").all_text_contents()]
-    assert [h.replace(" ⇅", "") for h in heads[1:]] == ["Product", "Action", "Market Cluster", "ICP", "Pain Point", "Story", "Status", "Concepts", "Key number", "Spend \u00b7 14d", "ROAS \u00b7 14d", "In production"]
+    assert [h.replace(" ⇅", "") for h in heads[1:]] == ["Product", "Market Cluster", "ICP", "Pain Point", "Action", "Story", "Status", "Concepts", "Key number", "Spend \u00b7 14d", "ROAS \u00b7 14d", "In production"]
     page.screenshot(path=str(SHOTS / "priorities_collapsed.png"), full_page=False)
 
 
-def test_default_order_is_section_first_then_product_then_rank_and_the_story_is_not_truncated(page):
+def test_action_header_sort_gives_the_old_section_first_order_and_the_story_is_not_truncated(page):
     goto(page)
+    page.locator("[data-testid=pri-sort-section]").click()                                                            # the old default (Action, then product, then rank) is one click on the Action header
     secs = page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("rows => rows.map(r => r.dataset.section)")
     assert secs == sorted(secs, key=SEC.index) and secs[0] == "revive" and secs[-1] == "stop"
     first_story = page.locator("[data-testid=pri-body] tr.pri-row .pri-c-story").first
@@ -57,6 +63,7 @@ def test_legend_of_the_four_tags_stays_at_the_top(page):
 
 def test_chevron_button_and_row_click_open_and_close_the_panel_with_the_detail(page):
     goto(page)
+    by_action(page)
     btn = page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first
     btn.click()
     assert btn.get_attribute("aria-expanded") == "true" and btn.get_attribute("aria-label").startswith("Collapse:")
@@ -240,6 +247,7 @@ def test_select_all_visible_respects_filters_and_selection_survives_filter_sort_
 
 def test_selected_only_csv_has_the_same_columns_and_only_those_rows(page):
     goto(page)
+    page.locator("[data-testid=pri-sort-section]").click()                                                            # Action header = the old order (grouping is off while a column sort is on)
     with page.expect_download() as dl:
         page.locator("[data-testid=pri-csv]").click()
     full = csv_of(dl.value)
@@ -316,6 +324,7 @@ def test_selection_toolbar_at_375px_has_no_sideways_scroll(browser, base_url):
     p.locator(PICK).nth(0).check()
     assert p.locator(TOOLS).is_visible()
     assert not p.evaluate("() => document.documentElement.scrollWidth > innerWidth")
+    p.locator("[data-testid=pri-sel-more]").click()                                                                   # phone: the actions sit behind More
     p.locator("[data-testid=pri-sel-save]").click()
     p.locator("[data-testid=pri-view-name]").fill("a fairly long view name for a phone")
     p.keyboard.press("Enter")
@@ -435,6 +444,7 @@ def test_save_view_opens_a_naming_dialog_with_a_focused_prefilled_selected_input
 
 def test_switching_to_a_rows_view_filters_the_same_table_in_place_and_back_to_all(page):
     goto(page)
+    by_action(page)
     pains = [page.locator(PICK).nth(i).locator("xpath=ancestor::tr").locator(".pri-c-pain").text_content() for i in (1, 6, 7)]
     url = save_view(page, "Round 1 briefs", 1, 6, 7)
     assert url.startswith("/priorities/v/") and len(tok(url)) >= 22
@@ -449,6 +459,7 @@ def test_switching_to_a_rows_view_filters_the_same_table_in_place_and_back_to_al
     assert "Viewing: Round 1 briefs (3 concepts)" in page.locator(BAR).text_content().replace("\u00a0", " ")
     assert page.locator("[data-testid=pri-title]").text_content() == "Creative priorities: Round 1 briefs" and page.title().startswith("Round 1 briefs")
     assert page.locator(VSEL).input_value() == t
+    by_action(page)
     # same table: expandable panels, checkboxes, toolbar, search, sort, exports and print all work on the filtered set
     page.locator("[data-testid=pri-toggle]").first.click()
     assert page.locator(DETAIL + ":visible").count() == 1
@@ -660,6 +671,8 @@ def test_view_bar_dialog_and_active_view_fit_375px_and_the_share_page_does_not_o
         p.wait_for_selector("[data-testid=pri-page]")
         idle(p)
         pick_rows(p, 0, 1)
+        if w < 761:
+            p.locator("[data-testid=pri-sel-more]").click()                                                                  # phone: the actions sit behind More
         p.locator("[data-testid=pri-sel-save]").click()
         p.locator(DLG).wait_for()
         assert p.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth")
@@ -718,7 +731,7 @@ def test_every_fact_is_still_in_every_expanded_panel(page):
     for i in range(rows.count()):
         key = rows.nth(i).locator(".pri-c-pain").text_content().strip()
         txt = norm(panels.nth(i).text_content())
-        r = next(x for x in FIXTURE["rows"] if x["pain_point"] == key and x["cluster"] in rows.nth(i).locator(".pri-c-cluster").text_content())
+        r = next(x for x in FIXTURE["rows"] if x["pain_point"] == key and x["cluster"] in rows.nth(i).locator(".pri-c-cluster").text_content() and x["icp"] in rows.nth(i).locator(".pri-c-icp").text_content())
         for f in (r["cluster"], r["icp"], r["pain_point"], r["story"], r["status"], r["then_now"], r.get("diagnosis") or "", r.get("revive_play") or "", r.get("when_it_worked") or "", r.get("how_it_stopped") or "",
                   r["cluster_description"], r["icp_description"], r["pain_description"], f"Line {r['line_code']}", f"Confidence: {r['confidence']}", f"Score {r['score']:g}"):
             assert norm(f) in txt, (r["section"], r["pain_point"], f)
@@ -732,7 +745,7 @@ def test_every_fact_is_still_in_every_expanded_panel(page):
             assert f"{fn['launched']:,}" in txt and f"{fn['top']:,} of {fn['launched']:,} launched ads" in txt and "Under $100 spend" not in txt
             assert _money(m["spend"]) in txt and _money(m["spend_30d"]) in txt and _money(m["spend_prior30"]) in txt
         else:
-            assert "Ads tagged" in txt or r["section"] == "add"
+            assert "Ads tagged" in txt or r.get("source")
         for w in r.get("former_winners") or []:
             assert norm(w["ad"]) in txt and _money(w["spend"]) in txt and _roas(w["roas"]) in txt and w["peak_week"] in txt and w["kind"] in txt and (w["stopped"] or "") in txt
         for k in r["hooks"]:
@@ -747,6 +760,7 @@ def test_every_fact_is_still_in_every_expanded_panel(page):
 
 def test_faded_summary_sentence_is_not_printed_twice(page):
     goto(page)
+    by_action(page)
     page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
     txt = page.locator("[data-testid=pri-body] " + DETAIL).first.text_content()
     r = FIXTURE["rows"][[x["section"] for x in FIXTURE["rows"]].index("revive")]
@@ -755,6 +769,7 @@ def test_faded_summary_sentence_is_not_printed_twice(page):
 
 def test_detail_panel_has_identity_verdict_cta_and_grouped_stat_cards(page):
     goto(page)
+    by_action(page)
     page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
     p = page.locator("[data-testid=pri-body] " + DETAIL).first
     assert p.locator(".pri-tile").count() == 4 and p.locator(".pri-verdict").is_visible()
@@ -780,6 +795,7 @@ def test_long_definitions_hide_behind_a_keyboard_operable_disclosure(page):
 
 def test_former_winners_and_hooks_show_three_then_show_all(page):
     goto(page)
+    by_action(page)
     page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
     p = page.locator("[data-testid=pri-body] " + DETAIL).first
     assert p.locator(".pri-w:visible").count() == 3 and p.locator(".pri-w").count() == 5
@@ -1351,6 +1367,7 @@ def open_share(p, url):
 
 def test_share_page_has_product_filter_with_counts_briefed_toggle_progress_and_hide_briefed(page, browser, base_url):
     goto(page)
+    by_action(page)
     rows = page.locator(f"[data-testid=pri-body] {ROW}").evaluate_all("els => els.map(e => e.dataset.product)")
     idx = [i for i in range(len(rows)) if rows[i] in ("vita-bull", "beef-liver")][:6]
     url = save_view(page, "Brief tracker", *idx)
@@ -1478,6 +1495,7 @@ def test_14_day_columns_show_spend_and_roas_sort_and_dash_below_100(page):
 
 def test_14_day_stat_card_in_panel(page):
     goto(page)
+    by_action(page)
     page.locator("[data-testid=pri-toggle]").first.click()
     assert "Last 14 days" in page.locator("[data-testid=pri-detail]:visible").first.text_content()
 
@@ -1543,6 +1561,7 @@ def _with_rest_rows(page):
 def test_hold_rows_sit_after_the_action_rows_and_open_lazily_with_the_full_panel(page):
     _with_rest_rows(page)
     goto(page)
+    page.locator("[data-testid=pri-sort-section]").click()                                                            # Action header = the old order (grouping is off while a column sort is on)
     assert visible_rows(page) == 35
     secs = page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("els => els.map(e => e.dataset.section)")
     assert secs[-5:] == ["hold"] * 5 and "hold" not in secs[:-5]                                    # action sections first, in the Action order
@@ -1576,8 +1595,9 @@ def test_key_number_is_plain_english_with_the_product_named(page):
     assert key(f"[data-section=make_more][data-product={mm['product']}]") == f"{_roas(mm['metrics']['roas_30d'])} last 30 days. {b[mm['product']]['product_name']} average {_roas(b[mm['product']]['roas_30d'])}."
     assert key("[data-section=hold][data-product=vita-bull]") == f"{_roas(0.8)} since launch. Vita Bull average {_roas(b['vita-bull']['roas'])}."
     assert not [t for t in page.locator("[data-testid=pri-body] .pri-c-key").all_text_contents() if "lifetime" in t.lower() or "all time" in t.lower()]
-    add = page.locator("[data-testid=pri-body] tr.pri-row[data-section=add]").first
-    assert add.locator("[data-testid=pri-source]").text_content() in ("Competitor", "Our draft")
+    add = page.locator("[data-testid=pri-body] tr.pri-row[data-section=test]").filter(has=page.locator("[data-testid=pri-source]")).first
+    assert add.locator("[data-testid=pri-source]").text_content() in ("New idea, from a competitorNot on the sheet yet", "New idea, our draftNot on the sheet yet")
+    assert page.locator("[data-testid=pri-body] tr.pri-row[data-section=add]").count() == 0
     assert key("[data-section=test]") in ("No spend yet",) or "spent so far" in key("[data-section=test]")
 
 
@@ -1586,7 +1606,7 @@ def test_definitions_block_prints_every_rule_with_the_real_thresholds(page):
     block = page.locator("[data-testid=pri-defs]")
     assert block.is_visible() and block.get_attribute("open") is not None                           # open by default
     acts = block.locator("[data-testid=pri-defs-actions] dt").all_text_contents()
-    assert acts == ["Revive", "Make more", "Test", "Add to sheet", "Stop", "Hold"]
+    assert acts == ["Revive", "Make more", "Test", "Stop", "Hold"]
     sts = block.locator("[data-testid=pri-defs-statuses] dt").all_text_contents()
     assert sts == ["Working", "Rising", "Fading", "Not working", "Average", "Too early", "Untested"]
     txt = block.text_content()
@@ -1618,7 +1638,7 @@ def test_chips_start_unselected_show_everything_and_select_to_narrow(page):
     goto(page)
     total = visible_rows(page)
     chips = page.locator("[data-testid^=pri-f-product-], [data-testid^=pri-f-section-]")
-    assert chips.count() >= 8 and all(c.get_attribute("data-on") == "false" for c in chips.all())            # none selected: every chip outlined / off
+    assert chips.count() >= 7 and all(c.get_attribute("data-on") == "false" for c in chips.all())            # none selected: every chip outlined / off
     assert page.locator("[data-testid=pri-stat][aria-pressed=true]").count() == 0 and page.locator("[data-testid=pri-clear-filters]").is_hidden()
     def prods(): return set(page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("els => els.map(e => e.dataset.product)"))
     def secs(): return set(page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("els => els.map(e => e.dataset.section)"))
@@ -1782,14 +1802,15 @@ def test_row_detail_shows_the_production_history_for_every_kind_of_row(page, fre
     assert "Not assigned to a vendor yet" in h2.text_content()
 
 
-def test_add_rows_and_manual_concepts_can_be_assigned_too(page, fresh_assign):
+def test_new_idea_rows_and_manual_concepts_can_be_assigned_too(page, fresh_assign):
     goto(page)
-    add_row = page.locator("[data-testid=pri-body] tr.pri-row[data-section=add]").first
+    add_row = page.locator("[data-testid=pri-body] tr.pri-row[data-section=test]").filter(has=page.locator("[data-testid=pri-source]")).first      # a new idea: Test row, not on the sheet yet
+    assert "Not on the sheet yet" in add_row.text_content()
     add_row.locator("[data-testid=pri-pick]").check()
     _assign(page, "TrybeOrion")
     assert page.locator("[data-testid=pri-as-created]").text_content().startswith("1 concept assigned to TrybeOrion")
     page.locator("[data-testid=pri-as-ok]").click()
-    page.wait_for_function("() => [...document.querySelectorAll('tr.pri-row[data-section=add] .pri-c-prod')].some(e => e.textContent.includes('TrybeOrion'))")
+    page.wait_for_function("() => [...document.querySelectorAll('tr.pri-row[data-section=test]:has([data-testid=pri-source]) .pri-c-prod')].some(e => e.textContent.includes('TrybeOrion'))")
     page.locator("[data-testid=pri-sel-clear]").click()
     add_concept(page)
     try:
@@ -1824,7 +1845,12 @@ def test_hide_already_assigned_checkbox_is_off_by_default_and_hides_only_when_ti
 def test_header_links_to_production(page, fresh_assign):
     goto(page)
     link = page.locator("[data-testid=pri-prod-link]")
-    assert link.text_content().strip() == "Production" and link.get_attribute("href") == "/priorities/production"
+    assert link.is_visible() and link.text_content().strip().startswith("Production board")
+    assert link.get_attribute("href") == "/priorities/production" and link.get_attribute("title") == "Concepts assigned to vendors, by week"
+    assert "btn" in link.get_attribute("class").split()
+    page.set_viewport_size({"width": 375, "height": 800})
+    assert link.is_visible() and page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    page.set_viewport_size({"width": 1280, "height": 800})
     link.click()
     page.wait_for_selector("[data-testid=prod-page]")
 
@@ -1854,3 +1880,167 @@ def test_public_saved_view_has_no_production_column_checkbox_or_history(page, fr
     page.wait_for_selector("[data-testid=pri-page]")
     idle(page)
     assert page.locator(".pri-c-prod").count() == 2
+
+
+def test_assign_dialog_has_an_optional_format_select_and_sends_the_choice(page, fresh_assign):
+    goto(page)
+    _tick(page, 0)
+    page.locator("[data-testid=pri-sel-assign]").click()
+    sel = page.locator("[data-testid=pri-as-format]")
+    page.wait_for_selector("[data-testid=pri-as-format]")
+    opts = sel.locator("option").all_text_contents()
+    assert opts[0] == "No format chosen" and len(opts) == 7                                                   # blank plus the six formats
+    assert opts[1] == "F1 Long animated story, openly AI, told by the character (90s to 3 min)" and opts[4] == "F4 Whiteboard explainer (60 to 90s)"
+    assert sel.input_value() == "" and "Format (optional)" in page.locator("[data-testid=pri-as-dialog]").text_content()
+    assert "—" not in page.locator("[data-testid=pri-as-dialog]").text_content()
+    sel.select_option("F4")
+    page.locator("[data-testid=pri-as-ok]").click()
+    page.wait_for_selector("[data-testid=pri-as-result] p")
+    assert page.locator("[data-testid=pri-as-created]").text_content().startswith("1 concept assigned to Madre")
+    assert page.locator("[data-testid=pri-as-format]").is_disabled()
+    rows = page.request.get("/api/priorities/assignments").json()["rows"]
+    mine = [r for r in rows if r["id"] > 4]
+    assert len(mine) == 1 and mine[0]["format_code"] == "F4" and mine[0]["format_name"] == "Whiteboard explainer"
+    page.locator("[data-testid=pri-as-ok]").click()
+    page.wait_for_selector("[data-testid=pri-as-dialog]", state="detached")
+    _tick(page, 1)
+    _assign(page, "Madre")                                                                                    # leaving it on "No format chosen" sends no format
+    rows = page.request.get("/api/priorities/assignments").json()["rows"]
+    assert sorted(r["format_code"] or "" for r in rows if r["id"] > 4) == ["", "F4"]
+
+
+
+# ---------- click-in drill-downs (every block of the expanded panel opens its own insights) ----------
+def open_first(page):
+    goto(page)
+    page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
+    return page.locator("[data-testid=pri-body] " + DETAIL).first
+
+
+def test_every_block_has_a_keyboard_accessible_see_more_that_opens_its_own_drill_down_lazily(page):
+    reqs = []
+    page.on("request", lambda r: reqs.append(r.url) if "/insights" in r.url else None)
+    p = open_first(page)
+    assert reqs == []                                                                              # nothing loaded until a block is opened
+    # one see-more per then-vs-now tile (3), timeline step (3), hook (3) + all hooks, winning ad (5), stat tile (Performance + Testing + Live)
+    for sel, n in ((".pri-thennow", 3), (".pri-steps", 3), (".pri-winners", 5)):
+        assert p.locator(sel + " [data-testid=pri-seemore]").count() == n, sel
+    assert p.locator(".pri-hooks [data-testid=pri-seemore]").count() >= 3 and p.locator(".pri-statsec [data-testid=pri-seemore]").count() >= 10
+    btn = p.locator(".pri-thennow [data-testid=pri-seemore]").first
+    assert btn.get_attribute("aria-expanded") == "false" and btn.get_attribute("aria-controls")
+    btn.focus()
+    page.keyboard.press("Enter")                                                                   # a real button: Enter opens it
+    drill = p.locator(".pri-thennow [data-testid=pri-drill]")
+    drill.wait_for(state="visible")
+    assert btn.get_attribute("aria-expanded") == "true" and len(reqs) == 1 and "block=then_now" in reqs[0] and "window=90" in reqs[0]
+    drill.locator("[data-testid=pri-drill-ads]").wait_for(state="visible")
+    assert drill.locator("[data-testid=pri-drill-ads] tbody tr").count() == 3
+    assert drill.locator("[data-testid=pri-drill-ads] a[href^='/ad/']").count() == 3               # each ad links to its page
+    assert drill.locator("[data-testid=pri-drill-ads] th").all_text_contents() == ["Ad", "Spend", "ROAS", "Purchases", "Launched", "Hook"]
+    assert drill.locator("[data-testid=pri-drill-trend] tbody tr:visible").count() == 12 and drill.locator("[data-testid=pri-drill-trend] tbody tr").count() == 14
+    drill.get_by_role("button", name="Show all 14 weeks").click()
+    assert drill.locator("[data-testid=pri-drill-trend] tbody tr:visible").count() == 14
+    drill.get_by_role("button", name="Last 30 days").click()                                       # the window switch reloads
+    page.wait_for_function("() => document.querySelector('.pri-thennow [data-window=\"30\"]').getAttribute('aria-pressed') === 'true'")
+    assert any("window=30" in r for r in reqs)
+    page.keyboard.press("Escape")                                                                  # Esc closes and returns focus to the button
+    assert not drill.is_visible() and btn.get_attribute("aria-expanded") == "false"
+    btn.click()
+    assert drill.is_visible() and len([r for r in reqs if "window=90" in r]) == 1                  # cached: reopening does not ask again
+
+
+def test_winning_ad_and_hook_drill_down_to_that_one_ad_with_its_weekly_trend(page):
+    p = open_first(page)
+    p.locator(".pri-winners [data-testid=pri-seemore]").first.click()
+    d = p.locator(".pri-winners [data-testid=pri-drill]")
+    d.wait_for(state="visible")
+    d.locator("[data-testid=pri-drill-trend]").wait_for(state="visible")
+    assert "Former winning ad" in d.locator(".pri-drill-h").inner_text() and d.locator(".pri-win").count() == 0
+    assert d.locator("[data-testid=pri-drill-trend]").is_visible() and d.locator("a[href^='/ad/']").count() == 1
+    p.locator(".pri-hooks [data-testid=pri-seemore]").first.click()
+    h = p.locator(".pri-hooks [data-testid=pri-drill]")
+    h.wait_for(state="visible")
+    h.locator("[data-testid=pri-drill-trend]").wait_for(state="visible")
+    assert "Hook" in h.locator(".pri-drill-h").inner_text()
+    p.locator(".pri-hooks [data-testid=pri-seemore]").last.click()                                 # "All hooks on this line": hooks table + ads + trend
+    h.locator("[data-testid=pri-drill-hooks]").wait_for(state="visible")
+    assert h.locator("[data-testid=pri-drill-ads]").is_visible()
+
+
+def test_stat_tile_and_timeline_step_open_their_own_drill_down_and_switch_between_buttons(page):
+    p = open_first(page)
+    live = p.locator(".pri-sg", has_text="Live")
+    live.locator("[data-testid=pri-seemore]").first.click()
+    d = live.locator("[data-testid=pri-drill]")
+    d.wait_for(state="visible")
+    first = d.locator(".pri-drill-h").inner_text()
+    live.locator("[data-testid=pri-seemore]").nth(1).click()                                       # another tile of the group reuses the one region
+    page.wait_for_function("(t) => document.querySelector('.pri-sg:nth-of-type(3) .pri-drill-h, .pri-statsec .pri-sg:last-child .pri-drill-h').textContent !== t", arg=first)
+    assert d.is_visible() and live.locator("[data-testid=pri-seemore][aria-expanded=true]").count() == 1
+    p.locator(".pri-steps [data-testid=pri-seemore]").first.click()
+    t = p.locator("[data-testid=pri-faded] [data-testid=pri-drill]")
+    t.wait_for(state="visible")
+    assert "When it worked" in t.locator(".pri-drill-h").inner_text()
+    t.locator("[data-testid=pri-drill-close]").click()
+    assert not t.is_visible()
+
+
+def test_empty_hooks_and_winners_say_so_in_plain_english(page):
+    goto(page)
+    stop = page.locator("[data-testid=pri-body] " + ROW + "[data-section=stop]").first
+    stop.locator("[data-testid=pri-toggle]").click()
+    p = stop.locator("xpath=following-sibling::tr[1]")
+    assert p.locator("[data-testid=pri-hooks-empty]").inner_text().endswith("No hooks found for the ads on this line yet.")
+    assert "No former winning ads on this line yet." in p.locator("[data-testid=pri-winners-empty]").inner_text()
+
+
+def test_drill_down_at_375px_has_no_sideways_scroll(browser, base_url):
+    c = browser.new_context(viewport={"width": 375, "height": 812}, base_url=base_url)
+    c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+    p = c.new_page()
+    delete_all_manual(p)                                                                                # manual concepts left by other tests widen the table on their own
+    p.goto("/priorities")
+    p.wait_for_selector("[data-testid=pri-page]")
+    idle(p)
+    row = p.locator("[data-testid=pri-body] tr.pri-row[data-source=auto]").first                    # other tests may have left manual concepts in the mock: use a fixture row
+    row.locator("[data-testid=pri-toggle]").click()
+    panel = row.locator("xpath=following-sibling::tr[1]")
+    width = lambda: p.evaluate("() => document.documentElement.scrollWidth")  # noqa: E731
+    before = width()                                                                                   # whatever the table itself already needs at 375px (earlier tests leave state in the shared mock)
+    panel.locator(".pri-thennow [data-testid=pri-seemore]").first.click()
+    panel.locator("[data-testid=pri-drill-ads]").wait_for(state="visible")
+    panel.get_by_role("button", name="Show all 14 weeks").click()
+    assert width() <= max(before, 375) + 1, (before, width())                                          # opening a drill-down adds no sideways scroll
+    assert p.evaluate("() => { const d = document.querySelector('.pri-drill:not([hidden])'); const r = d.getBoundingClientRect().right; return [...d.querySelectorAll('*')].every((e) => !e.offsetParent || e.getBoundingClientRect().right <= r + 1); }")
+    assert p.evaluate("() => { const d = document.querySelector('.pri-drill:not([hidden])'); return d.scrollWidth <= d.clientWidth + 1; }")
+    c.close()
+
+def test_add_is_not_an_action_and_new_ideas_sit_under_test_after_the_sheet_lines(page):
+    goto(page)
+    page.locator("[data-testid=pri-sort-section]").click()                                                            # Action header = the old order (grouping is off while a column sort is on)
+    assert page.locator("[data-testid=pri-f-section-add]").count() == 0 and page.locator("[data-testid=pri-body] tr.pri-row[data-section=add]").count() == 0
+    assert "Add to sheet" not in page.locator("[data-testid=pri-page]").text_content()
+    test_rows = page.locator("[data-testid=pri-body] tr.pri-row[data-section=test]")
+    kinds = test_rows.evaluate_all("rows => rows.map(r => [r.dataset.product, r.querySelector('[data-testid=pri-source]') ? r.querySelector('[data-testid=pri-source]').firstChild.textContent : ''])")
+    for slug in ("vita-bull", "beef-liver", "boneflex"):
+        mine = [k for p, k in kinds if p == slug]
+        assert mine == ["", "", "New idea, our draft", "New idea, our draft"], (slug, mine)                         # 2 on-sheet lines then 2 drafts per product in the mock data
+    assert len(kinds) == 12
+    chip = page.locator("[data-testid=pri-body] tr.pri-row[data-section=test]").filter(has=page.locator("[data-testid=pri-source]")).first
+    assert chip.locator("[data-testid=pri-not-on-sheet]").text_content() == "Not on the sheet yet"
+    page.locator("[data-testid=pri-f-section-test]").click()
+    assert visible_rows(page) == 12
+    rules = page.locator("[data-testid=pri-defs-actions]").text_content()
+    assert "New idea, from a competitor" in rules and "New idea, our draft" in rules and "Not on the sheet yet" in rules and "—" not in rules
+
+
+def test_priorities_panel_is_unchanged_by_the_shared_module(page):
+    """The detail panel moved into priorities_panel.js (shared with Production and the vendor page); on /priorities it still has the same parts and still shows 3 hooks, no example-ads table."""
+    page.goto("/priorities")
+    page.wait_for_selector("[data-testid=pri-body]")
+    by_action(page)
+    page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
+    panel = page.locator("[data-testid=pri-body] [data-testid=pri-detail]:not([hidden]) .pri-panel").first
+    panel.wait_for()
+    assert panel.locator(".pri-tile").count() >= 3 and panel.locator("[data-testid=pri-hooks] .pri-hook").count() == 3
+    assert panel.locator("[data-testid=pri-examples]").count() == 0 and panel.locator(".pri-foot").count() == 1
