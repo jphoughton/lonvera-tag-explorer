@@ -310,10 +310,10 @@ def test_tag_labels_by_tag_set(page):
     page.goto("/?platform=meta")
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     txt = page.locator("[data-testid=products-table]").inner_text()
-    assert "Line-mapped tags" in txt and "Tracker tags — not line-mapped yet" in txt
+    assert "Line-mapped tags" in txt and "not line-mapped yet" in txt
     page.goto("/p/beef-liver")
     wait_rows(page)
-    expect(page.locator(".note-line")).to_contain_text("Tracker tags — not line-mapped yet")
+    expect(page.locator(".note-line")).to_contain_text("Tracker tags, not line-mapped yet")
 
 
 # ------------------------------------------------------------------ drill-down (Open ›) + breadcrumb

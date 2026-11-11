@@ -414,3 +414,25 @@ def test_hooks_are_escaped(page):
     expect(page.locator("#hook-line")).to_have_text(x["hook"])
     assert page.locator("#hook-block img, #hook-block b, #hook-block script").count() == 0
     assert page.evaluate("() => window.__xss") is None
+
+
+@pytest.mark.mock_only
+def test_ad_page_leads_with_key_numbers_and_jump_links(page):
+    path = ad_page_url(page)
+    page.goto(path)
+    page.wait_for_selector("#family-metrics")
+    idle(page)
+    expect(page.locator("[data-testid=key-numbers] .keynum")).to_have_count(5)
+    expect(page.locator("[data-testid=key-numbers]")).to_contain_text("Return on ad spend (ROAS)")
+    pos = page.evaluate("() => ({k: document.querySelector('[data-testid=key-numbers]').getBoundingClientRect().top, s: document.querySelector('#see-ad').getBoundingClientRect().top})")
+    assert pos["k"] < pos["s"]
+    expect(page.locator("[data-testid=jump-nav] [data-jump=tag-block]")).to_be_visible()
+
+
+@pytest.mark.mock_only
+def test_product_page_has_jump_links_and_filter_rows(page):
+    page.goto(f"/p/{SLUG}")
+    wait_rows(page)
+    expect(page.locator("[data-testid=jump-nav]")).to_be_visible()
+    expect(page.locator("#sec-table #flt-q")).to_be_visible()
+    expect(page.locator("#sec-table #row-mode")).to_be_visible()

@@ -6,7 +6,9 @@ import { flatTotal } from '../columns.js';
 import { breadcrumbs, section, adsTable, columnsChips, legendLine } from '../components.js';
 import { createTrendPanel } from '../trend.js';
 import { createPreview, adLinks } from '../preview.js';
+import { pageHeader } from '../ui/pagehead.js';
 
+const rowsHave = (x) => Array.isArray(x) && x.length > 0;
 function kv(label, value, cls = '') {
   if (value == null || value === '' || (Array.isArray(value) && !value.length)) return null;
   return h('div', { class: 'kv ' + cls }, h('div', { class: 'k' }, label), h('div', { class: 'v' }, value));
@@ -54,14 +56,14 @@ function compareTable(d, wi) {
   return h('div', { class: 'cmp-table', id: 'compare-table' },
     h('div', { class: 'subtle-head' }, 'Window A vs B'),
     h('table', { class: 'mini' },
-      h('thead', h('tr', h('th'), h('th', { class: 'num' }, 'A · ' + (wi && wi.label || '')), h('th', { class: 'num' }, 'B · ' + (ci.label || '')), h('th', { class: 'num' }, 'Δ'), h('th', { class: 'num' }, 'Δ %'))),
+      h('thead', h('tr', h('th'), h('th', { class: 'num' }, 'A: ' + (wi && wi.label || '')), h('th', { class: 'num' }, 'B: ' + (ci.label || '')), h('th', { class: 'num', title: 'Difference, A minus B' }, 'Change'), h('th', { class: 'num', title: 'Difference as a percent of B' }, 'Change %'))),
       h('tbody', tr)));
 }
 
 function metricsCard(d, wi) {
   const f = d.metrics && d.metrics.family;
   if (!f) return null;
-  const rows = [['Since launch', f.launch, 'launch'], ['Last 7d', f.d7, 'd7'], ['Last 30d', f.d30, 'd30']];
+  const rows = [['Since launch', f.launch, 'launch'], ['Last 7 days', f.d7, 'd7'], ['Last 30 days', f.d30, 'd30']];
   if (wi && wi.kind !== 'launch' && f.window) rows.push([wi.label || 'Selected window', f.window, 'window']);
   // the fixed rows (since launch / 7d / 30d) are not cut by the Stage filter; the selected-window row is
   const stageCut = stageSet(currentParams()).size < STAGES.length;
@@ -83,6 +85,21 @@ function metricsCard(d, wi) {
     h('div', { class: 'muted small' }, d.metrics.counted_on_this_row
       ? 'Metrics are counted on this tracker row (first row of the creative).'
       : 'Creative-level numbers. In the tables they are counted once, on the creative’s first tracker row, which is not this one.'));
+}
+
+// key numbers first: the creative's results since launch and in the last 7 days, before any detail
+function keyNumbers(d) {
+  const f = d.metrics && d.metrics.family;
+  if (!f || !f.launch) return null;
+  const tile = (label, tip, val, sub) => h('div', { class: 'keynum', title: tip },
+    h('div', { class: 'k' }, label), h('div', { class: 'big' }, val), sub ? h('div', { class: 'muted small' }, sub) : null);
+  const l = f.launch, w = f.d7 || {};
+  return h('div', { class: 'keynums', 'data-testid': 'key-numbers', 'aria-label': 'Key numbers since launch' },
+    tile('Spend', 'Total spend since launch', fmt.money(l.spend), `Last 7 days ${fmt.money(w.spend)}`),
+    tile('Purchases', 'Purchases Meta attributes to this creative since launch', fmt.int(l.purchases), `Last 7 days ${fmt.int(w.purchases)}`),
+    tile('Return on ad spend (ROAS)', 'Revenue divided by spend, since launch', fmt.roas(l.roas), `Last 7 days ${fmt.roas(w.roas)}`),
+    tile('Cost per acquisition (CPA)', 'Spend divided by purchases, since launch', fmt.money(l.cpa), `Last 7 days ${fmt.money(w.cpa)}`),
+    h('div', { class: 'keynum live' }, h('div', { class: 'k' }, 'Status'), h('div', { class: 'big' }, liveDot(f.live), f.live ? ' Live now' : ' Not live')));
 }
 
 function tagBlock(d) {
@@ -111,7 +128,7 @@ function tagBlock(d) {
   }
   body.push(h('div', { class: 'subtle-head' }, 'Tracker tags'),
     h('div', { class: 'kvgrid' },
-      kv('Market cluster', tt.cluster), kv('ICP', tt.icp), kv('Pain point', tt.pain_point),
+      kv('Market cluster', tt.cluster), kv('Ideal customer profile (ICP)', tt.icp), kv('Pain point', tt.pain_point),
       kv('Emotion', tt.emotion), kv('Ingredient', tt.ingredient)));
   return h('div', { class: 'card', id: 'tag-block' }, h('div', { class: 'card-head' }, h('h3', 'Tag')), body);
 }
@@ -154,7 +171,7 @@ function mediaCard(d) {
   const title = d.ad_family || d.concept_id;
   const img = (x, big) => {
     const url = '/media/' + enc(x.id);
-    const im = h('img', { src: url, alt: `${title} — ${x.label.toLowerCase()}`, loading: 'lazy', class: big ? 'media-main' : 'media-frame' });
+    const im = h('img', { src: url, alt: `${title}, ${x.label.toLowerCase()}`, loading: 'lazy', class: big ? 'media-main' : 'media-frame' });
     im.addEventListener('error', () => im.replaceWith(h('div', { class: 'thumb ph media-missing' }, 'no image')));
     const b = h('button', { type: 'button', class: 'media-link', 'aria-label': `Enlarge ${x.label.toLowerCase()}: ${title}` }, im);
     b.addEventListener('click', () => document.dispatchEvent(new CustomEvent('tagexp:lightbox', { detail: { assetId: x.id, name: title, primaryId: d.id, detail: d, links: d.links } })));
@@ -194,7 +211,7 @@ function siblingsTable(d, G) {
     { key: 'concept_id', label: 'Concept ID', sticky: true, sort: (r) => r.concept_id, total: null, cell: (r) => h('a', { href: href('/ad/' + enc(r.id), G), class: 'rowlink' }, r.concept_id) },
     { key: 'line_code', label: 'Line', sort: (r) => r.line_code, cell: (r) => (r.line_code ? h('span', { class: 'linecode' }, r.line_code) : '') },
     { key: 'cluster', label: 'Cluster', sort: (r) => r.cluster },
-    { key: 'icp', label: 'ICP', sort: (r) => r.icp },
+    { key: 'icp', label: 'ICP', title: 'Ideal customer profile', sort: (r) => r.icp },
     { key: 'pain_point', label: 'Pain point', sort: (r) => r.pain_point },
     { key: 'status', label: 'Status', sort: (r) => r.status },
   ];
@@ -235,7 +252,7 @@ export async function adPage(ctx) {
   const slug = d.product.slug;
   const path = '/p/' + enc(slug);
   const title = d.ad_family || d.concept_id;
-  document.title = `Creative: ${title} · Marketing metrics`;
+  document.title = `Creative: ${title} · Lonvera`;
 
   const tg = d.tag || {};
   const tt = d.tracker_tag || {};
@@ -267,18 +284,26 @@ export async function adPage(ctx) {
   if (adsT) onCmpRefresh(() => adsT.refresh());
   setParentHint(href(path, { ...G, cluster, icp, pain }));
 
+  const head = pageHeader({
+    title: [h('span', { class: 'muted' }, 'Creative: '), title],
+    description: meta || 'One ad concept and all its copies: key numbers, the ad itself, then tags, copy and where it runs.',
+    actions: [adLinks(d.links || { story_url: d.story_url }), extLink('Asset', d.asset_url),
+      h('a', { class: 'btnlink', href: href(path, { ...G, view: 'ads', family_key: d.family_key }) }, 'Ads table')],
+    testid: 'ad-head',
+  });
+  const h1 = head.querySelector('h1'); h1.id = 'ad-title';
+  const extras = [d.status ? badge(d.status, 'status') : null, d.ad_type ? badge(d.ad_type, 'type') : null].filter(Boolean);
+  if (extras.length) h1.after(...extras);
+  const jump = [['see-ad', 'The ad'], ['family-metrics', 'Metrics'], ['tag-block', 'Tags'], ['copy-block', 'Copy'], adsT ? ['meta-ads', 'Ads'] : null, rowsHave(d.campaigns) ? ['campaigns', 'Campaigns'] : null].filter(Boolean);
+  const jumpEl = h('nav', { class: 'jumpnav', 'aria-label': 'On this page', 'data-testid': 'jump-nav' }, h('span', { class: 'ctl-name' }, 'Jump to'),
+    jump.map(([jid, label]) => h('button', { type: 'button', class: 'linkbtn', 'data-jump': jid, onclick: () => { const el = document.getElementById(jid); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, label)));
+
   ctx.mount(h('div', { class: 'page creative-detail' },
     h('div', { class: 'crumbrow' }, breadcrumbs(crumbs)),
-    h('div', { class: 'pagehead' },
-      h('div', { class: 'titleline' },
-        h('h1', { id: 'ad-title' }, h('span', { class: 'muted' }, 'Creative: '), title),
-        d.status ? badge(d.status, 'status') : null,
-        d.ad_type ? badge(d.ad_type, 'type') : null,
-        h('span', { class: 'spacer' }),
-        adLinks(d.links || { story_url: d.story_url }), extLink('Asset', d.asset_url),
-        h('a', { class: 'btnlink', href: href(path, { ...G, view: 'ads', family_key: d.family_key }) }, 'Ads table')),
-      h('div', { class: 'note-line' }, meta)),
+    head,
+    keyNumbers(d),
     hookBlock(d),
+    jumpEl,
     section('See the ad', preview.el, { id: 'see-ad' }),
     h('div', { class: 'adgrid' },
       h('div', { class: 'adcol-left' }, mediaCard(d)),
@@ -286,7 +311,7 @@ export async function adPage(ctx) {
     h('div', { class: 'twocol' }, tagBlock(d), lineBlock(d)),
     copyBlock(d),
     siblingsTable(d, G),
-    adsT ? section('Ads · copies of this creative', h('div', null, legendLine(), adsT.el), { id: 'meta-ads', aside: columnsChips() }) : null,
+    adsT ? section('Ads: copies of this creative', h('div', null, legendLine(), adsT.el), { id: 'meta-ads', aside: columnsChips() }) : null,
     campaignsTable(d, p, slug, G),
   ));
   onCmpRefresh(() => {
