@@ -142,6 +142,14 @@
   {
    "service": "etl",
    "order": 9,
+   "module": "etl.klaviyo",
+   "args": "--days",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 10,
    "module": "etl.auto_tag",
    "args": "",
    "fatal": false,
@@ -264,6 +272,10 @@
   {
    "module": "etl.drive_io",
    "summary": "Read-only Google Drive access for the ad launch worker: turn a pasted Drive link into a list of image and video files, and stream one file to disk. Uses the"
+  },
+  {
+   "module": "etl.klaviyo",
+   "summary": "Klaviyo flow + campaign metrics -> klaviyo_daily (+ klaviyo_campaigns / klaviyo_flows / klaviyo_flow_messages). Read-only against Klaviyo (GET lists, POST metric-aggregates)."
   },
   {
    "module": "etl.landing_pages",
@@ -572,7 +584,7 @@
    "endpoint": "brain_mcp.brain_key_status",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "Whether the signed-in user has an agent key (prefix and last use only, never the key) and the endpoint address."
+   "summary": "Whether the signed-in user has an agent key (prefix and last use only, never the key) and the endpoint address; with the app open, just the endpoint."
   },
   {
    "rule": "/api/brain/key",
@@ -583,7 +595,7 @@
    "endpoint": "brain_mcp.brain_key_reset",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "Make this user's agent key, or replace it (the old key stops working at once). The key is in this answer once and is stored only as a hash."
+   "summary": "Make this user's agent key, or replace it (the old key stops working at once). With the app open anyone can make a new key (capped at 50 a day app-wide). The key is in this answer once and is stored only as a hash."
   },
   {
    "rule": "/api/campaigns",

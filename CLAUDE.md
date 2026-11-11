@@ -7,10 +7,10 @@ Production board. Live: https://web-production-358da.up.railway.app. Default bra
 
 The brain is an MCP server, registered in `.mcp.json` (hosted at `/mcp`, needs a personal key, see below). Order of use:
 1. `catalog` (what views exist) then `search` or `metric` (where it lives, what it means) then `describe` (columns) then `sql` (read-only SELECT on the `analytics` views).
-2. `freshness` before trusting a recent number. `past_questions` before re-answering any "why did X move" question. `app_map` for services, schedules, pages and routes.
+2. **For any "why did X move" question, run `why` first** (metric, start, end, compare): it walks the metric tree live at day / week / month grains, lists dated changes, runs a control on every candidate cause and ends at a cause or an honest "unexplained" residual; `why_tree` shows the reasoning paths without SQL. Then `freshness` before trusting a recent number, and `past_questions` for anything `why` did not link. `app_map` for services, schedules, pages and routes.
 3. Never guess a column or a number. If it is not in the views, say so (see "Not in the database" in `docs/AGENT_DATA_GUIDE.md`).
 
-Get a key: sign in to the app, open `/connect-agent`, press "Make my key", and export it as `LONVERA_BRAIN_KEY` (or run the Claude Code command shown on that page).
+Get a key: open `/connect-agent` (sign in first when sign-in is on; while the app is open anyone can make one), press "Make my key", and export it as `LONVERA_BRAIN_KEY` (or run the Claude Code command shown on that page).
 No MCP, or offline: run the local server, `claude mcp add lonvera-brain-local -- .venv/bin/python -m brain.server` (venv: `python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt`;
 SQL then needs `ANALYTICS_READER_URL` or the file named by `LONVERA_ANALYTICS_URL_FILE`). Without the tools, follow `.claude/skills/lonvera-data/SKILL.md`.
 
