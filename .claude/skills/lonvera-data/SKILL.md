@@ -22,6 +22,10 @@ The same order as the lonvera-brain tools (catalog, then search or metric, then 
    You are the role `analytics_reader`: SELECT on the `analytics` views only, 30 second limit. Run ONE SELECT at a time and cap the rows. Never print the URL.
 6. **Say what you could not check.** If a column or table is not in the dictionary, it is not there: say so instead of guessing (list under "Gaps" in `docs/DATA_SCHEMA.md`).
 
+## "Why did X move"
+
+Run the `why` tool first (metric, start, end, compare; optional product, platform, grain, max_steps). It follows the metric tree in `brain/why_tree.py` (revenue = new + repeat; new-customer revenue = spend x NC ROAS; NC ROAS = AOV / CPA; CPA = cost per click / conversion; CPC = CPM / CTR), only down branches that moved materially and persistently (a one-day spike does not count), then by product, tag, ad family, landing page, routing and Meta breakdown, and ends at a dated change, an entity carrying 50%+ of the move, a market-wide pattern, or an honest residual. Without MCP, walk the same tree by hand with SQL on the `analytics` views and name the control for every cause. Arrows mean "of which", not "because".
+
 ## Traps (each one has caused a wrong answer)
 
 - Never mix bases in one ratio. Spend adds across platforms; purchases and revenue never do. Revenue is gross.

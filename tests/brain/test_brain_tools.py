@@ -18,7 +18,7 @@ def bare(bare_root):
 
 def test_the_registry_has_every_tool_with_a_short_description():
     names = [t.name for t in T.TOOLS]
-    assert names == ["catalog", "describe", "search", "metric", "freshness", "sql", "past_questions", "app_map"]
+    assert names == ["catalog", "describe", "search", "metric", "freshness", "sql", "why", "why_tree", "past_questions", "app_map"]
     for t in T.TOOLS:
         assert 20 < len(t.description) <= 220 and t.schema["type"] == "object" and t.schema["additionalProperties"] is False
 
