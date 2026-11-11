@@ -1,4 +1,4 @@
-"""Creative priorities (/priorities) in the browser, against the mock server (tests/ui/mock_priorities.py: a trimmed real weekly snapshot, 30 concepts).
+"""Priorities (/priorities) in the browser, against the mock server (tests/ui/mock_priorities.py: a trimmed real weekly snapshot, 30 concepts).
 
 One table, one row per concept, ALL COLLAPSED on load; the chevron button (or a click on the row) opens the detail panel under it; Product / Section filters, a text search, click-to-sort headers,
 Expand all / Collapse all on the filtered rows; print CSS opens every panel and puts one product per page.
@@ -18,10 +18,32 @@ def idle(page):
     page.wait_for_function("() => !document.querySelector('#view').hasAttribute('aria-busy')")
 
 
+def more(page):
+    """the filter row shows product, action and search; status, selected, done and assigned rows sit under More filters (closed until opened or until one of them is on)"""
+    b = page.locator("[data-testid=pri-more-filters]")
+    if b.count() and b.get_attribute("aria-expanded") == "false":
+        b.click()
+
+
+def open_results(page):
+    """Results by product (the three product tiles) is a closed disclosure"""
+    d = page.locator("[data-testid=pri-results]")
+    if d.get_attribute("open") is None:
+        d.locator(":scope > summary").click()
+
+
+def open_help(page):
+    """the metric help, the tag legend, the notes and the action / status rules share one closed Help box"""
+    d = page.locator("[data-testid=pri-help]")
+    if d.get_attribute("open") is None:
+        d.locator(":scope > summary").click()
+
+
 def goto(page, qs=""):
     page.goto("/priorities" + qs)
     page.wait_for_selector("[data-testid=pri-page], [data-testid=pri-empty]")
     idle(page)
+    more(page)
 
 
 def by_action(page):
@@ -375,6 +397,7 @@ def open_view(page, token, extra=""):
     page.goto(f"/priorities?view={token}{extra}")
     page.wait_for_selector("[data-testid=pri-page], [data-testid=pri-empty]")
     idle(page)
+    more(page)
 
 
 def rows_text(page, col="pain"):
@@ -457,7 +480,7 @@ def test_switching_to_a_rows_view_filters_the_same_table_in_place_and_back_to_al
     assert f"view={t}" in page.url
     assert visible_rows(page) == 3 and sorted(rows_text(page)) == sorted(pains)
     assert "Viewing: Round 1 briefs (3 concepts)" in page.locator(BAR).text_content().replace("\u00a0", " ")
-    assert page.locator("[data-testid=pri-title]").text_content() == "Creative priorities: Round 1 briefs" and page.title().startswith("Round 1 briefs")
+    assert page.locator("[data-testid=pri-title]").text_content() == "Priorities: Round 1 briefs" and page.title().startswith("Round 1 briefs")
     assert page.locator(VSEL).input_value() == t
     by_action(page)
     # same table: expandable panels, checkboxes, toolbar, search, sort, exports and print all work on the filtered set
@@ -643,7 +666,7 @@ def test_share_page_is_frozen_names_csv_after_the_view_name_and_renames_with_the
     v.goto(url)
     v.wait_for_selector("[data-testid=pri-page]")
     idle(v)
-    assert v.locator("[data-testid=pri-title]").text_content() == "Creative priorities: Madre - 11/10/26 Priorities" and v.title().startswith("Madre - 11/10/26 Priorities")
+    assert v.locator("[data-testid=pri-title]").text_content() == "Priorities: Madre - 11/10/26 Priorities" and v.title().startswith("Madre - 11/10/26 Priorities")
     assert sorted(v.locator("[data-testid=pri-body] .pri-c-pain").all_text_contents()) == sorted(pains)
     assert v.locator(PICK).count() == 0 and v.locator(TOOLS).count() == 0 and v.locator("[data-testid=pri-search]").count() == 0 and v.locator(VSEL).count() == 0
     with v.expect_download() as dl:
@@ -657,7 +680,7 @@ def test_share_page_is_frozen_names_csv_after_the_view_name_and_renames_with_the
     assert v.title().startswith("Round 2 / <b>x</b>") and v.url.endswith(url)
     v.reload()
     v.wait_for_selector("[data-testid=pri-title]")
-    assert v.locator("[data-testid=pri-title]").text_content() == "Creative priorities: Round 2 / <b>x</b>" and v.locator("[data-testid=pri-title] b").count() == 0
+    assert v.locator("[data-testid=pri-title]").text_content() == "Priorities: Round 2 / <b>x</b>" and v.locator("[data-testid=pri-title] b").count() == 0
     v.close()
     c.close()
 
@@ -1021,6 +1044,7 @@ def test_edit_done_show_done_and_delete_with_confirm(page):
     page.locator("[data-testid=pri-manual-done]").click()
     page.wait_for_function("() => document.querySelectorAll('tr[data-source=manual]').length === 0")
     assert page.locator(MROW).count() == 0 and page.locator("[data-testid=pri-shown]").text_content() == "30 of 30 concepts shown"
+    more(page)
     page.locator("[data-testid=pri-show-done]").check()
     assert page.locator(MROW).count() == 1 and page.locator(MROW).locator("[data-testid=pri-status]").text_content() == "MANUAL (done)"
     page.locator(MROW).locator("[data-testid=pri-toggle]").click()
@@ -1098,7 +1122,7 @@ def test_manual_concept_works_inside_rows_and_filter_views(page):
 
 def test_header_has_title_subline_week_view_one_filled_button_and_secondary_group(page):
     goto(page)
-    assert page.locator("[data-testid=pri-title]").text_content() == "Creative priorities"
+    assert page.locator("[data-testid=pri-title]").text_content() == "Priorities"
     sub = page.locator("[data-testid=pri-sub]").text_content()
     assert "Week of 2026-11-08" in sub and "Data through 2026-11-08" in sub and "Competitor ads as of 2026-11-09" in sub
     assert page.locator("[data-testid=pri-week]").is_visible() and page.locator(VSEL).is_visible()
@@ -1133,6 +1157,7 @@ def test_status_strip_has_every_count_as_a_clickable_tile_that_filters_and_clear
 
 def test_product_tiles_show_the_four_numbers_and_filter_by_product(page):
     goto(page)
+    open_results(page)
     tiles = page.locator("[data-testid=pri-ptile]")
     assert tiles.count() == 3
     for t in tiles.all():
@@ -1165,6 +1190,7 @@ def test_product_tiles_show_the_four_numbers_and_filter_by_product(page):
 
 def test_disclosures_keep_every_word_and_the_clear_filters_link_resets_everything(page):
     goto(page)
+    open_help(page)
     tags, nums = page.locator("[data-testid=pri-about-tags]"), page.locator("[data-testid=pri-about-numbers]")
     assert tags.get_attribute("open") is None and nums.get_attribute("open") is None                              # collapsed by default
     tags.locator("summary").click()
@@ -1173,7 +1199,7 @@ def test_disclosures_keep_every_word_and_the_clear_filters_link_resets_everythin
     for leg in FIXTURE["legend"]:
         assert leg["meaning"] in tags.text_content()
     t = nums.text_content()
-    for frag in ("Week of 2026-11-08. Data through 2026-11-08.", "Numbers are Meta-reported (ROAS = purchase value / spend, CPA = cost per purchase = spend / purchases)", "Upstack new-customer ROAS is separate and shown in the row panels.",
+    for frag in ("Week of 2026-11-08. Data through 2026-11-08.", "Numbers are Meta-reported (ROAS, return on ad spend = purchase value / spend; CPA, cost per acquisition = spend / purchases)", "Upstack new-customer ROAS is separate and shown in the row panels.",
                  "This is prioritisation: consistent with the numbers, not proof that more concepts will work.", "Every row is collapsed: open a row for the full detail.",
                  "Competitor ads: Meta Ad Library, as of 2026-11-09; refreshed weekly. Running a long time is a signal, not proven performance."):
         assert frag in t, frag
@@ -1190,6 +1216,7 @@ def test_disclosures_keep_every_word_and_the_clear_filters_link_resets_everythin
 
 def test_metric_help_defines_every_metric_and_is_keyboard_operable(page):
     goto(page)
+    open_help(page)
     h = page.locator("[data-testid=pri-metric-help]")
     assert h.locator("ul").is_hidden()
     h.locator("summary").focus()
@@ -1244,6 +1271,7 @@ def test_header_uses_the_width_and_print_still_has_the_full_intro_and_none_of_th
     p.goto("/priorities")
     p.wait_for_selector("[data-testid=pri-page]")
     idle(p)
+    p.locator("[data-testid=pri-results] > summary").click()
     boxes = p.locator("[data-testid=pri-ptile]").evaluate_all("els => els.map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.right)]; })")
     assert len({b[0] for b in boxes}) == 1 and max(b[1] for b in boxes) > 1100                              # three tiles in one row spanning the page, not a 380px column
     p.screenshot(path=str(SHOTS / "priorities_header_1280.png"))
@@ -1259,6 +1287,8 @@ def test_header_uses_the_width_and_print_still_has_the_full_intro_and_none_of_th
     p.wait_for_selector("[data-testid=pri-page]")
     idle(p)
     assert p.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    p.locator("[data-testid=pri-results] > summary").click()
+    p.locator("[data-testid=pri-help] > summary").click()
     p.locator("[data-testid=pri-about-tags] summary").click()
     p.locator("[data-testid=pri-about-numbers] summary").click()
     assert p.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth")
@@ -1333,6 +1363,7 @@ def test_selected_only_works_with_manual_rows(page):
     add_concept(page, notes="Pick me")
     idx = page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("rows => rows.findIndex(r => r.dataset.source === 'manual')")
     pick_rows(page, idx)
+    more(page)
     page.locator("[data-testid=pri-f-selected]").click()
     assert visible_rows(page) == 1 and page.locator(MROW).count() == 1
     page.locator(MROW).locator("[data-testid=pri-toggle]").click()
@@ -1363,6 +1394,7 @@ def open_share(p, url):
     p.goto(url)
     p.wait_for_selector("[data-testid=pri-view-note]")
     idle(p)
+    more(p)
 
 
 def test_share_page_has_product_filter_with_counts_briefed_toggle_progress_and_hide_briefed(page, browser, base_url):
@@ -1514,6 +1546,7 @@ def test_total_row_sums_rows_shown_with_weighted_roas_and_reconciles_to_the_tile
     assert tot.locator("[data-testid=pri-total-roas]").text_content() == _roas(val / sp)
     assert page.locator("[data-testid=pri-subtotal]").count() == 3                                  # one per product when several are shown
     # filter to one product: the total changes, the subtotals go away, and the note reconciles against that product's tile
+    open_results(page)
     page.locator("[data-testid=pri-ptile][data-product='beef-liver']").click()
     rows = [r for r in FIXTURE["rows"] if r["product"] == "beef-liver"]
     sp1, val1 = _fx_sum(rows)
@@ -1603,6 +1636,7 @@ def test_key_number_is_plain_english_with_the_product_named(page):
 
 def test_definitions_block_prints_every_rule_with_the_real_thresholds(page):
     goto(page)
+    open_help(page)
     block = page.locator("[data-testid=pri-defs]")
     assert block.is_visible() and block.get_attribute("open") is not None                           # open by default
     acts = block.locator("[data-testid=pri-defs-actions] dt").all_text_contents()
@@ -2016,3 +2050,76 @@ def test_priorities_panel_is_unchanged_by_the_shared_module(page):
     panel.wait_for()
     assert panel.locator(".pri-tile").count() >= 3 and panel.locator("[data-testid=pri-hooks] .pri-hook").count() == 3
     assert panel.locator("[data-testid=pri-examples]").count() == 0 and panel.locator(".pri-foot").count() == 1
+
+
+# ---------------------------------------------------------------------------------------------------------------- calmer first view (disclosures)
+
+
+def test_first_view_has_one_header_closed_results_and_help_and_one_filter_row_with_more_filters_closed(page):
+    page.goto("/priorities")
+    page.wait_for_selector("[data-testid=pri-page]")
+    idle(page)
+    assert page.locator(".pri-top .pagehead h1[data-testid=pri-title]").text_content() == "Priorities"
+    assert page.locator("[data-testid=pri-results]").get_attribute("open") is None and page.locator("[data-testid=pri-help]").get_attribute("open") is None
+    assert page.locator("[data-testid=pri-ptile]").first.is_hidden() and page.locator("[data-testid=pri-defs]").is_hidden()
+    summ = page.locator("[data-testid=pri-results-sum]").text_content()
+    assert all(n in summ for n in ("Vita Bull", "Beef Liver", "Boneflex")) and "return on ad spend" in summ
+    # visible filters: product, action, search; the rest is under More filters
+    for tid in ("pri-f-product-vita-bull", "pri-f-section-test", "pri-search", "pri-more-filters", "pri-add-concept", "pri-csv"):
+        assert page.locator(f"[data-testid={tid}]").first.is_visible(), tid
+    assert page.locator("[data-testid=pri-more-filters]").get_attribute("aria-expanded") == "false"
+    assert page.locator("[data-testid=pri-statstrip]").is_hidden() and page.locator("[data-testid=pri-f-selected]").is_hidden()
+    page.locator("[data-testid=pri-more-filters]").click()
+    assert page.locator("[data-testid=pri-statstrip]").is_visible() and page.locator("[data-testid=pri-f-selected]").is_visible()
+    assert page.locator("[data-testid=pri-more-filters]").get_attribute("aria-expanded") == "true"
+    page.locator("[data-testid=pri-more-filters]").click()
+    assert page.locator("[data-testid=pri-statstrip]").is_hidden()
+
+
+def test_more_filters_opens_by_itself_when_a_status_is_chosen_and_counts_what_is_on(page):
+    page.goto("/priorities")
+    page.wait_for_selector("[data-testid=pri-page]")
+    idle(page)
+    page.locator("[data-testid=pri-more-filters]").click()
+    page.locator("[data-testid=pri-stat][data-status='Rising']").click()
+    assert page.locator("[data-testid=pri-more-filters]").text_content() == "More filters (1)"
+    t = tok(save_filter_view(page, "Rising only, closed box"))
+    page.goto(f"/priorities?view={t}")                                                                      # a saved status filter reopens the box on its own
+    page.wait_for_selector("[data-testid=pri-page]")
+    idle(page)
+    assert page.locator("[data-testid=pri-more-filters]").get_attribute("aria-expanded") == "true" and page.locator("[data-testid=pri-statstrip]").is_visible()
+
+
+def test_results_by_product_and_help_open_and_remember_nothing_surprising(page):
+    goto(page)
+    open_results(page)
+    assert page.locator("[data-testid=pri-ptile]").first.is_visible()
+    page.wait_for_function("() => localStorage.getItem('pri-results-open') === '1'")
+    page.reload()
+    page.wait_for_selector("[data-testid=pri-page]")
+    idle(page)
+    assert page.locator("[data-testid=pri-results]").get_attribute("open") is not None                      # the open choice is remembered in this browser
+    page.locator("[data-testid=pri-results] > summary").click()
+    open_help(page)
+    assert page.locator("[data-testid=pri-defs]").is_visible() and page.locator("[data-testid=pri-metric-help]").is_visible()
+
+
+def test_table_fits_the_page_width_at_1440_and_1920(browser, base_url):
+    for w in (1440, 1920):
+        c = browser.new_context(viewport={"width": w, "height": 900}, base_url=base_url)
+        c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+        p = c.new_page()
+        p.goto("/priorities")
+        p.wait_for_selector("[data-testid=pri-page]")
+        idle(p)
+        assert p.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth"), w
+        assert p.evaluate("() => { const t = document.querySelector('[data-testid=pri-table]'); const pg = document.querySelector('[data-testid=pri-page]'); return t.getBoundingClientRect().right <= pg.getBoundingClientRect().right + 1; }"), w
+        c.close()
+
+
+def test_no_em_dashes_in_the_visible_page_text(page):
+    goto(page)
+    open_results(page)
+    open_help(page)
+    page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
+    assert "\u2014" not in page.locator("[data-testid=pri-page]").inner_text()

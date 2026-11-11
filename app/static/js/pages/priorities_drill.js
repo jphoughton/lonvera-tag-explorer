@@ -12,7 +12,7 @@ let seq = 0;
 // the data table of ads: name linked to /ad/<id>, spend, ROAS, purchases, launch date, hook
 function adsTable(ads) {
   if (!ads.length) return h('p', { class: 'pri-hookn' }, 'No ads with spend in this window.');
-  return h('table', { class: 'pri-dt', 'data-testid': 'pri-drill-ads' }, h('thead', null, h('tr', null, ['Ad', 'Spend', 'ROAS', 'Purchases', 'Launched', 'Hook'].map((t) => h('th', { scope: 'col' }, t)))),
+  return h('table', { class: 'pri-dt', 'data-testid': 'pri-drill-ads' }, h('thead', null, h('tr', null, ['Ad', 'Spend', 'ROAS', 'Purchases', 'Launched', 'Hook'].map((t) => h('th', { scope: 'col', title: t === 'ROAS' ? 'Return on ad spend: purchase value divided by spend' : null }, t)))),
     h('tbody', null, ads.map((a) => h('tr', null,
       h('td', { 'data-label': 'Ad' }, h('a', { href: href('/ad/' + encodeURIComponent(a.ad_id), {}) }, a.name)),
       h('td', { 'data-label': 'Spend' }, fmt.money(a.spend)), h('td', { 'data-label': 'ROAS' }, roasX(a.roas)), h('td', { 'data-label': 'Purchases' }, fmt.int(a.purchases)),
@@ -21,7 +21,7 @@ function adsTable(ads) {
 
 function hooksTable(hooks) {
   if (!hooks.length) return h('p', { class: 'pri-hookn' }, 'No hooks found for the ads on this line yet.');
-  return h('table', { class: 'pri-dt', 'data-testid': 'pri-drill-hooks' }, h('thead', null, h('tr', null, ['Hook', 'Spend', 'ROAS'].map((t) => h('th', { scope: 'col' }, t)))),
+  return h('table', { class: 'pri-dt', 'data-testid': 'pri-drill-hooks' }, h('thead', null, h('tr', null, ['Hook', 'Spend', 'ROAS'].map((t) => h('th', { scope: 'col', title: t === 'ROAS' ? 'Return on ad spend: purchase value divided by spend' : null }, t)))),
     h('tbody', null, hooks.map((k) => h('tr', null, h('td', { 'data-label': 'Hook' }, h('a', { href: href('/ad/' + encodeURIComponent(k.ad_id), {}), title: k.ad }, k.hook)),
       h('td', { 'data-label': 'Spend' }, fmt.money(k.spend)), h('td', { 'data-label': 'ROAS' }, roasX(k.roas))))));
 }
@@ -31,7 +31,7 @@ function trendTable(weekly) {
   if (!weekly.length) return h('p', { class: 'pri-hookn' }, 'No weekly data in this window.');
   const rows = weekly.map((w, i) => h('tr', { hidden: i < weekly.length - WEEKS_SHOWN }, h('td', { 'data-label': 'Week of' }, w.week), h('td', { 'data-label': 'Spend' }, fmt.money(w.spend)),
     h('td', { 'data-label': 'ROAS' }, roasX(w.roas)), h('td', { 'data-label': 'Purchases' }, fmt.int(w.purchases))));
-  const out = [h('table', { class: 'pri-dt', 'data-testid': 'pri-drill-trend' }, h('thead', null, h('tr', null, ['Week of', 'Spend', 'ROAS', 'Purchases'].map((t) => h('th', { scope: 'col' }, t)))), h('tbody', null, rows))];
+  const out = [h('table', { class: 'pri-dt', 'data-testid': 'pri-drill-trend' }, h('thead', null, h('tr', null, ['Week of', 'Spend', 'ROAS', 'Purchases'].map((t) => h('th', { scope: 'col', title: t === 'ROAS' ? 'Return on ad spend: purchase value divided by spend' : null }, t)))), h('tbody', null, rows))];
   if (weekly.length > WEEKS_SHOWN) {
     const btn = h('button', { type: 'button', class: 'pri-dbtn', 'aria-expanded': 'false' }, `Show all ${weekly.length} weeks`);
     btn.addEventListener('click', () => {
