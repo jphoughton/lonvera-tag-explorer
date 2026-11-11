@@ -268,26 +268,42 @@ railway up <that dir> --path-as-root -p 5ea06da2-cc55-4bb7-ac5c-8462d0d95338 -e 
 
 ## 8. Testing
 
-Python is the virtualenv at `~/lonvera-tag-explorer/.venv/bin/python`. Tests need local Postgres 16.
+Python is the virtualenv at `~/lonvera-tag-explorer/.venv/bin/python`. Tests need Postgres 16 binaries (`/opt/homebrew/opt/postgresql@16/bin`) and Playwright Chromium.
+
+**The normal way: `scripts/test.sh`** (parallel, about 2.5 to 3.5 minutes for the whole suite on this Mac, instead of 9 serial).
+
+```bash
+cd ~/<your worktree>
+scripts/test.sh                       # whole suite, 6 workers
+scripts/test.sh tests/projection/pnl  # explicit paths replace the default `tests`
+```
+
+- It starts a private throwaway Postgres for the run (data directory in `/tmp/lvtestpg.*`, unix socket only, 600 connections, fsync off) and removes it at the end, also after Ctrl-C. Nothing is shared with other sessions: not the connection limit (the shared server allows 100 for every session on this machine, and a parallel run alone needs 50 to 70), not database names. `TEST_PRIVATE_PG=0` uses the shared server instead.
+- It needs no unique names: every worker adds its own suffix to every database name, and mock servers pick free ports.
+- A missing Postgres, Chromium or sheet snapshot FAILS the tests that need it under `scripts/test.sh` (plain `pytest` still skips them), so a broken machine cannot show up as a green run full of skips. 74 skips are normal today: 66 `tests/api/test_real_data.py` (needs the real dev database migrated), 6 variables tests that need their companion variables, 1 `tests/brain/test_brain_server.py` when the `mcp` package is not installed.
+- Playwright waits are multiplied by `TEST_TIMEOUT_FACTOR` (2 under `scripts/test.sh`, 1 = as written). Other sessions' suites push this machine's load to 20 to 30, where a save that takes 3 s alone takes 15 s. A wait is a condition that is polled, so the factor only changes how long a test that is going to fail keeps waiting.
+- `TEST_FILE_ORDER=reverse` or `random:SEED` runs the test files in another order. Use it when a test fails only sometimes: files that share a session database must not depend on which file ran before them, and under parallel runs the order on a worker changes with timing.
+- Tests serve their pages from `tests/_servers.py` (waitress, keep-alive, on the IPv6 loopback `[::1]`). Do not use werkzeug's development server or `127.0.0.1` for test servers: werkzeug closes every connection, and macOS keeps one pool of 16,384 client ports per local address, so a few thousand connections per second (or another session's suite, which leaves 10 to 15 thousand sockets in TIME_WAIT on `127.0.0.1`) makes new connections fail with `EADDRNOTAVAIL`.
+- Explicit test files work (`scripts/test.sh tests/ui/test_ui.py tests/projection/ui/test_shell.py`): the script pins `--rootdir`. Without it, `tests/ui/pytest.ini` and `tests/projection/ui/pytest.ini` would move the rootdir into one of those folders and turn the other folder's conftest fixtures into global ones.
+- Waiting for a Playwright condition: never write `document.querySelector(x).textContent` inside `wait_for_function`; use `?.` (the node can be replaced between two polls and a thrown TypeError fails the wait). Never click a button that an earlier preview already enabled when the test means the button of the NEXT preview: wait for text only the new state has.
+
+**The plain serial command still works** (one worker, the shared Postgres; slow, and it uses fixed database names, so run it only when nothing else is testing):
 
 ```bash
 cd ~/<your worktree>
 export PATH=/opt/homebrew/opt/postgresql@16/bin:$PATH
 export PYTHONPATH=.
 export TEST_API_DB=tagexp_apitest_$RANDOM        # unique per run so two runs never share a database
-export UI_MOCK_PORT=$((5100 + RANDOM % 800))     # unique per run (default 5099 collides)
-~/lonvera-tag-explorer/.venv/bin/python -m pytest tests -q
+~/lonvera-tag-explorer/.venv/bin/python -m pytest tests -q -rf -p no:cacheprovider
 ```
 
-- The full suite takes 8 to 9 minutes. Run it in the background, ONE run at a time per machine.
-- The tests create throwaway databases named from `TEST_API_DB` (also with `_alerts` and `_schema` suffixes). They skip, not fail, when Postgres is missing.
-- One known clock-dependent failure: `tests/api/test_api_v19_extras.py::test_stale_combines_reasons_and_falls_back_to_etl_runs`. Judge it by whether it also fails on `build/v1`, not by the red mark alone.
+- The tests create throwaway databases named from `TEST_API_DB` (also with `_alerts`, `_schema` and `_brain` suffixes).
 - Gotchas:
-  - `tests/etl/test_assignment_tags.py` and `tests/ui` cannot be listed in the same pytest command (stated by the owner, not re-tested here). Run them separately when selecting files.
   - `scripts/gen_schema_doc.py --check` needs a scratch database with every migration applied (`python -m etl.migrate`).
   - A new write route must be added to the allow-list in `tests/api/test_api_auth.py::test_the_api_is_read_only`.
   - A new table or column needs a description in `docs/schema/descriptions.py`, then regenerate the docs and (for a changed description after a migration was applied) put the comments in a NEW migration.
   - UI tests (`tests/ui`) need Playwright Chromium and use mock servers (`tests/ui/mock_*.py`), not the real database.
+  - A test that writes to a database shared by its folder's files (pacing, modeler, variables, pnl and others use one session database per worker) must put the state back (a `restore` / `clean_levers` fixture), or the next file on that worker sees it.
 
 ## 9. Safety rules every agent must follow
 
