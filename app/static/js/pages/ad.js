@@ -56,7 +56,7 @@ function compareTable(d, wi) {
   return h('div', { class: 'cmp-table', id: 'compare-table' },
     h('div', { class: 'subtle-head' }, 'Window A vs B'),
     h('table', { class: 'mini' },
-      h('thead', h('tr', h('th'), h('th', { class: 'num' }, 'A: ' + (wi && wi.label || '')), h('th', { class: 'num' }, 'B: ' + (ci.label || '')), h('th', { class: 'num', title: 'Difference, A minus B' }, 'Change'), h('th', { class: 'num', title: 'Difference as a percent of B' }, 'Change %'))),
+      h('thead', h('tr', h('th'), h('th', { class: 'num' }, 'A: ' + (wi && wi.label || '')), h('th', { class: 'num' }, 'B: ' + (ci.label || '')), h('th', { class: 'num', title: 'Change: A minus B' }, 'Δ'), h('th', { class: 'num', title: 'Change as a percent of B' }, 'Δ %'))),
       h('tbody', tr)));
 }
 
