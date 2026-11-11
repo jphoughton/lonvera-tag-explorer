@@ -17598,9 +17598,9 @@
    ]
   },
   {
-   "name": "analytics.products",
+   "name": "analytics.tag_products",
    "schema": "analytics",
-   "relation": "products",
+   "relation": "tag_products",
    "kind": "view",
    "group": "analytics",
    "purpose": "The products and the tag set each uses (tag_set 'linemap' = tagged to the Communication Overview lines, 'tracker' = the tracker's own tag columns).",
@@ -17672,18 +17672,18 @@
    "examples": [
     {
      "title": "Products",
-     "sql": "SELECT slug, name, tag_set, active FROM analytics.products ORDER BY sort_order;"
+     "sql": "SELECT slug, name, tag_set, active FROM analytics.tag_products ORDER BY sort_order;"
     },
     {
      "title": "First rows",
-     "sql": "SELECT * FROM analytics.products LIMIT 20;"
+     "sql": "SELECT * FROM analytics.tag_products LIMIT 20;"
     }
    ]
   },
   {
-   "name": "analytics.taxonomy_lines",
+   "name": "analytics.tag_taxonomy_lines",
    "schema": "analytics",
-   "relation": "taxonomy_lines",
+   "relation": "tag_taxonomy_lines",
    "kind": "view",
    "group": "analytics",
    "purpose": "The Communication Overview lines: one per ICP x pain point, with its market cluster, emotional trigger and story, per product. line_code is the code tags point at.",
@@ -17767,18 +17767,18 @@
    "examples": [
     {
      "title": "Lines per product and cluster",
-     "sql": "SELECT product_slug, cluster, count(*) AS lines FROM analytics.taxonomy_lines GROUP BY 1, 2 ORDER BY 1, 3 DESC;"
+     "sql": "SELECT product_slug, cluster, count(*) AS lines FROM analytics.tag_taxonomy_lines GROUP BY 1, 2 ORDER BY 1, 3 DESC;"
     },
     {
      "title": "First rows",
-     "sql": "SELECT * FROM analytics.taxonomy_lines LIMIT 20;"
+     "sql": "SELECT * FROM analytics.tag_taxonomy_lines LIMIT 20;"
     }
    ]
   },
   {
-   "name": "analytics.line_ingredients",
+   "name": "analytics.tag_line_ingredients",
    "schema": "analytics",
-   "relation": "line_ingredients",
+   "relation": "tag_line_ingredients",
    "kind": "view",
    "group": "analytics",
    "purpose": "The ingredients that address each taxonomy line: one row per line and ingredient with what it attacks and what it supports.",
@@ -17844,18 +17844,18 @@
    "examples": [
     {
      "title": "Ingredients of one pain point",
-     "sql": "SELECT i.product_slug, i.line_code, i.ingredient, i.attacks FROM analytics.line_ingredients i JOIN analytics.taxonomy_lines l USING (line_id) WHERE l.pain_point ILIKE '%hair%' ORDER BY 1, 2 LIMIT 20;"
+     "sql": "SELECT i.product_slug, i.line_code, i.ingredient, i.attacks FROM analytics.tag_line_ingredients i JOIN analytics.tag_taxonomy_lines l USING (line_id) WHERE l.pain_point ILIKE '%hair%' ORDER BY 1, 2 LIMIT 20;"
     },
     {
      "title": "First rows",
-     "sql": "SELECT * FROM analytics.line_ingredients LIMIT 20;"
+     "sql": "SELECT * FROM analytics.tag_line_ingredients LIMIT 20;"
     }
    ]
   },
   {
-   "name": "analytics.ad_tags",
+   "name": "analytics.tracker_tags",
    "schema": "analytics",
-   "relation": "ad_tags",
+   "relation": "tracker_tags",
    "kind": "view",
    "group": "analytics",
    "purpose": "Every tag ever written to a tracker row (current and superseded), joined to the tracker row, product and taxonomy line. Filter is_current for what stands now.",
@@ -18008,18 +18008,18 @@
    "examples": [
     {
      "title": "Current line tags per product and confidence",
-     "sql": "SELECT product_slug, confidence, count(*) AS tags FROM analytics.ad_tags WHERE is_current AND tag_set = 'linemap' GROUP BY 1, 2 ORDER BY 1, 2;"
+     "sql": "SELECT product_slug, confidence, count(*) AS tags FROM analytics.tracker_tags WHERE is_current AND tag_set = 'linemap' GROUP BY 1, 2 ORDER BY 1, 2;"
     },
     {
      "title": "First rows",
-     "sql": "SELECT * FROM analytics.ad_tags LIMIT 20;"
+     "sql": "SELECT * FROM analytics.tracker_tags LIMIT 20;"
     }
    ]
   },
   {
-   "name": "analytics.ad_hooks",
+   "name": "analytics.tracker_hooks",
    "schema": "analytics",
-   "relation": "ad_hooks",
+   "relation": "tracker_hooks",
    "kind": "view",
    "group": "analytics",
    "purpose": "The hook of each tracker row: the first spoken line and the first on-screen text, joined to the tracker row and product.",
@@ -18117,11 +18117,11 @@
    "examples": [
     {
      "title": "Hooks of the 10 biggest launched families (Meta basis)",
-     "sql": "SELECT h.product_slug, h.concept_id, h.hook, round(m.spend_launch) AS spend_launch FROM analytics.ad_hooks h JOIN analytics.creative_family_metrics m ON m.tracker_row_id = h.tracker_row_id AND m.basis = 'meta' WHERE m.is_first_row ORDER BY m.spend_launch DESC LIMIT 10;"
+     "sql": "SELECT h.product_slug, h.concept_id, h.hook, round(m.spend_launch) AS spend_launch FROM analytics.tracker_hooks h JOIN analytics.creative_family_metrics m ON m.tracker_row_id = h.tracker_row_id AND m.basis = 'meta' WHERE m.is_first_row ORDER BY m.spend_launch DESC LIMIT 10;"
     },
     {
      "title": "First rows",
-     "sql": "SELECT * FROM analytics.ad_hooks LIMIT 20;"
+     "sql": "SELECT * FROM analytics.tracker_hooks LIMIT 20;"
     }
    ]
   },

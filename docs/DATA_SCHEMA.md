@@ -29,7 +29,7 @@ views only); everything else is the app's own storage. **Start with `select * fr
 | last-click credit by source; any-click new customers by stage; orders no ad gets credit for | `analytics.attribution_source_daily`, `analytics.attribution_anyclick_daily`, `analytics.attribution_unmapped_daily` |
 | actual new-customer revenue by product or hour; tax and refunds; Amazon; site traffic | `analytics.orders_by_product_daily`, `analytics.orders_hourly`, `analytics.orders_daily_detail`, `analytics.amazon_daily`, `analytics.site_traffic_daily` |
 | creative family spend / results by basis, test to scale, copy and transcript | `analytics.creative_family_daily`, `analytics.creative_family_metrics`, `analytics.creative_stage_moves`, `analytics.creative_scaling_placements`, `analytics.creative_content` |
-| tags, taxonomy lines, ingredients, hooks | `analytics.ad_tags`, `analytics.taxonomy_lines`, `analytics.line_ingredients`, `analytics.ad_hooks`, `analytics.products` |
+| tags, taxonomy lines, ingredients, hooks | `analytics.tracker_tags`, `analytics.tag_taxonomy_lines`, `analytics.tag_line_ingredients`, `analytics.tracker_hooks`, `analytics.tag_products` |
 | the weekly priorities list (lines, status, score, hit rate, thresholds) | `analytics.priorities_concepts`, `analytics.priorities_snapshots`, `analytics.priorities_baselines`, `analytics.priorities_thresholds` |
 | who is making which concept for which week | `analytics.production_assignments`, `analytics.production_formats`, `analytics.priorities_manual_concepts` |
 | competitor ads and concepts | `analytics.competitor_ads`, `analytics.competitor_concepts`, `analytics.competitor_brands` |
@@ -75,9 +75,9 @@ Money is dollars. Days are calendar days (Meta: each ad account's own day; every
 | `public.ad_hooks`, `public.ad_metrics` | `public.tracker_rows` | `tracker_row_id = id` |
 | `public.family_daily`, `family_content`, `creative_assets` | `public.tracker_rows` | `family_key` (tracker family) |
 | `public.google_daily` | `public.upstack_google_campaigns` | `campaign_key = campaign_id` |
-| `analytics.ad_tags` / `analytics.ad_hooks` / `analytics.creative_family_metrics` | `analytics.creative_tracker` | `tracker_row_id` (or `concept_id`, `family_key`) |
-| `analytics.ad_tags` | `analytics.taxonomy_lines` | `line_id` (or `product_slug` + `line_code`); `analytics.line_ingredients.line_id` the same |
-| `analytics.priorities_concepts` | `analytics.taxonomy_lines` | `product_slug` + `line_code` |
+| `analytics.tracker_tags` / `analytics.tracker_hooks` / `analytics.creative_family_metrics` | `analytics.creative_tracker` | `tracker_row_id` (or `concept_id`, `family_key`) |
+| `analytics.tracker_tags` | `analytics.tag_taxonomy_lines` | `line_id` (or `product_slug` + `line_code`); `analytics.tag_line_ingredients.line_id` the same |
+| `analytics.priorities_concepts` | `analytics.tag_taxonomy_lines` | `product_slug` + `line_code` |
 | `analytics.production_assignments` | `analytics.creative_tracker` | `tracker_concept_ids` (array) contains `concept_id` |
 | `analytics.creative_stage_moves` / `creative_family_daily` | `analytics.creative_tracker` | `family_key` (filter `basis` first: the three bases are separate rows) |
 | `analytics.projection_levers` / `projection_series` | `analytics.projection_scenarios` | `scenario_slug = slug` |
@@ -128,7 +128,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 
 | Group | Relations |
 |---|---|
-| analytics schema: the read-only views (start here) | [`analytics.meta_ads`](#analyticsmeta_ads), [`analytics.meta_ad_daily`](#analyticsmeta_ad_daily), [`analytics.meta_adset_daily`](#analyticsmeta_adset_daily), [`analytics.meta_campaign_daily`](#analyticsmeta_campaign_daily), [`analytics.meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`analytics.meta_reach`](#analyticsmeta_reach), [`analytics.google_campaign_daily`](#analyticsgoogle_campaign_daily), [`analytics.platform_daily`](#analyticsplatform_daily), [`analytics.orders_daily`](#analyticsorders_daily), [`analytics.creative_tracker`](#analyticscreative_tracker), [`analytics.data_coverage`](#analyticsdata_coverage), [`analytics.etl_runs`](#analyticsetl_runs), [`analytics.attribution_source_daily`](#analyticsattribution_source_daily), [`analytics.attribution_anyclick_daily`](#analyticsattribution_anyclick_daily), [`analytics.attribution_unmapped_daily`](#analyticsattribution_unmapped_daily), [`analytics.orders_daily_detail`](#analyticsorders_daily_detail), [`analytics.orders_by_product_daily`](#analyticsorders_by_product_daily), [`analytics.orders_hourly`](#analyticsorders_hourly), [`analytics.amazon_daily`](#analyticsamazon_daily), [`analytics.site_traffic_daily`](#analyticssite_traffic_daily), [`analytics.platform_daily_history`](#analyticsplatform_daily_history), [`analytics.meta_product_daily`](#analyticsmeta_product_daily), [`analytics.meta_product_reach`](#analyticsmeta_product_reach), [`analytics.meta_bids_daily`](#analyticsmeta_bids_daily), [`analytics.pacing_live_today`](#analyticspacing_live_today), [`analytics.pacing_amazon_month_to_date`](#analyticspacing_amazon_month_to_date), [`analytics.pacing_hourly_spend_curve`](#analyticspacing_hourly_spend_curve), [`analytics.pacing_levers`](#analyticspacing_levers), [`analytics.pacing_meta_spend_monthly`](#analyticspacing_meta_spend_monthly), [`analytics.pipeline_feeds`](#analyticspipeline_feeds), [`analytics.pipeline_feed_attempts`](#analyticspipeline_feed_attempts), [`analytics.pipeline_feed_verify`](#analyticspipeline_feed_verify), [`analytics.pipeline_refresh_runs`](#analyticspipeline_refresh_runs), [`analytics.pipeline_alerts`](#analyticspipeline_alerts), [`analytics.projection_scenarios`](#analyticsprojection_scenarios), [`analytics.projection_levers`](#analyticsprojection_levers), [`analytics.projection_series`](#analyticsprojection_series), [`analytics.projection_actuals`](#analyticsprojection_actuals), [`analytics.projection_pnl_drivers`](#analyticsprojection_pnl_drivers), [`analytics.projection_pnl_settings`](#analyticsprojection_pnl_settings), [`analytics.projection_pnl_account_map`](#analyticsprojection_pnl_account_map), [`analytics.projection_cogs_sku`](#analyticsprojection_cogs_sku), [`analytics.projection_vendor_retainers`](#analyticsprojection_vendor_retainers), [`analytics.inventory_purchase_orders`](#analyticsinventory_purchase_orders), [`analytics.inventory_fba_transfers`](#analyticsinventory_fba_transfers), [`analytics.inventory_vendor_lead_times`](#analyticsinventory_vendor_lead_times), [`analytics.inventory_vendor_costs`](#analyticsinventory_vendor_costs), [`analytics.inventory_product_costs`](#analyticsinventory_product_costs), [`analytics.inventory_reorder_params`](#analyticsinventory_reorder_params), [`analytics.inventory_stock_counts`](#analyticsinventory_stock_counts), [`analytics.inventory_stock_daily`](#analyticsinventory_stock_daily), [`analytics.inventory_units_daily`](#analyticsinventory_units_daily), [`analytics.inventory_units_monthly`](#analyticsinventory_units_monthly), [`analytics.inventory_units_by_country`](#analyticsinventory_units_by_country), [`analytics.cohorts_monthly`](#analyticscohorts_monthly), [`analytics.cohorts_curve_cumulative`](#analyticscohorts_curve_cumulative), [`analytics.cohorts_curve_goal`](#analyticscohorts_curve_goal), [`analytics.creative_family_daily`](#analyticscreative_family_daily), [`analytics.creative_family_metrics`](#analyticscreative_family_metrics), [`analytics.creative_unmatched_meta`](#analyticscreative_unmatched_meta), [`analytics.creative_stage_moves`](#analyticscreative_stage_moves), [`analytics.creative_scaling_placements`](#analyticscreative_scaling_placements), [`analytics.creative_scaling_benchmarks`](#analyticscreative_scaling_benchmarks), [`analytics.creative_content`](#analyticscreative_content), [`analytics.products`](#analyticsproducts), [`analytics.taxonomy_lines`](#analyticstaxonomy_lines), [`analytics.line_ingredients`](#analyticsline_ingredients), [`analytics.ad_tags`](#analyticsad_tags), [`analytics.ad_hooks`](#analyticsad_hooks), [`analytics.priorities_snapshots`](#analyticspriorities_snapshots), [`analytics.priorities_thresholds`](#analyticspriorities_thresholds), [`analytics.priorities_baselines`](#analyticspriorities_baselines), [`analytics.priorities_concepts`](#analyticspriorities_concepts), [`analytics.priorities_manual_concepts`](#analyticspriorities_manual_concepts), [`analytics.production_assignments`](#analyticsproduction_assignments), [`analytics.production_formats`](#analyticsproduction_formats), [`analytics.competitor_brands`](#analyticscompetitor_brands), [`analytics.competitor_ads`](#analyticscompetitor_ads), [`analytics.competitor_concepts`](#analyticscompetitor_concepts), [`analytics.catalog`](#analyticscatalog), [`analytics.metric_glossary`](#analyticsmetric_glossary) |
+| analytics schema: the read-only views (start here) | [`analytics.meta_ads`](#analyticsmeta_ads), [`analytics.meta_ad_daily`](#analyticsmeta_ad_daily), [`analytics.meta_adset_daily`](#analyticsmeta_adset_daily), [`analytics.meta_campaign_daily`](#analyticsmeta_campaign_daily), [`analytics.meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`analytics.meta_reach`](#analyticsmeta_reach), [`analytics.google_campaign_daily`](#analyticsgoogle_campaign_daily), [`analytics.platform_daily`](#analyticsplatform_daily), [`analytics.orders_daily`](#analyticsorders_daily), [`analytics.creative_tracker`](#analyticscreative_tracker), [`analytics.data_coverage`](#analyticsdata_coverage), [`analytics.etl_runs`](#analyticsetl_runs), [`analytics.attribution_source_daily`](#analyticsattribution_source_daily), [`analytics.attribution_anyclick_daily`](#analyticsattribution_anyclick_daily), [`analytics.attribution_unmapped_daily`](#analyticsattribution_unmapped_daily), [`analytics.orders_daily_detail`](#analyticsorders_daily_detail), [`analytics.orders_by_product_daily`](#analyticsorders_by_product_daily), [`analytics.orders_hourly`](#analyticsorders_hourly), [`analytics.amazon_daily`](#analyticsamazon_daily), [`analytics.site_traffic_daily`](#analyticssite_traffic_daily), [`analytics.platform_daily_history`](#analyticsplatform_daily_history), [`analytics.meta_product_daily`](#analyticsmeta_product_daily), [`analytics.meta_product_reach`](#analyticsmeta_product_reach), [`analytics.meta_bids_daily`](#analyticsmeta_bids_daily), [`analytics.pacing_live_today`](#analyticspacing_live_today), [`analytics.pacing_amazon_month_to_date`](#analyticspacing_amazon_month_to_date), [`analytics.pacing_hourly_spend_curve`](#analyticspacing_hourly_spend_curve), [`analytics.pacing_levers`](#analyticspacing_levers), [`analytics.pacing_meta_spend_monthly`](#analyticspacing_meta_spend_monthly), [`analytics.pipeline_feeds`](#analyticspipeline_feeds), [`analytics.pipeline_feed_attempts`](#analyticspipeline_feed_attempts), [`analytics.pipeline_feed_verify`](#analyticspipeline_feed_verify), [`analytics.pipeline_refresh_runs`](#analyticspipeline_refresh_runs), [`analytics.pipeline_alerts`](#analyticspipeline_alerts), [`analytics.projection_scenarios`](#analyticsprojection_scenarios), [`analytics.projection_levers`](#analyticsprojection_levers), [`analytics.projection_series`](#analyticsprojection_series), [`analytics.projection_actuals`](#analyticsprojection_actuals), [`analytics.projection_pnl_drivers`](#analyticsprojection_pnl_drivers), [`analytics.projection_pnl_settings`](#analyticsprojection_pnl_settings), [`analytics.projection_pnl_account_map`](#analyticsprojection_pnl_account_map), [`analytics.projection_cogs_sku`](#analyticsprojection_cogs_sku), [`analytics.projection_vendor_retainers`](#analyticsprojection_vendor_retainers), [`analytics.inventory_purchase_orders`](#analyticsinventory_purchase_orders), [`analytics.inventory_fba_transfers`](#analyticsinventory_fba_transfers), [`analytics.inventory_vendor_lead_times`](#analyticsinventory_vendor_lead_times), [`analytics.inventory_vendor_costs`](#analyticsinventory_vendor_costs), [`analytics.inventory_product_costs`](#analyticsinventory_product_costs), [`analytics.inventory_reorder_params`](#analyticsinventory_reorder_params), [`analytics.inventory_stock_counts`](#analyticsinventory_stock_counts), [`analytics.inventory_stock_daily`](#analyticsinventory_stock_daily), [`analytics.inventory_units_daily`](#analyticsinventory_units_daily), [`analytics.inventory_units_monthly`](#analyticsinventory_units_monthly), [`analytics.inventory_units_by_country`](#analyticsinventory_units_by_country), [`analytics.cohorts_monthly`](#analyticscohorts_monthly), [`analytics.cohorts_curve_cumulative`](#analyticscohorts_curve_cumulative), [`analytics.cohorts_curve_goal`](#analyticscohorts_curve_goal), [`analytics.creative_family_daily`](#analyticscreative_family_daily), [`analytics.creative_family_metrics`](#analyticscreative_family_metrics), [`analytics.creative_unmatched_meta`](#analyticscreative_unmatched_meta), [`analytics.creative_stage_moves`](#analyticscreative_stage_moves), [`analytics.creative_scaling_placements`](#analyticscreative_scaling_placements), [`analytics.creative_scaling_benchmarks`](#analyticscreative_scaling_benchmarks), [`analytics.creative_content`](#analyticscreative_content), [`analytics.tag_products`](#analyticstag_products), [`analytics.tag_taxonomy_lines`](#analyticstag_taxonomy_lines), [`analytics.tag_line_ingredients`](#analyticstag_line_ingredients), [`analytics.tracker_tags`](#analyticstracker_tags), [`analytics.tracker_hooks`](#analyticstracker_hooks), [`analytics.priorities_snapshots`](#analyticspriorities_snapshots), [`analytics.priorities_thresholds`](#analyticspriorities_thresholds), [`analytics.priorities_baselines`](#analyticspriorities_baselines), [`analytics.priorities_concepts`](#analyticspriorities_concepts), [`analytics.priorities_manual_concepts`](#analyticspriorities_manual_concepts), [`analytics.production_assignments`](#analyticsproduction_assignments), [`analytics.production_formats`](#analyticsproduction_formats), [`analytics.competitor_brands`](#analyticscompetitor_brands), [`analytics.competitor_ads`](#analyticscompetitor_ads), [`analytics.competitor_concepts`](#analyticscompetitor_concepts), [`analytics.catalog`](#analyticscatalog), [`analytics.metric_glossary`](#analyticsmetric_glossary) |
 | Meta (Facebook / Instagram) ads: ads, campaigns, daily results | [`public.ad_daily`](#publicad_daily), [`public.meta_ads`](#publicmeta_ads), [`public.meta_campaigns`](#publicmeta_campaigns), [`public.meta_ad_lifetime`](#publicmeta_ad_lifetime), [`public.ad_lifetime`](#publicad_lifetime), [`public.meta_family_map`](#publicmeta_family_map) |
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
@@ -145,7 +145,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | **attribution**: Which orders each source or campaign gets credit for (Upstack) | [`attribution_source_daily`](#analyticsattribution_source_daily), [`attribution_anyclick_daily`](#analyticsattribution_anyclick_daily), [`attribution_unmapped_daily`](#analyticsattribution_unmapped_daily) |
 | **orders**: Actual revenue, new customers, Amazon sales, site traffic | [`orders_daily`](#analyticsorders_daily), [`orders_daily_detail`](#analyticsorders_daily_detail), [`orders_by_product_daily`](#analyticsorders_by_product_daily), [`orders_hourly`](#analyticsorders_hourly), [`amazon_daily`](#analyticsamazon_daily), [`site_traffic_daily`](#analyticssite_traffic_daily) |
 | **creative**: Creative tracker, family roll-ups, test to scale, ad copy | [`creative_tracker`](#analyticscreative_tracker), [`creative_family_daily`](#analyticscreative_family_daily), [`creative_family_metrics`](#analyticscreative_family_metrics), [`creative_unmatched_meta`](#analyticscreative_unmatched_meta), [`creative_stage_moves`](#analyticscreative_stage_moves), [`creative_scaling_placements`](#analyticscreative_scaling_placements), [`creative_scaling_benchmarks`](#analyticscreative_scaling_benchmarks), [`creative_content`](#analyticscreative_content) |
-| **tags**: Products, taxonomy lines, tags, hooks | [`products`](#analyticsproducts), [`taxonomy_lines`](#analyticstaxonomy_lines), [`line_ingredients`](#analyticsline_ingredients), [`ad_tags`](#analyticsad_tags), [`ad_hooks`](#analyticsad_hooks) |
+| **tags**: Products, taxonomy lines, tags, hooks | [`tag_products`](#analyticstag_products), [`tag_taxonomy_lines`](#analyticstag_taxonomy_lines), [`tag_line_ingredients`](#analyticstag_line_ingredients), [`tracker_tags`](#analyticstracker_tags), [`tracker_hooks`](#analyticstracker_hooks) |
 | **priorities**: The weekly creative priorities list | [`priorities_snapshots`](#analyticspriorities_snapshots), [`priorities_thresholds`](#analyticspriorities_thresholds), [`priorities_baselines`](#analyticspriorities_baselines), [`priorities_concepts`](#analyticspriorities_concepts), [`priorities_manual_concepts`](#analyticspriorities_manual_concepts) |
 | **production**: Concepts assigned to vendors and their stages | [`production_assignments`](#analyticsproduction_assignments), [`production_formats`](#analyticsproduction_formats) |
 | **projection**: Projection module: scenarios, levers, P&L inputs and actuals | [`projection_scenarios`](#analyticsprojection_scenarios), [`projection_levers`](#analyticsprojection_levers), [`projection_series`](#analyticsprojection_series), [`projection_actuals`](#analyticsprojection_actuals), [`projection_pnl_drivers`](#analyticsprojection_pnl_drivers), [`projection_pnl_settings`](#analyticsprojection_pnl_settings), [`projection_pnl_account_map`](#analyticsprojection_pnl_account_map), [`projection_cogs_sku`](#analyticsprojection_cogs_sku), [`projection_vendor_retainers`](#analyticsprojection_vendor_retainers) |
@@ -2755,7 +2755,7 @@ SELECT family_key, transcript_seconds, left(transcript, 120) AS transcript_start
 SELECT * FROM analytics.creative_content LIMIT 20;
 ```
 
-### analytics.products
+### analytics.tag_products
 
 *view*, columns like `public.products`
 
@@ -2782,16 +2782,16 @@ SELECT * FROM analytics.creative_content LIMIT 20;
 *Products*
 
 ```sql
-SELECT slug, name, tag_set, active FROM analytics.products ORDER BY sort_order;
+SELECT slug, name, tag_set, active FROM analytics.tag_products ORDER BY sort_order;
 ```
 
 *First rows*
 
 ```sql
-SELECT * FROM analytics.products LIMIT 20;
+SELECT * FROM analytics.tag_products LIMIT 20;
 ```
 
-### analytics.taxonomy_lines
+### analytics.tag_taxonomy_lines
 
 *view*, columns like `public.taxonomy_lines`
 
@@ -2820,16 +2820,16 @@ SELECT * FROM analytics.products LIMIT 20;
 *Lines per product and cluster*
 
 ```sql
-SELECT product_slug, cluster, count(*) AS lines FROM analytics.taxonomy_lines GROUP BY 1, 2 ORDER BY 1, 3 DESC;
+SELECT product_slug, cluster, count(*) AS lines FROM analytics.tag_taxonomy_lines GROUP BY 1, 2 ORDER BY 1, 3 DESC;
 ```
 
 *First rows*
 
 ```sql
-SELECT * FROM analytics.taxonomy_lines LIMIT 20;
+SELECT * FROM analytics.tag_taxonomy_lines LIMIT 20;
 ```
 
-### analytics.line_ingredients
+### analytics.tag_line_ingredients
 
 *view*, columns like `public.line_ingredients`
 
@@ -2855,16 +2855,16 @@ SELECT * FROM analytics.taxonomy_lines LIMIT 20;
 *Ingredients of one pain point*
 
 ```sql
-SELECT i.product_slug, i.line_code, i.ingredient, i.attacks FROM analytics.line_ingredients i JOIN analytics.taxonomy_lines l USING (line_id) WHERE l.pain_point ILIKE '%hair%' ORDER BY 1, 2 LIMIT 20;
+SELECT i.product_slug, i.line_code, i.ingredient, i.attacks FROM analytics.tag_line_ingredients i JOIN analytics.tag_taxonomy_lines l USING (line_id) WHERE l.pain_point ILIKE '%hair%' ORDER BY 1, 2 LIMIT 20;
 ```
 
 *First rows*
 
 ```sql
-SELECT * FROM analytics.line_ingredients LIMIT 20;
+SELECT * FROM analytics.tag_line_ingredients LIMIT 20;
 ```
 
-### analytics.ad_tags
+### analytics.tracker_tags
 
 *view*, columns like `public.ad_tags`
 
@@ -2906,16 +2906,16 @@ SELECT * FROM analytics.line_ingredients LIMIT 20;
 *Current line tags per product and confidence*
 
 ```sql
-SELECT product_slug, confidence, count(*) AS tags FROM analytics.ad_tags WHERE is_current AND tag_set = 'linemap' GROUP BY 1, 2 ORDER BY 1, 2;
+SELECT product_slug, confidence, count(*) AS tags FROM analytics.tracker_tags WHERE is_current AND tag_set = 'linemap' GROUP BY 1, 2 ORDER BY 1, 2;
 ```
 
 *First rows*
 
 ```sql
-SELECT * FROM analytics.ad_tags LIMIT 20;
+SELECT * FROM analytics.tracker_tags LIMIT 20;
 ```
 
-### analytics.ad_hooks
+### analytics.tracker_hooks
 
 *view*, columns like `public.ad_hooks`
 
@@ -2947,13 +2947,13 @@ SELECT * FROM analytics.ad_tags LIMIT 20;
 *Hooks of the 10 biggest launched families (Meta basis)*
 
 ```sql
-SELECT h.product_slug, h.concept_id, h.hook, round(m.spend_launch) AS spend_launch FROM analytics.ad_hooks h JOIN analytics.creative_family_metrics m ON m.tracker_row_id = h.tracker_row_id AND m.basis = 'meta' WHERE m.is_first_row ORDER BY m.spend_launch DESC LIMIT 10;
+SELECT h.product_slug, h.concept_id, h.hook, round(m.spend_launch) AS spend_launch FROM analytics.tracker_hooks h JOIN analytics.creative_family_metrics m ON m.tracker_row_id = h.tracker_row_id AND m.basis = 'meta' WHERE m.is_first_row ORDER BY m.spend_launch DESC LIMIT 10;
 ```
 
 *First rows*
 
 ```sql
-SELECT * FROM analytics.ad_hooks LIMIT 20;
+SELECT * FROM analytics.tracker_hooks LIMIT 20;
 ```
 
 ### analytics.priorities_snapshots

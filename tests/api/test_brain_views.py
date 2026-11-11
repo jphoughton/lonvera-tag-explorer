@@ -254,12 +254,12 @@ def test_creative_rollups_are_three_separate_bases(bdb):
 
 
 def test_tags_hooks_and_taxonomy_views(bdb):
-    assert one(bdb, "SELECT count(*) FILTER (WHERE is_current) FROM analytics.ad_tags") == one(bdb, "SELECT count(*) FROM public.ad_tags g JOIN public.tracker_rows t ON t.id = g.tracker_row_id WHERE g.is_current AND t.deleted_at IS NULL")
-    assert one(bdb, "SELECT count(*) FROM analytics.ad_tags WHERE line_code IS NOT NULL")[0] > 0
-    assert one(bdb, "SELECT count(*) FROM analytics.taxonomy_lines")[0] == one(bdb, "SELECT count(*) FROM public.taxonomy_lines")[0]
-    assert one(bdb, "SELECT count(*) FROM analytics.line_ingredients")[0] == one(bdb, "SELECT count(*) FROM public.line_ingredients")[0]
-    assert one(bdb, "SELECT count(*) FROM analytics.ad_hooks")[0] == one(bdb, "SELECT count(*) FROM public.ad_hooks h JOIN public.tracker_rows t ON t.id = h.tracker_row_id WHERE t.deleted_at IS NULL")[0]
-    cols = {c[0] for c in q(bdb, "SELECT column_name FROM information_schema.columns WHERE table_schema = 'analytics' AND table_name IN ('ad_tags', 'ad_hooks')")}
+    assert one(bdb, "SELECT count(*) FILTER (WHERE is_current) FROM analytics.tracker_tags") == one(bdb, "SELECT count(*) FROM public.ad_tags g JOIN public.tracker_rows t ON t.id = g.tracker_row_id WHERE g.is_current AND t.deleted_at IS NULL")
+    assert one(bdb, "SELECT count(*) FROM analytics.tracker_tags WHERE line_code IS NOT NULL")[0] > 0
+    assert one(bdb, "SELECT count(*) FROM analytics.tag_taxonomy_lines")[0] == one(bdb, "SELECT count(*) FROM public.taxonomy_lines")[0]
+    assert one(bdb, "SELECT count(*) FROM analytics.tag_line_ingredients")[0] == one(bdb, "SELECT count(*) FROM public.line_ingredients")[0]
+    assert one(bdb, "SELECT count(*) FROM analytics.tracker_hooks")[0] == one(bdb, "SELECT count(*) FROM public.ad_hooks h JOIN public.tracker_rows t ON t.id = h.tracker_row_id WHERE t.deleted_at IS NULL")[0]
+    cols = {c[0] for c in q(bdb, "SELECT column_name FROM information_schema.columns WHERE table_schema = 'analytics' AND table_name IN ('tracker_tags', 'tracker_hooks')")}
     assert "extra" not in cols
 
 

@@ -2223,38 +2223,38 @@ av("creative_content", src="public.family_content", domain="creative", base="fam
    examples=[("Video families with a transcript", "SELECT family_key, transcript_seconds, left(transcript, 120) AS transcript_start FROM analytics.creative_content WHERE is_video AND transcript IS NOT NULL ORDER BY transcript_seconds DESC NULLS LAST LIMIT 10;")])
 
 # ------------------------------------------------------------------------------------------------------------------------------- tags
-av("products", src="public.products", domain="tags", base="products",
+av("tag_products", src="public.products", domain="tags", base="products",
    purpose="The products and the tag set each uses (tag_set 'linemap' = tagged to the Communication Overview lines, 'tracker' = the tracker's own tag columns).", grain="one row per product",
    source="public.products", refresh="on change", coverage="5 products", ren={"product_id": "id"},
-   examples=[("Products", "SELECT slug, name, tag_set, active FROM analytics.products ORDER BY sort_order;")])
+   examples=[("Products", "SELECT slug, name, tag_set, active FROM analytics.tag_products ORDER BY sort_order;")])
 
-av("taxonomy_lines", src="public.taxonomy_lines", domain="tags", base="taxonomy_lines",
+av("tag_taxonomy_lines", src="public.taxonomy_lines", domain="tags", base="taxonomy_lines",
    purpose="The Communication Overview lines: one per ICP x pain point, with its market cluster, emotional trigger and story, per product. line_code is the code tags point at.", grain="one row per line_id",
    source="public.taxonomy_lines joined to public.products", refresh="when the taxonomy is reloaded (etl.load_taxonomy)", coverage="every line the product has",
    ren={"line_id": "id"}, cols={"product_slug": "Product the line belongs to."},
-   examples=[("Lines per product and cluster", "SELECT product_slug, cluster, count(*) AS lines FROM analytics.taxonomy_lines GROUP BY 1, 2 ORDER BY 1, 3 DESC;")])
+   examples=[("Lines per product and cluster", "SELECT product_slug, cluster, count(*) AS lines FROM analytics.tag_taxonomy_lines GROUP BY 1, 2 ORDER BY 1, 3 DESC;")])
 
-av("line_ingredients", src="public.line_ingredients", domain="tags", base="line_ingredients",
+av("tag_line_ingredients", src="public.line_ingredients", domain="tags", base="line_ingredients",
    purpose="The ingredients that address each taxonomy line: one row per line and ingredient with what it attacks and what it supports.", grain="one row per ingredient_id",
    source="public.line_ingredients joined to taxonomy_lines and products", refresh="when the taxonomy is reloaded", coverage="every line",
    ren={"ingredient_id": "id"}, cols={"product_slug": "Product of the line.", "line_code": "taxonomy_lines.line_code."},
-   examples=[("Ingredients of one pain point", "SELECT i.product_slug, i.line_code, i.ingredient, i.attacks FROM analytics.line_ingredients i JOIN analytics.taxonomy_lines l USING (line_id) WHERE l.pain_point ILIKE '%hair%' ORDER BY 1, 2 LIMIT 20;")])
+   examples=[("Ingredients of one pain point", "SELECT i.product_slug, i.line_code, i.ingredient, i.attacks FROM analytics.tag_line_ingredients i JOIN analytics.tag_taxonomy_lines l USING (line_id) WHERE l.pain_point ILIKE '%hair%' ORDER BY 1, 2 LIMIT 20;")])
 
-av("ad_tags", src="public.ad_tags", domain="tags", span=("ad_tags", "tagged_at::date"),
+av("tracker_tags", src="public.ad_tags", domain="tags", span=("ad_tags", "tagged_at::date"),
    purpose="Every tag ever written to a tracker row (current and superseded), joined to the tracker row, product and taxonomy line. Filter is_current for what stands now.", grain="one row per tag_id",
    source="public.ad_tags joined to tracker_rows, products and taxonomy_lines (the extra json is left out)", refresh="when tags load or the auto-tagger runs", coverage="every live tracker row",
    caveats=["A tracker row has at most one CURRENT tag per tag_set; analytics.creative_tracker already shows the current tag of the product's own tag set.",
             "confidence / method say how sure the tagger was: low-confidence and copy-only tags are weaker evidence."],
    ren={"tag_id": "id"}, cols={"concept_id": "Creative Tracker concept id of the tagged row.", "family_key": "Tracker ad family key (join to creative_tracker / creative_family_metrics).",
                               "product_slug": "Product of the tracker row.", "line_code": "taxonomy_lines.line_code the tag points at (NULL for tracker-set tags)."},
-   examples=[("Current line tags per product and confidence", "SELECT product_slug, confidence, count(*) AS tags FROM analytics.ad_tags WHERE is_current AND tag_set = 'linemap' GROUP BY 1, 2 ORDER BY 1, 2;")])
+   examples=[("Current line tags per product and confidence", "SELECT product_slug, confidence, count(*) AS tags FROM analytics.tracker_tags WHERE is_current AND tag_set = 'linemap' GROUP BY 1, 2 ORDER BY 1, 2;")])
 
-av("ad_hooks", src="public.ad_hooks", domain="tags", span=("ad_hooks", "extracted_at::date"),
+av("tracker_hooks", src="public.ad_hooks", domain="tags", span=("ad_hooks", "extracted_at::date"),
    purpose="The hook of each tracker row: the first spoken line and the first on-screen text, joined to the tracker row and product.", grain="one row per tracker_row_id",
    source="public.ad_hooks joined to tracker_rows and products", refresh="when hooks are reloaded (etl.load_hooks)", coverage="the current tracker rows that had something readable (a silent video or an ad with no copy has no hook)",
    caveats=["hook_source says where the hook came from (video transcript, image, copy). Rows with nothing readable have no hook."],
    cols={"concept_id": "Creative Tracker concept id.", "family_key": "Tracker ad family key.", "product_slug": "Product of the tracker row."},
-   examples=[("Hooks of the 10 biggest launched families (Meta basis)", "SELECT h.product_slug, h.concept_id, h.hook, round(m.spend_launch) AS spend_launch FROM analytics.ad_hooks h JOIN analytics.creative_family_metrics m "
+   examples=[("Hooks of the 10 biggest launched families (Meta basis)", "SELECT h.product_slug, h.concept_id, h.hook, round(m.spend_launch) AS spend_launch FROM analytics.tracker_hooks h JOIN analytics.creative_family_metrics m "
               "ON m.tracker_row_id = h.tracker_row_id AND m.basis = 'meta' WHERE m.is_first_row ORDER BY m.spend_launch DESC LIMIT 10;")])
 
 # ------------------------------------------------------------------------------------------------------------------------------- priorities
@@ -2707,7 +2707,7 @@ views only); everything else is the app's own storage. **Start with `select * fr
 | last-click credit by source; any-click new customers by stage; orders no ad gets credit for | `analytics.attribution_source_daily`, `analytics.attribution_anyclick_daily`, `analytics.attribution_unmapped_daily` |
 | actual new-customer revenue by product or hour; tax and refunds; Amazon; site traffic | `analytics.orders_by_product_daily`, `analytics.orders_hourly`, `analytics.orders_daily_detail`, `analytics.amazon_daily`, `analytics.site_traffic_daily` |
 | creative family spend / results by basis, test to scale, copy and transcript | `analytics.creative_family_daily`, `analytics.creative_family_metrics`, `analytics.creative_stage_moves`, `analytics.creative_scaling_placements`, `analytics.creative_content` |
-| tags, taxonomy lines, ingredients, hooks | `analytics.ad_tags`, `analytics.taxonomy_lines`, `analytics.line_ingredients`, `analytics.ad_hooks`, `analytics.products` |
+| tags, taxonomy lines, ingredients, hooks | `analytics.tracker_tags`, `analytics.tag_taxonomy_lines`, `analytics.tag_line_ingredients`, `analytics.tracker_hooks`, `analytics.tag_products` |
 | the weekly priorities list (lines, status, score, hit rate, thresholds) | `analytics.priorities_concepts`, `analytics.priorities_snapshots`, `analytics.priorities_baselines`, `analytics.priorities_thresholds` |
 | who is making which concept for which week | `analytics.production_assignments`, `analytics.production_formats`, `analytics.priorities_manual_concepts` |
 | competitor ads and concepts | `analytics.competitor_ads`, `analytics.competitor_concepts`, `analytics.competitor_brands` |
@@ -2753,9 +2753,9 @@ Money is dollars. Days are calendar days (Meta: each ad account's own day; every
 | `public.ad_hooks`, `public.ad_metrics` | `public.tracker_rows` | `tracker_row_id = id` |
 | `public.family_daily`, `family_content`, `creative_assets` | `public.tracker_rows` | `family_key` (tracker family) |
 | `public.google_daily` | `public.upstack_google_campaigns` | `campaign_key = campaign_id` |
-| `analytics.ad_tags` / `analytics.ad_hooks` / `analytics.creative_family_metrics` | `analytics.creative_tracker` | `tracker_row_id` (or `concept_id`, `family_key`) |
-| `analytics.ad_tags` | `analytics.taxonomy_lines` | `line_id` (or `product_slug` + `line_code`); `analytics.line_ingredients.line_id` the same |
-| `analytics.priorities_concepts` | `analytics.taxonomy_lines` | `product_slug` + `line_code` |
+| `analytics.tracker_tags` / `analytics.tracker_hooks` / `analytics.creative_family_metrics` | `analytics.creative_tracker` | `tracker_row_id` (or `concept_id`, `family_key`) |
+| `analytics.tracker_tags` | `analytics.tag_taxonomy_lines` | `line_id` (or `product_slug` + `line_code`); `analytics.tag_line_ingredients.line_id` the same |
+| `analytics.priorities_concepts` | `analytics.tag_taxonomy_lines` | `product_slug` + `line_code` |
 | `analytics.production_assignments` | `analytics.creative_tracker` | `tracker_concept_ids` (array) contains `concept_id` |
 | `analytics.creative_stage_moves` / `creative_family_daily` | `analytics.creative_tracker` | `family_key` (filter `basis` first: the three bases are separate rows) |
 | `analytics.projection_levers` / `projection_series` | `analytics.projection_scenarios` | `scenario_slug = slug` |

@@ -703,7 +703,7 @@ FROM public.family_content c;
 -- ---------------------------------------------------------------------------------------------------------------- tags: products, taxonomy, tags, hooks
 
 -- The products and the tag set each one uses.
-CREATE OR REPLACE VIEW analytics.products AS
+CREATE OR REPLACE VIEW analytics.tag_products AS
 SELECT p.id AS product_id,
        p.slug,
        p.name,
@@ -716,7 +716,7 @@ SELECT p.id AS product_id,
 FROM public.products p;
 
 -- The Communication Overview lines: one per ICP x pain point, with the cluster, emotional trigger and story, per product.
-CREATE OR REPLACE VIEW analytics.taxonomy_lines AS
+CREATE OR REPLACE VIEW analytics.tag_taxonomy_lines AS
 SELECT l.id AS line_id,
        p.slug AS product_slug,
        l.line_code,
@@ -732,7 +732,7 @@ FROM public.taxonomy_lines l
 JOIN public.products p ON p.id = l.product_id;
 
 -- The ingredients that address each taxonomy line: what each one attacks and supports.
-CREATE OR REPLACE VIEW analytics.line_ingredients AS
+CREATE OR REPLACE VIEW analytics.tag_line_ingredients AS
 SELECT i.id AS ingredient_id,
        i.line_id,
        p.slug AS product_slug,
@@ -746,7 +746,7 @@ JOIN public.taxonomy_lines l ON l.id = i.line_id
 JOIN public.products p ON p.id = l.product_id;
 
 -- Every tag ever written to a tracker row (current and superseded), joined to the tracker row, product and taxonomy line.
-CREATE OR REPLACE VIEW analytics.ad_tags AS
+CREATE OR REPLACE VIEW analytics.tracker_tags AS
 SELECT g.id AS tag_id,
        g.tracker_row_id,
        t.concept_id,
@@ -775,7 +775,7 @@ JOIN public.products p ON p.id = t.product_id
 LEFT JOIN public.taxonomy_lines tl ON tl.id = g.line_id;
 
 -- The hook of each tracker row: first spoken line and first on-screen text, joined to the tracker row and product.
-CREATE OR REPLACE VIEW analytics.ad_hooks AS
+CREATE OR REPLACE VIEW analytics.tracker_hooks AS
 SELECT h.tracker_row_id,
        t.concept_id,
        t.family_key,
@@ -1138,15 +1138,15 @@ SELECT 'creative_scaling_benchmarks'::text AS view_name, 'creative'::text AS dom
 UNION ALL
 SELECT 'creative_content'::text AS view_name, 'creative'::text AS domain, 'The copy and transcript Meta actually runs for each creative family (no image or video bytes).'::text AS description, 'one row per family_key'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, (SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.family_content'::regclass) AS row_estimate
 UNION ALL
-SELECT 'products'::text AS view_name, 'tags'::text AS domain, 'The products and the tag set each uses (tag_set ''linemap'' = tagged to the Communication Overview lines, ''tracker'' = the tracker''s own tag columns).'::text AS description, 'one row per product'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, (SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.products'::regclass) AS row_estimate
+SELECT 'tag_products'::text AS view_name, 'tags'::text AS domain, 'The products and the tag set each uses (tag_set ''linemap'' = tagged to the Communication Overview lines, ''tracker'' = the tracker''s own tag columns).'::text AS description, 'one row per product'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, (SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.products'::regclass) AS row_estimate
 UNION ALL
-SELECT 'taxonomy_lines'::text AS view_name, 'tags'::text AS domain, 'The Communication Overview lines: one per ICP x pain point, with its market cluster, emotional trigger and story, per product. line_code is the code tags point at.'::text AS description, 'one row per line_id'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, (SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.taxonomy_lines'::regclass) AS row_estimate
+SELECT 'tag_taxonomy_lines'::text AS view_name, 'tags'::text AS domain, 'The Communication Overview lines: one per ICP x pain point, with its market cluster, emotional trigger and story, per product. line_code is the code tags point at.'::text AS description, 'one row per line_id'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, (SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.taxonomy_lines'::regclass) AS row_estimate
 UNION ALL
-SELECT 'line_ingredients'::text AS view_name, 'tags'::text AS domain, 'The ingredients that address each taxonomy line: one row per line and ingredient with what it attacks and what it supports.'::text AS description, 'one row per ingredient_id'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, (SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.line_ingredients'::regclass) AS row_estimate
+SELECT 'tag_line_ingredients'::text AS view_name, 'tags'::text AS domain, 'The ingredients that address each taxonomy line: one row per line and ingredient with what it attacks and what it supports.'::text AS description, 'one row per ingredient_id'::text AS grain, NULL::date AS first_day, NULL::date AS last_day, (SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.line_ingredients'::regclass) AS row_estimate
 UNION ALL
-SELECT 'ad_tags'::text AS view_name, 'tags'::text AS domain, 'Every tag ever written to a tracker row (current and superseded), joined to the tracker row, product and taxonomy line. Filter is_current for what stands now.'::text AS description, 'one row per tag_id'::text AS grain, (SELECT min(tagged_at::date) FROM public.ad_tags)::date AS first_day, (SELECT max(tagged_at::date) FROM public.ad_tags)::date AS last_day, (SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.ad_tags'::regclass) AS row_estimate
+SELECT 'tracker_tags'::text AS view_name, 'tags'::text AS domain, 'Every tag ever written to a tracker row (current and superseded), joined to the tracker row, product and taxonomy line. Filter is_current for what stands now.'::text AS description, 'one row per tag_id'::text AS grain, (SELECT min(tagged_at::date) FROM public.ad_tags)::date AS first_day, (SELECT max(tagged_at::date) FROM public.ad_tags)::date AS last_day, (SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.ad_tags'::regclass) AS row_estimate
 UNION ALL
-SELECT 'ad_hooks'::text AS view_name, 'tags'::text AS domain, 'The hook of each tracker row: the first spoken line and the first on-screen text, joined to the tracker row and product.'::text AS description, 'one row per tracker_row_id'::text AS grain, (SELECT min(extracted_at::date) FROM public.ad_hooks)::date AS first_day, (SELECT max(extracted_at::date) FROM public.ad_hooks)::date AS last_day, (SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.ad_hooks'::regclass) AS row_estimate
+SELECT 'tracker_hooks'::text AS view_name, 'tags'::text AS domain, 'The hook of each tracker row: the first spoken line and the first on-screen text, joined to the tracker row and product.'::text AS description, 'one row per tracker_row_id'::text AS grain, (SELECT min(extracted_at::date) FROM public.ad_hooks)::date AS first_day, (SELECT max(extracted_at::date) FROM public.ad_hooks)::date AS last_day, (SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.ad_hooks'::regclass) AS row_estimate
 UNION ALL
 SELECT 'priorities_snapshots'::text AS view_name, 'priorities'::text AS domain, 'One row per weekly creative priorities snapshot: when it was built, the data it used and how many rows it holds.'::text AS description, 'one row per week_start (the Sunday, Pacific)'::text AS grain, (SELECT min(week_start) FROM public.creative_priorities_snapshots)::date AS first_day, (SELECT max(week_start) FROM public.creative_priorities_snapshots)::date AS last_day, (SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = 'public.creative_priorities_snapshots'::regclass) AS row_estimate
 UNION ALL
@@ -1756,74 +1756,74 @@ COMMENT ON COLUMN analytics.creative_content.is_video IS 'true for video ads.';
 COMMENT ON COLUMN analytics.creative_content.ad_id IS 'A Meta ad id of the family.';
 COMMENT ON COLUMN analytics.creative_content.video_id IS 'Meta video id.';
 COMMENT ON COLUMN analytics.creative_content.source IS '''cycle-2026-11-04'', ''cycle-2026-11-04:whisper'', ''cycle-2026-11-03:tracker'' ...';
-COMMENT ON VIEW analytics.products IS 'The products and the tag set each uses (tag_set ''linemap'' = tagged to the Communication Overview lines, ''tracker'' = the tracker''s own tag columns). Grain: one row per product. Source: public.products. Refresh: on change. Coverage: 5 products.';
-COMMENT ON COLUMN analytics.products.product_id IS 'Primary key.';
-COMMENT ON COLUMN analytics.products.slug IS '''vita-bull'' | ''beef-liver'' | ''boneflex'' | ''vita-belle'' | ''vital-flow'' | ''unassigned''.';
-COMMENT ON COLUMN analytics.products.name IS 'Display name.';
-COMMENT ON COLUMN analytics.products.tracker_names IS 'Values of the Creative Tracker ''Product'' column that map to this product (array).';
-COMMENT ON COLUMN analytics.products.meta_regex IS 'Regular expression used to guess the product from a Meta family name (NULL for ''unassigned'').';
-COMMENT ON COLUMN analytics.products.meta_priority IS 'Lower is tested first.';
-COMMENT ON COLUMN analytics.products.tag_set IS '''linemap'' | ''tracker''.';
-COMMENT ON COLUMN analytics.products.sort_order IS 'Display order.';
-COMMENT ON COLUMN analytics.products.active IS 'false hides the product from the Products table.';
-COMMENT ON VIEW analytics.taxonomy_lines IS 'The Communication Overview lines: one per ICP x pain point, with its market cluster, emotional trigger and story, per product. line_code is the code tags point at. Grain: one row per line_id. Source: public.taxonomy_lines joined to public.products. Refresh: when the taxonomy is reloaded (etl.load_taxonomy). Coverage: every line the product has.';
-COMMENT ON COLUMN analytics.taxonomy_lines.line_id IS 'Primary key.';
-COMMENT ON COLUMN analytics.taxonomy_lines.product_slug IS 'Product the line belongs to.';
-COMMENT ON COLUMN analytics.taxonomy_lines.line_code IS 'L01.. / B01.. / BF01.. (unique per product).';
-COMMENT ON COLUMN analytics.taxonomy_lines.cluster IS 'Market cluster.';
-COMMENT ON COLUMN analytics.taxonomy_lines.icp IS 'Ideal customer profile / persona.';
-COMMENT ON COLUMN analytics.taxonomy_lines.pain_point IS 'Pain point.';
-COMMENT ON COLUMN analytics.taxonomy_lines.emotional_trigger IS 'Emotional trigger (can be NULL).';
-COMMENT ON COLUMN analytics.taxonomy_lines.story IS 'Short story the ad would tell (15 words or fewer).';
-COMMENT ON COLUMN analytics.taxonomy_lines.cluster_color IS 'Hex colour of the cluster in the sheet.';
-COMMENT ON COLUMN analytics.taxonomy_lines.sort_order IS 'Communication Overview order.';
-COMMENT ON COLUMN analytics.taxonomy_lines.added_after_tagging IS 'true = the line was added after the product''s ads were tagged.';
-COMMENT ON VIEW analytics.line_ingredients IS 'The ingredients that address each taxonomy line: one row per line and ingredient with what it attacks and what it supports. Grain: one row per ingredient_id. Source: public.line_ingredients joined to taxonomy_lines and products. Refresh: when the taxonomy is reloaded. Coverage: every line.';
-COMMENT ON COLUMN analytics.line_ingredients.ingredient_id IS 'Primary key.';
-COMMENT ON COLUMN analytics.line_ingredients.line_id IS 'taxonomy_lines.id.';
-COMMENT ON COLUMN analytics.line_ingredients.product_slug IS 'Product of the line.';
-COMMENT ON COLUMN analytics.line_ingredients.line_code IS 'taxonomy_lines.line_code.';
-COMMENT ON COLUMN analytics.line_ingredients.ingredient IS 'Nutrient / active compound that addresses the pain point (e.g. Zinc, Heme Iron, Glucosamine).';
-COMMENT ON COLUMN analytics.line_ingredients.attacks IS '''What It Attacks'': the mechanism it counters.';
-COMMENT ON COLUMN analytics.line_ingredients.supports IS '''What It Supports''.';
-COMMENT ON COLUMN analytics.line_ingredients.sort_order IS 'Order within the line.';
-COMMENT ON VIEW analytics.ad_tags IS 'Every tag ever written to a tracker row (current and superseded), joined to the tracker row, product and taxonomy line. Filter is_current for what stands now. Grain: one row per tag_id. Source: public.ad_tags joined to tracker_rows, products and taxonomy_lines (the extra json is left out). Refresh: when tags load or the auto-tagger runs. Coverage: every live tracker row. Caveats: A tracker row has at most one CURRENT tag per tag_set; analytics.creative_tracker already shows the current tag of the product''s own tag set. | confidence / method say how sure the tagger was: low-confidence and copy-only tags are weaker evidence.';
-COMMENT ON COLUMN analytics.ad_tags.tag_id IS 'Primary key.';
-COMMENT ON COLUMN analytics.ad_tags.tracker_row_id IS 'tracker_rows.id.';
-COMMENT ON COLUMN analytics.ad_tags.concept_id IS 'Creative Tracker concept id of the tagged row.';
-COMMENT ON COLUMN analytics.ad_tags.family_key IS 'Tracker ad family key (join to creative_tracker / creative_family_metrics).';
-COMMENT ON COLUMN analytics.ad_tags.product_slug IS 'Product of the tracker row.';
-COMMENT ON COLUMN analytics.ad_tags.tag_set IS '''linemap'' | ''tracker''.';
-COMMENT ON COLUMN analytics.ad_tags.version IS 'Tagging cycle, e.g. ''linemap-v2-2026-11-03'', ''tracker-live''.';
-COMMENT ON COLUMN analytics.ad_tags.is_current IS 'true for the tag in force.';
-COMMENT ON COLUMN analytics.ad_tags.line_id IS 'taxonomy_lines.id (linemap tags).';
-COMMENT ON COLUMN analytics.ad_tags.line_code IS 'taxonomy_lines.line_code the tag points at (NULL for tracker-set tags).';
-COMMENT ON COLUMN analytics.ad_tags.cluster IS 'Market cluster.';
-COMMENT ON COLUMN analytics.ad_tags.icp IS 'ICP / persona.';
-COMMENT ON COLUMN analytics.ad_tags.pain_point IS 'Pain point.';
-COMMENT ON COLUMN analytics.ad_tags.emotional_trigger IS 'Emotional trigger.';
-COMMENT ON COLUMN analytics.ad_tags.confidence IS 'high | medium | low | NULL.';
-COMMENT ON COLUMN analytics.ad_tags.method IS 'How it was tagged: ''image'', ''video: 4 frames + Whisper transcript'', ''text only'', ''no picture (copy only)'', ''video: thumbnail + no audio'' ...';
-COMMENT ON COLUMN analytics.ad_tags.seen IS '''What Was Seen'': the tagger''s description of the creative.';
-COMMENT ON COLUMN analytics.ad_tags.why IS 'Why the line was chosen.';
-COMMENT ON COLUMN analytics.ad_tags.runner_up IS 'Second-best line.';
-COMMENT ON COLUMN analytics.ad_tags.copy_only_line IS 'Line the copy-only first pass picked when different.';
-COMMENT ON COLUMN analytics.ad_tags.tagger IS 'Who / what tagged it.';
-COMMENT ON COLUMN analytics.ad_tags.tagged_at IS 'When the tag was written.';
-COMMENT ON VIEW analytics.ad_hooks IS 'The hook of each tracker row: the first spoken line and the first on-screen text, joined to the tracker row and product. Grain: one row per tracker_row_id. Source: public.ad_hooks joined to tracker_rows and products. Refresh: when hooks are reloaded (etl.load_hooks). Coverage: the current tracker rows that had something readable (a silent video or an ad with no copy has no hook). Caveats: hook_source says where the hook came from (video transcript, image, copy). Rows with nothing readable have no hook.';
-COMMENT ON COLUMN analytics.ad_hooks.tracker_row_id IS 'tracker_rows.id (primary key).';
-COMMENT ON COLUMN analytics.ad_hooks.concept_id IS 'Creative Tracker concept id.';
-COMMENT ON COLUMN analytics.ad_hooks.family_key IS 'Tracker ad family key.';
-COMMENT ON COLUMN analytics.ad_hooks.product_slug IS 'Product of the tracker row.';
-COMMENT ON COLUMN analytics.ad_hooks.hook IS 'The one-line hook.';
-COMMENT ON COLUMN analytics.ad_hooks.spoken IS 'First spoken line (video audio / transcript).';
-COMMENT ON COLUMN analytics.ad_hooks.on_screen IS 'On-image headline / first on-screen text.';
-COMMENT ON COLUMN analytics.ad_hooks.hook_source IS 'spoken | on_screen | both | copy | none.';
-COMMENT ON COLUMN analytics.ad_hooks.confidence IS 'high | medium | low.';
-COMMENT ON COLUMN analytics.ad_hooks.note IS 'Extractor remark.';
-COMMENT ON COLUMN analytics.ad_hooks.version IS 'Extraction cycle, e.g. ''hooks-v1-2026-11-05''.';
-COMMENT ON COLUMN analytics.ad_hooks.extractor IS 'Who produced it.';
-COMMENT ON COLUMN analytics.ad_hooks.extracted_at IS 'When the row was written.';
+COMMENT ON VIEW analytics.tag_products IS 'The products and the tag set each uses (tag_set ''linemap'' = tagged to the Communication Overview lines, ''tracker'' = the tracker''s own tag columns). Grain: one row per product. Source: public.products. Refresh: on change. Coverage: 5 products.';
+COMMENT ON COLUMN analytics.tag_products.product_id IS 'Primary key.';
+COMMENT ON COLUMN analytics.tag_products.slug IS '''vita-bull'' | ''beef-liver'' | ''boneflex'' | ''vita-belle'' | ''vital-flow'' | ''unassigned''.';
+COMMENT ON COLUMN analytics.tag_products.name IS 'Display name.';
+COMMENT ON COLUMN analytics.tag_products.tracker_names IS 'Values of the Creative Tracker ''Product'' column that map to this product (array).';
+COMMENT ON COLUMN analytics.tag_products.meta_regex IS 'Regular expression used to guess the product from a Meta family name (NULL for ''unassigned'').';
+COMMENT ON COLUMN analytics.tag_products.meta_priority IS 'Lower is tested first.';
+COMMENT ON COLUMN analytics.tag_products.tag_set IS '''linemap'' | ''tracker''.';
+COMMENT ON COLUMN analytics.tag_products.sort_order IS 'Display order.';
+COMMENT ON COLUMN analytics.tag_products.active IS 'false hides the product from the Products table.';
+COMMENT ON VIEW analytics.tag_taxonomy_lines IS 'The Communication Overview lines: one per ICP x pain point, with its market cluster, emotional trigger and story, per product. line_code is the code tags point at. Grain: one row per line_id. Source: public.taxonomy_lines joined to public.products. Refresh: when the taxonomy is reloaded (etl.load_taxonomy). Coverage: every line the product has.';
+COMMENT ON COLUMN analytics.tag_taxonomy_lines.line_id IS 'Primary key.';
+COMMENT ON COLUMN analytics.tag_taxonomy_lines.product_slug IS 'Product the line belongs to.';
+COMMENT ON COLUMN analytics.tag_taxonomy_lines.line_code IS 'L01.. / B01.. / BF01.. (unique per product).';
+COMMENT ON COLUMN analytics.tag_taxonomy_lines.cluster IS 'Market cluster.';
+COMMENT ON COLUMN analytics.tag_taxonomy_lines.icp IS 'Ideal customer profile / persona.';
+COMMENT ON COLUMN analytics.tag_taxonomy_lines.pain_point IS 'Pain point.';
+COMMENT ON COLUMN analytics.tag_taxonomy_lines.emotional_trigger IS 'Emotional trigger (can be NULL).';
+COMMENT ON COLUMN analytics.tag_taxonomy_lines.story IS 'Short story the ad would tell (15 words or fewer).';
+COMMENT ON COLUMN analytics.tag_taxonomy_lines.cluster_color IS 'Hex colour of the cluster in the sheet.';
+COMMENT ON COLUMN analytics.tag_taxonomy_lines.sort_order IS 'Communication Overview order.';
+COMMENT ON COLUMN analytics.tag_taxonomy_lines.added_after_tagging IS 'true = the line was added after the product''s ads were tagged.';
+COMMENT ON VIEW analytics.tag_line_ingredients IS 'The ingredients that address each taxonomy line: one row per line and ingredient with what it attacks and what it supports. Grain: one row per ingredient_id. Source: public.line_ingredients joined to taxonomy_lines and products. Refresh: when the taxonomy is reloaded. Coverage: every line.';
+COMMENT ON COLUMN analytics.tag_line_ingredients.ingredient_id IS 'Primary key.';
+COMMENT ON COLUMN analytics.tag_line_ingredients.line_id IS 'taxonomy_lines.id.';
+COMMENT ON COLUMN analytics.tag_line_ingredients.product_slug IS 'Product of the line.';
+COMMENT ON COLUMN analytics.tag_line_ingredients.line_code IS 'taxonomy_lines.line_code.';
+COMMENT ON COLUMN analytics.tag_line_ingredients.ingredient IS 'Nutrient / active compound that addresses the pain point (e.g. Zinc, Heme Iron, Glucosamine).';
+COMMENT ON COLUMN analytics.tag_line_ingredients.attacks IS '''What It Attacks'': the mechanism it counters.';
+COMMENT ON COLUMN analytics.tag_line_ingredients.supports IS '''What It Supports''.';
+COMMENT ON COLUMN analytics.tag_line_ingredients.sort_order IS 'Order within the line.';
+COMMENT ON VIEW analytics.tracker_tags IS 'Every tag ever written to a tracker row (current and superseded), joined to the tracker row, product and taxonomy line. Filter is_current for what stands now. Grain: one row per tag_id. Source: public.ad_tags joined to tracker_rows, products and taxonomy_lines (the extra json is left out). Refresh: when tags load or the auto-tagger runs. Coverage: every live tracker row. Caveats: A tracker row has at most one CURRENT tag per tag_set; analytics.creative_tracker already shows the current tag of the product''s own tag set. | confidence / method say how sure the tagger was: low-confidence and copy-only tags are weaker evidence.';
+COMMENT ON COLUMN analytics.tracker_tags.tag_id IS 'Primary key.';
+COMMENT ON COLUMN analytics.tracker_tags.tracker_row_id IS 'tracker_rows.id.';
+COMMENT ON COLUMN analytics.tracker_tags.concept_id IS 'Creative Tracker concept id of the tagged row.';
+COMMENT ON COLUMN analytics.tracker_tags.family_key IS 'Tracker ad family key (join to creative_tracker / creative_family_metrics).';
+COMMENT ON COLUMN analytics.tracker_tags.product_slug IS 'Product of the tracker row.';
+COMMENT ON COLUMN analytics.tracker_tags.tag_set IS '''linemap'' | ''tracker''.';
+COMMENT ON COLUMN analytics.tracker_tags.version IS 'Tagging cycle, e.g. ''linemap-v2-2026-11-03'', ''tracker-live''.';
+COMMENT ON COLUMN analytics.tracker_tags.is_current IS 'true for the tag in force.';
+COMMENT ON COLUMN analytics.tracker_tags.line_id IS 'taxonomy_lines.id (linemap tags).';
+COMMENT ON COLUMN analytics.tracker_tags.line_code IS 'taxonomy_lines.line_code the tag points at (NULL for tracker-set tags).';
+COMMENT ON COLUMN analytics.tracker_tags.cluster IS 'Market cluster.';
+COMMENT ON COLUMN analytics.tracker_tags.icp IS 'ICP / persona.';
+COMMENT ON COLUMN analytics.tracker_tags.pain_point IS 'Pain point.';
+COMMENT ON COLUMN analytics.tracker_tags.emotional_trigger IS 'Emotional trigger.';
+COMMENT ON COLUMN analytics.tracker_tags.confidence IS 'high | medium | low | NULL.';
+COMMENT ON COLUMN analytics.tracker_tags.method IS 'How it was tagged: ''image'', ''video: 4 frames + Whisper transcript'', ''text only'', ''no picture (copy only)'', ''video: thumbnail + no audio'' ...';
+COMMENT ON COLUMN analytics.tracker_tags.seen IS '''What Was Seen'': the tagger''s description of the creative.';
+COMMENT ON COLUMN analytics.tracker_tags.why IS 'Why the line was chosen.';
+COMMENT ON COLUMN analytics.tracker_tags.runner_up IS 'Second-best line.';
+COMMENT ON COLUMN analytics.tracker_tags.copy_only_line IS 'Line the copy-only first pass picked when different.';
+COMMENT ON COLUMN analytics.tracker_tags.tagger IS 'Who / what tagged it.';
+COMMENT ON COLUMN analytics.tracker_tags.tagged_at IS 'When the tag was written.';
+COMMENT ON VIEW analytics.tracker_hooks IS 'The hook of each tracker row: the first spoken line and the first on-screen text, joined to the tracker row and product. Grain: one row per tracker_row_id. Source: public.ad_hooks joined to tracker_rows and products. Refresh: when hooks are reloaded (etl.load_hooks). Coverage: the current tracker rows that had something readable (a silent video or an ad with no copy has no hook). Caveats: hook_source says where the hook came from (video transcript, image, copy). Rows with nothing readable have no hook.';
+COMMENT ON COLUMN analytics.tracker_hooks.tracker_row_id IS 'tracker_rows.id (primary key).';
+COMMENT ON COLUMN analytics.tracker_hooks.concept_id IS 'Creative Tracker concept id.';
+COMMENT ON COLUMN analytics.tracker_hooks.family_key IS 'Tracker ad family key.';
+COMMENT ON COLUMN analytics.tracker_hooks.product_slug IS 'Product of the tracker row.';
+COMMENT ON COLUMN analytics.tracker_hooks.hook IS 'The one-line hook.';
+COMMENT ON COLUMN analytics.tracker_hooks.spoken IS 'First spoken line (video audio / transcript).';
+COMMENT ON COLUMN analytics.tracker_hooks.on_screen IS 'On-image headline / first on-screen text.';
+COMMENT ON COLUMN analytics.tracker_hooks.hook_source IS 'spoken | on_screen | both | copy | none.';
+COMMENT ON COLUMN analytics.tracker_hooks.confidence IS 'high | medium | low.';
+COMMENT ON COLUMN analytics.tracker_hooks.note IS 'Extractor remark.';
+COMMENT ON COLUMN analytics.tracker_hooks.version IS 'Extraction cycle, e.g. ''hooks-v1-2026-11-05''.';
+COMMENT ON COLUMN analytics.tracker_hooks.extractor IS 'Who produced it.';
+COMMENT ON COLUMN analytics.tracker_hooks.extracted_at IS 'When the row was written.';
 COMMENT ON VIEW analytics.priorities_snapshots IS 'One row per weekly creative priorities snapshot: when it was built, the data it used and how many rows it holds. Grain: one row per week_start (the Sunday, Pacific). Source: public.creative_priorities_snapshots without the json blobs (they are flattened into the other priorities_* views). Refresh: Sundays in the nightly etl (etl.creative_priorities). Coverage: from the first week the page ran.';
 COMMENT ON COLUMN analytics.priorities_snapshots.week_start IS 'The Sunday (Pacific) the snapshot belongs to (primary key).';
 COMMENT ON COLUMN analytics.priorities_snapshots.built_at IS 'When the snapshot was last written.';
