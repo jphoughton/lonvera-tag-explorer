@@ -40,7 +40,7 @@ def fill_dialog(page, value, field="url"):
 def test_table_renders_with_plain_columns_and_open_rows_only(page):
     goto(page)
     heads = [t.strip() for t in page.locator("[data-testid=prod-table] thead th").all_text_contents()]
-    assert heads == ["Week of", "Vendor", "Product", "Concept", "Brief", "Creative", "Stage", "Ads", "Result", ""]
+    assert heads == ["Week of", "Vendor", "Product", "Concept", "Brief", "Creative", "Format", "Stage", "Ads", "Result", ""]
     ids = page.locator("[data-testid=prod-row]").evaluate_all("rs => rs.map(r => r.dataset.id)")
     assert ids == ["3", "2", "1"]                                    # newest week first; the launched row 4 is hidden until Show launched and dropped
     assert stage(page, 1) == "Assigned" and stage(page, 2) == "Creative delivered"
@@ -209,6 +209,45 @@ def test_text_is_at_least_12px(page):
     goto(page)
     small = page.evaluate("""() => [...document.querySelectorAll('[data-testid=prod-page] *')].filter(e => e.childNodes.length && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && parseFloat(getComputedStyle(e).fontSize) < 12).map(e => e.tagName + ':' + e.textContent.slice(0, 20))""")
     assert small == []
+
+
+def fmt(page, rid):
+    return row(page, rid).locator("[data-testid=prod-format]")
+
+
+def test_format_column_shows_the_choice_and_internal_users_change_it_inline(page):
+    goto(page)
+    assert fmt(page, 2).input_value() == "F3" and fmt(page, 1).input_value() == ""
+    opts = fmt(page, 1).locator("option").all_text_contents()
+    assert opts[0] == "No format chosen" and opts[1] == "F1 Long animated story, openly AI, told by the character (90s to 3 min)" and len(opts) == 7
+    fmt(page, 1).select_option("F5")
+    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-format]\").value === 'F5'")
+    page.wait_for_function("() => document.querySelector('[data-testid=prod-msg]').textContent === 'Format saved.'")
+    page.reload()
+    page.wait_for_selector("[data-testid=prod-page]")
+    idle(page)
+    assert fmt(page, 1).input_value() == "F5"                                                  # it was saved, not just drawn
+    fmt(page, 1).select_option("")
+    page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-format]\").value === ''")
+    page.wait_for_function("() => document.querySelector('[data-testid=prod-msg]').textContent === 'Format removed.'")
+    assert stage(page, 1) == "Assigned"                                                         # the other cells are unchanged
+    assert "—" not in page.locator("[data-testid=prod-page]").text_content()
+
+
+def test_vendor_page_shows_the_format_read_only(anon_page, base_url):
+    page = anon_page
+    page.goto(f"/priorities/vendor/{MADRE}")
+    page.wait_for_selector("[data-testid=prod-vendor-page]")
+    idle(page)
+    assert page.locator("[data-testid=prod-card][data-id='2'] [data-testid=prod-format-text]").text_content() == "F3 Short acted scene with two people (30 to 60s)"
+    assert page.locator("[data-testid=prod-card][data-id='1'] [data-testid=prod-format-text]").text_content() == "Not chosen"
+    assert page.locator("[data-testid=prod-card] select").count() == 0 and page.locator("[data-testid=prod-card] [data-testid=prod-format]").count() == 0       # nothing to change it with
+    r = page.request.patch(f"{base_url}/api/priorities/vendor/{MADRE}/2", data={"format_code": "F1"})
+    assert r.status == 400
+    page.reload()
+    page.wait_for_selector("[data-testid=prod-vendor-page]")
+    idle(page)
+    assert "F3" in page.locator("[data-testid=prod-card][data-id='2'] [data-testid=prod-format-text]").text_content()
 
 
 # ---------------------------------------------------------------------------------------------------------------- details panel (the same panel as /priorities, plus up to 10 example ads)

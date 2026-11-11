@@ -7416,7 +7416,17 @@
    "primary_key": [
     "id"
    ],
-   "foreign_keys": [],
+   "foreign_keys": [
+    {
+     "columns": [
+      "format_code"
+     ],
+     "references": "public.creative_formats",
+     "referenced_columns": [
+      "code"
+     ]
+    }
+   ],
    "source": "the /priorities and /priorities/production pages and the vendor link page via /api/priorities/assignments (app/priorities_assign.py)",
    "refresh": "on demand (a person assigns, adds links, marks ready or launched, drops; a vendor adds a creative link and a note)",
    "coverage": "from the day the migration was deployed",
@@ -7594,6 +7604,65 @@
      "type": "text",
      "nullable": true,
      "description": "Who last changed it: the signed-in user name, or vendor:<name> for a write made on a vendor link page; NULL when none."
+    },
+    {
+     "name": "format_code",
+     "type": "text",
+     "nullable": true,
+     "description": "Creative format chosen when assigning or later (creative_formats.code, foreign key); NULL when none was chosen. Set by a signed-in user only; a vendor sees it but cannot change it."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.creative_formats",
+   "schema": "public",
+   "relation": "creative_formats",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "The creative formats a production assignment can be made in (for example Whiteboard explainer): a short list that Josh picks from when assigning a concept to a vendor. Production side only; not part of the concept taxonomy.",
+   "grain": "one row per format (code is the primary key)",
+   "primary_key": [
+    "code"
+   ],
+   "foreign_keys": [],
+   "source": "seeded by migration 204; edited by hand in the database (no page edits it); read by /api/priorities/assignments (app/priorities_assign.py)",
+   "refresh": "on demand (a format is added or retired by hand)",
+   "coverage": "six formats, F1 to F6, from the day the migration was deployed",
+   "caveats": [
+    "A format with active = false stays on the assignments that already use it but can no longer be chosen."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "code",
+     "type": "text",
+     "nullable": false,
+     "description": "Short code (primary key), F1 to F6."
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "nullable": false,
+     "description": "What the format is, shown in the pick list."
+    },
+    {
+     "name": "length",
+     "type": "text",
+     "nullable": true,
+     "description": "Typical running time, as text (for example '45 to 90s'); NULL when not set."
+    },
+    {
+     "name": "sort",
+     "type": "integer",
+     "nullable": false,
+     "description": "Order in the pick list (ascending)."
+    },
+    {
+     "name": "active",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True while the format can be chosen on a new assignment."
     }
    ],
    "examples": []
