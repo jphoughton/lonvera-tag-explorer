@@ -176,6 +176,23 @@ class Brain:
         except rundb.SqlUnavailable as e:
             raise ToolError(str(e)) from None
 
+    def why(self, args: dict) -> dict:
+        from . import why as W
+        def run(q, limit):
+            return rundb.run_select(q, limit, allow_file=self.allow_file_url)
+        try:
+            return W.run_why(args, run, self.kn)
+        except W.WhyError as e:
+            raise ToolError(str(e)) from None
+        except SqlRejected as e:
+            raise ToolError(f"query rejected: {e}") from None
+        except rundb.SqlUnavailable as e:
+            raise ToolError(str(e)) from None
+
+    def why_tree(self, include_sql: bool = False) -> dict:
+        from . import why_tree as WT
+        return WT.tree_definition(bool(include_sql))
+
     def freshness(self) -> dict:
         cov = self.sql("select source, first_day, last_day, days, rows, loaded_at, note from analytics.data_coverage order by source", 200)
         failed = self.sql("select id, job, started_at, finished_at, status, data_through, left(error, 300) as error from analytics.etl_runs "
@@ -211,6 +228,12 @@ TOOLS: list[Tool] = [
          _obj(), lambda b, a: b.freshness()),
     Tool("sql", "Run ONE read-only SELECT or WITH query on the analytics views (30 second limit, rows capped). Use after catalog and describe; never guess a column.",
          _obj({"query": S, "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "description": "row cap, default 200"}}, ["query"]), lambda b, a: b.sql(a.get("query", ""), a.get("limit") or 200)),
+    Tool("why", "Why did a metric move? Walks the metric tree live (day, week, month grains), follows what moved, finds dated changes, runs controls, ends at a cause or an honest residual. Run FIRST for any why question.",
+         _obj({"metric": S, "start": S, "end": S, "compare": {"type": "string", "enum": ["prior_period", "last_month", "last_year", "custom"]}, "compare_start": S, "compare_end": S, "product": S,
+               "platform": {"type": "string", "enum": ["meta", "google"]}, "max_depth": {"type": "integer", "minimum": 1, "maximum": 12}, "grain": {"type": "string", "enum": ["auto", "day", "week", "month"]},
+               "max_steps": {"type": "integer", "minimum": 5, "maximum": 80}}), lambda b, a: b.why(a)),
+    Tool("why_tree", "The why-tree definition: nodes, formulas, children, materiality, linked past questions, known causes, data gaps. Read-only, runs no SQL.",
+         _obj({"include_sql": {"type": "boolean"}}), lambda b, a: b.why_tree(a.get("include_sql", False))),
     Tool("past_questions", "Search Josh's past business questions and the answers given. Use BEFORE re-answering a 'why did X move' question.",
          _obj({"text": S, "limit": {"type": "integer", "minimum": 1, "maximum": 25}}, ["text"]), lambda b, a: b.past_questions(a.get("text", ""), a.get("limit") or 8)),
     Tool("app_map", "The app's services, schedules, pages, API routes and ETL jobs (generated from the code). Use to find where something runs or is served.",
