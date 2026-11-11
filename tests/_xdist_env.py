@@ -48,12 +48,6 @@ def _admin_url() -> str:
 def pytest_configure(config):
     if not _WORKER:
         return
-    os.environ.setdefault("DB_POOL_MAX", "3")                 # connections: 100 on the server for every worker and every other session; the apps under test default to 8
-    try:
-        from app.projection import rwdb
-        rwdb.MAX_SIZE = 3                                     # (default 4)
-    except Exception:
-        pass
     import psycopg
     name = os.environ["TEST_DATABASE_URL"].rsplit("/", 1)[1]
     try:
