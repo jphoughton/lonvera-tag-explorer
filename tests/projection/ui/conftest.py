@@ -34,15 +34,16 @@ def base_url():
     port = _free_port()
     url = f"http://127.0.0.1:{port}"
     proc = subprocess.Popen([sys.executable, str(HERE / "mock_server.py"), str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    for _ in range(80):
+    deadline = time.time() + 90                      # a slow start on a loaded machine is waited out, a crashed mock fails at once
+    while True:
         try:
             with urllib.request.urlopen(url + "/healthz", timeout=1):
                 break
         except Exception:
-            time.sleep(0.25)
-    else:
-        proc.terminate()
-        raise RuntimeError("mock server did not start")
+            if proc.poll() is not None or time.time() > deadline:
+                proc.terminate()
+                raise RuntimeError("mock server did not start")
+            time.sleep(0.1)
     yield url
     proc.terminate()
 

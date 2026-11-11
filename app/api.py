@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, db, google as gg, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import auth, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, db, google as gg, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -209,6 +209,19 @@ def campaigns_all_platforms():
     finally:
         q.set_source("meta")
     return jsonify(res)
+
+
+@bp.get("/api/meta/breakdowns/coverage")
+def meta_breakdowns_coverage():
+    """What the nightly Meta breakdown pull holds, per set and level: status (ok / unsupported / error), first and last day, rows, last error (app/meta_breakdowns.py)."""
+    return jsonify(mbd.coverage(db.get_conn()))
+
+
+@bp.get("/api/meta/breakdowns")
+def meta_breakdowns():
+    """One breakdown set (set=age | age,gender | region ...) aggregated over start..end by its dimensions: spend, impressions, clicks, purchases, revenue, ROAS, cost per
+    purchase, cost per 1,000 impressions, click rate. Filters: level, product=<slug>, campaign_id. Meta-reported; reach is never summed."""
+    return jsonify(mbd.breakdown(db.get_conn(), request.args))
 
 
 @bp.get("/api/platforms/kpis")

@@ -1,8 +1,8 @@
 #!/bin/sh
 # ETL service entrypoint (Railway cron): migrate, then the daily refresh. Exits non-zero on failure so the
 # Railway deployment is marked failed (visible in the dashboard / notifications).
-# Usage: run_etl.sh                -> python -m etl.run_daily, then etl.upstack_daily (Upstack source), then etl.stage_moves (Test to scale tables), then etl.projection_daily, then etl.amazon_mtd, then etl.competitor_ads --if-sunday (non-fatal), then etl.assignment_tags (non-fatal), then etl.auto_tag (non-fatal) (all always run; non-zero if any failed)
-# Usage: run_etl.sh                -> python -m etl.run_daily, then etl.upstack_daily (Upstack source), then etl.stage_moves (Test to scale tables), then etl.projection_daily, then etl.amazon_mtd, then etl.creative_priorities --if-sunday (non-fatal; runs AFTER the competitor step when that exists, it reads the competitor_concepts view), then etl.assignment_tags (non-fatal), then etl.auto_tag (non-fatal) (all always run; non-zero if any failed)
+# Usage: run_etl.sh                -> python -m etl.run_daily, then etl.upstack_daily (Upstack source), then etl.stage_moves (Test to scale tables), then etl.projection_daily, then etl.amazon_mtd, then etl.competitor_ads --if-sunday (non-fatal), then etl.assignment_tags (non-fatal), then etl.klaviyo --days 14 (non-fatal), then etl.auto_tag (non-fatal) (all always run; non-zero if any failed)
+# Usage: run_etl.sh                -> python -m etl.run_daily, then etl.upstack_daily (Upstack source), then etl.stage_moves (Test to scale tables), then etl.projection_daily, then etl.amazon_mtd, then etl.creative_priorities --if-sunday (non-fatal; runs AFTER the competitor step when that exists, it reads the competitor_concepts view), then etl.assignment_tags (non-fatal), then etl.klaviyo --days 14 (non-fatal), then etl.auto_tag (non-fatal) (all always run; non-zero if any failed)
 #        run_etl.sh <module> [args] -> python -m etl.<module> [args]   (manual one-offs, e.g. `meta_pull --days 185`)
 set -eu
 
@@ -29,6 +29,8 @@ if [ "$#" -eq 0 ]; then
   python -m etl.creative_priorities --if-sunday || echo "[run_etl] etl.creative_priorities failed (exit $?), non-fatal; see etl_runs job creative_priorities" >&2
   # Assignment tags: ads linked to a production assignment get the assignment's line (never overwrites a tag; no-op without the table). Before auto_tag so linked ads get the planned line, not a model guess. NON-FATAL (etl_runs job assignment_tags).
   python -m etl.assignment_tags || echo "[run_etl] etl.assignment_tags failed (exit $?), non-fatal; see etl_runs job assignment_tags" >&2
+  # Klaviyo flow + campaign metrics: trailing 14 Pacific days re-upserted so late opens / clicks / orders land. NON-FATAL (etl_runs job klaviyo); without KLAVIYO_API_KEY it logs one line and exits 0.
+  python -m etl.klaviyo --days 14 || echo "[run_etl] etl.klaviyo failed (exit $?), non-fatal; see etl_runs job klaviyo" >&2
   # Auto-tagging of new ads (headless Claude on the subscription token), LAST so a long run (up to ~150 ads) never delays the data steps above.
   # NON-FATAL by design: a failure is recorded in etl_runs (job auto_tag) and logged, never changes the exit code. Needs run_daily's tracker rows + metrics.
   python -m etl.auto_tag || echo "[run_etl] etl.auto_tag failed (exit $?), non-fatal; see etl_runs job auto_tag" >&2

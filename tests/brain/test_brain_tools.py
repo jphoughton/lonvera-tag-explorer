@@ -18,7 +18,7 @@ def bare(bare_root):
 
 def test_the_registry_has_every_tool_with_a_short_description():
     names = [t.name for t in T.TOOLS]
-    assert names == ["catalog", "describe", "search", "metric", "freshness", "sql", "past_questions", "app_map"]
+    assert names == ["catalog", "describe", "search", "metric", "freshness", "sql", "why", "why_tree", "past_questions", "app_map"]
     for t in T.TOOLS:
         assert 20 < len(t.description) <= 220 and t.schema["type"] == "object" and t.schema["additionalProperties"] is False
 
@@ -133,3 +133,33 @@ def test_the_real_repo_loads_and_its_docs_are_searchable():
     assert b.catalog()["domains"] and b.describe("meta_ad_daily")["columns"]
     assert any(h["kind"] == "doc" for h in b.search("api key authorization bearer")["hits"])
     assert b.app_map("services")["services"]
+
+
+def test_app_map_match_filters_entries(brain):
+    r = brain.app_map(match="mcp")
+    assert r["routes"] == [{"rule": "/mcp"}] and r["services"] == [] and r["pages"] == []
+    assert brain.app_map("services", match="WEB")["services"] == [{"name": "web"}]
+
+
+def test_search_synonyms_and_plurals(brain):
+    from brain import knowledge as K
+    assert K.tokens("New customers") == ["new", "customer"]
+    # 'NC' is shorthand for new customer: a query for it still finds text that only says "new customer"
+    hits = brain.search("nc revenue")["hits"]
+    assert any("new_customer_revenue" in h["ref"] or "customer" in h["snippet"].lower() for h in hits)
+
+
+def test_snippet_prefers_the_densest_window():
+    from brain import knowledge as K
+    text = "reached " + "filler " * 80 + "the percent reached scaling is testers that moved divided by testers " + "tail " * 20
+    s = K.snippet(text, "percent reached scaling testers moved", width=120)
+    assert "testers that moved" in s
+
+
+def test_sql_error_for_a_public_table_points_to_the_catalog(brain, monkeypatch):
+    from brain import rundb
+    def boom(*a, **k):
+        raise rundb.SqlUnavailable('database error: relation "x" does not exist')
+    monkeypatch.setattr(rundb, "run_select", boom)
+    with pytest.raises(T.ToolError, match="Only the analytics views are readable"):
+        brain.sql("select 1")
