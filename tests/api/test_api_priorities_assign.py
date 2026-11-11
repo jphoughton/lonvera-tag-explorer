@@ -93,7 +93,7 @@ def test_ckey_is_added_to_rows_and_nothing_else_changes(client, snaps, pg):
     d = client.get("/api/priorities?week=2026-11-08").get_json()
     stored = pg.execute("SELECT rows FROM creative_priorities_snapshots WHERE week_start = '2026-11-08'").fetchone()[0]
     from etl import creative_priorities as cpm
-    assert [{k: v for k, v in r.items() if k != "ckey"} for r in d["rows"]] == cpm.norm_snapshot({"rows": stored})["rows"]       # only the old->new vocabulary read map; storage itself is untouched
+    assert [{k: v for k, v in r.items() if k not in ("ckey", "sheet_pos")} for r in d["rows"]] == cpm.norm_snapshot({"rows": stored})["rows"]       # only the old->new vocabulary read map; storage itself is untouched
     assert stored[0]["section"] == "faded" and d["rows"][0]["section"] == "revive"
 
 
@@ -582,6 +582,37 @@ def test_vendor_detail_is_the_vendors_own_row_without_links_or_manual_notes(clie
     text = json.dumps(d)
     assert "internal only" not in text and "created_by" not in text and "JoshHoughton" not in text
     assert "evidence" not in d["row"] and "components" not in d["row"]
+
+
+def test_vendor_example_ads_link_to_a_public_url_never_to_the_ad_page_or_ads_manager(client, anon, pg, tagged):
+    """Facebook post first, else the tracker asset link; only plain http(s); nothing internal. The internal detail has no such field."""
+    pg.execute("INSERT INTO family_content (family_key, story_url) VALUES ('zz-dfam-1','https://www.facebook.com/lonvera/posts/1'), ('zz-dfam-2','javascript:alert(1)'), ('zz-dfam-3','https://adsmanager.facebook.com/adsmanager/manage/ads?act=1&selected_ad_ids=2')")
+    pg.execute("UPDATE tracker_rows SET asset_url = 'https://drive.example/file/2' WHERE id = 9202")                      # bad post link -> falls back to the asset link
+    pg.execute("UPDATE tracker_rows SET asset_url = 'ftp://x/y' WHERE id = 9203")                                          # nothing usable
+    pg.execute("UPDATE tracker_rows SET asset_url = 'https://drive.example/file/4' WHERE id = 9204")                      # no post row at all -> asset link
+    pg.commit()
+    try:
+        a = assign(client, [line_snapshot(pg, tagged)], vendor="Madre").get_json()["created"][0]
+        tok = link(client, "Madre")["token"]
+        ex = anon.get(f"/api/priorities/vendor/{tok}/{a['id']}/detail").get_json()["examples"]
+        by = {e["ad"]: e for e in ex}
+        assert by["zz-dfam-1"]["public_url"] == "https://www.facebook.com/lonvera/posts/1"
+        assert by["zz-dfam-2"]["public_url"] == "https://drive.example/file/2"
+        assert by["zz-dfam-3"]["public_url"] is None and by["zz-dfam-4"]["public_url"] == "https://drive.example/file/4" and by["zz-dfam-5"]["public_url"] is None
+        assert all(e["ad_id"] is None for e in ex) and "/ad/" not in json.dumps(ex) and "adsmanager" not in json.dumps(ex)
+        inner = detail(client, a["id"]).get_json()["examples"]
+        assert inner and all("public_url" not in e for e in inner)
+    finally:
+        pg.execute("DELETE FROM family_content WHERE family_key LIKE 'zz-dfam-%'")
+        pg.commit()
+
+
+def test_payload_rows_on_a_sheet_line_carry_the_sheet_position(client, pg, tagged):
+    key = line_snapshot(pg, tagged)
+    rows = client.get("/api/priorities").get_json()["rows"]
+    mine = [r for r in rows if r.get("line_id") == tagged]
+    assert mine and mine[0]["sheet_pos"] == 999
+    assert all("sheet_pos" not in r for r in rows if r.get("line_id") is None)                                                 # a new idea has none
 
 
 def test_vendor_detail_of_a_manual_concept_hides_the_internal_notes(client, anon, pg, tagged):

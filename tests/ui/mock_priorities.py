@@ -32,7 +32,7 @@ def register(app, deps):
         for r in d["rows"]:
             r.update(edit.get(cpr.row_key(r), {}))
         d = pm.merge(d, recs(), include_done=include_done)
-        return {**d, "rows": cpr.with_ckey(d["rows"]), "definitions": cp.definitions(d.get("thresholds"))}       # ckey and definitions as in app.creative_priorities.payload
+        return {**d, "rows": [{**r, "sheet_pos": r["line_id"]} if r.get("line_id") is not None else r for r in cpr.with_ckey(d["rows"])], "definitions": cp.definitions(d.get("thresholds"))}       # ckey, sheet_pos and definitions as in app.creative_priorities.payload (the fixture's line ids run in sheet order, so they stand in for taxonomy_lines.sort_order)
 
     merged = live
     app.config["PRI_LIVE"] = live                                             # the assignments mock resolves the keys of POST /api/priorities/assignments from this snapshot

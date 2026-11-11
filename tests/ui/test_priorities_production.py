@@ -282,7 +282,12 @@ def test_vendor_card_expands_with_examples_but_no_ad_links_and_no_internal_notes
     assert btn.get_attribute("aria-expanded") == "true" and len(reqs) == 1 and f"/vendor/{MADRE}/1/detail" in reqs[0]
     assert "ED / Performance" in panel.text_content() and panel.locator("[data-testid=pri-hooks]").count() == 1
     assert panel.locator("[data-testid=pri-example]").count() == 10 and panel.locator("[data-testid=pri-example-best]").count() == 1
-    assert panel.locator("a[href^='/ad/']").count() == 0                              # the ad page needs a login: names are plain text for a vendor
+    assert panel.locator("a[href^='/ad/']").count() == 0 and panel.locator("a[href*='adsmanager']").count() == 0      # the ad page needs a login, Ads Manager too: neither is ever linked for a vendor
+    pub = panel.locator("[data-testid=pri-example-public]")                           # a public link where the server sent one: the Facebook post, else the asset link; new tab, no opener
+    assert pub.count() == 3
+    assert pub.evaluate_all("els => els.map(a => [a.getAttribute('href'), a.target, a.rel])") == [["https://www.facebook.com/lonvera/posts/101", "_blank", "noopener noreferrer"], ["https://www.facebook.com/lonvera/posts/102", "_blank", "noopener noreferrer"], ["https://drive.example/asset/3", "_blank", "noopener noreferrer"]]
+    assert panel.locator("[data-testid=pri-example]").nth(4).locator("a").count() == 0       # javascript: is refused, plain text
+    assert panel.locator("[data-testid=pri-example]").nth(3).locator("a").count() == 0       # no link on file: plain text
     card.locator("[data-testid=pri-x-name]").click()                                   # name collapses it
     page.wait_for_function("() => document.querySelector(\"[data-id='1'] [data-testid=prod-detail]\").hidden")
     assert btn.get_attribute("aria-expanded") == "false"

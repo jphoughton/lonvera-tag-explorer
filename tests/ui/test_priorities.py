@@ -24,6 +24,24 @@ def goto(page, qs=""):
     idle(page)
 
 
+def goto_legacy(page, qs=""):
+    """The page with the rows in the old default order (Action, then product, then rank): a click on the Action column header. The default is now the grouped view (product, cluster, ICP, pain point)."""
+    goto(page, qs)
+    by_action(page)
+
+
+def by_action(page):
+    page.locator("[data-testid=pri-sort-section]").dispatch_event("click")
+    page.wait_for_function("() => !document.querySelector('[data-testid=pri-table]').classList.contains('pri-grouped')")
+
+
+def open_actions(page):
+    """On a phone the selection bar keeps its buttons behind a More button."""
+    more = page.locator("[data-testid=pri-sel-more]")
+    if more.is_visible() and more.get_attribute("aria-expanded") == "false":
+        more.click()
+
+
 def visible_rows(page):
     return page.locator("[data-testid=pri-body] " + ROW).count()
 
@@ -37,12 +55,15 @@ def test_everything_is_collapsed_on_load_and_the_detail_panels_are_hidden(page):
     assert page.locator("[data-testid=pri-body] " + DETAIL + "[hidden]").count() == 30
     assert page.locator("[data-testid=pri-shown]").text_content() == "30 of 30 concepts shown"
     heads = [t.strip() for t in page.locator("[data-testid=pri-table] thead th").all_text_contents()]
-    assert [h.replace(" ⇅", "") for h in heads[1:]] == ["Product", "Action", "Market Cluster", "ICP", "Pain Point", "Story", "Status", "Concepts", "Key number", "Spend \u00b7 14d", "ROAS \u00b7 14d", "In production"]
+    assert [h.replace(" ⇅", "") for h in heads[1:]] == ["Product", "Market Cluster", "ICP", "Pain Point", "Action", "Story", "Status", "Concepts", "Key number", "Spend \u00b7 14d", "ROAS \u00b7 14d", "In production"]
     page.screenshot(path=str(SHOTS / "priorities_collapsed.png"), full_page=False)
 
 
-def test_default_order_is_section_first_then_product_then_rank_and_the_story_is_not_truncated(page):
+def test_sorting_by_action_gives_section_then_product_then_rank_and_the_story_is_not_truncated(page):
+    """The default is now the grouped view (tests/ui/test_priorities_hierarchy.py); a click on the Action header is the old order."""
     goto(page)
+    assert page.locator("[data-testid=pri-group-btn]").get_attribute("aria-pressed") == "true"
+    by_action(page)
     secs = page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("rows => rows.map(r => r.dataset.section)")
     assert secs == sorted(secs, key=SEC.index) and secs[0] == "revive" and secs[-1] == "stop"
     first_story = page.locator("[data-testid=pri-body] tr.pri-row .pri-c-story").first
@@ -56,7 +77,7 @@ def test_legend_of_the_four_tags_stays_at_the_top(page):
 
 
 def test_chevron_button_and_row_click_open_and_close_the_panel_with_the_detail(page):
-    goto(page)
+    goto_legacy(page)
     btn = page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first
     btn.click()
     assert btn.get_attribute("aria-expanded") == "true" and btn.get_attribute("aria-label").startswith("Collapse:")
@@ -184,7 +205,7 @@ def test_stacked_layout_at_375px_has_no_sideways_scroll(browser, base_url):
     assert not p.evaluate("() => document.documentElement.scrollWidth > innerWidth")
     p.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
     assert not p.evaluate("() => document.documentElement.scrollWidth > innerWidth")
-    assert p.locator("[data-testid=pri-body] tr.pri-row").first.evaluate("e => getComputedStyle(e).display") == "block"
+    assert p.locator("[data-testid=pri-body] tr.pri-row").first.evaluate("e => getComputedStyle(e).display") in ("block", "flex")          # stacked cards (flex in the grouped view, which orders the group labels above the checkbox)
     p.screenshot(path=str(SHOTS / "priorities_375.png"))
     c.close()
 
@@ -239,7 +260,7 @@ def test_select_all_visible_respects_filters_and_selection_survives_filter_sort_
 
 
 def test_selected_only_csv_has_the_same_columns_and_only_those_rows(page):
-    goto(page)
+    goto_legacy(page)
     with page.expect_download() as dl:
         page.locator("[data-testid=pri-csv]").click()
     full = csv_of(dl.value)
@@ -316,6 +337,7 @@ def test_selection_toolbar_at_375px_has_no_sideways_scroll(browser, base_url):
     p.locator(PICK).nth(0).check()
     assert p.locator(TOOLS).is_visible()
     assert not p.evaluate("() => document.documentElement.scrollWidth > innerWidth")
+    open_actions(p)
     p.locator("[data-testid=pri-sel-save]").click()
     p.locator("[data-testid=pri-view-name]").fill("a fairly long view name for a phone")
     p.keyboard.press("Enter")
@@ -434,7 +456,7 @@ def test_save_view_opens_a_naming_dialog_with_a_focused_prefilled_selected_input
 
 
 def test_switching_to_a_rows_view_filters_the_same_table_in_place_and_back_to_all(page):
-    goto(page)
+    goto_legacy(page)
     pains = [page.locator(PICK).nth(i).locator("xpath=ancestor::tr").locator(".pri-c-pain").text_content() for i in (1, 6, 7)]
     url = save_view(page, "Round 1 briefs", 1, 6, 7)
     assert url.startswith("/priorities/v/") and len(tok(url)) >= 22
@@ -660,6 +682,7 @@ def test_view_bar_dialog_and_active_view_fit_375px_and_the_share_page_does_not_o
         p.wait_for_selector("[data-testid=pri-page]")
         idle(p)
         pick_rows(p, 0, 1)
+        open_actions(p)
         p.locator("[data-testid=pri-sel-save]").click()
         p.locator(DLG).wait_for()
         assert p.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth")
@@ -746,7 +769,7 @@ def test_every_fact_is_still_in_every_expanded_panel(page):
 
 
 def test_faded_summary_sentence_is_not_printed_twice(page):
-    goto(page)
+    goto_legacy(page)
     page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
     txt = page.locator("[data-testid=pri-body] " + DETAIL).first.text_content()
     r = FIXTURE["rows"][[x["section"] for x in FIXTURE["rows"]].index("revive")]
@@ -754,7 +777,7 @@ def test_faded_summary_sentence_is_not_printed_twice(page):
 
 
 def test_detail_panel_has_identity_verdict_cta_and_grouped_stat_cards(page):
-    goto(page)
+    goto_legacy(page)
     page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
     p = page.locator("[data-testid=pri-body] " + DETAIL).first
     assert p.locator(".pri-tile").count() == 4 and p.locator(".pri-verdict").is_visible()
@@ -779,7 +802,7 @@ def test_long_definitions_hide_behind_a_keyboard_operable_disclosure(page):
 
 
 def test_former_winners_and_hooks_show_three_then_show_all(page):
-    goto(page)
+    goto_legacy(page)
     page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
     p = page.locator("[data-testid=pri-body] " + DETAIL).first
     assert p.locator(".pri-w:visible").count() == 3 and p.locator(".pri-w").count() == 5
@@ -1350,7 +1373,7 @@ def open_share(p, url):
 
 
 def test_share_page_has_product_filter_with_counts_briefed_toggle_progress_and_hide_briefed(page, browser, base_url):
-    goto(page)
+    goto_legacy(page)
     rows = page.locator(f"[data-testid=pri-body] {ROW}").evaluate_all("els => els.map(e => e.dataset.product)")
     idx = [i for i in range(len(rows)) if rows[i] in ("vita-bull", "beef-liver")][:6]
     url = save_view(page, "Brief tracker", *idx)
@@ -1477,7 +1500,7 @@ def test_14_day_columns_show_spend_and_roas_sort_and_dash_below_100(page):
 
 
 def test_14_day_stat_card_in_panel(page):
-    goto(page)
+    goto_legacy(page)
     page.locator("[data-testid=pri-toggle]").first.click()
     assert "Last 14 days" in page.locator("[data-testid=pri-detail]:visible").first.text_content()
 
@@ -1542,7 +1565,7 @@ def _with_rest_rows(page):
 
 def test_hold_rows_sit_after_the_action_rows_and_open_lazily_with_the_full_panel(page):
     _with_rest_rows(page)
-    goto(page)
+    goto_legacy(page)
     assert visible_rows(page) == 35
     secs = page.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("els => els.map(e => e.dataset.section)")
     assert secs[-5:] == ["hold"] * 5 and "hold" not in secs[:-5]                                    # action sections first, in the Action order
@@ -1864,7 +1887,7 @@ def test_public_saved_view_has_no_production_column_checkbox_or_history(page, fr
 
 
 def test_add_is_not_an_action_and_new_ideas_sit_under_test_after_the_sheet_lines(page):
-    goto(page)
+    goto_legacy(page)
     assert page.locator("[data-testid=pri-f-section-add]").count() == 0 and page.locator("[data-testid=pri-body] tr.pri-row[data-section=add]").count() == 0
     assert "Add to sheet" not in page.locator("[data-testid=pri-page]").text_content()
     test_rows = page.locator("[data-testid=pri-body] tr.pri-row[data-section=test]")
@@ -1885,6 +1908,7 @@ def test_priorities_panel_is_unchanged_by_the_shared_module(page):
     """The detail panel moved into priorities_panel.js (shared with Production and the vendor page); on /priorities it still has the same parts and still shows 3 hooks, no example-ads table."""
     page.goto("/priorities")
     page.wait_for_selector("[data-testid=pri-body]")
+    by_action(page)
     page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").first.click()
     panel = page.locator("[data-testid=pri-body] [data-testid=pri-detail]:not([hidden]) .pri-panel").first
     panel.wait_for()

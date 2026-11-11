@@ -48,15 +48,41 @@ def snapshot(conn, raw_week: str | None) -> dict:
 def payload(conn, raw_week: str | None) -> dict:
     from etl import creative_priorities as cp
     snap = pm.merge(snapshot(conn, raw_week), pm.list_records(conn))        # manual concepts are not tied to a week: they ride along on every snapshot (done ones flagged, hidden by the page)
-    snap = {**snap, "rows": with_ckey(snap["rows"])}
+    snap = {**snap, "rows": with_ckey(with_sheet_pos(conn, snap["rows"]))}
     comp = (snap.get("stats") or {}).get("competitors")
     return {**snap, "competitors_as_of": comp["as_of"] if comp else None, "competitor_stale": (comp or {}).get("stale_brands", []), "weeks": weeks(conn), "legend": [{"tag": a, "meaning": b} for a, b in cp.LEGEND],
             "definitions": cp.definitions(snap.get("thresholds"))}
 
 
+def with_sheet_pos(conn, rows: list[dict]) -> list[dict]:
+    """Each row with a line gets `sheet_pos`, the line's position on the Communication Overview sheet (taxonomy_lines.sort_order, per product), which the page uses to order the grouped view.
+    Snapshots built after 2026-11-10 carry it already; older snapshots and frozen view rows are filled in here from the live taxonomy. A line that left the sheet, and any row without a line, gets none."""
+    ids = sorted({r["line_id"] for r in rows if r.get("line_id") is not None and r.get("sheet_pos") is None})
+    if not ids:
+        return rows
+    pos = {x["id"]: x["sort_order"] for x in conn.execute("SELECT id, sort_order FROM taxonomy_lines WHERE id = ANY(%s)", (ids,)).fetchall()}
+    return [{**r, "sheet_pos": pos[r["line_id"]]} if r.get("sheet_pos") is None and r.get("line_id") in pos else r for r in rows]
+
+
 def with_ckey(rows: list[dict]) -> list[dict]:
     """Each row plus ckey, the stable concept key (line:<id> | manual:<id> | text:<product>|<cluster>|<icp>|<pain point>) that production assignments attach to. Computed, never stored."""
     return [{**r, "ckey": pa.concept_key(r)} for r in rows]
+
+
+def with_sheet_pos(conn, rows: list[dict]) -> list[dict]:
+    """Each row on a sheet line plus sheet_pos, that line's place in the Communication Overview sheet (taxonomy_lines.sort_order, read now; the grouped page view orders by it). Rows on no line (new ideas, manual
+    concepts) get none and the page places them after the sheet rows of their group. A missing table or line leaves the row without one."""
+    ids = sorted({int(r["line_id"]) for r in rows if r.get("line_id") is not None})
+    pos: dict[int, int] = {}
+    if ids:
+        try:
+            pos = {x["id"]: x["sort_order"] for x in conn.execute("SELECT id, sort_order FROM taxonomy_lines WHERE id = ANY(%s)", (ids,)).fetchall() if x["sort_order"] is not None}
+        except Exception:                                    # noqa: BLE001 - ordering is cosmetic: never fail the page over it
+            try:
+                conn.rollback()
+            except Exception:                                # noqa: BLE001
+                pass
+    return [{**r, "sheet_pos": pos[int(r["line_id"])]} if r.get("line_id") is not None and int(r["line_id"]) in pos else r for r in rows]
 
 
 def row_key(r: dict) -> str:
@@ -246,6 +272,8 @@ def get_view(token: str) -> dict:
         raise q.ApiError(404, "Saved view not found.")
     with _views_conn() as w:
         r = w.execute("SELECT token, name, week_start, payload, kind, filters, keys, briefed, created_at FROM creative_priorities_views WHERE token = %s", (token,)).fetchone()
+        if r is not None:
+            r = {**r, "payload": {**r["payload"], "rows": with_sheet_pos(w, r["payload"].get("rows") or [])}}       # frozen rows saved before sheet_pos existed: order them by the live sheet
     if r is None:
         raise q.ApiError(404, "Saved view not found.")
     return view_response(r)

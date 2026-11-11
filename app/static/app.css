@@ -859,7 +859,7 @@ button.pri-ptile { cursor: pointer; } button.pri-ptile:hover { background: var(-
 .pri-k { color: var(--lv-muted, #665d53); }
 .pri-status { font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 2px 8px; border-radius: 10px; border: 1px solid currentColor; white-space: nowrap; display: inline-block; }
 .pri-st-ok { color: #1a7f37; } .pri-st-up { color: #0b6bcb; } .pri-st-fade { color: #b35900; } .pri-st-bad { color: #b42318; } .pri-st-flat { color: #667085; } .pri-st-new { color: #7a3db8; }
-@media (min-width: 761px) and (max-width: 1320px) {                /* between phone and wide desktop the table must still fit: smaller minimums, smaller padding, long text wraps */
+@media (min-width: 761px) and (max-width: 1700px) {                /* between phone and wide desktop the table must still fit: smaller minimums, smaller padding, long text wraps */
   .pri-main { table-layout: fixed; }
   .pri-main .pri-c-section, .pri-main .pri-c-cluster, .pri-main .pri-c-icp, .pri-main .pri-c-pain, .pri-main .pri-c-story { min-width: 0; }
   .pri-main .pri-c { padding: 6px 5px; font-size: 12px; overflow-wrap: anywhere; }
@@ -1048,7 +1048,7 @@ button.pri-stat:hover { background: color-mix(in srgb, var(--tone) 14%, #fff); }
 .pri-r14 { font-weight: 700; font-variant-numeric: tabular-nums; padding: 1px 6px; border-radius: 6px; white-space: nowrap; }
 .pri-r14-up { color: var(--lv-pri-good); background: var(--lv-pri-good-bg); } .pri-r14-down { color: var(--lv-pri-bad); background: var(--lv-pri-bad-bg); } .pri-r14-flat { color: var(--lv-ink, #1c1915); background: #eee8dc; }
 .pri-c-spend14, .pri-c-roas14 { white-space: nowrap; font-variant-numeric: tabular-nums; }
-@media (min-width: 761px) and (max-width: 1320px) {
+@media (min-width: 761px) and (max-width: 1700px) {
   .pri-main .pri-c-product { width: 6%; } .pri-main .pri-c-concepts { width: 6%; } .pri-main .pri-c-key { width: 11%; }
   .pri-main .pri-c-cluster, .pri-main .pri-c-icp, .pri-main .pri-c-pain { width: 10%; } .pri-main .pri-c-story { width: 12%; } .pri-main .pri-c-spend14, .pri-main .pri-c-roas14 { width: 7%; white-space: normal; }
 }
@@ -1176,3 +1176,73 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 .prod-namebtn:hover { text-decoration-style: solid; }
 .pri-ex-best { margin-left: 8px; white-space: nowrap; }
 @media (max-width: 760px) { .pri-ex td[data-label="Spend"]::before { content: 'spend '; color: var(--lv-muted, #665d53); } .pri-ex td[data-label="Return on ad spend"]::before { content: 'return '; color: var(--lv-muted, #665d53); } }
+
+/* ---- priorities: grouped hierarchy (product > market cluster > ICP > pain point as merged cells) and sticky bars ---- */
+/* separate borders (not collapsed): a sticky header keeps its bottom border while it moves, and rows draw their own bottom line */
+.pri-main { border-collapse: separate; border-spacing: 0; }
+.pri-main .pri-row > td { border-bottom: 1px solid var(--lv-pri-card-line, #e4dccb); }
+.pri-tbctl { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pri-groupbtn { padding: 4px 12px; font-weight: 650; }
+.pri-groupbtn[aria-pressed="true"] { background: var(--lv-pri-selected, #1c1915); border-color: var(--lv-pri-selected, #1c1915); color: #fff; }
+.pri-groupbtn:focus-visible { outline: 2px solid var(--lv-focus, #c75123); outline-offset: 2px; }
+/* each row carries --h (the hue of its cluster name): cluster = strongest fill, ICP = lighter tint, every other cell = faint tint; all dark-ink-safe (lightness 85 / 92 / 97) */
+.pri-grouped .pri-row > td { background: hsl(var(--h) 60% 97%); }
+.pri-grouped .pri-row:hover > td:not(.pri-merged), .pri-grouped .pri-row.pri-open > td:not(.pri-merged) { background: hsl(var(--h) 55% 93%); }
+.pri-grouped .pri-row > td.pri-merged { text-align: center; vertical-align: middle; font-weight: 700; padding: 8px 10px; cursor: default; }
+.pri-grouped .pri-row > td.pri-c-product.pri-merged { background: #efe8da; font-weight: 800; }
+.pri-grouped .pri-row > td.pri-c-cluster.pri-merged { background: hsl(var(--h) 55% 85%); }
+.pri-grouped .pri-row > td.pri-c-icp.pri-merged { background: hsl(var(--h) 55% 92%); }
+.pri-grouped .pri-row > td.pri-c-product.pri-merged, .pri-grouped .pri-row > td.pri-c-cluster.pri-merged, .pri-grouped .pri-row > td.pri-c-icp.pri-merged { border-bottom-color: transparent; }
+/* separators: heavier between clusters, heaviest between products, light between ICPs (inset lines, so they work on merged cells too) */
+.pri-grouped .pri-g-icp > td { box-shadow: inset 0 1px 0 rgba(28, 25, 21, .32); }
+.pri-grouped .pri-g-cl > td { box-shadow: inset 0 3px 0 rgba(28, 25, 21, .62); }
+.pri-grouped .pri-g-prod > td { box-shadow: inset 0 4px 0 #1c1915; }
+.pri-grouped .pri-detail > td.pri-d-sp { background: var(--lv-pri-panel-bg, #fbf7ee); padding: 0; }
+.pri-grouped .pri-detail > td:not(.pri-d-sp) { padding-left: 14px; }
+/* selection bar: pinned under the app header; the column header pins under the bar (--pri-bar-h is the bar's measured height, set by a ResizeObserver) */
+.pri-seltools { top: var(--topbar-h); margin: 0 0 8px; z-index: 6; align-items: baseline; gap: 8px 10px; }
+.pri-selhead { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; margin-right: 4px; }
+.pri-selhead strong { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.pri-selsplit { font-weight: 650; color: var(--lv-ink-2, #3d372f); font-size: 13px; }
+.pri-selacts { display: contents; }
+.pri-selmore { display: none; }
+@media (min-width: 761px) {
+  .pri-main thead th { position: sticky; top: calc(var(--topbar-h) + var(--pri-bar-h, 0px)); z-index: 4; }
+  .pri-grouped .pri-hid { display: none; }
+}
+@media (max-width: 760px) {
+  .pri-seltools { top: 0; padding: 6px 8px; flex-wrap: wrap; }
+  .pri-selhead strong { font-size: 15px; } .pri-selsplit { font-size: 12px; }
+  .pri-selmore { display: inline-block; margin-left: auto; }
+  .pri-selacts { display: none; width: 100%; flex-wrap: wrap; gap: 8px; max-height: 45vh; overflow-y: auto; }
+  .pri-seltools.pri-more-open .pri-selacts { display: flex; }
+  .pri-tbctl { width: 100%; }
+  /* stacked cards: every card carries its own cluster as a coloured label, ICP in the lighter tint, and a coloured edge */
+  .pri-main .pri-row { border-left: 5px solid hsl(var(--h) 50% 72%); }
+  .pri-main .pri-row > td.pri-c-cluster { background: hsl(var(--h) 55% 85%); font-weight: 700; }
+  .pri-main .pri-row > td.pri-c-icp { background: hsl(var(--h) 55% 92%); }
+  .pri-main .pri-row > td.pri-c-product { background: #efe8da; }
+  /* grouped, phone: no spanning cells. The first card of each product / cluster / ICP carries that group's label as a coloured heading bar above its checkbox (the cards after it only show their own pain point and numbers) */
+  .pri-grouped .pri-row { display: flex; flex-direction: column; }
+  .pri-grouped .pri-row > td.pri-hid { display: none; }
+  .pri-grouped .pri-row > td.pri-merged { text-align: left; vertical-align: top; padding: 5px 10px; margin: 0 0 1px; font-weight: 700; border-bottom: 0; }
+  .pri-grouped .pri-row > td.pri-merged::before { content: none; }
+  .pri-grouped .pri-row > td.pri-c-product.pri-merged { order: -3; font-size: 13px; font-weight: 800; }
+  .pri-grouped .pri-row > td.pri-c-cluster.pri-merged { order: -2; }
+  .pri-grouped .pri-row > td.pri-c-icp.pri-merged { order: -1; }
+  .pri-grouped .pri-g-prod, .pri-grouped .pri-g-cl, .pri-grouped .pri-g-icp { padding-top: 0; }
+  .pri-grouped .pri-row > td.pri-merged, .pri-grouped .pri-g-prod > td, .pri-grouped .pri-g-cl > td, .pri-grouped .pri-g-icp > td { box-shadow: none; }
+  .pri-grouped .pri-g-prod { border-top: 4px solid #1c1915; } .pri-grouped .pri-g-cl { border-top: 3px solid rgba(28, 25, 21, .62); } .pri-grouped .pri-g-icp { border-top: 1px solid rgba(28, 25, 21, .32); }
+  .pri-detail > td.pri-d-sp { display: none; }
+}
+/* flat view (a column sort): no merged cells, a small colour chip keeps the cluster colour */
+.pri-main:not(.pri-grouped) .pri-c-cluster::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; background: hsl(var(--h) 60% 55%); }
+@media (max-width: 760px) { .pri-main:not(.pri-grouped) .pri-c-cluster::before { display: inline; margin: 0; content: attr(data-label) ': '; width: auto; height: auto; border-radius: 0; background: none; } }
+/* status text on the faint cluster tint needs 4.5:1 (the pale orange read 4.4) */
+.pri-main .pri-st-fade { color: #9c4a00; }
+/* wide desktop: the table is held to the page width (1280 px) so the pinned bar and the table line up; the Story column takes the spare room (a fixed-layout table reads its widths from the header row) */
+@media (min-width: 1321px) and (max-width: 1700px) {
+  .pri-main th.pri-th-tog { width: 64px; }
+  .pri-main th.pri-h-product { width: 6%; } .pri-main th.pri-h-cluster, .pri-main th.pri-h-icp { width: 8%; } .pri-main th.pri-h-pain { width: 9%; } .pri-main th.pri-h-section { width: 7%; }
+  .pri-main th.pri-h-story { width: 16%; } .pri-main th.pri-h-status { width: 7%; } .pri-main th.pri-h-concepts { width: 6%; } .pri-main th.pri-h-key { width: 9%; } .pri-main th.pri-h-spend14, .pri-main th.pri-h-roas14 { width: 5%; }
+}

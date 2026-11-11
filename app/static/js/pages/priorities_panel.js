@@ -1,7 +1,7 @@
 // The creative-priorities detail panel, shared by /priorities (priorities.js), the Production page and the vendor page (priorities_production.js). One concept's full panel: who it is for,
 // story, verdict, hooks, then vs now, former winners, competitor badges, number tiles. Pure rendering from one snapshot row `r` and the payload `d` ({baselines}); no fetching here.
 // Class names and test ids start with `pri-` (never ad-, ads-, sponsor, banner, promo).
-import { h, fmt, isNum, href } from '../util.js';
+import { h, fmt, isNum, href, safeUrl } from '../util.js';
 import { dayOf, manualPanel } from './priorities_manual.js';
 
 export const SECTIONS = [['revive', 'Revive'], ['make_more', 'Make more'], ['test', 'Test'], ['stop', 'Stop'], ['hold', 'Hold']];
@@ -214,13 +214,16 @@ export function detail(r, d) {
 export const SECTION_LABEL = Object.fromEntries(SECTIONS);
 
 // ---------- the panel of one production assignment (Production page and vendor page) ----------
-// Example ads: up to p.examples_max ads of the concept, top by spend, each with its spend and return on ad spend; the best performer is marked. `ad_id` is null for a vendor (the ad page needs a login), so
-// the name is plain text there.
+// Example ads: up to p.examples_max ads of the concept, top by spend, each with its spend and return on ad spend; the best performer is marked. `ad_id` is null for a vendor (the ad page needs a login): the name links to `public_url` (the Facebook post, else the tracker asset link; http / https only,
+// new tab) when there is one, else it is plain text.
+// only an absolute http / https address is a public link (safeUrl alone would turn null into a page-relative URL)
+const publicHref = (u) => (typeof u === 'string' && /^https?:\/\//i.test(u) ? safeUrl(u) : null);
 export function examplesSection(p) {
   const ex = p.examples || [];
   const max = p.examples_max || 10;
   const rows = ex.map((e) => h('tr', { class: 'pri-w pri-ex', 'data-testid': 'pri-example', 'data-best': e.best ? '1' : '' },
-    h('td', { class: 'pri-w-name', 'data-label': 'Ad' }, e.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(e.ad_id), {}), 'data-testid': 'pri-example-link' }, e.ad) : h('span', null, e.ad),
+    h('td', { class: 'pri-w-name', 'data-label': 'Ad' }, e.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(e.ad_id), {}), 'data-testid': 'pri-example-link' }, e.ad)
+      : publicHref(e.public_url) ? h('a', { href: publicHref(e.public_url), target: '_blank', rel: 'noopener noreferrer', 'data-testid': 'pri-example-public' }, e.ad, ' \u2197') : h('span', null, e.ad),
       e.best ? h('span', { class: 'pri-badge pri-badge-ok pri-ex-best', 'data-testid': 'pri-example-best' }, 'Best performer') : null),
     h('td', { class: 'pri-w-num', 'data-label': 'Spend' }, fmt.money(e.spend)),
     h('td', { 'data-label': 'Return on ad spend' }, roasX(e.roas))));
