@@ -187,7 +187,8 @@ class Brain:
         def run(q, limit):
             return rundb.run_select(q, limit, allow_file=self.allow_file_url)
         try:
-            return W.run_why(args, run, self.kn)
+            res = W.run_why(args, run, self.kn)
+            return res if args.get("detail") else W.compact(res)
         except W.WhyError as e:
             raise ToolError(str(e)) from None
         except SqlRejected as e:
@@ -226,7 +227,7 @@ TOOLS: list[Tool] = [
          _obj({"scope": {"type": "string", "enum": ["analytics", "all"], "description": "analytics (default) = what sql can read; all = also the underlying tables"}}), lambda b, a: b.catalog(a.get("scope") or "analytics")),
     Tool("describe", "Columns, types, descriptions, caveats, coverage and an example query for one view. Use before writing SQL. queryable_by_agents=false means sql cannot read it.",
          _obj({"name": {**S, "description": "view name, with or without the analytics. prefix"}}, ["name"]), lambda b, a: b.describe(a.get("name", ""))),
-    Tool("search", "Keyword search over views, columns, metric definitions, every docs page (definitions, thresholds, schedules, routes) and past questions. Try synonyms: NC = new customer, CPA, ROAS, CPM.",
+    Tool("search", "Keyword search over views, columns, definitions, docs (thresholds, schedules, routes) and past questions. For why questions use `why`, not search. NC = new customer.",
          _obj({"text": S, "limit": {"type": "integer", "minimum": 1, "maximum": 25}}, ["text"]), lambda b, a: b.search(a.get("text", ""), a.get("limit") or 10)),
     Tool("metric", "What a metric means: formula, source, default basis, other bases and traps. Fuzzy: 'roas' lists every ROAS variant. Use before quoting any ratio. For definitions it lacks, it searches the docs.",
          _obj({"name": S}, ["name"]), lambda b, a: b.metric(a.get("name", ""))),
@@ -234,13 +235,13 @@ TOOLS: list[Tool] = [
          _obj(), lambda b, a: b.freshness()),
     Tool("sql", "Run ONE read-only SELECT or WITH on the analytics views only (30 s limit, rows capped). Use after catalog and describe; never guess a column. Name the basis and window in the answer.",
          _obj({"query": S, "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "description": "row cap, default 200"}}, ["query"]), lambda b, a: b.sql(a.get("query", ""), a.get("limit") or 200)),
-    Tool("why", "Why did a metric move? Walks the metric tree live (day, week, month grains), follows what moved, finds dated changes, runs controls, ends at a cause or an honest residual. Run FIRST for any why question.",
-         _obj({"metric": S, "start": S, "end": S, "compare": {"type": "string", "enum": ["prior_period", "last_month", "last_year", "custom"]}, "compare_start": S, "compare_end": S, "product": S,
+    Tool("why", "CALL FIRST for any why / what caused / what explains / why did X fall, rise, jump or drop question. Walks the metric tree live, runs controls, lists known causes and gaps. Needs metric + start/end.",
+         _obj({"metric": {**S, "description": "node id or plain words: spend (cliff), meta_spend, frequency, cpm, cpc, ctr, nc_cpa, nc_roas, nc_revenue (new customers), repeat_revenue (renewals, rebills), nc_aov, conversion"}, "start": {**S, "description": "target window start, YYYY-MM-DD"}, "end": {**S, "description": "target window end"}, "detail": {"type": "boolean", "description": "true = full tree and every finding (long)"}, "compare": {"type": "string", "enum": ["prior_period", "last_month", "last_year", "custom"]}, "compare_start": S, "compare_end": S, "product": S,
                "platform": {"type": "string", "enum": ["meta", "google"]}, "max_depth": {"type": "integer", "minimum": 1, "maximum": 12}, "grain": {"type": "string", "enum": ["auto", "day", "week", "month"]},
                "max_steps": {"type": "integer", "minimum": 5, "maximum": 80}}), lambda b, a: b.why(a)),
     Tool("why_tree", "The why-tree definition: nodes, formulas, children, materiality, linked past questions, known causes, data gaps. Read-only, runs no SQL.",
          _obj({"include_sql": {"type": "boolean"}}), lambda b, a: b.why_tree(a.get("include_sql", False))),
-    Tool("past_questions", "Search Josh's past business questions and the answers given. Leads for a 'why did X move' question (run why first); old answers are leads to re-check, not facts.",
+    Tool("past_questions", "Search Josh's past business questions and the answers given. Past questions and answers. For a why question call `why` first; these are leads to re-check, not facts.",
          _obj({"text": S, "limit": {"type": "integer", "minimum": 1, "maximum": 25}}, ["text"]), lambda b, a: b.past_questions(a.get("text", ""), a.get("limit") or 8)),
     Tool("app_map", "Services (cron schedules), pages, API routes and ETL job order, from the code. Filter with match=. For how or why something runs, also search the docs (DEPLOY.md, feature pages).",
          _obj({"section": {"type": "string", "enum": ["services", "etl_jobs", "pages", "routes"]}, "match": {**S, "description": "keep only entries containing this text, e.g. 'mcp', 'feeds', 'promotions'"}}), lambda b, a: b.app_map(a.get("section"), a.get("match"))),

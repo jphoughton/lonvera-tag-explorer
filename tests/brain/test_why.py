@@ -354,3 +354,44 @@ def test_every_result_lists_the_guardrails_it_checked(whydb):
     out2, _ = go(whydb, Scenario(x_mode="new"), start=str(today - _dt.timedelta(days=6)), end=str(today))
     g3 = next(x for x in out2["guardrails_checked"] if x["id"] == "G03")
     assert g3["ok"] is False and "includes today" in g3["result"] and "loaded through" in g3["result"]
+
+
+# ---------------------------------------------------------------- routing, parents' known causes, compact view
+@pytest.mark.parametrize("raw,node", [("spend cliff", "spend"), ("why did the spend cliff happen", "spend"), ("frequency up", "frequency"), ("renewals down", "repeat_revenue"),
+                                      ("CPM jump", "cpm"), ("repeat revenue", "repeat_revenue"), ("Meta spend", "meta_spend"), ("new customers fell", "nc_revenue"), ("nc_cpa", "nc_cpa"), ("billing reminders", "klaviyo_billing_reminders")])
+def test_plain_words_route_to_the_right_node(raw, node):
+    assert W.resolve_metric(raw) == node
+
+
+def test_ancestors_lists_parents_nearest_first():
+    assert "spend" in WT.ancestors("meta_spend")
+    assert WT.ancestors("no_such_node") == []
+
+
+def test_known_cause_on_a_gap_node_surfaces_by_date_overlap(monkeypatch):
+    w = W.Why(lambda q, n: {"columns": [], "rows": []}, None)
+    w.start, w.end = dt.date(2026, 9, 14), dt.date(2026, 9, 20)
+    node = {"known_causes": [{"date": "2026-10-26", "claim": "c", "status": "open", "confidence": "consistent with", "direction": "down", "between": ["2026-09-14", "2026-09-16"], "note": None},
+                             {"date": "2026-10-26", "claim": "far", "status": "open", "confidence": "untested", "direction": None, "between": ["2025-01-01", "2025-02-01"], "note": None}]}
+    near, far = w.kc_block(node, None, None)
+    assert near["matches_current_pattern"] is True and "dated overlap" in near["matched_by"]
+    assert far["matches_current_pattern"] is False
+
+
+def test_the_tool_answer_is_compact_unless_detail(whydb):
+    log = []
+    seed(whydb, Scenario(x_mode="new", with_lp=True))
+    full = W.run_why({"start": str(STEP), "end": str(END), "compare": "prior_period"}, make_runner(whydb, log), KN)
+    c = W.compact(full)
+    assert "tree" not in c and "queries_run" not in c and len(json.dumps(c, default=str)) < len(json.dumps(full, default=str)) / 2
+    assert c["headline"] == full["headline"] and c["findings"][0]["label"] == full["findings"][0]["label"] and len(c["findings"]) <= 6
+
+
+def test_meta_history_fills_windows_before_platform_daily_starts():
+    w = W.Why(lambda q, n: {"columns": [], "rows": []}, None)
+    w.q = lambda sql, limit=200: [{"p": "cur", "hdays": 30, "hspend": 1000.0}, {"p": "cmp", "hdays": 30, "hspend": 500.0}]
+    out = {"cur": {"spend": 1000.0, "meta_spend": 1000.0, "meta_days": 30.0}, "cmp": {"spend": 20.0, "meta_spend": 0.0, "meta_days": 0.0}}
+    w.fmt_sql = lambda s: s
+    w.add_meta_history(out)
+    assert out["cmp"]["meta_spend"] == 500.0 and out["cmp"]["spend"] == 520.0 and out["cmp"]["meta_days"] == 30.0
+    assert out["cur"]["meta_spend"] == 1000.0 and out["cur"]["spend"] == 1000.0
