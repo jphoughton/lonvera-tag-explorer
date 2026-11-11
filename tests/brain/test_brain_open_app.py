@@ -45,7 +45,7 @@ def test_a_fresh_open_app_key_works_on_mcp_and_only_there(open_client, pg):
     k = make_key(c)
     assert k.startswith("lvb_") and len(k) == 44
     r = rpc(c, "tools/list", headers=bearer(k))
-    assert r.status_code == 200 and len(r.get_json()["result"]["tools"]) == 8
+    assert r.status_code == 200 and len(r.get_json()["result"]["tools"]) == 10
     # the key is a brain key: with sign-in off the rest of the API is open to everyone anyway (with or without it), so it gains nothing there; it is never a login
     assert c.get("/api/status", headers=bearer(k)).status_code == c.get("/api/status").status_code != 401
     res = rpc(c, "tools/call", {"name": "describe", "arguments": {"name": "meta_ad_daily"}}, headers=bearer(k)).get_json()["result"]
