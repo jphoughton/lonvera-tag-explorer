@@ -162,9 +162,9 @@ export function apiWindow(p) {
 // ---------- data source (Meta | Upstack) ----------
 // Set from every response's window_info.source (see applySourceState); tables, charts and cards read their metric names from here.
 const META_LABELS = { purchases: 'Purchases', revenue: 'Revenue', roas: 'ROAS', cpa: 'CPA' };
-// Platform = the top-level choice of the Marketing metrics section: all (the roll-up), meta (Products, tags, creatives) or google. It lives in the URL
+// Platform = the top-level choice of the Lonvera section: all (the roll-up), meta (Products, tags, creatives) or google. It lives in the URL
 // (platform=all|meta|google) and only means something on the platform pages ('/' and '/campaigns'); product and ad pages are Meta.
-// The default depends on the path so that old links keep their meaning: a bare '/' is the All platforms roll-up (Josh's landing page), while '/campaigns' without
+// The default depends on the path so that old links keep their meaning: a bare '/' is the Overview roll-up (Josh's landing page), while '/campaigns' without
 // a platform was always Meta's Campaigns. A link to the Meta landing therefore carries platform=meta; platform=all is explicit on /campaigns.
 export const PLATFORM_PATHS = /^\/(campaigns)?\/?$/;
 export const DEFAULT_PLATFORM = { '/': 'all', '/campaigns': 'meta' };
@@ -371,7 +371,7 @@ export function thumb(assetId, size = 36, ctx = null) {
   if (assetId == null) return ph();
   const name = ctx && ctx.name;
   const img = h('img', {
-    class: 'thumb zoomable', loading: 'lazy', alt: name ? `${name} — open larger image` : 'Open larger image', src: '/media/' + enc(assetId),
+    class: 'thumb zoomable', loading: 'lazy', alt: name ? `${name}, open larger image` : 'Open larger image', src: '/media/' + enc(assetId),
     role: 'button', tabindex: '0', title: 'Click to enlarge',
     style: { width: size + 'px', height: size + 'px' },
   });

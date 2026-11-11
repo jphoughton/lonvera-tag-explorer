@@ -456,6 +456,7 @@ def test_landing_trend_dual_axis_pins_products_and_client_side_switches(page):
     page.locator("#trend-grain [data-grain=week]").click()
     wait_trend(page)
     assert len(trend_info(page)["labels"]) < 40
+    open_chart_options(page)                                                                   # Split and the Bars select sit in the closed Chart options disclosure
     page.locator("#trend-split [data-split=stage]").click()
     wait_trend(page)
     assert {d["label"] for d in bars_ds(trend_info(page))} >= {"Testing", "Scaling"}

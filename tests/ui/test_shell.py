@@ -167,7 +167,7 @@ def test_back_walks_the_drills_and_is_disabled_on_products(page):
     wait_rows(page)
     expect(page.locator("#back")).to_be_enabled()
     open_first_row(page)
-    expect(page.locator("#level-title")).to_contain_text("ICPs in")
+    expect(page.locator("#level-title")).to_contain_text("Ideal customer profiles in")
     wait_rows(page)
     page.click("#back")
     expect(page.locator("#level-title")).to_have_text("Market clusters")
@@ -264,7 +264,7 @@ def test_custom_range(page):
     page.wait_for_function("() => /1 day/.test(document.querySelector('#range-label').textContent)")
     idle(page)
     open_first_row(page)
-    expect(page.locator("#level-title")).to_contain_text("ICPs in")
+    expect(page.locator("#level-title")).to_contain_text("Ideal customer profiles in")
     q = qparams(page)
     assert q["from"] == q["to"] == end.isoformat()
     page.reload()
@@ -308,7 +308,7 @@ def test_stage_chips_toggle_both_ways(page):
     if IS_MOCK:
         assert abs(num(foot_value(page, "spend")) - scaling_all) <= 2
     open_first_row(page)  # carried across a drill
-    expect(page.locator("#level-title")).to_contain_text("ICPs in")
+    expect(page.locator("#level-title")).to_contain_text("Ideal customer profiles in")
     assert qparams(page)["stage"] == "scaling" and qparams(page)["window"] == "14d"
     expect(chip(page, "testing")).to_have_attribute("aria-pressed", "false")
     url = page.url  # at least one stays on: clicking the only active chip does nothing
@@ -785,11 +785,11 @@ def test_source_switch_meta_upstack(page):
     shot(page, "09_source_switch")
 
 
-# ------------------------------------------------------------------ default landing = All platforms
+# ------------------------------------------------------------------ default landing = Overview
 @pytest.mark.mock_only
 def test_bare_root_is_the_all_platforms_roll_up_and_every_link_back_to_meta_is_explicit(page, base_url):
     page.goto(f"{base_url}/")                                                                          # a bare root, as the top-bar link points to
-    expect(page.locator("h1")).to_have_text("All platforms")
+    expect(page.locator("h1")).to_have_text("Overview")
     assert page.evaluate("() => location.search") == ""                                                # no parameter was added
     expect(platform_btn(page, "all")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#view-switch .ctl-name")).to_have_text("View by")
@@ -806,7 +806,7 @@ def test_bare_root_is_the_all_platforms_roll_up_and_every_link_back_to_meta_is_e
     data = table_data(page, "all-campaigns")
     assert {r[data["heads"].index("platform")] for r in data["rows"]} == {"Meta", "Google"}
     page.locator("#view-switch [data-platform-view=home]").click()
-    expect(page.locator("h1")).to_have_text("All platforms")
+    expect(page.locator("h1")).to_have_text("Overview")
     assert page.evaluate("() => location.search").find("platform") == -1                                # All is the default of '/': no platform parameter
     # the picker: Meta is the old Products landing, one click away and explicit in the URL
     platform_btn(page, "meta").click()
@@ -816,12 +816,12 @@ def test_bare_root_is_the_all_platforms_roll_up_and_every_link_back_to_meta_is_e
     platform_btn(page, "google").click()
     expect(page).to_have_url(re.compile(r"platform=google"))
     platform_btn(page, "all").click()                                                                  # and back to the default URL
-    expect(page.locator("h1")).to_have_text("All platforms")
+    expect(page.locator("h1")).to_have_text("Overview")
     assert page.evaluate("() => location.search").find("platform") == -1
     page.locator("#topbar a.navtab", has_text="Overview").click()                                                          # the top-bar link from any page lands on All
     page.goto(f"{base_url}/p/{SLUG}")
     page.locator("#topbar a.navtab", has_text="Overview").click()
-    expect(page.locator("h1")).to_have_text("All platforms")
+    expect(page.locator("h1")).to_have_text("Overview")
 
 
 @pytest.mark.mock_only
@@ -833,9 +833,9 @@ def test_existing_deep_links_keep_their_meaning(page, base_url):
     expect(page.locator("h1")).to_have_text("Meta")
     assert qparams(page)["source"] == "upstack" and qparams(page)["basis"] == "all" and qparams(page)["window"] == "7d"
     page.goto(f"{base_url}/?window=7d&source=upstack")                                                  # a root with parameters but no platform is the roll-up with them applied
-    expect(page.locator("h1")).to_have_text("All platforms")
+    expect(page.locator("h1")).to_have_text("Overview")
     page.goto(f"{base_url}/p/{SLUG}?window=14d")                                                        # product pages are untouched
-    expect(page.locator("h1")).not_to_have_text("All platforms")
+    expect(page.locator("h1")).not_to_have_text("Overview")
     crumbs = page.locator(".crumbs li").all_inner_texts()
     assert crumbs[0] == "Meta" and len(crumbs) == 2, crumbs
     page.locator(".crumbs a").first.click()                                                             # back up the hierarchy = Meta's Products table, not the roll-up

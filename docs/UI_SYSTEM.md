@@ -24,18 +24,23 @@ Every old URL keeps working. Pages that are not tabs (ad, product, campaign deta
 
 ### Naming (one name per concept)
 
-Overview, Meta, Google, Campaigns, Trends, Priorities, Production, Test to scale, Projections, Tag lookup. Nav labels already use these. Page titles (`h1`), `document.title`, breadcrumbs and in-page links still carry some older names; the page owner renames them together with the test assertions that read them:
+Overview, Meta, Google, Campaigns, Trends, Priorities, Production, Test to scale, Projections, Tag lookup. The nav labels, page titles (`h1`), `document.title` (`<Page> · Lonvera`), breadcrumbs and in-page links all use these names now. Retired names, which must not come back in page text:
 
-| Today in the page | Use | Where |
-|---|---|---|
-| All platforms (h1, title, crumbs) | Overview | `platforms.js` |
-| All campaigns | Campaigns | `all_campaigns.js` |
-| Creative priorities (h1, `pri-title`, crumbs, "Back to Creative priorities") | Priorities | `priorities*.js` |
-| Production board (link text), Production history | Production | `priorities.js` |
-| Marketing metrics (title suffix, crumb root, login h1) | Lonvera | all pages |
-| Not tested / Untested / Too early | pick one status word per page and define it in the page's help | product, priorities |
+| Retired | Use |
+|---|---|
+| All platforms | Overview |
+| All campaigns | Campaigns |
+| Creative priorities, Back to Creative priorities | Priorities, Back to Priorities |
+| Production board, Production history (link and block heading) | Production |
+| Marketing metrics (title, crumb root, login heading) | Lonvera |
 
-Keep legacy names only where a saved view or URL stores them (priorities saved views store the old Action names; keep the legacy-label mapping).
+Legacy names survive only where a saved view or URL stores them (priorities saved views store the old Action names; the legacy-label mapping stays), in developer comments, and in the Python docstrings.
+
+### Copy rules
+
+No em dashes in UI text (an empty value shows an en dash or the Projections placeholder glyph). Abbreviations are spelled out where first used on a page or in a tooltip: new customer (NC), return on ad spend (ROAS), cost per acquisition (CPA), ideal customer profile (ICP). Tile labels may stay short (`NC ROAS`) when the tile carries a `title` that expands them (`kpis.js` `labelTitle`). Performance pages keep the chart's Grain choice in view and tuck Bars, Line, Swap, Split and Numbers into the closed "Chart options" disclosure (`tuckChartOptions` in `platforms.js`; tests call `open_chart_options` from `tests/ui/ui_helpers.py`).
+
+The app shell is forced light (`<html data-theme="light">` in `index.html`); only the Projections page follows the OS dark mode.
 
 ## 2. Where things live
 

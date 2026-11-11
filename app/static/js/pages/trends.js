@@ -1,4 +1,4 @@
-// Marketing metrics, Trends (/trends): the key metrics by Day, Week or Month laid out like the Google Sheet 'Lonvera Projections' rollup tabs: periods as rows, oldest first and
+// Lonvera, Trends (/trends): the key metrics by Day, Week or Month laid out like the Google Sheet 'Lonvera Projections' rollup tabs: periods as rows, oldest first and
 // the newest (open) period last, labelled bands of columns left to right, the change against the previous period as one block at the right (the sheet's WoW / MoM block).
 // The open (partial) period is flagged 'so far' and compared with the same elapsed days of the previous one. Everything comes from /api/trends (the month grain's plan block
 // from /api/trends/plan, the Pacing page's own numbers).
@@ -301,7 +301,7 @@ export async function trendsPage(ctx) {
     h('p', { class: 'muted', 'data-testid': 'trn-left-out' }, 'Left out because this app has no data for them: the sheet\'s BUSINESS-WIDE and AMAZON bands, EBITDA (earnings before interest, taxes, depreciation and amortization) from the live P&L and the plan block on the day and week views, TikTok spend, the per-product click bands and the bid columns.'));
 
   const page = h('div', { class: 'page trn-page', 'data-testid': 'trn-page' },
-    pageHeader({ title: 'Trends', testid: 'trn-head', description: `Key numbers by day, week or month, with the plan beside them. Showing ${d.labels[iv].toLowerCase()} figures for the last ${d.periods} ${unit}.` }),
+    pageHeader({ title: 'Trends', testid: 'trn-head', description: `Key numbers by day, week or month, with the plan beside them. NC means new customer; ROAS is return on ad spend; CPA is cost per acquisition. Showing ${d.labels[iv].toLowerCase()} figures for the last ${d.periods} ${unit}.` }),
     controls, fresh, help, panel, box, notes);
   ctx.mount(page);
   chartFor(canvas, d, byKey, lineKey);

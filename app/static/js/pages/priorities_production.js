@@ -130,7 +130,7 @@ export async function productionPage(ctx) {
     } catch (e) { if (e && e.name === 'AbortError') throw e; say(e.message || 'Could not get the link.', true); }
   }
 
-  const linkCell = (r, field, label) => h('td', { class: 'prod-c' },
+  const linkCell = (r, field, label) => h('td', { class: 'prod-c prod-c-link' },
     r[field] ? h('div', null, link(r[field], short(r[field]), { 'data-testid': 'prod-' + field })) : null,
     h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-edit-' + field, onclick: () => editLink(r, field, label) }, r[field] ? 'Change' : 'Add link'));
 

@@ -1,4 +1,4 @@
-// Marketing metrics, Test to scale (/promotions): creatives that moved from TESTING to SCALING in the chosen range, and what happened around the move. Meta only.
+// Lonvera, Test to scale (/promotions): creatives that moved from TESTING to SCALING in the chosen range, and what happened around the move. Meta only.
 // A move = a creative spent in a Testing campaign and its first spend in a Scaling campaign came on a later day (the buyer duplicates the creative into a scaling
 // campaign; Meta cannot move an ad). Everything comes from /api/promotions in one call. Class names and test ids start with `tts-` (never ad-, ads-, sponsor, banner,
 // promo: ad blockers hide those).

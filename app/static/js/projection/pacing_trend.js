@@ -1,6 +1,6 @@
-// The Marketing metrics "Trend" panel (app/static/js/trend.js), mounted at the top of the Pacing page.
-// Same component and same /api/platforms/trend endpoint as the All platforms page; here it has no page filters, so it starts at
-// since launch, All platforms, Bars = Spend, Line = NC ROAS (total), Grain = Day, Split = Total, Numbers = Own reporting.
+// The Lonvera "Trend" panel (app/static/js/trend.js), mounted at the top of the Pacing page.
+// Same component and same /api/platforms/trend endpoint as the Overview page; here it has no page filters, so it starts at
+// since launch, Overview, Bars = Spend, Line = NC ROAS (total), Grain = Day, Split = Total, Numbers = Own reporting.
 // Hide / Show is remembered in its own localStorage key (the Marketing pages keep theirs). Styles come from /static/app.css (loaded by projection.html).
 import { createTrendPanel, platformTrendSource } from '../trend.js';
 

@@ -322,7 +322,7 @@ def test_open_link_drill_down_with_breadcrumb(page):
     expect(page.locator("#level-title")).to_have_text("Market clusters")
     cluster = open_first_row(page)
     expect(page).to_have_url(re.compile(r"cluster="))
-    expect(page.locator("#level-title")).to_contain_text("ICPs in")
+    expect(page.locator("#level-title")).to_contain_text("Ideal customer profiles in")
     wait_rows(page)
     icp = open_first_row(page)
     expect(page.locator("#level-title")).to_contain_text("Pain points in")
@@ -341,7 +341,7 @@ def test_open_link_drill_down_with_breadcrumb(page):
     crumbs = page.locator(".crumbs li").all_inner_texts()
     assert crumbs[0] == "Meta" and crumbs[-1] != "" and len(crumbs) >= 3
     page.locator(".crumbs a", has_text=cluster).first.click()
-    expect(page.locator("#level-title")).to_contain_text("ICPs in")
+    expect(page.locator("#level-title")).to_contain_text("Ideal customer profiles in")
     assert qparams(page)["cluster"] == cluster
     page.go_back()
     expect(page.locator("#ad-title")).to_be_visible()
@@ -428,7 +428,7 @@ def test_open_link_navigates_instead_of_dropping_down(page):
     row.locator("a.row-open").click()
     expect(page).to_have_url(re.compile(r"cluster="))
     assert qparams(page)["cluster"] == label
-    expect(page.locator("#level-title")).to_contain_text("ICPs in")
+    expect(page.locator("#level-title")).to_contain_text("Ideal customer profiles in")
 
 
 def test_row_mode_opens_navigates_and_is_remembered(page):

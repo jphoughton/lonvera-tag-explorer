@@ -48,7 +48,7 @@ function pageHead(product, slug, p, active) {
   const head = pageHeader({
     title: product.name,
     description: 'Spend and results for this product, from market cluster down to ideal customer profile (ICP), pain point and creative.'
-      + (mapped ? '' : ' Tracker tags, not line-mapped yet: market cluster, ICP and pain point come from the Creative Tracker columns.'),
+      + (mapped ? '' : ' Tracker tags, not line-mapped yet: market cluster, ideal customer profile and pain point come from the Creative Tracker columns.'),
     actions: h('div', { class: 'ctl' },
       h('span', { class: 'ctl-name' }, 'View by'),
       h('span', { class: 'segs', role: 'group', 'aria-label': 'View by' }, mk('Tags', 'tags', href(pagePath(slug), G)), mk('Campaigns', 'campaigns', href(pagePath(slug), { ...G, view: 'campaigns' })))),
@@ -121,9 +121,9 @@ async function tagsView(ctx, slug) {
   report(p, data, hasUnclassified(data.total && data.total.m));
   document.title = `${product.name} · Lonvera`;
 
-  const first = ['Market cluster', 'ICP', 'Pain point', 'Creative'][rootLevel];
-  const title = rootLevel === 0 ? 'Market clusters' : rootLevel === 1 ? `ICPs in ${p.cluster}` : rootLevel === 2 ? `Pain points in ${p.icp}` : `Creatives in ${p.pain}`;
-  const untestedOn = p.untested === '1' && rootLevel === 0 && !!(cov && cov.available);     // "Not tested only": the flat list of ICPs / pain points with no ads or no spend
+  const first = ['Market cluster', 'Ideal customer profile', 'Pain point', 'Creative'][rootLevel];
+  const title = rootLevel === 0 ? 'Market clusters' : rootLevel === 1 ? `Ideal customer profiles in ${p.cluster}` : rootLevel === 2 ? `Pain points in ${p.icp}` : `Creatives in ${p.pain}`;
+  const untestedOn = p.untested === '1' && rootLevel === 0 && !!(cov && cov.available);     // "Not tested only": the flat list of ideal customer profiles / pain points with no ads or no spend
   const pins = createPins(ctx.restore && ctx.restore.pins);
   // the panel first: it locks / unlocks the Chart checkboxes before the table renders them
   const panel = createTrendPanel({ slug, p, scope: filters, scopeLabel: [p.pain, p.icp, p.cluster].find(Boolean) || product.name, pins, mode: 'scope', signal });
