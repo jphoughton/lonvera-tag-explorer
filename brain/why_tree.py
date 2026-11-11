@@ -491,3 +491,22 @@ def tree_definition(include_sql: bool = False) -> dict:
 def _measures_of(n: dict) -> set[str]:
     import re
     return set(re.findall(r"[a-z_]+", " ".join(str(n.get(k) or "") for k in ("num", "den"))))
+
+
+def ancestors(nid: str) -> list[str]:
+    """Every node that lists `nid` (directly or through others) among its children, nearest first."""
+    parents: dict[str, list[str]] = {}
+    for n in NODES:
+        for c in n.get("children") or []:
+            parents.setdefault(c["id"], []).append(n["id"])
+    out, seen, frontier = [], {nid}, [nid]
+    while frontier:
+        nxt = []
+        for x in frontier:
+            for p in parents.get(x, []):
+                if p not in seen:
+                    seen.add(p)
+                    out.append(p)
+                    nxt.append(p)
+        frontier = nxt
+    return out
