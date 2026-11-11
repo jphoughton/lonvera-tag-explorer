@@ -152,7 +152,7 @@ Postgres only. No data is stored in files. `DATABASE_URL` points at it.
 
 - Files `migrations/NNN_name.sql`, applied in filename order by `python -m etl.migrate`, tracked in `schema_migrations`. `start_web.sh` and every `run_*.sh` run it on start.
 - An applied migration is immutable. Fix mistakes with a new, higher-numbered migration. Make migrations additive and idempotent (`CREATE TABLE IF NOT EXISTS`).
-- Number ranges: 001 to 020 original app, 100 to 191 Projection and analytics views, 192 onward newer features.
+- Number ranges: 001 to 020 original app, 100 to 191 Projection and analytics views, 192 onward newer features. 230 = the analytics views for every domain (catalog and metric glossary).
 - Which numbers exist where (checked 2026-11-10):
 
 | Branch | Highest migration | Notes |
@@ -164,7 +164,7 @@ Postgres only. No data is stored in files. `DATABASE_URL` points at it.
 
 ### Read-only database login
 
-- Role `analytics_reader` can SELECT from the `analytics` views and nothing else. Created by `python -m etl.reader_role`. Quick start for agents: `docs/AGENT_DATA_GUIDE.md` (start with `select * from analytics.data_coverage`).
+- Role `analytics_reader` can SELECT from the `analytics` views and nothing else. Created by `python -m etl.reader_role`. Quick start for agents: `docs/AGENT_DATA_GUIDE.md` (start with `select * from analytics.catalog`, then `analytics.metric_glossary` and `analytics.data_coverage`). Since migration 230 the schema covers every subject area (15 domains: marketing, attribution, orders, creative, tags, priorities, production, projection, inventory, cohorts, pacing, competitors, pipeline, plus email and landing_pages through migration 231), not only marketing.
 - The connection URL is a secret and is NOT in this repo. The owner keeps it at `~/lonvera-tag-explorer-data/analytics_reader_url.txt` (mode 600). Never paste it into chat, a file in the repo or memory.
 
 ## 5. Auth and access

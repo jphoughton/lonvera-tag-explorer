@@ -173,14 +173,15 @@ def test_analytics_contains_only_views_and_none_of_the_excluded_names(sdb):
     cols = q(sdb, "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'analytics'")
     for t, c in cols:
         assert not any(f in c for f in ("password", "secret", "token", "oauth", "api_key")), (t, c)
-    # nothing projection-finance is reachable from a view: every referenced public relation is a marketing one
+    # nothing secret, auth-related or person-naming is reachable from a view (migration 230 exposes the projection / inventory / cohort tables by design)
     deps = q(sdb, """SELECT DISTINCT cl.relname FROM pg_depend d JOIN pg_rewrite r ON r.oid = d.objid JOIN pg_class v ON v.oid = r.ev_class JOIN pg_namespace vn ON vn.oid = v.relnamespace
                      JOIN pg_class cl ON cl.oid = d.refobjid JOIN pg_namespace cn ON cn.oid = cl.relnamespace
                      WHERE vn.nspname = 'analytics' AND cn.nspname = 'public' AND cl.relkind IN ('r', 'v')""")
     used = {r[0] for r in deps}
-    assert "feed_oauth" not in used
-    allowed_proj = {"proj_feed_meta_reach", "proj_feed_meta_day"}
-    assert {u for u in used if u.startswith("proj_")} <= allowed_proj, used
+    never = {"feed_oauth", "api_keys", "creative_priorities_views", "creative_priorities_vendor_links", "creative_assets", "app_meta", "schema_migrations", "proj_audit",
+             "proj_scenario_history", "proj_supply_history", "proj_upload_history", "proj_cohort_uploads", "proj_units_loads", "proj_pacing_setting", "competitor_concept_class"}
+    assert not (used & never), used & never
+    assert not [u for u in used if u.startswith(("creative_launch_", "proj_feedx_"))], used
 
 
 # ---------------------------------------------------------------------------------------------------------------- generated files and comments
@@ -201,13 +202,15 @@ def test_database_comments_equal_descriptions(sdb):
         for attnum, col in q(sdb, "SELECT attnum, attname FROM pg_attribute WHERE attrelid = %s AND attnum > 0 AND NOT attisdropped", (oid,)):
             have[(f"{sch}.{rel}", col)] = one(sdb, "SELECT col_description(%s::oid, %s)", (oid, attnum))[0]
     have[("analytics", None)] = one(sdb, "SELECT obj_description('analytics'::regnamespace)")[0]
-    bad = [k for k, v in want.items() if have.get(k) != v]
+    bad = [k for k, v in want.items() if have.get(k) != v and k[0] not in D.DEFERRED]       # deferred views carry their source's own comments (migration 231)
     assert not bad, f"{len(bad)} comment(s) differ from docs/schema/descriptions.py, first: {bad[:5]}"
 
 
 def test_example_queries_run(sdb):
     n = 0
     for key, spec in D.REL.items():
+        if key in D.DEFERRED:
+            continue                                    # created by migration 231 only when its source table exists
         for title, sql in spec.get("examples") or []:
             try:
                 q(sdb, sql)

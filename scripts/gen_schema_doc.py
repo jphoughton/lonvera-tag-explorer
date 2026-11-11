@@ -13,10 +13,12 @@ Usage (DATABASE_URL = any database with every migration applied, e.g. a local sc
     python scripts/gen_schema_doc.py --write                     regenerate docs/DATA_SCHEMA.md and docs/schema.json
     python scripts/gen_schema_doc.py --check                     exit 1 when those files are stale (the test suite does the same)
     python scripts/gen_schema_doc.py --problems                  list undescribed / stale entries and exit 1 if any
-    python scripts/gen_schema_doc.py --comments 013|015|190|191|all [--out FILE]
+    python scripts/gen_schema_doc.py --catalog-sql               CREATE OR REPLACE VIEW statements for analytics.catalog and analytics.metric_glossary (needs no database);
+                                                                 for a METRICS / domain / description change after migration 230 was applied write them (with `--comments 230`) to a NEW migration
+    python scripts/gen_schema_doc.py --comments 013|015|190|191|230|all [--out FILE]
                                                                  COMMENT ON statements; for a description change after migrations 013 / 190 were applied
                                                                  write them to a NEW migration (migrations/NNN_schema_comments_<what>.sql)
-    python scripts/gen_schema_doc.py --emit-migration 013|015|190|191  rewrite the comment section of migrations/013_schema_comments_analytics.sql, 015_creative_stage_moves.sql, 190_analytics_pacing_views.sql, 191_schema_comments_proj.sql
+    python scripts/gen_schema_doc.py --emit-migration 013|015|190|191|230  rewrite the comment section of migrations/013_schema_comments_analytics.sql, 015_creative_stage_moves.sql, 190_analytics_pacing_views.sql, 191_schema_comments_proj.sql
                                                                  (only before the migration was applied anywhere: applied migrations are immutable;
                                                                  013 keeps its hand-written DDL and only its comment section is rewritten)
     python scripts/gen_schema_doc.py --verify-live               compare docs/schema.json with the database: every documented column exists with the stated type
@@ -28,6 +30,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -45,7 +48,8 @@ MIGRATIONS = {"013": ROOT / "migrations" / "013_schema_comments_analytics.sql", 
               "202": ROOT / "migrations" / "202_priorities_assignments.sql", "203": ROOT / "migrations" / "203_creative_launch.sql",
               "204": ROOT / "migrations" / "204_assignment_format.sql", "205": ROOT / "migrations" / "205_api_keys.sql",
               "206": ROOT / "migrations" / "206_klaviyo_metrics.sql", "207": ROOT / "migrations" / "207_landing_pages.sql",
-              "210": ROOT / "migrations" / "210_shopify_orders.sql", "220": ROOT / "migrations" / "220_brain_mcp.sql", "221": ROOT / "migrations" / "221_brain_open_app.sql", "240": ROOT / "migrations" / "240_meta_breakdowns.sql"}
+              "210": ROOT / "migrations" / "210_shopify_orders.sql", "220": ROOT / "migrations" / "220_brain_mcp.sql", "221": ROOT / "migrations" / "221_brain_open_app.sql",
+              "230": ROOT / "migrations" / "230_analytics_brain_views.sql", "240": ROOT / "migrations" / "240_meta_breakdowns.sql"}
 # the Test to scale views (created by migration 015, after 013 runs on a fresh database): they and their comments live in migration 015
 # (migration 016 turned them into tables and added the placements tables; 015's own comment section is frozen history)
 LATE_STAGE_MOVES = {f"public.{n}{b}" for n in ("creative_stage_moves", "creative_scaling_placements") for b in ("", "_upstack_nc", "_upstack_all")}
@@ -158,8 +162,8 @@ def problems(live: dict[str, dict], d=None, require_analytics: bool = True) -> l
         if key in d.EXCLUDED:
             out.append(f"{key}: is both described and EXCLUDED")
         if key not in live:
-            if sch == "analytics" and not require_analytics:
-                continue
+            if sch == "analytics" and (not require_analytics or key in getattr(d, "DEFERRED", ())):
+                continue                    # an analytics view that migration 231 creates only when its source table exists
             out.append(f"{key}: described in docs/schema/descriptions.py but it does not exist in the database (stale entry)")
             continue
         r = live[key]
@@ -172,6 +176,17 @@ def problems(live: dict[str, dict], d=None, require_analytics: bool = True) -> l
                 out.append(f"{key}: missing required field '{f}'")
         if sch == "analytics" and len(spec.get("examples") or []) < 2:
             out.append(f"{key}: an analytics view needs at least 2 example queries")
+        if sch == "analytics":
+            domains = {k for k, _ in getattr(d, "DOMAINS", [])}
+            if spec.get("domain") not in domains:
+                out.append(f"{key}: an analytics view needs a domain from DOMAINS (got {spec.get('domain')!r})")
+            if not str(spec.get("purpose") or "").strip():
+                out.append(f"{key}: an analytics view needs a description (purpose)")
+            for t in [spec["span"][0]] if spec.get("span") else []:
+                if f"public.{t}" not in live:
+                    out.append(f"{key}: span table public.{t} does not exist")
+            if spec.get("base") and f"public.{spec['base']}" not in live:
+                out.append(f"{key}: base table public.{spec['base']} does not exist")
         try:
             cols = resolve_cols(key, d.REL)
         except (KeyError, ValueError) as e:
@@ -184,11 +199,52 @@ def problems(live: dict[str, dict], d=None, require_analytics: bool = True) -> l
         for c in (spec.get("cols") or {}):
             if c not in live_cols:
                 out.append(f"{key}.{c}: described but the column does not exist (stale)")
+    out += metrics_problems(live, d)
     for key, why in d.EXCLUDED.items():
         if not why.strip():
             out.append(f"{key}: EXCLUDED needs a reason")
         if key.startswith("analytics."):
             out.append(f"{key}: nothing in analytics may be EXCLUDED")
+    return out
+
+
+def metrics_problems(live: dict[str, dict], d) -> list[str]:
+    """The contract of the METRICS glossary (a tool server reads this exact shape) and that every `source` names a real analytics view and column."""
+    out: list[str] = []
+    metrics = getattr(d, "METRICS", None)
+    if metrics is None:
+        return out
+    fields = tuple(d.METRIC_FIELDS)
+    domains = {k for k, _ in d.DOMAINS}
+    seen: set[str] = set()
+    for m in metrics:
+        name = m.get("name")
+        if set(m) != set(fields):
+            out.append(f"metric {name!r}: fields must be exactly {fields} (got {sorted(m)})")
+            continue
+        if name in seen or not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", name):
+            out.append(f"metric {name!r}: name must be unique snake_case")
+        seen.add(name)
+        for f in ("label", "formula", "source", "default_basis"):
+            if not isinstance(m[f], str) or not m[f].strip():
+                out.append(f"metric {name}: {f} must be a non-empty string")
+        for f in ("other_bases", "traps"):
+            if not isinstance(m[f], list) or not m[f] or not all(isinstance(x, str) and x.strip() for x in m[f]):
+                out.append(f"metric {name}: {f} must be a non-empty list of strings")
+        if m["domain"] not in domains:
+            out.append(f"metric {name}: unknown domain {m['domain']!r}")
+        for part in str(m["source"]).split(";"):
+            bits = part.strip().split(".")
+            if len(bits) != 3 or bits[0] != "analytics":
+                out.append(f"metric {name}: source part {part.strip()!r} is not analytics.<view>.<column(s)>")
+                continue
+            cols = {c["name"] for c in live.get(f"analytics.{bits[1]}", {}).get("columns", [])}
+            if not cols:
+                out.append(f"metric {name}: source view analytics.{bits[1]} does not exist")
+                continue
+            for c in bits[2].split(","):
+                if c.strip() not in cols:
+                    out.append(f"metric {name}: analytics.{bits[1]} has no column {c.strip()!r}")
     return out
 
 
@@ -206,11 +262,13 @@ def build_model(live: dict[str, dict], d=None) -> dict:
             "purpose": spec["purpose"], "grain": spec["grain"], "primary_key": r["primary_key"], "foreign_keys": r["foreign_keys"],
             "source": spec["source"], "refresh": spec["refresh"], "coverage": spec["coverage"], "caveats": list(spec.get("caveats") or []),
             "like": spec.get("like"),
+            "domain": spec.get("domain"),
             "columns": [{"name": c["name"], "type": c["type"], "nullable": c["nullable"], "description": cols.get(c["name"], "")} for c in r["columns"]],
             "examples": [{"title": t, "sql": s} for t, s in (spec.get("examples") or [])],
         })
-    return {"groups": [{"key": k, "title": t} for k, t in d.GROUPS], "relations": relations,
-            "excluded": [{"name": k, "reason": v} for k, v in d.EXCLUDED.items()]}
+    return {"groups": [{"key": k, "title": t} for k, t in d.GROUPS], "domains": [{"key": k, "title": t} for k, t in getattr(d, "DOMAINS", [])], "relations": relations,
+            "excluded": [{"name": k, "reason": v} for k, v in d.EXCLUDED.items()],
+            "metrics": [{f: m[f] for f in d.METRIC_FIELDS} for m in getattr(d, "METRICS", [])]}
 
 
 def render_json(model: dict) -> str:
@@ -233,6 +291,12 @@ def render_markdown(model: dict, d=None) -> str:
         names = [r["name"] for r in model["relations"] if r["group"] == g["key"]]
         out.append(f"| {_cell(g['title'])} | " + ", ".join(f"[`{n}`](#{_anchor(n)})" for n in names) + " |")
     out.append("")
+    if model.get("domains"):
+        out.append("| Domain | Analytics views |\n|---|---|")
+        for dm in model["domains"]:
+            names = [r["name"] for r in model["relations"] if r.get("domain") == dm["key"]]
+            out.append(f"| **{dm['key']}**: {_cell(dm['title'])} | " + ", ".join(f"[`{n.split('.')[1]}`](#{_anchor(n)})" for n in names) + " |")
+        out.append("")
     for g in model["groups"]:
         rels = [r for r in model["relations"] if r["group"] == g["key"]]
         if not rels:
@@ -246,6 +310,8 @@ def render_markdown(model: dict, d=None) -> str:
             out.append(f"**Purpose.** {r['purpose']}")
             out.append("")
             key = f"primary key `({', '.join(r['primary_key'])})`; " if r["primary_key"] else ""
+            if r.get("domain"):
+                out.append(f"- **Domain:** {r['domain']}")
             out.append(f"- **Grain:** {key}{r['grain']}")
             if r["foreign_keys"]:
                 out.append("- **References:** " + "; ".join(f"`({', '.join(f['columns'])})` -> `{f['references']}({', '.join(f['referenced_columns'])})`" for f in r["foreign_keys"]))
@@ -270,6 +336,19 @@ def render_markdown(model: dict, d=None) -> str:
             if not r["examples"] and r.get("like"):
                 out.append(f"*Examples: same shape as `{r['like']}`; query it the same way.*")
                 out.append("")
+    if model.get("metrics"):
+        out += ["## Metrics", "", d.METRICS_INTRO_MD.rstrip("\n"), ""]
+        for m in model["metrics"]:
+            out.append(f"### {m['name']}")
+            out.append("")
+            out.append(f"**{m['label']}** (domain: {m['domain']})")
+            out.append("")
+            out.append(f"- **Formula:** {m['formula']}")
+            out.append(f"- **Source:** `{m['source']}`")
+            out.append(f"- **Default basis:** {m['default_basis']}")
+            out += [f"- **Other basis:** {b}" for b in m["other_bases"]]
+            out += [f"- **Trap:** {t}" for t in m["traps"]]
+            out.append("")
     out.append("## Regenerating")
     out.append("")
     out.append("Edit `docs/schema/descriptions.py`, then `python scripts/gen_schema_doc.py --write` (against a migrated database). "
@@ -305,8 +384,12 @@ def _lit(s: str) -> str:
     return "'" + s.replace("'", "''") + "'"
 
 
-def scope_of(r: dict) -> str:
-    """Which migration carries the comments of a relation: 013 (marketing + core analytics), 190 (analytics views over proj feeds), 191 (proj_* tables)."""
+def scope_of(r: dict, d=None) -> str:
+    """Which migration carries the comments of a relation: 013 (marketing + core analytics), 190 (analytics views over proj feeds), 191 (proj_* tables),
+    230 (the analytics views of migration 230, and the relations whose text 230 re-writes)."""
+    d = d or load_descriptions()
+    if r["name"] in getattr(d, "SCOPE_230", ()):
+        return "230"
     if r["name"] in LATE_ANALYTICS:
         return "190"
     if r["name"] in LATE_STAGE_MOVES:
@@ -346,25 +429,85 @@ def comment_sql(model: dict, scope: str = "all", d=None) -> str:
     """COMMENT ON statements for one migration's scope ('013' | '190' | '191') or everything ('all')."""
     d = d or load_descriptions()
     lines = []
-    if scope in ("013", "all"):
+    if scope in ("230", "all"):
         lines.append(f"COMMENT ON SCHEMA analytics IS {_lit(d.ANALYTICS_SCHEMA_COMMENT)};")
+    recomment = getattr(d, "RECOMMENT", {})
     for r in model["relations"]:
-        if scope != "all" and scope_of(r) != scope:
+        if scope != "all" and scope_of(r, d) != scope:
             continue
         obj = "VIEW" if r["kind"] == "view" else "TABLE"
         lines.append(f"COMMENT ON {obj} {r['schema']}.{r['relation']} IS {_lit(relation_comment(r))};")
+        if recomment.get(r["name"]) == "relation":              # an existing relation whose relation-level text changed: its column comments are unchanged
+            continue
         for c in r["columns"]:
             lines.append(f"COMMENT ON COLUMN {r['schema']}.{r['relation']}.{c['name']} IS {_lit(c['description'])};")
     return "\n".join(lines) + "\n"
 
 
+def _first_last(d, spec: dict) -> tuple[str, str]:
+    sp = spec.get("span")
+    if not sp:
+        return "NULL::date", "NULL::date"
+    table, first = sp[0], sp[1]
+    last = sp[2] if len(sp) > 2 else sp[1]
+    return f"(SELECT min({first}) FROM public.{table})::date", f"(SELECT max({last}) FROM public.{table})::date"
+
+
+def catalog_sql(d=None) -> str:
+    """CREATE OR REPLACE VIEW statements for analytics.catalog and analytics.metric_glossary (the METRICS list); both are generated from docs/schema/descriptions.py and need no database.
+
+    analytics.catalog reads the live metadata (every view in the analytics schema, at query time) and joins what descriptions.py knows about each view: domain, description, grain and the
+    first / last day of its base table. A view that no migration has told the catalog about still appears, with domain 'unassigned', its COMMENT's first part as description and no days, so a
+    view added by a later migration is listed without touching this one. Views that may not exist yet (migration 231's, and the ones in descriptions.EXTRA_DOMAINS) carry only domain /
+    description / grain here (no day lookups, because their base tables may be missing); a view that is not in the schema yet simply does not match any live row."""
+    d = d or load_descriptions()
+    rows = []
+    deferred = set(getattr(d, "DEFERRED", ()))
+    for key, spec in d.REL.items():
+        if not key.startswith("analytics."):
+            continue
+        name = key.split(".", 1)[1]
+        if key in deferred:
+            first, last, est = "NULL::date", "NULL::date", "NULL::bigint"
+        else:
+            first, last = _first_last(d, spec)
+            est = (f"(SELECT NULLIF(c.reltuples, -1)::bigint FROM pg_class c WHERE c.oid = to_regclass('public.{spec['base']}'))" if spec.get("base") else "NULL::bigint")
+        rows.append(f"SELECT {_lit(name)}::text AS view_name, {_lit(spec['domain'])}::text AS domain, {_lit(spec['purpose'].strip())}::text AS description, "
+                    f"{_lit(spec['grain'].strip())}::text AS grain, {first} AS first_day, {last} AS last_day, {est} AS row_estimate")
+    for name, domain in sorted(getattr(d, "EXTRA_DOMAINS", {}).items()):
+        rows.append(f"SELECT {_lit(name)}::text, {_lit(domain)}::text, NULL::text, NULL::text, NULL::date, NULL::date, NULL::bigint")
+    out = ["CREATE OR REPLACE VIEW analytics.catalog AS\n"
+           "SELECT c.relname::text AS view_name,\n"
+           "       COALESCE(k.domain, 'unassigned') AS domain,\n"
+           "       COALESCE(k.description, split_part(obj_description(c.oid, 'pg_class'), ' Grain: ', 1)) AS description,\n"
+           "       k.grain,\n"
+           "       k.first_day,\n"
+           "       k.last_day,\n"
+           "       COALESCE(k.row_estimate, (SELECT NULLIF(t.reltuples, -1)::bigint FROM pg_class t WHERE t.oid = to_regclass('public.' || c.relname))) AS row_estimate\n"
+           "FROM pg_class c\n"
+           "JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'analytics'\n"
+           "LEFT JOIN (\n" + "\nUNION ALL\n".join(rows) + "\n) k(view_name, domain, description, grain, first_day, last_day, row_estimate) ON k.view_name = c.relname\n"
+           "WHERE c.relkind = 'v';"]
+
+    def arr(xs):
+        return "ARRAY[" + ", ".join(_lit(x) for x in xs) + "]::text[]"
+    vals = ",\n".join("  (" + ", ".join([_lit(m["name"]), _lit(m["label"]), _lit(m["formula"]), _lit(m["source"]), _lit(m["default_basis"]),
+                                        arr(m["other_bases"]), arr(m["traps"]), _lit(m["domain"])]) + ")" for m in d.METRICS)
+    out.append("CREATE OR REPLACE VIEW analytics.metric_glossary AS\nSELECT g.name::text, g.label::text, g.formula::text, g.source::text, g.default_basis::text, g.other_bases, g.traps, g.domain::text\n"
+               "FROM (VALUES\n" + vals + "\n) AS g(name, label, formula, source, default_basis, other_bases, traps, domain);")
+    return "\n\n".join(out) + "\n"
+
+
 def migration_text(which: str, model: dict, d=None) -> str:
     """013, 015 and 190 keep their hand-written DDL (everything above COMMENTS_MARKER) and get the comment section rewritten; 191 is comments only."""
-    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "240"):
+    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240"):
         path = MIGRATIONS[which]
         if not path.exists():
             raise SystemExit(f"{path} must exist with its hand-written DDL and the comments marker before comments can be emitted")
-        return path.read_text().split(COMMENTS_MARKER, 1)[0] + COMMENTS_MARKER + comment_sql(model, which, d)
+        head = path.read_text().split(COMMENTS_MARKER, 1)[0] + COMMENTS_MARKER
+        if which == "230":                                         # the catalog and the glossary are generated, so they sit below the marker, before their comments
+            head += "-- analytics.catalog and analytics.metric_glossary: generated from docs/schema/descriptions.py (domains, descriptions, grains, METRICS)\n" + catalog_sql(d) + "\n"
+        return head + comment_sql(model, which, d)
     if which == "191":
         head = ("-- 191: COMMENT ON for the projection tables (proj_*), which migrations 100-180 create after 013 runs.\n"
                 "-- GENERATED by `python scripts/gen_schema_doc.py --emit-migration 191` from docs/schema/descriptions.py. Idempotent; immutable once applied.\n\n")
@@ -429,11 +572,15 @@ def main(argv=None) -> int:
     g.add_argument("--write", action="store_true")
     g.add_argument("--check", action="store_true")
     g.add_argument("--problems", action="store_true")
-    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "240", "all"))
+    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "all"))
+    g.add_argument("--catalog-sql", action="store_true")
     g.add_argument("--emit-migration", choices=sorted(MIGRATIONS))
     g.add_argument("--verify-live", action="store_true")
     ap.add_argument("--out", help="with --comments: write to this file instead of stdout")
     a = ap.parse_args(argv)
+    if a.catalog_sql:
+        sys.stdout.write(catalog_sql())
+        return 0
     conn = connect(a.database_url)
     try:
         if a.verify_live:
