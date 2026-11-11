@@ -1,4 +1,4 @@
-// Marketing metrics, Test to scale, the two simple views: "What should be scaled" (testing creatives that look good enough to move) and "Performance in scaling"
+// Lonvera, Test to scale, the two simple views: "What should be scaled" (testing creatives that look good enough to move) and "Performance in scaling"
 // (creatives that moved and how they do since). Plain ranked tables from /api/promotions/scale (precomputed tables, one call). Meta only. Class names and test ids
 // start with `sv-` (never ad-, ads-, sponsor, banner, promo: ad blockers hide those).
 import { h, enc, fmt, isNum, href, globalParams, apiWindow, setParams, metricLabel, empty, thumb } from '../util.js';

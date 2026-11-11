@@ -1827,7 +1827,7 @@ def test_row_detail_shows_the_production_history_for_every_kind_of_row(page, fre
     rows.nth(0).locator("[data-testid=pri-toggle]").click()
     hist = page.locator("[data-testid=pri-body] " + DETAIL).first.locator("[data-testid=pri-prod-history]")
     page.wait_for_function("() => document.querySelector('[data-testid=pri-prod-history] [data-testid=pri-prod-htable]')")
-    assert hist.is_visible() and "Production history" in hist.text_content()
+    assert hist.is_visible() and hist.locator("h4").text_content().strip() == "Production"
     heads = [t.strip() for t in hist.locator("th").all_text_contents()]
     assert heads == ["Week of", "Vendor", "Stage", "Brief", "Creative", "Ads", "Result"]
     assert hist.locator("[data-testid=pri-prod-hrow]").count() == 1 and f"{_md(_next_monday())}" in hist.text_content() and "Madre" in hist.text_content() and "Assigned" in hist.text_content()
@@ -1879,7 +1879,7 @@ def test_hide_already_assigned_checkbox_is_off_by_default_and_hides_only_when_ti
 def test_header_links_to_production(page, fresh_assign):
     goto(page)
     link = page.locator("[data-testid=pri-prod-link]")
-    assert link.is_visible() and link.text_content().strip().startswith("Production board")
+    assert link.is_visible() and link.text_content().strip().startswith("Production")
     assert link.get_attribute("href") == "/priorities/production" and link.get_attribute("title") == "Concepts assigned to vendors, by week"
     assert "btn" in link.get_attribute("class").split()
     page.set_viewport_size({"width": 375, "height": 800})

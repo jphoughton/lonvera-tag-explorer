@@ -1,10 +1,10 @@
-/* priorities: Creative priorities (pri- classes); scoped --lv-pri-* tokens first */
+/* priorities: Priorities (pri- classes); scoped --lv-pri-* tokens first */
 :root { --lv-pri-card: #ffffff; --lv-pri-card-line: #cfc4b0; --lv-pri-card-line-strong: #9c917d; --lv-pri-card-shadow: 0 1px 2px rgba(40, 30, 15, .10), 0 2px 8px rgba(40, 30, 15, .07); --lv-pri-panel-bg: #efe8da; --lv-pri-label: #5a5247;
   --lv-pri-sec-faded: #b35900; --lv-pri-sec-iterate: #1a7f37; --lv-pri-sec-new: #7a3db8; --lv-pri-sec-proposal: #5b3fb5; --lv-pri-sec-competitor: #0b6bcb; --lv-pri-sec-stop: #667085;
   --lv-pri-st-ok: #1a7f37; --lv-pri-st-up: #0b6bcb; --lv-pri-st-fade: #b35900; --lv-pri-st-bad: #b42318; --lv-pri-st-flat: #667085; --lv-pri-st-new: #7a3db8;
   --lv-pri-prod-vb: var(--lv-product-bull, #a63d02); --lv-pri-prod-bl: color-mix(in srgb, var(--lv-product-liver, #5f983a) 76%, #000); --lv-pri-prod-bf: var(--lv-product-bone, #2863ab); --lv-pri-selected: #1c1915; --lv-pri-good: #17692e; --lv-pri-good-bg: #e3f3e7; --lv-pri-bad: #b42318; --lv-pri-bad-bg: #fbe7e4; }
 :root { --lv-pri-sec-rest: #6b6459; }
-/* ---- Creative priorities (/priorities): one table per section, one row per concept, all collapsed; the chevron button opens the detail panel under the row ---- */
+/* ---- Priorities (/priorities): one table per section, one row per concept, all collapsed; the chevron button opens the detail panel under the row ---- */
 .pri-page { max-width: 1280px; }
 .pri-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
 .pri-expbar { display: inline-flex; gap: 6px; }
@@ -600,8 +600,9 @@ button.pri-stat:hover { background: color-mix(in srgb, var(--tone) 10%, #fff); }
 .pri-top .note-line { max-width: none; }
 @media (min-width: 1100px) {
   .pri-main .pri-c-spend14, .pri-main .pri-c-roas14 { white-space: nowrap; }
-  .pri-main .pri-c-product, .pri-main .pri-th-product { width: 5%; } .pri-main .pri-c-section, .pri-main .pri-th-section { width: 8%; } .pri-main .pri-c-status, .pri-main .pri-th-status { width: 8%; } .pri-main .pri-c-concepts, .pri-main .pri-th-concepts { width: 6%; } .pri-main .pri-c-key, .pri-main .pri-th-key { width: 11%; } .pri-main .pri-c-prod, .pri-main .pri-th-prod { width: 7%; }
-  .pri-main .pri-c-cluster, .pri-main .pri-th-cluster { width: 8%; } .pri-main .pri-c-icp, .pri-main .pri-th-icp { width: 8%; } .pri-main .pri-c-pain, .pri-main .pri-th-pain { width: 9%; } .pri-main .pri-c-story, .pri-main .pri-th-story { width: 16%; } .pri-main .pri-c-spend14, .pri-main .pri-th-spend14 { width: 6%; } .pri-main .pri-c-roas14, .pri-main .pri-th-roas14 { width: 6%; }
+  .pri-main .pri-c-product, .pri-main .pri-th-product { width: 6%; } .pri-main .pri-c-section, .pri-main .pri-th-section { width: 8%; } .pri-main .pri-c-status, .pri-main .pri-th-status { width: 8%; } .pri-main .pri-c-concepts, .pri-main .pri-th-concepts { width: 7%; } .pri-main .pri-c-key, .pri-main .pri-th-key { width: 11%; } .pri-main .pri-c-prod, .pri-main .pri-th-prod { width: 8%; }
+  .pri-main .pri-c-cluster, .pri-main .pri-th-cluster { width: 8%; } .pri-main .pri-c-icp, .pri-main .pri-th-icp { width: 8%; } .pri-main .pri-c-pain, .pri-main .pri-th-pain { width: 9%; } .pri-main .pri-c-story, .pri-main .pri-th-story { width: 14%; } .pri-main .pri-c-spend14, .pri-main .pri-th-spend14 { width: 6%; } .pri-main .pri-c-roas14, .pri-main .pri-th-roas14 { width: 6%; }
+  .pri-main .pri-th-product, .pri-main .pri-th-concepts, .pri-main .pri-th-prod { letter-spacing: 0; padding-left: 4px; padding-right: 4px; }
 }
 
 /* a view adds the Briefed column: give it its share by narrowing the text columns */
@@ -615,3 +616,30 @@ button.pri-stat:hover { background: color-mix(in srgb, var(--tone) 10%, #fff); }
   .pri-main:has(.pri-th-briefed) .pri-th-key, .pri-main:has(.pri-th-briefed) .pri-c-key { width: 9%; }
   .pri-main:has(.pri-th-briefed) .pri-th-cluster, .pri-main:has(.pri-th-briefed) .pri-c-cluster, .pri-main:has(.pri-th-briefed) .pri-th-icp, .pri-main:has(.pri-th-briefed) .pri-c-icp { width: 7%; }
 }
+
+/* ---- moved here from production.css: Priorities-owned rules (action chips, definitions, In production column, phone drill-downs, example rows) ---- */
+/* Action chips (2026-11-10): revive / make_more / test / add / stop / hold reuse the colours of the sections they replaced */
+.pri-sec-revive { background: var(--lv-pri-sec-faded, #b35900); } .pri-sec-make_more { background: var(--lv-pri-sec-iterate, #1a7f37); } .pri-sec-test { background: var(--lv-pri-sec-new, #7a3db8); }
+.pri-sec-hold { background: var(--lv-pri-sec-rest, #6b6459); }
+.pri-cc-sec-revive { --cc: var(--lv-pri-sec-faded); } .pri-cc-sec-make_more { --cc: var(--lv-pri-sec-iterate); } .pri-cc-sec-test { --cc: var(--lv-pri-sec-new); } .pri-src { display: block; font-size: 12px; margin-top: 2px; } .pri-src-sub { display: block; color: var(--lv-muted, #6b6459); }
+.pri-cc-sec-stop { --cc: var(--lv-pri-sec-stop); } .pri-cc-sec-hold { --cc: var(--lv-pri-sec-rest); }
+.pri-defs { margin: 8px 0 0; } .pri-defs-b { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 4px 28px; margin-top: 6px; }
+.pri-defs dl { margin: 0; } .pri-defs dt { font-weight: 700; margin-top: 6px; } .pri-defs dd { margin: 1px 0 0; color: var(--lv-muted, #475467); }
+.pri-defs h3 { margin: 4px 0 0; font-size: 13px; text-transform: none; letter-spacing: 0; }
+
+/* In production column, Production link and Assign to vendor dialog (2026-11-10) */
+.pri-prodlink { align-self: flex-end; display: inline-block; text-decoration: none; font-size: 13px; font-weight: 600; padding: 5px 12px; white-space: nowrap; }
+.pri-c-prod { min-width: 150px; font-size: 13px; } .pri-inprod { overflow-wrap: anywhere; }
+.pri-as-out { margin-top: 8px; font-size: 13px; } .pri-as-out ul { margin: 4px 0 6px 18px; padding: 0; }
+.pri-prodhist { margin-top: 10px; }
+
+/* /priorities drill-downs on a phone: each table row becomes a small stacked block, so nothing scrolls sideways */
+@media (max-width: 640px) {
+  .pri-dt, .pri-dt tbody, .pri-dt tr, .pri-dt td { display: block; width: auto; } .pri-dt thead { display: none; }
+  .pri-dt tr { padding: 5px 0; border-top: 1px solid var(--lv-line-soft, #e9e2d5); } .pri-dt tr[hidden] { display: none; }
+  .pri-dt td { display: inline; border: 0; padding: 0 8px 0 0; } .pri-dt td:first-child { display: block; margin-bottom: 2px; overflow-wrap: anywhere; } .pri-dt .pri-dt-hook { display: block; max-width: none; overflow-wrap: anywhere; }
+  .pri-dt td[data-label]:not(:first-child)::before { content: attr(data-label) ' '; color: var(--lv-muted, #665d53); font-size: 11px; }
+}
+
+.pri-ex-best { margin-left: 8px; white-space: nowrap; }
+@media (max-width: 760px) { .pri-ex td[data-label="Spend"]::before { content: 'spend '; color: var(--lv-muted, #665d53); } .pri-ex td[data-label="Return on ad spend"]::before { content: 'return '; color: var(--lv-muted, #665d53); } }

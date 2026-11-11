@@ -1,4 +1,4 @@
-// Marketing metrics, platform Google: campaign types and campaigns from Upstack's Google feeds. No creatives, so no tag tree: two tables and a trend chart.
+// Lonvera, platform Google: campaign types and campaigns from Upstack's Google feeds. No creatives, so no tag tree: two tables and a trend chart.
 // Two views of one page: the overview ('/?platform=google': trend, campaign types, campaigns) and Campaigns ('/campaigns?platform=google': trend and the campaigns table first, the types as a filter).
 // Numbers: Google's own reporting (default) or Upstack's attribution (Numbers from switch, same as the Meta pages). See app/google.py.
 import { h, fmt, href, apiWindow, globalParams, isNum, metricLabel, colPref, setColPref, refreshCmp } from '../util.js';

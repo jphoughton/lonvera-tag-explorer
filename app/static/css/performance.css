@@ -1,5 +1,5 @@
 /* performance: Overview, Meta, Google, Campaigns: totals strip, KPI tiles */
-/* ---------- Marketing metrics, All views: totals strip (Total spend, Total NC revenue, Total NC ROAS) ---------- */
+/* ---------- Lonvera, All views: totals strip (Total spend, Total NC revenue, Total NC ROAS) ---------- */
 .kpis { margin: 8px 0 4px; }
 .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
 .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px 9px; min-width: 0; }

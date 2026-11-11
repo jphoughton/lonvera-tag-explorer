@@ -10,7 +10,7 @@ import { metricColumns, trendColumn, pinColumn } from './columns.js';
 
 const ROOT = '__root__';
 const LEVEL_NAME = ['cluster', 'icp', 'pain', 'family'];
-const CHILD_WORD = ['ICP', 'pain point', 'creative', 'ad'];
+const CHILD_WORD = ['ideal customer profile', 'pain point', 'creative', 'ad'];
 
 function scaleM(m, parentM) {
   // child response total == parent's total, so child's table share = parent share x child share

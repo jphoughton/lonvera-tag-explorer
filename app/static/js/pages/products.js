@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { columnsChips, legendLine, viewSwitch } from '../components.js';
 import { createTrendPanel, createPins } from '../trend.js';
+import { tuckChartOptions } from './platforms.js';
 import { ownStrip } from '../kpis.js';
 import { metricColumns, trendColumn, pinColumn, flatTotal } from '../columns.js';
 import { setRangeInfo, ensureStatus, windowInfoFallback } from '../controls.js';
@@ -80,6 +81,7 @@ export async function productsPage(ctx) {
     slug: null, p, pins, mode: 'landing', scopeLabel: 'All products', products: list, signal,
     onSparks: (map) => { for (const r of list) r.spark = map[r.slug]; if (t) t.refresh(); },
   });
+  tuckChartOptions(panel);                                                           // Bars, Line, Swap, Split and Numbers sit in the closed Chart options disclosure, Grain stays in view
   const cols = [
     {
       key: 'name', label: 'Product', sticky: true, sort: (r) => r.name,

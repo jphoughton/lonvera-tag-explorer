@@ -119,7 +119,7 @@ def drill_to_families(page):
     """product root -> cluster -> icp -> pain -> families table (via Open ›). returns [cluster, icp, pain]"""
     goto_product(page)
     labels = []
-    for expected in ("ICPs in", "Pain points in", "Creatives in"):
+    for expected in ("Ideal customer profiles in", "Pain points in", "Creatives in"):
         labels.append(open_first_row(page))
         expect(page.locator("#level-title")).to_contain_text(expected)
         wait_rows(page)
@@ -186,6 +186,14 @@ def bars_ds(info):
 
 def line_ds(info):
     return [d for d in info["ds"] if d["type"] == "line" and not d["label"].startswith("B ")]
+
+
+def open_chart_options(page):
+    """Bars, Line, Swap, Split bars by and Numbers sit in the closed 'Chart options' disclosure on the performance pages; open it (no-op when already open)"""
+    det = page.locator("[data-testid=chart-options]").first
+    if det.get_attribute("open") is None:
+        det.locator("summary").click()
+    expect(det).to_have_attribute("open", "")
 
 
 def pick_metric(page, which, key):
