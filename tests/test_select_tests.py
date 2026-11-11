@@ -199,3 +199,26 @@ def test_the_real_repository_has_sane_hubs_and_every_test_is_indexed():
     assert {"app/__init__.py", "app/queries.py", "etl/db.py"} <= r.hubs()
     assert len(r.tests) > 150
     assert r.edges["tests/api/test_api_trends.py"]
+
+
+def test_a_module_used_by_a_hub_route_handler_is_tied_to_the_tests_that_request_that_route(tmp_path):
+    files = dict(BASE)
+    files["app/api.py"] = ("from flask import Blueprint\nfrom . import queries, trends, lookup as lk, helper_mod\nbp = Blueprint('a', __name__)\n"
+                           "def shared():\n    return helper_mod.go()\n"
+                           "@bp.get('/api/lookup')\ndef look():\n    return lk.find() + shared()\n")
+    files["app/helper_mod.py"] = "def go():\n    return 1\n"
+    files["tests/api/test_lookup_route.py"] = "def test_r(client):\n    client.get('/api/lookup?x=1')\n"
+    files.update({f"tests/etl/test_pad{i}.py": "def test_p():\n    pass\n" for i in range(6)})
+    r = make(tmp_path, files)
+    _, tests, _ = pick(r, "app/helper_mod.py")
+    assert "tests/api/test_lookup_route.py" in tests                 # through the helper function of the handler
+
+
+def test_a_test_named_after_a_module_depends_on_it(tmp_path):
+    files = dict(BASE)
+    files["app/widgets.py"] = "def w():\n    return 1\n"
+    files["tests/api/test_api_widget_totals.py"] = "def test_w(client):\n    client.get('/api/zzz')\n"
+    files.update({f"tests/etl/test_pad{i}.py": "def test_p():\n    pass\n" for i in range(6)})
+    r = make(tmp_path, files)
+    _, tests, _ = pick(r, "app/widgets.py")
+    assert tests == ["tests/api/test_api_widget_totals.py"]
