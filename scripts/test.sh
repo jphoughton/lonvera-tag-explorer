@@ -27,4 +27,6 @@ WORKERS="${TEST_WORKERS:-$(c=$(sysctl -n hw.ncpu 2>/dev/null || nproc); [ "$c" -
 echo "[test.sh] workers=$WORKERS cores=$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
 TARGET=(tests)
 for a in "$@"; do case "$a" in tests*|./tests*) TARGET=();; esac; done      # explicit test paths replace the default `tests`
-exec "$PY" -m pytest ${TARGET[@]+"${TARGET[@]}"} -q -rf -p no:cacheprovider -p tests._xdist_env -n "$WORKERS" --dist loadfile "$@"
+# --rootdir: tests/ui and tests/projection/ui each hold a pytest.ini, so explicit file paths from there would move the rootdir into that directory and turn the OTHER directory's
+# conftest fixtures into global ones (a tests/ui test then runs with the projection UI's autouse _reset and times out). Pinning the rootdir keeps every conftest scoped to its folder.
+exec "$PY" -m pytest --rootdir "$ROOT" ${TARGET[@]+"${TARGET[@]}"} -q -rf -p no:cacheprovider -p tests._xdist_env -n "$WORKERS" --dist loadfile "$@"
