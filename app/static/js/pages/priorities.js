@@ -193,7 +193,18 @@ function render(d, view = null, opts = {}) {
     });
     runs = [];
     if (!on) return;
-    const level = [['product', (r) => r.product, 'pri-g-prod'], ['cluster', (r) => r.product + '|' + r.cluster, 'pri-g-cl'], ['icp', (r) => r.product + '|' + r.cluster + '|' + r.icp, 'pri-g-icp']];
+    // product = a heading row above its block (not a merged cell); cluster and ICP are the merged cells
+    const pk = (r) => r.product;
+    for (let i = 0; i < list.length; i += 1) {
+      if (i > 0 && pk(list[i - 1].r) === pk(list[i].r)) continue;
+      let n = 0; while (i + n < list.length && pk(list[i + n].r) === pk(list[i].r)) n += 1;
+      const name = (d.baselines[list[i].r.product] || {}).product_name || list[i].r.product;
+      const hr = h('tr', { class: 'pri-prodhead', 'data-testid': 'pri-prodhead', 'data-product': list[i].r.product, 'data-count': String(n) },
+        h('td', { colspan: String(nCols() - 1) }, h('strong', null, name), ` \u00b7 ${n} concept${n === 1 ? '' : 's'}`));
+      tbody.insertBefore(hr, list[i].tr);
+      list[i].tr.classList.add('pri-g-prod');
+    }
+    const level = [['cluster', (r) => r.product + '|' + r.cluster, 'pri-g-cl'], ['icp', (r) => r.product + '|' + r.cluster + '|' + r.icp, 'pri-g-icp']];
     level.forEach(([name, kf, cls]) => {
       let i = 0;
       while (i < list.length) {
@@ -326,7 +337,7 @@ function render(d, view = null, opts = {}) {
       apply();
     } }, label, h('span', { class: 'pri-arrow', 'aria-hidden': 'true' }, ' ⇅'));
     sortBtns[k] = b;
-    return h('th', { scope: 'col', 'aria-sort': 'none' }, b);
+    return h('th', { scope: 'col', 'aria-sort': 'none', class: k === 'product' ? 'pri-th-product' : null }, b);
   })));
   const tfoot = h('tfoot', { class: 'pri-tfoot', 'data-testid': 'pri-totals' });
   const recon = h('div', { class: 'pri-recon', 'data-testid': 'pri-recon' });

@@ -45,8 +45,8 @@ def is_grouped(page):
 def group_geometry(page):
     """For every merged cell on screen: [level, top offset from its first row, bottom offset from its last row, rowSpan, rows really covered (visible rows incl. open detail rows)]."""
     return page.evaluate("""() => {
-      const trs = [...document.querySelector('[data-testid=pri-body]').children].filter((t) => getComputedStyle(t).display !== 'none');
-      const lv = { product: ['pri-c-product', ['pri-g-prod']], cluster: ['pri-c-cluster', ['pri-g-prod', 'pri-g-cl']], icp: ['pri-c-icp', ['pri-g-prod', 'pri-g-cl', 'pri-g-icp']] };
+      const trs = [...document.querySelector('[data-testid=pri-body]').children].filter((t) => getComputedStyle(t).display !== 'none' && !t.classList.contains('pri-prodhead'));      // product heading rows are not part of any merged cell
+      const lv = { cluster: ['pri-c-cluster', ['pri-g-prod', 'pri-g-cl']], icp: ['pri-c-icp', ['pri-g-prod', 'pri-g-cl', 'pri-g-icp']] };
       const out = [];
       for (const [name, [c, stop]] of Object.entries(lv)) {
         trs.forEach((tr, i) => {
@@ -67,10 +67,11 @@ def assert_merges_correct(page):
     for lvl, top, bottom, span, rows in g:
         assert top == 0 and abs(bottom) <= 1, (lvl, top, bottom)                  # the merged cell starts at its first row and ends at the bottom of its last row
         assert span == rows, (lvl, span, rows)
-    # a visible, un-merged Product / Cluster / ICP cell never exists in grouped mode
+    # a visible, un-merged Cluster / ICP cell never exists in grouped mode, and no Product cell is visible at all (the product is a heading row)
     stray = page.evaluate("""() => [...document.querySelectorAll('[data-testid=pri-body] tr.pri-row td.pri-c-product, [data-testid=pri-body] tr.pri-row td.pri-c-cluster, [data-testid=pri-body] tr.pri-row td.pri-c-icp')]
       .filter((td) => getComputedStyle(td).display !== 'none' && !td.classList.contains('pri-merged')).length""")
     assert stray == 0
+    assert page.evaluate("() => [...document.querySelectorAll('[data-testid=pri-body] td.pri-c-product')].every((td) => getComputedStyle(td).display === 'none' && !td.classList.contains('pri-merged'))")
     # every visible cell lies inside the table (a detail cell in the wrong grid slot would push past its right edge)
     assert page.evaluate("""() => { const t = document.querySelector('[data-testid=pri-table]'), r = t.getBoundingClientRect().right + 1;
       return [...t.querySelectorAll('tbody td')].filter((td) => getComputedStyle(td).display !== 'none').every((td) => td.getBoundingClientRect().right <= r); }""")
@@ -100,20 +101,21 @@ def test_default_is_grouped_in_sheet_order_with_off_sheet_rows_after_their_group
 def test_product_cluster_and_icp_are_real_merged_cells_centered_with_cluster_colours(page):
     goto(page)
     g = assert_merges_correct(page)
-    by = {lvl: [x for x in g if x[0] == lvl] for lvl in ("product", "cluster", "icp")}
-    assert len(by["product"]) == 3 and len(by["cluster"]) == sum(len(v) for v in EXPECTED.values()) and len(by["icp"]) == sum(len(i) for v in EXPECTED.values() for _, i in v)
-    assert any(x[3] > 1 for x in by["cluster"]) and any(x[3] > 1 for x in by["icp"]) and all(x[3] > 1 for x in by["product"])      # rowspan > 1 where a group has several rows
+    by = {lvl: [x for x in g if x[0] == lvl] for lvl in ("cluster", "icp")}
+    assert len(by["cluster"]) == sum(len(v) for v in EXPECTED.values()) and len(by["icp"]) == sum(len(i) for v in EXPECTED.values() for _, i in v)
+    assert any(x[3] > 1 for x in by["cluster"]) and any(x[3] > 1 for x in by["icp"])      # rowspan > 1 where a group has several rows
     cell = page.locator("[data-testid=pri-body] td.pri-c-cluster.pri-merged").first
     st = cell.evaluate("e => { const s = getComputedStyle(e); return [s.textAlign, s.verticalAlign]; }")
     assert st == ["center", "middle"]
-    # no blank cells and no heading rows: every row still holds exactly one tr.pri-row with its own (hidden or merged) cells, and the tbody has only row and detail rows
-    assert page.locator("[data-testid=pri-body] > tr").evaluate_all("trs => trs.every((t) => t.classList.contains('pri-row') || t.classList.contains('pri-detail'))")
+    # no blank cells; the tbody holds row, detail and product-heading rows only; headings are not rows (no checkbox, not counted)
+    assert page.locator("[data-testid=pri-body] > tr").evaluate_all("trs => trs.every((t) => t.classList.contains('pri-row') || t.classList.contains('pri-detail') || t.classList.contains('pri-prodhead'))")
+    assert page.locator("[data-testid=pri-card]").count() == 30 and page.locator(PICK).count() == 30
     assert page.locator("[data-testid=pri-body] td.pri-merged:empty").count() == 0
     # fills: cluster cell strongest, ICP lighter, ordinary cell faintest (lightness sum of the rgb channels)
     lum = page.evaluate("""() => {
       const p = (e) => getComputedStyle(e).backgroundColor.match(/[\\d.]+/g).slice(0, 3).map(Number).reduce((a, b) => a + b, 0);
       const tr = document.querySelector('[data-testid=pri-body] tr.pri-row.pri-g-icp.pri-g-cl');
-      return [p(tr.querySelector('td.pri-c-cluster')), p(tr.querySelector('td.pri-c-icp')), p(tr.querySelector('td.pri-c-pain'))];
+      return [p(tr.querySelector('td.pri-c-cluster')), p(tr.querySelector('td.pri-c-icp')), p(tr)];      // the ordinary cells are transparent on a white row
     }""")
     assert lum[0] < lum[1] < lum[2]
     # separators: heavier between clusters than between ICPs
@@ -146,7 +148,7 @@ def test_merges_stay_correct_after_search_filter_selected_only_and_expand(page):
     page.locator("[data-testid=pri-search]").fill("")
     # a product chip (filter): only boneflex, still grouped, merges recomputed
     page.locator("[data-testid=pri-f-product-boneflex]").click()
-    assert is_grouped(page) and page.locator(PICK).count() == 10 and len([x for x in assert_merges_correct(page) if x[0] == "product"]) == 1
+    assert is_grouped(page) and page.locator(PICK).count() == 10 and page.locator("[data-testid=pri-prodhead]").count() == 1 and assert_merges_correct(page)
     page.locator("[data-testid=pri-clear-filters]").click()
     # expand one row in the middle of a cluster: its detail sits inside the merged cells, which grow with it
     toggles = page.locator("[data-testid=pri-body] [data-testid=pri-toggle]")
@@ -179,6 +181,36 @@ def test_merges_stay_correct_after_search_filter_selected_only_and_expand(page):
     page.locator("[data-testid=pri-sel-only]").click()
     assert page.locator(PICK).count() == 30 and is_grouped(page)
     assert_merges_correct(page)
+
+
+def test_product_is_a_heading_row_with_a_count_not_a_merged_cell(page):
+    goto(page)
+    heads = page.locator("[data-testid=pri-prodhead]")
+    assert heads.count() == 3 and page.locator("td.pri-c-product.pri-merged").count() == 0
+    per = page.locator("[data-testid=pri-card]").evaluate_all("rows => rows.reduce((o, r) => { o[r.dataset.product] = (o[r.dataset.product] || 0) + 1; return o; }, {})")
+    texts = heads.evaluate_all("hs => hs.map((h) => [h.dataset.product, h.textContent.trim(), h.querySelectorAll('input, button').length, h.nextElementSibling.classList.contains('pri-row')])")
+    assert [t[0] for t in texts] == ["vita-bull", "beef-liver", "boneflex"]
+    for slug, text, controls, next_is_row in texts:
+        assert text.endswith(f"· {per[slug]} concepts") and controls == 0 and next_is_row, (slug, text)
+    # full table width, heaviest rule above, plain background, bold name
+    st = heads.first.evaluate("""h => { const t = h.closest('table').getBoundingClientRect(), td = h.firstElementChild.getBoundingClientRect(), s = getComputedStyle(h.firstElementChild);
+      return [Math.abs(td.left - t.left) <= 3 && Math.abs(td.right - t.right) <= 3, s.borderTopWidth, s.backgroundColor, getComputedStyle(h.querySelector('strong')).fontWeight]; }""")
+    assert st[0] and st[1] == "4px" and st[2] == "rgba(0, 0, 0, 0)" and int(st[3]) >= 700, st
+    # no Product column header in the grouped view; a filter changes the count
+    assert page.locator("th.pri-th-product").evaluate("e => getComputedStyle(e).display") == "none"
+    page.locator("[data-testid=pri-search]").fill("Label")
+    assert page.locator("[data-testid=pri-prodhead]").evaluate_all("hs => hs.map((h) => h.textContent.trim())") == ["Beef Liver · 1 concept", "Boneflex · 1 concept"]
+    page.locator("[data-testid=pri-search]").fill("")
+    # white rows: the checkbox cell and the cells from Pain Point on carry no cluster tint, only the cluster and ICP cells are coloured
+    plain = page.evaluate("""() => [...document.querySelectorAll('[data-testid=pri-body] tr.pri-row')].every((tr) => {
+      const bg = (e) => getComputedStyle(e).backgroundColor, t = tr.querySelector('.pri-c-tog');
+      return (bg(t) === 'rgba(0, 0, 0, 0)' || bg(t) === bg(tr)) && bg(tr) === 'rgb(255, 255, 255)' && bg(tr.querySelector('.pri-c-pain')) === 'rgba(0, 0, 0, 0)'; })""")
+    assert plain
+    # flat (sorted) view: no headings, the Product column is a normal column again
+    page.locator("[data-testid=pri-sort-pain]").click()
+    assert page.locator("[data-testid=pri-prodhead]").count() == 0
+    assert page.locator("th.pri-th-product").evaluate("e => getComputedStyle(e).display") != "none"
+    assert page.locator("[data-testid=pri-card] .pri-c-product").evaluate_all("cs => cs.length > 0 && cs.every((c) => getComputedStyle(c).display !== 'none' && c.textContent.trim())")
 
 
 def test_clicking_a_merged_cell_does_not_open_a_row_but_a_normal_cell_still_does(page):
@@ -255,7 +287,7 @@ def rect(page, sel):
 
 def test_header_pins_under_the_app_header_and_the_selection_bar_pins_with_the_header_directly_under_it(page):
     goto(page)
-    th = "[data-testid=pri-table] thead th >> nth=1"
+    th = "[data-testid=pri-table] thead th >> nth=2"
     page.evaluate("() => document.querySelector('[data-testid=pri-table]').scrollIntoView()")
     page.evaluate("() => window.scrollBy(0, 700)")
     h0 = rect(page, th)
@@ -269,7 +301,7 @@ def test_header_pins_under_the_app_header_and_the_selection_bar_pins_with_the_he
     assert abs(h1["top"] - bar["bottom"]) <= 1 and h1["top"] >= bar["bottom"] - 1               # the column header is directly under the bar, no overlap, no gap
     assert page.locator("[data-testid=pri-sel-count]").is_visible() and page.locator("[data-testid=pri-sel-count]").text_content() == "3 selected"
     # every header cell is pinned at the same height and the table body is under them (a row near the top of the viewport never paints over the header)
-    tops = page.locator("[data-testid=pri-table] thead th").evaluate_all("els => els.map((e) => Math.round(e.getBoundingClientRect().top))")
+    tops = page.locator("[data-testid=pri-table] thead th").evaluate_all("els => els.filter((e) => getComputedStyle(e).display !== 'none').map((e) => Math.round(e.getBoundingClientRect().top))")
     assert len(set(tops)) == 1
     hit = page.evaluate("(y) => { const e = document.elementFromPoint(300, y); return e ? !!e.closest('thead') : false; }", h1["top"] + 5)
     assert hit
@@ -292,7 +324,7 @@ def test_bar_follows_its_real_height_when_the_actions_wrap(browser, base_url):
     for i in (0, 9, 20):
         p.locator(PICK).nth(i).check()
     p.evaluate("() => { document.querySelector('[data-testid=pri-table]').scrollIntoView(); window.scrollBy(0, 1200); }")
-    bar, h = rect(p, TOOLS), rect(p, "[data-testid=pri-table] thead th >> nth=1")
+    bar, h = rect(p, TOOLS), rect(p, "[data-testid=pri-table] thead th >> nth=2")
     assert bar["h"] > 50 and abs(h["top"] - bar["bottom"]) <= 1                                 # a bar that wraps to two lines pushes the header down by exactly its height
     c.close()
 
@@ -333,8 +365,8 @@ def test_375px_cards_keep_a_coloured_cluster_label_only_the_bar_pins_and_there_i
     p.wait_for_selector("[data-testid=pri-page]")
     idle(p)
     assert not p.evaluate("() => document.documentElement.scrollWidth > innerWidth")
-    # the stacked layout is kept: every card shows its own product / cluster / ICP, the cluster as a coloured label
-    cells = p.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("""rows => rows.every((r) => ['.pri-c-product', '.pri-c-cluster', '.pri-c-icp'].every((s) => r.querySelector(s).offsetParent !== null)
+    # the stacked layout is kept: every card shows its own cluster / ICP (the product is a simple heading above its cards, not repeated in each card), the cluster as a coloured label
+    cells = p.locator("[data-testid=pri-body] tr.pri-row").evaluate_all("""rows => rows.every((r) => ['.pri-c-cluster', '.pri-c-icp'].every((s) => r.querySelector(s).offsetParent !== null)
       && getComputedStyle(r.querySelector('.pri-c-cluster')).backgroundColor !== 'rgba(0, 0, 0, 0)')""")
     assert cells
     for i in (0, 9, 20):
