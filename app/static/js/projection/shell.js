@@ -9,6 +9,7 @@ import { installGuard } from './lib/guard.js';
 import { Grid, createGrid } from './lib/grid.js';
 import * as F from './lib/format.js';
 import * as charts from './lib/charts.js';
+import { renderNav } from '../nav.js';
 
 const GROUP_NAMES = { P1: 'Plan', P2: 'Supply and cash', P3: 'Track' };
 const PURPOSE = {
@@ -191,6 +192,12 @@ const actions = {
   history: () => openHistory(),
 };
 
+// the top row: the same bar as every other page (js/nav.js), with the Plan section lit; the module tabs below it are this section's second row
+{
+  const shared = renderNav({ dataPg: true });
+  $('#topbar').replaceChildren(h('div', { class: 'topbar-in' }, shared.brand, shared.groups, shared.search));
+  shared.setCurrent('/projection', {});
+}
 const nav = $('#pg-nav');
 const navMenu = $('#pg-navmenu');
 function buildNav() {

@@ -11,7 +11,7 @@ ROW = "[data-testid=pri-card]"
 PICK = "[data-testid=pri-body] [data-testid=pri-pick]"
 TOOLS = "[data-testid=pri-seltools]"
 TABLE = "[data-testid=pri-table]"
-TOPBAR_H = 42
+TOPBAR_H = 76          # the sticky app header is two rows: top bar 42 + section tabs 34 (--header-h)
 
 # the sheet order of the fixture: product > cluster > ICP; off-sheet rows come after the on-sheet rows of their ICP / cluster / product
 EXPECTED = {

@@ -1,6 +1,7 @@
-import { $, h, fmt, setRenderer, navigate, currentParams, qs, href, globalParams, hasDateWindow, compareOn, cleanParams, setViewStateProvider, clearCmpRefreshers, loadViewState, navIndex, getParentHint, setParentHint, currentPlatform, platformUrl } from './js/util.js';
+import { $, h, fmt, setRenderer, navigate, currentParams, qs, globalParams, hasDateWindow, compareOn, cleanParams, setViewStateProvider, clearCmpRefreshers, loadViewState, navIndex, setParentHint, currentPlatform } from './js/util.js';
 import { setUnauthorizedHandler, AuthError, ApiError } from './js/api.js';
-import { buildShell, showControls, syncControls, loadStatus, setRangeInfo, getStatus, setBackDisabled, setPendingNote, isAuthDisabled } from './js/controls.js';
+import { buildShell, showControls, syncControls, syncNav, setNavVisible, loadStatus, setRangeInfo, getStatus, setBackDisabled, setPendingNote, isAuthDisabled } from './js/controls.js';
+import { PAGES, pageFor } from './js/pageconfig.js';
 import { destroyCharts } from './js/charts.js';
 import './js/lightbox.js';
 import { closeAllModals } from './js/modal.js';
@@ -22,20 +23,12 @@ import { lookupPage } from './js/pages/lookup.js';
 // Google's campaigns are part of its one page, so its Campaigns view is the same page with the campaigns table first.
 const homePage = (ctx) => { const pl = currentPlatform(); return pl === 'all' ? allPlatformsPage(ctx) : pl === 'google' ? googlePage(ctx) : productsPage(ctx); };
 const campaignsRoute = (ctx) => { const pl = currentPlatform(); return pl === 'google' ? googlePage(ctx) : pl === 'all' ? allCampaignsPage(ctx) : campaignsPage(ctx); };
-const routes = [
-  { re: /^\/login\/?$/, page: loginPage, public: true },
-  { re: /^\/?$/, page: homePage },
-  { re: /^\/campaigns\/?$/, page: campaignsRoute },
-  { re: /^\/promotions\/?$/, page: promotionsPage },
-  { re: /^\/trends\/?$/, page: trendsPage },
-  { re: /^\/priorities\/?$/, page: prioritiesPage },
-  { re: /^\/priorities\/v\/([A-Za-z0-9_-]+)\/?$/, page: prioritiesViewPage },
-  { re: /^\/priorities\/production\/?$/, page: productionPage },
-  { re: /^\/priorities\/vendor\/([A-Za-z0-9_-]+)\/?$/, page: vendorPage, bare: true, public: true },       // a vendor's own link: no login, no app navigation
-  { re: /^\/lookup\/?$/, page: lookupPage },
-  { re: /^\/p\/([^/]+)\/?$/, page: productPage },
-  { re: /^\/ad\/([^/]+)\/?$/, page: adPage },
-];
+// page functions by id; the URL patterns, Back targets, filters and defaults of each page are in js/pageconfig.js (PAGES)
+const PAGE_FNS = {
+  login: loginPage, home: homePage, campaigns: campaignsRoute, promotions: promotionsPage, trends: trendsPage, priorities: prioritiesPage, 'priorities-view': prioritiesViewPage,
+  production: productionPage, vendor: vendorPage, lookup: lookupPage, product: productPage, ad: adPage,
+};
+const routes = PAGES.map((r) => ({ ...r, page: PAGE_FNS[r.id] }));
 
 let token = 0;
 let abort = null;
@@ -47,31 +40,13 @@ setUnauthorizedHandler(() => {
   navigate('/login' + qs({ next }), { replace: true, scroll: false });
 });
 
-// the parent level of the current URL (used by Back when there is no in-app history)
+// the parent level of the current URL (used by Back when there is no in-app history): the `parent` of the page's entry in js/pageconfig.js
 function parentUrl() {
   const path = location.pathname;
+  const route = pageFor(path);
+  if (!route || !route.parent) return null;
   const p = currentParams();
-  const G = globalParams(p);
-  const m = path.match(/^\/p\/([^/]+)/);
-  if (m) {
-    const base = '/p/' + m[1];
-    if (p.view === 'ads') {
-      if (p.campaign_id) return href(base, { ...G, view: 'campaigns' });
-      return href(base, { ...G, cluster: p.cluster, icp: p.icp, pain: p.pain, all: p.family_key && !p.pain ? 1 : null });
-    }
-    if (p.view === 'campaigns') return href(base, G);
-    if (p.all) return href(base, { ...G, cluster: p.cluster, icp: p.icp, pain: p.pain });
-    if (p.pain) return href(base, { ...G, cluster: p.cluster, icp: p.icp });
-    if (p.icp) return href(base, { ...G, cluster: p.cluster });
-    if (p.cluster) return href(base, G);
-    return platformUrl('/', 'meta', G);                      // a product's parent is Meta's Products table, not the All roll-up
-  }
-  if (/^\/priorities\/v\//.test(path) || path === '/priorities/production') return href('/priorities', {});
-  if (path === '/campaigns') return platformUrl('/', currentPlatform(), G);
-  if (path === '/promotions' || path === '/trends' || path === '/priorities' || path === '/lookup') return href('/', G);
-  if (path === '/' && p.type) return platformUrl('/', 'google', G);
-  if (/^\/ad\//.test(path)) return getParentHint() || platformUrl('/', 'meta', G);
-  return null;
+  return route.parent({ path, p, G: globalParams(p) });
 }
 
 function goBack() {
@@ -85,10 +60,11 @@ function updateBack() {
   setBackDisabled(location.pathname.startsWith('/login') || (onProducts && navIndex() === 0));
 }
 
-// comparison needs a date window for A: a link with compare + Since launch switches A to 7d
-function normalize(params) {
-  if (/^\/promotions\/?$/.test(location.pathname) && !hasDateWindow(params) && params.window !== 'launch') {      // Test to scale opens on the last 30 days
-    const fixed = { ...params, window: '30d' };
+// default filters of the page (its `defaults` in js/pageconfig.js; Test to scale opens on the last 30 days), then: comparison needs a date window for A,
+// so a link with compare + Since launch switches A to 7d
+function normalize(params, route) {
+  if (route && route.defaults && !(route.skipDefaultsWhen && route.skipDefaultsWhen(params))) {
+    const fixed = { ...params, ...route.defaults };
     history.replaceState(history.state, '', location.pathname + qs(fixed));
     return fixed;
   }
@@ -150,8 +126,10 @@ async function render(opts = {}) {
   const route = routes.find((r) => r.re.test(path));
   document.body.classList.toggle('pri-bare', !!(route && route.bare));          // vendor page: topbar hidden
   const root = view();
-  const params = route && !route.public ? normalize(currentParams()) : currentParams();
+  const params = route && !route.public ? normalize(currentParams(), route) : currentParams();
   updateBack();
+  setNavVisible(!(route && route.id === 'login'));
+  syncNav(path, params);
   if (!route) {
     showControls(false);
     root.replaceChildren(h('div', { class: 'page' }, h('h1', 'Not found'), h('p', null, 'No such page. '), h('a', { href: '/' }, 'Back to products')));
@@ -175,7 +153,7 @@ async function render(opts = {}) {
   };
   root.setAttribute('aria-busy', 'true');
   if (!route.public) {
-    showControls(true);
+    showControls(true, route.filters);
     syncControls(params);
     if (!getStatus()) loadStatus(abort.signal).then(() => { if (token === my) syncControls(params); }).catch(() => {});
     root.replaceChildren(h('div', { class: 'loading' }, 'Loading…'));
@@ -215,14 +193,5 @@ document.addEventListener('click', (e) => {
   navigate(u.pathname + u.search);
 });
 
-buildShell({ onBack: goBack });
-{ // top-level sections: Marketing metrics (this app) and Projections (separate page, same bar)
-  const brand = document.querySelector('#topbar .brand'); if (brand) brand.textContent = 'Lonvera';
-  const tags = document.querySelector('#topbar .navlink'); tags.textContent = 'Marketing metrics';
-  tags.after(h('a', { class: 'navlink', href: '/projection', target: '_self' }, 'Projections'));
-  tags.after(h('a', { class: 'navlink', href: '/promotions', 'data-testid': 'nav-test-to-scale' }, 'Test to scale'));
-  tags.after(h('a', { class: 'navlink', href: '/lookup', 'data-testid': 'nav-lookup' }, 'Tag lookup'));
-  tags.after(h('a', { class: 'navlink', href: '/priorities', 'data-testid': 'nav-priorities' }, 'Creative priorities'));
-  tags.after(h('a', { class: 'navlink', href: '/trends', 'data-testid': 'nav-trends' }, 'Trends'));
-}
+buildShell({ onBack: goBack, onSearch: (text) => navigate('/lookup' + qs({ q: text || null })) });
 render({ restore: true });

@@ -177,7 +177,7 @@ def test_real_pdf_is_short_and_every_product_starts_a_page(page):
 
 def test_screen_detail_is_hidden_by_default_in_the_stylesheet_and_print_has_no_panel_dump(page):
     goto(page)
-    css = page.evaluate("() => [...document.styleSheets].flatMap(s => { try { return [...s.cssRules]; } catch (e) { return []; } }).map(r => r.cssText).join('\\n')")
+    css = page.evaluate("() => { const rules = (s) => { try { return [...s.cssRules].flatMap(r => r.styleSheet ? rules(r.styleSheet) : [r]); } catch (e) { return []; } }; return [...document.styleSheets].flatMap(rules).map(r => r.cssText).join('\\n'); }")        # app.css is a manifest of @imports: follow them
     assert ".pri-detail[hidden]" in css and "table-header-group" in css and "pri-print" in css
 
 

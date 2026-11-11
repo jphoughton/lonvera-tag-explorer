@@ -1,0 +1,81 @@
+/* production: Production board, vendor page, launch dialog (prod- classes) */
+/* ---- Production (/priorities/production) and the vendor page (/priorities/vendor/<token>): plain tables / cards ---- */
+body.pri-bare #topbar, body.pri-bare #controls { display: none; }
+.prod-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; margin: 8px 0; }
+.prod-ctl { display: flex; flex-direction: column; gap: 3px; }
+.prod-check { font-size: 14px; }
+.prod-links { margin: 10px 0; padding: 8px 10px; border: 1px solid var(--lv-line, #dcd3c3); border-radius: 8px; }
+.prod-linkrow { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 4px; }
+.prod-vl { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.prod-msg { min-height: 18px; margin: 6px 0; font-size: 13px; overflow-wrap: anywhere; }
+.prod-url { font-family: ui-monospace, monospace; user-select: all; }
+.prod-scroll { overflow-x: auto; max-width: 100%; }
+.prod-table { font-size: 13px; min-width: 1100px; }
+.prod-table th { font-size: 12px; }
+.prod-c { padding: 8px; vertical-align: top; border-bottom: 1px solid var(--border, #d8d8d8); overflow-wrap: anywhere; }
+.prod-nowrap { white-space: nowrap; }
+.prod-concept { min-width: 200px; }
+.prod-small { font-size: 12px; padding: 3px 8px; margin: 2px 4px 2px 0; }
+.prod-acts { min-width: 150px; }
+.prod-danger { background: #b42318; border-color: #b42318; color: #fff; }
+.prod-vendor { max-width: 760px; }
+.prod-week h2 { font-size: 18px; margin: 18px 0 6px; }
+.prod-card { border: 1px solid var(--lv-line, #dcd3c3); border-radius: 8px; padding: 10px 14px; margin: 8px 0; display: grid; gap: 8px; }
+.prod-card h3 { margin: 0; font-size: 16px; }
+.prod-story { margin: 0; font-style: italic; font-size: 14px; }
+.prod-dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; font-size: 14px; }
+.prod-dl dd { margin: 0; overflow-wrap: anywhere; }
+.prod-in { width: 100%; box-sizing: border-box; font-size: 16px; }
+.prod-vbtns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.prod-saved { font-size: 13px; }
+@media (max-width: 600px) { .prod-controls { flex-direction: column; align-items: stretch; } .prod-dl { grid-template-columns: 1fr; } }
+.prod-page .pri-flabel, .prod-page .pri-sub { font-size: 12px; }
+
+/* Action chips (2026-11-10): revive / make_more / test / add / stop / hold reuse the colours of the sections they replaced */
+.pri-sec-revive { background: var(--lv-pri-sec-faded, #b35900); } .pri-sec-make_more { background: var(--lv-pri-sec-iterate, #1a7f37); } .pri-sec-test { background: var(--lv-pri-sec-new, #7a3db8); }
+.pri-sec-hold { background: var(--lv-pri-sec-rest, #6b6459); }
+.pri-cc-sec-revive { --cc: var(--lv-pri-sec-faded); } .pri-cc-sec-make_more { --cc: var(--lv-pri-sec-iterate); } .pri-cc-sec-test { --cc: var(--lv-pri-sec-new); } .pri-src { display: block; font-size: 12px; margin-top: 2px; } .pri-src-sub { display: block; color: var(--lv-muted, #6b6459); }
+.pri-cc-sec-stop { --cc: var(--lv-pri-sec-stop); } .pri-cc-sec-hold { --cc: var(--lv-pri-sec-rest); }
+.pri-defs { margin: 8px 0 0; } .pri-defs-b { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 4px 28px; margin-top: 6px; }
+.pri-defs dl { margin: 0; } .pri-defs dt { font-weight: 700; margin-top: 6px; } .pri-defs dd { margin: 1px 0 0; color: var(--lv-muted, #475467); }
+.pri-defs h3 { margin: 4px 0 0; font-size: 13px; text-transform: none; letter-spacing: 0; }
+
+/* In production column, Production link and Assign to vendor dialog (2026-11-10) */
+.pri-prodlink { align-self: flex-end; display: inline-block; text-decoration: none; font-size: 13px; font-weight: 600; padding: 5px 12px; white-space: nowrap; }
+.pri-c-prod { min-width: 150px; font-size: 13px; } .pri-inprod { overflow-wrap: anywhere; }
+.pri-as-out { margin-top: 8px; font-size: 13px; } .pri-as-out ul { margin: 4px 0 6px 18px; padding: 0; }
+.pri-prodhist { margin-top: 10px; }
+/* Launch to Meta dialog (Production page, only when launching is enabled) */
+.prod-ldialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; }
+.prod-lbody { display: grid; gap: 10px; min-width: 0; }
+.prod-lh { margin: 6px 0 0; font-size: 14px; }
+.prod-lscroll { overflow-x: auto; max-width: 100%; }
+.prod-ltable { border-collapse: collapse; font-size: 13px; width: 100%; }
+.prod-ltable th, .prod-ltable td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border, #d8d8d8); vertical-align: top; overflow-wrap: anywhere; font-size: 13px; }
+.prod-ltable thead th { font-size: 12px; font-weight: 800; background: #efe8da; }
+.prod-ltable tbody th { font-weight: 700; white-space: nowrap; }
+.prod-testmode { margin: 0; padding: 8px 10px; border: 1px solid #8a4b00; border-radius: 6px; background: #fff4e0; color: #5c3200; font-weight: 700; font-size: 14px; }
+.prod-lstate { margin: 0; font-weight: 700; font-size: 15px; }
+.prod-lline { margin: 0; font-weight: 650; font-size: 14px; }
+.prod-lin { width: 100%; box-sizing: border-box; font-size: 16px; padding: 8px 10px; }
+.prod-lleft { justify-content: flex-start; flex-wrap: wrap; }
+.prod-ltsv { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 12px; }
+
+/* /priorities drill-downs on a phone: each table row becomes a small stacked block, so nothing scrolls sideways */
+@media (max-width: 640px) {
+  .pri-dt, .pri-dt tbody, .pri-dt tr, .pri-dt td { display: block; width: auto; } .pri-dt thead { display: none; }
+  .pri-dt tr { padding: 5px 0; border-top: 1px solid var(--lv-line-soft, #e9e2d5); } .pri-dt tr[hidden] { display: none; }
+  .pri-dt td { display: inline; border: 0; padding: 0 8px 0 0; } .pri-dt td:first-child { display: block; margin-bottom: 2px; overflow-wrap: anywhere; } .pri-dt .pri-dt-hook { display: block; max-width: none; overflow-wrap: anywhere; }
+  .pri-dt td[data-label]:not(:first-child)::before { content: attr(data-label) ' '; color: var(--lv-muted, #665d53); font-size: 11px; }
+}
+
+/* Production details (2026-11-10): the /priorities detail panel under an assignment, expandable. The table keeps its own horizontal scroll; the panel is pinned to the left edge of the scroll box at phone width. */
+.prod-detailrow[hidden], .prod-xd[hidden] { display: none; }
+.prod-xcell { padding: 0; border-bottom: 2px solid var(--lv-line, #dcd3c3); background: rgba(127, 127, 127, .04); }
+.prod-xd { position: sticky; left: 0; box-sizing: border-box; width: min(1060px, calc(100vw - 32px)); padding: 10px 12px 14px; }
+.prod-xd-v { position: static; width: auto; padding: 4px 0 0; }
+.prod-namebtn { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: inherit; text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; overflow-wrap: anywhere; }
+.prod-namebtn:hover { text-decoration-style: solid; }
+.pri-ex-best { margin-left: 8px; white-space: nowrap; }
+@media (max-width: 760px) { .pri-ex td[data-label="Spend"]::before { content: 'spend '; color: var(--lv-muted, #665d53); } .pri-ex td[data-label="Return on ad spend"]::before { content: 'return '; color: var(--lv-muted, #665d53); } }
+
