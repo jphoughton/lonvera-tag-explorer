@@ -217,3 +217,50 @@ def _retry_when_the_machine_is_busy():
 if _WORKER:
     _retry_when_the_machine_is_busy()
 
+
+
+# ---- slow machine tolerance: Playwright waits are scaled by TEST_TIMEOUT_FACTOR (scripts/test.sh sets 2). A wait is a condition (poll until it is true), the timeout only
+# says how long a test that is going to FAIL keeps waiting, so a bigger one never changes a result on a machine that keeps up. It matters on this one: other sessions' suites
+# push the load average to 20-30, where a save that takes 3 s alone takes 15 s. Waits under 2 s (checks that something does NOT appear) are left alone. ----
+def _scale_playwright_waits(factor: float) -> None:
+    import functools
+
+    try:
+        from playwright import sync_api as pw
+    except ImportError:
+        return
+
+    def scaled(ms):
+        return ms * factor if isinstance(ms, (int, float)) and ms >= 2000 else ms
+
+    def wrap(cls, name):
+        orig = getattr(cls, name, None)
+        if orig is None:
+            return
+
+        @functools.wraps(orig)
+        def f(self, *a, **kw):
+            if "timeout" in kw:
+                kw["timeout"] = scaled(kw["timeout"])
+            return orig(self, *a, **kw)
+        setattr(cls, name, f)
+
+    for cls in (pw.Page, pw.Frame):
+        for name in ("wait_for_selector", "wait_for_function", "wait_for_url", "wait_for_load_state"):
+            wrap(cls, name)
+    wrap(pw.Locator, "wait_for")
+    orig_ctx = pw.Browser.new_context
+
+    @functools.wraps(orig_ctx)
+    def new_context(self, *a, **kw):
+        c = orig_ctx(self, *a, **kw)
+        c.set_default_timeout(30000 * factor)
+        c.set_default_navigation_timeout(30000 * factor)
+        return c
+    pw.Browser.new_context = new_context
+    pw.expect.set_options(timeout=5000 * factor)
+
+
+_FACTOR = float(os.environ.get("TEST_TIMEOUT_FACTOR", "1") or 1)
+if _WORKER and _FACTOR > 1:
+    _scale_playwright_waits(_FACTOR)

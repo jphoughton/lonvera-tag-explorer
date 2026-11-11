@@ -24,6 +24,7 @@ fi
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 export TEST_STRICT="${TEST_STRICT:-1}"      # a missing Postgres / Chromium FAILS tests here instead of skipping them (see tests/_xdist_env.py)
 export TEST_API_DB="${TEST_API_DB:-tagexp_apitest_par}"
+export TEST_TIMEOUT_FACTOR="${TEST_TIMEOUT_FACTOR:-2}"      # Playwright waits x2 on this busy machine (tests/_xdist_env.py); 1 = as written
 
 PGDIR=""
 cleanup() {
