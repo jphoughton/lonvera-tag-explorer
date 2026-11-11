@@ -10,6 +10,7 @@ Orientation for a brand-new AI agent or colleague. Fast-scan reference, not a tu
 - Default branch `build/v1`. Never commit to it directly: branch, pull request, merge. Tests green on the exact tip means merge, deploy and verify live (this app only).
 - Test suite: 8 to 9 minutes, run one at a time. Command in section 8.
 - Read-only data access for agents: the `analytics` database views (section 4) or the HTTP API with an API key (section 5).
+- Business context: every question, hypothesis and cause-effect claim Josh has raised about Lonvera, with answers and open items, lives in `docs/questions/README.md` (read it before diagnosing a metric move).
 
 Live URL: https://web-production-358da.up.railway.app
 
