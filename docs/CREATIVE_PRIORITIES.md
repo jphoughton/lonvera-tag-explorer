@@ -140,6 +140,10 @@ Score = 50% adjacent winner + 20% cross-product + 20% Josh's cluster order + 10%
 
 **What it does not do.** Nothing in Production writes to the Creative Tracker sheet or any other Google Sheet, and nothing talks to Meta: the sheet stays the record of the ad, the app only records who was asked to make which concept and reads the tracker back. The only writes are to the app's own tables (assignments, vendor links) and the nightly line tags above.
 
+## Drill-downs behind each panel block
+
+Every block of the expanded row panel (then vs now tiles, timeline steps, hooks, former winning ads, Performance / Testing / Live tiles) has a "See more" button that opens an inline table, loaded on first open from `GET /api/priorities/lines/<line_id>/insights?block=<then_now|timeline|hooks|winners|performance|testing|live|ad>&window=<7|30|90|all>[&ad_id=<tracker row id>]` (read-only, Postgres only, Meta basis; see `app/priorities_insights.py`, `app/static/js/pages/priorities_drill.js`). It returns the top 10 ads on the line for the window (name linked to /ad/<id>, spend, ROAS, purchases, launch date, hook), the weekly trend and the best hooks; with `ad_id` it returns that one ad. A line with no hooks or no former winning ads now says so in the panel instead of omitting the block. Rows without a line in the database (manual concepts, the unmapped row, competitor drafts) have no drill-down.
+
 ## Grouped hierarchy and sticky bars (2026-11-10)
 
 - **Grouped view = the default.** With no column sort chosen the rows run product, market cluster, ICP, pain point in the Communication Overview sheet order. Each row of the snapshot carries `sheet_pos` (the line's `taxonomy_lines.sort_order`, written by `etl/creative_priorities.py`; `app/creative_priorities.with_sheet_pos` fills it from the live taxonomy for older snapshots and frozen view rows). A row with no sheet position (new idea, manual concept, "no line") goes after the on-sheet rows of its ICP, an ICP that is not on the sheet after the on-sheet ICPs of its cluster, a cluster that is not on the sheet after the on-sheet clusters of its product. Inside one pain point the old Action / rank order stays.
@@ -147,3 +151,40 @@ Score = 50% adjacent winner + 20% cross-product + 20% Josh's cluster order + 10%
 - **Sorting.** Any column header turns grouping off (plain rows, every cell shows its value); `Group by cluster` (pressed = on) clears the sort. The Action header gives the pre-grouping order. Filters, search, Show selected only and saved views keep grouping (merges are recomputed over the visible rows); a saved filter view that stored a sort opens ungrouped, one without a sort opens grouped. CSV and Copy as text keep their own order (they never followed the screen); Print / PDF is unchanged (plain one-sheeter, no merged cells).
 - **Column order** is now Product, Market Cluster, ICP, Pain Point, Action, Story ... (Action moved after the merged columns so the merged cells are contiguous).
 - **Sticky.** At 761 px and up the selection bar pins under the app header (`top: var(--topbar-h)`) and the column header pins under the bar (`top: calc(var(--topbar-h) + var(--pri-bar-h))`, `--pri-bar-h` = the bar's measured height from a ResizeObserver, 0 while it is hidden); CSS `position: sticky` only, the table uses `border-collapse: separate` so the header keeps its border. The bar shows a bold `N selected` and a per-product split (`Vita Bull 3 · Beef Liver 2`); the count is the whole selection, including ticked rows a filter currently hides (the selection persists across filters). Under 761 px only the bar pins (at the top, the app header is not sticky there), compact: count, split and a More button that reveals the actions; the column header is not pinned (the table is stacked cards there).
+
+## API keys (2026-11-10): read everything, assign on the production board, nothing else
+An API key lets a colleague or a script use the app without a login. A key can **read** everything the app serves (every GET under `/api/` and `/media/`, so the numbers, the tags and the production board) and can make exactly **two writes**: assign concepts (`POST /api/priorities/assignments`) and change an assignment (`PATCH /api/priorities/assignments/<id>`: vendor, week, note, brief link, creative link, concept IDs, ready, launched, dropped). Every other write is refused with a 403 and the message "This API key is read only except for assigning items on the production board." That covers saved views, manual concepts, vendor links, vendor link tokens, the ad launch routes, the projection and settings.
+
+What a key can never do: launch ads (launching needs a named login listed in `META_LAUNCH_USERS`, and a key never counts as one), sign in (`/api/login` ignores keys), or read vendor link tokens (`GET /api/priorities/vendor-links` returns the secret links the vendors use, so it is refused for keys). A key is a long random secret (`lvk_` followed by 40 characters). Only its SHA-256 hash is stored, so it cannot be looked up again: if it is lost, make a new one and revoke the old one.
+
+**Make a key** (run against the production database, `DATABASE_URL` set, from the repo):
+```
+python -m etl.api_keys create --name maria            # prints the key once, to your terminal only
+python -m etl.api_keys create --name maria --out ~/maria.key    # writes it to a new file (read and write for you only) and prints nothing secret
+python -m etl.api_keys list                           # name, first 8 characters, created, last used, revoked (never the key)
+python -m etl.api_keys revoke --name maria            # stops working at once
+```
+Send the key through a password manager or another private channel, never in a public chat or a committed file. The name shows up in the audit columns: an assignment made with the key above has `created_by` and `updated_by` set to `key:maria`. A key is refused with 401 when it is wrong, revoked or malformed, and 20 wrong keys from one address in 10 minutes lock that address out for the rest of the window (429; `API_KEY_MAX_FAILS_IP` changes the number).
+
+**Read** (put the key in a shell variable first, for example `KEY=$(cat ~/maria.key)`):
+```
+curl -H "Authorization: Bearer $KEY" https://web-production-358da.up.railway.app/api/priorities/assignments
+```
+
+**Assign** a concept to a vendor for a week. `keys` are the row keys of the weekly list, written `product|action|cluster|icp|pain_point` using the `product`, `section`, `cluster`, `icp` and `pain_point` fields of a row from `GET /api/priorities` (a manual concept is `manual:<id>`). `for_week` is any date (it snaps to that week's Monday) and `vendor` is one of Madre, Victoria, TrybeDCShop, TrybeOrion, 10xROAS, Internal, PuredMedia, CreateMastery, OpenProgram. `snapshot_week` and `note` are optional:
+```
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"keys": ["vita-bull|make_more|Energy|Given Up Guy|Low T"], "vendor": "Madre", "for_week": "2026-11-16", "note": "first batch"}' \
+  https://web-production-358da.up.railway.app/api/priorities/assignments
+```
+The answer is `{"created": [...], "skipped": [...]}`; a concept already assigned to that vendor for that week is skipped, not duplicated.
+
+**Update** an assignment (the `id` comes from the answer above or from the read call; send only the fields to change; `ready`, `launched` and `dropped` are true or false):
+```
+curl -X PATCH -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"brief_url": "https://docs.google.com/document/d/example", "ready": false}' \
+  https://web-production-358da.up.railway.app/api/priorities/assignments/12
+```
+The usual write protections still apply to key requests: JSON bodies only, a request that carries an `Origin` header from another site is refused (scripts that send no `Origin` header are fine), and at most 60 assignment writes a minute per address.
+
+The launch to Meta feature (dark by default, everything created paused) is described in [PRODUCTION_LAUNCH.md](PRODUCTION_LAUNCH.md), including the checklist to switch it on.

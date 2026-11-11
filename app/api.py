@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import auth, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -370,6 +370,16 @@ def promotions_scale():
 def priorities():
     """Creative priorities: the weekly one-sheeter (week=YYYY-MM-DD, default the latest snapshot) plus the list of stored weeks. See app/creative_priorities.py."""
     return jsonify(cpr.payload(db.get_conn(), _arg("week")))
+
+
+@bp.get("/api/priorities/lines/<int:line_id>/insights")
+def priorities_line_insights(line_id: int):
+    """Drill-down behind one block of a /priorities row panel: block=then_now|timeline|hooks|winners|performance|testing|live|ad, window=7|30|90|all (default 30), optional ad_id=<tracker row id>
+    for one ad. Top 10 ads on the line (name, spend, ROAS, purchases, launch date, hook), weekly trend, best hooks. Read-only, Meta basis. See app/priorities_insights.py."""
+    ad = _arg("ad_id")
+    if ad is not None and not ad.isdigit():
+        raise q.ApiError(400, "ad_id must be a number")
+    return jsonify(pins.insights(db.get_conn(), line_id, _arg("block") or "performance", _arg("window") or "30", int(ad) if ad else None))
 
 
 @bp.get("/api/priorities.csv")

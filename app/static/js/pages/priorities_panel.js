@@ -3,6 +3,7 @@
 // Class names and test ids start with `pri-` (never ad-, ads-, sponsor, banner, promo).
 import { h, fmt, isNum, href } from '../util.js';
 import { dayOf, manualPanel } from './priorities_manual.js';
+import { drillRegion, drillBtn, canDrill } from './priorities_drill.js';
 
 export const SECTIONS = [['revive', 'Revive'], ['make_more', 'Make more'], ['test', 'Test'], ['stop', 'Stop'], ['hold', 'Hold']];
 let DEFS = {};                                                                      // the rules from the API payload (real thresholds), set by the page with setDefs
@@ -88,7 +89,7 @@ function roasPill(v, ref) {
 }
 
 // one then/now tile: label, then value -> now value, delta chip (good = green, bad = red, tiny change = grey)
-function tnTile(label, then, now, fmtv, lowerIsBetter, nowNote) {
+function tnTile(label, then, now, fmtv, lowerIsBetter, nowNote, seeMore) {
   let delta = null; let tone = 'flat';
   if (isNum(then) && isNum(now) && then !== 0) {
     const ch = (now - then) / then;
@@ -98,7 +99,7 @@ function tnTile(label, then, now, fmtv, lowerIsBetter, nowNote) {
   }
   return h('div', { class: 'pri-tn' }, h('div', { class: 'pri-label' }, label),
     h('div', { class: 'pri-tn-vals' }, h('span', { class: 'pri-tn-then' }, fmtv(then)), h('span', { class: 'pri-arrow-r', 'aria-hidden': 'true' }, '→'), h('strong', { class: 'pri-tn-now' }, nowNote || fmtv(now))),
-    delta ? h('span', { class: 'pri-delta pri-delta-' + tone }, delta) : null);
+    delta ? h('span', { class: 'pri-delta pri-delta-' + tone }, delta) : null, seeMore || null);
 }
 
 // ROAS bars: peak / then / now with a tick for the product average over the same weeks
@@ -119,38 +120,55 @@ function roasBars(r, base) {
       h('span', { class: 'pri-bar-v' }, roasX(v)))));
 }
 
-function thenNow(r, base) {
+function thenNow(r, base, can) {
   const m = r.metrics || {};
   if (!r.then_now) return null;
   const idle = isNum(m.spend_30d) && m.spend_30d < 250;
   const any = [m.roas_then, m.roas_30d, m.cpa_then, m.cpa_30d].some(isNum);
+  const reg = can ? drillRegion(r.line_id) : null;
+  const more = (what) => (reg ? drillBtn(reg, { block: 'then_now', window: '90' }, `${what}: the ads behind then versus now (last 90 days shown, switch the window above the table)`) : null);
   return h('section', { class: 'pri-card pri-thennow', 'data-testid': 'pri-thennow', 'aria-label': 'Then versus now' },
     h('h4', { class: 'pri-h' }, 'Then vs Now ', h('span', { class: 'pri-hnote' }, 'days 31-90 vs last 30 days')),
     any ? h('div', { class: 'pri-tns' },
-      tnTile('ROAS', m.roas_then, m.roas_30d, roasX, false, idle ? 'idle' : null),
-      tnTile('CPA', m.cpa_then, m.cpa_30d, fmt.money, true, idle ? 'idle' : null),
-      tnTile('Share of product spend', m.share_then, m.share_now, pct, false)) : null,
+      tnTile('ROAS', m.roas_then, m.roas_30d, roasX, false, idle ? 'idle' : null, more('ROAS')),
+      tnTile('CPA', m.cpa_then, m.cpa_30d, fmt.money, true, idle ? 'idle' : null, more('CPA')),
+      tnTile('Share of product spend', m.share_then, m.share_now, pct, false, null, more('Share of product spend'))) : null,
+    any ? reg : null,
     any ? roasBars(r, base) : null,
     h('p', { class: 'pri-tn-text' }, r.then_now));
 }
 
-function step(n, label, text, cls) {
-  return h('li', { class: 'pri-step ' + (cls || '') }, h('span', { class: 'pri-step-n', 'aria-hidden': 'true' }, n), h('div', null, h('h5', { class: 'pri-step-h' }, label), h('p', null, text)));
+function step(n, label, text, cls, seeMore) {
+  return h('li', { class: 'pri-step ' + (cls || '') }, h('span', { class: 'pri-step-n', 'aria-hidden': 'true' }, n), h('div', null, h('h5', { class: 'pri-step-h' }, label), h('p', null, text), seeMore || null));
 }
 
-function hookList(r, title, cls) {
-  if (!(r.hooks && r.hooks.length)) return null;
+// the three timeline steps; each opens the ads behind it (all time: the weekly trend shows the working stretch and the stop)
+function timelineBody(r, can) {
+  const reg = can ? drillRegion(r.line_id) : null;
+  const more = (what) => (reg ? drillBtn(reg, { block: 'timeline', window: 'all' }, what) : null);
+  return [h('ol', { class: 'pri-steps' }, step('1', 'When it worked: ', r.when_it_worked, 'pri-step-ok', more('When it worked: the ads and weekly trend')), step('2', 'When and how it stopped: ', r.how_it_stopped, 'pri-step-bad', more('When and how it stopped: the ads and weekly trend')),
+    step('3', 'Diagnosis (consistent with): ', r.diagnosis, 'pri-step-flat', more('Diagnosis: the ads and weekly trend behind it'))), reg];
+}
+
+function hookList(r, title, cls, can) {
+  if (!(r.hooks && r.hooks.length)) {                                                  // a line row with no hooks says so instead of leaving the block out
+    return r.line_id != null && !r.manual ? h('section', { class: 'pri-card pri-hooks ' + (cls || ''), 'data-testid': 'pri-hooks-empty' }, h('h4', { class: 'pri-h' }, title), h('p', { class: 'pri-hookn' }, 'No hooks found for the ads on this line yet.')) : null;
+  }
+  const reg = can ? drillRegion(r.line_id) : null;
   const items = r.hooks.map((k) => h('li', { class: 'pri-hook' },
     h('q', { class: 'pri-quote' }, k.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(k.ad_id), {}), title: k.ad }, k.hook) : k.hook),
-    k.spend != null ? h('span', { class: 'pri-hookn' }, ' ', fmt.money(k.spend), ' at ', roasPill(k.roas, null)) : h('span', { class: 'pri-hookn' }, ` (${k.line_code})`)));
-  return h('section', { class: 'pri-card pri-hooks ' + (cls || ''), 'data-testid': 'pri-hooks' }, h('h4', { class: 'pri-h' }, title), h('ul', { class: 'pri-list' }, limited(items, 3, 'hooks')));
+    k.spend != null ? h('span', { class: 'pri-hookn' }, ' ', fmt.money(k.spend), ' at ', roasPill(k.roas, null)) : h('span', { class: 'pri-hookn' }, ` (${k.line_code})`),
+    reg && k.ad_id != null && !k.borrowed ? drillBtn(reg, { block: 'ad', window: 'all', ad_id: k.ad_id }, `Hook "${k.hook}"`) : null));
+  const all = reg && !r.hooks.some((k) => k.borrowed) ? h('p', null, drillBtn(reg, { block: 'hooks', window: 'all' }, 'All hooks on this line')) : null;
+  return h('section', { class: 'pri-card pri-hooks ' + (cls || ''), 'data-testid': 'pri-hooks' }, h('h4', { class: 'pri-h' }, title), h('ul', { class: 'pri-list' }, limited(items, 3, 'hooks')), all, reg);
 }
 
-function winnersTable(r, base) {
+function winnersTable(r, base, can) {
   const ws = r.former_winners;
-  if (!(ws && ws.length)) return null;
+  if (!(ws && ws.length)) return r.former_winners && r.line_id != null && !r.manual ? h('section', { class: 'pri-card pri-winners', 'data-testid': 'pri-winners-empty' }, h('h4', { class: 'pri-h' }, 'Former winning ads'), h('p', { class: 'pri-hookn' }, 'No former winning ads on this line yet.')) : null;
+  const reg = can ? drillRegion(r.line_id) : null;
   const rows = ws.map((w) => h('tr', { class: 'pri-w' },
-    h('td', { class: 'pri-w-name' }, w.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(w.ad_id), {}) }, w.ad) : w.ad),
+    h('td', { class: 'pri-w-name' }, w.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(w.ad_id), {}) }, w.ad) : w.ad, reg && w.ad_id != null ? drillBtn(reg, { block: 'ad', window: 'all', ad_id: w.ad_id }, `Former winning ad ${w.ad}`) : null),
     h('td', { class: 'pri-w-num', 'data-label': 'Spend' }, fmt.money(w.spend)),
     h('td', { 'data-label': 'ROAS' }, roasPill(w.roas, base.roas)),
     h('td', { class: 'pri-w-peak', 'data-label': 'Peak week of' }, w.peak_week || '–'),
@@ -159,7 +177,7 @@ function winnersTable(r, base) {
   const trs = shown.filter((x) => x.tagName === 'TR'); const btn = shown.find((x) => x.tagName === 'BUTTON');
   const ws2 = r.winners_summary;
   return h('section', { class: 'pri-card pri-winners', 'data-testid': 'pri-winners' }, h('h4', { class: 'pri-h' }, 'Former winning ads'),
-    h('table', { class: 'pri-wt' }, h('tbody', null, h('tr', { class: 'pri-wth' }, ['Ad', 'Spend', 'ROAS', 'Peak week of', 'Status'].map((t) => h('th', { scope: 'col' }, t))), trs)), btn || null,
+    h('table', { class: 'pri-wt' }, h('tbody', null, h('tr', { class: 'pri-wth' }, ['Ad', 'Spend', 'ROAS', 'Peak week of', 'Status'].map((t) => h('th', { scope: 'col' }, t))), trs)), btn || null, reg,
     ws2 ? h('p', { class: 'pri-hookn pri-wsum' }, `${ws2.still_working} of ${ws2.winners} winning ads still working; new ads in the last 30 days: ${ws2.launches_last_30d}${ws2.launches_in_peak != null ? ' (' + ws2.launches_in_peak + ' launched during the working stretch)' : ''}.`) : null);
 }
 
@@ -172,11 +190,16 @@ function competitorBadges(c) {
     h('p', { class: 'pri-hookn' }, '(running a long time, not proven performance)'));
 }
 
-export function statCards(r) {
+export function statCards(r, can) {
   const groups = numbers(r);
   if (!groups.length) return null;
-  return h('section', { class: 'pri-card pri-statsec', 'aria-label': 'Numbers' }, groups.map(([g, items]) => h('div', { class: 'pri-sg' }, h('h4', { class: 'pri-label' }, g),
-    h('dl', { class: 'pri-cards' }, items.map(([k, v, sub]) => h('div', { class: 'pri-sc' }, h('dt', { class: 'pri-label' }, k), h('dd', null, h('strong', null, v), sub ? ' ' : null, sub ? h('span', { class: 'pri-hookn' }, sub) : null)))))));
+  const BLOCK = { Performance: ['performance', 'all'], Testing: ['testing', 'all'], Live: ['live', '30'] };
+  return h('section', { class: 'pri-card pri-statsec', 'aria-label': 'Numbers' }, groups.map(([g, items]) => {
+    const reg = can && BLOCK[g] ? drillRegion(r.line_id) : null;
+    return h('div', { class: 'pri-sg' }, h('h4', { class: 'pri-label' }, g),
+      h('dl', { class: 'pri-cards' }, items.map(([k, v, sub]) => h('div', { class: 'pri-sc' }, h('dt', { class: 'pri-label' }, k), h('dd', null, h('strong', null, v), sub ? ' ' : null, sub ? h('span', { class: 'pri-hookn' }, sub) : null),
+        reg ? drillBtn(reg, { block: BLOCK[g][0], window: BLOCK[g][1] }, `${g}, ${k}: the ads behind it`) : null))), reg);
+  }));
 }
 
 // two columns of cards; a column with nothing in it is left out so the other one uses the full width
@@ -189,13 +212,14 @@ export function detail(r, d) {
   const base = ((d && d.baselines) || {})[r.product] || {};
   const tone = toneOf(r);
   const faded = !!r.when_it_worked;
+  const can = canDrill(r);
   // the summary sentence of a faded row is "<STATUS prefix> <when it worked> <how it stopped>": show only the prefix, the timeline below carries the rest word for word
   let why = r.why;
   if (faded && why && why.endsWith(`${r.when_it_worked} ${r.how_it_stopped}`)) why = why.slice(0, why.length - `${r.when_it_worked} ${r.how_it_stopped}`.length).trim();
   const flagPills = (r.flags || []).map((f) => h('span', { class: 'pri-pill pri-pill-fade' }, f));
   const play = faded ? h('section', { class: 'pri-cta', 'data-testid': 'pri-play' }, h('h4', { class: 'pri-cta-h' }, h('span', { 'aria-hidden': 'true' }, '→ '), 'Revive play: '), h('p', null, r.revive_play))
-    : hookList(r, r.source ? 'Competitor hooks seen' : r.section === 'test' ? 'Hooks to borrow (same product, adjacent winner)' : r.section === 'make_more' ? 'Proven hooks to iterate from' : 'Hooks from the best ads on this line', 'pri-cta');
-  const hooksLow = faded ? hookList(r, 'Hooks from the working period') : null;
+    : hookList(r, r.source ? 'Competitor hooks seen' : r.section === 'test' ? 'Hooks to borrow (same product, adjacent winner)' : r.section === 'make_more' ? 'Proven hooks to iterate from' : 'Hooks from the best ads on this line', 'pri-cta', can);
+  const hooksLow = faded ? hookList(r, 'Hooks from the working period', '', can) : null;
   return h('div', { class: 'pri-panel pri-tone-' + tone },
     h('div', { class: 'pri-id' },
       h('div', { class: 'pri-chips' }, h('span', { class: 'pri-chip-prod' }, (base.product_name || r.product_name || r.product)), h('span', { class: 'pri-sec pri-sec-' + r.section, title: actionRule(r.section) }, SECTION_LABEL[r.section]), r.section === 'add' && r.source ? h('span', { class: 'pri-pill pri-pill-flat', 'data-testid': 'pri-source' }, r.source) : null, h('span', { class: 'pri-status pri-st-' + tone, title: statusRule(r.status) }, r.status)),
@@ -203,10 +227,10 @@ export function detail(r, d) {
         r.story ? h('div', { class: 'pri-tile pri-tile-story' }, h('div', { class: 'pri-tile-h' }, h('span', { class: 'pri-label' }, 'Story')), h('div', { class: 'pri-story' }, r.story)) : null)),
     h('div', { class: 'pri-verdict' }, h('div', { class: 'pri-verdict-k' }, keyNumber(r, d || { baselines: {} })), why ? h('p', { class: 'pri-verdict-why', 'data-testid': 'pri-why' }, why) : null),
     play,
-    cols([thenNow(r, base), faded ? h('section', { class: 'pri-card', 'data-testid': 'pri-faded', 'aria-label': 'How it played out' }, h('h4', { class: 'pri-h' }, 'Timeline'),
-          h('ol', { class: 'pri-steps' }, step('1', 'When it worked: ', r.when_it_worked, 'pri-step-ok'), step('2', 'When and how it stopped: ', r.how_it_stopped, 'pri-step-bad'), step('3', 'Diagnosis (consistent with): ', r.diagnosis, 'pri-step-flat'))) : null],
-      [winnersTable(r, base), r.competitor ? competitorBadges(r.competitor) : null]),
-    statCards(r),
+    cols([thenNow(r, base, can), faded ? h('section', { class: 'pri-card', 'data-testid': 'pri-faded', 'aria-label': 'How it played out' }, h('h4', { class: 'pri-h' }, 'Timeline'),
+          timelineBody(r, can)) : null],
+      [winnersTable(r, base, can), r.competitor ? competitorBadges(r.competitor) : null]),
+    statCards(r, can),
     hooksLow,
     h('div', { class: 'pri-foot' }, flagPills.length ? h('span', { class: 'pri-foot-g' }, h('span', { class: 'pri-k' }, 'Flags'), flagPills) : null,
       h('span', { class: 'pri-pill pri-pill-flat' }, 'Line ' + r.line_code), h('span', { class: 'pri-pill pri-pill-flat' }, 'Confidence: ' + r.confidence), h('span', { class: 'pri-pill pri-pill-flat' }, 'Score ' + r.score)));

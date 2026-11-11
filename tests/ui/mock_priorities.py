@@ -31,6 +31,9 @@ def register(app, deps):
         d["rows"] = [r for r in d["rows"] if cpr.row_key(r) not in drop]
         for r in d["rows"]:
             r.update(edit.get(cpr.row_key(r), {}))
+        for r in d["rows"]:
+            if r.get("line_id") is not None and r["section"] in ("make_more", "stop", "hold"):
+                r.setdefault("former_winners", [])                       # the real builder gives every line row this key (empty list when it has none)
         d = pm.merge(d, recs(), include_done=include_done)
         return {**d, "rows": cpr.with_ckey(d["rows"]), "definitions": cp.definitions(d.get("thresholds"))}       # ckey and definitions as in app.creative_priorities.payload
 
@@ -44,6 +47,21 @@ def register(app, deps):
         if request.args.get("empty") == "1":
             return jsonify(error="No creative priorities snapshot exists yet."), 404
         return jsonify(live())
+
+    @app.get("/api/priorities/lines/<int:line_id>/insights")
+    def priorities_insights_mock(line_id):
+        """Canned drill-down (same shape as app/priorities_insights.py): 3 ads, 14 weeks, 2 hooks; ?fail=1 on the page is not needed, line 999999 is the 'gone from the database' case."""
+        if line_id == 999999:
+            return jsonify(error="No such line."), 404
+        block, window, ad = request.args.get("block", "performance"), request.args.get("window", "30"), request.args.get("ad_id")
+        ads = [{"ad_id": 1000 + i, "name": f"Mock-Ad-{i}", "spend": 5000 - i * 1000 - (0 if window == "all" else 500), "roas": 1.2 - i * 0.1, "purchases": 60 - i * 10, "launch_date": f"2026-0{i + 3}-01",
+                "last_spend_day": "2026-11-08", "hook": f"Mock hook number {i}" if i < 2 else None} for i in range(3)]
+        if ad is not None:
+            ads = [a for a in ads if str(a["ad_id"]) == ad] or [{**ads[0], "ad_id": int(ad), "name": f"Mock-Ad-{ad}"}]
+        weekly = [{"week": (dt.date(2026, 8, 9) + dt.timedelta(days=7 * i)).isoformat(), "spend": 400 + i, "roas": 1.0 + i / 100, "purchases": 5 + i} for i in range(14)]
+        return jsonify(line_id=line_id, line_code="L00", line="Mock cluster, mock icp, mock pain", block=block, window=window, ads_total=len(ads), ads=ads,
+                       hooks=[{"hook": a["hook"], "ad_id": a["ad_id"], "ad": a["name"], "spend": a["spend"], "roas": a["roas"]} for a in ads if a["hook"]], weekly=weekly,
+                       total={"spend": sum(a["spend"] for a in ads), "purchases": sum(a["purchases"] for a in ads), "roas": 1.1})
 
     @app.get("/api/priorities/manual/options")
     def priorities_manual_options_mock():

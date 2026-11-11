@@ -847,6 +847,21 @@ button.pri-ptile { cursor: pointer; } button.pri-ptile:hover { background: var(-
 .pri-wsum { margin-top: 6px !important; }
 .pri-more { margin-top: 6px; background: none; border: 1px solid var(--lv-line-strong, #8c8375); border-radius: 14px; padding: 2px 12px; font: inherit; font-size: 12px; color: var(--lv-ink-2, #3d372f); cursor: pointer; }
 .pri-more:hover { background: var(--lv-hover, #f3ede1); }
+.pri-dbtn { margin-top: 6px; background: none; border: 1px solid var(--lv-line-strong, #8c8375); border-radius: 14px; padding: 2px 12px; font: inherit; font-size: 12px; color: var(--lv-ink-2, #3d372f); cursor: pointer; }
+.pri-dbtn:hover { background: var(--lv-hover, #f3ede1); }
+.pri-seemore { margin: 4px 0 0; padding: 1px 10px; font-size: 11px; }
+.pri-hook .pri-seemore { margin: 0 0 0 4px; }
+.pri-drill { grid-column: 1 / -1; margin-top: 8px; padding: 10px; border: 1px solid var(--lv-line, #dcd3c3); border-radius: 6px; background: var(--lv-bg, #f6f2eb); min-width: 0; }
+.pri-drill[hidden] { display: none; }
+.pri-drill-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; } .pri-drill-top .pri-dbtn { margin-top: 0; flex: none; }
+.pri-drill-h { font-size: 13px; font-weight: 700; margin: 0; }
+.pri-drill-win { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.pri-win { background: none; border: 1px solid var(--lv-line-strong, #8c8375); border-radius: 14px; padding: 2px 10px; font: inherit; font-size: 12px; cursor: pointer; color: var(--lv-ink-2, #3d372f); }
+.pri-win-on { background: var(--lv-ink-2, #3d372f); color: var(--lv-bg, #f6f2eb); }
+.pri-win:focus-visible, .pri-dbtn:focus-visible { outline: 2px solid var(--lv-focus, #c75123); outline-offset: 2px; }
+.pri-drill h6 { margin: 10px 0 4px; }
+.pri-dt { width: 100%; border-collapse: collapse; font-size: 12.5px; } .pri-dt th, .pri-dt td { text-align: left; padding: 3px 8px 3px 0; border-bottom: 1px solid var(--lv-line-soft, #e9e2d5); vertical-align: top; }
+.pri-dt-hook { max-width: 28em; }
 .pri-statsec { display: grid; grid-template-columns: 5fr 3fr 3fr; gap: 14px; }
 .pri-sg { min-width: 0; }
 .pri-sg h4 { margin-bottom: 6px !important; }
@@ -1168,6 +1183,14 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 .prod-lin { width: 100%; box-sizing: border-box; font-size: 16px; padding: 8px 10px; }
 .prod-lleft { justify-content: flex-start; flex-wrap: wrap; }
 .prod-ltsv { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 12px; }
+
+/* /priorities drill-downs on a phone: each table row becomes a small stacked block, so nothing scrolls sideways */
+@media (max-width: 640px) {
+  .pri-dt, .pri-dt tbody, .pri-dt tr, .pri-dt td { display: block; width: auto; } .pri-dt thead { display: none; }
+  .pri-dt tr { padding: 5px 0; border-top: 1px solid var(--lv-line-soft, #e9e2d5); } .pri-dt tr[hidden] { display: none; }
+  .pri-dt td { display: inline; border: 0; padding: 0 8px 0 0; } .pri-dt td:first-child { display: block; margin-bottom: 2px; overflow-wrap: anywhere; } .pri-dt .pri-dt-hook { display: block; max-width: none; overflow-wrap: anywhere; }
+  .pri-dt td[data-label]:not(:first-child)::before { content: attr(data-label) ' '; color: var(--lv-muted, #665d53); font-size: 11px; }
+}
 
 /* Production details (2026-11-10): the /priorities detail panel under an assignment, expandable. The table keeps its own horizontal scroll; the panel is pinned to the left edge of the scroll box at phone width. */
 .prod-detailrow[hidden], .prod-xd[hidden] { display: none; }
