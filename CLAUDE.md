@@ -10,7 +10,7 @@ The brain is an MCP server, registered in `.mcp.json` (hosted at `/mcp`, needs a
 2. `freshness` before trusting a recent number. `past_questions` before re-answering any "why did X move" question. `app_map` for services, schedules, pages and routes.
 3. Never guess a column or a number. If it is not in the views, say so (see "Not in the database" in `docs/AGENT_DATA_GUIDE.md`).
 
-Get a key: sign in to the app, open `/connect-agent`, press "Make my key", and export it as `LONVERA_BRAIN_KEY` (or run the Claude Code command shown on that page).
+Get a key: open `/connect-agent` (sign in first when sign-in is on; while the app is open anyone can make one), press "Make my key", and export it as `LONVERA_BRAIN_KEY` (or run the Claude Code command shown on that page).
 No MCP, or offline: run the local server, `claude mcp add lonvera-brain-local -- .venv/bin/python -m brain.server` (venv: `python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt`;
 SQL then needs `ANALYTICS_READER_URL` or the file named by `LONVERA_ANALYTICS_URL_FILE`). Without the tools, follow `.claude/skills/lonvera-data/SKILL.md`.
 

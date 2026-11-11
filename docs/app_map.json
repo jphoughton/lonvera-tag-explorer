@@ -548,7 +548,7 @@
    "endpoint": "brain_mcp.brain_key_status",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "Whether the signed-in user has an agent key (prefix and last use only, never the key) and the endpoint address."
+   "summary": "Whether the signed-in user has an agent key (prefix and last use only, never the key) and the endpoint address; with the app open, just the endpoint."
   },
   {
    "rule": "/api/brain/key",
@@ -559,7 +559,7 @@
    "endpoint": "brain_mcp.brain_key_reset",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "Make this user's agent key, or replace it (the old key stops working at once). The key is in this answer once and is stored only as a hash."
+   "summary": "Make this user's agent key, or replace it (the old key stops working at once). With the app open anyone can make a new key (capped at 50 a day app-wide). The key is in this answer once and is stored only as a hash."
   },
   {
    "rule": "/api/campaigns",

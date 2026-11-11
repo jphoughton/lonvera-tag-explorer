@@ -2101,20 +2101,23 @@ rel("public.api_keys", group="ops", kind="table",
           "last_used_at": "When the key last made a request (updated at most once a minute); NULL while unused.", "revoked_at": "When the key was revoked; NULL while active. A revoked key is refused with 401."})
 
 rel("public.brain_keys", group="ops", kind="table",
-    purpose="Agent keys for the hosted brain endpoint (/mcp): one row per signed-in user who made a key on the Connect an agent page. A brain key opens /mcp and nothing else.",
-    grain="one row per user (id is the primary key; username and key_hash are each unique)", source="the Connect an agent page (POST /api/brain/key in app/brain_mcp.py); last_used_at is touched by /mcp",
-    refresh="on demand (a user makes or resets a key; last_used_at moves at most once a minute while the key is in use)", coverage="from the day migration 220 was deployed",
-    caveats=["Only the sha256 hash of the key is stored. The key is shown once and cannot be recovered; reset it to get a new one (the old one stops working at once).",
-             "Separate from api_keys: a brain key never works on any /api/ route, and an api_keys key also works on /mcp."],
-    cols={"id": "Primary key (bigserial).", "username": "App login of the owner (a name from APP_USERS), unique: one key per user.", "key_hash": "sha256 hex digest of the full key (unique); the key is looked up by this hash.",
-          "prefix": "First 8 characters of the key ('lvb_' plus 4), for display only.", "created_at": "When the key was made or last reset.", "last_used_at": "When the key last made a /mcp request (at most once a minute); NULL while unused."})
+    purpose="Agent keys for the hosted brain endpoint (/mcp). With sign-in on: one row per user who made a key on the Connect an agent page (a reset replaces it). With the app open (AUTH_DISABLED): one row per key anyone made, with no user. A brain key opens /mcp and nothing else.",
+    grain="one row per key (id is the primary key; key_hash is unique; username is unique and NULL for open-app keys)", source="the Connect an agent page (POST /api/brain/key in app/brain_mcp.py); last_used_at is touched by /mcp",
+    refresh="on demand (a person makes a key; last_used_at moves at most once a minute while the key is in use)", coverage="from the day migration 220 was deployed; open-app keys from migration 221",
+    caveats=["Only the sha256 hash of the key is stored. The key is shown once and cannot be recovered; a signed-in user resets it to get a new one (the old one stops working at once). Open-app keys cannot be reset, only made again.",
+             "Separate from api_keys: a brain key never works on any /api/ route, and an api_keys key also works on /mcp.",
+             "Open-app keys (created_by = 'open-app') are capped at 50 per day for the whole app and keep only a salted hash of the creator's IP, never the IP."],
+    cols={"id": "Primary key (bigserial).", "username": "App login of the owner (a name from APP_USERS), unique: one key per user. NULL for open-app keys.", "key_hash": "sha256 hex digest of the full key (unique); the key is looked up by this hash.",
+          "prefix": "First 8 characters of the key ('lvb_' plus 4), for display only.", "created_at": "When the key was made or last reset.", "last_used_at": "When the key last made a /mcp request (at most once a minute); NULL while unused.",
+          "created_by": "How the key was made: 'signed-in' (a logged-in user, username is set) or 'open-app' (made while AUTH_DISABLED was on, username is NULL).",
+          "creator_hash": "For open-app keys: HMAC-SHA256 of the creator's IP address under the app's secret key (first 32 hex characters); never the IP itself. NULL for signed-in keys."})
 
 rel("public.brain_audit", group="ops", kind="table",
     purpose="Audit log of the hosted brain endpoint: one row per tool call (who, which tool, how long, how many rows). Never holds the question, the SQL or the result.",
     grain="one row per tool call (id is the primary key)", source="app/brain_mcp.py, written after every tools/call on /mcp",
     refresh="live (one row per call)", coverage="from the day migration 220 was deployed; no pruning",
-    caveats=["actor is the login name for a signed-in session, 'brain:<username>' for a brain key, 'key:<name>' for an API key.",
+    caveats=["actor is the login name for a signed-in session, 'brain:<username>' for a brain key, 'brain:open-app:<key prefix>' for a key made while the app was open, 'key:<name>' for an API key.",
              "row_count is NULL for tools that return no row list (describe, app_map)."],
-    cols={"id": "Primary key (bigserial).", "at": "When the call finished.", "actor": "Who called: a login name, 'brain:<username>' (brain key) or 'key:<name>' (API key).",
+    cols={"id": "Primary key (bigserial).", "at": "When the call finished.", "actor": "Who called: a login name, 'brain:<username>' (brain key), 'brain:open-app:<prefix>' (open-app brain key) or 'key:<name>' (API key).",
           "tool": "Tool name: catalog, describe, search, metric, freshness, sql, past_questions or app_map.", "duration_ms": "How long the tool ran, in milliseconds.",
           "row_count": "Rows (or hits) returned; NULL when the tool returns no list.", "ok": "True when the tool answered, false when it failed or the input was rejected."})

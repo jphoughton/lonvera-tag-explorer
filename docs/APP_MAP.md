@@ -119,8 +119,8 @@ Auth column: what the server checks. Page routes serve the same HTML shell; thei
 | `/ad/<id>` | GET | page | none (HTML page or health check; its data calls are protected) |  |
 | `/api/ads/<aint:row_id>` | GET | api | signed-in session or API key |  |
 | `/api/ads/<aint:row_id>/preview` | GET | api | signed-in session or API key |  |
-| `/api/brain/key` | GET | api | signed-in session or API key | Whether the signed-in user has an agent key (prefix and last use only, never the key) and the endpoint address. |
-| `/api/brain/key` | POST | api | signed-in session or API key | Make this user's agent key, or replace it (the old key stops working at once). The key is in this answer once and is stored only as a hash. |
+| `/api/brain/key` | GET | api | signed-in session or API key | Whether the signed-in user has an agent key (prefix and last use only, never the key) and the endpoint address; with the app open, just the endpoint. |
+| `/api/brain/key` | POST | api | signed-in session or API key | Make this user's agent key, or replace it (the old key stops working at once). With the app open anyone can make a new key (capped at 50 a day app-wide). The key is in this answer once and is stored only as a hash. |
 | `/api/campaigns` | GET | api | signed-in session or API key | Platform level (Meta): every campaign across all products, one row per campaign; product=<slug> (or none = families of no active product) keeps one product's ads only. |
 | `/api/campaigns/all` | GET | api | signed-in session or API key | Platform = All: every Meta and Google campaign in one list (see app/platforms.py). only=meta\|google, product=<slug> (Meta) or type=<Google type> narrow it; |
 | `/api/campaigns/trend` | GET | api | signed-in session or API key | Trend of /api/campaigns (Meta, all products): same window, stage, active, Meta \| Upstack numbers and product filter, so its points add up to the table's |
