@@ -10,6 +10,8 @@ Orientation for a brand-new AI agent or colleague. Fast-scan reference, not a tu
 - Default branch `build/v1`. Never commit to it directly: branch, pull request, merge. Tests green on the exact tip means merge, deploy and verify live (this app only).
 - Test suite: 8 to 9 minutes, run one at a time. Command in section 8.
 - Read-only data access for agents: the `analytics` database views (section 4) or the HTTP API with an API key (section 5).
+- Business context: every question, hypothesis and cause-effect claim Josh has raised about Lonvera, with answers and open items, lives in `docs/questions/README.md` (read it before diagnosing a metric move).
+- Services, schedules, pages, routes and the job order are generated from the code in `docs/APP_MAP.md`. The lonvera-brain MCP tools (`/mcp`, key from `/connect-agent`; local: `python -m brain.server`) search all of these docs, define the metrics and run read-only SQL; start with `CLAUDE.md`.
 
 Live URL: https://web-production-358da.up.railway.app
 
@@ -186,6 +188,7 @@ Read endpoints (all GET, grouped; generated from the Flask routes):
 | Products and tags | `/api/products`, `/api/products/<slug>/rollup`, `/families`, `/tree`, `/coverage`, `/ads`, `/campaigns`, `/trend`, `/stage-daily`, `/unmatched` |
 | Ads | `/api/ads/<id>`, `/api/ads/<id>/preview`, `/api/meta-ads/<ad_id>/preview`, `/media/<asset_id>`, `/api/tag-lookup` |
 | Campaigns and platforms | `/api/campaigns`, `/api/campaigns/trend`, `/api/campaigns/all`, `/api/platforms/kpis`, `/api/platforms/trend`, `/api/platforms/overview`, `/api/google/rollup`, `/api/google/trend`, `/api/source/tieout` |
+| Landing pages | `/api/landing-pages`, `/api/landing-pages/<id>` (copy of each page the ads point to, with the top ads per page; see `docs/LANDING_PAGES.md`) |
 | Test to scale and trends | `/api/promotions`, `/api/promotions/scale`, `/api/trends`, `/api/trends/plan` |
 | Creative priorities | `/api/priorities?week=YYYY-MM-DD`, `/api/priorities.csv`, `/api/priorities/views` and `/views/<token>`, `/api/priorities/manual` and `/manual/options` |
 | Production board | `/api/priorities/assignments`, `/api/priorities/vendor-links` (login only, keys refused), `/api/priorities/vendor/<token>` (public link), `/api/priorities/launch/settings`, `/api/priorities/assignments/<id>/launch` |
