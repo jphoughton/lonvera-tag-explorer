@@ -62,14 +62,15 @@ def _gate():
     if auth.auth_disabled():
         return _err(403, "Launching needs sign-in to be on.")
     user = auth.current_user()
-    if not user or user.lower() not in pl.launch_users():
+    if auth.is_key_request() or not user or user.lower() not in pl.launch_users():       # an API key is never a named login: it cannot launch
         return _err(403, "Your login is not allowed to launch ads.")
     return None
 
 
 def can_launch() -> bool:
     """True when the signed-in user passes all three gates (used for the discovery flag on the assignments list)."""
-    return pl.launch_enabled() and not auth.auth_disabled() and bool(auth.current_user()) and auth.current_user().lower() in pl.launch_users()
+    return (pl.launch_enabled() and not auth.auth_disabled() and not auth.is_key_request() and bool(auth.current_user())
+            and auth.current_user().lower() in pl.launch_users())
 
 
 def discovery() -> dict:

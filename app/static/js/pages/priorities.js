@@ -1,4 +1,4 @@
-// Creative priorities (/priorities): the weekly one-sheeter as one table. Every concept has exactly one Action (Revive / Make more / Test / Add to sheet / Stop / Hold; JSON field `section`) and one Status
+// Creative priorities (/priorities): the weekly one-sheeter as one table. Every concept has exactly one Action (Revive / Make more / Test / Stop / Hold; JSON field `section`) and one Status
 // (Working / Rising / Fading / Not working / Average / Too early / Untested); the rules are printed on the page from the API's `definitions`. One row per concept, ALL COLLAPSED on load (nothing is remembered). A row shows Market Cluster | ICP | Pain Point | Story (full text) | Status | Concepts | one key number; the chevron button (or a click on
 // the row) opens a detail panel directly under it with everything else. Print CSS expands every panel. Class names and test ids start with `pri-` (never ad-, ads-, sponsor, banner, promo).
 import { h, fmt, isNum, href, navigate, qs } from '../util.js';
@@ -6,240 +6,10 @@ import { api } from '../api.js';
 import { showControls } from '../controls.js';
 import { dayOf, manualPanel, addManualNotes, manualStrip, manualControls } from './priorities_manual.js';
 import { assignControls } from './priorities_assign.js';
-import { drillRegion, drillBtn, canDrill } from './priorities_drill.js';
 
+import { SECTIONS, SECTION_LABEL, setDefs, actionRule, STATUS_CLASS, STATUS_ORDER, roasX, pct, share, compact$, numbers, keyNumber, toneOf, statCards, tile, detail } from './priorities_panel.js';
 const PRODUCT_ORDER = ['vita-bull', 'beef-liver', 'boneflex'];
 const value_keys = ['product', 'section', 'cluster', 'icp', 'pain', 'story', 'status', 'concepts', 'key', 'spend14', 'roas14'];
-const SECTIONS = [['revive', 'Revive'], ['make_more', 'Make more'], ['test', 'Test'], ['add', 'Add to sheet'], ['stop', 'Stop'], ['hold', 'Hold']];
-let DEFS = {};                                                                      // the rules from the API payload (real thresholds), set in render
-const actionRule = (k) => ((DEFS.actions || []).find((a) => a.key === k) || {}).rule || '';
-const statusRule = (l) => ((DEFS.statuses || []).find((x) => x.label === l) || {}).rule || '';
-const STATUS_CLASS = { 'Working': 'ok', 'Rising': 'up', 'Fading': 'fade', 'Not working': 'bad', 'Average': 'flat', 'Too early': 'flat', 'Untested': 'new', 'No line': 'flat', 'MANUAL': 'manual' };
-const STATUS_ORDER = ['Working', 'Rising', 'Fading', 'Not working', 'Average', 'Too early', 'Untested'];
-const roasX = (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–');
-const pct = (v) => (isNum(v) ? fmt.pct(v) : '–');
-// share of n in d as text, one decimal under 10% ("2.2%"), none above ("54%"); a dash when there is no denominator
-const share = (n, dn) => { if (!dn) return '\u2013'; const v = 100 * n / dn; return (v > 0 && v < 10 ? v.toFixed(1) : Math.round(v)) + '%'; };
-const compact$ = (v) => (v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e4 ? '$' + Math.round(v / 1e3) + 'K' : fmt.money(v));
-// the all-time funnel text for a product baseline or a row's metrics.funnel: launched, under $100, $100+, $10K+
-
-// stat cards for the detail panel: [[group, [[label, value, sub?], ...]], ...]; labels and values are the same facts the old inline row showed
-function numbers(r) {
-  const m = r.metrics || {};
-  if (r.section === 'hold' && r.line_id == null && !r.manual) {                       // ads not mapped to a line: plain numbers
-    return [['All time', [['Spend', fmt.money(m.spend)], ['ROAS (all time)', roasX(m.roas)], ['CPA (all time)', fmt.money(m.cpa)], ['Purchases', fmt.int(m.purchases)], ['Ads with spend', fmt.int(m.ads)]]],
-      ['Last 30 days', [['Spend', fmt.money(m.spend_30d)], ['ROAS', roasX(m.roas_30d)], ['CPA', fmt.money(m.cpa_30d)], ['Purchases', fmt.int(m.purchases_30d)]]],
-      ['Last 14 days', [['Spend', fmt.money(m.spend_14d)], ['ROAS', roasX(m.roas_14d)], ['Purchases', fmt.int(m.purchases_14d)]]]];
-  }
-  if (r.line_id != null && r.section !== 'test' && r.section !== 'add') {            // every line row with results, Hold included, shows the same number tiles
-    return [['Performance', [['Spend', fmt.money(m.spend)], ['ROAS (all time)', roasX(m.roas)], ['CPA (all time)', fmt.money(m.cpa)], ['Upstack new-customer ROAS', roasX(m.nc_roas)], ['ROAS, strong tags only', roasX(m.roas_strong_tags)]]],
-      ['Testing', m.funnel
-        ? [['Ads launched', fmt.int(m.funnel.launched)], ['Hit rate ($10K+ spend)', share(m.funnel.top, m.funnel.launched), `(${fmt.int(m.funnel.top)} of ${fmt.int(m.funnel.launched)} launched ads)`], ['New ads, 30 days', fmt.int(m.launches_30d)]]
-        : [['Ads tested ($100+)', fmt.int(m.judged)], ['Ads that reached $1,000', `${m.hits} of ${m.mature}`, `(${pct(m.hit_rate)} of ads that spent $100+ and launched 14+ days ago)`], ['New ads, 30 days', fmt.int(m.launches_30d)]]],
-      ['Live', [...(isNum(m.spend_14d) ? [['Last 14 days', roasX(m.roas_14d), `on ${fmt.money(m.spend_14d)}${isNum(m.roas_14d) ? '' : ' (under $100: no ratio)'}`]] : []), ['Last 30 days', roasX(m.roas_30d), `on ${fmt.money(m.spend_30d)}`], ['Prior 30 days', roasX(m.roas_prior30), `on ${fmt.money(m.spend_prior30)}`], ['Live ads', fmt.int(m.live_ads)]].concat(m.funnel && m.funnel.active_30d != null ? [['Launched in last 30 days', fmt.int(m.funnel.launched_30d != null ? m.funnel.launched_30d : m.funnel.active_30d)], ['Of those, $10K+ so far', fmt.int(m.funnel.top_launched_30d != null ? m.funnel.top_launched_30d : m.funnel.top_30d)]] : [])]];
-  }
-  if (r.section === 'add') return [];
-  return [['Performance', [['Ads tagged', fmt.int(m.tagged_ads)], ['Spend so far', fmt.money(m.spend)]]]];
-}
-
-// the one number on the collapsed row: plain English, the product named, both numbers labelled
-function keyNumber(r, d) {
-  if (r.manual) return r.why_now || `Added ${dayOf(r.created_at)}`;
-  const m = r.metrics || {};
-  const b = (d.baselines || {})[r.product] || {};
-  const pn = b.product_name || r.product_name || 'Product';
-  const avg = (v) => `${pn} average ${roasX(v)}.`;
-  if (r.section === 'revive') {
-    const now = m.spend_30d >= 250 ? roasX(m.roas_30d) + ' now.' : 'Off now.';
-    return r.stretch ? `${roasX(r.stretch.roas)} at peak. ${now}` : `${roasX(m.roas)} since launch. ${now}`;
-  }
-  if (r.section === 'make_more') return `${roasX(m.roas_30d)} last 30 days. ${avg(b.roas_30d)}`;
-  if (r.section === 'add') return r.competitor ? r.competitor.text : 'Draft';
-  if (r.section === 'test') return m.spend > 0 ? `${fmt.money(m.spend)} spent so far` : 'No spend yet';
-  if (m.spend >= 100) return `${roasX(m.roas)} since launch. ${avg(b.roas)}`;                       // stop and hold
-  return m.spend > 0 ? `${fmt.money(m.spend)} spent so far` : 'No spend yet';
-}
-
-// ---------- detail panel (the expanded row) ----------
-// Reading order: identity strip -> verdict -> the thing to act on (revive play / hooks) -> then vs now -> timeline -> former winners -> competitors -> stat cards -> footer pills.
-// Every fact the panel always carried is still here; long definitions sit behind keyboard-operable "?" disclosures and long lists behind "Show all".
-const toneOf = (r) => STATUS_CLASS[r.status] || 'flat';
-const TAG_HELP = { 'Market Cluster': 'cluster_description', 'ICP': 'icp_description', 'Pain Point': 'pain_description' };
-
-function tile(label, value, desc) {
-  return h('div', { class: 'pri-tile' },
-    h('div', { class: 'pri-tile-h' }, h('span', { class: 'pri-label' }, label),
-      desc ? h('details', { class: 'pri-help' }, h('summary', { 'aria-label': `What is ${label}?`, title: `What is ${label}?` }, '?'), h('p', { class: 'pri-helptext' }, desc)) : null),
-    h('div', { class: 'pri-tname' }, value || '–'));
-}
-
-// first `n` items always shown, the rest behind a toggle (the hidden items stay in the DOM)
-function limited(items, n, what) {
-  if (items.length <= n) return items;
-  const extra = items.slice(n);
-  extra.forEach((el) => el.setAttribute('hidden', ''));
-  const btn = h('button', { type: 'button', class: 'pri-more', 'aria-expanded': 'false' }, `Show all ${items.length} ${what}`);
-  btn.addEventListener('click', () => {
-    const open = btn.getAttribute('aria-expanded') !== 'true';
-    btn.setAttribute('aria-expanded', String(open));
-    extra.forEach((el) => { if (open) el.removeAttribute('hidden'); else el.setAttribute('hidden', ''); });
-    btn.textContent = open ? 'Show fewer' : `Show all ${items.length} ${what}`;
-  });
-  return [...items, btn];
-}
-
-function roasPill(v, ref) {
-  const cls = !isNum(v) || !isNum(ref) ? 'flat' : v >= ref ? 'ok' : 'fade';
-  return h('span', { class: 'pri-pill pri-pill-' + cls }, roasX(v));
-}
-
-// one then/now tile: label, then value -> now value, delta chip (good = green, bad = red, tiny change = grey)
-function tnTile(label, then, now, fmtv, lowerIsBetter, nowNote, seeMore) {
-  let delta = null; let tone = 'flat';
-  if (isNum(then) && isNum(now) && then !== 0) {
-    const ch = (now - then) / then;
-    const good = lowerIsBetter ? ch < 0 : ch > 0;
-    tone = Math.abs(ch) < 0.03 ? 'flat' : good ? 'ok' : 'bad';
-    delta = `${ch > 0 ? '▲' : ch < 0 ? '▼' : '▬'} ${Math.abs(Math.round(ch * 100))}%`;
-  }
-  return h('div', { class: 'pri-tn' }, h('div', { class: 'pri-label' }, label),
-    h('div', { class: 'pri-tn-vals' }, h('span', { class: 'pri-tn-then' }, fmtv(then)), h('span', { class: 'pri-arrow-r', 'aria-hidden': 'true' }, '→'), h('strong', { class: 'pri-tn-now' }, nowNote || fmtv(now))),
-    delta ? h('span', { class: 'pri-delta pri-delta-' + tone }, delta) : null, seeMore || null);
-}
-
-// ROAS bars: peak / then / now with a tick for the product average over the same weeks
-function roasBars(r, base) {
-  const m = r.metrics || {};
-  const rows = [];
-  if (r.stretch && isNum(r.stretch.roas)) rows.push(['Peak', r.stretch.roas, r.stretch.product_roas, `Peak weeks ${r.stretch.start} to ${r.stretch.end}`]);
-  if (isNum(m.roas_then)) rows.push(['Then', m.roas_then, base.roas_then, 'Days 31-90']);
-  if (isNum(m.roas_30d)) rows.push(['Now', m.roas_30d, base.roas_30d, 'Last 30 days']);
-  if (rows.length < 2) return null;
-  const max = Math.max(...rows.flatMap((x) => [x[1], x[2]].filter(isNum))) * 1.12;
-  const w = (v) => Math.max(0, Math.min(100, (v / max) * 100)).toFixed(1) + '%';
-  return h('div', { class: 'pri-bars', role: 'img', 'aria-label': 'ROAS ' + rows.map((x) => `${x[0].toLowerCase()} ${roasX(x[1])}${isNum(x[2]) ? ` against product ${roasX(x[2])}` : ''}`).join(', ') },
-    h('div', { class: 'pri-bars-h pri-label' }, 'ROAS vs product average (tick)'),
-    rows.map(([k, v, ref, tip]) => h('div', { class: 'pri-bar-row', title: tip },
-      h('span', { class: 'pri-bar-k' }, k),
-      h('span', { class: 'pri-bar-track' }, h('span', { class: 'pri-bar-fill pri-bar-' + (isNum(ref) && v >= ref ? 'ok' : 'bad'), style: { width: w(v) } }), isNum(ref) ? h('span', { class: 'pri-bar-tick', style: { left: w(ref) } }) : null),
-      h('span', { class: 'pri-bar-v' }, roasX(v)))));
-}
-
-function thenNow(r, base, can) {
-  const m = r.metrics || {};
-  if (!r.then_now) return null;
-  const idle = isNum(m.spend_30d) && m.spend_30d < 250;
-  const any = [m.roas_then, m.roas_30d, m.cpa_then, m.cpa_30d].some(isNum);
-  const reg = can ? drillRegion(r.line_id) : null;
-  const more = (what) => (reg ? drillBtn(reg, { block: 'then_now', window: '90' }, `${what}: the ads behind then versus now (last 90 days shown, switch the window above the table)`) : null);
-  return h('section', { class: 'pri-card pri-thennow', 'data-testid': 'pri-thennow', 'aria-label': 'Then versus now' },
-    h('h4', { class: 'pri-h' }, 'Then vs Now ', h('span', { class: 'pri-hnote' }, 'days 31-90 vs last 30 days')),
-    any ? h('div', { class: 'pri-tns' },
-      tnTile('ROAS', m.roas_then, m.roas_30d, roasX, false, idle ? 'idle' : null, more('ROAS')),
-      tnTile('CPA', m.cpa_then, m.cpa_30d, fmt.money, true, idle ? 'idle' : null, more('CPA')),
-      tnTile('Share of product spend', m.share_then, m.share_now, pct, false, null, more('Share of product spend'))) : null,
-    any ? reg : null,
-    any ? roasBars(r, base) : null,
-    h('p', { class: 'pri-tn-text' }, r.then_now));
-}
-
-function step(n, label, text, cls, seeMore) {
-  return h('li', { class: 'pri-step ' + (cls || '') }, h('span', { class: 'pri-step-n', 'aria-hidden': 'true' }, n), h('div', null, h('h5', { class: 'pri-step-h' }, label), h('p', null, text), seeMore || null));
-}
-
-// the three timeline steps; each opens the ads behind it (steps 1 and 2 on the line, all time, the weekly trend shows the stretch and the stop)
-function timelineBody(r, can) {
-  const reg = can ? drillRegion(r.line_id) : null;
-  const more = (what) => (reg ? drillBtn(reg, { block: 'timeline', window: 'all' }, what) : null);
-  return [h('ol', { class: 'pri-steps' }, step('1', 'When it worked: ', r.when_it_worked, 'pri-step-ok', more('When it worked: the ads and weekly trend')), step('2', 'When and how it stopped: ', r.how_it_stopped, 'pri-step-bad', more('When and how it stopped: the ads and weekly trend')),
-    step('3', 'Diagnosis (consistent with): ', r.diagnosis, 'pri-step-flat', more('Diagnosis: the ads and weekly trend behind it'))), reg];
-}
-
-function hookList(r, title, cls, can) {
-  if (!(r.hooks && r.hooks.length)) {                                                  // a line row with no hooks says so instead of leaving the block out
-    return r.line_id != null && !r.manual ? h('section', { class: 'pri-card pri-hooks ' + (cls || ''), 'data-testid': 'pri-hooks-empty' }, h('h4', { class: 'pri-h' }, title), h('p', { class: 'pri-hookn' }, 'No hooks found for the ads on this line yet.')) : null;
-  }
-  const reg = can ? drillRegion(r.line_id) : null;
-  const items = r.hooks.map((k) => h('li', { class: 'pri-hook' },
-    h('q', { class: 'pri-quote' }, k.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(k.ad_id), {}), title: k.ad }, k.hook) : k.hook),
-    k.spend != null ? h('span', { class: 'pri-hookn' }, ' ', fmt.money(k.spend), ' at ', roasPill(k.roas, null)) : h('span', { class: 'pri-hookn' }, ` (${k.line_code})`),
-    reg && k.ad_id != null && !k.borrowed ? drillBtn(reg, { block: 'ad', window: 'all', ad_id: k.ad_id }, `Hook "${k.hook}"`) : null));
-  const all = reg && !r.hooks.some((k) => k.borrowed) ? h('p', null, drillBtn(reg, { block: 'hooks', window: 'all' }, 'All hooks on this line')) : null;
-  return h('section', { class: 'pri-card pri-hooks ' + (cls || ''), 'data-testid': 'pri-hooks' }, h('h4', { class: 'pri-h' }, title), h('ul', { class: 'pri-list' }, limited(items, 3, 'hooks')), all, reg);
-}
-
-function winnersTable(r, base, can) {
-  const ws = r.former_winners;
-  if (!(ws && ws.length)) return r.former_winners && r.line_id != null && !r.manual ? h('section', { class: 'pri-card pri-winners', 'data-testid': 'pri-winners-empty' }, h('h4', { class: 'pri-h' }, 'Former winning ads'), h('p', { class: 'pri-hookn' }, 'No former winning ads on this line yet.')) : null;
-  const reg = can ? drillRegion(r.line_id) : null;
-  const rows = ws.map((w) => h('tr', { class: 'pri-w' },
-    h('td', { class: 'pri-w-name' }, w.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(w.ad_id), {}) }, w.ad) : w.ad, reg && w.ad_id != null ? drillBtn(reg, { block: 'ad', window: 'all', ad_id: w.ad_id }, `Former winning ad ${w.ad}`) : null),
-    h('td', { class: 'pri-w-num', 'data-label': 'Spend' }, fmt.money(w.spend)),
-    h('td', { 'data-label': 'ROAS' }, roasPill(w.roas, base.roas)),
-    h('td', { class: 'pri-w-peak', 'data-label': 'Peak week of' }, w.peak_week || '–'),
-    h('td', { 'data-label': 'Status' }, h('span', { class: 'pri-badge pri-badge-' + (w.kind === 'stopped' ? 'bad' : 'fade') }, w.kind === 'stopped' && w.stopped ? 'stopped ' + w.stopped : w.kind), w.kind !== 'stopped' && w.stopped ? h('span', { class: 'pri-hookn' }, ' stopped ' + w.stopped) : null)));
-  const shown = limited(rows, 3, 'ads');
-  const trs = shown.filter((x) => x.tagName === 'TR'); const btn = shown.find((x) => x.tagName === 'BUTTON');
-  const ws2 = r.winners_summary;
-  return h('section', { class: 'pri-card pri-winners', 'data-testid': 'pri-winners' }, h('h4', { class: 'pri-h' }, 'Former winning ads'),
-    h('table', { class: 'pri-wt' }, h('tbody', null, h('tr', { class: 'pri-wth' }, ['Ad', 'Spend', 'ROAS', 'Peak week of', 'Status'].map((t) => h('th', { scope: 'col' }, t))), trs)), btn || null, reg,
-    ws2 ? h('p', { class: 'pri-hookn pri-wsum' }, `${ws2.still_working} of ${ws2.winners} winning ads still working; new ads in the last 30 days: ${ws2.launches_last_30d}${ws2.launches_in_peak != null ? ' (' + ws2.launches_in_peak + ' launched during the working stretch)' : ''}.`) : null);
-}
-
-function competitorBadges(c) {
-  const b = (n, t, cls) => h('span', { class: 'pri-badge ' + (cls || 'pri-badge-info') }, h('strong', null, String(n)), ' ' + t);
-  return h('section', { class: 'pri-card pri-others', 'data-testid': 'pri-others', 'aria-label': 'What others are running: ' + c.text },
-    h('h4', { class: 'pri-h' }, 'What others are running'),
-    h('div', { class: 'pri-badges' }, b(c.competitors, c.competitors === 1 ? 'competitor' : 'competitors'), b(c.concepts, c.concepts === 1 ? 'concept' : 'concepts'), b(c.long_running, 'running 60+ days', c.long_running ? 'pri-badge-ok' : 'pri-badge-flat'),
-      (c.brands || []).length ? h('span', { class: 'pri-hookn' }, (c.brands || []).join(', ')) : null),
-    h('p', { class: 'pri-hookn' }, '(running a long time, not proven performance)'));
-}
-
-function statCards(r, can) {
-  const groups = numbers(r);
-  if (!groups.length) return null;
-  const BLOCK = { Performance: ['performance', 'all'], Testing: ['testing', 'all'], Live: ['live', '30'] };
-  return h('section', { class: 'pri-card pri-statsec', 'aria-label': 'Numbers' }, groups.map(([g, items]) => {
-    const reg = can && BLOCK[g] ? drillRegion(r.line_id) : null;
-    return h('div', { class: 'pri-sg' }, h('h4', { class: 'pri-label' }, g),
-      h('dl', { class: 'pri-cards' }, items.map(([k, v, sub]) => h('div', { class: 'pri-sc' }, h('dt', { class: 'pri-label' }, k), h('dd', null, h('strong', null, v), sub ? ' ' : null, sub ? h('span', { class: 'pri-hookn' }, sub) : null),
-        reg ? drillBtn(reg, { block: BLOCK[g][0], window: BLOCK[g][1] }, `${g}, ${k}: the ads behind it`) : null))), reg);
-  }));
-}
-
-// two columns of cards; a column with nothing in it is left out so the other one uses the full width
-function cols(...groups) {
-  const cs = groups.map((g) => g.filter(Boolean)).filter((g) => g.length).map((g) => h('div', { class: 'pri-col' }, g));
-  return cs.length ? h('div', { class: 'pri-cols' }, cs) : null;
-}
-
-function detail(r, d) {
-  const base = ((d && d.baselines) || {})[r.product] || {};
-  const tone = toneOf(r);
-  const faded = !!r.when_it_worked;
-  const can = canDrill(r);
-  // the summary sentence of a faded row is "<STATUS prefix> <when it worked> <how it stopped>": show only the prefix, the timeline below carries the rest word for word
-  let why = r.why;
-  if (faded && why && why.endsWith(`${r.when_it_worked} ${r.how_it_stopped}`)) why = why.slice(0, why.length - `${r.when_it_worked} ${r.how_it_stopped}`.length).trim();
-  const flagPills = (r.flags || []).map((f) => h('span', { class: 'pri-pill pri-pill-fade' }, f));
-  const play = faded ? h('section', { class: 'pri-cta', 'data-testid': 'pri-play' }, h('h4', { class: 'pri-cta-h' }, h('span', { 'aria-hidden': 'true' }, '→ '), 'Revive play: '), h('p', null, r.revive_play))
-    : hookList(r, r.section === 'add' ? 'Competitor hooks seen' : r.section === 'test' ? 'Hooks to borrow (same product, adjacent winner)' : r.section === 'make_more' ? 'Proven hooks to iterate from' : 'Hooks from the best ads on this line', 'pri-cta', can);
-  const hooksLow = faded ? hookList(r, 'Hooks from the working period', '', can) : null;
-  return h('div', { class: 'pri-panel pri-tone-' + tone },
-    h('div', { class: 'pri-id' },
-      h('div', { class: 'pri-chips' }, h('span', { class: 'pri-chip-prod' }, (base.product_name || r.product_name || r.product)), h('span', { class: 'pri-sec pri-sec-' + r.section, title: actionRule(r.section) }, SECTION_LABEL[r.section]), r.section === 'add' && r.source ? h('span', { class: 'pri-pill pri-pill-flat', 'data-testid': 'pri-source' }, r.source) : null, h('span', { class: 'pri-status pri-st-' + tone, title: statusRule(r.status) }, r.status)),
-      h('div', { class: 'pri-tiles' }, tile('Market Cluster', r.cluster, r.cluster_description), tile('ICP', r.icp, r.icp_description), tile('Pain Point', r.pain_point, r.pain_description),
-        r.story ? h('div', { class: 'pri-tile pri-tile-story' }, h('div', { class: 'pri-tile-h' }, h('span', { class: 'pri-label' }, 'Story')), h('div', { class: 'pri-story' }, r.story)) : null)),
-    h('div', { class: 'pri-verdict' }, h('div', { class: 'pri-verdict-k' }, keyNumber(r, d || { baselines: {} })), why ? h('p', { class: 'pri-verdict-why', 'data-testid': 'pri-why' }, why) : null),
-    play,
-    cols([thenNow(r, base, can), faded ? h('section', { class: 'pri-card', 'data-testid': 'pri-faded', 'aria-label': 'How it played out' }, h('h4', { class: 'pri-h' }, 'Timeline'),
-          timelineBody(r, can)) : null],
-      [winnersTable(r, base, can), r.competitor ? competitorBadges(r.competitor) : null]),
-    statCards(r, can),
-    hooksLow,
-    h('div', { class: 'pri-foot' }, flagPills.length ? h('span', { class: 'pri-foot-g' }, h('span', { class: 'pri-k' }, 'Flags'), flagPills) : null,
-      h('span', { class: 'pri-pill pri-pill-flat' }, 'Line ' + r.line_code), h('span', { class: 'pri-pill pri-pill-flat' }, 'Confidence: ' + r.confidence), h('span', { class: 'pri-pill pri-pill-flat' }, 'Score ' + r.score)));
-}
 
 // ---------- saved views: helpers ----------
 const LAST_VIEW = 'pri-last-view';
@@ -283,9 +53,9 @@ const unmappedPanel = (r, d) => h('div', { class: 'pri-panel pri-tone-' + toneOf
 const withProd = (p, r, actl) => { if (actl) p.append(actl.history(r)); return p; };                           // production history under every concept's panel (priorities_assign.js); none on the public view page
 const panelFor = (r, d, mctl, actl) => { if (r.manual) return withProd(manualPanel(r, mctl), r, actl); if (r.section === 'hold' && r.line_id == null) return unmappedPanel(r, d); const p = detail(r, d); addManualNotes(p, r, d); return withProd(p, r, actl); };
 
-const SECTION_LABEL = Object.fromEntries(SECTIONS);
+const NEW_IDEA = { 'Competitor': 'New idea, from a competitor', 'Our draft': 'New idea, our draft' };
 const SECTION_ORDER = SECTIONS.map(([k]) => k);
-const COLS = [['product', 'Product'], ['section', 'Action'], ['cluster', 'Market Cluster'], ['icp', 'ICP'], ['pain', 'Pain Point'], ['story', 'Story'], ['status', 'Status'], ['concepts', 'Concepts'], ['key', 'Key number'], ['spend14', 'Spend \u00b7 14d'], ['roas14', 'ROAS \u00b7 14d']];
+const COLS = [['product', 'Product'], ['cluster', 'Market Cluster'], ['icp', 'ICP'], ['pain', 'Pain Point'], ['section', 'Action'], ['story', 'Story'], ['status', 'Status'], ['concepts', 'Concepts'], ['key', 'Key number'], ['spend14', 'Spend \u00b7 14d'], ['roas14', 'ROAS \u00b7 14d']];
 
 // last 14 days (Meta-reported, raw purchase value / spend, not shrunk): spend always shown when the row has data, ROAS only with $100+ spend in the window (else a dash)
 const has14 = (r) => !r.manual && r.metrics && isNum(r.metrics.spend_14d);
@@ -312,6 +82,11 @@ function loadSel(week, valid, tok) {
 }
 function saveSel(week, sel, tok) { try { sessionStorage.setItem(storeKey(week, tok), JSON.stringify([...sel])); } catch (e) { /* storage blocked: selection just is not remembered */ } }
 
+// Cluster colours: one fixed palette of soft hues, picked from a hash of the cluster NAME, so the same cluster name has the same colour under every product and on every visit.
+// The hues are stepped (index * 7 mod 16) so neighbouring palette slots are far apart on the colour wheel. The CSS turns the hue into a fill (cluster), a lighter tint (ICP) and a faint tint (other cells).
+const HUES = Array.from({ length: 16 }, (_, i) => (((i * 7) % 16) * 22.5 + 8) % 360);
+export const hueOf = (name) => { let x = 5381; const t = String(name || '').trim().toLowerCase(); for (let i = 0; i < t.length; i++) x = ((x * 33) ^ t.charCodeAt(i)) >>> 0; return Math.round(HUES[x % HUES.length]); };
+
 let uid = 0;
 function setOpen(btn, panelRow, open) {
   btn.setAttribute('aria-expanded', String(open));
@@ -319,6 +94,7 @@ function setOpen(btn, panelRow, open) {
   if (open && panelRow._build) panelRow._build();
   panelRow.hidden = !open;
   panelRow.previousElementSibling.classList.toggle('pri-open', open);
+  if (panelRow._layout) panelRow._layout();                                         // merged group cells must cover the rows that are visible now
 }
 
 // one row (collapsed) + its detail row (hidden). `printed` rows have no toggle and an always-visible detail (the print-only copy).
@@ -327,32 +103,40 @@ function rowPair(r, d, printed = false, onPick = null, mctl = null, actl = null)
   const name = `${r.cluster}, ${r.icp}, ${r.pain_point}`;
   const cell = (label, cls, ...kids) => h('td', { class: 'pri-c pri-c-' + cls, 'data-label': label }, ...kids);
   const lazy = r.section === 'hold' && !printed;                                    // the 100+ Hold panels are built on first open (the content is the same full panel)
-  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, h('td', { colspan: String(12 + (actl ? 1 : 0)) }, lazy ? null : panelFor(r, d, r._from ? null : mctl, actl)));
-  if (lazy) detailRow._build = () => { detailRow.firstChild.replaceChildren(panelFor(r, d, r._from ? null : mctl, actl)); detailRow._build = null; };
+  // the detail row: a spacer cell under the checkbox column (shown only in the grouped view, where the merged Product / Cluster / ICP cells run past this row) + the panel cell
+  const dSpacer = h('td', { class: 'pri-d-sp', hidden: true, 'aria-hidden': 'true' });
+  const dMain = h('td', { colspan: String(12 + (actl ? 1 : 0)) }, lazy ? null : panelFor(r, d, r._from ? null : mctl, actl));
+  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, dSpacer, dMain);
+  detailRow._sp = dSpacer; detailRow._main = dMain;
+  if (lazy) detailRow._build = () => { dMain.replaceChildren(panelFor(r, d, r._from ? null : mctl, actl)); detailRow._build = null; };
   const btn = h('button', { type: 'button', class: 'pri-toggle', 'aria-expanded': 'false', 'aria-controls': id, 'aria-label': 'Expand: ' + name, 'data-name': name, 'data-testid': 'pri-toggle' },
     h('span', { class: 'pri-chev', 'aria-hidden': 'true' }, '▸'));
   const pick = h('input', { type: 'checkbox', class: 'pri-pick', 'data-testid': 'pri-pick', 'aria-label': 'Select: ' + name, onchange: (e) => onPick && onPick(r, e.target.checked) });
-  const tr = h('tr', { class: 'pri-row' + (r.manual ? ' pri-manual' + (r.done ? ' pri-done' : '') : ''), 'data-testid': 'pri-card', 'data-section': r.section, 'data-product': r.product, 'data-source': r.manual ? 'manual' : 'auto' },
+  const cProduct = cell('Product', 'product', (d.baselines[r.product] || {}).product_name || r.product);
+  const cCluster = cell('Market Cluster', 'cluster', r.cluster, r._from ? h('span', { class: 'pri-from', 'data-testid': 'pri-from', title: 'No longer in the current snapshot: the numbers are the frozen copy saved with the view' }, ' from ' + r._from) : null);
+  const cIcp = cell('ICP', 'icp', r.icp);
+  const tr = h('tr', { class: 'pri-row' + (r.manual ? ' pri-manual' + (r.done ? ' pri-done' : '') : ''), 'data-testid': 'pri-card', 'data-section': r.section, 'data-product': r.product, 'data-source': r.manual ? 'manual' : 'auto', 'data-cluster-hue': String(hueOf(r.cluster)) },
     h('td', { class: 'pri-c pri-c-tog' }, printed || !onPick ? null : pick, printed ? null : btn),
-    cell('Product', 'product', (d.baselines[r.product] || {}).product_name || r.product),
-    cell('Action', 'section', h('span', { class: 'pri-sec pri-sec-' + r.section, title: actionRule(r.section) }, SECTION_LABEL[r.section]), r.section === 'add' && r.source ? h('span', { class: 'pri-src', 'data-testid': 'pri-source' }, r.source) : null, r.manual ? h('span', { class: 'pri-mbadge', 'data-testid': 'pri-manual-badge' }, 'Manual') : null),
-    cell('Market Cluster', 'cluster', r.cluster, r._from ? h('span', { class: 'pri-from', 'data-testid': 'pri-from', title: 'No longer in the current snapshot: the numbers are the frozen copy saved with the view' }, ' from ' + r._from) : null), cell('ICP', 'icp', r.icp), cell('Pain Point', 'pain', r.pain_point), cell('Story', 'story', r.story || '–'),
+    cProduct, cCluster, cIcp, cell('Pain Point', 'pain', r.pain_point),
+    cell('Action', 'section', h('span', { class: 'pri-sec pri-sec-' + r.section, title: actionRule(r.section) }, SECTION_LABEL[r.section]), r.source ? h('span', { class: 'pri-src', 'data-testid': 'pri-source', title: 'Not on the sheet yet' }, [NEW_IDEA[r.source] || r.source, h('span', { class: 'pri-src-sub', 'data-testid': 'pri-not-on-sheet' }, 'Not on the sheet yet')]) : null, r.manual ? h('span', { class: 'pri-mbadge', 'data-testid': 'pri-manual-badge' }, 'Manual') : null),
+    cell('Story', 'story', r.story || '–'),
     cell('Status', 'status', h('span', { class: 'pri-status pri-st-' + (STATUS_CLASS[r.status] || 'flat'), 'data-testid': 'pri-status' }, r.manual && r.done ? 'MANUAL (done)' : r.status)),
     cell('Concepts', 'concepts', r.manual || r.section === 'hold' ? '\u2013' : r.concepts ? `${r.concepts} concept${r.concepts === 1 ? '' : 's'}` : 'None'),
     cell('Key number', 'key', keyNumber(r, d)),
     cell('Spend \u00b7 14d', 'spend14', has14(r) ? fmt.money(r.metrics.spend_14d) : '\u2013'),
     cell('ROAS \u00b7 14d', 'roas14', roas14Cell(r, d)),
     actl ? cell('In production', 'prod', actl.cell(r)) : null);
+  tr.style.setProperty('--h', String(hueOf(r.cluster)));
   if (!printed) {
     const toggle = () => setOpen(btn, detailRow, btn.getAttribute('aria-expanded') !== 'true');
     btn.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
-    tr.addEventListener('click', (e) => { if (!e.target.closest('a, button, input, label')) toggle(); });
+    tr.addEventListener('click', (e) => { if (!e.target.closest('a, button, input, label, .pri-merged')) toggle(); });      // a merged group cell belongs to many rows: it does not open one of them
   }
-  return { tr, detailRow, r, pick };
+  return { tr, detailRow, r, pick, cells: { product: cProduct, cluster: cCluster, icp: cIcp } };
 }
 
 function render(d, view = null, opts = {}) {
-  DEFS = d.definitions || {};
+  setDefs(d.definitions);
   const vm = opts.vm || { views: [], active: null, mode: 'latest', notice: null };
   const readonly = !!view;                                                               // a saved view: only its rows, no selection or editing, pinned to its stored snapshot
   const slugs = PRODUCT_ORDER.filter((s) => d.rows.some((r) => r.product === s));
@@ -367,10 +151,11 @@ function render(d, view = null, opts = {}) {
   const actl = readonly ? null : assignControls({ d, keyOf, selected: () => d.rows.filter(isSel), refresh: () => apply() });          // production hooks: none on a public saved view
   const pairs = d.rows.map((r) => rowPair(r, d, false, readonly ? null : (row, on) => { if (on) sel.add(keyOf(row)); else sel.delete(keyOf(row)); selChanged(); }, mctl, actl));
   let shownList = [];
+  pairs.forEach((p) => { p.detailRow._layout = () => relayout(); });
   const carry = opts.carry || {};
   const sf = act && act.view.kind === 'filters' && act.view.filters ? act.view.filters : null;      // a filter view starts from its saved filters (applied live to whatever rows exist now)
-  const pick0 = (saved, all) => { const keep = (saved || []).filter((x) => all.includes(x)); return new Set(keep.length ? keep : all); };
-  const state = { products: pick0(sf && sf.products, slugs), sections: pick0(sf && sf.sections, sections), q: carry.q || (sf ? sf.q || '' : ''), key: carry.key || (sf && value_keys.includes(sf.key) ? sf.key : null),
+  const pick0 = (saved, all) => { const keep = (saved || []).map((x) => (x === 'add' ? 'test' : x)).filter((x) => all.includes(x)); return new Set(keep.length ? keep : all); };
+  const state = { products: pick0(sf && sf.products, slugs), sections: pick0(sf && sf.sections, sections), q: carry.q || (sf ? sf.q || '' : ''), key: 'key' in carry ? carry.key : (sf && value_keys.includes(sf.key) ? sf.key : null),        // no sort chosen (null) = the grouped view
                   dir: carry.dir || (sf && sf.dir === -1 ? -1 : 1), showDone: !!carry.showDone, onlySel: !!carry.onlySel, brief: carry.brief || 'all', statuses: carry.statuses ? new Set(carry.statuses) : new Set(sf && sf.statuses && sf.statuses.length ? sf.statuses : sf && sf.status ? [sf.status] : []) };
   const allOn = (set, all) => (all.every((x) => set.has(x)) ? [] : all.filter((x) => set.has(x)));
   const currentFilters = () => ({ products: allOn(state.products, slugs), sections: allOn(state.sections, sections), q: state.q.trim(), key: state.key, dir: state.dir, status: null, statuses: [...state.statuses] });
@@ -379,6 +164,51 @@ function render(d, view = null, opts = {}) {
     product: (r) => pOrder[r.product], section: (r) => sOrder[r.section], cluster: (r) => r.cluster.toLowerCase(), icp: (r) => r.icp.toLowerCase(), pain: (r) => r.pain_point.toLowerCase(),
     story: (r) => (r.story || '').toLowerCase(), status: (r) => r.status.toLowerCase(), concepts: (r) => r.concepts || 0, key: (r) => keyNumber(r, d).toLowerCase(), spend14: (r) => (has14(r) ? r.metrics.spend_14d : -1), roas14: (r) => { const v = roas14Of(r); return v === null ? -1 : v; }, prod: (r) => (actl ? actl.text(r).toLowerCase() : ''), briefed: (r) => (isBriefed(r) ? 1 : 0),
   };
+  // ---------- grouped view: order = product, market cluster, ICP, pain point as on the Communication Overview sheet (row.sheet_pos = the line's sheet position) ----------
+  // A row with no sheet position (new idea, manual concept, "no line") goes after the on-sheet rows of its ICP / cluster; a cluster or ICP that is not on the sheet goes after the on-sheet ones of its parent, in Action / rank order.
+  const INF = 1e9;
+  const posOf = (r) => (isNum(r.sheet_pos) ? r.sheet_pos : INF);
+  const appOf = (r) => (sOrder[r.section] || 0) * 1e6 + (r.rank || 0);                      // Action order, then rank: the order the page had before grouping
+  const gmin = new Map();
+  d.rows.forEach((r) => {
+    [`${r.product}|${r.cluster}`, `${r.product}|${r.cluster}|${r.icp}`].forEach((k) => { const g = gmin.get(k); const pp = posOf(r), aa = appOf(r); if (!g) gmin.set(k, { pos: pp, app: aa }); else { g.pos = Math.min(g.pos, pp); g.app = Math.min(g.app, aa); } });
+  });
+  const cmpArr = (a, b) => { for (let i = 0; i < a.length; i++) { if (a[i] < b[i]) return -1; if (a[i] > b[i]) return 1; } return 0; };
+  const gkey = (r) => { const c = gmin.get(`${r.product}|${r.cluster}`), i = gmin.get(`${r.product}|${r.cluster}|${r.icp}`);
+    return [pOrder[r.product], c.pos, c.app, r.cluster.toLowerCase(), i.pos, i.app, r.icp.toLowerCase(), posOf(r), r.pain_point.toLowerCase(), appOf(r)]; };
+  const gcache = new Map();
+  const cmpGroup = (a, b) => { for (const p of [a, b]) if (!gcache.has(p)) gcache.set(p, gkey(p.r)); return cmpArr(gcache.get(a), gcache.get(b)); };
+  let runs = [];                                                                             // the merged cells of the rows shown: { cell, members }
+  const nCols = () => 12 + (actl ? 1 : 0) + (hasBriefed ? 1 : 0);
+  function relayout() {                                                                      // a merged cell covers its rows plus the detail rows that are open (a closed detail row has no height)
+    runs.forEach((g) => g.cell.setAttribute('rowspan', String(g.members.reduce((n, p) => n + 1 + (p.detailRow.hidden ? 0 : 1), 0))));
+  }
+  function applyGroups(list) {
+    const on = !state.key;
+    table.classList.toggle('pri-grouped', on);
+    pairs.forEach((p) => {
+      Object.values(p.cells).forEach((c) => { c.removeAttribute('rowspan'); c.classList.remove('pri-merged', 'pri-hid'); });
+      p.tr.classList.remove('pri-g-prod', 'pri-g-cl', 'pri-g-icp');
+      p.detailRow._sp.hidden = true; p.detailRow._main.colSpan = nCols();
+    });
+    runs = [];
+    if (!on) return;
+    const level = [['product', (r) => r.product, 'pri-g-prod'], ['cluster', (r) => r.product + '|' + r.cluster, 'pri-g-cl'], ['icp', (r) => r.product + '|' + r.cluster + '|' + r.icp, 'pri-g-icp']];
+    level.forEach(([name, kf, cls]) => {
+      let i = 0;
+      while (i < list.length) {
+        let j = i; const k = kf(list[i].r);
+        while (j + 1 < list.length && kf(list[j + 1].r) === k) j += 1;
+        const members = list.slice(i, j + 1);
+        list[i].tr.classList.add(cls);
+        members.forEach((p, n) => { const c = p.cells[name]; if (n === 0) c.classList.add('pri-merged'); else c.classList.add('pri-hid'); });
+        runs.push({ cell: list[i].cells[name], members });
+        i = j + 1;
+      }
+    });
+    list.forEach((p) => { p.detailRow._sp.hidden = false; p.detailRow._main.colSpan = nCols() - 4; });      // under the merged cells the panel starts at the Pain Point column
+    relayout();
+  }
   const tbody = h('tbody', { 'data-testid': 'pri-body' });
   const count = h('span', { class: 'pri-shown', 'aria-live': 'polite', 'data-testid': 'pri-shown' });
   const sortBtns = {};
@@ -423,12 +253,13 @@ function render(d, view = null, opts = {}) {
     let list = eligible.filter((p) => state.products.has(p.r.product) && state.sections.has(p.r.section) && (!state.statuses.size || state.statuses.has(p.r.status)) && (!state.onlySel || sel.has(keyOf(p.r))) && !(actl && actl.hidden(p.r)) && (state.brief === 'all' || (state.brief === 'done') === isBriefed(p.r))
       && (!q || [p.r.cluster, p.r.icp, p.r.pain_point, p.r.story].some((t) => (t || '').toLowerCase().includes(q))));
     const def = (a, b) => (sOrder[a.r.section] - sOrder[b.r.section]) || (pOrder[a.r.product] - pOrder[b.r.product]) || (a.r.rank - b.r.rank);
-    if (state.key) {
+    if (state.key) {                                                                         // a column sort: plain rows, no merged cells
       const f = value[state.key];
       list = list.sort((a, b) => { const x = f(a.r), y = f(b.r); return (x < y ? -1 : x > y ? 1 : 0) * state.dir || def(a, b); });
-    } else list = list.sort(def);
+    } else list = list.sort(cmpGroup);                                                       // no sort chosen: product > market cluster > ICP > pain point in the sheet's order
     tbody.replaceChildren(...list.flatMap((p) => [p.tr, p.detailRow]));
     shownList = list;
+    applyGroups(list);
     renderTotals(list);
     count.textContent = `${list.length} of ${eligible.length} concepts shown`;
     const nB = eligible.filter((p) => isBriefed(p.r)).length;
@@ -615,6 +446,8 @@ function render(d, view = null, opts = {}) {
     actionsHost.replaceChildren(
       readonly || !opts.reload ? null : h('button', { type: 'button', class: 'btn primary pri-add', 'data-testid': 'pri-add-concept', onclick: () => mctl.add() }, 'Add concept'),
       h('span', { class: 'pri-btngroup', role: 'group', 'aria-label': 'Export' }, csvLink, h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-print', onclick: () => window.print() }, printLabel)));
+    const prodLink = h('a', { class: 'btn pri-prodlink', href: href('/priorities/production', {}), title: 'Concepts assigned to vendors, by week', 'data-testid': 'pri-prod-link' }, 'Production board');
+    if (actl) actl.onCount((n) => { prodLink.textContent = n === null ? 'Production board' : `Production board (${n})`; });
     const about = (title, tid, ...kids) => h('details', { class: 'pri-about', 'data-testid': tid }, h('summary', null, title), h('div', { class: 'pri-about-b' }, ...kids));
     return h('div', { class: 'pri-top' },
       h('div', { class: 'pri-titlerow' },
@@ -622,7 +455,7 @@ function render(d, view = null, opts = {}) {
           h('h1', { 'data-testid': 'pri-title' }, readonly ? `Creative priorities: ${view.name}` : act ? `Creative priorities: ${act.view.name}` : 'Creative priorities'),
           h('p', { class: 'pri-sub pri-hd-screen', 'data-testid': 'pri-sub' }, sub)),
         readonly ? null : h('div', { class: 'pri-headctl pri-hd-screen' },
-          act ? null : h('label', { class: 'pri-weekl' }, h('span', { class: 'pri-flabel' }, 'Week'), weekSel), viewbar, h('a', { class: 'pri-prodlink', href: href('/priorities/production', {}), 'data-testid': 'pri-prod-link' }, 'Production'))),
+          act ? null : h('label', { class: 'pri-weekl' }, h('span', { class: 'pri-flabel' }, 'Week'), weekSel), viewbar, prodLink)),
       readonly ? h('p', { class: 'pri-lead', 'data-testid': 'pri-view-note' }, `Saved view of ${d.rows.length} concept${d.rows.length === 1 ? '' : 's'}, snapshot week of ${d.week_start} (frozen: it does not change when a newer snapshot arrives). `,
         h('a', { href: href('/priorities', {}), 'data-testid': 'pri-open-full' }, 'Open full priorities'), ' ',
         h('a', { href: viewUrl(view.token), 'data-testid': 'pri-open-live' }, 'Open as a view with the latest data'), ' ',
@@ -684,13 +517,15 @@ function render(d, view = null, opts = {}) {
   }
   const selOnlyBtn = h('button', { type: 'button', class: 'btn pri-selonly', 'aria-pressed': 'false', 'data-testid': 'pri-sel-only', onclick: () => { state.onlySel = !state.onlySel; apply(); } }, 'Show selected only');
   uiSync.push(() => { selOnlyBtn.setAttribute('aria-pressed', String(state.onlySel)); selOnlyBtn.textContent = state.onlySel ? 'Show all rows' : 'Show selected only'; });
-  const toolbar = h('div', { class: 'pri-seltools', role: 'region', 'aria-label': 'Selected rows', hidden: true, 'data-testid': 'pri-seltools' }, selCount, selCsv,
+  const selSplit = h('span', { class: 'pri-selsplit', 'data-testid': 'pri-sel-split' });
+  const moreBtn = h('button', { type: 'button', class: 'btn pri-selmore', 'aria-expanded': 'false', 'data-testid': 'pri-sel-more', onclick: () => { const o = toolbar.classList.toggle('pri-more-open'); moreBtn.setAttribute('aria-expanded', String(o)); moreBtn.textContent = o ? 'Less' : 'More'; } }, 'More');
+  const toolbar = h('div', { class: 'pri-seltools', role: 'region', 'aria-label': 'Selected rows', hidden: true, 'data-testid': 'pri-seltools' }, h('span', { class: 'pri-selhead' }, selCount, selSplit), moreBtn, h('span', { class: 'pri-selacts', 'data-testid': 'pri-selacts' }, selCsv,
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-print', onclick: () => window.print() }, 'Print / PDF'),
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-copy', onclick: () => copyText() }, 'Copy as text'),
     selOnlyBtn,
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-save', onclick: () => saveViewDialog('rows') }, 'Save view'),
     actl ? actl.button : null,
-    h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-clear', onclick: () => { sel.clear(); selChanged(); } }, 'Clear'), copyNote);
+    h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-clear', onclick: () => { sel.clear(); selChanged(); } }, 'Clear'), copyNote));
 
   // the View switcher: All concepts + each saved view; choosing one filters this same table in place (URL ?view=<token>); Save view sits beside it
   const viewLabel = (v) => `${v.name || 'Untitled view'} (${v.kind === 'filters' ? 'filters' : `${v.count} concept${v.count === 1 ? '' : 's'}`})`;
@@ -750,6 +585,8 @@ function render(d, view = null, opts = {}) {
     const n = sel.size;
     toolbar.hidden = n === 0;
     selCount.textContent = `${n} selected`;
+    const per = PRODUCT_ORDER.map((x) => [x, d.rows.filter((r) => r.product === x && isSel(r)).length]).filter(([, c]) => c > 0);      // selected rows are counted wherever they are: a filter hiding a ticked row does not un-tick it
+    selSplit.textContent = per.map(([x, c]) => `${(d.baselines[x] || {}).product_name || x} ${c}`).join(' \u00b7 ');
     csvLink.href = selCsv.href = csvUrl();
     csvLink.textContent = n ? `Download CSV (${n} selected)` : 'Download CSV';
     printLabel.textContent = n ? `Print / save as PDF (${n} selected)` : 'Print / save as PDF';
@@ -758,7 +595,7 @@ function render(d, view = null, opts = {}) {
   }
   function copyText() {
     const rows = d.rows.filter(isSel).sort((a, b) => (pOrder[a.product] - pOrder[b.product]) || (sOrder[a.section] - sOrder[b.section]) || (a.rank - b.rank));
-    const text = rows.map((r) => [`Product: ${(d.baselines[r.product] || {}).product_name || r.product}`, `Action: ${SECTION_LABEL[r.section]}${r.source ? ' (' + r.source + ')' : ''}`,
+    const text = rows.map((r) => [`Product: ${(d.baselines[r.product] || {}).product_name || r.product}`, `Action: ${SECTION_LABEL[r.section]}${r.source ? ' (' + (NEW_IDEA[r.source] || r.source) + ', not on the sheet yet)' : ''}`,
       `Market Cluster: ${r.cluster}`, `ICP: ${r.icp}`, `Pain Point: ${r.pain_point}`, `Story: ${r.story || '\u2013'}`, `Status: ${r.status}`, `Key number: ${keyNumber(r, d)}`,
       `Concepts to brief: ${r.concepts || 0}`, ...(hasBriefed ? [`Briefed: ${isBriefed(r) ? briefTxt(r).replace('Briefed ', 'yes, ') : 'no'}`] : []), ...strip(r, true).map((t, i) => (i === 0 ? 'Notes: ' : '') + t)].join('\n')).join('\n\n');
     const done = (ok) => { copyNote.textContent = ok ? `Copied ${rows.length} row${rows.length === 1 ? '' : 's'}.` : 'Copy failed: select the text and copy by hand.'; };
@@ -800,7 +637,8 @@ function render(d, view = null, opts = {}) {
       printCell('concepts', r.manual ? '\u2013' : r.concepts ? String(r.concepts) : '\u2013'), printCell('key', keyNumber(r, d))),
     h('tr', { class: 'pri-strip' }, h('td', { colspan: '8' }, strip(r).map((t) => h('div', null, t)))));
   const widths = [10, 13, 13, 14, 22, 8, 7, 13];
-  const printHead = () => h('thead', null, h('tr', null, COLS.filter(([k]) => k !== 'product' && k !== 'spend14' && k !== 'roas14').map(([k, label]) => h('th', { scope: 'col' }, k === 'concepts' ? 'To brief' : label))));
+  const PRINT_COLS = ['section', 'cluster', 'icp', 'pain', 'story', 'status', 'concepts', 'key'].map((k) => COLS.find(([c]) => c === k));         // the printed sheet keeps Action first
+  const printHead = () => h('thead', null, h('tr', null, PRINT_COLS.map(([k, label]) => h('th', { scope: 'col' }, k === 'concepts' ? 'To brief' : label))));
   const printBlocks = h('div', { class: 'pri-print', 'data-testid': 'pri-print-copy', 'aria-hidden': 'true' });
   const buildPrint = () => printBlocks.replaceChildren(...slugs.flatMap((s) => {
     const picking = sel.size > 0;
@@ -821,12 +659,19 @@ function render(d, view = null, opts = {}) {
 
   apply();
   selChanged();
-  const tablebar = h('div', { class: 'pri-tablebar' }, h('span', null, count, ' ', selHint), h('span', { class: 'pri-seg pri-expbar', role: 'group', 'aria-label': 'Expand or collapse rows' },
+  const groupBtn = h('button', { type: 'button', class: 'btn pri-groupbtn', 'aria-pressed': 'true', 'data-testid': 'pri-group-btn', title: 'Group the rows by product, market cluster, ICP and pain point, in the sheet order (clears any column sort)', onclick: () => { state.key = null; state.dir = 1; apply(); } }, 'Group by cluster');
+  uiSync.push(() => groupBtn.setAttribute('aria-pressed', String(!state.key)));
+  const tablebar = h('div', { class: 'pri-tablebar' }, h('span', null, count, ' ', selHint), h('span', { class: 'pri-tbctl' }, groupBtn, h('span', { class: 'pri-seg pri-expbar', role: 'group', 'aria-label': 'Expand or collapse rows' },
     h('button', { type: 'button', class: 'pri-segbtn pri-exp', 'data-testid': 'pri-all-expand', onclick: () => setAll(true) }, 'Expand all'),
-    h('button', { type: 'button', class: 'pri-segbtn pri-exp', 'data-testid': 'pri-all-collapse', onclick: () => setAll(false) }, 'Collapse all')));
+    h('button', { type: 'button', class: 'pri-segbtn pri-exp', 'data-testid': 'pri-all-collapse', onclick: () => setAll(false) }, 'Collapse all'))));
   const topEl = buildTop();
   syncUI();
-  return h('div', { class: 'page pri-page', 'data-testid': 'pri-page' }, topEl, h('div', { class: 'pri-screen' }, readonly ? null : viewTools, filters, readonly ? null : toolbar, readonly ? null : linkBox, tablebar, table, recon), printBlocks);
+  const screen = h('div', { class: 'pri-screen' }, readonly ? null : viewTools, filters, readonly ? null : toolbar, readonly ? null : linkBox, tablebar, table, recon);
+  // sticky offsets: the selection bar pins under the app header, the column header pins under the bar. The bar's real height goes into a CSS variable (ResizeObserver: it wraps, and the phone layout is shorter), 0 while the bar is hidden.
+  const syncBarH = () => screen.style.setProperty('--pri-bar-h', (toolbar.hidden ? 0 : Math.round(toolbar.getBoundingClientRect().height)) + 'px');
+  if (!readonly && typeof ResizeObserver !== 'undefined') new ResizeObserver(syncBarH).observe(toolbar);
+  syncBarH();
+  return h('div', { class: 'page pri-page', 'data-testid': 'pri-page' }, topEl, screen, printBlocks);
 }
 
 // the page data for an active view: live rows where the key still exists (latest mode) else the frozen copy; a row that left the current snapshot falls back to its frozen copy, marked `_from`.

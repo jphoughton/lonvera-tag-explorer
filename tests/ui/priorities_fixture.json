@@ -392,7 +392,8 @@
    "product_name": "Vita Bull",
    "cluster_description": "The ED / Performance market for Vita Bull: 2 ICP(s) in the Communication Overview (Soft in the Wrong Places, Bedroom Upgrade Seeker).",
    "icp_description": "The specific person in this market: Bedroom Upgrade Seeker, who also appears with Sexual Performance / Libido Decline, Low Energy / Afternoon Crash.",
-   "pain_description": "The problem they feel: General Vitality / Aging Well. The emotion behind it: Pride. Ingredient angle (Vitamin B12 + Heme Iron): B12 shortfall behind the worn-out feeling."
+   "pain_description": "The problem they feel: General Vitality / Aging Well. The emotion behind it: Pride. Ingredient angle (Vitamin B12 + Heme Iron): B12 shortfall behind the worn-out feeling.",
+   "sheet_pos": 50
   },
   {
    "section": "iterate",
@@ -508,7 +509,8 @@
    "product_name": "Vita Bull",
    "cluster_description": "The Muscle & Strength market for Vita Bull: 2 ICP(s) in the Communication Overview (VB3 Same Effort, Less Back, Physique / Body Composition).",
    "icp_description": "The specific person in this market: Physique / Body Composition, who also appears with Weight Gain / Stubborn Belly Fat, Declining Testosterone.",
-   "pain_description": "The problem they feel: Muscle Recovery / Athletic Performance. The emotion behind it: Frustration. Ingredient angle (Collagen + Zinc): Slow repair of tendons, ligaments and sore muscle."
+   "pain_description": "The problem they feel: Muscle Recovery / Athletic Performance. The emotion behind it: Frustration. Ingredient angle (Collagen + Zinc): Slow repair of tendons, ligaments and sore muscle.",
+   "sheet_pos": 60
   },
   {
    "section": "faded",
@@ -716,7 +718,8 @@
    "product_name": "Vita Bull",
    "cluster_description": "The TRT & Men's Clinics market for Vita Bull: 3 ICP(s) in the Communication Overview (TRT Considerer, Peptide Clinic Shopper, Natural Testosterone Support).",
    "icp_description": "The specific person in this market: Natural Testosterone Support, who also appears with Declining Testosterone, Ingredient Quality / Sourcing.",
-   "pain_description": "The problem they feel: Distrust of Synthetic Solutions. The emotion behind it: Distrust. Ingredient angle (Whole-food general / none): None: pill skepticism, answered by food-form nutrients."
+   "pain_description": "The problem they feel: Distrust of Synthetic Solutions. The emotion behind it: Distrust. Ingredient angle (Whole-food general / none): None: pill skepticism, answered by food-form nutrients.",
+   "sheet_pos": 10
   },
   {
    "section": "faded",
@@ -947,7 +950,8 @@
    "product_name": "Vita Bull",
    "cluster_description": "The TRT & Men's Clinics market for Vita Bull: 3 ICP(s) in the Communication Overview (TRT Considerer, Peptide Clinic Shopper, Natural Testosterone Support).",
    "icp_description": "The specific person in this market: Peptide Clinic Shopper, who also appears with Declining Testosterone, Muscle Recovery / Athletic Performance.",
-   "pain_description": "The problem they feel: Offer / Price-Led. The emotion behind it: Frustration. Ingredient angle (Whole-food general / none): None: price objection, not a nutrient gap."
+   "pain_description": "The problem they feel: Offer / Price-Led. The emotion behind it: Frustration. Ingredient angle (Whole-food general / none): None: price objection, not a nutrient gap.",
+   "sheet_pos": 40
   },
   {
    "section": "stop",
@@ -956,7 +960,7 @@
    "line_id": 23,
    "line_code": "L23",
    "cluster": "Muscle & Strength",
-   "icp": "Physique / Body Composition",
+   "icp": "Cutting Gym Regular",
    "pain_point": "Weight Gain / Stubborn Belly Fat",
    "emotional_trigger": "Shame",
    "story": "He eats clean and lifts, but the belly stays and muscle won't build.",
@@ -1057,7 +1061,8 @@
    "product_name": "Vita Bull",
    "cluster_description": "The Muscle & Strength market for Vita Bull: 2 ICP(s) in the Communication Overview (VB3 Same Effort, Less Back, Physique / Body Composition).",
    "icp_description": "The specific person in this market: Physique / Body Composition, who also appears with Muscle Recovery / Athletic Performance, Declining Testosterone.",
-   "pain_description": "The problem they feel: Weight Gain / Stubborn Belly Fat. The emotion behind it: Shame. Ingredient angle (Choline): Fat backing up in the liver when choline runs low."
+   "pain_description": "The problem they feel: Weight Gain / Stubborn Belly Fat. The emotion behind it: Shame. Ingredient angle (Choline): Fat backing up in the liver when choline runs low.",
+   "sheet_pos": 70
   },
   {
    "section": "stop",
@@ -1141,7 +1146,8 @@
    "product_name": "Vita Bull",
    "cluster_description": "The Prostate / Urinary market for Vita Bull: 2 ICP(s) in the Communication Overview (The Night Waker, Prostate Worrier).",
    "icp_description": "The specific person in this market: The Night Waker, who also appears with Low Energy / Afternoon Crash, Mental Fog / Mood Instability.",
-   "pain_description": "The problem they feel: Prostate / Urinary Health. The emotion behind it: Frustration. Ingredient angle (Zinc): Low zinc in the prostate, where it concentrates."
+   "pain_description": "The problem they feel: Prostate / Urinary Health. The emotion behind it: Frustration. Ingredient angle (Zinc): Low zinc in the prostate, where it concentrates.",
+   "sheet_pos": 80
   },
   {
    "section": "new",
@@ -1262,7 +1268,8 @@
    "product_name": "Vita Bull",
    "cluster_description": "The TRT & Men's Clinics market for Vita Bull: 3 ICP(s) in the Communication Overview (TRT Considerer, Peptide Clinic Shopper, Natural Testosterone Support).",
    "icp_description": "The specific person in this market: Peptide Clinic Shopper, who also appears with Muscle Recovery / Athletic Performance, Offer / Price-Led.",
-   "pain_description": "The problem they feel: Declining Testosterone. The emotion behind it: Desire. Ingredient angle (Zinc + Cholesterol (hormone substrate)): Zinc depletion that slows testosterone production."
+   "pain_description": "The problem they feel: Declining Testosterone. The emotion behind it: Desire. Ingredient angle (Zinc + Cholesterol (hormone substrate)): Zinc depletion that slows testosterone production.",
+   "sheet_pos": 20
   },
   {
    "section": "new",
@@ -1383,7 +1390,8 @@
    "product_name": "Vita Bull",
    "cluster_description": "The TRT & Men's Clinics market for Vita Bull: 3 ICP(s) in the Communication Overview (TRT Considerer, Peptide Clinic Shopper, Natural Testosterone Support).",
    "icp_description": "The specific person in this market: Peptide Clinic Shopper, who also appears with Declining Testosterone, Offer / Price-Led.",
-   "pain_description": "The problem they feel: Muscle Recovery / Athletic Performance. The emotion behind it: Comparison. Ingredient angle (Collagen + Zinc): Slow repair of tendons, ligaments and sore muscle."
+   "pain_description": "The problem they feel: Muscle Recovery / Athletic Performance. The emotion behind it: Comparison. Ingredient angle (Collagen + Zinc): Slow repair of tendons, ligaments and sore muscle.",
+   "sheet_pos": 30
   },
   {
    "section": "proposal",
@@ -1391,8 +1399,8 @@
    "rank": 1,
    "line_id": null,
    "line_code": "DRAFT",
-   "cluster": "Chest Fat (cortisol / estrogen)",
-   "icp": "Man-Boobs & Chest Fat",
+   "cluster": "TRT & Men's Clinics",
+   "icp": "Peptide Clinic Shopper",
    "pain_point": "Weight Gain / Stubborn Belly Fat",
    "emotional_trigger": null,
    "story": "He's lean everywhere except his chest, and a loose shirt hides it daily.",
@@ -1510,7 +1518,7 @@
    "rank": 2,
    "line_id": null,
    "line_code": "DRAFT",
-   "cluster": "GLP-1 Companion (men)",
+   "cluster": "GLP-1 Companion",
    "icp": "Men on GLP-1",
    "pain_point": "Low Energy / Muscle & Nutrient Loss",
    "emotional_trigger": null,
@@ -1719,7 +1727,8 @@
    "product_name": "Beef Liver",
    "cluster_description": "The Ancestral Nutrition market for Beef Liver: 3 ICP(s) in the Communication Overview (Primal Living, Label Reader, Curious Beginner).",
    "icp_description": "The specific person in this market: Curious Beginner, who also appears with Off-Putting Taste / Hard to Eat.",
-   "pain_description": "The problem they feel: General Vitality / Aging Well. The emotion behind it: Desire. Ingredient angle (Whole-food general / none): None: general nutrient density from whole food."
+   "pain_description": "The problem they feel: General Vitality / Aging Well. The emotion behind it: Desire. Ingredient angle (Whole-food general / none): None: general nutrient density from whole food.",
+   "sheet_pos": 40
   },
   {
    "section": "iterate",
@@ -1864,7 +1873,8 @@
    "product_name": "Beef Liver",
    "cluster_description": "The Ancestral Nutrition market for Beef Liver: 3 ICP(s) in the Communication Overview (Primal Living, Label Reader, Curious Beginner).",
    "icp_description": "The specific person in this market: Label Reader, who also appears with Ingredient Quality / Sourcing.",
-   "pain_description": "The problem they feel: Offer / Price-Led. The emotion behind it: Comparison. Ingredient angle (Whole-food general / none): None: price objection, not a nutrient gap."
+   "pain_description": "The problem they feel: Offer / Price-Led. The emotion behind it: Comparison. Ingredient angle (Whole-food general / none): None: price objection, not a nutrient gap.",
+   "sheet_pos": 50
   },
   {
    "section": "faded",
@@ -2090,7 +2100,8 @@
    "product_name": "Beef Liver",
    "cluster_description": "The Ancestral Nutrition market for Beef Liver: 3 ICP(s) in the Communication Overview (Primal Living, Label Reader, Curious Beginner).",
    "icp_description": "The specific person in this market: Primal Living, who also appears with Nutrient Deficiency (Iron / B12 / Vitamin A).",
-   "pain_description": "The problem they feel: Distrust of Synthetic Solutions. The emotion behind it: Pride. Ingredient angle (Whole-food general / none): None: pill skepticism, answered by food-form nutrients."
+   "pain_description": "The problem they feel: Distrust of Synthetic Solutions. The emotion behind it: Pride. Ingredient angle (Whole-food general / none): None: pill skepticism, answered by food-form nutrients.",
+   "sheet_pos": 30
   },
   {
    "section": "faded",
@@ -2304,7 +2315,8 @@
    "product_name": "Beef Liver",
    "cluster_description": "The Energy & Multivitamin market for Beef Liver: 3 ICP(s) in the Communication Overview (The Wired-Tired, AG1 Defector, The Night-Shift Nurse).",
    "icp_description": "The specific person in this market: The Wired-Tired, who also appears with Mental Fog / Mood Instability.",
-   "pain_description": "The problem they feel: Low Energy / Afternoon Crash. The emotion behind it: Frustration. Ingredient angle (Vitamin B12 + Heme Iron): B12 shortfall behind the energy crash."
+   "pain_description": "The problem they feel: Low Energy / Afternoon Crash. The emotion behind it: Frustration. Ingredient angle (Vitamin B12 + Heme Iron): B12 shortfall behind the energy crash.",
+   "sheet_pos": 10
   },
   {
    "section": "stop",
@@ -2388,7 +2400,8 @@
    "product_name": "Beef Liver",
    "cluster_description": "The Alcohol & Liver Support market for Beef Liver: 3 ICP(s) in the Communication Overview (BL1 Weekend Face, Beer Drinker, Wine-Mom Wind-Down).",
    "icp_description": "The specific person in this market: BL1 Weekend Face, who also appears with Liver Health / Detox, Low Energy / Afternoon Crash.",
-   "pain_description": "The problem they feel: Alcohol Face. The emotion behind it: Shame. Ingredient angle (Vitamin A / Retinol + Choline): Alcohol-depleted vitamin A behind puffy, dull skin."
+   "pain_description": "The problem they feel: Alcohol Face. The emotion behind it: Shame. Ingredient angle (Vitamin A / Retinol + Choline): Alcohol-depleted vitamin A behind puffy, dull skin.",
+   "sheet_pos": 70
   },
   {
    "section": "stop",
@@ -2489,7 +2502,8 @@
    "product_name": "Beef Liver",
    "cluster_description": "The Weight Loss & Belly Fat market for Beef Liver: 2 ICP(s) in the Communication Overview (BL2 The Stubborn Gut, Failed Dieter).",
    "icp_description": "The specific person in this market: BL2 The Stubborn Gut, who also appears with Liver Health / Detox.",
-   "pain_description": "The problem they feel: Weight Gain / Stubborn Belly Fat. The emotion behind it: Shame. Ingredient angle (Choline): Liver fat that keeps the belly stubborn."
+   "pain_description": "The problem they feel: Weight Gain / Stubborn Belly Fat. The emotion behind it: Shame. Ingredient angle (Choline): Liver fat that keeps the belly stubborn.",
+   "sheet_pos": 80
   },
   {
    "section": "new",
@@ -2617,7 +2631,8 @@
    "product_name": "Beef Liver",
    "cluster_description": "The Collagen market for Beef Liver: 2 ICP(s) in the Communication Overview (One-Scoop Everything Buyer, Powder Churner).",
    "icp_description": "The specific person in this market: One-Scoop Everything Buyer, who also appears with Distrust of Synthetic Solutions.",
-   "pain_description": "The problem they feel: Hair Loss. The emotion behind it: Frustration. Ingredient angle (Biotin + Heme Iron): Biotin gap behind weak hair and nails."
+   "pain_description": "The problem they feel: Hair Loss. The emotion behind it: Frustration. Ingredient angle (Biotin + Heme Iron): Biotin gap behind weak hair and nails.",
+   "sheet_pos": 60
   },
   {
    "section": "new",
@@ -2747,7 +2762,8 @@
    "product_name": "Beef Liver",
    "cluster_description": "The Energy & Multivitamin market for Beef Liver: 3 ICP(s) in the Communication Overview (The Wired-Tired, AG1 Defector, The Night-Shift Nurse).",
    "icp_description": "The specific person in this market: AG1 Defector, who also appears with Distrust of Synthetic Solutions, Offer / Price-Led.",
-   "pain_description": "The problem they feel: Nutrient Deficiency (Iron / B12 / Vitamin A). The emotion behind it: Comparison. Ingredient angle (Heme Iron + Vitamin B12): Low ferritin (stored iron), which heme iron refills."
+   "pain_description": "The problem they feel: Nutrient Deficiency (Iron / B12 / Vitamin A). The emotion behind it: Comparison. Ingredient angle (Heme Iron + Vitamin B12): Low ferritin (stored iron), which heme iron refills.",
+   "sheet_pos": 20
   },
   {
    "section": "proposal",
@@ -3062,7 +3078,8 @@
    "product_name": "Boneflex",
    "cluster_description": "The Bone Broth & Ancestral Nutrition market for Boneflex: 2 ICP(s) in the Communication Overview (Primal Living, Raw-Material Believer).",
    "icp_description": "The specific person in this market: Primal Living, who also appears with Distrust of Synthetic Solutions.",
-   "pain_description": "The problem they feel: Joint Pain & Mobility Loss. The emotion behind it: Pride. Ingredient angle (Collagen + Glucosamine): Cartilage cushion losing its raw material."
+   "pain_description": "The problem they feel: Joint Pain & Mobility Loss. The emotion behind it: Pride. Ingredient angle (Collagen + Glucosamine): Cartilage cushion losing its raw material.",
+   "sheet_pos": 80
   },
   {
    "section": "iterate",
@@ -3207,7 +3224,8 @@
    "product_name": "Boneflex",
    "cluster_description": "The Glucosamine & Chondroitin market for Boneflex: 3 ICP(s) in the Communication Overview (BF3 Tried Everything, Horse-Pill Quitter, Label Reader).",
    "icp_description": "The specific person in this market: BF3 Tried Everything, who also appears with Joint Pain & Mobility Loss, Distrust of Synthetic Solutions.",
-   "pain_description": "The problem they feel: Offer / Price-Led. The emotion behind it: Frustration. Ingredient angle (Whole-food general / none): None: price objection, not a nutrient gap."
+   "pain_description": "The problem they feel: Offer / Price-Led. The emotion behind it: Frustration. Ingredient angle (Whole-food general / none): None: price objection, not a nutrient gap.",
+   "sheet_pos": 10
   },
   {
    "section": "faded",
@@ -3373,7 +3391,8 @@
    "product_name": "Boneflex",
    "cluster_description": "The Glucosamine & Chondroitin market for Boneflex: 3 ICP(s) in the Communication Overview (BF3 Tried Everything, Horse-Pill Quitter, Label Reader).",
    "icp_description": "The specific person in this market: Horse-Pill Quitter, who also appears with Joint Pain & Mobility Loss.",
-   "pain_description": "The problem they feel: Off-Putting Taste / Hard to Eat. The emotion behind it: Relief. Ingredient angle (Whole-food general / none): None: pill size, answered by a smaller capsule."
+   "pain_description": "The problem they feel: Off-Putting Taste / Hard to Eat. The emotion behind it: Relief. Ingredient angle (Whole-food general / none): None: pill size, answered by a smaller capsule.",
+   "sheet_pos": 20
   },
   {
    "section": "faded",
@@ -3571,7 +3590,8 @@
    "product_name": "Boneflex",
    "cluster_description": "The Pain-Relief Alternatives market for Boneflex: 2 ICP(s) in the Communication Overview (Pills Off The Table, Pharma Avoider).",
    "icp_description": "The specific person in this market: Pills Off The Table, who also appears with Joint Pain & Mobility Loss, General Vitality / Aging Well.",
-   "pain_description": "The problem they feel: Distrust of Synthetic Solutions. The emotion behind it: Frustration. Ingredient angle (Curcumin + MSM): Inflammatory swelling, without painkillers."
+   "pain_description": "The problem they feel: Distrust of Synthetic Solutions. The emotion behind it: Frustration. Ingredient angle (Curcumin + MSM): Inflammatory swelling, without painkillers.",
+   "sheet_pos": 40
   },
   {
    "section": "stop",
@@ -3656,7 +3676,8 @@
    "product_name": "Boneflex",
    "cluster_description": "The Glucosamine & Chondroitin market for Boneflex: 3 ICP(s) in the Communication Overview (BF3 Tried Everything, Horse-Pill Quitter, Label Reader).",
    "icp_description": "The specific person in this market: Label Reader, who also appears with Ingredient Quality / Sourcing.",
-   "pain_description": "The problem they feel: Joint Pain & Mobility Loss. The emotion behind it: Comparison. Ingredient angle (Glucosamine + Chondroitin): Worn cartilage and thin joint fluid."
+   "pain_description": "The problem they feel: Joint Pain & Mobility Loss. The emotion behind it: Comparison. Ingredient angle (Glucosamine + Chondroitin): Worn cartilage and thin joint fluid.",
+   "sheet_pos": 30
   },
   {
    "section": "stop",
@@ -3741,7 +3762,8 @@
    "product_name": "Boneflex",
    "cluster_description": "The Pain-Relief Alternatives market for Boneflex: 2 ICP(s) in the Communication Overview (Pills Off The Table, Pharma Avoider).",
    "icp_description": "The specific person in this market: Pills Off The Table, who also appears with Distrust of Synthetic Solutions, General Vitality / Aging Well.",
-   "pain_description": "The problem they feel: Joint Pain & Mobility Loss. The emotion behind it: Fear. Ingredient angle (Curcumin + MSM): Inflammatory swelling around the joint."
+   "pain_description": "The problem they feel: Joint Pain & Mobility Loss. The emotion behind it: Fear. Ingredient angle (Curcumin + MSM): Inflammatory swelling around the joint.",
+   "sheet_pos": 50
   },
   {
    "section": "new",
@@ -3881,7 +3903,8 @@
    "product_name": "Boneflex",
    "cluster_description": "The Pickleball & Active Aging market for Boneflex: 3 ICP(s) in the Communication Overview (BF1 Won't Sit It Out, Pickleball Diehard, Ex-Runner Longevity).",
    "icp_description": "The specific person in this market: BF1 Won't Sit It Out, who also appears with Joint Pain & Mobility Loss, General Vitality / Aging Well.",
-   "pain_description": "The problem they feel: Muscle Recovery / Athletic Performance. The emotion behind it: Frustration. Ingredient angle (MSM + Collagen): Post-activity soreness and stiffness."
+   "pain_description": "The problem they feel: Muscle Recovery / Athletic Performance. The emotion behind it: Frustration. Ingredient angle (MSM + Collagen): Post-activity soreness and stiffness.",
+   "sheet_pos": 60
   },
   {
    "section": "new",
@@ -4015,7 +4038,8 @@
    "product_name": "Boneflex",
    "cluster_description": "The Pickleball & Active Aging market for Boneflex: 3 ICP(s) in the Communication Overview (BF1 Won't Sit It Out, Pickleball Diehard, Ex-Runner Longevity).",
    "icp_description": "The specific person in this market: Ex-Runner Longevity, who also appears with Joint Pain & Mobility Loss.",
-   "pain_description": "The problem they feel: General Vitality / Aging Well. The emotion behind it: Pride. Ingredient angle (Collagen + Glucosamine): Connective tissue wearing down with age."
+   "pain_description": "The problem they feel: General Vitality / Aging Well. The emotion behind it: Pride. Ingredient angle (Collagen + Glucosamine): Connective tissue wearing down with age.",
+   "sheet_pos": 70
   },
   {
    "section": "proposal",
@@ -4023,7 +4047,7 @@
    "rank": 1,
    "line_id": null,
    "line_code": "DRAFT",
-   "cluster": "Menopause",
+   "cluster": "Glucosamine & Chondroitin",
    "icp": "Women's Bone-Marrow Joint Buyer",
    "pain_point": "Joint Pain & Mobility Loss",
    "emotional_trigger": null,
@@ -4126,7 +4150,7 @@
    "rank": 2,
    "line_id": null,
    "line_code": "DRAFT",
-   "cluster": "Spanish-Language Joint Buyer",
+   "cluster": "GLP-1 Companion",
    "icp": "Spanish-speaking joint buyer",
    "pain_point": "Joint Pain & Mobility Loss",
    "emotional_trigger": null,

@@ -93,7 +93,7 @@ def test_ckey_is_added_to_rows_and_nothing_else_changes(client, snaps, pg):
     d = client.get("/api/priorities?week=2026-11-08").get_json()
     stored = pg.execute("SELECT rows FROM creative_priorities_snapshots WHERE week_start = '2026-11-08'").fetchone()[0]
     from etl import creative_priorities as cpm
-    assert [{k: v for k, v in r.items() if k != "ckey"} for r in d["rows"]] == cpm.norm_snapshot({"rows": stored})["rows"]       # only the old->new vocabulary read map; storage itself is untouched
+    assert [{k: v for k, v in r.items() if k not in ("ckey", "sheet_pos")} for r in d["rows"]] == cpm.norm_snapshot({"rows": stored})["rows"]       # only the old->new vocabulary read map; storage itself is untouched
     assert stored[0]["section"] == "faded" and d["rows"][0]["section"] == "revive"
 
 
@@ -465,4 +465,198 @@ def test_assign_accepts_an_old_section_key_and_stores_the_new_action(client, sna
     pg.execute("UPDATE creative_priorities_assignments SET section_at_assign = 'proposal'")
     pg.commit()
     got = client.get("/api/priorities/assignments").get_json()
-    assert [a["section_at_assign"] for a in got["rows"]] == ["add"]                  # an old stored value shows as the new Action
+    assert [a["section_at_assign"] for a in got["rows"]] == ["test"]                 # an old stored value shows as the new Action (add folded into test)
+
+
+def test_a_new_idea_row_still_assigns_under_its_old_add_key_and_stores_test(client, pg):
+    idea = {**ROW, "section": "add", "source": "Our draft", "line_id": None, "line_code": "DRAFT", "cluster": "Chest Fat", "icp": "Chest Guy", "pain_point": "Belly", "story": ""}
+    seed_snapshot(pg, {"2026-11-08": [LINE_ROW, idea]})
+    r = assign(client, [_key(idea)], "Madre", MONDAY)                                       # product|add|...: the key a page or bookmark built before the change
+    assert r.status_code == 201 and r.get_json()["skipped"] == []
+    row = pg.execute("SELECT section_at_assign, vendor, icp FROM creative_priorities_assignments").fetchone()
+    assert tuple(row) == ("test", "Madre", "Chest Guy")
+    again = assign(client, [_key({**idea, "section": "test"})], "Madre", MONDAY).get_json()      # the same concept under its new key is the same concept (no duplicate)
+    assert not again["created"]
+
+
+# ---------------------------------------------------------------------------------------------------------------- detail panel data (Production page and vendor page)
+@pytest.fixture()
+def tagged(pg):
+    """A taxonomy line (id returned) with 12 tagged ads of spend 1200 down to 100 (ids 9201-9212): ad 5 has the best return among ads over $100, ad 12 a higher one on exactly $100 (counts), ad 11 an even higher one under $100 (does not)."""
+    pid = pg.execute("SELECT id FROM products WHERE slug = 'vita-bull'").fetchone()[0]
+    lid = pg.execute("INSERT INTO taxonomy_lines (product_id, line_code, cluster, icp, pain_point, sort_order) VALUES (%s,'ZZ99','Energy','Given Up Guy','Low T',999) RETURNING id", (pid,)).fetchone()[0]
+    for i in range(1, 13):
+        rid = 9200 + i
+        spend = 1300 - i * 100 if i < 11 else (99.0 if i == 11 else 100.0)
+        roas = {5: 3.0, 11: 9.0, 12: 2.9}.get(i, 1.0 + i / 100)
+        pg.execute("INSERT INTO tracker_rows (id, product_id, row_key, concept_id, ad_family, family_key, sheet_row, status, raw) VALUES (%s,%s,%s,%s,%s,%s,%s,'8 - Launched','{}')",
+                   (rid, pid, f"ZZ-D{i}#1", f"ZZ-D{i}", f"ZZ-DFam-{i}", f"zz-dfam-{i}", 99500 + i))
+        pg.execute("INSERT INTO ad_metrics (tracker_row_id, product_id, family_key, is_first_row, spend_launch, purchases_launch, revenue_launch) VALUES (%s,%s,%s,true,%s,3,%s)", (rid, pid, f"zz-dfam-{i}", spend, spend * roas))
+        pg.execute("INSERT INTO ad_tags (tracker_row_id, tag_set, version, is_current, line_id) VALUES (%s,'linemap','v-test',true,%s)", (rid, lid))
+    pg.commit()
+    yield lid
+    pg.execute("DELETE FROM tracker_rows WHERE id BETWEEN 9201 AND 9212")
+    pg.execute("DELETE FROM taxonomy_lines WHERE id = %s", (lid,))
+    pg.commit()
+
+
+def line_snapshot(pg, lid, extra=None):
+    seed_snapshot(pg, {"2026-11-08": [{**LINE_ROW, "line_id": lid, "section": "faded", **(extra or {})}, DRAFT]})
+    return _key({**LINE_ROW, "line_id": lid, "section": "faded"})
+
+
+def detail(client, aid):
+    return client.get(f"/api/priorities/assignments/{aid}/detail")
+
+
+def test_detail_of_a_line_concept_has_the_priorities_row_and_ten_examples_by_spend(client, pg, tagged):
+    key = line_snapshot(pg, tagged)
+    a = assign(client, [key]).get_json()["created"][0]
+    r = detail(client, a["id"])
+    assert r.status_code == 200
+    d = r.get_json()
+    assert d["current"] is True and d["snapshot_week"] == "2026-11-08" and d["message"] == "" and d["assignment_id"] == a["id"]
+    assert d["row"]["cluster"] == "Energy" and d["row"]["story"] == LINE_ROW["story"] and d["row"]["hooks"][0]["ad_id"] == 1000 and d["row"]["line_id"] == tagged     # the same row /priorities shows, links intact
+    assert d["baselines"] == {"vita-bull": {}} and "actions" in d["definitions"]
+    ex = d["examples"]
+    assert len(ex) == 10 and d["examples_max"] == 10                                  # 12 tagged ads, the top 10
+    assert [e["spend"] for e in ex] == sorted([e["spend"] for e in ex], reverse=True) and ex[0]["spend"] == 1200
+    assert ex[0]["ad"] == "zz-dfam-1" and ex[0]["ad_id"] == 9201 and ex[0]["roas"] == 1.01
+    best = [e for e in ex if e["best"]]
+    assert len(best) == 1 and best[0]["ad_id"] == 9205 and best[0]["roas"] == 3.0
+    assert detail(client, 99999).status_code == 404
+
+
+def test_the_best_performer_needs_at_least_100_spent(client, pg, tagged):
+    pg.execute("UPDATE ad_metrics SET spend_launch = spend_launch / 100, revenue_launch = revenue_launch / 100 WHERE tracker_row_id BETWEEN 9201 AND 9212")     # every ad under $100
+    pg.commit()
+    a = assign(client, [line_snapshot(pg, tagged)]).get_json()["created"][0]
+    ex = detail(client, a["id"]).get_json()["examples"]
+    assert ex and not any(e["best"] for e in ex)
+
+
+def test_detail_of_a_manual_concept_uses_the_manual_row_and_the_line_with_the_same_text(client, pg, tagged):
+    seed_snapshot(pg, {"2026-11-08": [DRAFT]})
+    m = client.post("/api/priorities/manual", json={"product": "vita-bull", "section": "test", "cluster": "Energy", "icp": "Given Up Guy", "pain_point": "Low T", "story": "He gave up.", "notes": "internal thoughts", "why_now": "because"})
+    assert m.status_code == 201, m.get_data(as_text=True)
+    mkey = m.get_json()["key"]
+    a = assign(client, [mkey]).get_json()["created"][0]
+    assert a["concept_key"].startswith("manual:")
+    d = detail(client, a["id"]).get_json()
+    assert d["current"] is True and d["row"]["manual"] is True and d["row"]["notes"] == "internal thoughts"            # the team sees its own notes
+    assert len(d["examples"]) == 10                                                   # no line of its own: the line with the same product / cluster / ICP / pain point supplies the examples
+
+
+def test_detail_falls_back_to_the_stored_tags_when_the_concept_left_the_snapshot(client, pg, tagged):
+    a = assign(client, [line_snapshot(pg, tagged)]).get_json()["created"][0]
+    seed_snapshot(pg, {"2026-11-15": [DRAFT]})                                       # the next week's list no longer has the line
+    d = detail(client, a["id"]).get_json()
+    assert d["current"] is False and d["message"] == "No current numbers for this concept."
+    assert d["row"]["cluster"] == "Energy" and d["row"]["icp"] == "Given Up Guy" and d["row"]["pain_point"] == "Low T" and "metrics" not in d["row"] and d["baselines"] == {}
+    assert len(d["examples"]) == 10                                                   # the examples do not depend on the snapshot
+
+
+def test_detail_with_no_snapshot_at_all_still_answers(client, pg, tagged):
+    a = assign(client, [line_snapshot(pg, tagged)]).get_json()["created"][0]
+    pg.execute("DELETE FROM creative_priorities_snapshots")
+    pg.commit()
+    d = detail(client, a["id"]).get_json()
+    assert d["current"] is False and d["snapshot_week"] is None and d["message"] == "No current numbers for this concept."
+
+
+def test_detail_needs_a_login(anon, client, snaps):
+    a = one(client)
+    assert anon.get(f"/api/priorities/assignments/{a['id']}/detail").status_code == 401
+
+
+def test_vendor_detail_is_the_vendors_own_row_without_links_or_manual_notes(client, anon, pg, tagged):
+    key = line_snapshot(pg, tagged)
+    a = assign(client, [key], vendor="Madre", note="internal only").get_json()["created"][0]
+    tok = link(client, "Madre")["token"]
+    r = anon.get(f"/api/priorities/vendor/{tok}/{a['id']}/detail")
+    assert r.status_code == 200
+    d = r.get_json()
+    assert d["current"] is True and d["row"]["cluster"] == "Energy" and len(d["examples"]) == 10 and sum(e["best"] for e in d["examples"]) == 1
+    assert all(e["ad_id"] is None for e in d["examples"])                             # the ad page needs a login
+    assert all("ad_id" not in h for h in d["row"]["hooks"]) and all("ad_id" not in w for w in d["row"].get("former_winners", []))
+    text = json.dumps(d)
+    assert "internal only" not in text and "created_by" not in text and "JoshHoughton" not in text
+    assert "evidence" not in d["row"] and "components" not in d["row"]
+
+
+def test_vendor_example_ads_link_only_to_public_facebook_or_instagram_never_drive_ads_manager_or_the_ad_page(client, anon, pg, tagged):
+    """The stored Facebook post, else the tracker asset link, but only when it is a https Facebook / Instagram URL; everything else (Drive, Ads Manager, other hosts) is None. The internal detail has no such field."""
+    pg.execute("INSERT INTO family_content (family_key, story_url) VALUES ('zz-dfam-1','https://www.facebook.com/lonvera/posts/1'), ('zz-dfam-2','javascript:alert(1)'), ('zz-dfam-3','https://adsmanager.facebook.com/adsmanager/manage/ads?act=1&selected_ad_ids=2')")
+    pg.execute("UPDATE tracker_rows SET asset_url = 'https://drive.google.com/file/d/2/view' WHERE id = 9202")            # bad post link, Drive asset link -> nothing: Drive is never exposed
+    pg.execute("UPDATE tracker_rows SET asset_url = 'https://www.instagram.com/p/Cabc/' WHERE id = 9203")                # Ads Manager post link refused, asset link is Instagram -> that
+    pg.execute("UPDATE tracker_rows SET asset_url = 'https://www.facebook.com/reel/4' WHERE id = 9204")                  # no post row at all -> the Facebook asset link
+    pg.execute("UPDATE tracker_rows SET asset_url = 'ftp://x/y' WHERE id = 9205")                                          # nothing usable
+    pg.commit()
+    try:
+        a = assign(client, [line_snapshot(pg, tagged)], vendor="Madre").get_json()["created"][0]
+        tok = link(client, "Madre")["token"]
+        ex = anon.get(f"/api/priorities/vendor/{tok}/{a['id']}/detail").get_json()["examples"]
+        by = {e["ad"]: e for e in ex}
+        assert by["zz-dfam-1"]["public_url"] == "https://www.facebook.com/lonvera/posts/1"
+        assert by["zz-dfam-2"]["public_url"] is None
+        assert by["zz-dfam-3"]["public_url"] == "https://www.instagram.com/p/Cabc/" and by["zz-dfam-4"]["public_url"] == "https://www.facebook.com/reel/4" and by["zz-dfam-5"]["public_url"] is None
+        assert all(e["ad_id"] is None for e in ex) and "/ad/" not in json.dumps(ex) and "adsmanager" not in json.dumps(ex) and "drive.google" not in json.dumps(ex)
+        inner = detail(client, a["id"]).get_json()["examples"]
+        assert inner and all("public_url" not in e for e in inner)
+    finally:
+        pg.execute("DELETE FROM family_content WHERE family_key LIKE 'zz-dfam-%'")
+        pg.commit()
+
+
+@pytest.mark.parametrize("url", ["https://www.facebook.com/lonvera/posts/101", "https://facebook.com/lonvera/posts/101", "https://fb.watch/abc123/", "https://instagram.com/p/Cabc/", "https://www.instagram.com/reel/Cabc/?utm_source=x",
+                                 "  https://www.facebook.com/lonvera/posts/101  "])
+def test_public_url_allows_https_facebook_and_instagram_hosts(url):
+    from app import priorities_detail as pdt
+    assert pdt.public_url(url) == url.strip()
+
+
+@pytest.mark.parametrize("url", ["https://drive.google.com/file/d/1/view", "https://docs.google.com/document/d/1", "https://drive.example/file/2", "http://www.facebook.com/lonvera/posts/1", "javascript:alert(1)", "data:text/html,x", "ftp://facebook.com/x",
+                                 "https://adsmanager.facebook.com/adsmanager/manage/ads", "https://business.facebook.com/x", "https://m.facebook.com/x", "https://facebook.com.evil.example/x", "https://evil.example/facebook.com", "https://www.facebook.com@evil.example/x",
+                                 "https://evil.example@www.facebook.com/x", "https://user:pw@www.facebook.com/x", "https://www.facebook.com:8443/x", "https://www.facebook.com/a b", "//www.facebook.com/x", "www.facebook.com/x", "", None])
+def test_public_url_refuses_every_other_host_scheme_or_shape(url):
+    from app import priorities_detail as pdt
+    assert pdt.public_url(url) is None
+
+
+def test_public_url_takes_the_first_qualifying_candidate():
+    from app import priorities_detail as pdt
+    assert pdt.public_url("https://drive.google.com/x", None, "https://www.instagram.com/p/1/", "https://www.facebook.com/2") == "https://www.instagram.com/p/1/"
+
+
+def test_payload_rows_on_a_sheet_line_carry_the_sheet_position(client, pg, tagged):
+    key = line_snapshot(pg, tagged)
+    rows = client.get("/api/priorities").get_json()["rows"]
+    mine = [r for r in rows if r.get("line_id") == tagged]
+    assert mine and mine[0]["sheet_pos"] == 999
+    assert all("sheet_pos" not in r for r in rows if r.get("line_id") is None)                                                 # a new idea has none
+
+
+def test_vendor_detail_of_a_manual_concept_hides_the_internal_notes(client, anon, pg, tagged):
+    seed_snapshot(pg, {"2026-11-08": [DRAFT]})
+    mkey = client.post("/api/priorities/manual", json={"product": "vita-bull", "section": "test", "cluster": "Energy", "icp": "Given Up Guy", "pain_point": "Low T", "story": "He gave up.", "notes": "internal thoughts", "why_now": "secret reason"}).get_json()["key"]
+    a = assign(client, [mkey], vendor="Madre").get_json()["created"][0]
+    tok = link(client, "Madre")["token"]
+    d = anon.get(f"/api/priorities/vendor/{tok}/{a['id']}/detail").get_json()
+    assert d["row"]["story"] == "He gave up." and d["row"]["manual"] is True
+    assert "internal thoughts" not in json.dumps(d) and "secret reason" not in json.dumps(d)
+
+
+def test_vendor_detail_of_another_vendors_row_bad_token_dropped_row_and_unknown_id_are_404(client, anon, pg, tagged):
+    key = line_snapshot(pg, tagged)
+    mine = assign(client, [key], vendor="Madre").get_json()["created"][0]
+    theirs = assign(client, [key], vendor="Victoria", week=NEXT_MONDAY).get_json()["created"][0]
+    tok = link(client, "Madre")["token"]
+    assert anon.get(f"/api/priorities/vendor/{tok}/{mine['id']}/detail").status_code == 200
+    assert anon.get(f"/api/priorities/vendor/{tok}/{theirs['id']}/detail").status_code == 404          # another vendor's assignment
+    assert anon.get(f"/api/priorities/vendor/{tok}/999999/detail").status_code == 404
+    assert anon.get(f"/api/priorities/vendor/{'x' * 30}/{mine['id']}/detail").status_code == 404        # a token that is not a vendor link
+    assert anon.get(f"/api/priorities/vendor/short/{mine['id']}/detail").status_code == 401             # not a public path at all
+    client.patch(f"/api/priorities/assignments/{mine['id']}", json={"dropped": True})
+    assert anon.get(f"/api/priorities/vendor/{tok}/{mine['id']}/detail").status_code == 404
+    assert anon.post(f"/api/priorities/vendor/{tok}/{mine['id']}/detail", json={}).status_code in (401, 403, 405)    # GET only
+    assert anon.get(f"/api/priorities/assignments/{theirs['id']}/detail").status_code == 401             # the internal route stays behind sign-in

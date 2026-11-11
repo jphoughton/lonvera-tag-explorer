@@ -41,6 +41,7 @@ def load_config(overrides: dict | None = None) -> dict:
         "SESSION_DAYS": int(env.get("SESSION_DAYS", "30")),
         "LOGIN_MAX_FAILS": int(env.get("LOGIN_MAX_FAILS", "5")),                 # failures per (client IP, username) in the window
         "LOGIN_MAX_FAILS_IP": int(env.get("LOGIN_MAX_FAILS_IP", "20")),          # failures per client IP in the window
+        "API_KEY_MAX_FAILS_IP": int(env.get("API_KEY_MAX_FAILS_IP", "20")),      # failed API key lookups per client IP in the same window
         "LOGIN_FAIL_WINDOW_SEC": int(env.get("LOGIN_FAIL_WINDOW_SEC", "600")),
         "DB_POOL_MIN": int(env.get("DB_POOL_MIN", "1")),
         "DB_POOL_MAX": int(env.get("DB_POOL_MAX", "8")),

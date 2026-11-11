@@ -350,8 +350,9 @@ def test_the_api_is_read_only(app, client, app_factory):
     assert launch_put == {("/api/priorities/launch/settings/<product>", "PUT")}
     from app import auth as auth_mod
     tok = "A" * 30
-    assert all(auth_mod.PUBLIC_API_RE.fullmatch(p) for p in (f"/api/priorities/vendor/{tok}", f"/api/priorities/vendor/{tok}/12"))
-    assert not any(auth_mod.PUBLIC_API_RE.fullmatch(p) for p in ("/api/priorities/vendor/short", f"/api/priorities/vendor/{tok}/x", f"/api/priorities/vendor/{tok}/1/2", "/api/priorities/vendor-links",
+    assert all(auth_mod.PUBLIC_API_RE.fullmatch(p) for p in (f"/api/priorities/vendor/{tok}", f"/api/priorities/vendor/{tok}/12", f"/api/priorities/vendor/{tok}/12/detail"))        # the list, a row edit, and the row's detail (GET)
+    assert {m for r in app.url_map.iter_rules() if r.rule == "/api/priorities/vendor/<token>/<int:aid>/detail" for m in r.methods} - {"HEAD", "OPTIONS"} == {"GET"}
+    assert not any(auth_mod.PUBLIC_API_RE.fullmatch(p) for p in ("/api/priorities/vendor/short", f"/api/priorities/vendor/{tok}/x", f"/api/priorities/vendor/{tok}/1/2", f"/api/priorities/vendor/{tok}/1/detail/x", f"/api/priorities/vendor/{tok}/x/detail", f"/api/priorities/vendor/{tok}/detail", f"/api/priorities/assignments/1/detail", "/api/priorities/vendor-links",
                                                                   "/api/priorities/assignments", f"/api/priorities/views/{tok}", "/api/priorities", f"/api/priorities/vendor/{tok}/"))
     for url in ("/api/products", "/api/products/vita-bull/rollup", "/api/products/vita-bull/tree", "/api/products/vita-bull/trend", "/api/ads/1000",
                 "/api/status", "/media/1"):

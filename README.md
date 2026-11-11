@@ -1,3 +1,5 @@
+New here (human or AI agent)? Start with `docs/AGENT_GUIDE.md`.
+
 # Lonvera Tag Explorer
 
 Railway web app + Postgres: drill product → market cluster → ICP → pain point → ad family → ad, with Meta spend / purchases / revenue served from Postgres. Behind a single-password login. Refreshed daily.
