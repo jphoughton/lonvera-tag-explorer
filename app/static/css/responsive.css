@@ -1,0 +1,25 @@
+/* responsive: phone and tablet rules for the app shell, tables and cards (loaded right after tables on purpose) */
+
+@media (max-width: 1100px) {
+  .adgrid, .twocol { grid-template-columns: 1fr; }
+  .filterbar { margin-left: 0; }
+}
+@media (max-width: 760px) {
+  .tablewrap { max-height: none; }
+  #controls { position: static; }
+  main#view { padding: 10px; }
+  /* phone widths: nothing outside a table may be wider than the viewport, so the bars wrap */
+  #topbar { position: static; height: auto; }
+  .topbar-in { flex-wrap: wrap; height: auto; gap: 4px 10px; padding: 6px 10px; }
+  .topbar-in .spacer { display: none; }
+  .topbar-in #status { order: 9; flex: 1 1 100%; font-size: 12px; }
+  .topbar-in #logout { margin-left: auto; }
+  .controls-in { padding: 6px 10px; }
+  .ctl { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+  .ctl .segs { flex-wrap: wrap; max-width: 100%; }
+  .ctl .segs .seg { border-bottom: 1px solid var(--line); margin-bottom: -1px; }
+  .ctl input[type=date] { min-width: 0; width: 132px; }
+  .adgrid > *, .twocol > *, .card { min-width: 0; }
+  table.mini { display: block; max-width: 100%; overflow-x: auto; }  /* small metric tables scroll inside their card */
+}
+

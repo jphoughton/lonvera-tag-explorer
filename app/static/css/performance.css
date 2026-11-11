@@ -1,0 +1,27 @@
+/* performance: Overview, Meta, Google, Campaigns: totals strip, KPI tiles */
+/* ---------- Lonvera, All views: totals strip (Total spend, Total NC revenue, Total NC ROAS) ---------- */
+.kpis { margin: 8px 0 4px; }
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px 9px; min-width: 0; }
+.kpi-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.kpi-value { font-size: 26px; font-weight: 650; line-height: 1.15; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.kpi[data-testid="kpi-nc-roas"] .kpi-value { color: var(--text); }
+.kpi-sub, .kpi-attr, .kpi-partial, .kpi-cmp { margin-top: 3px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.kpi-sub { white-space: pre-wrap; }
+.kpi-attr { color: var(--text); }
+.kpi-note { margin-top: 5px; }
+.kpi-loading { padding: 8px 2px; }
+@media (max-width: 480px) { .kpi-value { font-size: 23px; } }
+
+
+/* ---------- Chart options: bars, line, split, numbers tucked behind one disclosure ---------- */
+.chart-options { flex: 0 1 auto; }
+.chart-options > summary { cursor: pointer; font-size: 13px; color: var(--accent); padding: 3px 4px; list-style: none; border-radius: 4px; user-select: none; }
+.chart-options > summary::-webkit-details-marker { display: none; }
+.chart-options > summary::before { content: "+ "; font-weight: 650; }
+.chart-options[open] > summary::before { content: "\2212  "; }
+.chart-options > summary:hover { text-decoration: underline; }
+.chart-options > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chart-options[open] { flex-basis: 100%; order: 5; }
+.chart-options-body { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 6px 0 2px; }
+.page .ctl-row.pagefilters { margin-top: 2px; }

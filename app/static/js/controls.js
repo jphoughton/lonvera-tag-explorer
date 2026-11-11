@@ -2,6 +2,7 @@
 import { h, navigate, setParams, href, globalParams, fmt, isNum, currentParams, stageSet, stageParam, STAGES, hasDateWindow, compareOn, cmpView, applyCompareState, refreshCmp, qs, cleanParams, srcFromParams, applySourceState, srcView, currentPlatform, refreshSrcBadges, platformUrl } from './util.js';
 import { loadTieout } from './tieout.js';
 import { api, AuthError } from './api.js';
+import { renderNav } from './nav.js';
 
 const PRESETS = [['launch', 'Since launch'], ['1d', '1d'], ['7d', '7d'], ['14d', '14d'], ['30d', '30d'], ['60d', '60d'], ['90d', '90d'], ['180d', '180d'], ['mtd', 'MTD']];
 const COMPARES = [['off', 'Off'], ['prev', 'Previous period'], ['7d', '7d'], ['14d', '14d'], ['30d', '30d'], ['60d', '60d'], ['90d', '90d'], ['custom', 'Custom range']];
@@ -13,10 +14,12 @@ let presetBtns = [], stageBtns = {};
 let activeBtn, activeCountEl;
 let srcBtns = {}, basisBtns = {}, basisCtl, srcBannerEl, srcTextEl, tieBtn, tiePanel;
 let srcCtl, srcBtns2 = {}, basisBtns2 = {}, srcCtl2, basisCtl2;      // the same Numbers-from switch a second time, inside the banner row next to the explanation and the tie-out button
-let platformBtns = {}, stageCtl;
+let platformBtns = {}, stageCtl, rangeCtls = [];
+let navPieces = null;
+const ALL_FILTERS = ['platform', 'source', 'range', 'stage', 'compare'];
+let needs = new Set(ALL_FILTERS);        // which parts of the global filter bar the current page uses (its `filters` list in js/pageconfig.js)
 const isGoogle = () => currentPlatform() === 'google';
 const onCampaignsPage = () => /^\/campaigns\/?$/.test(location.pathname);
-const onPromotionsPage = () => /^\/promotions\/?$/.test(location.pathname);        // Test to scale: the page is about stages and has no comparison
 const ALL_CAMPAIGNS_OWN = "Each row is counted by its own platform: Meta's reporting for Meta campaigns, Google's for Google campaigns (see the Numbers column). Spend, impressions and clicks are totalled; purchases and revenue are not added across platforms. Switch to Upstack to read every row on Upstack's attribution.";
 const ALL_CAMPAIGNS_UP = "Every row is read on Upstack's any-click attribution (30-day window); spend, clicks and impressions stay the platform's. An order can be credited to a Meta ad and a Google campaign, so purchases and revenue are given per platform, never added.";
 let status = null;
@@ -36,22 +39,24 @@ function applyAuthUi() {
 
 export function setPendingNote(t) { pendingNote = t; }
 
-export function buildShell({ onBack }) {
+export function buildShell({ onBack, onSearch }) {
   topbar = document.getElementById('topbar');
   controls = document.getElementById('controls');
 
   statusEl = h('span', { class: 'status', id: 'status' });
   userEl = h('span', { class: 'whoami', id: 'whoami', hidden: true });
   backBtn = h('button', { type: 'button', class: 'btn back', id: 'back', title: 'Back to the previous view', onclick: onBack }, '← Back');
+  navPieces = renderNav({ onSearch });                      // brand, section links, tag search and the section's page tabs come from js/nav.js (one definition, shared with Projections)
   topbar.replaceChildren(h('div', { class: 'topbar-in' },
     backBtn,
-    h('a', { class: 'brand', href: '/' }, 'Lonvera'),
-    h('a', { class: 'navlink', href: '/' }, 'Marketing metrics'),
+    navPieces.brand,
+    navPieces.groups,
+    navPieces.search,
     h('span', { class: 'spacer' }),
     statusEl,
     userEl,
     h('button', { type: 'button', class: 'btn small', id: 'logout', onclick: logout }, 'Log out'),
-  ));
+  ), navPieces.subnav);
 
   presetBtns = PRESETS.map(([val, text]) => {
     const b = h('button', { type: 'button', class: 'seg', 'data-window': val, 'aria-pressed': 'false' }, text);
@@ -100,8 +105,10 @@ export function buildShell({ onBack }) {
     b.addEventListener('click', () => goPlatform(key));
     platformBtns[key] = b;
   }
-  // Numbers from (Meta | Upstack) and Count (New customers | All orders): built twice, once in the controls bar and once beside the explanation row; both read and write the URL
-  const sourceSegs = (inline) => {
+  // Numbers from (Meta | Upstack) and Count (New customers | All orders): ONE builder, mounted twice (the controls bar and beside the explanation row).
+  // Both mounts read and write the URL; the ids and data attributes differ only by the "-inline" suffix because tests address each mount separately.
+  const numbersFrom = (inline) => {
+    const sfx = inline ? '-inline' : '';
     const btns = {}, bb = {};
     for (const [key, text] of [['meta', 'Meta'], ['upstack', 'Upstack']]) {
       const b = h('button', { type: 'button', class: 'seg', [inline ? 'data-src-inline' : 'data-source']: key, 'aria-pressed': String(key === 'meta') }, text);
@@ -113,14 +120,14 @@ export function buildShell({ onBack }) {
       b.addEventListener('click', () => setParams({ basis: key === 'all' ? 'all' : null }));
       bb[key] = b;
     }
-    return { btns, bb };
+    const note = inline ? ' (next to the explanation)' : '';
+    const src = h('div', { class: 'ctl', id: 'source-ctl' + sfx }, h('span', { class: 'ctl-name' }, 'Numbers from'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Data source' + note }, Object.values(btns)));
+    const basis = h('div', { class: 'ctl', id: 'basis-ctl' + sfx, hidden: true }, h('span', { class: 'ctl-name' }, 'Count'), h('span', { class: 'segs', role: 'group', 'aria-label': 'What Upstack counts' + note }, Object.values(bb)));
+    return { btns, bb, src, basis };
   };
-  const top = sourceSegs(false), inl = sourceSegs(true);
-  srcBtns = top.btns; basisBtns = top.bb; srcBtns2 = inl.btns; basisBtns2 = inl.bb;
-  srcCtl = h('div', { class: 'ctl', id: 'source-ctl' }, h('span', { class: 'ctl-name' }, 'Numbers from'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Data source' }, Object.values(srcBtns)));
-  basisCtl = h('div', { class: 'ctl', id: 'basis-ctl', hidden: true }, h('span', { class: 'ctl-name' }, 'Count'), h('span', { class: 'segs', role: 'group', 'aria-label': 'What Upstack counts' }, Object.values(basisBtns)));
-  srcCtl2 = h('div', { class: 'ctl', id: 'source-ctl-inline' }, h('span', { class: 'ctl-name' }, 'Numbers from'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Data source (next to the explanation)' }, Object.values(srcBtns2)));
-  basisCtl2 = h('div', { class: 'ctl', id: 'basis-ctl-inline', hidden: true }, h('span', { class: 'ctl-name' }, 'Count'), h('span', { class: 'segs', role: 'group', 'aria-label': 'What Upstack counts (next to the explanation)' }, Object.values(basisBtns2)));
+  const top = numbersFrom(false), inl = numbersFrom(true);
+  srcBtns = top.btns; basisBtns = top.bb; srcCtl = top.src; basisCtl = top.basis;
+  srcBtns2 = inl.btns; basisBtns2 = inl.bb; srcCtl2 = inl.src; basisCtl2 = inl.basis;
   srcTextEl = h('span', { class: 'src-text', id: 'src-text' });
   tieBtn = h('button', { type: 'button', class: 'btn small', id: 'tieout-btn', 'aria-expanded': 'false' }, 'Meta vs Upstack tie-out');
   tiePanel = h('div', { class: 'tieout', id: 'tieout-panel', hidden: true });
@@ -147,8 +154,8 @@ export function buildShell({ onBack }) {
       h('div', { class: 'ctl', id: 'platform-ctl' }, h('span', { class: 'ctl-name' }, 'Platform'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Platform' }, Object.values(platformBtns))),
       srcCtl,
       basisCtl,
-      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Range'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Date range' }, presetBtns)),
-      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Custom'), fromEl, h('span', { class: 'muted' }, '–'), toEl, apply, errEl),
+      (rangeCtls[0] = h('div', { class: 'ctl', id: 'range-ctl' }, h('span', { class: 'ctl-name' }, 'Range'), h('span', { class: 'segs', role: 'group', 'aria-label': 'Date range' }, presetBtns))),
+      (rangeCtls[1] = h('div', { class: 'ctl', id: 'custom-ctl' }, h('span', { class: 'ctl-name' }, 'Custom'), fromEl, h('span', { class: 'muted' }, '–'), toEl, apply, errEl)),
       (stageCtl = h('div', { class: 'ctl', id: 'stage-ctl' }, h('span', { class: 'ctl-name' }, 'Stage'), h('span', { class: 'chips', role: 'group', 'aria-label': 'Stage' }, Object.values(stageBtns), activeBtn), activeCountEl)),
       h('div', { class: 'ctl', id: 'compare-ctl' }, h('span', { class: 'ctl-name' }, 'Compare to'), cmpSel, cmpCustomBox, perDayWrap),
     ),
@@ -233,15 +240,31 @@ function renderStaleBanner(st) {
   el.hidden = false;
 }
 
-export function showControls(on) {
+// on = show the global filter bar; filters = the parts this page uses (names in js/pageconfig.js: platform, source, range, stage, compare). Default: all of them.
+export function showControls(on, filters = ALL_FILTERS) {
+  needs = new Set(filters);
   controls.hidden = !on;
   const src = document.getElementById('source');
   if (src && !on) src.hidden = true;
   document.body.classList.toggle('no-controls', !on);
   controlsOn = on;
+  applyNeeds();
   applyAuthUi();
   renderStaleBanner(status);
 }
+// hide the parts of the bar the page did not ask for (syncPlatform and syncSource add their own, platform-dependent reasons on top)
+function applyNeeds() {
+  const platformCtl = document.getElementById('platform-ctl');
+  if (platformCtl) platformCtl.hidden = !needs.has('platform');
+  for (const c of rangeCtls) if (c) c.hidden = !needs.has('range');
+  const rangeInfo = document.getElementById('range-label');
+  if (rangeInfo) rangeInfo.hidden = !needs.has('range');
+  if (srcBannerEl) srcBannerEl.hidden = !needs.has('source');
+}
+// section links and page tabs of the top bar follow the URL
+export function syncNav(path, params) { if (navPieces) navPieces.setCurrent(path, params); }
+// the sign-in page shows the brand only
+export function setNavVisible(on) { document.body.classList.toggle('no-nav', !on); }
 export function setBackDisabled(disabled) {
   if (backBtn) backBtn.disabled = !!disabled;
 }
@@ -301,12 +324,12 @@ function syncPlatform() {
   const st = status && status.sources && status.sources.platforms;
   const g = st && st.find((x) => x.key === 'google');
   if (platformBtns.google) { platformBtns.google.disabled = !!(g && !g.available) && pl !== 'google'; platformBtns.google.title = g && !g.available ? 'Google data is not loaded yet' : 'Google: campaign types and campaigns'; }
-  if (stageCtl) stageCtl.hidden = pl !== 'meta' || onPromotionsPage();
+  if (stageCtl) stageCtl.hidden = pl !== 'meta' || !needs.has('stage');
   const cmpCtl = document.getElementById('compare-ctl');
-  if (cmpCtl) cmpCtl.hidden = onPromotionsPage();
+  if (cmpCtl) cmpCtl.hidden = !needs.has('compare');
   if (tieBtn) { tieBtn.hidden = pl !== 'meta'; if (pl !== 'meta') { tiePanel.hidden = true; tieBtn.setAttribute('aria-expanded', 'false'); } }
   const overview = pl === 'all' && !onCampaignsPage();                       // the overview shows every basis side by side; All campaigns takes the switch like any table
-  for (const el of [srcCtl, srcCtl2]) if (el) el.hidden = overview;
+  for (const el of [srcCtl, srcCtl2]) if (el) el.hidden = overview || !needs.has('source');
   for (const set of [srcBtns, srcBtns2]) if (set.meta) {
     set.meta.textContent = pl === 'google' ? 'Google' : pl === 'all' ? 'Own' : 'Meta';
     set.meta.title = pl === 'google' ? "Google's own reporting, delivered through Upstack's ad-platform feed" : pl === 'all' ? "Each platform's own reporting: Meta's for Meta rows, Google's for Google rows" : "Meta's own reporting (as the ad platform attributes purchases)";
@@ -347,7 +370,7 @@ function syncSource(p) {
   const pl = currentPlatform();
   for (const set of [srcBtns, srcBtns2]) for (const [k, b] of Object.entries(set)) b.setAttribute('aria-pressed', String(k === srcView.key));
   for (const set of [basisBtns, basisBtns2]) for (const [k, b] of Object.entries(set)) b.setAttribute('aria-pressed', String(k === (srcView.basis || 'nc')));
-  for (const c of [basisCtl, basisCtl2]) c.hidden = !up || (pl === 'all' && !onCampaignsPage());
+  for (const c of [basisCtl, basisCtl2]) c.hidden = !up || (pl === 'all' && !onCampaignsPage()) || !needs.has('source');
   const avail = sourceAvailable();
   for (const set of [srcBtns, srcBtns2]) {
     set.upstack.disabled = !avail && !up;

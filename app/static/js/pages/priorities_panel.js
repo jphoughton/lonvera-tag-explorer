@@ -59,11 +59,12 @@ export function keyNumber(r, d) {
 // Reading order: identity strip -> verdict -> the thing to act on (revive play / hooks) -> then vs now -> timeline -> former winners -> competitors -> stat cards -> footer pills.
 // Every fact the panel always carried is still here; long definitions sit behind keyboard-operable "?" disclosures and long lists behind "Show all".
 export const toneOf = (r) => STATUS_CLASS[r.status] || 'flat';
+const LABEL_TIP = { 'ICP': 'Ideal customer profile: who the ad speaks to', 'ROAS': 'Return on ad spend: purchase value divided by spend', 'CPA': 'Cost per acquisition: spend divided by purchases' };
 const TAG_HELP = { 'Market Cluster': 'cluster_description', 'ICP': 'icp_description', 'Pain Point': 'pain_description' };
 
 export function tile(label, value, desc) {
   return h('div', { class: 'pri-tile' },
-    h('div', { class: 'pri-tile-h' }, h('span', { class: 'pri-label' }, label),
+    h('div', { class: 'pri-tile-h' }, h('span', { class: 'pri-label', title: LABEL_TIP[label] || null }, label),
       desc ? h('details', { class: 'pri-help' }, h('summary', { 'aria-label': `What is ${label}?`, title: `What is ${label}?` }, '?'), h('p', { class: 'pri-helptext' }, desc)) : null),
     h('div', { class: 'pri-tname' }, value || '–'));
 }

@@ -3,6 +3,7 @@
 import { h } from '../util.js';
 import { api } from '../api.js';
 import { showControls } from '../controls.js';
+import { pageHeader } from '../ui/pagehead.js';
 
 const PLACEHOLDER = 'YOUR_KEY';
 
@@ -34,8 +35,7 @@ export async function connectAgentPage(ctx) {
   document.title = 'Connect an agent · Marketing metrics';
   const body = h('div', { class: 'cn-body', 'aria-live': 'polite' });
   ctx.mount(h('div', { class: 'page cn-page', 'data-testid': 'cn-page' },
-    h('div', { class: 'pagehead' }, h('h1', null, 'Connect an agent'),
-      h('div', { class: 'note-line' }, 'Let an AI assistant read the same data and definitions you see here. It can look things up and run read-only queries. It cannot change anything.')), body));
+    pageHeader({ title: 'Connect an agent', description: 'Let an AI assistant read the same data and definitions you see here. It can look things up and run read-only queries. It cannot change anything.' }), body));
 
   const render = (st, fresh) => {
     const keyBox = fresh

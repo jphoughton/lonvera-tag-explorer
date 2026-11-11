@@ -58,6 +58,7 @@ def col(page, key):
 
 def test_nav_link_and_default_week_view(page):
     page.goto("/promotions")
+    page.locator("[data-testid=nav-section-performance]").click()                                   # Trends is a tab of the Performance section
     page.wait_for_selector("[data-testid=nav-trends]")
     page.locator("[data-testid=nav-trends]").click()
     page.wait_for_selector("[data-testid=trn-page]")
@@ -154,7 +155,7 @@ def test_change_after_every_column_switch_is_off_by_default_and_adds_the_old_col
     i = h.index("total_rev")
     assert h[i + 1] == "total_rev:d" and h[h.index("nc_roas") + 1] == "nc_roas:d" and "chg:nc_roas" in h        # the change block stays
     r = rows(page)
-    assert re.search(r"[▲▼]\d", r[-2]["cells"][h.index("nc_cpa") + 1]), r[-2]["cells"][:6]
+    assert re.search(r"[+-]\d+\.\d%|[+-]\d+\.\dpp", r[-2]["cells"][h.index("nc_cpa") + 1]), r[-2]["cells"][:6]
     tints = page.evaluate("""(i) => [...document.querySelectorAll('[data-testid=trn-table] tbody tr[data-key]')].flatMap(tr => [...tr.children[i].querySelectorAll('.trn-chg')].map(e => e.className.replace('trn-chg ', '')))""", h.index("nc_cpa") + 1)
     assert "trn-good" in tints and "trn-bad" in tints                                                          # polarity colours are kept
     page.locator("[data-testid=trn-delta-off]").click()
@@ -326,7 +327,7 @@ def test_reach_has_no_change_while_the_period_is_open(page):
     r = rows(page)
     assert h[i + 1] == "reach:d"
     assert re.search(r"\d", r[-1]["cells"][i]) and r[-1]["cells"][i + 1] == "–"        # open week (last row): value from the feed row, no change
-    assert re.search(r"[▲▼]", r[-2]["cells"][i + 1])                                    # closed week: change vs the previous week's own row
+    assert re.search(r"[+-]\d", r[-2]["cells"][i + 1])                                    # closed week: change vs the previous week's own row
     tip = page.evaluate("(i) => document.querySelector('[data-testid=trn-table] tbody tr:last-child').children[i + 1].title", i)
     assert "like-for-like" in tip.lower() or "same days" in tip.lower()
 
@@ -480,3 +481,21 @@ def test_nc_conversion_is_new_customers_over_new_visitors_with_its_label_format_
     page.locator("[data-testid=trn-more] summary").click()
     txt = page.locator("[data-testid=trn-more]").inner_text()
     assert "new visitors" in txt and "differs from the sheet" in txt
+
+
+def test_header_and_controls_use_the_shared_components(page):
+    goto(page)
+    assert page.locator("[data-testid=trn-head] h1").inner_text() == "Trends"
+    assert page.locator("[data-testid=trn-head] .note-line").count() == 1
+    assert page.title() == "Trends · Lonvera"
+    assert page.locator("[data-testid=trn-controls] .ctl-row").count() == 2                     # one row for period and source, one for columns
+    assert page.locator("[data-testid=trn-numbers] .ctl-name").inner_text().lower() == "numbers from"
+    assert page.locator("[data-testid=trn-numbers] .segs .seg").count() == 3
+    assert page.locator("[data-testid=trn-groups] .fchip").count() >= 3                          # bands are filter chips
+    assert "—" not in page.locator("[data-testid=trn-page]").inner_text()
+
+
+def test_change_after_every_column_matches_the_change_block_format(page):
+    goto(page, "?delta=1")
+    txt = page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] .trn-chg')].map(e => e.textContent)")
+    assert txt and all(re.fullmatch(r"[+-]\d+\.\d%|[+-]\d+\.\dpp|0\.0%|0\.0pp", t) for t in txt), txt[:5]

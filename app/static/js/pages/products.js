@@ -3,13 +3,16 @@ import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { columnsChips, legendLine, viewSwitch } from '../components.js';
 import { createTrendPanel, createPins } from '../trend.js';
+import { tuckChartOptions } from './platforms.js';
 import { ownStrip } from '../kpis.js';
 import { metricColumns, trendColumn, pinColumn, flatTotal } from '../columns.js';
 import { setRangeInfo, ensureStatus, windowInfoFallback } from '../controls.js';
+import { pageHeader } from '../ui/pagehead.js';
 
 export function tagBadge(product) {
   const mapped = product.tag_set === 'linemap';
-  return badge(product.tag_label || (mapped ? 'Line-mapped tags' : 'Tracker tags — not line-mapped yet'), mapped ? 'tag-mapped' : 'tag-tracker', 'Which tags drive the hierarchy');
+  const label = String(product.tag_label || '').replace(/\s+\u2014\s+/g, ', ');   // the server text may still carry an em dash
+  return badge(label || (mapped ? 'Line-mapped tags' : 'Tracker tags, not line-mapped yet'), mapped ? 'tag-mapped' : 'tag-tracker', 'Which tags drive the hierarchy');
 }
 
 // % of spend across products when the API did not send it: relative to the Meta account total (total_all) when there is one
@@ -32,7 +35,7 @@ function addShares(list, ta) {
 export async function productsPage(ctx) {
   const { params: p, signal } = ctx;
   const G = globalParams(p);
-  document.title = 'Meta · Marketing metrics';
+  document.title = 'Meta · Lonvera';
   const [data, st] = await Promise.all([api('/api/products', { ...apiWindow(p), envelope: 1 }, { signal }), ensureStatus(signal)]);
   if (!ctx.alive()) return;
   const list = Array.isArray(data) ? data : (data.rows || data.products || []);
@@ -78,6 +81,7 @@ export async function productsPage(ctx) {
     slug: null, p, pins, mode: 'landing', scopeLabel: 'All products', products: list, signal,
     onSparks: (map) => { for (const r of list) r.spark = map[r.slug]; if (t) t.refresh(); },
   });
+  tuckChartOptions(panel);                                                           // Bars, Line, Swap, Split and Numbers sit in the closed Chart options disclosure, Grain stays in view
   const cols = [
     {
       key: 'name', label: 'Product', sticky: true, sort: (r) => r.name,
@@ -99,10 +103,11 @@ export async function productsPage(ctx) {
   });
   onCmpRefresh(() => t.refresh());
   ctx.mount(h('div', { class: 'page' },
-    h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'Meta'), h('span', { class: 'spacer' }), viewSwitch('home', G, 'meta')), h('div', { class: 'note-line' }, 'Products, tags and creatives')),
-    legendLine(),
+    pageHeader({ title: 'Meta', actions: viewSwitch('home', G, 'meta'),
+      description: 'Meta spend and results by product. Open a product for its tags and creatives. ROAS means return on ad spend; CPA means cost per acquisition.' }),
     ownStrip('meta', 'Meta', ta || tm, a),
     panel.el,
+    legendLine(),
     h('div', { class: 'tablehead' }, columnsChips()),
     list.length ? t.el : empty('No products with tracker rows or Meta spend.'),
   ));

@@ -71,9 +71,15 @@ def pages(route_list: list[dict]) -> list[dict]:
     for m in re.finditer(r"import \{([^}]*)\} from '\./js/pages/([A-Za-z_]+\.js)';", js):
         for name in m.group(1).split(","):
             imports[name.strip()] = "app/static/js/pages/" + m.group(2)
+    fns: dict[str, str] = {}                                     # page id -> page function, from PAGE_FNS in app.js
+    block = re.search(r"const PAGE_FNS = \{(.*?)\};", js, re.S)
+    for m in re.finditer(r"""['"]?([\w-]+)['"]?\s*:\s*(\w+)""", block.group(1) if block else ""):
+        fns[m.group(1)] = m.group(2)
+    cfg = (ROOT / "app" / "static" / "js" / "pageconfig.js").read_text()      # URL patterns, public / bare flags: one table, js/pageconfig.js
     out = []
-    for m in re.finditer(r"\{ re: /(.+?)/, page: (\w+)(.*?)\}", js):
-        pat, page, rest = m.group(1), m.group(2), m.group(3)
+    for m in re.finditer(r"\{ id: '([\w-]+)', re: /(.+?)/,(.*)", cfg):
+        pid, pat, rest = m.group(1), m.group(2), m.group(3)
+        page = fns.get(pid, pid)
         out.append({"url_pattern": "/" + re.sub(r"\\/\?\$|\$|\^|\\|\(\[.*?\]\+\)|\(\[.*?\]\+\)", lambda x: "<token>" if x.group(0).startswith("(") else "", pat).strip("/?"),
                     "page_function": page, "js_file": imports.get(page) or "app/static/app.js (local function that picks a page by platform)", "public": "public: true" in rest, "bare": "bare: true" in rest})
     out.append({"url_pattern": "/projection[/<module>]", "page_function": "projection shell", "js_file": "app/static/js/projection/shell.js", "public": False, "bare": False})

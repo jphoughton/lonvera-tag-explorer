@@ -23,7 +23,7 @@ function render(d) {
     { cls: 'shown', cells: ['Upstack, tied to Meta ads (what Upstack mode shows)', money(map.spend), int(map.orders), money(map.rev), int(map.nc), money(map.nc_rev), fmt.roas(map.roas_all), money(map.cpa_all), fmt.roas(map.roas_nc), money(map.cpa_nc)] },
     { cls: 'muted', cells: ['Upstack ad rows tied to no Meta ad (in no row)', '–', int(un.orders), money(un.rev), int(un.nc), money(un.nc_rev), '–', '–', '–', '–'] },
   ];
-  const t2 = table(['Marketing metrics total (creatives on the tracker)', 'Spend', 'Purchases / orders / new customers', 'Revenue', 'ROAS', 'CPA'], [
+  const t2 = table(['Lonvera total (creatives on the tracker)', 'Spend', 'Purchases / orders / new customers', 'Revenue', 'ROAS', 'CPA'], [
     { cells: ['Meta', money(tags.meta.spend), int(tags.meta.purchases), money(tags.meta.revenue), fmt.roas(ratio(tags.meta.revenue, tags.meta.spend)), money(ratio(tags.meta.spend, tags.meta.purchases))] },
     { cells: ['Upstack · new customers', money(tags.upstack_nc.spend), int(tags.upstack_nc.purchases), money(tags.upstack_nc.revenue), fmt.roas(ratio(tags.upstack_nc.revenue, tags.upstack_nc.spend)), money(ratio(tags.upstack_nc.spend, tags.upstack_nc.purchases))] },
     { cells: ['Upstack · all orders', money(tags.upstack_all.spend), int(tags.upstack_all.purchases), money(tags.upstack_all.revenue), fmt.roas(ratio(tags.upstack_all.revenue, tags.upstack_all.spend)), money(ratio(tags.upstack_all.spend, tags.upstack_all.purchases))] },

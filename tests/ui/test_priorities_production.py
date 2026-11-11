@@ -31,6 +31,13 @@ def stage(page, rid):
     return row(page, rid).locator("[data-testid=prod-stage]").text_content().strip()
 
 
+def more(page, rid):
+    """Change vendor or week and Drop sit behind a per-row More disclosure."""
+    d = row(page, rid).locator("[data-testid=prod-more]")
+    if d.get_attribute("open") is None:
+        d.locator("summary").click()
+
+
 def fill_dialog(page, value, field="url"):
     page.fill(f"[data-testid=prod-dialog] [data-testid=prod-field-{field}]", value)
     page.click("[data-testid=prod-dialog-ok]")
@@ -40,7 +47,7 @@ def fill_dialog(page, value, field="url"):
 def test_table_renders_with_plain_columns_and_open_rows_only(page):
     goto(page)
     heads = [t.strip() for t in page.locator("[data-testid=prod-table] thead th").all_text_contents()]
-    assert heads == ["Week of", "Vendor", "Product", "Concept", "Brief", "Creative", "Format", "Stage", "Ads", "Result", ""]
+    assert heads == ["Week of", "Vendor", "Product", "Concept", "Brief", "Creative", "Format", "Stage", "Ready", "Ads", "Spend", "Return", ""]
     ids = page.locator("[data-testid=prod-row]").evaluate_all("rs => rs.map(r => r.dataset.id)")
     assert ids == ["3", "2", "1"]                                    # newest week first; the launched row 4 is hidden until Show launched and dropped
     assert stage(page, 1) == "Assigned" and stage(page, 2) == "Creative delivered"
@@ -113,13 +120,16 @@ def test_filters_by_week_vendor_and_closed(page):
 
 def test_change_vendor_and_drop_with_confirm(page):
     goto(page)
+    more(page, 1)
     row(page, 1).locator("[data-testid=prod-change]").click()
     page.select_option("[data-testid=prod-dialog] [data-testid=prod-field-vendor]", "Victoria")
     page.click("[data-testid=prod-dialog-ok]")
     page.wait_for_function("() => document.querySelector(\"[data-testid=prod-row][data-id='1'] [data-testid=prod-vendor]\")?.textContent === 'Victoria'")
+    more(page, 1)
     row(page, 1).locator("[data-testid=prod-drop]").click()
     page.click("[data-testid=prod-dialog-cancel]")                                 # cancel keeps it
     assert row(page, 1).count() == 1
+    more(page, 1)
     row(page, 1).locator("[data-testid=prod-drop]").click()
     page.click("[data-testid=prod-dialog-ok]")
     page.wait_for_function("() => !document.querySelector(\"[data-testid=prod-row][data-id='1']\")")
@@ -129,6 +139,8 @@ def test_vendor_links_copy_and_reset_with_confirm(page, ctx):
     ctx.grant_permissions(["clipboard-read", "clipboard-write"])
     goto(page)
     assert page.locator("[data-testid=prod-copy-link]").count() == 9
+    assert not page.locator("[data-testid=prod-copy-link]").first.is_visible()          # collapsed until opened
+    page.locator("[data-testid=prod-links] > summary").click()
     page.locator("[data-vendor=Madre] [data-testid=prod-copy-link]").click()
     page.wait_for_function("() => document.querySelector('[data-testid=prod-vendor-url]')")
     assert page.locator("[data-testid=prod-vendor-url]").text_content().endswith("/priorities/vendor/" + MADRE)
@@ -351,5 +363,60 @@ def test_no_sideways_page_scroll_at_375px_with_a_row_open(browser, base_url, pat
         assert pg.locator("[data-testid=pri-example]").count() == 10
         assert pg.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1")
         assert pg.evaluate("() => document.body.scrollWidth <= window.innerWidth + 1")
+    finally:
+        c.close()
+
+
+# ---------------------------------------------------------------------------------------------------------------- shared header and filters, status board, ready / spend / return columns
+def test_page_uses_the_shared_header_and_filter_row_and_new_names(page):
+    goto(page)
+    assert page.locator("[data-testid=prod-head].pagehead .titleline h1").text_content() == "Production"
+    assert page.locator(".pagefilters [data-testid=prod-week]").count() == 1 and page.locator(".pagefilters [data-testid=prod-vendor]").count() == 1
+    assert page.locator(".pagefilters [data-testid=prod-closed]").count() == 1
+    assert page.locator("[data-testid=prod-back]").text_content().strip() == "Back to Priorities"
+    assert page.title() == "Production · Lonvera"
+    assert "Production board" not in page.locator("[data-testid=prod-page]").text_content()
+
+
+def test_status_filter_counts_and_filters_rows(page):
+    goto(page)
+    labels = page.locator("[data-testid=prod-stage-filter] .seg").all_text_contents()
+    assert labels[0] == "All 3" and "Assigned 2" in labels and "Creative delivered 1" in labels and not any("Launched" in x for x in labels)
+    page.click("[data-testid=prod-stagebtn-creative_in]")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 1")
+    assert page.locator("[data-testid=prod-stagebtn-creative_in]").get_attribute("aria-pressed") == "true"
+    assert "stage=creative_in" in page.url
+    page.click("[data-testid=prod-stagebtn-all]")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 3")
+
+
+def test_ready_spend_and_return_columns_are_visible(page):
+    goto(page, "?closed=1")
+    assert row(page, 2).locator("[data-testid=prod-ready-state]").get_attribute("data-ready") == "0"
+    assert row(page, 1).locator("[data-testid=prod-ready-state]").text_content().strip() == "Needs creative"
+    assert row(page, 4).locator("[data-testid=prod-ready-state]").get_attribute("data-ready") == "1"
+    assert row(page, 4).locator("[data-testid=prod-spend]").text_content().strip() == "$1,240"
+    assert row(page, 4).locator("[data-testid=prod-return]").text_content().strip() == "1.80"
+    assert row(page, 1).locator("[data-testid=prod-spend]").text_content().strip() == "–"
+    assert page.locator("[data-testid=prod-table] thead th[title*='Return on ad spend']").count() == 1
+
+
+def test_more_hides_change_and_drop_until_opened(page):
+    goto(page)
+    assert not row(page, 1).locator("[data-testid=prod-drop]").is_visible()
+    more(page, 1)
+    assert row(page, 1).locator("[data-testid=prod-drop]").is_visible() and row(page, 1).locator("[data-testid=prod-change]").is_visible()
+
+
+def test_vendor_page_is_a_single_column_with_big_buttons_at_375px(browser, base_url):
+    c = browser.new_context(viewport={"width": 375, "height": 812}, base_url=base_url)
+    try:
+        pg = c.new_page()
+        pg.goto(f"/priorities/vendor/{MADRE}")
+        pg.wait_for_selector("[data-testid=prod-vendor-page]")
+        assert pg.locator("[data-testid=prod-vhelp]").is_visible()
+        assert pg.locator("[data-testid=prod-card] [data-testid=prod-stage]").count() == pg.locator("[data-testid=prod-card]").count()
+        assert pg.locator("[data-testid=prod-save]").first.bounding_box()["height"] >= 40
+        assert pg.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1")
     finally:
         c.close()

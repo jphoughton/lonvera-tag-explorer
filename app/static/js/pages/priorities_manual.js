@@ -36,7 +36,7 @@ export function addManualNotes(panel, r, d) {
   const same = d.rows.filter((m) => m.manual && !m.done && m.product === r.product && norm(m.cluster) === norm(r.cluster) && norm(m.icp) === norm(r.icp) && norm(m.pain_point) === norm(r.pain_point));
   if (!same.length) return;
   panel.append(h('div', { class: 'pri-mnote', 'data-testid': 'pri-manual-note' }, h('span', { class: 'pri-mbadge' }, 'Manual note'),
-    same.map((m) => h('div', { class: 'pri-mnote-item' }, h('span', { class: 'pri-k' }, `Added ${dayOf(m.created_at)}: `), [m.notes, m.why_now && `Why now: ${m.why_now}`].filter(Boolean).join(' — ') || '(no notes)'))));
+    same.map((m) => h('div', { class: 'pri-mnote-item' }, h('span', { class: 'pri-k' }, `Added ${dayOf(m.created_at)}: `), [m.notes, m.why_now && `Why now: ${m.why_now}`].filter(Boolean).join(' - ') || '(no notes)'))));
 }
 
 // the strip under a manual row in the print layout, and the notes block of Copy as text (max 0 = full text)
