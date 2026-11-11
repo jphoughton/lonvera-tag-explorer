@@ -13552,6 +13552,84 @@
     }
    ],
    "examples": []
+  },
+  {
+   "name": "public.api_keys",
+   "schema": "public",
+   "relation": "api_keys",
+   "kind": "table",
+   "group": "ops",
+   "purpose": "Scoped API keys for the Tag Explorer API: one row per key handed to a colleague. A key can read everything the app serves and can only assign items on the production board.",
+   "grain": "one row per key (id is the primary key; name and key_hash are each unique)",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "python -m etl.api_keys create / revoke (etl/api_keys.py); last_used_at is touched by the web app (app/api_keys.py)",
+   "refresh": "on demand (a person creates or revokes a key; last_used_at moves at most once a minute while a key is in use)",
+   "coverage": "from the day the migration was deployed",
+   "caveats": [
+    "Only the sha256 hash of the key is stored. The key itself is shown once when it is made and cannot be recovered; make a new key and revoke the old one instead.",
+    "A revoked key is never deleted, so the history stays. Assignments made with a key carry created_by / updated_by 'key:<name>' in creative_priorities_assignments."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Primary key (bigserial)."
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "nullable": false,
+     "description": "Short name of the key, for example the colleague it was given to (unique). Shown in the audit columns as key:<name>."
+    },
+    {
+     "name": "key_hash",
+     "type": "text",
+     "nullable": false,
+     "description": "sha256 hex digest of the full key (unique). The key is looked up by this hash."
+    },
+    {
+     "name": "prefix",
+     "type": "text",
+     "nullable": false,
+     "description": "First 8 characters of the key ('lvk_' plus 4), for display only."
+    },
+    {
+     "name": "scope",
+     "type": "text",
+     "nullable": false,
+     "description": "What the key may do. 'read_assign' (the only scope): every GET, plus POST /api/priorities/assignments and PATCH /api/priorities/assignments/<id>."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the key was made."
+    },
+    {
+     "name": "created_by",
+     "type": "text",
+     "nullable": true,
+     "description": "Operating-system user who ran the create command; NULL when unknown."
+    },
+    {
+     "name": "last_used_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the key last made a request (updated at most once a minute); NULL while unused."
+    },
+    {
+     "name": "revoked_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the key was revoked; NULL while active. A revoked key is refused with 401."
+    }
+   ],
+   "examples": []
   }
  ],
  "excluded": [

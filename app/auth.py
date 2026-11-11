@@ -15,7 +15,7 @@ import threading
 import time
 from datetime import timedelta
 
-from flask import Blueprint, current_app, jsonify, request, session
+from flask import Blueprint, current_app, g, jsonify, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 log = logging.getLogger("tagexp")
@@ -101,6 +101,7 @@ def init_auth(app) -> None:
     window = app.config["LOGIN_FAIL_WINDOW_SEC"]
     app.extensions["login_throttle_pair"] = LoginThrottle(app.config["LOGIN_MAX_FAILS"], window)
     app.extensions["login_throttle_ip"] = LoginThrottle(app.config.get("LOGIN_MAX_FAILS_IP", 20), window)
+    app.extensions["apikey_throttle_ip"] = LoginThrottle(app.config.get("API_KEY_MAX_FAILS_IP", 20), window)      # failed API key lookups per IP
     app.register_blueprint(bp)
     app.before_request(_guard)
 
@@ -122,6 +123,9 @@ def current_user() -> str | None:
     """Canonical username of the signed-in user, or None (not signed in, user removed, or password changed). 'guest' when auth is disabled."""
     if auth_disabled():
         return GUEST
+    key_user = g.get("api_key_user")
+    if key_user:
+        return key_user                                  # this request was authenticated by an API key (see _guard): 'key:<name>'
     user = session.get("u")
     pw_hash = current_app.extensions["auth_users"].get(user) if isinstance(user, str) else None
     if not pw_hash or not hmac.compare_digest(str(session.get("fp", "")), _fingerprint(user, pw_hash)):
@@ -133,10 +137,54 @@ def is_authenticated() -> bool:
     return current_user() is not None
 
 
+def is_key_request() -> bool:
+    """True when this request was authenticated by an API key rather than a login. Keys never pass the launch gate."""
+    return bool(g.get("api_key_user"))
+
+
+def _bearer_token() -> str | None:
+    """The token of an 'Authorization: Bearer <token>' header ('' when the header is Bearer with nothing after it), None when the request carries no Bearer header."""
+    h = request.headers.get("Authorization")
+    if not h:
+        return None
+    scheme, _, rest = h.partition(" ")
+    return rest.strip() if scheme.lower() == "bearer" else None
+
+
+def _key_guard(raw: str):
+    """A request that presents a Bearer token is judged by the token alone (a bad one never falls back to the login cookie). Valid and in scope -> None (the request goes on, identity
+    'key:<name>'); bad, revoked or malformed -> 401; valid but out of scope -> 403; too many bad tries from this IP -> 429."""
+    import psycopg
+    from . import api_keys, db
+    throttle: LoginThrottle = current_app.extensions["apikey_throttle_ip"]
+    ip = _client_ip()
+    wait = throttle.retry_after(ip)
+    if wait:
+        return _too_many(wait)                           # refused before any key is looked at
+    try:
+        row = api_keys.lookup(db.get_conn(), raw)
+    except psycopg.errors.UndefinedTable:                # migration 205 not applied yet: no key can be valid
+        db.get_conn().rollback()
+        row = None
+    if row is None:
+        throttle.fail(ip)
+        return jsonify(error="unauthorized"), 401
+    if api_keys.blocked_read(request):
+        return jsonify(error=api_keys.BLOCKED_MESSAGE), 403
+    if not api_keys.scope_allows(request):
+        return jsonify(error=api_keys.READ_ONLY_MESSAGE), 403
+    g.api_key_user = f"key:{row['name']}"
+    return None
+
+
 def _guard():
     path = request.path
     if path in PUBLIC_API or PUBLIC_API_RE.fullmatch(path) or not path.startswith(PROTECTED_PREFIXES):
         return None
+    if not auth_disabled():
+        token = _bearer_token()
+        if token is not None:
+            return _key_guard(token)
     if not is_authenticated():
         return jsonify(error="unauthorized"), 401
     return None
