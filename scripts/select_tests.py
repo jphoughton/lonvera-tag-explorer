@@ -270,7 +270,7 @@ class Repo:
         every module package; a test that only builds an app on top of the registry does not (a module that fails to import is skipped, with a warning)."""
         pkgs = {f for m, f in self.py.items() if re.fullmatch(r"app\.projection\.[a-z_0-9]+", m) and f.endswith("/__init__.py")}
         for t in self.tests:
-            if t.startswith("tests/projection/core/") or re.search(r"\b(?:discover|listing|register_modules)\(", self.text(t)):      # the core folder tests the registry of ALL modules
+            if t.startswith("tests/projection/core/") or (t.startswith("tests/projection/") and self.is_browser_test(t)) or re.search(r"\b(?:discover|listing|register_modules)\(", self.text(t)):      # the core folder tests the registry of ALL modules; a projection browser test opens a page of the whole app, which reads every module
                 self.edges[t] |= pkgs
 
     def _add_route_edges(self) -> None:

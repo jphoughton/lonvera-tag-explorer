@@ -274,3 +274,16 @@ def test_projection_test_folders_are_tied_to_the_module_of_the_same_name(tmp_pat
     r = make(tmp_path, files)
     _, tests, _ = pick(r, "app/projection/modeler/ops.py")
     assert "tests/projection/modeler/test_modeler_api.py" in tests
+
+
+def test_a_projection_browser_test_is_tied_to_every_module_package(tmp_path):
+    files = dict(BASE)
+    files["app/projection/registry.py"] = "def discover():\n    return {}\n"
+    files["app/projection/zeta/__init__.py"] = "from . import table\n"
+    files["app/projection/zeta/table.py"] = "def t():\n    return 1\n"
+    files["tests/projection/other/test_other_page.py"] = "from playwright.sync_api import sync_playwright\ndef test_o(page):\n    page.goto('/projection/other')\n"
+    files["tests/projection/other/test_other_model.py"] = "def test_m():\n    pass\n"
+    files.update({f"tests/etl/test_pad{i}.py": "def test_p():\n    pass\n" for i in range(8)})
+    r = make(tmp_path, files)
+    _, tests, _ = pick(r, "app/projection/zeta/table.py")
+    assert "tests/projection/other/test_other_page.py" in tests and "tests/projection/other/test_other_model.py" not in tests
