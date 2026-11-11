@@ -335,7 +335,7 @@ def test_the_pacing_payback_box_equals_cash_and_debts_payback(api_app, api, pnl,
         assert fin["result"]["cm_first"] == pytest.approx(box["first_order_margin"]["mtd" if curve == "live" else "goal"])
 
 
-def test_editing_the_payback_inputs_in_pacing_moves_cash_and_debt_and_the_spend_plan(api, pnl, cohorts, monkeypatch):
+def test_editing_the_payback_inputs_in_pacing_moves_cash_and_debt_and_the_spend_plan(api, pnl, cohorts, monkeypatch, clean_levers):
     """One store: params['drivers']['payback']. A pacing edit is what Cash & debt and the Spend plan page read next."""
     from app.projection import scenarios
     from app.projection.drivers import api as drv_api

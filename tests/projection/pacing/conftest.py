@@ -103,6 +103,20 @@ class FakeRun:
 
 
 @pytest.fixture()
+def clean_levers(pacing_db):
+    """for a test that PUTs / PATCHes the 'current' scenario (levers, params): the scenario, its history and the audit log go back to the seeded state before and after.
+    The pacing database is shared by every test file of a worker for the whole session, and which files share a worker changes with timing under xdist."""
+    def reset():
+        with psycopg.connect(pacing_db) as c:
+            c.execute("UPDATE proj_scenarios SET params = '{}', version = 1 WHERE slug = 'current'")
+            c.execute("DELETE FROM proj_audit")
+            c.execute("DELETE FROM proj_scenario_history")
+    reset()
+    yield
+    reset()
+
+
+@pytest.fixture()
 def api_app(pacing_db, pnl, cohorts, monkeypatch):
     """Flask app (the app's own login on) whose engine returns the snapshot P&L as the scenario's plan."""
     from app.projection import engine
