@@ -166,6 +166,14 @@
   {
    "service": "feeds",
    "order": 3,
+   "module": "etl.shopify_orders",
+   "args": "",
+   "fatal": true,
+   "note": ""
+  },
+  {
+   "service": "feeds",
+   "order": 4,
    "module": "etl.feeds",
    "args": "verify",
    "fatal": true,
@@ -368,6 +376,10 @@
   {
    "module": "etl.sheets_io",
    "summary": "Read sheet tabs either from a frozen snapshot dir (JSON `values` arrays) or LIVE from Google Sheets (read-only)."
+  },
+  {
+   "module": "etl.shopify_orders",
+   "summary": "Order-level Shopify orders of the last 120 days (rolling) into Postgres: tables shopify_orders and shopify_order_lines (migration 210)."
   },
   {
    "module": "etl.stage_moves",

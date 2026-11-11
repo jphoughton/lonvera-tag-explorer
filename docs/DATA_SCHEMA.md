@@ -107,7 +107,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | Meta (Facebook / Instagram) ads: ads, campaigns, daily results | [`public.ad_daily`](#publicad_daily), [`public.meta_ads`](#publicmeta_ads), [`public.meta_campaigns`](#publicmeta_campaigns), [`public.meta_ad_lifetime`](#publicmeta_ad_lifetime), [`public.ad_lifetime`](#publicad_lifetime), [`public.meta_family_map`](#publicmeta_family_map), [`public.landing_pages`](#publiclanding_pages), [`public.landing_page_versions`](#publiclanding_page_versions), [`public.landing_page_ads`](#publiclanding_page_ads), [`public.landing_page_top_ads`](#publiclanding_page_top_ads) |
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
-| Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily) |
+| Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily), [`public.shopify_orders`](#publicshopify_orders), [`public.shopify_order_lines`](#publicshopify_order_lines) |
 | Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_formats`](#publiccreative_formats), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links), [`public.creative_launch_settings`](#publiccreative_launch_settings), [`public.creative_launch_pages`](#publiccreative_launch_pages), [`public.creative_launch_vendor_prefixes`](#publiccreative_launch_vendor_prefixes), [`public.creative_launch_drafts`](#publiccreative_launch_drafts), [`public.creative_launch_jobs`](#publiccreative_launch_jobs), [`public.creative_launch_ads`](#publiccreative_launch_ads), [`public.creative_launch_adsets`](#publiccreative_launch_adsets), [`public.creative_launch_audit`](#publiccreative_launch_audit) |
 | Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.competitor_brands`](#publiccompetitor_brands), [`public.competitor_ads`](#publiccompetitor_ads), [`public.competitor_concept_class`](#publiccompetitor_concept_class), [`public.competitor_concepts`](#publiccompetitor_concepts), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
 | Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta), [`public.api_keys`](#publicapi_keys), [`public.klaviyo_campaigns`](#publicklaviyo_campaigns), [`public.klaviyo_flows`](#publicklaviyo_flows), [`public.klaviyo_flow_messages`](#publicklaviyo_flow_messages), [`public.klaviyo_daily`](#publicklaviyo_daily), [`public.klaviyo_message_content`](#publicklaviyo_message_content), [`public.klaviyo_message_performance`](#publicklaviyo_message_performance), [`public.landing_page_ad_checks`](#publiclanding_page_ad_checks), [`public.brain_keys`](#publicbrain_keys), [`public.brain_audit`](#publicbrain_audit) |
@@ -1571,6 +1571,82 @@ GROUP BY 1 ORDER BY 2 DESC;
 ```sql
 SELECT * FROM upstack_orders_daily ORDER BY day DESC LIMIT 7;
 ```
+
+### public.shopify_orders
+
+*table*
+
+**Purpose.** Order-level Shopify orders of the last 120 days (rolling), one row per order, with money, status, source, discount codes and ship-to country / region. The place to answer order-level questions (refunds, rebills, gifts, discounts) that the daily roll-ups hide.
+
+- **Grain:** primary key `(order_id)`; one row per Shopify order (order_id is the primary key)
+- **Source:** ExpandFi warehouse, merchant 1452, table shopify_orders (read-only), loaded by python -m etl.shopify_orders (etl/shopify_orders.py); fields come from the order's raw Shopify JSON
+- **Refresh:** nightly (feeds service 21:00 UTC): the trailing 14 days are re-pulled every run, the whole 120 days every Sunday (Pacific) and on the first load; orders older than 120 days are deleted
+- **Coverage:** orders processed in the last 120 Pacific days, including today so far; the warehouse trails Shopify by minutes to hours
+- **Caveat:** No personal data is stored: no email, name, address or phone. customer_id is the Shopify customer id (NULL when the order has none); the ship-to is country and region only.
+- **Caveat:** order_date is the Pacific day of processed_at. The warehouse's own created_at is the sync time of a September backfill and is NOT used.
+- **Caveat:** is_new_customer = this is the customer's first Shopify order EVER (customer key = Shopify customer id, else the lower-cased email, as in the new-customer revenue feed), judged over the whole warehouse history, not only the 120 days.
+- **Caveat:** refunded_amount = total_price - current_total_price (never below 0): Shopify's current total already nets refunds and order edits, and the warehouse's refund transactions are empty for many refunds. It is a net-down amount, not a refund ledger.
+- **Caveat:** Orders restated after they fall out of the trailing 14 days are picked up by the Sunday full 120-day pull, so a late refund can lag up to a week.
+- **Caveat:** is_rebill = source_name is subscription_contract_checkout_one. is_trybe_gift = the order carries the tag trybe (the $0 gift orders). Gift, test and cancelled orders are kept and flagged, never dropped; filter on the flags.
+- **Caveat:** Revenue by product is NOT the sum of total_price by product: use shopify_order_lines.line_net for a split.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `order_id` | bigint | no | Shopify order id (primary key). Not the ExpandFi row id. |
+| `order_number` | text | yes | Human-readable order number as the store shows it. |
+| `processed_at` | timestamptz | no | When the order was processed (UTC instant). |
+| `order_date` | date | no | Pacific calendar day of processed_at; the day to group by. |
+| `customer_id` | text | yes | Shopify customer id; NULL when the order has none. No other customer data is stored. |
+| `is_new_customer` | boolean | no | True when this is the customer's first Shopify order ever. |
+| `currency` | text | yes | Order currency code (shop currency). |
+| `subtotal_price` | numeric(12,2) | yes | Order subtotal after discounts, before shipping and tax. |
+| `total_discounts` | numeric(12,2) | yes | Sum of all discounts on the order. |
+| `shipping_price` | numeric(12,2) | yes | Shipping charged (shop money). |
+| `total_tax` | numeric(12,2) | yes | Tax charged. |
+| `total_price` | numeric(12,2) | yes | Order total at checkout: subtotal + shipping + tax. |
+| `current_total_price` | numeric(12,2) | yes | Order total after refunds and edits, as Shopify reports it now. |
+| `refunded_amount` | numeric(12,2) | yes | total_price minus current_total_price, never below 0 (see the caveat). |
+| `financial_status` | text | yes | Shopify financial status (paid, refunded, partially_refunded, voided, ...). |
+| `fulfillment_status` | text | yes | Shopify fulfillment status; NULL = unfulfilled. |
+| `source_name` | text | yes | Shopify source name (web, subscription_contract_checkout_one for rebills, tiktok, or an app id). |
+| `app_id` | text | yes | Shopify app id that created the order; NULL when none. |
+| `tags` | text | yes | Order tags, comma separated, as Shopify stores them. |
+| `discount_codes` | text | yes | Discount codes used, comma separated; NULL when none. |
+| `ship_country` | text | yes | Ship-to ISO country code; NULL when the order has no shipping address. |
+| `ship_region` | text | yes | Ship-to province / state code; NULL when none. |
+| `cancelled_at` | timestamptz | yes | When the order was cancelled; NULL when it was not. |
+| `is_cancelled` | boolean | no | True when cancelled_at is set. |
+| `is_test` | boolean | no | True for a Shopify test order. |
+| `is_rebill` | boolean | no | True for a subscription rebill (source_name subscription_contract_checkout_one). |
+| `is_trybe_gift` | boolean | no | True when the order has the tag trybe (free sample / gift orders). |
+| `line_count` | integer | no | Number of line items stored in shopify_order_lines for this order. |
+| `loaded_at` | timestamptz | no | When this row was last written by the loader. |
+
+### public.shopify_order_lines
+
+*table*
+
+**Purpose.** Line items of shopify_orders: one row per product line with SKU, product bucket, quantity, price and discount.
+
+- **Grain:** primary key `(order_id, line_no)`; one row per order line (order_id, line_no is the primary key; line_no counts from 1 in the order's own line order)
+- **References:** `(order_id)` -> `public.shopify_orders(order_id)`
+- **Source:** the line_items array of the same ExpandFi shopify_orders rows, loaded together with shopify_orders by python -m etl.shopify_orders
+- **Refresh:** with shopify_orders (nightly 21:00 UTC); a re-pulled order has its lines replaced, an order that leaves the 120-day window takes its lines with it
+- **Coverage:** the same orders as shopify_orders
+- **Caveat:** product is mapped from the SKU prefix: LV-VBULL = VitaBull, LV-BLC180 and DPCD1-GN180001 = BeefLiver, DPCD1-GN187001 = Boneflex, LV-VBELLE = VitaBelle, DPCD1-GN179001 = VitaFlow, anything else = Other.
+- **Caveat:** line_net = max(price x quantity - line_discount, 0); the order's total_price also carries shipping and tax and order-level discounts, so the lines do not add up to it.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `order_id` | bigint | no | Shopify order id; foreign key to shopify_orders.order_id (cascade delete). |
+| `line_no` | integer | no | Position of the line in the order, from 1. |
+| `sku` | text | yes | SKU as sold; NULL when the line has none. |
+| `product_name` | text | yes | Line title as it shows on the order. |
+| `product` | text | no | Product bucket mapped from the SKU (VitaBull, BeefLiver, Boneflex, VitaBelle, VitaFlow, Other). |
+| `quantity` | integer | no | Units on the line. |
+| `price` | numeric(12,2) | yes | Unit price before discount. |
+| `line_discount` | numeric(12,2) | yes | Total discount on the line (all units). |
+| `line_net` | numeric(12,2) | yes | price x quantity minus line_discount, never below 0. |
 
 ## Creative tracker, tags, hooks, content
 

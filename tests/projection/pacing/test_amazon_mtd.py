@@ -327,7 +327,7 @@ def _stub(tmp_path, script):
     bin_dir.mkdir(exist_ok=True)
     log = tmp_path / "calls.log"
     exe = bin_dir / "python"
-    exe.write_text('#!/bin/sh\necho "$*" >> "$STUB_LOG"\ncase "$2" in\n  etl.amazon_mtd) exit "${AMZ_RC:-0}";;\n  etl.feeds) case "$3" in run) exit "${RUN_RC:-0}";; verify) exit "${VER_RC:-0}";; esac;;\n'
+    exe.write_text('#!/bin/sh\necho "$*" >> "$STUB_LOG"\ncase "$2" in\n  etl.amazon_mtd) exit "${AMZ_RC:-0}";;\n  etl.shopify_orders) exit "${ORD_RC:-0}";;\n  etl.feeds) case "$3" in run) exit "${RUN_RC:-0}";; verify) exit "${VER_RC:-0}";; esac;;\n'
                    '  etl.run_daily) exit "${DAILY_RC:-0}";;\n  etl.projection_daily) exit "${PROJ_RC:-0}";;\nesac\nexit 0\n')
     exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
 
@@ -342,7 +342,7 @@ def _stub(tmp_path, script):
 
 def test_run_feeds_snapshots_right_after_the_load_and_before_verify(tmp_path):
     p, calls = _stub(tmp_path, "run_feeds.sh")()
-    assert p.returncode == 0 and calls == ["-m etl.migrate", "-m etl.feeds run", "-m etl.amazon_mtd", "-m etl.feeds verify"]
+    assert p.returncode == 0 and calls == ["-m etl.migrate", "-m etl.feeds run", "-m etl.amazon_mtd", "-m etl.shopify_orders", "-m etl.feeds verify"]
 
 
 def test_run_feeds_exit_codes_keep_their_order_and_a_snapshot_failure_alone_is_visible(tmp_path):
@@ -487,3 +487,9 @@ def test_amazon_line_at_375px_has_no_sideways_scroll_and_readable_text(browser, 
     assert page.evaluate("document.querySelector('.amz-line').getBoundingClientRect().width") <= 375 - 24
     assert errors == []
     ctx.close()
+
+
+def test_run_feeds_fails_the_deployment_when_the_shopify_orders_load_fails(tmp_path):
+    call = _stub(tmp_path, "run_feeds.sh")
+    p, calls = call(ORD_RC=3)
+    assert p.returncode == 3 and "etl.shopify_orders failed" in p.stderr and calls[-1] == "-m etl.feeds verify"

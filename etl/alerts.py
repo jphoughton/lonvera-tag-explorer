@@ -76,6 +76,7 @@ JOBS = [
     JobSpec("auto_tag", NIGHTLY_H, False, fix="Railway > etl logs (new ads stay untagged until it runs)."),
     JobSpec("competitor_ads", WEEKLY_H, False, fix="Railway > etl logs of the last Sunday run (Ad Library scrape or classification)."),
     JobSpec("creative_priorities", WEEKLY_H, False, fix="Railway > etl logs of the last Sunday run."),
+    JobSpec("shopify_orders", NIGHTLY_H, False, fix="Railway > feeds service logs for etl.shopify_orders (ExpandFi login or warehouse query); the order tables keep the last good rows and shopify_orders.loaded_at shows how old they are."),
     JobSpec("backup", NIGHTLY_H, False, fix="Check the backup service logs on Railway and the last dump in the backup location (docs/ALERTS.md > backup)."),
     JobSpec("feeds", NIGHTLY_H, True, kind="heartbeat:feeds", fix="Railway > feeds service logs (cron 0 21 * * * UTC); `python -m etl.feeds verify` shows per-feed state."),
     JobSpec("live", HOURLY_H, True, kind="heartbeat:live", fix="Railway > live service logs; the Pacing cards fall back to typed values until it recovers."),
