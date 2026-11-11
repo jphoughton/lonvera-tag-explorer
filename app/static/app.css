@@ -1188,6 +1188,7 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
   .pri-dt tr { padding: 5px 0; border-top: 1px solid var(--lv-line-soft, #e9e2d5); } .pri-dt tr[hidden] { display: none; }
   .pri-dt td { display: inline; border: 0; padding: 0 8px 0 0; } .pri-dt td:first-child { display: block; margin-bottom: 2px; overflow-wrap: anywhere; } .pri-dt .pri-dt-hook { display: block; max-width: none; overflow-wrap: anywhere; }
   .pri-dt td[data-label]:not(:first-child)::before { content: attr(data-label) ' '; color: var(--lv-muted, #665d53); font-size: 11px; }
+}
 
 /* Production details (2026-11-10): the /priorities detail panel under an assignment, expandable. The table keeps its own horizontal scroll; the panel is pinned to the left edge of the scroll box at phone width. */
 .prod-detailrow[hidden], .prod-xd[hidden] { display: none; }
