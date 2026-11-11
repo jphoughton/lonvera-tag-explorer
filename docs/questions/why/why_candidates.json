@@ -1,0 +1,3696 @@
+[
+ {
+  "rank": 1,
+  "key": "cohort_curve",
+  "outcome": "Cohort repeat curve shape and projection accuracy (tail, M0/M1, haircut, model vs actual)",
+  "decomposition": "Lifetime repeat per customer = sum over ages of [cumulative dollars per customer at age a, minus age a-1] / first-order dollars. A curve value at age a is trustworthy only if enough cohorts have reached age a (rule: at least 3) and no unfinished month is included. Projection error = curve level (recent vs older cohorts) x cohort size x first-order AOV, plus tail decay beyond observed ages.",
+  "item_count": 141,
+  "core_item_count": 88,
+  "first_asked": "2026-07-16",
+  "last_asked": "2026-11-09",
+  "decision_weight": "H",
+  "build_effort": "M",
+  "in_db": "P (proj_cohorts and proj_cohort_cum exist in the app database but are excluded from analytics; source is a pasted cohort export)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Does the curve show values for ages no cohort has reached (M24, M29, M30)?",
+    "data": "cohorts that reached age a; tail rule",
+    "in_db": "P",
+    "view_or_source": "Curves tab / proj_cohorts",
+    "josh_quote_item_ids": [
+     "H_2026-08_1-158",
+     "H_2026-08_1-281"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Are M0 and M1 mapped correctly (spot-check a known cohort against Josh own number)?",
+    "data": "cohort export columns",
+    "in_db": "N",
+    "view_or_source": "cohort CSV",
+    "josh_quote_item_ids": [
+     "H_2026-08_1-146",
+     "H_2026-09_1-206"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Zeros or unfinished months in the averages?",
+    "data": "weights per age",
+    "in_db": "P",
+    "view_or_source": "Curves tab",
+    "josh_quote_item_ids": [
+     "H_2026-08_1-413"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "Did new cohort data shift the 3 or 4 month average used to project?",
+    "data": "curve before vs after refresh",
+    "in_db": "P",
+    "view_or_source": "Cohort Data - Unified backups",
+    "josh_quote_item_ids": [
+     "H_2026-09_1-201",
+     "H_2026-09_1-202"
+    ]
+   },
+   {
+    "order": 5,
+    "question": "Are recent cohorts baking worse than older ones? What haircut by age?",
+    "data": "last 4 months vs history at same age",
+    "in_db": "P",
+    "view_or_source": "cohort export",
+    "josh_quote_item_ids": [
+     "H_2026-08_1-395",
+     "H_2026-08_1-403"
+    ]
+   },
+   {
+    "order": 6,
+    "question": "Unified vs per-product cohorts: is the story different?",
+    "data": "per-product exports",
+    "in_db": "N",
+    "view_or_source": "Shopify / cohort tool",
+    "josh_quote_item_ids": [
+     "H_2026-08_1-441"
+    ]
+   },
+   {
+    "order": 7,
+    "question": "Why do two model versions disagree on the same month (Aug repeat: pacing $855,616 vs new $578K vs old $901,844)?",
+    "data": "model versions, recency weight",
+    "in_db": "N",
+    "view_or_source": "sheet history",
+    "josh_quote_item_ids": [
+     "H_2026-08_1-252",
+     "H_2026-08_1-262",
+     "H_2026-08_1-272"
+    ]
+   },
+   {
+    "order": 8,
+    "question": "Why does the model repeat differ from the seller repeat figure (about 22% gap)? Gross vs net, shipping, refunds",
+    "data": "QBO shipping income, seller doc",
+    "in_db": "N",
+    "view_or_source": "QBO + seller data room",
+    "josh_quote_item_ids": [
+     "H_2026-08_1-40",
+     "H_2026-08_1-52",
+     "H_2026-08_1-68"
+    ]
+   },
+   {
+    "order": 9,
+    "question": "Which window sets the live curve: last 3, 6 or 12 cohorts, and does that move the 12-month number?",
+    "data": "curve by window",
+    "in_db": "P",
+    "view_or_source": "Curves tab",
+    "josh_quote_item_ids": [
+     "L2-263",
+     "L2-264"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Fallback logic extrapolated Bull tail from one cohort (blanket age <= max-3 cutoff): Bull lifetime multiple 3.79x to 2.23x, Bear 2027 NOI $6.32M to $5.64M after fix (rule: age computes from data only when >= 3 cohorts reached it)",
+    "status": "verified / fixed",
+    "date": "2026-08-03",
+    "item_ids": [
+     "S_secondary-55",
+     "H_2026-08_1-9",
+     "H_2026-08_1-17"
+    ]
+   },
+   {
+    "cause": "Tail multiplier 0.8 behaved as about 0.94 per month because of the rolling average; replaced by explicit 0.94 input",
+    "status": "verified / fixed",
+    "date": "2026-09-13",
+    "item_ids": [
+     "T_04-30",
+     "S_secondary-60"
+    ]
+   },
+   {
+    "cause": "Gap between seller repeat and cohort export is mostly shipping revenue (gross vs net; shipping 53-69% of the Apr-Jun gap vs QBO); seller actuals row was unverified seller data",
+    "status": "partial (old gross-up validity never resolved)",
+    "date": "2026-08-03",
+    "item_ids": [
+     "H_2026-08_1-52",
+     "S_secondary-57",
+     "H_2026-08_1-62"
+    ]
+   },
+   {
+    "cause": "Recent cohorts bake worse: October ran 74-80% of model net, M1 0.63 / M2 0.81 / M3 0.73 / M4 0.75 actual vs model; sheet pacing flattered about 12% by Upstack gross basis",
+    "status": "partial",
+    "date": "2026-10-16",
+    "item_ids": [
+     "H_2026-08_1-395",
+     "T_26-33"
+    ]
+   },
+   {
+    "cause": "Pulling the same history at different dates restates it (Sep pull vs Oct pull: Nov-26 repeat $773K vs $674,650; Oct close -$24K)",
+    "status": "verified",
+    "date": "2026-11-03",
+    "item_ids": [
+     "L2-260",
+     "L2-261"
+    ]
+   },
+   {
+    "cause": "Cohort export tool is unnamed (ExpandFi vs GetKleio vs Upstack vs Shopify, 5-11% apart in dollars)",
+    "status": "open",
+    "date": "2026-11-03",
+    "item_ids": [
+     "L2-258",
+     "L2-261",
+     "L2-262"
+    ]
+   }
+  ],
+  "controls": "Compare cohort at same age only; require >= 3 cohorts per age; same source and same pull date for both sides; never include a month that is not over; calendar-matched pre-pack-change cohorts.",
+  "guardrails": [
+   {
+    "id": "G04",
+    "name": "Never include a month that is not over; no zeros for unbaked ages"
+   },
+   {
+    "id": "G20",
+    "name": "Cohort source, tool and pull date"
+   },
+   {
+    "id": "G28",
+    "name": "Curve construction: effective vs nominal decay"
+   },
+   {
+    "id": "G05",
+    "name": "Gross vs net: say which"
+   }
+  ],
+  "item_ids": [
+   "S_secondary-249",
+   "HC_2026-07_4-79",
+   "HC_2026-07_4-82",
+   "HC_2026-07_4-113",
+   "HC_2026-07_4-114",
+   "HC_2026-07_4-169",
+   "HC_2026-07_4-172",
+   "HC_2026-07_5-8",
+   "HC_2026-07_5-109",
+   "HC_2026-07_5-119",
+   "S_secondary-62",
+   "H_2026-08_1-1",
+   "H_2026-08_1-4",
+   "H_2026-08_1-9",
+   "S_secondary-54",
+   "H_2026-08_1-11",
+   "H_2026-08_1-12",
+   "H_2026-08_1-16",
+   "H_2026-08_1-17",
+   "H_2026-08_1-26",
+   "H_2026-08_1-34",
+   "H_2026-08_1-40",
+   "H_2026-08_1-42",
+   "H_2026-08_1-43",
+   "H_2026-08_1-44",
+   "H_2026-08_1-49",
+   "H_2026-08_1-50",
+   "H_2026-08_1-51",
+   "H_2026-08_1-52",
+   "H_2026-08_1-54",
+   "H_2026-08_1-56",
+   "H_2026-08_1-58",
+   "H_2026-08_1-60",
+   "H_2026-08_1-61",
+   "H_2026-08_1-62",
+   "H_2026-08_1-65",
+   "H_2026-08_1-66",
+   "H_2026-08_1-67",
+   "H_2026-08_1-68",
+   "H_2026-08_1-72",
+   "S_secondary-55",
+   "S_secondary-57",
+   "H_2026-08_1-73",
+   "H_2026-08_1-74",
+   "H_2026-08_1-112",
+   "H_2026-08_1-119",
+   "H_2026-08_1-120",
+   "H_2026-08_1-121",
+   "H_2026-08_1-122",
+   "H_2026-08_1-123",
+   "H_2026-08_1-125",
+   "H_2026-08_1-80",
+   "H_2026-08_1-81",
+   "H_2026-08_1-91",
+   "H_2026-08_1-92",
+   "H_2026-08_1-93",
+   "H_2026-08_1-94",
+   "H_2026-08_1-96",
+   "H_2026-08_1-129",
+   "H_2026-08_1-130",
+   "H_2026-08_1-136",
+   "H_2026-08_1-137",
+   "H_2026-08_1-142",
+   "H_2026-08_1-146",
+   "H_2026-08_1-147",
+   "H_2026-08_1-153",
+   "H_2026-08_1-158",
+   "H_2026-08_1-161",
+   "H_2026-08_1-164",
+   "H_2026-08_1-168",
+   "H_2026-08_1-173",
+   "H_2026-08_1-174",
+   "H_2026-08_1-181",
+   "H_2026-08_1-186",
+   "H_2026-08_1-189",
+   "H_2026-08_1-190",
+   "H_2026-08_1-191",
+   "H_2026-08_1-202",
+   "H_2026-08_1-203",
+   "H_2026-08_1-207",
+   "H_2026-08_1-250",
+   "H_2026-08_1-251",
+   "H_2026-08_1-252",
+   "H_2026-08_1-253",
+   "H_2026-08_1-262",
+   "H_2026-08_1-263",
+   "H_2026-08_1-266",
+   "H_2026-08_1-268",
+   "H_2026-08_1-269",
+   "H_2026-08_1-271",
+   "H_2026-08_1-272",
+   "H_2026-08_1-274",
+   "H_2026-08_1-276",
+   "H_2026-08_1-277",
+   "H_2026-08_1-281",
+   "H_2026-08_1-291",
+   "H_2026-08_1-302",
+   "H_2026-08_1-305",
+   "H_2026-08_1-311",
+   "H_2026-08_1-312",
+   "H_2026-08_1-395",
+   "H_2026-08_1-402",
+   "H_2026-08_1-403",
+   "H_2026-08_1-404",
+   "H_2026-08_1-410",
+   "H_2026-08_1-411",
+   "H_2026-08_1-413",
+   "H_2026-08_1-414",
+   "H_2026-08_1-441",
+   "H_2026-08_1-443",
+   "H_2026-08_1-472",
+   "H_2026-08_1-494",
+   "H_2026-08_1-498",
+   "H_2026-08_1-501",
+   "H_2026-08_1-506",
+   "H_2026-08_1-507",
+   "H_2026-08_1-508",
+   "H_2026-08_1-509",
+   "H_2026-08_1-1087",
+   "H_2026-08_1-1090",
+   "H_2026-08_1-1099",
+   "H_2026-08_1-1102",
+   "H_2026-08_1-1107",
+   "H_2026-09_1-200",
+   "H_2026-09_1-201",
+   "H_2026-09_1-202",
+   "H_2026-09_1-206",
+   "S_secondary-60",
+   "T_04-30",
+   "T_fix-10",
+   "T_21-58",
+   "T_26-33",
+   "T_26-39",
+   "L2-254",
+   "L2-258",
+   "L2-260",
+   "L2-261",
+   "L2-262",
+   "L2-263",
+   "L2-264",
+   "L2-324"
+  ]
+ },
+ {
+  "rank": 2,
+  "key": "repeat_vs_plan",
+  "outcome": "Repeat revenue (and week-4 repeat) below plan",
+  "decomposition": "Repeat revenue (period) = sum over cohorts of [rebills due in the period x paid share of rebills due x order value]. Gap vs plan = actual minus what the prior cohort at the SAME age and pack size would have produced, split into: cohort size (fewer first orders), timing (pack size sets the first rebill day: 3-pack about day 57, 5-pack about day 84; before the packs about every 28 days), cancels per rebill due, failed or declined per rebill attempted, order value (price per bottle, insurance), and billing platform (Skio run-off vs CheckoutChamp).",
+  "item_count": 106,
+  "core_item_count": 84,
+  "first_asked": "2026-10-13",
+  "last_asked": "2026-11-03",
+  "decision_weight": "H",
+  "build_effort": "L",
+  "in_db": "N (orders_daily has only daily new-customer revenue; cohorts live in proj_cohorts, not in analytics; billing data in Skio, CheckoutChamp, Klaviyo)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Is the window complete, and is the plan comparison cohort-size neutral?",
+    "data": "repeat by day/week/month vs waterfall",
+    "in_db": "N",
+    "view_or_source": "sheet Projections (waterfall) + cohort export",
+    "josh_quote_item_ids": [
+     "T_26-32",
+     "T_26-33"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Rates first: are customers retained but fewer rebills due? (Josh: repeat down while retention up)",
+    "data": "rebills due, paid rebills, by cohort age",
+    "in_db": "N",
+    "view_or_source": "Skio + CheckoutChamp order_details",
+    "josh_quote_item_ids": [
+     "T_26-53",
+     "T_26-29"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Cancels, refunds, returns: more than usual, per rebill due?",
+    "data": "cancel events / rebills due; refunds / orders",
+    "in_db": "N",
+    "view_or_source": "Skio, CheckoutChamp, Shopify refunds",
+    "josh_quote_item_ids": [
+     "T_26-29",
+     "T_26-30"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "Bundle and pack mix: did first-order pack size change, and when does each pack rebill?",
+    "data": "first-order bottles, pack size, billing interval by cohort week",
+    "in_db": "N",
+    "view_or_source": "Shopify orders + Skio/CC plan intervals",
+    "josh_quote_item_ids": [
+     "T_26-31",
+     "L2-9",
+     "L2-30",
+     "L2-31"
+    ]
+   },
+   {
+    "order": 5,
+    "question": "Which cohort is most off plan, and what is different about its first order (pack size, upsell attach, AOV)?",
+    "data": "cohort week, first-order composition",
+    "in_db": "N",
+    "view_or_source": "cohort export + order lines",
+    "josh_quote_item_ids": [
+     "L2-7",
+     "L2-8",
+     "L2-24",
+     "L2-61"
+    ]
+   },
+   {
+    "order": 6,
+    "question": "Price and order value: price per bottle, insurance on rebills, net price after refunds",
+    "data": "sales / bottles by month, rebill order value",
+    "in_db": "N",
+    "view_or_source": "Shopify + CheckoutChamp",
+    "josh_quote_item_ids": [
+     "L2-35",
+     "L2-39",
+     "L2-88",
+     "L2-106",
+     "L2-142"
+    ]
+   },
+   {
+    "order": 7,
+    "question": "Day-21 / week-4 repeat: active cancels vs failed billing vs signup timing",
+    "data": "paid share of rebills due by day since due date",
+    "in_db": "N",
+    "view_or_source": "Skio + CheckoutChamp + Klaviyo cancel events",
+    "josh_quote_item_ids": [
+     "L2-143",
+     "L2-146"
+    ]
+   },
+   {
+    "order": 8,
+    "question": "Billing-reminder email (and any other flow change in the window): holdout read, with exposure validated",
+    "data": "Klaviyo flow created/updated dates, holdout tag, cancels before due",
+    "in_db": "N",
+    "view_or_source": "Klaviyo API",
+    "josh_quote_item_ids": [
+     "L2-29",
+     "L2-148",
+     "L2-157",
+     "L2-158"
+    ]
+   },
+   {
+    "order": 9,
+    "question": "Payment errors: PayPal gateway or batch failures on specific days",
+    "data": "failed charges by day, error text",
+    "in_db": "N",
+    "view_or_source": "CheckoutChamp",
+    "josh_quote_item_ids": [
+     "T_26-45",
+     "L2-111"
+    ]
+   },
+   {
+    "order": 10,
+    "question": "Size the waterfall: price cut, billing interval, pack mix, cohort shortfall, each as dollars with its control",
+    "data": "bars summing to the miss",
+    "in_db": "N",
+    "view_or_source": "sheet \"Lonvera Subscriber Value YoY\"",
+    "josh_quote_item_ids": [
+     "L2-113",
+     "L2-116"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Skio (Shopify-native) rebill run-off is about 80% of the gap (first read); later why-chain: legacy Skio base -$42.5K/wk, renewals per due 0.84 to 0.70 starting the Sep 14-15 week",
+    "status": "consistent-with (not randomized)",
+    "date": "2026-10-16",
+    "item_ids": [
+     "T_26-29",
+     "T_26-53"
+    ]
+   },
+   {
+    "cause": "Pack mix and long billing intervals (3- and 5-packs from March; Aug 24 offer lifted bottles per first order 2.65 to 3.27): week-4 repeat 33.2% to 23.2% between cohorts",
+    "status": "answer ranked it the largest driver (decomposition, not a control); delayed vs lost still open (settles when W35 week 8 closes Oct 26-Nov 1)",
+    "date": "2026-10-21",
+    "item_ids": [
+     "L2-8",
+     "L2-9",
+     "L2-32",
+     "L2-45"
+    ]
+   },
+   {
+    "cause": "Billing-reminder email: recipients cancelled before due 9.8% vs 1.4% for the no-email half (7,082 vs 6,889 rebills due, Sep 21-Oct 16)",
+    "status": "consistent-with; randomization real (Klaviyo 50/50) but no-email side visible only via a tag from about Oct 15, so exposure needed validation",
+    "date": "2026-10-23",
+    "item_ids": [
+     "L2-157",
+     "L2-158",
+     "L2-159",
+     "L2-148"
+    ]
+   },
+   {
+    "cause": "\"Mostly timing\" explanation",
+    "status": "refuted / withdrawn: it modeled how much timing could explain, never tested against a like-for-like control",
+    "date": "2026-10-23",
+    "item_ids": [
+     "L2-150",
+     "L2-161"
+    ]
+   },
+   {
+    "cause": "Price cut Skio to CheckoutChamp (about $40 to $30-33 per bottle, about -$171K per month)",
+    "status": "verified numbers; share of the October miss is a bar in the waterfall",
+    "date": "2026-10-21",
+    "item_ids": [
+     "L2-35",
+     "L2-39",
+     "L2-88"
+    ]
+   },
+   {
+    "cause": "Shipping insurance missing on rebills lowers rebill order value",
+    "status": "refuted (7,731 successful CheckoutChamp rebills since Sep 15 carry none; order value flat)",
+    "date": "2026-10-22",
+    "item_ids": [
+     "L2-106",
+     "L2-142"
+    ]
+   },
+   {
+    "cause": "More cancels / refunds / failures overall; M1-M4 down 21-30%; billing batch ran late (about $21K short)",
+    "status": "refuted / retracted: partial-window artifact; batch ran on time",
+    "date": "2026-10-16",
+    "item_ids": [
+     "T_26-29",
+     "T_26-45"
+    ]
+   },
+   {
+    "cause": "PayPal target_client_id errors on Oct 12-13 caused failed rebills (245 rebills, about $13K, left un-retried)",
+    "status": "verified for those days; Josh fixed it by Oct 22",
+    "date": "2026-10-22",
+    "item_ids": [
+     "L2-111",
+     "L2-141"
+    ]
+   },
+   {
+    "cause": "Failed-payment recovery missing in Klaviyo (about 2,870 declined rebills per month)",
+    "status": "open (Klaviyo audit Oct 13)",
+    "date": "2026-10-13",
+    "item_ids": [
+     "S_secondary-91",
+     "T_small-14",
+     "T_small-15"
+    ]
+   }
+  ],
+  "controls": "Prior cohort at the same age AND same pack size; calendar-matched Skio-2025 vs CheckoutChamp-2026 comparison (Skio April/May 5-pack points were 9 and 23 signups, not data); billing-reminder holdout only after exposure is validated (who actually got the email, tag start date, contamination); pre/post on the Sep 14-15 flow scale-up with a flat pre-trend; every rate with its denominator (cancels per rebill due, not cancels per week).",
+  "guardrails": [
+   {
+    "id": "G03",
+    "name": "Partial day / partial window artifacts"
+   },
+   {
+    "id": "G07",
+    "name": "Rates with denominators, never counts"
+   },
+   {
+    "id": "G09",
+    "name": "Validate an experiment before reading it"
+   },
+   {
+    "id": "G10",
+    "name": "A timing or decomposition story is not attribution"
+   },
+   {
+    "id": "G20",
+    "name": "Cohort source, tool and pull date"
+   },
+   {
+    "id": "G22",
+    "name": "Do not re-recommend what was already done; check the change list first"
+   },
+   {
+    "id": "G24",
+    "name": "Metric definition before the number"
+   }
+  ],
+  "item_ids": [
+   "S_secondary-91",
+   "T_small-14",
+   "T_small-15",
+   "T_26-29",
+   "T_26-30",
+   "T_26-31",
+   "T_26-32",
+   "T_26-33",
+   "T_26-34",
+   "T_26-45",
+   "T_26-53",
+   "L2-1",
+   "T_47-29",
+   "T_47-30",
+   "T_47-35",
+   "T_47-39",
+   "L2-10",
+   "L2-11",
+   "L2-12",
+   "L2-16",
+   "L2-21",
+   "L2-24",
+   "L2-25",
+   "L2-27",
+   "L2-29",
+   "L2-30",
+   "L2-31",
+   "L2-32",
+   "L2-35",
+   "L2-36",
+   "L2-37",
+   "L2-39",
+   "L2-42",
+   "L2-43",
+   "L2-45",
+   "L2-46",
+   "L2-47",
+   "L2-49",
+   "L2-51",
+   "L2-52",
+   "L2-53",
+   "L2-54",
+   "L2-55",
+   "L2-56",
+   "L2-57",
+   "L2-58",
+   "L2-59",
+   "L2-6",
+   "L2-60",
+   "L2-61",
+   "L2-62",
+   "L2-63",
+   "L2-64",
+   "L2-65",
+   "L2-66",
+   "L2-67",
+   "L2-69",
+   "L2-7",
+   "L2-70",
+   "L2-72",
+   "L2-76",
+   "L2-8",
+   "L2-80",
+   "L2-83",
+   "L2-88",
+   "L2-89",
+   "L2-9",
+   "L2-90",
+   "L2-91",
+   "L2-100",
+   "L2-101",
+   "L2-102",
+   "L2-106",
+   "L2-107",
+   "L2-109",
+   "L2-110",
+   "L2-111",
+   "L2-112",
+   "L2-113",
+   "L2-116",
+   "L2-123",
+   "L2-124",
+   "L2-125",
+   "L2-133",
+   "L2-136",
+   "L2-139",
+   "L2-140",
+   "L2-141",
+   "L2-142",
+   "L2-143",
+   "L2-144",
+   "L2-146",
+   "L2-147",
+   "L2-148",
+   "L2-149",
+   "L2-93",
+   "L2-97",
+   "L2-98",
+   "L2-150",
+   "L2-157",
+   "L2-158",
+   "L2-159",
+   "L2-160",
+   "L2-161",
+   "L2-255",
+   "L2-264"
+  ]
+ },
+ {
+  "rank": 3,
+  "key": "model_outputs",
+  "outcome": "Why a model number jumped or does not tie (EBITDA margin, Bear/Bull cases, cash, scenario vs P&L)",
+  "decomposition": "Any model output = f(inputs, structure). Josh question is always \"what changed\": diff model version A vs B with inputs frozen, then change one input at a time (taxes added, gross-up removed, tail rule, NC-ROAS slide, cost-line formulas), then tie to QuickBooks actuals.",
+  "item_count": 104,
+  "core_item_count": 54,
+  "first_asked": "2026-07-17",
+  "last_asked": "2026-10-26",
+  "decision_weight": "M",
+  "build_effort": "M",
+  "in_db": "P (proj_scenarios, proj_audit and proj_scenario_history are in the app database, excluded from analytics; the sheet is the other source)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "What changed? Pull the change history before explaining.",
+    "data": "proj_audit / sheet version history",
+    "in_db": "P",
+    "view_or_source": "proj_audit, Sheets revision history",
+    "josh_quote_item_ids": [
+     "H_2026-08_1-16",
+     "HC_2026-07_7-36"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Without changing anything: why is this model different from the earlier one for the same month?",
+    "data": "two builds, same inputs",
+    "in_db": "P",
+    "view_or_source": "proj_scenario_history",
+    "josh_quote_item_ids": [
+     "H_2026-08_1-252"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Does a historical month tie to QuickBooks to the penny? Which line is missing or double counted?",
+    "data": "P&L lines vs QBO",
+    "in_db": "N",
+    "view_or_source": "QuickBooks, sheet",
+    "josh_quote_item_ids": [
+     "HC_2026-07_7-101",
+     "HC_2026-07_4-118"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "Do the scenario page, P&L and cash flow tie (NOI, ending cash)?",
+    "data": "scenario vs P&L NOI",
+    "in_db": "P",
+    "view_or_source": "proj_scenarios",
+    "josh_quote_item_ids": [
+     "HC_2026-07_6-99",
+     "HC_2026-07_6-127"
+    ]
+   },
+   {
+    "order": 5,
+    "question": "Does the cost structure behave like history (EBITDA about 8%, not 30%; fixed cost step vs earnings)?",
+    "data": "each cost line tied to its driver",
+    "in_db": "P",
+    "view_or_source": "proj_pnl_* (not exposed)",
+    "josh_quote_item_ids": [
+     "HC_2026-07_4-126",
+     "HC_2026-07_7-65"
+    ]
+   },
+   {
+    "order": 6,
+    "question": "Is the assumption credible vs actuals (NC-ROAS above any of the last 5 months; spend above prior peak)?",
+    "data": "trailing actuals",
+    "in_db": "Y",
+    "view_or_source": "analytics.orders_daily + platform_daily",
+    "josh_quote_item_ids": [
+     "HC_2026-07_5-84"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Thin-tail fallback inflated Bull and Bear (see cohort tree)",
+    "status": "verified / fixed",
+    "date": "2026-08-03",
+    "item_ids": [
+     "S_secondary-55"
+    ]
+   },
+   {
+    "cause": "Cash Flow read the dropdown-following P&L while Financing was pinned to Base: off $208K-$2.2M per year; re-pointed and tied across 4 scenarios x 4 years",
+    "status": "verified / fixed",
+    "date": "2026-08-03",
+    "item_ids": [
+     "S_secondary-56",
+     "HC_2026-07_6-99"
+    ]
+   },
+   {
+    "cause": "P&L sub-item summing bugs overstated historic NOI by up to $63K per month (missing shrinkage row, omitted marketing services, blank Jun-26 cell)",
+    "status": "verified / fixed",
+    "date": "2026-07-30",
+    "item_ids": [
+     "S_secondary-52",
+     "S_secondary-78"
+    ]
+   },
+   {
+    "cause": "COGS and expense double count plus scope mismatch inflated NOI",
+    "status": "verified / fixed",
+    "date": "2026-07-24",
+    "item_ids": [
+     "S_secondary-64",
+     "HC_2026-07_5-94"
+    ]
+   },
+   {
+    "cause": "Removing the Stage-2 gross-up: Bear 2027 repeat -28%, NOI -35%; most of the gap was shipping (gross vs net)",
+    "status": "verified effect; right method not resolved",
+    "date": "2026-08-03",
+    "item_ids": [
+     "H_2026-08_1-49",
+     "H_2026-08_1-62"
+    ]
+   },
+   {
+    "cause": "Daily EBITDA estimate ran 25-56% above booked NOI: payment processing double count $55,217 hidden by a 0.715 calibration factor; Upstack missing BackUp spend; tax and refunds in revenue",
+    "status": "verified",
+    "date": "2026-09-24",
+    "item_ids": [
+     "S_secondary-174",
+     "S_secondary-175",
+     "T_06-76"
+    ]
+   },
+   {
+    "cause": "Adding corporate taxes moved scenarios by about $1M",
+    "status": "open (no answer on record)",
+    "date": "2026-07-28",
+    "item_ids": [
+     "HC_2026-07_7-35",
+     "HC_2026-07_7-36",
+     "HC_2026-07_7-37"
+    ]
+   },
+   {
+    "cause": "Fixed cost +$60K vs earnings -$200K+ (disproportionate)",
+    "status": "open",
+    "date": "2026-07-28",
+    "item_ids": [
+     "HC_2026-07_7-65"
+    ]
+   }
+  ],
+  "controls": "Freeze inputs and diff two versions; change one input at a time; tie to QuickBooks for closed months; never explain a jump before reading the edit history.",
+  "guardrails": [
+   {
+    "id": "G05",
+    "name": "Gross vs net: say which"
+   },
+   {
+    "id": "G13",
+    "name": "Frozen, first-row-only and shifted columns; pull the sheet before writing"
+   },
+   {
+    "id": "G29",
+    "name": "Read the edit history before explaining a model number"
+   },
+   {
+    "id": "G03",
+    "name": "Partial day / partial window artifacts"
+   }
+  ],
+  "item_ids": [
+   "HC_2026-07_4-79",
+   "HC_2026-07_4-80",
+   "HC_2026-07_4-82",
+   "HC_2026-07_4-118",
+   "HC_2026-07_4-126",
+   "HC_2026-07_4-127",
+   "HC_2026-07_4-128",
+   "HC_2026-07_4-143",
+   "HC_2026-07_4-145",
+   "HC_2026-07_4-168",
+   "HC_2026-07_4-172",
+   "HC_2026-07_4-175",
+   "HC_2026-07_4-177",
+   "HC_2026-07_4-179",
+   "HC_2026-07_4-180",
+   "HC_2026-07_4-184",
+   "HC_2026-07_5-110",
+   "HC_2026-07_5-114",
+   "HC_2026-07_5-126",
+   "HC_2026-07_5-127",
+   "HC_2026-07_5-129",
+   "HC_2026-07_5-83",
+   "HC_2026-07_5-84",
+   "HC_2026-07_5-94",
+   "HC_2026-07_5-95",
+   "HC_2026-07_5-99",
+   "S_secondary-62",
+   "S_secondary-64",
+   "HC_2026-07_6-100",
+   "HC_2026-07_6-126",
+   "HC_2026-07_6-127",
+   "HC_2026-07_6-130",
+   "HC_2026-07_6-131",
+   "HC_2026-07_6-132",
+   "HC_2026-07_6-52",
+   "HC_2026-07_6-82",
+   "HC_2026-07_6-83",
+   "HC_2026-07_6-84",
+   "HC_2026-07_6-86",
+   "HC_2026-07_6-88",
+   "HC_2026-07_6-97",
+   "HC_2026-07_6-98",
+   "HC_2026-07_6-99",
+   "HC_2026-07_6-181",
+   "HC_2026-07_6-195",
+   "HC_2026-07_6-203",
+   "HC_2026-07_6-216",
+   "HC_2026-07_7-35",
+   "HC_2026-07_7-36",
+   "HC_2026-07_7-37",
+   "HC_2026-07_7-38",
+   "HC_2026-07_7-61",
+   "HC_2026-07_7-65",
+   "HC_2026-07_7-68",
+   "HC_2026-07_7-72",
+   "HC_2026-07_7-74",
+   "HC_2026-07_7-101",
+   "S_secondary-52",
+   "S_secondary-78",
+   "H_2026-08_1-16",
+   "H_2026-08_1-32",
+   "H_2026-08_1-33",
+   "H_2026-08_1-34",
+   "H_2026-08_1-49",
+   "H_2026-08_1-56",
+   "H_2026-08_1-62",
+   "H_2026-08_1-66",
+   "H_2026-08_1-72",
+   "S_secondary-55",
+   "S_secondary-56",
+   "H_2026-08_1-109",
+   "H_2026-08_1-112",
+   "H_2026-08_1-125",
+   "H_2026-08_1-91",
+   "H_2026-08_1-92",
+   "H_2026-08_1-93",
+   "H_2026-08_1-94",
+   "H_2026-08_1-96",
+   "H_2026-08_1-151",
+   "H_2026-08_1-152",
+   "H_2026-08_1-181",
+   "H_2026-08_1-252",
+   "H_2026-08_1-272",
+   "H_2026-08_1-433",
+   "H_2026-08_1-454",
+   "H_2026-08_1-466",
+   "H_2026-08_1-519",
+   "H_2026-08_1-548",
+   "H_2026-08_1-1106",
+   "S_secondary-174",
+   "S_secondary-175",
+   "T_06-76",
+   "T_18-3",
+   "S_secondary-70",
+   "T_21-58",
+   "T_21-59",
+   "T_26-39",
+   "T_26-57",
+   "T_26-63",
+   "L2-93",
+   "L2-97",
+   "L2-170",
+   "L2-203",
+   "L2-338"
+  ]
+ },
+ {
+  "rank": 4,
+  "key": "spend_capacity",
+  "outcome": "Spend fell or will not scale: bid floors, caps, budgets (spend capacity)",
+  "decomposition": "Spend = sum over ad sets of min(budget, what auction delivers at the bid limit). Budget utilization = spend / budget. An ad set is bid-bound when realized cost per purchase exceeds the cost cap or realized ROAS is under the ROAS floor. Spend change = edit events x touched ad sets x delivery response + structure shifts (spend moved between structures).",
+  "item_count": 69,
+  "core_item_count": 30,
+  "first_asked": "2026-07-16",
+  "last_asked": "2026-10-25",
+  "decision_weight": "H",
+  "build_effort": "L",
+  "in_db": "P (spend by ad set Y; budgets and bids per ad set N, only daily summed bid totals in proj_feed_bids; edit history lives in the Graph activity log)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Do floors or caps change true business NC ROAS or just cap spend?",
+    "data": "spend and business NC ROAS around floor edits",
+    "in_db": "P",
+    "view_or_source": "meta_adset_daily + orders_daily",
+    "josh_quote_item_ids": [
+     "T_09-8",
+     "T_08-45",
+     "T_08-46"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Is the ad set hitting its daily budget, or do caps bind?",
+    "data": "budget utilization by ad set",
+    "in_db": "N",
+    "view_or_source": "Graph API budgets (not in DB)",
+    "josh_quote_item_ids": [
+     "T_18-10",
+     "T_25-50",
+     "T_25-51",
+     "T_26-64"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "What would blended ROAS have been at 0.90 vs 1.00?",
+    "data": "counterfactual from spend curve",
+    "in_db": "P",
+    "view_or_source": "meta_campaign_daily",
+    "josh_quote_item_ids": [
+     "T_26-83",
+     "T_26-85",
+     "T_08-43"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "Did tightening help or just cut spend to what was working?",
+    "data": "scaling campaigns spend and ROAS before/after, touched vs untouched",
+    "in_db": "P",
+    "view_or_source": "meta_campaign_daily",
+    "josh_quote_item_ids": [
+     "T_26-65",
+     "T_26-67"
+    ]
+   },
+   {
+    "order": 5,
+    "question": "Would loosening back to prior give more spend with little ROAS hit? (price of the removed dollars)",
+    "data": "marginal ROAS of removed spend",
+    "in_db": "P",
+    "view_or_source": "meta_adset_daily",
+    "josh_quote_item_ids": [
+     "T_26-68",
+     "T_26-74"
+    ]
+   },
+   {
+    "order": 6,
+    "question": "If caps were tightened, why did NC ROAS still fall off a cliff?",
+    "data": "mix, testing share, structure",
+    "in_db": "P",
+    "view_or_source": "meta_adset_daily",
+    "josh_quote_item_ids": [
+     "L2-188",
+     "L2-182"
+    ]
+   },
+   {
+    "order": 7,
+    "question": "Which bid type ran when the account spent $1M+ a month?",
+    "data": "2025 campaign setup",
+    "in_db": "N",
+    "view_or_source": "Graph API history",
+    "josh_quote_item_ids": [
+     "T_17-67",
+     "T_08-35"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Floors and caps bind delivery, not efficiency: +0.10 floor = -29% spend, +0.12 attributed ROAS, no business effect (coefficient negative, t -1.35); raises cut new customers 21%",
+    "status": "answered with a regression, not a randomized test (floors below 0.85 untested; recommended 14-day test at 0.90)",
+    "date": "2026-09-23",
+    "item_ids": [
+     "T_09-8",
+     "T_08-45"
+    ]
+   },
+   {
+    "cause": "Sep 23-24 loosening bought almost nothing (39 edited ad sets 0.863 to 0.689 vs rest 0.652 to 0.832)",
+    "status": "verified like-for-like",
+    "date": "2026-09-29",
+    "item_ids": [
+     "S_secondary-79",
+     "T_17-12"
+    ]
+   },
+   {
+    "cause": "Sep 14 tightening of 29 ad sets caused about 98% of the Sep 14 cliff (touched -41%, rest of account -2%); later waves cut touched ad sets 52-75%",
+    "status": "verified like-for-like",
+    "date": "2026-10-26",
+    "item_ids": [
+     "L2-196"
+    ]
+   },
+   {
+    "cause": "Buyers each moved after the previous 7 days and the signal reversed (273 tightenings, 144 loosenings; tighten recovered +4.4% for -27% spend)",
+    "status": "verified",
+    "date": "2026-10-26",
+    "item_ids": [
+     "L2-196"
+    ]
+   },
+   {
+    "cause": "Oct 2-3 tightening mostly cut spend to what was working; account ROAS 0.70 to 0.68 while scaling campaigns 0.74 to 0.83; removed dollars returned about 0.61-0.67",
+    "status": "verified",
+    "date": "2026-10-18",
+    "item_ids": [
+     "T_26-65",
+     "T_26-68"
+    ]
+   },
+   {
+    "cause": "Caps / ROAS floors raise CPM (Josh: \"seems like direct correlation\")",
+    "status": "refuted: uncapped ad sets paid more CPM ($78.65 vs $60.17 capped vs $38.44 tROAS)",
+    "date": "2026-10-09",
+    "item_ids": [
+     "T_21-60",
+     "T_17-44"
+    ]
+   },
+   {
+    "cause": "Bid limits bound every week (Meta ROAS 0.79-0.92 of floors; realized CPA about 30% above cost caps); scaling used 3-14% of budget in October",
+    "status": "verified",
+    "date": "2026-10-26",
+    "item_ids": [
+     "L2-196",
+     "T_25-50"
+    ]
+   }
+  ],
+  "controls": "Touched vs untouched ad sets in the same days (event study); budget utilization before blaming budget; pre/post with flat pre-trend; price the marginal dollar (removed spend ROAS), not the average.",
+  "guardrails": [
+   {
+    "id": "G08",
+    "name": "Mix vs rate: shift-share before naming a cause"
+   },
+   {
+    "id": "G09",
+    "name": "Validate an experiment before reading it"
+   },
+   {
+    "id": "G11",
+    "name": "Exclusions and targeting: read the sentence lines, not the targeting field"
+   },
+   {
+    "id": "G24",
+    "name": "Metric definition before the number"
+   },
+   {
+    "id": "G27",
+    "name": "Attribution windows differ"
+   }
+  ],
+  "item_ids": [
+   "HC_2026-07_4-38",
+   "T_08-35",
+   "T_09-6",
+   "T_09-8",
+   "T_08-38",
+   "T_08-40",
+   "T_08-43",
+   "T_08-45",
+   "T_08-46",
+   "T_08-47",
+   "T_08-48",
+   "T_08-49",
+   "T_10-27",
+   "S_secondary-79",
+   "S_secondary-80",
+   "S_secondary-81",
+   "T_17-12",
+   "T_17-23",
+   "T_17-5",
+   "T_17-7",
+   "T_18-10",
+   "T_18-9",
+   "T_17-44",
+   "T_19-18",
+   "T_17-67",
+   "T_21-60",
+   "T_25-47",
+   "T_25-48",
+   "T_25-49",
+   "T_25-50",
+   "T_25-51",
+   "T_25-55",
+   "T_25-56",
+   "T_26-28",
+   "T_26-40",
+   "T_26-42",
+   "T_26-49",
+   "T_26-50",
+   "T_26-51",
+   "T_26-59",
+   "T_26-61",
+   "T_26-64",
+   "T_26-65",
+   "T_26-67",
+   "T_26-68",
+   "T_26-69",
+   "T_26-71",
+   "T_26-72",
+   "T_26-74",
+   "T_26-79",
+   "T_26-83",
+   "T_26-85",
+   "T_24-56",
+   "T_24-57",
+   "T_24-64",
+   "T_24-70",
+   "T_24-72",
+   "T_24-85",
+   "T_26-91",
+   "T_26-92",
+   "T_26-93",
+   "T_26-94",
+   "T_26-95",
+   "T_26-96",
+   "L2-182",
+   "L2-184",
+   "L2-185",
+   "L2-188",
+   "L2-196"
+  ]
+ },
+ {
+  "rank": 5,
+  "key": "nc_roas_cpa",
+  "outcome": "New-customer ROAS down / CPA up / acquisition \"free fall\" (the root question)",
+  "decomposition": "Already in the revenue tree: NC revenue = spend x NC ROAS; NC ROAS = NC AOV / NC CPA; CPA = CPC / conversion; CPC = CPM / CTR. Additions mined from how Josh walked it: first split the fall into SPEND (log share) vs PER-DOLLAR yield; then split per-dollar into clicks per dollar x NC per click x AOV; then shift-share the per-dollar change into MIX (structure, ad-set age, product, country) vs RATE inside the same structure.",
+  "item_count": 64,
+  "core_item_count": 24,
+  "first_asked": "2026-07-16",
+  "last_asked": "2026-10-27",
+  "decision_weight": "H",
+  "build_effort": "M (additions to the revenue tree)",
+  "in_db": "Y for spend, NC revenue, NC ROAS, Meta and Upstack attribution (analytics.platform_daily, orders_daily, meta_*_daily); N for breakdowns, bids, change log",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Is the number real and fresh? (half of one \"drop\" was a missing Amazon feed; partial-day spend)",
+    "data": "data_coverage, last loaded day",
+    "in_db": "Y",
+    "view_or_source": "analytics.data_coverage, etl_runs",
+    "josh_quote_item_ids": [
+     "T_17-5",
+     "L2-231"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Josh hypothesis list, in the order he types it: creative that was working, bids, country, product spend and NC-AOV, CPC/CTR/CPM/spend, testing share, click-to-purchase, campaign changes, Google vs Meta",
+    "data": "one comparison window then vs now",
+    "in_db": "P",
+    "view_or_source": "meta_*_daily, creative_tracker",
+    "josh_quote_item_ids": [
+     "T_17-11",
+     "T_17-12",
+     "T_17-13",
+     "T_17-16",
+     "T_17-6",
+     "T_17-7",
+     "T_17-8",
+     "T_17-9",
+     "T_17-10"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Choose THEN window carefully (spring Apr 13-May 24 at $200-343K per week vs now) and report spend vs per-dollar separately",
+    "data": "weekly spend, NC, NC ROAS",
+    "in_db": "Y",
+    "view_or_source": "analytics.platform_daily + orders_daily",
+    "josh_quote_item_ids": [
+     "S_secondary-81",
+     "L2-186"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "Why not just state data: keep digging for the mechanism, check what we already did before proposing",
+    "data": "change list",
+    "in_db": "N",
+    "view_or_source": "Graph API activity log, Klaviyo, CheckoutChamp",
+    "josh_quote_item_ids": [
+     "T_10-30",
+     "L2-186"
+    ]
+   },
+   {
+    "order": 5,
+    "question": "Is it market-wide or ours? (control: Hydrant account, benchmark)",
+    "data": "Hydrant CPM and ROAS pattern",
+    "in_db": "N",
+    "view_or_source": "Hydrant Meta account",
+    "josh_quote_item_ids": [
+     "T_21-53",
+     "T_26-56"
+    ]
+   },
+   {
+    "order": 6,
+    "question": "Did acquisition drop after the old campaign set stopped and caps tightened? Spend or efficiency?",
+    "data": "spend by campaign set",
+    "in_db": "Y",
+    "view_or_source": "analytics.meta_campaign_daily",
+    "josh_quote_item_ids": [
+     "T_26-59",
+     "L2-188",
+     "L2-182"
+    ]
+   },
+   {
+    "order": 7,
+    "question": "What is fundamentally different: fewer new ads, narrower audience, auction price, conversion",
+    "data": "CPM, click to NC rate",
+    "in_db": "P",
+    "view_or_source": "meta_ad_daily; breakdowns missing",
+    "josh_quote_item_ids": [
+     "L2-180",
+     "L2-183"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Spend -63% explains about 3/4 of the NC fall (Jul 12 week 2,871 NC to Oct 18 week 737; log share 73%); the rest is per-dollar yield -27% vs Sep 6 peak",
+    "status": "verified",
+    "date": "2026-10-26",
+    "item_ids": [
+     "L2-196",
+     "L2-182",
+     "L2-186"
+    ]
+   },
+   {
+    "cause": "Sep 23-24 bid loosening: spend +12.4% per day, Meta revenue +0.4%; real DTC decline 6-7% (rest was a missing Amazon feed)",
+    "status": "verified",
+    "date": "2026-09-29",
+    "item_ids": [
+     "T_17-5",
+     "S_secondary-79"
+    ]
+   },
+   {
+    "cause": "Spend moved off structures returning 0.6-0.8 NC ROAS onto structures returning 0.3-0.5 (37 ad sets paused Oct 1-5; originals off Oct 23-24)",
+    "status": "verified timing; consistent-with causation",
+    "date": "2026-10-26",
+    "item_ids": [
+     "L2-196",
+     "L2-188"
+    ]
+   },
+   {
+    "cause": "September was a 5-week conversion pocket at 1.6x normal; Oct reverted to the July per-click rate",
+    "status": "numbers verified; mechanism consistent-with",
+    "date": "2026-10-26",
+    "item_ids": [
+     "L2-196"
+    ]
+   },
+   {
+    "cause": "CPM about doubled in a mid-August step in every age cell (US $39 Jul to $70 Sep)",
+    "status": "verified fact; cause untested",
+    "date": "2026-10-26",
+    "item_ids": [
+     "L2-183",
+     "L2-196"
+    ]
+   },
+   {
+    "cause": "Market-wide ad cost inflation or the takeover restructure",
+    "status": "refuted for the restructure (Hydrant control shows same CPM/ROAS pattern); weekly NC ROAS flat since close",
+    "date": "2026-10-08",
+    "item_ids": [
+     "T_21-53"
+    ]
+   },
+   {
+    "cause": "Product mix, placement, device, demographic, creative format, country, audience exhaustion, pixel, rebills, price",
+    "status": "refuted across lanes",
+    "date": "2026-10-26",
+    "item_ids": [
+     "L2-191",
+     "T_10-30",
+     "T_25-41"
+    ]
+   },
+   {
+    "cause": "NC AOV drop: upsell pages Aug 21 lifted AOV about $10; give-back is more single bottles, fewer Buy 3 Get 2, lower insurance attach, cost-cap campaigns; Trybe $0 gifts inflate counts",
+    "status": "verified",
+    "date": "2026-10-03",
+    "item_ids": [
+     "T_19-26",
+     "T_19-27"
+    ]
+   }
+  ],
+  "controls": "Shift-share every per-dollar change into mix vs within-structure rate; like-for-like ad-set age; Hydrant as external control; each \"then vs now\" window shown with its spend level.",
+  "guardrails": [
+   {
+    "id": "G01",
+    "name": "Name the basis before comparing"
+   },
+   {
+    "id": "G02",
+    "name": "Meta spend comes from the Graph API (both ad accounts), never Upstack"
+   },
+   {
+    "id": "G03",
+    "name": "Partial day / partial window artifacts"
+   },
+   {
+    "id": "G08",
+    "name": "Mix vs rate: shift-share before naming a cause"
+   },
+   {
+    "id": "G15",
+    "name": "Denominators across scope: Main-only vs Main + BackUp + Google"
+   },
+   {
+    "id": "G22",
+    "name": "Do not re-recommend what was already done; check the change list first"
+   },
+   {
+    "id": "G26",
+    "name": "Blip, ebb and flow, or real: use an external control and do not alarm"
+   }
+  ],
+  "item_ids": [
+   "HC_2026-07_4-71",
+   "HC_2026-07_4-73",
+   "H_2026-08_1-930",
+   "H_2026-08_1-941",
+   "T_08-35",
+   "T_08-43",
+   "T_10-22",
+   "T_10-30",
+   "T_10-31",
+   "S_secondary-79",
+   "S_secondary-81",
+   "T_17-10",
+   "T_17-11",
+   "T_17-12",
+   "T_17-13",
+   "T_17-16",
+   "T_17-5",
+   "T_17-6",
+   "T_17-7",
+   "T_17-8",
+   "T_17-9",
+   "T_18-10",
+   "T_18-16",
+   "T_18-32",
+   "T_18-39",
+   "T_18-40",
+   "T_18-9",
+   "S_secondary-88",
+   "T_19-26",
+   "T_19-27",
+   "T_21-53",
+   "T_21-57",
+   "T_25-41",
+   "T_25-42",
+   "T_26-40",
+   "T_26-42",
+   "T_26-49",
+   "T_26-50",
+   "T_26-51",
+   "T_26-56",
+   "T_26-59",
+   "T_26-67",
+   "T_26-69",
+   "T_26-71",
+   "T_26-72",
+   "T_24-57",
+   "T_24-69",
+   "T_24-85",
+   "T_26-88",
+   "L2-164",
+   "L2-168",
+   "L2-169",
+   "L2-171",
+   "L2-180",
+   "L2-182",
+   "L2-183",
+   "L2-184",
+   "L2-186",
+   "L2-188",
+   "L2-191",
+   "L2-196",
+   "L2-208",
+   "L2-211",
+   "L2-231"
+  ]
+ },
+ {
+  "rank": 6,
+  "key": "launch_volume",
+  "outcome": "Creative launch volume, hit rate and scale (\"do more ads drive more spend?\")",
+  "decomposition": "Spend capacity ~ winners x spend per winner. Winners per week = new unique concepts (name-deduped, first spend day, excluding renamed re-uploads and relaunch copies) x hit rate (share reaching $1K in 14 days / $5K). Reverse path to test: spend causes launches (Meta allocates spend to ads that look good), not only launches cause spend.",
+  "item_count": 61,
+  "core_item_count": 33,
+  "first_asked": "2026-07-16",
+  "last_asked": "2026-10-28",
+  "decision_weight": "H",
+  "build_effort": "M",
+  "in_db": "P (meta_ad_daily from 2026-05-06; first spend day derivable; spring (Apr-May) ad grain not in DB; tracker launch dates unreliable)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "What is the hit rate of ads that spent more than $5K, how many were launched, how many per week?",
+    "data": "first-spend-day ad families, spend threshold hits",
+    "in_db": "P",
+    "view_or_source": "meta_ad_daily",
+    "josh_quote_item_ids": [
+     "HC_2026-07_4-13"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Did more ads launching mean more performance, and more scale? Correlation or causation?",
+    "data": "weekly launches vs weekly spend",
+    "in_db": "P",
+    "view_or_source": "meta_ad_daily",
+    "josh_quote_item_ids": [
+     "HC_2026-07_4-14",
+     "HC_2026-07_4-15",
+     "HC_2026-07_4-20"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Ads are the real variable, campaigns are conduits: ad count AND raw count as features",
+    "data": "ad count in scale vs test",
+    "in_db": "P",
+    "view_or_source": "meta_ad_daily",
+    "josh_quote_item_ids": [
+     "HC_2026-07_4-23",
+     "HC_2026-07_4-24",
+     "HC_2026-07_4-36"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "Reverse causation: ad spend itself comes from Meta allocating to ads that look good",
+    "data": "spend before/after launch",
+    "in_db": "P",
+    "view_or_source": "meta_ad_daily",
+    "josh_quote_item_ids": [
+     "HC_2026-07_4-28"
+    ]
+   },
+   {
+    "order": 5,
+    "question": "Has creative volume actually dropped? (tracker said no; Meta ad-level said 205 to 80 per week)",
+    "data": "new concepts per week from Meta, not tracker",
+    "in_db": "P",
+    "view_or_source": "meta_ad_daily",
+    "josh_quote_item_ids": [
+     "T_18-33",
+     "T_18-34",
+     "T_17-36"
+    ]
+   },
+   {
+    "order": 6,
+    "question": "Hit rate and weekly launches at scale vs now; images vs video split",
+    "data": "concepts reaching $1K / $5K",
+    "in_db": "P",
+    "view_or_source": "meta_ad_daily",
+    "josh_quote_item_ids": [
+     "T_11-52",
+     "T_11-79",
+     "T_11-56"
+    ]
+   },
+   {
+    "order": 7,
+    "question": "Does tripling launches turn it around? (thesis test)",
+    "data": "spend capacity vs launches",
+    "in_db": "P",
+    "view_or_source": "meta_ad_daily",
+    "josh_quote_item_ids": [
+     "T_21-54",
+     "L2-181"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Volume problem, not quality: new unique concepts 205 per week (Apr 13-May 24, $276K per week) to about 80 (Sep, $125K per week); concepts reaching $1K in 14 days 9.2 to 5.8 to 4.2; hit rate flat about 5%",
+    "status": "verified (Meta ad level); the 80 per week is a Sep number and STALE",
+    "date": "2026-09-30",
+    "item_ids": [
+     "S_secondary-82",
+     "T_18-33"
+    ]
+   },
+   {
+    "cause": "Current volume: wk Oct 5 322, Oct 12 272, Oct 19 886 first-spend families (not checked for renamed re-uploads)",
+    "status": "open",
+    "date": "2026-10-28",
+    "item_ids": [
+     "L2-181",
+     "L2-241"
+    ]
+   },
+   {
+    "cause": "Aug 17-30 rebuild launches were renamed re-uploads, not real launches (Aug 1,228 vs 151)",
+    "status": "verified (Josh correction)",
+    "date": "2026-10-01",
+    "item_ids": [
+     "T_17-39"
+    ]
+   },
+   {
+    "cause": "Total launches fell only 20% because 74% of launches are now copies",
+    "status": "verified",
+    "date": "2026-10-01",
+    "item_ids": [
+     "T_17-36"
+    ]
+   },
+   {
+    "cause": "More ads = more spend capacity: right mechanism but not a way to deploy $650K at 0.7",
+    "status": "partial judgment",
+    "date": "2026-10-08",
+    "item_ids": [
+     "T_21-54"
+    ]
+   },
+   {
+    "cause": "90% of ad-set-weeks run under 50 conversions (253 active ad sets in 23 campaigns on Sep 23); budget (about $20 per ad per day), not ad supply, limits how many ads can be read",
+    "status": "verified (correlational)",
+    "date": "2026-09-23",
+    "item_ids": [
+     "T_08-44",
+     "T_09-12",
+     "T_24-64"
+    ]
+   }
+  ],
+  "controls": "Pull launches from Meta ad level, never the tracker; dedupe by name and drop renamed re-uploads and relaunch copies; match spend levels when comparing launch weeks; test the reverse arrow (spend to launches); denominator for hit rate is ads that got first spend.",
+  "guardrails": [
+   {
+    "id": "G12",
+    "name": "Launch volume comes from Meta ad-level first-spend, deduped; never the tracker; never a stale number"
+   },
+   {
+    "id": "G13",
+    "name": "Frozen, first-row-only and shifted columns; pull the sheet before writing"
+   },
+   {
+    "id": "G25",
+    "name": "Survivorship and self-selected spend"
+   },
+   {
+    "id": "G23",
+    "name": "Sample size and significance"
+   }
+  ],
+  "item_ids": [
+   "HC_2026-07_4-13",
+   "HC_2026-07_4-14",
+   "HC_2026-07_4-15",
+   "HC_2026-07_4-17",
+   "HC_2026-07_4-18",
+   "HC_2026-07_4-19",
+   "HC_2026-07_4-20",
+   "HC_2026-07_4-23",
+   "HC_2026-07_4-24",
+   "HC_2026-07_4-26",
+   "HC_2026-07_4-28",
+   "HC_2026-07_4-35",
+   "HC_2026-07_4-36",
+   "HC_2026-07_4-38",
+   "HC_2026-07_5-12",
+   "H_2026-08_1-937",
+   "H_2026-08_1-952",
+   "T_08-44",
+   "T_09-12",
+   "T_17-7",
+   "S_secondary-82",
+   "T_18-29",
+   "T_18-33",
+   "T_18-34",
+   "T_18-38",
+   "T_18-39",
+   "S_secondary-87",
+   "T_11-52",
+   "T_17-36",
+   "T_17-39",
+   "S_secondary-88",
+   "T_11-56",
+   "T_11-57",
+   "T_17-63",
+   "T_17-65",
+   "T_11-79",
+   "T_21-54",
+   "T_21-61",
+   "T_23-2",
+   "T_25-56",
+   "T_24-49",
+   "T_26-27",
+   "T_26-28",
+   "T_26-43",
+   "T_26-76",
+   "T_26-78",
+   "T_24-61",
+   "T_24-62",
+   "T_24-63",
+   "T_24-64",
+   "T_24-65",
+   "T_24-66",
+   "T_24-67",
+   "T_24-68",
+   "T_24-72",
+   "T_23-21",
+   "T_23-22",
+   "T_23-23",
+   "L2-180",
+   "L2-181",
+   "L2-241"
+  ]
+ },
+ {
+  "rank": 7,
+  "key": "creative_perf",
+  "outcome": "Which creative / ICP / pain point / offer / vendor / format used to work and stopped",
+  "decomposition": "Performance by tag = spend-weighted ROAS over ad families in that tag over a window; \"used to work, stopped\" = tag ROAS in THEN window vs NOW with spend floor, split into tag mix shift vs within-tag decay.",
+  "item_count": 49,
+  "core_item_count": 23,
+  "first_asked": "2026-06-09",
+  "last_asked": "2026-11-03",
+  "decision_weight": "M",
+  "build_effort": "S (tag mix and shift-share already in the revenue tree; add thresholds and survivorship guards)",
+  "in_db": "Y (analytics.creative_tracker joined to meta_ads / meta_ad_daily; Meta-reported and Upstack columns)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Which type of ad did better on ROAS, CPA and scale over 14 days? (source, vendor)",
+    "data": "ROAS, CPA by ad source",
+    "in_db": "Y",
+    "view_or_source": "creative_tracker + meta_ad_daily",
+    "josh_quote_item_ids": [
+     "H_2026-06_1-367"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "What have we launched, what works, where is arbitrage, what used to work that does not now",
+    "data": "tag cuts THEN vs NOW",
+    "in_db": "Y",
+    "view_or_source": "creative_tracker",
+    "josh_quote_item_ids": [
+     "T_08-31",
+     "T_17-11"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Top 3 ICPs and top 3 pain points per product, last 30 days",
+    "data": "tag ROAS with spend floor",
+    "in_db": "Y",
+    "view_or_source": "creative_tracker",
+    "josh_quote_item_ids": [
+     "T_11-22",
+     "T_20-37",
+     "T_22-4"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "Video vs image breakout when scaled; can video absorb more spend?",
+    "data": "format cut by window",
+    "in_db": "Y",
+    "view_or_source": "meta_ad_daily",
+    "josh_quote_item_ids": [
+     "T_17-32",
+     "T_17-34"
+    ]
+   },
+   {
+    "order": 5,
+    "question": "Which demographic did the ad deliver to?",
+    "data": "age/gender",
+    "in_db": "N",
+    "view_or_source": "Meta breakdowns",
+    "josh_quote_item_ids": [
+     "T_11-55"
+    ]
+   },
+   {
+    "order": 6,
+    "question": "Is a setting (Related media / Advantage+) on top performers?",
+    "data": "creative spec",
+    "in_db": "N",
+    "view_or_source": "Graph API creative spec",
+    "josh_quote_item_ids": [
+     "T_17-26",
+     "T_17-29"
+    ]
+   },
+   {
+    "order": 7,
+    "question": "Which 2025 statics worked that we are not running?",
+    "data": "last-year ad families",
+    "in_db": "P",
+    "view_or_source": "creative_tracker (lifetime frozen 9/17)",
+    "josh_quote_item_ids": [
+     "T_17-30"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Offer + clock is the only construction above 1.0 ROAS in every window; offer-led is best on every product; advantage falling now",
+    "status": "verified (strongest repeated finding)",
+    "date": "2026-10-01",
+    "item_ids": [
+     "T_08-31",
+     "T_05-52",
+     "T_11-17"
+    ]
+   },
+   {
+    "cause": "ICP is a weak lever (VB tags within about 0.05 ROAS); best-paying audiences were abandoned; Won't Slow Down biggest then collapsed",
+    "status": "verified",
+    "date": "2026-10-08",
+    "item_ids": [
+     "T_20-37",
+     "T_22-4"
+    ]
+   },
+   {
+    "cause": "Vendor (Madre) as a THEN-to-NOW cause",
+    "status": "refuted",
+    "date": "2026-09-30",
+    "item_ids": [
+     "S_secondary-81",
+     "T_08-31"
+    ]
+   },
+   {
+    "cause": "Format (image vs video) broke efficiency",
+    "status": "refuted: both decayed alike; video absorbs more spend and hits $1K twice as often",
+    "date": "2026-10-01",
+    "item_ids": [
+     "T_17-32",
+     "T_17-34"
+    ]
+   },
+   {
+    "cause": "Creative fatigue: families older than 60 days down 7-15%; no new Vital Bull winner since early Sep",
+    "status": "partial",
+    "date": "2026-09-29",
+    "item_ids": [
+     "T_17-11"
+    ]
+   },
+   {
+    "cause": "Demographics explain the decline",
+    "status": "refuted",
+    "date": "2026-09-30",
+    "item_ids": [
+     "T_11-55",
+     "S_secondary-87"
+    ]
+   },
+   {
+    "cause": "Copy-only tags are wrong: looking at the ad changed the line on 61% of VB rows (48% of spend)",
+    "status": "verified",
+    "date": "2026-11-03",
+    "item_ids": [
+     "L2-267",
+     "L2-271"
+    ]
+   }
+  ],
+  "controls": "Spend floor (tiny-spend ROAS misleads); fixed thresholds (works >= 1.00, not <= 0.80, in between is average); tag mix shift-share; first-row-only metrics in creative_tracker; Meta data not the tracker for launch facts.",
+  "guardrails": [
+   {
+    "id": "G14",
+    "name": "Small-spend ROAS and fixed thresholds"
+   },
+   {
+    "id": "G13",
+    "name": "Frozen, first-row-only and shifted columns; pull the sheet before writing"
+   },
+   {
+    "id": "G19",
+    "name": "Results are not causes"
+   },
+   {
+    "id": "G25",
+    "name": "Survivorship and self-selected spend"
+   },
+   {
+    "id": "G12",
+    "name": "Launch volume comes from Meta ad-level first-spend, deduped; never the tracker; never a stale number"
+   }
+  ],
+  "item_ids": [
+   "H_2026-06_1-366",
+   "H_2026-06_1-367",
+   "T_08-31",
+   "T_05-52",
+   "T_05-79",
+   "S_secondary-161",
+   "T_08-55",
+   "T_09-21",
+   "T_10-22",
+   "T_10-32",
+   "T_10-33",
+   "S_secondary-81",
+   "T_11-17",
+   "T_11-22",
+   "T_11-24",
+   "T_12-40",
+   "T_17-11",
+   "S_secondary-77",
+   "T_18-13",
+   "T_18-40",
+   "S_secondary-87",
+   "T_11-44",
+   "T_17-26",
+   "T_17-29",
+   "T_17-30",
+   "T_17-32",
+   "T_17-34",
+   "T_17-35",
+   "T_11-55",
+   "T_11-75",
+   "T_11-77",
+   "T_21-17",
+   "T_21-23",
+   "T_21-45",
+   "T_20-37",
+   "T_22-4",
+   "T_22-50",
+   "T_23-2",
+   "S_secondary-97",
+   "T_24-6",
+   "T_25-6",
+   "T_24-22",
+   "T_26-75",
+   "S_secondary-92",
+   "T_38-28",
+   "T_24-87",
+   "L2-191",
+   "L2-267",
+   "L2-271"
+  ]
+ },
+ {
+  "rank": 8,
+  "key": "rebill_failure",
+  "outcome": "Subscription rebill failures and declines",
+  "decomposition": "Paid rebills = rebills due x (1 - cancel before due) x first-attempt approval + recovered on retry. Report as per-rebill-due and per-attempt rates, by cycle (cycle 2 vs 3), with a stated metric definition (first try vs ever; order vs customer).",
+  "item_count": 48,
+  "core_item_count": 33,
+  "first_asked": "2026-07-17",
+  "last_asked": "2026-10-22",
+  "decision_weight": "M",
+  "build_effort": "L",
+  "in_db": "N (Adyen, CheckoutChamp, Skio, Shopify; no order or subscription level data in the DB)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "How many second rebills actually went through; first-try success?",
+    "data": "cycle reach counts, attempts",
+    "in_db": "N",
+    "view_or_source": "Adyen TransactionDetails, CheckoutChamp",
+    "josh_quote_item_ids": [
+     "HC_2026-07_5-29",
+     "HC_2026-07_6-74"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Retries vs not: share of orders needing retries",
+    "data": "attempt counts",
+    "in_db": "N",
+    "view_or_source": "Adyen",
+    "josh_quote_item_ids": [
+     "HC_2026-07_5-42"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Why are subscription rebills declined while non-subscription repeat purchases succeed? (Josh: how do they know to block it?)",
+    "data": "decline codes by flag",
+    "in_db": "N",
+    "view_or_source": "Adyen risk and dispute summary",
+    "josh_quote_item_ids": [
+     "HC_2026-07_5-51",
+     "HC_2026-07_5-52",
+     "HC_2026-07_5-57"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "Reconcile metric definitions (15.8% vs about 80% on cycle 2)",
+    "data": "definition table",
+    "in_db": "N",
+    "view_or_source": "pasted cycle tables",
+    "josh_quote_item_ids": [
+     "HC_2026-07_6-168",
+     "HC_2026-07_6-172"
+    ]
+   },
+   {
+    "order": 5,
+    "question": "If fixed, how many more charges and revenue per month?",
+    "data": "failing subs x value",
+    "in_db": "N",
+    "view_or_source": "Skio",
+    "josh_quote_item_ids": [
+     "HC_2026-07_5-61",
+     "HC_2026-07_5-63"
+    ]
+   },
+   {
+    "order": 6,
+    "question": "Specific day failures (PayPal target_client_id, Oct 12-13)",
+    "data": "failed charges by day",
+    "in_db": "N",
+    "view_or_source": "CheckoutChamp",
+    "josh_quote_item_ids": [
+     "L2-111",
+     "T_26-45"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Josh two numbers conflict: \"only 15.8% of second orders worked on the first try\" vs same-period \"closer to 80% success on cycle 2\"; Oct 16 first-attempt rebill success flat 71-74%",
+    "status": "contradicted; definitions never reconciled",
+    "date": "2026-07-28",
+    "item_ids": [
+     "HC_2026-07_6-74",
+     "HC_2026-07_6-168",
+     "HC_2026-07_6-172"
+    ]
+   },
+   {
+    "cause": "Oct 12-13 PayPal gateway permission error left 245 rebills (about $13K) un-retried",
+    "status": "verified; fixed by Josh",
+    "date": "2026-10-22",
+    "item_ids": [
+     "L2-111",
+     "L2-141",
+     "T_26-45"
+    ]
+   },
+   {
+    "cause": "Whether upsell orders or non-subscriber orders inflate apparent repeat",
+    "status": "open (no answer)",
+    "date": "2026-07-23",
+    "item_ids": [
+     "HC_2026-07_5-39",
+     "HC_2026-07_5-50",
+     "HC_2026-07_5-49"
+    ]
+   },
+   {
+    "cause": "Failed-payment flow missing in Klaviyo (about 2,870 declined rebills per month, 18-26% recover in 14 days)",
+    "status": "open (Klaviyo audit Oct 13)",
+    "date": "2026-10-13",
+    "item_ids": [
+     "S_secondary-91",
+     "T_small-14",
+     "T_small-15"
+    ]
+   }
+  ],
+  "controls": "Fix the metric definition first; same period; per-attempt and per-due denominators; separate retries.",
+  "guardrails": [
+   {
+    "id": "G24",
+    "name": "Metric definition before the number"
+   },
+   {
+    "id": "G07",
+    "name": "Rates with denominators, never counts"
+   },
+   {
+    "id": "G03",
+    "name": "Partial day / partial window artifacts"
+   }
+  ],
+  "item_ids": [
+   "HC_2026-07_4-73",
+   "HC_2026-07_4-189",
+   "HC_2026-07_5-23",
+   "HC_2026-07_5-24",
+   "HC_2026-07_5-27",
+   "HC_2026-07_5-28",
+   "HC_2026-07_5-29",
+   "HC_2026-07_5-31",
+   "HC_2026-07_5-34",
+   "HC_2026-07_5-35",
+   "HC_2026-07_5-37",
+   "HC_2026-07_5-38",
+   "HC_2026-07_5-39",
+   "HC_2026-07_5-42",
+   "HC_2026-07_5-44",
+   "HC_2026-07_5-45",
+   "HC_2026-07_5-46",
+   "HC_2026-07_5-47",
+   "HC_2026-07_5-49",
+   "HC_2026-07_5-50",
+   "HC_2026-07_5-51",
+   "HC_2026-07_5-52",
+   "HC_2026-07_5-53",
+   "HC_2026-07_5-55",
+   "HC_2026-07_5-57",
+   "HC_2026-07_5-58",
+   "HC_2026-07_5-59",
+   "HC_2026-07_5-61",
+   "HC_2026-07_5-63",
+   "HC_2026-07_6-53",
+   "HC_2026-07_6-54",
+   "HC_2026-07_6-64",
+   "HC_2026-07_6-66",
+   "HC_2026-07_6-72",
+   "HC_2026-07_6-73",
+   "HC_2026-07_6-74",
+   "HC_2026-07_6-77",
+   "HC_2026-07_6-168",
+   "HC_2026-07_6-172",
+   "HC_2026-07_7-39",
+   "S_secondary-91",
+   "T_small-14",
+   "T_small-15",
+   "T_small-23",
+   "T_26-45",
+   "L2-111",
+   "L2-112",
+   "L2-141"
+  ]
+ },
+ {
+  "rank": 9,
+  "key": "meta_vs_actual",
+  "outcome": "Meta-reported results vs actual (Upstack / Shopify) gap: ROAS, CPA, returning buyers, spend source",
+  "decomposition": "Gap = Meta ROAS minus actual NC ROAS = denominator gap (account scope: Main only vs Main + BackUp + Google spend) + numerator gap (Meta counts returning buyers, longer or incremental windows, same-day second checkouts). Always state the basis: Meta-reported, Upstack new customers (NC), Upstack all orders.",
+  "item_count": 42,
+  "core_item_count": 22,
+  "first_asked": "2026-08-25",
+  "last_asked": "2026-10-27",
+  "decision_weight": "H",
+  "build_effort": "S",
+  "in_db": "Y (analytics.meta_ad_daily carries Meta and Upstack-attributed columns; platform_daily + orders_daily for actual); N for exclusions, optimization event, customer-level",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Which basis and which days? (Meta numbers or Upstack, exact dates)",
+    "data": "basis label, date range",
+    "in_db": "Y",
+    "view_or_source": "analytics views (named columns)",
+    "josh_quote_item_ids": [
+     "T_08-35",
+     "T_20-55"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Does the spend source include the BackUp account? Use Graph API not Upstack for Meta spend.",
+    "data": "Meta spend both accounts",
+    "in_db": "Y",
+    "view_or_source": "analytics.meta_campaign_daily",
+    "josh_quote_item_ids": [
+     "T_20-52",
+     "S_secondary-184",
+     "T_20-53"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Is 1-day-click a clickier audience? Does 1DC CPA match actual NC CPA, and does matching on total mean matching on who?",
+    "data": "1DC vs 7DC1DV, NC CPA",
+    "in_db": "P",
+    "view_or_source": "meta_ad_daily + orders_daily",
+    "josh_quote_item_ids": [
+     "L2-165",
+     "L2-166",
+     "L2-167"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "Pull business data to get the real CPA and NC ROAS, not Meta-reported",
+    "data": "NC revenue / spend",
+    "in_db": "Y",
+    "view_or_source": "analytics.orders_daily",
+    "josh_quote_item_ids": [
+     "L2-168",
+     "L2-169"
+    ]
+   },
+   {
+    "order": 5,
+    "question": "Are exclusions really on? (Josh: \"there is exclusions\")",
+    "data": "targetingsentencelines, activity log",
+    "in_db": "N",
+    "view_or_source": "Graph API",
+    "josh_quote_item_ids": [
+     "L2-190"
+    ]
+   },
+   {
+    "order": 6,
+    "question": "What does the algorithm optimize on (pixel Purchase vs NC Purchase)?",
+    "data": "optimization event",
+    "in_db": "N",
+    "view_or_source": "Ads Manager",
+    "josh_quote_item_ids": [
+     "L2-179"
+    ]
+   },
+   {
+    "order": 7,
+    "question": "Does the attribution setting (7DC1DV, incremental) explain the ROAS?",
+    "data": "campaign attribution spec",
+    "in_db": "N",
+    "view_or_source": "Graph API",
+    "josh_quote_item_ids": [
+     "T_26-82",
+     "T_10-26"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Meta ROAS 0.705 vs actual 0.586 (Oct 19-24): 0.061 (51%) is denominators (BackUp $4,123 from Oct 21, Google $3,200), 0.058 (49%) Meta counting non-new buyers (returning share of Meta purchases 9% to 17.6%)",
+    "status": "verified",
+    "date": "2026-10-26",
+    "item_ids": [
+     "L2-196",
+     "L2-168"
+    ]
+   },
+   {
+    "cause": "Upstack omits the BackUp account: Jun spend $375,303 vs Graph API $453,845; Jul $764,305 vs $864,614; NC ROAS Jun 0.75 to 0.62 after switch",
+    "status": "verified; rule: Meta spend from Graph API",
+    "date": "2026-10-07",
+    "item_ids": [
+     "S_secondary-184",
+     "T_20-53",
+     "T_20-52"
+    ]
+   },
+   {
+    "cause": "Exclusions: Josh was right; Graph targeting field hides exclusions on newer-format ad sets; only gap was 3 OffWinners1DC ad sets Oct 23 17:16 to Oct 24 08:29 PT ($1.4K, 19 existing-customer purchases)",
+    "status": "verified (resolution in Josh favor)",
+    "date": "2026-10-26",
+    "item_ids": [
+     "L2-190",
+     "T_10-25"
+    ]
+   },
+   {
+    "cause": "1DC CPA is closer to actual NC CPA because it is \"clickier\"; 30-day 1DC CPA tracks 30-day NC CPA but total match is not who",
+    "status": "verified in part",
+    "date": "2026-10-23",
+    "item_ids": [
+     "L2-165",
+     "L2-166"
+    ]
+   },
+   {
+    "cause": "\"Upstack purchases 20-36% below Meta\" compared Upstack NEW customers with Meta ALL purchases; like for like (all orders) Upstack is above Meta for Vita Bull and Beef Liver",
+    "status": "corrected (source: josh-hq ma-calano decision log 2026-11-04; no item id)",
+    "date": "2026-11-04",
+    "item_ids": []
+   },
+   {
+    "cause": "Pixel audiences report 20 people so pixel purchaser exclusions exclude nobody; an unused \"NC Purchase\" custom conversion matches Upstack within 1% while 74% of pixel Purchase events are returning",
+    "status": "verified; learning-drift to known buyers untested",
+    "date": "2026-10-26",
+    "item_ids": [
+     "L2-196"
+    ]
+   }
+  ],
+  "controls": "Same-basis comparison table (Meta-reported, Upstack NC, Upstack all) over identical days and account scope; NC-Purchase-optimized ad set as the control for Purchase-event drift.",
+  "guardrails": [
+   {
+    "id": "G01",
+    "name": "Name the basis before comparing"
+   },
+   {
+    "id": "G02",
+    "name": "Meta spend comes from the Graph API (both ad accounts), never Upstack"
+   },
+   {
+    "id": "G15",
+    "name": "Denominators across scope: Main-only vs Main + BackUp + Google"
+   },
+   {
+    "id": "G11",
+    "name": "Exclusions and targeting: read the sentence lines, not the targeting field"
+   },
+   {
+    "id": "G27",
+    "name": "Attribution windows differ"
+   },
+   {
+    "id": "G03",
+    "name": "Partial day / partial window artifacts"
+   }
+  ],
+  "item_ids": [
+   "H_2026-08_1-945",
+   "H_2026-08_1-946",
+   "H_2026-08_1-948",
+   "S_secondary-294",
+   "T_08-5",
+   "T_08-6",
+   "T_08-28",
+   "T_08-35",
+   "T_06-76",
+   "T_10-21",
+   "T_10-23",
+   "T_10-25",
+   "T_10-26",
+   "T_10-33",
+   "T_10-34",
+   "T_18-17",
+   "T_18-18",
+   "T_18-42",
+   "S_secondary-184",
+   "T_20-52",
+   "T_20-53",
+   "T_20-55",
+   "T_20-63",
+   "T_26-46",
+   "T_26-82",
+   "T_24-60",
+   "T_26-87",
+   "L2-165",
+   "L2-166",
+   "L2-167",
+   "L2-168",
+   "L2-169",
+   "L2-173",
+   "L2-174",
+   "L2-175",
+   "L2-176",
+   "L2-177",
+   "L2-179",
+   "L2-190",
+   "L2-196",
+   "L2-231",
+   "L2-232"
+  ]
+ },
+ {
+  "rank": 10,
+  "key": "cpm_reach",
+  "outcome": "CPM, cost per reach and frequency up",
+  "decomposition": "Cost per 1,000 reached = CPM x frequency / 1000. Log-decompose the gap vs a reference window into: price per impression inside each country/age cell, overlap between ad sets (same-day), within-ad-set frequency, and mix (country, age, product). Check exhaustion separately (share of reach that is new in 7-28 days).",
+  "item_count": 40,
+  "core_item_count": 22,
+  "first_asked": "2026-08-25",
+  "last_asked": "2026-10-25",
+  "decision_weight": "M",
+  "build_effort": "M",
+  "in_db": "P (impressions in meta_ad_daily; reach only account level in analytics.meta_reach; age, gender, placement, country breakdowns are not in the DB)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Why are CPMs up? Mix first: product, spend, creative type, geo, launch frequency",
+    "data": "CPM by cut",
+    "in_db": "P",
+    "view_or_source": "meta_ad_daily (no geo/age)",
+    "josh_quote_item_ids": [
+     "H_2026-08_1-943",
+     "H_2026-08_1-941",
+     "H_2026-08_1-937"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Share of impressions going to NEW people over time; keep digging beyond stating data",
+    "data": "reach new vs total",
+    "in_db": "N",
+    "view_or_source": "Meta reach API",
+    "josh_quote_item_ids": [
+     "T_10-29",
+     "T_10-30"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Product mix, image vs video, broad vs narrow, uncapped volume bidding, other mechanisms",
+    "data": "CPM by cut",
+    "in_db": "P",
+    "view_or_source": "meta_ad_daily",
+    "josh_quote_item_ids": [
+     "T_10-31",
+     "T_10-32",
+     "T_10-34",
+     "T_10-27",
+     "T_10-35"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "International vs US reach, frequency, cost per reach",
+    "data": "country cut",
+    "in_db": "N",
+    "view_or_source": "Meta breakdowns",
+    "josh_quote_item_ids": [
+     "T_10-28",
+     "T_17-41"
+    ]
+   },
+   {
+    "order": 5,
+    "question": "Rolling and incremental reach, now vs then (Upstack)",
+    "data": "reach windows",
+    "in_db": "N",
+    "view_or_source": "Upstack / Meta",
+    "josh_quote_item_ids": [
+     "T_17-42"
+    ]
+   },
+   {
+    "order": 6,
+    "question": "Do caps / tROAS floors raise CPM (retargeting to hit goals)?",
+    "data": "CPM by bid type, same week",
+    "in_db": "P",
+    "view_or_source": "meta_adset_daily",
+    "josh_quote_item_ids": [
+     "T_17-44",
+     "T_21-60",
+     "T_21-61"
+    ]
+   },
+   {
+    "order": 7,
+    "question": "How do I reach more new people vs overlap? (many ad sets in the scaling days)",
+    "data": "ad set count, overlap",
+    "in_db": "N",
+    "view_or_source": "Meta reach",
+    "josh_quote_item_ids": [
+     "L2-184",
+     "L2-183"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Cost per 1,000 accounts reached $448.5 (Sep 3-30) vs $146.5 (Apr 13-May 10); weekly gap +103.7 log points = price per impression +47.4, ad-set overlap +29.4, in-set frequency +19.9, mix +7.1",
+    "status": "verified decomposition",
+    "date": "2026-10-02",
+    "item_ids": [
+     "S_secondary-88",
+     "T_17-41"
+    ]
+   },
+   {
+    "cause": "Audience exhaustion",
+    "status": "refuted (share new 0.62 vs 0.54-0.65)",
+    "date": "2026-10-02",
+    "item_ids": [
+     "S_secondary-88"
+    ]
+   },
+   {
+    "cause": "Caps or tROAS floors drive CPM",
+    "status": "refuted: uncapped paid more; Sep 14 tightening cut CPM about 16%; loosening cut frequency about 5% with ROAS -33%",
+    "date": "2026-10-09",
+    "item_ids": [
+     "T_21-60",
+     "T_17-44"
+    ]
+   },
+   {
+    "cause": "Product mix, image vs video, placement mix, country mix, concentration",
+    "status": "refuted for CPM rise (country mix about 0%; placement shift to FB Reels is a wash); VB share and men 45+ share are top weekly predictors",
+    "date": "2026-10-02",
+    "item_ids": [
+     "T_10-30",
+     "T_25-41",
+     "S_secondary-88"
+    ]
+   },
+   {
+    "cause": "CPM about doubled in a mid-August step in every age cell, +41% YoY, not seasonal (2025 flat Jul-Oct)",
+    "status": "verified fact; cause untested (bid strategy, rebuild, auction, Meta side)",
+    "date": "2026-10-26",
+    "item_ids": [
+     "L2-183",
+     "L2-196"
+    ]
+   },
+   {
+    "cause": "Market-wide inflation (health and wellness +24-38% YoY; Hydrant shows same pattern)",
+    "status": "consistent-with for part",
+    "date": "2026-09-27",
+    "item_ids": [
+     "T_10-30",
+     "T_21-53"
+    ]
+   },
+   {
+    "cause": "Q4 CPM ramp arrived early",
+    "status": "refuted (CPM fell Sep to Oct)",
+    "date": "2026-10-26",
+    "item_ids": [
+     "L2-196"
+    ]
+   }
+  ],
+  "controls": "Hydrant as an external control; reference-window decomposition (log points) not a story; reach de-duplicated (never summed across ad sets).",
+  "guardrails": [
+   {
+    "id": "G08",
+    "name": "Mix vs rate: shift-share before naming a cause"
+   },
+   {
+    "id": "G03",
+    "name": "Partial day / partial window artifacts"
+   },
+   {
+    "id": "G26",
+    "name": "Blip, ebb and flow, or real: use an external control and do not alarm"
+   },
+   {
+    "id": "G19",
+    "name": "Results are not causes"
+   }
+  ],
+  "item_ids": [
+   "H_2026-08_1-937",
+   "H_2026-08_1-940",
+   "H_2026-08_1-941",
+   "H_2026-08_1-943",
+   "H_2026-08_1-952",
+   "T_09-6",
+   "T_08-38",
+   "T_10-25",
+   "T_10-27",
+   "T_10-28",
+   "T_10-29",
+   "T_10-30",
+   "T_10-31",
+   "T_10-32",
+   "T_10-33",
+   "T_10-34",
+   "T_10-35",
+   "T_17-16",
+   "T_17-6",
+   "T_18-18",
+   "T_18-32",
+   "S_secondary-88",
+   "T_17-41",
+   "T_17-42",
+   "T_17-44",
+   "T_19-27",
+   "T_20-25",
+   "T_20-26",
+   "T_21-53",
+   "T_21-60",
+   "T_21-61",
+   "T_25-41",
+   "T_25-42",
+   "L2-180",
+   "L2-182",
+   "L2-183",
+   "L2-184",
+   "L2-185",
+   "L2-190",
+   "L2-196"
+  ]
+ },
+ {
+  "rank": 11,
+  "key": "data_freshness",
+  "outcome": "Is the data fresh / did a feed or sync break (cross-cutting first check)",
+  "decomposition": "Before any why: last loaded day per source, partial-day and partial-window flags, source of each series (Graph API vs Upstack), timezone bucket (Pacific), and whether an upstream sync or login failed.",
+  "item_count": 34,
+  "core_item_count": 23,
+  "first_asked": "2026-07-19",
+  "last_asked": "2026-11-04",
+  "decision_weight": "H (gate for every other tree)",
+  "build_effort": "S",
+  "in_db": "Y (analytics.data_coverage and analytics.etl_runs; feeds service logs)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Did the daily pull run this morning? Which sources are missing?",
+    "data": "last loaded day per source",
+    "in_db": "Y",
+    "view_or_source": "analytics.data_coverage",
+    "josh_quote_item_ids": [
+     "T_20-58",
+     "T_20-61",
+     "T_18-73"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Is a number partial (today, unfinished month, missing Amazon rows after 9/24)?",
+    "data": "row counts vs calendar",
+    "in_db": "Y",
+    "view_or_source": "data_coverage",
+    "josh_quote_item_ids": [
+     "T_17-5",
+     "T_20-63"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Which source and day basis? (UTC vs Pacific; Graph API vs Upstack)",
+    "data": "source labels",
+    "in_db": "Y",
+    "view_or_source": "schema docs",
+    "josh_quote_item_ids": [
+     "T_08-28",
+     "T_20-52"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "Does it run without my laptop? Is everything updated and checked?",
+    "data": "feeds service status",
+    "in_db": "Y",
+    "view_or_source": "etl_runs",
+    "josh_quote_item_ids": [
+     "L2-292",
+     "L2-310",
+     "L2-287"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "GitHub Actions cron fired 3-4h then 8-12h late; Amazon task stuck on approval; moved to hourly desktop routine 10-13, then to Railway feeds",
+    "status": "verified / fixed",
+    "date": "2026-10-13",
+    "item_ids": [
+     "T_20-61",
+     "S_secondary-73",
+     "L2-287"
+    ]
+   },
+   {
+    "cause": "UTC day buckets caused 0.5-13% gap vs manual Shopify; Pacific matches the dashboard to the dollar",
+    "status": "verified / fixed",
+    "date": "2026-09-19",
+    "item_ids": [
+     "T_08-28",
+     "S_secondary-294"
+    ]
+   },
+   {
+    "cause": "Amazon - Daily had no rows after 2026-09-24 and made NC ROAS look worse; filled, last 3 days 0.747 not 0.662",
+    "status": "verified",
+    "date": "2026-09-29",
+    "item_ids": [
+     "T_17-5"
+    ]
+   },
+   {
+    "cause": "Meta pull stale at read time: daily NC ROAS 0.96 vs about 0.68 after re-run",
+    "status": "verified",
+    "date": "2026-10-07",
+    "item_ids": [
+     "T_20-58"
+    ]
+   },
+   {
+    "cause": "Snapshot included today partial spend with no NC orders (CPA $104.36 vs $97.99)",
+    "status": "verified / fixed",
+    "date": "2026-10-09",
+    "item_ids": [
+     "T_20-63"
+    ]
+   },
+   {
+    "cause": "Feeds that stay manual: QuickBooks, cohorts, POs, FBA and Intl stock counts, ExpandFi login",
+    "status": "open",
+    "date": "2026-11-04",
+    "item_ids": [
+     "L2-292",
+     "L2-310"
+    ]
+   }
+  ],
+  "controls": "Run the freshness check before the analysis and print last loaded day beside every number.",
+  "guardrails": [
+   {
+    "id": "G03",
+    "name": "Partial day / partial window artifacts"
+   },
+   {
+    "id": "G06",
+    "name": "Day buckets are Pacific"
+   },
+   {
+    "id": "G02",
+    "name": "Meta spend comes from the Graph API (both ad accounts), never Upstack"
+   },
+   {
+    "id": "G13",
+    "name": "Frozen, first-row-only and shifted columns; pull the sheet before writing"
+   }
+  ],
+  "item_ids": [
+   "S_secondary-258",
+   "S_secondary-294",
+   "T_08-15",
+   "T_08-19",
+   "T_08-6",
+   "T_10-3",
+   "T_08-28",
+   "T_05-50",
+   "T_05-72",
+   "T_10-17",
+   "S_secondary-165",
+   "T_06-76",
+   "T_10-21",
+   "T_08-64",
+   "T_17-5",
+   "T_18-48",
+   "T_11-66",
+   "T_18-64",
+   "T_18-73",
+   "T_20-52",
+   "T_20-55",
+   "T_20-58",
+   "T_fix-50",
+   "S_secondary-73",
+   "T_20-61",
+   "T_20-63",
+   "T_20-64",
+   "T_22-66",
+   "S_secondary-72",
+   "L2-287",
+   "L2-291",
+   "L2-292",
+   "L2-294",
+   "L2-310"
+  ]
+ },
+ {
+  "rank": 12,
+  "key": "pacing_tieout",
+  "outcome": "Pacing vs plan and NOI / EBITDA pacing vs booked (tie-outs)",
+  "decomposition": "Pacing % = MTD actual / (plan x days elapsed share) and projection = MTD / full days elapsed x days in month. Tie-out check: same basis (gross vs net of sales tax and refunds), same days (yesterday, not today), same source (Graph API), same scope (BackUp included).",
+  "item_count": 26,
+  "core_item_count": 14,
+  "first_asked": "2026-07-19",
+  "last_asked": "2026-10-29",
+  "decision_weight": "M",
+  "build_effort": "M",
+  "in_db": "P (proj_pacing_* tables exist in the app DB, not in analytics; revenue and spend pacing inputs are in analytics)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Why does pacing look too high or too low (EOM EBITDA vs P&L)?",
+    "data": "pacing basis, estimate vs booked",
+    "in_db": "P",
+    "view_or_source": "proj_pacing_*",
+    "josh_quote_item_ids": [
+     "T_06-74",
+     "T_06-76"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Why do components say 99.6 / 99.8 but net says 89.5?",
+    "data": "gross vs net",
+    "in_db": "N",
+    "view_or_source": "Upstack Q column (gross)",
+    "josh_quote_item_ids": [
+     "T_18-64"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Why is NOI off across Automated Pacing and Monthly Snapshot?",
+    "data": "sum-by-day vs rebuild",
+    "in_db": "P",
+    "view_or_source": "sheet",
+    "josh_quote_item_ids": [
+     "L2-242"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "Why does CPA differ between two tabs ($97.99 vs $104.36)?",
+    "data": "partial-day spend",
+    "in_db": "Y",
+    "view_or_source": "analytics.platform_daily",
+    "josh_quote_item_ids": [
+     "T_20-63"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Net DTC pacing gap: refunds about $10,900 of $12,038, tax about $1,300 (Josh guessed sales tax)",
+    "status": "verified",
+    "date": "2026-10-04",
+    "item_ids": [
+     "T_18-64"
+    ]
+   },
+   {
+    "cause": "Tax-inclusive pacing revenue vs net goal inflated EBITDA pacing 175% to 136% after the tax line",
+    "status": "verified / fixed",
+    "date": "2026-10-13",
+    "item_ids": [
+     "T_26-7",
+     "S_secondary-299"
+    ]
+   },
+   {
+    "cause": "Daily EBITDA estimate +25-56% vs booked NOI: processing double count, missing BackUp spend, tax and refunds in revenue",
+    "status": "verified",
+    "date": "2026-09-24",
+    "item_ids": [
+     "S_secondary-174",
+     "S_secondary-175"
+    ]
+   },
+   {
+    "cause": "Refunds 9-10% of DTC revenue, so forward P&L may be overstated",
+    "status": "open",
+    "date": "2026-10-04",
+    "item_ids": [
+     "T_18-64"
+    ]
+   }
+  ],
+  "controls": "Always say gross or net; days end yesterday; same spend source.",
+  "guardrails": [
+   {
+    "id": "G05",
+    "name": "Gross vs net: say which"
+   },
+   {
+    "id": "G03",
+    "name": "Partial day / partial window artifacts"
+   },
+   {
+    "id": "G02",
+    "name": "Meta spend comes from the Graph API (both ad accounts), never Upstack"
+   },
+   {
+    "id": "G13",
+    "name": "Frozen, first-row-only and shifted columns; pull the sheet before writing"
+   }
+  ],
+  "item_ids": [
+   "HC_2026-07_4-118",
+   "HC_2026-07_4-155",
+   "S_secondary-64",
+   "HC_2026-07_6-127",
+   "HC_2026-07_6-99",
+   "HC_2026-07_7-100",
+   "HC_2026-07_7-101",
+   "S_secondary-52",
+   "S_secondary-78",
+   "H_2026-08_1-68",
+   "S_secondary-56",
+   "S_secondary-174",
+   "S_secondary-175",
+   "T_06-65",
+   "T_06-72",
+   "T_06-74",
+   "T_06-76",
+   "T_09-24",
+   "T_08-64",
+   "T_18-64",
+   "T_20-63",
+   "T_20-64",
+   "S_secondary-299",
+   "T_26-7",
+   "T_26-46",
+   "L2-242"
+  ]
+ },
+ {
+  "rank": 13,
+  "key": "checkout",
+  "outcome": "Checkout and landing conversion (checkout start to order, click to NC order)",
+  "decomposition": "NC per click = clicks to checkout starts x starts to attempts x attempts to landing completes x upsell accepts. Split by source (Meta in-app vs other browsers), landing domain (lonvera.com LP orders land on Shopify \"web\", shop.lonvera.com on CheckoutChamp), card vs PayPal, product.",
+  "item_count": 25,
+  "core_item_count": 11,
+  "first_asked": "2026-09-29",
+  "last_asked": "2026-10-29",
+  "decision_weight": "H",
+  "build_effort": "L",
+  "in_db": "N (CheckoutChamp order_details, Klaviyo checkout events, Shopify; the DB has clicks and NC orders only at daily/ad level)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Are we losing people in the checkout stage?",
+    "data": "checkout start to NC order, before and after",
+    "in_db": "N",
+    "view_or_source": "CheckoutChamp + Klaviyo",
+    "josh_quote_item_ids": [
+     "L2-210",
+     "T_17-8"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "If the rate went back, what would CPA be? ($110 vs $85)",
+    "data": "rate x CPA",
+    "in_db": "N",
+    "view_or_source": "CPA from orders_daily",
+    "josh_quote_item_ids": [
+     "L2-218"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Intent problem or checkout page? Split by traffic source and landing domain",
+    "data": "source x domain table",
+    "in_db": "N",
+    "view_or_source": "CheckoutChamp",
+    "josh_quote_item_ids": [
+     "L2-219",
+     "L2-223",
+     "L2-217"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "Did completion decline start-to-complete; did we swap modules?",
+    "data": "landing completion %",
+    "in_db": "N",
+    "view_or_source": "CheckoutChamp",
+    "josh_quote_item_ids": [
+     "L2-229",
+     "L2-230"
+    ]
+   },
+   {
+    "order": 5,
+    "question": "US vs outside US decline",
+    "data": "country",
+    "in_db": "N",
+    "view_or_source": "CheckoutChamp",
+    "josh_quote_item_ids": [
+     "L2-221"
+    ]
+   },
+   {
+    "order": 6,
+    "question": "Stat sig before changing page variants",
+    "data": "variant counts",
+    "in_db": "N",
+    "view_or_source": "CheckoutChamp A/B",
+    "josh_quote_item_ids": [
+     "L2-2"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Not a checkout fault: CheckoutChamp landing completion 42.4% to 40.5%, flat on every page, card and PayPal split",
+    "status": "verified",
+    "date": "2026-10-27",
+    "item_ids": [
+     "L2-217",
+     "L2-229"
+    ]
+   },
+   {
+    "cause": "A third of the 0.330 to 0.238 fall was lonvera.com LP orders moving to Shopify \"web\" (65 to about 195 per week); real fall 0.332 to 0.261 (-19%)",
+    "status": "verified (measurement artifact removed)",
+    "date": "2026-10-27",
+    "item_ids": [
+     "L2-217",
+     "L2-223"
+    ]
+   },
+   {
+    "cause": "Real -19%: checkout starts -15% (Meta in-app starts 318 to 254 per day, other browsers flat) plus upsell accepts 10.0% to 5.6%",
+    "status": "verified counts; cause consistent-with lower-intent Meta traffic",
+    "date": "2026-10-27",
+    "item_ids": [
+     "L2-223",
+     "L2-219"
+    ]
+   },
+   {
+    "cause": "Express-PayPal completions per start halved Oct 5-6",
+    "status": "withdrawn (Josh: not true)",
+    "date": "2026-10-27",
+    "item_ids": [
+     "L2-227"
+    ]
+   },
+   {
+    "cause": "Sep 21 8am change and the Aug 27-Sep 14 checkout A/B",
+    "status": "open (unanswered)",
+    "date": "2026-10-04",
+    "item_ids": [
+     "S_secondary-90"
+    ]
+   },
+   {
+    "cause": "LP/PDP variant B vs A: Oct 21 A ahead; Oct 29 B 36.8% vs A 20.9% (z about 3.75)",
+    "status": "answered",
+    "date": "2026-10-29",
+    "item_ids": [
+     "L2-2",
+     "L2-243"
+    ]
+   }
+  ],
+  "controls": "No non-Meta control exists (Meta is 92-97% of attempts); use ad-set age cohorts and NC per start by product; validate numerator and denominator sources before reading a rate.",
+  "guardrails": [
+   {
+    "id": "G21",
+    "name": "Checkout rates: numerator and denominator system"
+   },
+   {
+    "id": "G07",
+    "name": "Rates with denominators, never counts"
+   },
+   {
+    "id": "G23",
+    "name": "Sample size and significance"
+   },
+   {
+    "id": "G03",
+    "name": "Partial day / partial window artifacts"
+   }
+  ],
+  "item_ids": [
+   "T_12-26",
+   "T_12-27",
+   "T_12-31",
+   "T_17-8",
+   "T_18-39",
+   "S_secondary-90",
+   "T_26-88",
+   "L2-2",
+   "L2-3",
+   "L2-4",
+   "L2-209",
+   "L2-210",
+   "L2-217",
+   "L2-218",
+   "L2-219",
+   "L2-221",
+   "L2-222",
+   "L2-223",
+   "L2-226",
+   "L2-227",
+   "L2-229",
+   "L2-230",
+   "L2-234",
+   "L2-235",
+   "L2-243"
+  ]
+ },
+ {
+  "rank": 14,
+  "key": "test_to_scale",
+  "outcome": "Test-to-scale rate (do tested ads graduate?)",
+  "decomposition": "Graduation rate = testers that moved to scaling / testers launched in the window; median days to move; performance after move vs in testing; exclude bulk-move days.",
+  "item_count": 21,
+  "core_item_count": 5,
+  "first_asked": "2026-07-16",
+  "last_asked": "2026-11-09",
+  "decision_weight": "M",
+  "build_effort": "S",
+  "in_db": "Y in the app (creative_stage_moves view and /promotions page); not in analytics views",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Which ads moved from testing to scaling and how do they perform?",
+    "data": "stage moves",
+    "in_db": "P",
+    "view_or_source": "creative_stage_moves",
+    "josh_quote_item_ids": [
+     "L2-204",
+     "L2-207"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Does more scaling spend blend the account better than testing? (testing share)",
+    "data": "spend by stage",
+    "in_db": "Y",
+    "view_or_source": "meta_campaign_daily (campaign name contains test)",
+    "josh_quote_item_ids": [
+     "T_26-69",
+     "T_26-71"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "How many were actually duplicated to scaling and is it too early to read?",
+    "data": "count, age",
+    "in_db": "P",
+    "view_or_source": "creative_stage_moves",
+    "josh_quote_item_ids": [
+     "L2-314",
+     "L2-325"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Oct 5-Nov 3: 352 moves (267 on bulk days Oct 22-23); 154 of 924 testers reached scaling (16.7%; 5.1% excluding bulk); median 20 days; testing ROAS 0.53 vs scaling since move 0.67",
+    "status": "verified (345 of 352 too early for held-up verdict)",
+    "date": "2026-11-03",
+    "item_ids": [
+     "L2-314",
+     "L2-325"
+    ]
+   },
+   {
+    "cause": "Testing campaigns are the biggest leak in several windows ($82K at NC ROAS 0.46); more scaling spend helps only if added dollars return above about 0.68",
+    "status": "verified",
+    "date": "2026-10-18",
+    "item_ids": [
+     "T_08-35",
+     "T_26-69"
+    ]
+   },
+   {
+    "cause": "Corrected count: 51 testing-to-scaling copies reported, 43 true (double count)",
+    "status": "corrected",
+    "date": "2026-10-20",
+    "item_ids": [
+     "T_23-21",
+     "T_23-22"
+    ]
+   }
+  ],
+  "controls": "Exclude bulk move days; match age; do not read held-up verdict before 7 days.",
+  "guardrails": [
+   {
+    "id": "G12",
+    "name": "Launch volume comes from Meta ad-level first-spend, deduped; never the tracker; never a stale number"
+   },
+   {
+    "id": "G25",
+    "name": "Survivorship and self-selected spend"
+   }
+  ],
+  "item_ids": [
+   "HC_2026-07_4-35",
+   "HC_2026-07_4-36",
+   "T_08-35",
+   "T_08-43",
+   "T_17-7",
+   "T_18-9",
+   "T_17-34",
+   "T_26-67",
+   "T_26-69",
+   "T_26-71",
+   "T_26-72",
+   "T_26-76",
+   "T_26-78",
+   "T_24-85",
+   "T_23-21",
+   "T_23-22",
+   "T_23-23",
+   "L2-204",
+   "L2-207",
+   "L2-314",
+   "L2-325"
+  ]
+ },
+ {
+  "rank": 15,
+  "key": "country_intl",
+  "outcome": "Country mix and international (US vs intl)",
+  "decomposition": "Blended metric change = within-country rate change + country mix shift (shift-share), per cut: CPM, reach per $1K, CPA, NC share of orders.",
+  "item_count": 20,
+  "core_item_count": 13,
+  "first_asked": "2026-08-25",
+  "last_asked": "2026-10-25",
+  "decision_weight": "M",
+  "build_effort": "M",
+  "in_db": "P (campaign names carry US / WW / INTL, no country breakdown in analytics)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Did country of spend change and does it move NC ROAS / CPM?",
+    "data": "country cut over time",
+    "in_db": "N",
+    "view_or_source": "Meta breakdown export",
+    "josh_quote_item_ids": [
+     "T_17-13",
+     "H_2026-08_1-941"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Does US vs intl change reach, frequency, cost per reach?",
+    "data": "country cut",
+    "in_db": "N",
+    "view_or_source": "Meta breakdown",
+    "josh_quote_item_ids": [
+     "T_10-28"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Should I break out US vs international again?",
+    "data": "market ROAS spread",
+    "in_db": "P",
+    "view_or_source": "campaign-name parse",
+    "josh_quote_item_ids": [
+     "T_18-14"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "International campaign not spending: ROAS floor, caps, country list",
+    "data": "budget utilization",
+    "in_db": "N",
+    "view_or_source": "Graph API",
+    "josh_quote_item_ids": [
+     "T_25-46",
+     "T_25-52",
+     "T_25-54"
+    ]
+   },
+   {
+    "order": 5,
+    "question": "Did I relaunch the old account and cut international caps too early?",
+    "data": "spend and NC ROAS after",
+    "in_db": "P",
+    "view_or_source": "meta_campaign_daily",
+    "josh_quote_item_ids": [
+     "T_25-56",
+     "T_24-74"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Country mix explains about 0% of the CPM rise; intl is not a relief valve (reach per $1K fell in every country)",
+    "status": "verified",
+    "date": "2026-09-27",
+    "item_ids": [
+     "T_10-28",
+     "T_17-13"
+    ]
+   },
+   {
+    "cause": "AU share doubled while its CPA rose; cheap markets (IE, NZ, MX, ES, IT) went near zero in Sep",
+    "status": "verified",
+    "date": "2026-10-12",
+    "item_ids": [
+     "T_25-43",
+     "T_25-46"
+    ]
+   },
+   {
+    "cause": "NC orders went MORE US (57% to 70%)",
+    "status": "verified",
+    "date": "2026-10-26",
+    "item_ids": [
+     "L2-196"
+    ]
+   },
+   {
+    "cause": "Non-US-only BackUp test",
+    "status": "proposal admitted unsupported after Josh question",
+    "date": "2026-10-19",
+    "item_ids": [
+     "T_24-74"
+    ]
+   }
+  ],
+  "controls": "Shift-share by country; do not infer cause from the ratio of one country.",
+  "guardrails": [
+   {
+    "id": "G08",
+    "name": "Mix vs rate: shift-share before naming a cause"
+   },
+   {
+    "id": "G19",
+    "name": "Results are not causes"
+   }
+  ],
+  "item_ids": [
+   "H_2026-08_1-930",
+   "H_2026-08_1-940",
+   "H_2026-08_1-941",
+   "T_10-28",
+   "T_17-13",
+   "S_secondary-84",
+   "T_18-14",
+   "T_17-25",
+   "T_17-41",
+   "T_25-43",
+   "T_25-44",
+   "T_25-45",
+   "T_25-46",
+   "T_25-52",
+   "T_25-53",
+   "T_25-54",
+   "T_25-56",
+   "T_24-74",
+   "T_26-88",
+   "L2-196"
+  ]
+ },
+ {
+  "rank": 16,
+  "key": "fulfillment",
+  "outcome": "Fulfillment: stuck, late, cancelled or delivered orders; Shopify vs Warehance counts",
+  "decomposition": "Stuck = shipped but no carrier movement past N days from the CARRIER feed (not Warehance). Units gap Shopify sold vs Warehance shipped = non-US routed to D1 + cancels + timing.",
+  "item_count": 16,
+  "core_item_count": 12,
+  "first_asked": "2026-09-15",
+  "last_asked": "2026-10-15",
+  "decision_weight": "L",
+  "build_effort": "M",
+  "in_db": "N (Warehance API, UniUni API, Shopify; sheet tabs)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Why do Shopify units sold and Warehance units shipped differ?",
+    "data": "by product and period",
+    "in_db": "N",
+    "view_or_source": "Warehance + Shopify",
+    "josh_quote_item_ids": [
+     "T_07-31",
+     "T_07-32"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Dig into these orders: stuck or really delivered?",
+    "data": "tracking status from carrier",
+    "in_db": "N",
+    "view_or_source": "UniUni public API, USPS",
+    "josh_quote_item_ids": [
+     "T_07-52",
+     "T_07-53",
+     "T_07-54"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Look across Warehance, UniUni API, Shopify for order status",
+    "data": "status per system",
+    "in_db": "N",
+    "view_or_source": "three APIs",
+    "josh_quote_item_ids": [
+     "T_18-65",
+     "T_18-68"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "Why does my China 3PL show these cancelled?",
+    "data": "routing",
+    "in_db": "N",
+    "view_or_source": "Shopify routing",
+    "josh_quote_item_ids": [
+     "T_22-24"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Warehance tracking feed freezes for UniUni after an early mis-mapped delivered event; 773 of 928 no-movement rows were delivered",
+    "status": "verified",
+    "date": "2026-09-30",
+    "item_ids": [
+     "S_secondary-103",
+     "T_07-53"
+    ]
+   },
+   {
+    "cause": "\"42.5% of Shopify orders reaching Warehance are cancelled\": 100% of non-US orders auto-cancel in Warehance because Shopify routes them to D1; real US cancel rate 5.9%",
+    "status": "verified correction (earlier finding retracted)",
+    "date": "2026-10-04",
+    "item_ids": [
+     "S_secondary-102",
+     "S_secondary-183",
+     "T_18-68"
+    ]
+   },
+   {
+    "cause": "US orders routed through the intl 3PL dropped from about 2,100 per month to 10 in Sep (Revamp go-live)",
+    "status": "verified",
+    "date": "2026-09-17",
+    "item_ids": [
+     "S_secondary-296"
+    ]
+   }
+  ],
+  "controls": "Carrier feed is the truth; a Warehance \"cancelled\" order with non-US ship-to is not cancelled.",
+  "guardrails": [
+   {
+    "id": "G16",
+    "name": "Warehance cancelled is not cancelled; shipped, not sold; carrier feed is the truth"
+   },
+   {
+    "id": "G17",
+    "name": "Trybe $0 gift orders inflate counts and AOV"
+   }
+  ],
+  "item_ids": [
+   "T_07-11",
+   "T_07-17",
+   "T_07-31",
+   "T_07-32",
+   "S_secondary-296",
+   "S_secondary-103",
+   "T_07-52",
+   "T_07-53",
+   "T_07-54",
+   "S_secondary-102",
+   "S_secondary-183",
+   "T_18-65",
+   "T_18-68",
+   "T_19-38",
+   "T_22-24",
+   "T_47-20"
+  ]
+ },
+ {
+  "rank": 17,
+  "key": "inventory",
+  "outcome": "Stock-outs and inventory cover (why ordering so much / short)",
+  "decomposition": "Months of cover = on-hand / run-rate demand (shipped units, by warehouse: Revamp, FBA, Intl 3PL) with inbound by landing month; stockout date interpolated in first negative month.",
+  "item_count": 11,
+  "core_item_count": 4,
+  "first_asked": "2026-09-16",
+  "last_asked": "2026-10-15",
+  "decision_weight": "M",
+  "build_effort": "M",
+  "in_db": "P (proj_po, proj_stock_snapshot, proj_supply_history in the app DB but excluded from analytics; items show Josh almost never asks \"why\" here, he asks the model to plan)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Why does the plan order so much of one SKU?",
+    "data": "planned PO rows vs run-rate",
+    "in_db": "P",
+    "view_or_source": "proj_po",
+    "josh_quote_item_ids": [
+     "T_26-11"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "What is the demand basis: shipped, not sold",
+    "data": "shipped units",
+    "in_db": "N",
+    "view_or_source": "Warehance",
+    "josh_quote_item_ids": [
+     "T_07-32",
+     "T_07-31"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Josh planned rows 28 and 40 (50,000 Vital Bull each) were sized on old higher demand; cover rule 1.5-6 months; re-plan saves about $255K on the line",
+    "status": "verified",
+    "date": "2026-10-14",
+    "item_ids": [
+     "T_26-11",
+     "S_secondary-71"
+    ]
+   },
+   {
+    "cause": "US orders left the intl 3PL when Revamp went live (routing change)",
+    "status": "verified",
+    "date": "2026-09-17",
+    "item_ids": [
+     "S_secondary-296"
+    ]
+   }
+  ],
+  "controls": "Use shipped units; run rate window stated.",
+  "guardrails": [
+   {
+    "id": "G16",
+    "name": "Warehance cancelled is not cancelled; shipped, not sold; carrier feed is the truth"
+   }
+  ],
+  "item_ids": [
+   "T_07-31",
+   "T_07-32",
+   "S_secondary-296",
+   "S_secondary-102",
+   "S_secondary-183",
+   "T_18-68",
+   "T_22-24",
+   "S_secondary-301",
+   "S_secondary-71",
+   "T_26-11",
+   "T_47-20"
+  ]
+ },
+ {
+  "rank": 18,
+  "key": "klaviyo",
+  "outcome": "Klaviyo (email / SMS) revenue and flow changes",
+  "decomposition": "Campaign revenue = non-rebill campaign revenue + rebill revenue attributed to campaigns (75-80% of campaign revenue all year was rebills). Flow changes = created / updated dates from the API, split into content edits vs delay / split / status changes.",
+  "item_count": 10,
+  "core_item_count": 6,
+  "first_asked": "2026-09-30",
+  "last_asked": "2026-10-13",
+  "decision_weight": "M",
+  "build_effort": "M",
+  "in_db": "N (Klaviyo not in the DB)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Exclude active subscribers from campaign revenue to test the agency claim",
+    "data": "campaign revenue by subscriber status",
+    "in_db": "N",
+    "view_or_source": "Klaviyo segments",
+    "josh_quote_item_ids": [
+     "T_18-82",
+     "S_secondary-83"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Summary of all flow changes in the last 90 days; are they content edits?",
+    "data": "flows created/updated",
+    "in_db": "N",
+    "view_or_source": "Klaviyo API",
+    "josh_quote_item_ids": [
+     "T_22-27",
+     "T_22-33"
+    ]
+   },
+   {
+    "order": 3,
+    "question": "Designed vs plain format; flows with no links",
+    "data": "format key",
+    "in_db": "N",
+    "view_or_source": "Klaviyo templates",
+    "josh_quote_item_ids": [
+     "T_small-16"
+    ]
+   },
+   {
+    "order": 4,
+    "question": "Who runs the popup",
+    "data": "tool",
+    "in_db": "N",
+    "view_or_source": "site scan",
+    "josh_quote_item_ids": [
+     "T_19-57"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Agency claim holds: campaign revenue drop is rebill attribution, not lost non-rebill revenue",
+    "status": "verified",
+    "date": "2026-09-30",
+    "item_ids": [
+     "S_secondary-83",
+     "T_18-82"
+    ]
+   },
+   {
+    "cause": "Agency \"sweeps\" were almost never email edits; mostly delays, splits, status",
+    "status": "verified",
+    "date": "2026-10-09",
+    "item_ids": [
+     "T_22-27",
+     "T_22-33"
+    ]
+   },
+   {
+    "cause": "Format (designed vs plain) is not driving the decline; plain slightly higher per send",
+    "status": "verified",
+    "date": "2026-09-30",
+    "item_ids": [
+     "T_small-16"
+    ]
+   }
+  ],
+  "controls": "Change log first (rule 13): created / updated dates before analysis.",
+  "guardrails": [
+   {
+    "id": "G03",
+    "name": "Partial day / partial window artifacts"
+   },
+   {
+    "id": "G10",
+    "name": "A timing or decomposition story is not attribution"
+   }
+  ],
+  "item_ids": [
+   "S_secondary-83",
+   "T_18-80",
+   "T_18-82",
+   "T_19-57",
+   "T_22-27",
+   "T_22-33",
+   "S_secondary-91",
+   "T_small-14",
+   "T_small-15",
+   "T_small-16"
+  ]
+ },
+ {
+  "rank": 19,
+  "key": "google_amazon_other",
+  "outcome": "Google, Amazon, refunds, price/offer (small, scattered)",
+  "decomposition": "Google: spend x ROAS by campaign type with Meta spend as covariate (brand search follows Meta Boneflex spend). Amazon: parked. Refunds: rate = refunds / orders by cohort.",
+  "item_count": 10,
+  "core_item_count": 7,
+  "first_asked": "2026-07-07",
+  "last_asked": "2026-10-18",
+  "decision_weight": "L",
+  "build_effort": "M",
+  "in_db": "N for Amazon and refunds (proj_feed_amazon not exposed); P for Google (analytics.google_campaign_daily, campaign grain only)",
+  "steps": [
+   {
+    "order": 1,
+    "question": "Google vs Meta spend and performance; what used to work on Google?",
+    "data": "campaign type by month",
+    "in_db": "P",
+    "view_or_source": "analytics.google_campaign_daily",
+    "josh_quote_item_ids": [
+     "T_17-10",
+     "T_17-25"
+    ]
+   },
+   {
+    "order": 2,
+    "question": "Does Google (Upstack) carry NC revenue?",
+    "data": "Upstack Google attribution from 2025-05-13",
+    "in_db": "Y",
+    "view_or_source": "google_campaign_daily",
+    "josh_quote_item_ids": [
+     "T_05-99"
+    ]
+   }
+  ],
+  "known_causes": [
+   {
+    "cause": "Google brand search still returns 2x+ but volume follows Meta Boneflex spend; Sep budget moved from PMax to weak non-brand Shopping; total $41.5K/$70.3K/1.70 (Apr) to $19.3K/$24.4K/1.26 (Sep)",
+    "status": "partial",
+    "date": "2026-09-30",
+    "item_ids": [
+     "S_secondary-84",
+     "T_17-25"
+    ]
+   },
+   {
+    "cause": "Amazon fell by half Jan to April; fees fell in lockstep with sales",
+    "status": "answered (fees are mechanical on sales)",
+    "date": "2026-07-07",
+    "item_ids": [
+     "HC_2026-07_1-189"
+    ]
+   }
+  ],
+  "controls": "Meta spend as covariate for Google brand.",
+  "guardrails": [
+   {
+    "id": "G05",
+    "name": "Gross vs net: say which"
+   }
+  ],
+  "item_ids": [
+   "HC_2026-07_1-189",
+   "HC_2026-07_4-203",
+   "H_2026-08_1-68",
+   "T_05-52",
+   "T_05-99",
+   "T_17-10",
+   "S_secondary-84",
+   "T_17-25",
+   "T_38-8",
+   "T_38-9"
+  ]
+ }
+]

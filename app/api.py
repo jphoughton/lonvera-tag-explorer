@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, db, google as gg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import auth, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, db, google as gg, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -359,6 +359,18 @@ def google_trend():
     if w.is_launch:
         info["note"] = f"Trend covers every day held ({q._fmt_day(gmeta.daily_start, True)} – {q._fmt_day(gmeta.data_through, True)})." + (f" {info['note']}" if info["note"] else "")
     return jsonify({"channel": "google", "window_info": info, "compare_info": w.compare_info(gmeta), **res})
+
+
+@bp.get("/api/landing-pages")
+def landing_pages():
+    """Every landing page Meta ads send people to, with its current copy summary and its top ads by spend. window=7|30 (default 30), top=<1..25> (default 5). See docs/LANDING_PAGES.md."""
+    return jsonify(lpg.list_pages(db.get_conn(), request.args))
+
+
+@bp.get("/api/landing-pages/<int:page_id>")
+def landing_page(page_id: int):
+    """One landing page: the full stored copy of its current version, the list of versions, and its top ads (window=7|30, top=<1..25>)."""
+    return jsonify(lpg.page_detail(db.get_conn(), page_id, request.args))
 
 
 @bp.get("/api/promotions")
