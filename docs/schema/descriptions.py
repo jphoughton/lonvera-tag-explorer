@@ -1398,7 +1398,16 @@ rel("public.creative_priorities_assignments", group="creative", kind="table",
           "dropped_at": "When the assignment was dropped (soft cancel); NULL while active. Rows are never deleted.",
           "tracker_concept_ids": "Creative Tracker Concept IDs of the ads made from this assignment, entered by hand.", "created_at": "When the assignment was created.", "updated_at": "When it was last changed.",
           "created_by": "Who created the assignment: the signed-in user name; NULL when none.",
-          "updated_by": "Who last changed it: the signed-in user name, or vendor:<name> for a write made on a vendor link page; NULL when none."})
+          "updated_by": "Who last changed it: the signed-in user name, or vendor:<name> for a write made on a vendor link page; NULL when none.",
+          "format_code": "Creative format chosen when assigning or later (creative_formats.code, foreign key); NULL when none was chosen. Set by a signed-in user only; a vendor sees it but cannot change it."})
+
+rel("public.creative_formats", group="creative", kind="table",
+    purpose="The creative formats a production assignment can be made in (for example Whiteboard explainer): a short list that Josh picks from when assigning a concept to a vendor. Production side only; not part of the concept taxonomy.",
+    grain="one row per format (code is the primary key)", source="seeded by migration 204; edited by hand in the database (no page edits it); read by /api/priorities/assignments (app/priorities_assign.py)",
+    refresh="on demand (a format is added or retired by hand)", coverage="six formats, F1 to F6, from the day the migration was deployed",
+    caveats=["A format with active = false stays on the assignments that already use it but can no longer be chosen."],
+    cols={"code": "Short code (primary key), F1 to F6.", "name": "What the format is, shown in the pick list.", "length": "Typical running time, as text (for example '45 to 90s'); NULL when not set.",
+          "sort": "Order in the pick list (ascending).", "active": "True while the format can be chosen on a new assignment."})
 
 rel("public.creative_priorities_vendor_links", group="creative", kind="table",
     purpose="One permanent unguessable link per vendor for the vendor page /priorities/vendor/<token>, where the vendor sees only their own concepts and adds a creative link and a note.",

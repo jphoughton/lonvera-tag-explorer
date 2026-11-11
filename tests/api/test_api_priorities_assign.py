@@ -208,7 +208,7 @@ def test_listing_before_the_migration_is_empty_not_an_error(client, snaps, pg):
     try:
         listing = client.get("/api/priorities/assignments").get_json()
         assert listing.pop("launch") == {"enabled": False, "can_launch": False, "dry_run": True}          # the discovery flag is there even when nothing is assigned (launch is dark by default)
-        assert listing == {"rows": [], "vendors": pa.VENDORS, "weeks": []}
+        assert listing == {"rows": [], "vendors": pa.VENDORS, "weeks": [], "formats": pa.FORMATS}
         assert client.get("/api/priorities/vendor-links").get_json()["links"] == []
     finally:
         pg.rollback()
@@ -466,3 +466,93 @@ def test_assign_accepts_an_old_section_key_and_stores_the_new_action(client, sna
     pg.commit()
     got = client.get("/api/priorities/assignments").get_json()
     assert [a["section_at_assign"] for a in got["rows"]] == ["add"]                  # an old stored value shows as the new Action
+
+
+# ---------------------------------------------------------------------------------------------------------------- creative format (migration 204)
+def test_listing_returns_the_six_formats_and_every_row_carries_the_format_fields(client, snaps):
+    one(client)
+    d = client.get("/api/priorities/assignments").get_json()
+    assert [f["code"] for f in d["formats"]] == ["F1", "F2", "F3", "F4", "F5", "F6"]
+    assert d["formats"][0] == {"code": "F1", "name": "Long animated story, openly AI, told by the character", "length": "90s to 3 min"} and d["formats"][3]["name"] == "Whiteboard explainer"
+    r = d["rows"][0]
+    assert (r["format_code"], r["format_name"], r["format_length"]) == (None, None, None)
+
+
+def test_assign_with_a_format_stores_and_returns_it(client, snaps):
+    r = assign(client, [_key({**LINE_ROW, "section": "faded"}), _key(DRAFT)], "Madre", MONDAY, format_code="F4")
+    assert r.status_code == 201
+    for c in r.get_json()["created"]:
+        assert (c["format_code"], c["format_name"], c["format_length"]) == ("F4", "Whiteboard explainer", "60 to 90s")
+    none = assign(client, [_key(EMPTY)], "Madre", MONDAY, format_code="")                                       # blank = no format
+    assert none.status_code == 201 and none.get_json()["skipped"]
+    assert {a["format_code"] for a in client.get("/api/priorities/assignments").get_json()["rows"]} == {"F4"}
+
+
+def test_assign_with_an_unknown_format_is_a_400_and_creates_nothing(client, snaps):
+    r = assign(client, [_key({**LINE_ROW, "section": "faded"})], "Madre", MONDAY, format_code="F9")
+    assert r.status_code == 400 and "not one of the available formats" in r.get_json()["error"] and "F1" in r.get_json()["error"]
+    assert client.get("/api/priorities/assignments").get_json()["rows"] == []
+    assert assign(client, [_key({**LINE_ROW, "section": "faded"})], "Madre", MONDAY, format_code=5).status_code == 400
+
+
+def test_patch_sets_changes_and_clears_the_format(client, snaps):
+    a = one(client)
+    got = patch(client, a["id"], format_code="F2").get_json()
+    assert (got["format_code"], got["format_name"], got["format_length"]) == ("F2", "Talking head (realistic AI)", "45 to 90s")
+    assert patch(client, a["id"], format_code="F6").get_json()["format_name"] == "Animated song"
+    assert patch(client, a["id"], note="x").get_json()["format_code"] == "F6"                                   # other edits leave it alone
+    cleared = patch(client, a["id"], format_code=None).get_json()
+    assert (cleared["format_code"], cleared["format_name"], cleared["format_length"]) == (None, None, None)
+    patch(client, a["id"], format_code="F3")
+    assert patch(client, a["id"], format_code="  ").get_json()["format_code"] is None                           # blank clears too
+    r = patch(client, a["id"], format_code="nope")
+    assert r.status_code == 400 and "not one of the available formats" in r.get_json()["error"]
+    assert patch(client, a["id"], format_code=7).status_code == 400
+
+
+def test_a_retired_format_cannot_be_chosen_but_stays_on_rows_that_have_it(client, snaps, pg):
+    a = one(client)
+    patch(client, a["id"], format_code="F5")
+    pg.execute("UPDATE creative_formats SET active = false WHERE code = 'F5'")
+    pg.commit()
+    try:
+        d = client.get("/api/priorities/assignments").get_json()
+        assert "F5" not in [f["code"] for f in d["formats"]] and d["rows"][0]["format_name"] == "Opens on a sound"
+        assert patch(client, a["id"], format_code="F5").status_code == 400
+    finally:
+        pg.execute("UPDATE creative_formats SET active = true WHERE code = 'F5'")
+        pg.commit()
+
+
+def test_the_vendor_sees_the_format_but_cannot_change_it(client, anon, snaps):
+    a = one(client)
+    patch(client, a["id"], format_code="F3")
+    tok = link(client)["token"]
+    row = anon.get(f"/api/priorities/vendor/{tok}").get_json()["rows"][0]
+    assert (row["format_code"], row["format_name"], row["format_length"]) == ("F3", "Short acted scene with two people", "30 to 60s")
+    for body in ({"format_code": "F1"}, {"format_code": None}, {"format_code": "F1", "vendor_note": "x"}):
+        assert anon.patch(f"/api/priorities/vendor/{tok}/{a['id']}", json=body).status_code == 400, body
+    assert client.get("/api/priorities/assignments").get_json()["rows"][0]["format_code"] == "F3"
+    assert anon.patch(f"/api/priorities/vendor/{tok}/{a['id']}", json={"vendor_note": "ok"}).get_json()["format_code"] == "F3"       # their own edits keep it
+
+
+def test_everything_still_works_before_migration_204(client, snaps, pg):
+    a = one(client, "Madre", MONDAY)
+    patch(client, a["id"], format_code="F2")
+    pg.execute("ALTER TABLE creative_priorities_assignments DROP CONSTRAINT creative_priorities_assignments_format_code_fkey")
+    pg.execute("ALTER TABLE creative_priorities_assignments RENAME COLUMN format_code TO fc_tmp")
+    pg.execute("ALTER TABLE creative_formats RENAME TO cf_tmp")
+    pg.commit()
+    try:
+        d = client.get("/api/priorities/assignments").get_json()
+        assert d["formats"] == pa.FORMATS and d["rows"][0]["format_code"] is None and d["rows"][0]["format_name"] is None
+        assert assign(client, [_key(DRAFT)], "Madre", MONDAY).status_code == 201                                  # assigning without a format needs nothing from 204
+        r = patch(client, a["id"], format_code="F1")
+        assert r.status_code == 503 and "migration 204" in r.get_json()["error"]
+        assert patch(client, a["id"], note="still fine").status_code == 200
+    finally:
+        pg.rollback()
+        pg.execute("ALTER TABLE cf_tmp RENAME TO creative_formats")
+        pg.execute("ALTER TABLE creative_priorities_assignments RENAME COLUMN fc_tmp TO format_code")
+        pg.execute("ALTER TABLE creative_priorities_assignments ADD CONSTRAINT creative_priorities_assignments_format_code_fkey FOREIGN KEY (format_code) REFERENCES creative_formats (code)")
+        pg.commit()

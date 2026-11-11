@@ -4,7 +4,7 @@
 // Everything the API returned goes in through textContent / h(), links through h('a', {href, target: '_blank', rel: 'noopener noreferrer'}), never innerHTML. Test ids start with `pri-`.
 import { h, href } from '../util.js';
 import { api } from '../api.js';
-import { mondayOf, addDays, today, VENDOR_FALLBACK, resultText } from './priorities_production.js';
+import { mondayOf, addDays, today, VENDOR_FALLBACK, resultText, formatLabel } from './priorities_production.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthDay = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? `${MONTHS[+m[2] - 1]} ${+m[3]}` : (iso || ''); };
@@ -30,7 +30,7 @@ const shortUrl = (u) => { try { const x = new URL(u); const t = (x.host + x.path
 
 // d: the page data; selected(): the selected row objects; refresh(): redraw the table (apply); label(r): a short name for a row
 export function assignControls({ d, selected, keyOf, refresh }) {
-  const st = { rows: null, vendors: VENDOR_FALLBACK, hide: false, failed: false };
+  const st = { rows: null, vendors: VENDOR_FALLBACK, formats: [], hide: false, failed: false };
   const cells = new Set();
   const hists = new Set();
   const thisMonday = mondayOf(today());
@@ -59,6 +59,7 @@ export function assignControls({ d, selected, keyOf, refresh }) {
       const r = await api('/api/priorities/assignments', { include_closed: 1 });
       st.rows = r.rows || [];
       if (r.vendors && r.vendors.length) st.vendors = r.vendors;
+      st.formats = r.formats || st.formats;
       st.failed = false;
     } catch (e) { st.rows = st.rows || null; st.failed = true; }
     repaint();
@@ -76,6 +77,7 @@ export function assignControls({ d, selected, keyOf, refresh }) {
     const nextMon = addDays(thisMonday, 7);
     const weeks = [0, 7, 14, 21, 28].map((n) => addDays(thisMonday, n));
     const week = h('select', { class: 'pri-name', id: 'pri-as-week', 'data-testid': 'pri-as-week', 'aria-label': 'Week of' }, weeks.map((w) => h('option', { value: w, selected: w === nextMon }, 'Week of ' + monthDay(w) + (w === thisMonday ? ' (this week)' : w === nextMon ? ' (next week)' : ''))));
+    const format = h('select', { class: 'pri-name', id: 'pri-as-format', 'data-testid': 'pri-as-format', 'aria-label': 'Format (optional)' }, h('option', { value: '' }, 'No format chosen'), st.formats.map((f) => h('option', { value: f.code }, formatLabel(f))));
     const note = h('input', { type: 'text', class: 'pri-name', id: 'pri-as-note', 'data-testid': 'pri-as-note', 'aria-label': 'Note (optional)', maxlength: '500', placeholder: 'Optional note for the team' });
     const out = h('div', { class: 'pri-as-out', 'data-testid': 'pri-as-result', role: 'status' });
     const cancel = h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-as-cancel' }, 'Cancel');
@@ -85,6 +87,7 @@ export function assignControls({ d, selected, keyOf, refresh }) {
       h('h2', { class: 'pri-dtitle', id: 'pri-as-title' }, 'Assign to vendor'),
       h('p', { class: 'pri-dnote', 'data-testid': 'pri-as-note-count' }, `${rows.length} concept${rows.length === 1 ? '' : 's'} selected. They stay in the list; this adds each to the Production page for the vendor and week below.`), skippedNote,
       h('label', { class: 'pri-dlabel' }, h('span', { class: 'pri-k' }, 'Vendor'), vendor), h('label', { class: 'pri-dlabel' }, h('span', { class: 'pri-k' }, 'Week of'), week),
+      h('label', { class: 'pri-dlabel' }, h('span', { class: 'pri-k' }, 'Format (optional)'), format),
       h('label', { class: 'pri-dlabel' }, h('span', { class: 'pri-k' }, 'Note (optional)'), note), out,
       h('div', { class: 'pri-dbtns' }, cancel, ok));
     const dlg = h('dialog', { class: 'pri-dialog', 'aria-labelledby': 'pri-as-title', 'data-testid': 'pri-as-dialog' }, form);
@@ -99,7 +102,7 @@ export function assignControls({ d, selected, keyOf, refresh }) {
       ok.disabled = true;
       out.replaceChildren(h('p', { class: 'pri-k' }, 'Assigning…'));
       try {
-        const r = await api('/api/priorities/assignments', {}, { method: 'POST', body: { keys: rows.map(keyOf), snapshot_week: d.week_start, vendor: vendor.value, for_week: week.value, note: note.value.trim() } });
+        const r = await api('/api/priorities/assignments', {}, { method: 'POST', body: { keys: rows.map(keyOf), snapshot_week: d.week_start, vendor: vendor.value, for_week: week.value, note: note.value.trim(), ...(format.value ? { format_code: format.value } : {}) } });
         const made = (r.created || []).length; const skipped = r.skipped || [];
         out.replaceChildren(
           h('p', { 'data-testid': 'pri-as-created' }, `${made} concept${made === 1 ? '' : 's'} assigned to ${vendor.value} for the ${weekOf(week.value)}.`),
@@ -107,7 +110,7 @@ export function assignControls({ d, selected, keyOf, refresh }) {
           h('p', null, h('a', { href: href('/priorities/production', { week: week.value }), 'data-testid': 'pri-as-open-production' }, 'Open Production')));
         finished = 'sent';
         ok.textContent = 'Close'; ok.disabled = false; ok.type = 'submit'; cancel.hidden = true;
-        [vendor, week, note].forEach((el) => { el.disabled = true; });
+        [vendor, week, format, note].forEach((el) => { el.disabled = true; });
         await load();
       } catch (e) {
         ok.disabled = false;

@@ -1,4 +1,5 @@
-"""Production assignments on /priorities: a concept given to a vendor to make for a week. Tables creative_priorities_assignments and creative_priorities_vendor_links (migration 202).
+"""Production assignments on /priorities: a concept given to a vendor to make for a week. Tables creative_priorities_assignments and creative_priorities_vendor_links (migration 202); the optional creative
+format of an assignment is creative_priorities_assignments.format_code -> creative_formats (migration 204; everything here still works when 204 is not applied: no formats, nothing chosen).
 
 A concept stays in the ideation list exactly as it is; each "Assign to vendor" creates one assignment (concept x vendor x week). The stage of an assignment is never stored: it is derived from the
 links, the timestamps and the status of the linked Creative Tracker rows (stage_of). Nothing here writes to the Google Sheet or Meta. The first part of the module is pure (no database): key building,
@@ -19,8 +20,12 @@ VENDORS = ["Madre", "Victoria", "TrybeDCShop", "TrybeOrion", "10xROAS", "Interna
 STAGES = {"assigned": "Assigned", "brief_sent": "Brief sent", "creative_in": "Creative delivered", "ready": "Ready to launch", "launched": "Launched", "dropped": "Dropped"}
 _ORDER = ["assigned", "brief_sent", "creative_in", "ready", "launched"]                  # progress order; dropped sits outside it
 LIMITS = {"note": 500, "vendor_note": 1000, "url": 2000, "concept_id": 200, "concept_ids": 20}
-CREATE_FIELDS = ("vendor", "for_week", "note")
-PATCH_FIELDS = ("vendor", "for_week", "note", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped")
+# the six creative formats as migration 204 seeds them; the database table is the truth, this copy serves the UI mock server and the not-yet-migrated fallback
+FORMATS = [{"code": "F1", "name": "Long animated story, openly AI, told by the character", "length": "90s to 3 min"}, {"code": "F2", "name": "Talking head (realistic AI)", "length": "45 to 90s"},
+           {"code": "F3", "name": "Short acted scene with two people", "length": "30 to 60s"}, {"code": "F4", "name": "Whiteboard explainer", "length": "60 to 90s"},
+           {"code": "F5", "name": "Opens on a sound", "length": "30 to 60s"}, {"code": "F6", "name": "Animated song", "length": "45 to 90s"}]
+CREATE_FIELDS = ("vendor", "for_week", "note", "format_code")
+PATCH_FIELDS = ("vendor", "for_week", "note", "format_code", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped")
 PATCH_BOOLS = ("ready", "launched", "dropped")
 VENDOR_PATCH_FIELDS = ("creative_url", "vendor_note", "ready")
 _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -63,6 +68,25 @@ def monday_of(d) -> dt.date:
 
 
 # ---------------------------------------------------------------------------------------------------------------- validation
+def _format_code(raw):
+    """A format code as typed: blank or null means none (None); otherwise trimmed text. Whether it is a real, active format is check_format's job (needs the list)."""
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return None
+    if not isinstance(raw, str):
+        raise q.ApiError(400, "format must be text")
+    return _CTRL_ALL.sub("", raw).strip()[:20]
+
+
+def check_format(code, formats):
+    """code (None = no format) must be one of the active formats [{code, ...}]; otherwise a 400 in plain English. Returns code."""
+    if code is None:
+        return None
+    ok = [f["code"] for f in formats]
+    if code not in ok:
+        raise q.ApiError(400, "That creative format is not one of the available formats" + (": " + ", ".join(ok) if ok else "") + ".")
+    return code
+
+
 def clean_url(s) -> str:
     """A link: http or https only, at most 2,000 characters, control characters stripped. Anything else is a 400."""
     if not isinstance(s, str):
@@ -128,12 +152,12 @@ def _concept_ids(raw) -> list[str]:
 
 
 def clean_create(body: dict) -> dict:
-    """Vendor, week (snapped to its Monday) and note of an Assign request. Other keys of the body (keys, snapshot_week) belong to the route and are ignored here."""
+    """Vendor, week (snapped to its Monday), note and optional format_code (None when none) of an Assign request. Other keys of the body (keys, snapshot_week) belong to the route and are ignored here."""
     if not isinstance(body, dict):
         raise q.ApiError(400, "JSON object body required")
     if body.get("for_week") in (None, ""):
         raise q.ApiError(400, "week is required")
-    return {"vendor": _vendor(body.get("vendor")), "for_week": monday_of(body["for_week"]), "note": _text(body.get("note"), "note", LIMITS["note"])}
+    return {"vendor": _vendor(body.get("vendor")), "for_week": monday_of(body["for_week"]), "note": _text(body.get("note"), "note", LIMITS["note"]), "format_code": _format_code(body.get("format_code"))}
 
 
 def clean_patch(body: dict) -> dict:
@@ -152,6 +176,8 @@ def clean_patch(body: dict) -> dict:
         out["for_week"] = monday_of(body["for_week"])
     if "note" in body:
         out["note"] = _text(body["note"], "note", LIMITS["note"])
+    if "format_code" in body:
+        out["format_code"] = _format_code(body["format_code"])
     for f in ("brief_url", "creative_url"):
         if f in body:
             out[f] = _opt_url(body[f])
@@ -166,7 +192,8 @@ def clean_patch(body: dict) -> dict:
 
 
 def clean_vendor_patch(body: dict) -> dict:
-    """What a vendor may change on their own link page: the creative link, a note, and Ready to launch (a real boolean: true stamps ready_at, false clears it). Nothing else."""
+    """What a vendor may change on their own link page: the creative link, a note, and Ready to launch (a real boolean: true stamps ready_at, false clears it). Nothing else; the creative format is
+    shown to the vendor but is not in VENDOR_PATCH_FIELDS, so sending it is a 400 like any other field that is not theirs."""
     if not isinstance(body, dict):
         raise q.ApiError(400, "JSON object body required")
     unknown = set(body) - set(VENDOR_PATCH_FIELDS)
@@ -247,6 +274,7 @@ VENDOR_RECENT_DAYS = 28                      # the vendor page also shows what w
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{22,64}")
 COLS = ("id, concept_key, text_key, product, vendor, line_id, manual_id, line_code, cluster, icp, pain_point, story, section_at_assign, note, vendor_note, for_week, brief_url, creative_url, "
         "brief_at, creative_at, ready_at, launched_at, dropped_at, tracker_concept_ids, created_at, updated_at, created_by, updated_by")
+FMT_COLS = ("format_code", "format_name", "format_length")                               # on every row; None when no format was chosen (or migration 204 is not applied)
 INTERNAL_ONLY = ("note", "created_by", "updated_by", "suggested_concept_ids")          # never sent to a vendor link page
 _TS = ("brief_at", "creative_at", "ready_at", "launched_at", "dropped_at", "created_at", "updated_at")
 
@@ -323,11 +351,26 @@ def _shape(rec: dict, ads: list[dict], vendor_view: bool = False) -> dict:
 
 
 def _fetch(conn, where: str = "", params: tuple = ()) -> list[dict]:
+    acols = ", ".join("a." + c.strip() for c in COLS.split(","))
     try:
-        return conn.execute(f"SELECT {COLS} FROM creative_priorities_assignments {where} ORDER BY for_week DESC, vendor, id", params).fetchall()
+        return conn.execute(f"SELECT {acols}, a.format_code, f.name AS format_name, f.length AS format_length FROM creative_priorities_assignments a LEFT JOIN creative_formats f ON f.code = a.format_code {where} ORDER BY a.for_week DESC, a.vendor, a.id", params).fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):          # migration 204 (formats) or 202 (assignments) not applied yet
+        conn.rollback()
+    try:
+        return [{**r, "format_code": None, "format_name": None, "format_length": None} for r in conn.execute(f"SELECT {COLS} FROM creative_priorities_assignments {where} ORDER BY for_week DESC, vendor, id", params).fetchall()]
     except psycopg.errors.UndefinedTable:         # migration 202 not applied yet: the pages still work, with nothing assigned
         conn.rollback()
         return []
+
+
+def formats(conn, active_only: bool = True) -> list[dict]:
+    """The creative formats [{code, name, length}] in pick-list order; the built-in six when migration 204 is not applied yet (choosing one then fails with a 503 on write)."""
+    try:
+        rows = conn.execute("SELECT code, name, length FROM creative_formats" + (" WHERE active" if active_only else "") + " ORDER BY sort, code").fetchall()
+        return [{"code": r["code"], "name": r["name"], "length": r["length"]} for r in rows]
+    except psycopg.errors.UndefinedTable:
+        conn.rollback()
+        return [dict(f) for f in FORMATS]
 
 
 def _weeks(conn) -> list[str]:
@@ -344,7 +387,7 @@ def _shape_all(conn, recs: list[dict], vendor_view: bool = False) -> list[dict]:
 
 
 def list_assignments(conn, week=None, vendor=None, include_closed: bool = False) -> dict:
-    """{rows, vendors, weeks}. Default: open rows (not launched, not dropped); include_closed adds launched and dropped. week snaps to its Monday; vendor must be a known vendor."""
+    """{rows, vendors, weeks, formats}. Default: open rows (not launched, not dropped); include_closed adds launched and dropped. week snaps to its Monday; vendor must be a known vendor."""
     where, params = [], []
     if week not in (None, ""):
         where.append("for_week = %s")
@@ -355,7 +398,7 @@ def list_assignments(conn, week=None, vendor=None, include_closed: bool = False)
     rows = _shape_all(conn, _fetch(conn, ("WHERE " + " AND ".join(where)) if where else "", tuple(params)))
     if not include_closed:
         rows = [r for r in rows if r["stage"] not in ("launched", "dropped")]
-    return {"rows": rows, "vendors": list(VENDORS), "weeks": _weeks(conn)}
+    return {"rows": rows, "vendors": list(VENDORS), "weeks": _weeks(conn), "formats": formats(conn)}
 
 
 def _after_write(ids: list[int], vendor_view: bool = False) -> list[dict]:
@@ -374,6 +417,7 @@ def create_assignments(conn, body: dict, user: str | None = None) -> dict:
     from . import creative_priorities as cpr
     from etl.creative_priorities import norm_key
     f = clean_create(body)
+    f["format_code"] = check_format(f["format_code"], formats(conn))
     keys = body.get("keys")
     if not isinstance(keys, list) or not keys or not all(isinstance(k, str) and 0 < len(k) <= 400 for k in keys):
         raise q.ApiError(400, "keys must be a list of concept row keys")
@@ -395,18 +439,22 @@ def create_assignments(conn, body: dict, user: str | None = None) -> dict:
                 if not (r.get("cluster") or "").strip() and not (r.get("pain_point") or "").strip():
                     skipped.append({"key": k, "reason": "no cluster or pain point"})
                     continue
+                fc = f["format_code"]
                 row = w.execute(
-                    """INSERT INTO creative_priorities_assignments (concept_key, text_key, product, vendor, line_id, manual_id, line_code, cluster, icp, pain_point, story, section_at_assign, note, for_week, created_by, updated_by)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    """INSERT INTO creative_priorities_assignments (concept_key, text_key, product, vendor, line_id, manual_id, line_code, cluster, icp, pain_point, story, section_at_assign, note, for_week, created_by, updated_by"""
+                    + (", format_code" if fc else "") + """)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s""" + (",%s" if fc else "") + """)
                        ON CONFLICT (concept_key, vendor, for_week) WHERE dropped_at IS NULL DO NOTHING RETURNING id""",
                     (concept_key(r), text_key(r), r["product"], f["vendor"], r.get("line_id"), r["id"] if r.get("manual") else None, r.get("line_code") or "", r.get("cluster") or "", r.get("icp") or "",
-                     r.get("pain_point") or "", r.get("story") or "", r.get("section") or "", f["note"], f["for_week"], user, user)).fetchone()
+                     r.get("pain_point") or "", r.get("story") or "", r.get("section") or "", f["note"], f["for_week"], user, user, *([fc] if fc else []))).fetchone()
                 if row is None:
                     skipped.append({"key": k, "reason": "already assigned to this vendor for that week"})
                 else:
                     created_ids.append(row["id"])
     except psycopg.errors.UndefinedTable:
         raise q.ApiError(503, "Production is not set up yet (migration 202 is not applied).") from None
+    except psycopg.errors.UndefinedColumn:
+        raise q.ApiError(503, "Creative formats are not set up yet (migration 204 is not applied).") from None
     return {"created": _after_write(created_ids), "skipped": skipped}
 
 
@@ -414,7 +462,7 @@ def _update(aid: int, f: dict, user: str | None, vendor: str | None = None) -> N
     """Apply a cleaned patch. Links stamp their first-added time and clear it with the link; ready / launched / dropped set or clear their timestamp. vendor= restricts to that vendor's row (404 otherwise)."""
     sets: list[str] = []
     params: list = []
-    for c in ("vendor", "for_week", "note", "vendor_note"):
+    for c in ("vendor", "for_week", "note", "vendor_note", "format_code"):
         if c in f:
             sets.append(f"{c} = %s")
             params.append(f[c])
@@ -442,6 +490,8 @@ def _update(aid: int, f: dict, user: str | None, vendor: str | None = None) -> N
             n = w.execute(f"UPDATE creative_priorities_assignments SET {', '.join(sets)} WHERE {where}", [*params, *wp]).rowcount
     except psycopg.errors.UniqueViolation:
         raise q.ApiError(409, "That concept is already assigned to this vendor for that week.") from None
+    except psycopg.errors.UndefinedColumn:
+        raise q.ApiError(503, "Creative formats are not set up yet (migration 204 is not applied).") from None
     except psycopg.errors.UndefinedTable:
         raise q.ApiError(503, "Production is not set up yet (migration 202 is not applied).") from None
     if not n:
@@ -452,6 +502,8 @@ def update_assignment(conn, aid: int, body: dict, user: str | None = None) -> di
     f = clean_patch(body)
     if not f:
         raise q.ApiError(400, "nothing to update")
+    if "format_code" in f:
+        f["format_code"] = check_format(f["format_code"], formats(conn))
     _update(aid, f, user)
     return _after_write([aid])[0]
 

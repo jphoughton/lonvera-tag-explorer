@@ -558,7 +558,7 @@ def _json_body() -> dict:
 
 @bp.get("/api/priorities/assignments")
 def priorities_assignments():
-    """Production assignments: ?week=YYYY-MM-DD (snaps to its Monday) &vendor=<name> &include_closed=1 (adds launched and dropped) -> {rows, vendors, weeks}. Each row: the table fields plus stage,
+    """Production assignments: ?week=YYYY-MM-DD (snaps to its Monday) &vendor=<name> &include_closed=1 (adds launched and dropped) -> {rows, vendors, weeks, formats: [{code, name, length}]}. Each row: the table fields plus format_code / format_name / format_length (null when no format was chosen), stage,
     stage_label, tracker_status, suggested_concept_ids and ads [{concept_id, ad_family, status, launch_date, spend, roas, ad_url}]. See app/priorities_assign.py."""
     out = pas.list_assignments(db.get_conn(), week=_arg("week"), vendor=_arg("vendor"), include_closed=request.args.get("include_closed") in ("1", "true"))
     out["launch"] = pla.discovery()                  # {enabled, can_launch, dry_run}: the production page shows launch controls only when enabled (see app/priorities_launch_api.py)
@@ -567,7 +567,7 @@ def priorities_assignments():
 
 @bp.post("/api/priorities/assignments")
 def priorities_assignments_create():
-    """Assign concepts: {keys: [row keys], snapshot_week?, vendor, for_week, note?} -> {created: [assignment], skipped: [{key, reason}]}. Rows come from the stored snapshot; duplicates are skipped."""
+    """Assign concepts: {keys: [row keys], snapshot_week?, vendor, for_week, note?, format_code?} -> {created: [assignment], skipped: [{key, reason}]}. Rows come from the stored snapshot; duplicates are skipped."""
     blocked = _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
     if blocked is not None:
         return blocked
@@ -576,7 +576,7 @@ def priorities_assignments_create():
 
 @bp.patch("/api/priorities/assignments/<int:aid>")
 def priorities_assignment_update(aid: int):
-    """Change any of vendor, for_week, note, brief_url, creative_url, tracker_concept_ids, ready, launched, dropped (the last three booleans set or clear their timestamp). There is no delete."""
+    """Change any of vendor, for_week, note, format_code (blank or null clears it), brief_url, creative_url, tracker_concept_ids, ready, launched, dropped (the last three booleans set or clear their timestamp). There is no delete."""
     blocked = _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
     if blocked is not None:
         return blocked
@@ -617,7 +617,7 @@ def priorities_vendor(token: str):
 
 @bp.patch("/api/priorities/vendor/<token>/<int:aid>")
 def priorities_vendor_update(token: str, aid: int):
-    """A vendor edits their own row: {creative_url?, vendor_note?, ready?} only; another vendor's row is a 404."""
+    """A vendor edits their own row: {creative_url?, vendor_note?, ready?} only (the creative format is shown to them but is not theirs to change: 400); another vendor's row is a 404."""
     blocked = _views_write_guard("_vendor_limiter", "PRIORITIES_VENDOR_PER_MIN", 60)
     if blocked is not None:
         return blocked

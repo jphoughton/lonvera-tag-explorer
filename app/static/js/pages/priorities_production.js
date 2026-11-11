@@ -17,7 +17,10 @@ const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(
 const mondayOf = (iso) => { const [y, m, d] = iso.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1, d)); t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7)); return t.toISOString().slice(0, 10); };
 const addDays = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1, d + n)); return t.toISOString().slice(0, 10); };
 const vendorLinkUrl = (tok) => `${location.origin}/priorities/vendor/${tok}`;
-export { mondayOf, addDays, today, VENDOR_FALLBACK };                       // used by priorities_assign.js (the Assign to vendor dialog on /priorities)
+// "F1 Long animated story, openly AI, told by the character (90s to 3 min)": a creative format as shown in the pick lists and on the vendor page
+const formatLabel = (f) => `${f.code} ${f.name}` + (f.length ? ` (${f.length})` : '');
+const rowFormat = (r) => (r.format_code ? { code: r.format_code, name: r.format_name || '', length: r.format_length || '' } : null);
+export { mondayOf, addDays, today, VENDOR_FALLBACK, formatLabel };                       // used by priorities_assign.js (the Assign to vendor dialog on /priorities)
 
 // "Launched 11/3, $1,240 spent, 1.80 return" from the linked ads (earliest launch date, total spend, spend-weighted return), or '' when nothing is launched
 export function resultText(r) {
@@ -107,6 +110,15 @@ export async function productionPage(ctx) {
       fields: [{ key: 'vendor', label: 'Vendor', type: 'select', value: r.vendor, options: vendorNames().map((v) => [v, v]) }, { key: 'for_week', label: 'Week of', type: 'select', value: r.for_week, options: weeks.map((w) => [w, weekLabel(w)]) }] });
     if (res) patch(r.id, { vendor: res.vendor, for_week: res.for_week }, 'Saved.');
   }
+  // the Format cell: a select that saves on change (blank = no format chosen); a format retired since it was chosen stays listed so the cell keeps showing it
+  function formatCell(r) {
+    const list = (data.formats || []).slice();
+    const cur = rowFormat(r);
+    if (cur && !list.some((f) => f.code === cur.code)) list.push(cur);
+    const sel = h('select', { class: 'pri-fselect prod-fmt', 'data-testid': 'prod-format', 'aria-label': 'Format', disabled: r.stage === 'dropped' || !list.length, onchange: async (e) => { const v = e.target.value; sel.disabled = true; await patch(r.id, { format_code: v || null }, v ? 'Format saved.' : 'Format removed.'); sel.disabled = false; sel.value = r.format_code || ''; } },
+      h('option', { value: '', selected: !cur }, 'No format chosen'), list.map((f) => h('option', { value: f.code, selected: !!cur && f.code === cur.code }, formatLabel(f))));
+    return h('td', { class: 'prod-c prod-c-fmt' }, sel);
+  }
   async function drop(r) {
     const res = await askDialog({ title: 'Drop this assignment?', note: `${r.vendor}, ${weekLabel(r.for_week).toLowerCase()}: ${r.cluster} / ${r.icp} / ${r.pain_point}. It moves to Dropped (shown under Show launched and dropped).`, okLabel: 'Drop', danger: true });
     if (res) patch(r.id, { dropped: true }, 'Dropped.');
@@ -155,7 +167,7 @@ export async function productionPage(ctx) {
       h('td', { class: 'prod-c', 'data-testid': 'prod-vendor' }, r.vendor),
       h('td', { class: 'prod-c', 'data-testid': 'prod-product' }, productName(r.product)),
       h('td', { class: 'prod-c prod-concept', 'data-testid': 'prod-concept' }, h('strong', null, r.pain_point || r.cluster), h('div', { class: 'pri-sub' }, [r.cluster, r.icp].filter(Boolean).join(' / ')), r.note ? h('div', { class: 'pri-sub' }, 'Note: ' + r.note) : null, r.vendor_note ? h('div', { class: 'pri-sub', 'data-testid': 'prod-vnote' }, 'Vendor note: ' + r.vendor_note) : null),
-      linkCell(r, 'brief_url', 'Brief'), linkCell(r, 'creative_url', 'Creative'),
+      linkCell(r, 'brief_url', 'Brief'), linkCell(r, 'creative_url', 'Creative'), formatCell(r),
       h('td', { class: 'prod-c prod-nowrap', 'data-testid': 'prod-stage' }, stageLabel(r)),
       adsCell(r),
       h('td', { class: 'prod-c', 'data-testid': 'prod-result' }, resultText(r)),
@@ -175,7 +187,7 @@ export async function productionPage(ctx) {
       h('div', { class: 'prod-linkrow' }, vendorNames().map((v) => h('span', { class: 'prod-vl', 'data-vendor': v },
         h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-copy-link', onclick: () => vendorLink(v, false) }, 'Copy link for ' + v), ' ',
         h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-reset-link', 'aria-label': 'Reset link for ' + v, onclick: () => vendorLink(v, true) }, 'Reset link')))));
-    const heads = ['Week of', 'Vendor', 'Product', 'Concept', 'Brief', 'Creative', 'Stage', 'Ads', 'Result', ''];
+    const heads = ['Week of', 'Vendor', 'Product', 'Concept', 'Brief', 'Creative', 'Format', 'Stage', 'Ads', 'Result', ''];
     const table = (data.rows || []).length
       ? h('div', { class: 'prod-scroll', 'data-testid': 'prod-scroll' }, h('table', { class: 'pri-table prod-table', 'data-testid': 'prod-table' },
         h('thead', null, h('tr', null, heads.map((x) => h('th', { scope: 'col' }, x)))), h('tbody', null, data.rows.map(row))))
@@ -221,6 +233,7 @@ export async function vendorPage(ctx) {
       r.story ? h('p', { class: 'prod-story', 'data-testid': 'prod-story' }, r.story) : null,
       h('dl', { class: 'prod-dl' },
         dt('Brief', r.brief_url ? link(r.brief_url, short(r.brief_url), { 'data-testid': 'prod-brief_url' }) : 'Not added yet'),
+        dt('Format', h('span', { 'data-testid': 'prod-format-text' }, rowFormat(r) ? formatLabel(rowFormat(r)) : 'Not chosen')),
         dt('Stage', h('span', { 'data-testid': 'prod-stage' }, stageLabel(r))),
         dt('Ads', (r.ads || []).length ? (r.ads || []).map((a) => h('div', { 'data-testid': 'prod-cid' }, a.ad_url ? link(a.ad_url, a.concept_id) : a.concept_id)) : 'None yet'),
         dt('Result', h('span', { 'data-testid': 'prod-result' }, res || 'Not launched yet'))),
