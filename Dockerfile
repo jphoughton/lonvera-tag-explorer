@@ -1,7 +1,12 @@
-# Lonvera Tag Explorer: one image, two Railway services.
+# Lonvera Tag Explorer: one Dockerfile, two flavors (see IMAGE_FLAVOR below).
 #   web  -> default CMD (scripts/deploy/start_web.sh: migrate, then gunicorn)
 #   etl  -> start command override in railway.etl.json (python -m etl.run_daily), run on a cron schedule
-FROM python:3.12-slim
+# Build flavor. Default `jobs` is the full image (identical to the old single-stage image): cron services etl / feeds / live / alerts.
+# `web` is the slim image (python deps + app code, no Chromium / Node / Claude CLI): set the build variable IMAGE_FLAVOR=web on the web service
+# (Railway passes service variables to the build as ARGs). BuildKit skips the stages the chosen flavor does not use.
+ARG IMAGE_FLAVOR=jobs
+
+FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -14,6 +19,9 @@ WORKDIR /app
 # Dependencies first so the layer is cached until requirements.txt changes.
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
+
+# ---- heavy: only the cron services use these (nothing under app/, etl.migrate or start_web.sh imports or shells out to them) ----
+FROM base AS heavy
 
 # Headless Chromium for etl.competitor_ads (public Meta Ad Library). Browsers live outside /root so the non-root runtime user can launch them.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
@@ -30,14 +38,24 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && npm cache clean --force \
  && claude --version
 
-# Non-root runtime user.
+# ---- jobs: heavy + code (the default flavor) ----
+FROM heavy AS jobs
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
-
 COPY --chown=app:app . .
 RUN chmod +x scripts/deploy/*.sh
-
 USER app
 EXPOSE 8080
-
 # Railway ignores Docker HEALTHCHECK; its healthcheck is railway.json -> deploy.healthcheckPath (/healthz).
 CMD ["scripts/deploy/start_web.sh"]
+
+# ---- web: slim, python deps + code only ----
+FROM base AS web
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
+COPY --chown=app:app . .
+RUN chmod +x scripts/deploy/*.sh
+USER app
+EXPOSE 8080
+CMD ["scripts/deploy/start_web.sh"]
+
+# Final stage = the chosen flavor.
+FROM ${IMAGE_FLAVOR} AS final
