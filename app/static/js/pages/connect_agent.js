@@ -40,13 +40,14 @@ export async function connectAgentPage(ctx) {
   const render = (st, fresh) => {
     const keyBox = fresh
       ? h('div', { class: 'cn-fresh', role: 'status', 'data-testid': 'cn-fresh' }, h('strong', null, 'Your new key. It is shown once, so copy it now.'), h('pre', { class: 'cn-code', 'data-testid': 'cn-key' }, fresh.key))
-      : h('p', { class: 'tl-prose', 'data-testid': 'cn-status' }, st.has_key ? `You have a key (starts ${st.prefix}...${st.last_used_at ? ', last used ' + String(st.last_used_at).slice(0, 10) : ', not used yet'}). It cannot be shown again.` : 'You do not have a key yet.');
+      : h('p', { class: 'tl-prose', 'data-testid': 'cn-status' }, st.open_app ? 'This app is open, so keys are not tied to a person. Make a new key whenever you need one. Old keys keep working, and a key cannot be shown again after this page.' : st.has_key ? `You have a key (starts ${st.prefix}...${st.last_used_at ? ', last used ' + String(st.last_used_at).slice(0, 10) : ', not used yet'}). It cannot be shown again.` : 'You do not have a key yet.');
     const btn = h('button', { type: 'button', class: 'btn primary', 'data-testid': 'cn-make', onclick: async () => {
-      if (st.has_key && !window.confirm('Make a new key? The old key stops working right away.')) return;
+      if (st.has_key && !st.open_app && !window.confirm('Make a new key? The old key stops working right away.')) return;
       btn.disabled = true;
-      try { const r = await api('/api/brain/key', null, { method: 'POST', body: {} }); if (ctx.alive()) render({ ...st, has_key: true, prefix: r.prefix }, r); }
+      try { const r = await api('/api/brain/key', null, { method: 'POST', body: {} }); if (ctx.alive()) render({ ...st, has_key: !st.open_app, prefix: r.prefix }, r);
+        btn.disabled = false; }
       catch (e) { btn.disabled = false; body.prepend(h('div', { class: 'errorbox', role: 'alert' }, e && e.message ? e.message : String(e))); }
-    } }, st.has_key ? 'Reset my key' : 'Make my key');
+    } }, st.open_app ? 'Make a new key' : st.has_key ? 'Reset my key' : 'Make my key');
     body.replaceChildren(
       h('h2', null, 'Endpoint'), copyBlock('Address', st.endpoint, 'cn-endpoint'),
       h('h2', null, 'Your key'), keyBox, h('div', null, btn),

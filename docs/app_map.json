@@ -262,6 +262,10 @@
    "summary": "Klaviyo flow + campaign metrics -> klaviyo_daily (+ klaviyo_campaigns / klaviyo_flows / klaviyo_flow_messages). Read-only against Klaviyo (GET lists, POST metric-aggregates)."
   },
   {
+   "module": "etl.landing_pages",
+   "summary": "Landing pages: which page each Meta ad sends people to, and the copy on every such page."
+  },
+  {
    "module": "etl.launch_worker",
    "summary": "Launch worker for /priorities production (package P5): turns queued `creative_launch_jobs` rows into a plan (prepare) or into PAUSED Meta ads (launch)."
   },
@@ -560,7 +564,7 @@
    "endpoint": "brain_mcp.brain_key_status",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "Whether the signed-in user has an agent key (prefix and last use only, never the key) and the endpoint address."
+   "summary": "Whether the signed-in user has an agent key (prefix and last use only, never the key) and the endpoint address; with the app open, just the endpoint."
   },
   {
    "rule": "/api/brain/key",
@@ -571,7 +575,7 @@
    "endpoint": "brain_mcp.brain_key_reset",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "Make this user's agent key, or replace it (the old key stops working at once). The key is in this answer once and is stored only as a hash."
+   "summary": "Make this user's agent key, or replace it (the old key stops working at once). With the app open anyone can make a new key (capped at 50 a day app-wide). The key is in this answer once and is stored only as a hash."
   },
   {
    "rule": "/api/campaigns",
@@ -627,6 +631,28 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": ""
+  },
+  {
+   "rule": "/api/landing-pages",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.landing_pages",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Every landing page Meta ads send people to, with its current copy summary and its top ads by spend. window=7|30 (default 30), top=<1..25> (default 5). See docs/LANDING_PAGES.md."
+  },
+  {
+   "rule": "/api/landing-pages/<int:page_id>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.landing_page",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "One landing page: the full stored copy of its current version, the list of versions, and its top ads (window=7|30, top=<1..25>)."
   },
   {
    "rule": "/api/login",

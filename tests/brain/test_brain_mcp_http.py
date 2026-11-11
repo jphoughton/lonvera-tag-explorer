@@ -71,13 +71,10 @@ def test_vendor_link_tokens_never_grant_access(client, anon):
     assert rpc(anon, "tools/list").status_code == 401
 
 
-def test_auth_disabled_refuses_with_403(app_factory):
-    open_app = app_factory(AUTH_DISABLED=True)
-    c = open_app.test_client()
-    assert rpc(c, "initialize").status_code == 403
-    assert rpc(c, "initialize", headers=bearer("lvb_" + "A" * 40)).status_code == 403
-    assert "AUTH_DISABLED" in rpc(c, "tools/list").get_json()["error"]
-    assert c.post("/api/brain/key", json={}).status_code == 403 and c.get("/api/brain/key").status_code == 403
+def test_auth_disabled_still_needs_a_key(app_factory):
+    """Detail of the open-app matrix is in test_brain_open_app.py: with sign-in off /mcp is 401 without a valid key, never open and never 403."""
+    c = app_factory(AUTH_DISABLED=True).test_client()
+    assert rpc(c, "initialize").status_code == 401 and rpc(c, "initialize", headers=bearer("lvb_" + "A" * 40)).status_code == 401
 
 
 def test_a_session_works(client):
@@ -227,7 +224,7 @@ def test_key_routes_need_a_signed_in_person(anon, client, api_key, brain_key):
 
 def test_the_key_is_shown_once_and_stored_hashed_and_a_reset_replaces_it(client, anon, pg):
     st = client.get("/api/brain/key").get_json()
-    assert st["has_key"] is False and st["endpoint"].endswith("/mcp") and st["user"] == "JoshHoughton" and st["sql_configured"] is False
+    assert st["has_key"] is False and st["open_app"] is False and st["endpoint"].endswith("/mcp") and st["user"] == "JoshHoughton" and st["sql_configured"] is False
     made = client.post("/api/brain/key", json={})
     k1 = made.get_json()["key"]
     assert made.status_code == 200 and made.headers["Cache-Control"] == "no-store" and made.get_json()["prefix"] == k1[:8]
