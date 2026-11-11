@@ -25,7 +25,7 @@ GROUPS = [
     ("rollups", "Derived creative-family roll-ups (rebuilt in full by etl.build_metrics)"),
     ("ops", "Pipeline bookkeeping"),
     ("proj_feeds", "Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow)"),
-    ("proj_engine", "Projection engine tables (finance, inventory, cohorts; NOT exposed in analytics)"),
+    ("proj_engine", "Projection engine tables (finance, inventory, cohorts; read them through the analytics views)"),
 ]
 
 # Public relations that are not described column by column. Anything else in the public schema MUST have an entry in REL.
@@ -367,7 +367,7 @@ rel("analytics.orders_daily", group="analytics", kind="view",
     coverage="2025-01-01 through yesterday (Pacific)",
     caveats=["Revenue is the order total as Upstack reports it (tax included), before refunds: all numbers are gross.",
              "There is no product, platform or campaign dimension: you cannot split new-customer revenue by product here. Use the attributed columns of the Meta / Google views "
-             "(an attribution, not the actual) or the sheet's NC Rev - By Product (proj_feed_nc_product, sheet-fed, not in analytics).",
+             "(an attribution, not the actual) or analytics.orders_by_product_daily (the sheet's NC Rev - By Product: actual first-order revenue by the order's largest product line).",
              "A day with no orders is absent, not zero.",
              "new_customers is the count of first-time customers (first orders)."],
     cols={
@@ -1544,7 +1544,7 @@ rel("public.proj_feed_levers", group="proj_feeds", kind="table",
 rel("public.proj_feed_orders", group="proj_feeds", kind="table",
     purpose="Shopify order totals by Pacific day (not ad-attributed): the sheet-fed twin of upstack_orders_daily with tax and refunds.",
     grain="one row per day", source=_SHEET.format("Orders - History"), refresh=_FEED_REFRESH, coverage="2025-01-01 through yesterday",
-    caveats=["Values equal upstack_orders_daily for the shared columns; tax and refunds exist only here. Not exposed in analytics (read orders_daily)."],
+    caveats=["Values equal upstack_orders_daily for the shared columns; tax and refunds exist only here. analytics.orders_daily_detail exposes it with the tax and refunds columns; analytics.orders_daily carries the shared columns."],
     cols={"day": "Pacific day.", "nc_rev": "New-customer revenue.", "rc_rev": "Returning-customer revenue.", "nc_orders": "New customers.", "total_rev": "Total revenue.",
           "total_orders": "All orders.", "tax": "Tax collected.", "refunds": "Refunds.", "loaded_at": "When loaded."})
 rel("public.proj_feedx_orders", group="proj_feeds", kind="table", like="public.proj_feed_orders",
@@ -1554,7 +1554,7 @@ rel("public.proj_feedx_orders", group="proj_feeds", kind="table", like="public.p
 rel("public.proj_feed_amazon", group="proj_feeds", kind="table",
     purpose="Amazon.com + B2B sales and Amazon Ads (deduped v3 > v2 > v1) by purchase day.",
     grain="one row per day", source=_SHEET.format("Amazon - Daily") + "; the direct feed reads ExpandFi merchant 1452", refresh=_FEED_REFRESH, coverage="2024-09-24 through yesterday",
-    caveats=["Amazon ad spend must be de-duplicated across Amazon's v1 / v2 / v3 report generations (raw is about 1.3x high); this table already is.", "Not in analytics (Amazon is outside the Meta / Google marketing scope of this schema)."],
+    caveats=["Amazon ad spend must be de-duplicated across Amazon's v1 / v2 / v3 report generations (raw is about 1.3x high); this table already is.", "Exposed as analytics.amazon_daily."],
     cols={"day": "Purchase day.", "orders": "Orders.", "units": "Units.", "revenue": "Revenue.", "nc_orders": "New-customer orders.", "nc_rev": "New-customer revenue.",
           "ad_spend": "Amazon Ads spend (deduped).", "attributed_sales": "Sales Amazon attributes to ads.", "clicks": "Ad clicks.", "impressions": "Ad impressions.", "loaded_at": "When loaded."})
 rel("public.proj_feedx_amazon", group="proj_feeds", kind="table", like="public.proj_feed_amazon", purpose="Shadow twin of proj_feed_amazon (ExpandFi direct feed).",
@@ -1612,7 +1612,7 @@ rel("public.proj_feed_nc_product", group="proj_feeds", kind="table",
     purpose="ACTUAL Shopify first-order revenue and new customers per Pacific day by the order's largest product line (not Meta-attributed). The only product split of actual new-customer revenue.",
     grain="one row per (day, product)", source=_SHEET.format("NC Rev - By Product") + "; the direct feed reads ExpandFi merchant 1452 shopify_orders", refresh=_FEED_REFRESH,
     coverage="2025-01-01 through today; product = VitaBull | Beef Liver | Boneflex | Other",
-    caveats=["Not in analytics (a sheet-fed projection feed). Revenue = order total_price split across product lines by net line price; nc_orders = orders whose largest product line is the product."],
+    caveats=["Exposed as analytics.orders_by_product_daily. Revenue = order total_price split across product lines by net line price; nc_orders = orders whose largest product line is the product."],
     cols={"day": "Pacific day.", "product": "VitaBull | Beef Liver | Boneflex | Other.", "nc_rev": "First-order revenue, dollars.", "nc_orders": "First orders.", "loaded_at": "When loaded."})
 rel("public.proj_feedx_nc_product", group="proj_feeds", kind="table", like="public.proj_feed_nc_product", purpose="Shadow twin of proj_feed_nc_product (ExpandFi direct feed).",
     grain="one row per (day, product)", source="etl.feeds (ExpandFi)", refresh="feeds service, trailing window", coverage="trailing window only", cols={})
@@ -1717,11 +1717,11 @@ rel("public.proj_meta_spend_monthly", group="proj_feeds", kind="view",
     cols={"month": "First day of the month.", "spend": "Meta spend, dollars.", "days": "Days with any ad_daily row.", "last_day": "Last day with data."})
 
 # =====================================================================================================================================
-# public: projection engine (finance, inventory, cohorts). Documented for completeness; NOT exposed in analytics.
+# public: projection engine (finance, inventory, cohorts). Read through the analytics.projection_* / inventory_* / cohorts_* views (migration 210); the raw tables stay private.
 # =====================================================================================================================================
 
-_ENG = dict(group="proj_engine", kind="table")
-_FIN = "Projection engine (finance / planning); not exposed in analytics."
+_ENG = dict(group="proj_engine", kind="table", recomment="relation")
+_FIN = "Projection engine (finance / planning); read it through the analytics projection_* / inventory_* / cohorts_* views, never the raw table."
 
 rel("public.proj_scenarios", purpose="Named lever sets (scenarios) of the Projections module. " + _FIN, grain="one row per scenario", source="the Projections app",
     refresh="on edit", coverage="7 scenarios incl. the default 'current'", caveats=["params holds the module levers (financing, drivers, cohorts...): finance data."],
@@ -1777,7 +1777,7 @@ rel("public.proj_upload_history", purpose="Every QuickBooks upload commit with w
     "status": "applied | undone.", "undone_at": "When undone.", "undone_by": "Who undid it."}, **_ENG)
 
 rel("public.proj_po", purpose="Purchase orders (planned and actual): units, vendor, dates, deposit state, unit cost. Finance / supply. " + _FIN, grain="one row per purchase order", source="the Projections app (manual and auto-plan)",
-    refresh="on edit", coverage="74 rows", caveats=["Money (unit_cost) and vendor terms: finance. Not exposed."],
+    refresh="on edit", coverage="74 rows", caveats=["Money (unit_cost) and vendor terms: finance. Exposed as analytics.inventory_purchase_orders (the link column is left out)."],
     cols={"id": "Primary key.", "sheet_row": "Row on the sheet's Purchase Orders tab when seeded.", "po_number": "PO number.", "product": "bull | liver | boneflex | belle | flow.", "vendor": "proj_vendor_lead.vendor.",
           "warehouse": "revamp | intl.", "units": "Units ordered.", "order_date": "Order date (NULL = land date minus lead time).", "land_date": "Landing date.", "status": "planned | ordered | in transit | landed | cancelled.",
           "deposit_paid": "Deposit paid.", "shipping_paid": "Shipping paid.", "balance_paid": "Balance paid.", "deposit_pct": "Deposit share (NULL = vendor default).",
@@ -1810,6 +1810,765 @@ rel("public.proj_units_loads", purpose="One row per units load (seed, refresh, u
     "actor": "Who.", "note": "Note."}, **_ENG)
 
 # The proj_* tables above carry finance, supply-chain costs, scenarios and the audit trail. None of them is in analytics.
+
+
+# =====================================================================================================================================
+# analytics: the views added by migration 210 (every subject area of the database), one `domain` each, plus the catalog and the metric glossary
+# =====================================================================================================================================
+
+DOMAINS = [
+    ("marketing", "Meta and Google ads: spend, reach, bids, product splits, platform history"),
+    ("attribution", "Which orders each source or campaign gets credit for (Upstack)"),
+    ("orders", "Actual revenue, new customers, Amazon sales, site traffic"),
+    ("creative", "Creative tracker, family roll-ups, test to scale, ad copy"),
+    ("tags", "Products, taxonomy lines, tags, hooks"),
+    ("priorities", "The weekly creative priorities list"),
+    ("production", "Concepts assigned to vendors and their stages"),
+    ("projection", "Projection module: scenarios, levers, P&L inputs and actuals"),
+    ("inventory", "Purchase orders, FBA transfers, stock, units shipped"),
+    ("cohorts", "Acquisition cohorts and retention curves"),
+    ("pacing", "Daily pacing inputs: live today, Amazon month to date, levers"),
+    ("competitors", "Meta Ad Library competitor tracking"),
+    ("pipeline", "Data freshness, feed health, ETL runs, the catalog and the glossary"),
+]
+
+BRAIN_VIEWS: set[str] = set()                   # analytics views created by migration 210 (their comments live in that migration)
+
+
+def _srccols(key: str) -> dict[str, str]:
+    spec = REL[key]
+    cols: dict[str, str] = {}
+    if spec.get("like"):
+        cols.update(_srccols(spec["like"]))
+    cols.update(spec.get("cols") or {})
+    return cols
+
+
+def _ren(src: str, mapping: dict[str, str]) -> dict[str, str]:
+    sc = _srccols(src)
+    return {out: sc[col] for out, col in mapping.items()}
+
+
+def av(name, *, src, domain, purpose, grain, source, refresh, coverage, caveats=(), ren=None, cols=None, examples=(), span=None, base=None):
+    """One analytics view of migration 210. `ren` maps a renamed column to its column in `src` (the text is inherited); `cols` adds or overrides text."""
+    c = _ren(src, ren or {})
+    c.update(cols or {})
+    ex = list(examples)
+    for t, s in (("First rows", f"SELECT * FROM analytics.{name} LIMIT 20;"), ("Row count", f"SELECT count(*) AS rows FROM analytics.{name};")):
+        if len(ex) < 2:
+            ex.append((t, s))
+    BRAIN_VIEWS.add(f"analytics.{name}")
+    rel(f"analytics.{name}", group="analytics", kind="view", like=src, domain=domain, span=span, base=base or src.removeprefix("public."),
+        purpose=purpose, grain=grain, source=source, refresh=refresh, coverage=coverage, caveats=list(caveats), cols=c, examples=ex)
+
+
+_FEEDS_REFRESH = ("nightly: the etl service (13:00 UTC, etl.projection_daily) replaces the trailing 14 days; the feeds service (21:00 UTC) writes the direct pull; "
+                  "see analytics.pipeline_feeds for each feed's mode and last load")
+_EXPOSED = "Exposed read-only; the private table behind it is never granted."
+
+# ------------------------------------------------------------------------------------------------------------------------------- attribution
+av("attribution_source_daily", src="public.proj_feed_attribution", domain="attribution", span=("proj_feed_attribution", "day"),
+   purpose="Last-click attribution by ad source (Meta Ads, Google Ads, ...) per Pacific day: new customers and orders each source is credited with, exclusive per order.",
+   grain="one row per (day, ad_source)", source="public.proj_feed_attribution (the Upstack last-click feed)", refresh=_FEEDS_REFRESH, coverage="2025-01-01 through yesterday",
+   caveats=["Last-click is exclusive per order, unlike the any-click 30-day credit in meta_ad_daily / google_campaign_daily: the two bases do not agree and must not be mixed in one ratio."],
+   ren={"new_customers": "nc_orders", "new_customer_revenue": "nc_rev", "order_revenue": "rev"},
+   examples=[("New customers and revenue by source, last 30 days", "SELECT ad_source, sum(new_customers) AS new_customers, round(sum(new_customer_revenue)) AS new_customer_revenue "
+              "FROM analytics.attribution_source_daily WHERE day > (SELECT max(day) FROM analytics.attribution_source_daily) - 30 GROUP BY 1 ORDER BY 2 DESC;")])
+
+av("attribution_anyclick_daily", src="public.proj_feed_anyclick", domain="attribution", span=("proj_feed_anyclick", "day"),
+   purpose="New customers Upstack credits to Scaling and to Testing Meta campaigns per day under any-click 30-day attribution.",
+   grain="one row per (day, stage)", source="public.proj_feed_anyclick (the sheet tab 'Upstack Any-Click - By Campaign')", refresh=_FEEDS_REFRESH, coverage="2025-05-08 through yesterday",
+   caveats=["Any-click credits every Meta campaign the customer clicked in the 30 days before the order, so a customer can count under both stages across days; do not add to orders_daily.new_customers."],
+   ren={"new_customers": "nc", "new_customer_revenue": "nc_rev"},
+   examples=[("Testing vs scaling new customers by week", "SELECT date_trunc('week', day)::date AS week, stage, sum(new_customers) AS new_customers FROM analytics.attribution_anyclick_daily GROUP BY 1, 2 ORDER BY 1 DESC, 2;")])
+
+av("attribution_unmapped_daily", src="public.upstack_unmapped_daily", domain="attribution", span=("upstack_unmapped_daily", "day"),
+   purpose="Upstack-credited orders the build could not tie to a Meta ad. They are inside orders_daily and inside no ad-level row of meta_ad_daily.",
+   grain="one row per (day, campaign, ad)", source="public.upstack_unmapped_daily (rebuilt in full on every build)", refresh="nightly (etl service 13:00 UTC)", coverage="2026-05-06 through yesterday",
+   caveats=["reason: 'not_identified' (no ad name / '(not set)'), 'no_campaign' (the campaign matches no Meta campaign), 'no_ad' (campaign found, ad name not)."],
+   ren={"new_customers": "nc", "new_customer_revenue": "nc_rev", "order_revenue": "rev"},
+   examples=[("Share of credited new customers that match no ad, by reason", "SELECT reason, sum(new_customers) AS new_customers FROM analytics.attribution_unmapped_daily GROUP BY 1 ORDER BY 2 DESC;")])
+
+# ------------------------------------------------------------------------------------------------------------------------------- orders
+av("orders_daily_detail", src="public.proj_feed_orders", domain="orders", span=("proj_feed_orders", "day"),
+   purpose="orders_daily plus the tax collected and the refunds of each Pacific day: the two columns pacing uses to go from gross to net revenue.",
+   grain="one row per day", source="public.proj_feed_orders (Shopify order totals, Upstack)", refresh=_FEEDS_REFRESH, coverage="2025-01-01 through yesterday",
+   caveats=["total_revenue is GROSS: tax included, before refunds. Net = total_revenue - tax - refunds. The pacing page and the P&L stay gross and show refunds as a memo only.",
+            "The columns shared with orders_daily carry the same values."],
+   ren={"new_customer_revenue": "nc_rev", "returning_customer_revenue": "rc_rev", "new_customers": "nc_orders", "total_revenue": "total_rev", "orders": "total_orders"},
+   examples=[("Gross vs net revenue by month", "SELECT date_trunc('month', day)::date AS month, round(sum(total_revenue)) AS gross, round(sum(total_revenue - tax - refunds)) AS net, "
+              "round(sum(refunds) / NULLIF(sum(total_revenue), 0), 4) AS refund_share FROM analytics.orders_daily_detail GROUP BY 1 ORDER BY 1 DESC;")])
+
+av("orders_by_product_daily", src="public.proj_feed_nc_product", domain="orders", span=("proj_feed_nc_product", "day"),
+   purpose="ACTUAL Shopify first-order revenue and new customers per Pacific day by the order's largest product line (not Meta-attributed): the only product split of actual new-customer revenue.",
+   grain="one row per (day, product)", source="public.proj_feed_nc_product (ExpandFi merchant 1452 shopify_orders, or the sheet tab 'NC Rev - By Product')", refresh=_FEEDS_REFRESH,
+   coverage="2025-01-01 through today; product = VitaBull | Beef Liver | Boneflex | Other",
+   caveats=["Revenue = order total_price split across product lines by net line price, tax included, before refunds; new_customers = orders whose largest product line is the product.",
+            "Day sums equal orders_daily to within restatement."],
+   ren={"new_customer_revenue": "nc_rev", "new_customers": "nc_orders"},
+   examples=[("Actual NC revenue and new customers by product, last 30 days", "SELECT product, round(sum(new_customer_revenue)) AS new_customer_revenue, sum(new_customers) AS new_customers "
+              "FROM analytics.orders_by_product_daily WHERE day > (SELECT max(day) FROM analytics.orders_by_product_daily) - 30 GROUP BY 1 ORDER BY 2 DESC;")])
+
+av("orders_hourly", src="public.proj_feed_nc_hourly", domain="orders", span=("proj_feed_nc_hourly", "day"),
+   purpose="Actual new-customer revenue and first orders by Pacific day and clock hour: the share curve behind the 'NC revenue today' card.",
+   grain="one row per (day, hour) with at least one first order", source="public.proj_feed_nc_hourly (ExpandFi warehouse shopify_orders)", refresh="feeds service 21:00 UTC, trailing 35 closed days",
+   coverage="from the first pull (a 60-day backfill once); today is never stored",
+   caveats=["Sparse: an hour with no first order has no row. Revenue is tax included, before refunds."],
+   ren={"new_customer_revenue": "nc_rev", "new_customers": "nc_orders"},
+   examples=[("Share of a day's new-customer revenue by hour (last 28 closed days)", "SELECT hour, round(sum(new_customer_revenue) / (SELECT sum(new_customer_revenue) FROM analytics.orders_hourly), 4) AS share "
+              "FROM analytics.orders_hourly GROUP BY 1 ORDER BY 1;")])
+
+av("amazon_daily", src="public.proj_feed_amazon", domain="orders", span=("proj_feed_amazon", "day"),
+   purpose="Amazon.com + B2B sales and Amazon Ads (de-duplicated across v1 / v2 / v3 report generations) by purchase day.",
+   grain="one row per day", source="public.proj_feed_amazon (ExpandFi merchant 1452 sales table, or the sheet tab 'Amazon - Daily')", refresh=_FEEDS_REFRESH, coverage="2024-09-24 through yesterday (about a 2-day lag)",
+   caveats=["Amazon is a separate channel: its revenue is not in orders_daily and its ad spend is not in platform_daily. Pacing's business-wide totals add the two."],
+   ren={"new_customer_orders": "nc_orders", "new_customer_revenue": "nc_rev"},
+   examples=[("Amazon revenue and ad spend by month", "SELECT date_trunc('month', day)::date AS month, round(sum(revenue)) AS revenue, round(sum(ad_spend)) AS ad_spend FROM analytics.amazon_daily GROUP BY 1 ORDER BY 1 DESC;")])
+
+av("site_traffic_daily", src="public.proj_feed_traffic", domain="orders", span=("proj_feed_traffic", "day"),
+   purpose="Pixel-tracked visitors, new visitors and sessions per day (Upstack).", grain="one row per day", source="public.proj_feed_traffic", refresh=_FEEDS_REFRESH, coverage="2025-05-08 through today",
+   caveats=["Visitors are unique within a day: summing days does not give unique visitors."],
+   examples=[("Cost per new visitor by week (Meta + Google spend)", "SELECT date_trunc('week', t.day)::date AS week, round(sum(p.spend) / NULLIF(sum(t.new_visitors), 0), 2) AS cost_per_new_visitor "
+              "FROM analytics.site_traffic_daily t JOIN (SELECT day, sum(spend) AS spend FROM analytics.platform_daily GROUP BY 1) p USING (day) GROUP BY 1 ORDER BY 1 DESC LIMIT 12;")])
+
+# ------------------------------------------------------------------------------------------------------------------------------- marketing
+av("platform_daily_history", src="public.proj_feed_platform", domain="marketing", span=("proj_feed_platform", "day"),
+   purpose="Meta and Google spend and platform-reported conversions per day from 2025-01-01 (Upstack ad-platform feed): the longest spend history in the database.",
+   grain="one row per (day, platform)", source="public.proj_feed_platform", refresh=_FEEDS_REFRESH, coverage="2025-01-01 through yesterday",
+   caveats=["platform is normalised to 'meta' | 'google' (platform_label keeps Upstack's text). Spend reconciles with meta_ad_daily and google_campaign_daily on the days they share.",
+            "own_purchases / own_revenue are platform-reported and overlap across platforms: never add them. TikTok has no rows."],
+   ren={"platform_label": "platform", "own_purchases": "purchases", "own_revenue": "purchase_value", "own_new_customer_purchases": "nc_purchases", "own_new_customer_revenue": "nc_purchase_value"},
+   cols={"platform": "'meta' | 'google' (normalised from platform_label)."},
+   examples=[("Spend by platform and month since 2025", "SELECT date_trunc('month', day)::date AS month, platform, round(sum(spend)) AS spend FROM analytics.platform_daily_history GROUP BY 1, 2 ORDER BY 1 DESC, 2;")])
+
+av("meta_product_daily", src="public.proj_feed_meta_product", domain="marketing", span=("proj_feed_meta_product", "day"),
+   purpose="Meta spend and link clicks per day by product, classified campaign name -> ad set name -> ad name -> Other.", grain="one row per (day, product) after the day rule",
+   source="public.proj_feed_meta_product", refresh="nightly (app rows, trailing 14 days)", coverage="2025-01-01 through yesterday",
+   caveats=["A day is read from 'app' rows when it has any, else from the sheet rows (the view applies this, so no day is counted twice).",
+            "Campaigns that mix products are split by their ad set and ad names where the campaign name is not enough, so this can differ from meta_ads.product_slug."],
+   examples=[("Meta spend by product, last 30 days", "SELECT product, round(sum(spend)) AS spend, sum(link_clicks) AS link_clicks FROM analytics.meta_product_daily "
+              "WHERE day > (SELECT max(day) FROM analytics.meta_product_daily) - 30 GROUP BY 1 ORDER BY 2 DESC;")])
+
+av("meta_product_reach", src="public.proj_feed_product_reach", domain="marketing", span=("proj_feed_product_reach", "period_start", "period_end"),
+   purpose="Unique outbound clicks per product, de-duplicated across the product's ad sets, at day / week / month grain: the only per-product reach-like metric.",
+   grain="one row per (grain, period_key, product)", source="public.proj_feed_product_reach", refresh=_FEEDS_REFRESH, coverage="from 2026-07-05 (Meta serves filtered unique clicks about 120 days back); earlier periods are absent and never re-pulled",
+   caveats=["Not additive across periods or products: read the row of the grain you want. The three products add to about 1.01-1.06x the account-level unique outbound clicks in meta_reach.",
+            "Reach and frequency per product do not exist, only unique outbound clicks."],
+   examples=[("Unique outbound clicks per product, last 4 weeks", "SELECT period_key, product, unique_outbound_clicks FROM analytics.meta_product_reach WHERE grain = 'week' ORDER BY period_start DESC, product LIMIT 16;")])
+
+av("meta_bids_daily", src="public.proj_feed_bids", domain="marketing", span=("proj_feed_bids", "day"),
+   purpose="Meta bid settings per day, summed: spend on cost-cap / bid-cap ad sets and on ROAS-floor ad sets, with the spend-weighted bid sums.", grain="one row per day",
+   source="public.proj_feed_bids (the sheet tab 'Meta Bids - Daily')", refresh=_FEEDS_REFRESH, coverage="2026-04-28 through today; settings of past days are rebuilt from the account activity log, so older history cannot be pulled",
+   caveats=["Average cost cap = sum(spend_times_cap) / sum(capped_spend); average ROAS floor = sum(spend_times_floor) / sum(floor_spend). Per-ad-set bids are not stored."],
+   ren={"spend_times_cap": "spend_x_cap", "spend_times_floor": "spend_x_floor"},
+   examples=[("Share of spend on capped ad sets and average cost cap, by week", "SELECT date_trunc('week', day)::date AS week, round(sum(capped_spend) / NULLIF(sum(spend), 0), 3) AS capped_share, "
+              "round(sum(spend_times_cap) / NULLIF(sum(capped_spend), 0), 2) AS avg_cost_cap FROM analytics.meta_bids_daily GROUP BY 1 ORDER BY 1 DESC;")])
+
+# ------------------------------------------------------------------------------------------------------------------------------- pacing
+av("pacing_live_today", src="public.proj_live_today_snapshots", domain="pacing", span=("proj_live_today_snapshots", "day"),
+   purpose="Today's Meta spend, Google spend, new-customer revenue and new customers so far, one snapshot per hourly pull from Upstack.", grain="one row per pull (pulled_at, to the minute)",
+   source="public.proj_live_today_snapshots (etl.live_today)", refresh="Railway cron `live`, every hour on the hour", coverage="from the first pull; history kept 90 days",
+   caveats=["Upstack trails the ad platforms by 30-60 minutes, so the numbers are a floor of what was spent and sold; end-of-day projections made early in the day lean low.",
+            "Revenue is tax included, before refunds (gross)."],
+   ren={"new_customer_revenue": "nc_rev", "new_customers": "nc_orders"},
+   examples=[("The latest snapshot of each day", "SELECT DISTINCT ON (day) day, pacific_time, meta_spend, total_spend, new_customer_revenue, new_customers FROM analytics.pacing_live_today ORDER BY day DESC, pulled_at DESC LIMIT 14;")])
+
+av("pacing_amazon_month_to_date", src="public.proj_amazon_mtd_snapshots", domain="pacing", span=("proj_amazon_mtd_snapshots", "snapshot_day"),
+   purpose="Completed Amazon month-to-date revenue, one snapshot per Pacific day and month: reported days plus the missing days projected at the trailing 7-day average of the reported days.",
+   grain="one row per (snapshot_day, month)", source="public.proj_amazon_mtd_snapshots (etl.amazon_mtd), without the projected_days json", refresh="after the Amazon feed load (feeds 21:00 UTC) and again in the etl service (13:00 UTC)",
+   coverage="from the first run; history kept so each day's projection can be compared with the final month",
+   caveats=["projected_mtd is an estimate, never an actual; the projected days themselves (json) are left out, rebuild them from daily_rate and days_projected."],
+   examples=[("Latest Amazon month-to-date projection per month", "SELECT DISTINCT ON (month) month, snapshot_day, actual_mtd, projected_mtd, status FROM analytics.pacing_amazon_month_to_date ORDER BY month DESC, snapshot_day DESC LIMIT 6;")])
+
+av("pacing_hourly_spend_curve", src="public.proj_pacing_hourly", domain="pacing", base="proj_pacing_hourly",
+   purpose="Meta time-of-day spend curve (the last 30 days' hourly spend): the typed input behind the intraday projection.", grain="one row per hour of day (Pacific)",
+   source="public.proj_pacing_hourly (typed from Meta Ads Manager's time-of-day report)", refresh="manual", coverage="24 rows",
+   examples=[("Share of daily spend by hour", "SELECT hour, round(spend_30d / sum(spend_30d) OVER (), 4) AS share FROM analytics.pacing_hourly_spend_curve ORDER BY hour;")])
+
+av("pacing_levers", src="public.proj_feed_levers", domain="pacing", base="proj_feed_levers",
+   purpose="The ratios and estimates the pacing page applies (for example the overseas-warehouse units ratio), one row per lever.", grain="one row per lever",
+   source="public.proj_feed_levers (the updated_by column is left out)", refresh="on change", coverage="a handful of rows",
+   ren={"lever": "key"},
+   examples=[("All levers", "SELECT lever, value, note FROM analytics.pacing_levers ORDER BY lever;")])
+
+av("pacing_meta_spend_monthly", src="public.proj_meta_spend_monthly", domain="pacing", span=("ad_daily", "day"), base="ad_daily",
+   purpose="Monthly Meta spend from ad_daily, read by the projection drivers module.", grain="one row per month", source="public.proj_meta_spend_monthly (a view over ad_daily)", refresh="live view",
+   coverage="2026-05 onward", caveats=["A month is complete when days equals the days in the month."],
+   examples=[("Monthly Meta spend", "SELECT month, spend, days FROM analytics.pacing_meta_spend_monthly ORDER BY month DESC;")])
+
+# ------------------------------------------------------------------------------------------------------------------------------- pipeline
+av("pipeline_feeds", src="public.proj_feed_runs", domain="pipeline", base="proj_feed_runs",
+   purpose="One row per pacing feed: its mode (sheet / shadow / direct), what was last loaded and through which day.", grain="one row per feed",
+   source="public.proj_feed_runs joined to public.proj_feed_config", refresh="each load", coverage="about 12 feeds",
+   cols={"mode": "'sheet' | 'shadow' | 'direct' (no config row = 'sheet'): which source the app reads for the feed."},
+   examples=[("Feeds, stalest first", "SELECT feed, mode, loaded_at, last_day, rows_loaded FROM analytics.pipeline_feeds ORDER BY last_day NULLS FIRST;")])
+
+av("pipeline_feed_attempts", src="public.proj_feed_attempts", domain="pipeline", span=("proj_feed_attempts", "started_at::date"),
+   purpose="One row per direct pull attempt of a feed (any mode).", grain="one row per attempt", source="public.proj_feed_attempts", refresh="each feeds run (21:00 UTC)", coverage="since 2026-11-04",
+   examples=[("Failed attempts, newest first", "SELECT feed, mode, started_at, status, note FROM analytics.pipeline_feed_attempts WHERE status <> 'ok' ORDER BY started_at DESC LIMIT 20;")])
+
+av("pipeline_feed_verify", src="public.proj_feed_verify", domain="pipeline", span=("proj_feed_verify", "day"),
+   purpose="Latest verification result per feed and day: the direct pull compared with the sheet-fed table.", grain="one row per (feed, day)", source="public.proj_feed_verify (etl.feeds verify)",
+   refresh="each feeds run", coverage="a trailing window per feed",
+   examples=[("Days that did not verify", "SELECT feed, day, status, worst_col, worst_rel FROM analytics.pipeline_feed_verify WHERE status <> 'ok' ORDER BY day DESC LIMIT 20;")])
+
+av("pipeline_refresh_runs", src="public.proj_refresh_runs", domain="pipeline", span=("proj_refresh_runs", "started_at::date"),
+   purpose="One row per projection module per run of the nightly projection refresh.", grain="one row per module run", source="public.proj_refresh_runs (etl.projection_daily)", refresh="nightly",
+   coverage="since the projection module went live", cols={"error": "Scrubbed error text, first 300 characters."},
+   examples=[("Latest run of each module", "SELECT DISTINCT ON (module) module, started_at, status, rows, data_through FROM analytics.pipeline_refresh_runs ORDER BY module, started_at DESC;")])
+
+av("pipeline_alerts", src="public.alert_state", domain="pipeline", span=("alert_state", "first_seen::date", "last_seen::date"),
+   purpose="The hourly health checks that fired: when each problem opened, was last seen, was last alerted and whether it resolved.", grain="one row per check id",
+   source="public.alert_state (etl.alerts), without the fingerprint", refresh="hourly", coverage="since the alerts service went live",
+   cols={"last_message": "The last alert text, scrubbed of tokens, first 300 characters."},
+   examples=[("Open problems", "SELECT check_id, first_seen, last_seen, alert_count, last_message FROM analytics.pipeline_alerts WHERE resolved_at IS NULL ORDER BY first_seen;")])
+
+# ------------------------------------------------------------------------------------------------------------------------------- projection
+av("projection_scenarios", src="public.proj_scenarios", domain="projection", base="proj_scenarios",
+   purpose="The named scenarios (lever sets) of the Projection module; the one with is_default is the plan of record.", grain="one row per scenario",
+   source="public.proj_scenarios without the params blob (read the levers through projection_levers)", refresh="on edit", coverage="about 7 scenarios",
+   caveats=["archived_at set = deleted (kept 30 days): filter archived_at IS NULL for live scenarios. The model's OUTPUT (P&L, cash, financing results) is computed by the app on demand and is not stored; "
+            "read it from the HTTP API /api/projection/..., and read the inputs here."],
+   ren={"scenario_id": "id"}, cols={"archived_at": "Set when the scenario was deleted (kept 30 days); NULL = live."},
+   examples=[("Live scenarios", "SELECT slug, name, is_default, version, updated_at FROM analytics.projection_scenarios WHERE archived_at IS NULL ORDER BY is_default DESC, slug;")])
+
+av("projection_levers", src="public.proj_scenarios", domain="projection", base="proj_scenarios",
+   purpose="Every lever of every live scenario, one row per (scenario, module, lever): financing terms, driver rates (sales tax, channel shares), cohort levers (curve source, cohorts averaged), pacing and inventory settings.",
+   grain="one row per (scenario_slug, module, lever)", source="public.proj_scenarios.params, flattened two levels deep", refresh="on edit", coverage="every live scenario",
+   caveats=["value is json: a number, text, a list or a nested object depending on the lever. Cast with value #>> '{}' for scalars.",
+            "A scenario holds only the levers it changes; the app falls back to base_slug and then to code defaults, which are not rows here."],
+   cols={"scenario_slug": "proj_scenarios.slug.", "module": "Projection module that owns the lever: financing | drivers | cohorts | pacing | inventory_demand | inventory_supply | pnl ...",
+         "lever": "Lever name inside the module (for example sales_tax_rate in drivers, curve_source in cohorts).", "value": "The lever's value as json."},
+   examples=[("The plan of record's drivers and cohort levers", "SELECT module, lever, value FROM analytics.projection_levers WHERE scenario_slug = (SELECT slug FROM analytics.projection_scenarios WHERE is_default AND archived_at IS NULL) "
+              "AND module IN ('drivers', 'cohorts') ORDER BY module, lever;")])
+
+av("projection_series", src="public.proj_series", domain="projection", span=("proj_series", "month"),
+   purpose="The monthly cells a scenario itself holds: inputs ('input') and overrides ('override') of a line for a month.", grain="one row per (scenario_slug, line_key, month)",
+   source="public.proj_series joined to public.proj_scenarios", refresh="on edit", coverage="about 1.6K cells",
+   caveats=["Only cells the scenario itself holds; cells it inherits from its base scenario are not repeated here."],
+   cols={"scenario_slug": "proj_scenarios.slug."},
+   examples=[("Cells of the plan of record", "SELECT line_key, month, value, kind FROM analytics.projection_series WHERE scenario_slug = (SELECT slug FROM analytics.projection_scenarios WHERE is_default AND archived_at IS NULL) ORDER BY line_key, month LIMIT 50;")])
+
+av("projection_actuals", src="public.proj_actuals", domain="projection", span=("proj_actuals", "month"),
+   purpose="Scenario-independent monthly facts: QuickBooks P&L lines (line_key 'pnl.<line>'), spend by channel ('spend.<channel>') and other loaded actuals.", grain="one row per (line_key, month)",
+   source="public.proj_actuals (QuickBooks uploads and nightly roll-ups)", refresh="monthly upload / nightly", coverage="about 825 cells",
+   examples=[("One P&L line by month", "SELECT month, value FROM analytics.projection_actuals WHERE line_key LIKE 'pnl.%' ORDER BY line_key, month DESC LIMIT 36;")])
+
+av("projection_pnl_drivers", src="public.proj_pnl_drivers", domain="projection", base="proj_pnl_drivers",
+   purpose="How each P&L line is projected: an ordered list of fixed / carry / rate segments (a model input).", grain="one row per P&L line", source="public.proj_pnl_drivers",
+   refresh="on edit", coverage="about 32 lines", caveats=["segments is json describing the projection rule of the line; it holds no actual values."],
+   examples=[("All driver lines", "SELECT line_key, jsonb_array_length(segments) AS segments, source FROM analytics.projection_pnl_drivers ORDER BY line_key;")])
+
+av("projection_pnl_settings", src="public.proj_pnl_settings", domain="projection", base="proj_pnl_settings",
+   purpose="P&L engine settings (rate window, inflation, headcount, COGS, enterprise value), one row per setting.", grain="one row per setting", source="public.proj_pnl_settings",
+   refresh="on edit", coverage="about 6 settings", ren={"setting": "key"},
+   examples=[("All settings", "SELECT setting, value, note FROM analytics.projection_pnl_settings ORDER BY setting;")])
+
+av("projection_pnl_account_map", src="public.proj_pnl_qb_map", domain="projection", base="proj_pnl_qb_map",
+   purpose="QuickBooks account name to P&L line key map used when an export is loaded.", grain="one row per account", source="public.proj_pnl_qb_map", refresh="on edit", coverage="about 61 accounts",
+   examples=[("Accounts per P&L line", "SELECT line_key, count(*) AS accounts FROM analytics.projection_pnl_account_map GROUP BY 1 ORDER BY 2 DESC;")])
+
+av("projection_cogs_sku", src="public.proj_pnl_cogs_sku", domain="projection", base="proj_pnl_cogs_sku",
+   purpose="Landed unit cost by SKU and the sales mix that weights it (the forward COGS model).", grain="one row per SKU", source="public.proj_pnl_cogs_sku", refresh="on edit", coverage="about 12 SKUs",
+   examples=[("Mix-weighted landed cost per unit (China vendor)", "SELECT round(sum(china_unit_cost * sales_mix) / NULLIF(sum(sales_mix), 0), 4) AS weighted_cost FROM analytics.projection_cogs_sku;")])
+
+av("projection_vendor_retainers", src="public.proj_pnl_vendors", domain="projection", base="proj_pnl_vendors",
+   purpose="Vendor retainers, current vs proposed, per month (reference).", grain="one row per vendor", source="public.proj_pnl_vendors", refresh="on edit", coverage="about 10 vendors",
+   examples=[("Retainers", "SELECT vendor, current_monthly, proposed_monthly FROM analytics.projection_vendor_retainers ORDER BY sort;")])
+
+# ------------------------------------------------------------------------------------------------------------------------------- inventory
+av("inventory_purchase_orders", src="public.proj_po", domain="inventory", span=("proj_po", "land_date"),
+   purpose="Purchase orders (planned and actual): units, vendor, warehouse, dates, deposit state and unit cost.", grain="one row per purchase order",
+   source="public.proj_po without the link column", refresh="on edit", coverage="about 74 rows",
+   caveats=["status 'landed' means the units are already in the on-hand stock snapshot: do not count them as inbound again. order_date NULL = land_date minus the vendor lead time."],
+   ren={"po_id": "id"},
+   examples=[("Units still to land by warehouse and product", "SELECT warehouse, product, sum(units) AS units FROM analytics.inventory_purchase_orders WHERE status NOT IN ('landed', 'cancelled') GROUP BY 1, 2 ORDER BY 1, 2;")])
+
+av("inventory_fba_transfers", src="public.proj_fba_transfer", domain="inventory", span=("proj_fba_transfer", "receive_date"),
+   purpose="Planned and actual transfers from the US warehouse to FBA.", grain="one row per transfer", source="public.proj_fba_transfer", refresh="on edit", coverage="about 44 rows",
+   ren={"transfer_id": "id"},
+   examples=[("Units in transit to FBA by receive month", "SELECT date_trunc('month', receive_date)::date AS receive_month, product, sum(units) AS units FROM analytics.inventory_fba_transfers WHERE status NOT IN ('received', 'cancelled') GROUP BY 1, 2 ORDER BY 1, 2;")])
+
+av("inventory_vendor_lead_times", src="public.proj_vendor_lead", domain="inventory", base="proj_vendor_lead",
+   purpose="Vendor lead times, minimum order quantities and default warehouses.", grain="one row per vendor", source="public.proj_vendor_lead", refresh="on edit", coverage="2 vendors",
+   examples=[("Lead times", "SELECT vendor, lead_weeks, moq_units, default_warehouse FROM analytics.inventory_vendor_lead_times;")])
+
+av("inventory_vendor_costs", src="public.proj_vendor_cogs", domain="inventory", base="proj_vendor_cogs",
+   purpose="Vendor unit cost per product and the default deposit share of a new purchase order.", grain="one row per (vendor, product)", source="public.proj_vendor_cogs", refresh="on edit", coverage="about 6 rows",
+   examples=[("Vendor price list", "SELECT vendor, product, unit_cost, deposit_pct FROM analytics.inventory_vendor_costs ORDER BY vendor, product;")])
+
+av("inventory_product_costs", src="public.proj_product_cost", domain="inventory", base="proj_product_cost",
+   purpose="Unit cost used to value stock on hand (landed cost per SKU).", grain="one row per product", source="public.proj_product_cost", refresh="on edit", coverage="5 rows",
+   examples=[("Costs", "SELECT product, sku, china_unit_cost, us_unit_cost FROM analytics.inventory_product_costs ORDER BY product;")])
+
+av("inventory_reorder_params", src="public.proj_reorder_param", domain="inventory", base="proj_reorder_param",
+   purpose="Reorder parameters per location and product: lead days, safety days, minimum order quantity.", grain="one row per (location, product)", source="public.proj_reorder_param", refresh="on edit", coverage="about 8 rows",
+   examples=[("Parameters", "SELECT location, product, lead_days, safety_days, moq_units FROM analytics.inventory_reorder_params ORDER BY 1, 2;")])
+
+av("inventory_stock_counts", src="public.proj_stock_snapshot", domain="inventory", span=("proj_stock_snapshot", "as_of"),
+   purpose="Stock on hand per location and product, one row per count (counts and 3PL portal readings).", grain="one row per (location, product, as_of)", source="public.proj_stock_snapshot", refresh="manual",
+   coverage="about 20 rows", caveats=["estimate = true marks a count that was estimated, not read from a portal."],
+   examples=[("Latest count per location and product", "SELECT DISTINCT ON (location, product) location, product, as_of, on_hand, allocated, estimate FROM analytics.inventory_stock_counts ORDER BY location, product, as_of DESC;")])
+
+av("inventory_stock_daily", src="public.proj_demand_snapshot", domain="inventory", span=("proj_demand_snapshot", "as_of"),
+   purpose="Stock on hand and allocated per location and product, one snapshot per day (Warehance for the US warehouse).", grain="one row per (location, product, as_of)", source="public.proj_demand_snapshot",
+   refresh="nightly", coverage="2026-11-03 onward",
+   examples=[("Latest stock", "SELECT location, product, as_of, on_hand, allocated FROM analytics.inventory_stock_daily WHERE as_of = (SELECT max(as_of) FROM analytics.inventory_stock_daily) ORDER BY 1, 2;")])
+
+av("inventory_units_daily", src="public.proj_units_daily", domain="inventory", span=("proj_units_daily", "day"),
+   purpose="Units shipped or sold per day by location (revamp = US 3PL, amazon = FBA, intl = overseas 3PL) and product: the demand history.", grain="one row per (location, product, day)",
+   source="public.proj_units_daily (Warehance, ExpandFi, the 3PL's tracking exports and an estimate)", refresh="nightly feeds",
+   coverage="amazon 2024-09-24.., intl 2026-07-01.., revamp 2026-07-17.. (US shipments exist only from the warehouse go-live)",
+   caveats=["is_estimate = true rows are modeled (international: Warehance non-US units x a fitted ratio)."],
+   examples=[("Units per week by location", "SELECT date_trunc('week', day)::date AS week, location, sum(units) AS units FROM analytics.inventory_units_daily GROUP BY 1, 2 ORDER BY 1 DESC, 2 LIMIT 24;")])
+
+av("inventory_units_monthly", src="public.proj_units_monthly", domain="inventory", span=("proj_units_monthly", "month"),
+   purpose="Monthly units history for months older than the daily window (Amazon since Sep 2024).", grain="one row per (location, product, month)", source="public.proj_units_monthly", refresh="rarely", coverage="about 96 rows",
+   examples=[("Units per month by location", "SELECT month, location, sum(units) AS units FROM analytics.inventory_units_monthly GROUP BY 1, 2 ORDER BY 1 DESC, 2;")])
+
+av("inventory_units_by_country", src="public.proj_units_country", domain="inventory", span=("proj_units_country", "month"),
+   purpose="International units by destination country and month (informational split of the overseas 3PL volume).", grain="one row per (month, country)", source="public.proj_units_country",
+   refresh="monthly", coverage="about 108 rows",
+   examples=[("Top countries, latest month", "SELECT country, units FROM analytics.inventory_units_by_country WHERE month = (SELECT max(month) FROM analytics.inventory_units_by_country) ORDER BY units DESC LIMIT 10;")])
+
+# ------------------------------------------------------------------------------------------------------------------------------- cohorts
+av("cohorts_monthly", src="public.proj_cohorts", domain="cohorts", span=("proj_cohorts", "cohort_month"),
+   purpose="One row per acquisition month: new customers, first-order dollars per customer and in total, CAC, 90-day repeat rate and payback as exported.", grain="one row per cohort_month",
+   source="public.proj_cohorts (cohort export uploads)", refresh="monthly upload", coverage="about 33 cohorts",
+   caveats=["Only closed months belong in the model (a month that is not over is blanked on upload). Cohort dollars differ by export source (Shopify vs Upstack): do not mix sources between refreshes.",
+            "cac and repeat_90d for the newest cohorts can be blank until final."],
+   cols={"first_order_revenue": "new_customers x first_order_per_customer: the cohort's first-order revenue (the base the repeat curve multiplies)."},
+   examples=[("Cohort size, first-order dollars and CAC", "SELECT cohort_month, new_customers, round(first_order_per_customer, 2) AS first_order, round(cac, 2) AS cac FROM analytics.cohorts_monthly ORDER BY cohort_month DESC LIMIT 12;")])
+
+av("cohorts_curve_cumulative", src="public.proj_cohort_cum", domain="cohorts", span=("proj_cohort_cum", "cohort_month"),
+   purpose="Cumulative dollars per cohort customer at each age (months after acquisition), with the monthly increment, the increment as a multiple of the first order and the cohort's recency rank at that age: the exact inputs of the Live retention curve.",
+   grain="one row per (cohort_month, age)", source="public.proj_cohort_cum joined to public.proj_cohorts and itself (age - 1)", refresh="monthly upload", coverage="about 33 cohorts x 36 ages",
+   caveats=["Mirrors app/projection/cohorts/engine.py: a cell counts only when cum_per_customer is non-null and non-zero; the increment at age 1 is measured from first_order_per_customer.",
+            "Live curve at age a = sum(new_customers x increment_ratio) / sum(new_customers) over the rows with usable_rank <= N (N = the cohorts_n lever, 3 in code, 6 on the sheet); "
+            "ages from tail_from_age (28) on = previous age x tail_decay (0.95). usable_rank 1 = the newest cohort that has a usable increment at that age."],
+   cols={"new_customers": "Customers in the cohort (the weight in the Live curve).", "first_order_per_customer": "The cohort's first-order dollars per customer.",
+         "increment": "Dollars per customer earned in this month of age: cum_per_customer minus the previous age (age 1: minus the first order). NULL when this or the previous cell is not observed.",
+         "increment_ratio": "increment / first_order_per_customer: repeat dollars per $1 of first-order dollars in this month of age (the curve's unit).",
+         "usable_rank": "1 = the newest cohort whose increment_ratio at this age is usable (non-null, non-zero, new_customers > 0), 2 = the next, ...; NULL when this cell is not usable."},
+   examples=[("Live retention curve over the last 3 cohorts (ages 1-27)", "SELECT age, round(sum(new_customers * increment_ratio) / NULLIF(sum(new_customers), 0), 4) AS live_curve FROM analytics.cohorts_curve_cumulative "
+              "WHERE usable_rank <= 3 AND age < 28 GROUP BY 1 ORDER BY 1;"),
+             ("Cumulative dollars per customer by age for the newest 6 cohorts", "SELECT cohort_month, age, round(cum_per_customer, 2) AS cum_per_customer FROM analytics.cohorts_curve_cumulative "
+              "WHERE cohort_month >= (SELECT max(cohort_month) FROM analytics.cohorts_monthly) - interval '5 months' ORDER BY cohort_month, age;")])
+
+av("cohorts_curve_goal", src="public.proj_curve_goal", domain="cohorts", span=("proj_curve_goal", "snapshot_date"),
+   purpose="Goal retention curve snapshots: repeat dollars per $1 of first-order revenue by age 1..60. The newest snapshot (is_active) is the Goal curve the model uses.", grain="one row per (snapshot_id, age)",
+   source="public.proj_curve_goal without saved_by", refresh="on save", coverage="60 rows per saved snapshot",
+   cols={"is_active": "true on every row of the newest snapshot (the highest snapshot_id), the one the model reads as the Goal curve."},
+   examples=[("The active Goal curve with lifetime and 12-month sums", "SELECT sum(value) AS lifetime_60, sum(value) FILTER (WHERE age <= 12) AS first_12_months FROM analytics.cohorts_curve_goal WHERE is_active;")])
+
+# ------------------------------------------------------------------------------------------------------------------------------- creative roll-ups
+_BASIS = ("basis: 'meta' (Meta-reported purchases and revenue, counts returning customers) | 'upstack_new_customers' (Upstack first orders, any-click 30 days) | 'upstack_all_orders' "
+          "(every order Upstack credits). Spend and impressions are Meta's in all three; filter basis = 'meta' unless you mean an Upstack basis, and never add rows of different bases.")
+
+av("creative_family_daily", src="public.family_daily", domain="creative", span=("family_daily", "day"), base="family_daily",
+   purpose="Spend, purchases and revenue per creative family (tracker family) per day and stage, in three bases and for all ads or only the ads that were active that day.",
+   grain="one row per (basis, ads_scope, family_key, day, stage)", source="public.family_daily, family_daily_active and their _upstack_nc / _upstack_all twins (rebuilt in full by etl.build_metrics), plus the product of the family's first tracker row",
+   refresh="nightly (etl service 13:00 UTC)", coverage="2026-05-06 through yesterday (Pacific); older days exist only in the sheet-era backfill",
+   caveats=[_BASIS, "ads_scope: 'all_ads' = every ad of the family; 'active_ads' = only ads active that day. A family can span several tracker rows: key on family_key.",
+            "Filter basis and ads_scope in the WHERE clause: the planner then reads one table instead of six."],
+   cols={"basis": _BASIS, "ads_scope": "'all_ads' | 'active_ads'.", "product_slug": "Product of the family's first tracker row (NULL when the family has none)."},
+   examples=[("Spend and ROAS per product, last 30 days (Meta basis)", "SELECT product_slug, round(sum(spend)) AS spend, round(sum(revenue) / NULLIF(sum(spend), 0), 2) AS roas FROM analytics.creative_family_daily "
+              "WHERE basis = 'meta' AND ads_scope = 'all_ads' AND day > (SELECT max(day) FROM analytics.creative_family_daily WHERE basis = 'meta' AND ads_scope = 'all_ads') - 30 GROUP BY 1 ORDER BY 2 DESC;")])
+
+av("creative_family_metrics", src="public.ad_metrics", domain="creative", base="ad_metrics",
+   purpose="Since-launch, 7-day and 30-day spend, purchases and revenue per tracker row, with impressions, clicks and the number of active ads, in three bases.", grain="one row per (basis, tracker_row_id)",
+   source="public.ad_metrics and its _upstack_nc / _upstack_all twins (etl.build_metrics), with the tracker row's concept id and the product", refresh="nightly (etl service 13:00 UTC)",
+   coverage="every live tracker row; spend from 2026-05-06",
+   caveats=[_BASIS, "Metrics sit on the FIRST row of each ad family (is_first_row): sum rows, count unique ads with count(*) FILTER (WHERE is_first_row).",
+            "'Launched' (the denominator of the display hit rate) = first rows with a launch_date or any spend."],
+   cols={"basis": _BASIS, "concept_id": "Creative Tracker concept id of the row.", "product_slug": "Product of the tracker row."},
+   examples=[("Hit rate by product: launched ads that reached $10,000 since launch (Meta basis)", "SELECT product_slug, count(*) AS launched, count(*) FILTER (WHERE spend_launch >= 10000) AS hits, "
+              "round(count(*) FILTER (WHERE spend_launch >= 10000)::numeric / count(*), 4) AS hit_rate FROM analytics.creative_family_metrics "
+              "WHERE basis = 'meta' AND is_first_row AND (launch_date IS NOT NULL OR spend_launch > 0) GROUP BY 1 ORDER BY 1;")])
+
+av("creative_unmatched_meta", src="public.unmatched_meta", domain="creative", base="unmatched_meta",
+   purpose="Meta ad families that run on no Creative Tracker row, with their spend and results, in three bases.", grain="one row per (basis, family_key)",
+   source="public.unmatched_meta and its twins (etl.build_metrics), with the product slug", refresh="nightly (etl service 13:00 UTC)", coverage="families with Meta delivery since 2026-05-06",
+   caveats=[_BASIS], ren={"family_key": "meta_family_key", "family_name": "meta_family"},
+   cols={"basis": _BASIS, "product_slug": "Product guessed from the family's name, campaign or ad set (product_source says which)."},
+   examples=[("Untracked spend, last 30 days (Meta basis)", "SELECT product_slug, count(*) AS families, round(sum(spend_30d)) AS spend_30d FROM analytics.creative_unmatched_meta WHERE basis = 'meta' GROUP BY 1 ORDER BY 3 DESC;")])
+
+av("creative_stage_moves", src="public.creative_stage_moves", domain="creative", span=("creative_stage_moves", "first_day", "last_spend_day"), base="creative_stage_moves",
+   purpose="Test to scale: one row per creative family with its testing and scaling spend and results, when it first spent in a Testing and in a Scaling campaign and whether it moved, in three bases.",
+   grain="one row per (basis, family_key)", source="public.creative_stage_moves and its twins (etl.stage_moves, rebuilt nightly)", refresh="nightly (etl service 13:00 UTC)", coverage="2026-05-06 through yesterday (Pacific)",
+   caveats=[_BASIS, "A creative MOVED when it spent in a Testing campaign and its first spend in a Scaling campaign came on a later day (campaign name contains 'test' = Testing). Rate of reaching scaling = moved / began_in_testing over creatives "
+            "launched in the window and not launched_before_data_start (app/promotions.py).",
+            "moves_that_day >= 40 (bulk_move_day) is a mass relaunch into new scaling campaigns, not a set of test winners: exclude it when judging test winners.",
+            "Held up? = (scale_revenue / scale_spend) / (test_revenue / test_spend): held >= 0.90, softer >= 0.70, fell below; too early until scale_spend >= $200 and scale_days >= 3."],
+   ren={"pain_point": "pain"}, cols={"basis": _BASIS},
+   examples=[("Test-to-scale rate by product, creatives launched in the last 30 days (Meta basis, bulk days hidden)", "SELECT product_slug, count(*) AS testers, count(*) FILTER (WHERE moved) AS moved, "
+              "round(count(*) FILTER (WHERE moved)::numeric / count(*), 4) AS pct_reached_scaling FROM analytics.creative_stage_moves WHERE basis = 'meta' AND began_in_testing AND NOT launched_before_data_start "
+              "AND NOT (path = 'moved' AND moves_that_day >= 40) AND first_day > data_through - 30 GROUP BY 1 ORDER BY 1;")])
+
+av("creative_scaling_placements", src="public.creative_scaling_placements", domain="creative", span=("creative_scaling_placements", "first_day", "last_day"), base="creative_scaling_placements",
+   purpose="Where a creative that moved to scaling scales: its scaling campaign and ad set since the move, with spend and results, in three bases.", grain="one row per (basis, family_key, campaign_id, adset_id)",
+   source="public.creative_scaling_placements and its twins (etl.stage_moves)", refresh="nightly (etl service 13:00 UTC)", coverage="creatives that moved since 2026-05-06",
+   caveats=[_BASIS], ren={"campaign_name": "campaign", "adset_name": "adset"}, cols={"basis": _BASIS},
+   examples=[("Ad sets that took the most spend from moved creatives (Meta basis)", "SELECT campaign_name, adset_name, count(DISTINCT family_key) AS creatives, round(sum(spend)) AS spend FROM analytics.creative_scaling_placements "
+              "WHERE basis = 'meta' GROUP BY 1, 2 ORDER BY 4 DESC LIMIT 15;")])
+
+av("creative_scaling_benchmarks", src="public.scaling_benchmarks", domain="creative", base="scaling_benchmarks",
+   purpose="Benchmarks of the Test to scale page: creatives, spend, purchases and revenue by basis, product and period.", grain="one row per (basis, product_slug, day_from, day_to)",
+   source="public.scaling_benchmarks", refresh="on demand", coverage="the periods the Test to scale page compares against",
+   examples=[("Benchmarks", "SELECT basis, product_slug, day_from, day_to, creatives, round(revenue / NULLIF(spend, 0), 2) AS roas FROM analytics.creative_scaling_benchmarks ORDER BY day_from DESC, basis, product_slug LIMIT 20;")])
+
+av("creative_content", src="public.family_content", domain="creative", base="family_content",
+   purpose="The copy and transcript Meta actually runs for each creative family (no image or video bytes).", grain="one row per family_key", source="public.family_content (etl.assets_pull / run_daily)", refresh="nightly",
+   coverage="creative families with a pulled ad", caveats=["transcript is the spoken audio for videos and can differ from the tracker's own transcript column."],
+   examples=[("Video families with a transcript", "SELECT family_key, transcript_seconds, left(transcript, 120) AS transcript_start FROM analytics.creative_content WHERE is_video AND transcript IS NOT NULL ORDER BY transcript_seconds DESC NULLS LAST LIMIT 10;")])
+
+# ------------------------------------------------------------------------------------------------------------------------------- tags
+av("products", src="public.products", domain="tags", base="products",
+   purpose="The products and the tag set each uses (tag_set 'linemap' = tagged to the Communication Overview lines, 'tracker' = the tracker's own tag columns).", grain="one row per product",
+   source="public.products", refresh="on change", coverage="5 products", ren={"product_id": "id"},
+   examples=[("Products", "SELECT slug, name, tag_set, active FROM analytics.products ORDER BY sort_order;")])
+
+av("taxonomy_lines", src="public.taxonomy_lines", domain="tags", base="taxonomy_lines",
+   purpose="The Communication Overview lines: one per ICP x pain point, with its market cluster, emotional trigger and story, per product. line_code is the code tags point at.", grain="one row per line_id",
+   source="public.taxonomy_lines joined to public.products", refresh="when the taxonomy is reloaded (etl.load_taxonomy)", coverage="every line the product has",
+   ren={"line_id": "id"}, cols={"product_slug": "Product the line belongs to."},
+   examples=[("Lines per product and cluster", "SELECT product_slug, cluster, count(*) AS lines FROM analytics.taxonomy_lines GROUP BY 1, 2 ORDER BY 1, 3 DESC;")])
+
+av("line_ingredients", src="public.line_ingredients", domain="tags", base="line_ingredients",
+   purpose="The ingredients that address each taxonomy line: one row per line and ingredient with what it attacks and what it supports.", grain="one row per ingredient_id",
+   source="public.line_ingredients joined to taxonomy_lines and products", refresh="when the taxonomy is reloaded", coverage="every line",
+   ren={"ingredient_id": "id"}, cols={"product_slug": "Product of the line.", "line_code": "taxonomy_lines.line_code."},
+   examples=[("Ingredients of one pain point", "SELECT i.product_slug, i.line_code, i.ingredient, i.attacks FROM analytics.line_ingredients i JOIN analytics.taxonomy_lines l USING (line_id) WHERE l.pain_point ILIKE '%hair%' ORDER BY 1, 2 LIMIT 20;")])
+
+av("ad_tags", src="public.ad_tags", domain="tags", span=("ad_tags", "tagged_at::date"),
+   purpose="Every tag ever written to a tracker row (current and superseded), joined to the tracker row, product and taxonomy line. Filter is_current for what stands now.", grain="one row per tag_id",
+   source="public.ad_tags joined to tracker_rows, products and taxonomy_lines (the extra json is left out)", refresh="when tags load or the auto-tagger runs", coverage="every live tracker row",
+   caveats=["A tracker row has at most one CURRENT tag per tag_set; analytics.creative_tracker already shows the current tag of the product's own tag set.",
+            "confidence / method say how sure the tagger was: low-confidence and copy-only tags are weaker evidence."],
+   ren={"tag_id": "id"}, cols={"concept_id": "Creative Tracker concept id of the tagged row.", "family_key": "Tracker ad family key (join to creative_tracker / creative_family_metrics).",
+                              "product_slug": "Product of the tracker row.", "line_code": "taxonomy_lines.line_code the tag points at (NULL for tracker-set tags)."},
+   examples=[("Current line tags per product and confidence", "SELECT product_slug, confidence, count(*) AS tags FROM analytics.ad_tags WHERE is_current AND tag_set = 'linemap' GROUP BY 1, 2 ORDER BY 1, 2;")])
+
+av("ad_hooks", src="public.ad_hooks", domain="tags", span=("ad_hooks", "extracted_at::date"),
+   purpose="The hook of each tracker row: the first spoken line and the first on-screen text, joined to the tracker row and product.", grain="one row per tracker_row_id",
+   source="public.ad_hooks joined to tracker_rows and products", refresh="when hooks are reloaded (etl.load_hooks)", coverage="the current tracker rows that had something readable (a silent video or an ad with no copy has no hook)",
+   caveats=["hook_source says where the hook came from (video transcript, image, copy). Rows with nothing readable have no hook."],
+   cols={"concept_id": "Creative Tracker concept id.", "family_key": "Tracker ad family key.", "product_slug": "Product of the tracker row."},
+   examples=[("Hooks of the 10 biggest launched families (Meta basis)", "SELECT h.product_slug, h.concept_id, h.hook, round(m.spend_launch) AS spend_launch FROM analytics.ad_hooks h JOIN analytics.creative_family_metrics m "
+              "ON m.tracker_row_id = h.tracker_row_id AND m.basis = 'meta' WHERE m.is_first_row ORDER BY m.spend_launch DESC LIMIT 10;")])
+
+# ------------------------------------------------------------------------------------------------------------------------------- priorities
+av("priorities_snapshots", src="public.creative_priorities_snapshots", domain="priorities", span=("creative_priorities_snapshots", "week_start"),
+   purpose="One row per weekly creative priorities snapshot: when it was built, the data it used and how many rows it holds.", grain="one row per week_start (the Sunday, Pacific)",
+   source="public.creative_priorities_snapshots without the json blobs (they are flattened into the other priorities_* views)", refresh="Sundays in the nightly etl (etl.creative_priorities)",
+   coverage="from the first week the page ran",
+   cols={"row_count": "Number of rows in the snapshot (every line plus manual and proposal rows)."},
+   examples=[("Snapshots", "SELECT week_start, data_through, row_count FROM analytics.priorities_snapshots ORDER BY week_start DESC;")])
+
+av("priorities_thresholds", src="public.creative_priorities_snapshots", domain="priorities", span=("creative_priorities_snapshots", "week_start"), base="creative_priorities_snapshots",
+   purpose="Every threshold and weight the week was scored with (HIT_SPEND, TOP_SPEND, JUDGED_SPEND, MIN_LINE_SPEND, the score weights ...), one row per (week, name).", grain="one row per (week_start, name)",
+   source="public.creative_priorities_snapshots.thresholds, flattened", refresh="Sundays", coverage="every snapshot",
+   caveats=["value is text: cast it. Scoring counts a hit at HIT_SPEND = $1,000; the displayed hit rate uses TOP_SPEND = $10,000 (etl/creative_priorities.py)."],
+   cols={"name": "Constant name as in etl/creative_priorities.py.", "value": "Its value for that week, as text."},
+   examples=[("The hit-rate constants of the latest week", "SELECT name, value FROM analytics.priorities_thresholds WHERE week_start = (SELECT max(week_start) FROM analytics.priorities_snapshots) AND name IN ('HIT_SPEND', 'TOP_SPEND', 'JUDGED_SPEND', 'MATURE_DAYS');")])
+
+av("priorities_baselines", src="public.creative_priorities_snapshots", domain="priorities", span=("creative_priorities_snapshots", "week_start"), base="creative_priorities_snapshots",
+   purpose="The product averages each line is compared with (ROAS, CPA, hit rate, spend, funnel counts), one numeric row per (week, product, metric).", grain="one row per (week_start, product_slug, metric)",
+   source="public.creative_priorities_snapshots.baselines, numeric entries only", refresh="Sundays", coverage="every snapshot",
+   caveats=["Metrics include roas, cpa, hit_rate (scoring basis, $1,000 over mature tested ads) and the funnel counts; see priorities_concepts for the per-line figures."],
+   cols={"week_start": "The snapshot's Sunday.", "product_slug": "Product the baseline is for.", "metric": "Baseline metric name as in the snapshot.", "value": "Its numeric value."},
+   examples=[("Product ROAS and CPA baselines of the latest week", "SELECT product_slug, metric, value FROM analytics.priorities_baselines WHERE week_start = (SELECT max(week_start) FROM analytics.priorities_snapshots) AND metric IN ('roas', 'cpa', 'hit_rate') ORDER BY 1, 2;")])
+
+av("priorities_concepts", src="public.creative_priorities_snapshots", domain="priorities", span=("creative_priorities_snapshots", "week_start"), base="creative_priorities_snapshots",
+   purpose="Every row of every weekly priorities snapshot, flattened: the line (cluster, ICP, pain point), its action section and status, score, confidence and the numbers behind it (Meta-reported, with Upstack new-customer ROAS beside them).",
+   grain="one row per (week_start, row of the snapshot)", source="public.creative_priorities_snapshots.rows, flattened with the numeric fields typed", refresh="Sundays", coverage="every snapshot",
+   caveats=["Two hit rates exist. hit_rate / hit_rate_index = SCORING: share of mature (>= 14 days old) tested ads that reached $1,000, shrunk toward the product average; the CSV export's hit_rate columns are this one. "
+            "DISPLAY (what Josh calls a hit): ads_10k_plus_spend / ads_launched, ads that reached $10,000 since launch out of every launched ad. Name which one you mean.",
+            "Numbers are Meta-reported (roas = purchase value / spend); nc_roas is Upstack new-customer ROAS. ROAS is NULL under $100 spend. section / status use the current vocabulary (older snapshots are stored in the old words)."],
+   cols={"week_start": "The snapshot's Sunday.", "product_slug": "vita-bull | beef-liver | boneflex (rows of manual concepts keep their typed product).",
+         "section": "Action section the row sits in (make more, revive, test, stop, hold, add to sheet, proposed, competitor, everything else).", "status": "Line status (WORKING, RISING, FADED, COLLAPSED, TOO EARLY, UNTESTED, NOT WORKING, AVERAGE ...).",
+         "rank": "Rank inside its product and section.", "line_code": "taxonomy_lines.line_code (NULL for manual and proposed rows).", "cluster": "Market cluster.", "icp": "ICP.", "pain_point": "Pain point.",
+         "emotional_trigger": "Emotional trigger of the line.", "story": "Story of the line.", "concepts": "New concepts to brief for the row this week.", "score": "0-100 iterate score (35% economics, 20% hit rate, 20% room, 15% momentum, 10% size).",
+         "confidence": "high | medium | low.", "flags": "Risk flags, joined with '; ' (thin sample, weak tags, few ads, Upstack new-customer ROAS below product average).", "why": "One-paragraph reason the row was chosen.",
+         "is_manual": "true for a concept typed by hand on the page.", "spend": "Since-launch spend of the line, Meta, dollars.", "purchases": "Since-launch Meta-reported purchases.", "roas": "Since-launch Meta ROAS (NULL under $100 spend).",
+         "cpa": "Since-launch cost per purchase.", "roas_index": "Shrunk since-launch ROAS / the product's ROAS.", "ads": "Ads of the line that spent.", "judged": "Ads that spent $100 or more.", "hits": "Mature judged ads that reached $1,000 (scoring hits).",
+         "mature": "Judged ads at least 14 days old (the scoring hit-rate denominator).", "hit_rate": "SCORING hit rate: hits / mature (the $1,000 threshold).", "hit_rate_index": "Shrunk hit rate / the product's.",
+         "spend_30d": "Spend in the 30 days ending at data_through.", "roas_30d": "ROAS over those 30 days.", "spend_14d": "Spend in the 14 days ending at data_through.", "roas_14d": "ROAS over those 14 days (NULL under $100).",
+         "nc_roas": "Upstack new-customer ROAS since launch.", "nc_cpa": "Upstack new-customer CPA since launch.", "nc_purchases": "Upstack new customers credited since launch.", "live_ads": "Ads of the line that spent in the last days.",
+         "ads_launched": "DISPLAY funnel: ads of the line launched (tracker rows with a launch date or any spend).", "ads_under_100_spend": "Launched ads under $100 spend.", "ads_100_plus_spend": "Launched ads at $100 or more.",
+         "ads_10k_plus_spend": "Launched ads at $10,000 or more (the display hits)."},
+   examples=[("Lines to iterate on this week, by product", "SELECT product_slug, rank, cluster, icp, pain_point, status, score, round(spend) AS spend, roas FROM analytics.priorities_concepts "
+              "WHERE week_start = (SELECT max(week_start) FROM analytics.priorities_snapshots) AND section IN ('iterate', 'make more') ORDER BY product_slug, rank LIMIT 30;"),
+             ("Display hit rate per product (ads reaching $10K / launched ads) over the weeks", "SELECT week_start, product_slug, sum(ads_10k_plus_spend) AS hits, sum(ads_launched) AS launched FROM analytics.priorities_concepts "
+              "WHERE ads_launched IS NOT NULL GROUP BY 1, 2 ORDER BY 1 DESC, 2 LIMIT 12;")])
+
+av("priorities_manual_concepts", src="public.creative_priorities_manual", domain="priorities", span=("creative_priorities_manual", "created_at::date"),
+   purpose="Concepts typed in by hand on the priorities page (not scored): product, section, line, why now and status.", grain="one row per manual_id", source="public.creative_priorities_manual",
+   refresh="on demand (edited by a person)", coverage="every manual concept", ren={"manual_id": "id"},
+   examples=[("Open manual concepts", "SELECT manual_id, product, section, cluster, icp, pain_point, status FROM analytics.priorities_manual_concepts WHERE done_at IS NULL ORDER BY created_at DESC;")])
+
+# ------------------------------------------------------------------------------------------------------------------------------- production
+av("production_assignments", src="public.creative_priorities_assignments", domain="production", span=("creative_priorities_assignments", "for_week"),
+   purpose="One concept given to one vendor to make for one week: the line, the brief and creative links, the timestamp of each step and the tracker concepts it became.", grain="one row per assignment_id",
+   source="public.creative_priorities_assignments without created_by / updated_by (who made a change is not exposed)", refresh="on demand (the production board and the nightly etl.assignment_tags)", coverage="from the day production tracking started",
+   caveats=["stage_from_assignment reads only the assignment's own fields; the app also takes the furthest stage its linked tracker rows show (join tracker_concept_ids to creative_tracker.concept_id and read status).",
+            "vendor_note is the note the vendor sees; note is internal."],
+   ren={"assignment_id": "id"}, cols={"stage_from_assignment": "dropped | launched | ready | creative_in | brief_sent | assigned, from dropped_at, launched_at, ready_at, creative_url and brief_url in that order."},
+   examples=[("Open assignments by vendor and week", "SELECT vendor, for_week, stage_from_assignment, count(*) AS assignments FROM analytics.production_assignments WHERE stage_from_assignment NOT IN ('launched', 'dropped') GROUP BY 1, 2, 3 ORDER BY 2 DESC, 1;")])
+
+av("production_formats", src="public.creative_formats", domain="production", base="creative_formats",
+   purpose="The creative formats (static, short video, ...) an assignment can carry.", grain="one row per format_code", source="public.creative_formats", refresh="on change", coverage="a handful of rows",
+   ren={"format_code": "code"},
+   examples=[("Formats", "SELECT format_code, name, length FROM analytics.production_formats WHERE active ORDER BY sort;")])
+
+# ------------------------------------------------------------------------------------------------------------------------------- competitors
+av("competitor_brands", src="public.competitor_brands", domain="competitors", base="competitor_brands",
+   purpose="The competitor brands tracked in the Meta Ad Library and when each was last read.", grain="one row per brand", source="public.competitor_brands without last_error", refresh="Sundays (etl.competitor_ads)",
+   coverage="every tracked brand",
+   examples=[("Brands not read successfully this week", "SELECT brand, product_type, last_ok_at, last_ad_count FROM analytics.competitor_brands WHERE active AND (last_ok_at IS NULL OR last_ok_at < now() - interval '8 days') ORDER BY brand;")])
+
+av("competitor_ads", src="public.competitor_ads", domain="competitors", span=("competitor_ads", "week_start", "seen_on"),
+   purpose="Weekly snapshot of each competitor ad found in the Meta Ad Library: format, copy, hook, landing page and how long it has been running.", grain="one row per (week_start, library_id)", source="public.competitor_ads",
+   refresh="Sundays (etl.competitor_ads)", coverage="from the first week the tracker ran",
+   caveats=["Running a long time is not proven performance: the Ad Library shows no spend or results."],
+   examples=[("Longest-running ads of the latest week", "SELECT brand, format, days_running, left(hook, 100) AS hook FROM analytics.competitor_ads WHERE week_start = (SELECT max(week_start) FROM analytics.competitor_ads) ORDER BY days_running DESC NULLS LAST LIMIT 15;")])
+
+av("competitor_concepts", src="public.competitor_concepts", domain="competitors", span=("competitor_ads", "week_start", "seen_on"), base="competitor_ads",
+   purpose="Competitor ads grouped into concepts per week and mapped to our product, line, cluster, ICP and pain point (or flagged as a new angle).", grain="one row per (week_start, brand, concept_key)",
+   source="public.competitor_concepts (a view over competitor_ads and competitor_concept_class)", refresh="Sundays", coverage="every week with a snapshot",
+   caveats=["The mapping to our lines is a model's classification (confidence says how sure); new-angle rows are concepts that fit no existing line."],
+   examples=[("New angles competitors are running, latest week", "SELECT brand, new_angle_label, days_running, variant_count FROM analytics.competitor_concepts WHERE week_start = (SELECT max(week_start) FROM analytics.competitor_concepts) AND is_new_angle ORDER BY days_running DESC NULLS LAST LIMIT 15;")])
+
+# ------------------------------------------------------------------------------------------------------------------------------- catalog and glossary
+BRAIN_VIEWS.update({"analytics.catalog", "analytics.metric_glossary"})
+rel("analytics.catalog", group="analytics", kind="view", domain="pipeline", span=None, base=None,
+    purpose="One row per analytics view: its domain, what it is, its grain, the first and last day it covers where it has days, and a row-count estimate. Start here to find which view answers a question.",
+    grain="one row per analytics view (this view itself is listed too)", source="generated from docs/schema/descriptions.py into migration 210 (descriptions, domains) and the first / last day of each view's base table; row_estimate = pg_class.reltuples",
+    refresh="first_day / last_day read the base tables live; the descriptions change only with a migration", coverage="every analytics view",
+    caveats=["row_estimate is Postgres's planner estimate of the base table (NULL until the table is first analysed), not a count; run count(*) when you need the exact number.",
+             "first_day / last_day are NULL for views without a day axis (dimensions, definitions, scenarios). Read data_coverage for per-source freshness of the marketing data."],
+    cols={"view_name": "Name of the view in the analytics schema.", "domain": "marketing | attribution | orders | creative | tags | priorities | production | projection | inventory | cohorts | pacing | competitors | pipeline.",
+          "description": "What the view is (its purpose text).", "grain": "What one row is.", "first_day": "First day the view's base table holds (NULL when not a time series).",
+          "last_day": "Last day the base table holds.", "row_estimate": "Planner row-count estimate of the base table."},
+    examples=[("All views of one domain", "SELECT view_name, grain, first_day, last_day FROM analytics.catalog WHERE domain = 'creative' ORDER BY view_name;"),
+              ("How many views per domain", "SELECT domain, count(*) AS views FROM analytics.catalog GROUP BY 1 ORDER BY 1;")])
+
+rel("analytics.metric_glossary", group="analytics", kind="view", domain="pipeline", span=None, base=None,
+    purpose="The canonical definition of every headline metric (ROAS, CPA, NC ROAS, CPM, frequency, hit rate, payback, ...): formula, the view and columns that hold the inputs, the default basis, the other bases and the traps. The same rows as the 'metrics' key of docs/schema.json.",
+    grain="one row per metric name", source="generated from the METRICS list in docs/schema/descriptions.py into migration 210; every formula was taken from the code (the file is named in source or traps)",
+    refresh="changes only with a migration", coverage="every metric of the glossary (see the Metrics section of docs/DATA_SCHEMA.md)",
+    caveats=["other_bases and traps are text arrays: unnest them or read them whole. Read the default basis before quoting a number and name the basis in the answer."],
+    cols={"name": "Machine name, e.g. nc_roas.", "label": "Display name.", "formula": "The formula in plain words and column names.", "source": "analytics.<view>.<column(s)> that hold the inputs.",
+          "default_basis": "The basis to use unless asked otherwise.", "other_bases": "The other bases that exist for the metric.", "traps": "Ways the metric is read wrongly, with the code file the rule comes from.",
+          "domain": "Domain of the metric (same list as analytics.catalog)."},
+    examples=[("One metric", "SELECT label, formula, source, default_basis, other_bases, traps FROM analytics.metric_glossary WHERE name = 'total_nc_roas';"),
+              ("All metrics by domain", "SELECT domain, name, label FROM analytics.metric_glossary ORDER BY domain, name;")])
+
+
+# =====================================================================================================================================
+# The existing analytics views: domain and the table that gives their first / last day (for analytics.catalog)
+# =====================================================================================================================================
+
+for _k, _dom, _span, _base in [
+    ("meta_ads", "marketing", None, "meta_ads"),
+    ("meta_ad_daily", "marketing", ("ad_daily", "day"), "ad_daily"),
+    ("meta_adset_daily", "marketing", ("ad_daily", "day"), "ad_daily"),
+    ("meta_campaign_daily", "marketing", ("ad_daily", "day"), "ad_daily"),
+    ("meta_campaign_daily_history", "marketing", ("proj_feed_meta_day", "day"), "proj_feed_meta_day"),
+    ("meta_reach", "marketing", ("proj_feed_meta_reach", "period_start", "period_end"), "proj_feed_meta_reach"),
+    ("google_campaign_daily", "marketing", ("google_daily", "day"), "google_daily"),
+    ("platform_daily", "marketing", ("ad_daily", "day"), "ad_daily"),
+    ("orders_daily", "orders", ("upstack_orders_daily", "day"), "upstack_orders_daily"),
+    ("creative_tracker", "creative", None, "tracker_rows"),
+    ("data_coverage", "pipeline", None, None),
+    ("etl_runs", "pipeline", ("etl_runs", "started_at::date"), "etl_runs"),
+]:
+    REL[f"analytics.{_k}"].update(domain=_dom, span=_span, base=_base)
+
+# existing text that said 'not exposed in analytics' for things this migration exposes: their comments are re-written by migration 210 (relation level only)
+for _k in ("analytics.orders_daily", "public.proj_feed_orders", "public.proj_feed_amazon", "public.proj_feed_nc_product"):
+    REL[_k]["recomment"] = "relation"
+RECOMMENT = {k: v["recomment"] for k, v in REL.items() if v.get("recomment")}      # key -> 'relation' | 'all': comments re-written in migration 210
+SCOPE_210 = BRAIN_VIEWS | set(RECOMMENT)
+
+# =====================================================================================================================================
+# METRICS: the canonical glossary (also analytics.metric_glossary and the 'metrics' key of docs/schema.json). Every formula comes from the code named in source / traps.
+# Contract (another tool server reads this exact shape): name, label, formula, source, default_basis, other_bases (list), traps (list), domain (one of DOMAINS).
+# `source` = analytics.<view>.<column(s)>: columns of one view are joined with commas, views are separated by '; '.
+# =====================================================================================================================================
+
+METRIC_FIELDS = ("name", "label", "formula", "source", "default_basis", "other_bases", "traps", "domain")
+_TRENDS = "app/trends.py build_catalog()"
+_PACING = "app/projection/pacing/catalog.py"
+_NOT_UPSTACK_MIX = "Never compare Upstack new customers with Meta's all purchases: Meta counts returning customers, Upstack's new-customer basis does not (they are different quantities, not one number measured twice)."
+
+METRICS = [
+    dict(name="spend", label="Ad spend", domain="marketing",
+         formula="sum(spend) over the days. Total spend = Meta spend + Google spend; a ratio's spend is always the sum over the same days and rows as its numerator.",
+         source="analytics.meta_ad_daily.spend; analytics.google_campaign_daily.spend; analytics.platform_daily.spend",
+         default_basis="Meta (Graph API, both ad accounts) + Google Ads, platform-reported dollars: the 'Total spend' of the Marketing metrics app (" + _TRENDS + ", total_spend).",
+         other_bases=["Meta spend alone (the product bands' Total column divides by it)",
+                      "Business-wide spend in pacing = Meta + Google + TikTok and other platforms + Amazon ads (" + _PACING + ", biz_total_spend)",
+                      "analytics.platform_daily_history.spend for days before 2026-05-06 (Meta ad level starts 2026-05-06; campaign grain from 2024-12-31 in analytics.meta_campaign_daily_history)"],
+         traps=["Spend adds across platforms; purchases and revenue never do.",
+                "Meta days are each ad account's own day (Main = Los Angeles, BackUp = New York); Google, Upstack and orders are Pacific days.",
+                "The last 3-7 days still move (Meta restates), and today is never loaded."]),
+    dict(name="meta_purchases", label="Meta-reported purchases", domain="marketing",
+         formula="sum(meta_purchases): purchases Meta reports for the ad that day (omni_purchase, else purchase, else pixel purchase), Meta's default attribution.",
+         source="analytics.meta_ad_daily.meta_purchases; analytics.meta_campaign_daily.meta_purchases",
+         default_basis="Meta-reported (counts returning customers, Meta's attribution window)",
+         other_bases=["Upstack new customers (analytics.meta_ad_daily.upstack_new_customers): first orders only", "Upstack all orders (upstack_orders): every order Upstack credits"],
+         traps=[_NOT_UPSTACK_MIX, "Meta and Google credit the same orders: never add Meta purchases to Google's.", "Meta counts a returning customer's order as a purchase; it is not a new customer."]),
+    dict(name="meta_roas", label="Meta ROAS (platform ROAS)", domain="marketing",
+         formula="sum(meta_revenue) / sum(spend): Meta-reported purchase value over spend, as a ratio of sums.",
+         source="analytics.meta_ad_daily.meta_revenue,spend; analytics.meta_campaign_daily.meta_revenue,spend",
+         default_basis="Meta-reported purchase value / Meta spend",
+         other_bases=["Upstack new-customer ROAS (upstack_nc_roas)", "Upstack all-orders ROAS (upstack_all_orders_roas)", "Total NC ROAS (total_nc_roas): actual new-customer revenue over total spend"],
+         traps=["Never average daily ROAS: divide the sums.", "Meta ROAS counts returning customers and runs well above Total NC ROAS: they answer different questions.",
+                "Creative-level ROAS in analytics.creative_family_metrics / priorities_concepts is the same Meta-reported ratio but over each ad's life since launch (blank under $100 spend in the priorities snapshot)."]),
+    dict(name="meta_cpa", label="Meta cost per purchase", domain="marketing",
+         formula="sum(spend) / sum(meta_purchases).", source="analytics.meta_ad_daily.spend,meta_purchases",
+         default_basis="Meta-reported purchases", other_bases=["Upstack new-customer CPA over Meta spend (spend / upstack_new_customers)", "Total NC CPA (nc_cpa): total spend / actual new customers"],
+         traps=[_NOT_UPSTACK_MIX, "This is not the NC CPA the business quotes (that one divides by actual new customers, see nc_cpa)."]),
+    dict(name="upstack_new_customers", label="Upstack-attributed new customers", domain="attribution",
+         formula="sum(upstack_new_customers): first-time customers Upstack credits to the ad under any-click, 30-day attribution (utm_source 'Meta Ads').",
+         source="analytics.meta_ad_daily.upstack_new_customers; analytics.google_campaign_daily.upstack_new_customers",
+         default_basis="Upstack new customers (first orders only, any-click 30-day, Pacific days)",
+         other_bases=["Upstack all orders (upstack_orders): every order credited, returning included", "Last-click by source (analytics.attribution_source_daily): exclusive per order, a different basis"],
+         traps=["NULL, not 0, on days Upstack was not pulled (Meta before 2026-05-06, Google before 2025-05-13).",
+                "Any-click credits an ad on days it spent nothing (spend = 0, upstack_* > 0 is normal); one customer can be credited to several ads, so sums over ads of different families can exceed orders_daily.new_customers.",
+                "About 1.3% of credited orders match no Meta ad (analytics.attribution_unmapped_daily): in orders_daily, in no ad row.", _NOT_UPSTACK_MIX]),
+    dict(name="upstack_nc_roas", label="Upstack new-customer ROAS (attributed)", domain="attribution",
+         formula="sum(upstack_new_customer_revenue) / sum(spend) over the rows where Upstack was pulled (upstack_new_customers IS NOT NULL).",
+         source="analytics.meta_ad_daily.upstack_new_customer_revenue,spend; analytics.google_campaign_daily.upstack_new_customer_revenue,spend",
+         default_basis="Upstack new customers (the default basis everywhere in the Marketing metrics app: 'Count: New customers')",
+         other_bases=["Upstack all orders (upstack_all_orders_roas)", "Meta-reported (meta_roas)"],
+         traps=[_NOT_UPSTACK_MIX, "Restrict spend to days Upstack covers or the ratio is diluted by uncovered days.",
+                "When one ad is copied into several ad sets under one name, Upstack's credit is split by Meta spend that day: family and higher sums are exact, one copy's own numbers are an allocation.",
+                "Attribution, not the actual: the business's real new-customer revenue is orders_daily (see nc_revenue / total_nc_roas)."]),
+    dict(name="upstack_all_orders_roas", label="Upstack all-orders ROAS (attributed)", domain="attribution",
+         formula="sum(upstack_order_revenue) / sum(spend) over the rows where Upstack was pulled.",
+         source="analytics.meta_ad_daily.upstack_order_revenue,spend; analytics.google_campaign_daily.upstack_order_revenue,spend",
+         default_basis="Upstack all orders (every order Upstack credits to the ad, any-click 30 days)",
+         other_bases=["Upstack new customers (upstack_nc_roas): the default basis", "Meta-reported (meta_roas)"],
+         traps=["Use this only against Meta's all-purchases basis, never against upstack_nc_roas.", "Includes returning customers' orders, so it flatters acquisition efficiency; the Marketing metrics app shows it only when 'Count: All orders' is chosen."]),
+    dict(name="nc_revenue", label="New-customer revenue (actual)", domain="orders",
+         formula="sum(new_customer_revenue): first-order revenue per Pacific day, counted once (Upstack order-level measures).",
+         source="analytics.orders_daily.new_customer_revenue; analytics.orders_by_product_daily.new_customer_revenue",
+         default_basis="Actual orders feed (analytics.orders_daily), gross: tax included, before refunds",
+         other_bases=["By product (analytics.orders_by_product_daily): order total split across product lines by net line price", "Attributed to Meta or Google (upstack_new_customer_revenue): an attribution, not the actual"],
+         traps=["Not the sum of platform columns: platforms overlap, this is counted once.", "A day with no orders is absent from orders_daily, not 0.",
+                "Revenue is gross of tax and refunds (the Marketing metrics app describes it as 'tax included, before refunds'); net = total_revenue - tax - refunds in analytics.orders_daily_detail.",
+                "The trailing 7 days are restated nightly."]),
+    dict(name="nc_orders", label="New customers (actual)", domain="orders",
+         formula="sum(new_customers): customers whose first Shopify order fell on the day, counted once.",
+         source="analytics.orders_daily.new_customers; analytics.orders_by_product_daily.new_customers",
+         default_basis="Actual orders feed (analytics.orders_daily)", other_bases=["By product (orders whose largest product line is the product)", "Upstack-attributed new customers (upstack_new_customers)"],
+         traps=["Not additive with attributed new customers: those credit the same customer to several ads or platforms.", "Customers, not orders: a first order is the unit."]),
+    dict(name="total_nc_roas", label="Total NC ROAS", domain="orders",
+         formula="sum(orders_daily.new_customer_revenue) / (sum(Meta spend) + sum(Google spend)) over the days that Meta, Google and orders_daily all cover, as a ratio of sums.",
+         source="analytics.orders_daily.new_customer_revenue; analytics.platform_daily.spend",
+         default_basis="Actual new-customer revenue / Meta + Google spend (" + _TRENDS + ", nc_roas)",
+         other_bases=["NC ROAS on Meta spend alone (meta_nc_roas in " + _TRENDS + "): the product bands' Total column",
+                      "Business-wide NC ROAS in pacing = (Shopify + Amazon new-customer revenue) / (Meta + Google + TikTok + other + Amazon ads) (" + _PACING + ", biz_nc_roas)",
+                      "Per-product NC ROAS = analytics.orders_by_product_daily revenue / analytics.meta_product_daily spend"],
+         traps=["The numerator is actual revenue counted once, not the sum of the platforms' purchase values.", "Use only days all three sources cover and compute the ratio of sums, never an average of daily ratios.",
+                "Gross revenue (tax included, before refunds); the deal's net-of-tax goal basis is lower.", "Amazon is not in this ratio (the Marketing metrics app's total covers Shopify, Meta and Google)."]),
+    dict(name="nc_cpa", label="NC CPA (cost per new customer)", domain="orders",
+         formula="(sum(Meta spend) + sum(Google spend)) / sum(orders_daily.new_customers), over the days all three sources cover.",
+         source="analytics.platform_daily.spend; analytics.orders_daily.new_customers",
+         default_basis="Total spend / actual new customers (" + _TRENDS + ", nc_cpa)",
+         other_bases=["Meta spend / actual new customers (meta_nc_cpa): the product bands' Total column", "Testing / scaling NC CPA = stage spend / any-click new customers of that stage (analytics.attribution_anyclick_daily)",
+                      "Upstack-attributed NC CPA = spend / upstack_new_customers (a different, attributed basis)"],
+         traps=["Divides by ACTUAL new customers, not by attributed ones or by Meta purchases.", "Per-product NC CPA counts new customers whose largest product line is the product (analytics.orders_by_product_daily)."]),
+    dict(name="mer", label="MER (marketing efficiency ratio)", domain="orders",
+         formula="sum(total_revenue) / (sum(Meta spend) + sum(Google spend)) over the days all three sources cover.",
+         source="analytics.orders_daily.total_revenue; analytics.platform_daily.spend",
+         default_basis="Orders feed total revenue (no Amazon) / Meta + Google spend (" + _TRENDS + ", mer)",
+         other_bases=["Business-wide MER in pacing adds Amazon revenue and Amazon / TikTok / other spend (" + _PACING + ", biz_mer)"],
+         traps=["Total revenue here is gross (tax included, before refunds) and has no Amazon revenue; the matching spend has no Amazon or TikTok spend."]),
+    dict(name="conversion_rate_uoc", label="Conversion rate on unique outbound clicks", domain="marketing",
+         formula="actual new customers / Meta unique outbound clicks: per product = orders_by_product_daily.new_customers / meta_product_reach.unique_outbound_clicks; total = orders_daily.new_customers / meta_reach.unique_outbound_clicks.",
+         source="analytics.orders_by_product_daily.new_customers; analytics.meta_product_reach.unique_outbound_clicks; analytics.orders_daily.new_customers; analytics.meta_reach.unique_outbound_clicks",
+         default_basis="Actual new customers / unique outbound clicks (" + _PACING + ", meta_cvr_<product> and prod_cvr_total; every click-based pacing metric uses UNIQUE OUTBOUND clicks)",
+         other_bases=["Meta CVR = Meta purchases / Meta link clicks (meta_cvr)", "NC conversion (clicks) = new customers / (Meta link clicks + Google clicks) (" + _TRENDS + ", nc_cvr_clicks)",
+                      "NC conversion (visitors) = new customers / Upstack new visitors (analytics.site_traffic_daily): the Marketing metrics app's nc_cvr"],
+         traps=["Unique outbound clicks exist only from 2026-07-05 (Meta serves filtered unique clicks ~120 days back); earlier periods are blank, not 0.",
+                "Unique clicks are not additive: read the row of the period's own grain (day, week or month) in meta_reach / meta_product_reach.",
+                "The three products' unique clicks add to 1.01-1.06x the account-level figure, so the product rates do not average to the total.",
+                "Meta's total link_click count (analytics.meta_ad_daily.link_clicks) is a different, larger denominator than unique outbound clicks: do not mix the two."]),
+    dict(name="cpm", label="CPM (cost per 1,000 impressions)", domain="marketing",
+         formula="sum(spend) / sum(impressions) x 1000.", source="analytics.meta_ad_daily.spend,impressions; analytics.meta_reach.impressions",
+         default_basis="Meta spend / Meta impressions x 1000 (" + _TRENDS + ", m_cpm)",
+         other_bases=["Pacing divides spend by the account-level impressions pulled at the period's own grain (" + _PACING + ", meta_cpm)", "Cost per 1,000 reached = spend / reach x 1000 (a different, higher number)"],
+         traps=["Impressions add across days, reach does not: for CPM either source works, for frequency only meta_reach.", "Meta days are the ad account's own day."]),
+    dict(name="frequency", label="Frequency", domain="marketing",
+         formula="impressions / reach, both taken at the SAME grain (a day's, a week's or a month's own row): analytics.meta_reach.frequency.",
+         source="analytics.meta_reach.impressions,reach,frequency",
+         default_basis="Account level, both ad accounts, at the grain you read (" + _PACING + ", meta_frequency)",
+         other_bases=["No frequency exists per ad, ad set, campaign or product (reach is account level only)"],
+         traps=["Reach is de-duplicated by Meta and NOT additive: never average daily frequencies or sum daily reach to get a week or month; use the week / month rows.",
+                "The current day, week and month are partial.", "Frequency here is the same-day overlap between ad sets, not exposure on more days."]),
+    dict(name="hit_rate", label="Creative hit rate", domain="creative",
+         formula="Display hit rate = ads whose since-launch spend reached $10,000 / launched ads (first tracker rows of an ad family with a launch date or any spend). Scoring hit rate = mature (>= 14 days old) judged ads (>= $100 spent) that reached $1,000 / mature judged ads, shrunk toward the product average.",
+         source="analytics.creative_family_metrics.spend_launch,is_first_row,launch_date; analytics.priorities_concepts.ads_10k_plus_spend,ads_launched,hit_rate",
+         default_basis="Display: $10,000 since-launch spend over launched ads, Meta basis (etl/creative_priorities.py TOP_SPEND = 10000; the definition of a hit since 2026-11-10, docs/CREATIVE_PRIORITIES.md)",
+         other_bases=["Scoring: HIT_SPEND = $1,000 over mature judged ads (priorities_concepts.hit_rate, hit_rate_index): the stored hit_rate in the snapshot and in the CSV export's hit_rate / hit_rate_index columns",
+                      "Hits out of tested ads: $10,000 / ads that spent $100 or more (hit_rate_10k_of_tested)"],
+         traps=["A KNOWN SPLIT: the displayed hit rate uses $10,000, but the priorities CSV export's hit_rate and hit_rate_index columns (and the score's hit-rate component) still use $1,000 (etl/creative_priorities.py: HIT_SPEND vs TOP_SPEND; docs/CREATIVE_PRIORITIES.md). Name which one you quote.",
+                "Launched counts every launched ad including recent ones with $0 spend; new ads need time to reach $10,000, so young cohorts read low.",
+                "Metrics sit on the FIRST tracker row of each ad family: filter is_first_row."]),
+    dict(name="test_to_scale_rate", label="Test-to-scale rate (% reached scaling)", domain="creative",
+         formula="creatives that moved / creatives that began in testing, among creatives launched in the window and not launched before the data starts: count(*) FILTER (WHERE moved) / count(*) WHERE began_in_testing AND NOT launched_before_data_start AND first_day in window.",
+         source="analytics.creative_stage_moves.moved,began_in_testing,launched_before_data_start,first_day,days_in_test",
+         default_basis="Meta basis (analytics.creative_stage_moves.basis = 'meta'); the basis changes only the money columns, never who moved (app/promotions.py _cohorts / build)",
+         other_bases=["upstack_new_customers and upstack_all_orders: same creatives and moves, Upstack purchases and revenue"],
+         traps=["A creative MOVED only when it spent in a Testing campaign and first spent in a Scaling campaign on a LATER day (a campaign is Testing when its name contains 'test').",
+                "Hide bulk days: 40 or more creatives entering scaling on one day (moves_that_day >= 40) is a mass relaunch, not a set of test winners.",
+                "Creatives that launched straight into scaling are not testers and never in the rate; a new creative needs time to move (analytics.creative_stage_moves.days_in_test): recent cohorts read low.",
+                "'Held up' = (scale_revenue / scale_spend) / (test_revenue / test_spend): held >= 0.90, softer >= 0.70, fell below; too early before $200 and 3 days in scaling."]),
+    dict(name="repeat_revenue", label="Repeat revenue", domain="cohorts",
+         formula="Modeled: sum over cohorts of first-order revenue x curve[age] in the month at that age (age 0 = the acquisition month has no repeat): max(0, new_customers x first_order_per_customer x curve[age]) (app/projection/cohorts/engine.py repeat_for).",
+         source="analytics.cohorts_monthly.first_order_revenue; analytics.cohorts_curve_cumulative.increment_ratio; analytics.cohorts_curve_goal.value",
+         default_basis="Modeled from the cohort table and the chosen retention curve (Live or Goal; scenario lever cohorts.curve_source in analytics.projection_levers)",
+         other_bases=["Actual returning revenue = analytics.orders_daily.returning_customer_revenue (Upstack, gross)", "Business-wide repeat = Shopify returning revenue + Amazon revenue not from new customers (" + _PACING + ", biz_repeat_rev)",
+                      "Historical months come from the books (analytics.projection_actuals 'pnl.repeat_rev'); the model only projects forward"],
+         traps=["Repeat revenue is a projection driven by the curve choice; always say which curve (Live last N cohorts, Goal snapshot, as-of month).",
+                "The cohort table must hold only CLOSED months: a cell that lands in a month that is not over is blanked.", "Gross of tax and refunds, like all pacing revenue."]),
+    dict(name="retention_curve", label="Retention curve (Live vs Goal)", domain="cohorts",
+         formula="Repeat dollars per $1 of first-order revenue by age (months after acquisition). Live at age a = weighted average (weights new customers) of increment / first_order over the newest N cohorts that have a non-blank, non-zero increment at that age (usable_rank <= N); from age 28 on = previous age x 0.95. Goal = the newest saved snapshot of analytics.cohorts_curve_goal.",
+         source="analytics.cohorts_curve_cumulative.increment_ratio,new_customers,usable_rank; analytics.cohorts_curve_goal.value,age,is_active",
+         default_basis="Live curve over the last 3 cohorts (app/projection/cohorts/engine.py Levers.n_cohorts = 3, tail_decay 0.95, tail_from_age 28)",
+         other_bases=["Live over the last 6 cohorts (the P&L page offers 3 or 6; the deal notes mention 6; scenario lever cohorts.n_cohorts)", "Goal curve (analytics.cohorts_curve_goal, is_active)",
+                      "As-of curve: the Live curve re-derived from what was observable at the end of a past month", "Blend: w x Goal + (1 - w) x Live"],
+         traps=["Say Live or Goal and N: the lifetime sums differ (compare sum(value) of the Goal curve with the Live curve you compute).", "Never include a month that is not over; cohort exports differ by source (Shopify cohort dollars vs Upstack's), so do not mix sources between refreshes.",
+                "Ages beyond 36 are the tail formula, not data."]),
+    dict(name="payback", label="Payback (months)", domain="cohorts",
+         formula="First age (months after the first order, 0 = the first order pays) where cumulative contribution per new customer >= CAC. Inputs (aov, cac, product_cost_pct, fulfillment, max_age, curve) = analytics.projection_levers where module = 'financing' and lever = 'payback' (a json object holding only what the scenario sets; unset keys take the code defaults in app/projection/financing/params.py: product_cost_pct 0.1726, fulfillment 5.53, max_age 36, curve 'live'; aov and cac default to None = not typed). Contribution of the first order cm = AOV x (1 - product cost %) - fulfillment per order; month k adds cm x curve[k]; cumulative = cm + sum cm x curve.",
+         source="analytics.projection_levers.module,lever,value; analytics.cohorts_curve_cumulative.increment_ratio; analytics.cohorts_monthly.cac,payback_months",
+         default_basis="Product margin: cost per order = product cost % x AOV + fulfillment (app/projection/financing/calc.py payback(); the quick hint app/projection/drivers/payback.py is the same arithmetic)",
+         other_bases=["Fully loaded ('all variable costs'): cost per order = loaded_rate x AOV with the P&L's own product, fulfillment, shipping, payment and chargeback rates (fully_loaded=True)",
+                      "Interpolated months (months_interpolated) between the last unpaid and the first paid age", "cohorts_monthly.payback_months: the payback exported with each cohort (a different, historical measure)"],
+         traps=["Payback on product margin is much shorter than fully loaded: always name the basis.", "The curve behind it (Live N cohorts vs Goal) moves the answer by a month at some scales.",
+                "Contribution, not revenue: do not compare cumulative revenue with CAC."]),
+    dict(name="gross_vs_net_revenue", label="Gross vs net revenue (pacing is gross)", domain="orders",
+         formula="Gross = total_revenue (tax included, before refunds). Net = total_revenue - tax - refunds. Plan basis = total_revenue - the plan's sales-tax estimate (+ Amazon).",
+         source="analytics.orders_daily.total_revenue; analytics.orders_daily_detail.total_revenue,tax,refunds",
+         default_basis="Gross: the pacing page, the P&L and every ROAS / MER here are gross; refunds are a memo row only (decision 2026-11-04)",
+         other_bases=["Net of tax and refunds (" + _PACING + ", biz_total_rev_net)", "Plan basis: Shopify total less the sales-tax estimate, plus Amazon: the basis of the P&L revenue goal (biz_total_rev_plan)"],
+         traps=["The monthly plan block and Month Snapshot compare against the P&L goal, which is net of the estimated sales tax (docs/projection/MODULE_pacing.md): comparing gross Shopify revenue with that goal overstates pacing.", "Refunds are not deducted anywhere unless you subtract them (net = gross - tax - refunds): refunds were 11% of DTC revenue in Nov 1-2, so a net-of-refunds basis paced about 101% of goal, not 106% (docs/projection/MODULE_pacing.md, open items)."]),
+    dict(name="sales_tax_deduction", label="Sales-tax deduction (estimate)", domain="projection",
+         formula="Sales tax(m) = 0 for a month whose DTC revenue is loaded from the books (already net of tax), else -(sales_tax_rate x DTC revenue(m)); sales_tax_rate = analytics.projection_levers where module = 'drivers' and lever = 'sales_tax_rate'; no row means the code default 0.07. It reduces total revenue.",
+         source="analytics.projection_levers.module,lever,value; analytics.orders_daily_detail.tax",
+         default_basis="Estimate: 7% of DTC revenue for months not yet closed in the books (app/projection/drivers/revenue.py, drivers/model.py DEFAULT_SALES_TAX)",
+         other_bases=["Actual tax collected (analytics.orders_daily_detail.tax), used by pacing's net view", "Closed books months carry no deduction"],
+         traps=["Open question (docs/projection/SKEPTIC_REPORT.md, SHEET_FINDINGS.md S1): the deduction applies from Jul-26 while history months carry none and the DTC revenue behind it is already net of tax; removing it adds about $535K to FY27 NOI. Settle against the Aug QuickBooks close or set drivers.sales_tax_rate to 0.",
+                "DTC rows of the pacing page stay gross on purpose; only the goal / projection total is net of the estimate."]),
+    dict(name="repeat_share", label="Repeat share of revenue", domain="orders",
+         formula="sum(returning_customer_revenue) / sum(total_revenue).", source="analytics.orders_daily.returning_customer_revenue,total_revenue",
+         default_basis="Actual orders feed, Shopify only (" + _TRENDS + ", repeat_share)", other_bases=["Business-wide: (Shopify returning + Amazon non-new-customer revenue) / (Shopify + Amazon revenue) (" + _PACING + ", biz_repeat_share)"],
+         traps=["Gross of tax and refunds; no Amazon in the Shopify-only ratio."]),
+]
 
 
 # =====================================================================================================================================
@@ -1924,9 +2683,12 @@ INTRO_MD = """\
 
 ## TLDR
 
-Railway Postgres holding Lonvera's marketing data: Meta ads (ad x day since 2026-05-06, campaign x day since 2024-12-31), Google Ads (campaign x day since 2024-03-25),
-Upstack attribution (which orders each ad / campaign gets credit for), the business's actual new-customer revenue per day, and the Creative Tracker with its tags and hooks.
-People and agents read it through the **read-only `analytics` schema** (role `analytics_reader`, SELECT on views only). Everything else is the app's own storage.
+Railway Postgres holding Lonvera's marketing, creative, order, inventory and planning data: Meta ads (ad x day since 2026-05-06, campaign x day since 2024-12-31), Google Ads
+(campaign x day since 2024-03-25), Upstack attribution (which orders each ad / campaign gets credit for), the business's actual new-customer revenue per day, Amazon and site
+traffic, the Creative Tracker with its tags and hooks, the weekly creative priorities and the production board, competitor ads, the Projection module's scenarios, actuals,
+cohorts, purchase orders and stock, and the pacing feeds. People and agents read all of it through the **read-only `analytics` schema** (role `analytics_reader`, SELECT on
+views only); everything else is the app's own storage. **Start with `select * from analytics.catalog`** (every view with its domain, description, grain, first / last day) and
+`analytics.metric_glossary` (the canonical definition, default basis and traps of every headline metric: the Metrics section below).
 
 | You want | Use |
 |---|---|
@@ -1939,7 +2701,20 @@ People and agents read it through the **read-only `analytics` schema** (role `an
 | which cluster / ICP / pain point / hook performs | `analytics.creative_tracker` |
 | reach and frequency (account level only) | `analytics.meta_reach` |
 | Meta before 2026-05-06 (campaign grain, from 2024-12-31) | `analytics.meta_campaign_daily_history` |
-| is the data fresh, what failed | `analytics.data_coverage`, `analytics.etl_runs` |
+| is the data fresh, what failed | `analytics.data_coverage`, `analytics.etl_runs`, `analytics.pipeline_feeds`, `analytics.pipeline_alerts` |
+| which view answers a question; what a metric means and how it goes wrong | `analytics.catalog`, `analytics.metric_glossary` |
+| Meta / Google spend back to 2025-01-01; Meta spend and unique outbound clicks by product; bid caps | `analytics.platform_daily_history`, `analytics.meta_product_daily`, `analytics.meta_product_reach`, `analytics.meta_bids_daily` |
+| last-click credit by source; any-click new customers by stage; orders no ad gets credit for | `analytics.attribution_source_daily`, `analytics.attribution_anyclick_daily`, `analytics.attribution_unmapped_daily` |
+| actual new-customer revenue by product or hour; tax and refunds; Amazon; site traffic | `analytics.orders_by_product_daily`, `analytics.orders_hourly`, `analytics.orders_daily_detail`, `analytics.amazon_daily`, `analytics.site_traffic_daily` |
+| creative family spend / results by basis, test to scale, copy and transcript | `analytics.creative_family_daily`, `analytics.creative_family_metrics`, `analytics.creative_stage_moves`, `analytics.creative_scaling_placements`, `analytics.creative_content` |
+| tags, taxonomy lines, ingredients, hooks | `analytics.ad_tags`, `analytics.taxonomy_lines`, `analytics.line_ingredients`, `analytics.ad_hooks`, `analytics.products` |
+| the weekly priorities list (lines, status, score, hit rate, thresholds) | `analytics.priorities_concepts`, `analytics.priorities_snapshots`, `analytics.priorities_baselines`, `analytics.priorities_thresholds` |
+| who is making which concept for which week | `analytics.production_assignments`, `analytics.production_formats`, `analytics.priorities_manual_concepts` |
+| competitor ads and concepts | `analytics.competitor_ads`, `analytics.competitor_concepts`, `analytics.competitor_brands` |
+| scenarios, levers, P&L inputs and QuickBooks actuals | `analytics.projection_scenarios`, `analytics.projection_levers`, `analytics.projection_series`, `analytics.projection_actuals`, `analytics.projection_pnl_*` |
+| purchase orders, FBA transfers, stock, units shipped, vendor terms | `analytics.inventory_*` |
+| cohorts, retention curves (Live inputs and Goal), repeat revenue inputs | `analytics.cohorts_monthly`, `analytics.cohorts_curve_cumulative`, `analytics.cohorts_curve_goal` |
+| pacing inputs: today so far, Amazon month to date, levers | `analytics.pacing_live_today`, `analytics.pacing_amazon_month_to_date`, `analytics.pacing_levers` |
 
 Refresh: the `etl` service runs daily at 13:00 UTC (06:00 PDT / 05:00 PST) and loads data through **yesterday, Pacific**; the `feeds` service runs at 21:00 UTC (shadow feeds only).
 Money is dollars. Days are calendar days (Meta: each ad account's own day; everything else Pacific).
@@ -1978,6 +2753,13 @@ Money is dollars. Days are calendar days (Meta: each ad account's own day; every
 | `public.ad_hooks`, `public.ad_metrics` | `public.tracker_rows` | `tracker_row_id = id` |
 | `public.family_daily`, `family_content`, `creative_assets` | `public.tracker_rows` | `family_key` (tracker family) |
 | `public.google_daily` | `public.upstack_google_campaigns` | `campaign_key = campaign_id` |
+| `analytics.ad_tags` / `analytics.ad_hooks` / `analytics.creative_family_metrics` | `analytics.creative_tracker` | `tracker_row_id` (or `concept_id`, `family_key`) |
+| `analytics.ad_tags` | `analytics.taxonomy_lines` | `line_id` (or `product_slug` + `line_code`); `analytics.line_ingredients.line_id` the same |
+| `analytics.priorities_concepts` | `analytics.taxonomy_lines` | `product_slug` + `line_code` |
+| `analytics.production_assignments` | `analytics.creative_tracker` | `tracker_concept_ids` (array) contains `concept_id` |
+| `analytics.creative_stage_moves` / `creative_family_daily` | `analytics.creative_tracker` | `family_key` (filter `basis` first: the three bases are separate rows) |
+| `analytics.projection_levers` / `projection_series` | `analytics.projection_scenarios` | `scenario_slug = slug` |
+| `analytics.cohorts_curve_cumulative` | `analytics.cohorts_monthly` | `cohort_month` |
 | `public.upstack_attr_daily` | Meta campaigns / ads | by NAME only (`campaign` = campaign name or raw id, `ad` = ad name); the build maps it into `ad_daily_upstack` |
 
 ## Gaps: what is NOT in the database
@@ -1990,30 +2772,38 @@ Money is dollars. Days are calendar days (Meta: each ad account's own day; every
 * **Upstack attribution for Meta before 2026-05-06** (Upstack has it back to 2025-05-13; this database loaded it from the start of its Meta daily data).
 * **TikTok and Bing spend**: Upstack returns none; no TikTok rows exist.
 * **Customer- or order-level data**: no emails, customer ids, order lines, subscriptions. Orders exist only as daily totals; there is no product or platform split of actual new-customer revenue in `analytics`.
-* **Refund-adjusted revenue, margins, COGS, CAC by cohort, P&L**: finance lives in the projection engine tables (`proj_*`), deliberately outside `analytics`.
-* **Email / SMS (Klaviyo), TikTok Shop and site analytics** are not in the database; Amazon sales and site traffic exist only as projection feeds (`proj_feed_amazon`, `proj_feed_traffic`), not exposed in `analytics`.
-* **Creative files**: image bytes only in `public.creative_assets` (not exposed); the copy Meta actually runs only in `public.family_content` (not exposed).
+* **Projection OUTPUTS** (the computed P&L, cash, financing and inventory-burn results). The model is computed by the app on demand (`/api/projection/...`); the database holds its inputs and actuals
+  (`projection_levers`, `projection_series`, `projection_actuals`, `cohorts_*`, `inventory_*`). A row you cannot find in `analytics.projection_*` is computed, not stored.
+* **Refund-adjusted revenue** except as `orders_daily_detail.refunds`, **margins, COGS beyond the typed unit costs, CAC by cohort beyond `cohorts_monthly.cac`**.
+* **Email / SMS (Klaviyo) and TikTok Shop** are not in the database. Amazon sales are in `analytics.amazon_daily` (a projection feed), site traffic in `analytics.site_traffic_daily`.
+* **Creative files**: image bytes only in `public.creative_assets` (not exposed); the copy Meta actually runs is `analytics.creative_content`.
+* **Who changed what**: every audit trail (projection, supply, upload, launch) names people and is not exposed.
 
-## Excluded from the `analytics` schema (so far), and why
+## Excluded from the `analytics` schema, and why
 
-| Relation | Why it is not in `analytics` | Could be added? |
-|---|---|---|
-| `feed_oauth` | encrypted ExpandFi refresh token (a credential) | never |
-| `schema_migrations` | migration bookkeeping | no |
-| login / session | the app authenticates with environment-held users and signed cookies; there are no auth tables | n/a |
-| `proj_scenarios`, `proj_series`, `proj_scenario_history`, `proj_audit` | Projections scenarios (financing, LOI, seller note live in `proj_scenarios.params`) and their audit trail | no: finance |
-| `proj_actuals`, `proj_pnl_*`, `proj_upload_history` | QuickBooks actuals, P&L drivers, COGS, vendor retainers | no: finance |
-| `proj_po`, `proj_fba_transfer`, `proj_vendor_*`, `proj_product_cost`, `proj_reorder_param`, `proj_stock_snapshot`, `proj_supply_history` | purchase orders, vendor terms and unit costs, stock | no: finance / supply costs |
-| `proj_cohorts`, `proj_cohort_cum`, `proj_cohort_uploads`, `proj_curve_goal` | cohort revenue, CAC, payback, goal retention curve | Josh's call (cohort curves are marketing-adjacent but feed the finance model) |
-| `proj_feed_orders`, `proj_feed_amazon`, `proj_feed_attribution`, `proj_feed_traffic`, `proj_feed_nc_product`, `proj_feed_anyclick`, `proj_feed_bids`, `proj_feed_meta_product`, `proj_feed_product_reach`, `proj_feed_platform`, `proj_units_*` | projection pacing feeds (sheet-fed today, shadow-fed by the `feeds` service); overlap with what `analytics` already exposes or sit in the middle of a cutover | Josh's call: `proj_feed_nc_product` (actual new-customer revenue by product) and `proj_feed_product_reach` are the most useful candidates |
-| `proj_feedx_*`, `proj_feed_config / runs / attempts / verify* / levers`, `proj_refresh_runs`, `proj_pacing_*`, `proj_meta_spend_monthly` | shadow tables and feed plumbing | no |
-| `creative_assets`, `family_content` | image bytes and the copy Meta runs | Josh's call |
-| `ad_tags`, `ad_hooks`, `ad_metrics`, `tracker_rows`, `taxonomy_lines`, `line_ingredients`, `products` | the current tags, hooks, metrics and product of every tracker row are in `analytics.creative_tracker` | the raw tables are not needed |
-| `ad_daily`, `ad_daily_upstack`, `meta_ads`, `meta_campaigns`, `meta_ad_lifetime`, `meta_family_map`, `google_daily`, `upstack_*`, `family_daily*`, `unmatched_meta*`, `ad_metrics_upstack_*` | raw and derived sources of the analytics views; the views are the supported surface | no |
-| `etl_runs`, `app_meta` | `etl_runs` is exposed as a view; `app_meta` holds internal keys | no |
+| Relation | Why it is not in `analytics` |
+|---|---|
+| `feed_oauth` | encrypted ExpandFi refresh token (a credential); never |
+| `api_keys` | key hashes of the scoped API keys; never |
+| `creative_priorities_vendor_links`, `creative_priorities_views` | vendor link tokens and saved-view tokens (plus a payload); never |
+| `schema_migrations`, `app_meta` | migration bookkeeping and internal keys |
+| login / session | the app authenticates with environment-held users (`APP_USERS`) and signed cookies; there are no auth tables to expose |
+| `proj_audit`, `proj_scenario_history`, `proj_supply_history`, `proj_upload_history`, `proj_cohort_uploads`, `proj_units_loads`, `creative_launch_audit` | audit and upload trails that name people (actor, undone_by, saved_by): not exposed. The same person columns (`created_by`, `updated_by`, `requested_by`, `saved_by`, `changed_by`, `updated_by` on the levers) are left out of the views that read otherwise safe tables |
+| `creative_launch_*` (settings, pages, vendor prefixes, drafts, jobs, ads, adsets) | the dark Meta-write path: Page and account ids, plans and jobs |
+| `creative_assets` | image bytes |
+| `proj_feedx_*` | shadow twins of the feeds, only there to be compared with `proj_feed_*` (read those through the views) |
+| `proj_scenarios.params`, `creative_priorities_snapshots.rows / thresholds / baselines / stats`, `ad_tags.extra`, `proj_amazon_mtd_snapshots.projected_days`, `proj_po.link` | raw JSON blobs or free links: the scenario levers and the snapshot rows are exposed flattened (`projection_levers`, `priorities_*`), the rest is left out |
+| `proj_pacing_setting`, `competitor_concept_class`, `competitor_brands.last_error` | internal rules and error text; the classification itself is in `competitor_concepts` |
+| `tracker_rows`, `ad_daily*`, `meta_*`, `upstack_*` (other than unmapped), `google_daily`, `family_daily*`, `ad_metrics*`, `unmatched_meta*`, `creative_stage_moves*` | raw sources of the views; the views are the supported surface |
 
 The `analytics.etl_runs` view exposes `stats` (job counters) and the first 500 characters of `error` (scrubbed of tokens).
 `analytics.creative_tracker.asset_url` is a Google Drive link; opening it is governed by Drive permissions, not by this database.
+"""
+
+METRICS_INTRO_MD = """\
+The canonical definition of every headline metric, taken from the code (the file is named in `Source` or in a trap). Also `analytics.metric_glossary` (SQL) and the `metrics` key of `docs/schema.json`
+(a list of `{name, label, formula, source, default_basis, other_bases, traps, domain}`). `source` is `analytics.<view>.<column(s)>`: columns of one view are comma-joined, views are separated by `; `.
+Read the default basis before quoting a number and name the basis in the answer.
 """
 
 TABLE_REFERENCE_INTRO_MD = """\
@@ -2025,7 +2815,8 @@ One section per relation, grouped as in the table below. Column types, nullabili
 
 
 ANALYTICS_SCHEMA_COMMENT = (
-    "Read-only views over Lonvera's marketing data (Meta, Google, Upstack attribution, actual orders, creative tracker). Start with data_coverage (what is loaded through which day) and read "
+    "Read-only views over Lonvera's data: marketing (Meta, Google), attribution, orders, creative, tags, priorities, production, projection, inventory, cohorts, pacing, competitors and pipeline. "
+    "Start with catalog (every view with its domain, description, grain, first / last day), metric_glossary (the canonical metric definitions) and data_coverage (what is loaded through which day); read "
     "docs/AGENT_DATA_GUIDE.md. Rules: (1) name the basis: meta_* = Meta-reported, upstack_new_customer* = Upstack first orders (NC), upstack_order* = all Upstack-credited orders; "
     "(2) spend adds across Meta and Google, purchases and revenue never do; Total NC ROAS = orders_daily.new_customer_revenue / total spend of the same days; "
     "(3) the last loaded day is yesterday Pacific and the last 3-7 days still move; (4) upstack_* is NULL, not 0, on days Upstack was not pulled; "

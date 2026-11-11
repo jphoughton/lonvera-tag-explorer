@@ -169,6 +169,7 @@ def test_reader_can_select_every_analytics_view_and_every_documented_example(clu
     with connect_reader(read_url(outfile)) as c:
         views = [r[0] for r in c.execute("SELECT table_name FROM information_schema.views WHERE table_schema = 'analytics' ORDER BY 1").fetchall()]
         assert len(views) >= 12
+        assert {v for v in D.REL if v.startswith("analytics.")} == {f"analytics.{v}" for v in views}      # every documented analytics view exists and is readable, none is missing
         for v in views:
             c.execute(f"SELECT count(*) FROM analytics.{v}").fetchone()
         assert c.execute("SELECT count(*) FROM meta_ad_daily").fetchone()[0] > 0                    # search_path = analytics
@@ -188,7 +189,13 @@ def test_reader_can_select_every_analytics_view_and_every_documented_example(clu
 
 FORBIDDEN_READS = ["SELECT * FROM public.feed_oauth", "SELECT * FROM public.ad_daily", "SELECT * FROM public.tracker_rows", "SELECT * FROM public.proj_scenarios",
                    "SELECT * FROM public.proj_po", "SELECT * FROM public.proj_actuals", "SELECT * FROM public.upstack_orders_daily", "SELECT * FROM public.etl_runs",
-                   "SELECT * FROM public.creative_assets", "SELECT rolpassword FROM pg_authid", "SELECT * FROM pg_shadow"]
+                   "SELECT * FROM public.creative_assets", "SELECT rolpassword FROM pg_authid", "SELECT * FROM pg_shadow",
+                   # migration 210: the tables behind the new views and the ones it deliberately leaves out
+                   "SELECT * FROM public.api_keys", "SELECT * FROM public.creative_priorities_views", "SELECT * FROM public.creative_priorities_vendor_links",
+                   "SELECT * FROM public.creative_priorities_snapshots", "SELECT * FROM public.creative_priorities_assignments", "SELECT * FROM public.proj_audit",
+                   "SELECT * FROM public.proj_scenario_history", "SELECT * FROM public.proj_cohorts", "SELECT * FROM public.proj_feed_orders", "SELECT * FROM public.competitor_ads",
+                   "SELECT * FROM public.creative_launch_jobs", "SELECT * FROM public.creative_launch_settings", "SELECT * FROM public.creative_launch_audit",
+                   "SELECT * FROM public.proj_feedx_orders", "SELECT * FROM public.alert_state", "SELECT * FROM public.app_meta"]
 FORBIDDEN_WRITES = [
     "INSERT INTO analytics.orders_daily (day) VALUES ('2026-01-01')", "UPDATE analytics.etl_runs SET status = 'ok'", "DELETE FROM analytics.etl_runs",
     "TRUNCATE analytics.etl_runs", "CREATE TABLE analytics.zz (a int)", "CREATE TABLE public.zz (a int)", "CREATE VIEW analytics.zz AS SELECT 1",
