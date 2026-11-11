@@ -294,15 +294,15 @@ button.pri-ptile:hover { background: var(--lv-hover, #f3ede1); }
 .pri-st-bad { color: #b42318; }
 .pri-st-flat { color: #667085; }
 .pri-st-new { color: #7a3db8; }
-@media (min-width: 761px) and (max-width: 1320px) {                /* between phone and wide desktop the table must still fit: smaller minimums, smaller padding, long text wraps */
+@media (min-width: 761px) {                /* the page is capped at 1280px, so from tablet width up the table uses fixed columns that always fit: smaller minimums, smaller padding, long text wraps */
   .pri-main { table-layout: fixed; }
   .pri-main .pri-c-section, .pri-main .pri-c-cluster, .pri-main .pri-c-icp, .pri-main .pri-c-pain, .pri-main .pri-c-story { min-width: 0; }
   .pri-main .pri-c { padding: 6px 5px; font-size: 12px; overflow-wrap: anywhere; }
   .pri-main .pri-c-product { white-space: normal; }
   .pri-main th { padding: 6px 5px; }
   .pri-main .pri-c-tog, .pri-main .pri-th-tog { width: 52px; }
-  .pri-main .pri-c-product { width: 7%; } .pri-main .pri-c-section { width: 10%; } .pri-main .pri-c-status { width: 9%; } .pri-main .pri-c-concepts { width: 7%; } .pri-main .pri-c-key { width: 15%; }
-  .pri-main .pri-c-cluster, .pri-main .pri-c-icp, .pri-main .pri-c-pain { width: 11%; } .pri-main .pri-c-story { width: 17%; }
+  .pri-main .pri-c-product, .pri-main .pri-th-product { width: 7%; } .pri-main .pri-c-section, .pri-main .pri-th-section { width: 10%; } .pri-main .pri-c-status, .pri-main .pri-th-status { width: 9%; } .pri-main .pri-c-concepts, .pri-main .pri-th-concepts { width: 7%; } .pri-main .pri-c-key, .pri-main .pri-th-key { width: 15%; }
+  .pri-main .pri-c-cluster, .pri-main .pri-th-cluster { width: 11%; } .pri-main .pri-c-icp, .pri-main .pri-th-icp { width: 11%; } .pri-main .pri-c-pain, .pri-main .pri-th-pain { width: 11%; } .pri-main .pri-c-story, .pri-main .pri-th-story { width: 17%; }
   .pri-main .pri-detail > td { padding-left: 14px; }
   .pri-main .pri-c-brief { min-width: 0; width: 11%; } .pri-main .pri-brief { white-space: normal; text-align: left; }
 }
@@ -476,9 +476,11 @@ button.pri-stat:hover { background: color-mix(in srgb, var(--tone) 14%, #fff); }
 .pri-r14-down { color: var(--lv-pri-bad); background: var(--lv-pri-bad-bg); }
 .pri-r14-flat { color: var(--lv-ink, #1c1915); background: #eee8dc; }
 .pri-c-spend14, .pri-c-roas14 { white-space: nowrap; font-variant-numeric: tabular-nums; }
-@media (min-width: 761px) and (max-width: 1320px) {
-  .pri-main .pri-c-product { width: 6%; } .pri-main .pri-c-concepts { width: 6%; } .pri-main .pri-c-key { width: 11%; }
-  .pri-main .pri-c-cluster, .pri-main .pri-c-icp, .pri-main .pri-c-pain { width: 10%; } .pri-main .pri-c-story { width: 12%; } .pri-main .pri-c-spend14, .pri-main .pri-c-roas14 { width: 7%; white-space: normal; }
+@media (min-width: 761px) {
+  .pri-main .pri-c-spend14, .pri-main .pri-c-roas14 { white-space: normal; }
+  .pri-main th .pri-sort { max-width: 100%; white-space: normal; text-align: left; overflow-wrap: anywhere; }
+  .pri-main .pri-c-product, .pri-main .pri-th-product { width: 6%; } .pri-main .pri-c-section, .pri-main .pri-th-section { width: 8%; } .pri-main .pri-c-status, .pri-main .pri-th-status { width: 8%; } .pri-main .pri-c-concepts, .pri-main .pri-th-concepts { width: 6%; } .pri-main .pri-c-key, .pri-main .pri-th-key { width: 10%; } .pri-main .pri-c-prod, .pri-main .pri-th-prod { width: 6%; }
+  .pri-main .pri-c-cluster, .pri-main .pri-th-cluster { width: 8%; } .pri-main .pri-c-icp, .pri-main .pri-th-icp { width: 8%; } .pri-main .pri-c-pain, .pri-main .pri-th-pain { width: 9%; } .pri-main .pri-c-story, .pri-main .pri-th-story { width: 13%; } .pri-main .pri-c-spend14, .pri-main .pri-th-spend14 { width: 6%; } .pri-main .pri-c-roas14, .pri-main .pri-th-roas14 { width: 6%; }
 }
 @media (max-width: 760px) { .pri-r14 { display: inline-block; } }
 /* filter chips: off = white with a colour dot and a coloured border, on = solid colour with white text; nothing narrowed = every chip off (neutral) */
@@ -547,3 +549,69 @@ button.pri-stat:hover { background: color-mix(in srgb, var(--tone) 14%, #fff); }
 /* status tiles: neutral white until selected, then filled in the status colour */
 button.pri-stat:hover { background: color-mix(in srgb, var(--tone) 10%, #fff); }
 .pri-stat[aria-pressed="true"] { background: var(--tone); color: #fff; }
+
+/* ---- priorities: calmer first view (header slot, product results and help closed, one filter row, More filters) ---- */
+.pri-top .pagehead { margin-bottom: 10px; }
+.pri-top .pagehead-actions.pri-headctl { align-items: flex-end; margin-left: auto; }
+.pri-top .pagehead-actions .ctl { flex-direction: column; align-items: stretch; gap: 3px; }
+.pri-top .pagehead-actions .ctl select { font: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid var(--lv-line-strong, #8c8375); border-radius: 6px; background: #fff; color: var(--lv-ink, #1c1915); max-width: 100%; }
+.pri-top .pagehead-actions .pri-viewbar { align-items: flex-end; }
+.pri-top .pagehead-actions .pri-viewbar .ctl { flex-direction: column; }
+.pri-top .pagehead-actions .pri-viewbar .btn { margin-bottom: 0; }
+.pri-dash { gap: 8px; margin: 0 0 10px; }
+.pri-results, .pri-helpbox { border: 1px solid var(--lv-pri-card-line); border-radius: 8px; background: var(--lv-pri-card); box-shadow: var(--lv-pri-card-shadow); font-size: 13px; }
+.pri-results > summary, .pri-helpbox > summary { cursor: pointer; padding: 8px 12px; list-style: none; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; font-weight: 700; }
+.pri-results > summary::-webkit-details-marker, .pri-helpbox > summary::-webkit-details-marker { display: none; }
+.pri-results > summary::after, .pri-helpbox > summary::after { content: '+'; margin-left: auto; color: var(--lv-muted, #665d53); font-weight: 400; }
+.pri-results[open] > summary::after, .pri-helpbox[open] > summary::after { content: '\2212'; }
+.pri-results > summary:focus-visible, .pri-helpbox > summary:focus-visible { outline: 2px solid var(--lv-focus, #c75123); outline-offset: 2px; }
+.pri-results-s { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; font-weight: 600; color: var(--lv-ink-2, #3d372f); }
+.pri-rs { display: inline-flex; align-items: center; gap: 5px; --pc: var(--lv-pri-prod-vb); }
+.pri-rs[data-prod="beef-liver"] { --pc: var(--lv-pri-prod-bl); }
+.pri-rs[data-prod="boneflex"] { --pc: var(--lv-pri-prod-bf); }
+.pri-results-s .pri-k { font-weight: 400; }
+.pri-results > .pri-ptiles { padding: 4px 12px 12px; }
+.pri-helpbox-b { display: grid; gap: 10px; padding: 0 12px 12px; }
+/* tiles: tighter */
+.pri-ptile { padding: 10px 12px 12px; gap: 8px; }
+.pri-pblock .pri-pbn { display: block; margin: 0 0 4px; }
+.pri-pstat strong { font-size: 16px; }
+/* one filter row */
+.pri-fbar { gap: 6px; padding: 8px 12px; }
+.pri-fbar .ctl-row { gap: 8px 16px; align-items: flex-end; }
+.pri-fbar .pri-ctlg { flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+.pri-fbar .ctl-name { font-size: 10.5px; font-weight: 700; letter-spacing: .07em; color: var(--lv-pri-label); }
+.pri-fbar .ctl.pri-search { flex-direction: column; align-items: stretch; gap: 3px; flex: 1 1 220px; min-width: 160px; }
+.pri-fbar .ctl.pri-search input { width: 100%; box-sizing: border-box; }
+.pri-fbar .pri-fgroup { display: flex; flex-wrap: wrap; gap: 6px; }
+.pri-fbar .pri-actions { margin: 0; margin-left: auto; }
+.pri-morebtn { align-self: flex-end; }
+.pri-moref { display: grid; gap: 8px; padding-top: 8px; border-top: 1px dashed var(--lv-pri-card-line); }
+.pri-moref[hidden] { display: none; }
+@media (max-width: 760px) {
+  .pri-top .pagehead-actions.pri-headctl { width: 100%; margin-left: 0; }
+  .pri-top .pagehead-actions .pri-viewbar, .pri-top .pagehead-actions .ctl { width: 100%; }
+  .pri-top .pagehead-actions .ctl select { width: 100%; }
+  .pri-fbar .pri-actions { margin-left: 0; width: 100%; }
+  .pri-fbar .ctl.pri-search { flex-basis: 100%; }
+  .pri-results > summary { padding: 8px 10px; }
+}
+.pri-top .pagehead .titleline { align-items: flex-end; }
+.pri-top .note-line { max-width: none; }
+@media (min-width: 1100px) {
+  .pri-main .pri-c-spend14, .pri-main .pri-c-roas14 { white-space: nowrap; }
+  .pri-main .pri-c-product, .pri-main .pri-th-product { width: 5%; } .pri-main .pri-c-section, .pri-main .pri-th-section { width: 8%; } .pri-main .pri-c-status, .pri-main .pri-th-status { width: 8%; } .pri-main .pri-c-concepts, .pri-main .pri-th-concepts { width: 6%; } .pri-main .pri-c-key, .pri-main .pri-th-key { width: 11%; } .pri-main .pri-c-prod, .pri-main .pri-th-prod { width: 7%; }
+  .pri-main .pri-c-cluster, .pri-main .pri-th-cluster { width: 8%; } .pri-main .pri-c-icp, .pri-main .pri-th-icp { width: 8%; } .pri-main .pri-c-pain, .pri-main .pri-th-pain { width: 9%; } .pri-main .pri-c-story, .pri-main .pri-th-story { width: 16%; } .pri-main .pri-c-spend14, .pri-main .pri-th-spend14 { width: 6%; } .pri-main .pri-c-roas14, .pri-main .pri-th-roas14 { width: 6%; }
+}
+
+/* a view adds the Briefed column: give it its share by narrowing the text columns */
+@media (min-width: 761px) {
+  .pri-main .pri-c-brief, .pri-main .pri-th-briefed { width: 9%; }
+  .pri-main:has(.pri-th-briefed) .pri-th-story, .pri-main:has(.pri-th-briefed) .pri-c-story { width: 8%; }
+  .pri-main:has(.pri-th-briefed) .pri-th-key, .pri-main:has(.pri-th-briefed) .pri-c-key { width: 8%; }
+}
+@media (min-width: 1100px) {
+  .pri-main:has(.pri-th-briefed) .pri-th-story, .pri-main:has(.pri-th-briefed) .pri-c-story { width: 11%; }
+  .pri-main:has(.pri-th-briefed) .pri-th-key, .pri-main:has(.pri-th-briefed) .pri-c-key { width: 9%; }
+  .pri-main:has(.pri-th-briefed) .pri-th-cluster, .pri-main:has(.pri-th-briefed) .pri-c-cluster, .pri-main:has(.pri-th-briefed) .pri-th-icp, .pri-main:has(.pri-th-briefed) .pri-c-icp { width: 7%; }
+}
