@@ -295,18 +295,20 @@ def test_mobile_390_no_page_overflow_table_scrolls_inside(mobile_page):
     assert p.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
 
 
-# ---------------------------------------------------------------- one bar (Lonvera | Marketing metrics | Projections | module tabs | scenario control)
+# ---------------------------------------------------------------- the shared top row (Lonvera | sections | tag search) and this section's own row (module tabs | scenario control)
 def test_single_bar_structure(page):
     open_module(page, "drivers")
-    bar = page.locator("#topbar .topbar-in")
     assert page.locator("#topbar .brand").inner_text() == "Lonvera"
-    assert page.locator("#topbar a.navlink").all_inner_texts() == ["Marketing metrics", "Projections"]
-    # tabs and the scenario control live inside the same bar, in that order
-    assert bar.locator("#pg-nav").count() == 1 and bar.locator("#pg-bar").count() == 1
-    order = page.evaluate("[...document.querySelectorAll('#topbar .topbar-in > *')].map(e => e.id || e.className.split(' ')[0])")
-    assert order[:3] == ["brand", "navlink", "navlink"] and order.index("pg-nav") < order.index("pg-bar")
+    assert page.locator("#topbar a.navgroup").all_inner_texts() == ["Performance", "Creative", "Plan"]       # the same sections as every other page (js/nav.js)
+    expect(page.locator("#topbar a.navgroup.on")).to_have_text("Plan")
+    assert page.locator("#topbar form.navsearch input[name=q]").count() == 1                                  # tag lookup search lives in the top row everywhere
+    # tabs and the scenario control live in the second row, in that order
+    row = page.locator("#pg-subrow")
+    assert row.locator("#pg-nav").count() == 1 and row.locator("#pg-bar").count() == 1
+    order = page.evaluate("[...document.querySelectorAll('#pg-subrow > *')].map(e => e.id)")
+    assert order.index("pg-nav") < order.index("pg-bar")
     assert page.locator(".pg-ghead").count() == 0                                  # group labels are gone from the bar
-    assert page.locator("#pg-chrome").evaluate("e => e.getBoundingClientRect().height") <= 48
+    assert page.locator("#pg-chrome").evaluate("e => e.getBoundingClientRect().height") <= 84       # two rows: 42 + 38 plus borders
     assert page.locator("#topbar").evaluate("e => getComputedStyle(e).position") in ("static", "sticky")
     assert page.locator("#pg-chrome").evaluate("e => getComputedStyle(e).position") == "sticky"
     expect(page.locator("a.pg-tab[aria-current=page]")).to_have_text("Drivers")
@@ -341,7 +343,7 @@ def test_scenario_menu_keyboard_and_copy_cue(page):
 
 
 @pytest.mark.parametrize("width", [1440, 1024, 768, 390])
-def test_bar_is_one_row_at_every_width(browser, base_url, width):
+def test_each_header_row_is_one_line_at_every_width(browser, base_url, width):
     ctx = browser.new_context(viewport={"width": width, "height": 800}, base_url=base_url, is_mobile=width < 500, has_touch=width < 500)
     p = ctx.new_page()
     try:
@@ -349,7 +351,7 @@ def test_bar_is_one_row_at_every_width(browser, base_url, width):
         p.wait_for_selector(".pg-grid .pg-table")
         assert p.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
         h = p.locator("#pg-chrome").evaluate("e => e.getBoundingClientRect().height")
-        assert h <= 48, f"bar is {h}px tall at {width}px"
+        assert h <= 84, f"header is {h}px tall at {width}px"      # two rows: the shared top row (42) and the section row (38), each one line
         # the scenario control stays reachable and inside the viewport
         box = p.locator("#pg-menu-btn").bounding_box()
         assert box and box["x"] + box["width"] <= width and box["y"] >= 0

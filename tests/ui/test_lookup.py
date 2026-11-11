@@ -38,7 +38,7 @@ def qparam(page):
 
 def test_nav_link_opens_an_empty_search_with_label_example_and_no_range_bar(page):
     page.goto("/trends")
-    page.locator("[data-testid=nav-lookup]").click()
+    page.locator("[data-testid=nav-lookup-go]").click()                                                  # the top-bar tag search (empty submit opens the page)
     page.wait_for_selector("[data-testid=tl-page]")
     idle(page)
     assert page.url.endswith("/lookup")

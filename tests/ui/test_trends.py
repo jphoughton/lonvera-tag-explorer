@@ -58,6 +58,7 @@ def col(page, key):
 
 def test_nav_link_and_default_week_view(page):
     page.goto("/promotions")
+    page.locator("[data-testid=nav-section-performance]").click()                                   # Trends is a tab of the Performance section
     page.wait_for_selector("[data-testid=nav-trends]")
     page.locator("[data-testid=nav-trends]").click()
     page.wait_for_selector("[data-testid=trn-page]")

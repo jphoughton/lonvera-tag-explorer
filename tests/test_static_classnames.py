@@ -15,6 +15,7 @@ BLOCKED = re.compile(r"^(ads?|ad-.*|ads-.*|adname|advert.*|sponsor.*)$")
 
 def _files():
     yield STATIC / "app.css"
+    yield from sorted((STATIC / "css").glob("*.css"))          # app.css is the manifest; the rules live in css/
     for p in sorted((STATIC / "js").rglob("*.js")):
         if "projection" not in p.relative_to(STATIC / "js").parts:
             yield p

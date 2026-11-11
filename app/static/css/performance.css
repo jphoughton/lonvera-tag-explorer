@@ -1,0 +1,15 @@
+/* performance: Overview, Meta, Google, Campaigns: totals strip, KPI tiles */
+/* ---------- Marketing metrics, All views: totals strip (Total spend, Total NC revenue, Total NC ROAS) ---------- */
+.kpis { margin: 8px 0 4px; }
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px 9px; min-width: 0; }
+.kpi-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.kpi-value { font-size: 26px; font-weight: 650; line-height: 1.15; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.kpi[data-testid="kpi-nc-roas"] .kpi-value { color: #111827; }
+.kpi-sub, .kpi-attr, .kpi-partial, .kpi-cmp { margin-top: 3px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.kpi-sub { white-space: pre-wrap; }
+.kpi-attr { color: var(--text); }
+.kpi-note { margin-top: 5px; }
+.kpi-loading { padding: 8px 2px; }
+@media (max-width: 480px) { .kpi-value { font-size: 23px; } }
+

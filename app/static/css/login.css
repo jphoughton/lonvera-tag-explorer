@@ -1,0 +1,7 @@
+/* login: sign-in page */
+/* ---------- login ---------- */
+.login-wrap { display: flex; justify-content: center; padding-top: 12vh; }
+.login-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 22px 24px; width: 320px; display: flex; flex-direction: column; gap: 8px; }
+.login-card input { padding: 7px 9px; font-size: 14px; }
+.login-card .btn { padding: 7px 10px; margin-top: 4px; }
+body.no-controls { }

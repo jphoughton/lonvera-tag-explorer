@@ -1,0 +1,50 @@
+/* tokens: ONE documented token layer; see docs/UI_SYSTEM.md.
+   Three groups, all on :root:
+   1. Colour and type names the app CSS reads (--bg --panel --line --text --muted --accent --good --warn --bad --testing --scaling --unc --font --mono). Their values come from the
+      brand tokens (--lv-*) in projection/brand.css, which is linked after app.css and maps these names onto the brand palette (light and dark). The values below are the
+      fallbacks if brand.css is missing; they never show in the app.
+   2. Layout tokens for the shell (--topbar-h --subnav-h; --header-h is their sum, set on body): the sticky header is two rows, and anything that sticks under it (filter bar, tables heads) uses --header-h.
+   3. Page-scoped tokens live with their page (priorities: --lv-pri-* at the top of priorities.css). Do not add page tokens here. */
+:root {
+  --bg: #f4f5f7;
+  --panel: #fff;
+  --line: #d6dae1;
+  --line-soft: #e8ebf0;
+  --head-bg: #eef0f4;
+  --text: #1b2027;
+  --muted: #5b6676;
+  --accent: #1a5fb4;
+  --accent-bg: #e7effb;
+  --good: #14693b; --good-bg: #dff3e8;
+  --warn: #7f5200; --warn-bg: #fff0cc;
+  --bad: #a02323; --bad-bg: #fde6e6;
+  --testing: #0b7a75; --testing-bg: #dff4f2;
+  --scaling: #4b3fc4; --scaling-bg: #e9e7fb;
+  --unc: #5b6676; --unc-bg: #eceff3;
+  /* layout */
+  --topbar-h: 42px;                                   /* top row: Lonvera, sections, tag search, account */
+  --subnav-h: 34px;                                   /* second row: the pages of the active section (0 on the sign-in page) */
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 var(--font); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+a.plain, a.rowlink { color: inherit; }
+h1 { font-size: 20px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+h2 { font-size: 14px; margin: 0; font-weight: 650; }
+h3 { font-size: 13px; margin: 0; font-weight: 650; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.ital { font-style: italic; }
+.err { color: var(--bad); }
+.spacer { flex: 1 1 auto; }
+.center { text-align: center; }
+[hidden] { display: none !important; }
+
+/* --header-h = the whole sticky header (both rows), the offset for anything that sticks under it. Set on body so the sign-in page (no-nav) can drop the second row. */
+body { --header-h: calc(var(--topbar-h) + var(--subnav-h)); }
+body.no-nav { --subnav-h: 0px; }
+@media (max-width: 760px) { body { --header-h: var(--topbar-h); } }   /* phones: the header scrolls away (position: static); sticky offsets keep the one-row value they always had */

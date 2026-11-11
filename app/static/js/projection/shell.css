@@ -15,7 +15,7 @@
 
 /* ---------- chrome: ONE sticky bar, the same bar as the Tags pages ----------
    Lonvera | Tags | Projections, then the module tabs, then the scenario control at the right end. 42px tall like the Tags bar. */
-.pg-body { --topbar-h: 42px; background: var(--lv-bg); color: var(--lv-ink); }
+.pg-body { --topbar-h: 42px; --subnav-h: 38px; --header-h: calc(var(--topbar-h) + var(--subnav-h)); background: var(--lv-bg); color: var(--lv-ink); }
 .pg-chrome { position: sticky; top: 0; z-index: 50; background: var(--lv-surface); border-bottom: 1px solid var(--lv-line); }
 body[data-pg-scenario="copy"] .pg-chrome { border-bottom-color: var(--lv-amber); box-shadow: 0 2px 0 var(--lv-amber); }
 .pg-chrome #topbar { position: static; height: var(--topbar-h); background: transparent; border: 0; z-index: auto; }
@@ -25,11 +25,12 @@ body[data-pg-scenario="copy"] .pg-chrome { border-bottom-color: var(--lv-amber);
 .pg-chrome .topbar-in > a { align-self: stretch; display: flex; align-items: center; padding: 0 6px; margin: 0 -6px; }   /* full-height, 40px-wide tap areas; the look and spacing are unchanged */
 .pg-chrome .navlink { flex: 0 0 auto; color: var(--lv-muted); font-size: var(--lv-fs-base); font-weight: var(--lv-fw-medium); }
 .pg-chrome .navlink:hover { color: var(--lv-ink); text-decoration: none; }
-.pg-chrome .pg-brandnow { color: var(--lv-ink); font-weight: var(--lv-fw-bold); }
+.pg-chrome .navgroup.on { color: var(--lv-ink); font-weight: var(--lv-fw-bold); }
 .lv-mark { display: inline-block; width: 26px; height: 18px; vertical-align: -3px; background: currentColor; -webkit-mask: url("/static/projection/assets/lonvera-mark-black.svg") center / contain no-repeat; mask: url("/static/projection/assets/lonvera-mark-black.svg") center / contain no-repeat; }
 
 /* module tabs, inline. Groups are thin dividers; unbuilt pages are quieter with a "soon" tag. */
-.pg-nav { flex: 1 1 auto; min-width: 0; align-self: stretch; display: flex; align-items: stretch; gap: 2px; margin-left: 2px; padding-left: 14px; border-left: 1px solid var(--lv-line); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.pg-subrow { display: flex; align-items: center; gap: 14px; height: var(--subnav-h); padding: 0 16px; min-width: 0; border-top: 1px solid var(--lv-line-soft); }
+.pg-nav { flex: 1 1 auto; min-width: 0; align-self: stretch; display: flex; align-items: stretch; gap: 2px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .pg-nav::-webkit-scrollbar { display: none; }
 .pg-nav { -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent); mask-image: linear-gradient(to right, black calc(100% - 28px), transparent); }
 .pg-ngroup { display: flex; align-items: stretch; flex: 0 0 auto; }
@@ -217,17 +218,20 @@ a.pg-mcard:hover { text-decoration: none; box-shadow: var(--lv-shadow-2); border
   .pg-headline > * { flex: 0 0 auto; }
 }
 @media (max-width: 900px) {
-  .pg-chrome .topbar-in > a.pg-brandnow { display: none; }      /* the Projections menu button takes its place */
   .pg-nav { display: none; }
   .pg-navmenu { display: block; }
   .pg-chrome .topbar-in { gap: 10px; padding: 0 12px; }
+  .pg-subrow { padding: 0 12px; }
   .pg-navmenu .pg-navbtn { border-color: var(--lv-line-strong); }
 }
 @media (max-width: 640px) {
+  .pg-chrome .navsearch { margin-left: 0; flex: 1 1 60px; }
+  .pg-chrome .navsearch .btn { display: none; }      /* Enter submits */
   .pg-ver { display: none; }
   .pg-chrome .pg-bar select { min-width: 0; max-width: 118px; height: 32px; }
   .pg-chrome .pg-menu > .btn { height: 32px; }
   .pg-chrome .topbar-in { gap: 8px; padding: 0 10px; }
+  .pg-subrow { padding: 0 10px; gap: 8px; }
   .pg-headline { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: var(--lv-sp-2) var(--lv-sp-3); gap: var(--lv-sp-5); }
   .pg-headline > * { flex: 0 0 auto; }
   .pg-headline .pg-kpi .v { font-size: var(--lv-fs-md); }
@@ -260,7 +264,7 @@ a.pg-mcard:hover { text-decoration: none; box-shadow: var(--lv-shadow-2); border
 }
 
 /* ---------- plan-of-record choice (first edit of a tab session), and the quick restore in History ---------- */
-.pg-por-ask { position: fixed; top: calc(var(--topbar-h) + 14px); left: 50%; transform: translateX(-50%); z-index: 90; width: min(560px, calc(100vw - 24px)); padding: var(--lv-sp-4) var(--lv-sp-5); background: var(--lv-surface); color: var(--lv-ink); border: 1px solid var(--lv-line-strong); border-left: 4px solid var(--lv-action); border-radius: var(--lv-r-md); box-shadow: var(--lv-shadow-3); }
+.pg-por-ask { position: fixed; top: calc(var(--header-h) + 14px); left: 50%; transform: translateX(-50%); z-index: 90; width: min(560px, calc(100vw - 24px)); padding: var(--lv-sp-4) var(--lv-sp-5); background: var(--lv-surface); color: var(--lv-ink); border: 1px solid var(--lv-line-strong); border-left: 4px solid var(--lv-action); border-radius: var(--lv-r-md); box-shadow: var(--lv-shadow-3); }
 .pg-por-ask h2 { font-size: var(--lv-fs-lg); font-weight: var(--lv-fw-heavy); letter-spacing: -0.01em; margin: 0 0 4px; }
 .pg-por-ask p { margin: 0 0 var(--lv-sp-3); color: var(--lv-muted); }
 .pg-por-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lv-sp-2); }
@@ -268,7 +272,7 @@ a.pg-mcard:hover { text-decoration: none; box-shadow: var(--lv-shadow-2); border
 .pg-body .pg-por-cancel:hover:not(:disabled) { background: var(--lv-hover); color: var(--lv-ink); border-color: transparent; }
 .pg-por-restore { margin: var(--lv-sp-3) 0; padding: var(--lv-sp-3) var(--lv-sp-4); background: var(--lv-surface-2); border: 1px solid var(--lv-line); border-radius: var(--lv-r-sm); }
 .pg-por-restore p { margin: 0 0 var(--lv-sp-2); color: var(--lv-ink-2); }
-@media (max-width: 640px) { .pg-por-ask { top: calc(var(--topbar-h) + 8px); } .pg-por-actions .btn { flex: 1 1 100%; min-height: 44px; } }
+@media (max-width: 640px) { .pg-por-ask { top: calc(var(--header-h) + 8px); } .pg-por-actions .btn { flex: 1 1 100%; min-height: 44px; } }
 
 /* ---------- degraded modules: one plain banner under the bar on every page ---------- */
 .pg-degraded { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--lv-sp-3); padding: var(--lv-sp-2) var(--lv-sp-4); background: var(--lv-bad-bg); color: var(--lv-bad); border-bottom: 1px solid var(--lv-bad); font-size: var(--lv-fs-sm); font-weight: var(--lv-fw-semi); }

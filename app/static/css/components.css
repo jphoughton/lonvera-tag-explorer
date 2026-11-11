@@ -1,0 +1,82 @@
+/* components: badges, cards, sections, stage cards */
+/* ---------- badges ---------- */
+.badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 12px; line-height: 1.5; font-weight: 600; background: var(--unc-bg); color: var(--unc); white-space: nowrap; }
+.badge.conf-high { background: var(--good-bg); color: var(--good); }
+.badge.conf-medium { background: var(--warn-bg); color: var(--warn); }
+.badge.conf-low { background: var(--bad-bg); color: var(--bad); }
+.badge.conf-none { background: var(--unc-bg); color: var(--unc); }
+.badge.stage-testing { background: var(--testing-bg); color: var(--testing); }
+.badge.stage-scaling { background: var(--scaling-bg); color: var(--scaling); }
+.badge.stage-unclassified { background: var(--unc-bg); color: var(--unc); }
+.badge.tag-mapped { background: var(--good-bg); color: var(--good); }
+.badge.tag-tracker { background: var(--warn-bg); color: var(--warn); }
+.badge.muted-badge { background: transparent; border: 1px solid var(--line); color: var(--muted); font-weight: 500; }
+.badge.flag-copy, .badge.flag-thumb { background: #ffe1c2; color: #7a3d00; }
+.badge.method { font-weight: 500; background: var(--accent-bg); color: var(--accent); white-space: normal; }
+.badge.status, .badge.type { font-weight: 500; }
+.linecode { display: inline-block; font: 600 11px var(--mono); background: var(--head-bg); border-radius: 4px; padding: 0 5px; margin-right: 6px; color: var(--muted); }
+.linecode.big { font-size: 12px; padding: 1px 6px; }
+.chip { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: #b4bcc8; flex: 0 0 auto; margin-right: 7px; }
+.live.on { color: #1d9a55; }
+.live.off { color: #aab2bf; }
+
+
+/* ---------- sections / cards ---------- */
+.section { margin-top: 18px; }
+.section-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 6px; }
+.panel { margin-top: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+.panel > summary { cursor: pointer; padding: 8px 12px; font-weight: 650; list-style-position: inside; }
+.panel > summary .muted { font-weight: 400; }
+.panel-body { padding: 4px 12px 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+.card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.adgrid { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 12px; align-items: start; margin-top: 8px; }
+.adcol-left { display: flex; flex-direction: column; gap: 12px; }
+.twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; align-items: start; }
+.card.media { padding: 8px; }
+.media-main { width: 100%; max-height: 380px; object-fit: contain; border-radius: 4px; background: var(--head-bg); display: block; }
+.frames { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
+.frames .media-frame { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; background: var(--head-bg); display: block; }
+.media-missing { color: var(--muted); padding: 14px; text-align: center; }
+table.mini { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+table.mini th, table.mini td { padding: 4px 6px; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: top; }
+table.mini th.num, table.mini td.num { text-align: right; }
+table.mini thead th { font-size: 12px; color: var(--muted); font-weight: 600; }
+table.mini tbody th { font-weight: 550; white-space: nowrap; }
+table.ingredients td { white-space: normal; }
+.kv { margin: 6px 0; }
+.kv .k { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.kv .v { white-space: pre-wrap; overflow-wrap: anywhere; }
+.kvgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0 14px; }
+.subtle-head { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 12px 0 2px; font-weight: 650; }
+.tag-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 4px; }
+.tag-path { font-weight: 600; }
+.reliability { background: var(--warn-bg); color: #5b3f00; border-radius: 4px; padding: 5px 8px; margin: 6px 0; font-size: 12px; }
+.copyblock { white-space: pre-wrap; overflow-wrap: anywhere; background: #f8f9fb; border: 1px solid var(--line-soft); border-radius: 4px; padding: 7px 9px; margin: 3px 0 6px; font-size: 12.5px; }
+.copy-item { display: flex; gap: 8px; align-items: flex-start; }
+.copy-item .copyblock { flex: 1 1 auto; }
+.idx { color: var(--muted); font: 600 11px var(--mono); padding-top: 9px; }
+ul.headlines { margin: 3px 0 0; padding-left: 18px; }
+.transcript summary { cursor: pointer; font-weight: 600; margin: 8px 0 4px; }
+.transcript .copyblock { max-height: 300px; overflow: auto; }
+.subblock { margin-bottom: 6px; }
+.toggles { display: inline-flex; gap: 12px; }
+.chartbox { position: relative; height: 270px; }
+.live-flag { margin-left: auto; font-size: 12px; }
+a.ext { font-size: 12px; }
+.media-link { display: block; }
+
+/* ---------- stage cards ---------- */
+.stagecards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; margin-bottom: 4px; }
+.stagecard { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--unc); border-radius: 6px; padding: 9px 12px; }
+.stagecard.stage-testing { border-left-color: var(--testing); }
+.stagecard.stage-scaling { border-left-color: var(--scaling); }
+.stagecard.clickable { cursor: pointer; }
+.stagecard.clickable:hover { background: #f7f9fc; }
+.stagecard.selected { box-shadow: 0 0 0 2px var(--accent); }
+.stagecard-head { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.stagecard-main { margin: 4px 0 2px; }
+.stagecard .big { font-size: 20px; font-weight: 650; }
+.stagecard-sub { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+.stagecard-sub b { color: var(--text); font-weight: 650; }
+
