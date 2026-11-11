@@ -4,6 +4,8 @@
 #
 #   scripts/test.sh [pytest args]     whole suite, up to 8 xdist workers, a private throwaway Postgres (default; same as --full)
 #   scripts/test.sh --full  [args]    whole suite
+#   scripts/test.sh --fast [--base REF] [args]   only the tests affected by the files changed since REF (default origin/build/v1; work tree and untracked files count);
+#                                      prints which rule picked which tests; a hub / migration / conftest / unknown file runs the whole suite instead
 #
 # Env: TEST_WORKERS (default 8; n|auto), PY (python; default .venv or ~/lonvera-tag-explorer/.venv),
 #      TEST_PRIVATE_PG=0 (use the shared local Postgres on :5432 instead of a private one), TEST_PG_BASE (use that Postgres, e.g. postgresql://localhost),
@@ -68,11 +70,32 @@ if [ "$TEST_STRICT" = "1" ] && ! pg_isready -q -h "$(echo "${TEST_PG_BASE:-postg
   echo "[test.sh] Postgres is not answering (${TEST_PG_BASE:-localhost}): start it, or run with TEST_STRICT=0 to let the database tests skip" >&2; exit 2
 fi
 
-[ "${1:-}" = "--full" ] && shift
+FAST=0; BASE="origin/build/v1"; ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --full) shift;;
+    --fast) FAST=1; shift;;
+    --base) BASE="$2"; shift 2;;
+    *) ARGS+=("$1"); shift;;
+  esac
+done
+set -- ${ARGS[@]+"${ARGS[@]}"}
+SELECTED=()
+if [ "$FAST" = "1" ]; then
+  SEL_OUT="$("$PY" "$ROOT/scripts/select_tests.py" --base "$BASE")" || { echo "[test.sh] the selector failed; running the whole suite" >&2; SEL_OUT=FULL; }
+  if [ "$SEL_OUT" = "FULL" ]; then
+    echo "[test.sh --fast] the selector chose the FULL suite"
+  else
+    while IFS= read -r line; do [ -n "$line" ] && SELECTED+=("$line"); done <<< "$SEL_OUT"
+    echo "[test.sh --fast] running ${#SELECTED[@]} target(s)"
+  fi
+fi
 # capped at 8: measured on this 10-core Mac (4 efficiency cores), whole suite 159 s with 4 workers, 143 s with 5, 134 s with 6, 125 s with 8 and with 10; TEST_WORKERS=auto uses every core
 WORKERS="${TEST_WORKERS:-$(c=$(sysctl -n hw.ncpu 2>/dev/null || nproc); [ "$c" -gt 8 ] && c=8; echo "$c")}"
+[ ${#SELECTED[@]} -gt 0 ] && [ "$WORKERS" -gt ${#SELECTED[@]} ] && WORKERS=${#SELECTED[@]}      # no idle workers for a small selection
 echo "[test.sh] workers=$WORKERS cores=$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
 TARGET=(tests)
+[ ${#SELECTED[@]} -gt 0 ] && TARGET=("${SELECTED[@]}")
 for a in "$@"; do case "$a" in tests*|./tests*) TARGET=();; esac; done      # explicit test paths replace the default `tests`
 # --rootdir: tests/ui and tests/projection/ui each hold a pytest.ini, so explicit file paths from there would move the rootdir into that directory and turn the OTHER directory's
 # conftest fixtures into global ones (a tests/ui test then runs with the projection UI's autouse _reset and times out). Pinning the rootdir keeps every conftest scoped to its folder.
