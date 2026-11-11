@@ -11,6 +11,7 @@ linemap tag: human / cycle tags are never overwritten or marked not-current. Re-
 'cover + copy (auto)', confidence capped at medium); no picture: method 'text only (auto)', capped at medium.
 Safety: missing token / auth error / usage limit -> the run stops early and is recorded failed in etl_runs (the nightly pipeline carries on, see
 scripts/deploy/run_etl.sh); hard cap per run (--limit, default 400 ads); 3 tries per ad with backoff.
+Rules (2026-11-10): the ad's PAIN (the felt symptom) is chosen first, then ICP, then trigger; the tracker Pain Point is the default answer (kept_tracker_pain / override_reason).
 Usage: python -m etl.auto_tag [--product slug] [--limit N] [--dry-run] [--retag-today] [--no-assets]"""
 from __future__ import annotations
 
@@ -47,7 +48,7 @@ INTROS = {
                 "men and women (joint pain, stiffness, mobility and independence, bone density, menopause joints, GLP-1 muscle and bone loss, 'tried glucosamine before').",
 }
 # env passed to the claude subprocess: nothing else from the service (database url, Meta / Upstack tokens ...) is handed over
-ENV_KEEP = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "TZ", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy",
+ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "TZ", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy",
             "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "CLAUDE_CODE_OAUTH_TOKEN")
 AUTH_RE = re.compile(r"invalid api key|please run /login|not logged in|authentication|unauthorized|oauth|token (has )?expired|401", re.I)
 LIMIT_RE = re.compile(r"usage limit|limit reached|rate.?limit|quota|too many requests|429|exceeded your", re.I)
@@ -98,6 +99,7 @@ def candidates(conn, slugs, day: dt.date, retag_today: bool = False) -> dict[str
     sql = f"""
     SELECT p.slug, t.family_key, t.id, t.concept_id, t.ad_family, t.ad_type, t.concept_name, t.description, t.hypothesis, t.meta_ad_name, t.primary_text,
            t.headlines, t.ad_description, t.transcript, t.tracker_cluster, t.tracker_icp, t.tracker_pain, t.tracker_emotion,
+           (btrim(coalesce(t.raw->>'Brief Link', '')) <> ''),
            coalesce(am.spend_launch, 0), coalesce(t.launch_date, am.launch_date),
            (SELECT g.version FROM ad_tags g WHERE g.tracker_row_id = t.id AND g.tag_set = 'linemap' AND g.is_current) AS cur_version
     FROM tracker_rows t JOIN products p ON p.id = t.product_id LEFT JOIN ad_metrics am ON am.tracker_row_id = t.id
@@ -105,7 +107,7 @@ def candidates(conn, slugs, day: dt.date, retag_today: bool = False) -> dict[str
     ORDER BY t.family_key, t.sheet_row NULLS LAST, t.id"""
     fams: dict[tuple, dict] = {}
     for r in conn.execute(sql, (list(slugs),)).fetchall():
-        (slug, fk, rid, cid, af, ty, cname, desc, hyp, mname, ptext, heads, adesc, trans, tcl, ticp, tpain, temo, spend, launch, curver) = r
+        (slug, fk, rid, cid, af, ty, cname, desc, hyp, mname, ptext, heads, adesc, trans, tcl, ticp, tpain, temo, briefed, spend, launch, curver) = r
         f = fams.setdefault((slug, fk), {"slug": slug, "family_key": fk, "rows": [], "spend": 0.0, "launch": None, "rep": None, "all_rows": 0})
         f["all_rows"] += 1
         f["spend"] = max(f["spend"], float(spend))
@@ -115,9 +117,9 @@ def candidates(conn, slugs, day: dt.date, retag_today: bool = False) -> dict[str
             f["rows"].append(rid)
         copy_len = sum(len(x or "") for x in (ptext or [])) + sum(len(x or "") for x in (heads or [])) + len(adesc or "") + len(trans or "")
         if f["rep"] is None or copy_len > f["rep"]["_len"]:
-            f["rep"] = {"_len": copy_len, "concept_id": cid, "type": ty, "name": mname or cname, "description": desc, "hypothesis": hyp,
-                        "primary_text": [x for x in (ptext or []) if x], "headlines": [x for x in (heads or []) if x], "ad_description": adesc,
-                        "transcript": trans, "existing_tags": {"cluster": tcl, "icp": ticp, "pain_point": tpain, "emotion": temo}}
+            f["rep"] = make_rep(copy_len, cid, ty, cname, mname, desc, hyp, ptext, heads, adesc, trans, tcl, ticp, tpain, temo, bool(briefed))
+        if briefed:
+            f["rep"]["briefed"] = True
     cutoff = day - dt.timedelta(days=RECENT_DAYS)
     out: dict[str, list[dict]] = {s: [] for s in slugs}
     for f in fams.values():
@@ -126,6 +128,43 @@ def candidates(conn, slugs, day: dt.date, retag_today: bool = False) -> dict[str
     for s in out:
         out[s].sort(key=lambda f: (-f["spend"], str(f["launch"] or ""), f["family_key"]))
     return out
+
+
+def make_rep(copy_len, cid, ty, cname, mname, desc, hyp, ptext, heads, adesc, trans, tcl, ticp, tpain, temo, briefed) -> dict:
+    """The tracker-row fields the prompt is built from (shared with etl.retag_pain, which tags single rows)."""
+    return {"_len": copy_len, "concept_id": cid, "type": ty, "name": mname or cname, "description": desc, "hypothesis": hyp,
+            "primary_text": [x for x in (ptext or []) if x], "headlines": [x for x in (heads or []) if x], "ad_description": adesc,
+            "transcript": trans, "briefed": bool(briefed), "existing_tags": {"cluster": tcl, "icp": ticp, "pain_point": tpain, "emotion": temo}}
+
+
+def norm(x) -> str:
+    return " ".join(str(x or "").split()).lower()
+
+
+PLACEHOLDER_PAINS = {"", "no clear pain point", "no clear", "none", "n/a", "untagged", "(untagged)"}
+
+
+def tracker_pain_lines(pain, cat: list[dict]) -> list[str]:
+    """Codes of the product's lines whose pain point equals the tracker's Pain Point (case / space-insensitive). [] when the tracker pain is blank,
+    a placeholder, or on no line of the product (then the tracker pain is not a usable default)."""
+    n = norm(pain)
+    if n in PLACEHOLDER_PAINS:
+        return []
+    return [c["line"] for c in cat if norm(c["pain"]) == n]
+
+
+def annotate_tracker_pain(unit: dict, cat: list[dict]) -> dict:
+    """Add the default-answer block to a prompt unit: tracker_pain_point, whether it was briefed, and the lines that carry it."""
+    pain = (unit.get("existing_tags") or {}).get("pain_point")
+    codes = tracker_pain_lines(pain, cat)
+    if codes:
+        briefed = bool(unit.get("briefed"))
+        unit["tracker_pain_point"] = pain
+        unit["tracker_pain_lines"] = codes
+        unit["tracker_pain_status"] = ("BRIEFED: the team briefed this concept and chose this pain point on purpose (strong default)" if briefed else
+                                       "NOT briefed: this pain point was tagged by a machine from the copy earlier (a strong prior, not proof)")
+    unit.pop("briefed", None)
+    return unit
 
 
 def gather(conn, f: dict) -> tuple[dict, tuple | None]:
@@ -141,8 +180,8 @@ def gather(conn, f: dict) -> tuple[dict, tuple | None]:
             "primary_text": [_clip(x, 700) for x in rep["primary_text"][:3]], "headlines": [_clip(x, 200) for x in rep["headlines"][:3]],
             "ad_description": _clip(rep.get("ad_description"), 300), "description": _clip(rep.get("description"), 400), "hypothesis": _clip(rep.get("hypothesis"), 300),
             "hook": _clip(hook[0], 300) if hook else None, "meta_body": _clip(fc[0], 800) if fc else None, "meta_title": _clip(fc[1], 200) if fc else None,
-            "transcript": _clip(rep.get("transcript") or (fc[3] if fc else None), 900), "existing_tags": rep["existing_tags"]}
-    unit = {k: v for k, v in unit.items() if v not in (None, "", [])}
+            "transcript": _clip(rep.get("transcript") or (fc[3] if fc else None), 900), "existing_tags": rep["existing_tags"], "briefed": bool(rep.get("briefed"))}
+    unit = {k: v for k, v in unit.items() if v not in (None, "", [], False)}
     unit["_is_video"] = is_video
     return unit, ((bytes(img[0]), img[1]) if img else None)
 
@@ -163,8 +202,10 @@ def claude_env() -> dict:
     return {k: v for k, v in os.environ.items() if k in ENV_KEEP}
 
 
-def parse_answer(text: str, catalog_codes: set[str]) -> dict:
-    """The model's final message -> validated dict {line, confidence, runner_up, why, saw}. Raises ValueError with a short reason."""
+def parse_answer(text: str, catalog_codes: set[str], tracker_pain: str | None = None, cat: list[dict] | None = None) -> dict:
+    """The model's final message -> validated dict {line, confidence, runner_up, why, saw, kept_tracker_pain, override_reason}. Raises ValueError with a short reason.
+    With `tracker_pain` + `cat` (the tracker pain is a usable default for the product): kept_tracker_pain is computed from the chosen line (the model's own flag is
+    ignored when it disagrees) and a choice that leaves the tracker pain must carry an override_reason, otherwise the answer is rejected (the call is retried)."""
     s = (text or "").strip()
     s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)
     if not s.startswith("{"):
@@ -185,7 +226,16 @@ def parse_answer(text: str, catalog_codes: set[str]) -> dict:
     ru = str(d.get("runner_up") or "").strip().upper() or None
     if ru not in catalog_codes or ru == line:
         ru = None
-    return {"line": line, "confidence": conf, "runner_up": ru, "why": _clip(d.get("why"), 240), "saw": _clip(d.get("saw"), 240)}
+    kept, reason = None, None
+    if tracker_pain and cat is not None and tracker_pain_lines(tracker_pain, cat):
+        kept = line in tracker_pain_lines(tracker_pain, cat)
+        reason = _clip(d.get("override_reason"), 300)
+        if kept:
+            reason = None
+        elif not reason:
+            raise ValueError("the line leaves the tracker pain point but override_reason is empty")
+    return {"line": line, "confidence": conf, "runner_up": ru, "why": _clip(d.get("why"), 240), "saw": _clip(d.get("saw"), 240),
+            "kept_tracker_pain": kept, "override_reason": reason}
 
 
 def run_claude(prompt: str, cwd: str, runner=subprocess.run) -> dict:
@@ -221,7 +271,8 @@ def run_claude(prompt: str, cwd: str, runner=subprocess.run) -> dict:
 def tag_one(slug: str, cat: list[dict], unit: dict, image: tuple | None, runner=subprocess.run, sleep=time.sleep) -> tuple[dict, dict]:
     """-> (answer, usage). Writes the picture into a fresh temp dir (the claude cwd), validates the answer, retries MAX_TRIES times."""
     codes = {c["line"] for c in cat}
-    u = {k: v for k, v in unit.items() if not k.startswith("_")}
+    u = annotate_tracker_pain({k: v for k, v in unit.items() if not k.startswith("_")}, cat)
+    tpain = (u.get("tracker_pain_point") if u.get("tracker_pain_lines") else None)
     tmp = tempfile.mkdtemp(prefix="autotag-")
     usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_creation_tokens": 0, "attempts": 0}
     try:
@@ -241,7 +292,7 @@ def tag_one(slug: str, cat: list[dict], unit: dict, image: tuple | None, runner=
                 usage["output_tokens"] += int(us.get("output_tokens") or 0)
                 usage["cache_read_tokens"] += int(us.get("cache_read_input_tokens") or 0)
                 usage["cache_creation_tokens"] += int(us.get("cache_creation_input_tokens") or 0)
-                return parse_answer(env.get("result"), codes), usage
+                return parse_answer(env.get("result"), codes, tpain, cat), usage
             except ValueError as e:
                 last = str(e)
             except RuntimeError as e:
@@ -276,7 +327,8 @@ def write_tags(conn, slug: str, f: dict, ans: dict, unit: dict, has_image: bool,
     lid = line_ids[ans["line"]]
     cat_row = lid["row"]
     extra = db.jsonb({"source": "auto", "model": MODEL, "line_code": ans["line"], "needs_review": conf == "low", "model_confidence": ans["confidence"],
-                      "attempts": attempts, "has_image": has_image, "is_video": is_video})
+                      "attempts": attempts, "has_image": has_image, "is_video": is_video,
+                      "kept_tracker_pain": ans.get("kept_tracker_pain"), "override_reason": ans.get("override_reason")})
     with conn.transaction():
         conn.execute("DELETE FROM ad_tags WHERE tag_set='linemap' AND version=%s AND tracker_row_id = ANY(%s)", (version, f["rows"]))
         n = 0
