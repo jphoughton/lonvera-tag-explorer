@@ -230,6 +230,14 @@ def test_sensitivity_shape_and_cache(client, restore):
     assert after["version"] == d["version"] + 1 and after["base"]["noi"] != d["base"]["noi"]
 
 
+def test_sensitivity_cap_truncates_and_says_so(vdb, restore):
+    import psycopg
+    from psycopg.rows import dict_row
+    with psycopg.connect(vdb, row_factory=dict_row) as conn:
+        d = sensitivity.run(conn, "current", cap=0.0, use_cache=False)
+    assert d["truncated"] is True and d["tested"] == 0 and d["rows"] == []
+
+
 def test_sensitivity_matches_the_stored_change_exactly(client, restore):
     d = client.get(f"{P}/sensitivity", query_string={"scenario": "current"}).get_json()
     row = next(r for r in d["rows"] if r["id"] == "drivers.sales_tax_rate")

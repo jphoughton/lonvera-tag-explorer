@@ -14,7 +14,7 @@ _WORKER = os.environ.get("PYTEST_XDIST_WORKER")          # "gw0", "gw1", ... ; u
 # scripts/test.sh sets TEST_STRICT=1: it expects Postgres and Chromium, so a fixture that skips for "not available" is a FAILURE there (a saturated or
 # broken machine must never show up as a green run full of skips). A plain `pytest tests` keeps the friendly skip.
 STRICT = os.environ.get("TEST_STRICT") == "1"
-ENVIRONMENT_SKIPS = ("Postgres not available", "Chromium not available", "could not prepare the page database", "could not start a scratch Postgres")
+ENVIRONMENT_SKIPS = ("Postgres not available", "Chromium not available", "could not prepare the page database", "could not start a scratch Postgres", "sheet snapshot not available")
 
 # env var -> default database name used by the fixture that reads it (kept in step with the conftest files)
 _DB_VARS = {
