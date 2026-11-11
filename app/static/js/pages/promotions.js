@@ -1,14 +1,15 @@
-// Marketing metrics, Test to scale (/promotions): creatives that moved from TESTING to SCALING in the chosen range, and what happened around the move. Meta only.
+// Lonvera, Test to scale (/promotions): creatives that moved from TESTING to SCALING in the chosen range, and what happened around the move. Meta only.
 // A move = a creative spent in a Testing campaign and its first spend in a Scaling campaign came on a later day (the buyer duplicates the creative into a scaling
 // campaign; Meta cannot move an ad). Everything comes from /api/promotions in one call. Class names and test ids start with `tts-` (never ad-, ads-, sponsor, banner,
 // promo: ad blockers hide those).
-import { h, enc, fmt, isNum, href, globalParams, apiWindow, setParams, thumb, metricLabel, liveDot, debounce, empty, navigate } from '../util.js';
+import { h, fmt, isNum, href, globalParams, apiWindow, setParams, metricLabel, liveDot, debounce, empty, navigate } from '../util.js';
 import { api } from '../api.js';
 import { createTable } from '../table.js';
 import { setRangeInfo } from '../controls.js';
-import { breadcrumbs, saveSortToUrl, sortFromUrl } from '../components.js';
+import { saveSortToUrl, sortFromUrl } from '../components.js';
 import { trendChart } from '../charts.js';
-import { viewTabs, currentView, scaleViewsPage } from './scale_views.js';
+import { currentView, scaleViewsPage, pageTop, productFilter, numberInput, bulkCheck, creativeCell as sharedCreativeCell } from './scale_views.js';
+import { searchCtl } from '../ui/pagefilters.js';
 
 const HELD_TEXT = { held: 'Held up', softer: 'Softer', fell: 'Fell', too_early: 'Too early', no_baseline: 'No baseline' };
 const HELD_TITLE = {
@@ -49,20 +50,8 @@ function heldBadge(m) {
   return h('span', { class: 'badge tts-held tts-held-' + m.state, 'data-held': m.state, title: HELD_TITLE[m.state] + (m.ratio != null ? ` (scaling ROAS is ${Math.round(m.ratio * 100)}% of testing ROAS)` : '') }, HELD_TEXT[m.state] + pct);
 }
 
-// the creative cell shared by both tables: thumbnail, name (opens the creative page), product, tags and the flags
-function creativeCell(r, G, flags = []) {
-  const hf = r.primary_id != null ? href('/ad/' + enc(r.primary_id), G) : null;
-  const tags = [r.cluster, r.icp, r.pain].filter((x) => x && x !== '(untagged)' && x !== '(none)').join(' › ');
-  return h('div', { class: 'cell-ad' },
-    thumb(r.thumb_asset_id, 34, { name: r.display, primaryId: r.primary_id }),
-    h('div', { class: 'cell-ad-text' },
-      h('div', { class: 'nm' }, hf ? h('a', { href: hf, class: 'rowlink rowname', title: r.display, 'data-testid': 'tts-creative-link' }, r.display) : h('span', { class: 'rowname' }, r.display)),
-      h('div', { class: 'meta' },
-        h('span', { class: 'tts-product', 'data-product': r.product.slug }, r.product.name),
-        r.ad_type ? h('span', { class: 'chip-type ' + String(r.ad_type).toLowerCase(), title: 'Creative type' }, r.ad_type === 'VID' ? 'Video' : r.ad_type === 'IMG' ? 'Image' : r.ad_type) : null,
-        ...flags),
-      tags ? h('div', { class: 'meta sub', title: tags }, tags) : null));
-}
+// the creative cell shared by both tables here (and by every other tab): thumbnail, name (opens the creative page), product, tags and the flags
+const creativeCell = (r, G, flags = []) => sharedCreativeCell(r, G, { flags, testid: 'tts-creative-link', extra: true });
 
 function flagsOf(r) {
   const out = [];
@@ -83,7 +72,7 @@ function placementsNode(r) {
     { key: 'ads', label: 'Ads', num: true, sort: (x) => x.ads, cell: (x) => fmt.int(x.ads) },
     { key: 'spend', label: 'Spend', num: true, sort: (x) => x.spend, cell: (x) => money(x.spend) },
     { key: 'purchases', label: () => metricLabel('purchases', 'Purchases'), num: true, sort: (x) => x.purchases, cell: (x) => fmt.int(x.purchases) },
-    { key: 'roas', label: () => metricLabel('roas', 'ROAS'), num: true, sort: (x) => x.roas, cell: (x) => fmt.roas(x.roas) },
+    { key: 'roas', label: () => metricLabel('roas', 'ROAS'), title: 'Return on ad spend (ROAS): revenue divided by ad spend', num: true, sort: (x) => x.roas, cell: (x) => fmt.roas(x.roas) },
     { key: 'first', label: 'First day', sort: (x) => x.first_day, cell: (x) => fmt.day(x.first_day) },
     { key: 'last', label: 'Last day', sort: (x) => x.last_day, cell: (x) => fmt.day(x.last_day) },
   ];
@@ -108,15 +97,15 @@ function movedColumns(G, daily) {
       cell: (r) => dpad(r) + fmt.int(r.days_in_test) },
     { key: 'test_spend', label: 'Test spend', num: true, cls: 'sep', sort: (r) => testBlock(r).spend, title: 'Spend in Testing campaigns before the first scaling day', cell: (r) => money(testBlock(r).spend), total: (t) => money(t.test.spend) },
     { key: 'test_purchases', label: rl('Test', 'purchases', 'Purchases'), num: true, sort: (r) => testBlock(r).purchases, cell: (r) => fmt.int(testBlock(r).purchases), total: (t) => fmt.int(t.test.purchases) },
-    { key: 'test_roas', label: rl('Test', 'roas', 'ROAS'), num: true, sort: (r) => testBlock(r).roas, cell: (r) => fmt.roas(testBlock(r).roas), total: (t) => fmt.roas(t.test.roas) },
-    { key: 'test_cpa', label: rl('Test', 'cpa', 'CPA'), num: true, sort: (r) => testBlock(r).cpa, cell: (r) => money(testBlock(r).cpa), total: (t) => money(t.test.cpa) },
+    { key: 'test_roas', label: rl('Test', 'roas', 'ROAS'), title: 'Return on ad spend (ROAS): revenue divided by ad spend', num: true, sort: (r) => testBlock(r).roas, cell: (r) => fmt.roas(testBlock(r).roas), total: (t) => fmt.roas(t.test.roas) },
+    { key: 'test_cpa', label: rl('Test', 'cpa', 'CPA'), title: 'Cost per acquisition (CPA): ad spend divided by purchases', num: true, sort: (r) => testBlock(r).cpa, cell: (r) => money(testBlock(r).cpa), total: (t) => money(t.test.cpa) },
     { key: 'scale_spend', label: 'Scaling spend', num: true, cls: 'sep', sort: (r) => scaleBlock(r).spend, title: 'Spend in Scaling campaigns since the move, through the latest day of data', cell: (r) => money(scaleBlock(r).spend), total: (t) => money(t.scale.spend) },
     { key: 'scale_purchases', label: rl('Scaling', 'purchases', 'Purchases'), num: true, sort: (r) => scaleBlock(r).purchases, cell: (r) => fmt.int(scaleBlock(r).purchases), total: (t) => fmt.int(t.scale.purchases) },
-    { key: 'scale_roas', label: rl('Scaling', 'roas', 'ROAS'), num: true, sort: (r) => scaleBlock(r).roas, cell: (r) => fmt.roas(scaleBlock(r).roas), total: (t) => fmt.roas(t.scale.roas) },
-    { key: 'scale_cpa', label: rl('Scaling', 'cpa', 'CPA'), num: true, sort: (r) => scaleBlock(r).cpa, cell: (r) => money(scaleBlock(r).cpa), total: (t) => money(t.scale.cpa) },
-    { key: 'held', label: 'Held up?', cls: 'sep', sort: (r) => (r.held.ratio == null ? -1 : r.held.ratio), total: () => '', title: 'Scaling ROAS since the move against testing ROAS before it (hover a badge for the rule)', cell: (r) => heldBadge(r.held) },
+    { key: 'scale_roas', label: rl('Scaling', 'roas', 'ROAS'), title: 'Return on ad spend (ROAS): revenue divided by ad spend', num: true, sort: (r) => scaleBlock(r).roas, cell: (r) => fmt.roas(scaleBlock(r).roas), total: (t) => fmt.roas(t.scale.roas) },
+    { key: 'scale_cpa', label: rl('Scaling', 'cpa', 'CPA'), title: 'Cost per acquisition (CPA): ad spend divided by purchases', num: true, sort: (r) => scaleBlock(r).cpa, cell: (r) => money(scaleBlock(r).cpa), total: (t) => money(t.scale.cpa) },
+    { key: 'held', label: 'Held up?', cls: 'sep', sort: (r) => (r.held.ratio == null ? -1 : r.held.ratio), total: () => '', title: 'Scaling return on ad spend (ROAS) since the move against testing ROAS before it (hover a badge for the rule)', cell: (r) => heldBadge(r.held) },
     { key: 'last7_spend', label: 'Last 7 days spend', num: true, sort: (r) => r.last7.spend, title: 'Scaling spend in the last 7 days of data', cell: (r) => money(r.last7.spend), total: (t) => money(t.last7.spend) },
-    { key: 'last7_roas', label: rl('Last 7 days', 'roas', 'ROAS'), num: true, sort: (r) => r.last7.roas, cell: (r) => fmt.roas(r.last7.roas), total: (t) => fmt.roas(t.last7.roas) },
+    { key: 'last7_roas', label: rl('Last 7 days', 'roas', 'ROAS'), title: 'Return on ad spend (ROAS): revenue divided by ad spend', num: true, sort: (r) => r.last7.roas, cell: (r) => fmt.roas(r.last7.roas), total: (t) => fmt.roas(t.last7.roas) },
     { key: 'live', label: 'Live', cls: 'center', sort: (r) => (r.live_scaling ? 1 : 0), total: () => '', title: 'Spent in a Scaling campaign on the latest day of data or the day before', cell: (r) => liveDot(r.live_scaling) },
     { key: 'placements', label: 'Scaled in', sort: (r) => r.placements.adsets, total: () => '', title: 'Scaling campaigns and ad sets this creative has spent in since the move (open the row for the list)',
       cell: (r) => {
@@ -146,8 +135,8 @@ function notScaledColumns(G, through) {
       cell: (r) => h('span', { class: 'badge tts-state tts-state-' + r.state, 'data-state': r.state }, r.state === 'still_testing' ? 'Still testing' : `Stopped · last spend ${fmt.day(r.last_spend_day)}`) },
     { key: 'test_spend', label: 'Test spend', num: true, cls: 'sep', sort: (r) => r.test.spend, cell: (r) => money(r.test.spend) },
     { key: 'test_purchases', label: rl('purchases', 'Purchases'), num: true, sort: (r) => r.test.purchases, cell: (r) => fmt.int(r.test.purchases) },
-    { key: 'test_roas', label: rl('roas', 'ROAS'), num: true, sort: (r) => r.test.roas, cell: (r) => fmt.roas(r.test.roas) },
-    { key: 'test_cpa', label: rl('cpa', 'CPA'), num: true, sort: (r) => r.test.cpa, cell: (r) => money(r.test.cpa) },
+    { key: 'test_roas', label: rl('roas', 'ROAS'), title: 'Return on ad spend (ROAS): revenue divided by ad spend', num: true, sort: (r) => r.test.roas, cell: (r) => fmt.roas(r.test.roas) },
+    { key: 'test_cpa', label: rl('cpa', 'CPA'), title: 'Cost per acquisition (CPA): ad spend divided by purchases', num: true, sort: (r) => r.test.cpa, cell: (r) => money(r.test.cpa) },
     { key: 'last7_spend', label: 'Last 7 days spend', num: true, sort: (r) => r.last7.spend, cell: (r) => money(r.last7.spend) },
   ];
 }
@@ -170,7 +159,8 @@ function cohortColumns() {
 // search box for one table (the moved table keeps its text in the URL)
 function searchBox(table, fieldsOf, { q = '', persist = false, testid, placeholder }) {
   const count = h('span', { class: 'muted', 'data-testid': testid + '-count' });
-  const input = h('input', { type: 'search', value: q, placeholder, 'aria-label': placeholder, 'data-testid': testid });
+  const searchEl = searchCtl({ placeholder, value: q, testid, onInput: null });
+  const input = searchEl.querySelector('input');
   const apply = () => {
     const needle = input.value.trim().toLowerCase();
     table.setFilter(needle ? (r) => fieldsOf(r).some((f) => f != null && String(f).toLowerCase().includes(needle)) : null);
@@ -182,7 +172,7 @@ function searchBox(table, fieldsOf, { q = '', persist = false, testid, placehold
   };
   input.addEventListener('input', debounce(apply, 120));
   if (q) apply();
-  return { el: h('div', { class: 'filterbar' }, input, count), setCount(n, total) { count.textContent = n === total ? `${fmt.int(total)} rows` : `${fmt.int(n)} of ${fmt.int(total)} rows`; } };
+  return { el: h('div', { class: 'ctl-row pagefilters' }, searchEl, count), setCount(n, total) { count.textContent = n === total ? `${fmt.int(total)} rows` : `${fmt.int(n)} of ${fmt.int(total)} rows`; } };
 }
 
 const SLOW_MS = 15000;
@@ -210,7 +200,7 @@ export async function promotionsPage(ctx) {
   const { params: p, signal } = ctx;
   if (currentView(p) !== 'detail') return scaleViewsPage(ctx);          // the two simple views (What should be scaled, Performance in scaling) are the first tabs; this page is the third
   const G = globalParams(p);
-  document.title = 'Test to scale · Marketing metrics';
+  document.title = 'All moves, with detail · Test to scale · Lonvera';
   const d = await loadPromotions(p, signal);
   if (!ctx.alive()) return;
   setRangeInfo(p, d.window_info, null, { unclassified: false });
@@ -229,28 +219,16 @@ export async function promotionsPage(ctx) {
     d.stage_moves ? h('p', { class: 'muted', 'data-testid': 'tts-built' }, `Precomputed nightly: rebuilt ${fmt.dateTime(d.stage_moves.built_at)}, through ${d.stage_moves.data_through ? fmt.day(d.stage_moves.data_through) : '–'}.`) : null);
 
   // ---------- filters that change every number on the page ----------
-  const chip = (label, slug, n) => h('a', { class: 'seg', href: href('/promotions', { ...G, ...(p.hide_bulk ? { hide_bulk: p.hide_bulk } : {}), ...(p.bulk_min ? { bulk_min: p.bulk_min } : {}), ...(p.min_test_spend ? { min_test_spend: p.min_test_spend } : {}), ...(p.grain ? { grain: p.grain } : {}), view: 'detail', product: slug }),
-    'data-testid': 'tts-product-' + (slug || 'all'), 'aria-pressed': String((p.product || null) === slug), title: n != null ? `${fmt.int(n.moved)} moved, ${fmt.int(n.launched)} began in testing` : null }, label);
-  const productCtl = h('div', { class: 'ctl', id: 'tts-product-ctl' }, h('span', { class: 'ctl-name' }, 'Product'),
-    h('span', { class: 'segs', role: 'group', 'aria-label': 'Product', 'data-testid': 'tts-product-filter' }, chip('All', null, null), (d.products || []).map((x) => chip(x.name, x.slug, x))));
-  const bulkCb = h('input', { type: 'checkbox', id: 'tts-hide-bulk', 'data-testid': 'tts-hide-bulk', checked: f.hide_bulk });
-  bulkCb.addEventListener('change', () => setParams({ hide_bulk: bulkCb.checked ? '1' : null }));
-  const bulkLabel = h('label', { class: 'check', title: `A day when ${f.bulk_min} or more creatives entered scaling is a mass relaunch, not a set of test winners. Hiding them removes those creatives from every number on this page.` }, bulkCb, ' Hide bulk moves');
-  const numInput = (id, value, min, aria, onApply) => {
-    const el = h('input', { type: 'number', id, 'data-testid': id, min: String(min), step: '1', value: value ? String(value) : '', 'aria-label': aria, class: 'tts-num' });
-    const go = () => onApply(el.value.trim());
-    el.addEventListener('change', go);
-    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
-    return el;
-  };
-  const minTest = numInput('tts-min-test', f.min_test_spend, 0, 'Minimum test spend in dollars', (v) => setParams({ min_test_spend: v && Number(v) > 0 ? String(Math.floor(Number(v))) : null }));
-  const bulkMin = numInput('tts-bulk-min', f.bulk_min === 40 ? '' : f.bulk_min, 1, 'Bulk move day threshold', (v) => setParams({ bulk_min: v && Number(v) >= 1 && Number(v) !== 40 ? String(Math.floor(Number(v))) : null }));
-  bulkMin.placeholder = '40';
-  minTest.placeholder = '0';
-  const filters = h('div', { class: 'ctl-row tts-filters', 'data-testid': 'tts-filters' }, productCtl,
-    h('div', { class: 'ctl' }, bulkLabel),
-    h('label', { class: 'ctl', title: 'Bulk move day: this many creatives or more entering scaling on one day' }, h('span', { class: 'ctl-name' }, 'Bulk day from'), bulkMin, h('span', { class: 'muted small' }, 'creatives')),
-    h('label', { class: 'ctl', title: 'Only creatives that spent at least this much in testing (before any move) count: in the moved table, the % reached scaling and the not-scaled list' }, h('span', { class: 'ctl-name' }, 'Min test spend $'), minTest));
+  const keep = { ...(p.hide_bulk ? { hide_bulk: p.hide_bulk } : {}), ...(p.bulk_min ? { bulk_min: p.bulk_min } : {}), ...(p.min_test_spend ? { min_test_spend: p.min_test_spend } : {}), ...(p.grain ? { grain: p.grain } : {}) };
+  const productCtl = productFilter({ products: d.products, p, view: 'detail', keep, prefix: 'tts', titleOf: (n) => `${fmt.int(n.moved)} moved, ${fmt.int(n.launched)} began in testing` });
+  productCtl.id = 'tts-product-ctl';
+  const bulkLabel = bulkCheck('tts-hide-bulk', f);
+  const minTest = numberInput('tts-min-test', 'Min test spend', f.min_test_spend || '', 0, '$', (v) => setParams({ min_test_spend: v && Number(v) > 0 ? String(Math.floor(Number(v))) : null }), { placeholder: '0', 'aria-label': 'Minimum test spend in dollars' });
+  minTest.title = 'Only creatives that spent at least this much in testing (before any move) count: in the moved table, the % reached scaling and the not-scaled list';
+  const bulkMin = numberInput('tts-bulk-min', 'Bulk day from', f.bulk_min === 40 ? '' : f.bulk_min, 1, '', (v) => setParams({ bulk_min: v && Number(v) >= 1 && Number(v) !== 40 ? String(Math.floor(Number(v))) : null }), { placeholder: '40', 'aria-label': 'Bulk move day threshold' });
+  bulkMin.append(h('span', { class: 'muted small' }, 'creatives'));
+  bulkMin.title = 'Bulk move day: this many creatives or more entering scaling on one day';
+  const filters = h('div', { class: 'ctl-row pagefilters tts-filters', 'data-testid': 'tts-filters' }, productCtl, bulkLabel, bulkMin, minTest);
 
   // ---------- summary strip ----------
   const lr = s.launched;
@@ -316,10 +294,7 @@ export async function promotionsPage(ctx) {
 
   const notes = [...(d.notes || []), ...(ns.total > ns.shown ? [`Showing the ${fmt.int(ns.shown)} not-scaled creatives with the most test spend, of ${fmt.int(ns.total)}.`] : [])];
   ctx.mount(h('div', { class: 'page', 'data-level': 'promotions' },
-    h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'Test to scale'), h('span', { class: 'badge muted-badge' }, 'Meta only · creatives'), h('span', { class: 'spacer' })),
-      h('div', { class: 'note-line' }, 'Creatives that moved from Testing to Scaling in the range above, and what happened around the move.')),
-    h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Marketing metrics', href: href('/', G) }, { label: 'Test to scale' }])),
-    viewTabs('detail', p),
+    ...pageTop('detail', p),
     help,
     filters,
     strip,

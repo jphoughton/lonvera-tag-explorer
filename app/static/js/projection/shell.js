@@ -9,6 +9,7 @@ import { installGuard } from './lib/guard.js';
 import { Grid, createGrid } from './lib/grid.js';
 import * as F from './lib/format.js';
 import * as charts from './lib/charts.js';
+import { renderNav } from '../nav.js';
 
 const GROUP_NAMES = { P1: 'Plan', P2: 'Supply and cash', P3: 'Track' };
 const PURPOSE = {
@@ -55,7 +56,7 @@ function syncUrlScenario() {
 }
 
 // ------------------------------------------------------------------ one bar: Lonvera | Tags | Projections | module tabs | scenario control
-// The static part of the bar (brand, Marketing metrics, Projections) is in projection.html and mirrors the Marketing metrics pages. This file fills the module tabs and the scenario control.
+// The static part of the bar (brand, Lonvera, Projections) is in projection.html and mirrors the Lonvera pages. This file fills the module tabs and the scenario control.
 
 // small popup menu (role=menu): click or Enter opens, arrows move, Esc and outside click close
 let openMenu = null;
@@ -191,6 +192,12 @@ const actions = {
   history: () => openHistory(),
 };
 
+// the top row: the same bar as every other page (js/nav.js), with the Plan section lit; the module tabs below it are this section's second row
+{
+  const shared = renderNav({ dataPg: true });
+  $('#topbar').replaceChildren(h('div', { class: 'topbar-in' }, shared.brand, shared.groups, shared.search));
+  shared.setCurrent('/projection', {});
+}
 const nav = $('#pg-nav');
 const navMenu = $('#pg-navmenu');
 function buildNav() {

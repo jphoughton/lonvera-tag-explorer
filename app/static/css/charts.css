@@ -1,0 +1,35 @@
+/* charts: trend panel, sparklines, pins */
+/* ---------- v1.6 trend panel, sparklines, pins ---------- */
+.trend { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px 10px; margin: 8px 0 12px; }
+.trend-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.trend-head h2 { font-size: 13px; }
+.trend-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; }
+.trend-controls[hidden] { display: none; }
+.mchip { appearance: none; font: inherit; font-size: 12px; padding: 2px 9px; border-radius: 12px; cursor: pointer; border: 1px solid var(--line); background: #fff; color: var(--muted); }
+.mchip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.mchip:hover:not([aria-pressed="true"]) { background: var(--head-bg); }
+.trendbox { height: 230px; margin-top: 6px; }
+.trend-note { min-height: 0; display: flex; gap: 4px 12px; flex-wrap: wrap; }
+.trend-note .note { font-size: 12px; color: var(--muted); }
+.trend[data-collapsed="true"] { padding-bottom: 8px; }
+.trend-pins { font-size: 12px; color: var(--muted); }
+.adcol-right > .trend { margin: 0; }
+svg.spark { display: block; overflow: visible; }
+.spark-line { fill: none; stroke: #1a5fb4; stroke-width: 1.3; stroke-linejoin: round; stroke-linecap: round; }
+.spark-dot { fill: #1a5fb4; }
+.spark-empty { stroke: #c8cfd9; stroke-width: 1; stroke-dasharray: 2 2; }
+table.dt td.trendcol, table.dt th.trendcol { width: 82px; min-width: 82px; padding-top: 2px; padding-bottom: 2px; text-align: center; }
+table.dt td.pincol, table.dt th.pincol { width: 44px; min-width: 44px; text-align: center; }
+.pin-cb { cursor: pointer; }
+.pin-cb:disabled { cursor: not-allowed; opacity: 0.45; }
+
+.tsel select { font: inherit; font-size: 12px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 5px; background: #fff; }
+.tsel.bars .ctl-name { color: #1a5fb4; font-weight: 600; }
+.tsel.line .ctl-name { color: #a8520b; font-weight: 600; }
+.tsel.bars select { border-color: #1a5fb4; }
+.tsel.line select { border-color: #d9822b; }
+.segs .seg:disabled { color: #9aa3af; cursor: not-allowed; background: #f6f7f9; }
+
+.whoami { font-weight: 600; font-size: 12px; margin-right: 2px; }
+.whoami::before { content: '● '; color: #1d9a55; font-size: 9px; vertical-align: 1px; }
+

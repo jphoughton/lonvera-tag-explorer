@@ -1,13 +1,14 @@
-import { h, enc, fmt, stageSet, href, apiWindow, sparkParams, globalParams, navigate, confBadge, empty, thumb, stageBadge, liveDot, pick, setParams, getRowMode, setRowMode, setViewStateProvider, cmpView, onCmpRefresh, metricLabel, platformUrl } from '../util.js';
+import { h, enc, fmt, debounce, badge, stageSet, href, apiWindow, sparkParams, globalParams, navigate, confBadge, empty, thumb, stageBadge, liveDot, pick, setParams, getRowMode, setRowMode, setViewStateProvider, cmpView, onCmpRefresh, metricLabel, platformUrl } from '../util.js';
 import { api, AuthError } from '../api.js';
 import { createTable } from '../table.js';
 import { metricColumns, fixTotal, FLAT_KEYS, trendColumn, pinColumn } from '../columns.js';
 import { setRangeInfo } from '../controls.js';
-import { breadcrumbs, legendLine, creativeMeta, columnsChips, filterBar, saveFilterToUrl, makeFilter, adsTable, familyAdsNode, unmatchedPanel, saveSortToUrl, sortFromUrl, campaignHrefFor, coverageBar, untestedPanel } from '../components.js';
+import { breadcrumbs, legendLine, creativeMeta, columnsChips, saveFilterToUrl, makeFilter, adsTable, familyAdsNode, unmatchedPanel, saveSortToUrl, sortFromUrl, campaignHrefFor, coverageBar, untestedPanel } from '../components.js';
 import { stageChart } from '../charts.js';
 import { createTree } from '../tree.js';
 import { createTrendPanel, createPins } from '../trend.js';
-import { tagBadge } from './products.js';
+import { pageHeader } from '../ui/pagehead.js';
+import { filterRow, searchCtl, checkCtl } from '../ui/pagefilters.js';
 
 const CONF_RANK = { low: 1, medium: 2, high: 3 };
 const winInfo = (d) => d.window_info || (d.window && typeof d.window === 'object' ? d.window : null);
@@ -34,19 +35,56 @@ export async function productPage(ctx) {
 
 const pagePath = (slug) => '/p/' + enc(slug);
 
+// the product's tag badge (same classes as the Meta landing; own text so this page has no em dash)
+function productTagBadge(product) {
+  const mapped = product.tag_set === 'linemap';
+  return badge(product.tag_label || (mapped ? 'Line-mapped tags' : 'Tracker tags, not line-mapped yet'), mapped ? 'tag-mapped' : 'tag-tracker', 'Which tags drive the hierarchy');
+}
+
 function pageHead(product, slug, p, active) {
   const G = globalParams(p);
   const mk = (label, key, to) => h('a', { class: 'seg', href: to, 'data-view': key, 'aria-current': active === key ? 'page' : null, 'aria-pressed': String(active === key) }, label);
-  return h('div', { class: 'pagehead' },
-    h('div', { class: 'titleline' },
-      h('h1', product.name),
-      tagBadge(product),
-      h('span', { class: 'spacer' }),
-      h('div', { class: 'ctl' },
-        h('span', { class: 'ctl-name' }, 'View by'),
-        h('span', { class: 'segs' }, mk('Tags', 'tags', href(pagePath(slug), G)), mk('Campaigns', 'campaigns', href(pagePath(slug), { ...G, view: 'campaigns' }))))),
-    product.tag_set !== 'linemap' ? h('div', { class: 'note-line' }, 'Tracker tags — not line-mapped yet. Cluster / ICP / pain point come from the Creative Tracker columns.') : null);
+  const mapped = product.tag_set === 'linemap';
+  const head = pageHeader({
+    title: product.name,
+    description: 'Spend and results for this product, from market cluster down to ideal customer profile (ICP), pain point and creative.'
+      + (mapped ? '' : ' Tracker tags, not line-mapped yet: market cluster, ideal customer profile and pain point come from the Creative Tracker columns.'),
+    actions: h('div', { class: 'ctl' },
+      h('span', { class: 'ctl-name' }, 'View by'),
+      h('span', { class: 'segs', role: 'group', 'aria-label': 'View by' }, mk('Tags', 'tags', href(pagePath(slug), G)), mk('Campaigns', 'campaigns', href(pagePath(slug), { ...G, view: 'campaigns' })))),
+    testid: 'product-head',
+  });
+  head.querySelector('h1').after(productTagBadge(product));
+  return head;
 }
+
+// "On this page" jump links: scroll to a section without touching the URL
+function jumpNav(items) {
+  return h('nav', { class: 'jumpnav', 'aria-label': 'On this page', 'data-testid': 'jump-nav' },
+    h('span', { class: 'ctl-name' }, 'Jump to'),
+    items.map(([id, label]) => h('button', { type: 'button', class: 'linkbtn', 'data-jump': id, onclick: () => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, label)));
+}
+
+// a page section: anchor id + the content, so jump links and the page outline have one shape
+const pgSection = (id, ...body) => h('section', { class: 'pgsec', id }, body);
+
+// table filter row (search, With spend only, row count): same ids and behavior as components.filterBar, drawn with the shared filter controls
+function tableFilter({ spend, q, placeholder, onChange }) {
+  const chk = checkCtl({ label: 'With spend only', checked: !!spend });
+  const cb = chk.querySelector('input'); cb.id = 'flt-spend';
+  const sc = searchCtl({ name: 'Search', value: q || '', placeholder });
+  const input = sc.querySelector('input'); input.id = 'flt-q'; input.setAttribute('aria-label', 'Search');
+  const count = h('span', { class: 'muted', id: 'flt-count' });
+  const change = () => onChange({ spend: cb.checked, q: input.value.trim() });
+  cb.addEventListener('change', change);
+  input.addEventListener('input', debounce(change, 120));
+  return {
+    el: filterRow(sc, chk, count),
+    setCount(n, total) { count.textContent = n === total ? `${fmt.int(total)} rows` : `${fmt.int(n)} of ${fmt.int(total)} rows`; },
+  };
+}
+// the secondary display options (what a click does, which columns show), kept under the filters
+const displayRow = (...ctls) => h('div', { class: 'ctl-row displayopts', 'data-testid': 'display-options' }, h('span', { class: 'ctl-name' }, 'Display'), ctls);
 
 function tagCrumbs(slug, p, product, extra = []) {
   const G = globalParams(p);
@@ -81,11 +119,11 @@ async function tagsView(ctx, slug) {
   ]);
   if (!ctx.alive()) return;
   report(p, data, hasUnclassified(data.total && data.total.m));
-  document.title = `${product.name} · Marketing metrics`;
+  document.title = `${product.name} · Lonvera`;
 
-  const first = ['Market cluster', 'ICP', 'Pain point', 'Creative'][rootLevel];
-  const title = rootLevel === 0 ? 'Market clusters' : rootLevel === 1 ? `ICPs in ${p.cluster}` : rootLevel === 2 ? `Pain points in ${p.icp}` : `Creatives in ${p.pain}`;
-  const untestedOn = p.untested === '1' && rootLevel === 0 && !!(cov && cov.available);     // "Not tested only": the flat list of ICPs / pain points with no ads or no spend
+  const first = ['Market cluster', 'Ideal customer profile', 'Pain point', 'Creative'][rootLevel];
+  const title = rootLevel === 0 ? 'Market clusters' : rootLevel === 1 ? `Ideal customer profiles in ${p.cluster}` : rootLevel === 2 ? `Pain points in ${p.icp}` : `Creatives in ${p.pain}`;
+  const untestedOn = p.untested === '1' && rootLevel === 0 && !!(cov && cov.available);     // "Not tested only": the flat list of ideal customer profiles / pain points with no ads or no spend
   const pins = createPins(ctx.restore && ctx.restore.pins);
   // the panel first: it locks / unlocks the Chart checkboxes before the table renders them
   const panel = createTrendPanel({ slug, p, scope: filters, scopeLabel: [p.pain, p.icp, p.cluster].find(Boolean) || product.name, pins, mode: 'scope', signal });
@@ -98,11 +136,13 @@ async function tagsView(ctx, slug) {
     h('div', { class: 'crumbrow' }, breadcrumbs(tagCrumbs(slug, p, product)), h('span', { class: 'spacer' }),
       h('a', { class: 'btnlink', id: 'toggle-all', href: href(path, { ...G, all: 1 }) }, 'All creatives')),
     rootLevel === 0 ? coverageBar(cov, { path, G, on: untestedOn, windowLabel: data.window_info && data.window_info.label, sourceLabel: data.window_info && data.window_info.source && data.window_info.source.label }) : null,
-    untestedOn ? null : panel.el,
-    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, untestedOn ? 'Not tested' : title)),
-    untestedOn ? null : legendLine(),
-    untestedOn ? untestedPanel(cov, { path, G, windowLabel: data.window_info && data.window_info.label }) : tree.el,
-    unmatchedPanel(slug, p, um, signal),
+    jumpNav([untestedOn ? null : ['sec-trend', 'Trend'], ['sec-table', untestedOn ? 'Not tested' : title], ['sec-unmatched', 'Not on the tracker']].filter(Boolean)),
+    untestedOn ? null : pgSection('sec-trend', panel.el),
+    pgSection('sec-table',
+      h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, untestedOn ? 'Not tested' : title)),
+      untestedOn ? null : legendLine(),
+      untestedOn ? untestedPanel(cov, { path, G, windowLabel: data.window_info && data.window_info.label }) : tree.el),
+    pgSection('sec-unmatched', unmatchedPanel(slug, p, um, signal)),
   ));
   if (!untestedOn) { panel.load(); tree.afterMount(ctx.restore); }
 }
@@ -121,7 +161,7 @@ async function familiesFlatView(ctx, slug) {
   ]);
   if (!ctx.alive()) return;
   report(p, data, hasUnclassified(data.total && data.total.m));
-  document.title = `${product.name} · Marketing metrics`;
+  document.title = `${product.name} · Lonvera`;
   const linemap = product.tag_set === 'linemap';
   const rkey = (r) => r.family_key + '|' + (r.ad_ids || []).join(',');
   let filterUi = null;
@@ -172,7 +212,7 @@ async function familiesFlatView(ctx, slug) {
   });
   onCmpRefresh(() => table.refresh());
   const apply = (st) => table.setFilter(makeFilter(st, (r) => r.m && r.m.spend, (r) => [r.display, ...(r.concept_ids || []), r.ad_type, r.status, r.hook]));
-  filterUi = filterBar({
+  filterUi = tableFilter({
     spend: p.spend === '1', q: p.q, placeholder: 'Search creative, concept id, hook…',
     onChange: (st) => { saveFilterToUrl(st); apply(st); },
   });
@@ -189,12 +229,15 @@ async function familiesFlatView(ctx, slug) {
     pageHead(product, slug, p, 'tags'),
     h('div', { class: 'crumbrow' }, breadcrumbs(tagCrumbs(slug, p, product, [{ label: 'All creatives' }])), h('span', { class: 'spacer' }),
       h('a', { class: 'btnlink', id: 'toggle-all', href: href(path, { ...G, cluster: p.cluster, icp: p.icp, pain: p.pain }) }, '← Back to hierarchy')),
-    flatPanel.el,
-    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'All creatives'),
-      h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Clicking a row'), h('span', { class: 'segs', id: 'row-mode' }, modeBtns)), columnsChips(), filterUi.el),
-    legendLine(),
-    table.el,
-    unmatchedPanel(slug, p, um, signal),
+    jumpNav([['sec-trend', 'Trend'], ['sec-table', 'All creatives'], ['sec-unmatched', 'Not on the tracker']]),
+    pgSection('sec-trend', flatPanel.el),
+    pgSection('sec-table',
+      h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'All creatives')),
+      filterUi.el,
+      displayRow(h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Clicking a row'), h('span', { class: 'segs', id: 'row-mode' }, modeBtns)), columnsChips()),
+      legendLine(),
+      table.el),
+    pgSection('sec-unmatched', unmatchedPanel(slug, p, um, signal)),
   ));
   flatPanel.load();
   const vs = ctx.restore;
@@ -213,7 +256,7 @@ async function adsView(ctx, slug) {
   ]);
   if (!ctx.alive()) return;
   report(p, d, false);
-  document.title = `Ads · ${product.name} · Marketing metrics`;
+  document.title = `Ads · ${product.name} · Lonvera`;
 
   const crumbs = [{ label: 'Meta', href: platformUrl('/', 'meta', G) }, { label: product.name, href: href(path, G) }];
   const firstRow = (d.rows || []).find((r) => r.ad_id != null);
@@ -242,7 +285,7 @@ async function adsView(ctx, slug) {
   });
   onCmpRefresh(() => t.refresh());
   const apply = (st) => t.setFilter(makeFilter(st, (r) => r.spend, (r) => [r.ad_name, r.campaign_name, r.adset_name, r.display, r.status]));
-  filterUi = filterBar({
+  filterUi = tableFilter({
     spend: p.spend === '1', q: p.q, placeholder: 'Search ad, campaign, ad set…',
     onChange: (st) => { saveFilterToUrl(st); apply(st); },
   });
@@ -254,10 +297,14 @@ async function adsView(ctx, slug) {
   ctx.mount(h('div', { class: 'page', 'data-level': 'ads' },
     pageHead(product, slug, p, p.campaign_id ? 'campaigns' : 'tags'),
     h('div', { class: 'crumbrow' }, breadcrumbs(crumbs)),
-    adsPanel.el,
-    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, adsTitle), columnsChips(), filterUi.el),
-    legendLine(),
-    t.el,
+    jumpNav([['sec-trend', 'Trend'], ['sec-table', adsTitle]]),
+    pgSection('sec-trend', adsPanel.el),
+    pgSection('sec-table',
+      h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, adsTitle)),
+      filterUi.el,
+      displayRow(columnsChips()),
+      legendLine(),
+      t.el),
   ));
   adsPanel.load();
   const vs = ctx.restore;
@@ -283,7 +330,7 @@ async function campaignsView(ctx, slug) {
   ]);
   if (!ctx.alive()) return;
   report(p, d, (daily || []).some((x) => x.unclassified > 0));
-  document.title = `Campaigns · ${product.name} · Marketing metrics`;
+  document.title = `Campaigns · ${product.name} · Lonvera`;
 
   // stage cards (A, and B when comparing)
   const included = stageSet(p);
@@ -330,7 +377,7 @@ async function campaignsView(ctx, slug) {
   });
   onCmpRefresh(() => t.refresh());
   const apply = (st) => t.setFilter(makeFilter(st, (r) => r.spend, (r) => [r.name, r.account, r.stage, r.campaign_id]));
-  filterUi = filterBar({ spend: p.spend === '1', q: p.q, placeholder: 'Search campaign…', onChange: (st) => { saveFilterToUrl(st); apply(st); } });
+  filterUi = tableFilter({ spend: p.spend === '1', q: p.q, placeholder: 'Search campaign…', onChange: (st) => { saveFilterToUrl(st); apply(st); } });
   if (p.spend === '1' || p.q) apply({ spend: p.spend === '1', q: p.q });
   else filterUi.setCount(d.rows.length, d.rows.length);
 
@@ -338,17 +385,22 @@ async function campaignsView(ctx, slug) {
   ctx.mount(h('div', { class: 'page', 'data-level': 'campaigns' },
     pageHead(product, slug, p, 'campaigns'),
     h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Meta', href: platformUrl('/', 'meta', G) }, { label: product.name, href: href(path, G) }, { label: 'Campaigns' }])),
-    campPanel.el,
-    h('div', { class: 'stagecards' }, cards),
-    h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', 'Daily spend by stage'), h('span', { class: 'muted small' }, daily.length ? `${fmt.day(daily[0].day)} – ${fmt.day(daily[daily.length - 1].day)}` : '')), chartBox),
-    h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Campaigns'), columnsChips(), filterUi.el),
-    legendLine(),
-    t.el,
+    jumpNav([['sec-trend', 'Trend'], ['sec-stages', 'Spend by stage'], ['sec-table', 'Campaigns'], ['sec-unmatched', 'Not on the tracker']]),
+    pgSection('sec-trend', campPanel.el),
+    pgSection('sec-stages',
+      h('div', { class: 'stagecards' }, cards),
+      h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', 'Daily spend by stage'), h('span', { class: 'muted small' }, daily.length ? `${fmt.day(daily[0].day)} to ${fmt.day(daily[daily.length - 1].day)}` : '')), chartBox)),
+    pgSection('sec-table',
+      h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Campaigns')),
+      filterUi.el,
+      displayRow(columnsChips()),
+      legendLine(),
+      t.el,
     unm && unm.total && unm.total.spend > 0
       ? h('div', { class: 'muted small total-note', 'data-testid': 'campaign-total-note' },
         `Total includes spend not on the tracker: ${fmt.money(unm.total.spend)}${unm.total.families ? ` (${fmt.int(unm.total.families)} creatives, listed under “Not on the tracker” below)` : ''}. The Tags view leaves it out.`)
-      : null,
-    unmatchedPanel(slug, p, unm, signal),
+      : null),
+    pgSection('sec-unmatched', unmatchedPanel(slug, p, unm, signal)),
   ));
   stageChart(canvas, Array.isArray(daily) ? daily : (daily.rows || []), included);
   campPanel.load();

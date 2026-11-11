@@ -1,5 +1,5 @@
 // "Assign to vendor" on /priorities (production hooks for the ideation page). Everything here is a small controller that priorities.js calls: the In production column, the Assign to vendor button and
-// dialog, the "Production history" block in a row's detail panel and the "hide already assigned" checkbox. Assigning never removes a concept from the list. Nothing here is rendered on the public saved
+// dialog, the "Production" block in a row's detail panel and the "hide already assigned" checkbox. Assigning never removes a concept from the list. Nothing here is rendered on the public saved
 // view page (/priorities/v/<token>): priorities.js does not create the controller there.
 // Everything the API returned goes in through textContent / h(), links through h('a', {href, target: '_blank', rel: 'noopener noreferrer'}), never innerHTML. Test ids start with `pri-`.
 import { h, href } from '../util.js';
@@ -137,6 +137,6 @@ export function assignControls({ d, selected, keyOf, refresh }) {
     hidden: (r) => st.hide && assignedNow(r),
     text: (r) => inProductionText(forRow(r)),
     cell(r) { const c = { r, el: h('span', { class: 'pri-inprod', 'data-testid': 'pri-inprod' }) }; cells.add(c); paintCell(c); return c.el; },
-    history(r) { const x = { r, body: h('div', null) }; hists.add(x); paintHist(x); return h('section', { class: 'pri-card pri-prodhist', 'data-testid': 'pri-prod-history', 'aria-label': 'Production history' }, h('h4', { class: 'pri-h' }, 'Production history'), x.body); },
+    history(r) { const x = { r, body: h('div', null) }; hists.add(x); paintHist(x); return h('section', { class: 'pri-card pri-prodhist', 'data-testid': 'pri-prod-history', 'aria-label': 'Production' }, h('h4', { class: 'pri-h' }, 'Production'), x.body); },
   };
 }

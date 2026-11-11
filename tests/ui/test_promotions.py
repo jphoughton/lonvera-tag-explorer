@@ -91,6 +91,7 @@ def shot(page, name):
 # ------------------------------------------------------------------ the page
 def test_top_nav_link_opens_the_page(page):
     page.goto("/?platform=meta")
+    page.locator("[data-testid=nav-section-creative]").click()                                    # Test to scale is a tab of the Creative section
     page.locator("[data-testid=nav-test-to-scale]").wait_for()
     assert page.locator("[data-testid=nav-test-to-scale]").inner_text() == "Test to scale"
     page.locator("[data-testid=nav-test-to-scale]").click()

@@ -1,4 +1,4 @@
-// Marketing metrics, platform Meta, Campaigns view: every Meta campaign across all products in one table (one row per campaign).
+// Campaigns (platform Meta): every Meta campaign across all products in one table (one row per campaign).
 // The same numbers as the product Campaigns view, summed over products; a Product column and a Product filter say which product's ads a row counts.
 import { h, enc, fmt, href, apiWindow, sparkParams, globalParams, stageBadge, liveDot, onCmpRefresh, platformUrl } from '../util.js';
 import { api } from '../api.js';
@@ -8,6 +8,9 @@ import { setRangeInfo } from '../controls.js';
 import { breadcrumbs, columnsChips, filterBar, saveFilterToUrl, makeFilter, saveSortToUrl, sortFromUrl, viewSwitch } from '../components.js';
 import { createTrendPanel } from '../trend.js';
 import { ownStrip } from '../kpis.js';
+import { pageHeader } from '../ui/pagehead.js';
+import { filterRow } from '../ui/pagefilters.js';
+import { tuckChartOptions } from './platforms.js';
 
 const NONE = 'none';
 
@@ -36,7 +39,7 @@ export async function campaignsPage(ctx) {
   const G = globalParams(p);
   const product = p.product || null;
   const wp = apiWindow(p);
-  document.title = 'Campaigns · Marketing metrics';
+  document.title = 'Campaigns · Lonvera';
   const d = await api('/api/campaigns', { ...wp, ...sparkParams(p), ...(product ? { product } : {}) }, { signal });
   if (!ctx.alive()) return;
   setRangeInfo(p, d.window_info, d.compare_info || null, { unclassified: false });
@@ -84,11 +87,12 @@ export async function campaignsPage(ctx) {
   const productCtl = h('div', { class: 'ctl', id: 'product-ctl' }, h('span', { class: 'ctl-name' }, 'Product'),
     h('span', { class: 'segs', role: 'group', 'aria-label': 'Product', 'data-testid': 'product-filter' }, chip('All', null, null), chips.map((x) => chip(x.name, x.slug, x.campaigns))));
 
+  tuckChartOptions(panel);
   ctx.mount(h('div', { class: 'page', 'data-level': 'platform-campaigns' },
-    h('div', { class: 'pagehead' }, h('div', { class: 'titleline' }, h('h1', 'Campaigns'), h('span', { class: 'badge muted-badge' }, 'Meta · all products'), h('span', { class: 'spacer' }), viewSwitch('campaigns', G, 'meta')),
-      h('div', { class: 'note-line' }, 'One row per Meta campaign. A campaign that runs ads of several products reads Mixed, with each product’s share; the Product filter keeps one product’s ads.')),
+    pageHeader({ title: 'Campaigns', badge: 'Meta, all products', actions: viewSwitch('campaigns', G, 'meta'),
+      description: 'One row per Meta campaign. A campaign that runs ads of several products reads Mixed, with each product’s share; the Product filter keeps one product’s ads.' }),
     h('div', { class: 'crumbrow' }, breadcrumbs([{ label: 'Meta', href: platformUrl('/', 'meta', G) }, { label: 'Campaigns' }])),
-    h('div', { class: 'ctl-row' }, productCtl),
+    filterRow(productCtl),
     ownStrip('meta', product && d.product ? `Meta · ${d.product.name}` : 'Meta', d.total, d.window_info),
     chartId ? h('div', { class: 'note-line', id: 'chart-scope', 'data-testid': 'chart-scope' }, 'Chart shows only ', h('strong', null, chartRow ? chartRow.name : chartId), ' · ', h('a', { href: href('/campaigns', { ...G, product }), class: 'btnlink small' }, 'Show all campaigns')) : null,
     panel.el,

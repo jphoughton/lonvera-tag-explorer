@@ -1,0 +1,11 @@
+/* login: sign-in page */
+/* ---------- login ---------- */
+.login-wrap { display: flex; justify-content: center; padding: 12vh 16px 24px; }
+.login-card h1 { margin: 0; font-size: 22px; }
+.login-sub { margin: 0 0 6px; color: var(--muted); font-size: 13px; }
+.login-card input { width: 100%; box-sizing: border-box; }
+@media (max-width: 600px) { .login-wrap { padding-top: 6vh; } .login-card input { font-size: 16px; } }
+.login-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 22px 24px; width: 320px; max-width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; }
+.login-card input { padding: 7px 9px; font-size: 14px; }
+.login-card .btn { padding: 7px 10px; margin-top: 4px; }
+body.no-controls { }
