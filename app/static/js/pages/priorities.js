@@ -55,7 +55,7 @@ const panelFor = (r, d, mctl, actl) => { if (r.manual) return withProd(manualPan
 
 const NEW_IDEA = { 'Competitor': 'New idea, from a competitor', 'Our draft': 'New idea, our draft' };
 const SECTION_ORDER = SECTIONS.map(([k]) => k);
-const COLS = [['product', 'Product'], ['section', 'Action'], ['cluster', 'Market Cluster'], ['icp', 'ICP'], ['pain', 'Pain Point'], ['story', 'Story'], ['status', 'Status'], ['concepts', 'Concepts'], ['key', 'Key number'], ['spend14', 'Spend \u00b7 14d'], ['roas14', 'ROAS \u00b7 14d']];
+const COLS = [['product', 'Product'], ['cluster', 'Market Cluster'], ['icp', 'ICP'], ['pain', 'Pain Point'], ['section', 'Action'], ['story', 'Story'], ['status', 'Status'], ['concepts', 'Concepts'], ['key', 'Key number'], ['spend14', 'Spend \u00b7 14d'], ['roas14', 'ROAS \u00b7 14d']];
 
 // last 14 days (Meta-reported, raw purchase value / spend, not shrunk): spend always shown when the row has data, ROAS only with $100+ spend in the window (else a dash)
 const has14 = (r) => !r.manual && r.metrics && isNum(r.metrics.spend_14d);
@@ -82,6 +82,11 @@ function loadSel(week, valid, tok) {
 }
 function saveSel(week, sel, tok) { try { sessionStorage.setItem(storeKey(week, tok), JSON.stringify([...sel])); } catch (e) { /* storage blocked: selection just is not remembered */ } }
 
+// Cluster colours: one fixed palette of soft hues, picked from a hash of the cluster NAME, so the same cluster name has the same colour under every product and on every visit.
+// The hues are stepped (index * 7 mod 16) so neighbouring palette slots are far apart on the colour wheel. The CSS turns the hue into a fill (cluster), a lighter tint (ICP) and a faint tint (other cells).
+const HUES = Array.from({ length: 16 }, (_, i) => (((i * 7) % 16) * 22.5 + 8) % 360);
+export const hueOf = (name) => { let x = 5381; const t = String(name || '').trim().toLowerCase(); for (let i = 0; i < t.length; i++) x = ((x * 33) ^ t.charCodeAt(i)) >>> 0; return Math.round(HUES[x % HUES.length]); };
+
 let uid = 0;
 function setOpen(btn, panelRow, open) {
   btn.setAttribute('aria-expanded', String(open));
@@ -89,6 +94,7 @@ function setOpen(btn, panelRow, open) {
   if (open && panelRow._build) panelRow._build();
   panelRow.hidden = !open;
   panelRow.previousElementSibling.classList.toggle('pri-open', open);
+  if (panelRow._layout) panelRow._layout();                                         // merged group cells must cover the rows that are visible now
 }
 
 // one row (collapsed) + its detail row (hidden). `printed` rows have no toggle and an always-visible detail (the print-only copy).
@@ -97,28 +103,36 @@ function rowPair(r, d, printed = false, onPick = null, mctl = null, actl = null)
   const name = `${r.cluster}, ${r.icp}, ${r.pain_point}`;
   const cell = (label, cls, ...kids) => h('td', { class: 'pri-c pri-c-' + cls, 'data-label': label }, ...kids);
   const lazy = r.section === 'hold' && !printed;                                    // the 100+ Hold panels are built on first open (the content is the same full panel)
-  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, h('td', { colspan: String(12 + (actl ? 1 : 0)) }, lazy ? null : panelFor(r, d, r._from ? null : mctl, actl)));
-  if (lazy) detailRow._build = () => { detailRow.firstChild.replaceChildren(panelFor(r, d, r._from ? null : mctl, actl)); detailRow._build = null; };
+  // the detail row: a spacer cell under the checkbox column (shown only in the grouped view, where the merged Product / Cluster / ICP cells run past this row) + the panel cell
+  const dSpacer = h('td', { class: 'pri-d-sp', hidden: true, 'aria-hidden': 'true' });
+  const dMain = h('td', { colspan: String(12 + (actl ? 1 : 0)) }, lazy ? null : panelFor(r, d, r._from ? null : mctl, actl));
+  const detailRow = h('tr', { class: 'pri-detail', id, hidden: !printed, 'data-testid': 'pri-detail' }, dSpacer, dMain);
+  detailRow._sp = dSpacer; detailRow._main = dMain;
+  if (lazy) detailRow._build = () => { dMain.replaceChildren(panelFor(r, d, r._from ? null : mctl, actl)); detailRow._build = null; };
   const btn = h('button', { type: 'button', class: 'pri-toggle', 'aria-expanded': 'false', 'aria-controls': id, 'aria-label': 'Expand: ' + name, 'data-name': name, 'data-testid': 'pri-toggle' },
     h('span', { class: 'pri-chev', 'aria-hidden': 'true' }, '▸'));
   const pick = h('input', { type: 'checkbox', class: 'pri-pick', 'data-testid': 'pri-pick', 'aria-label': 'Select: ' + name, onchange: (e) => onPick && onPick(r, e.target.checked) });
-  const tr = h('tr', { class: 'pri-row' + (r.manual ? ' pri-manual' + (r.done ? ' pri-done' : '') : ''), 'data-testid': 'pri-card', 'data-section': r.section, 'data-product': r.product, 'data-source': r.manual ? 'manual' : 'auto' },
+  const cProduct = cell('Product', 'product', (d.baselines[r.product] || {}).product_name || r.product);
+  const cCluster = cell('Market Cluster', 'cluster', r.cluster, r._from ? h('span', { class: 'pri-from', 'data-testid': 'pri-from', title: 'No longer in the current snapshot: the numbers are the frozen copy saved with the view' }, ' from ' + r._from) : null);
+  const cIcp = cell('ICP', 'icp', r.icp);
+  const tr = h('tr', { class: 'pri-row' + (r.manual ? ' pri-manual' + (r.done ? ' pri-done' : '') : ''), 'data-testid': 'pri-card', 'data-section': r.section, 'data-product': r.product, 'data-source': r.manual ? 'manual' : 'auto', 'data-cluster-hue': String(hueOf(r.cluster)) },
     h('td', { class: 'pri-c pri-c-tog' }, printed || !onPick ? null : pick, printed ? null : btn),
-    cell('Product', 'product', (d.baselines[r.product] || {}).product_name || r.product),
+    cProduct, cCluster, cIcp, cell('Pain Point', 'pain', r.pain_point),
     cell('Action', 'section', h('span', { class: 'pri-sec pri-sec-' + r.section, title: actionRule(r.section) }, SECTION_LABEL[r.section]), r.source ? h('span', { class: 'pri-src', 'data-testid': 'pri-source', title: 'Not on the sheet yet' }, [NEW_IDEA[r.source] || r.source, h('span', { class: 'pri-src-sub', 'data-testid': 'pri-not-on-sheet' }, 'Not on the sheet yet')]) : null, r.manual ? h('span', { class: 'pri-mbadge', 'data-testid': 'pri-manual-badge' }, 'Manual') : null),
-    cell('Market Cluster', 'cluster', r.cluster, r._from ? h('span', { class: 'pri-from', 'data-testid': 'pri-from', title: 'No longer in the current snapshot: the numbers are the frozen copy saved with the view' }, ' from ' + r._from) : null), cell('ICP', 'icp', r.icp), cell('Pain Point', 'pain', r.pain_point), cell('Story', 'story', r.story || '–'),
+    cell('Story', 'story', r.story || '–'),
     cell('Status', 'status', h('span', { class: 'pri-status pri-st-' + (STATUS_CLASS[r.status] || 'flat'), 'data-testid': 'pri-status' }, r.manual && r.done ? 'MANUAL (done)' : r.status)),
     cell('Concepts', 'concepts', r.manual || r.section === 'hold' ? '\u2013' : r.concepts ? `${r.concepts} concept${r.concepts === 1 ? '' : 's'}` : 'None'),
     cell('Key number', 'key', keyNumber(r, d)),
     cell('Spend \u00b7 14d', 'spend14', has14(r) ? fmt.money(r.metrics.spend_14d) : '\u2013'),
     cell('ROAS \u00b7 14d', 'roas14', roas14Cell(r, d)),
     actl ? cell('In production', 'prod', actl.cell(r)) : null);
+  tr.style.setProperty('--h', String(hueOf(r.cluster)));
   if (!printed) {
     const toggle = () => setOpen(btn, detailRow, btn.getAttribute('aria-expanded') !== 'true');
     btn.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
-    tr.addEventListener('click', (e) => { if (!e.target.closest('a, button, input, label')) toggle(); });
+    tr.addEventListener('click', (e) => { if (!e.target.closest('a, button, input, label, .pri-merged')) toggle(); });      // a merged group cell belongs to many rows: it does not open one of them
   }
-  return { tr, detailRow, r, pick };
+  return { tr, detailRow, r, pick, cells: { product: cProduct, cluster: cCluster, icp: cIcp } };
 }
 
 function render(d, view = null, opts = {}) {
@@ -137,10 +151,11 @@ function render(d, view = null, opts = {}) {
   const actl = readonly ? null : assignControls({ d, keyOf, selected: () => d.rows.filter(isSel), refresh: () => apply() });          // production hooks: none on a public saved view
   const pairs = d.rows.map((r) => rowPair(r, d, false, readonly ? null : (row, on) => { if (on) sel.add(keyOf(row)); else sel.delete(keyOf(row)); selChanged(); }, mctl, actl));
   let shownList = [];
+  pairs.forEach((p) => { p.detailRow._layout = () => relayout(); });
   const carry = opts.carry || {};
   const sf = act && act.view.kind === 'filters' && act.view.filters ? act.view.filters : null;      // a filter view starts from its saved filters (applied live to whatever rows exist now)
   const pick0 = (saved, all) => { const keep = (saved || []).map((x) => (x === 'add' ? 'test' : x)).filter((x) => all.includes(x)); return new Set(keep.length ? keep : all); };
-  const state = { products: pick0(sf && sf.products, slugs), sections: pick0(sf && sf.sections, sections), q: carry.q || (sf ? sf.q || '' : ''), key: carry.key || (sf && value_keys.includes(sf.key) ? sf.key : null),
+  const state = { products: pick0(sf && sf.products, slugs), sections: pick0(sf && sf.sections, sections), q: carry.q || (sf ? sf.q || '' : ''), key: 'key' in carry ? carry.key : (sf && value_keys.includes(sf.key) ? sf.key : null),        // no sort chosen (null) = the grouped view
                   dir: carry.dir || (sf && sf.dir === -1 ? -1 : 1), showDone: !!carry.showDone, onlySel: !!carry.onlySel, brief: carry.brief || 'all', statuses: carry.statuses ? new Set(carry.statuses) : new Set(sf && sf.statuses && sf.statuses.length ? sf.statuses : sf && sf.status ? [sf.status] : []) };
   const allOn = (set, all) => (all.every((x) => set.has(x)) ? [] : all.filter((x) => set.has(x)));
   const currentFilters = () => ({ products: allOn(state.products, slugs), sections: allOn(state.sections, sections), q: state.q.trim(), key: state.key, dir: state.dir, status: null, statuses: [...state.statuses] });
@@ -149,6 +164,51 @@ function render(d, view = null, opts = {}) {
     product: (r) => pOrder[r.product], section: (r) => sOrder[r.section], cluster: (r) => r.cluster.toLowerCase(), icp: (r) => r.icp.toLowerCase(), pain: (r) => r.pain_point.toLowerCase(),
     story: (r) => (r.story || '').toLowerCase(), status: (r) => r.status.toLowerCase(), concepts: (r) => r.concepts || 0, key: (r) => keyNumber(r, d).toLowerCase(), spend14: (r) => (has14(r) ? r.metrics.spend_14d : -1), roas14: (r) => { const v = roas14Of(r); return v === null ? -1 : v; }, prod: (r) => (actl ? actl.text(r).toLowerCase() : ''), briefed: (r) => (isBriefed(r) ? 1 : 0),
   };
+  // ---------- grouped view: order = product, market cluster, ICP, pain point as on the Communication Overview sheet (row.sheet_pos = the line's sheet position) ----------
+  // A row with no sheet position (new idea, manual concept, "no line") goes after the on-sheet rows of its ICP / cluster; a cluster or ICP that is not on the sheet goes after the on-sheet ones of its parent, in Action / rank order.
+  const INF = 1e9;
+  const posOf = (r) => (isNum(r.sheet_pos) ? r.sheet_pos : INF);
+  const appOf = (r) => (sOrder[r.section] || 0) * 1e6 + (r.rank || 0);                      // Action order, then rank: the order the page had before grouping
+  const gmin = new Map();
+  d.rows.forEach((r) => {
+    [`${r.product}|${r.cluster}`, `${r.product}|${r.cluster}|${r.icp}`].forEach((k) => { const g = gmin.get(k); const pp = posOf(r), aa = appOf(r); if (!g) gmin.set(k, { pos: pp, app: aa }); else { g.pos = Math.min(g.pos, pp); g.app = Math.min(g.app, aa); } });
+  });
+  const cmpArr = (a, b) => { for (let i = 0; i < a.length; i++) { if (a[i] < b[i]) return -1; if (a[i] > b[i]) return 1; } return 0; };
+  const gkey = (r) => { const c = gmin.get(`${r.product}|${r.cluster}`), i = gmin.get(`${r.product}|${r.cluster}|${r.icp}`);
+    return [pOrder[r.product], c.pos, c.app, r.cluster.toLowerCase(), i.pos, i.app, r.icp.toLowerCase(), posOf(r), r.pain_point.toLowerCase(), appOf(r)]; };
+  const gcache = new Map();
+  const cmpGroup = (a, b) => { for (const p of [a, b]) if (!gcache.has(p)) gcache.set(p, gkey(p.r)); return cmpArr(gcache.get(a), gcache.get(b)); };
+  let runs = [];                                                                             // the merged cells of the rows shown: { cell, members }
+  const nCols = () => 12 + (actl ? 1 : 0) + (hasBriefed ? 1 : 0);
+  function relayout() {                                                                      // a merged cell covers its rows plus the detail rows that are open (a closed detail row has no height)
+    runs.forEach((g) => g.cell.setAttribute('rowspan', String(g.members.reduce((n, p) => n + 1 + (p.detailRow.hidden ? 0 : 1), 0))));
+  }
+  function applyGroups(list) {
+    const on = !state.key;
+    table.classList.toggle('pri-grouped', on);
+    pairs.forEach((p) => {
+      Object.values(p.cells).forEach((c) => { c.removeAttribute('rowspan'); c.classList.remove('pri-merged', 'pri-hid'); });
+      p.tr.classList.remove('pri-g-prod', 'pri-g-cl', 'pri-g-icp');
+      p.detailRow._sp.hidden = true; p.detailRow._main.colSpan = nCols();
+    });
+    runs = [];
+    if (!on) return;
+    const level = [['product', (r) => r.product, 'pri-g-prod'], ['cluster', (r) => r.product + '|' + r.cluster, 'pri-g-cl'], ['icp', (r) => r.product + '|' + r.cluster + '|' + r.icp, 'pri-g-icp']];
+    level.forEach(([name, kf, cls]) => {
+      let i = 0;
+      while (i < list.length) {
+        let j = i; const k = kf(list[i].r);
+        while (j + 1 < list.length && kf(list[j + 1].r) === k) j += 1;
+        const members = list.slice(i, j + 1);
+        list[i].tr.classList.add(cls);
+        members.forEach((p, n) => { const c = p.cells[name]; if (n === 0) c.classList.add('pri-merged'); else c.classList.add('pri-hid'); });
+        runs.push({ cell: list[i].cells[name], members });
+        i = j + 1;
+      }
+    });
+    list.forEach((p) => { p.detailRow._sp.hidden = false; p.detailRow._main.colSpan = nCols() - 4; });      // under the merged cells the panel starts at the Pain Point column
+    relayout();
+  }
   const tbody = h('tbody', { 'data-testid': 'pri-body' });
   const count = h('span', { class: 'pri-shown', 'aria-live': 'polite', 'data-testid': 'pri-shown' });
   const sortBtns = {};
@@ -193,12 +253,13 @@ function render(d, view = null, opts = {}) {
     let list = eligible.filter((p) => state.products.has(p.r.product) && state.sections.has(p.r.section) && (!state.statuses.size || state.statuses.has(p.r.status)) && (!state.onlySel || sel.has(keyOf(p.r))) && !(actl && actl.hidden(p.r)) && (state.brief === 'all' || (state.brief === 'done') === isBriefed(p.r))
       && (!q || [p.r.cluster, p.r.icp, p.r.pain_point, p.r.story].some((t) => (t || '').toLowerCase().includes(q))));
     const def = (a, b) => (sOrder[a.r.section] - sOrder[b.r.section]) || (pOrder[a.r.product] - pOrder[b.r.product]) || (a.r.rank - b.r.rank);
-    if (state.key) {
+    if (state.key) {                                                                         // a column sort: plain rows, no merged cells
       const f = value[state.key];
       list = list.sort((a, b) => { const x = f(a.r), y = f(b.r); return (x < y ? -1 : x > y ? 1 : 0) * state.dir || def(a, b); });
-    } else list = list.sort(def);
+    } else list = list.sort(cmpGroup);                                                       // no sort chosen: product > market cluster > ICP > pain point in the sheet's order
     tbody.replaceChildren(...list.flatMap((p) => [p.tr, p.detailRow]));
     shownList = list;
+    applyGroups(list);
     renderTotals(list);
     count.textContent = `${list.length} of ${eligible.length} concepts shown`;
     const nB = eligible.filter((p) => isBriefed(p.r)).length;
@@ -456,13 +517,15 @@ function render(d, view = null, opts = {}) {
   }
   const selOnlyBtn = h('button', { type: 'button', class: 'btn pri-selonly', 'aria-pressed': 'false', 'data-testid': 'pri-sel-only', onclick: () => { state.onlySel = !state.onlySel; apply(); } }, 'Show selected only');
   uiSync.push(() => { selOnlyBtn.setAttribute('aria-pressed', String(state.onlySel)); selOnlyBtn.textContent = state.onlySel ? 'Show all rows' : 'Show selected only'; });
-  const toolbar = h('div', { class: 'pri-seltools', role: 'region', 'aria-label': 'Selected rows', hidden: true, 'data-testid': 'pri-seltools' }, selCount, selCsv,
+  const selSplit = h('span', { class: 'pri-selsplit', 'data-testid': 'pri-sel-split' });
+  const moreBtn = h('button', { type: 'button', class: 'btn pri-selmore', 'aria-expanded': 'false', 'data-testid': 'pri-sel-more', onclick: () => { const o = toolbar.classList.toggle('pri-more-open'); moreBtn.setAttribute('aria-expanded', String(o)); moreBtn.textContent = o ? 'Less' : 'More'; } }, 'More');
+  const toolbar = h('div', { class: 'pri-seltools', role: 'region', 'aria-label': 'Selected rows', hidden: true, 'data-testid': 'pri-seltools' }, h('span', { class: 'pri-selhead' }, selCount, selSplit), moreBtn, h('span', { class: 'pri-selacts', 'data-testid': 'pri-selacts' }, selCsv,
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-print', onclick: () => window.print() }, 'Print / PDF'),
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-copy', onclick: () => copyText() }, 'Copy as text'),
     selOnlyBtn,
     h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-save', onclick: () => saveViewDialog('rows') }, 'Save view'),
     actl ? actl.button : null,
-    h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-clear', onclick: () => { sel.clear(); selChanged(); } }, 'Clear'), copyNote);
+    h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-sel-clear', onclick: () => { sel.clear(); selChanged(); } }, 'Clear'), copyNote));
 
   // the View switcher: All concepts + each saved view; choosing one filters this same table in place (URL ?view=<token>); Save view sits beside it
   const viewLabel = (v) => `${v.name || 'Untitled view'} (${v.kind === 'filters' ? 'filters' : `${v.count} concept${v.count === 1 ? '' : 's'}`})`;
@@ -522,6 +585,8 @@ function render(d, view = null, opts = {}) {
     const n = sel.size;
     toolbar.hidden = n === 0;
     selCount.textContent = `${n} selected`;
+    const per = PRODUCT_ORDER.map((x) => [x, d.rows.filter((r) => r.product === x && isSel(r)).length]).filter(([, c]) => c > 0);      // selected rows are counted wherever they are: a filter hiding a ticked row does not un-tick it
+    selSplit.textContent = per.map(([x, c]) => `${(d.baselines[x] || {}).product_name || x} ${c}`).join(' \u00b7 ');
     csvLink.href = selCsv.href = csvUrl();
     csvLink.textContent = n ? `Download CSV (${n} selected)` : 'Download CSV';
     printLabel.textContent = n ? `Print / save as PDF (${n} selected)` : 'Print / save as PDF';
@@ -572,7 +637,8 @@ function render(d, view = null, opts = {}) {
       printCell('concepts', r.manual ? '\u2013' : r.concepts ? String(r.concepts) : '\u2013'), printCell('key', keyNumber(r, d))),
     h('tr', { class: 'pri-strip' }, h('td', { colspan: '8' }, strip(r).map((t) => h('div', null, t)))));
   const widths = [10, 13, 13, 14, 22, 8, 7, 13];
-  const printHead = () => h('thead', null, h('tr', null, COLS.filter(([k]) => k !== 'product' && k !== 'spend14' && k !== 'roas14').map(([k, label]) => h('th', { scope: 'col' }, k === 'concepts' ? 'To brief' : label))));
+  const PRINT_COLS = ['section', 'cluster', 'icp', 'pain', 'story', 'status', 'concepts', 'key'].map((k) => COLS.find(([c]) => c === k));         // the printed sheet keeps Action first
+  const printHead = () => h('thead', null, h('tr', null, PRINT_COLS.map(([k, label]) => h('th', { scope: 'col' }, k === 'concepts' ? 'To brief' : label))));
   const printBlocks = h('div', { class: 'pri-print', 'data-testid': 'pri-print-copy', 'aria-hidden': 'true' });
   const buildPrint = () => printBlocks.replaceChildren(...slugs.flatMap((s) => {
     const picking = sel.size > 0;
@@ -593,12 +659,19 @@ function render(d, view = null, opts = {}) {
 
   apply();
   selChanged();
-  const tablebar = h('div', { class: 'pri-tablebar' }, h('span', null, count, ' ', selHint), h('span', { class: 'pri-seg pri-expbar', role: 'group', 'aria-label': 'Expand or collapse rows' },
+  const groupBtn = h('button', { type: 'button', class: 'btn pri-groupbtn', 'aria-pressed': 'true', 'data-testid': 'pri-group-btn', title: 'Group the rows by product, market cluster, ICP and pain point, in the sheet order (clears any column sort)', onclick: () => { state.key = null; state.dir = 1; apply(); } }, 'Group by cluster');
+  uiSync.push(() => groupBtn.setAttribute('aria-pressed', String(!state.key)));
+  const tablebar = h('div', { class: 'pri-tablebar' }, h('span', null, count, ' ', selHint), h('span', { class: 'pri-tbctl' }, groupBtn, h('span', { class: 'pri-seg pri-expbar', role: 'group', 'aria-label': 'Expand or collapse rows' },
     h('button', { type: 'button', class: 'pri-segbtn pri-exp', 'data-testid': 'pri-all-expand', onclick: () => setAll(true) }, 'Expand all'),
-    h('button', { type: 'button', class: 'pri-segbtn pri-exp', 'data-testid': 'pri-all-collapse', onclick: () => setAll(false) }, 'Collapse all')));
+    h('button', { type: 'button', class: 'pri-segbtn pri-exp', 'data-testid': 'pri-all-collapse', onclick: () => setAll(false) }, 'Collapse all'))));
   const topEl = buildTop();
   syncUI();
-  return h('div', { class: 'page pri-page', 'data-testid': 'pri-page' }, topEl, h('div', { class: 'pri-screen' }, readonly ? null : viewTools, filters, readonly ? null : toolbar, readonly ? null : linkBox, tablebar, table, recon), printBlocks);
+  const screen = h('div', { class: 'pri-screen' }, readonly ? null : viewTools, filters, readonly ? null : toolbar, readonly ? null : linkBox, tablebar, table, recon);
+  // sticky offsets: the selection bar pins under the app header, the column header pins under the bar. The bar's real height goes into a CSS variable (ResizeObserver: it wraps, and the phone layout is shorter), 0 while the bar is hidden.
+  const syncBarH = () => screen.style.setProperty('--pri-bar-h', (toolbar.hidden ? 0 : Math.round(toolbar.getBoundingClientRect().height)) + 'px');
+  if (!readonly && typeof ResizeObserver !== 'undefined') new ResizeObserver(syncBarH).observe(toolbar);
+  syncBarH();
+  return h('div', { class: 'page pri-page', 'data-testid': 'pri-page' }, topEl, screen, printBlocks);
 }
 
 // the page data for an active view: live rows where the key still exists (latest mode) else the frozen copy; a row that left the current snapshot falls back to its frozen copy, marked `_from`.

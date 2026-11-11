@@ -971,7 +971,7 @@ def compute(inp: dict, week: dt.date, keep_lines: bool = False) -> dict:
 
     def common(section, rank, l, m, b, concepts, score, conf, fl, why, comp_dict, hooks, evidence=None, extras=None):
         cs = comp_sum.get(l["id"])
-        return {**(extras or {}), "section": section, "product": l["product"], "rank": rank, "line_id": l["id"], "line_code": l["line_code"], "cluster": l["cluster"], "icp": l["icp"], "pain_point": l["pain_point"],
+        return {**(extras or {}), "section": section, "product": l["product"], "rank": rank, "line_id": l["id"], "line_code": l["line_code"], "sheet_pos": l["sort_order"], "cluster": l["cluster"], "icp": l["icp"], "pain_point": l["pain_point"],
                 "emotional_trigger": l["emotional_trigger"], "story": l["story"], "ingredients": l["ingredients"], "concepts": concepts, "score": round(score, 1), "confidence": conf, "flags": fl,
                 "why": why, "status": STATUS_LABEL[m["status"]], "then_now": then_now(m), "competitor": ({k: v for k, v in cs.items()} if cs else None), "components": {k: round(v, 3) for k, v in comp_dict.items()},
                 "metrics": metric_block(m, b), "hooks": hooks, "evidence": evidence}

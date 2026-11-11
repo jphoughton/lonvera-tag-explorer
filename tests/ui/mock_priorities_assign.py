@@ -194,6 +194,9 @@ def register(app, deps):
         apply(r, f)
         return jsonify(view(r, True))
 
+    # what the real vendor payload carries per example: a https Facebook / Instagram link, else nothing. The last three are links the real server would never send (Drive, plain http, javascript:): the page must still refuse them
+    PUBLIC_URLS = ["https://www.facebook.com/lonvera/posts/101", "https://www.facebook.com/lonvera/posts/102", "https://www.instagram.com/p/Cabc123/", None, "javascript:alert(1)", "https://drive.google.com/file/d/1/view", "http://www.facebook.com/lonvera/posts/9"]
+
     def detail_payload(r, vendor_side=False):
         """Same shape and rules as app.priorities_detail.build: the concept's row in the mock snapshot (by concept key, else text key), else what the assignment stored with current=false; up to 10 example
         ads by spend (ad_id None for a vendor). Examples exist only for a concept that has a row (the mock has no tag table)."""
@@ -205,7 +208,8 @@ def register(app, deps):
         if row is not None:
             for i in range(12):
                 spend = round(9000 - i * 700 + (i % 3) * 11.5, 2)
-                ex.append({"ad": f"Example ad {i + 1}", "spend": spend, "roas": round(0.6 + ((i * 7) % 10) / 10, 2), "ad_id": None if vendor_side else 1000 + i, "best": False})
+                ex.append({"ad": f"Example ad {i + 1}", "spend": spend, "roas": round(0.6 + ((i * 7) % 10) / 10, 2), "ad_id": None if vendor_side else 1000 + i, "best": False}
+                          | ({"public_url": PUBLIC_URLS[i] if i < len(PUBLIC_URLS) else None} if vendor_side else {}))
             ex = ex[:pdt.EXAMPLES_MAX]
             ok = [e for e in ex if e["roas"] is not None and e["spend"] >= pdt.BEST_MIN_SPEND]
             max(ok, key=lambda e: (e["roas"], e["spend"]))["best"] = True

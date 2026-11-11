@@ -214,13 +214,19 @@ export function detail(r, d) {
 export const SECTION_LABEL = Object.fromEntries(SECTIONS);
 
 // ---------- the panel of one production assignment (Production page and vendor page) ----------
-// Example ads: up to p.examples_max ads of the concept, top by spend, each with its spend and return on ad spend; the best performer is marked. `ad_id` is null for a vendor (the ad page needs a login), so
-// the name is plain text there.
+// Example ads: up to p.examples_max ads of the concept, top by spend, each with its spend and return on ad spend; the best performer is marked. `ad_id` is null for a vendor (the ad page needs a login): the name links to `public_url` (new tab) when there is one and it is a https Facebook / Instagram link, else it is plain text. The server already
+// sends only such links; the page checks again, so no other host (Google Drive, Ads Manager) can ever be linked for a vendor.
+const PUBLIC_HOSTS = ['facebook.com', 'www.facebook.com', 'fb.watch', 'instagram.com', 'www.instagram.com'];
+export function publicLink(u) {
+  if (typeof u !== 'string' || !u || u.length > 2000) return null;
+  try { const x = new URL(u); return x.protocol === 'https:' && !x.username && !x.password && !x.port && PUBLIC_HOSTS.includes(x.hostname) ? x.href : null; } catch (e) { return null; }
+}
 export function examplesSection(p) {
   const ex = p.examples || [];
   const max = p.examples_max || 10;
   const rows = ex.map((e) => h('tr', { class: 'pri-w pri-ex', 'data-testid': 'pri-example', 'data-best': e.best ? '1' : '' },
-    h('td', { class: 'pri-w-name', 'data-label': 'Ad' }, e.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(e.ad_id), {}), 'data-testid': 'pri-example-link' }, e.ad) : h('span', null, e.ad),
+    h('td', { class: 'pri-w-name', 'data-label': 'Ad' }, e.ad_id != null ? h('a', { href: href('/ad/' + encodeURIComponent(e.ad_id), {}), 'data-testid': 'pri-example-link' }, e.ad)
+      : publicLink(e.public_url) ? h('a', { href: publicLink(e.public_url), target: '_blank', rel: 'noopener noreferrer', 'data-testid': 'pri-example-public' }, e.ad, ' \u2197') : h('span', null, e.ad),
       e.best ? h('span', { class: 'pri-badge pri-badge-ok pri-ex-best', 'data-testid': 'pri-example-best' }, 'Best performer') : null),
     h('td', { class: 'pri-w-num', 'data-label': 'Spend' }, fmt.money(e.spend)),
     h('td', { 'data-label': 'Return on ad spend' }, roasX(e.roas))));

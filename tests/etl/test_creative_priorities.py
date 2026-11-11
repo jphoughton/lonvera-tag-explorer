@@ -616,6 +616,13 @@ def test_everything_else_rows_cover_every_line_and_the_rows_add_up_to_the_tile()
     assert round(tot, 2) == r2["baselines"]["vita-bull"]["spend_14d"]
 
 
+def test_rows_on_a_line_carry_the_lines_sheet_position_and_rows_without_one_do_not():
+    r = cp.compute(scenario(), WEEK)
+    on = [x for x in r["rows"] if x["line_id"] is not None]
+    assert on and all(x["sheet_pos"] == x["line_id"] for x in on)             # the test lines use sort_order = id
+    assert all("sheet_pos" not in x for x in r["rows"] if x["line_id"] is None)
+
+
 # ----------------------------------------------------------------------------------------------- Action / Status redesign (2026-11-10)
 def test_old_snapshots_read_in_the_new_vocabulary_and_old_keys_resolve():
     old = {"week_start": "2026-11-01", "rows": [

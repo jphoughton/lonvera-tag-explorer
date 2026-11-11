@@ -6,6 +6,8 @@ no analysis blobs the panel does not draw.
 """
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 import psycopg
 
 from . import creative_priorities as cpr, priorities_assign as pa, queries as q
@@ -16,10 +18,12 @@ NO_NUMBERS = "No current numbers for this concept."
 VENDOR_DROP_ROW = ("evidence", "components", "unmapped_ads", "notes", "why_now")          # keys a vendor never gets (manual notes are the team's own; the other two are not drawn by the panel)
 
 EXAMPLES_SQL = """
-SELECT m.family_key, m.tracker_row_id, m.spend_launch, m.revenue_launch, COALESCE(cs.display, m.family_key) AS display
+SELECT m.family_key, m.tracker_row_id, m.spend_launch, m.revenue_launch, COALESCE(cs.display, m.family_key) AS display, fc.story_url, tr.asset_url
 FROM ad_metrics m
 JOIN ad_tags g ON g.tracker_row_id = m.tracker_row_id AND g.tag_set = 'linemap' AND g.is_current AND g.line_id = ANY(%s)
 LEFT JOIN creative_stage_moves cs ON cs.family_key = m.family_key
+LEFT JOIN family_content fc ON fc.family_key = m.family_key
+LEFT JOIN tracker_rows tr ON tr.id = m.tracker_row_id
 WHERE m.is_first_row AND m.spend_launch > 0
 ORDER BY m.spend_launch DESC, m.family_key
 LIMIT %s
@@ -47,8 +51,28 @@ def line_ids(conn, rec: dict, row: dict | None) -> list[int]:
         return []
 
 
+PUBLIC_HOSTS = frozenset({"facebook.com", "www.facebook.com", "fb.watch", "instagram.com", "www.instagram.com"})
+
+
+def public_url(*candidates) -> str | None:
+    """The first candidate that is a public Facebook or Instagram link a vendor may open: https only, host exactly one of PUBLIC_HOSTS (so no Google Drive, no Ads Manager, no look-alike host,
+    no user:password@ trick, no custom port), no whitespace or quote characters. Anything else is skipped; None when no candidate qualifies."""
+    for c in candidates:
+        t = str(c or "").strip()
+        if not t or len(t) > 2000 or any(ch in t for ch in " \t\r\n<>\"'\\"):
+            continue
+        try:
+            u = urlparse(t)
+            host, port = (u.hostname or "").lower(), u.port
+        except ValueError:
+            continue
+        if u.scheme == "https" and host in PUBLIC_HOSTS and u.username is None and u.password is None and port is None:
+            return t
+    return None
+
+
 def examples(conn, ids: list[int], vendor_view: bool = False, limit: int = EXAMPLES_MAX) -> list[dict]:
-    """Up to `limit` ads of the concept, top by spend since launch: {ad, spend, roas, ad_id, best}. best marks the highest return among ads that spent at least $100 (one ad). A vendor gets no ad_id (no link)."""
+    """Up to `limit` ads of the concept, top by spend since launch: {ad, spend, roas, ad_id, best}. best marks the highest return among ads that spent at least $100 (one ad). A vendor gets no ad_id but a public_url (the stored Facebook post, else the tracker asset link, but only a https Facebook / Instagram link, see PUBLIC_HOSTS; None otherwise, never Google Drive)."""
     if not ids:
         return []
     try:
@@ -59,7 +83,8 @@ def examples(conn, ids: list[int], vendor_view: bool = False, limit: int = EXAMP
     out = []
     for r in rows:
         spend, rev = float(r["spend_launch"]), (float(r["revenue_launch"]) if r["revenue_launch"] is not None else None)
-        out.append({"ad": r["display"], "spend": round(spend, 2), "roas": round(rev / spend, 2) if rev is not None and spend else None, "ad_id": None if vendor_view else r["tracker_row_id"], "best": False})
+        out.append({"ad": r["display"], "spend": round(spend, 2), "roas": round(rev / spend, 2) if rev is not None and spend else None, "ad_id": None if vendor_view else r["tracker_row_id"], "best": False}
+                   | ({"public_url": public_url(r["story_url"], r["asset_url"])} if vendor_view else {}))
     cand = [e for e in out if e["roas"] is not None and e["spend"] >= BEST_MIN_SPEND]
     if cand:
         max(cand, key=lambda e: (e["roas"], e["spend"]))["best"] = True

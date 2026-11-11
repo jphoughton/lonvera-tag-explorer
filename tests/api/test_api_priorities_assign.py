@@ -93,7 +93,7 @@ def test_ckey_is_added_to_rows_and_nothing_else_changes(client, snaps, pg):
     d = client.get("/api/priorities?week=2026-11-08").get_json()
     stored = pg.execute("SELECT rows FROM creative_priorities_snapshots WHERE week_start = '2026-11-08'").fetchone()[0]
     from etl import creative_priorities as cpm
-    assert [{k: v for k, v in r.items() if k != "ckey"} for r in d["rows"]] == cpm.norm_snapshot({"rows": stored})["rows"]       # only the old->new vocabulary read map; storage itself is untouched
+    assert [{k: v for k, v in r.items() if k not in ("ckey", "sheet_pos")} for r in d["rows"]] == cpm.norm_snapshot({"rows": stored})["rows"]       # only the old->new vocabulary read map; storage itself is untouched
     assert stored[0]["section"] == "faded" and d["rows"][0]["section"] == "revive"
 
 
@@ -582,6 +582,58 @@ def test_vendor_detail_is_the_vendors_own_row_without_links_or_manual_notes(clie
     text = json.dumps(d)
     assert "internal only" not in text and "created_by" not in text and "JoshHoughton" not in text
     assert "evidence" not in d["row"] and "components" not in d["row"]
+
+
+def test_vendor_example_ads_link_only_to_public_facebook_or_instagram_never_drive_ads_manager_or_the_ad_page(client, anon, pg, tagged):
+    """The stored Facebook post, else the tracker asset link, but only when it is a https Facebook / Instagram URL; everything else (Drive, Ads Manager, other hosts) is None. The internal detail has no such field."""
+    pg.execute("INSERT INTO family_content (family_key, story_url) VALUES ('zz-dfam-1','https://www.facebook.com/lonvera/posts/1'), ('zz-dfam-2','javascript:alert(1)'), ('zz-dfam-3','https://adsmanager.facebook.com/adsmanager/manage/ads?act=1&selected_ad_ids=2')")
+    pg.execute("UPDATE tracker_rows SET asset_url = 'https://drive.google.com/file/d/2/view' WHERE id = 9202")            # bad post link, Drive asset link -> nothing: Drive is never exposed
+    pg.execute("UPDATE tracker_rows SET asset_url = 'https://www.instagram.com/p/Cabc/' WHERE id = 9203")                # Ads Manager post link refused, asset link is Instagram -> that
+    pg.execute("UPDATE tracker_rows SET asset_url = 'https://www.facebook.com/reel/4' WHERE id = 9204")                  # no post row at all -> the Facebook asset link
+    pg.execute("UPDATE tracker_rows SET asset_url = 'ftp://x/y' WHERE id = 9205")                                          # nothing usable
+    pg.commit()
+    try:
+        a = assign(client, [line_snapshot(pg, tagged)], vendor="Madre").get_json()["created"][0]
+        tok = link(client, "Madre")["token"]
+        ex = anon.get(f"/api/priorities/vendor/{tok}/{a['id']}/detail").get_json()["examples"]
+        by = {e["ad"]: e for e in ex}
+        assert by["zz-dfam-1"]["public_url"] == "https://www.facebook.com/lonvera/posts/1"
+        assert by["zz-dfam-2"]["public_url"] is None
+        assert by["zz-dfam-3"]["public_url"] == "https://www.instagram.com/p/Cabc/" and by["zz-dfam-4"]["public_url"] == "https://www.facebook.com/reel/4" and by["zz-dfam-5"]["public_url"] is None
+        assert all(e["ad_id"] is None for e in ex) and "/ad/" not in json.dumps(ex) and "adsmanager" not in json.dumps(ex) and "drive.google" not in json.dumps(ex)
+        inner = detail(client, a["id"]).get_json()["examples"]
+        assert inner and all("public_url" not in e for e in inner)
+    finally:
+        pg.execute("DELETE FROM family_content WHERE family_key LIKE 'zz-dfam-%'")
+        pg.commit()
+
+
+@pytest.mark.parametrize("url", ["https://www.facebook.com/lonvera/posts/101", "https://facebook.com/lonvera/posts/101", "https://fb.watch/abc123/", "https://instagram.com/p/Cabc/", "https://www.instagram.com/reel/Cabc/?utm_source=x",
+                                 "  https://www.facebook.com/lonvera/posts/101  "])
+def test_public_url_allows_https_facebook_and_instagram_hosts(url):
+    from app import priorities_detail as pdt
+    assert pdt.public_url(url) == url.strip()
+
+
+@pytest.mark.parametrize("url", ["https://drive.google.com/file/d/1/view", "https://docs.google.com/document/d/1", "https://drive.example/file/2", "http://www.facebook.com/lonvera/posts/1", "javascript:alert(1)", "data:text/html,x", "ftp://facebook.com/x",
+                                 "https://adsmanager.facebook.com/adsmanager/manage/ads", "https://business.facebook.com/x", "https://m.facebook.com/x", "https://facebook.com.evil.example/x", "https://evil.example/facebook.com", "https://www.facebook.com@evil.example/x",
+                                 "https://evil.example@www.facebook.com/x", "https://user:pw@www.facebook.com/x", "https://www.facebook.com:8443/x", "https://www.facebook.com/a b", "//www.facebook.com/x", "www.facebook.com/x", "", None])
+def test_public_url_refuses_every_other_host_scheme_or_shape(url):
+    from app import priorities_detail as pdt
+    assert pdt.public_url(url) is None
+
+
+def test_public_url_takes_the_first_qualifying_candidate():
+    from app import priorities_detail as pdt
+    assert pdt.public_url("https://drive.google.com/x", None, "https://www.instagram.com/p/1/", "https://www.facebook.com/2") == "https://www.instagram.com/p/1/"
+
+
+def test_payload_rows_on_a_sheet_line_carry_the_sheet_position(client, pg, tagged):
+    key = line_snapshot(pg, tagged)
+    rows = client.get("/api/priorities").get_json()["rows"]
+    mine = [r for r in rows if r.get("line_id") == tagged]
+    assert mine and mine[0]["sheet_pos"] == 999
+    assert all("sheet_pos" not in r for r in rows if r.get("line_id") is None)                                                 # a new idea has none
 
 
 def test_vendor_detail_of_a_manual_concept_hides_the_internal_notes(client, anon, pg, tagged):
