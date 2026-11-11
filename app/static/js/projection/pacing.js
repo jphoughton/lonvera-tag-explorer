@@ -664,7 +664,7 @@ export async function render(el, ctx) {
     pokes.length = 0;
     extraHost.replaceChildren(h('div', { class: 'pacing-two' }, paybackBox(data), h('div', { class: 'pacing-stack' }, intradayBox(), ncRevBox(), roasCpaBox())));
     feedHost.replaceChildren(h('section', { class: 'pg-section' }, h('h2', { class: 'pg-h2' }, 'Data feeds'), freshnessChips(chips),
-      ui.source('Each feed refreshes daily and should reach yesterday. Meta spend comes from the Marketing metrics data; the rest is read from the Lonvera Projections sheet.')));
+      ui.source('Each feed refreshes daily and should reach yesterday. Meta spend comes from the Overview and Meta pages; the rest is read from the Lonvera Projections sheet.')));
     loadSnapshot();
   }
 

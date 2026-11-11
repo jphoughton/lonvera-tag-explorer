@@ -1,4 +1,4 @@
-// Marketing metrics: the totals strip above the trend chart. Meta and Google are the only spend platforms, so
+// Lonvera: the totals strip above the trend chart. Meta and Google are the only spend platforms, so
 //   Total spend      = Meta spend + Google spend,
 //   Total NC revenue = the business's ACTUAL new-customer revenue (Upstack orders, each order once), over the days Meta, Google and the orders feed all cover,
 //   Total NC ROAS    = Total NC revenue / spend of those same days.
@@ -14,9 +14,16 @@ const signed = (v) => (isNum(v) ? (v < 0 ? '−' : '+') + fmt.money(Math.abs(v))
 const signedPct = (v) => (isNum(v) ? (v < 0 ? '−' : '+') + (Math.abs(v) * 100).toFixed(1) + '%' : '–');
 const dayRange = (a, b) => (a === b ? fmt.day(a) : `${fmt.day(a)} – ${fmt.day(b)}`);
 
+// Tooltips that spell out the abbreviations in the tile labels (the labels stay short)
+function labelTitle(label) {
+  if (/NC ROAS/.test(label)) return 'New customer (NC) return on ad spend (ROAS): new-customer revenue / ad spend';
+  if (/NC revenue/.test(label)) return 'New customer (NC) revenue: orders from customers on their first order';
+  if (/ROAS/.test(label)) return 'Return on ad spend (ROAS): revenue / ad spend';
+  return null;
+}
 function tile(id, label, value, exact, sub, extra = []) {
   return h('div', { class: 'kpi', 'data-testid': 'kpi-' + id },
-    h('div', { class: 'kpi-label' }, label),
+    h('div', { class: 'kpi-label', title: labelTitle(label) }, label),
     h('div', { class: 'kpi-value', 'data-testid': 'kpi-' + id + '-value', ...(exact != null ? { 'data-value': String(exact) } : {}) }, value),
     sub ? h('div', { class: 'kpi-sub' }, sub) : null,
     ...extra);
@@ -64,7 +71,7 @@ export function ownStrip(key, name, m, win = null) {
 
 // filt = { only, product, type }: the same filters as the chart and the table below it
 export function totalsStrip({ p, signal, filt = {} }) {
-  const el = h('section', { class: 'kpis', 'data-testid': 'totals-strip', 'aria-label': 'Total spend and total NC ROAS' }, h('div', { class: 'kpi-loading muted small' }, 'Loading totals…'));
+  const el = h('section', { class: 'kpis', 'data-testid': 'totals-strip', 'aria-label': 'Total spend and total new customer return on ad spend' }, h('div', { class: 'kpi-loading muted small' }, 'Loading totals…'));
 
   function paint(d) {
     const t = d.total;

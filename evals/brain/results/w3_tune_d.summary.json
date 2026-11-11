@@ -1,0 +1,19 @@
+{
+ "n": 6,
+ "score": 66.7,
+ "correct": 2,
+ "partial": 4,
+ "wrong": 0,
+ "by_type": {
+  "d": {
+   "n": 6,
+   "score": 66.7,
+   "correct": 2,
+   "partial": 4,
+   "wrong": 0
+  }
+ },
+ "guardrail_violations": 0,
+ "avg_tool_calls": 4.7,
+ "cost_usd": 0.39
+}

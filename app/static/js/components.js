@@ -235,7 +235,7 @@ function unmatchedTable(d) {
     createTable({ columns: cols, rows, total, rowKey: (r) => r.meta_family, emptyText: 'Nothing unmatched.', testid: 'unmatched-table' }).el);
 }
 
-// ---------- coverage: ICPs / pain points with no ads or no spend ("what we have not tested") ----------
+// ---------- coverage: ideal customer profiles / pain points with no ads or no spend ("what we have not tested") ----------
 // c = {state: 'no_ads'|'no_spend'|'tested', added_after_tagging} from /api/products/<slug>/coverage
 export function coverageBadge(c) {
   if (!c || c.state === 'tested') return null;
@@ -250,9 +250,9 @@ const plural = (n, one, many) => `${fmt.int(n)} ${n === 1 ? one : many}`;
 export function coverageText(cv) {
   const pp = cv.summary.pain_points, ic = cv.summary.icps;
   const parts = [`${fmt.int(pp.not_tested)} of ${fmt.int(pp.total)} pain points not tested (${fmt.int(pp.no_ads)} no ads, ${fmt.int(pp.no_spend)} ads but $0 spend)`,
-    `${fmt.int(ic.not_tested)} of ${fmt.int(ic.total)} ICPs`];
+    `${fmt.int(ic.not_tested)} of ${fmt.int(ic.total)} ideal customer profiles`];
   const added = pp.added_after_tagging + ic.added_after_tagging;
-  if (added) parts.push(`${plural(pp.added_after_tagging, 'pain point', 'pain points')}${ic.added_after_tagging ? ` and ${plural(ic.added_after_tagging, 'ICP', 'ICPs')}` : ''} added after tagging, not counted`);
+  if (added) parts.push(`${plural(pp.added_after_tagging, 'pain point', 'pain points')}${ic.added_after_tagging ? ` and ${plural(ic.added_after_tagging, 'ideal customer profile', 'ideal customer profiles')}` : ''} added after tagging, not counted`);
   return parts.join(' · ');
 }
 
@@ -260,7 +260,7 @@ export function coverageText(cv) {
 export function coverageBar(cv, { path, G, on, windowLabel, sourceLabel }) {
   if (!cv || !cv.available) return null;
   const toggle = h('a', { class: 'btnlink' + (on ? ' on' : ''), id: 'untested-toggle', 'aria-pressed': String(!!on), href: href(path, { ...G, untested: on ? null : 1 }),
-    title: 'List only the ICPs and pain points with no ads or no spend' }, on ? '✓ Not tested only' : 'Not tested only');
+    title: 'List only the ideal customer profiles and pain points with no ads or no spend' }, on ? '✓ Not tested only' : 'Not tested only');
   return h('div', { class: 'coveragebar', 'data-testid': 'coverage-bar' },
     h('span', { class: 'cov-text', id: 'coverage-text' }, coverageText(cv)),
     h('span', { class: 'muted small' }, `Spend: ${windowLabel || 'selected range'} · ${sourceLabel || 'Meta'}`),
@@ -272,9 +272,9 @@ export function untestedPanel(cv, { path, G, windowLabel }) {
   const rows = cv.rows;
   const hrefOf = (r) => href(path, r.level === 1 ? { ...G, cluster: r.cluster, icp: r.icp } : { ...G, cluster: r.cluster, icp: r.icp, pain: r.pain });
   const cols = [
-    { key: 'kind', label: 'Level', sort: (r) => r.level, cell: (r) => (r.level === 1 ? 'ICP' : 'Pain point') },
+    { key: 'kind', label: 'Level', sort: (r) => r.level, cell: (r) => (r.level === 1 ? 'Ideal customer profile' : 'Pain point') },
     { key: 'cluster', label: 'Market cluster', sort: (r) => r.cluster, cell: (r) => r.cluster },
-    { key: 'icp', label: 'ICP', sort: (r) => r.icp, cell: (r) => r.icp },
+    { key: 'icp', label: 'Ideal customer profile', sort: (r) => r.icp, cell: (r) => r.icp },
     { key: 'pain', label: 'Pain point', sticky: true, sort: (r) => r.pain || '', cell: (r) => (r.level === 1 ? h('span', { class: 'muted' }, 'all pain points') : r.pain) },
     { key: 'line', label: 'Line', sort: (r) => r.line_code || '', cell: (r) => (r.line_code ? h('span', { class: 'linecode' }, r.line_code) : '') },
     { key: 'trigger', label: 'Emotional trigger', sort: (r) => r.trigger || '', cell: (r) => r.trigger || '' },
@@ -296,7 +296,7 @@ export function untestedPanel(cv, { path, G, windowLabel }) {
     section('no-ads', 'No ads at all', 'No creative in the tracker is tagged to these (any status, any date). This list does not change with the date range or the source.', noAds),
     section('no-spend', 'Ads, but $0 spend', `Creatives are tagged here but spent nothing in ${windowLabel || 'the selected range'} (follows the range, stage filter and source).`, noSpend),
     section('added', 'Added after tagging', 'Lines added to the Communication Overview after the ads were tagged. They read 0 by construction, not because they were skipped.', added),
-    !rows.length ? h('div', { class: 'empty' }, 'Every ICP and pain point has spend in this range.') : null,
+    !rows.length ? h('div', { class: 'empty' }, 'Every ideal customer profile and pain point has spend in this range.') : null,
     h('ul', { class: 'cov-caveats' },
       h('li', null, 'Each ad carries exactly one line from the tagging (blind re-tag agreement on the exact line is roughly 73 to 82% by product), so a line showing none may have ads sitting on a neighbouring line.'),
       merged ? h('li', null, 'Lines that share a pain point and differ only by emotional trigger (Boneflex BF36 / BF38) are one row and count once.') : null));

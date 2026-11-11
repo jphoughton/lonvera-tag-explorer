@@ -1,0 +1,47 @@
+{
+ "n": 45,
+ "score": 97.8,
+ "correct": 43,
+ "partial": 2,
+ "wrong": 0,
+ "by_type": {
+  "a": {
+   "n": 9,
+   "score": 100.0,
+   "correct": 9,
+   "partial": 0,
+   "wrong": 0
+  },
+  "b": {
+   "n": 8,
+   "score": 100.0,
+   "correct": 8,
+   "partial": 0,
+   "wrong": 0
+  },
+  "c": {
+   "n": 14,
+   "score": 100.0,
+   "correct": 14,
+   "partial": 0,
+   "wrong": 0
+  },
+  "d": {
+   "n": 6,
+   "score": 83.3,
+   "correct": 4,
+   "partial": 2,
+   "wrong": 0
+  },
+  "e": {
+   "n": 8,
+   "score": 100.0,
+   "correct": 8,
+   "partial": 0,
+   "wrong": 0
+  }
+ },
+ "guardrail_violations": 0,
+ "avg_tool_calls": 3.8,
+ "cost_usd": 1.89
+}

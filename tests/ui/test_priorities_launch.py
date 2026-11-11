@@ -213,3 +213,11 @@ def test_no_sideways_page_scroll_at_375px_with_the_dialog_open(browser, base_url
         assert small == []
     finally:
         c.close()
+
+
+def test_flag_off_never_loads_the_launch_script_or_asks_for_launch_routes(page, ctx, base_url):
+    seen = []
+    page.on("request", lambda r: seen.append(r.url))
+    goto(page, ctx, base_url)
+    assert not [u for u in seen if "priorities_launch.js" in u or "/launch" in u]
+    assert page.locator("[data-testid=prod-launch-open]").count() == 0

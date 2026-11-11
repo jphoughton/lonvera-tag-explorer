@@ -1,0 +1,53 @@
+/* test-to-scale: Test to scale (tts-, sv-, kv- classes) */
+/* ---------- Test to scale (/promotions): creatives moved from Testing to Scaling. Class names start with tts- (never ad-, ads-, sponsor, promo, banner: ad blockers hide those) ---------- */
+.tts-help { background: var(--panel); border: 1px solid var(--line-soft); border-radius: 6px; padding: 5px 12px; margin: 4px 0 8px; font-size: 12.5px; }
+.tts-help p { margin: 3px 0; overflow-wrap: anywhere; }
+.tts-filters { margin: 6px 0 8px; }
+input.tts-num, .tts-bulk-note { margin: 8px 0 2px; padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--panel)); background: var(--warn-bg); color: var(--warn); border-radius: 5px; font-size: 12.5px; overflow-wrap: anywhere; }
+.badge.tts-bulk { background: var(--warn-bg); color: var(--warn); }
+.badge.tts-held { white-space: nowrap; }
+.badge.tts-held-held { background: var(--good-bg); color: var(--good); }
+.badge.tts-held-softer { background: var(--warn-bg); color: var(--warn); }
+.badge.tts-held-fell { background: var(--bad-bg); color: var(--bad); }
+.badge.tts-held-too_early, .badge.tts-held-no_baseline { background: var(--unc-bg); color: var(--unc); }
+.badge.tts-state-still_testing { background: var(--testing-bg); color: var(--testing); }
+.badge.tts-state-stopped { background: var(--unc-bg); color: var(--unc); }
+tr.tts-bulk-row td { background: color-mix(in srgb, var(--warn-bg) 45%, var(--panel)); }
+.tts-held-count { white-space: nowrap; }
+.tts-foot { margin: 2px 2px 6px; overflow-wrap: anywhere; }
+.tts-product { font-weight: 600; color: var(--text); }
+@media (max-width: 760px) { input.tts-num, input.sv-num { width: 72px; } }
+/* ---------- Test to scale, the two simple views (What should be scaled, Performance in scaling). Class names start with sv- ---------- */
+.sv-tabs { display: flex; margin: 6px 0 8px; max-width: 100%; flex-wrap: wrap; }
+.sv-words { margin: 4px 0 8px; }
+.sv-words p { margin: 4px 0; max-width: 90ch; }
+.sv-page .cell-ad, .page[data-level=promotions] .cell-ad { min-width: 0; }
+.sv-tabs .seg { flex: 1 1 auto; text-align: center; }
+.sv-tabs .seg { padding: 6px 12px; font-size: 13px; }
+.sv-lead { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; }
+.sv-controls { margin: 8px 0; }
+.sv-bars { list-style: none; margin: 6px 0; padding: 6px 12px; background: var(--panel); border: 1px solid var(--line-soft); border-radius: 6px; font-size: 12.5px; }
+.sv-bars li { margin: 2px 0; overflow-wrap: anywhere; }
+.sv-summary { margin: 6px 0 2px; font-size: 13px; overflow-wrap: anywhere; }
+.sv-foot { margin: 6px 2px; overflow-wrap: anywhere; max-width: 50ch; }
+.sv-name { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; }
+.sv-defs { margin: 8px 0; font-size: 12.5px; }
+.sv-defs p { margin: 4px 0; }
+.badge.sv-conf-high { background: var(--good-bg); color: var(--good); }
+.badge.sv-conf-medium { background: var(--warn-bg); color: var(--warn); }
+.badge.sv-conf-low { background: var(--bad-bg); color: var(--bad); }
+.badge.sv-vs-above, .badge.sv-vt-better, .badge.sv-status-holding { background: var(--good-bg); color: var(--good); }
+.badge.sv-vs-near, .badge.sv-vt-about-the-same { background: var(--warn-bg); color: var(--warn); }
+.badge.sv-vs-below, .badge.sv-vt-worse, .badge.sv-status-fading { background: var(--bad-bg); color: var(--bad); }
+.badge.sv-vt-too-early, .badge.sv-vt-no-baseline, .badge.sv-status-too-early, .badge.sv-status-stopped { background: var(--unc-bg); color: var(--unc); }
+/* What should be killed (kv-): same chips and table as the scale view */
+.badge.kv-vs-far-below { background: var(--bad-bg); color: var(--bad); }
+.badge.kv-vs-below { background: var(--warn-bg); color: var(--warn); }
+.kv-total { padding: 6px 0; }
+.kv-reason { min-width: 18ch; }
+.tablehead .kv-copy { margin-left: 8px; }
+
+
+/* one look for the number and search boxes on every tab */
+.page[data-level="promotions"] input[type="number"] { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 4px; padding: 3px 6px; font: inherit; }
+.page[data-level="promotions"] .pagefilters input[type="search"] { width: 240px; max-width: 100%; }

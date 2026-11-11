@@ -13,7 +13,7 @@ export function openLightbox(ctx) {
   let idx = 0;
   let detail = ctx.detail || null;
   const name = ctx.name || 'Ad';
-  const img = h('img', { class: 'lb-img', alt: `${name} — thumbnail` });
+  const img = h('img', { class: 'lb-img', alt: `${name}, thumbnail` });
   const counter = h('div', { class: 'lb-counter muted small', 'aria-live': 'polite' });
   const prev = h('button', { type: 'button', class: 'lb-nav prev', 'aria-label': 'Previous frame', hidden: true }, '‹');
   const next = h('button', { type: 'button', class: 'lb-nav next', 'aria-label': 'Next frame', hidden: true }, '›');
@@ -37,7 +37,7 @@ export function openLightbox(ctx) {
     if (!images.length) { img.removeAttribute('src'); counter.textContent = ''; return; }
     idx = (i + images.length) % images.length;
     img.src = media(images[idx].id);
-    img.alt = `${name} — ${images.length > 1 ? `frame ${idx + 1} of ${images.length}` : 'thumbnail'}`;
+    img.alt = `${name}, ${images.length > 1 ? `frame ${idx + 1} of ${images.length}` : 'thumbnail'}`;
     counter.textContent = images.length > 1 ? `${idx + 1} / ${images.length}` : '';
     prev.hidden = next.hidden = images.length < 2;
     strip.hidden = images.length < 2;

@@ -21,6 +21,34 @@ PRODUCTS = {"vita-bull": "vita-bull", "vitabull": "vita-bull", "vital bull": "vi
             "boneflex": "boneflex", "vita-belle": "vita-belle", "vitabelle": "vita-belle", "vital belle": "vita-belle", "vital-flow": "vital-flow", "vitalflow": "vital-flow", "vital flow": "vital-flow"}
 ALIASES = {"nc_cpa": "nc_cpa", "cpa": "nc_cpa", "nc cpa": "nc_cpa", "cac": "nc_cpa", "roas": "nc_roas", "nc roas": "nc_roas", "new customer revenue": "nc_revenue", "nc revenue": "nc_revenue", "repeat": "repeat_revenue",
            "ctr": "ctr", "cpm": "cpm", "cpc": "cpc", "conversion": "conversion", "cvr": "conversion", "aov": "nc_aov", "spend": "spend", "revenue": "revenue"}
+# Plain-language phrases an agent or Josh uses for a metric, longest phrase wins ("spend cliff", "renewals down", "frequency up"): they route to the node that answers the question.
+PHRASES = {
+    "spend cliff": "spend", "spend fell": "spend", "spend drop": "spend", "spend down": "spend", "spend dropped": "spend", "ad spend": "spend", "total spend": "spend", "budget": "spend",
+    "meta spend": "meta_spend", "facebook spend": "meta_spend", "google spend": "google_spend",
+    "frequency": "frequency", "frequency up": "frequency", "reach": "frequency", "cpm jump": "cpm", "cpm": "cpm", "cost per thousand": "cpm", "cpc": "cpc", "cost per click": "cpc", "ctr": "ctr", "click through": "ctr",
+    "renewals": "repeat_revenue", "renewal": "repeat_revenue", "rebill": "repeat_revenue", "rebills": "repeat_revenue", "repeat revenue": "repeat_revenue", "repeat": "repeat_revenue", "subscription revenue": "repeat_revenue",
+    "repeat orders": "repeat_orders", "repeat rate": "repeat_rate", "billing reminder": "klaviyo_billing_reminders", "billing reminders": "klaviyo_billing_reminders",
+    "new customers": "nc_revenue", "new customer": "nc_revenue", "new customer revenue": "nc_revenue", "nc revenue": "nc_revenue", "first order": "nc_revenue",
+    "roas": "nc_roas", "nc roas": "nc_roas", "return on ad spend": "nc_roas", "cpa": "nc_cpa", "nc cpa": "nc_cpa", "cac": "nc_cpa", "cost per acquisition": "nc_cpa", "cost per new customer": "nc_cpa",
+    "aov": "nc_aov", "order value": "nc_aov", "conversion": "conversion", "cvr": "conversion", "conversion rate": "conversion", "meta reported": "basis_gap", "total revenue": "revenue", "revenue": "revenue",
+}
+
+
+def resolve_metric(raw) -> str:
+    """A node id, an id with spaces, an alias, or a phrase containing one ('why did the spend cliff happen' -> spend)."""
+    t = re.sub(r"[^a-z0-9]+", " ", str(raw or "revenue").lower()).strip()
+    if t.replace(" ", "_") in T.BY_ID:
+        return t.replace(" ", "_")
+    if t in ALIASES:
+        return ALIASES[t]
+    if t in PHRASES:
+        return PHRASES[t]
+    for ph in sorted(PHRASES, key=len, reverse=True):
+        if re.search(rf"\b{re.escape(ph)}\b", t):
+            return PHRASES[ph]
+    return t.replace(" ", "_")
+
+
 DEN_NAMES = {"spend": "total spend", "nc": "new customers", "clicks": "unique outbound clicks (link clicks when scoped)", "impressions": "impressions", "meta_spend": "Meta spend", "reach_daily": "daily reach (summed)",
              "rep_orders": "repeat orders", "base_nc": "new customers of the prior 180 days", "k_flow_deliv": "flow messages delivered", "k_camp_deliv": "campaign messages delivered", "k_fw_deliv": "messages delivered",
              "so_orders": "new-customer orders", "so_units": "units", "nc_rev": "new-customer revenue"}
@@ -115,7 +143,7 @@ class Why:
 
     # ------------------------------------------------------------ setup
     def setup(self, a: dict) -> None:
-        self.metric = ALIASES.get(re.sub(r"[^a-z_ ]+", "", str(a.get("metric") or "revenue").lower().strip()), None) or str(a.get("metric") or "revenue").lower().strip()
+        self.metric = resolve_metric(a.get("metric"))
         if self.metric not in T.BY_ID or T.BY_ID[self.metric]["kind"] != "scalar":
             raise WhyError(f"metric must be one of: {', '.join(n['id'] for n in T.NODES if n['kind'] == 'scalar')}")
         self.max_depth = int(a.get("max_depth") or 10)
@@ -183,8 +211,27 @@ class Why:
             return None
         rows = self.q(self.fmt_sql(spec["sql"]))
         out = {r["p"]: {k: (float(v) if isinstance(v, (int, float)) or hasattr(v, "quantize") else v) for k, v in r.items() if k != "p"} for r in rows}
+        if fam == "spend" and self.has("meta_campaign_daily_history"):
+            self.add_meta_history(out)
         self.fam_cache[fam] = out
         return out
+
+    def add_meta_history(self, out: dict) -> None:
+        """platform_daily holds Meta only from 2026-05-06; meta_campaign_daily_history has the same numbers from then on and campaign-level spend back to 2024-12-31. Windows before May must not read as $0."""
+        try:
+            rows = self.q(self.fmt_sql("with " + T.PERIODS + " select p.p, count(distinct h.day) hdays, coalesce(sum(h.spend), 0) hspend from periods p left join analytics.meta_campaign_daily_history h on h.day between p.s and p.e group by p.p"))
+        except BudgetExceeded:
+            self.budget_hit = True
+            return
+        for r in rows:
+            row = out.get(r["p"])
+            if not row:
+                continue
+            h = float(r["hspend"] or 0)
+            if h > row.get("meta_spend", 0):
+                row["spend"] = row.get("spend", 0) - row.get("meta_spend", 0) + h
+                row["meta_spend"] = h
+                row["meta_days"] = max(row.get("meta_days", 0), float(r["hdays"] or 0))
 
     def measures(self, node: dict) -> dict[str, dict] | None:
         fams = sorted({("sc" if self.scoped else T.MEASURE_FAMILY[m]) if self.scoped else T.MEASURE_FAMILY[m] for m in T._measures_of(node) if m in T.MEASURE_FAMILY or self.scoped})
@@ -460,7 +507,10 @@ class Why:
                 s0 = _d(between[0], "x"); e0 = _d(between[1], "x") if between[1] else dt.date.max
                 overlaps = not (e0 < self.start or s0 > self.end)
             matches = bool(assess and assess["status"] == "material" and (k["direction"] in (None, direction)) and (overlaps in (None, True)))
-            out.append({**k, "overlaps_window": overlaps, "matches_current_pattern": matches})
+            matched_by = None
+            if assess is None and overlaps:                      # a gap node has no data of its own: a dated cause overlapping the window is still the lead to read
+                matches, matched_by = True, "dated overlap with the window (this node's own data is absent)"
+            out.append({**k, "overlaps_window": overlaps, "matches_current_pattern": matches, **({"matched_by": matched_by} if matched_by else {})})
         return out
 
     def coverage_warnings(self, node, m) -> list[str]:
@@ -1146,6 +1196,20 @@ class Why:
             for c in n.get("children", []):
                 collect(c)
         collect(tree)
+        have = {m["claim"] for m in matches}
+        root_dir = None
+        rel = (tree.get("values") or {}).get("rel")
+        if tree.get("status") == "material" and rel is not None:
+            root_dir = "up" if rel > 0 else "down"
+        for pid in T.ancestors(self.metric):                   # causes recorded on a parent node (e.g. total spend for Meta spend) cover this window too
+            for k in T.BY_ID[pid].get("known_causes", []) or []:
+                b = k.get("between")
+                if k["claim"] in have or k.get("direction") not in (None, root_dir) or root_dir is None:
+                    continue
+                if b and ((_d(b[1], "x") if b[1] else dt.date.max) < self.start or _d(b[0], "x") > self.end):
+                    continue
+                have.add(k["claim"])
+                matches.append({"node": pid, "date": k["date"], "claim": k["claim"], "status": k["status"], "confidence": k["confidence"], "between": k["between"], "note": k.get("note"), "matched_by": f"parent node '{pid}', dated overlap"})
         self.leaf_nodes: list[dict] = []
 
         def leaves(n):
@@ -1329,3 +1393,33 @@ def run_why(args: dict, run: Callable[[str, int], dict], kn=None) -> dict:
     w.setup(args)
     tree = w.walk(w.metric, 1, None, [])
     return w.finalize(tree)
+
+
+def compact(res: dict, top: int = 6) -> dict:
+    """The agent-sized answer: headline, reading, the strongest findings with their controls in one line each, known causes, gaps and next questions. The full tree, SQL and refuted lists stay behind detail=true."""
+    def one(f):
+        keep = ("entity", "label", "label_reason", "sentence", "share_of_parent_change", "rate_cur", "rate_rest_cur", "suggested_action", "settle_with", "change_events_within_3_days", "past_questions")
+        o = {k: f[k] for k in keep if k in f and f[k] not in (None, [], {})}
+        if isinstance(o.get("change_events_within_3_days"), list):
+            o["change_events_within_3_days"] = o["change_events_within_3_days"][:3]
+        if isinstance(o.get("past_questions"), list):
+            o["past_questions"] = [{"id": q.get("id"), "found": q.get("found")} for q in o["past_questions"][:2]]
+        c = (f.get("controls") or {}).get("counterfactual_exclusion") or {}
+        if c.get("reading"):
+            o["control"] = c["reading"]
+        return o
+    ch = res.get("changes_in_window") or {}
+    root = res.get("metric")
+    kcs = sorted(res.get("known_cause_matches") or [], key=lambda m: (m.get("node") != root, m.get("status") == "refuted"))   # the asked metric's own causes first, refuted ones last
+    out = {k: res.get(k) for k in ("metric", "window", "comparison", "scope", "headline") if res.get(k) not in (None, [], {})}
+    out["known_causes_to_report"] = [{k: m.get(k) for k in ("node", "claim", "status", "confidence", "between", "note") if m.get(k)} for m in kcs[:8]]
+    out["how_to_answer"] = ("Lead with the headline numbers; then report EACH known cause above in its own words and confidence (a refuted one is a finding too: say it was ruled out); then say what is not in the database (next_questions / coverage_notes). "
+                            "Do not add a cause that is not listed unless you tested it with a control.")
+    out.update({k: res.get(k) for k in ("reading", "unexplained", "next_questions", "coverage_notes", "budget_exhausted") if res.get(k) not in (None, [], {})})
+    out["findings"] = [one(f) for f in (res.get("findings") or [])[:top]]
+    out["refuted"] = [f.get("sentence") or (f.get("label_reason")) for f in (res.get("refuted_candidates") or [])[:6]]
+    out["changes_in_window"] = {"counts": ch.get("counts"), "window_for_dated_events": ch.get("window_for_dated_events"),
+                                "examples": {k: [{kk: e.get(kk) for kk in ("date", "label", "product", "spend_in_window") if kk in e} for e in v[:2]] for k, v in (ch.get("examples") or {}).items()}}
+    out["guardrails"] = [g.get("id") for g in (res.get("guardrails_checked") or []) if g.get("ok")]
+    out["note"] = "Compact view. Pass detail=true for the full tree, every finding, the refuted list and the queries run. Arrows are accounting, not cause; use the confidence words as written."
+    return out

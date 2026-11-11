@@ -596,3 +596,17 @@ def test_kill_empty_state_in_plain_words(page):
 def test_kill_screenshot_desktop(page):
     goto(page, "", "should_kill")
     shot(page, "kv_03_should_kill")
+
+
+def test_word_list_and_header_are_the_same_on_every_tab(page):
+    for view in ("should_scale", "should_kill", "in_scaling", "detail"):
+        page.goto(f"/promotions?view={view}")
+        page.wait_for_selector("[data-testid=sv-words]")
+        idle(page)
+        expect(page.locator("h1")).to_have_text("Test to scale")
+        assert page.locator("[data-testid=sv-words]").count() == 1
+        assert page.locator("[data-testid=sv-tab-" + view + "][aria-current=page]").count() == 1
+        assert page.locator(".crumbrow").inner_text().startswith("Lonvera")
+    page.locator("[data-testid=sv-words] summary").click()
+    text = page.locator("[data-testid=sv-words]").inner_text()
+    assert "Too early." in text and "Return on ad spend (ROAS)" in text and "Cost per acquisition (CPA)" in text

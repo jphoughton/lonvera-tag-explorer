@@ -10,7 +10,7 @@ import { metricColumns, trendColumn, pinColumn } from './columns.js';
 
 const ROOT = '__root__';
 const LEVEL_NAME = ['cluster', 'icp', 'pain', 'family'];
-const CHILD_WORD = ['ICP', 'pain point', 'creative', 'ad'];
+const CHILD_WORD = ['ideal customer profile', 'pain point', 'creative', 'ad'];
 
 function scaleM(m, parentM) {
   // child response total == parent's total, so child's table share = parent share x child share
@@ -345,7 +345,7 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
     return b;
   });
   const cb = h('input', { type: 'checkbox', id: 'flt-spend', checked: spendOnly });
-  const search = h('input', { type: 'search', id: 'flt-q', value: q, placeholder: 'Search…', 'aria-label': 'Search' });
+  const search = h('input', { type: 'search', id: 'flt-q', value: q, placeholder: 'Search names…', 'aria-label': 'Search' });
   const count = h('span', { class: 'muted', id: 'flt-count' });
   const busy = h('span', { class: 'muted', id: 'tree-busy' });
   function setBusy(on) { busy.textContent = on ? 'Loading…' : ''; }
@@ -364,14 +364,18 @@ export function createTree({ slug, p, signal, rootLevel, filters, first, restore
   }, 150));
   const expandAllBtn = h('button', { type: 'button', class: 'btn', id: 'expand-all', onclick: expandAll }, 'Expand all');
   const collapseBtn = h('button', { type: 'button', class: 'btn', id: 'collapse-all', onclick: collapseAll }, 'Collapse all');
-  const toolbar = h('div', { class: 'tools', 'data-testid': 'tree-toolbar' },
-    expandAllBtn, collapseBtn,
-    h('span', { class: 'ctl-name' }, 'Expand to'), h('span', { class: 'segs', id: 'expand-to' }, depthBtns),
-    busy,
-    h('span', { class: 'spacer' }),
-    h('span', { class: 'ctl-name' }, 'Clicking a row'), h('span', { class: 'segs', id: 'row-mode' }, modeBtns),
-    columnsChips(),
-    h('label', { class: 'check' }, cb, ' With spend only'), search, count);
+  // three rows: filters first (search, With spend only, row count), then how much of the tree to open, then display options
+  const searchBox = h('div', { class: 'ctl' }, h('span', { class: 'ctl-name' }, 'Search'), search);
+  const toolbar = h('div', { class: 'tools treetools', 'data-testid': 'tree-toolbar' },
+    h('div', { class: 'tools-row ctl-row pagefilters' }, searchBox, h('label', { class: 'check' }, cb, ' With spend only'), count),
+    h('div', { class: 'tools-row' },
+      expandAllBtn, collapseBtn,
+      h('span', { class: 'ctl-name' }, 'Expand to'), h('span', { class: 'segs', id: 'expand-to', role: 'group', 'aria-label': 'Expand to' }, depthBtns),
+      busy),
+    h('div', { class: 'tools-row displayopts' },
+      h('span', { class: 'ctl-name' }, 'Display'),
+      h('span', { class: 'ctl-name' }, 'Clicking a row'), h('span', { class: 'segs', id: 'row-mode', role: 'group', 'aria-label': 'Clicking a row' }, modeBtns),
+      columnsChips()));
   function updateToolbar(rows) {
     const n = rows.filter((r) => !r.pseudo).length;
     count.textContent = `${fmt.int(n)} rows shown`;
