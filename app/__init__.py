@@ -13,7 +13,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.routing import IntegerConverter
 
-from . import api, auth, db, preview, priorities_launch_api, projection, respcache
+from . import api, auth, brain_mcp, db, preview, priorities_launch_api, projection, respcache
 from .config import load_config
 from .queries import ApiError
 
@@ -69,6 +69,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(api.bp)
     app.register_blueprint(priorities_launch_api.bp)
     projection.register(app)
+    app.register_blueprint(brain_mcp.bp)
     _register_pages(app)
     _register_errors(app)
     _register_headers(app)
@@ -97,7 +98,7 @@ def _register_pages(app: Flask) -> None:
         resp.headers["Content-Security-Policy"] = CSP
         return resp
 
-    for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/priorities", "/priorities/v/<token>", "/priorities/production", "/priorities/vendor/<token>", "/lookup", "/p/<slug>", "/ad/<id>"):
+    for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/priorities", "/priorities/v/<token>", "/priorities/production", "/priorities/vendor/<token>", "/lookup", "/connect-agent", "/p/<slug>", "/ad/<id>"):
         app.add_url_rule(rule, endpoint="shell:" + rule, view_func=shell)
 
 

@@ -338,7 +338,7 @@ def test_the_api_is_read_only(app, client, app_factory):
         extra = set(rule.methods) - {"GET", "HEAD", "OPTIONS"}
         if extra and not rule.rule.startswith(("/api/projection/", "/api/priorities/")):         # the projection editor and the /priorities saved views + manual concepts write through their own read-write pool; the metrics API never does
             writers[rule.rule] = extra
-    assert writers == {"/api/login": {"POST"}, "/api/logout": {"POST"}}   # /api/priorities/* writers (saved views, manual concepts) use their own pool and are excluded above
+    assert writers == {"/api/login": {"POST"}, "/api/logout": {"POST"}, "/api/brain/key": {"POST"}, "/mcp": {"POST", "DELETE"}}   # /api/brain/key = a signed-in person makes their own agent key (own rate limit, Origin check, not by API key); /mcp = the brain endpoint (own auth, own pool for its audit row; every tool is read only and SQL runs as analytics_reader)   # /api/priorities/* writers (saved views, manual concepts) use their own pool and are excluded above
     # 1b. the production write routes are exactly these (all on the app's own read-write pool, all behind the Origin check and a rate limit); the vendor ones are the only login-exempt API paths
     prod = {(r.rule, m) for r in app.url_map.iter_rules() if r.rule.startswith(("/api/priorities/assignments", "/api/priorities/vendor")) for m in set(r.methods) - {"GET", "HEAD", "OPTIONS"}}
     assert prod == {("/api/priorities/assignments", "POST"), ("/api/priorities/assignments/<int:aid>", "PATCH"), ("/api/priorities/vendor-links", "POST"),
