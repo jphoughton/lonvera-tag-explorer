@@ -8221,7 +8221,7 @@
    ],
    "foreign_keys": [],
    "source": "Meta Marketing API Insights (read only), etl.meta_breakdowns",
-   "refresh": "nightly, trailing 7 days re-pulled and upserted; a backfill runs newest 30-day window first",
+   "refresh": "every 2 hours by the dedicated `breakdowns` service: the backfill (newest 30-day window first) until finished, then the trailing 7 days once a day",
    "coverage": "see meta_breakdown_coverage for the first and last day and the level per set",
    "caveats": [
     "purchases and purchase_value are Meta-reported (they count returning customers, not Upstack new customers).",
@@ -8452,12 +8452,13 @@
     "window_end"
    ],
    "foreign_keys": [],
-   "source": "etl.meta_breakdowns (backfill mode only)",
+   "source": "etl.meta_breakdowns (backfill and --auto mode; the plain trailing-days pull does not write it)",
    "refresh": "written as each window x set finishes",
-   "coverage": "backfill windows only; the nightly trailing-7-day pull does not write it",
+   "coverage": "backfill windows and the three bookkeeping rows",
    "caveats": [
-    "A window is skipped on a rerun when a recorded window covers it. Windows are anchored on --until, so pass the same --until when resuming after midnight.",
-    "Safe to delete: the next backfill simply pulls again (upserts)."
+    "A window is skipped on a rerun when a recorded window covers it. The backfill anchor is stored here on the first --auto run, so a resume after midnight needs no arguments.",
+    "Three bookkeeping rows have breakdown_set __anchor__ (window_start = oldest day, window_end = the backfill's --until day, rows = max days), __backfill_done__ (the backfill finished) and __caught_up__ (window_end = the last day the daily catch-up covered); level and account_id are '-'.",
+    "Safe to delete (or run with --restart): the next backfill simply starts over and pulls again (upserts)."
    ],
    "like": null,
    "columns": [
@@ -8483,7 +8484,7 @@
      "name": "window_start",
      "type": "date",
      "nullable": false,
-     "description": "First day of the finished window."
+     "description": "First day of the finished window (the oldest day for the __anchor__ row)."
     },
     {
      "name": "window_end",

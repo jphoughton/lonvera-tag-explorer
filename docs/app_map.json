@@ -42,6 +42,14 @@
    "source": "scripts/deploy/apply_backup_service.py"
   },
   {
+   "name": "breakdowns",
+   "kind": "cron",
+   "start": "scripts/deploy/run_breakdowns.sh (etl.meta_breakdowns --auto)",
+   "schedule": null,
+   "healthcheck": null,
+   "source": "scripts/deploy/run_breakdowns.sh; no apply script in the repo, so the Railway service and its schedule (proposed: 0 */2 * * *) are not verifiable here"
+  },
+  {
    "name": "feeds",
    "kind": "cron",
    "start": "scripts/deploy/run_feeds.sh",
@@ -110,14 +118,6 @@
   {
    "service": "etl",
    "order": 6,
-   "module": "etl.meta_breakdowns",
-   "args": "--budget-minutes",
-   "fatal": false,
-   "note": "failure is logged and does not fail the run"
-  },
-  {
-   "service": "etl",
-   "order": 7,
    "module": "etl.competitor_ads",
    "args": "--if-sunday",
    "fatal": false,
@@ -125,7 +125,7 @@
   },
   {
    "service": "etl",
-   "order": 8,
+   "order": 7,
    "module": "etl.creative_priorities",
    "args": "--if-sunday",
    "fatal": false,
@@ -133,7 +133,7 @@
   },
   {
    "service": "etl",
-   "order": 9,
+   "order": 8,
    "module": "etl.assignment_tags",
    "args": "",
    "fatal": false,
@@ -141,7 +141,7 @@
   },
   {
    "service": "etl",
-   "order": 10,
+   "order": 9,
    "module": "etl.auto_tag",
    "args": "",
    "fatal": false,
@@ -191,6 +191,14 @@
    "service": "backup",
    "order": 1,
    "module": "etl.backup",
+   "args": "",
+   "fatal": true,
+   "note": ""
+  },
+  {
+   "service": "breakdowns",
+   "order": 1,
+   "module": "etl.meta_breakdowns",
    "args": "",
    "fatal": true,
    "note": ""

@@ -455,9 +455,11 @@ def test_retention_limit_stops_the_set_and_is_recorded_not_fatal(bd, monkeypatch
 
 def test_budget_stops_before_the_next_set(bd, monkeypatch):
     Fake().install(monkeypatch)
-    t = iter([0, 0, 1000, 1000, 1000])
-    st = mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], ["age", "gender", "country"], client=client()[0], accounts=ONE, pause=lambda s: None, budget_minutes=1, clock=lambda: next(t))
-    assert st["stopped_early"] and st["sets_ok"] == 1 and st["not_reached"]
+    n = {"k": 0}
+    stopper = mb.Stopper(1, None, clock=lambda: 0 if n["k"] < 1 else 10_000)                  # one minute budget; the clock jumps after the first set
+    st = mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], ["age", "gender", "country"], client=client()[0], accounts=ONE, stopper=stopper,
+                pause=lambda s: n.__setitem__("k", n["k"] + 1))
+    assert st["stopped_early"] and "time budget" in st["stop_reason"] and st["sets_ok"] == 1 and count(bd) > 0
 
 
 def test_job_is_recorded_and_main_runs_nightly_window(bd, monkeypatch):
@@ -481,3 +483,159 @@ def test_probe_reports_shape_and_row_estimate_at_ad_level(monkeypatch):
     assert by["dma"]["level"] == "campaign" and "ad" in by["dma"]["refused_levels"]
     assert by["action_device"]["rows_per_day_est"] == 6
     assert mb.backfill_estimate(1000, 365) == {"rows": 365000, "calls": 730 + 53}
+
+
+# ----------------------------------------------------------------------------------------------- quiet hours, budget, lock
+UTC = dt.timezone.utc
+
+
+def test_quiet_window_parsing_and_membership():
+    assert mb.parse_quiet("12:30-15:30") == (750, 930) and mb.parse_quiet("off") is None and mb.parse_quiet("") is None and mb.parse_quiet(None) is None
+    q = mb.parse_quiet("12:30-15:30")
+    assert mb.in_quiet(q, dt.datetime(2026, 11, 9, 12, 30, tzinfo=UTC)) and mb.in_quiet(q, dt.datetime(2026, 11, 9, 15, 29, tzinfo=UTC))
+    assert not mb.in_quiet(q, dt.datetime(2026, 11, 9, 12, 29, tzinfo=UTC)) and not mb.in_quiet(q, dt.datetime(2026, 11, 9, 15, 30, tzinfo=UTC))
+    assert mb.in_quiet(q, dt.datetime(2026, 11, 9, 5, 0, tzinfo=dt.timezone(dt.timedelta(hours=-8))))                  # 05:00 PST is 13:00 UTC: the nightly pull
+    wrap = mb.parse_quiet("22:00-02:00")
+    assert mb.in_quiet(wrap, dt.datetime(2026, 11, 9, 23, 0, tzinfo=UTC)) and mb.in_quiet(wrap, dt.datetime(2026, 11, 9, 1, 0, tzinfo=UTC)) and not mb.in_quiet(wrap, dt.datetime(2026, 11, 9, 3, 0, tzinfo=UTC))
+    with pytest.raises(SystemExit):
+        mb.parse_quiet("noon")
+
+
+def test_no_request_starts_in_the_quiet_hours(bd, monkeypatch):
+    f = Fake().install(monkeypatch)
+    stopper = mb.Stopper(None, (750, 930), now=lambda: dt.datetime(2026, 11, 9, 13, 0, tzinfo=UTC))
+    st = mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], ["age"], client=client()[0], accounts=ONE, stopper=stopper, pause=lambda s: None)
+    assert st["stopped_early"] and "quiet" in st["stop_reason"] and f.calls == [] and count(bd) == 0
+
+
+def test_quiet_hours_beginning_mid_run_stop_cleanly_commit_and_resume(bd, monkeypatch):
+    f = Fake().install(monkeypatch)
+    w = mb.windows_newest_first(D(2026, 10, 1), D(2026, 11, 3), 15)
+    clock = {"t": dt.datetime(2026, 11, 9, 10, 0, tzinfo=UTC)}
+    stopper = mb.Stopper(None, (750, 930), now=lambda: clock["t"])
+    st = mb.run(bd, w, ["age", "gender"], client=client()[0], accounts=ONE, stopper=stopper, backfill=True,
+                pause=lambda s: clock.__setitem__("t", dt.datetime(2026, 11, 9, 12, 31, tzinfo=UTC)) if f.calls else None)         # quiet begins after the first set
+    assert st["stopped_early"] and "quiet" in st["stop_reason"]
+    n_calls = len(f.calls)
+    assert bd.execute("SELECT count(*) FROM meta_breakdown_progress").fetchone()[0] == 1                       # the first set of window 1 is recorded
+    assert bd.execute("SELECT first_day, status FROM meta_breakdown_coverage WHERE breakdown_set='age'").fetchone()[0] >= D(2026, 10, 20)
+    st2 = mb.run(bd, w, ["age", "gender"], client=client()[0], accounts=ONE, stopper=mb.Stopper(None, None), backfill=True, pause=lambda s: None)
+    assert not st2["stopped_early"] and st2["windows_done"] == 3 and len(f.calls) > n_calls
+    assert bd.execute("SELECT min(day), max(day) FROM meta_breakdown_daily").fetchone() == (D(2026, 10, 1), D(2026, 11, 3))
+
+
+def test_main_auto_in_quiet_hours_exits_zero_and_starts_nothing(bd, monkeypatch, capsys):
+    f = Fake().install(monkeypatch)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/tagexp_test")
+    monkeypatch.setattr(mb.meta_api, "get_token", lambda: "TOKEN")
+    monkeypatch.setattr(mb.time, "sleep", lambda s: None)
+    now = dt.datetime.now(UTC)
+    spec = f"{(now - dt.timedelta(hours=1)):%H:%M}-{(now + dt.timedelta(hours=1)):%H:%M}"
+    monkeypatch.setenv("META_BREAKDOWNS_QUIET_UTC", spec)
+    assert mb.main(["--auto"]) == 0
+    assert f.calls == [] and "quiet hours" in capsys.readouterr().out
+    assert count(bd, "SELECT count(*) FROM etl_runs WHERE job='meta_breakdowns'") == 0
+    monkeypatch.setenv("META_BREAKDOWNS_QUIET_UTC", "off")                                    # the override string 'off' (or a window that is not now) lets it run
+    assert mb.main(["--auto", "--sets", "age", "--max-days", "2", "--max-minutes", "5"]) == 0 and f.calls
+
+
+def test_second_run_exits_zero_when_the_advisory_lock_is_held(bd, monkeypatch, capsys):
+    import psycopg
+    f = Fake().install(monkeypatch)
+    monkeypatch.setattr(mb.time, "sleep", lambda s: None)
+    monkeypatch.setattr(mb.meta_api, "get_token", lambda: "TOKEN")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/tagexp_test")
+    monkeypatch.setenv("META_BREAKDOWNS_QUIET_UTC", "off")
+    with psycopg.connect("postgresql://localhost/tagexp_test", autocommit=True) as other:
+        other.execute("SELECT pg_advisory_lock(%s)", (mb.LOCK_KEY,))
+        assert mb.main(["--auto"]) == 0
+        out = [line for line in capsys.readouterr().out.splitlines() if "lock" in line]
+        assert len(out) == 1 and f.calls == [] and count(bd, "SELECT count(*) FROM etl_runs WHERE job='meta_breakdowns'") == 0
+        other.execute("SELECT pg_advisory_unlock(%s)", (mb.LOCK_KEY,))
+    assert mb.main(["--auto", "--sets", "age", "--max-days", "1"]) == 0 and f.calls             # free again: it runs
+
+
+def test_wall_clock_budget_ends_a_run_with_exit_zero(bd, monkeypatch):
+    f = Fake().install(monkeypatch)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/tagexp_test")
+    monkeypatch.setenv("META_BREAKDOWNS_QUIET_UTC", "off")
+    monkeypatch.setattr(mb.meta_api, "get_token", lambda: "TOKEN")
+    monkeypatch.setattr(mb.time, "sleep", lambda s: None)
+    ticks = iter(range(0, 10**6, 4000))                                                       # each clock read jumps 4000 s: the 1 minute budget is gone after one check
+    monkeypatch.setattr(mb.time, "monotonic", lambda: next(ticks))
+    assert mb.main(["--auto", "--max-minutes", "1", "--max-days", "40"]) == 0
+    r = bd.execute("SELECT status, stats->>'stopped_early' FROM etl_runs WHERE job='meta_breakdowns'").fetchone()
+    assert r == ("ok", "true")
+
+
+# ----------------------------------------------------------------------------------------------- --auto: anchor, catch-up, finish
+def auto(conn, today, stopper=None, **kw):
+    kw.setdefault("names", ["age"])
+    return mb.auto(conn, stopper or mb.Stopper(None, None), max_days=kw.pop("max_days", 40), window_days=15, client=client()[0], accounts=ONE, today=today, pause=lambda s: None, **kw)
+
+
+def test_auto_stores_the_anchor_resumes_without_arguments_catches_up_then_finishes(bd, monkeypatch):
+    f = Fake().install(monkeypatch)
+    n = {"k": 0}
+    stop_after_first = mb.Stopper(1, None, clock=lambda: 0 if n["k"] < 1 else 10_000)
+    st = mb.auto(bd, stop_after_first, ["age"], max_days=40, window_days=15, client=client()[0], accounts=ONE, today=D(2026, 11, 10), pause=lambda s: n.__setitem__("k", n["k"] + 1))
+    assert st["stopped_early"] and not st["backfill_done"]
+    assert mb.get_anchor(bd) == (D(2026, 10, 1), D(2026, 11, 9), 40)                      # stored on first start
+    assert bd.execute("SELECT min(day) FROM meta_breakdown_daily").fetchone()[0] >= D(2026, 10, 26)       # window 1 (newest 15 days) is in
+    f.calls.clear()
+    st = auto(bd, D(2026, 11, 12), max_days=999)                                          # two nights later, no arguments needed: the stored anchor wins over max_days
+    first = json.loads([c for c in f.calls if "time_range" in c[2]][0][2]["time_range"])
+    assert first["since"] == "2026-11-05" and first["until"] == "2026-11-11"              # catch-up first (trailing 7 up to yesterday), before going further back; request chunks of 7 days
+    assert max(json.loads(c[2]["time_range"])["until"] for c in f.calls if "time_range" in c[2]) == "2026-11-11"
+    assert st["backfill_done"] and mb.get_anchor(bd) == (D(2026, 10, 1), D(2026, 11, 9), 40)
+    assert bd.execute("SELECT min(day), max(day) FROM meta_breakdown_daily").fetchone() == (D(2026, 10, 1), D(2026, 11, 11))
+    assert bd.execute("SELECT window_end FROM meta_breakdown_progress WHERE breakdown_set='__caught_up__'").fetchone()[0] == D(2026, 11, 11)
+    assert bd.execute("SELECT count(*) FROM meta_breakdown_progress WHERE breakdown_set='__backfill_done__'").fetchone()[0] == 1
+
+
+def test_auto_after_the_backfill_pulls_only_the_new_days_and_the_trailing_seven_once_a_day(bd, monkeypatch):
+    f = Fake().install(monkeypatch)
+    auto(bd, D(2026, 11, 10))                                                              # whole backfill in one run
+    assert bd.execute("SELECT count(*) FROM meta_breakdown_progress WHERE breakdown_set='__backfill_done__'").fetchone()[0] == 1
+    f.calls.clear()
+    st = auto(bd, D(2026, 11, 11))                                                         # next day: yesterday = 11-10, trailing 7 = 11-04..11-10
+    days = [json.loads(c[2]["time_range"]) for c in f.calls if "time_range" in c[2]]
+    assert min(d["since"] for d in days) == "2026-11-04" and max(d["until"] for d in days) == "2026-11-10" and "backfill" not in st
+    f.calls.clear()
+    auto(bd, D(2026, 11, 11))                                                              # a second run the same day: nothing to do
+    assert f.calls == []
+    auto(bd, D(2026, 11, 20))                                                              # service was down: everything since the last catch-up, not just 7 days
+    days = [json.loads(c[2]["time_range"]) for c in f.calls if "time_range" in c[2]]
+    assert min(d["since"] for d in days) == "2026-11-11" and max(d["until"] for d in days) == "2026-11-19"
+
+
+def test_auto_never_starts_older_windows_before_the_gap_to_yesterday_is_current(bd, monkeypatch):
+    f = Fake().install(monkeypatch)
+    n = {"k": 0}
+    mb.auto(bd, mb.Stopper(1, None, clock=lambda: 0 if n["k"] < 1 else 10_000), ["age"], max_days=40, window_days=15, client=client()[0], accounts=ONE, today=D(2026, 11, 10),
+            pause=lambda s: n.__setitem__("k", n["k"] + 1))
+    f.calls.clear()
+    stopper = mb.Stopper(1, None, clock=lambda: 0 if n["k"] < 3 else 10_000)              # stop right after the catch-up set
+    n["k"] = 2
+    st = mb.auto(bd, stopper, ["age"], max_days=40, window_days=15, client=client()[0], accounts=ONE, today=D(2026, 11, 12), pause=lambda s: n.__setitem__("k", n["k"] + 1))
+    days = {json.loads(c[2]["time_range"])["since"] for c in f.calls if "time_range" in c[2]}
+    assert st["stopped_early"] and "catch_up" in st and days <= {"2026-11-05", "2026-11-10", "2026-11-06", "2026-11-11"}
+
+
+def test_restart_resets_the_anchor_and_progress(bd, monkeypatch):
+    Fake().install(monkeypatch)
+    auto(bd, D(2026, 11, 10))
+    assert mb.get_anchor(bd) is not None and count(bd, "SELECT count(*) FROM meta_breakdown_progress") > 0
+    mb.reset_progress(bd)
+    assert mb.get_anchor(bd) is None and count(bd, "SELECT count(*) FROM meta_breakdown_progress") == 0
+    auto(bd, D(2026, 11, 20), max_days=20)
+    assert mb.get_anchor(bd) == (D(2026, 10, 31), D(2026, 11, 19), 20)
+
+
+def test_stored_anchor_is_one_row_per_kind(bd, monkeypatch):
+    Fake().install(monkeypatch)
+    auto(bd, D(2026, 11, 10))
+    auto(bd, D(2026, 11, 11))
+    auto(bd, D(2026, 11, 12))
+    kinds = dict(bd.execute("SELECT breakdown_set, count(*) FROM meta_breakdown_progress WHERE level='-' GROUP BY 1").fetchall())
+    assert kinds == {"__anchor__": 1, "__backfill_done__": 1, "__caught_up__": 1}

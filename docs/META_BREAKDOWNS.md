@@ -38,12 +38,24 @@ A request Meta refuses with code 100 is retried without `reach`, then with the c
 
 ## Running it
 
-* Nightly: the last step of the data section of `scripts/deploy/run_etl.sh` (non-fatal, 120 minute budget): trailing 7 days, upserted.
-* Backfill (manual, resumable): `scripts/deploy/run_etl.sh meta_breakdowns --max-days 365 --until 2026-11-09`. Newest 30-day window first (`--window-days`), every set in a window (cheap
-  first, region / dma / hourly last) committed before the next older window starts; coverage `first_day` moves back window by window. Progress is recorded per window x set x level x
-  account, so running the same command again resumes; pass the same `--until` after midnight; `--restart` ignores progress. A rate limit makes the run wait (15 minutes per wait, up to 24 waits)
-  and continue. If Meta refuses an older window for a set it already served (its own retention limit), coverage keeps the earliest day served with the reason and the set stops there.
-* `--sets 'age;age+gender'`, `--dry-run`, `--list`, `--probe` (read only: one request per set for one day on the main account, with row estimates per day; needs a local Meta token).
+A dedicated Railway cron service, **`breakdowns`**, runs `scripts/deploy/run_breakdowns.sh` every 2 hours (`0 */2 * * *`): `etl.migrate`, then `python -m etl.meta_breakdowns --auto`. It is
+separate from the main `etl` service, so the nightly never waits for it and never shares its time budget. No arguments are needed:
+
+* First start: stores the backfill anchor (`--until` = yesterday, `--max-days` = 365) in `meta_breakdown_progress`. Newest 30-day window first (`--window-days`), every set in a window (cheap
+  first, region / dma / hourly last) committed before the next older window starts; coverage `first_day` moves back window by window. Progress is recorded per window x set x level x account.
+* Every run first catches up once a day: the days since the last catch-up (at least the trailing 7, which Meta restates), so recent data stays current during a multi-night backfill. Then it
+  continues the backfill; when that is finished it only does the daily catch-up (trailing 7 days).
+* Quiet hours: it never starts a request batch between 12:30 and 15:30 UTC (the main nightly Meta pull; override `META_BREAKDOWNS_QUIET_UTC=HH:MM-HH:MM`, `off` disables). At the boundary it
+  stops cleanly after committing and exits 0.
+* Budget and overlap: `--max-minutes` (default 110) ends a run cleanly with exit 0, so the next cron run resumes; a Postgres advisory lock makes an overlapping run exit 0 with one log line.
+* Rate limits: it waits (15 minutes per wait, up to 24, never into the quiet hours) and continues. Exit code is non-zero only for a failed migration, a rejected Meta token or waits that ran out.
+* If Meta refuses an older window for a set it already served (its own retention limit), coverage keeps the earliest day served with the reason and the set stops there.
+* `--restart` forgets the anchor and all progress and starts over. `--sets 'age;age+gender'`, `--dry-run`, `--list`, `--ignore-quiet` for manual runs.
+* Manual explicit backfill (no stored anchor): `python -m etl.meta_breakdowns --since 2026-01-01 --until 2026-11-09` (same windows, same resume; pass the same `--until`).
+* `--probe` (read only: one request per set for one day on the main account, with row estimates per day; needs a local Meta token).
+
+The job records itself in `etl_runs` as `meta_breakdowns` (no row for a quiet-hours or lock-skipped start) and is watched by `etl/alerts.py` (`job:meta_breakdowns`, alert after 9 hours without a
+successful run, silent until the first row exists).
 
 ## Read API (GET, behind the app login)
 

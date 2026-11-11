@@ -1040,7 +1040,7 @@ SELECT coalesce(rule, '(unmatched)') AS rule, count(*) AS families FROM meta_fam
 
 - **Grain:** primary key `(day, account_id, level, entity_id, breakdown_set, dims_key)`; one row per day x ad account x level (ad; campaign or account only for a set Meta refused at ad level) x entity x breakdown set x dimension values
 - **Source:** Meta Marketing API Insights (read only), etl.meta_breakdowns
-- **Refresh:** nightly, trailing 7 days re-pulled and upserted; a backfill runs newest 30-day window first
+- **Refresh:** every 2 hours by the dedicated `breakdowns` service: the backfill (newest 30-day window first) until finished, then the trailing 7 days once a day
 - **Coverage:** see meta_breakdown_coverage for the first and last day and the level per set
 - **Caveat:** purchases and purchase_value are Meta-reported (they count returning customers, not Upstack new customers).
 - **Caveat:** Reach and unique outbound clicks are per row (one ad, one day, one dimension value): never sum them across days, ads or sets.
@@ -1105,18 +1105,19 @@ SELECT coalesce(rule, '(unmatched)') AS rule, count(*) AS families FROM meta_fam
 **Purpose.** Resume bookkeeping of the breakdown backfill: one row per finished window of one breakdown set at one level for one ad account, so running the same backfill again skips what is done.
 
 - **Grain:** primary key `(breakdown_set, level, account_id, window_start, window_end)`; one row per breakdown set x level x ad account x window
-- **Source:** etl.meta_breakdowns (backfill mode only)
+- **Source:** etl.meta_breakdowns (backfill and --auto mode; the plain trailing-days pull does not write it)
 - **Refresh:** written as each window x set finishes
-- **Coverage:** backfill windows only; the nightly trailing-7-day pull does not write it
-- **Caveat:** A window is skipped on a rerun when a recorded window covers it. Windows are anchored on --until, so pass the same --until when resuming after midnight.
-- **Caveat:** Safe to delete: the next backfill simply pulls again (upserts).
+- **Coverage:** backfill windows and the three bookkeeping rows
+- **Caveat:** A window is skipped on a rerun when a recorded window covers it. The backfill anchor is stored here on the first --auto run, so a resume after midnight needs no arguments.
+- **Caveat:** Three bookkeeping rows have breakdown_set __anchor__ (window_start = oldest day, window_end = the backfill's --until day, rows = max days), __backfill_done__ (the backfill finished) and __caught_up__ (window_end = the last day the daily catch-up covered); level and account_id are '-'.
+- **Caveat:** Safe to delete (or run with --restart): the next backfill simply starts over and pulls again (upserts).
 
 | Column | Type | Null | Meaning |
 |---|---|---|---|
 | `breakdown_set` | text | no | Breakdown set name. |
 | `level` | text | no | Level the window was pulled at. |
 | `account_id` | text | no | Meta ad account id. |
-| `window_start` | date | no | First day of the finished window. |
+| `window_start` | date | no | First day of the finished window (the oldest day for the __anchor__ row). |
 | `window_end` | date | no | Last day of the finished window. |
 | `rows` | bigint | no | Rows written for the window (both accounts are separate rows). |
 | `done_at` | timestamptz | no | When the window finished. |

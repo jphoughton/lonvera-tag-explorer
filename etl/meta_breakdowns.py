@@ -13,7 +13,13 @@ Backfill (--since D and/or --max-days N): NEWEST window first (--window-days, de
 committed before the next older window starts; progress is recorded per window x set x account, so running the same command again resumes. Pass the same --until
 after midnight to resume cleanly. On a rate limit it waits and continues.
 
-Usage: python -m etl.meta_breakdowns [--days 7 | --since D --until D | --max-days 365] [--window-days 30] [--sets 'age;age+gender'] [--dry-run] [--restart]
+Service mode (`--auto`, the dedicated Railway cron service, every 2 hours): continues the backfill until it is finished, then keeps the trailing 7 days current. The backfill anchor
+(--until and --max-days) is stored in meta_breakdown_progress on first start, so no arguments are needed to resume. Newly elapsed days between the anchor and yesterday are pulled
+before going further back. A run never starts a request batch in the quiet hours (META_BREAKDOWNS_QUIET_UTC, default 12:30-15:30, the main nightly Meta pull), stops after --max-minutes
+(default 110) and exits 0 so the next cron run resumes; a Postgres advisory lock keeps two runs from overlapping (the second exits 0).
+
+Usage: python -m etl.meta_breakdowns --auto
+       python -m etl.meta_breakdowns [--days 7 | --since D --until D | --max-days 365] [--window-days 30] [--sets 'age;age+gender'] [--dry-run] [--restart]
        python -m etl.meta_breakdowns --list | --probe
 Docs: docs/META_BREAKDOWNS.md."""
 from __future__ import annotations
@@ -22,6 +28,7 @@ import argparse
 import datetime as dt
 import json
 import math
+import os
 import re
 import sys
 import time
@@ -45,6 +52,10 @@ MAX_DIMS = 3
 ASYNC_POLLS = 360
 RETENTION_RX = re.compile(r"retention|too far|37 months|months? (ago|back)|beyond|older than|before .{0,20}(date|year)|not available for|start date|since", re.I)
 DEFAULT_MAX_DAYS = 365
+DEFAULT_QUIET_UTC = "12:30-15:30"
+DEFAULT_MAX_MINUTES = 110.0
+LOCK_KEY = 240_240                   # pg_try_advisory_lock key: one breakdown run at a time
+ANCHOR_SET, DONE_SET, CAUGHT_SET = "__anchor__", "__backfill_done__", "__caught_up__"     # bookkeeping rows in meta_breakdown_progress (level and account '-')
 
 
 class Unsupported(Exception):
@@ -53,6 +64,10 @@ class Unsupported(Exception):
 
 class ShapeError(Exception):
     """The response does not have the shape the catalog entry expects (for example no dimension keys)."""
+
+
+class StopRun(Exception):
+    """The run must stop cleanly (quiet hours, wall-clock budget): everything pulled so far is committed."""
 
 
 class TooBigError(Exception):
@@ -191,8 +206,8 @@ def _classify(e: Exception) -> Exception:
 class Client:
     """GET-only paging over the repo's read client (plus the async report run). sleep is injectable so tests never wait."""
 
-    def __init__(self, tok: str, pace: float = PACE, sleep=time.sleep, max_retries: int = 7):
-        self.tok, self.pace, self.sleep, self.max_retries = tok, pace, sleep, max_retries
+    def __init__(self, tok: str, pace: float | None = None, sleep=None, max_retries: int = 7):
+        self.tok, self.pace, self.sleep, self.max_retries = tok, PACE if pace is None else pace, sleep or time.sleep, max_retries
         self.calls = 0
         self.async_sets: set[str] = set()
 
@@ -470,11 +485,50 @@ def windows_newest_first(since: dt.date, until: dt.date, window_days: int = 30) 
     return out
 
 
+def parse_quiet(spec: str | None) -> tuple[int, int] | None:
+    """'12:30-15:30' (UTC) -> (start minute, end minute) of the day; empty / 'off' -> None. A window that wraps midnight (22:00-02:00) is allowed."""
+    if spec is None or spec.strip().lower() in ("", "off", "none"):
+        return None
+    m = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*", spec)
+    if not m or int(m[1]) > 23 or int(m[3]) > 23 or int(m[2]) > 59 or int(m[4]) > 59:
+        raise SystemExit(f"META_BREAKDOWNS_QUIET_UTC must look like 12:30-15:30, got {spec!r}")
+    return int(m[1]) * 60 + int(m[2]), int(m[3]) * 60 + int(m[4])
+
+
+def in_quiet(quiet: tuple[int, int] | None, now: dt.datetime) -> bool:
+    if quiet is None:
+        return False
+    t = now.astimezone(dt.timezone.utc).hour * 60 + now.astimezone(dt.timezone.utc).minute
+    a, b = quiet
+    return a <= t < b if a <= b else (t >= a or t < b)
+
+
+class Stopper:
+    """check() raises StopRun when the wall-clock budget is used up or the quiet hours have begun. Injectable clocks for tests."""
+
+    def __init__(self, max_minutes: float | None = None, quiet: tuple[int, int] | None = None, clock=None, now=None):
+        self.max_minutes, self.quiet, self.clock = max_minutes or None, quiet, clock or time.monotonic
+        self.now = now or (lambda: dt.datetime.now(dt.timezone.utc))
+        self.t0 = self.clock()
+
+    def reason(self) -> str | None:
+        if self.max_minutes and (self.clock() - self.t0) / 60 > self.max_minutes:
+            return f"time budget of {self.max_minutes:g} minutes used up"
+        if in_quiet(self.quiet, self.now()):
+            return "quiet hours began (the main nightly Meta pull needs the rate limit)"
+        return None
+
+    def check(self) -> None:
+        r = self.reason()
+        if r:
+            raise StopRun(r)
+
+
 class Waiter:
     """Sleeps and continues when the client's own retries ran out on a rate limit; gives up after max_waits."""
 
-    def __init__(self, client: Client, max_waits: int, wait_s: float = RATE_WAIT):
-        self.client, self.max_waits, self.wait_s, self.n = client, max_waits, wait_s, 0
+    def __init__(self, client: Client, max_waits: int, wait_s: float = RATE_WAIT, stopper: Stopper | None = None):
+        self.client, self.max_waits, self.wait_s, self.n, self.stopper = client, max_waits, wait_s, 0, stopper
 
     def call(self, fn, what: str):
         while True:
@@ -484,6 +538,8 @@ class Waiter:
                 self.n += 1
                 if self.n > self.max_waits:
                     raise
+                if self.stopper:
+                    self.stopper.check()                    # no point sleeping into the quiet hours or past the budget
                 db.log(f"  rate limited ({what}); waiting {self.wait_s}s then retrying ({self.n}/{self.max_waits}): {db.scrub(e)[:100]}")
                 self.client.sleep(self.wait_s)
 
@@ -500,6 +556,8 @@ def pull_set_level(conn, client: Client, waiter: Waiter, entry: Entry, level: st
         try:
             n_acct = 0
             for cs, ce in meta_api.date_chunks(ws, we, entry.chunk_days):
+                if waiter.stopper:
+                    waiter.stopper.check()                  # never start a request batch in the quiet hours or past the budget
                 raw = waiter.call(lambda cs=cs, ce=ce: fetch_entry_window(client, acct, entry, level, cs, ce, an), f"{an} {entry.name} {cs}..{ce}")
                 rows = normalise(entry, level, acct, raw)
                 if conn is not None:
@@ -524,7 +582,9 @@ def pull_set_level(conn, client: Client, waiter: Waiter, entry: Entry, level: st
             if conn is not None:
                 conn.rollback()
             status, err = "error", f"{an}: {db.scrub(e)[:250]}"
-        except (meta_api.TokenRejected, meta_api.RateLimited):
+        except (meta_api.TokenRejected, meta_api.RateLimited, StopRun):
+            if conn is not None:
+                conn.rollback()
             raise
         except meta_api.GraphError as e:
             if conn is not None:
@@ -533,14 +593,15 @@ def pull_set_level(conn, client: Client, waiter: Waiter, entry: Entry, level: st
     return status, err
 
 
-def run(conn, windows: list[tuple[dt.date, dt.date]], sets: list[str] | None = None, dry_run: bool = False, client: Client | None = None, budget_minutes: float | None = None,
-        accounts=None, backfill: bool = False, restart: bool = False, max_rate_waits: int = 3, clock=time.monotonic, pause=time.sleep) -> dict:
+def run(conn, windows: list[tuple[dt.date, dt.date]], sets: list[str] | None = None, dry_run: bool = False, client: Client | None = None, stopper: Stopper | None = None,
+        accounts=None, backfill: bool = False, restart: bool = False, max_rate_waits: int = 3, pause=None) -> dict:
     """Pull `windows` (given order: newest first for a backfill), every chosen set in a window before the next window starts. Never fatal per set: unsupported / error sets are
     recorded in meta_breakdown_coverage and skipped. A set Meta refuses at ad level is pulled at campaign level, then account level. A rejected token, or a rate limit that
-    outlasts max_rate_waits, stops the run (raises)."""
+    outlasts max_rate_waits, stops the run (raises). A StopRun from the stopper (quiet hours, time budget) ends the run cleanly: stats['stopped_early'] / ['stop_reason']."""
     client = client or Client(meta_api.get_token())
+    pause = pause or time.sleep
     accounts = accounts or meta_api.ACCOUNTS
-    waiter = Waiter(client, max_rate_waits)
+    waiter = Waiter(client, max_rate_waits, stopper=stopper)
     entries = select_sets(sets)
     live = conn is not None and not dry_run
     conn = conn if live else None
@@ -552,20 +613,33 @@ def run(conn, windows: list[tuple[dt.date, dt.date]], sets: list[str] | None = N
     exhausted: set[str] = set()                 # sets whose older windows Meta no longer serves (retention): not asked again
     stats: dict = {"windows": len(windows), "windows_done": 0, "sets_requested": len(entries), "rows": 0, "levels": {}, "errors": {}, "stopped_early": False}
     final: dict[str, str] = {}
-    t0 = clock()
+    try:
+        _windows_loop(conn, live, client, waiter, stopper, windows, entries, accounts, backfill, restart, recent, state, dead, exhausted, stats, final, pause)
+    except StopRun as e:
+        stats["stopped_early"], stats["stop_reason"] = True, str(e)
+        db.log(f"stopping cleanly: {e}")
+        if live:
+            conn.rollback()
+            for name, lv in state.items():                      # coverage shows the days committed so far
+                record_coverage(conn, BY_NAME[name], lv, final.get(name, "ok") if final.get(name) != "unsupported" else "ok", None)
+            conn.commit()
+    stats["levels"] = dict(state)
+    stats.update(sets_ok=sum(1 for v in final.values() if v == "ok"), sets_error=sum(1 for v in final.values() if v == "error"),
+                 sets_unsupported=sum(1 for v in final.values() if v == "unsupported"), rate_waits=waiter.n, async_sets=sorted(client.async_sets), api_calls=client.calls)
+    return stats
+
+
+def _windows_loop(conn, live, client, waiter, stopper, windows, entries, accounts, backfill, restart, recent, state, dead, exhausted, stats, final, pause):
     for wi, (ws, we) in enumerate(windows):
         w_rows0 = stats["rows"]
         db.log(f"window {wi + 1}/{len(windows)} {ws}..{we}: starting {len(entries)} sets")
         for si, entry in enumerate(entries):
-            if budget_minutes and (clock() - t0) / 60 > budget_minutes:
-                stats["stopped_early"] = True
-                stats["not_reached"] = [e.name for e in entries[si:]]
-                db.log(f"time budget of {budget_minutes} minutes used up")
-                break
+            if stopper:
+                stopper.check()
             if entry.name in dead or entry.name in exhausted:
                 continue
             levels = [state[entry.name]] if entry.name in state else [lv for lv in LEVELS if (entry.name, lv) not in recent]
-            st = {"rows": 0}
+            st = stats                                          # pull_set_level adds rows / duplicates straight into the run stats (so a stop mid-set still counts them)
             result = "unsupported"
             for lv in levels:
                 status, err = pull_set_level(conn, client, waiter, entry, lv, ws, we, accounts, st, backfill, restart)
@@ -590,7 +664,6 @@ def run(conn, windows: list[tuple[dt.date, dt.date]], sets: list[str] | None = N
                 dead.add(entry.name)
                 stats["errors"][entry.name] = "unsupported at every level"
             final[entry.name] = result
-            stats["rows"] += st["rows"]
             pause(SET_PAUSE)
         else:
             stats["windows_done"] += 1
@@ -599,10 +672,6 @@ def run(conn, windows: list[tuple[dt.date, dt.date]], sets: list[str] | None = N
                    f"{sum(1 for v in final.values() if v == 'unsupported')} unsupported")
             continue
         break
-    stats["levels"] = dict(state)
-    stats.update(sets_ok=sum(1 for v in final.values() if v == "ok"), sets_error=sum(1 for v in final.values() if v == "error"),
-                 sets_unsupported=sum(1 for v in final.values() if v == "unsupported"), rate_waits=waiter.n, async_sets=sorted(client.async_sets), api_calls=client.calls)
-    return stats
 
 
 # ---------------------------------------------------------------------------------------------------------------- the probe
@@ -679,22 +748,96 @@ def backfill_estimate(rows_per_day: float, days: int = 365, chunk_days: int = CH
     return {"rows": round(rows), "calls": math.ceil(rows / LIMIT) + math.ceil(days / chunk_days)}
 
 
+# ---------------------------------------------------------------------------------------------------------------- service mode (--auto)
+def _special(conn, name: str):
+    return conn.execute("SELECT window_start, window_end, rows FROM meta_breakdown_progress WHERE breakdown_set=%s AND level='-' AND account_id='-'", (name,)).fetchone()
+
+
+def _set_special(conn, name: str, start: dt.date, end: dt.date, rows: int = 0) -> None:
+    conn.execute("""INSERT INTO meta_breakdown_progress (breakdown_set, level, account_id, window_start, window_end, rows, done_at) VALUES (%s,'-','-',%s,%s,%s,now())
+                    ON CONFLICT (breakdown_set, level, account_id, window_start, window_end) DO UPDATE SET rows = EXCLUDED.rows, done_at = now()""", (name, start, end, rows))
+    conn.execute("DELETE FROM meta_breakdown_progress WHERE breakdown_set=%s AND level='-' AND account_id='-' AND (window_start, window_end) <> (%s, %s)", (name, start, end))
+
+
+def get_anchor(conn):
+    """(oldest day, anchor day = the --until of the backfill, max days) of the backfill, or None before the first --auto run."""
+    r = _special(conn, ANCHOR_SET)
+    return (r[0], r[1], int(r[2])) if r else None
+
+
+def reset_progress(conn) -> None:
+    """--restart: forget the anchor, the finished marker, the caught-up day and every recorded window."""
+    conn.execute("DELETE FROM meta_breakdown_progress")
+    conn.commit()
+
+
+def try_lock(conn) -> bool:
+    return bool(conn.execute("SELECT pg_try_advisory_lock(%s)", (LOCK_KEY,)).fetchone()[0])
+
+
+def auto(conn, stopper: Stopper, names=None, max_days: int = DEFAULT_MAX_DAYS, window_days: int = 30, client: Client | None = None, accounts=None, today: dt.date | None = None,
+         pause=None) -> dict:
+    """One service run. 1) first start: store the backfill anchor (until = yesterday, max days). 2) catch-up, once a day: the days since the last catch-up (at least the trailing 7, which Meta restates) so recent data stays current during a multi-night backfill and after it. 3) the backfill, newest 30-day window
+    first, until finished (then a marker row says so). A StopRun (quiet hours, budget) ends the run cleanly after committing."""
+    client = client or Client(meta_api.get_token())
+    yesterday = (today - dt.timedelta(days=1)) if today else default_until()
+    anchor = get_anchor(conn)
+    if anchor is None:
+        until = yesterday
+        anchor = (until - dt.timedelta(days=max_days - 1), until, max_days)
+        _set_special(conn, ANCHOR_SET, anchor[0], anchor[1], max_days)
+        conn.commit()
+        db.log(f"backfill anchor stored: {anchor[0]}..{anchor[1]} ({max_days} days, {window_days}-day windows, newest first)")
+    since, until, _ = anchor
+    done = _special(conn, DONE_SET) is not None
+    caught = _special(conn, CAUGHT_SET)
+    out: dict = {"anchor": [since.isoformat(), until.isoformat()], "backfill_done": done, "stopped_early": False, "rows": 0}
+    kw = dict(client=client, accounts=accounts, stopper=stopper, max_rate_waits=24, pause=pause)
+    caught_end = caught[1] if caught else None
+    if caught_end != yesterday and (done or until < yesterday):          # once a day: the new days, plus the trailing 7 (Meta restates recent days)
+        start = max(min((caught_end or until) + dt.timedelta(days=1), yesterday - dt.timedelta(days=6)), since)
+        db.log(f"catch-up {start}..{yesterday}")
+        st = run(conn, windows_newest_first(start, yesterday, window_days), names, backfill=False, **kw)
+        out["catch_up"] = st
+        out["rows"] += st["rows"]
+        if st["stopped_early"]:
+            out.update(stopped_early=True, stop_reason=st.get("stop_reason"))
+            return out
+        _set_special(conn, CAUGHT_SET, yesterday, yesterday)
+        conn.commit()
+    if not done:
+        windows = windows_newest_first(since, until, window_days)
+        st = run(conn, windows, names, backfill=True, **kw)
+        out["backfill"] = st
+        out["rows"] += st["rows"]
+        if st["stopped_early"]:
+            out.update(stopped_early=True, stop_reason=st.get("stop_reason"))
+        elif st["windows_done"] == len(windows):
+            _set_special(conn, DONE_SET, yesterday, yesterday)
+            conn.commit()
+            out["backfill_done"] = True
+            db.log("backfill finished: from now on each run pulls the trailing 7 days")
+    return out
+
+
 # ---------------------------------------------------------------------------------------------------------------- command line
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--auto", action="store_true", help="service mode: continue the backfill until finished, then pull the trailing 7 days (anchor stored in the database)")
     ap.add_argument("--days", type=int, default=7, help="nightly mode: trailing days to pull and upsert (default 7, the settle window)")
     ap.add_argument("--since", help="backfill: oldest day (default: --max-days before --until)")
     ap.add_argument("--until", help="newest day (default: yesterday, Pacific). Pass the same value when resuming a backfill after midnight")
-    ap.add_argument("--max-days", type=int, help="backfill: how far back to go from --until (default 365 when --since is not given). Giving either makes this a backfill")
+    ap.add_argument("--max-days", type=int, help="backfill: how far back from --until (default 365 when --since is not given). Giving either makes this a backfill; with --auto it sets the depth on first start")
     ap.add_argument("--window-days", type=int, default=30, help="backfill window length; windows run newest first, each fully committed before the next (default 30)")
     ap.add_argument("--sets", help="set names separated by ';' (a set may contain commas: age,gender); a plus also works inside a set (age+gender); default: the whole catalog")
     ap.add_argument("--dry-run", action="store_true", help="pull and count, write nothing")
-    ap.add_argument("--restart", action="store_true", help="ignore recorded backfill progress and pull every window again")
+    ap.add_argument("--restart", action="store_true", help="forget the stored anchor and every recorded backfill window, pull everything again")
     ap.add_argument("--list", action="store_true", help="print the catalog and exit")
     ap.add_argument("--probe", action="store_true", help="read-only probe for one day on the main account (no database writes)")
     ap.add_argument("--probe-day", help="day for --probe (default: 2 days ago, Pacific)")
     ap.add_argument("--probe-out", help="write the probe result as JSON to this path")
-    ap.add_argument("--budget-minutes", type=float, help="stop starting new sets after this long (the nightly step passes 120; a backfill has no limit)")
+    ap.add_argument("--max-minutes", type=float, default=DEFAULT_MAX_MINUTES, help=f"wall-clock budget per run, then stop cleanly and exit 0 (default {DEFAULT_MAX_MINUTES:g}; 0 = none)")
+    ap.add_argument("--ignore-quiet", action="store_true", help="ignore the quiet hours (META_BREAKDOWNS_QUIET_UTC, default 12:30-15:30 UTC) for a manual run")
     a = ap.parse_args(argv)
     names = parse_sets_arg(a.sets)
     if a.list:
@@ -716,28 +859,45 @@ def main(argv=None):
                 json.dump({"day": day.isoformat(), "account": an, "results": res}, f, indent=1, default=str)
         return 0
     until = dt.date.fromisoformat(a.until) if a.until else default_until()
-    backfill = bool(a.since or a.max_days)
+    backfill = bool(a.since or a.max_days) and not a.auto
+    quiet = None if a.ignore_quiet else parse_quiet(os.environ.get("META_BREAKDOWNS_QUIET_UTC", DEFAULT_QUIET_UTC))
+    if a.dry_run and not a.auto:
+        windows = _manual_windows(a, until, backfill)
+        print(json.dumps(run(None, windows, names, dry_run=True, backfill=backfill, restart=a.restart, max_rate_waits=24 if backfill else 3), indent=1))
+        return 0
+    stopper = Stopper(a.max_minutes, quiet if (a.auto or backfill) else None)         # the legacy nightly window (trailing days) ignores quiet hours; it only honours the budget
+    with db.connect() as conn:
+        if not try_lock(conn):
+            db.log("another meta_breakdowns run holds the lock; exiting")
+            return 0
+        if stopper.reason() and in_quiet(stopper.quiet, stopper.now()):
+            db.log(f"quiet hours ({os.environ.get('META_BREAKDOWNS_QUIET_UTC', DEFAULT_QUIET_UTC)} UTC): nothing started")
+            return 0
+        if a.restart:
+            reset_progress(conn)
+        with db.JobRun("meta_breakdowns") as job:
+            try:
+                if a.auto:
+                    stats = auto(conn, stopper, names, a.max_days or DEFAULT_MAX_DAYS, a.window_days)
+                else:
+                    stats = run(conn, _manual_windows(a, until, backfill), names, stopper=stopper, backfill=backfill, restart=a.restart, max_rate_waits=24 if backfill else 3)
+            except (meta_api.TokenRejected, meta_api.RateLimited) as e:
+                raise db.JobFailed(f"meta breakdown pull stopped: {db.scrub(e)[:200]}") from None
+            job.stats = stats
+            job.rows_written = stats["rows"]
+            job.data_through = default_until() if a.auto else until
+            db.log(f"breakdowns run done: rows {stats['rows']}" + (f", stopped early: {stats.get('stop_reason')}" if stats.get("stopped_early") else ""))
+        conn.execute("SELECT pg_advisory_unlock(%s)", (LOCK_KEY,))
+    return 0
+
+
+def _manual_windows(a, until: dt.date, backfill: bool) -> list[tuple[dt.date, dt.date]]:
     if backfill:
         since = dt.date.fromisoformat(a.since) if a.since else until - dt.timedelta(days=(a.max_days or DEFAULT_MAX_DAYS) - 1)
         if a.since and a.max_days:
             since = max(since, until - dt.timedelta(days=a.max_days - 1))
-        windows = windows_newest_first(since, until, a.window_days)
-    else:
-        windows = [(until - dt.timedelta(days=a.days - 1), until)]
-    kw = dict(budget_minutes=a.budget_minutes, backfill=backfill, restart=a.restart, max_rate_waits=24 if backfill else 3)
-    if a.dry_run:
-        print(json.dumps(run(None, windows, names, dry_run=True, **kw), indent=1))
-        return 0
-    with db.connect() as conn, db.JobRun("meta_breakdowns") as job:
-        try:
-            stats = run(conn, windows, names, **kw)
-        except (meta_api.TokenRejected, meta_api.RateLimited) as e:
-            raise db.JobFailed(f"meta breakdown pull stopped: {db.scrub(e)[:200]}") from None
-        job.stats = stats
-        job.rows_written = stats["rows"]
-        job.data_through = until
-        db.log(f"breakdowns done: sets ok {stats['sets_ok']}, unsupported {stats['sets_unsupported']}, error {stats['sets_error']}, rows {stats['rows']}")
-    return 0
+        return windows_newest_first(since, until, a.window_days)
+    return [(until - dt.timedelta(days=a.days - 1), until)]
 
 
 if __name__ == "__main__":

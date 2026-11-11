@@ -58,6 +58,20 @@ def test_optional_jobs_are_silent_until_they_exist(conn):
     assert "job:backup" in by_id(A.check_etl_jobs(conn, ctx()))             # the hook: once a backup row exists it is watched
 
 
+def test_meta_breakdowns_job_tolerates_the_quiet_hours_and_is_silent_until_it_exists(conn):
+    for j in ("run_daily", "upstack_daily", "stage_moves"):
+        add_run(conn, j, finished_h_ago=2)
+    assert A.check_etl_jobs(conn, ctx()) == []                                           # not deployed yet: silent
+    add_run(conn, "meta_breakdowns", finished_h_ago=5)                                   # the longest normal gap: a 3 h quiet window plus the 2 h cron and a 110 minute run
+    assert A.check_etl_jobs(conn, ctx()) == []
+    add_run(conn, "meta_breakdowns", finished_h_ago=9.5, status="ok")
+    conn.execute("DELETE FROM etl_runs WHERE job='meta_breakdowns' AND finished_at > %s", (hours_ago(9),))
+    f = by_id(A.check_etl_jobs(conn, ctx()))["job:meta_breakdowns"]
+    assert "has not succeeded" in f.title and "breakdowns service" in f.fix
+    add_run(conn, "meta_breakdowns", finished_h_ago=1, status="failed", error="meta breakdown pull stopped: token")
+    assert "token" in by_id(A.check_etl_jobs(conn, ctx()))["job:meta_breakdowns"].title
+
+
 def test_weekly_jobs_use_eight_days(conn):
     for j in ("run_daily", "upstack_daily", "stage_moves"):
         add_run(conn, j, finished_h_ago=2)
