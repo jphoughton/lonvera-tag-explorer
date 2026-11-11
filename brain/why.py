@@ -357,6 +357,8 @@ class Why:
         here = {"node": nid, "label": node["label"], "rel": a["values"]["rel"], "cur": a["values"]["cur"], "cmp": a["values"]["cmp"], "unit": node["unit"], "denominator": a["denominator"]}
         res["_path"] = path + [here]
         res["children"], res["not_followed"] = [], []
+        if nid == "nc_roas" and res["status"] == "material":
+            res["roas_split"] = self.roas_split(res)
         if res["status"] != "material" or depth >= self.max_depth:
             if res["status"] == "material":
                 res["reasons"].append("max_depth reached")
@@ -401,6 +403,24 @@ class Why:
                 except ValueError:
                     pass
         return None
+
+    def roas_split(self, res) -> dict | None:
+        """NC ROAS = NC AOV / NC CPA, so ln(ROAS change) = ln(AOV change) - ln(CPA change): an exact log split."""
+        an, cn = T.BY_ID["nc_aov"], T.BY_ID["nc_cpa"]
+        ma, mc = self.measures(an), self.measures(cn)
+        a1, a0 = self.value(an, ma, "cur")[0], self.value(an, ma, "cmp")[0]
+        c1, c0 = self.value(cn, mc, "cur")[0], self.value(cn, mc, "cmp")[0]
+        r1, r0 = res["values"]["cur"], res["values"]["cmp"]
+        try:
+            la, lc, lr = math.log(a1 / a0), -math.log(c1 / c0), math.log(r1 / r0)
+        except (TypeError, ValueError, ZeroDivisionError):
+            return None
+        ra, rc, rr = a1 / a0 - 1, c1 / c0 - 1, r1 / r0 - 1
+        word = lambda x, thr: "flat" if abs(x) < thr else pct(x)  # noqa: E731
+        fa, fc = word(ra, an["mat"]["rel"]), word(rc, cn["mat"]["rel"])
+        return {"label": "accounting (exact log split), not cause", "log_effects": {"aov": la, "cpa": lc, "roas": lr, "sum_check": la + lc - lr}, "relative": {"aov": ra, "cpa": rc, "roas": rr},
+                "text": f"ROAS {pct(rr)}: AOV {fa}, CPA {fc}", "chain": f"ROAS {'down' if rr < 0 else 'up'}: " + (f"AOV effect {fa}" if fa != "flat" else "AOV flat") + f", CPA {fc}" + (" (so the AOV branch is read, not CPA)" if fc == "flat" and fa != "flat" else ""),
+                "descend_into": "nc_aov" if fc == "flat" and fa != "flat" else ("nc_cpa" if fa == "flat" and fc != "flat" else "both")}
 
     def contribution(self, parent, child, ch, pv, cv, av) -> float | None:
         link = parent.get("link")
@@ -478,6 +498,8 @@ class Why:
             self.gaps.append({"node": node["id"], **gp})
             return {**base, "status": "data_gap", "data_gap": gp}
         first_day = (self.coverage.get("meta_ad_daily") or {}).get("first_day")
+        if g["source"] == "shopify" and self.scoped:
+            return {**base, "status": "skipped", "reasons": ["Shopify orders have no product-by-platform scope here: run without product / platform"]}
         if g["source"] == "breakdown" and (self.product or self.platform == "google"):
             return {**base, "status": "skipped", "reasons": ["Meta breakdowns have no product split (ad set grain) and are Meta only"]}
         if g["source"] == "meta" and first_day and min(self.start, self.cstart) < first_day:
@@ -501,12 +523,13 @@ class Why:
             for w in ("cur", "cmp"):
                 if not gv[w]:
                     gv[w] = {x: 0.0 for x in ("spend", "impressions", "clicks", "meta_purchases", "meta_revenue", "nc", "nc_rev", "live_ads")}
-        rate = {"roas": ("nc_rev", "spend", 1.0), "conv": ("nc", "clicks", 1.0), "cpm": ("spend", "impressions", 1000.0), "meta_roas": ("meta_revenue", "spend", 1.0), "meta_conv": ("meta_purchases", "clicks", 1.0)}[node["rate"]]
+        rate = {"roas": ("nc_rev", "spend", 1.0), "conv": ("nc", "clicks", 1.0), "cpm": ("spend", "impressions", 1000.0), "meta_roas": ("meta_revenue", "spend", 1.0), "meta_conv": ("meta_purchases", "clicks", 1.0), "aov": ("nc_rev", "nc", 1.0)}[node["rate"]]
         ss = S.shift_share(groups, rate[0], rate[1], rate[2])
         if ss is None:
             return {**base, "status": "no_data", "reasons": ["no rows or a zero denominator in a window"]}
         tot_sp = {w: sum(g[w]["spend"] for g in groups.values()) for w in ("cur", "cmp")}
-        guard = lambda w: max(0.005 * tot_sp[w], 100.0)  # noqa: E731
+        shop = g["source"] == "shopify"
+        guard = (lambda w: max(0.01 * tot_sp[w], 15.0)) if shop else (lambda w: max(0.005 * tot_sp[w], 100.0))  # noqa: E731
         table = []
         for k, gv in groups.items():
             r = ss["rows"].get(k)
@@ -521,9 +544,16 @@ class Why:
                           "conversion_cur": c["nc"] / c["clicks"] if c["clicks"] else None, "conversion_cmp": p["nc"] / p["clicks"] if p["clicks"] else None,
                           "live_ads_cur": c["live_ads"], "rate_cur": r["rate_cur"], "rate_cmp": r["rate_cmp"], "contribution": r["contribution"],
                           "share_of_parent_change": (r["contribution"] / ss["delta"]) if ss["delta"] else None})
+        if shop:
+            for t in table:
+                t["orders_cur"], t["orders_cmp"] = t.pop("spend_cur"), t.pop("spend_cmp")
+                t["share_of_orders_cur"], t["share_of_orders_cmp"] = t["spend_share_cur"], t["spend_share_cmp"]
+                t["aov_cur"], t["aov_cmp"] = t["rate_cur"], t["rate_cmp"]
+                for kx in ("nc_roas_upstack_cur", "nc_roas_upstack_cmp", "meta_roas_cur", "meta_roas_cmp", "cpa_upstack_cur", "cpa_upstack_cmp", "conversion_cur", "conversion_cmp", "live_ads_cur"):
+                    t.pop(kx, None)
         real = [t for t in table if t["key"] != "~other" and not t["key"].startswith("(")]
-        movers_share = sorted([t for t in real if max(t["spend_cur"] - 0, t["spend_cmp"]) >= guard("cur")], key=lambda t: -abs((t["spend_share_cur"] or 0) - (t["spend_share_cmp"] or 0)))[:3]
-        movers_rate = sorted([t for t in real if t["spend_cur"] >= guard("cur") and t["spend_cmp"] >= guard("cmp") and t["rate_cur"] is not None and t["rate_cmp"]],
+        movers_share = sorted([t for t in real if max(t.get("spend_cur", t.get("orders_cur", 0)), t.get("spend_cmp", t.get("orders_cmp", 0))) >= guard("cur")], key=lambda t: -abs((t["spend_share_cur"] or 0) - (t["spend_share_cmp"] or 0)))[:3]
+        movers_rate = sorted([t for t in real if t.get("spend_cur", t.get("orders_cur", 0)) >= guard("cur") and t.get("spend_cmp", t.get("orders_cmp", 0)) >= guard("cmp") and t["rate_cur"] is not None and t["rate_cmp"]],
                              key=lambda t: -abs(t["rate_cur"] / t["rate_cmp"] - 1))[:3]
         untagged = next((t for t in table if t["key"].startswith("(")), None)
         lead = max(real or table, key=lambda t: abs(t["contribution"])) if table else None
@@ -535,7 +565,7 @@ class Why:
         parent_floor = (T.BY_ID[node["parent"]].get("mat") or {}).get("rel", 0.06)
         market = None
         if node["rate"] == "cpm":
-            cells = [t for t in real if t["spend_cur"] >= guard("cur") and t["spend_cmp"] >= guard("cmp") and t["rate_cmp"]]
+            cells = [t for t in real if t.get("spend_cur", 0) >= guard("cur") and t.get("spend_cmp", 0) >= guard("cmp") and t["rate_cmp"]]
             if len(cells) >= 2 and all(t["rate_cur"] / t["rate_cmp"] - 1 >= parent_floor for t in cells):
                 market = {"cells": [t["key"] for t in cells], "claim": f"CPM rose {pct(min(t['rate_cur'] / t['rate_cmp'] - 1 for t in cells))} or more in every {node['group']} cell at once: a market-wide pattern, not a mix effect"}
         status = "flat"
@@ -543,12 +573,13 @@ class Why:
             status = "material"
         res = {**base, "status": status, "group": node["group"], "group_is": g["what"], "rate": node["rate"], "basis": "Meta-reported and Upstack new customers shown as separate columns; the split itself uses the Upstack any-click basis (never mixed)" if g["source"] == "meta" else
                "Google's own conversions are a separate basis (never added to Meta's); the split uses Upstack-attributed new customers",
-               "total": {"cur": ss["cur"], "cmp": ss["cmp"], "delta": ss["delta"], "rel": rel, "unit": {"roas": "ratio", "conv": "pct", "cpm": "usd", "meta_roas": "ratio", "meta_conv": "pct"}[node["rate"]], "denominator": f"per {rate[1]} summed over the values"},
+               "total": {"cur": ss["cur"], "cmp": ss["cmp"], "delta": ss["delta"], "rel": rel, "unit": {"roas": "ratio", "conv": "pct", "cpm": "usd", "meta_roas": "ratio", "meta_conv": "pct", "aov": "usd"}[node["rate"]], "denominator": f"per {rate[1]} summed over the values"},
                "mix_vs_rate": {"label": "accounting (shift-share), not cause", "mix_effect": ss["mix_effect"], "rate_effect": ss["rate_effect"], "mix_detail": ss["mix_detail"], "sum_check": ss["sum_check"],
                                "delta": ss["delta"]},
                "top_spend_share_movers": movers_share, "top_rate_movers": movers_rate, "untagged": untagged, "lead": lead and {"key": lead["key"], "label": lead["label"], "share_of_parent_change": lead_share,
                                                                                                                     "spend_share_cur": lead["spend_share_cur"], "spend_share_cmp": lead["spend_share_cmp"], "kind": lead["kind"]},
-               "market_wide": market, "values_table": sorted(table, key=lambda t: -(t["spend_cur"]))[:12], "known_causes": self.kc_block(node, {"status": status, "values": {"rel": rel}}, None), "children": [], "not_followed": []}
+               "weight": "share of new-customer orders (Shopify, gross order totals, new customers only)" if shop else "share of spend",
+               "market_wide": market, "values_table": sorted(table, key=lambda t: -(t.get("spend_cur", t.get("orders_cur", 0))))[:12], "known_causes": self.kc_block(node, {"status": status, "values": {"rel": rel}}, None), "children": [], "not_followed": []}
         res["_path"] = path
         res["_ss"], res["_groups"], res["_labels"] = ss, groups, labels
         res["_parent_id"] = node["parent"]
@@ -616,6 +647,28 @@ class Why:
             if self.event_key(group, e) == key:
                 out.append({k: (str(v) if isinstance(v, dt.date) else v) for k, v in e.items()})
         return out[:6]
+
+    def near_events(self, center) -> list[dict]:
+        if center is None:
+            return []
+        ev = [e for e in self.events() if e["date"] and abs((e["date"] - center).days) <= 3 and e["type"] in ("ad_family_launched", "landing_page_version_changed", "adset_launched")]
+        ev.sort(key=lambda e: -(e.get("spend_in_window") or e.get("spend_cur") or 0))
+        return [{k: (str(v) if isinstance(v, dt.date) else v) for k, v in e.items()} for e in ev[:6]]
+
+    def enrich_pages(self, events) -> None:
+        fams = [e["family"] for e in events if e["type"] == "ad_family_launched" and e.get("family")]
+        if not fams or not self.has("landing_page_ads", "landing_pages", "landing_page_versions"):
+            return
+        lit = ", ".join("'" + f.replace("'", "''") + "'" for f in fams[:6])
+        try:
+            m = {r["family_key"]: r for r in self.q(T.LP_FOR_ADS_SQL.format(keys=lit))}
+        except BudgetExceeded:
+            self.budget_hit = True
+            return
+        for e in events:
+            r = m.get(e.get("family"))
+            if r:
+                e["landing_page"] = {"url": r["url"], "copy_since": str(r["copy_since"]) if r["copy_since"] else None}
 
     # ------------------------------------------------------------ controls and findings
     def controls(self, group, key, ss, groups, rate, parent, center) -> dict:
@@ -697,21 +750,34 @@ class Why:
         ent_series: dict[str, list] = {}
         if keys and self.max_steps - self.steps >= 3:
             dayp = S.grain_periods(self.end, {"day"})
-            for r in self.group_rows(group, dayp, keys):
+            rows_s = self.group_rows(group, dayp, keys)
+            shop = T.MIX_GROUPS[group]["source"] == "shopify"
+            totals = {r["p"]: float(r["spend"] or 0) for r in rows_s if r["k"] == "~total"}
+            for r in rows_s:
                 if r["k"] in keys:
-                    ent_series.setdefault(str(r["k"]), []).append((dt.date.fromisoformat(r["p"][2:]), float(r["spend"] or 0), r))
+                    v = float(r["spend"] or 0)
+                    if shop:                                   # a share of that day's orders; days with no orders at all are missing, not zero
+                        v = v / totals[r["p"]] if totals.get(r["p"]) else None
+                    ent_series.setdefault(str(r["k"]), []).append((dt.date.fromisoformat(r["p"][2:]), v, r))
         out = []
         g = T.MIX_GROUPS[group]
         for k in keys:
             have = {d: v for d, v, _ in ent_series.get(k, [])}
-            ser = [(self.end - dt.timedelta(days=34 - i), have.get(self.end - dt.timedelta(days=34 - i), 0.0), None) for i in range(35)]
+            shop_g = g["source"] == "shopify"
+            ser = [(self.end - dt.timedelta(days=34 - i), have.get(self.end - dt.timedelta(days=34 - i), None if shop_g else 0.0), None) for i in range(35)]
             ebreak = None
             if have:
-                fb = S.first_break([(str(d), v) for d, v, _ in ser], 28, 0.25, 3)
+                fb = S.first_break([(str(d), v) for d, v, _ in ser], 28, 0.25 if not shop_g else 0.15, 3)
                 if fb:
                     ebreak = ser[fb[0]][0]
             center = ebreak or pbreak
             events = self.match_events(group, k, center)
+            by = None
+            if not events and g["source"] == "shopify":
+                events = self.near_events(center)
+                by = "date only: orders carry no ad or page id, so these are candidates, not attribution"
+            if events and g["source"] == "shopify":
+                self.enrich_pages(events)
             ctl = self.controls(group, k, ss, groups, rate, parent, center)
             label, why = self.label_from(ctl)
             r = ss["rows"].get(k) or {}
@@ -721,13 +787,13 @@ class Why:
             td = sum(gg["cur"][rate[1]] for gg in groups.values()) - e["cur"][rate[1]]
             rest = rate[2] * tn / td if td else None
             cand = {"entity": {"group": group, "key": k, "label": labels.get(k, k), "what": g["what"], "kind": r.get("kind")}, "why_candidate": cands[k], "share_of_parent_change": share,
-                    "spend_share_cur": r.get("share_cur") if rate[1] == "spend" else None, "rate_cur": r.get("rate_cur"), "rate_cmp": r.get("rate_cmp"), "rate_rest_cur": rest, "break_date": str(ebreak) if ebreak else None,
+                    "spend_share_cur": r.get("share_cur") if rate[1] == "spend" else None, "share_cur": r.get("share_cur"), "share_cmp": r.get("share_cmp"), "rate_cur": r.get("rate_cur"), "rate_cmp": r.get("rate_cmp"), "rate_rest_cur": rest, "break_date": str(ebreak) if ebreak else None,
                     "break_basis": "first day its daily spend left its trailing 28-day baseline and stayed out 3+ days" if ebreak else (f"parent's break {pbreak}" if pbreak else None),
-                    "change_events_within_3_days": events, "controls": ctl, "label": label, "label_reason": why}
+                    "change_events_within_3_days": events, "events_matched_by": by, "controls": ctl, "label": label, "label_reason": why}
             leaf = "a" if events else ("b" if (share or 0) >= 0.5 else None)
             cand["leaf_type"] = leaf
             if leaf:
-                self.findings.append({**cand, "node": node["id"], "parent_node": node["parent"], "rate": node["rate"], "_path": path + [{"node": node["id"], "label": node["label"], "rel": res["total"]["rel"]}]})
+                self.findings.append({**cand, "node": node["id"], "parent_node": node["parent"], "rate": node["rate"], "mix_vs_rate": res["mix_vs_rate"], "_path": path + [{"node": node["id"], "label": node["label"], "rel": res["total"]["rel"]}]})
             out.append(cand)
         res["candidates"] = out
         if res.get("market_wide"):
@@ -979,6 +1045,18 @@ class Why:
             return f["claim"]
         e = f["entity"]
         r = f.get("rate")
+        if r == "aov":
+            name = e["group"]
+            lab = "single-bottle" if str(e["label"]).startswith("1 bottle") else e["label"]
+            up = (f.get("share_cur") or 0) > (f.get("share_cmp") or 0)
+            lfl = (f.get("controls") or {}).get("like_for_like", {}).get("share_of_gap")
+            s = (f"{'pack mix' if name == 'pack' else name.replace('_', ' ') + ' mix'}: {lab} share {'up' if up else 'down'} from {(f.get('share_cmp') or 0) * 100:.0f}% to {(f.get('share_cur') or 0) * 100:.0f}% of new-customer orders"
+                 f" (AOV {f.get('rate_cur', 0):,.2f} vs {f.get('rate_cmp', 0):,.2f} before"
+                 + (f"; AOV within the other values explains {abs(lfl) * 100:.0f}% of the change" if lfl is not None else "") + ")")
+            ev = (f.get("change_events_within_3_days") or [None])[0]
+            if ev:
+                s += f"; dated change within 3 days of the break: {ev['type'].replace('_', ' ')} '{ev.get('label')}' on {ev['date']}" + (f" (page {ev['landing_page']['url']})" if ev.get("landing_page") else "")
+            return s
         fm = {"roas": lambda v: f"{v:.2f}" if v is not None else "n/a", "conv": lambda v: f"{v * 100:.2f}%" if v is not None else "n/a", "cpm": lambda v: f"${v:.2f}" if v is not None else "n/a",
               "meta_roas": lambda v: f"{v:.2f}" if v is not None else "n/a", "meta_conv": lambda v: f"{v * 100:.2f}%" if v is not None else "n/a"}.get(r, lambda v: str(v))
         what = {"roas": "new-customer ROAS (Upstack attributed)", "conv": "attributed conversion (new customers per link click)", "cpm": "CPM", "meta_roas": "Meta-reported ROAS", "meta_conv": "Meta-reported conversion"}.get(r, "rate")
@@ -1057,6 +1135,8 @@ class Why:
         supported = [f for f in live if f["label"] == "supported by control"]
         explained = max([abs(f.get("share_of_root_change_estimate") or 0) for f in supported] or [0.0])
         explained = min(1.0, explained)
+        for f in live:
+            self.already_done(f)
         matches = []
 
         def collect(n):
@@ -1115,7 +1195,8 @@ class Why:
         if unexplained:
             reading.append(unexplained["text"] + ".")
         changes = self.changes_block()
-        out = {"metric": self.metric, "window": {"start": str(self.start), "end": str(self.end)}, "comparison": {"kind": self.compare, "start": str(self.cstart), "end": str(self.cend)},
+        grd = self.guardrails(tree, live)
+        out = {"guardrails_checked": grd, "metric": self.metric, "window": {"start": str(self.start), "end": str(self.end)}, "comparison": {"kind": self.compare, "start": str(self.cstart), "end": str(self.cend)},
                "scope": {"product": self.product, "platform": self.platform, "basis": ("Upstack-attributed (any-click) new customers from the ad views, not actual orders" if self.scoped else "actual orders (orders_daily) and platform spend; gross, tax in, refunds not out")},
                "headline": chain_text, "arrows_mean": "'of which' (accounting identity), not 'because'", "reading": reading, "findings": [self._clean(f) for f in live], "refuted_candidates": [self._clean(f) for f in refuted],
                "unexplained": unexplained, "next_questions": nq, "changes_in_window": changes, "known_cause_matches": matches, "tree": self._clean(tree), "steps_used": self.steps, "max_steps": self.max_steps, "budget_exhausted": self.budget_hit,
@@ -1138,6 +1219,8 @@ class Why:
                 break
             others = [n for n in node.get("not_followed", []) if n.get("rel") is not None and T.BY_ID[n["id"]]["kind"] == "scalar" and any(c["id"] == n["id"] and c["role"] == "part" for c in T.BY_ID[node["id"]]["children"])]
             seg = ", ".join(ph(c) for c in kids)
+            if node.get("roas_split"):
+                seg = node["roas_split"]["chain"]
             if others:
                 seg += " (" + ", ".join(f"{short(T.BY_ID[o['id']])} {pct(o['rel'])}" for o in others) + ")"
             segs.append(seg)
@@ -1148,6 +1231,71 @@ class Why:
         elif node.get("status") == "material":
             segs.append("no concrete cause found below this node")
         return " -> ".join(segs)
+
+    ACT_VERBS = re.compile(r"\b(paus|turn(ed)? off|turned it off|cap(ped)?\b|relaunch|route|exclude|loosen|tighten|stop(ped)?\b|kill|swap|replace|fix(ed)?\b|raised?\b|lowered?\b)", re.I)
+
+    def already_done(self, f) -> None:
+        """G22: before suggesting an action, look for a decision item that already did it (full entity name, an action verb, within 60 days before the window ends)."""
+        names = [str(f["entity"].get("label") or ""), str((f.get("routing") or {}).get("new_destination") or ""), str((f.get("routing") or {}).get("old_destination") or "")]
+        keys = {re.sub(r"[^a-z0-9]+", " ", n.lower()).strip() for n in names if len(n) >= 6}
+        keys.discard("")
+        if not keys or not self.kn:
+            f["already_done"] = []
+            return
+        lo = self.end - dt.timedelta(days=60)
+        hits = []
+        for it in self.kn.questions:
+            if it.get("kind") != "decision_made" or not it.get("date"):
+                continue
+            try:
+                d = dt.date.fromisoformat(str(it["date"])[:10])
+            except ValueError:
+                continue
+            text = re.sub(r"[^a-z0-9]+", " ", (str(it.get("verbatim") or "") + " " + str(it.get("intent") or "")).lower())
+            if lo <= d <= self.end and self.ACT_VERBS.search(text) and any(k in text for k in keys):
+                hits.append({"id": it.get("id"), "date": str(it["date"])[:10], "verbatim": str(it.get("verbatim") or "")[:200]})
+        hits.sort(key=lambda h: h["date"], reverse=True)
+        f["already_done"] = hits[:2]
+        if hits:
+            f["suggested_action"] = f"Already acted on ({hits[0]['date']}, {hits[0]['id']}): do not repeat it; check whether it worked by re-running why after 3+ days."
+
+    def guardrails(self, tree, live) -> list[dict]:
+        from zoneinfo import ZoneInfo
+        today = dt.datetime.now(ZoneInfo("America/Los_Angeles")).date()
+        rel = ("orders", "platform", "meta_ad_daily", "meta_reach", "google", "klaviyo", "shopify", "landing", "meta_breakdown")
+        stale = [f"{k} loaded through {r['last_day']}" for k, r in self.coverage.items() if r.get("last_day") and r["last_day"] < self.end and k.startswith(rel)]
+        loaded = [r["last_day"] for k, r in self.coverage.items() if r.get("last_day") and k.startswith(("orders", "platform", "meta_ad_daily"))]
+        partial = self.end >= today
+        scalars = []
+
+        def walk(n):
+            if n.get("kind") == "scalar" and n.get("status") in ("material", "flat"):
+                scalars.append(n)
+            for c in n.get("children", []):
+                walk(c)
+        walk(tree)
+        den_ok = all(n.get("denominator") for n in scalars)
+        mix_f = [f for f in live if f.get("mix_vs_rate") is not None or f["node"] in ("routing_shift", "bd_ad_shift") or f.get("leaf_type") == "c"]
+        sup_nocontrol = [f for f in live if f["label"] == "supported by control" and not f.get("controls")]
+        return [
+            {"id": "G01", "rule": "name the basis before comparing", "ok": True, "result": self.scope_basis()},
+            {"id": "G03", "rule": "no partial day, unloaded day or partial window", "ok": not stale and not partial, "result": (f"window ends {self.end}; last loaded day {min(loaded) if loaded else 'unknown'}"
+                      + ("; the window includes today (a partial day)" if partial else "") + ("; " + "; ".join(stale) if stale else "") + ". The current month is only compared with the same days of earlier months.")},
+            {"id": "G04", "rule": "never read a month that is not over as a full month", "ok": True, "result": "month grain: closed months are shown whole; the open month is month-to-date against the same days of the prior months"},
+            {"id": "G05", "rule": "gross vs net", "ok": True, "result": "all revenue is gross: tax included, before refunds (orders_daily, Shopify total_price); compare with the P&L only after netting"},
+            {"id": "G06", "rule": "Pacific days", "ok": True, "result": "days are Pacific for orders, Google and Upstack; Meta spend uses each ad account's own day (the BackUp account is New York time); weeks start Monday"},
+            {"id": "G07", "rule": "rates carry denominators, never bare counts", "ok": den_ok, "result": f"{len(scalars)} nodes read, each with its denominator (per ... in `denominator`); amounts are per day over the window"},
+            {"id": "G08", "rule": "mix vs rate before naming a cause", "ok": all(f.get("mix_vs_rate") is not None or f["node"] in ("routing_shift", "bd_ad_shift") or f.get("leaf_type") == "c" for f in live), "result": f"{len(mix_f)} of {len(live)} findings carry the mix / rate split (accounting) or a routing / breakdown control"},
+            {"id": "G10", "rule": "timing or decomposition is not attribution", "ok": not sup_nocontrol, "result": "'supported by control' is only given after a counterfactual exclusion; dated events within 3 days are candidates and are labelled by their control, never by timing alone"},
+            {"id": "G15", "rule": "account scope in ROAS", "ok": True, "result": "NC ROAS = new-customer revenue (orders_daily, all sources) / spend of Meta (all ad accounts, via platform_daily) + Google over the same days; Meta-only ratios are shown as Meta-reported, separate columns"},
+            {"id": "G19", "rule": "results are not causes", "ok": True, "result": "single-cut ratios (audience, placement, age mix) are shown as accounting; only entities that survive a control are labelled supported"},
+            {"id": "G22", "rule": "do not re-recommend what was already done", "ok": True, "result": f"{sum(1 for f in live if f.get('already_done'))} of {len(live)} suggested actions matched a decision item from the 60 days before the window; those say 'already acted on'"},
+        ]
+
+    def scope_basis(self) -> str:
+        if self.scoped:
+            return "scoped to a product / platform: Upstack-attributed (any-click) new customers from the ad views, not actual orders; Meta-reported shown separately"
+        return "actual orders (orders_daily, all sources) with Meta + Google spend; Meta-reported and Upstack-attributed numbers appear only as separate labelled columns"
 
     def changes_block(self) -> dict:
         try:

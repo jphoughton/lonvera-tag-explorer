@@ -13,7 +13,7 @@ from brain import why_tree as WT
 from brain.sqlguard import check_select
 from brain.knowledge import load
 from brain_helpers import DB_NAME, PG_BASE, ROOT
-from why_seed import END, PAGE_BAD, PAGE_Y, PAGE_Z, STEP, Scenario, make_runner, seed
+from why_seed import END, PAGE_BAD, PAGE_P, PAGE_Y, PAGE_Z, STEP, Scenario, make_runner, seed
 
 WHY_DB = DB_NAME + "_why"
 WHY_URL = f"{PG_BASE}/{WHY_DB}"
@@ -110,7 +110,7 @@ def test_every_sql_text_is_read_only_and_runs_on_seeded_views(whydb):
     per = S.grain_periods(END, {"day", "week", "month"})
     v = lambda sql, **kw: sql.format_map({"periods": ", ".join(f"('{l}', date '{s}', date '{e}')" for l, s, e, _ in per), "prod": "", "hstart": END - dt.timedelta(days=34), "end": END, "start": STEP, "cstart": STEP - dt.timedelta(days=14), "cend": STEP - dt.timedelta(days=1), **kw})  # noqa: E731
     texts = [v(f["sql"]) for f in WT.FAMILIES.values()] + [v(WT.group_sql(g)) for g in WT.MIX_GROUPS] + [v(c["sql"]) for c in WT.CHANGE_SQL.values()]
-    texts += [v(WT.group_sql("family", keys=["x'y"]))]
+    texts += [v(WT.group_sql("family", keys=["x'y"])), v(WT.group_sql("pack", keys=["1 bottle (single)"])), v(WT.group_sql("country"))]
     texts += [v(WT.LEAD_AD_SQL, keys="'fam-b0'"), v(WT.LP_FOR_ADS_SQL, keys="'fam-b0'"), WT.COVERAGE_SQL, WT.VIEWS_SQL]
     cp = [p for p in per[:0]] or [("cur", STEP, END, {}), ("cmp", STEP - dt.timedelta(days=14), STEP - dt.timedelta(days=1), {})]
     pv = ", ".join(f"('{l}', date '{s}', date '{e}')" for l, s, e, _ in cp)
@@ -305,3 +305,52 @@ def test_tool_registration_validates_input(whydb):
     with pytest.raises(T.ToolError, match="unknown argument"):
         T.call(b, "why", {"nope": 1})
     assert T.call(b, "why_tree", {})["root"] == "revenue" and "sql" in T.call(b, "why_tree", {"include_sql": True})
+
+
+# ---------------------------------------------------------------- the ROAS -> AOV branch
+def test_roas_splits_exactly_into_aov_and_cpa_and_the_chain_descends_into_aov(whydb):
+    out, _ = go(whydb, Scenario(pack_shift=True, with_shopify=True, with_lp=True), metric="nc_roas")
+    rs = out["tree"]["roas_split"]
+    le = rs["log_effects"]
+    assert abs(le["aov"] + le["cpa"] - le["roas"]) < 1e-9 and rs["descend_into"] == "nc_aov"
+    assert rs["text"].startswith("ROAS -") and "AOV -" in rs["text"] and "CPA flat" in rs["text"]
+    assert "nc_aov" in [c["id"] for c in out["tree"]["children"]] and "nc_cpa" not in [c["id"] for c in out["tree"]["children"]]
+    assert find(out["tree"], "nc_cpa") is None
+    h = out["headline"]
+    assert "ROAS down: AOV effect" in h and "CPA flat" in h and h.index("pack mix") > h.index("CPA flat") and "single-bottle share up from 38% to 56%" in h
+    assert "ad family launched 'Lonvera-P'" in h and PAGE_P in h
+
+
+def test_pack_mix_leaf_is_supported_with_within_pack_aov_unchanged(whydb):
+    out, _ = go(whydb, Scenario(pack_shift=True, with_shopify=True, with_lp=True), metric="nc_roas")
+    f = next(x for x in out["findings"] if x["node"] == "aov@pack")
+    assert f["entity"]["key"] == "1 bottle (single)" and f["label"] == "supported by control" and f["break_date"] == str(STEP)
+    assert f["share_cmp"] == pytest.approx(0.38, abs=0.01) and f["share_cur"] == pytest.approx(0.56, abs=0.01)
+    assert f["controls"]["counterfactual_exclusion"]["gap_closed"] > 0.9 and f["controls"]["like_for_like"]["holds"] is True
+    assert f["events_matched_by"].startswith("date only") and any(e["type"] == "ad_family_launched" and e["landing_page"]["url"] == PAGE_P for e in f["change_events_within_3_days"])
+    mv = find(out["tree"], "aov@pack")
+    assert abs(mv["mix_vs_rate"]["mix_effect"] + mv["mix_vs_rate"]["rate_effect"] - mv["mix_vs_rate"]["delta"]) < 1e-9
+    assert abs(mv["mix_vs_rate"]["rate_effect"]) < 0.05 * abs(mv["mix_vs_rate"]["delta"])
+    row = next(t for t in mv["values_table"] if t["key"] == "1 bottle (single)")
+    assert row["aov_cur"] == pytest.approx(39.0) and "orders_cur" in row
+    assert mv["weight"].startswith("share of new-customer orders")
+
+
+def test_aov_nodes_are_data_gaps_without_shopify_orders(whydb):
+    out, _ = go(whydb, Scenario(), metric="nc_aov", start="2026-10-04", end="2026-10-17")
+    assert out["tree"]["status"] == "flat"
+
+
+# ---------------------------------------------------------------- guardrails
+def test_every_result_lists_the_guardrails_it_checked(whydb):
+    out, _ = go(whydb, Scenario(x_mode="new"))
+    g = {x["id"]: x for x in out["guardrails_checked"]}
+    assert set(g) >= {"G01", "G03", "G04", "G05", "G06", "G07", "G08", "G10", "G15", "G19", "G22"} and all(x["result"] and x["rule"] for x in g.values())
+    assert g["G07"]["ok"] and g["G08"]["ok"] and g["G10"]["ok"] and "gross" in g["G05"]["result"] and "Pacific" in g["G06"]["result"]
+    assert g["G03"]["ok"] is True and f"last loaded day {END}" in g["G03"]["result"]
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+    today = _dt.datetime.now(ZoneInfo("America/Los_Angeles")).date()
+    out2, _ = go(whydb, Scenario(x_mode="new"), start=str(today - _dt.timedelta(days=6)), end=str(today))
+    g3 = next(x for x in out2["guardrails_checked"] if x["id"] == "G03")
+    assert g3["ok"] is False and "includes today" in g3["result"] and "loaded through" in g3["result"]

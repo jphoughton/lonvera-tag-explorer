@@ -96,6 +96,27 @@ MIX_GROUPS: dict[str, dict] = {
     "g_type": {"source": "google", "key": "coalesce(g.campaign_type, 'unknown')", "label": "coalesce(g.campaign_type, 'unknown')", "extra": "", "needs": [], "what": "Google campaign type"},
     "g_campaign": {"source": "google", "key": "coalesce(g.campaign_key, g.campaign_name)", "label": "max(g.campaign_name)", "extra": "", "needs": [], "what": "Google campaign"},
 }
+# AOV drill-down groups: new-customer orders from analytics.shopify_orders / shopify_order_lines (last 120 days). First order = shopify_orders.is_new_customer (the same notion as orders_daily.new_customers, from Shopify rather than
+# Upstack); cancelled, test and Trybe gift orders are left out; revenue = total_price (gross: tax and shipping in, before refunds).
+# Offer inference (the order lines carry units and prices, not an offer name): units are summed over the order's lines, then 1 = single bottle, 2 = two bottles, 3 = 3-pack, 4 = 'buy 3 get 1 free' bundle,
+# 5 = 5-pack ('buy 3 get 2 free' bundle), 6+ = bulk. An order with no lines counts as a single bottle. Subscribe / refills cannot be read from these views (no subscription flag).
+PACK_CASE = ("case when units <= 1 then '1 bottle (single)' when units = 2 then '2 bottles' when units = 3 then '3 bottles (3-pack)' when units = 4 then '4 bottles (buy 3 get 1 free)' "
+             "when units = 5 then '5 bottles (buy 3 get 2 free)' else '6+ bottles' end")
+SHOP_KEYS = {"pack": PACK_CASE, "discount": "case when total_discounts > 0 then 'discount applied' else 'no discount' end",
+             "multi_product": "case when n_products > 1 then '2+ products (add-on / upsell)' else '1 product' end", "shop_product": "coalesce(top_product, 'unknown')", "country": "coalesce(ship_country, 'unknown')"}
+SHOP_WHAT = {"pack": "pack / offer type inferred from units per order (see the mapping above)", "discount": "discount applied or not (total_discounts > 0)", "multi_product": "one product vs two or more products on the order (add-on / upsell take)",
+             "shop_product": "the product with the largest line on the order", "country": "ship-to country"}
+for _k, _v in SHOP_KEYS.items():
+    MIX_GROUPS[_k] = {"source": "shopify", "key": _v, "label": _v, "extra": "", "needs": ["shopify_orders", "shopify_order_lines"], "what": SHOP_WHAT[_k]}
+SHOP_GROUP_SQL = """
+with {periods_cte}, o as (
+  select p.p, o.total_price, o.total_discounts, o.ship_country, coalesce(l.units, 0) units, coalesce(l.n_products, 0) n_products, l.top_product
+  from periods p join analytics.shopify_orders o on o.order_date between p.s and p.e and o.is_new_customer and not o.is_cancelled and not o.is_test and not o.is_trybe_gift
+  left join (select order_id, sum(quantity) units, count(distinct product) n_products, (array_agg(product order by line_net desc nulls last))[1] top_product from analytics.shopify_order_lines group by 1) l on l.order_id = o.order_id
+  ),
+g as (select p, {key} k, {key} lbl, count(*) nc, coalesce(sum(total_price), 0) nc_rev from o group by 1, 2)
+select p, k, lbl, nc spend, 0 impressions, 0 clicks, 0 meta_purchases, 0 meta_revenue, nc, nc_rev, 0 live_ads from g {only}
+{total}"""
 BREAKDOWNS = ["audience_segment", "age", "gender", "age_gender", "country", "region", "publisher_platform", "platform_position", "device_platform", "hourly"]
 for _b in BREAKDOWNS:
     MIX_GROUPS["bd_" + _b] = {"source": "breakdown", "breakdown": _b, "key": "coalesce(g.value, 'unknown')", "label": "coalesce(g.value, 'unknown')", "extra": "", "needs": ["meta_breakdown_daily"],
@@ -120,6 +141,10 @@ _G_FROM = "from periods p join analytics.google_campaign_daily g on g.day betwee
 def group_sql(group: str, top_n: int = 40, keys: list[str] | None = None) -> str:
     """Template with {periods} and {prod} left open. `keys`, when given, restricts the result to those values (values come from the database, escaped here)."""
     g = MIX_GROUPS[group]
+    if g["source"] == "shopify":
+        only = "where k in (" + ", ".join("'" + str(k).replace("'", "''").replace("\x00", "") + "'" for k in keys) + ")" if keys else ""
+        total = ("union all select p, '~total', 'all new-customer orders', sum(nc), 0, 0, 0, 0, sum(nc), sum(nc_rev), 0 from g group by p") if keys else ""
+        return SHOP_GROUP_SQL.format(periods_cte=PERIODS, key=g["key"], only=only, total=total)
     meta = g["source"] == "meta"
     frm = _META_FROM.replace("{extra}", g["extra"]) if meta else (_B_FROM.replace("{b}", g["breakdown"]) if g["source"] == "breakdown" else _G_FROM)
     if keys:
@@ -320,7 +345,7 @@ node(id="basis_gap", label="Meta-reported revenue per $1 of actual new-customer 
      mat=M(rel=0.1, abs=0.05, min_den=1000),
      known_causes=[_kc("2026-10-26", "Meta ROAS 0.705 vs actual 0.586 (Oct 19-24): half denominators (BackUp + Google spend), half Meta counting returning buyers", "verified", "consistent with", "up", ["2026-10-19", "2026-10-24"], SYNTH + " 4"),
                    _kc("2026-10-26", "'API shows no exclusions on the 1DC ad sets'", "refuted", "refuted", None, None, SYNTH + " 4.3", "targeting field hides exclusions on newer-format ad sets; the only gap was the 3 OffWinners1DC ad sets for ~15 hours")])
-node(id="nc_aov", label="New-customer AOV", formula="new-customer revenue / new customers", unit="usd", num="nc_rev", den="nc", link="info", children=[_info("nc_units_per_order"), _info("nc_price_per_unit"), _info("nc_discount_per_order")],
+node(id="nc_aov", label="New-customer AOV", formula="new-customer revenue / new customers", unit="usd", num="nc_rev", den="nc", link="info", children=[_info("aov@pack"), _info("aov@discount"), _info("aov@multi_product"), _info("aov@shop_product"), _info("aov@country"), _info("nc_units_per_order"), _info("nc_price_per_unit"), _info("nc_discount_per_order")],
      mat=M(rel=0.05, abs=2, min_den=50), known_causes=[_kc("2026-09-30", "Sep ROAS recovery was AOV only; AOV flat Sep -> Oct", "verified", "consistent with", None, ["2026-09-01", "2026-10-31"], "ledger_marketing.md #10")],
      settles_with="bundle mix (units per order) vs price per unit vs discounts")
 node(id="nc_units_per_order", label="Units per new-customer order (bundle mix)", formula="units on new-customer orders / new-customer orders (Shopify orders, last 120 days)", unit="ratio", num="so_units", den="so_orders", link="info", account_only=True,
@@ -400,6 +425,8 @@ for g, lab in (("family", "ad family"), ("product", "product"), ("stage", "testi
     _mix(g, "conv", "conversion", f"Conversion by {lab}", f"conv@{g}")
 for g, lab in (("product", "product"), ("stage", "testing vs scaling")):
     _mix(g, "cpm", "cpm", f"CPM by {lab}")
+for g, lab in (("pack", "pack / offer type"), ("discount", "discount"), ("multi_product", "add-on / upsell take (2+ products)"), ("shop_product", "product"), ("country", "country")):
+    _mix(g, "aov", "nc_aov", f"New-customer AOV by {lab}", f"aov@{g}")
 for _b in BREAKDOWNS:
     _bdnode(_b, "meta_roas", "meta_spend", f"Meta breakdown by {_b.replace('_', ' ')}: spend share and Meta-reported ROAS", f"bd_roas@{_b}")
 for _b in ("audience_segment", "age", "gender", "country", "publisher_platform", "platform_position"):
@@ -419,7 +446,7 @@ for n in NODES:
 PQ_MAP = {"bd_roas@audience_segment": "basis_gap", "bd_roas_nc@audience_segment": "basis_gap", "bd_conv@audience_segment": "conversion", "checkout_funnel": "checkout", "upsell_accepts": "upsell", "meta_spend": "spend_by_platform", "google_spend": "spend_by_platform", "repeat_rate": "repeat_orders", "renewals_per_due": "repeat_orders",
           "repeat_cohort_like_for_like": "repeat_orders", "klaviyo_flow_revenue": "repeat_orders", "klaviyo_campaign_revenue": "repeat_orders", "klaviyo_billing_reminders": "repeat_orders",
           "klaviyo_failed_winback": "repeat_orders", "nc_campaign_email_share": "nc_revenue", "spend_platform_factor": "nc_cpa", "nc_units_per_order": "nc_aov", "nc_price_per_unit": "nc_aov",
-          "nc_discount_per_order": "nc_aov", "cpm_country_age_mix": "cpm", "spend@product": "spend_by_product", "spend@stage": "spend_by_stage", "nc_roas@product": "conv_by_product",
+          "nc_discount_per_order": "nc_aov", "aov@pack": "nc_aov", "aov@discount": "nc_aov", "aov@multi_product": "nc_aov", "aov@shop_product": "nc_aov", "aov@country": "nc_aov", "cpm_country_age_mix": "cpm", "spend@product": "spend_by_product", "spend@stage": "spend_by_stage", "nc_roas@product": "conv_by_product",
           "conv@family": "conv_by_ad", "conv@product": "conv_by_product", "conv@stage": "spend_by_stage", "conv@landing_page": "conv_by_ad", "google_nc_roas@g_type": "spend_by_platform",
           "google_nc_roas@g_campaign": "spend_by_platform"}
 for _n in NODES:

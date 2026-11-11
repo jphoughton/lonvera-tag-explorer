@@ -16,6 +16,7 @@ END = D(2026, 10, 31)
 FIRST = D(2026, 8, 1)
 AOV = 60.0
 PAGE_Z, PAGE_Y, PAGE_BAD = "https://shop.lonvera.com/pages/good", "https://shop.lonvera.com/pages/new-page", "https://shop.lonvera.com/pages/bad-lp"
+PAGE_P = "https://shop.lonvera.com/pages/single-bottle-default"
 
 BASE = [("b%d" % i, "vita-bull" if i < 5 else "boneflex", "C1" if i < 3 else ("C3" if i < 5 else "C2")) for i in range(10)]
 
@@ -37,10 +38,15 @@ OPTIONAL = {
     "landing_pages": "id bigint, url text, host text, path text, last_fetched_at timestamptz, current_version_id bigint",
     "landing_page_versions": "id bigint, landing_page_id bigint, content_hash text, fetched_at timestamptz, title text, word_count int",
     "landing_page_ads": "ad_id text, landing_page_id bigint, raw_url text, source text, first_seen_date date, last_seen_date date",
-    "shopify_orders": "order_id bigint, order_date date, is_new_customer boolean, is_cancelled boolean, is_test boolean, is_trybe_gift boolean, total_price numeric, total_discounts numeric",
+    "shopify_orders": "order_id bigint, order_date date, is_new_customer boolean, is_cancelled boolean, is_test boolean, is_trybe_gift boolean, total_price numeric, total_discounts numeric, ship_country text",
     "shopify_order_lines": "order_id bigint, line_no int, quantity int, product text, line_net numeric",
     "meta_breakdown_daily": "day date, account text, campaign_id text, adset_id text, ad_id text, breakdown text, value text, spend numeric, impressions numeric, reach numeric, link_clicks numeric, unique_outbound_clicks numeric, purchases numeric, purchase_value numeric",
 }
+
+
+PACKS = {1: 39.0, 3: 89.0, 5: 119.0}
+PACK_BEFORE, PACK_AFTER = {1: 19, 3: 16, 5: 15}, {1: 28, 3: 12, 5: 10}          # 50 new-customer orders a day: 38% single bottle before, 56% after
+PACK_AOV = tuple(sum(PACKS[k] * v for k, v in m.items()) / 50 for m in (PACK_BEFORE, PACK_AFTER))
 
 
 def days(a=FIRST, b=END):
@@ -55,7 +61,7 @@ def noise(d, k=0):
 
 
 class Scenario:
-    def __init__(self, x_mode=None, uniform_drop=False, spike=False, cluster_drop=False, routing=None, with_lp=False, with_klaviyo=False, with_breakdown=False, with_shopify=False, repeat_drop=False, optional_all=False):
+    def __init__(self, x_mode=None, uniform_drop=False, spike=False, cluster_drop=False, routing=None, with_lp=False, with_klaviyo=False, with_breakdown=False, with_shopify=False, repeat_drop=False, optional_all=False, pack_shift=False):
         self.__dict__.update(locals())
         del self.__dict__["self"]
 
@@ -68,6 +74,8 @@ def ad_list(sc: Scenario):
         ads.append(("a_y", "lonvera-y", "Lonvera-Y", "boneflex", "C2", PAGE_Z, STEP))
     if sc.x_mode == "ramp":
         ads.append(("a_x", "lonvera-x", "Lonvera-X", "vita-bull", "C1", PAGE_BAD, STEP - dt.timedelta(days=14)))
+    if sc.pack_shift:
+        ads.append(("a_p", "lonvera-p", "Lonvera-P", "vita-bull", "C1", PAGE_P, STEP))
     if sc.routing:
         ads.append(("a_n1", "lonvera-n1", "Lonvera-N1", "boneflex", "C2", PAGE_Y, STEP))
         ads.append(("a_n2", "lonvera-n2", "Lonvera-N2", "boneflex", "C2", PAGE_Y, STEP))
@@ -83,12 +91,14 @@ def ad_day(sc: Scenario, ad, d):
     clicks, conv = 300.0, 0.03
     if aid == "a_x":
         clicks, conv = (2000.0, 0.005) if after else (200.0, 0.03)
+    elif aid == "a_p":
+        clicks, conv = 1000.0, 0.03
     elif aid == "a_y":
         clicks, conv = 100.0, 0.03
     elif aid in ("a_n1", "a_n2"):
         clicks, conv = 450.0, 0.01
     else:
-        if sc.x_mode and after and prod == "vita-bull":
+        if (sc.x_mode or sc.pack_shift) and after and prod == "vita-bull":
             clicks = 100.0
         if sc.uniform_drop and after:
             conv *= 0.7
@@ -141,7 +151,8 @@ def seed(url: str, sc: Scenario) -> None:
             if sc.repeat_drop and d >= STEP:
                 rep_orders *= 0.7
                 rep_rev = rep_orders * 60
-            ord_rows.append((d, nc_total * AOV, nc_total, rep_rev, nc_total * AOV + rep_rev, nc_total + rep_orders, dt.datetime.now()))
+            aov = AOV if not sc.pack_shift else (PACK_AOV[1] if d >= STEP else PACK_AOV[0])
+            ord_rows.append((d, nc_total * aov, nc_total, rep_rev, nc_total * aov + rep_rev, nc_total + rep_orders, dt.datetime.now()))
             plat_rows.append((d, "meta", tc, tc * 40, tc, tn * 1.3, tn * 1.3 * AOV, tn, tn * AOV, tn, tn * AOV))
             plat_rows.append((d, "google", 100.0, 4000, 100, 0, 0, 0, 0, 0, 0))
             reach_rows.append(("day", str(d), d, d, tc * 40, tc * 40 / 3, 3.0, tc, tc, tc, dt.datetime.now()))
@@ -160,9 +171,9 @@ def seed(url: str, sc: Scenario) -> None:
         ins("creative_tracker", ct)
         ins("data_coverage", [(s, FIRST, END, 92, 1, dt.datetime.now(), None) for s in ("orders_daily", "platform_daily", "meta_reach")] + [("meta_ad_daily", D(2026, 5, 6) if False else FIRST, END, 92, 1, dt.datetime.now(), None)])
         if "landing_page_ads" in tabs:
-            pages = {PAGE_Z: 1, PAGE_Y: 2, PAGE_BAD: 3}
-            ins("landing_pages", [(i, u, "shop.lonvera.com", u.split("com")[1], dt.datetime(2026, 10, 31), i * 10) for u, i in pages.items()])
-            ins("landing_page_versions", [(10, 1, "h1", dt.datetime(2026, 8, 1), "Good", 800), (20, 2, "h2", dt.datetime(2026, 10, 18), "New", 700), (30, 3, "h3", dt.datetime(2026, 10, 18), "Bad LP", 650), (31, 3, "h0", dt.datetime(2026, 9, 1), "Bad LP old", 640)])
+            pages = {PAGE_Z: 1, PAGE_Y: 2, PAGE_BAD: 3, PAGE_P: 4}
+            ins("landing_pages", [(i, u, "shop.lonvera.com", u.split("com")[1], dt.datetime(2026, 10, 31), 40 if i == 4 else i * 10) for u, i in pages.items()])
+            ins("landing_page_versions", [(10, 1, "h1", dt.datetime(2026, 8, 1), "Good", 800), (20, 2, "h2", dt.datetime(2026, 10, 18), "New", 700), (30, 3, "h3", dt.datetime(2026, 10, 18), "Bad LP", 650), (31, 3, "h0", dt.datetime(2026, 9, 1), "Bad LP old", 640), (40, 4, "hp", dt.datetime(2026, 10, 18), "Single bottle default", 600)])
             ins("landing_page_ads", [(a[0], pages[a[5]], a[5], "creative", FIRST, END) for a in ads])
         if "klaviyo_daily" in tabs:
             rows = []
@@ -174,8 +185,16 @@ def seed(url: str, sc: Scenario) -> None:
             ins("klaviyo_daily", rows)
             ins("klaviyo_flows", [("f1", "Billing reminder 3 days", "live", "list", dt.datetime(2026, 9, 14), dt.datetime(2026, 10, 17)), ("f2", "Failed payment recovery", "live", "metric", dt.datetime(2026, 8, 1), dt.datetime(2026, 8, 2))])
         if "shopify_orders" in tabs:
-            ins("shopify_orders", [(i, d, True, False, False, False, 60.0, 5.0) for i, d in enumerate(days(D(2026, 10, 1), END), 1) for _ in [0]])
-            ins("shopify_order_lines", [(i, 1, 2, "x", 55.0) for i in range(1, 32)])
+            orders, lines, oid = [], [], 0
+            for d in days(D(2026, 10, 1), END):
+                mix = PACK_AFTER if d >= STEP else PACK_BEFORE
+                for units, n in mix.items():
+                    for _ in range(n):
+                        oid += 1
+                        orders.append((oid, d, True, False, False, False, PACKS[units], 0.0, "US"))
+                        lines.append((oid, 1, units, "vita-bull", PACKS[units]))
+            ins("shopify_orders", orders)
+            ins("shopify_order_lines", lines)
         if "meta_breakdown_daily" in tabs:
             rows = []
             for d in days(D(2026, 10, 4), END):
