@@ -106,7 +106,7 @@ def test_product_cluster_and_icp_are_real_merged_cells_centered_with_cluster_col
     assert any(x[3] > 1 for x in by["cluster"]) and any(x[3] > 1 for x in by["icp"])      # rowspan > 1 where a group has several rows
     cell = page.locator("[data-testid=pri-body] td.pri-c-cluster.pri-merged").first
     st = cell.evaluate("e => { const s = getComputedStyle(e); return [s.textAlign, s.verticalAlign]; }")
-    assert st == ["center", "middle"]
+    assert st == ["center", "top"]      # the label itself is centred by a margin and then sticks (see the sticky-label test)
     # no blank cells; the tbody holds row, detail and product-heading rows only; headings are not rows (no checkbox, not counted)
     assert page.locator("[data-testid=pri-body] > tr").evaluate_all("trs => trs.every((t) => t.classList.contains('pri-row') || t.classList.contains('pri-detail') || t.classList.contains('pri-prodhead'))")
     assert page.locator("[data-testid=pri-card]").count() == 30 and page.locator(PICK).count() == 30
@@ -211,6 +211,61 @@ def test_product_is_a_heading_row_with_a_count_not_a_merged_cell(page):
     assert page.locator("[data-testid=pri-prodhead]").count() == 0
     assert page.locator("th.pri-th-product").evaluate("e => getComputedStyle(e).display") != "none"
     assert page.locator("[data-testid=pri-card] .pri-c-product").evaluate_all("cs => cs.length > 0 && cs.every((c) => getComputedStyle(c).display !== 'none' && c.textContent.trim())")
+
+
+def test_rows_are_white_in_every_state_open_hover_selected(page):
+    goto(page)
+    for i in (0, 4, 9):
+        page.locator(PICK).nth(i).check()
+    page.locator("[data-testid=pri-body] [data-testid=pri-toggle]").nth(5).click()
+    row = page.locator("[data-testid=pri-body] tr.pri-row").nth(5)
+    row.hover()
+    bgs = page.evaluate("""() => [...document.querySelectorAll('[data-testid=pri-body] tr.pri-row')].map((tr) => [tr.classList.contains('pri-open'), getComputedStyle(tr).backgroundColor,
+      [...tr.children].filter((td) => !td.classList.contains('pri-merged') && getComputedStyle(td).display !== 'none').map((td) => getComputedStyle(td).backgroundColor)])""")
+    assert any(b[0] for b in bgs)
+    for is_open, tr_bg, cells in bgs:
+        assert tr_bg == "rgb(255, 255, 255)" and all(c in ("rgba(0, 0, 0, 0)", "rgb(255, 255, 255)") or "gradient" in c for c in cells), (is_open, tr_bg, cells)
+    # the open row is still marked, neutrally (a rule beside its checkbox, no cluster colour)
+    assert "gradient" in page.locator("[data-testid=pri-body] tr.pri-row.pri-open td.pri-c-tog").first.evaluate("e => getComputedStyle(e).backgroundImage")
+
+
+@pytest.mark.parametrize("w", [1280, 1440, 1700, 1920])
+def test_selection_bar_header_and_table_share_left_and_right_edges(browser, base_url, w):
+    c = browser.new_context(viewport={"width": w, "height": 900}, base_url=base_url)
+    c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+    p = c.new_page()
+    p.goto("/priorities")
+    p.wait_for_selector("[data-testid=pri-page]")
+    idle(p)
+    p.locator(PICK).nth(0).check()
+    e = p.evaluate("""() => { const r = (s) => { const b = document.querySelector(s).getBoundingClientRect(); return [b.left, b.right]; };
+      return [r('[data-testid=pri-seltools]'), r('[data-testid=pri-table]'), r('[data-testid=pri-table] thead tr')]; }""")
+    for a in e[1:]:
+        assert abs(a[0] - e[0][0]) <= 2 and abs(a[1] - e[0][1]) <= 2, (w, e)
+    c.close()
+
+
+def test_merged_labels_are_sticky_and_stay_in_view_inside_a_tall_group(page):
+    goto(page)
+    page.locator("[data-testid=pri-all-expand]").click()                                      # every group is now tall
+    lbl = page.locator("[data-testid=pri-body] td.pri-c-cluster.pri-merged > .pri-lbl").first
+    assert lbl.evaluate("e => getComputedStyle(e).position") == "sticky"
+    assert page.locator("[data-testid=pri-body] td.pri-c-icp.pri-merged > .pri-lbl").first.evaluate("e => getComputedStyle(e).position") == "sticky"
+    # a short group keeps its label centred in the cell
+    page.locator("[data-testid=pri-all-collapse]").click()
+    cen = page.evaluate("""() => { const td = [...document.querySelectorAll('[data-testid=pri-body] td.pri-c-cluster.pri-merged')].find((t) => t.rowSpan > 1); const l = td.firstElementChild, a = td.getBoundingClientRect(), b = l.getBoundingClientRect();
+      return Math.abs((b.top + b.bottom) / 2 - (a.top + a.bottom) / 2); }""")
+    assert cen <= 4, cen
+    page.locator("[data-testid=pri-all-expand]").click()
+    page.evaluate("() => document.querySelector('[data-testid=pri-table]').scrollIntoView()")
+    for dy in (250, 500, 900):
+        page.evaluate("(d) => window.scrollBy(0, d)", dy)
+        res = page.evaluate("""() => { const hb = document.querySelector('[data-testid=pri-table] thead tr').getBoundingClientRect().bottom;
+          return [...document.querySelectorAll('[data-testid=pri-body] td.pri-c-cluster.pri-merged')].map((td) => { const a = td.getBoundingClientRect(), b = td.firstElementChild.getBoundingClientRect();
+            const shown = a.bottom > hb + 40 && a.top < innerHeight - 40;                        // a cell that is well on screen
+            return [shown, b.top >= hb - 1 && b.bottom <= innerHeight + 1 && b.bottom <= a.bottom + 1]; }); }""")
+        assert all(ok for shown, ok in res if shown), (dy, res)
+        assert any(shown for shown, _ in res)
 
 
 def test_clicking_a_merged_cell_does_not_open_a_row_but_a_normal_cell_still_does(page):

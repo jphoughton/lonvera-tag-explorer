@@ -859,10 +859,13 @@ button.pri-ptile { cursor: pointer; } button.pri-ptile:hover { background: var(-
 .pri-k { color: var(--lv-muted, #665d53); }
 .pri-status { font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 2px 8px; border-radius: 10px; border: 1px solid currentColor; white-space: nowrap; display: inline-block; }
 .pri-st-ok { color: #1a7f37; } .pri-st-up { color: #0b6bcb; } .pri-st-fade { color: #b35900; } .pri-st-bad { color: #b42318; } .pri-st-flat { color: #667085; } .pri-st-new { color: #7a3db8; }
-@media (min-width: 761px) and (max-width: 1320px) {                /* between phone and wide desktop the table must still fit: smaller minimums, smaller padding, long text wraps */
+@media (min-width: 761px) {                /* the table always fits its container, so the selection bar, the pinned header and the table share their left and right edges at every desktop width: fixed layout, long text wraps */
   .pri-main { table-layout: fixed; }
   .pri-main .pri-c-section, .pri-main .pri-c-cluster, .pri-main .pri-c-icp, .pri-main .pri-c-pain, .pri-main .pri-c-story { min-width: 0; }
-  .pri-main .pri-c { padding: 6px 5px; font-size: 12px; overflow-wrap: anywhere; }
+  .pri-main .pri-c { overflow-wrap: anywhere; }
+}
+@media (min-width: 761px) and (max-width: 1320px) {
+  .pri-main .pri-c { padding: 6px 5px; font-size: 12px; }
   .pri-main .pri-c-product { white-space: normal; }
   .pri-main th { padding: 6px 5px; }
   .pri-main .pri-c-tog, .pri-main .pri-th-tog { width: 52px; }
@@ -1187,9 +1190,11 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 .pri-groupbtn:focus-visible { outline: 2px solid var(--lv-focus, #c75123); outline-offset: 2px; }
 /* each row carries --h (the hue of its cluster name): cluster = strongest fill, ICP = lighter tint; all dark-ink-safe (lightness 85 / 92). Product is a heading row, not a column; checkbox / expand cells stay plain so the colour starts at the cluster cell. */
 .pri-grouped .pri-c-product, .pri-grouped .pri-th-product { display: none; }
-.pri-grouped .pri-row, .pri-grouped .pri-row:hover, .pri-grouped .pri-row.pri-open { background: #fff; }      /* white rows: only the cluster and ICP cells carry colour (hover / open tint the cells from Pain Point on, never the checkbox cell) */
+.pri-grouped .pri-row, .pri-grouped .pri-row:hover, .pri-grouped .pri-row.pri-open { background: #fff; }      /* white rows: only the cluster and ICP cells carry colour (white in every state: hover, open and selected are never cluster-coloured; an open row gets a neutral rule left of its checkbox) */
 .pri-grouped .pri-row > td.pri-c-tog { background: transparent; }
-.pri-grouped .pri-row > td.pri-merged { text-align: center; vertical-align: middle; font-weight: 700; padding: 8px; cursor: default; }
+.pri-grouped .pri-row.pri-open > td.pri-c-tog { background: linear-gradient(#1c1915, #1c1915) left top / 3px 100% no-repeat; }
+.pri-grouped .pri-row > td.pri-merged { text-align: center; vertical-align: top; font-weight: 700; padding: 8px; cursor: default; }
+.pri-grouped .pri-merged > .pri-lbl { display: block; position: sticky; top: calc(var(--topbar-h) + var(--pri-bar-h, 0px) + var(--pri-head-h, 50px) + 8px); }
 .pri-grouped .pri-row > td.pri-c-cluster.pri-merged { background: hsl(var(--h) 55% 85%); }
 .pri-grouped .pri-row > td.pri-c-icp.pri-merged { background: hsl(var(--h) 55% 92%); }
 .pri-grouped .pri-row > td.pri-c-cluster.pri-merged, .pri-grouped .pri-row > td.pri-c-icp.pri-merged { border-bottom-color: transparent; }
@@ -1210,7 +1215,6 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 .pri-selacts { display: contents; }
 .pri-selmore { display: none; }
 @media (min-width: 761px) {
-  .pri-grouped .pri-row:hover > td:not(.pri-merged):not(.pri-c-tog), .pri-grouped .pri-row.pri-open > td:not(.pri-merged):not(.pri-c-tog) { background: hsl(var(--h) 55% 95%); }
   .pri-main thead th { position: sticky; top: calc(var(--topbar-h) + var(--pri-bar-h, 0px)); z-index: 4; }
   .pri-grouped .pri-hid { display: none; }
 }
@@ -1228,6 +1232,7 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
   .pri-main .pri-row > td.pri-c-product { background: #efe8da; }
   .pri-grouped .pri-row > td.pri-merged { text-align: left; vertical-align: top; padding: 3px 8px; font-weight: 700; }
   .pri-grouped .pri-row > td.pri-merged, .pri-grouped .pri-g-prod > td, .pri-grouped .pri-g-cl > td, .pri-grouped .pri-g-icp > td { box-shadow: none; }
+  .pri-grouped .pri-merged > .pri-lbl { position: static; display: inline; }
   .pri-table tr.pri-prodhead { display: block; margin-top: 10px; } .pri-prodhead > td { display: block; }
   .pri-detail > td.pri-d-sp { display: none; }
 }
