@@ -2,10 +2,10 @@
 # Parallel test runner (pytest-xdist). The plain serial command still works unchanged:
 #   PYTHONPATH=. python -m pytest tests -q -rf -p no:cacheprovider
 #
-#   scripts/test.sh [pytest args]     whole suite, up to 6 xdist workers, a private throwaway Postgres (default; same as --full)
+#   scripts/test.sh [pytest args]     whole suite, up to 8 xdist workers, a private throwaway Postgres (default; same as --full)
 #   scripts/test.sh --full  [args]    whole suite
 #
-# Env: TEST_WORKERS (default 6; n|auto), PY (python; default .venv or ~/lonvera-tag-explorer/.venv),
+# Env: TEST_WORKERS (default 8; n|auto), PY (python; default .venv or ~/lonvera-tag-explorer/.venv),
 #      TEST_PRIVATE_PG=0 (use the shared local Postgres on :5432 instead of a private one), TEST_PG_BASE (use that Postgres, e.g. postgresql://localhost),
 #      TEST_API_DB (base name for databases; every worker adds its own suffix), TEST_STRICT=0 (let a missing Postgres / Chromium skip instead of fail)
 #
@@ -69,8 +69,8 @@ if [ "$TEST_STRICT" = "1" ] && ! pg_isready -q -h "$(echo "${TEST_PG_BASE:-postg
 fi
 
 [ "${1:-}" = "--full" ] && shift
-# capped at 6 (10 cores, 4 of them efficiency cores: more workers only slow the browser tests down); TEST_WORKERS=auto uses every core
-WORKERS="${TEST_WORKERS:-$(c=$(sysctl -n hw.ncpu 2>/dev/null || nproc); [ "$c" -gt 6 ] && c=6; echo "$c")}"
+# capped at 8: measured on this 10-core Mac (4 efficiency cores), whole suite 159 s with 4 workers, 143 s with 5, 134 s with 6, 125 s with 8 and with 10; TEST_WORKERS=auto uses every core
+WORKERS="${TEST_WORKERS:-$(c=$(sysctl -n hw.ncpu 2>/dev/null || nproc); [ "$c" -gt 8 ] && c=8; echo "$c")}"
 echo "[test.sh] workers=$WORKERS cores=$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
 TARGET=(tests)
 for a in "$@"; do case "$a" in tests*|./tests*) TARGET=();; esac; done      # explicit test paths replace the default `tests`

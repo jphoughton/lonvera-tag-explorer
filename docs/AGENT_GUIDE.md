@@ -270,11 +270,11 @@ railway up <that dir> --path-as-root -p 5ea06da2-cc55-4bb7-ac5c-8462d0d95338 -e 
 
 Python is the virtualenv at `~/lonvera-tag-explorer/.venv/bin/python`. Tests need Postgres 16 binaries (`/opt/homebrew/opt/postgresql@16/bin`) and Playwright Chromium.
 
-**The normal way: `scripts/test.sh`** (parallel, about 2.5 to 3.5 minutes for the whole suite on this Mac, instead of 9 serial).
+**The normal way: `scripts/test.sh`** (parallel, about 2 to 3.5 minutes for the whole suite on this Mac, instead of 9 serial).
 
 ```bash
 cd ~/<your worktree>
-scripts/test.sh                       # whole suite, 6 workers
+scripts/test.sh                       # whole suite, 8 workers
 scripts/test.sh tests/projection/pnl  # explicit paths replace the default `tests`
 ```
 
