@@ -13699,6 +13699,132 @@
     }
    ],
    "examples": []
+  },
+  {
+   "name": "public.brain_keys",
+   "schema": "public",
+   "relation": "brain_keys",
+   "kind": "table",
+   "group": "ops",
+   "purpose": "Agent keys for the hosted brain endpoint (/mcp): one row per signed-in user who made a key on the Connect an agent page. A brain key opens /mcp and nothing else.",
+   "grain": "one row per user (id is the primary key; username and key_hash are each unique)",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "the Connect an agent page (POST /api/brain/key in app/brain_mcp.py); last_used_at is touched by /mcp",
+   "refresh": "on demand (a user makes or resets a key; last_used_at moves at most once a minute while the key is in use)",
+   "coverage": "from the day migration 220 was deployed",
+   "caveats": [
+    "Only the sha256 hash of the key is stored. The key is shown once and cannot be recovered; reset it to get a new one (the old one stops working at once).",
+    "Separate from api_keys: a brain key never works on any /api/ route, and an api_keys key also works on /mcp."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Primary key (bigserial)."
+    },
+    {
+     "name": "username",
+     "type": "text",
+     "nullable": false,
+     "description": "App login of the owner (a name from APP_USERS), unique: one key per user."
+    },
+    {
+     "name": "key_hash",
+     "type": "text",
+     "nullable": false,
+     "description": "sha256 hex digest of the full key (unique); the key is looked up by this hash."
+    },
+    {
+     "name": "prefix",
+     "type": "text",
+     "nullable": false,
+     "description": "First 8 characters of the key ('lvb_' plus 4), for display only."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the key was made or last reset."
+    },
+    {
+     "name": "last_used_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the key last made a /mcp request (at most once a minute); NULL while unused."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.brain_audit",
+   "schema": "public",
+   "relation": "brain_audit",
+   "kind": "table",
+   "group": "ops",
+   "purpose": "Audit log of the hosted brain endpoint: one row per tool call (who, which tool, how long, how many rows). Never holds the question, the SQL or the result.",
+   "grain": "one row per tool call (id is the primary key)",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "app/brain_mcp.py, written after every tools/call on /mcp",
+   "refresh": "live (one row per call)",
+   "coverage": "from the day migration 220 was deployed; no pruning",
+   "caveats": [
+    "actor is the login name for a signed-in session, 'brain:<username>' for a brain key, 'key:<name>' for an API key.",
+    "row_count is NULL for tools that return no row list (describe, app_map)."
+   ],
+   "like": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Primary key (bigserial)."
+    },
+    {
+     "name": "at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the call finished."
+    },
+    {
+     "name": "actor",
+     "type": "text",
+     "nullable": false,
+     "description": "Who called: a login name, 'brain:<username>' (brain key) or 'key:<name>' (API key)."
+    },
+    {
+     "name": "tool",
+     "type": "text",
+     "nullable": false,
+     "description": "Tool name: catalog, describe, search, metric, freshness, sql, past_questions or app_map."
+    },
+    {
+     "name": "duration_ms",
+     "type": "integer",
+     "nullable": false,
+     "description": "How long the tool ran, in milliseconds."
+    },
+    {
+     "name": "row_count",
+     "type": "integer",
+     "nullable": true,
+     "description": "Rows (or hits) returned; NULL when the tool returns no list."
+    },
+    {
+     "name": "ok",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True when the tool answered, false when it failed or the input was rejected."
+    }
+   ],
+   "examples": []
   }
  ],
  "excluded": [

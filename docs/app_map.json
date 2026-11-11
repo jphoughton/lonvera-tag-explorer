@@ -1,0 +1,2855 @@
+{
+ "generated_by": "scripts/gen_app_map.py",
+ "services": [
+  {
+   "name": "web",
+   "kind": "web",
+   "start": "scripts/deploy/start_web.sh (etl.migrate, then gunicorn 2 workers x 8 threads, 60 s timeout)",
+   "schedule": null,
+   "healthcheck": "/healthz",
+   "source": "Dockerfile, railway.json, scripts/deploy/start_web.sh, scripts/deploy/apply_service_config.py"
+  },
+  {
+   "name": "etl",
+   "kind": "cron",
+   "start": "scripts/deploy/run_etl.sh",
+   "schedule": "0 13 * * *",
+   "healthcheck": null,
+   "source": "scripts/deploy/apply_service_config.py"
+  },
+  {
+   "name": "Postgres",
+   "kind": "database",
+   "start": null,
+   "schedule": null,
+   "healthcheck": null,
+   "source": "docs/DEPLOY.md"
+  },
+  {
+   "name": "alerts",
+   "kind": "cron",
+   "start": "scripts/deploy/run_alerts.sh",
+   "schedule": "0 * * * *",
+   "healthcheck": null,
+   "source": "scripts/deploy/apply_alerts_service.py"
+  },
+  {
+   "name": "backup",
+   "kind": "cron",
+   "start": "scripts/deploy/run_backup.sh",
+   "schedule": "30 8 * * *",
+   "healthcheck": null,
+   "source": "scripts/deploy/apply_backup_service.py"
+  },
+  {
+   "name": "feeds",
+   "kind": "cron",
+   "start": "scripts/deploy/run_feeds.sh",
+   "schedule": "0 21 * * *",
+   "healthcheck": null,
+   "source": "scripts/deploy/apply_feeds_service.py"
+  },
+  {
+   "name": "launch worker",
+   "kind": "none",
+   "start": "scripts/deploy/run_launch_worker.sh (etl.launch_worker)",
+   "schedule": null,
+   "healthcheck": null,
+   "source": "code exists, wired to no Railway service"
+  },
+  {
+   "name": "live",
+   "kind": "cron",
+   "start": "scripts/deploy/run_live.sh (etl.live_today)",
+   "schedule": null,
+   "healthcheck": null,
+   "source": "scripts/deploy/run_live.sh; no apply script in the repo, so the schedule is not verifiable here (project notes say hourly)"
+  }
+ ],
+ "etl_jobs": [
+  {
+   "service": "etl",
+   "order": 1,
+   "module": "etl.run_daily",
+   "args": "",
+   "fatal": true,
+   "note": "failure fails the run (after the later steps ran)"
+  },
+  {
+   "service": "etl",
+   "order": 2,
+   "module": "etl.upstack_daily",
+   "args": "",
+   "fatal": true,
+   "note": "failure fails the run (after the later steps ran)"
+  },
+  {
+   "service": "etl",
+   "order": 3,
+   "module": "etl.stage_moves",
+   "args": "",
+   "fatal": true,
+   "note": "failure fails the run (after the later steps ran)"
+  },
+  {
+   "service": "etl",
+   "order": 4,
+   "module": "etl.projection_daily",
+   "args": "",
+   "fatal": true,
+   "note": "failure fails the run (after the later steps ran)"
+  },
+  {
+   "service": "etl",
+   "order": 5,
+   "module": "etl.amazon_mtd",
+   "args": "",
+   "fatal": true,
+   "note": "failure fails the run (after the later steps ran)"
+  },
+  {
+   "service": "etl",
+   "order": 6,
+   "module": "etl.competitor_ads",
+   "args": "--if-sunday",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 7,
+   "module": "etl.creative_priorities",
+   "args": "--if-sunday",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 8,
+   "module": "etl.assignment_tags",
+   "args": "",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 9,
+   "module": "etl.auto_tag",
+   "args": "",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "feeds",
+   "order": 1,
+   "module": "etl.feeds",
+   "args": "run",
+   "fatal": true,
+   "note": ""
+  },
+  {
+   "service": "feeds",
+   "order": 2,
+   "module": "etl.amazon_mtd",
+   "args": "",
+   "fatal": true,
+   "note": ""
+  },
+  {
+   "service": "feeds",
+   "order": 3,
+   "module": "etl.feeds",
+   "args": "verify",
+   "fatal": true,
+   "note": ""
+  },
+  {
+   "service": "live",
+   "order": 1,
+   "module": "etl.live_today",
+   "args": "",
+   "fatal": true,
+   "note": ""
+  },
+  {
+   "service": "alerts",
+   "order": 1,
+   "module": "etl.alerts",
+   "args": "",
+   "fatal": true,
+   "note": ""
+  },
+  {
+   "service": "backup",
+   "order": 1,
+   "module": "etl.backup",
+   "args": "",
+   "fatal": true,
+   "note": ""
+  },
+  {
+   "service": "launch worker (no service)",
+   "order": 1,
+   "module": "etl.launch_worker",
+   "args": "",
+   "fatal": true,
+   "note": ""
+  }
+ ],
+ "etl_modules": [
+  {
+   "module": "etl.alerts",
+   "summary": "Failure and staleness alerts for the Lonvera Marketing metrics / Tag Explorer app. Read-only checks, one Slack message per problem."
+  },
+  {
+   "module": "etl.amazon_mtd",
+   "summary": "Nightly Amazon month-to-date snapshot: complete the month's Amazon revenue and store one row in proj_amazon_mtd_snapshots."
+  },
+  {
+   "module": "etl.api_keys",
+   "summary": "Manage scoped API keys (table api_keys, migration 205; what a key may do is in app/api_keys.py)."
+  },
+  {
+   "module": "etl.assets_pull",
+   "summary": "Best-effort: fetch creative thumbnails from the Meta Graph API for tracker families that have no asset yet."
+  },
+  {
+   "module": "etl.assignment_tags",
+   "summary": "Nightly step: give ads that are linked to a production assignment the assignment's concept line tags."
+  },
+  {
+   "module": "etl.auto_tag",
+   "summary": "Nightly auto-tagging: give every current ad that has NO linemap tag a Communication Overview line (cluster / ICP / pain point / trigger)."
+  },
+  {
+   "module": "etl.backfill_sheet",
+   "summary": "Backfill from the Creative Key sheet (snapshot dir or live): Meta Ads - Daily -> ad_daily (family grain, source='sheet'),"
+  },
+  {
+   "module": "etl.backup",
+   "summary": "Nightly Postgres backup: pg_dump -Fc -> Google Drive (Shared Drive \"Lonvera DB Backups\", folder lonvera-tag-explorer) -> re-download -> restore into a scratch"
+  },
+  {
+   "module": "etl.build_metrics",
+   "summary": "Rebuild derived tables in ONE transaction: meta_campaigns.stage, family_daily (+traffic sums), family_daily_active, ad_metrics (all ads and the *_active mirrors),"
+  },
+  {
+   "module": "etl.competitor_ads",
+   "summary": "Competitor ads on Meta, refreshed automatically (no laptop): scrape the PUBLIC Meta Ad Library with headless Chromium (Playwright), then classify each new concept"
+  },
+  {
+   "module": "etl.creative_priorities",
+   "summary": "Weekly creative priorities: the one-sheeter of market cluster / ICP / pain point / story lines to produce ads for next."
+  },
+  {
+   "module": "etl.db",
+   "summary": "Postgres helpers shared by every ETL job: connection, bulk helpers, job logging (etl_runs), secret scrubbing."
+  },
+  {
+   "module": "etl.drive_io",
+   "summary": "Read-only Google Drive access for the ad launch worker: turn a pasted Drive link into a list of image and video files, and stream one file to disk. Uses the"
+  },
+  {
+   "module": "etl.launch_worker",
+   "summary": "Launch worker for /priorities production (package P5): turns queued `creative_launch_jobs` rows into a plan (prepare) or into PAUSED Meta ads (launch)."
+  },
+  {
+   "module": "etl.lifetime_pull",
+   "summary": "All-time ad-level insights from the Meta Graph API (both accounts) -> meta_ad_lifetime (source='meta_api') + meta_ads / meta_campaigns upserts."
+  },
+  {
+   "module": "etl.live_today",
+   "summary": "Live today: one hourly Upstack pull of the Pacific day so far -> a snapshot row in proj_live_today_snapshots."
+  },
+  {
+   "module": "etl.load_assets",
+   "summary": "Load creative assets + per-family content from a tagging cycle folder (Vita Bull 2026-11-03 or Beef Liver 2026-11-04 shape)."
+  },
+  {
+   "module": "etl.load_hooks",
+   "summary": "Load a hook-extraction cycle's results as ad_hooks for one product."
+  },
+  {
+   "module": "etl.load_tags",
+   "summary": "Load a tagging cycle's results (e.g. tagmap_rows_v2.json, tagmap_rows.json) as ad_tags(tag_set, version) for one product."
+  },
+  {
+   "module": "etl.load_taxonomy",
+   "summary": "Communication Overview -> taxonomy_lines + line_ingredients (all products)."
+  },
+  {
+   "module": "etl.meta_api",
+   "summary": "Minimal read-only Meta Graph client: token loading, GET with retry/backoff on rate limits (incl. code 80004), insights pull with split/async"
+  },
+  {
+   "module": "etl.meta_pull",
+   "summary": "Meta Graph API pull (level=ad, both Lonvera ad accounts) -> ad_daily at AD grain (source='meta_api'), meta_ads, meta_campaigns."
+  },
+  {
+   "module": "etl.meta_write",
+   "summary": "The only module in this repo allowed to write to Meta. It uploads image and video files to the Lonvera ad account, builds creatives, clones an ad set from a template"
+  },
+  {
+   "module": "etl.migrate",
+   "summary": "Idempotent migration runner: applies migrations/*.sql in filename order, tracked in schema_migrations."
+  },
+  {
+   "module": "etl.names",
+   "summary": "Keep meta_ads.family_name / meta_family_key equal to fam(ad_name) for every ad (a renamed ad's history follows its current name)."
+  },
+  {
+   "module": "etl.projection_cohorts",
+   "summary": "Projection / cohorts loader: seed the cohort table and the Goal curve from the frozen sheet snapshot, and report feed freshness."
+  },
+  {
+   "module": "etl.projection_daily",
+   "summary": "Daily refresh for projection (Railway cron, right after etl.run_daily): run every module's refresh hook, record each run, check feed freshness."
+  },
+  {
+   "module": "etl.projection_drivers",
+   "summary": "Projection drivers: seed from the sheet snapshot, daily hooks (freshness, refresh)."
+  },
+  {
+   "module": "etl.projection_financing",
+   "summary": "Seed the financing module's \"Current plan\" from the frozen sheet snapshot, and emit migration 160's SQL."
+  },
+  {
+   "module": "etl.projection_inventory_demand",
+   "summary": "Loaders for the projection `inventory_demand` module: daily units for the US warehouse (Warehance), Amazon and the international warehouse."
+  },
+  {
+   "module": "etl.projection_inventory_supply",
+   "summary": "Loaders for the projection module inventory_supply."
+  },
+  {
+   "module": "etl.projection_pacing",
+   "summary": "Pacing feeds: read the sheet's raw feed tabs (READ-ONLY, service account) and the app's own ad_daily into proj_feed_* tables."
+  },
+  {
+   "module": "etl.projection_pnl",
+   "summary": "Loaders for the projection `pnl` module."
+  },
+  {
+   "module": "etl.reader_role",
+   "summary": "Read-only database access for people and agents: one LOGIN role that can SELECT from the `analytics` views and from nothing else."
+  },
+  {
+   "module": "etl.resolve_families",
+   "summary": "Map Meta families -> tracker families with the ported Resolver. Inserts map rows for Meta families seen in ad_daily that have none,"
+  },
+  {
+   "module": "etl.resolver",
+   "summary": "Ported from ~/lonvera-upstack-sync/meta_history.py + meta_campaign_history.py (do not import from that repo)."
+  },
+  {
+   "module": "etl.retag_pain",
+   "summary": "Re-tag ads whose line tag picked the product MECHANISM instead of the PAIN the buyer feels."
+  },
+  {
+   "module": "etl.run_daily",
+   "summary": "Daily refresh (Railway cron), API-driven and ATOMIC:"
+  },
+  {
+   "module": "etl.sheets_io",
+   "summary": "Read sheet tabs either from a frozen snapshot dir (JSON `values` arrays) or LIVE from Google Sheets (read-only)."
+  },
+  {
+   "module": "etl.stage_moves",
+   "summary": "Rebuild the Test to scale tables (creative_stage_moves*, creative_scaling_placements*) from family_daily / ad_daily in ONE transaction."
+  },
+  {
+   "module": "etl.status_refresh",
+   "summary": "Refresh meta_ads from Graph on every run: effective_status (for every ad with delivery in the last 60 days and every ad whose stored status is not"
+  },
+  {
+   "module": "etl.tracker_sync",
+   "summary": "Creative Tracker -> tracker_rows (ALL products) + ad_tags(tag_set='tracker', version='tracker-live')."
+  },
+  {
+   "module": "etl.upstack_api",
+   "summary": "Upstack API client + the two pulls the Upstack source needs (read-only; nothing here touches the database)."
+  },
+  {
+   "module": "etl.upstack_build",
+   "summary": "Build the Upstack source from the raw pulls (one transaction, caller commits):"
+  },
+  {
+   "module": "etl.upstack_daily",
+   "summary": "Upstack source refresh (Railway cron, after etl.run_daily). READ phase: Upstack only, nothing is written. WRITE phase: one transaction replaces the"
+  },
+  {
+   "module": "etl.upstack_google",
+   "summary": "Google campaigns from Upstack (Marketing metrics, channel Google). Two feeds, both campaign grain:"
+  },
+  {
+   "module": "etl.upstack_orders",
+   "summary": "Upstack orders per Pacific day: new-customer revenue counted once (the business's actual NC revenue, not the platforms' attributed sums)."
+  },
+  {
+   "module": "etl.verify_api",
+   "summary": "QA against the Meta Graph API (v1.5): the database must agree with FRESH, independent Graph pulls — not with the Google Sheet."
+  },
+  {
+   "module": "etl.verify_tieout",
+   "summary": "FYI only (v1.5): compares tagexp_dev (Vita Bull) with the frozen SHEET snapshot tabs rollups / overview_metrics / tag_breakout / tag_map plus headline totals."
+  }
+ ],
+ "pages": [
+  {
+   "url_pattern": "/",
+   "page_function": "homePage",
+   "js_file": "app/static/app.js (local function that picks a page by platform)",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/ad/<token>",
+   "page_function": "adPage",
+   "js_file": "app/static/js/pages/ad.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/campaigns",
+   "page_function": "campaignsRoute",
+   "js_file": "app/static/app.js (local function that picks a page by platform)",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/connect-agent",
+   "page_function": "connectAgentPage",
+   "js_file": "app/static/js/pages/connect_agent.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/login",
+   "page_function": "loginPage",
+   "js_file": "app/static/js/pages/login.js",
+   "public": true,
+   "bare": false
+  },
+  {
+   "url_pattern": "/lookup",
+   "page_function": "lookupPage",
+   "js_file": "app/static/js/pages/lookup.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/p/<token>",
+   "page_function": "productPage",
+   "js_file": "app/static/js/pages/product.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/priorities",
+   "page_function": "prioritiesPage",
+   "js_file": "app/static/js/pages/priorities.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/priorities/production",
+   "page_function": "productionPage",
+   "js_file": "app/static/js/pages/priorities_production.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/priorities/v/<token>",
+   "page_function": "prioritiesViewPage",
+   "js_file": "app/static/js/pages/priorities.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/priorities/vendor/<token>",
+   "page_function": "vendorPage",
+   "js_file": "app/static/js/pages/priorities_production.js",
+   "public": true,
+   "bare": true
+  },
+  {
+   "url_pattern": "/projection[/<module>]",
+   "page_function": "projection shell",
+   "js_file": "app/static/js/projection/shell.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/promotions",
+   "page_function": "promotionsPage",
+   "js_file": "app/static/js/pages/promotions.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/trends",
+   "page_function": "trendsPage",
+   "js_file": "app/static/js/pages/trends.js",
+   "public": false,
+   "bare": false
+  }
+ ],
+ "routes": [
+  {
+   "rule": "/",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/ad/<id>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/ad/<id>",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/api/ads/<aint:row_id>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.ad_detail",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/ads/<aint:row_id>/preview",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.tracker_ad_preview",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/brain/key",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "brain_mcp.brain_key_status",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Whether the signed-in user has an agent key (prefix and last use only, never the key) and the endpoint address."
+  },
+  {
+   "rule": "/api/brain/key",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "brain_mcp.brain_key_reset",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Make this user's agent key, or replace it (the old key stops working at once). The key is in this answer once and is stored only as a hash."
+  },
+  {
+   "rule": "/api/campaigns",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.campaigns_platform",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Platform level (Meta): every campaign across all products, one row per campaign; product=<slug> (or none = families of no active product) keeps one product's ads only."
+  },
+  {
+   "rule": "/api/campaigns/all",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.campaigns_all_platforms",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Platform = All: every Meta and Google campaign in one list (see app/platforms.py). only=meta|google, product=<slug> (Meta) or type=<Google type> narrow it;"
+  },
+  {
+   "rule": "/api/campaigns/trend",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.campaigns_platform_trend",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Trend of /api/campaigns (Meta, all products): same window, stage, active, Meta | Upstack numbers and product filter, so its points add up to the table's"
+  },
+  {
+   "rule": "/api/google/rollup",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.google_rollup",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Google campaigns by campaign type (group=type) or by campaign (group=campaign, optional type=). Upstack-fed, campaign grain; see app/google.py."
+  },
+  {
+   "rule": "/api/google/trend",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.google_trend",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/login",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "auth.login",
+   "auth": "none (login routes, or a vendor link: the unguessable link is the access)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/api/logout",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "auth.logout",
+   "auth": "none (login routes, or a vendor link: the unguessable link is the access)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/api/meta-ads/<ad_id>/preview",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.meta_ad_preview",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/platforms/kpis",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.platforms_kpis",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Totals strip of the All views: Total spend (Meta + Google), actual new-customer revenue counted once, Total NC ROAS (new-customer revenue / total spend over the"
+  },
+  {
+   "rule": "/api/platforms/overview",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.platforms_overview",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "All platforms side by side for one window: per platform three rows (its own reporting, Upstack new customers, Upstack all orders). Spend, clicks and"
+  },
+  {
+   "rule": "/api/platforms/trend",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.platforms_trend",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Trend of the All views: spend (and any other metric) per platform on the chosen numbers over one x axis; same filters as /api/campaigns/all."
+  },
+  {
+   "rule": "/api/priorities",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Creative priorities: the weekly one-sheeter (week=YYYY-MM-DD, default the latest snapshot) plus the list of stored weeks. See app/creative_priorities.py."
+  },
+  {
+   "rule": "/api/priorities.csv",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_csv",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The same snapshot as a CSV download (week=YYYY-MM-DD, default the latest). Repeated id=<row key> keeps only those rows (same columns); no id = every row."
+  },
+  {
+   "rule": "/api/priorities/assignments",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_assignments",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Production assignments: ?week=YYYY-MM-DD (snaps to its Monday) &vendor=<name> &include_closed=1 (adds launched and dropped) -> {rows, vendors, weeks, formats: [{code, name, length}]}. Each row: the table fields plus format_code / format_name / format_length (null when no format was chosen), stage,"
+  },
+  {
+   "rule": "/api/priorities/assignments",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_assignments_create",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Assign concepts: {keys: [row keys], snapshot_week?, vendor, for_week, note?, format_code?} -> {created: [assignment], skipped: [{key, reason}]}. Rows come from the stored snapshot; duplicates are skipped."
+  },
+  {
+   "rule": "/api/priorities/assignments/<int:aid>",
+   "methods": [
+    "PATCH"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_assignment_update",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Change any of vendor, for_week, note, format_code (blank or null clears it), brief_url, creative_url, tracker_concept_ids, ready, launched, dropped (the last three booleans set or clear their timestamp). There is no delete."
+  },
+  {
+   "rule": "/api/priorities/assignments/<int:aid>/detail",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_assignment_detail",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The detail panel of one assignment (loaded when its row is expanded): the concept's row from the latest priorities snapshot (or what the assignment stored, with current=false), the product baseline,"
+  },
+  {
+   "rule": "/api/priorities/assignments/<int:aid>/launch",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "launch.launch_get",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Everything the launch panel for one row needs: readiness, the draft (saved edits over the settings defaults), the latest job with its plan, the ads made so far and the tracker rows."
+  },
+  {
+   "rule": "/api/priorities/assignments/<int:aid>/launch/cancel",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "launch.launch_cancel",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Cancel the open job if it is still waiting to start. 200 {job}; 409 if it is already running; 404 if nothing is open."
+  },
+  {
+   "rule": "/api/priorities/assignments/<int:aid>/launch/confirm",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "launch.launch_confirm",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "{job_id, plan_hash}: queue a launch job carrying the plan of a finished prepare job, only when the hash matches. 202 {job}; 409 'The plan changed. Prepare again.' otherwise."
+  },
+  {
+   "rule": "/api/priorities/assignments/<int:aid>/launch/draft",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "launch.launch_draft_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Save a subset of style / fidelity / type / proof / page (each must be a listed value; blank clears it) and the copy overrides primary_texts / headlines / link."
+  },
+  {
+   "rule": "/api/priorities/assignments/<int:aid>/launch/prepare",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "launch.launch_prepare",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Queue a prepare job (the worker lists the files and builds the plan). 202 {job}; 409 if the row is not ready or a job is already open."
+  },
+  {
+   "rule": "/api/priorities/launch/settings",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "launch.launch_settings",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "{settings: [one row per product], pages: [{page_id, name, instagram_actor_id}], vendor_prefixes: [{vendor, prefix}]}. Keys follow the contract; page_id, link_url, cost_cap_cents and"
+  },
+  {
+   "rule": "/api/priorities/launch/settings/<product>",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "launch.launch_settings_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Save any subset of the settings keys for one product; 200 returns the saved row."
+  },
+  {
+   "rule": "/api/priorities/lines/<int:line_id>/insights",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_line_insights",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Drill-down behind one block of a /priorities row panel: block=then_now|timeline|hooks|winners|performance|testing|live|ad, window=7|30|90|all (default 30), optional ad_id=<tracker row id>"
+  },
+  {
+   "rule": "/api/priorities/manual",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_manual_list",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Manual concepts as page rows (include_done=1 also returns the done ones)."
+  },
+  {
+   "rule": "/api/priorities/manual",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_manual_create",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Add a manual concept: {product, section, cluster, icp, pain_point, story?, notes?, why_now?}; a tag that is not in the catalog is stored as typed and flagged new."
+  },
+  {
+   "rule": "/api/priorities/manual/<int:rid>",
+   "methods": [
+    "DELETE"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_manual_delete",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/priorities/manual/<int:rid>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_manual_get",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/priorities/manual/<int:rid>",
+   "methods": [
+    "PATCH"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_manual_update",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Change any of the fields, or status open|done."
+  },
+  {
+   "rule": "/api/priorities/manual/options",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_manual_options",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Dropdown options for the Add concept form: products, sections and the Communication Overview tree product -> cluster -> ICP -> pain point -> [stories]."
+  },
+  {
+   "rule": "/api/priorities/vendor-links",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_vendor_links",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Every vendor link made so far -> {links: [{vendor, token, url, created_at, rotated_at}], vendors}."
+  },
+  {
+   "rule": "/api/priorities/vendor-links",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_vendor_link_create",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "{vendor} -> that vendor's permanent link (made on first use: 201, then 200)."
+  },
+  {
+   "rule": "/api/priorities/vendor-links/<vendor>/reset",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_vendor_link_reset",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Replace the vendor's token; the old link stops working."
+  },
+  {
+   "rule": "/api/priorities/vendor/<token>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_vendor",
+   "auth": "none (login routes, or a vendor link: the unguessable link is the access)",
+   "auth_exempt": true,
+   "summary": "The vendor link page's data (no login; the link is the access): that vendor's open assignments plus those launched in the last four weeks, with spend and return of their own ads,"
+  },
+  {
+   "rule": "/api/priorities/vendor/<token>/<int:aid>",
+   "methods": [
+    "PATCH"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_vendor_update",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "A vendor edits their own row: {creative_url?, vendor_note?, ready?} only (the creative format is shown to them but is not theirs to change: 400); another vendor's row is a 404."
+  },
+  {
+   "rule": "/api/priorities/vendor/<token>/<int:aid>/detail",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_vendor_detail",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The same detail panel for a vendor, GET only and only for that vendor's own assignment (another vendor's row, a dropped row or an unknown id is a 404): no ad page links, no manual notes."
+  },
+  {
+   "rule": "/api/priorities/views",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_views",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/priorities/views",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_view_create",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Save a view: {name?, week?, kind?: rows|filters, ids: [row key,...] (rows) or filters: {products, sections, q, key, dir} (filters)} -> {token, url, count, missing, kind}. The link is the access (the app has no password)."
+  },
+  {
+   "rule": "/api/priorities/views/<token>",
+   "methods": [
+    "DELETE"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_view_delete",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/priorities/views/<token>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_view",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/priorities/views/<token>",
+   "methods": [
+    "PATCH"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_view_rename",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/priorities/views/<token>",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_view_update",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Update this view: replace its rows ({ids}) or filters ({filters}) with the current ones, from the latest snapshot. Name, kind and link stay."
+  },
+  {
+   "rule": "/api/priorities/views/<token>/briefed",
+   "methods": [
+    "PATCH"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_view_briefed",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Mark a concept briefed / not briefed in a view: {key, briefed: true|false, note?} -> {key, briefed, at, note}. Own limit (120 per minute per IP, PRIORITIES_BRIEFED_PER_MIN)."
+  },
+  {
+   "rule": "/api/priorities/views/<token>/csv",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_view_csv",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/products",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.products",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/products/<slug>/ads",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.ads",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/products/<slug>/campaigns",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.campaigns",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/products/<slug>/coverage",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.coverage",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Which ICPs / pain points have no ads (tracker based) or ads but $0 spend (selected window, stage, source). See queries.coverage."
+  },
+  {
+   "rule": "/api/products/<slug>/families",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.families",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/products/<slug>/rollup",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.rollup",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/products/<slug>/stage-daily",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.stage_daily",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/products/<slug>/tree",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.tree",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/products/<slug>/trend",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.trend",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/products/<slug>/unmatched",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.unmatched",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/audit",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.audit_list",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/cohorts/cohorts",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_cohorts.cohorts",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/cohorts/curve-compare",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_cohorts.curve_compare",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Current, Goal and an as-of curve through the whole engine in memory: curve, multiples, the P&L year's repeat revenue, revenue, net operating"
+  },
+  {
+   "rule": "/api/projection/cohorts/curve-options",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_cohorts.curve_options",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "What the curve picker offers: the saved choice, the sources, the cohort counts, and every month with whether an as-of curve can be built."
+  },
+  {
+   "rule": "/api/projection/cohorts/curves",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_cohorts.curves",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/cohorts/goal",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_cohorts.goal_overview",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The Goal in use, the one it replaced (what 'Restore previous Goal' would put back) and the recent snapshots."
+  },
+  {
+   "rule": "/api/projection/cohorts/goal",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_cohorts.goal_snapshot",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Take the scenario's current curve as the new Goal curve. The Goal it replaces stays as a dated snapshot (GET /goal, POST /goal/restore)."
+  },
+  {
+   "rule": "/api/projection/cohorts/goal/restore",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_cohorts.goal_restore",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Put an earlier Goal snapshot back in use (default: the one just before the Goal in use). Saves a copy, so the Goal replaced stays in history."
+  },
+  {
+   "rule": "/api/projection/cohorts/levers",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_cohorts.levers_get",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/cohorts/levers",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_cohorts.levers_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/cohorts/summary",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_cohorts.summary",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/cohorts/table",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_cohorts.table",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/cohorts/upload",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_cohorts.upload_cohorts",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "multipart: file (CSV). Without ?commit=1 it only previews. To commit send ?commit=1 and the preview's sha256 as expect_sha256."
+  },
+  {
+   "rule": "/api/projection/cohorts/upload/history",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_cohorts.upload_history",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/cohorts/upload/undo",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_cohorts.upload_undo",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Undo the newest upload that has not been undone: every cohort it touched goes back exactly as it was. Body: {upload_id} (the one the page shows)."
+  },
+  {
+   "rule": "/api/projection/drivers/compare",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_drivers.get_compare",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/drivers/levers",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_drivers.get_levers",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/drivers/levers",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_drivers.put_levers",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/drivers/patterns",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_drivers.post_patterns",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/drivers/series",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_drivers.put_series",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Same body as the core PUT /series, for Spend plan lines only, with the line bounds and the closed-month refusal applied."
+  },
+  {
+   "rule": "/api/projection/drivers/table",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_drivers.get_table",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/drivers/undo",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_drivers.post_undo",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Put back exactly what one Spend plan change wrote (a pattern fill returns the `version` to pass), as one audited change."
+  },
+  {
+   "rule": "/api/projection/financing/cash",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_financing.cash",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/financing/debt",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_financing.debt",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/financing/debt",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_financing.debt_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Write term-loan principal payments and/or terms: {scenario, payments:[{month, principal_paid|null}], terms:{principal,rate,mode,fixed_payment}, expected_version?}."
+  },
+  {
+   "rule": "/api/projection/financing/inputs",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_financing.inputs",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/financing/inputs",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_financing.inputs_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Merge-patch the scenario's financing levers: {scenario, params:{...}, expected_version?}. A null value removes the key."
+  },
+  {
+   "rule": "/api/projection/financing/matrix",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_financing.matrix",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Profit at the target cohort age by monthly spend x NC-ROAS. Query overrides: target_month, basis=cm|loaded, margin=product|loaded, fixed_cost,"
+  },
+  {
+   "rule": "/api/projection/financing/payback",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_financing.payback",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Payback for today's economics, on product margin and after all variable costs. Query overrides (not saved): aov, cac, product_cost_pct,"
+  },
+  {
+   "rule": "/api/projection/financing/payout",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_financing.payout",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Scale-payback payout schedule. Query overrides (not saved): media_spend, cpa, aov, repeat_source=goal|live|typed."
+  },
+  {
+   "rule": "/api/projection/financing/table",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_financing.cash",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/freshness",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.freshness_get",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-demand/countries",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_demand.get_countries",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-demand/daily",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_demand.get_daily",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-demand/inputs",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_demand.get_inputs",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-demand/inputs",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_demand.put_inputs",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-demand/table",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_demand.get_table",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-demand/upload-intl",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_demand.upload_intl",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Preview (default) or commit (?commit=1 with the digest the preview returned) a CSV of international warehouse shipments."
+  },
+  {
+   "rule": "/api/projection/inventory-supply/burn",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.burn",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/freshness",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.freshness_route",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/history",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.history_list",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/history/restore",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.history_restore",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Restore orders, transfers, counts and prices to a version or time ({to_version} or {at}): undoes every later change still in force."
+  },
+  {
+   "rule": "/api/projection/inventory-supply/history/revert",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.history_revert",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/outlay",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.outlay",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/plan/accept",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.plan_accept",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/plan/suggest",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.plan_suggest",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/po",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.po_list",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/po",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.po_create",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/po/<ref>",
+   "methods": [
+    "DELETE"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.po_delete",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/po/<ref>",
+   "methods": [
+    "PATCH"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.po_update",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/product-costs",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.product_cost_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The China landed cost of a SKU has one source: the scenario param `pnl.cogs.china_cost.<sku>` (the P&L reads and writes the same key). A product with a"
+  },
+  {
+   "rule": "/api/projection/inventory-supply/reorder",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.reorder",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/reorder-params",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.reorder_param_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/stock",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.stock_list",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/stock",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.stock_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/summary",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.summary",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/table",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.table",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/transfers",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.transfer_list",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/transfers",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.transfer_create",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/transfers/<ref>",
+   "methods": [
+    "DELETE"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.transfer_delete",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/transfers/<ref>",
+   "methods": [
+    "PATCH"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.transfer_update",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/value",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.value",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/variables",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.variables_get",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/variables",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.variables_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Change named variables of a scenario: {scenario?, items:[{kind, ..., value}], expected_version?}. value null = back to the default."
+  },
+  {
+   "rule": "/api/projection/inventory-supply/vendor-costs",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.vendor_cost_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/vendors",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.vendors",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/vendors/<vendor>",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.vendor_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/inventory-supply/warnings",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_inventory_supply.warnings",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/modeler/compare",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_modeler.compare",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/modeler/preview",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_modeler.preview",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Runs the model on the draft and returns the state. Writes nothing: the connection is the app's read-only one and the draft lives in memory."
+  },
+  {
+   "rule": "/api/projection/modeler/reset",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_modeler.reset",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Plan inputs (spend, order value, cost per customer) and the retention model back to the plan of record's. Every other setting stays."
+  },
+  {
+   "rule": "/api/projection/modeler/save-as",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_modeler.save_as",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "A named, frozen copy of the working scenario (body: {source, name}). Later edits to the working scenario never reach the copy."
+  },
+  {
+   "rule": "/api/projection/modeler/settings",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_modeler.settings",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/modeler/state",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_modeler.state",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/modeler/workspace",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_modeler.workspace",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The scenario this page works on. Created once, as a copy of the plan of record, so the plan of record is never the thing being tried out."
+  },
+  {
+   "rule": "/api/projection/modules",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.modules",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pacing/amazon-mtd",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pacing.get_amazon_mtd",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pacing/catalog",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pacing.get_catalog",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pacing/freshness",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pacing.get_freshness",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pacing/intraday",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pacing.get_intraday",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pacing/intraday-nc",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pacing.get_intraday_nc",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The 'NC revenue today' card: end-of-day new-customer revenue = revenue so far / share of a typical day's NC revenue already in by that time."
+  },
+  {
+   "rule": "/api/projection/pacing/intraday-roascpa",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pacing.get_intraday_roascpa",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Projected end-of-day NC ROAS (NC revenue / Meta + Google spend) and NC CPA (spend / new customers) from the three so-far figures, the Meta hourly"
+  },
+  {
+   "rule": "/api/projection/pacing/levers",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pacing.get_levers",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pacing/levers",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pacing.put_levers",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pacing/live-today",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pacing.get_live_today",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The latest hourly snapshot of today so far (table proj_live_today_snapshots, written by `python -m etl.live_today`). `stale` is true when the"
+  },
+  {
+   "rule": "/api/projection/pacing/month",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pacing.get_month",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pacing/rollup",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pacing.get_rollup",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pacing/rules",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pacing.get_rules",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pacing/rules",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pacing.put_rules",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pacing/snapshot",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pacing.get_snapshot",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pnl/checks",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.data_checks",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Typed values next to the cohort figures for the months where the P&L uses a typed number. Nothing here changes a number."
+  },
+  {
+   "rule": "/api/projection/pnl/compare",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.compare",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Revenue, gross profit and net operating income by fiscal year, one entry per scenario."
+  },
+  {
+   "rule": "/api/projection/pnl/drivers",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.drivers_get",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pnl/drivers",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.drivers_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pnl/ev",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.ev",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Implied enterprise value: one row per scenario, one column per multiple, against the LOI."
+  },
+  {
+   "rule": "/api/projection/pnl/freshness",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.freshness_get",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pnl/freshness",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.freshness_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The one global (not per scenario) setting: days after a month closes before QuickBooks not having it counts as late."
+  },
+  {
+   "rule": "/api/projection/pnl/metrics",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.metrics",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pnl/qb-map",
+   "methods": [
+    "DELETE"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.qb_map_delete",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pnl/qb-map",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.qb_map_get",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pnl/qb-map",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.qb_map_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pnl/settings",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.settings_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pnl/summary",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.summary",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pnl/table",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.table",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/pnl/upload",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.upload",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Preview (default) or commit (?commit=1 with the preview's diff_sha256 in the form). A month becomes books only when its account families are all"
+  },
+  {
+   "rule": "/api/projection/pnl/upload-checks",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.upload_checks_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The coverage rules for a QuickBooks upload (global): families a month must carry, and how far from its neighbours it may stray before it needs a"
+  },
+  {
+   "rule": "/api/projection/pnl/upload/undo",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.upload_undo",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Undo the latest applied upload: restore exactly the values it replaced and remove the cells it created. Audited as `pnl.upload.undo`."
+  },
+  {
+   "rule": "/api/projection/pnl/uploads",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_pnl.uploads_list",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The last QuickBooks uploads; only the newest applied one can be undone."
+  },
+  {
+   "rule": "/api/projection/run",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.run",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/scenarios",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.scenarios_list",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/scenarios",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.scenarios_create",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/scenarios/<slug>",
+   "methods": [
+    "DELETE"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.scenarios_delete",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/scenarios/<slug>",
+   "methods": [
+    "PATCH"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.scenarios_patch",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/scenarios/<slug>/clone",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.scenarios_clone",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/scenarios/<slug>/detach",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.scenarios_detach",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/scenarios/<slug>/history",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.scenarios_history",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/scenarios/<slug>/restore",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.scenarios_restore",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/scenarios/<slug>/undelete",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.scenarios_undelete",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/scenarios/archived",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.scenarios_archived",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/series",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.series_get",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/series",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "projection_api.series_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/variables",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_variables.list_variables",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/variables",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_variables.put_variables",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/variables/",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_variables.list_variables",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/variables/",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_variables.put_variables",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/variables/<var_id>",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "proj_variables.put_variable",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/variables/reset",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "proj_variables.reset_variables",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/projection/variables/sensitivity",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "proj_variables.sensitivity_get",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/promotions",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.promotions",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Test to scale (Meta only): creatives moved from Testing to Scaling in the window, those launched and not scaled, the funnel by launch week and a chart series."
+  },
+  {
+   "rule": "/api/promotions/scale",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.promotions_scale",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Test to scale, the simple views: view=should_scale (testing creatives that look good enough to move; min_test_spend, min_purchases, bar_pct), view=should_kill (live testing"
+  },
+  {
+   "rule": "/api/source/tieout",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.source_tieout",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Meta vs Upstack totals for a window (window=7d|30d|...|mtd|launch(=every day held) or from/to). Days outside Upstack's history are not compared."
+  },
+  {
+   "rule": "/api/status",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.status",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/api/tag-lookup",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.tag_lookup",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Tag lookup: q=<an ad name as the platform shows it | a Meta ad id | a tracker Concept ID or Ad Family>. The new (line-mapped) tags of the matching tracker rows,"
+  },
+  {
+   "rule": "/api/trends",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.trends",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Trends: the key marketing metrics by day, week or month with the change vs the previous period (like for like for the open period)."
+  },
+  {
+   "rule": "/api/trends/plan",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.trends_plan",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Trends, month grain: the Pacing page's projected / target / % diff per month (from=YYYY-MM-DD&to=YYYY-MM-DD). Answers 200 with available=false and the reason when the"
+  },
+  {
+   "rule": "/campaigns",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/campaigns",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/connect-agent",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/connect-agent",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/google",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/google",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/healthz",
+   "methods": [
+    "GET"
+   ],
+   "kind": "other",
+   "endpoint": "healthz",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/login",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/login",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/lookup",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/lookup",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/mcp",
+   "methods": [
+    "DELETE",
+    "GET",
+    "POST"
+   ],
+   "kind": "other",
+   "endpoint": "brain_mcp.mcp",
+   "auth": "own check: signed-in session or Bearer key (never vendor tokens); 403 when AUTH_DISABLED",
+   "auth_exempt": false,
+   "summary": "The brain's MCP endpoint (stateless streamable HTTP, JSON-RPC over POST: initialize, ping, tools/list, tools/call)."
+  },
+  {
+   "rule": "/media/<aint:asset_id>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "media",
+   "endpoint": "api.media",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/p/<slug>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/p/<slug>",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/priorities",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/priorities",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/priorities/production",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/priorities/production",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/priorities/v/<token>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/priorities/v/<token>",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/priorities/vendor/<token>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/priorities/vendor/<token>",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/projection",
+   "methods": [
+    "GET"
+   ],
+   "kind": "other",
+   "endpoint": "projection:shell:/projection",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/projection/<module>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "other",
+   "endpoint": "projection:shell:/projection/<module>",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/promotions",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/promotions",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/robots.txt",
+   "methods": [
+    "GET"
+   ],
+   "kind": "other",
+   "endpoint": "robots",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/trends",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/trends",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  }
+ ]
+}
