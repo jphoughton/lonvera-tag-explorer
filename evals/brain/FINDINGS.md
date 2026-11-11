@@ -76,3 +76,28 @@ Deferred to the why tree: the four mechanisms above (mix does not explain CPM; c
 ## Grader caveats
 
 Sonnet grading against a key is lenient on wording and strict on listed facts; some partials are the key asking for more than the question (a03, a06, e01, fixed) and some pass because an extra claim is hedged (d02). Numbers within 2% count. The grader sees tool names but not tool results.
+
+## Round 2: making agents use `why` (branch `feat/brain-eval-2`)
+
+Tune only; the test split ran once at the end.
+
+| Run | Brain | Tune score | d | `why` calls on cause questions |
+|---|---|---|---|---|
+| m1 (merged build/v1, d cases only) | why tools, old instructions | d only: 25.0 | 25.0 | 3 of 10 (tune + test d) |
+| w1 (d only) | routing words, compact answer, parent / gap known causes, Meta history | d only | 66.7 | 5 of 6 |
+| w2 (full tune, round 1) | same | 94.4 | 66.7 | 4 of 5 cause questions |
+| w3 (full tune, round 2) | known causes first + `how_to_answer`, hypothesis questions route to `why` | **97.8** | **83.3** | 5 of 5 cause questions (d10 is a count question) |
+| **test, once** | w3 brain | **92.0** (earlier 96.0) | 75.0 | 1 of 4 (d01; d06, d07 and d09 are not cause-of-a-move questions in the agent's reading) |
+
+Test fell 4 points although d held at 75.0: the two extra partials are e08 and e12 (`etl` non-fatal steps, `feeds` shadow vs direct wording), which no change here touches, and d09 / d01 as before. With 25 cases one partial is 2 points, so this is inside the noise measured earlier (two identical baselines differed by 3.3), but it is not an improvement and should be read that way.
+
+Gap classification of what `why` returned on the tune d cases against the expected answers:
+
+| Class | Count | Cases and fix |
+|---|---|---|
+| (a) data absent, left | 2 | d03 (capped vs uncapped CPM evidence: bids are not in the database and no known cause carries it); d04's overlap numbers (46 ad sets vs about 27 supportable: the known cause says "same-day overlap, not exposure" but not the counts) |
+| (b) node exists, wrong routing | 2 | `metric="repeat revenue"` (space) was rejected: now plain words and phrases resolve (`resolve_metric`: "spend cliff", "frequency up", "renewals down", "CPM jump"); a Meta window before 2026-05-06 read $0 spend (platform_daily starts then), so CPM showed "n/a" for April: Meta spend now falls back to `meta_campaign_daily_history` (CPM +99%, $57.05 vs $28.68) |
+| (c) known causes not surfaced | 3 | known causes on gap nodes (`bids`) never matched because they need an assessed node: now matched on dated overlap; causes on a parent (`spend` for `meta_spend`) were skipped: ancestors are scanned; d08's causes now appear |
+| (d) too long or unclear | 3 | the tool answer was 82 KB: now a compact view (about 8-15 KB, `detail=true` for the full tree); known causes were buried behind other nodes' causes: the asked metric's own come first, refuted last, with a `how_to_answer` line; agents summarised around them (d02) |
+
+No held-out answer text was added to code or `known_causes`; the changes are routing, matching and presentation. Tests added in `tests/brain/test_why.py` for phrase routing, ancestors, gap-node matching, the compact view, known-cause ordering and the Meta history fallback.
