@@ -424,9 +424,100 @@
  ],
  "pages": [
   {
+   "url_pattern": "/",
+   "page_function": "homePage",
+   "js_file": "app/static/app.js (local function that picks a page by platform)",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/ad/<token>",
+   "page_function": "adPage",
+   "js_file": "app/static/js/pages/ad.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/campaigns",
+   "page_function": "campaignsRoute",
+   "js_file": "app/static/app.js (local function that picks a page by platform)",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/connect-agent",
+   "page_function": "connectAgentPage",
+   "js_file": "app/static/js/pages/connect_agent.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/login",
+   "page_function": "loginPage",
+   "js_file": "app/static/js/pages/login.js",
+   "public": true,
+   "bare": false
+  },
+  {
+   "url_pattern": "/lookup",
+   "page_function": "lookupPage",
+   "js_file": "app/static/js/pages/lookup.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/p/<token>",
+   "page_function": "productPage",
+   "js_file": "app/static/js/pages/product.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/priorities",
+   "page_function": "prioritiesPage",
+   "js_file": "app/static/js/pages/priorities.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/priorities/production",
+   "page_function": "productionPage",
+   "js_file": "app/static/js/pages/priorities_production.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/priorities/v/<token>",
+   "page_function": "prioritiesViewPage",
+   "js_file": "app/static/js/pages/priorities.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/priorities/vendor/<token>",
+   "page_function": "vendorPage",
+   "js_file": "app/static/js/pages/priorities_production.js",
+   "public": true,
+   "bare": true
+  },
+  {
    "url_pattern": "/projection[/<module>]",
    "page_function": "projection shell",
    "js_file": "app/static/js/projection/shell.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/promotions",
+   "page_function": "promotionsPage",
+   "js_file": "app/static/js/pages/promotions.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/trends",
+   "page_function": "trendsPage",
+   "js_file": "app/static/js/pages/trends.js",
    "public": false,
    "bare": false
   }
