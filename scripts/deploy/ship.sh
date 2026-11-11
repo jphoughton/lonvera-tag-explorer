@@ -108,8 +108,15 @@ trap 'rm -rf "$TMP"' EXIT
 SRC="$TMP/src"
 mkdir -p "$SRC"
 t_arch=$SECONDS
-git -C "$REPO" archive --format=tar "$SHA" -- . ':(exclude)tests' ':(exclude)docs' ':(exclude)analysis' | tar -x -C "$SRC"
+# tests/ and analysis/ are left out (nothing under app/, brain/, etl/ or scripts/deploy/ reads them at runtime). docs/ MUST ship: the hosted /mcp brain reads
+# docs/schema.json, docs/app_map.json, docs/**/*.md and docs/questions/* at runtime (brain/knowledge.py, brain/tools.py).
+git -C "$REPO" archive --format=tar "$SHA" -- . ':(exclude)tests' ':(exclude)analysis' | tar -x -C "$SRC"
 [ -f "$SRC/Dockerfile" ] || die "archive of $SHORT has no Dockerfile"
+# Guard, before any upload (also in --dry-run): the brain cannot start without these.
+for f in docs/schema.json docs/app_map.json; do
+  [ -f "$SRC/$f" ] || die "archive of $SHORT lacks $f; the hosted /mcp brain reads it at runtime. Nothing was uploaded."
+done
+echo "ship: archive guard ok: docs/schema.json and docs/app_map.json present ($(find "$SRC/docs" -type f | wc -l | tr -d ' ') files under docs/)"
 printf '%s\n' "$SHA" > "$SRC/REVISION"     # /healthz reports this as `rev`, so the deploy check can tell the new container from the old one
 phase "archive" "$((SECONDS - t_arch))"
 
@@ -124,7 +131,7 @@ changed = [l.strip() for l in open(changed_file) if l.strip()]
 
 ROOT_IMAGE = {"Dockerfile", ".dockerignore", "requirements.txt"}
 STATIC = {
-    "web":    (ROOT_IMAGE | {"wsgi.py", "scripts/deploy/start_web.sh"}, ["migrations/"]),
+    "web":    (ROOT_IMAGE | {"wsgi.py", "scripts/deploy/start_web.sh"}, ["migrations/", "docs/"]),   # docs/ is read at runtime by brain/
     "backup": ({"scripts/deploy/run_backup.sh"}, ["scripts/deploy/backup/"]),
 }
 for s in ("etl", "feeds", "live", "alerts"):
@@ -154,7 +161,7 @@ def add_file(rel):
 
 def add_module(dotted):
     parts = dotted.split(".")
-    if parts[0] not in ("etl", "app"):
+    if parts[0] not in ("etl", "app", "brain"):
         return
     for i in range(1, len(parts) + 1):
         r = resolve(".".join(parts[:i]))
@@ -258,15 +265,15 @@ for c in changed:
         print("%s (service files)" % c); sys.exit(0)
     if service != "backup" and c.startswith("etl/") and not c.endswith(".py") and not deleted:
         print("%s (data file next to etl code)" % c); sys.exit(0)
-    if service == "web" and c.startswith("app/"):
+    if service == "web" and (c.startswith("app/") or c.startswith("brain/")):
         print("%s (web code)" % c); sys.exit(0)
     if c in seen:
         print("%s (imported code)" % c); sys.exit(0)
-    if deleted and (c.startswith("app/") or c.startswith("etl/")) and service != "backup":
+    if deleted and (c.startswith("app/") or c.startswith("brain/") or c.startswith("etl/")) and service != "backup":
         print("%s (deleted; cannot prove unused)" % c); sys.exit(0)
     if deleted and c.startswith("etl/") and service == "backup":
         print("%s (deleted; cannot prove unused)" % c); sys.exit(0)
-    if fallback_all and (c.startswith("app/") or c.startswith("etl/")):
+    if fallback_all and (c.startswith("app/") or c.startswith("brain/") or c.startswith("etl/")):
         print("%s (import graph unreadable, assuming relevant)" % c); sys.exit(0)
 sys.exit(1)
 PYEOF
