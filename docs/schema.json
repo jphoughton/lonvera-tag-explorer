@@ -8351,7 +8351,7 @@
     "level",
     "entity_id",
     "breakdown_set",
-    "dims_key"
+    "dims_hash"
    ],
    "foreign_keys": [],
    "source": "Meta Marketing API Insights (read only), etl.meta_breakdowns",
@@ -8432,7 +8432,7 @@
      "name": "dims_key",
      "type": "text",
      "nullable": false,
-     "description": "Stable text form of the dimension values (names sorted, name=value joined with a vertical bar, percent-escaped) used in the primary key."
+     "description": "Stable text form of the dimension values (names sorted, name=value joined with a vertical bar, percent-escaped); any length. Not indexed: the primary key uses dims_hash."
     },
     {
      "name": "spend",
@@ -8493,6 +8493,12 @@
      "type": "timestamp with time zone",
      "nullable": false,
      "description": "When this row was last written by the pull."
+    },
+    {
+     "name": "dims_hash",
+     "type": "text",
+     "nullable": false,
+     "description": "md5 of dims_key (generated column), the fixed-size stand-in for dims_key in the primary key so very long values (ad copy assets) can be indexed."
     }
    ],
    "examples": []

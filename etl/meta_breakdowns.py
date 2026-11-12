@@ -411,7 +411,7 @@ def normalise(entry: Entry, level: str, acct: str, raw: list[dict]) -> list[tupl
 COLS = ("day, account_id, level, entity_id, campaign_id, adset_id, breakdown_set, dim1, dim2, dim3, dims_key, spend, impressions, reach, clicks, inline_link_clicks, "
         "outbound_clicks, unique_outbound_clicks, purchases, purchase_value")
 UPSERT = f"""INSERT INTO meta_breakdown_daily ({COLS}) VALUES ({",".join(["%s"] * 20)})
-ON CONFLICT (day, account_id, level, entity_id, breakdown_set, dims_key) DO UPDATE SET campaign_id=EXCLUDED.campaign_id, adset_id=EXCLUDED.adset_id,
+ON CONFLICT (day, account_id, level, entity_id, breakdown_set, dims_hash) DO UPDATE SET campaign_id=EXCLUDED.campaign_id, adset_id=EXCLUDED.adset_id,
   dim1=EXCLUDED.dim1, dim2=EXCLUDED.dim2, dim3=EXCLUDED.dim3, spend=EXCLUDED.spend, impressions=EXCLUDED.impressions, reach=EXCLUDED.reach, clicks=EXCLUDED.clicks,
   inline_link_clicks=EXCLUDED.inline_link_clicks, outbound_clicks=EXCLUDED.outbound_clicks, unique_outbound_clicks=EXCLUDED.unique_outbound_clicks,
   purchases=EXCLUDED.purchases, purchase_value=EXCLUDED.purchase_value, pulled_at=now()"""
@@ -590,6 +590,11 @@ def pull_set_level(conn, client: Client, waiter: Waiter, entry: Entry, level: st
             if conn is not None:
                 conn.rollback()
             status, err = "error", f"{an}: {db.scrub(e)[:250]}"
+        except Exception as e:                                  # noqa: BLE001  one set failing (a bad value, a database error) must not end the run
+            if conn is not None:
+                conn.rollback()
+            status, err = "error", f"{an}: {type(e).__name__}: {db.scrub(e)[:230]}"
+            db.log(f"  {entry.name} {level} {ws}..{we} {an} FAILED, continuing with the next set: {err}")
     return status, err
 
 
@@ -642,7 +647,9 @@ def _windows_loop(conn, live, client, waiter, stopper, windows, entries, account
             st = stats                                          # pull_set_level adds rows / duplicates straight into the run stats (so a stop mid-set still counts them)
             result = "unsupported"
             for lv in levels:
+                t0, rows0 = time.monotonic(), st["rows"]
                 status, err = pull_set_level(conn, client, waiter, entry, lv, ws, we, accounts, st, backfill, restart)
+                db.log(f"  set {entry.name} level {lv} window {ws}..{we}: {status}, {st['rows'] - rows0} rows, {time.monotonic() - t0:.1f}s")
                 if entry.name in state and (status == "unsupported" or (status == "error" and RETENTION_RX.search(err or ""))):
                     # an older window than one Meta already served: Meta's own retention limit for this breakdown. Keep what we have, say so in coverage, move on.
                     exhausted.add(entry.name)
@@ -657,6 +664,7 @@ def _windows_loop(conn, live, client, waiter, stopper, windows, entries, account
                 state[entry.name] = lv
                 result = status
                 if status != "ok":
+                    stats["error_pieces"] = stats.get("error_pieces", 0) + 1
                     stats["errors"][entry.name] = f"{status} ({lv}): {err}"
                     db.log(f"  {entry.name}: {status}: {err}")
                 break
@@ -812,7 +820,7 @@ def auto(conn, stopper: Stopper, names=None, max_days: int = DEFAULT_MAX_DAYS, w
         out["rows"] += st["rows"]
         if st["stopped_early"]:
             out.update(stopped_early=True, stop_reason=st.get("stop_reason"))
-        elif st["windows_done"] == len(windows):
+        elif st["windows_done"] == len(windows) and not st.get("error_pieces"):     # a failed set/window is retried by the next run, so the backfill is not finished
             _set_special(conn, DONE_SET, yesterday, yesterday)
             conn.commit()
             out["backfill_done"] = True
