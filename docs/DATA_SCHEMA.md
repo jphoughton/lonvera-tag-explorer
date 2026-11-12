@@ -4274,7 +4274,7 @@ SELECT coalesce(rule, '(unmatched)') AS rule, count(*) AS families FROM meta_fam
 
 **Purpose.** Meta Ads results split by one breakdown set (age, gender, country, region, dma, placement, device, hour of day, creative asset ...), pulled at AD grain from the Insights API for both ad accounts. Partitioned by month on day.
 
-- **Grain:** primary key `(day, account_id, level, entity_id, breakdown_set, dims_key)`; one row per day x ad account x level (ad; campaign or account only for a set Meta refused at ad level) x entity x breakdown set x dimension values
+- **Grain:** primary key `(day, account_id, level, entity_id, breakdown_set, dims_hash)`; one row per day x ad account x level (ad; campaign or account only for a set Meta refused at ad level) x entity x breakdown set x dimension values
 - **Source:** Meta Marketing API Insights (read only), etl.meta_breakdowns
 - **Refresh:** every 2 hours by the dedicated `breakdowns` service: the backfill (newest 30-day window first) until finished, then the trailing 7 days once a day
 - **Coverage:** see meta_breakdown_coverage for the first and last day and the level per set
@@ -4297,7 +4297,7 @@ SELECT coalesce(rule, '(unmatched)') AS rule, count(*) AS families FROM meta_fam
 | `dim1` | text | yes | Value of the first name in breakdown_set (text). |
 | `dim2` | text | yes | Value of the second name in breakdown_set, NULL when the set has one name. |
 | `dim3` | text | yes | Value of the third name in breakdown_set, NULL when the set has fewer than three. |
-| `dims_key` | text | no | Stable text form of the dimension values (names sorted, name=value joined with a vertical bar, percent-escaped) used in the primary key. |
+| `dims_key` | text | no | Stable text form of the dimension values (names sorted, name=value joined with a vertical bar, percent-escaped); any length. Not indexed: the primary key uses dims_hash. |
 | `spend` | numeric(14,2) | yes | Meta spend in account currency (US dollars). NULL for action breakdown sets. |
 | `impressions` | bigint | yes | Meta impressions. NULL for action breakdown sets. |
 | `reach` | bigint | yes | Accounts reached on that day within the row. Not additive across days, ads or sets. NULL for action breakdown sets or when Meta would not return it with the breakdown. |
@@ -4308,6 +4308,7 @@ SELECT coalesce(rule, '(unmatched)') AS rule, count(*) AS families FROM meta_fam
 | `purchases` | numeric(12,2) | yes | Meta-reported purchases (omni_purchase, else purchase, else pixel purchase), same rule as ad_daily. |
 | `purchase_value` | numeric(14,2) | yes | Meta-reported purchase value (same action type rule), gross dollars. |
 | `pulled_at` | timestamptz | no | When this row was last written by the pull. |
+| `dims_hash` | text | no | md5 of dims_key (generated column), the fixed-size stand-in for dims_key in the primary key so very long values (ad copy assets) can be indexed. |
 
 ### public.meta_breakdown_coverage
 

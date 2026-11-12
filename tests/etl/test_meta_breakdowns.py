@@ -641,3 +641,69 @@ def test_stored_anchor_is_one_row_per_kind(bd, monkeypatch):
     auto(bd, D(2026, 11, 12))
     kinds = dict(bd.execute("SELECT breakdown_set, count(*) FROM meta_breakdown_progress WHERE level='-' GROUP BY 1").fetchall())
     assert kinds == {"__anchor__": 1, "__backfill_done__": 1, "__caught_up__": 1}
+
+
+# ----------------------------------------------------------------------------------------------- long values and per-set failure (migration 241)
+def _long_rows(values, day=D(2026, 11, 1)):
+    e = mb.BY_NAME["body_asset"]
+    raw = [{"ad_id": "a1", "adset_id": "s1", "campaign_id": "c1", "date_start": day.isoformat(), "body_asset": {"id": "1", "text": v}, "spend": "1.00",
+            "impressions": "10"} for v in values]
+    return mb.normalise(e, "ad", ACCT, raw)
+
+
+def test_value_over_5000_characters_upserts_and_is_idempotent(bd):
+    rows = _long_rows(["Long ad copy. " * 400])
+    assert len(rows[0][10]) > 5000
+    mb.upsert(bd, rows)
+    bd.commit()
+    mb.upsert(bd, rows)
+    bd.commit()
+    assert count(bd) == 1
+    assert bd.execute("SELECT length(dims_key) FROM meta_breakdown_daily").fetchone()[0] > 5000
+
+
+def test_long_values_sharing_a_long_prefix_stay_distinct(bd):
+    pre = "same long opening " * 300
+    rows = _long_rows([pre + "ending A", pre + "ending B"])
+    mb.upsert(bd, rows)
+    bd.commit()
+    assert count(bd) == 2
+    mb.upsert(bd, rows)
+    bd.commit()
+    assert count(bd) == 2
+
+
+def test_a_set_that_raises_does_not_stop_later_sets_and_is_recorded_errored(bd, monkeypatch):
+    Fake().install(monkeypatch)
+    real = mb.upsert
+
+    def flaky(conn, rows):
+        if rows and rows[0][6] == "gender":
+            raise RuntimeError("index row size 3104 exceeds btree version 4 maximum 2704")
+        return real(conn, rows)
+    monkeypatch.setattr(mb, "upsert", flaky)
+    st = run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], ["gender", "age"])
+    assert st["sets_error"] == 1 and st["sets_ok"] == 1 and st["error_pieces"] == 1
+    r = bd.execute("SELECT status, last_error FROM meta_breakdown_coverage WHERE breakdown_set='gender' AND level='ad'").fetchone()
+    assert r[0] == "error" and "RuntimeError" in r[1]
+    assert bd.execute("SELECT status FROM meta_breakdown_coverage WHERE breakdown_set='age' AND level='ad'").fetchone()[0] == "ok"
+    assert count(bd, "SELECT count(*) FROM meta_breakdown_daily WHERE breakdown_set='age'") > 0
+
+
+def test_failed_set_keeps_the_backfill_open_so_a_later_run_retries_it(bd, monkeypatch):
+    Fake().install(monkeypatch)
+    real = mb.upsert
+    broken = {"on": True}
+
+    def flaky(conn, rows):
+        if broken["on"] and rows and rows[0][6] == "gender":
+            raise RuntimeError("boom")
+        return real(conn, rows)
+    monkeypatch.setattr(mb, "upsert", flaky)
+    today = D(2026, 11, 12)
+    out = auto(bd, today, names=["gender", "age"], max_days=2)
+    assert not out["backfill_done"]
+    broken["on"] = False
+    out = auto(bd, today, names=["gender", "age"], max_days=2)
+    assert out["backfill_done"]
+    assert count(bd, "SELECT count(*) FROM meta_breakdown_daily WHERE breakdown_set='gender'") > 0
