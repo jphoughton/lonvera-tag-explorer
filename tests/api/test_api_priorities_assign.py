@@ -169,7 +169,7 @@ def test_assign_validation(client, snaps):
         assert r.status_code == 400 and msg in r.get_json()["error"], body
     assert client.post("/api/priorities/assignments", json=[k]).status_code == 400
     assert client.post("/api/priorities/assignments", json={"keys": [k], "snapshot_week": "2025-01-05", "vendor": "Madre", "for_week": MONDAY}).status_code == 404       # no such snapshot
-    for v in ("PuredMedia", "CreateMastery", "OpenProgram", "Internal", "10xROAS"):
+    for v in ("PuredMedia", "CreateMastery", "OpenProgram", "Studio Flow", "Internal", "10xROAS"):
         assert assign(client, [k], v).status_code == 201
 
 

@@ -469,7 +469,7 @@ def test_plan_shows_four_weeks_vendor_rows_with_load_and_capacity(page):
     assert cell(page, "Madre", w0).get_attribute("data-open") == "4" and cell(page, "Madre", w0).get_attribute("data-over") == "1"
     assert cell(page, "Victoria", w0).get_attribute("data-open") == "3" and cell(page, "Victoria", w1).get_attribute("data-open") == "1"
     assert cell(page, "Madre", w0).locator("[data-testid=prod-plan-load]").text_content() == "4 of 2"
-    assert page.locator("[data-testid=prod-plan-row]").count() == 9
+    assert page.locator("[data-testid=prod-plan-row]").count() == 10
     nxt = page.locator("[data-testid=prod-plan-next]")
     nxt.click()
     assert page.locator("[data-testid=prod-plan-weekhead]").first.get_attribute("data-week") == w1

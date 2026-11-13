@@ -147,7 +147,7 @@ def test_change_vendor_and_drop_with_confirm(page):
 def test_vendor_links_copy_and_reset_with_confirm(page, ctx):
     ctx.grant_permissions(["clipboard-read", "clipboard-write"])
     goto(page)
-    assert page.locator("[data-testid=prod-copy-link]").count() == 9
+    assert page.locator("[data-testid=prod-copy-link]").count() == 10
     assert not page.locator("[data-testid=prod-copy-link]").first.is_visible()          # collapsed until opened
     page.locator("[data-testid=prod-links] > summary").click()
     page.locator("[data-vendor=Madre] [data-testid=prod-copy-link]").click()
