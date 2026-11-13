@@ -14,11 +14,17 @@ def fresh(ctx, base_url):
 
 
 def choose(page, tid, *values):
-    """Tick exactly these options in a multi-select filter (none = All), then close it so the choice is applied."""
+    """Tick exactly these options in a multi-select filter (none = All). Each tick applies at once and the list stays open, so every click re-finds its box; Escape closes it."""
     d = page.locator(f".pagefilters [data-testid={tid}]")
-    d.locator("summary").click()
-    for cb in d.locator("input[type=checkbox]").all():
-        cb.set_checked(cb.get_attribute("value") in values)
+    if d.get_attribute("open") is None:
+        d.locator("summary").click()
+    opts = [cb.get_attribute("value") for cb in d.locator("input[type=checkbox]").all()]
+    for v in opts:
+        box = page.locator(f".pagefilters [data-testid={tid}] input[type=checkbox][value='{v}']")
+        want = v in values
+        if box.is_checked() != want:
+            box.set_checked(want)
+            page.wait_for_timeout(150)
     page.keyboard.press("Escape")
 
 
@@ -147,7 +153,7 @@ def test_change_vendor_and_drop_with_confirm(page):
 def test_vendor_links_copy_and_reset_with_confirm(page, ctx):
     ctx.grant_permissions(["clipboard-read", "clipboard-write"])
     goto(page)
-    assert page.locator("[data-testid=prod-copy-link]").count() == 10
+    assert page.locator("[data-testid=prod-copy-link]").count() == 9
     assert not page.locator("[data-testid=prod-copy-link]").first.is_visible()          # collapsed until opened
     page.locator("[data-testid=prod-links] > summary").click()
     page.locator("[data-vendor=Madre] [data-testid=prod-copy-link]").click()
@@ -483,3 +489,29 @@ def test_week_vendor_and_product_filters_take_several_choices_at_once(page):
     wk = [cb.get_attribute("value") for cb in page.locator("[data-testid=prod-week] input[type=checkbox]").all()]
     choose(page, "prod-week", wk[0], wk[1])                                             # two weeks at once
     assert btn("prod-week") == "2 selected"
+
+
+def test_variations_of_one_concept_are_one_entry_with_the_variations_inside(page):
+    goto(page)
+    got = page.evaluate("""async () => { const m = await import('/static/js/pages/production_common.js');
+      const ids = ['Lonvera-VitalBull-Video-3.1-hook1', 'Lonvera-VitalBull-Video-3.1-hook2', 'Lonvera-VitalBull-Video-3.1-hook3', 'Lonvera-VitalBull-Video-4.2', 'Victoria-BeefLiver-Static-C1.E1', 'Lonvera-X-9 - Copy 2', 'Lonvera-X-9'];
+      return { groups: m.variationGroups(ids).map((g) => [g.base, g.list.length]), label: m.variationLabel(ids[1], m.variationBase(ids[1])), title: m.ticketTitle({ vendor: 'Studio Flow', cluster: 'Iron & B12', pain_point: 'Nutrient Deficiency', for_week: '2026-11-09' }) }; }""")
+    assert got["groups"] == [["Lonvera-VitalBull-Video-3.1", 3], ["Lonvera-VitalBull-Video-4.2", 1], ["Victoria-BeefLiver-Static-C1.E1", 1], ["Lonvera-X-9", 2]]
+    assert got["label"] == "hook2"
+    assert got["title"] == "Studio Flow - Iron & B12 - Nutrient Deficiency - 11/9"
+
+
+def test_a_filter_applies_on_every_tick_and_the_list_stays_open(page):
+    goto(page)
+    d = page.locator(".pagefilters [data-testid=prod-vendor]")
+    d.locator("summary").click()
+    page.locator(".pagefilters [data-testid=prod-vendor] input[value='Victoria']").check()
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 1")      # the table already changed
+    assert page.locator(".pagefilters [data-testid=prod-vendor]").get_attribute("open") is not None       # and the list is still open
+    page.locator(".pagefilters [data-testid=prod-vendor] input[value='Madre']").check()
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 3")
+    assert page.locator(".pagefilters [data-testid=prod-vendor-btn]").text_content().strip() == "2 selected"
+    page.locator(".pagefilters [data-testid=prod-vendor] input[value='Victoria']").uncheck()
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 2")
+    page.mouse.click(5, 400)                                                                              # a click outside closes it
+    page.wait_for_function("() => !document.querySelector('.pagefilters [data-testid=prod-vendor]').hasAttribute('open')")

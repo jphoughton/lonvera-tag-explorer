@@ -409,6 +409,23 @@ body.prod-drawer-open { overflow: hidden; }
 .mf-opt input { margin: 0; width: 16px; height: 16px; }
 .mf-foot { padding: 4px 2px 2px; border-top: 1px solid var(--line); margin-top: 4px; }
 @media (max-width: 640px) { .mf-opt { padding: 10px 8px; font-size: 15px; } .mf > summary.mf-btn { min-height: 36px; } }
+
+/* plan view: fold a vendor up to one line */
+.prod-plan-vname { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.prod-plan-fold { appearance: none; border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: 5px; width: 24px; height: 24px; padding: 0; cursor: pointer; position: relative; flex: none; }
+.prod-plan-fold::before { content: ""; position: absolute; left: 8px; top: 6px; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); }
+.prod-plan-folded .prod-plan-fold::before { transform: rotate(-45deg); left: 6px; top: 8px; }
+.prod-plan-foldn { display: none; }
+.prod-plan-folded .prod-plan-foldn { display: inline; }
+.prod-plan-folded .prod-plan-cap { display: none; }
+.prod-plan-folded .prod-plan-list { display: none; }
+.prod-plan-folded .prod-plan-cell { min-height: 0; padding-bottom: 4px; }
+@media (max-width: 640px) { .prod-plan-fold { width: 32px; height: 32px; } .prod-plan-fold::before { left: 11px; top: 9px; } .prod-plan-folded .prod-plan-fold::before { left: 9px; top: 11px; } }
+
+/* one concept with its variations as links inside it */
+.prod-var > summary { cursor: pointer; font-weight: 600; }
+.prod-var > div { margin: 2px 0 2px 14px; font-size: 13px; }
+.prod-c .pri-sub { white-space: pre-line; }
 /* first-step actions (Send brief, Mark in production) are teal outline buttons: coral is kept for Submit for review, Approve and Mark launched, so a column of cards does not read as a wall of coral */
 .btn.primary.prod-card-action[data-action="send_brief"], .btn.primary.prod-card-action[data-action="start"],
 .prod-drawer-actions .btn.primary[data-testid$="-send_brief"], .prod-drawer-actions .btn.primary[data-testid$="-start"] { background: var(--panel); border-color: var(--accent); color: var(--accent); }

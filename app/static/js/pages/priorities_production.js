@@ -8,7 +8,7 @@ import { expander } from './priorities_panel.js';
 import { pageHeader } from '../ui/pagehead.js';
 import { filterRow, seg, selectCtl, multiCtl, checkCtl, searchCtl } from '../ui/pagefilters.js';
 
-import { eventLine, STAGES, STATUSES, STATUS_LABEL, statusOf, VENDOR_FALLBACK, md, weekLabel, ticketTitle, productName, stageLabel, today, mondayOf, addDays, formatLabel, rowFormat, resultText, link, short, askDialog, toast, dueInfo } from './production_common.js';
+import { eventLine, STAGES, STATUSES, STATUS_LABEL, statusOf, VENDOR_FALLBACK, md, weekLabel, ticketTitle, variationGroups, variationLabel, productName, stageLabel, today, mondayOf, addDays, formatLabel, rowFormat, resultText, link, short, askDialog, toast, dueInfo } from './production_common.js';
 import { board as boardView, loadBars } from './production_board.js';
 import { plan as planView } from './production_plan.js';
 import { openDrawer } from './production_drawer.js';
@@ -205,8 +205,12 @@ export async function productionPage(ctx) {
     const ids = r.tracker_concept_ids || [];
     const byId = new Map((r.ads || []).map((a) => [a.concept_id, a]));
     return h('td', { class: 'prod-c prod-c-made', 'data-testid': 'prod-made' },
-      ids.map((id) => { const a = byId.get(id); return h('div', null, a && a.ad_url ? link(a.ad_url, id, { 'data-testid': 'prod-cid' }) : h('span', { 'data-testid': 'prod-cid' }, id)); }),
-      (r.suggested_concept_ids || []).filter((id) => !ids.includes(id)).map((id) => h('div', null, h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-suggest', onclick: () => patch(r.id, { tracker_concept_ids: [...ids, id] }, 'Concept ID linked.') }, 'Link ' + id))),
+      variationGroups(ids).map(({ base, list }) => {
+        const one = (id, text) => { const a = byId.get(id); return a && a.ad_url ? link(a.ad_url, text, { 'data-testid': 'prod-cid' }) : h('span', { 'data-testid': 'prod-cid' }, text); };
+        if (list.length === 1) return h('div', null, one(list[0], list[0]));
+        return h('details', { class: 'prod-var', 'data-testid': 'prod-variations' }, h('summary', null, `${base} · ${list.length} variations`), list.map((id) => h('div', null, one(id, variationLabel(id, base)))));
+      }),
+      variationGroups((r.suggested_concept_ids || []).filter((id) => !ids.includes(id))).map(({ base, list }) => h('div', null, h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-suggest', onclick: () => patch(r.id, { tracker_concept_ids: [...ids, ...list] }, list.length > 1 ? 'Variations linked.' : 'Concept ID linked.') }, list.length > 1 ? `Link ${base} (${list.length} variations)` : 'Link ' + list[0]))),
       r.stage === 'dropped' ? null : h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-add-cid', onclick: () => addConceptId(r) }, 'Add Concept ID'));
   }
 

@@ -193,7 +193,7 @@ def test_summary_computes_stage_when_missing_and_breaks_week_ties_by_id():
 
 
 def test_vendors_are_the_nine_tracker_spellings():
-    assert pa.VENDORS == ["Madre", "Victoria", "TrybeDCShop", "TrybeOrion", "10xROAS", "Internal", "PuredMedia", "CreateMastery", "OpenProgram", "Studio Flow"]
+    assert pa.VENDORS == ["Madre", "Victoria", "TrybeDCShop", "TrybeOrion", "10xROAS", "PuredMedia", "CreateMastery", "OpenProgram", "Studio Flow"]
     for v in ("PuredMedia", "CreateMastery", "OpenProgram", "Studio Flow"):
         assert pa.clean_create({"vendor": v, "for_week": "2026-11-09"})["vendor"] == v
     bad(pa.clean_create, {"vendor": "Other", "for_week": "2026-11-09"})

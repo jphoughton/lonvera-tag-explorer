@@ -20,11 +20,17 @@ def fresh(ctx, base_url):
 
 
 def choose(page, tid, *values):
-    """Tick exactly these options in a multi-select filter (none = All), then close it so the choice is applied."""
+    """Tick exactly these options in a multi-select filter (none = All). Each tick applies at once and the list stays open, so every click re-finds its box; Escape closes it."""
     d = page.locator(f".pagefilters [data-testid={tid}]")
-    d.locator("summary").click()
-    for cb in d.locator("input[type=checkbox]").all():
-        cb.set_checked(cb.get_attribute("value") in values)
+    if d.get_attribute("open") is None:
+        d.locator("summary").click()
+    opts = [cb.get_attribute("value") for cb in d.locator("input[type=checkbox]").all()]
+    for v in opts:
+        box = page.locator(f".pagefilters [data-testid={tid}] input[type=checkbox][value='{v}']")
+        want = v in values
+        if box.is_checked() != want:
+            box.set_checked(want)
+            page.wait_for_timeout(150)
     page.keyboard.press("Escape")
 
 
@@ -308,7 +314,7 @@ def test_drawer_opens_from_a_card_with_header_stepper_actions_and_tabs_and_close
     card(page, 7).locator("[data-testid=prod-card-title]").click()
     page.wait_for_selector("[data-testid=prod-drawer]")
     assert "card=7" in page.url
-    assert re.fullmatch(r"Victoria - .+ - Knee Pain - Week of \d+/\d+", page.locator("[data-testid=prod-drawer-title]").text_content())
+    assert re.fullmatch(r"Victoria - .+ - Knee Pain - \d+/\d+", page.locator("[data-testid=prod-drawer-title]").text_content())
     assert page.locator("[data-testid=prod-drawer-status]").text_content() == "In review"
     assert page.locator("[data-testid=prod-drawer-step][aria-current=step]").get_attribute("data-status") == "in_review"
     acts = [t.strip() for t in page.locator("[data-testid=prod-drawer-actions] button").all_text_contents()]
@@ -438,7 +444,7 @@ def test_list_view_has_status_due_and_priority_columns_and_opens_the_drawer(page
     assert page.locator("[data-testid=prod-row][data-id='1'] [data-testid=prod-priority]").text_content() == "Normal"
     row5.locator("[data-testid=prod-open-card]").click()
     page.wait_for_selector("[data-testid=prod-drawer]")
-    assert re.fullmatch(r"Madre - Seed cluster - Energy Crash - Week of \d+/\d+", page.locator("[data-testid=prod-drawer-title]").text_content())
+    assert re.fullmatch(r"Madre - Seed cluster - Energy Crash - \d+/\d+", page.locator("[data-testid=prod-drawer-title]").text_content())
     page.click("[data-testid=prod-drawer-close]")
     assert "view=list" in page.url
 
@@ -469,7 +475,7 @@ def test_plan_shows_four_weeks_vendor_rows_with_load_and_capacity(page):
     assert cell(page, "Madre", w0).get_attribute("data-open") == "4" and cell(page, "Madre", w0).get_attribute("data-over") == "1"
     assert cell(page, "Victoria", w0).get_attribute("data-open") == "3" and cell(page, "Victoria", w1).get_attribute("data-open") == "1"
     assert cell(page, "Madre", w0).locator("[data-testid=prod-plan-load]").text_content() == "4 of 2"
-    assert page.locator("[data-testid=prod-plan-row]").count() == 10
+    assert page.locator("[data-testid=prod-plan-row]").count() == 9
     nxt = page.locator("[data-testid=prod-plan-next]")
     nxt.click()
     assert page.locator("[data-testid=prod-plan-weekhead]").first.get_attribute("data-week") == w1
@@ -596,3 +602,31 @@ def test_board_text_has_no_em_dashes_and_cards_have_names(page):
     assert all(re.search(r", ", l) for l in labels) and "—" not in " ".join(labels)
     goto(page, "?card=7")
     assert "—" not in page.locator("[data-testid=prod-drawer]").text_content()
+
+
+def no_ghost(page):
+    page.wait_for_function("() => !document.querySelector('.prod-ghost')")
+    assert page.locator(".prod-ghost").count() == 0 and not page.evaluate("() => document.body.classList.contains('prod-is-dragging')")
+
+
+def test_no_dragged_copy_is_left_floating_after_a_drop(page):
+    goto(page)
+    drag_card(page, 8, "in_production", "bottom")
+    no_ghost(page)
+
+
+@pytest.mark.allow_errors
+def test_no_dragged_copy_is_left_floating_after_a_refused_drop(page):
+    goto(page)
+    drag_card(page, 5, "in_review")                                                   # card 5 has no creative link: the move is refused and the card goes back
+    page.wait_for_selector("[data-testid=prod-toast]", state="attached")
+    no_ghost(page)
+
+
+def test_no_dragged_copy_is_left_floating_after_escape(page):
+    goto(page)
+    a = card(page, 9).locator("[data-testid=prod-card-title]").bounding_box()
+    page.mouse.move(a["x"] + 20, a["y"] + 10); page.mouse.down(); page.mouse.move(a["x"] + 200, a["y"] + 80, steps=6)
+    assert page.locator(".prod-ghost").count() == 1
+    page.keyboard.press("Escape"); page.mouse.up()
+    no_ghost(page)
