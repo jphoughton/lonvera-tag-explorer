@@ -459,3 +459,8 @@ body.prod-drawer-open { overflow: hidden; }
 .prod-said { margin-top: 6px; }
 .prod-said > summary { cursor: pointer; font-weight: 600; }
 @media (max-width: 640px) { .prod-vtab { min-height: 40px; } }
+
+/* the card that just landed in a column: a very faint wash that fades out */
+@keyframes prod-landed { from { background: color-mix(in srgb, var(--accent) 13%, var(--panel)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); } to { background: var(--panel); box-shadow: 0 1px 1px color-mix(in srgb, var(--lv-ink) 4%, transparent); } }
+.prod-board-card.prod-landed { animation: prod-landed 1.4s ease-out; }
+@media (prefers-reduced-motion: reduce) { .prod-board-card.prod-landed { animation: none; } }
