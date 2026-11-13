@@ -28,7 +28,7 @@ CREATE_FIELDS = ("vendor", "for_week", "note", "format_code")
 PATCH_FIELDS = ("vendor", "for_week", "note", "format_code", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped", "status", "due_date", "priority", "position", "comment")
 PATCH_BOOLS = ("ready", "launched", "dropped")
 VENDOR_PATCH_FIELDS = ("creative_url", "vendor_note", "ready", "status", "comment")
-# the board (migration 244): the stored status of an assignment, in column order. `dropped` is not a status (dropped_at hides the card in an archived lane).
+# the board (migration 245): the stored status of an assignment, in column order. `dropped` is not a status (dropped_at hides the card in an archived lane).
 STATUSES = ["assigned", "brief_sent", "in_production", "in_review", "ready", "launched"]
 STATUS_LABELS = {"assigned": "Assigned", "brief_sent": "Brief sent", "in_production": "In production", "in_review": "In review", "ready": "Ready to launch", "launched": "Launched"}
 PRIORITIES = ("normal", "high")
@@ -301,7 +301,7 @@ def stage_label(key: str) -> str:
     return STAGES.get(key, key)
 
 
-# ---------------------------------------------------------------------------------------------------------------- status (the board column, stored since migration 244)
+# ---------------------------------------------------------------------------------------------------------------- status (the board column, stored since migration 245)
 def status_rank(status) -> int:
     return STATUSES.index(status) if status in STATUSES else 0
 
@@ -397,7 +397,7 @@ VENDOR_RECENT_DAYS = 28                      # the vendor page also shows what w
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{22,64}")
 COLS = ("id, concept_key, text_key, product, vendor, line_id, manual_id, line_code, cluster, icp, pain_point, story, section_at_assign, note, vendor_note, for_week, brief_url, creative_url, "
         "brief_at, creative_at, ready_at, launched_at, dropped_at, tracker_concept_ids, created_at, updated_at, created_by, updated_by")
-BOARD_COLS = ("status", "due_date", "priority", "position", "status_changed_at")        # migration 244; a database without it still serves every page (status is then derived from the links)
+BOARD_COLS = ("status", "due_date", "priority", "position", "status_changed_at")        # migration 245; a database without it still serves every page (status is then derived from the links)
 FMT_COLS = ("format_code", "format_name", "format_length")                               # on every row; None when no format was chosen (or migration 204 is not applied)
 INTERNAL_ONLY = ("note", "created_by", "updated_by", "suggested_concept_ids")          # never sent to a vendor link page
 _TS = ("brief_at", "creative_at", "ready_at", "launched_at", "dropped_at", "created_at", "updated_at", "status_changed_at")
@@ -525,7 +525,7 @@ def today_pt() -> dt.date:
 
 
 def effective_status(rec: dict, tracker_statuses=()) -> str:
-    """The stored status, pulled forward (never back) by the linked Creative Tracker rows; derived from the links when the row has no stored status yet (migration 244 not applied)."""
+    """The stored status, pulled forward (never back) by the linked Creative Tracker rows; derived from the links when the row has no stored status yet (migration 245 not applied)."""
     cur = rec.get("status") or status_of_facts(rec)
     t = tracker_status_of(tracker_statuses)
     return t if t and status_rank(t) > status_rank(cur) else cur
@@ -562,7 +562,7 @@ def _fetch(conn, where: str = "", params: tuple = ()) -> list[dict]:
     join = "FROM creative_priorities_assignments a LEFT JOIN creative_formats f ON f.code = a.format_code"
     try:
         return conn.execute(f"SELECT {acols}, {bcols}, a.format_code, f.name AS format_name, f.length AS format_length {join} {where} ORDER BY a.for_week DESC, a.vendor, a.id", params).fetchall()
-    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):          # migration 244 (board), 204 (formats) or 202 (assignments) not applied yet
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):          # migration 245 (board), 204 (formats) or 202 (assignments) not applied yet
         conn.rollback()
     try:
         return conn.execute(f"SELECT {acols}, a.format_code, f.name AS format_name, f.length AS format_length {join} {where} ORDER BY a.for_week DESC, a.vendor, a.id", params).fetchall()
@@ -689,7 +689,7 @@ def create_assignments(conn, body: dict, user: str | None = None) -> dict:
 
 
 def _missing_column(e) -> q.ApiError:
-    return q.ApiError(503, "Creative formats are not set up yet (migration 204 is not applied)." if "format_code" in str(e) else "The Production board is not set up yet (migration 244 is not applied).")
+    return q.ApiError(503, "Creative formats are not set up yet (migration 204 is not applied)." if "format_code" in str(e) else "The Production board is not set up yet (migration 245 is not applied).")
 
 
 def _author(user: str | None) -> str:
@@ -971,7 +971,7 @@ def post_comment(conn, aid: int, body: dict, user: str | None = None, vendor: st
             c = _add_comment(w, aid, "vendor" if vendor is not None else "app", vendor or _author(user), text)
             _log(w, aid, f"vendor:{vendor}" if vendor is not None else user, "comment_added", None, None, _excerpt(text))
     except psycopg.errors.UndefinedTable:
-        raise q.ApiError(503, "Comments are not set up yet (migration 244 is not applied).") from None
+        raise q.ApiError(503, "Comments are not set up yet (migration 245 is not applied).") from None
     return {"comment": c}
 
 
@@ -1004,7 +1004,7 @@ def set_capacity(body: dict, user: str | None = None) -> dict:
             r = w.execute("""INSERT INTO creative_priorities_vendor_capacity (vendor, per_week) VALUES (%s, %s)
                              ON CONFLICT (vendor) DO UPDATE SET per_week = EXCLUDED.per_week, updated_at = now() RETURNING vendor, per_week, updated_at""", (v, n)).fetchone()
     except psycopg.errors.UndefinedTable:
-        raise q.ApiError(503, "Vendor capacity is not set up yet (migration 244 is not applied).") from None
+        raise q.ApiError(503, "Vendor capacity is not set up yet (migration 245 is not applied).") from None
     return {"vendor": r["vendor"], "per_week": r["per_week"], "updated_at": _iso(r["updated_at"])}
 
 

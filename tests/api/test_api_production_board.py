@@ -1,4 +1,4 @@
-"""The Production board API (migration 244, app/priorities_assign.py): stored status and the one set_status writer, the transition rules for app users and vendors, drag-and-drop moves and their
+"""The Production board API (migration 245, app/priorities_assign.py): stored status and the one set_status writer, the transition rules for app users and vendors, drag-and-drop moves and their
 position maths, due dates and priority, comments, vendor capacity, the board payload, the Creative Tracker pull-forward and the backfill. Vendors never see the internal note, the history or another vendor's data."""
 import datetime as dt
 import itertools
@@ -559,7 +559,7 @@ def test_set_status_is_the_only_writer_of_status():
 
 
 def test_backfill_sql_maps_the_old_stage_and_the_friday_and_position(pg):
-    sql = (ROOT / "migrations" / "244_production_board.sql").read_text()
+    sql = (ROOT / "migrations" / "245_production_board.sql").read_text()
     stmts = re.findall(r"^(UPDATE creative_priorities_assignments.*?;)\s*$", sql, re.S | re.M)
     assert len(stmts) == 2
     pg.execute("DELETE FROM creative_priorities_assignments")

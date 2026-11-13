@@ -3,7 +3,7 @@
 What it does: for every open assignment on the Production board (creative_priorities_assignments, not dropped, not launched) it looks at the Creative Tracker rows linked to it (same link rules as the
 board: Concept ID, brief link, creative link) and, when they show a later step than the stored status, moves the card forward: tracker status 3 to 5 = Brief sent, 6 = In review, 7 = Ready to launch,
 8 or 9 = Launched. It never moves a card backward and never touches a dropped card. Every move goes through app.priorities_assign.set_status, the one writer of the status, and lands in the history
-(creative_priorities_assignment_events, kind status_changed, actor 'tracker'). If the board columns (migration 244) are not applied yet, the step logs one line and exits 0.
+(creative_priorities_assignment_events, kind status_changed, actor 'tracker'). If the board columns (migration 245) are not applied yet, the step logs one line and exits 0.
 Nothing is written to Google Sheets or Meta. Usage: python -m etl.production_status [--dry-run]"""
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def run(conn, dry_run: bool = False, log=db.log) -> dict:
     except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
         conn.rollback()
         stats["table_missing"] = True
-        log("  production_status: the board columns (migration 244) do not exist yet, nothing to do")
+        log("  production_status: the board columns (migration 245) do not exist yet, nothing to do")
         return stats
     log(f"  production_status: {stats['moved']} cards {'would move' if dry_run else 'moved'} forward from the Creative Tracker")
     return stats

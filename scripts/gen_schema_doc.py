@@ -50,7 +50,7 @@ MIGRATIONS = {"013": ROOT / "migrations" / "013_schema_comments_analytics.sql", 
               "206": ROOT / "migrations" / "206_klaviyo_metrics.sql", "207": ROOT / "migrations" / "207_landing_pages.sql",
               "210": ROOT / "migrations" / "210_shopify_orders.sql", "220": ROOT / "migrations" / "220_brain_mcp.sql", "221": ROOT / "migrations" / "221_brain_open_app.sql",
               "230": ROOT / "migrations" / "230_analytics_brain_views.sql", "240": ROOT / "migrations" / "240_meta_breakdowns.sql",
-              "242": ROOT / "migrations" / "242_meta_funnel_actions.sql", "243": ROOT / "migrations" / "243_assignment_events.sql", "244": ROOT / "migrations" / "244_production_board.sql"}
+              "242": ROOT / "migrations" / "242_meta_funnel_actions.sql", "243": ROOT / "migrations" / "243_assignment_events.sql", "245": ROOT / "migrations" / "245_production_board.sql"}
 # the Test to scale views (created by migration 015, after 013 runs on a fresh database): they and their comments live in migration 015
 # (migration 016 turned them into tables and added the placements tables; 015's own comment section is frozen history)
 LATE_STAGE_MOVES = {f"public.{n}{b}" for n in ("creative_stage_moves", "creative_scaling_placements") for b in ("", "_upstack_nc", "_upstack_all")}
@@ -86,7 +86,7 @@ LATE_FUNNEL = {"analytics.meta_ad_daily", "public.ad_daily", "public.meta_ad_lif
 LATE_BREAKDOWNS = {"public.meta_breakdown_daily", "public.meta_breakdown_coverage", "public.meta_breakdown_progress", "analytics.meta_breakdown_daily"}
 # the history of production assignments (created by migration 243): the table and its comments live in migration 243
 LATE_EVENTS = {"public.creative_priorities_assignment_events"}
-# the Production board (migration 244): its two new tables, and the assignments and events tables whose descriptions it extended (244 re-states their comments; 202 and 243 stay frozen history)
+# the Production board (migration 245): its two new tables, and the assignments and events tables whose descriptions it extended (245 re-states their comments; 202 and 243 stay frozen history)
 LATE_BOARD = {"public.creative_priorities_assignment_comments", "public.creative_priorities_vendor_capacity", "public.creative_priorities_assignments", "public.creative_priorities_assignment_events"}
 PROJ_GROUPS = {"proj_feeds", "proj_engine"}
 SCHEMAS = ("public", "analytics")
@@ -411,7 +411,7 @@ def scope_of(r: dict, d=None) -> str:
     if r["name"] in LATE_MANUAL:
         return "199"
     if r["name"] in LATE_BOARD:
-        return "244"
+        return "245"
     if r["name"] in LATE_ASSIGN:
         return "202"
     if r["name"] in LATE_LAUNCH:
@@ -512,7 +512,7 @@ def catalog_sql(d=None) -> str:
 
 def migration_text(which: str, model: dict, d=None) -> str:
     """013, 015 and 190 keep their hand-written DDL (everything above COMMENTS_MARKER) and get the comment section rewritten; 191 is comments only."""
-    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "242", "243", "244"):
+    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "242", "243", "245"):
         path = MIGRATIONS[which]
         if not path.exists():
             raise SystemExit(f"{path} must exist with its hand-written DDL and the comments marker before comments can be emitted")
@@ -584,7 +584,7 @@ def main(argv=None) -> int:
     g.add_argument("--write", action="store_true")
     g.add_argument("--check", action="store_true")
     g.add_argument("--problems", action="store_true")
-    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "242", "243", "244", "all"))
+    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "242", "243", "245", "all"))
     g.add_argument("--catalog-sql", action="store_true")
     g.add_argument("--emit-migration", choices=sorted(MIGRATIONS))
     g.add_argument("--verify-live", action="store_true")

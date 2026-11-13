@@ -7284,6 +7284,99 @@
    "examples": []
   },
   {
+   "name": "public.competitor_posts",
+   "schema": "public",
+   "relation": "competitor_posts",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "Non-Meta chatter about watched competitors and the category: Reddit posts (public subreddit RSS) and news headlines (Google News RSS) that mention a competitor_brands brand or a category term (beef organ supplement, bone marrow supplement ...). Read by the /competitors page next to the Meta ad snapshots.",
+   "grain": "one row per (source, url)",
+   "primary_key": [
+    "source",
+    "url"
+   ],
+   "foreign_keys": [],
+   "source": "etl.competitor_chatter: Google News RSS (one query per active brand plus category terms) and public subreddit RSS (/r/<sub>/new/.rss), filtered to brand / category mentions, spam dropped, last 14 days per run",
+   "refresh": "by hand / when scheduled: python -m etl.competitor_chatter [--days 14]; idempotent upsert, older rows are kept as history",
+   "coverage": "from 2026-11-12; only what the public feeds still show (Reddit RSS lists the newest 100 posts per subreddit)",
+   "caveats": [
+    "Reddit search is blocked for logged-out clients, so Reddit rows come only from the newest posts of a short subreddit list that mention a brand or category term; a quiet week or a Reddit block (it blocks datacenter IPs and allows about 1 request a minute) shows few or no rows.",
+    "score and num_comments are 0 for every row: the RSS feeds carry neither. Do not read 0 as no engagement.",
+    "google_news summary holds the publisher name; the headline link is a Google News redirect. Brand is the brand searched or mentioned in the headline; NULL = category-level hit."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "week_start",
+     "type": "date",
+     "nullable": false,
+     "description": "Monday (Pacific) of the week the item was posted."
+    },
+    {
+     "name": "source",
+     "type": "text",
+     "nullable": false,
+     "description": "'google_news' | 'reddit'."
+    },
+    {
+     "name": "brand",
+     "type": "text",
+     "nullable": true,
+     "description": "competitor_brands.brand the item mentions, NULL for a category-term hit."
+    },
+    {
+     "name": "title",
+     "type": "text",
+     "nullable": false,
+     "description": "Post title / headline (publisher suffix removed)."
+    },
+    {
+     "name": "url",
+     "type": "text",
+     "nullable": false,
+     "description": "Link (primary key with source); Google News links are redirects."
+    },
+    {
+     "name": "subreddit",
+     "type": "text",
+     "nullable": true,
+     "description": "Subreddit name for reddit rows, else NULL."
+    },
+    {
+     "name": "score",
+     "type": "integer",
+     "nullable": false,
+     "description": "Upvotes: always 0 (not in the RSS feeds)."
+    },
+    {
+     "name": "num_comments",
+     "type": "integer",
+     "nullable": false,
+     "description": "Comment count: always 0 (not in the RSS feeds)."
+    },
+    {
+     "name": "posted_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the item was posted / published."
+    },
+    {
+     "name": "summary",
+     "type": "text",
+     "nullable": true,
+     "description": "Reddit: first 400 characters of the post text; Google News: the publisher name."
+    },
+    {
+     "name": "seen_on",
+     "type": "date",
+     "nullable": false,
+     "description": "Date (Pacific) of the run that last saw the item."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.creative_priorities_snapshots",
    "schema": "public",
    "relation": "creative_priorities_snapshots",
@@ -7599,7 +7692,7 @@
    "refresh": "on demand (a person assigns, adds links, marks ready or launched, drops; a vendor adds a creative link and a note)",
    "coverage": "from the day the migration was deployed",
    "caveats": [
-    "The board column is the stored status (migration 244); the older stage field is derived from it for compatibility. A linked Creative Tracker row can pull the status forward, never back.",
+    "The board column is the stored status (migration 245); the older stage field is derived from it for compatibility. A linked Creative Tracker row can pull the status forward, never back.",
     "Nothing here is written to the Google Sheet or Meta. The tag text is copied from the row at assign time, so history survives a taxonomy reload; line_id has no foreign key on purpose.",
     "created_by and updated_by hold the signed-in user, or vendor:<name> for a write made on a vendor link page."
    ],
@@ -7808,7 +7901,7 @@
      "name": "status_changed_at",
      "type": "timestamp with time zone",
      "nullable": true,
-     "description": "When status last changed (backfilled from the stage timestamps for rows older than migration 244)."
+     "description": "When status last changed (backfilled from the stage timestamps for rows older than migration 245)."
     }
    ],
    "examples": []
@@ -7873,7 +7966,7 @@
      "name": "kind",
      "type": "text",
      "nullable": false,
-     "description": "What changed: assigned, brief_added, brief_removed, creative_added, creative_removed, ready, ready_cleared, launched, launched_cleared, dropped, restored, vendor, week or format (migration 243), plus status_changed, due_changed, priority_changed and comment_added (migration 244)."
+     "description": "What changed: assigned, brief_added, brief_removed, creative_added, creative_removed, ready, ready_cleared, launched, launched_cleared, dropped, restored, vendor, week or format (migration 243), plus status_changed, due_changed, priority_changed and comment_added (migration 245)."
     },
     {
      "name": "stage_before",
@@ -7920,7 +8013,7 @@
    ],
    "source": "app/priorities_assign.py, from the Production page (author_kind app) and the vendor link page (author_kind vendor)",
    "refresh": "on every comment",
-   "coverage": "from migration 244",
+   "coverage": "from migration 245",
    "caveats": [
     "A vendor sees only the comments of their own assignments; the internal note (creative_priorities_assignments.note) is not a comment and is never shown to a vendor."
    ],
@@ -7978,7 +8071,7 @@
     "vendor"
    ],
    "foreign_keys": [],
-   "source": "seeded by migration 244 at 10 per vendor; edited on the Production page (PUT /api/priorities/vendor-capacity)",
+   "source": "seeded by migration 245 at 10 per vendor; edited on the Production page (PUT /api/priorities/vendor-capacity)",
    "refresh": "on demand",
    "coverage": "the nine vendors",
    "caveats": [

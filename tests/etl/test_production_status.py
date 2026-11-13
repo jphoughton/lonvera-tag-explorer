@@ -1,5 +1,5 @@
 """etl.production_status: open production cards move forward to what their linked Creative Tracker rows show, through the one set_status writer; never backward, never dropped or launched cards;
-every move lands in the history as actor 'tracker'; idempotent; a no-op before migration 244."""
+every move lands in the history as actor 'tracker'; idempotent; a no-op before migration 245."""
 import datetime as dt
 
 import pytest
@@ -97,4 +97,4 @@ def test_no_open_cards_and_missing_columns_are_noops(conn, monkeypatch):
     monkeypatch.setattr(pas, "pull_forward", boom)
     msgs = []
     st = run(conn, log=msgs.append)
-    assert st["table_missing"] and st["moved"] == 0 and "migration 244" in msgs[0]
+    assert st["table_missing"] and st["moved"] == 0 and "migration 245" in msgs[0]

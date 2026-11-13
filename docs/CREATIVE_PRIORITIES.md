@@ -192,7 +192,7 @@ The usual write protections still apply to key requests: JSON bodies only, a req
 The launch to Meta feature (dark by default, everything created paused) is described in [PRODUCTION_LAUNCH.md](PRODUCTION_LAUNCH.md), including the checklist to switch it on.
 
 
-## Production board API (migration 244)
+## Production board API (migration 245)
 
 The board column is the stored `creative_priorities_assignments.status`: assigned, brief_sent, in_production, in_review, ready, launched (a dropped card keeps its last status; `dropped_at` hides it in an archived lane). Every writer goes through `set_status` in `app/priorities_assign.py` (PATCH, move, vendor page, the old Ready / Launched flags, the nightly `etl.production_status`), which keeps `ready_at` / `launched_at` in step and writes a `status_changed` row to the history. The older `stage` field is still sent, derived from the status. The Creative Tracker can pull a card forward (3 to 5 brief sent, 6 in review, 7 ready, 8 and 9 launched), never back; it is applied when a card is read, when links change, and nightly.
 
