@@ -13,7 +13,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.routing import IntegerConverter
 
-from . import api, auth, brain_mcp, db, preview, priorities_launch_api, projection, respcache
+from . import api, auth, brain_mcp, competitors_media, db, preview, priorities_launch_api, projection, respcache
 from .config import load_config
 from .queries import ApiError
 
@@ -79,6 +79,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.before_request(lambda: respcache.lookup(cache))         # after the auth guard (registered in init_auth): a cached answer is never served unauthenticated
     app.register_blueprint(api.bp)
     app.register_blueprint(priorities_launch_api.bp)
+    app.register_blueprint(competitors_media.bp)
     projection.register(app)
     app.register_blueprint(brain_mcp.bp)
     _register_pages(app)
@@ -159,7 +160,7 @@ def _register_headers(app: Flask) -> None:
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers.setdefault("Referrer-Policy", "same-origin")
-        if request.path.startswith("/api/"):
+        if request.path.startswith("/api/") and not request.path.startswith("/api/competitors/media/"):      # thumbnails set their own private, 1-day Cache-Control
             resp.headers["Cache-Control"] = "no-store"
         elif request.path.startswith("/static/") and resp.status_code in (200, 304):
             resp.headers["Cache-Control"] = "no-cache"          # ES modules are not content-hashed: always revalidate (ETag / Last-Modified still apply)

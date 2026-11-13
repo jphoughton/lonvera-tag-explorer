@@ -140,3 +140,136 @@ def test_chatter_included_only_when_table_exists(client, seeded, pg, monkeypatch
 def test_login_required(anon):
     assert anon.get("/api/competitors").status_code == 401
     assert anon.get("/api/competitors/Acme").status_code == 401
+
+
+# ---------- visual page: pulse, spotlight, angle chart, tiles, gallery, thumbnails ----------
+BR5 = (("Acme", "capsules"), ("Bolt", "joint"), ("Cedar", "liver"), ("Dune", "hair"), ("Ember", "chews"))
+MANY = ([ad(W1, f"x{n}", b, 20 + n) for n, b in enumerate(("Acme", "Acme", "Acme", "Bolt", "Cedar", "Dune", "Ember", "Ember"), 1)]
+        + [ad(W2, f"x{n}", b, 27 + n) for n, b in enumerate(("Acme", "Acme", "Acme", "Bolt", "Cedar", "Dune", "Ember", "Ember"), 1)]
+        + [ad(W2, f"n{n}", "Ember", 1, "image" if n % 2 else "video", url="ember.com/new") for n in range(4)]            # Ember surges: 4 new ads on 6 running; Cedar too (3 new on 5)
+        + [ad(W2, "old1", "Cedar", 400, "video"), ad(W2, "old2", "Cedar", 390, "video"), ad(W2, "old3", "Cedar", 380, "video")])
+MCLS = [("Bolt:x4", "Bolt", "Joints", "Knee pain", True, "Marrow for joints", "boneflex"), ("Dune:x6", "Dune", "Hair", "Shedding", False, None, "beef-liver"), ("Acme:x1", "Acme", "Hair", "Shedding", False, None, "beef-liver"),
+        ("Acme:x2", "Acme", None, None, False, None, "none")]
+
+
+@pytest.fixture()
+def media():
+    """The thumbnail table (made by the thumbnail change; created here only when that migration is not applied yet) and a helper that stores rows."""
+    def put(pg, ids):
+        pg.execute("DELETE FROM competitor_ad_media")
+        for i in ids:
+            pg.execute("INSERT INTO competitor_ad_media (library_id, kind, content_type, width, height, bytes, fetched_at) VALUES (%s,'image','image/jpeg',600,750,%s,now())", (i, b"\xff\xd8thumb"))
+        pg.commit()
+    yield put
+
+
+@pytest.fixture()
+def media_table(pg):
+    made = not pg.execute("SELECT to_regclass('public.competitor_ad_media') IS NOT NULL").fetchone()[0]
+    if made:
+        pg.execute("CREATE TABLE competitor_ad_media (library_id text PRIMARY KEY, kind text NOT NULL, content_type text, width int, height int, bytes bytea, fetched_at timestamptz NOT NULL DEFAULT now())")
+        pg.commit()
+    yield
+    pg.execute("DELETE FROM competitor_ad_media"); pg.commit()
+    if made:
+        pg.execute("DROP TABLE competitor_ad_media"); pg.commit()
+
+
+def test_pulse_tiles_and_chart(client, seeded):
+    seeded(MANY, brands=BR5, classes=MCLS)
+    d = client.get("/api/competitors").get_json()
+    p = d["pulse"]
+    assert p["brands"] == 5 and p["active_ads"] == sum(b["active_ads"] for b in d["brands"]) and p["new_ads"] == 7                       # Ember 4 + Cedar 3
+    assert p["longest_days"] == 400 and p["longest_brand"] == "Cedar" and p["longest_ad_library_url"].endswith("?id=old1")
+    ember = by(d)["Ember"]
+    assert ember["top_angle"] is None and len(ember["thumbs"]) == 3 and all(t["thumb_url"] is None for t in ember["thumbs"]) and ember["thumbs"][0]["hook"]
+    assert by(d)["Bolt"]["top_angle"] == {"label": "Knee pain", "cluster": "Joints", "ads": 1, "is_new_angle": True}
+    chart = d["angle_chart"]
+    assert [c["label"] for c in chart] == ["Shedding", "Knee pain"] or [c["label"] for c in chart] == ["Knee pain", "Shedding"]
+    assert next(c for c in chart if c["label"] == "Knee pain")["is_new_angle"] is True and next(c for c in chart if c["label"] == "Shedding")["brands"] == 2
+    assert len(chart) <= 10 and all(c["label"] != "Out of category" for c in chart)       # out-of-category and unclassified ads are not angles
+    assert len(client.get("/api/competitors").data) < 60000                              # small payload: no 1,500-row arrays
+
+
+def test_spotlight_selection_rules(client, seeded):
+    seeded(MANY, brands=BR5, classes=MCLS)
+    sp = client.get("/api/competitors").get_json()["spotlight"]
+    assert 8 <= len(sp) <= 12 and len({a["library_id"] for a in sp}) == len(sp)
+    per = {}
+    for a in sp:
+        per[a["brand"]] = per.get(a["brand"], 0) + 1
+    assert max(per.values()) <= 2                                                      # never more than two ads per brand
+    reasons = {a["reason"] for a in sp}
+    assert {"proven", "new_angle", "surge"} <= reasons <= {"proven", "new_angle", "surge", "longest"}
+    proven = [a for a in sp if a["reason"] == "proven"]
+    assert all(a["days_running"] >= 30 and a["badge"] == f"{a['days_running']} days running" for a in proven)
+    assert max(a["days_running"] for a in sp) == 400
+    na = [a for a in sp if a["reason"] == "new_angle"]
+    assert na and all(a["is_new_angle"] and a["badge"] == "Angle Lonvera does not run" and a["brand"] == "Bolt" for a in na)
+    sg = [a for a in sp if a["reason"] == "surge"]
+    assert sorted(a["brand"] for a in sg) == ["Cedar", "Ember"] and all(a["badge"] == "New this week" for a in sg)         # one card per surging brand
+    a0 = sp[0]
+    assert {"library_id", "brand", "hook", "headline", "primary_text", "format", "days_running", "landing_url", "landing_domain", "thumb_url", "ad_library_url", "angle", "badge", "reason"} <= set(a0)
+    assert a0["ad_library_url"] == f"https://www.facebook.com/ads/library/?id={a0['library_id']}" and a0["primary_text"].startswith("hook ")
+
+
+def test_spotlight_first_snapshot_has_no_surge_and_no_new(client, seeded):
+    seeded([r for r in MANY if r[0] == W1], brands=BR5, classes=MCLS)
+    d = client.get("/api/competitors").get_json()
+    assert d["first_snapshot"] is True and d["pulse"]["new_ads"] is None
+    assert all(a["reason"] != "surge" for a in d["spotlight"])
+    assert all(sum(1 for a in d["spotlight"] if a["brand"] == b) <= 2 for b in {a["brand"] for a in d["spotlight"]})
+
+
+def test_empty_snapshot_visual_keys(client, seeded):
+    seeded([])
+    d = client.get("/api/competitors").get_json()
+    assert d["spotlight"] == [] and d["angle_chart"] == [] and d["pulse"]["brands"] == 0 and d["pulse"]["new_ads"] is None
+
+
+def test_thumb_url_null_without_media_and_present_with_it(client, seeded, pg, media_table, media):
+    seeded(MANY, brands=BR5, classes=MCLS)
+    d = client.get("/api/competitors").get_json()                                           # table exists but is empty
+    assert all(a["thumb_url"] is None for a in d["spotlight"]) and all(t["thumb_url"] is None for b in d["brands"] for t in b["thumbs"])
+    media(pg, ["old1", "x1"])
+    d = client.get("/api/competitors").get_json()
+    sp = {a["library_id"]: a for a in d["spotlight"]}
+    assert sp["old1"]["thumb_url"] == "/api/competitors/media/old1"
+    assert all(a["thumb_url"] is None for lid, a in sp.items() if lid not in ("old1", "x1"))
+    assert by(d)["Cedar"]["thumbs"][0] == {"library_id": "old1", "thumb_url": "/api/competitors/media/old1", "hook": "hook old1", "format": "video"}      # tiles lead with ads that have an image
+    det = client.get("/api/competitors/Cedar").get_json()
+    assert {g["library_id"]: g["thumb_url"] for g in det["gallery"]}["old1"] == "/api/competitors/media/old1"
+
+
+def test_no_media_table_does_not_error(client, seeded, monkeypatch):
+    seeded(MANY, brands=BR5, classes=MCLS)
+    monkeypatch.setattr("app.competitors._media_table", lambda conn: False)                  # as on a database without the thumbnail migration
+    d = client.get("/api/competitors").get_json()
+    assert d["spotlight"] and all(a["thumb_url"] is None for a in d["spotlight"])
+    assert all(g["thumb_url"] is None for g in client.get("/api/competitors/Cedar").get_json()["gallery"])
+
+
+def test_spotlight_and_chart_respect_format_and_week(client, seeded):
+    seeded(MANY, brands=BR5, classes=MCLS)
+    v = client.get("/api/competitors?format=video").get_json()
+    i = client.get("/api/competitors?format=image").get_json()
+    assert v["spotlight"] and all(a["format"] == "video" for a in v["spotlight"]) and all(a["format"] == "image" for a in i["spotlight"])
+    assert v["pulse"]["active_ads"] == sum(b["active_ads"] for b in v["brands"]) and v["pulse"]["active_ads"] + i["pulse"]["active_ads"] == client.get("/api/competitors").get_json()["pulse"]["active_ads"]
+    older = client.get(f"/api/competitors?week={W1}").get_json()
+    assert older["first_snapshot"] is True and all(a["reason"] != "surge" for a in older["spotlight"]) and older["pulse"]["active_ads"] == 8
+    assert all(a["days_running"] < 400 for a in older["spotlight"])
+
+
+def test_gallery_is_curated_deduped_and_filtered(client, seeded):
+    rows = [ad(W1, f"g{n}", "Acme", 100 + n) for n in range(20)] + [ad(W2, f"g{n}", "Acme", 107 + n) for n in range(20)] + [ad(W2, f"w{n}", "Acme", 1, "image") for n in range(6)] + [ad(W2, "dup", "Acme", 300, copy="g0")]
+    seeded(rows, brands=(("Acme", "c"),))
+    det = client.get("/api/competitors/Acme").get_json()
+    g = det["gallery"]
+    assert len(g) == 12 and len({x["library_id"] for x in g}) == 12 and {"dup", "g0"} - {x["library_id"] for x in g} == {"g0"}          # dup repeats g0's copy and runs longer: one concept, listed once as dup
+    assert [x["reason"] for x in g].count("new") == 4 and sum(1 for x in g if x["badge"] == "New this week") == 4
+    assert all(x["badge"].endswith("days running") for x in g if x["reason"] == "longest")
+    assert {"primary_text", "headline", "hook", "landing_url", "thumb_url", "ad_library_url", "days_running", "format", "angle", "is_new_angle"} <= set(g[0])
+    only = client.get("/api/competitors/Acme?format=image").get_json()["gallery"]
+    assert only and all(x["format"] == "image" for x in only) and len(only) <= 12
+    one = client.get(f"/api/competitors/Acme?week={W1}").get_json()
+    assert len(one["gallery"]) == 12 and all(x["reason"] == "longest" for x in one["gallery"])                               # first snapshot: no new ads, all slots go to the longest

@@ -15,6 +15,8 @@ from . import queries as q
 LIBRARY = "https://www.facebook.com/ads/library/"
 FORMATS = ("video", "image")
 TOP_ADS = 8
+GALLERY_MAX = 12                   # curated ads on a brand's detail: its longest-running plus up to GALLERY_NEW from this week
+GALLERY_NEW = 4
 NEW_ADS = 8
 MAX_FACTS = 8
 BIG_LAUNCH = 10                    # a brand "launched many new ads" from this many
@@ -106,18 +108,24 @@ def _chatter(conn, week: str, brand: str | None, limit: int) -> list[dict]:
              "posted_at": r["posted_at"].isoformat() if r["posted_at"] else None, "summary": r["summary"]} for r in conn.execute(sql, params).fetchall()]
 
 
-ADS_SQL = """
-SELECT a.library_id, a.brand, a.start_date, a.days_running, a.variant_count, a.format, a.hook, a.headline, a.landing_url, a.concept_key, a.carried_from,
-       c.cluster, c.pain_point, c.mapped_product, c.is_new_angle, c.new_angle_label
-FROM competitor_ads a LEFT JOIN competitor_concept_class c ON c.concept_key = a.concept_key
-WHERE a.week_start = %s
-"""
+def _media_table(conn) -> bool:
+    """True when the thumbnail table (competitor_ad_media) exists. Absent or empty means every thumb_url is null."""
+    return conn.execute("SELECT to_regclass('public.competitor_ad_media') IS NOT NULL AS ok").fetchone()["ok"]
+
+
+def _ads_sql(media: bool) -> str:
+    return ("SELECT a.library_id, a.brand, a.start_date, a.days_running, a.variant_count, a.format, a.hook, a.headline, a.primary_text, a.landing_url, a.concept_key, a.carried_from,\n"
+            "       c.cluster, c.pain_point, c.mapped_product, c.is_new_angle, c.new_angle_label, "
+            + ("(m.library_id IS NOT NULL) AS has_thumb\n" if media else "false AS has_thumb\n")
+            + "FROM competitor_ads a LEFT JOIN competitor_concept_class c ON c.concept_key = a.concept_key\n"
+            + ("LEFT JOIN competitor_ad_media m ON m.library_id = a.library_id\n" if media else "")
+            + "WHERE a.week_start = %s\n")
 
 
 def _ads(conn, week: str | None, fmt: str | None, brand: str | None = None) -> list[dict]:
     if not week:
         return []
-    rows = conn.execute(ADS_SQL + (" AND a.brand = %s" if brand else ""), (week, brand) if brand else (week,)).fetchall()
+    rows = conn.execute(_ads_sql(_media_table(conn)) + (" AND a.brand = %s" if brand else ""), (week, brand) if brand else (week,)).fetchall()
     return [r for r in rows if _fmt_ok(r, fmt)]
 
 
@@ -161,8 +169,43 @@ def _summaries(brands: list[dict], cur: list[dict], prev: list[dict] | None, lat
             "video_share": round(sum(1 for a in ads if a["format"] == "video") / len(ads), 3) if ads else None,
             "top_landing_domain": doms.most_common(1)[0][0] if doms else None,
             "is_stale": stale, "last_ok_at": _iso(b["last_ok_at"]), "last_error": b["last_error"] if latest else None,
+            "thumbs": _thumbs(ads), "top_angle": _top_angle(ads),
         })
     return out
+
+
+def media_url(library_id: str) -> str:
+    return f"/api/competitors/media/{quote(str(library_id), safe='')}"
+
+
+def _thumb(a: dict) -> str | None:
+    return media_url(a["library_id"]) if a.get("has_thumb") else None
+
+
+def _angle_of(a: dict) -> tuple | None:
+    """(cluster, pain_point) for an ad that is classified into our taxonomy, else None (out of category or not classified yet)."""
+    if a.get("mapped_product") == "none" or not (a.get("pain_point") or a.get("cluster")):
+        return None
+    return (a.get("cluster"), a.get("pain_point"))
+
+
+def _top_angle(ads: list[dict]) -> dict | None:
+    g: dict[tuple, dict] = {}
+    for a in ads:
+        k = _angle_of(a)
+        if k is None:
+            continue
+        e = g.setdefault(k, {"label": k[1] or k[0], "cluster": k[0], "ads": 0, "is_new_angle": False})
+        e["ads"] += 1
+        e["is_new_angle"] = e["is_new_angle"] or bool(a.get("is_new_angle"))
+    return sorted(g.values(), key=lambda e: (-e["ads"], e["label"]))[0] if g else None
+
+
+def _thumbs(ads: list[dict]) -> list[dict]:
+    """Up to three of a brand's longest-running distinct ads for the tile strip, ads with a stored image first."""
+    lo = _longest(ads)
+    pick = ([a for a in lo if a.get("has_thumb")] + [a for a in lo if not a.get("has_thumb")])[:3]
+    return [{"library_id": a["library_id"], "thumb_url": _thumb(a), "hook": (a["hook"] or a["headline"] or "")[:90], "format": a["format"]} for a in pick]
 
 
 def _dedupe(ads: list[dict]) -> list[dict]:
@@ -173,6 +216,18 @@ def _dedupe(ads: list[dict]) -> list[dict]:
         seen.add(a["concept_key"])
         out.append(a)
     return out
+
+
+def _card(a: dict, badge: str | None = None, reason: str | None = None) -> dict:
+    """An ad as the cards and the lightbox show it: copy, landing page, links and (only when stored) a thumbnail."""
+    return {"library_id": a["library_id"], "brand": a["brand"], "hook": a["hook"] or a["headline"] or "", "headline": a.get("headline"), "primary_text": (a.get("primary_text") or "")[:700],
+            "format": a["format"], "days_running": a["days_running"], "variant_count": a["variant_count"], "landing_url": a.get("landing_url"), "landing_domain": domain_of(a.get("landing_url")),
+            "thumb_url": _thumb(a), "ad_library_url": ad_url(a["library_id"]), "angle": " / ".join(x for x in (a.get("cluster"), a.get("pain_point")) if x) or None,
+            "is_new_angle": bool(a.get("is_new_angle")), "new_angle_label": a.get("new_angle_label"), "badge": badge, "reason": reason}
+
+
+def _days_badge(a: dict) -> str | None:
+    return f"{a['days_running']} days running" if a.get("days_running") is not None else None
 
 
 def _ad_row(a: dict) -> dict:
@@ -219,15 +274,103 @@ def _facts(summ: list[dict], cur: list[dict], prev: list[dict] | None, first: bo
     return facts[:MAX_FACTS]
 
 
+SPOT_MAX = 12
+SPOT_MIN = 8
+SPOT_PROVEN = 5            # longest-running proven ads (at most two per brand)
+SPOT_ANGLE = 4
+SPOT_SURGE_BRANDS = 3
+PROVEN_DAYS = 30           # "proven" = kept on for at least this many days
+SURGE_NEW = 3              # a brand "surged" with at least this many new ads and at least SURGE_SHARE of what it runs now
+SURGE_SHARE = 0.3
+
+
+def _spotlight(summ: list[dict], cur: list[dict], prev: list[dict] | None, first: bool) -> list[dict]:
+    """8 to 12 ads worth a look: proven long-runners (max 2 per brand), ads running an angle Lonvera does not run, new ads from brands that surged. Interleaved so the rail mixes the three."""
+    if not cur:
+        return []
+    prev_ids = {a["library_id"] for a in prev or []}
+    longest = _longest(cur)
+    seen: set[str] = set()
+    per_brand: collections.Counter = collections.Counter()
+
+    def take(a, reason, badge, out):
+        if a["library_id"] in seen or per_brand[a["brand"]] >= 2:
+            return False
+        seen.add(a["library_id"])
+        per_brand[a["brand"]] += 1
+        out.append(_card(a, badge, reason))
+        return True
+
+    # surge first, then angle, then proven: each claims its slots before the long-runners fill the per-brand cap of two
+    surge: list[dict] = []
+    if not first:
+        hot = sorted((s for s in summ if (s["new_ads"] or 0) >= SURGE_NEW and s["new_ads"] >= SURGE_SHARE * s["active_ads"] and not s["is_stale"]), key=lambda s: (-s["new_ads"], s["brand"]))[:SPOT_SURGE_BRANDS]
+        for s in hot:
+            fresh = _dedupe(sorted((a for a in cur if a["brand"] == s["brand"] and a["library_id"] not in prev_ids), key=lambda a: (-(a["variant_count"] or 1), a["library_id"])))
+            for a in fresh[:1]:                                         # one card per surging brand: the new ad with the most copies behind it
+                take(a, "surge", "New this week", surge)
+    angle: list[dict] = []
+    cands = sorted((a for a in longest if a["is_new_angle"]), key=lambda a: (a["library_id"] in prev_ids or first, -(a["days_running"] or 0), a["library_id"]))
+    used_brands: set[str] = set()
+    for a in cands:
+        if len(angle) >= SPOT_ANGLE:
+            break
+        if a["brand"] not in used_brands and take(a, "new_angle", "Angle Lonvera does not run", angle):
+            used_brands.add(a["brand"])
+    proven: list[dict] = []
+    for a in longest:
+        if len(proven) >= SPOT_PROVEN:
+            break
+        if a["days_running"] is not None and a["days_running"] >= PROVEN_DAYS:
+            take(a, "proven", _days_badge(a), proven)
+    out: list[dict] = []
+    for i in range(max(len(proven), len(angle), len(surge))):
+        for grp in (proven, angle, surge):
+            if i < len(grp):
+                out.append(grp[i])
+    for a in longest:                                                   # top up with more long-runners until the rail is worth scrolling
+        if len(out) >= SPOT_MIN:
+            break
+        take(a, "longest", _days_badge(a), out)
+    return out[:SPOT_MAX]
+
+
+def _angle_chart(cur: list[dict]) -> list[dict]:
+    g: dict[tuple, dict] = {}
+    for a in cur:
+        k = _angle_of(a)
+        if k is None:
+            continue
+        e = g.setdefault(k, {"label": k[1] or k[0], "cluster": k[0], "pain_point": k[1], "ads": 0, "brands": set(), "is_new_angle": False, "new_angle_label": None})
+        e["ads"] += 1
+        e["brands"].add(a["brand"])
+        if a["is_new_angle"]:
+            e["is_new_angle"], e["new_angle_label"] = True, a["new_angle_label"]
+    rows = sorted(g.values(), key=lambda e: (-e["ads"], e["label"]))[:10]
+    return [{**e, "brands": len(e["brands"])} for e in rows]
+
+
+def _pulse(summ: list[dict], cur: list[dict], first: bool) -> dict:
+    lo = [a for a in _longest(cur) if a["days_running"] is not None][:1]
+    news = [s["new_ads"] for s in summ if s["new_ads"] is not None]
+    return {"brands": len(summ), "active_ads": sum(s["active_ads"] for s in summ), "new_ads": (None if first or not news else sum(news)),
+            "longest_days": lo[0]["days_running"] if lo else None, "longest_brand": lo[0]["brand"] if lo else None,
+            "longest_ad_library_url": ad_url(lo[0]["library_id"]) if lo else None}
+
+
 def payload_from(weeks: list[str], sel: str | None, prior: str | None, fmt: str | None, brands: list[dict], cur: list[dict], prev: list[dict] | None) -> dict:
     """The /api/competitors body from already-read rows (pure: the UI mock server uses it too)."""
-    out = {"weeks": weeks, "week": sel, "prior_week": prior, "format": fmt or "all", "first_snapshot": bool(sel) and prior is None, "caveats": CAVEATS, "brands": [], "changes": [], "notice": None}
+    out = {"weeks": weeks, "week": sel, "prior_week": prior, "format": fmt or "all", "first_snapshot": bool(sel) and prior is None, "caveats": CAVEATS, "brands": [], "changes": [], "notice": None,
+           "pulse": {"brands": 0, "active_ads": 0, "new_ads": None, "longest_days": None, "longest_brand": None, "longest_ad_library_url": None}, "spotlight": [], "angle_chart": []}
     if not sel:
         out["notice"] = "No competitor snapshot has been stored yet. The first one is written on a Sunday."
         return out
     summ = _summaries(brands, cur, prev, sel == weeks[0])
     out["brands"] = summ
     out["changes"] = _facts(summ, cur, prev, prior is None)
+    out["pulse"] = _pulse(summ, cur, prior is None)
+    out["spotlight"] = _spotlight(summ, cur, prev, prior is None)
+    out["angle_chart"] = _angle_chart(cur)
     if prior is None:
         out["notice"] = "First snapshot: changes against the week before start next week."
     return out
@@ -246,16 +389,21 @@ def detail_from(b: dict, sel: str | None, prior: str | None, fmt: str | None, cu
     """The /api/competitors/<brand> body from already-read rows (pure)."""
     phrase = (b["search_phrases"] or [b["brand"]])[0]
     out = {"brand": b["brand"], "product_type": b["product_type"], "week": sel, "prior_week": prior, "format": fmt or "all", "first_snapshot": bool(sel) and prior is None,
-           "brand_ad_library_url": search_url(phrase), "longest_running": [], "new_this_week": [], "angles": [], "landing_pages": [], "caveats": CAVEATS[1:2]}
+           "brand_ad_library_url": search_url(phrase), "gallery": [], "longest_running": [], "new_this_week": [], "angles": [], "landing_pages": [], "caveats": CAVEATS[1:2]}
     if not sel:
         return out
     out["longest_running"] = [_ad_row(a) for a in _longest(cur)[:TOP_ADS]]
+    fresh_cards: list[dict] = []
     if prev:
         pids = {a["library_id"] for a in prev}
         fresh = [a for a in cur if a["library_id"] not in pids]
         fresh.sort(key=lambda a: (-(a["variant_count"] or 1), a["days_running"] if a["days_running"] is not None else 10**6, a["library_id"]))
         out["new_this_week"] = [_ad_row(a) for a in _dedupe(fresh)[:NEW_ADS]]
         out["new_count"] = len(fresh)
+        fresh_cards = _dedupe(fresh)[:GALLERY_NEW]
+    fresh_keys = {a["concept_key"] for a in fresh_cards}
+    old = [a for a in _longest(cur) if a["concept_key"] not in fresh_keys][:GALLERY_MAX - len(fresh_cards)]
+    out["gallery"] = [_card(a, _days_badge(a), "longest") for a in old] + [_card(a, "New this week", "new") for a in fresh_cards]
     angles: dict[tuple, dict] = {}
     for a in cur:
         if a["mapped_product"] == "none":

@@ -7377,6 +7377,74 @@
    "examples": []
   },
   {
+   "name": "public.competitor_ad_media",
+   "schema": "public",
+   "relation": "competitor_ad_media",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "Creative thumbnails of the watched competitors' Meta ads (the image, or the poster frame of a video) so the /competitors page can show what the ads look like. Bytes are stored because the Ad Library image links are signed and expire within days.",
+   "grain": "one row per Meta Ad Library ID (joins to competitor_ads.library_id)",
+   "primary_key": [
+    "library_id"
+   ],
+   "foreign_keys": [],
+   "source": "etl.competitor_ads: downloaded from the public Ad Library at scrape time for a curated slice per brand (top 12 longest-running distinct concepts + up to 8 new this week, at most 400 per run), or by --media-backfill for ads already stored; re-encoded to JPEG, at most 480 px wide and 150 KB",
+   "refresh": "weekly with etl.competitor_ads (Sundays Pacific); python -m etl.competitor_ads --media-backfill fills ads already stored; rows older than 60 days that are not in the latest week are deleted",
+   "coverage": "from 2026-11-12; only the curated slice per brand, not every ad in competitor_ads",
+   "caveats": [
+    "Not every competitor_ads row has media: only the curated slice, and only when the card showed an image and the download worked. No row = no thumbnail, not a missing ad.",
+    "Served by GET /api/competitors/media/<library_id> (login required); do not read bytes through SQL for display.",
+    "Carousels store the first image only; videos store the poster frame, never the video."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "library_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta Ad Library ID (primary key)."
+    },
+    {
+     "name": "kind",
+     "type": "text",
+     "nullable": false,
+     "description": "'image' or 'video_poster'."
+    },
+    {
+     "name": "content_type",
+     "type": "text",
+     "nullable": false,
+     "description": "MIME type of bytes (image/jpeg)."
+    },
+    {
+     "name": "width",
+     "type": "integer",
+     "nullable": true,
+     "description": "Pixel width after re-encoding."
+    },
+    {
+     "name": "height",
+     "type": "integer",
+     "nullable": true,
+     "description": "Pixel height after re-encoding."
+    },
+    {
+     "name": "bytes",
+     "type": "bytea",
+     "nullable": false,
+     "description": "The JPEG bytes."
+    },
+    {
+     "name": "fetched_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the image was downloaded."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.creative_priorities_snapshots",
    "schema": "public",
    "relation": "creative_priorities_snapshots",
