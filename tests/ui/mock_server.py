@@ -115,6 +115,10 @@ import mock_priorities_assign  # noqa: E402  (Production: /api/priorities/assign
 
 mock_priorities_assign.register(app, dict(Bad=Bad))
 
+import mock_production_board  # noqa: E402  (Production board: status / due / priority on assignments, /board, /move, comments, vendor-capacity; needs mock_priorities_assign's state)
+
+mock_production_board.register(app, dict(Bad=Bad))
+
 import mock_priorities_launch  # noqa: E402  (Production launch to Meta: /api/priorities/.../launch and the `launch` flag on the assignments list, in memory, off by default)
 
 mock_priorities_launch.register(app, dict(Bad=Bad))

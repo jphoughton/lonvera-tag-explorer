@@ -7,6 +7,7 @@ import secrets
 
 from flask import jsonify, request
 
+HANDLE: dict = {}                 # state shared with mock_production_board.py (S, VENDORS, view, ...)
 SEED_TOKENS = {"Madre": "tok-madre-0000000000000000", "Victoria": "tok-victoria-00000000000000"}
 
 
@@ -34,6 +35,8 @@ def register(app, deps):
         ]
         S["rows"] = {r["id"]: r for r in rows}
         S["seq"] = 4
+        S["capacity"] = {v: 10 for v in VENDORS}
+        S["capacity"]["Madre"] = 2
         S["events"] = {r["id"]: [{"at": now(), "actor": "josh", "kind": "assigned", "stage_before": None, "stage_after": "assigned", "detail": f"{r['vendor']}, week of {r['for_week'].isoformat()}"}] for r in rows}
         S["events"][4] += [{"at": now(), "actor": None, "kind": "brief_added", "stage_before": "assigned", "stage_after": "brief_sent", "detail": ""},
                            {"at": now(), "actor": "vendor:Madre", "kind": "ready", "stage_before": "creative_in", "stage_after": "ready", "detail": ""}]
@@ -43,6 +46,9 @@ def register(app, deps):
                         "Lonvera-Boneflex-Static-1.1": {"concept_id": "Lonvera-Boneflex-Static-1.1", "ad_family": "Lonvera-Boneflex-Static-1.1", "status": "5 - Briefed", "launch_date": None, "spend": None, "roas": None}}
 
     reset()
+
+    HANDLE.clear()
+    HANDLE.update(S=S, VENDORS=VENDORS, pa=pa, now=now)
 
     def err(e):
         return jsonify(error=e.message if hasattr(e, "message") else str(e)), getattr(e, "status", 400)
@@ -56,6 +62,10 @@ def register(app, deps):
         return out
 
     FMT = {f["code"]: f for f in pa.FORMATS}
+
+    def view_base(r):
+        statuses = [a["status"] for a in ads_of(r)]
+        return {"stage": pa.stage_of(r, statuses)}
 
     def view(r, vendor_side=False):
         statuses = [a["status"] for a in ads_of(r)]
@@ -73,6 +83,9 @@ def register(app, deps):
             for k in pa.INTERNAL_ONLY:
                 out.pop(k, None)
             out["ads"] = [{k: v for k, v in a.items() if k != "ad_url"} for a in out["ads"]]
+        if not vendor_side:
+            import mock_production_board as pb
+            pb.decorate(HANDLE, r, out)
         return out
 
     def apply(r, f, user="josh"):
@@ -86,6 +99,8 @@ def register(app, deps):
         r["updated_at"] = now()
         for kind, sb, sa, detail in pa.events_for(before, r):
             S["events"].setdefault(r["id"], []).append({"at": now(), "actor": user, "kind": kind, "stage_before": sb, "stage_after": sa, "detail": detail})
+
+    HANDLE.update(view=view, view_base=view_base)
 
     @app.get("/api/priorities/assignments")
     def assign_list():
@@ -147,13 +162,26 @@ def register(app, deps):
         r = S["rows"].get(aid)
         if r is None:
             return jsonify(error="Assignment not found."), 404
+        import mock_production_board as pb
+        raw = request.get_json(silent=True)
+        extra = {k: raw[k] for k in pb.NEW_FIELDS if isinstance(raw, dict) and k in raw}
+        rest = {k: v for k, v in raw.items() if k not in pb.NEW_FIELDS} if isinstance(raw, dict) else raw
         try:
-            f = pa.clean_patch(request.get_json(silent=True))
+            f = pa.clean_patch(rest) if (rest or not extra) else {}
             if "format_code" in f:
                 pa.check_format(f["format_code"], pa.FORMATS)
+            if f and f.get("ready") and not (f["creative_url"] if "creative_url" in f else r["creative_url"]):
+                pass
+            pb.ensure(r)
+            if extra:
+                pb.patch_extra(HANDLE, r, extra)
         except q.ApiError as e:
             return err(e)
-        apply(r, f)
+        except pb.Refuse as e:
+            return jsonify(error=e.message), e.status
+        if f:
+            apply(r, f)
+            pb.after_patch(HANDLE, r, f)
         return jsonify(view(r))
 
     def link(v):
@@ -239,7 +267,7 @@ def register(app, deps):
         r = S["rows"].get(aid)
         if r is None:
             return jsonify(error="Assignment not found."), 404
-        return jsonify(detail_payload(r))
+        return jsonify({**detail_payload(r), "history": list(S["events"].get(r["id"], []))})
 
     @app.get("/api/priorities/vendor/<token>/<int:aid>/detail")
     def vendor_detail(token, aid):
