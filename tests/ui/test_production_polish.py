@@ -37,6 +37,7 @@ def test_card_is_clean_menu_holds_move_open_and_alternatives(page):
     assert not c.locator("[data-testid=prod-card-moveto]").is_visible()
     assert c.locator("[data-testid=prod-card-action]").text_content() == "Approve"
     c.locator("[data-testid=prod-card-more-btn]").click()
+    c.locator("[data-testid=prod-card-moveto]").wait_for(state="visible")
     assert c.locator("[data-testid=prod-card-moveto]").is_visible() and c.locator("[data-testid=prod-card-open]").is_visible()
     assert c.locator("[data-testid=prod-card-alt]").all_text_contents() == ["Request changes"]
     c.locator("[data-testid=prod-card-open-comments]").click()
@@ -183,3 +184,43 @@ def test_due_date_has_a_visible_label_and_a_clear_button(page):
         assert due.input_value() == ""
         page.click("[data-testid=prod-drawer-save]")
     assert json.loads(ri.value.post_data) == {"due_date": None}
+
+
+# ---- the "..." popover never clipped
+def _inside_viewport_and_unclipped(page, pop):
+    return page.evaluate("""(sel) => {
+      const m = document.querySelector(sel); const r = m.getBoundingClientRect();
+      const inView = r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth;
+      const sc = document.querySelector('[data-testid=prod-board-scroll]').getBoundingClientRect();
+      // the board's scroll area must not hide it: the element at each corner/center of the popover is the popover itself
+      const pts = [[r.left + 4, r.top + 4], [r.right - 4, r.top + 4], [r.left + 4, r.bottom - 4], [r.right - 4, r.bottom - 4], [(r.left + r.right) / 2, (r.top + r.bottom) / 2]];
+      const hit = pts.every(([x, y]) => { const e = document.elementFromPoint(x, y); return e && m.contains(e); });
+      return { inView, hit, below: r.bottom > sc.bottom };
+    }""", pop)
+
+
+@pytest.mark.parametrize("vp", [(1440, 900), (1440, 560), (375, 812)])
+def test_more_menu_on_the_last_card_is_fully_visible_not_clipped(browser, base_url, vp):
+    c = browser.new_context(viewport={"width": vp[0], "height": vp[1]}, base_url=base_url)
+    try:
+        c.request.post(base_url + "/__test/assign/reset")
+        c.request.post(base_url + "/__test/board/seed")
+        c.request.post(base_url + "/api/login", data={"username": "JoshHoughton", "password": "test"})
+        pg = c.new_page()
+        goto(pg)
+        last = pg.locator("[data-testid=prod-board-list][data-status=assigned] [data-testid=prod-board-card]").last
+        last.scroll_into_view_if_needed()
+        btn = last.locator("[data-testid=prod-card-more-btn]")
+        if vp[0] < 600:
+            assert btn.bounding_box()["height"] >= 44
+        btn.click()
+        pg.wait_for_selector(".prod-card-more[open] .prod-card-menu", state="visible")
+        res = _inside_viewport_and_unclipped(pg, ".prod-card-more[open] .prod-card-menu")
+        assert res["inView"] and res["hit"], res
+        pg.keyboard.press("Escape")
+        assert not last.locator("[data-testid=prod-card-menu]").is_visible()
+        btn.click()
+        pg.mouse.click(5, 5)
+        assert not last.locator("[data-testid=prod-card-menu]").is_visible()
+    finally:
+        c.close()

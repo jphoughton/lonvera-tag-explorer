@@ -14,6 +14,28 @@ export function resultShort(r) {
   return `${fmt.money(spend)} spent` + (spend > 0 ? `, ${fmt.roas(val / spend)} return` : '');
 }
 
+// The "..." menu is position: fixed so no scroll area can clip it: it opens below its button, flips above when there is no room, and is kept inside the viewport.
+// Only one is open at a time; scrolling, resizing, Escape or a click elsewhere closes it.
+let openMenu = null;
+function closeMenu(except) { for (const d of document.querySelectorAll('.prod-card-more[open]')) if (d !== except) d.open = false; if (!except) openMenu = null; }
+function placeMenu(d) {
+  closeMenu(d);
+  openMenu = d;
+  const m = d.querySelector('.prod-card-menu'); const b = d.querySelector('summary').getBoundingClientRect();
+  const w = Math.min(220, window.innerWidth - 16); m.style.width = w + 'px';
+  const hgt = m.getBoundingClientRect().height; const vh = window.innerHeight;
+  let top = b.bottom + 4; if (top + hgt > vh - 8) top = Math.max(8, b.top - 4 - hgt);
+  m.style.top = top + 'px'; m.style.left = Math.max(8, Math.min(b.right - w, window.innerWidth - w - 8)) + 'px';
+  d.dataset.placed = '1';
+}
+if (typeof document !== 'undefined' && !window.__prodMenuHooks) {
+  window.__prodMenuHooks = true;
+  document.addEventListener('click', (e) => { const d = e.target.closest && e.target.closest('.prod-card-more'); closeMenu(d || undefined); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+  window.addEventListener('resize', closeMenu);
+  window.addEventListener('scroll', closeMenu, true);
+}
+
 const chip = (cls, text, attrs) => h('span', { class: 'prod-chip ' + cls, ...(attrs || {}) }, text);
 
 // One card. `ops` = { open(card), run(card, action), moveTo(card, status) }.
@@ -28,8 +50,8 @@ export function cardEl(r, ops, { compact = false } = {}) {
     h('option', { value: '' }, 'Move to…'), STATUSES.filter(([k]) => k !== status && k !== 'launched').map(([k, l]) => h('option', { value: k, 'data-testid': 'prod-card-moveto-' + k }, l)));
   // the "..." menu: everything that is not the one main button. A details element so it works with a keyboard and on a phone without any script; it opens inline under the card text.
   const menuBtn = (testid, label, fn, extra) => h('button', { type: 'button', class: 'btn prod-small prod-menu-item', 'data-testid': testid, onclick: (e) => { const d = e.target.closest('details'); if (d) d.open = false; fn(); }, ...(extra || {}) }, label);
-  const more = h('details', { class: 'prod-card-more', 'data-testid': 'prod-card-more' },
-    h('summary', { class: 'prod-card-more-btn', 'aria-label': `More actions for ${title}`, title: 'More actions', 'data-testid': 'prod-card-more-btn' }, h('span', { 'aria-hidden': 'true' }, '…')),
+  const more = h('details', { class: 'prod-card-more', 'data-testid': 'prod-card-more', ontoggle: (e) => { if (e.target.open) placeMenu(e.target); else { delete e.target.dataset.placed; if (openMenu === e.target) openMenu = null; } } },
+    h('summary', { class: 'prod-card-more-btn', 'aria-label': `More actions for ${title}`, title: 'More actions', 'data-testid': 'prod-card-more-btn' }, h('span', { class: 'prod-ellipsis', 'aria-hidden': 'true' })),
     h('div', { class: 'prod-card-menu', 'data-testid': 'prod-card-menu' },
       status === 'launched' ? null : moveSel,
       menuBtn('prod-card-open', 'Open card', () => ops.open(r)),
