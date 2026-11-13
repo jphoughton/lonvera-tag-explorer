@@ -79,13 +79,16 @@ export function conceptName(r) {
   const name = bar.length >= 2 && /^[A-Z]{2}-C\d+-E\d+$/.test(bar[0]) ? bar[1] : cleaned;
   return (name.length <= 140 ? name : '') || r.pain_point || r.cluster || 'Concept';
 }
-export const kindLabel = (r) => (r.concept_kind === 'iteration' ? 'Iteration' : r.concept_kind === 'new' ? 'New concept' : '');
+export const kindLabel = (r) => (r.concept_kind === 'iteration' ? 'Iteration' : r.concept_kind === 'new' ? 'New' : '');
 // The five facts a ticket leads with, as [label, value] (an empty value is left out): Product, Variations, Market Cluster, New vs Iteration.
-export const ticketFacts = (r) => [['Product', productName(r.product)], ['Variations', adCount(r) ? String(adCount(r)) : ''], ['Market Cluster', r.cluster || ''], ['New vs Iteration', kindLabel(r)]].filter(([, v]) => v);
-export function factsEl(r, cls = 'prod-facts') {
-  return h('dl', { class: cls, 'data-testid': 'prod-facts' }, ticketFacts(r).map(([k, v]) => h('div', { class: 'prod-fact', 'data-fact': k }, h('dt', null, k + ':'), h('dd', null, v))));
+export const ticketFacts = (r) => [['Product', productName(r.product)], ['Variations', adCount(r) ? String(adCount(r)) : '0'], ['Market Cluster', r.cluster || '–'], ['New vs Iteration', kindLabel(r) || '–'], ['Vendor', r.vendor || '–'], ['Week', r.for_week ? md(r.for_week) : '–']];
+// The face of a ticket: Concept name (the title, shown by the caller) and these six lines, always all of them. `ids` puts a test id on the Vendor value (the board card keeps prod-card-vendor).
+export function factsEl(r, cls = 'prod-facts', ids = {}) {
+  return h('dl', { class: cls, 'data-testid': 'prod-facts' }, ticketFacts(r).map(([k, v]) => h('div', { class: 'prod-fact', 'data-fact': k }, h('dt', null, k + ':'), h('dd', ids[k] ? { 'data-testid': ids[k] } : null, v))));
 }
-export const adCount = (r) => (r.tracker_concept_ids || []).length || parseVariations(r.story).length;
+// How many variations the concept has: the stored list first, then the Concept IDs on the card, then the lines of the brief's Variations section.
+export const variationList = (r) => (Array.isArray(r.variations) && r.variations.length ? r.variations.map((v) => ({ label: v.label, url: v.url || '' })) : parseVariations(r.story));
+export const adCount = (r) => (Array.isArray(r.variations) && r.variations.length) || (r.tracker_concept_ids || []).length || parseVariations(r.story).length;
 export const productName = (p) => PRODUCT_NAMES[p] || p || '';
 export const stageLabel = (r) => r.stage_label || STAGES[r.stage] || r.stage || '';
 export const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };

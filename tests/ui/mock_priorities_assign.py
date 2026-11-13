@@ -105,13 +105,14 @@ def register(app, deps):
     @app.post("/api/priorities/tickets")
     def ticket_create():
         b = request.get_json(silent=True) or {}
-        if not (b.get("concept_name") or "").strip():
-            return jsonify(error="concept name is required"), 400
+        miss = [k for k in ("concept_name", "product", "variations", "cluster", "concept_kind", "vendor", "for_week") if b.get(k) in (None, "", [])]
+        if miss:
+            return jsonify(error="missing required fields: " + ", ".join(miss)), 400
         S["seq"] += 1
         rec = {"story": "", "note": "", "vendor_note": "", "brief_url": b.get("brief_url") or None, "creative_url": None, "tracker_concept_ids": [], "created_by": "josh", "updated_by": "josh", "ready_at": None,
                "launched_at": None, "dropped_at": None, "created_at": now(), "updated_at": now(), "_suggested": [], "id": S["seq"], "concept_key": f"ticket:{S['seq']}", "text_key": "", "vendor": b.get("vendor") or "Madre",
                "for_week": pa.monday_of(b.get("for_week") or dt.date.today()), "product": b.get("product") or "beef-liver", "line_id": None, "manual_id": None, "line_code": "", "cluster": b.get("cluster") or "", "icp": "",
-               "pain_point": "", "section_at_assign": "test", "format_code": None, "concept_name": b["concept_name"].strip(), "concept_kind": b.get("concept_kind") or None}
+               "pain_point": "", "section_at_assign": "test", "format_code": None, "concept_name": b["concept_name"].strip(), "concept_kind": b.get("concept_kind") or None, "variations": [{"label": v.get("label"), "url": v.get("url") or "", "concept_id": v.get("concept_id") or ""} for v in b["variations"]]}
         S["rows"][rec["id"]] = rec
         S["events"][rec["id"]] = [{"at": now(), "actor": "josh", "kind": "assigned", "stage_before": None, "stage_after": "assigned", "detail": ""}]
         return jsonify(view(rec)), 201

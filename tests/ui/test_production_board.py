@@ -259,6 +259,7 @@ def test_next_action_buttons_on_cards(page):
 
 # ---------------------------------------------------------------------------------------------------------------- swimlanes and filters
 def test_group_by_vendor_draws_a_lane_per_vendor_and_keeps_cards_in_their_own_lane(page):
+    page.set_viewport_size({"width": 1280, "height": 2400})                          # tickets are taller now: keep both lanes on screen so the drag geometry is real
     goto(page)
     page.locator("[data-testid=prod-board-group]").check()
     assert "group=vendor" in page.url
@@ -274,7 +275,7 @@ def test_group_by_vendor_draws_a_lane_per_vendor_and_keeps_cards_in_their_own_la
     b = page.locator("[data-testid=prod-board-lane][data-vendor=Victoria] [data-testid=prod-board-list][data-status=in_production]").bounding_box()
     calls = []
     page.on("request", lambda r: calls.append(r.url) if "/move" in r.url else None)
-    page.mouse.move(a["x"] + a["width"] / 2, a["y"] + 20); page.mouse.down(); page.mouse.move(b["x"] + 50, b["y"] + 20, steps=10); page.mouse.up()
+    page.mouse.move(a["x"] + a["width"] / 2, a["y"] + 20); page.mouse.down(); page.mouse.move(b["x"] + 50, b["y"] + 20, steps=1); page.mouse.up()                  # one jump: the path must not cross a list of its own lane on the way
     assert calls == [] and card(page, 8).get_attribute("data-status") == "brief_sent"
     page.locator("[data-testid=prod-board-group]").uncheck()
     assert "group=vendor" not in page.url and page.locator("[data-testid=prod-board-lane]").count() == 0

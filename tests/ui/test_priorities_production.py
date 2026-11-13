@@ -593,13 +593,17 @@ def test_a_ticket_can_be_added_from_the_board_and_shows_the_new_face(page):
     page.wait_for_selector("[data-testid=prod-drawer]")                                              # the new ticket opens
     assert page.locator("[data-testid=prod-drawer-title]").text_content() == "Grandfather used to eat well"
     facts = {e.get_attribute("data-fact"): e.locator("dd").text_content() for e in page.locator("[data-testid=prod-drawer] .prod-drawer-facts [data-fact]").all()}
-    assert facts == {"Product": "Beef Liver", "Market Cluster": "Primal Living", "New vs Iteration": "Iteration"}
+    assert list(facts) == ["Product", "Variations", "Market Cluster", "New vs Iteration", "Vendor", "Week"]                  # the face is always all six lines under the concept name
+    assert facts["Product"] == "Beef Liver" and facts["Variations"] == "1" and facts["Market Cluster"] == "Primal Living" and facts["New vs Iteration"] == "Iteration" and facts["Vendor"] and "/" in facts["Week"]
     page.keyboard.press("Escape")
     assert page.locator("[data-testid=prod-row]", has_text="Grandfather used to eat well").count() == 1
 
 
-def test_a_new_ticket_needs_a_name(page):
+def test_a_new_ticket_needs_a_name_and_a_market_cluster(page):
     goto(page, "?view=list")
     page.click("[data-testid=prod-new-ticket]")
     page.click("[data-testid=prod-dialog-ok]")
-    assert "required" in page.locator("[data-testid=prod-dialog]").text_content()
+    assert "Concept name is required" in page.locator("[data-testid=prod-dialog]").text_content()
+    page.fill("[data-testid=prod-field-concept_name]", "x")
+    page.click("[data-testid=prod-dialog-ok]")
+    assert "Market Cluster is required" in page.locator("[data-testid=prod-dialog]").text_content()

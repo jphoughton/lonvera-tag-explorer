@@ -6900,6 +6900,7 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `status_changed_at` | timestamptz | yes | When status last changed (backfilled from the stage timestamps for rows older than migration 245). |
 | `concept_name` | text | no | The concept's own name as the team and the vendor call it (for example Grandfather used to eat well); empty until set. Shown as the title of the card. |
 | `concept_kind` | text | yes | 'new' for a new concept or 'iteration' for a variation made from an earlier concept; NULL when not set. The Creative Tracker holds the same fact in its New Concept / Iteration column. |
+| `variations` | jsonb | no | The variations of the concept as a JSON list of {label, url, concept_id}: label (Original, Hook 2 ...), url (the video or image, usually Google Drive; may be empty) and concept_id (the Creative Tracker Concept ID of that variation; may be empty). Its length is the Variations number on the ticket. |
 
 ### public.creative_priorities_assignment_events
 

@@ -1463,7 +1463,8 @@ rel("public.creative_priorities_assignments", group="creative", kind="table",
           "position": "Order of the card inside its board column (ascending, fractional so a card can be dropped between two neighbours).",
           "status_changed_at": "When status last changed (backfilled from the stage timestamps for rows older than migration 245).",
           "concept_name": "The concept's own name as the team and the vendor call it (for example Grandfather used to eat well); empty until set. Shown as the title of the card.",
-          "concept_kind": "'new' for a new concept or 'iteration' for a variation made from an earlier concept; NULL when not set. The Creative Tracker holds the same fact in its New Concept / Iteration column."})
+          "concept_kind": "'new' for a new concept or 'iteration' for a variation made from an earlier concept; NULL when not set. The Creative Tracker holds the same fact in its New Concept / Iteration column.",
+          "variations": "The variations of the concept as a JSON list of {label, url, concept_id}: label (Original, Hook 2 ...), url (the video or image, usually Google Drive; may be empty) and concept_id (the Creative Tracker Concept ID of that variation; may be empty). Its length is the Variations number on the ticket."})
 
 rel("public.creative_priorities_assignment_events", group="creative", kind="table",
     purpose="The history of each production assignment on /priorities: who assigned the concept to a vendor, and who moved it between stages (brief sent, creative delivered, ready to launch, launched, dropped) and when.",

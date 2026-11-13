@@ -177,14 +177,16 @@ export async function productionPage(ctx) {
     const res = await askDialog({ title: 'New ticket', note: 'It starts in Assigned. Everything else can be added inside the ticket.', okLabel: 'Add ticket',
       fields: [{ key: 'concept_name', label: 'Concept name', type: 'text', value: '', placeholder: 'Grandfather used to eat well', required: true },
         { key: 'product', label: 'Product', type: 'select', value: oneProduct, options: Object.entries(PRODUCT_NAMES) },
-        { key: 'cluster', label: 'Market Cluster', type: 'text', value: '', placeholder: 'Primal Living' },
-        { key: 'concept_kind', label: 'New vs Iteration', type: 'select', value: '', options: [['', 'Not set'], ['new', 'New concept'], ['iteration', 'Iteration']] },
+        { key: 'cluster', label: 'Market Cluster', type: 'text', value: '', placeholder: 'Primal Living', required: true },
+        { key: 'concept_kind', label: 'New vs Iteration', type: 'select', value: 'new', options: [['new', 'New'], ['iteration', 'Iteration']] },
+        { key: 'variations', label: 'Variations (how many)', type: 'select', value: '1', options: Array.from({ length: 12 }, (_, i) => [String(i + 1), String(i + 1)]) },
         { key: 'vendor', label: 'Vendor', type: 'select', value: oneVendor, options: vendorNames().map((v) => [v, v]) },
         { key: 'for_week', label: 'Week of', type: 'select', value: mon, options: weeks.map((w) => [w, weekLabel(w)]) },
         { key: 'brief_url', label: 'Brief link (optional)', type: 'text', value: '', placeholder: 'https://' }] });
     if (!res) return;
     try {
       const body = Object.fromEntries(Object.entries(res).filter(([, v]) => v !== ''));
+      body.variations = Array.from({ length: Number(res.variations) || 1 }, (_, i) => ({ label: i === 0 ? 'Original' : `Hook ${i + 1}` }));         // placeholders until the links are added
       const card = await api('/api/priorities/tickets', {}, { method: 'POST', body });
       await load(); drawView(); drawChrome();
       toast('Ticket added.'); say('Ticket added.');
