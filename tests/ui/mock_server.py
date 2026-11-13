@@ -107,6 +107,10 @@ import mock_priorities  # noqa: E402  (Creative priorities: /api/priorities from
 
 mock_priorities.register(app, dict(Bad=Bad))
 
+import mock_production_vendor  # noqa: E402  (Production vendor page "My tasks": public vendor routes with status / comments, registered first so its tokens win)
+
+mock_production_vendor.register(app, dict(Bad=Bad))
+
 import mock_priorities_assign  # noqa: E402  (Production: /api/priorities/assignments, vendor-links, vendor/<token>, in memory)
 
 mock_priorities_assign.register(app, dict(Bad=Bad))
