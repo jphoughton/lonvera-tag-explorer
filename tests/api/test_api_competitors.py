@@ -158,7 +158,7 @@ def media():
     def put(pg, ids):
         pg.execute("DELETE FROM competitor_ad_media")
         for i in ids:
-            pg.execute("INSERT INTO competitor_ad_media (library_id, kind, content_type, width, height, bytes, fetched_at) VALUES (%s,'image','image/jpeg',600,750,1000,now())", (i,))
+            pg.execute("INSERT INTO competitor_ad_media (library_id, kind, content_type, width, height, bytes, fetched_at) VALUES (%s,'image','image/jpeg',600,750,%s,now())", (i, b"\xff\xd8thumb"))
         pg.commit()
     yield put
 
@@ -167,7 +167,7 @@ def media():
 def media_table(pg):
     made = not pg.execute("SELECT to_regclass('public.competitor_ad_media') IS NOT NULL").fetchone()[0]
     if made:
-        pg.execute("CREATE TABLE competitor_ad_media (library_id text PRIMARY KEY, kind text NOT NULL, content_type text, width int, height int, bytes int, fetched_at timestamptz NOT NULL DEFAULT now())")
+        pg.execute("CREATE TABLE competitor_ad_media (library_id text PRIMARY KEY, kind text NOT NULL, content_type text, width int, height int, bytes bytea, fetched_at timestamptz NOT NULL DEFAULT now())")
         pg.commit()
     yield
     pg.execute("DELETE FROM competitor_ad_media"); pg.commit()
