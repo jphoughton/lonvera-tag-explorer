@@ -63,7 +63,7 @@ separate from the main `etl` service, so the nightly never waits for it and neve
   (`TRANSIENT_BUDGET_S`: three retries of 15, 30, 45 s; the allowance is refilled by every request that succeeds, so a long productive pull with sporadic errors is not cut off). It is shared
   by both accounts; when it is used up the set is an error for this run and the next run tries again (before: 7 retries per request, up to 14 minutes per set). Request windows (7 days, or 1 day
   for heavy sets) that were committed inside an unfinished window are recorded as they finish (rows in `meta_breakdown_progress` with the chunk's own dates), so the next run does not pull them
-  again. Rate limits are separate: the run waits and continues as before. Async report jobs are polled every 5 s for at most 10 minutes.
+  again. When a set has already delivered rows in this pull but one request window keeps failing (budget used up), that window is split in two, down to one day and then an async report (at most 4 such steps per set pull); a set that has delivered nothing just fails fast. Rate limits are separate: the run waits and continues as before. Async report jobs are polled every 5 s for at most 10 minutes.
 * **Too big for one day** (`action_destination` ...): the first time a one-day request is refused as too big the set is remembered (`__async__:<set>`) and from then on is requested as an async
   report straight away, with no plain attempts and no halving (before: three failed plain requests per window plus one async job per day). The async job itself runs on Meta's side
   (about 80-90 s per day for `action_destination`); if an async job for several days fails, the span is halved.

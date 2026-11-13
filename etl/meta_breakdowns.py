@@ -50,6 +50,7 @@ SET_PAUSE = 1.0                      # seconds between breakdown sets
 RATE_WAIT = 900                      # seconds to sleep after the client's own retries are used up, before trying the same window again
 RECHECK_UNSUPPORTED_DAYS = 7         # a (set, level) Meta refused is asked again after this long (always asked when named with --sets)
 QUARANTINE_DAYS = 7                  # a set that fails deterministically (wrong response shape) or keeps failing is not asked again for this long
+MAX_BUDGET_SPLITS = 4                # per set pull: how many times a request window that keeps failing (after the set has worked) is split in two / sent as async
 FAIL_LIMIT = 3                       # consecutive failing runs with no rows before a set is quarantined
 TRANSIENT_BUDGET_S = 90              # retry waiting (HTTP 5xx, "temporarily unavailable") one set may spend per set pull (all pages, both accounts); then it is an error for this run
 PROBE_SHARE = 0.25                   # at most this share of a run goes to the one-time heavy-set probe pass
@@ -234,10 +235,12 @@ class Client:
         self.async_sets: set[str] = set()                    # sets that needed an async report in this run (run stats)
         self.async_first: set[str] = set()                   # sets known to be too big even for one day: asked as an async report straight away (persisted by run())
         self.transient_budget, self.transient_spent = transient_budget, 0.0
+        self.progressed, self.splits_left = False, MAX_BUDGET_SPLITS
 
     def begin_set(self) -> None:
         """A new set pull starts: its retry-wait budget is full again (it is also refilled by every request that succeeds)."""
         self.transient_spent = 0.0
+        self.progressed, self.splits_left = False, MAX_BUDGET_SPLITS
 
     def _on_wait(self, wait: float, rate: bool) -> None:
         if rate or self.transient_budget is None:
@@ -249,6 +252,7 @@ class Client:
     def get(self, url, params, what):
         self.calls += 1
         j = meta_api.graph_get(url, params, what, max_retries=self.max_retries, sleep=self.sleep, on_wait=self._on_wait)
+        self.progressed = True
         self.transient_spent = 0.0                           # a request that got through: the budget bounds time spent failing with no progress, not a long productive pull
         return j
 
@@ -331,7 +335,19 @@ def fetch_window(client: Client, acct: str, entry: Entry, level: str, since: dt.
         db.log(f"  {what} too big at one day -> async report run (this set goes straight to async from now on)")
         client.async_first.add(entry.name)
         return _async_day(client, acct, params, entry, what)
-    except (meta_api.TokenRejected, meta_api.RateLimited, Unsupported, SetBudgetExceeded):
+    except SetBudgetExceeded:
+        if not client.progressed or client.splits_left <= 0:
+            raise                                            # nothing has worked for this set yet (or enough tries were spent): an error for this run
+        client.splits_left -= 1                              # the set works but this request window keeps failing as a plain request: ask for smaller pieces, then async
+        client.transient_spent = 0.0
+        if since < until:
+            mid = since + (until - since) // 2
+            db.log(f"  {what} keeps failing as a plain request -> splitting")
+            return (fetch_window(client, acct, entry, level, since, mid, an, ladder_step)
+                    + fetch_window(client, acct, entry, level, mid + dt.timedelta(days=1), until, an, ladder_step))
+        db.log(f"  {what} keeps failing as a plain request -> async report run")
+        return _async_day(client, acct, params, entry, what)
+    except (meta_api.TokenRejected, meta_api.RateLimited, Unsupported):
         raise
     except meta_api.GraphError as e:
         if since < until or "gave up" not in str(e):
