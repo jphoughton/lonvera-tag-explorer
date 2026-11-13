@@ -113,39 +113,38 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
       body.replaceChildren(h('p', { class: 'pri-sub' }, 'Loading details…'));
       try { const d = await loadDetail(); body.replaceChildren(assignmentPanel(d)); more.dataset.loaded = '1'; } catch (e) { body.replaceChildren(h('p', { class: 'pri-err', role: 'alert' }, 'Could not load the details: ' + ((e && e.message) || 'error'))); }
     });
-    // the work itself: each variation (Hook 1, Hook 2 ...) or the creative link, with a Play button that opens it right here (Google Drive files and folders)
+    // the work itself, in one block: a tab per variation (Original, Hook 2 ...), the first one already open as a player (Google Drive files and folders), and what is said in it underneath
     const vars = parseVariations(r.story);
     const items = vars.length ? vars : (r.creative_url ? [{ label: 'Creative', url: r.creative_url }] : []);
-    const stage = h('div', { class: 'prod-viewer', 'data-testid': 'prod-viewer', hidden: true });
-    const play = (it, btn) => {
-      const pv = previewOf(it.url);
-      if (!pv) return;
-      for (const b of pane.querySelectorAll('.prod-play[aria-pressed=true]')) if (b !== btn) b.setAttribute('aria-pressed', 'false');
-      const on = btn.getAttribute('aria-pressed') !== 'true';
-      btn.setAttribute('aria-pressed', String(on));
-      if (!on) { stage.hidden = true; stage.replaceChildren(); return; }
-      stage.hidden = false;
-      stage.replaceChildren(h('div', { class: 'prod-viewer-bar' }, h('strong', null, it.label), h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer', class: 'pri-sub' }, 'Open in Drive')),
-        h('iframe', { class: 'prod-viewer-frame prod-viewer-' + pv.kind, src: pv.src, title: it.label, allow: 'autoplay; fullscreen', allowfullscreen: 'true', loading: 'lazy', referrerpolicy: 'no-referrer', sandbox: 'allow-scripts allow-same-origin allow-presentation allow-popups' }));
+    const tmap = new Map();                                                          // label -> transcript, filled when the transcripts arrive
+    const viewer = h('div', { class: 'prod-viewer', 'data-testid': 'prod-viewer' });
+    const said = h('details', { class: 'prod-said', 'data-testid': 'prod-said', hidden: true }, h('summary', null, 'Transcript'), h('p', { class: 'prod-transcript-text' }));
+    const tabEls = [];
+    let sel = -1;
+    const showSaid = () => { const t = sel >= 0 ? tmap.get(items[sel].label) : ''; said.hidden = !t; if (t) said.querySelector('p').textContent = t; };
+    const show = (i) => {
+      sel = i;
+      const it = items[i]; const pv = previewOf(it.url);
+      tabEls.forEach((bt, j) => bt.setAttribute('aria-selected', String(j === i)));
+      viewer.replaceChildren(h('div', { class: 'prod-viewer-bar' }, h('strong', null, it.label), h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer', class: 'pri-sub' }, 'Open in Drive')),
+        pv ? h('iframe', { class: 'prod-viewer-frame prod-viewer-' + pv.kind, src: pv.src, title: it.label, allow: 'autoplay; fullscreen', allowfullscreen: 'true', referrerpolicy: 'no-referrer', sandbox: 'allow-scripts allow-same-origin allow-presentation allow-popups' })
+          : h('p', { class: 'pri-sub' }, 'This link opens outside the app: use Open in Drive.'));
+      showSaid();
     };
+    for (const [i, it] of items.entries()) tabEls.push(h('button', { type: 'button', role: 'tab', class: 'prod-vtab', 'aria-selected': 'false', 'data-testid': 'prod-hook', onclick: () => show(i) }, it.label));
     const preview = items.length ? h('div', { class: 'prod-field prod-preview', 'data-testid': 'prod-drawer-preview' },
       h('span', { class: 'pri-k' }, items.length > 1 ? `Variations (${items.length})` : 'Creative'),
-      h('div', { class: 'prod-hooks' }, items.map((it) => { const pv = previewOf(it.url); const btn = pv ? h('button', { type: 'button', class: 'btn prod-small prod-play', 'aria-pressed': 'false', 'data-testid': 'prod-play', onclick: () => play(it, btn) }, 'Play') : null;
-        return h('span', { class: 'prod-hook', 'data-testid': 'prod-hook' }, h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer' }, it.label), btn); })),
-      stage) : null;
-    // what is said in each ad: the real transcript of every video, loaded after the ticket opens (nothing is shown until there is one)
-    const tbox = h('div', { class: 'prod-field prod-transcripts', 'data-testid': 'prod-transcripts', hidden: true });
+      items.length > 1 ? h('div', { class: 'prod-vtabs', role: 'tablist' }, tabEls) : null, viewer, said) : null;
+    if (items.length) show(0);
     api(`/api/priorities/assignments/${r.id}/transcripts`, {}, { signal }).then((d) => {
       const list = (d && d.transcripts) || [];
-      if (!list.length) return;
-      tbox.hidden = false;
-      tbox.replaceChildren(h('span', { class: 'pri-k' }, `Transcripts (${list.length})`),
-        ...list.map((t) => h('details', { class: 'prod-transcript', 'data-testid': 'prod-transcript', 'data-label': t.label }, h('summary', null, t.label || t.concept_id, h('span', { class: 'pri-sub' }, t.duration_s ? ` · ${Math.round(t.duration_s)}s` : '')),
-          h('p', { class: 'prod-transcript-text' }, t.transcript))));
+      for (const t of list) tmap.set(t.label, t.transcript);
+      if (items.length === 1 && list.length === 1) tmap.set(items[0].label, list[0].transcript);
+      showSaid();
     }).catch(() => { /* a failed load just leaves the transcripts out */ });
     const noteView = r.note ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Note, as written'), h('div', { class: 'prod-richnote', 'data-testid': 'prod-drawer-note-view' }, richLines(r.note))) : null;
     pane.replaceChildren(h('div', { class: 'prod-drawer-form', 'data-testid': 'prod-drawer-details' },
-      preview, tbox, noteView,
+      preview, noteView,
       fieldInput('Vendor', vendor), fieldInput('Week of', week), fieldInput('Due date', dueRow, 'The vendor sees this date. Clear it for no due date.'), fieldInput('Priority', prio), fieldInput('Format', fmt),
       fieldInput('Brief link', brief), fieldInput('Creative link', creative), fieldInput('Note', note),
       r.vendor_note ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Vendor note'), h('p', { class: 'prod-drawer-vnote', 'data-testid': 'prod-drawer-vnote' }, r.vendor_note)) : null,

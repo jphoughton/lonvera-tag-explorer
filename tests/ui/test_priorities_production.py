@@ -529,16 +529,14 @@ def test_note_and_brief_labels_are_bold_and_variation_lines_become_hook_links(pa
     assert got["pv"][0] == {"kind": "file", "src": "https://drive.google.com/file/d/AAA111/preview"} and got["pv"][1]["src"] == "https://drive.google.com/embeddedfolderview?id=BBB222#grid" and got["pv"][2] is None
 
 
-def test_the_ticket_plays_the_creative_in_place(page):
+def test_the_ticket_opens_with_the_creative_already_loaded_in_place(page):
     goto(page, "?view=list")
     row(page, 2).locator("[data-testid=prod-open-card]").click()
     page.wait_for_selector("[data-testid=prod-drawer-preview]")
-    assert page.locator("[data-testid=prod-viewer]").is_hidden()
-    page.locator("[data-testid=prod-play]").first.click()
     frame = page.locator("[data-testid=prod-viewer] iframe")
-    assert frame.get_attribute("src").startswith("https://drive.google.com/embeddedfolderview?id=creative2") and "sandbox" in frame.evaluate("e => e.getAttributeNames().join(' ')")
-    page.locator("[data-testid=prod-play]").first.click()                                   # again: closes it
-    assert page.locator("[data-testid=prod-viewer] iframe").count() == 0
+    assert frame.get_attribute("src").startswith("https://drive.google.com/embeddedfolderview?id=creative2")        # no Play button to press first
+    assert "sandbox" in frame.evaluate("e => e.getAttributeNames().join(' ')") and page.locator("[data-testid=prod-play]").count() == 0
+    assert page.locator("[data-testid=prod-hook]").count() == 0                                                     # one creative: no tabs
 
 
 def test_cluster_icp_and_pain_point_filters_take_several_choices(page):
@@ -566,15 +564,19 @@ def test_each_card_says_image_or_video_and_how_many_ads_and_hooks_come_in_order(
     assert row(page, 4).locator("[data-testid=prod-ads-count]").text_content().strip() == "1 ad"
 
 
-def test_the_ticket_shows_the_transcripts_of_its_ads_when_there_are_some(page):
+def test_the_transcript_sits_under_the_player_when_there_is_one(page):
     goto(page, "?view=list&closed=1")
-    row(page, 4).locator("[data-testid=prod-open-card]").click()
-    page.wait_for_selector("[data-testid=prod-transcripts]:not([hidden])")
-    got = page.locator("[data-testid=prod-transcript]")
-    assert got.count() == 2 and got.nth(0).get_attribute("data-label") == "Hook 2"            # the mock sends them as stored; the real route sends Original first
-    got.nth(0).locator("summary").click()
-    assert "snooze button" in got.nth(0).text_content()
+    row(page, 2).locator("[data-testid=prod-open-card]").click()
+    page.wait_for_selector("[data-testid=prod-said]:not([hidden])")
+    page.locator("[data-testid=prod-said] summary").click()
+    assert "snooze button" in page.locator("[data-testid=prod-said]").text_content()
     page.keyboard.press("Escape")
     row(page, 1).locator("[data-testid=prod-open-card]").click()
     page.wait_for_timeout(600)
-    assert page.locator("[data-testid=prod-transcripts]:not([hidden])").count() == 0            # a card with none shows nothing
+    assert page.locator("[data-testid=prod-said]:not([hidden])").count() == 0                          # a card with none shows nothing
+
+
+def test_the_variations_are_tabs_and_the_first_one_is_open(page):
+    goto(page, "?view=list")
+    got = page.evaluate("""async () => { const m = await import('/static/js/pages/production_common.js'); return m.parseVariations('x\\nVariations\\nhook1: https://drive.google.com/file/d/AAA/view\\nhook2: https://drive.google.com/file/d/BBB/view').length; }""")
+    assert got == 2
