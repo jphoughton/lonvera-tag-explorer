@@ -282,7 +282,7 @@ function messageDialog(id, s) {
       };
       toggle.addEventListener('click', () => { open = !open; paint(); });
       paint();
-      copy.push(h('div', { class: 'eml-copyfacts muted' }, [m.from_name ? `From: ${m.from_name}` : null, m.link_count != null ? `${m.link_count} link${m.link_count === 1 ? '' : 's'}` : null, m.image_count != null ? `${m.image_count} image${m.image_count === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ')), body, m.body_chars > BODY_PREVIEW ? toggle : null);
+      copy.push(h('div', { class: 'eml-copyfacts muted' }, [m.link_count != null ? `${m.link_count} link${m.link_count === 1 ? '' : 's'}` : null, m.image_count != null ? `${m.image_count} image${m.image_count === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ')), body, m.body_chars > BODY_PREVIEW ? toggle : null);
     } else copy.push(h('p', { class: 'eml-nocopy-text', 'data-testid': 'eml-nocopy' }, m.copy_fetched_at ? 'This message has no readable text (it is mostly images).' : 'Copy not available.',
       m.copy_fetched_at ? '' : ' Klaviyo no longer returns this message, for example because it was deleted from the flow.'));
     const asOf = m.copy_fetched_at ? h('p', { class: 'muted eml-asof', 'data-testid': 'eml-asof' }, `Copy as of ${fmt.dateTime(m.copy_fetched_at)} (latest version only). Results above are read against this copy even if the message was edited later.`) : null;
@@ -300,15 +300,18 @@ function messageDialog(id, s) {
     };
     const scopeCtl = s.window === 'all' ? null : seg({ name: 'Numbers for', testid: 'eml-detail-scope', value: scope, options: [['all', 'All loaded days', null, 'eml-scope-all'], ['page', WINDOWS.find((x) => x[0] === s.window)[1], null, 'eml-scope-page']],
       onChange: (k) => { scope = k; show(); } });
-    holder.replaceChildren(
+    holder.replaceChildren(...[
       h('h2', { class: 'eml-dtitle', 'data-testid': 'eml-detail-title' }, m.subject || m.name || m.parent_name || m.id),
-      h('p', { class: 'muted eml-dsub' }, `${sourceText}: ${m.parent_name || m.parent_id}`, m.name && m.source === 'flow' ? ` · ${m.name}` : '', ` · ${m.channel === 'sms' ? 'Text message' : 'Email'}`),
+      h('p', { class: 'muted eml-dsub' }, `${sourceText}${m.parent_name || m.parent_id ? ': ' + (m.parent_name || m.parent_id) : ''}`, m.name && m.source === 'flow' ? ` · ${m.name}` : '', ` · ${m.channel === 'sms' ? 'Text message' : 'Email'}`),
+      m.subject ? h('p', { class: 'eml-subject', 'data-testid': 'eml-subject' }, h('strong', null, 'Subject: '), m.subject) : null,
       m.preview_text ? h('p', { class: 'eml-preview', 'data-testid': 'eml-preview' }, h('strong', null, 'Preview text: '), m.preview_text) : null,
+      m.from_name ? h('p', { class: 'eml-from', 'data-testid': 'eml-from' }, h('strong', null, 'From name: '), m.from_name) : null,
       scopeCtl ? h('div', { class: 'ctl-row pagefilters' }, scopeCtl) : null,
       h('div', { class: 'kpis eml-dtiles' }, h('div', { class: 'kpi-row' }, tiles)),
       h('p', { class: 'muted eml-dwin', 'data-testid': 'eml-detail-window' }, `${dayRange(d.window.from, d.window.to)} (${d.window.days} days). Revenue is Klaviyo-attributed, not additive with ad platform revenue.`),
       h('div', { class: 'eml-copy' }, h('h3', null, 'Copy'), copy, asOf),
-      h('div', { class: 'eml-dchart' }, h('div', { class: 'ctl-row pagefilters' }, mHolder), h('div', { class: 'chartbox eml-dbox' }, canvas)));
+      h('div', { class: 'eml-dchart' }, h('div', { class: 'ctl-row pagefilters' }, mHolder), h('div', { class: 'chartbox eml-dbox' }, canvas)),
+    ].filter(Boolean));   // replaceChildren turns a null into the text "null"
     drawChart();
   };
   show();

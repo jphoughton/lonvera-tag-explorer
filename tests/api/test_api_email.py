@@ -389,6 +389,7 @@ def test_message_without_copy_and_with_images_only(ec):
     assert images["has_copy"] is False and images["copy_fetched_at"] is not None and images["image_count"] == 3
     sms = get(ec, "/api/email/message/cm3", window="30d")["message"]
     assert sms["channel"] == "sms" and sms["body_text"] == "Flash sale: 20 percent off today" and sms["parent_name"] == "Flash Text Campaign"
+    assert sms["subject"] is None and sms["preview_text"] is None and sms["from_name"] is None      # real JSON nulls: the page must render nothing for them
     assert ec.get("/api/email/message/does-not-exist").status_code == 404
 
 
