@@ -45,6 +45,7 @@ export function selectCtl({ name, options, value, onChange, testid } = {}) {
 // A dropdown where any number of options can be ticked. Nothing ticked reads as "All ..."; one tick shows its name; more show "N selected". Every tick is sent at once (onChange(values)); the page may redraw its
 // controls, so the list that was open is opened again by the new control (openMf) and only closes on a click outside, Escape or the summary.
 let openMf = null;
+let openMfVal = null;                                   // the box that was last ticked, so keyboard focus comes back to it after a redraw
 export function multiCtl({ name, options, values = [], allLabel = 'All', onChange, testid } = {}) {
   const cur = new Set(values.map(String));
   const nameOf = (v) => { const o = options.find(([x]) => String(x) === v); return o ? o[1] : v; };
@@ -53,14 +54,15 @@ export function multiCtl({ name, options, values = [], allLabel = 'All', onChang
   const sum = h('summary', { class: 'mf-btn', 'aria-label': name || null, 'data-testid': testid ? testid + '-btn' : null }, text());
   const rows = options.map(([val, txt]) => {
     const cb = h('input', { type: 'checkbox', value: String(val), checked: cur.has(String(val)), 'data-testid': testid ? `${testid}-opt-${val}` : null,
-      onchange: () => { if (cb.checked) cur.add(String(val)); else cur.delete(String(val)); send(); } });
+      onchange: () => { if (cb.checked) cur.add(String(val)); else cur.delete(String(val)); openMfVal = String(val); send(); } });
     return h('label', { class: 'mf-opt' }, cb, h('span', null, txt));
   });
   const clear = h('button', { type: 'button', class: 'btn prod-small', 'data-testid': testid ? testid + '-clear' : null, onclick: () => { if (!cur.size) return; cur.clear(); for (const r of rows) r.querySelector('input').checked = false; send(); } }, 'Clear');
   const d = h('details', { class: 'mf', 'data-testid': testid || null }, sum, h('div', { class: 'mf-panel' }, rows, h('div', { class: 'mf-foot' }, clear)));
-  if (testid && openMf === testid) d.open = true;
+  if (testid && openMf === testid) { d.open = true; const back = rows.find((r) => r.querySelector('input').value === openMfVal); if (back) requestAnimationFrame(() => { try { back.querySelector('input').focus({ preventScroll: true }); } catch (e) { /* not attached yet */ } }); }
   d.addEventListener('toggle', () => { if (d.open) openMf = testid || null; else if (openMf === (testid || null)) openMf = null; });
-  d.addEventListener('keydown', (e) => { if (e.key === 'Escape' && d.open) { d.open = false; const b = d.querySelector('summary'); if (b) b.focus(); } });
+  const esc = (e) => { if (!d.isConnected) { document.removeEventListener('keydown', esc, true); return; } if (e.key === 'Escape' && d.open) { d.open = false; const b = d.querySelector('summary'); if (b) b.focus(); } };
+  document.addEventListener('keydown', esc, true);                       // on the document: a redraw may have replaced the box that had focus
   const away = (e) => { if (!d.isConnected) { document.removeEventListener('click', away, true); return; } if (d.open && !d.contains(e.target)) d.open = false; };
   document.addEventListener('click', away, true);
   return h('div', { class: 'ctl' }, label(name), d);

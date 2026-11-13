@@ -21,7 +21,7 @@ PLATFORMS = ("meta", "google")
 NAMES = {"meta": "Meta", "google": "Google"}
 NUMBERS = {"own": ("meta", "nc"), "nc": ("upstack", "nc"), "all": ("upstack", "all")}
 DROP = ("compare", "cfrom", "cto", "perday", "stage", "active")        # Stage and Active only are Meta-only; comparison is not offered on the All views
-COLORS = {"meta": "#1a5fb4", "google": "#d9822b"}
+COLORS = {"meta": "#1a5fb4", "google": "#E8573A"}
 BASIS_LABEL = {("meta", "own"): "Meta's own reporting", ("google", "own"): "Google's own reporting", ("meta", "nc"): "Upstack · new customers",
                ("google", "nc"): "Upstack · new customers", ("meta", "all"): "Upstack · all orders", ("google", "all"): "Upstack · all orders"}
 ADDITIVE_ALL = ("spend", "impressions", "link_clicks")                  # the only metrics that may be added across platforms

@@ -166,6 +166,22 @@
   {
    "service": "etl",
    "order": 12,
+   "module": "etl.meta_changes",
+   "args": "--days",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 13,
+   "module": "etl.daily_story",
+   "args": "",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 14,
    "module": "etl.auto_tag",
    "args": "",
    "fatal": false,
@@ -294,6 +310,38 @@
    "summary": "Weekly creative priorities: the one-sheeter of market cluster / ICP / pain point / story lines to produce ads for next."
   },
   {
+   "module": "etl.daily_story",
+   "summary": "Daily story: every morning, one very concise explanation of why yesterday's performance was what it was, built from every metric in the database, plus the pattern memory."
+  },
+  {
+   "module": "etl.daily_story_events",
+   "summary": "Change events for the daily story: what changed on a given day, detected from the data (and from the Meta change feed when it exists)."
+  },
+  {
+   "module": "etl.daily_story_facts",
+   "summary": "Daily story facts: for a target day D, every metric against its same-weekday baseline, the exact decomposition of the headline, mix-versus-rate by segment,"
+  },
+  {
+   "module": "etl.daily_story_math",
+   "summary": "Pure arithmetic for the daily story (no database, no clock): ratios, medians, z-scores, the exact log decomposition of a ratio into its terms, and the exact"
+  },
+  {
+   "module": "etl.daily_story_narrative",
+   "summary": "The daily story text: a deterministic template built from the facts, and an optional model-written version that is only accepted when every number in it can be"
+  },
+  {
+   "module": "etl.daily_story_panel",
+   "summary": "Loads the day panel the daily story is computed from: account totals per day, one row per ad family x campaign x day (with the family's tags, format, vendor,"
+  },
+  {
+   "module": "etl.daily_story_patterns",
+   "summary": "Pattern memory for the daily story: after each day, record the change types that showed that day and what the next 1-3 days did against their same-weekday"
+  },
+  {
+   "module": "etl.daily_story_registry",
+   "summary": "Metric registry for the daily story: every daily metric the story can use, its basis, unit, formula and the analytics view and columns it comes from."
+  },
+  {
    "module": "etl.db",
    "summary": "Postgres helpers shared by every ETL job: connection, bulk helpers, job logging (etl_runs), secret scrubbing."
   },
@@ -348,6 +396,10 @@
   {
    "module": "etl.meta_breakdowns",
    "summary": "Meta Ads breakdowns: every Insights API breakdown, pulled at ad x day grain (read only) into meta_breakdown_daily, with meta_breakdown_coverage saying what exists."
+  },
+  {
+   "module": "etl.meta_changes",
+   "summary": "Meta change feeds (READ-ONLY Graph GETs, both ad accounts): the Marketing API activity log -> meta_change_log, and a snapshot of every ad set's settings ->"
   },
   {
    "module": "etl.meta_pull",
@@ -510,6 +562,13 @@
    "url_pattern": "/connect-agent",
    "page_function": "connectAgentPage",
    "js_file": "app/static/js/pages/connect_agent.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/daily",
+   "page_function": "dailyPage",
+   "js_file": "app/static/js/pages/daily.js",
    "public": false,
    "bare": false
   },
@@ -829,6 +888,17 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": ""
+  },
+  {
+   "rule": "/api/daily-story",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.daily_story",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The daily story of one Pacific day (day=YYYY-MM-DD, default the newest): the short story, its facts (metrics against the same-weekday baseline, decomposition, cuts, change ledger,"
   },
   {
    "rule": "/api/email/campaigns",
@@ -3125,6 +3195,17 @@
    ],
    "kind": "page",
    "endpoint": "shell:/connect-agent",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/daily",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/daily",
    "auth": "none (HTML page or health check; its data calls are protected)",
    "auth_exempt": true,
    "summary": ""

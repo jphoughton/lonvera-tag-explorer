@@ -14,6 +14,7 @@ Second row: the pages of the active section as tabs. The active section and tab 
 | Performance | Google | `/?platform=google` (`/google` redirects here) | `pages/google.js` | |
 | Performance | Campaigns | `/campaigns` (`?platform=all` is the nav link) | `all_campaigns.js`, `campaigns.js`, `google.js` | one Campaigns tab, platform filter inside |
 | Performance | Trends | `/trends` | `pages/trends.js` | |
+| Performance | Daily story | `/daily` (`?day=YYYY-MM-DD`) | `pages/daily.js` | the day's short story and every table behind it; `docs/DAILY_STORY.md` |
 | Performance | Email | `/email` | `pages/email.js` | Klaviyo email and text messages by flow, campaign and over time; `docs/EMAIL.md` |
 | Creative | Priorities | `/priorities`, `?view=<token>`, `/priorities/v/<token>` | `pages/priorities*.js` | |
 | Creative | Production | `/priorities/production` (`?view=board|list|plan`, `?card=<id>`) | `pages/priorities_production.js`, `production_board.js`, `production_plan.js`, `production_drawer.js`, `production_dnd.js`, `production_common.js` | vendor page `/priorities/vendor/<token>` is public and has no app navigation |
@@ -25,7 +26,7 @@ Every old URL keeps working. Pages that are not tabs (ad, product, campaign deta
 
 ### Naming (one name per concept)
 
-Overview, Meta, Google, Campaigns, Trends, Email, Priorities, Production, Test to scale, Projections, Tag lookup. The nav labels, page titles (`h1`), `document.title` (`<Page> · Lonvera`), breadcrumbs and in-page links all use these names now. Retired names, which must not come back in page text:
+Overview, Meta, Google, Campaigns, Trends, Daily story, Email, Priorities, Production, Test to scale, Projections, Tag lookup. The nav labels, page titles (`h1`), `document.title` (`<Page> · Lonvera`), breadcrumbs and in-page links all use these names now. Retired names, which must not come back in page text:
 
 | Retired | Use |
 |---|---|

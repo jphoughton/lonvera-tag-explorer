@@ -27,6 +27,7 @@ GROUPS = [
     ("proj_feeds", "Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow)"),
     ("proj_engine", "Projection engine tables (finance, inventory, cohorts; read them through the analytics views)"),
     ("amazon", "Amazon data layer (ExpandFi merchant 1452): the tables behind the analytics.amazon_* views"),
+    ("story", "Daily story: facts, the short explanation, the change patterns and the scoreboard"),
 ]
 
 # Public relations that are not described column by column. Anything else in the public schema MUST have an entry in REL.
@@ -139,6 +140,8 @@ rel("analytics.meta_ad_daily", group="analytics", kind="view",
         "upstack_order_revenue": "Order total of those orders, dollars (tax included, before refunds).",
         "landing_page_views": "Meta landing page views (omni_landing_page_view, else landing_page_view). NULL when the day has no Meta pull of it yet; 0 on Upstack-only ad-days.",
         "add_to_carts": "Meta adds to cart (omni_add_to_cart, else add_to_cart, else pixel add to cart), the 'Adds to cart' of Ads Manager; includes returning customers. NULL when not pulled yet; 0 on Upstack-only ad-days.",
+        "initiated_checkouts": "Meta initiated checkouts (omni_initiated_checkout, else initiate_checkout, else pixel initiate checkout), the 'Checkouts initiated' of Ads Manager; includes returning customers. NULL when not pulled yet; 0 on Upstack-only ad-days.",
+        "payment_info_adds": "Meta payment info added (omni_add_payment_info, else add_payment_info, else pixel add payment info), the checkout step between initiated checkout and purchase. NULL when not pulled yet; 0 on Upstack-only ad-days.",
     },
     examples=[
         ("Ad level: 30-day spend and Meta-reported ROAS",
@@ -156,6 +159,11 @@ rel("analytics.meta_ad_daily", group="analytics", kind="view",
          "       sum(meta_purchases) AS purchases,\n       round(sum(add_to_carts) / NULLIF(sum(link_clicks), 0), 4) AS link_click_to_atc,\n"
          "       round(sum(add_to_carts) / NULLIF(sum(landing_page_views), 0), 4) AS lpv_to_atc,\n       round(sum(meta_purchases) / NULLIF(sum(add_to_carts), 0), 4) AS atc_to_purchase\n"
          "FROM analytics.meta_ad_daily\nWHERE day > " + LAST_META_DAY + " - 7 AND add_to_carts IS NOT NULL\nGROUP BY 1 ORDER BY sum(spend) DESC;"),
+        ("Checkout funnel by product, last 7 days: add to cart to initiated checkout, initiated checkout to purchase",
+         "SELECT coalesce(product_slug, '(no product)') AS product, sum(add_to_carts) AS add_to_carts, sum(initiated_checkouts) AS initiated_checkouts, sum(payment_info_adds) AS payment_info_adds,\n"
+         "       sum(meta_purchases) AS purchases,\n       round(sum(initiated_checkouts) / NULLIF(sum(add_to_carts), 0), 4) AS atc_to_ic,\n"
+         "       round(sum(meta_purchases) / NULLIF(sum(initiated_checkouts), 0), 4) AS ic_to_purchase\n"
+         "FROM analytics.meta_ad_daily\nWHERE day > " + LAST_META_DAY + " - 7 AND initiated_checkouts IS NOT NULL\nGROUP BY 1 ORDER BY sum(spend) DESC;"),
     ])
 
 rel("analytics.meta_adset_daily", group="analytics", kind="view",
@@ -534,6 +542,8 @@ rel("public.ad_daily", group="meta", kind="table",
              "link_clicks is Meta's link_click action (fallback inline_link_clicks). impressions is NULL only on legacy sheet rows (none in production).",
              "landing_page_views = action omni_landing_page_view (else landing_page_view); add_to_carts = omni_add_to_cart (else add_to_cart, else offsite_conversion.fb_pixel_add_to_cart), "
              "same Meta default attribution as purchases. Both are NULL (not 0) on days before they were first pulled; the 2026-11-12 backfill fills them without touching any other column.",
+             "initiated_checkouts = omni_initiated_checkout (else initiate_checkout, else offsite_conversion.fb_pixel_initiate_checkout); payment_info_adds = omni_add_payment_info (else add_payment_info, else the pixel event; "
+             "Meta returns only add_payment_info today). Both NULL (not 0) before the checkout backfill filled them (fill-only, no other column touched).",
              "meta_family_key / meta_family follow the ad's CURRENT name (build_metrics re-syncs them after a rename).",
              "Rows with source 'sheet' / ad_id 'fam:<family>' were a family-grain backfill; none remain in production.",
              "Reach, frequency, video metrics (thruplays, watch time), demographic / placement breakdowns, ad-level budgets and bids are NOT stored."],
@@ -552,6 +562,8 @@ rel("public.ad_daily", group="meta", kind="table",
         "impressions": "Meta impressions (NULL = unknown, legacy rows).",
         "landing_page_views": "Meta landing page views (omni_landing_page_view, else landing_page_view). NULL = not pulled yet (days before the 2026-11-12 funnel backfill).",
         "add_to_carts": "Meta adds to cart (omni_add_to_cart, else add_to_cart, else pixel add to cart), the 'Adds to cart' of Ads Manager. NULL = not pulled yet.",
+        "initiated_checkouts": "Meta initiated checkouts (omni_initiated_checkout, else initiate_checkout, else pixel initiate checkout). NULL = not pulled yet.",
+        "payment_info_adds": "Meta payment info added (omni_add_payment_info, else add_payment_info, else pixel add payment info). NULL = not pulled yet.",
     },
     examples=[
         ("Meta spend and ROAS by day, last 14 days",
@@ -621,6 +633,8 @@ rel("public.meta_ad_lifetime", group="meta", kind="table",
         "link_clicks": "All-time link clicks.",
         "landing_page_views": "All-time Meta landing page views (omni_landing_page_view, else landing_page_view). NULL until the next nightly lifetime pull.",
         "add_to_carts": "All-time Meta adds to cart (omni_add_to_cart, else add_to_cart, else pixel add to cart). NULL until the next nightly lifetime pull.",
+        "initiated_checkouts": "All-time Meta initiated checkouts (omni_initiated_checkout, else initiate_checkout, else pixel initiate checkout). NULL until the next nightly lifetime pull.",
+        "payment_info_adds": "All-time Meta payment info added (omni_add_payment_info, else add_payment_info, else pixel add payment info). NULL until the next nightly lifetime pull.",
         "source": "'meta_api' (production) | 'sheet' (legacy).",
         "pulled_at": "When the all-time pull ran.",
         "first_day": "Earliest delivery day if known (legacy).",
@@ -1474,6 +1488,54 @@ rel("public.creative_formats", group="creative", kind="table",
     cols={"code": "Short code (primary key), F1 to F6.", "name": "What the format is, shown in the pick list.", "length": "Typical running time, as text (for example '45 to 90s'); NULL when not set.",
           "sort": "Order in the pick list (ascending).", "active": "True while the format can be chosen on a new assignment."})
 
+# ---- daily story (migration 248)
+rel("public.daily_story_metrics", group="story", kind="table",
+    purpose="The metric registry of the daily story: every daily metric the story can use, its basis, unit, formula and the analytics view and columns it comes from.",
+    grain="one row per metric_key (primary key)", source="etl/daily_story_registry.py (REGISTRY), upserted by every run of etl.daily_story", refresh="nightly, with the daily story job", coverage="every metric the story computes",
+    caveats=["basis names what the number is made of (Upstack new customers, Meta-reported, Klaviyo-attributed ...); never mix bases in one ratio."],
+    cols={"metric_key": "Short key used inside daily_story_facts.facts (for example nc_roas, cpm, conv).", "sort_order": "Display order in the registry.", "metric_group": "headline | meta | google | orders | klaviyo | amazon | creative | site | placement.",
+          "label": "Plain-language name with the acronym spelled out.", "unit": "usd | pct | x | count (pct is stored as a fraction, 0.12 = 12%).", "basis": "What the number is made of and which attribution it follows.",
+          "formula": "How it is computed, ratios always from sums.", "source": "analytics view and columns the inputs come from."})
+
+rel("public.daily_story_facts", group="story", kind="table",
+    purpose="The facts the daily story is written from: for each Pacific day, the JSON of every metric against its same-weekday baseline, the exact decomposition of new-customer return on ad spend, mix-versus-rate cuts, the live creative mix, top movers, the change ledger and the Meta, Google, email and text, Amazon and order-mix sections.",
+    grain="one row per day (primary key)", source="etl/daily_story.py (compute_facts) over the analytics views", refresh="nightly (etl service 13:00 UTC, non-fatal step after Klaviyo); a day can be recomputed with --day",
+    coverage="every day from 2026-05-06 (Meta ad-level start) through yesterday; early days have fewer than four baseline weeks (facts.metrics.<key>.n_baseline says how many)",
+    caveats=["Baseline = the same weekday in the previous four weeks: the metric table shows its median and its pooled value; the decomposition uses the pooled value so its terms add back exactly.",
+             "The headline is NC ROAS = orders_daily new-customer revenue / (Meta + Google spend). Ad-attributed ROAS inside the cuts is a cut for comparing ads, products and structures, never the headline.",
+             "The last 3 to 7 loaded days still move (Meta and Upstack restate): a day's facts are recomputed only when the job runs for it, so older rows can differ slightly from today's tables.",
+             "coverage = not_ready when a core source (Meta ads, Upstack orders, Google, Upstack Meta attribution) was not loaded for the day: the row then holds only facts.readiness."],
+    cols={"day": "Pacific day the facts describe (primary key).", "facts": "JSON: readiness, windows, metrics, decomposition, anomalies, cuts, movers, creative_live, changes, events, control, sections, cannot_see, basis_notes.",
+          "version": "Facts schema version (v1).", "coverage": "full | partial | not_ready: whether every core and optional source existed for the day.", "created_at": "When the facts were last computed."})
+
+rel("public.daily_story", group="story", kind="table",
+    purpose="The daily story: one very concise explanation (170 words or fewer) of why a day's performance was what it was, built from daily_story_facts only, with confidence labels and the list of what the database cannot show.",
+    grain="one row per day (primary key)", source="etl/daily_story_narrative.py: the model claude-sonnet-5-5 when available and every number in its text is found in the facts, else a deterministic template", refresh="nightly with the facts",
+    coverage="every day with facts; backfilled days carry the template text unless a model run was requested",
+    caveats=["source says llm or template; note explains a fallback (model off, answer rejected for a number not in the facts).", "Wording is 'consistent with': no story proves a cause unless a clean like-for-like control exists."],
+    cols={"day": "Pacific day (primary key).", "headline": "The TLDR sentence.", "story": "The story text: TLDR, a few short lines, and a 'Cannot see' line.", "confidence": "JSON: a confidence label per claim (move, drivers, mix_vs_rate, changes, cause).",
+          "cannot_see": "JSON list of what the database cannot show for that day.", "model": "Model that wrote the text; NULL for the template.", "source": "llm | template.", "note": "Why the template was used, when it was.", "created_at": "When the story was written."})
+
+rel("public.daily_story_patterns", group="story", kind="table",
+    purpose="The pattern memory: for each day, the change types that showed (new ad sets, capped share up, tROAS share up, a large email send, a cluster entering the live mix ...) with a magnitude bucket and what the next 1-3 days did against their same-weekday baselines.",
+    grain="one row per (day, change_type); change_type '_all_days' is the base-rate row every day has", source="etl/daily_story_patterns.py from daily_story_facts (facts.events and facts.metrics)", refresh="nightly; the previous 3 days are refreshed as their outcome windows lengthen",
+    coverage="from 2026-05-06; the newest days have out_days below 3",
+    caveats=["Correlation, not cause: several changes usually land together and consecutive days' outcome windows overlap.", "out_* is the mean over days D+1..D+3 that exist of (value / same-weekday median baseline - 1); d1_* is D+1 alone; both NULL when the metric was not available."],
+    cols={"day": "Day the change showed.", "change_type": "Event type (new_adsets, budget_up, capped_share_up, troas_share_up, big_email_send, cluster_entered, google_spend_up, amazon_spend_up ... or _all_days).",
+          "magnitude_bucket": "Size bucket of the largest event of that type that day.", "subject": "The campaign, cluster, hook or send the largest event named; empty when none.", "magnitude": "Numeric size of the largest event (share shift, count or ratio).",
+          "out_days": "How many of D+1..D+3 had facts (0 to 3).", "out_nc_roas": "Mean change in NC ROAS vs the same-weekday median over D+1..D+3 (fraction).", "out_cpm": "Same for cost per 1,000 impressions.", "out_ctr": "Same for link click-through rate.",
+          "out_conv": "Same for conversion rate (new customers / link clicks).", "out_aov": "Same for new-customer average order value.", "d1_nc_roas": "NC ROAS change vs baseline on D+1 only.", "d1_cpm": "CPM change on D+1.", "d1_ctr": "CTR change on D+1.",
+          "d1_conv": "Conversion rate change on D+1.", "d1_aov": "AOV change on D+1.", "updated_at": "When the row was last written."})
+
+rel("public.daily_story_pattern_scoreboard", group="story", kind="view",
+    purpose="The pattern scoreboard: how often each change type (and size bucket) has preceded a rise or a fall of more than 5% in NC ROAS, CPM, CTR, conversion rate or AOV over the next 1-3 days, next to the same rate over all days, with sample sizes. Only rows with n of 6 or more. Correlation, not cause.",
+    grain="one row per (change_type, magnitude_bucket, metric); magnitude_bucket '(any size)' pools the sizes", source="public.daily_story_patterns", refresh="always current: a view that recomputes on every read; the table behind it is rewritten nightly", coverage="from 2026-05-06",
+    caveats=["rise_lift = rise_rate minus base_rise_rate: a pattern is only informative when its lift is clearly away from 0 with a decent n.", "Overlapping outcome windows and simultaneous changes mean n overstates the independent evidence.", "The 5% threshold is far inside the daily noise of NC ROAS, so the base rates are not small: read the lift, not the rate."],
+    cols={"change_type": "Event type.", "magnitude_bucket": "Size bucket or '(any size)'.", "metric": "nc_roas | cpm | ctr | conv | aov.", "n": "Days with this change type and an outcome.", "rises": "Days whose next 1-3 days averaged more than 5% above baseline.",
+          "falls": "Days whose next 1-3 days averaged more than 5% below baseline.", "rise_rate": "rises / n.", "fall_rate": "falls / n.", "base_rise_rate": "Share of all days whose next 1-3 days averaged more than 5% above baseline.",
+          "base_fall_rate": "Same for falls.", "rise_lift": "rise_rate minus base_rise_rate.", "fall_lift": "fall_rate minus base_fall_rate.", "median_delta": "Median outcome change vs baseline (fraction).", "mean_delta": "Mean outcome change (fraction).",
+          "base_days": "Days behind the base rate.", "label": "Always 'correlation, not cause'."})
+
 rel("public.creative_priorities_vendor_links", group="creative", kind="table",
     purpose="One permanent unguessable link per vendor for the vendor page /priorities/vendor/<token>, where the vendor sees only their own concepts and adds a creative link and a note.",
     grain="one row per vendor (vendor is the primary key)", source="the Production page via /api/priorities/vendor-links (app/priorities_assign.py)",
@@ -1611,6 +1673,113 @@ rel("analytics.meta_breakdown_daily", group="analytics", kind="view",
                "FROM analytics.meta_breakdown_daily WHERE breakdown = 'age' AND day >= current_date - 7 AND day < current_date GROUP BY 1 ORDER BY 1;"),
               ("Which breakdowns have ad-level rows, and how far back each goes",
                "SELECT breakdown, ad_id IS NOT NULL AS ad_level, min(day) AS first_day, max(day) AS last_day, count(*) AS rows\nFROM analytics.meta_breakdown_daily GROUP BY 1, 2 ORDER BY 1, 2;")])
+
+rel("public.meta_change_log", group="meta", kind="table",
+    purpose="The Meta Marketing API activity log of both ad accounts: one row per change event (budget, bid, bid strategy, status, targeting, optimization goal, name, creation, creative, billing), who made it and when.",
+    grain="one row per activity-log event (event_key = sha1 of account, event_time, event_type, object_id, extra_data, actor_id: Meta gives no event id)",
+    source="Meta Marketing API GET /act_<id>/activities (read only), etl.meta_changes", refresh="nightly in the etl run: the last 3 days re-read (overlap, deduped); history was backfilled week by week",
+    coverage="the backfill start is in docs (see analytics.data_coverage / min(event_day)); account BackUp has had no events in the loaded window unless rows say otherwise",
+    caveats=["object_type is Meta's old vocabulary: ADGROUP = an ad, CAMPAIGN = an ad SET, CAMPAIGN_GROUP = a campaign, ACCOUNT = the ad account; object_level carries the plain word (ad, adset, campaign, account).",
+             "Budgets and bids come as minor units and are stored in dollars (old_amount / new_amount: daily or lifetime budget for the budget events, the bid cap or target for bid strategy events, the charge for billing events). "
+             "The ROAS floor comes x10000 and is stored as a ratio (0.90 = a 0.90x floor).",
+             "extra_data is often incomplete for bids and caps (a change of a bid on an ad set with no strategy change can be missing): meta_adset_state_daily and analytics.meta_change_ledger are the cross-check, from their first snapshot day on.",
+             "Meta writes system events too: first_delivery_event (actor Meta), update_ad_run_status to or from Pending Review / Pending Process, billing charges. Filter on actor_name or event_type for human changes.",
+             "Two byte-identical events in the same second collapse to one row. add_images / edit_images keep an empty raw (their extra_data is a signed image URL that expires)."],
+    cols={"id": "Surrogate row id.", "event_key": "Stable dedupe key (sha1 of account, event_time, event_type, object_id, extra_data, actor_id).",
+          "account": "Lonvera Main or Lonvera BackUp.", "event_time": "When Meta recorded the event (timestamptz).",
+          "event_day": "Pacific calendar day of event_time (America/Los_Angeles), the day grain every other Lonvera view uses.",
+          "event_type": "Meta's event type, for example update_ad_set_budget, update_ad_set_bid_strategy, update_ad_set_run_status, update_ad_run_status, create_ad, create_ad_set, update_campaign_budget, update_ad_set_target_spec.",
+          "translated_event_type": "Meta's human text for the event type ('Ad set budget updated').",
+          "object_type": "Meta's raw object type: ADGROUP (ad), CAMPAIGN (ad set), CAMPAIGN_GROUP (campaign), ACCOUNT.",
+          "object_level": "ad | adset | campaign | account (plain word for object_type).",
+          "object_id": "Id of the changed object (ad, ad set, campaign or ad account id, by object_level).",
+          "object_name": "Name of the object at the time of the event.",
+          "campaign_id": "Campaign of the object: the object itself for campaign events, extra_data.campaign_id for ad set and ad events (NULL when Meta did not send it).",
+          "actor_id": "Meta id of who made the change (0 = Meta itself).", "actor_name": "Name of who made the change ('Meta' for system events).",
+          "application_name": "App the change came through when Meta says (NULL otherwise).",
+          "old_value": "Text of the old value for scalar changes (status, strategy, name, goal, targeting description); NULL for amounts, which sit in old_amount.",
+          "new_value": "Text of the new value (same rules as old_value).",
+          "old_amount": "Old daily / lifetime budget or bid, dollars (budget and bid strategy events); NULL otherwise or when Meta did not send it.",
+          "new_amount": "New daily / lifetime budget or bid, dollars; for create_ad_set / create_campaign_group the starting budget; for billing events the amount charged.",
+          "old_roas_floor": "Old ROAS floor as a ratio (bid strategy events only).", "new_roas_floor": "New ROAS floor as a ratio (bid strategy events only).",
+          "raw": "The event's extra_data as Meta returned it, parsed to JSON ({} when none; {\"_unparsed\": text} when it was not JSON): the source of truth when a parsed column is NULL. Every other field of the event is a column.",
+          "loaded_at": "When the row was first written."})
+
+rel("public.meta_adset_state_daily", group="meta", kind="table",
+    purpose="A nightly snapshot of every live ad set's settings in both ad accounts (status, budget, bid, ROAS floor, optimization goal, attribution window): the record that lets a change in a bid or budget be seen even when the activity log's extra_data is incomplete.",
+    grain="one row per ad set per snapshot day (Pacific)", source="Meta Marketing API GET /act_<id>/adsets (read only), etl.meta_changes",
+    refresh="nightly in the etl run (~05:00 Pacific); a same-day rerun replaces that day's rows", coverage="starts on the day the first snapshot ran (see min(day)); nothing before it exists and it cannot be backfilled",
+    caveats=["Live ad sets (any status except archived) every day; archived ad sets only on the days within 3 days of their last update, so the archive step is visible without 4,000 dead rows a day.",
+             "Under campaign budget optimization (CBO) the ad set has no budget of its own: daily_budget and lifetime_budget are NULL and the budget lives on the campaign (see meta_change_log update_campaign_budget).",
+             "bid_strategy is NULL on ad sets that inherit the strategy from a CBO campaign.",
+             "A missing day (the run did not happen) shows as a longer gap in analytics.meta_change_ledger (prev_day), never as a fake change."],
+    cols={"adset_id": "Meta ad set id.", "day": "Pacific day of the snapshot.", "account": "Lonvera Main or Lonvera BackUp.", "campaign_id": "Meta campaign id.", "adset_name": "Ad set name on the snapshot day.",
+          "status": "Configured status: ACTIVE | PAUSED | ARCHIVED | DELETED.",
+          "effective_status": "Effective delivery status (ACTIVE, PAUSED, CAMPAIGN_PAUSED, ARCHIVED, IN_PROCESS, WITH_ISSUES): ACTIVE only when the ad set and its campaign are both on.",
+          "daily_budget": "Ad set daily budget, dollars (NULL under CBO).", "lifetime_budget": "Ad set lifetime budget, dollars (NULL when not set).",
+          "bid_strategy": "LOWEST_COST_WITHOUT_CAP | COST_CAP | LOWEST_COST_WITH_BID_CAP | LOWEST_COST_WITH_MIN_ROAS ... (NULL when inherited from the campaign).",
+          "bid_amount": "Bid cap or cost-cap target, dollars (NULL when none).", "roas_average_floor": "ROAS floor as a ratio (0.90 = 0.90x; Meta stores it x10000); NULL when none.",
+          "optimization_goal": "Meta optimization goal (OFFSITE_CONVERSIONS, VALUE, LINK_CLICKS ...).", "attribution_spec": "Attribution windows as Meta returns them, for example [{\"event_type\": \"CLICK_THROUGH\", \"window_days\": 1}].",
+          "created_time": "When the ad set was created.", "updated_time": "When Meta last recorded an edit of the ad set (any field).",
+          "snapshot_at": "When the row was written."})
+
+rel("analytics.meta_change_log", group="analytics", kind="view",
+    purpose="Meta's own activity log of both ad accounts: every budget, bid, strategy, status, targeting, creation and creative change with when it happened and whether Meta itself or a person / app made it. The first place to look when a day's spend, CPM or ROAS moved.",
+    grain="one row per activity-log event", source="public.meta_change_log (etl.meta_changes, Meta Marketing API activity log)", refresh="nightly, last 3 days re-read",
+    coverage="from the backfill start to yesterday: min(event_day) / max(event_day) over this view",
+    caveats=["Most rows are noise for a performance story (first_delivery_event, run-status flips through Pending Review / Pending Process, billing charges, add_images / edit_images): filter is_system_event = false and object_level / event_type, for example update_ad_set_budget, update_ad_set_bid_strategy, update_campaign_budget, update_ad_set_run_status, update_ad_set_target_spec, create_ad_set.",
+             "object_level 'adset' is what Meta's raw object_type calls CAMPAIGN; 'campaign' is CAMPAIGN_GROUP. Join object_id to meta_adset_daily.adset_id / meta_campaign_daily.campaign_id.",
+             "old_amount / new_amount are dollars (budget and bid events); old_roas_floor / new_roas_floor are ratios. extra_data is often incomplete for bids: cross-check analytics.meta_change_ledger.",
+             "event_day is the Pacific day of the event; Meta's own account time zones differ (Main Pacific, BackUp Eastern), so an event near midnight can sit one day off from that account's insight days.",
+             "A change is an event, not a cause: this view says what was changed, not what it did to performance."],
+    cols={"event_time": "When Meta recorded the event.", "event_day": "Pacific day of the event.", "account": "Lonvera Main or Lonvera BackUp.", "event_type": "Meta event type (update_ad_set_budget ...).",
+          "translated_event_type": "Meta's readable name of the event type.", "object_level": "ad | adset | campaign | account.", "object_type": "Meta's raw object type (ADGROUP = ad, CAMPAIGN = ad set, CAMPAIGN_GROUP = campaign).",
+          "object_id": "Id of the changed object.", "object_name": "Name of the object at the time.", "campaign_id": "Campaign of the object when known.",
+          "is_system_event": "true when Meta itself made the event (first delivery, review status flips, billing), false when a person or an app did; the person's name is not exposed in analytics.", "application_name": "App the change came through, when Meta says.",
+          "old_value": "Old value as text (status, strategy, name, targeting description); NULL for amounts.", "new_value": "New value as text.",
+          "old_amount": "Old budget or bid, dollars.", "new_amount": "New budget or bid, dollars (starting budget on create events; the amount on billing events).",
+          "old_roas_floor": "Old ROAS floor, ratio.", "new_roas_floor": "New ROAS floor, ratio."},
+    examples=[("Budget, bid, strategy and on / off changes by day, last 14 days",
+               "SELECT event_day, event_type, object_level, count(*) AS events, count(DISTINCT object_id) AS objects\nFROM analytics.meta_change_log\n"
+               "WHERE event_day >= current_date - 14 AND event_type IN ('update_ad_set_budget', 'update_ad_set_bid_strategy', 'update_campaign_budget', 'update_ad_set_run_status', 'update_campaign_run_status')\n"
+               "GROUP BY 1, 2, 3 ORDER BY 1 DESC, 4 DESC;"),
+              ("Ad set budget changes with old and new dollars, yesterday",
+               "SELECT event_time, object_name, old_amount, new_amount, is_system_event\nFROM analytics.meta_change_log\nWHERE event_type = 'update_ad_set_budget' AND event_day = current_date - 1\nORDER BY event_time;")])
+
+rel("analytics.meta_adset_state_daily", group="analytics", kind="view",
+    purpose="Daily snapshot of every live ad set's settings (status, budget, bid, ROAS floor, optimization goal, attribution): the state of the account on each morning, the base of analytics.meta_change_ledger.",
+    grain="one row per (day, adset_id)", source="public.meta_adset_state_daily (etl.meta_changes, Meta Marketing API adsets, read only)", refresh="nightly (~05:00 Pacific)",
+    coverage="starts on the first snapshot day (min(day) over this view); it is not backfillable",
+    caveats=["Taken in the early morning Pacific: a row for day D is the state at the start of D, so changes made on D-1 are already in it.",
+             "daily_budget is NULL under campaign budget optimization (the campaign owns the budget); bid_strategy is NULL when inherited.",
+             "Archived ad sets appear only for 3 days after their last update; an ad set missing from a day is archived, deleted or not pulled."],
+    cols={"day": "Pacific snapshot day.", "adset_id": "Meta ad set id.", "adset_name": "Ad set name that day.", "campaign_id": "Meta campaign id.", "account": "Lonvera Main or Lonvera BackUp.",
+          "status": "ACTIVE | PAUSED | ARCHIVED | DELETED (configured).", "effective_status": "ACTIVE only when ad set and campaign are on; else PAUSED, CAMPAIGN_PAUSED, ARCHIVED, IN_PROCESS, WITH_ISSUES.",
+          "daily_budget": "Daily budget, dollars (NULL under CBO).", "lifetime_budget": "Lifetime budget, dollars.", "bid_strategy": "Bid strategy (COST_CAP, LOWEST_COST_WITHOUT_CAP ...).",
+          "bid_amount": "Bid cap or cost-cap target, dollars.", "roas_average_floor": "ROAS floor as a ratio.", "optimization_goal": "Meta optimization goal.", "attribution_spec": "Attribution windows (JSON).",
+          "created_time": "Ad set creation time.", "updated_time": "Meta's last-edit time of the ad set."},
+    examples=[("Live ad sets today by strategy, with total daily budget",
+               "SELECT coalesce(bid_strategy, '(campaign level)') AS strategy, count(*) AS adsets, sum(daily_budget) AS daily_budget\nFROM analytics.meta_adset_state_daily\n"
+               "WHERE day = (SELECT max(day) FROM analytics.meta_adset_state_daily) AND effective_status = 'ACTIVE'\nGROUP BY 1 ORDER BY 2 DESC;"),
+              ("One ad set's settings day by day (replace the id)",
+               "SELECT day, effective_status, daily_budget, bid_strategy, bid_amount, roas_average_floor\nFROM analytics.meta_adset_state_daily\nWHERE adset_id = '120257382563100538' ORDER BY day;")])
+
+rel("analytics.meta_change_ledger", group="analytics", kind="view",
+    purpose="Ad set changes found by comparing each snapshot day with the previous one: new ad sets, paused / activated / archived, budget, bid, strategy, ROAS floor, optimization goal and attribution changes. Independent of the activity log, so it catches bid changes the log's extra_data omits.",
+    grain="one row per (day, adset_id, change_type)", source="analytics.meta_adset_state_daily (lag over consecutive snapshot days)", refresh="nightly with the snapshot",
+    coverage="starts on the SECOND snapshot day (min(day) over this view); a change is only visible once two consecutive snapshots exist",
+    caveats=["A change happened between prev_day's snapshot and day's snapshot: the snapshot runs ~05:00 Pacific, so a change made on Pacific day D shows on day D+1 with prev_day D. A gap in prev_day means a missed snapshot, not a quiet period.",
+             "Only ad sets in the snapshot are compared. new_adset needs a creation time inside the gap, so old archived ad sets that are touched again do not show as new. Campaign budgets (CBO) are not in this view: use analytics.meta_change_log update_campaign_budget.",
+             "Several changes of the same ad set in one night collapse to the net difference; the sequence is in meta_change_log.",
+             "old_number / new_number are dollars for daily_budget, lifetime_budget and bid_amount, a ratio for roas_floor; NULL for text changes."],
+    cols={"day": "Snapshot day on which the change is seen.", "prev_day": "Previous snapshot day of this ad set (the change happened after it).", "adset_id": "Meta ad set id.", "adset_name": "Ad set name on day.",
+          "campaign_id": "Meta campaign id.", "account": "Lonvera Main or Lonvera BackUp.",
+          "change_type": "new_adset | paused (ACTIVE -> PAUSED) | activated (PAUSED -> ACTIVE) | archived | effective_status | daily_budget | lifetime_budget | bid_amount | bid_strategy | roas_floor | optimization_goal | attribution_spec.",
+          "old_value": "Old value as text (NULL for new_adset).", "new_value": "New value as text (for new_adset: its effective status).", "old_number": "Old amount (dollars) or floor (ratio) for numeric changes.", "new_number": "New amount or floor."},
+    examples=[("Bid and budget changes of the last 7 snapshot days",
+               "SELECT day, change_type, count(*) AS adsets\nFROM analytics.meta_change_ledger\nWHERE day > current_date - 7 AND change_type IN ('daily_budget', 'bid_amount', 'bid_strategy', 'roas_floor')\nGROUP BY 1, 2 ORDER BY 1 DESC, 3 DESC;"),
+              ("Every change to the ad sets of one campaign (replace the id)",
+               "SELECT day, adset_name, change_type, old_value, new_value\nFROM analytics.meta_change_ledger\nWHERE campaign_id = '120257294813250538' ORDER BY day DESC, adset_name;")])
 
 rel("public.etl_runs", group="ops", kind="table",
     purpose="Log of every pipeline job run. analytics.etl_runs is the same table with the error cut to 500 characters.",
@@ -1980,6 +2149,7 @@ DOMAINS = [
     ("email", "Klaviyo campaigns, flows, messages: sends, opens, clicks, orders, revenue and the copy (views created by migration 231 once the Klaviyo tables exist)"),
     ("landing_pages", "Landing page copy versions and the ads that send people to each page (views created by migration 231 once those tables exist)"),
     ("amazon", "Amazon (ExpandFi): ads by campaign and ASIN, organic search queries, orders by ASIN, traffic, market baskets, repeat purchases, settlement fees"),
+    ("story", "The daily story: facts, short explanation, change patterns and the pattern scoreboard"),
 ]
 
 BRAIN_VIEWS: set[str] = set()                   # analytics views created by migration 230 (their comments live in that migration)
@@ -2471,6 +2641,23 @@ av("production_formats", src="public.creative_formats", domain="production", bas
    ren={"format_code": "code"},
    examples=[("Formats", "SELECT format_code, name, length FROM analytics.production_formats WHERE active ORDER BY sort;")])
 
+# ------------------------------------------------------------------------------------------------------------------------------- daily story
+av("daily_story", src="public.daily_story", domain="story", span=("daily_story", "day"), purpose="The daily story: the short explanation of why each day's performance was what it was, with confidence labels and what the database cannot see.", grain="one row per day",
+   source="public.daily_story", refresh="nightly", coverage="2026-05-06 through yesterday",
+   examples=[("Latest story", "SELECT day, headline, story FROM analytics.daily_story ORDER BY day DESC LIMIT 1;")])
+av("daily_story_facts", src="public.daily_story_facts", domain="story", span=("daily_story_facts", "day"), purpose="The JSON facts each daily story is written from (metrics vs same-weekday baseline, decomposition, cuts, ledger, sections).", grain="one row per day",
+   source="public.daily_story_facts", refresh="nightly", coverage="2026-05-06 through yesterday",
+   examples=[("Headline decomposition of a day", "SELECT day, jsonb_path_query(facts, '$.decomposition.terms[*].name') AS term FROM analytics.daily_story_facts WHERE day = (SELECT max(day) FROM analytics.daily_story_facts) LIMIT 10;")])
+av("daily_story_patterns", src="public.daily_story_patterns", domain="story", span=("daily_story_patterns", "day"), purpose="Pattern memory: change types seen each day and the next 1-3 days' outcomes against same-weekday baselines.", grain="one row per (day, change_type)",
+   source="public.daily_story_patterns", refresh="nightly", coverage="2026-05-06 through yesterday",
+   examples=[("Days with a large email send", "SELECT day, magnitude_bucket, out_nc_roas FROM analytics.daily_story_patterns WHERE change_type = 'big_email_send' ORDER BY day DESC LIMIT 10;")])
+av("daily_story_pattern_scoreboard", src="public.daily_story_pattern_scoreboard", domain="story", base="daily_story_patterns", purpose="Which change types have preceded rises or falls, with sample sizes and the base rate (correlation, not cause).",
+   grain="one row per (change_type, magnitude_bucket, metric), n >= 6", source="public.daily_story_pattern_scoreboard", refresh="always current (view)", coverage="2026-05-06 through yesterday",
+   examples=[("Strongest NC ROAS patterns", "SELECT change_type, magnitude_bucket, n, rises, falls, round((rise_lift)::numeric, 2) AS rise_lift FROM analytics.daily_story_pattern_scoreboard WHERE metric = 'nc_roas' ORDER BY abs(rise_lift) DESC LIMIT 10;")])
+av("daily_story_metric_registry", src="public.daily_story_metrics", domain="story", span=None, purpose="The daily story's metric registry: every daily metric, its basis, formula and source view.", grain="one row per metric_key",
+   source="public.daily_story_metrics", refresh="nightly", coverage="every metric the story computes",
+   examples=[("Metrics by group", "SELECT metric_group, count(*) AS metrics FROM analytics.daily_story_metric_registry GROUP BY 1 ORDER BY 1;")])
+
 # ------------------------------------------------------------------------------------------------------------------------------- competitors
 av("competitor_brands", src="public.competitor_brands", domain="competitors", base="competitor_brands",
    purpose="The competitor brands tracked in the Meta Ad Library and when each was last read.", grain="one row per brand", source="public.competitor_brands without last_error", refresh="Sundays (etl.competitor_ads)",
@@ -2516,7 +2703,7 @@ rel("analytics.metric_glossary", group="analytics", kind="view", domain="pipelin
 
 
 # =====================================================================================================================================
-# Amazon data layer (migrations 247 tables, 248 views): ExpandFi merchant 1452, filled by the feeds service (etl/feeds/amazon_feeds.py); docs/AMAZON_DATA.md
+# Amazon data layer (migrations 249 tables, 250 views): ExpandFi merchant 1452, filled by the feeds service (etl/feeds/amazon_feeds.py); docs/AMAZON_DATA.md
 # =====================================================================================================================================
 
 _AMZ_REFRESH = "feeds service 21:00 UTC (python -m etl.feeds run), trailing {w}; each run replaces its window, an empty pull writes nothing"
@@ -2670,7 +2857,7 @@ rel("public.amazon_settlement_fees_daily", group="amazon", kind="table",
           "amount_type": "Fee group, e.g. ItemPrice, ItemFees, Promotion, Cost of Advertising.", "amount_description": "Detail, e.g. Principal, Commission, FBAPerUnitFulfillmentFee.",
           "lines": "Settlement lines summed.", "amount": "Sum of amount in the line currency, signed.", "amount_usd": "Sum of amount in US dollars, signed.", "currency": "Currency code of the lines.", **_AMZ_LOADED})
 
-# the analytics views (one per table; migration 248). Columns and text are inherited from the table.
+# the analytics views (one per table; migration 250). Columns and text are inherited from the table.
 for _t, _v, _dom, _span in [
     ("amazon_asin_products", "amazon_asin_products", "amazon", ("amazon_asin_products", "refreshed_on")),
     ("amazon_ads_campaign_daily", "amazon_ads_campaign_daily", "amazon", ("amazon_ads_campaign_daily", "day")),
@@ -2771,6 +2958,9 @@ for _k, _dom, _span, _base in [
     ("meta_campaign_daily_history", "marketing", ("proj_feed_meta_day", "day"), "proj_feed_meta_day"),
     ("meta_reach", "marketing", ("proj_feed_meta_reach", "period_start", "period_end"), "proj_feed_meta_reach"),
     ("meta_breakdown_daily", "marketing", None, "meta_breakdown_daily"),            # no day lookup: a large ad-grain table
+    ("meta_change_log", "marketing", ("meta_change_log", "event_day"), "meta_change_log"),
+    ("meta_adset_state_daily", "marketing", ("meta_adset_state_daily", "day"), "meta_adset_state_daily"),
+    ("meta_change_ledger", "marketing", ("meta_adset_state_daily", "day"), "meta_adset_state_daily"),
     ("google_campaign_daily", "marketing", ("google_daily", "day"), "google_daily"),
     ("platform_daily", "marketing", ("ad_daily", "day"), "ad_daily"),
     ("orders_daily", "orders", ("upstack_orders_daily", "day"), "upstack_orders_daily"),
@@ -2830,6 +3020,43 @@ METRICS = [
          traps=["NULL (not 0) on days before the 2026-11-12 funnel backfill.",
                 "The funnel rates are ratios of sums over the same ad-days and rows: link click to add to cart = sum(add_to_carts) / sum(link_clicks); landing page view to add to cart = sum(add_to_carts) / sum(landing_page_views); add to cart to purchase = sum(meta_purchases) / sum(add_to_carts). Never average per-ad rates.",
                 "Purchases count returning customers, so add to cart to purchase is a Meta-attribution rate, not a new-customer conversion rate."]),
+    dict(name="initiated_checkouts", label="Meta initiated checkouts", domain="marketing",
+         formula="sum(initiated_checkouts): checkouts Meta reports initiated for the ad that day (omni_initiated_checkout, else initiate_checkout, else pixel initiate checkout), the 'Checkouts initiated' of Ads Manager.",
+         source="analytics.meta_ad_daily.initiated_checkouts",
+         default_basis="Meta-reported (default attribution, includes returning customers)",
+         other_bases=["Meta purchases (analytics.meta_ad_daily.meta_purchases)", "Upstack orders (analytics.meta_ad_daily.upstack_orders): another tracker"],
+         traps=["NULL (not 0) on days before the checkout backfill: sum only over rows where it is not NULL, and divide only by sums over the same rows.",
+                "Funnel rates are ratios of sums over the same ad-days: add to cart to initiated checkout = sum(initiated_checkouts) / sum(add_to_carts); initiated checkout to purchase = sum(meta_purchases) / sum(initiated_checkouts); payment info to purchase = sum(meta_purchases) / sum(payment_info_adds). Never average per-ad rates.",
+                "Purchases count returning customers, so initiated checkout to purchase is a Meta-attribution rate, not a new-customer conversion rate. Checkout events fire on the pixel: a checkout that never loads the pixel (an in-app browser that blocks it) is not counted, so a fall in initiated checkouts is not proof of fewer checkouts."]),
+    dict(name="payment_info_adds", label="Meta payment info added", domain="marketing",
+         formula="sum(payment_info_adds): payment-info-added events Meta reports for the ad that day (omni_add_payment_info, else add_payment_info, else pixel add payment info), the step between initiated checkout and purchase.",
+         source="analytics.meta_ad_daily.payment_info_adds",
+         default_basis="Meta-reported (default attribution, includes returning customers)",
+         other_bases=["Initiated checkouts (analytics.meta_ad_daily.initiated_checkouts)", "Meta purchases (analytics.meta_ad_daily.meta_purchases)"],
+         traps=["NULL (not 0) on days before the checkout backfill.",
+                "It can exceed initiated checkouts on a day (a customer re-entering payment details, or express wallets that skip the initiate event): use it as a trend, not as a stage that must be smaller than the one before.",
+                "Same attribution as purchases, so it counts returning customers."]),
+    dict(name="atc_to_ic_rate", label="Add to cart to initiated checkout rate", domain="marketing",
+         formula="sum(initiated_checkouts) / sum(add_to_carts): the share of adds to cart that go on to start checkout, as a ratio of sums over the same ad-days (Meta-reported).",
+         source="analytics.meta_ad_daily.initiated_checkouts,add_to_carts",
+         default_basis="Meta-reported (default attribution, includes returning customers)",
+         other_bases=["Link click to add to cart and landing page view to add to cart (see add_to_carts)"],
+         traps=["Restrict to rows where both columns are not NULL; never average per-ad rates.", "Not a new-customer rate: Meta counts returning customers in both counts."]),
+    dict(name="ic_to_purchase_rate", label="Initiated checkout to purchase rate", domain="marketing",
+         formula="sum(meta_purchases) / sum(initiated_checkouts): the share of started checkouts that Meta credits with a purchase, as a ratio of sums over the same ad-days (Meta-reported).",
+         source="analytics.meta_ad_daily.meta_purchases,initiated_checkouts",
+         default_basis="Meta-reported (default attribution, includes returning customers)",
+         other_bases=["Upstack new-customer orders per initiated checkout (upstack_new_customers / initiated_checkouts) mixes bases: say so if used", "Add to cart to purchase (see add_to_carts)"],
+         traps=["Restrict to rows where initiated_checkouts is not NULL; never average per-ad rates.", "Purchases use Meta's attribution window and can land on a later day than the checkout, so a single day's rate is noisy and the last days still move."]),
+    dict(name="meta_change_log", label="Meta change log (budget, bid, status, targeting changes)", domain="marketing",
+         formula="count of rows in analytics.meta_change_log by event_type and event_day; budget and bid amounts in old_amount / new_amount (dollars). Ad set settings by day: analytics.meta_adset_state_daily; their day-over-day differences: analytics.meta_change_ledger.",
+         source="analytics.meta_change_log.event_type,old_amount,new_amount",
+         default_basis="Meta activity log (read only), both ad accounts",
+         other_bases=["Ad set snapshot differences (analytics.meta_change_ledger), from its first snapshot day: independent of the log's extra_data"],
+         traps=["A change is not a cause: say 'a bid change on N ad sets preceded the move', never 'the bid change caused it', unless a control supports it.",
+                "The log's extra_data is often incomplete for bids and caps; cross-check with analytics.meta_change_ledger, which only exists from its first snapshot day.",
+                "System events (first_delivery_event, Pending Review flips, billing, image adds) dominate the row count: filter to the event types you mean.",
+                "Campaign budget (CBO) changes are update_campaign_budget with object_level campaign; ad set budgets are update_ad_set_budget with object_level adset."]),
     dict(name="meta_roas", label="Meta ROAS (platform ROAS)", domain="marketing",
          formula="sum(meta_revenue) / sum(spend): Meta-reported purchase value over spend, as a ratio of sums.",
          source="analytics.meta_ad_daily.meta_revenue,spend; analytics.meta_campaign_daily.meta_revenue,spend",
@@ -2979,6 +3206,36 @@ METRICS = [
          formula="sum(returning_customer_revenue) / sum(total_revenue).", source="analytics.orders_daily.returning_customer_revenue,total_revenue",
          default_basis="Actual orders feed, Shopify only (" + _TRENDS + ", repeat_share)", other_bases=["Business-wide: (Shopify returning + Amazon non-new-customer revenue) / (Shopify + Amazon revenue) (" + _PACING + ", biz_repeat_share)"],
          traps=["Gross of tax and refunds; no Amazon in the Shopify-only ratio."]),
+    dict(name="daily_story_baseline", label="Same-weekday baseline (daily story)", domain="story",
+         formula="For a target day D: the same weekday in the previous four weeks (D-7, D-14, D-21, D-28; fewer when history is short). Tables show the median of those days' own values and the pooled value (sum / sum); the decomposition uses the pooled value.",
+         source="analytics.daily_story_facts.facts",
+         default_basis="median of the up to four same-weekday days for the metric table; pooled for the exact decomposition",
+         other_bases=["trailing 7 days before D, pooled (metrics.<key>.trailing_7d)"],
+         traps=["A same-weekday baseline removes the weekday pattern only; it does not hold changes (new ad sets, bids, sends) constant, so it is not a like-for-like control for any one cause.", "Early days (May 2026) have fewer than four baseline weeks."]),
+    dict(name="daily_story_noise_z", label="Noise range and z-score (daily story)", domain="story",
+         formula="noise = sample standard deviation of the previous 28 days of the same daily metric; z = (value on D - same-weekday median baseline) / noise; a metric is flagged when |z| >= 2. Needs at least 10 trailing days.",
+         source="analytics.daily_story_facts.facts",
+         default_basis="daily values of the metric on the same basis as the value (ratios from each day's sums)",
+         other_bases=["Facts path: metrics.<key>.z, noise_std_28d and flag inside the JSON"],
+         traps=["A daily ratio's noise is large (NC ROAS moves several tenths day to day), so most days are inside it.", "z compares one day with a baseline; it does not say why the day moved."]),
+    dict(name="daily_story_decomposition", label="Exact decomposition of NC ROAS (daily story)", domain="story",
+         formula="NC ROAS = AOV x (Meta spend / total spend) x (1000 / CPM) x CTR x (link click to landing page view) x (view to add to cart) x (add to cart to new customer) [x add to cart to initiated checkout, initiated checkout to new customer when the column exists]. The log change against the pooled same-weekday baseline splits exactly into one contribution per term; percentage points are the total percentage move split in proportion to each term's log.",
+         source="analytics.daily_story_facts.facts",
+         default_basis="headline NC ROAS: orders_daily new-customer revenue / (Meta + Google spend); the funnel terms use Meta link clicks, landing page views and adds to cart over all actual new customers",
+         other_bases=["ad-attributed NC ROAS (a cut for ads, products, structures): sum(upstack_new_customer_revenue) / Meta spend"],
+         traps=["Arithmetic, not cause: it says which term moved, not why.", "add to cart to new customer divides all actual new customers (including non-Meta ones) by Meta adds to cart, so it is a ratio of the day's totals, not Meta's own conversion."]),
+    dict(name="daily_story_mix_rate", label="Mix versus rate (daily story)", domain="story",
+         formula="Over segments (product, stage, campaign structure, market cluster, ICP, format, vendor, age, ad family): ROAS = sum(w_i r_i) with w_i the segment's share of spend and r_i its ad-attributed NC ROAS. mix_i = (w_i - w0_i) x (rbar_i - Rbar), rate_i = (r_i - r0_i) x wbar_i, where 0 is the pooled same-weekday baseline and bars are the mean of day and baseline; sum(mix_i + rate_i) equals the total move exactly.",
+         source="analytics.daily_story_facts.facts",
+         default_basis="ad-attributed NC ROAS (Upstack any-click 30-day attribution of new customers to Meta ads), a cut only",
+         other_bases=["Facts path: cuts.<cut>.mix_rate, cuts.<cut>.rows[].effect and movers inside the JSON"],
+         traps=["Mix = spend moving between segments with different returns; rate = the same segment earning more or less per dollar. Neither is a cause.", "Ad-attributed revenue is any-click and is not the headline: it does not add up to orders_daily new-customer revenue."]),
+    dict(name="daily_story_pattern_lift", label="Pattern lift (daily story scoreboard)", domain="story",
+         formula="For a change type: rise_rate = days whose next 1-3 days averaged more than 5% above the same-weekday baseline / days with that change; rise_lift = rise_rate - base_rise_rate (the same rate over all days). fall_lift likewise.",
+         source="analytics.daily_story_pattern_scoreboard.rise_rate,base_rise_rate,rise_lift,n",
+         default_basis="Upstack new-customer basis for NC ROAS and AOV; Meta-reported for CPM and CTR; conversion = actual new customers / Meta link clicks",
+         other_bases=["The base rate (all days) sits in the same row as base_rise_rate and base_fall_rate"],
+         traps=["Correlation, not cause: changes land together and the 1-3 day outcome windows of neighbouring days overlap.", "Only rows with n of 6 or more are listed; a high rate on a small n is not evidence."]),
 ]
 
 

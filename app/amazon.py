@@ -1,4 +1,4 @@
-"""Amazon (Marketing metrics, channel Amazon): the Amazon pages' data, read from the ten tables that migration 247 creates (docs/AMAZON_DATA.md).
+"""Amazon (Marketing metrics, channel Amazon): the Amazon pages' data, read from the ten tables that migration 249 creates (docs/AMAZON_DATA.md).
 
 Amazon is a SEPARATE channel. Nothing here is added to the All platforms totals, Total new-customer ROAS or any Meta / Google number: Amazon sales overlap what Meta
 and Google credit, and Upstack has no Amazon data, so there is no Numbers from switch, only Amazon's own reporting.

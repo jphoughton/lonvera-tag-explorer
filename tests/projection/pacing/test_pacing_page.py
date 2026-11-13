@@ -294,3 +294,13 @@ def test_payback_card_headline_is_the_sheet_definition_with_all_costs_as_a_secon
     if card.locator(".pacing-ctx").count():
         assert "after all variable costs" in card.locator(".pacing-ctx").inner_text().lower()
     ctx.close()
+
+
+@pytest.mark.parametrize("size", [(1024, 800), (375, 812)])
+def test_no_sideways_page_scroll_the_wide_table_scrolls_in_its_own_box(browser, base_url, size):
+    ctx, page, errors = open_page(browser, base_url, size)
+    sw = page.evaluate("[document.documentElement.scrollWidth, innerWidth]")
+    assert sw[0] <= sw[1], f"page scrolls sideways at {size}: {sw}"
+    box = page.locator(".pacing-table-wrap").first
+    assert box.evaluate("b => getComputedStyle(b).overflowX") in ("auto", "scroll")
+    ctx.close()

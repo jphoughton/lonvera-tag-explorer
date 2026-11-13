@@ -4,6 +4,14 @@
 
 import { pacingTrendPanel } from './pacing_trend.js';
 
+// A table box that scrolls sideways by itself; when the table fits and the screen is wide, it turns into a plain block so the sticky header can follow the page.
+function tableBox(h, table) {
+  const box = h('div', { class: 'pacing-table-wrap' }, table);
+  const fit = () => { box.classList.remove('free'); const fits = table.offsetWidth <= box.clientWidth && window.matchMedia('(min-width: 1000px)').matches; box.classList.toggle('free', fits); };
+  if (typeof ResizeObserver === 'function') new ResizeObserver(fit).observe(box); else window.addEventListener('resize', fit);
+  return box;
+}
+
 const CSS = `
 .pacing-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lv-sp-2); }
 .pacing-controls label { color: var(--lv-muted); font-size: var(--lv-fs-xs); font-weight: var(--lv-fw-bold); letter-spacing: var(--lv-track-kicker); text-transform: uppercase; }
@@ -46,7 +54,7 @@ const CSS = `
 table.pacing-table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 860px; font-size: var(--lv-fs-base); font-variant-numeric: tabular-nums; }
 .pacing-table th, .pacing-table td { padding: 0 var(--lv-sp-3); height: var(--lv-row-h, 26px); border-bottom: 1px solid var(--lv-line-soft); white-space: nowrap; text-align: right; background: var(--lv-surface); }
 .pacing-table thead th { position: sticky; top: 0; z-index: 3; background: var(--lv-surface-2); font-weight: var(--lv-fw-semi); font-size: var(--lv-fs-sm); border-bottom: 1px solid var(--lv-line); height: 32px; }
-@media (min-width: 1000px) { .pacing-table-wrap { overflow: visible; } .pacing-table thead th { top: 43px; } }   /* wide screens: the header follows the page under the top bar; narrow screens keep the sideways scroll box */
+.pacing-table-wrap.free { overflow: visible; } .pacing-table-wrap.free .pacing-table thead th { top: 43px; }   /* the header follows the page under the top bar only when the whole table fits (script below sets .free on screens at least 1000px wide); otherwise this box scrolls sideways and the page never does */
 .pacing-table thead th.proj { background: var(--lv-proj-head); color: var(--lv-proj-ink); }
 .pacing-table th.lab, .pacing-table td.lab { position: sticky; left: 0; z-index: 2; text-align: left; font-weight: inherit; min-width: 220px; border-right: 1px solid var(--lv-line); }
 .pacing-table thead th.lab { z-index: 4; }
@@ -275,7 +283,7 @@ export async function render(el, ctx) {
         paceCell(r), numCell(r, r.mtd, { context: r.context, amz: r.amazon_projected ? r : null }), numCell(r, r.last7), numCell(r, r.daily_needed), numCell(r, r.should_be), numCell(r, r.goal),
         numCell(r, r.projection, { proj: true, star: r.fmt !== 'pct1' && r.kind !== 'ratio' })));
     }
-    return h('div', { class: 'pacing-table-wrap' }, h('table', { class: 'pacing-table', 'aria-label': 'Month pacing against the plan' },
+    return tableBox(h, h('table', { class: 'pacing-table', 'aria-label': 'Month pacing against the plan' },
       h('thead', null, head), body));
   }
 
@@ -698,7 +706,7 @@ export async function render(el, ctx) {
       body.append(h('tr', null, h('th', { class: 'lab', scope: 'row' }, 'Payback on product margin, months'), h('td', null, pb.months.actual_label), h('td', { class: 'proj' }, pb.months.actual_label),
         h('td', null, pb.months.target_label), h('td', null, pb.months.actual != null && pb.months.target != null ? String(pb.months.actual - pb.months.target) : ''), h('td')));
     }
-    const table = h('div', { class: 'pacing-table-wrap' }, h('table', { class: 'pacing-table', style: { minWidth: '640px' }, 'aria-label': 'Month snapshot' },
+    const table = tableBox(h, h('table', { class: 'pacing-table', style: { minWidth: '640px' }, 'aria-label': 'Month snapshot' },
       h('thead', null, h('tr', null, h('th', { class: 'lab', scope: 'col' }, 'Metric'), h('th', null, 'Actual'), h('th', { class: 'proj' }, data.partial ? 'Projected*' : 'Month total'), h('th', null, 'Plan'), h('th', null, 'Difference'), h('th', null, 'Difference %'))), body));
     snapHost.replaceChildren(h('section', { class: 'pg-section' }, h('h2', { class: 'pg-h2' }, `Month snapshot, ${fmt.monthLabel(data.month, true)}`), h('p', { class: 'pacing-note' }, monthStateChip(data.state), data.status_text), table,
       ui.source('Actuals through yesterday. Revenue is on the plan\'s basis (Shopify less the estimated sales tax, plus Amazon). EBITDA and net operating income are estimates from the plan\'s cost rates.')));
