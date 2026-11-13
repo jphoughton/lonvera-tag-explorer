@@ -224,3 +224,28 @@ def test_more_menu_on_the_last_card_is_fully_visible_not_clipped(browser, base_u
         assert not last.locator("[data-testid=prod-card-menu]").is_visible()
     finally:
         c.close()
+
+
+def test_plan_vendor_rolls_up_to_one_line_and_stays_rolled_up_after_a_reload(page):
+    goto(page, "?view=plan")
+    row = page.locator("[data-testid=prod-plan-row][data-vendor=Madre]")
+    lists = row.locator("[data-testid=prod-plan-list]")
+    assert lists.first.is_visible() and row.locator("[data-testid=prod-plan-collapse]").get_attribute("aria-expanded") == "true"
+    open_n = row.locator("[data-testid=prod-plan-cell]").evaluate_all("cs => cs.reduce((n, c) => n + Number(c.dataset.open), 0)")
+    row.locator("[data-testid=prod-plan-collapse]").click()
+    assert not lists.first.is_visible() and not row.locator(".prod-plan-cap").is_visible()                # the cards and the capacity box fold away
+    assert row.locator("[data-testid=prod-plan-collapse]").get_attribute("aria-expanded") == "false"
+    assert row.locator("[data-testid=prod-plan-foldn]").text_content() == f"{open_n} open"              # one line: the vendor and how many cards it holds
+    assert row.locator("[data-testid=prod-plan-load]").first.is_visible()                                 # the load numbers stay
+    other = page.locator("[data-testid=prod-plan-row][data-vendor=Victoria] [data-testid=prod-plan-list]").first
+    assert other.is_visible()                                                                             # only that vendor folded
+    page.reload()
+    page.wait_for_selector("[data-testid=prod-plan]")
+    idle(page)
+    assert not page.locator("[data-testid=prod-plan-row][data-vendor=Madre] [data-testid=prod-plan-list]").first.is_visible()
+    page.locator("[data-testid=prod-plan-row][data-vendor=Madre] [data-testid=prod-plan-collapse]").click()
+    assert page.locator("[data-testid=prod-plan-row][data-vendor=Madre] [data-testid=prod-plan-list]").first.is_visible()
+    page.click("[data-testid=prod-plan-fold-all]")
+    assert not any(page.locator("[data-testid=prod-plan-list]").evaluate_all("ls => ls.map(l => l.offsetParent !== null)"))
+    page.click("[data-testid=prod-plan-unfold-all]")
+    assert page.locator("[data-testid=prod-plan-row][data-vendor=Madre] [data-testid=prod-plan-list]").first.is_visible()
