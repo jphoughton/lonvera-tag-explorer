@@ -421,3 +421,8 @@ body.prod-drawer-open { overflow: hidden; }
 .prod-plan-folded .prod-plan-list { display: none; }
 .prod-plan-folded .prod-plan-cell { min-height: 0; padding-bottom: 4px; }
 @media (max-width: 640px) { .prod-plan-fold { width: 32px; height: 32px; } .prod-plan-fold::before { left: 11px; top: 9px; } .prod-plan-folded .prod-plan-fold::before { left: 9px; top: 11px; } }
+
+/* one concept with its variations as links inside it */
+.prod-var > summary { cursor: pointer; font-weight: 600; }
+.prod-var > div { margin: 2px 0 2px 14px; font-size: 13px; }
+.prod-c .pri-sub { white-space: pre-line; }

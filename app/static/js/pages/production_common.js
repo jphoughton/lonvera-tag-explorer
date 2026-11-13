@@ -9,13 +9,21 @@ export const statusOf = (r) => r.status || ({ creative_in: 'in_review' }[r.stage
 export const PRIORITY_LABEL = { normal: 'Normal', high: 'High' };
 
 export const STAGES = { assigned: 'Assigned', brief_sent: 'Brief sent', creative_in: 'Creative delivered', ready: 'Ready to launch', launched: 'Launched', dropped: 'Dropped' };
-export const VENDOR_FALLBACK = ['Madre', 'Victoria', 'TrybeDCShop', 'TrybeOrion', '10xROAS', 'Internal', 'PuredMedia', 'CreateMastery', 'OpenProgram', 'Studio Flow'];
+export const VENDOR_FALLBACK = ['Madre', 'Victoria', 'TrybeDCShop', 'TrybeOrion', '10xROAS', 'PuredMedia', 'CreateMastery', 'OpenProgram', 'Studio Flow'];
 export const PRODUCT_NAMES = { 'vita-bull': 'Vita Bull', 'beef-liver': 'Beef Liver', boneflex: 'Boneflex' };
 
 export const md = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ''); return m ? `${+m[2]}/${+m[3]}` : (s || ''); };
 export const weekLabel = (s) => 'Week of ' + md(s);
-// Ticket title: "Madre - Hair Thinning - Hair Loss - Week of 11/9" (vendor, market cluster, pain point, week); a missing part is left out
-export const ticketTitle = (r) => [r.vendor, r.cluster, r.pain_point, r.for_week ? weekLabel(r.for_week) : ''].filter(Boolean).join(' - ') || 'Concept';
+// Ticket title: "Madre - Hair Thinning - Hair Loss - 11/9" (vendor, market cluster, pain point, week of); a missing part is left out
+export const ticketTitle = (r) => [r.vendor, r.cluster, r.pain_point, r.for_week ? md(r.for_week) : ''].filter(Boolean).join(' - ') || 'Concept';
+// Variations of one concept share a Concept ID and differ by a suffix (-hook1 ... -hook5, -v2, - Copy 3): they are shown as ONE entry with the variations as links inside it.
+export const variationBase = (id) => String(id).replace(/(?:[-_ ]+(?:hook|v|var|variation|copy)[ -]*\d+)+$/i, '') || String(id);
+export function variationGroups(items, idOf = (x) => x) {
+  const m = new Map();
+  for (const it of items) { const b = variationBase(idOf(it)); if (!m.has(b)) m.set(b, []); m.get(b).push(it); }
+  return [...m.entries()].map(([base, list]) => ({ base, list }));
+}
+export const variationLabel = (id, base) => String(id).slice(base.length).replace(/^[-_ ]+/, '') || String(id);
 export const productName = (p) => PRODUCT_NAMES[p] || p || '';
 export const stageLabel = (r) => r.stage_label || STAGES[r.stage] || r.stage || '';
 export const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
