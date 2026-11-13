@@ -338,7 +338,7 @@ export async function render(el, ctx) {
     paybackHost.replaceChildren(...kids);
     charts.destroy(paybackChartObj);
     const ink = css('--lv-viz-ink') || css('--lv-ink');
-    const accent = css('--lv-viz-1') || css('--lv-action');
+    const accent = css('--lv-viz-1') || css('--lv-accent');
     const second = css('--lv-viz-2') || css('--lv-info');
     const muted = css('--lv-viz-axis') || css('--lv-muted');
     const datasets = [{ label: 'Cumulative margin, product', data: r.cumulative, borderColor: accent, backgroundColor: accent, borderWidth: 2, pointRadius: 0, tension: 0.15 }];

@@ -31,7 +31,7 @@
   .row { display: flex; flex-wrap: wrap; gap: var(--lv-sp-3); align-items: center; }
   .logos { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--lv-sp-3); }
   .logo-tile { border-radius: var(--lv-r-md); padding: var(--lv-sp-5); display: flex; flex-direction: column; gap: var(--lv-sp-3); align-items: flex-start; border: 1px solid var(--lv-line); }
-  .logo-tile.on-light { background: var(--lv-bone); }
+  .logo-tile.on-light { background: var(--lv-surface-2); }
   .logo-tile.on-dark { background: var(--lv-night); }
   .logo-tile small { font-size: var(--lv-fs-xs); color: var(--lv-muted); }
   .logo-tile.on-dark small { color: var(--lv-on-inverse-2); }
@@ -121,7 +121,7 @@ function paintSwatches() {
 
 // ---------------------------------------------------------------- 1 brand
 const logoTile = (cls, src, note, height = 64) => h('div', { class: 'logo-tile ' + cls }, h('img', { src, alt: 'Lonvera', style: { height: height + 'px', width: 'auto', maxWidth: '100%' } }), h('small', note));
-sg.append(section('sg-brand', 'Brand', 'Warm bone surfaces, near-black ink, one ember accent for actions, the Lonvera mountain mark. Plus Jakarta Sans, 13px in tables. Plain words.',
+sg.append(section('sg-brand', 'Brand', 'White and mint surfaces, deep teal ink, teal for navigation and selection, one coral for the primary action, the Lonvera mountain mark. Plus Jakarta Sans, 13px in tables. Plain words.',
   h('div', { class: 'logos' },
     logoTile('on-light', '/static/projection/assets/lonvera-logo-black.svg', 'Stacked logo, ink on bone (pages, print)'),
     logoTile('on-dark', '/static/projection/assets/lonvera-logo-cream.svg', 'Stacked logo, cream on night'),
@@ -133,7 +133,7 @@ sg.append(section('sg-brand', 'Brand', 'Warm bone surfaces, near-black ink, one 
 sg.append(section('sg-color', 'Color', 'Role tokens, current theme. Components use these names only; the brand hex values sit behind them. Ember is for actions, brand and focus. Never for numbers, alerts or status.',
   h('h3', 'Surfaces'), swGrid([['--lv-bg'], ['--lv-surface'], ['--lv-surface-2'], ['--lv-surface-3'], ['--lv-hover'], ['--lv-inverse'], ['--lv-topbar']]),
   h('h3', 'Ink and lines'), swGrid([['--lv-ink', 'Aa'], ['--lv-ink-2', 'Aa'], ['--lv-muted', 'Aa'], ['--lv-line'], ['--lv-line-soft'], ['--lv-line-strong']]),
-  h('h3', 'Action (ember)'), swGrid([['--lv-action', 'Save'], ['--lv-action-hover'], ['--lv-action-active'], ['--lv-action-tint'], ['--lv-link', 'Link'], ['--lv-focus']]),
+  h('h3', 'Accent (teal) and primary action (coral)'), swGrid([['--lv-accent', 'Save'], ['--lv-accent-hover'], ['--lv-accent-active'], ['--lv-accent-tint'], ['--lv-cta', 'Save'], ['--lv-cta-hover'], ['--lv-cta-tint'], ['--lv-link', 'Link'], ['--lv-focus']]),
   h('h3', 'Status (text on tint, each with an icon and a word)'), swGrid([['--lv-good-bg', 'OK'], ['--lv-warn-bg', 'Watch'], ['--lv-bad-bg', 'Bad'], ['--lv-info-bg', 'Info'], ['--lv-neutral-bg', 'Idle'], ['--lv-good'], ['--lv-warn'], ['--lv-bad'], ['--lv-info'], ['--lv-neutral']]),
   h('h3', 'Cells and month headers'), swGrid([['--lv-input-bg', 'Input'], ['--lv-input-edge'], ['--lv-subtotal-bg', 'Subtotal'], ['--lv-total-bg', 'Total'], ['--lv-band-bg', 'Section'], ['--lv-actual-head', 'Actual'], ['--lv-proj-head', 'Projected*'], ['--lv-proj-cell'], ['--lv-proj-rule']]),
   h('h3', 'Chart slots (fixed order; 1 to 3 are Vital Bull, Boneflex, Beef Liver)'),
@@ -304,13 +304,13 @@ sg.append(section('sg-rules', 'Do and don\'t', null,
       'Expand on first use: "NC (new customer)", "NOI (net operating income)". Prefer the full words in labels.',
       'Show negatives as ($564,615) in crimson, zero as an em dash, projected months with * and the blue header.',
       'Put an icon and a word on every status: OUT, OVERDUE, ORDER SOON, OK.',
-      'Use ember only for the primary action, the active tab and the focus ring.',
+      'Use coral only for the primary action; teal is for links, the active tab, selection and the focus ring.',
       'One short source caption per table: "QuickBooks through Oct 2026."',
       'Say which scenario you are in, in the bar, on every screen.']),
     dd('dont', 'Don\'t', [
       'Don\'t open with the method: "Computed via a trailing four-month window..."',
       'Don\'t write build history or rationale into labels: "memo (Josh\'s lever, see v3)".',
-      'Don\'t color a number red in ember orange, or show status by color alone.',
+      'Don\'t color a number red in coral, or show status by color alone.',
       'Don\'t use a modal for a single cell edit. Edit in place; Esc cancels.',
       'Don\'t make calculated cells look editable, or inputs look calculated.',
       'Don\'t let the page scroll sideways: wide tables scroll inside their own container.',

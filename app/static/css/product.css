@@ -8,8 +8,8 @@
 .caret.ph { cursor: default; display: inline-block; }
 .opn { font-size: 12px; color: var(--accent); margin-left: 8px; font-weight: 400; text-decoration: underline; text-underline-offset: 2px; }
 tr.pseudo td { color: var(--muted); font-style: italic; }
-tr.lv1 td.labelcol, tr.lv2 td.labelcol { background: #fbfcfd; }
-tr.lv3 td.labelcol, tr.lv4 td.labelcol { background: #f8f9fb; }
+tr.lv1 td.labelcol, tr.lv2 td.labelcol { background: var(--lv-hover); }
+tr.lv3 td.labelcol, tr.lv4 td.labelcol { background: var(--lv-hover); }
 tr.lv4 td { font-size: 12px; }
 
 .stagecard-cmp { font-size: 12px; color: var(--muted); }
@@ -20,8 +20,8 @@ tr.lv4 td { font-size: 12px; }
 
 /* ---- coverage: what has not been tested ---- */
 .badge.cov { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 9px; font-size: 12px; font-weight: 600; line-height: 1.5; white-space: nowrap; vertical-align: 1px; }
-.badge.cov.no-ads { background: var(--warn-bg); color: var(--warn); border: 1px solid #e6c84f; }
-.badge.cov.no-spend { background: #fff; color: var(--warn); border: 1px dashed #c9a53a; }
+.badge.cov.no-ads { background: var(--warn-bg); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--warn-bg)); }
+.badge.cov.no-spend { background: #fff; color: var(--warn); border: 1px dashed color-mix(in srgb, var(--warn) 40%, var(--warn-bg)); }
 .badge.cov.added { background: var(--unc-bg); color: var(--muted); border: 1px solid var(--line); font-weight: 500; }
 .coveragebar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 6px 0 4px; padding: 6px 10px; border: 1px solid var(--line-soft); border-radius: 5px; background: #fff; font-size: 12.5px; }
 .coveragebar .cov-text { font-weight: 600; flex: 1 1 360px; min-width: 0; }

@@ -43,7 +43,7 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 .prod-yes { color: var(--good); font-weight: 700; } .prod-no { color: var(--muted); }
 /* Status pills: one colour per stage, from the shared tokens (light and dark) */
 .prod-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; background: var(--unc-bg); color: var(--unc); border: 1px solid transparent; }
-.prod-st-brief_sent { background: var(--accent-bg); color: var(--accent); }
+.prod-st-brief_sent { background: var(--accent-bg); color: var(--accent-ink); }
 .prod-st-creative_in { background: var(--warn-bg); color: var(--warn); }
 .prod-st-ready { background: var(--good-bg); color: var(--good); }
 .prod-st-launched { background: var(--scaling-bg); color: var(--scaling); }
@@ -85,7 +85,7 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 
 /* Production details (2026-11-10): the /priorities detail panel under an assignment, expandable. The table keeps its own horizontal scroll; the panel is pinned to the left edge of the scroll box at phone width. */
 .prod-detailrow[hidden], .prod-xd[hidden] { display: none; }
-.prod-xcell { padding: 0; border-bottom: 2px solid var(--lv-line, #dcd3c3); background: rgba(127, 127, 127, .04); }
+.prod-xcell { padding: 0; border-bottom: 2px solid var(--lv-line); background: var(--lv-hover); }
 .prod-xd { position: sticky; left: 0; box-sizing: border-box; width: min(1060px, calc(100vw - 32px)); padding: 10px 12px 14px; }
 .prod-xd-v { position: static; width: auto; padding: 4px 0 0; }
 .prod-namebtn { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: inherit; text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; overflow-wrap: anywhere; }
@@ -94,10 +94,10 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 
 /* production: history of an assignment (who did what, when) */
 .prod-hist { margin-top: 4px; font-size: 0.8125rem; }
-.prod-hist summary { cursor: pointer; color: var(--muted, #666); }
+.prod-hist summary { cursor: pointer; color: var(--muted); }
 .prod-histlist { margin: 4px 0 0; padding-left: 18px; }
 .prod-histlist li { margin: 2px 0; }
-.prod-hwhen { color: var(--muted, #666); white-space: nowrap; }
+.prod-hwhen { color: var(--muted); white-space: nowrap; }
 
 /* ======================================================================================================== Production board (2026-11-12)
    Board (kanban), Plan (vendor x week grid), card drawer, toasts. Colours come from the shared tokens (tokens.css). */
@@ -108,7 +108,7 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 
 /* chips and pills */
 .prod-chip { display: inline-flex; align-items: center; max-width: 100%; padding: 1px 8px; border-radius: 999px; font-size: 12px; line-height: 18px; font-weight: 600; background: var(--unc-bg); color: var(--unc); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.prod-chip-vendor { background: var(--accent-bg); color: var(--accent); }
+.prod-chip-vendor { background: var(--accent-bg); color: var(--accent-ink); }
 .prod-chip-fmt { background: var(--scaling-bg); color: var(--scaling); }
 .prod-chip-high { background: var(--bad-bg); color: var(--bad); }
 .prod-chip-hint { background: var(--warn-bg); color: var(--warn); }
@@ -116,13 +116,13 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 .prod-chip-due.prod-due-warn { background: var(--warn-bg); color: var(--warn); }
 .prod-chip-due.prod-due-bad { background: var(--bad-bg); color: var(--bad); }
 .prod-ps-assigned { background: var(--unc-bg); color: var(--unc); }
-.prod-ps-brief_sent { background: var(--accent-bg); color: var(--accent); }
+.prod-ps-brief_sent { background: var(--accent-bg); color: var(--accent-ink); }
 .prod-ps-in_production { background: var(--testing-bg); color: var(--testing); }
 .prod-ps-in_review { background: var(--warn-bg); color: var(--warn); }
 .prod-ps-ready { background: var(--good-bg); color: var(--good); }
 .prod-ps-launched { background: var(--scaling-bg); color: var(--scaling); }
 .prod-dot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; background: var(--unc); }
-.prod-dot-vita-bull { background: var(--scaling); } .prod-dot-beef-liver { background: #b4651a; } .prod-dot-boneflex { background: var(--testing); }
+.prod-dot-vita-bull { background: var(--scaling); } .prod-dot-beef-liver { background: #c2610f; } .prod-dot-boneflex { background: var(--testing); }
 
 /* weekly load bars */
 .prod-loadwrap { margin: 4px 0 12px; }
@@ -150,14 +150,14 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 .prod-board-list { display: grid; gap: 8px; min-height: 64px; align-content: start; border-radius: 8px; transition: background .12s; }
 .prod-board-list.prod-over { background: var(--accent-bg); outline: 2px dashed var(--accent); outline-offset: -2px; }
 .prod-board-empty { margin: 0; padding: 14px 8px; font-size: 13px; color: var(--muted); text-align: center; border: 1px dashed var(--line); border-radius: 8px; }
-.prod-board-card { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px 8px; display: grid; gap: 6px; cursor: grab; box-shadow: 0 1px 1px rgba(20, 30, 50, .04); min-width: 0; }
-.prod-board-card:hover { border-color: #b9c1cf; box-shadow: 0 2px 6px rgba(20, 30, 50, .08); }
+.prod-board-card { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px 8px; display: grid; gap: 6px; cursor: grab; box-shadow: 0 1px 1px color-mix(in srgb, var(--lv-ink) 4%, transparent); min-width: 0; }
+.prod-board-card:hover { border-color: var(--lv-line-strong); box-shadow: 0 2px 6px color-mix(in srgb, var(--lv-ink) 8%, transparent); }
 .prod-board-card:focus-visible, .prod-picked { outline: 2px solid var(--accent); outline-offset: 1px; }
-.prod-picked { box-shadow: 0 4px 14px rgba(26, 95, 180, .3); }
+.prod-picked { box-shadow: 0 4px 14px color-mix(in srgb, var(--lv-accent) 30%, transparent); }
 .prod-board-card.prod-overdue { border-left: 3px solid var(--bad); }
 .prod-board-card.prod-high:not(.prod-overdue) { border-left: 3px solid #d98a1a; }
 .prod-dragging { opacity: .35; }
-.prod-ghost { position: fixed; z-index: 1200; pointer-events: none; margin: 0; opacity: .96; transform: rotate(1.5deg); box-shadow: 0 10px 28px rgba(20, 30, 50, .28); cursor: grabbing; }
+.prod-ghost { position: fixed; z-index: 1200; pointer-events: none; margin: 0; opacity: .96; transform: rotate(1.5deg); box-shadow: 0 10px 28px color-mix(in srgb, var(--lv-ink) 28%, transparent); cursor: grabbing; }
 body.prod-is-dragging { user-select: none; cursor: grabbing; }
 .prod-card-top { display: flex; align-items: flex-start; gap: 7px; min-width: 0; }
 .prod-card-title { background: none; border: 0; padding: 0; margin: 0; font: inherit; font-size: 14px; font-weight: 700; line-height: 1.3; color: var(--text); text-align: left; cursor: pointer; flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -206,8 +206,8 @@ body.prod-is-dragging { user-select: none; cursor: grabbing; }
 .prod-plan .prod-card-title { font-size: 13px; }
 
 /* drawer */
-.prod-drawer-scrim { position: fixed; inset: 0; z-index: 1000; background: rgba(15, 20, 30, .32); }
-.prod-drawer { position: fixed; z-index: 1001; top: 0; right: 0; bottom: 0; width: min(540px, 100vw); background: var(--panel); box-shadow: -10px 0 30px rgba(15, 20, 30, .22); display: flex; flex-direction: column; overflow: hidden; }
+.prod-drawer-scrim { position: fixed; inset: 0; z-index: 1000; background: color-mix(in srgb, var(--lv-ink) 32%, transparent); }
+.prod-drawer { position: fixed; z-index: 1001; top: 0; right: 0; bottom: 0; width: min(540px, 100vw); background: var(--panel); box-shadow: -10px 0 30px color-mix(in srgb, var(--lv-ink) 22%, transparent); display: flex; flex-direction: column; overflow: hidden; }
 body.prod-drawer-open { overflow: hidden; }
 .prod-drawer-head { padding: 14px 18px 10px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
 .prod-drawer-titlerow { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -249,7 +249,7 @@ body.prod-drawer-open { overflow: hidden; }
 
 /* toasts */
 .prod-toasts { position: fixed; z-index: 1300; left: 50%; bottom: 18px; transform: translateX(-50%); display: grid; gap: 8px; width: min(440px, calc(100vw - 24px)); pointer-events: none; }
-.prod-toast { background: #1b2027; color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 14px; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); pointer-events: auto; overflow-wrap: anywhere; }
+.prod-toast { background: var(--lv-ink); color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 14px; box-shadow: 0 6px 18px color-mix(in srgb, var(--lv-ink) 25%, transparent); pointer-events: auto; overflow-wrap: anywhere; }
 .prod-toast-bad { background: var(--bad); }
 .prod-derr:empty { display: none; }
 .prod-derr { margin: 0; font-size: 13px; }
@@ -306,7 +306,7 @@ body.prod-drawer-open { overflow: hidden; }
 .prod-card-more > summary::-webkit-details-marker { display: none; }
 .prod-card-more > summary:hover, .prod-card-more[open] > summary { background: var(--head-bg); border-color: var(--line); color: var(--text); }
 .prod-card-more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.prod-card-menu { position: fixed; z-index: 1100; width: 200px; display: grid; gap: 4px; padding: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(20, 30, 50, .18); }
+.prod-card-menu { position: fixed; z-index: 1100; width: 200px; display: grid; gap: 4px; padding: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px color-mix(in srgb, var(--lv-ink) 18%, transparent); }
 .prod-card-menu .prod-card-moveto { max-width: none; width: 100%; box-sizing: border-box; font-size: 13px; padding: 5px 6px; color: var(--text); }
 .prod-card-menu .prod-menu-item { text-align: left; margin: 0; font-size: 13px; padding: 5px 8px; }
 .prod-ext::after { content: " \2197"; font-size: .85em; opacity: .7; text-decoration: none; display: inline-block; }
@@ -402,8 +402,8 @@ body.prod-drawer-open { overflow: hidden; }
 .mf > summary.mf-btn { list-style: none; cursor: pointer; font: inherit; font-size: 14px; padding: 4px 22px 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); position: relative; white-space: nowrap; }
 .mf > summary.mf-btn::-webkit-details-marker { display: none; }
 .mf > summary.mf-btn::after { content: ""; position: absolute; right: 8px; top: 50%; margin-top: -4px; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg) scale(.8); }
-.mf[open] > summary.mf-btn { border-color: var(--accent, #b8481f); }
-.mf-panel { position: absolute; z-index: 1100; top: calc(100% + 4px); left: 0; min-width: 190px; max-height: 320px; overflow: auto; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(20, 30, 50, .18); display: grid; gap: 2px; }
+.mf[open] > summary.mf-btn { border-color: var(--accent); }
+.mf-panel { position: absolute; z-index: 1100; top: calc(100% + 4px); left: 0; min-width: 190px; max-height: 320px; overflow: auto; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px color-mix(in srgb, var(--lv-ink) 18%, transparent); display: grid; gap: 2px; }
 .mf-opt { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 5px; font-size: 14px; cursor: pointer; white-space: nowrap; }
 .mf-opt:hover { background: var(--head-bg); }
 .mf-opt input { margin: 0; width: 16px; height: 16px; }
@@ -426,3 +426,9 @@ body.prod-drawer-open { overflow: hidden; }
 .prod-var > summary { cursor: pointer; font-weight: 600; }
 .prod-var > div { margin: 2px 0 2px 14px; font-size: 13px; }
 .prod-c .pri-sub { white-space: pre-line; }
+/* first-step actions (Send brief, Mark in production) are teal outline buttons: coral is kept for Submit for review, Approve and Mark launched, so a column of cards does not read as a wall of coral */
+.btn.primary.prod-card-action[data-action="send_brief"], .btn.primary.prod-card-action[data-action="start"],
+.prod-drawer-actions .btn.primary[data-testid$="-send_brief"], .prod-drawer-actions .btn.primary[data-testid$="-start"] { background: var(--panel); border-color: var(--accent); color: var(--accent); }
+.btn.primary.prod-card-action[data-action="send_brief"]:hover, .btn.primary.prod-card-action[data-action="start"]:hover,
+.prod-drawer-actions .btn.primary[data-testid$="-send_brief"]:hover, .prod-drawer-actions .btn.primary[data-testid$="-start"]:hover { background: var(--accent-bg); border-color: var(--accent-hover); }
+@media (max-width: 640px) { .mf-panel { position: fixed; left: 12px; right: 12px; top: auto; min-width: 0; margin-top: 4px; } }   /* phone: the list opens under its button but spans the screen, so it is never clipped at the right edge */

@@ -2,27 +2,27 @@
 /* ---- priorities: grouped hierarchy (product > market cluster > ICP > pain point as merged cells) and sticky bars ---- */
 /* separate borders (not collapsed): a sticky header keeps its bottom border while it moves, and rows draw their own bottom line */
 .pri-main { border-collapse: separate; border-spacing: 0; }
-.pri-main .pri-row > td { border-bottom: 1px solid var(--lv-pri-card-line, #e4dccb); }
+.pri-main .pri-row > td { border-bottom: 1px solid var(--lv-pri-card-line); }
 .pri-tbctl { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .pri-groupbtn { padding: 4px 12px; font-weight: 650; }
-.pri-groupbtn[aria-pressed="true"] { background: var(--lv-pri-selected, #1c1915); border-color: var(--lv-pri-selected, #1c1915); color: #fff; }
-.pri-groupbtn:focus-visible { outline: 2px solid var(--lv-focus, #c75123); outline-offset: 2px; }
+.pri-groupbtn[aria-pressed="true"] { background: var(--lv-pri-selected); border-color: var(--lv-pri-selected); color: #fff; }
+.pri-groupbtn:focus-visible { outline: 2px solid var(--lv-focus); outline-offset: 2px; }
 /* each row carries --h (the hue of its cluster name): cluster = strongest fill, ICP = lighter tint; all dark-ink-safe (lightness 85 / 92). Product is a heading row, not a column; checkbox / expand cells stay plain so the colour starts at the cluster cell. */
 .pri-grouped .pri-c-product, .pri-grouped .pri-th-product { display: none; }
 .pri-grouped .pri-row, .pri-grouped .pri-row:hover, .pri-grouped .pri-row.pri-open { background: #fff; }      /* white rows: only the cluster and ICP cells carry colour (white in every state: hover, open and selected are never cluster-coloured; an open row gets a neutral rule left of its checkbox) */
 .pri-grouped .pri-row > td.pri-c-tog { background: transparent; }
-.pri-grouped .pri-row.pri-open > td.pri-c-tog { background: linear-gradient(#1c1915, #1c1915) left top / 3px 100% no-repeat; }
+.pri-grouped .pri-row.pri-open > td.pri-c-tog { background: linear-gradient(var(--lv-ink), var(--lv-ink)) left top / 3px 100% no-repeat; }
 .pri-grouped .pri-row > td.pri-merged { text-align: center; vertical-align: top; font-weight: 700; padding: 8px; cursor: default; }
 .pri-grouped .pri-merged > .pri-lbl { display: block; position: sticky; top: calc(var(--header-h) + var(--pri-bar-h, 0px) + var(--pri-head-h, 50px) + 8px); }
-.pri-grouped .pri-row > td.pri-c-cluster.pri-merged { background: hsl(var(--h) 55% 85%); }
-.pri-grouped .pri-row > td.pri-c-icp.pri-merged { background: hsl(var(--h) 55% 92%); }
+.pri-grouped .pri-row > td.pri-c-cluster.pri-merged { background: hsl(var(--h) 80% 86%); }
+.pri-grouped .pri-row > td.pri-c-icp.pri-merged { background: hsl(var(--h) 80% 93%); }
 .pri-grouped .pri-row > td.pri-c-cluster.pri-merged, .pri-grouped .pri-row > td.pri-c-icp.pri-merged { border-bottom-color: transparent; }
 /* product heading row: full width, bold name + count, heaviest rule above it */
-.pri-prodhead > td { padding: 12px 8px 8px 12px; font-size: 15px; color: var(--lv-ink, #1c1915); background: transparent; border-top: 4px solid #1c1915; border-bottom: 1px solid rgba(28, 25, 21, .32); }
+.pri-prodhead > td { padding: 12px 8px 8px 12px; font-size: 15px; color: var(--lv-ink); background: transparent; border-top: 4px solid var(--lv-ink); border-bottom: 1px solid color-mix(in srgb, var(--lv-ink) 32%, transparent); }
 .pri-prodhead strong { font-weight: 800; }
 /* separators: heavier between clusters, light between ICPs (inset lines, so they work on merged cells too); the product heading carries the heaviest rule */
-.pri-grouped .pri-g-icp > td { box-shadow: inset 0 1px 0 rgba(28, 25, 21, .32); }
-.pri-grouped .pri-g-cl > td { box-shadow: inset 0 3px 0 rgba(28, 25, 21, .62); }
+.pri-grouped .pri-g-icp > td { box-shadow: inset 0 1px 0 color-mix(in srgb, var(--lv-ink) 32%, transparent); }
+.pri-grouped .pri-g-cl > td { box-shadow: inset 0 3px 0 color-mix(in srgb, var(--lv-ink) 62%, transparent); }
 .pri-grouped .pri-g-prod > td { box-shadow: none; }
 .pri-grouped .pri-detail > td.pri-d-sp { background: transparent; padding: 0; }
 .pri-grouped .pri-detail > td:not(.pri-d-sp) { padding-left: 14px; }
@@ -30,7 +30,7 @@
 .pri-seltools { top: var(--header-h); margin: 0 0 8px; z-index: 6; align-items: baseline; gap: 8px 10px; }
 .pri-selhead { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; margin-right: 4px; }
 .pri-selhead strong { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.pri-selsplit { font-weight: 650; color: var(--lv-ink-2, #3d372f); font-size: 13px; }
+.pri-selsplit { font-weight: 650; color: var(--lv-ink-2); font-size: 13px; }
 .pri-selacts { display: contents; }
 .pri-selmore { display: none; }
 @media (min-width: 761px) {
@@ -45,10 +45,10 @@
   .pri-seltools.pri-more-open .pri-selacts { display: flex; }
   .pri-tbctl { width: 100%; }
   /* stacked cards: every card carries its own cluster as a coloured label, ICP in the lighter tint, and a coloured edge */
-  .pri-main .pri-row { border-left: 5px solid hsl(var(--h) 50% 72%); }
-  .pri-main .pri-row > td.pri-c-cluster { background: hsl(var(--h) 55% 85%); font-weight: 700; }
-  .pri-main .pri-row > td.pri-c-icp { background: hsl(var(--h) 55% 92%); }
-  .pri-main .pri-row > td.pri-c-product { background: #efe8da; }
+  .pri-main .pri-row { border-left: 5px solid hsl(var(--h) 65% 70%); }
+  .pri-main .pri-row > td.pri-c-cluster { background: hsl(var(--h) 80% 86%); font-weight: 700; }
+  .pri-main .pri-row > td.pri-c-icp { background: hsl(var(--h) 80% 93%); }
+  .pri-main .pri-row > td.pri-c-product { background: var(--lv-surface-2); }
   .pri-grouped .pri-row > td.pri-merged { text-align: left; vertical-align: top; padding: 3px 8px; font-weight: 700; }
   .pri-grouped .pri-row > td.pri-merged, .pri-grouped .pri-g-prod > td, .pri-grouped .pri-g-cl > td, .pri-grouped .pri-g-icp > td { box-shadow: none; }
   .pri-grouped .pri-merged > .pri-lbl { position: static; display: inline; }

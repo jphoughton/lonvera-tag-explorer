@@ -1,8 +1,9 @@
-/* Lonvera brand tokens for the Projections pages. Custom properties plus a few base rules; components live in shell.css / grid.css.
-   Link after /static/app.css: the block "Tag Explorer names" maps the existing tokens (--bg --panel --line --text --muted --accent --good --warn --bad ...) onto the brand.
-   Sources (details in docs/projection/DESIGN.md): "Vital Bull PDP R2" prototype (bone, sand, card, parch, ink, ember, night, radii, focus ring, Plus Jakarta Sans);
+/* Lonvera brand tokens for the whole app (Projections pages and the Tag Explorer shell). Custom properties plus a few base rules; components live in shell.css / grid.css.
+   Link after /static/app.css: the block "Tag Explorer names" maps the existing tokens (--bg --panel --line --text --muted --accent --cta --good --warn --bad ...) onto the brand.
+   Palette C (2026-11-12): white, mint, teal and coral. Radii, focus ring and Plus Jakarta Sans come from the "Vital Bull PDP R2" prototype (details in docs/projection/DESIGN.md);
    Lonvera Brand Guidelines 2026 (Boneflex blue, personality); lonvera.com theme (mountain mark, product palettes). No external requests: fonts are local or self-hosted.
-   Rules: ember = actions, brand, focus. Never numbers, alerts or status. Crimson = negative and bad. Every status also carries an icon and a word.
+   Rules: teal = navigation, links, focus ring, selected states, secondary buttons, vendor and format chips. Coral = the one primary action (Send brief, Approve, Submit, Save), never numbers, alerts or status.
+   Crimson = negative and bad. No neutral gray: every surface, line and secondary text derives from the teal / mint family. Every status also carries an icon and a word.
    Dark mode follows the OS (prefers-color-scheme) and can be forced with <html data-theme="light|dark">. The two dark blocks below must stay identical (a test checks). */
 
 /* Plus Jakarta Sans 5.3.0 (@fontsource, SIL OFL 1.1; license in assets/fonts/OFL-LICENSE.txt). Latin subset, self-hosted, no runtime font requests. */
@@ -42,94 +43,105 @@
   src: url("assets/fonts/plus-jakarta-sans-latin-800-normal.woff2") format("woff2");
 }
 
+
 :root {
   color-scheme: light;
 
   /* ---------- brand palette (same in both modes; use the role tokens below in components) ---------- */
-  --lv-bone: #F6F2EB;
-  --lv-sand: #EEE7DA;
-  --lv-card: #FBF8F3;
-  --lv-parch: #EFE6D7;
-  --lv-ink-raw: #1C1915;
-  --lv-ember: #C75123;
-  --lv-ember-deep: #9E3E19;
-  --lv-ember-tint: #F6E3D9;
-  --lv-night: #161310;
-  --lv-night-2: #221D18;
+  --lv-white: #FFFFFF;
+  --lv-mint: #EDF8F6;
+  --lv-mint-2: #DDF2EE;
+  --lv-ink-raw: #16302F;
+  --lv-teal: #0D7A79;
+  --lv-teal-deep: #0B5F5E;
+  --lv-coral: #D4432A;
+  --lv-night: #0F2423;
+  --lv-night-2: #1B3B3A;
   --lv-amber: #F4B43C;
-  --lv-mist: #E8E8E8;
 
   /* ---------- surfaces ---------- */
-  --lv-bg: #F6F2EB;
-  --lv-surface: #FBF8F3;
-  --lv-surface-2: #EEE7DA;
-  --lv-surface-3: #E6DDCB;
-  --lv-hover: #F3EDE1;
-  --lv-inverse: #161310;
-  --lv-on-inverse: #F6F2EB;
-  --lv-on-inverse-2: #BDB3A5;
+  --lv-bg: #FFFFFF;
+  --lv-surface: #FFFFFF;
+  --lv-surface-2: #EDF8F6;
+  --lv-surface-3: #DDF2EE;
+  --lv-hover: #F2FAF8;
+  --lv-selected: #E4F5F2;
+  --lv-inverse: #0F2423;
+  --lv-on-inverse: #F2FAF8;
+  --lv-on-inverse-2: #A9D0CB;
 
   /* ---------- ink and lines ---------- */
-  --lv-ink: #1C1915;
-  --lv-ink-2: #3D372F;
-  --lv-muted: #665D53;
-  --lv-line: #DCD3C3;
-  --lv-line-soft: #E9E2D5;
-  --lv-line-strong: #8C8375;
+  --lv-ink: #16302F;
+  --lv-ink-2: #2B4846;
+  --lv-muted: #4A726F;
+  --lv-line: #D2EAE5;
+  --lv-line-soft: #E4F2EF;
+  --lv-line-strong: #648F8A;
 
-  /* ---------- action (ember): buttons, active nav, selection, focus ---------- */
-  --lv-action: #C75123;
-  --lv-action-hover: #9E3E19;
-  --lv-action-active: #7E2F10;
-  --lv-on-action: #FFFFFF;
-  --lv-action-tint: #F6E3D9;
-  --lv-on-action-tint: #7E2F10;
-  --lv-link: #9E3E19;
-  --lv-link-hover: #7E2F10;
-  --lv-focus: #C75123;
-  --lv-focus-gap: #FBF8F3;
-  --lv-select-bg: rgba(199, 81, 35, 0.10);
-  --lv-scrim: rgba(22, 19, 16, 0.55);
+  /* ---------- accent (teal): navigation, links, focus, selected states, secondary buttons, vendor and format chips ---------- */
+  --lv-accent: #0D7A79;
+  --lv-accent-hover: #0B5F5E;
+  --lv-accent-active: #084A49;
+  --lv-on-accent: #FFFFFF;
+  --lv-accent-tint: #DDF2EE;
+  --lv-accent-ink: #0B5F5E;
+  --lv-on-accent-tint: #0B5F5E;
+  --lv-link: #0D7A79;
+  --lv-link-hover: #0B5F5E;
+  --lv-focus: #0D7A79;
+  --lv-focus-gap: #FFFFFF;
+  --lv-select-bg: rgba(14, 124, 123, 0.10);
+  --lv-scrim: rgba(22, 48, 47, 0.55);
+
+  /* ---------- cta (coral): the single primary-action color; primary buttons only, never numbers or status ---------- */
+  --lv-cta: #D4432A;
+  --lv-cta-hover: #B53420;
+  --lv-cta-active: #962A18;
+  --lv-on-cta: #FFFFFF;
+  --lv-cta-tint: #FDE8E2;
+  --lv-on-cta-tint: #962A18;
 
   /* ---------- status: text on tint pairs, plus solid chips (OUT, OVERDUE) ---------- */
-  --lv-good: #17683A;
-  --lv-good-bg: #DCEFE0;
-  --lv-warn: #7A4F00;
-  --lv-warn-bg: #F8E8B8;
-  --lv-bad: #A3173C;
-  --lv-bad-bg: #F9DEE4;
+  --lv-good: #146C3A;
+  --lv-good-bg: #E3F5EA;
+  --lv-warn: #8A5A00;
+  --lv-warn-bg: #FFF0C9;
+  --lv-bad: #B3261E;
+  --lv-bad-bg: #FDE4E1;
   --lv-info: #1E5A9E;
-  --lv-info-bg: #DCE8F5;
-  --lv-neutral: #5F564B;
-  --lv-neutral-bg: #EAE3D5;
-  --lv-good-solid: #17683A;
-  --lv-bad-solid: #A3173C;
+  --lv-info-bg: #E1EEFB;
+  --lv-neutral: #3F6764;
+  --lv-neutral-bg: #E4F2EF;
+  --lv-scaling: #5A43A3;
+  --lv-scaling-bg: #ECE8F8;
+  --lv-good-solid: #146C3A;
+  --lv-bad-solid: #B3261E;
   --lv-warn-solid: #F4B43C;
   --lv-on-solid: #FFFFFF;
-  --lv-on-warn-solid: #1C1915;
+  --lv-on-warn-solid: #16302F;
   --lv-inv-good: #7FD39C;
   --lv-inv-warn: #F0C25A;
   --lv-inv-bad: #FF92AB;
 
   /* ---------- data cells and month headers ---------- */
-  --lv-input-bg: #FAEBC0;
-  --lv-input-edge: #A98216;
-  --lv-input-grid: #DDB650;
-  --lv-input-hover: #F6E0A0;
-  --lv-input-ink: #1C1915;
+  --lv-input-bg: #FFF4C2;
+  --lv-input-edge: #9A7400;
+  --lv-input-grid: #E3C25B;
+  --lv-input-hover: #FFEB99;
+  --lv-input-ink: #16302F;
   --lv-editor-bg: #FFFFFF;
-  --lv-calc-ink: #3D372F;
-  --lv-neg: #A3173C;
-  --lv-total-bg: #EEE7DA;
-  --lv-total-rule: #1C1915;
-  --lv-subtotal-bg: #F4EFE5;
-  --lv-band-bg: #E9E1D1;
-  --lv-hl-bg: #F4EBD9;
-  --lv-actual-head: #EEE7DA;
-  --lv-actual-ink: #1C1915;
+  --lv-calc-ink: #2B4846;
+  --lv-neg: #B3261E;
+  --lv-total-bg: #DDF2EE;
+  --lv-total-rule: #16302F;
+  --lv-subtotal-bg: #F2FAF8;
+  --lv-band-bg: #DDF2EE;
+  --lv-hl-bg: #E4F5F2;
+  --lv-actual-head: #EDF8F6;
+  --lv-actual-ink: #16302F;
   --lv-proj-head: #C6DAF0;
   --lv-proj-ink: #15406F;
-  --lv-proj-cell: #F6F8F8;
+  --lv-proj-cell: #F5FAFC;
   --lv-proj-rule: #2863AB;
   --lv-proj-band: rgba(40, 99, 171, 0.08);
 
@@ -138,17 +150,18 @@
   --lv-viz-2: #2863AB;
   --lv-viz-3: #5F983A;
   --lv-viz-4: #8166C3;
-  --lv-viz-5: #9D7200;
+  --lv-viz-5: #C2185B;
   --lv-viz-6: #009394;
-  --lv-viz-ink: #1C1915;
-  --lv-viz-neutral: #6B6258;
-  --lv-viz-grid: #E9E2D5;
-  --lv-viz-axis: #665D53;
+  --lv-viz-ink: #16302F;
+  --lv-viz-neutral: #4A726F;
+  --lv-viz-grid: #E4F2EF;
+  --lv-viz-axis: #4A726F;
   --lv-viz-proj-alpha: 0.45;
   --lv-viz-dash: 6 4;
   --lv-product-bull: var(--lv-viz-1);
   --lv-product-liver: var(--lv-viz-3);
   --lv-product-bone: var(--lv-viz-2);
+
 
   /* ---------- type ---------- */
   --lv-font: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -184,9 +197,9 @@
   --lv-r-md: 14px;
   --lv-r-lg: 20px;
   --lv-r-pill: 999px;
-  --lv-shadow-1: 0 1px 2px rgba(28, 25, 21, 0.06);
-  --lv-shadow-2: 0 6px 18px rgba(28, 25, 21, 0.14);
-  --lv-shadow-3: 0 18px 48px rgba(22, 19, 16, 0.28);
+  --lv-shadow-1: 0 1px 2px rgba(22, 48, 47, 0.06);
+  --lv-shadow-2: 0 6px 18px rgba(22, 48, 47, 0.14);
+  --lv-shadow-3: 0 18px 48px rgba(22, 48, 47, 0.28);
   --lv-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --lv-dur: 150ms;
 
@@ -202,11 +215,22 @@
   --panel: var(--lv-surface);
   --line: var(--lv-line);
   --line-soft: var(--lv-line-soft);
+  --border: var(--lv-line);
   --head-bg: var(--lv-surface-2);
+  --head-ink: var(--lv-ink-2);
+  --hover: var(--lv-hover);
+  --selected: var(--lv-selected);
   --text: var(--lv-ink);
   --muted: var(--lv-muted);
   --accent: var(--lv-link);
-  --accent-bg: var(--lv-action-tint);
+  --accent-hover: var(--lv-link-hover);
+  --accent-ink: var(--lv-accent-ink);
+  --accent-bg: var(--lv-accent-tint);
+  --on-accent: var(--lv-on-accent);
+  --cta: var(--lv-cta);
+  --cta-hover: var(--lv-cta-hover);
+  --on-cta: var(--lv-on-cta);
+  --cta-bg: var(--lv-cta-tint);
   --good: var(--lv-good);
   --good-bg: var(--lv-good-bg);
   --warn: var(--lv-warn);
@@ -215,8 +239,8 @@
   --bad-bg: var(--lv-bad-bg);
   --testing: var(--lv-info);
   --testing-bg: var(--lv-info-bg);
-  --scaling: #5a43a3;
-  --scaling-bg: var(--lv-surface-2);
+  --scaling: var(--lv-scaling);
+  --scaling-bg: var(--lv-scaling-bg);
   --unc: var(--lv-neutral);
   --unc-bg: var(--lv-neutral-bg);
   --font: var(--lv-font);
@@ -240,17 +264,27 @@
     --lv-line: #3A332B;
     --lv-line-soft: #2F2923;
     --lv-line-strong: #7A7060;
-    --lv-action: #C75123;
-    --lv-action-hover: #B0461C;
-    --lv-action-active: #96391A;
-    --lv-on-action: #FFFFFF;
-    --lv-action-tint: #3A2218;
-    --lv-on-action-tint: #F7B796;
-    --lv-link: #F59E74;
-    --lv-link-hover: #FFB690;
-    --lv-focus: #F08A5B;
+    --lv-selected: #302923;
+    --lv-accent: #0D7A79;
+    --lv-accent-hover: #0B6A69;
+    --lv-accent-active: #095857;
+    --lv-on-accent: #FFFFFF;
+    --lv-accent-tint: #12302F;
+    --lv-accent-ink: #8FDCD8;
+    --lv-on-accent-tint: #8FDCD8;
+    --lv-link: #5CCFCB;
+    --lv-link-hover: #8FE0DC;
+    --lv-focus: #4FC3BF;
     --lv-focus-gap: #221D18;
-    --lv-select-bg: rgba(240, 138, 91, 0.16);
+    --lv-select-bg: rgba(79, 195, 191, 0.16);
+    --lv-cta: #D4432A;
+    --lv-cta-hover: #B53420;
+    --lv-cta-active: #962A18;
+    --lv-on-cta: #FFFFFF;
+    --lv-cta-tint: #3F1D16;
+    --lv-on-cta-tint: #F7B796;
+    --lv-scaling: #B8A6F0;
+    --lv-scaling-bg: #2B2347;
     --lv-good: #7FD39C;
     --lv-good-bg: #17301F;
     --lv-warn: #F0C25A;
@@ -318,17 +352,27 @@
   --lv-line: #3A332B;
   --lv-line-soft: #2F2923;
   --lv-line-strong: #7A7060;
-  --lv-action: #C75123;
-  --lv-action-hover: #B0461C;
-  --lv-action-active: #96391A;
-  --lv-on-action: #FFFFFF;
-  --lv-action-tint: #3A2218;
-  --lv-on-action-tint: #F7B796;
-  --lv-link: #F59E74;
-  --lv-link-hover: #FFB690;
-  --lv-focus: #F08A5B;
+  --lv-selected: #302923;
+  --lv-accent: #0D7A79;
+  --lv-accent-hover: #0B6A69;
+  --lv-accent-active: #095857;
+  --lv-on-accent: #FFFFFF;
+  --lv-accent-tint: #12302F;
+  --lv-accent-ink: #8FDCD8;
+  --lv-on-accent-tint: #8FDCD8;
+  --lv-link: #5CCFCB;
+  --lv-link-hover: #8FE0DC;
+  --lv-focus: #4FC3BF;
   --lv-focus-gap: #221D18;
-  --lv-select-bg: rgba(240, 138, 91, 0.16);
+  --lv-select-bg: rgba(79, 195, 191, 0.16);
+  --lv-cta: #D4432A;
+  --lv-cta-hover: #B53420;
+  --lv-cta-active: #962A18;
+  --lv-on-cta: #FFFFFF;
+  --lv-cta-tint: #3F1D16;
+  --lv-on-cta-tint: #F7B796;
+  --lv-scaling: #B8A6F0;
+  --lv-scaling-bg: #2B2347;
   --lv-good: #7FD39C;
   --lv-good-bg: #17301F;
   --lv-warn: #F0C25A;
@@ -392,8 +436,8 @@
 
 /* ---------- base rules ---------- */
 .lv-num { font-variant-numeric: tabular-nums; }
-.lv-skip { position: absolute; left: 8px; top: -48px; z-index: 200; padding: 8px 14px; border-radius: var(--lv-r-sm); background: var(--lv-action); color: var(--lv-on-action); font-weight: var(--lv-fw-bold); }
-.lv-skip:focus { top: 8px; color: var(--lv-on-action); }
+.lv-skip { position: absolute; left: 8px; top: -48px; z-index: 200; padding: 8px 14px; border-radius: var(--lv-r-sm); background: var(--lv-accent); color: var(--lv-on-accent); font-weight: var(--lv-fw-bold); }
+.lv-skip:focus { top: 8px; color: var(--lv-on-accent); }
 .lv-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .lv-app, .pg-body { font-family: var(--lv-font); font-size: var(--lv-fs-base); line-height: var(--lv-lh); -webkit-font-smoothing: antialiased; }
 .lv-app :focus-visible, .pg-body :focus-visible { outline: 2px solid var(--lv-focus); outline-offset: 2px; }
