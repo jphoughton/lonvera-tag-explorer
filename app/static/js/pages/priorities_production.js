@@ -173,20 +173,18 @@ export async function productionPage(ctx) {
     const mon = mondayOf(today());
     const weeks = [0, 7, 14, 21, 28].map((n) => addDays(mon, n));
     const oneVendor = picked(st.vendor).length === 1 ? picked(st.vendor)[0] : vendorNames()[0];
-    const oneProduct = picked(st.product).length === 1 ? picked(st.product)[0] : 'beef-liver';
-    const res = await askDialog({ title: 'New ticket', note: 'It starts in Assigned. Everything else can be added inside the ticket.', okLabel: 'Add ticket',
+    const res = await askDialog({ title: 'New ticket', note: 'A name, a vendor and a brief are all it needs. The system fills in product, market cluster, ICP, pain point and new vs iteration from the brief; set any of them here to keep your value.', okLabel: 'Add ticket',
       fields: [{ key: 'concept_name', label: 'Concept name', type: 'text', value: '', placeholder: 'Grandfather used to eat well', required: true },
-        { key: 'product', label: 'Product', type: 'select', value: oneProduct, options: Object.entries(PRODUCT_NAMES) },
-        { key: 'cluster', label: 'Market Cluster', type: 'text', value: '', placeholder: 'Primal Living', required: true },
-        { key: 'concept_kind', label: 'New vs Iteration', type: 'select', value: 'new', options: [['new', 'New'], ['iteration', 'Iteration']] },
-        { key: 'variations', label: 'Variations (how many)', type: 'select', value: '1', options: Array.from({ length: 12 }, (_, i) => [String(i + 1), String(i + 1)]) },
         { key: 'vendor', label: 'Vendor', type: 'select', value: oneVendor, options: vendorNames().map((v) => [v, v]) },
+        { key: 'brief', label: 'Brief: what is it?', type: 'textarea', value: '', placeholder: 'Who it is for, the angle, what the ad says (a few lines)', required: true },
         { key: 'for_week', label: 'Week of', type: 'select', value: mon, options: weeks.map((w) => [w, weekLabel(w)]) },
+        { key: 'product', label: 'Product (optional)', type: 'select', value: picked(st.product).length === 1 ? picked(st.product)[0] : '', options: [['', 'Let the system decide'], ...Object.entries(PRODUCT_NAMES)] },
+        { key: 'cluster', label: 'Market Cluster (optional)', type: 'text', value: '', placeholder: 'Let the system decide' },
+        { key: 'concept_kind', label: 'New vs Iteration (optional)', type: 'select', value: '', options: [['', 'Let the system decide'], ['new', 'New'], ['iteration', 'Iteration']] },
         { key: 'brief_url', label: 'Brief link (optional)', type: 'text', value: '', placeholder: 'https://' }] });
     if (!res) return;
     try {
       const body = Object.fromEntries(Object.entries(res).filter(([, v]) => v !== ''));
-      body.variations = Array.from({ length: Number(res.variations) || 1 }, (_, i) => ({ label: i === 0 ? 'Original' : `Hook ${i + 1}` }));         // placeholders until the links are added
       const card = await api('/api/priorities/tickets', {}, { method: 'POST', body });
       await load(); drawView(); drawChrome();
       toast('Ticket added.'); say('Ticket added.');

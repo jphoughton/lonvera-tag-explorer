@@ -350,4 +350,4 @@ export TEST_API_DB=tagexp_apitest_$RANDOM        # unique per run so two runs ne
 
 
 ## Pushing tickets into Production (2026-11-13)
-A scoped key (`read_assign`) may `POST /api/priorities/tickets` (one ticket or `{"tickets": [...]}` up to 100). Every ticket needs the seven fields concept_name, product, variations, cluster, concept_kind, vendor, for_week: see docs/CREATIVE_PRIORITIES.md, "Ticket contract". Bad input is a 400 that names the field; a bad batch saves nothing.
+A scoped key (`read_assign`) may `POST /api/priorities/tickets` (one ticket or `{"tickets": [...]}` up to 100). Every ticket needs only concept_name, vendor and a brief (`brief` text and / or `brief_url`); product, market cluster, ICP, pain point and new vs iteration are filled in from the brief by etl.ticket_tags when you leave them out: see docs/CREATIVE_PRIORITIES.md, "Ticket contract". Bad input is a 400 that names the field; a bad batch saves nothing.
