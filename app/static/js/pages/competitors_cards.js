@@ -84,7 +84,7 @@ export function lightbox() {
   const close = h('button', { type: 'button', class: 'comp-lb-close', 'data-testid': 'comp-lb-close', 'aria-label': 'Close', onclick: () => { pauseAll(stage); dlg.close(); } }, '✕');
   const prev = h('button', { type: 'button', class: 'comp-lb-nav comp-lb-prev', 'data-testid': 'comp-lb-prev', 'aria-label': 'Previous ad', onclick: () => go(-1) }, '‹');
   const next = h('button', { type: 'button', class: 'comp-lb-nav comp-lb-next', 'data-testid': 'comp-lb-next', 'aria-label': 'Next ad', onclick: () => go(1) }, '›');
-  dlg.append(close, prev, h('div', { class: 'comp-lb-body' }, stage, info), next, count);
+  dlg.append(close, h('div', { class: 'comp-lb-body' }, stage, info), h('div', { class: 'comp-lb-bar' }, prev, count, next));
   let list = [], i = 0, from = null;
 
   function show() {
@@ -110,17 +110,23 @@ export function lightbox() {
   }
   function go(d) { if (list.length < 2) return; i = (i + d + list.length) % list.length; show(); }
 
-  dlg.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); } else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); } });
+  // arrows act on the open lightbox from anywhere on the page, but never while typing; the listener lives only while the dialog is open
+  function onKey(e) {
+    if (!dlg.open || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+    const t = e.target, tag = t && t.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); } else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+  }
   dlg.addEventListener('click', (e) => { if (e.target === dlg) { pauseAll(stage); dlg.close(); } });          // a click on the dimmed backdrop closes it
   dlg.addEventListener('cancel', () => pauseAll(stage));          // Esc
-  dlg.addEventListener('close', () => { pauseAll(stage); if (from && from.isConnected) from.focus(); });
+  dlg.addEventListener('close', () => { document.removeEventListener('keydown', onKey); pauseAll(stage); if (from && from.isConnected) from.focus(); });
   let sx = null;
   // a press on the controls bar of a video is for scrubbing, not swiping
   dlg.addEventListener('pointerdown', (e) => { if (e.target.closest('a,button')) return; const vd = e.target.closest('video'); if (vd && e.clientY > vd.getBoundingClientRect().bottom - 56) return; sx = e.clientX; });
   dlg.addEventListener('pointerup', (e) => { if (sx === null) return; const dx = e.clientX - sx; sx = null; if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1); });
   dlg.addEventListener('pointercancel', () => { sx = null; });
 
-  dlg.openAt = (ads, ad) => { list = ads; i = Math.max(0, ads.findIndex((a) => a.library_id === ad.library_id)); from = document.activeElement; show(); if (!dlg.open) dlg.showModal(); };
+  dlg.openAt = (ads, ad) => { list = ads; i = Math.max(0, ads.findIndex((a) => a.library_id === ad.library_id)); from = document.activeElement; show(); if (!dlg.open) dlg.showModal(); document.removeEventListener('keydown', onKey); document.addEventListener('keydown', onKey); };
   return dlg;
 }
 
