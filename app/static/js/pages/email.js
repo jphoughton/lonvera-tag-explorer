@@ -15,21 +15,23 @@ const WINDOWS = [['7d', 'Last 7 days'], ['30d', 'Last 30 days'], ['90d', 'Last 9
 const KINDS = [['flows', 'Flows', 'Automated messages sent when something happens: a welcome, a billing reminder, an abandoned cart'], ['campaigns', 'Campaigns', 'One-off messages sent to a list on a chosen day'], ['all', 'All']];
 const CHANNELS = [['email', 'Email'], ['sms', 'Text messages'], ['all', 'All']];
 const GRAINS = [['day', 'Day'], ['week', 'Week'], ['month', 'Month']];
-const CHART_METRICS = [['revenue', 'Revenue'], ['sends', 'Sends'], ['delivered', 'Delivered'], ['opens', 'Opens (views)'], ['open_rate', 'Open rate'], ['click_rate', 'Click rate'], ['orders', 'Orders'], ['rev_per_delivered', 'Revenue per delivered']];
+const CHART_METRICS = [['revenue', 'Revenue'], ['sends', 'Sends'], ['delivered', 'Delivered'], ['opens', 'Opens (views)'], ['open_rate', 'Open rate'], ['click_rate', 'Click rate'], ['orders', 'Orders'], ['rev_per_delivered', 'Revenue per delivered'],
+  ['click_to_open', 'Click to open'], ['orders_per_delivered', 'Orders per delivered'], ['unsub_rate', 'Unsubscribe rate']];
 const KIND_OF = { int: 'int', rate: 'rate', money: 'money', money2: 'money2' };
 const APPROX = new Set(['open_rate', 'click_rate', 'click_to_open', 'opens']);
 
+const LINE_COLOR_DARK = '#c2610f';                                // the right axis colour trendChart uses
 const pick = (v, list, dflt) => (list.some((x) => x[0] === v) ? v : dflt);
 const stateOf = (p) => ({
   window: pick(p.window, WINDOWS, '30d'), kind: pick(p.kind, KINDS, 'all'), channel: pick(p.channel, CHANNELS, 'all'),
-  grain: pick(p.grain, GRAINS, 'day'), metric: pick(p.metric, CHART_METRICS, 'revenue'), split: p.split === '1',
+  grain: pick(p.grain, GRAINS, 'day'), metric: pick(p.metric, CHART_METRICS, 'revenue'), line: pick(p.line, CHART_METRICS, ''), split: p.split === '1',
 });
 const apiParams = (s) => ({ window: s.window, kind: s.kind, channel: s.channel });
 // URL of the page with some choices changed; defaults are left out so links stay short
 function urlOf(s, change = {}, extra = {}) {
   const x = { ...s, ...change };
   return href('/email', { window: x.window === '30d' ? null : x.window, kind: x.kind === 'all' ? null : x.kind, channel: x.channel === 'all' ? null : x.channel,
-    grain: x.grain === 'day' ? null : x.grain, metric: x.metric === 'revenue' ? null : x.metric, split: x.split ? '1' : null, ...extra });
+    grain: x.grain === 'day' ? null : x.grain, metric: x.metric === 'revenue' ? null : x.metric, line: x.line || null, split: x.split ? '1' : null, ...extra });
 }
 
 const fmtValue = (kind, v) => {
@@ -80,6 +82,7 @@ const DEFS = [
   ['Unsubscribe rate', 'Unsubscribes divided by delivered. Klaviyo does not report text message unsubscribes for flows, and some campaign text message unsubscribes cannot be matched to a campaign, so text message unsubscribe figures are incomplete and flow text messages are left out of this rate.'],
   ['Every rate is a ratio of sums', 'A rate is the total on top divided by the total underneath over the whole window, never an average of daily rates.'],
   ['Partial periods', 'A week or month that runs past the last loaded day, or starts before the first loaded day, is marked partial and drawn lighter or dashed. It is not a drop.'],
+  ['Two-axis chart', 'The Measure is drawn as bars on the left axis. An optional Line is a second measure on its own right axis, for example sends as bars and click rate as the line. Both come from the same messages and filters, each rate is a ratio of sums per period, and the line is the combined total even when the bars are split into flows and campaigns.'],
   ['Recent days still move', 'The last loaded day is yesterday in Pacific time. Klaviyo records opens, clicks and orders late, so the last few days rise after the fact. The nightly job reloads the last 14 days.'],
   ['Copy', 'A message shows its latest copy only. When a message was edited, older results are read against the new text. Messages that were deleted from a flow have no copy.'],
 ];
@@ -101,13 +104,17 @@ function notesFor(d, s) {
 
 // ---------------------------------------------------------------------------------------------------------------- chart
 
-function chartConfig(d, metricKey, s) {
+function chartConfig(d, metricKey, s, lineKey) {
   const def = d.metrics.find((m) => m.key === metricKey);
   const kind = KIND_OF[def.kind];
   const bks = d.buckets;
   const labels = bks.map((b) => b.start);
   const val = (b, src) => (src ? b.split[src] : b.v)[metricKey];
-  const isRate = def.kind === 'rate' || def.kind === 'money2';
+  const withLine = !!lineKey;
+  const isRate = (def.kind === 'rate' || def.kind === 'money2') && !withLine;     // with a line chosen the measure is always bars
+  const stackable = def.kind !== 'rate' && def.kind !== 'money2';                 // a rate is never stacked
+  const phone = window.matchMedia('(max-width: 520px)').matches;
+  const barName = withLine ? `${def.label} (bars${phone ? '' : ', left'})` : null;
   const left = { kind, title: def.label };
   const datasets = [];
   const partial = bks.map((b) => b.partial);
@@ -117,13 +124,23 @@ function chartConfig(d, metricKey, s) {
       datasets.push({ axis: 'left', type: 'line', label: 'Campaigns', data: bks.map((b) => val(b, 'campaigns')), color: LINE_COLOR, kind, partialDash: true });
     } else datasets.push({ axis: 'left', type: 'line', label: def.label, data: bks.map((b) => val(b)), color: BAR_COLOR, kind, partialDash: true });
   } else if (d.split) {
-    datasets.push({ axis: 'left', type: 'bar', label: 'Flows', data: bks.map((b) => val(b, 'flows')), color: BAR_COLOR, kind, stack: 'src' });
-    datasets.push({ axis: 'left', type: 'bar', label: 'Campaigns', data: bks.map((b) => val(b, 'campaigns')), color: LINE_COLOR, kind, stack: 'src' });
+    datasets.push({ axis: 'left', type: 'bar', label: withLine ? `Flows: ${barName}` : 'Flows', data: bks.map((b) => val(b, 'flows')), color: BAR_COLOR, kind, stack: stackable ? 'src' : 'flows' });
+    datasets.push({ axis: 'left', type: 'bar', label: withLine ? `Campaigns: ${barName}` : 'Campaigns', data: bks.map((b) => val(b, 'campaigns')), color: LINE_COLOR, kind, stack: stackable ? 'src' : 'campaigns' });
   } else {
-    datasets.push({ axis: 'left', type: 'bar', label: 'Complete periods', data: bks.map((b) => (b.partial ? null : val(b))), color: BAR_COLOR, kind });
-    datasets.push({ axis: 'left', type: 'bar', label: 'Partial period', data: bks.map((b) => (b.partial ? val(b) : null)), color: '#d9822b', kind });
+    datasets.push({ axis: 'left', type: 'bar', label: barName || 'Complete periods', data: bks.map((b) => (b.partial ? null : val(b))), color: BAR_COLOR, kind });
+    datasets.push({ axis: 'left', type: 'bar', label: withLine ? `${def.label} (bars, partial period)` : 'Partial period', data: bks.map((b) => (b.partial ? val(b) : null)), color: '#d9822b', kind });
   }
-  return { labels, grain: d.grain, partial, left, right: null, datasets, stackedBars: !!d.split && !isRate };
+  let right = null;
+  if (withLine) {
+    const ldef = d.metrics.find((m) => m.key === lineKey);
+    const lkind = KIND_OF[ldef.kind];
+    right = { kind: lkind, title: ldef.label + (phone ? '' : ' (line)'), maxTicks: phone ? 5 : 8 };
+    // the line is always the combined total of the filtered messages (never split); a bucket with no value is a gap, not zero
+    datasets.push({ axis: 'right', type: 'line', label: `${ldef.label} (line${phone ? '' : ', right'})`, data: bks.map((b) => { const v = b.v[lineKey]; return isNum(v) ? v : null; }), color: LINE_COLOR_DARK,
+      kind: lkind, partialDash: true, markers: true, halo: true, width: 2.6 });
+  }
+  if (withLine) left.maxTicks = phone ? 5 : 8;
+  return { labels, grain: d.grain, partial, left, right, datasets, stackedBars: !!d.split && stackable };
 }
 
 function chartSection(p0, d0, load) {
@@ -134,25 +151,33 @@ function chartSection(p0, d0, load) {
   const note = h('span', { class: 'note', 'data-testid': 'eml-chart-note' });
   const grainHolder = h('div', { class: 'eml-ctlslot' });
   const metricHolder = h('div', { class: 'eml-ctlslot' });
+  const lineHolder = h('div', { class: 'eml-ctlslot' });
   const splitHolder = h('div', { class: 'eml-ctlslot' });
   const box = h('div', { class: 'chartbox trendbox' }, canvas);
   let chart = null;
   const sync = () => navigate(urlOf(s, {}, currentParams().message ? { message: currentParams().message } : {}), { replace: true, render: false, scroll: false });
   function draw() {
     const def = d.metrics.find((m) => m.key === s.metric);
-    title.textContent = `${def.label} by ${s.grain}`;
+    const ldef = s.line ? d.metrics.find((m) => m.key === s.line) : null;
+    title.textContent = ldef ? `${def.label} (bars) and ${ldef.label} (line) by ${s.grain}` : `${def.label} by ${s.grain}`;
     if (chart) { chart.destroy(); chart = null; }
     if (d.empty || !d.buckets.length) { note.textContent = 'Nothing to draw.'; return; }
-    chart = trendChart(canvas, chartConfig({ ...d, split: d.split }, s.metric, s));
+    chart = trendChart(canvas, chartConfig({ ...d, split: d.split }, s.metric, s, s.line));
     const parts = d.buckets.filter((b) => b.partial);
     note.textContent = parts.length
       ? `${parts.map((b) => b.sub ? `${b.label} (${b.sub})` : b.label).join(', ')} ${parts.length > 1 ? 'are' : 'is'} partial: ${parts.length > 1 ? 'they run' : 'it runs'} past the loaded days or start before them, so ${parts.length > 1 ? 'they are' : 'it is'} still filling in, not a drop. Opens (views) are people per day added over days.`
       : 'Every period shown is complete. Opens (views) are people per day added over days.';
+    if (ldef) {
+      note.textContent += ` Line: ${ldef.label}, read on the right axis; a rate is the ratio of sums for each period` +
+        `${parts.length ? ', a partial period is an open marker on a dashed segment' : ''}, and a period with no value leaves a gap.` +
+        `${d.split ? ' The line is the combined total of flows and campaigns, not split.' : ''}`;
+    }
   }
   function controls() {
     grainHolder.replaceChildren(seg({ name: 'Group by', testid: 'eml-grain', value: s.grain, options: GRAINS.map(([k, t]) => [k, t, null, 'eml-grain-' + k]),
       onChange: (k) => { s = { ...s, grain: k }; controls(); sync(); reload(); } }));
     metricHolder.replaceChildren(selectCtl({ name: 'Measure', testid: 'eml-metric', value: s.metric, options: CHART_METRICS, onChange: (k) => { s = { ...s, metric: k }; sync(); draw(); } }));
+    lineHolder.replaceChildren(selectCtl({ name: 'Line (optional)', testid: 'eml-line', value: s.line, options: [['', 'None'], ...CHART_METRICS], onChange: (k) => { s = { ...s, line: k }; sync(); draw(); } }));
     const can = s.kind === 'all';
     const cb = checkCtl({ label: 'Split flows and campaigns', checked: s.split && can, testid: 'eml-split', onChange: (v) => { s = { ...s, split: v }; sync(); reload(); } });
     if (!can) { cb.querySelector('input').disabled = true; cb.title = 'Choose All above to split flows from campaigns.'; }
@@ -167,7 +192,7 @@ function chartSection(p0, d0, load) {
   draw();
   const el = h('section', { class: 'trend eml-chart', 'data-testid': 'eml-chart-panel' },
     h('div', { class: 'trend-head' }, title),
-    h('div', { class: 'ctl-row pagefilters' }, grainHolder, metricHolder, splitHolder),
+    h('div', { class: 'ctl-row pagefilters' }, grainHolder, metricHolder, lineHolder, splitHolder),
     box, h('div', { class: 'trend-note' }, note));
   return el;
 }
