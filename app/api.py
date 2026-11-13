@@ -713,6 +713,12 @@ def priorities_assignment_move(aid: int):
     return jsonify(pas.move_assignment(db.get_conn(), aid, _json_body(), auth.current_user()))
 
 
+@bp.get("/api/priorities/assignments/<int:aid>/transcripts")
+def priorities_transcripts(aid: int):
+    """The transcripts of the ads on one card (made from the real audio of each video that is Ready to launch) -> {transcripts: [{concept_id, label, transcript, language, duration_s, engine, model, created_at}]}, Original first. Internal only."""
+    return jsonify(pas.list_transcripts(db.get_conn(), aid))
+
+
 @bp.get("/api/priorities/assignments/<int:aid>/comments")
 def priorities_comments(aid: int):
     """The comment thread of one assignment, oldest first -> {comments: [{id, author_kind, author_name, body, created_at}]}."""

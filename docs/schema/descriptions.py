@@ -1480,6 +1480,16 @@ rel("public.creative_priorities_vendor_capacity", group="creative", kind="table"
     caveats=["A soft limit only: going over shows a warning and blocks nothing."],
     cols={"vendor": "Vendor, spelled as in creative_priorities_assignments.vendor (primary key).", "per_week": "Concepts the vendor can take in one week (0 to 1,000).", "updated_at": "When the capacity was last changed."})
 
+rel("public.creative_ad_transcripts", group="creative", kind="table",
+    purpose="Transcripts of ads taken from the real audio: one row per ad variation (its tracker Concept ID), made for the videos on Production cards that are Ready to launch and shown on the card's ticket under the matching Hook.",
+    grain="one row per ad (concept_id is unique)", source="the transcription job (lonvera_creative_key/cycles/c2026-11-13-transcribe-ready/transcribe_ready.py: downloads the video from Google Drive and runs faster-whisper on this Mac)",
+    refresh="when the job is run (on demand, or on a schedule once one is set); a transcript is written once per ad and never overwritten", coverage="videos of Ready to launch Production cards from 2026-11-13; images and silent videos have no speech to transcribe (a silent video is stored as [no speech])",
+    caveats=["Speech to text as heard: brand and ingredient names can be misspelled (heme iron may come out as Heam iron).", "Audio is cut at 180 seconds.", "assignment_id is the Production card the ad was made for; it is not a foreign key."],
+    cols={"id": "Row number (primary key).", "concept_id": "Tracker Concept ID of the ad variation, for example Lonvera-BoneFlex-Video-8.8-hook2; unique.", "assignment_id": "creative_priorities_assignments.id of the Production card the ad belongs to; NULL when unknown. Not a foreign key.",
+          "label": "Short name of the variation on the card: Original, Hook 2 ...", "source_url": "Link to the video file the transcript was made from (Google Drive).", "file_id": "The Google Drive file id inside source_url.",
+          "language": "Language the speech was recognised as (en).", "duration_s": "Length of the audio in seconds, before the 180 second cut.", "engine": "Software that made it (faster-whisper).", "model": "Model size used (base.en).",
+          "transcript": "The words spoken, as heard; [no speech] for a silent video.", "created_at": "When the transcript was stored.", "created_by": "Who or what stored it."})
+
 rel("public.creative_formats", group="creative", kind="table",
     purpose="The creative formats a production assignment can be made in (for example Whiteboard explainer): a short list that Josh picks from when assigning a concept to a vendor. Production side only; not part of the concept taxonomy.",
     grain="one row per format (code is the primary key)", source="seeded by migration 204; edited by hand in the database (no page edits it); read by /api/priorities/assignments (app/priorities_assign.py)",

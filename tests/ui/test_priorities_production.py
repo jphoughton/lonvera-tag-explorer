@@ -564,3 +564,17 @@ def test_each_card_says_image_or_video_and_how_many_ads_and_hooks_come_in_order(
     assert got["vars"] == ["Original", "Hook 1", "Hook 2", "Hook 3"] and got["name"] == "Vita Belle"
     row(page, 2).wait_for(state="attached")
     assert row(page, 4).locator("[data-testid=prod-ads-count]").text_content().strip() == "1 ad"
+
+
+def test_the_ticket_shows_the_transcripts_of_its_ads_when_there_are_some(page):
+    goto(page, "?view=list&closed=1")
+    row(page, 4).locator("[data-testid=prod-open-card]").click()
+    page.wait_for_selector("[data-testid=prod-transcripts]:not([hidden])")
+    got = page.locator("[data-testid=prod-transcript]")
+    assert got.count() == 2 and got.nth(0).get_attribute("data-label") == "Hook 2"            # the mock sends them as stored; the real route sends Original first
+    got.nth(0).locator("summary").click()
+    assert "snooze button" in got.nth(0).text_content()
+    page.keyboard.press("Escape")
+    row(page, 1).locator("[data-testid=prod-open-card]").click()
+    page.wait_for_timeout(600)
+    assert page.locator("[data-testid=prod-transcripts]:not([hidden])").count() == 0            # a card with none shows nothing
