@@ -216,6 +216,7 @@ Auth column: what the server checks. Page routes serve the same HTML shell; thei
 | `/api/priorities/manual/<int:rid>` | GET | api | signed-in session or API key |  |
 | `/api/priorities/manual/<int:rid>` | PATCH | api | signed-in session or API key | Change any of the fields, or status open\|done. |
 | `/api/priorities/manual/options` | GET | api | signed-in session or API key | Dropdown options for the Add concept form: products, sections and the Communication Overview tree product -> cluster -> ICP -> pain point -> [stories]. |
+| `/api/priorities/tickets` | POST | api | signed-in session or API key | Add a ticket right from the Production board: {concept_name, product, vendor, for_week?, cluster?, icp?, pain_point?, concept_kind?, format_code?, brief_url?, note?, due_date?, status?} -> the new card |
 | `/api/priorities/vendor-capacity` | GET | api | signed-in session or API key | Concepts per week each vendor can take -> {capacity: [{vendor, per_week, updated_at}]} (10 where none is stored). |
 | `/api/priorities/vendor-capacity` | PUT | api | signed-in session or API key | {vendor, per_week} (a whole number 0 to 1000) -> {vendor, per_week, updated_at}. Signed-in users only: an API key cannot change capacity. |
 | `/api/priorities/vendor-links` | GET | api | signed-in session or API key | Every vendor link made so far -> {links: [{vendor, token, url, created_at, rotated_at}], vendors}. |

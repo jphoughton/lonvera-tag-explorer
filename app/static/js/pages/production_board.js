@@ -1,7 +1,7 @@
 // The Production board (kanban): six columns, cards, drag and drop, "Move to" menu, swimlanes by vendor, and the weekly load bars. Pure drawing plus events: the page (priorities_production.js) owns the data and saves moves.
 // Test ids: prod-board-*, prod-card-*. Class names start with prod- (never ad-, ads-, sponsor, banner, promo: ad blockers hide those).
 import { h, fmt, isNum } from '../util.js';
-import { STATUSES, STATUS_LABEL, statusOf, md, ticketTitle, adCount, mediaOf, productName, weekLabel, formatLabel, dueInfo, link, short, nextActions } from './production_common.js';
+import { STATUSES, STATUS_LABEL, statusOf, md, ticketTitle, adCount, mediaOf, conceptName, factsEl, productName, weekLabel, formatLabel, dueInfo, link, short, nextActions } from './production_common.js';
 import { enableDrag, gripEl } from './production_dnd.js';
 
 const LAUNCHED_DAYS = 14;
@@ -63,14 +63,13 @@ export function cardEl(r, ops, { compact = false } = {}) {
     onclick: (e) => { if (!e.target.closest('a, button, select, input, textarea, summary, details')) ops.open(r); } },
     h('div', { class: 'prod-card-top' },
       h('span', { class: 'prod-dot prod-dot-' + (r.product || 'none'), title: productName(r.product), 'data-testid': 'prod-card-product', 'data-product': r.product || '' }),
-      h('button', { type: 'button', class: 'prod-card-title', 'data-testid': 'prod-card-title', 'data-dragok': '', onclick: () => ops.open(r) }, title),
+      h('button', { type: 'button', class: 'prod-card-title', 'data-testid': 'prod-card-title', 'data-dragok': '', onclick: () => ops.open(r) }, conceptName(r)),
       r.priority === 'high' ? chip('prod-chip-high', 'High', { 'data-testid': 'prod-card-priority', title: 'High priority' }) : null,
       gripEl()),
-    compact ? null : h('p', { class: 'prod-card-sub' }, [r.cluster, r.icp].filter(Boolean).join(' / ')),
+    compact ? null : factsEl(r, 'prod-facts prod-card-facts'),
     h('div', { class: 'prod-card-chips' },
       chip('prod-chip-vendor', r.vendor, { 'data-testid': 'prod-card-vendor' }),
       mediaOf(r) ? chip('prod-chip-media prod-media-' + mediaOf(r).toLowerCase().replace(/\W+/g, '-'), mediaOf(r), { 'data-testid': 'prod-card-media' }) : null,
-      adCount(r) ? chip('prod-chip-ads', adCount(r) === 1 ? '1 ad' : `${adCount(r)} ads`, { 'data-testid': 'prod-card-ads', title: 'Ads made from this concept (variations)' }) : null,
       r.format_code ? chip('prod-chip-fmt', r.format_code, { 'data-testid': 'prod-card-format', title: formatLabel({ code: r.format_code, name: r.format_name || '', length: r.format_length || '' }) }) : null,
       due ? chip('prod-chip-due' + (due.tone ? ' prod-due-' + due.tone : ''), due.text, { 'data-testid': 'prod-card-due', 'data-tone': due.tone }) : null),
     h('div', { class: 'prod-card-meta' },
@@ -111,7 +110,7 @@ function colHead(label, cards, note) {
 
 // board({columns, dropped, st, vendors, capacity, week, ops, onDrop}) -> {el}
 export function board({ columns, dropped, st, vendors, capacity, ops, onDrop, allCards }) {
-  const filt = (r) => (!st.overdue || r.overdue) && (!st.q || [r.pain_point, r.cluster, r.icp, r.vendor, r.note, r.vendor_note].filter(Boolean).join(' ').toLowerCase().includes(st.q.toLowerCase()));
+  const filt = (r) => (!st.overdue || r.overdue) && (!st.q || [r.concept_name, r.pain_point, r.cluster, r.icp, r.vendor, r.note, r.vendor_note].filter(Boolean).join(' ').toLowerCase().includes(st.q.toLowerCase()));
   const byStatus = new Map(columns.map((c) => [c.status, c.cards || []]));
   let defs = STATUSES.map(([k, l]) => ({ key: k, label: l, cards: (byStatus.get(k) || []).filter(filt), hidden: (columns.find((c) => c.status === k) || {}).hidden || 0 }));
   defs = defs.map((d) => (d.key === 'launched' && !st.closed ? { ...d, note: `Last ${LAUNCHED_DAYS} days` + (d.hidden ? `, ${d.hidden} older hidden` : '') } : d));

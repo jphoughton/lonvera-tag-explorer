@@ -709,6 +709,16 @@ def priorities_assignment_detail(aid: int):
     return jsonify(pdt.assignment_detail(db.get_conn(), aid))
 
 
+@bp.post("/api/priorities/tickets")
+def priorities_ticket_create():
+    """Add a ticket right from the Production board: {concept_name, product, vendor, for_week?, cluster?, icp?, pain_point?, concept_kind?, format_code?, brief_url?, note?, due_date?, status?} -> the new card
+    (201). Signed-in users only, same limits as Assign to vendor. See app/priorities_assign.py (create_ticket)."""
+    blocked = _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
+    if blocked is not None:
+        return blocked
+    return jsonify(pas.create_ticket(db.get_conn(), _json_body(), auth.current_user())), 201
+
+
 @bp.post("/api/priorities/assignments")
 def priorities_assignments_create():
     """Assign concepts: {keys: [row keys], snapshot_week?, vendor, for_week, note?, format_code?} -> {created: [assignment], skipped: [{key, reason}]}. Rows come from the stored snapshot; duplicates are skipped."""

@@ -70,6 +70,21 @@ export function mediaOf(r) {
   const img = /static|image/i.test(ids) || /Type:\s*IMG/i.test(text) || /STATIC BRIEF/i.test(text);
   return vid && img ? 'Image + video' : vid ? 'Video' : img ? 'Image' : '';
 }
+// The name of the concept as a person says it: the stored concept name, else the first line of the story (the old way: 'Concept 01: Rest is making your knees worse', or 'BL-C1-E1 | Look past the surface | ...'), else the pain point.
+export function conceptName(r) {
+  if (r.concept_name) return r.concept_name;
+  const first = String(r.story || '').split('\n').map((l) => l.trim()).find(Boolean) || '';
+  const cleaned = first.replace(/^Concept\s+\d+:\s*/i, '');
+  const bar = cleaned.split(' | ');
+  const name = bar.length >= 2 && /^[A-Z]{2}-C\d+-E\d+$/.test(bar[0]) ? bar[1] : cleaned;
+  return (name.length <= 140 ? name : '') || r.pain_point || r.cluster || 'Concept';
+}
+export const kindLabel = (r) => (r.concept_kind === 'iteration' ? 'Iteration' : r.concept_kind === 'new' ? 'New concept' : '');
+// The five facts a ticket leads with, as [label, value] (an empty value is left out): Product, Variations, Market Cluster, New vs Iteration.
+export const ticketFacts = (r) => [['Product', productName(r.product)], ['Variations', adCount(r) ? String(adCount(r)) : ''], ['Market Cluster', r.cluster || ''], ['New vs Iteration', kindLabel(r)]].filter(([, v]) => v);
+export function factsEl(r, cls = 'prod-facts') {
+  return h('dl', { class: cls, 'data-testid': 'prod-facts' }, ticketFacts(r).map(([k, v]) => h('div', { class: 'prod-fact', 'data-fact': k }, h('dt', null, k + ':'), h('dd', null, v))));
+}
 export const adCount = (r) => (r.tracker_concept_ids || []).length || parseVariations(r.story).length;
 export const productName = (p) => PRODUCT_NAMES[p] || p || '';
 export const stageLabel = (r) => r.stage_label || STAGES[r.stage] || r.stage || '';

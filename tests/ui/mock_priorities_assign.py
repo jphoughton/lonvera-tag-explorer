@@ -102,6 +102,20 @@ def register(app, deps):
 
     HANDLE.update(view=view, view_base=view_base)
 
+    @app.post("/api/priorities/tickets")
+    def ticket_create():
+        b = request.get_json(silent=True) or {}
+        if not (b.get("concept_name") or "").strip():
+            return jsonify(error="concept name is required"), 400
+        S["seq"] += 1
+        rec = {"story": "", "note": "", "vendor_note": "", "brief_url": b.get("brief_url") or None, "creative_url": None, "tracker_concept_ids": [], "created_by": "josh", "updated_by": "josh", "ready_at": None,
+               "launched_at": None, "dropped_at": None, "created_at": now(), "updated_at": now(), "_suggested": [], "id": S["seq"], "concept_key": f"ticket:{S['seq']}", "text_key": "", "vendor": b.get("vendor") or "Madre",
+               "for_week": pa.monday_of(b.get("for_week") or dt.date.today()), "product": b.get("product") or "beef-liver", "line_id": None, "manual_id": None, "line_code": "", "cluster": b.get("cluster") or "", "icp": "",
+               "pain_point": "", "section_at_assign": "test", "format_code": None, "concept_name": b["concept_name"].strip(), "concept_kind": b.get("concept_kind") or None}
+        S["rows"][rec["id"]] = rec
+        S["events"][rec["id"]] = [{"at": now(), "actor": "josh", "kind": "assigned", "stage_before": None, "stage_after": "assigned", "detail": ""}]
+        return jsonify(view(rec)), 201
+
     @app.get("/api/priorities/assignments/<int:aid>/transcripts")
     def assign_transcripts(aid):
         if aid == 2:

@@ -845,3 +845,19 @@ def test_transcripts_of_a_cards_ads_come_back_original_first_and_a_missing_card_
     finally:
         pg.execute("DELETE FROM creative_ad_transcripts WHERE concept_id LIKE 'ZZ-T-%'")
         pg.commit()
+
+
+def test_a_ticket_added_from_the_board_has_the_fields_and_a_history_and_bad_input_is_refused(client, snaps):
+    r = client.post("/api/priorities/tickets", json={"concept_name": "  Grandfather used to eat well ", "product": "beef-liver", "vendor": "Studio Flow", "cluster": "Primal Living", "concept_kind": "iteration", "status": "in_production", "for_week": MONDAY})
+    assert r.status_code == 201, r.get_data(as_text=True)
+    c = r.get_json()
+    assert c["concept_name"] == "Grandfather used to eat well" and c["concept_kind"] == "iteration" and c["status"] == "in_production" and c["vendor"] == "Studio Flow" and c["cluster"] == "Primal Living"
+    assert c["concept_key"].startswith("ticket:") and c["due_date"] == "2026-11-13" and [e["kind"] for e in hist(client, c["id"])] == ["assigned", "status_changed"]
+    again = client.post("/api/priorities/tickets", json={"concept_name": "Grandfather used to eat well", "product": "beef-liver", "vendor": "Studio Flow", "for_week": MONDAY})
+    assert again.status_code == 201 and again.get_json()["id"] != c["id"]                              # the same concept may be added twice on purpose
+    for bad in ({"product": "beef-liver", "vendor": "Madre"}, {"concept_name": "x", "product": "nope", "vendor": "Madre"}, {"concept_name": "x", "product": "boneflex", "vendor": "Nobody"},
+                {"concept_name": "x", "product": "boneflex", "vendor": "Madre", "concept_kind": "maybe"}, {"concept_name": "x", "product": "boneflex", "vendor": "Madre", "status": "launched"}):
+        assert client.post("/api/priorities/tickets", json=bad).status_code == 400, bad
+    p = client.patch(f"/api/priorities/assignments/{c['id']}", json={"concept_name": "Grandfather ate well", "concept_kind": None})
+    assert p.status_code == 200 and p.get_json()["concept_name"] == "Grandfather ate well" and p.get_json()["concept_kind"] is None
+    assert client.patch(f"/api/priorities/assignments/{c['id']}", json={"concept_kind": "maybe"}).status_code == 400

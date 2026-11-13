@@ -561,7 +561,7 @@ def test_each_card_says_image_or_video_and_how_many_ads_and_hooks_come_in_order(
     assert got["media"] == ["Video", "Image", "Image", "Video", "Video", ""]
     assert got["vars"] == ["Original", "Hook 1", "Hook 2", "Hook 3"] and got["name"] == "Vita Belle"
     row(page, 2).wait_for(state="attached")
-    assert row(page, 4).locator("[data-testid=prod-ads-count]").text_content().strip() == "1 ad"
+    assert row(page, 4).locator("[data-fact=Variations] dd").text_content().strip() == "1"                                  # the ad count is the Variations line of the ticket
 
 
 def test_the_transcript_sits_under_the_player_when_there_is_one(page):
@@ -580,3 +580,26 @@ def test_the_variations_are_tabs_and_the_first_one_is_open(page):
     goto(page, "?view=list")
     got = page.evaluate("""async () => { const m = await import('/static/js/pages/production_common.js'); return m.parseVariations('x\\nVariations\\nhook1: https://drive.google.com/file/d/AAA/view\\nhook2: https://drive.google.com/file/d/BBB/view').length; }""")
     assert got == 2
+
+
+def test_a_ticket_can_be_added_from_the_board_and_shows_the_new_face(page):
+    goto(page, "?view=list")
+    page.click("[data-testid=prod-new-ticket]")
+    page.fill("[data-testid=prod-field-concept_name]", "Grandfather used to eat well")
+    page.select_option("[data-testid=prod-field-product]", "beef-liver")
+    page.fill("[data-testid=prod-field-cluster]", "Primal Living")
+    page.select_option("[data-testid=prod-field-concept_kind]", "iteration")
+    page.click("[data-testid=prod-dialog-ok]")
+    page.wait_for_selector("[data-testid=prod-drawer]")                                              # the new ticket opens
+    assert page.locator("[data-testid=prod-drawer-title]").text_content() == "Grandfather used to eat well"
+    facts = {e.get_attribute("data-fact"): e.locator("dd").text_content() for e in page.locator("[data-testid=prod-drawer] .prod-drawer-facts [data-fact]").all()}
+    assert facts == {"Product": "Beef Liver", "Market Cluster": "Primal Living", "New vs Iteration": "Iteration"}
+    page.keyboard.press("Escape")
+    assert page.locator("[data-testid=prod-row]", has_text="Grandfather used to eat well").count() == 1
+
+
+def test_a_new_ticket_needs_a_name(page):
+    goto(page, "?view=list")
+    page.click("[data-testid=prod-new-ticket]")
+    page.click("[data-testid=prod-dialog-ok]")
+    assert "required" in page.locator("[data-testid=prod-dialog]").text_content()

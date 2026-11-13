@@ -19,13 +19,13 @@ from . import queries as q
 VENDORS = ["Madre", "Victoria", "TrybeDCShop", "TrybeOrion", "10xROAS", "PuredMedia", "CreateMastery", "OpenProgram", "Studio Flow"]     # spelled as in tracker_rows.vendor (Creative Tracker "Vendor" column)
 STAGES = {"assigned": "Assigned", "brief_sent": "Brief sent", "creative_in": "Creative delivered", "ready": "Ready to launch", "launched": "Launched", "dropped": "Dropped"}
 _ORDER = ["assigned", "brief_sent", "creative_in", "ready", "launched"]                  # progress order; dropped sits outside it
-LIMITS = {"note": 500, "vendor_note": 1000, "url": 2000, "concept_id": 200, "concept_ids": 20}
+LIMITS = {"concept_name": 200, "note": 500, "vendor_note": 1000, "url": 2000, "concept_id": 200, "concept_ids": 20}
 # the six creative formats as migration 204 seeds them; the database table is the truth, this copy serves the UI mock server and the not-yet-migrated fallback
 FORMATS = [{"code": "F1", "name": "Long animated story, openly AI, told by the character", "length": "90s to 3 min"}, {"code": "F2", "name": "Talking head (realistic AI)", "length": "45 to 90s"},
            {"code": "F3", "name": "Short acted scene with two people", "length": "30 to 60s"}, {"code": "F4", "name": "Whiteboard explainer", "length": "60 to 90s"},
            {"code": "F5", "name": "Opens on a sound", "length": "30 to 60s"}, {"code": "F6", "name": "Animated song", "length": "45 to 90s"}]
 CREATE_FIELDS = ("vendor", "for_week", "note", "format_code")
-PATCH_FIELDS = ("vendor", "for_week", "note", "format_code", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped", "status", "due_date", "priority", "position", "comment")
+PATCH_FIELDS = ("vendor", "for_week", "note", "format_code", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped", "status", "due_date", "priority", "position", "comment", "concept_name", "concept_kind")
 PATCH_BOOLS = ("ready", "launched", "dropped")
 VENDOR_PATCH_FIELDS = ("creative_url", "vendor_note", "ready", "status", "comment")
 # the board (migration 245): the stored status of an assignment, in column order. `dropped` is not a status (dropped_at hides the card in an archived lane).
@@ -203,6 +203,15 @@ def clean_patch(body: dict) -> dict:
         out["priority"] = body["priority"]
     if "position" in body:
         out["position"] = clean_position(body["position"])
+    if "concept_name" in body:
+        out["concept_name"] = _text(body["concept_name"], "concept name", LIMITS["concept_name"])
+    if "concept_kind" in body:
+        if body["concept_kind"] in (None, ""):
+            out["concept_kind"] = None
+        elif body["concept_kind"] in ("new", "iteration"):
+            out["concept_kind"] = body["concept_kind"]
+        else:
+            raise q.ApiError(400, "new vs iteration must be new or iteration")
     if "comment" in body:
         out["comment"] = _comment_opt(body["comment"])
     return out
@@ -397,6 +406,7 @@ VENDOR_RECENT_DAYS = 28                      # the vendor page also shows what w
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{22,64}")
 COLS = ("id, concept_key, text_key, product, vendor, line_id, manual_id, line_code, cluster, icp, pain_point, story, section_at_assign, note, vendor_note, for_week, brief_url, creative_url, "
         "brief_at, creative_at, ready_at, launched_at, dropped_at, tracker_concept_ids, created_at, updated_at, created_by, updated_by")
+STRUCT_COLS = ("concept_name", "concept_kind")                                         # migration 258: the ticket fields; a database without it still serves every page
 BOARD_COLS = ("status", "due_date", "priority", "position", "status_changed_at")        # migration 245; a database without it still serves every page (status is then derived from the links)
 FMT_COLS = ("format_code", "format_name", "format_length")                               # on every row; None when no format was chosen (or migration 204 is not applied)
 INTERNAL_ONLY = ("note", "created_by", "updated_by", "suggested_concept_ids")          # never sent to a vendor link page
@@ -560,6 +570,11 @@ def _fetch(conn, where: str = "", params: tuple = ()) -> list[dict]:
     acols = ", ".join("a." + c.strip() for c in COLS.split(","))
     bcols = ", ".join("a." + c for c in BOARD_COLS)
     join = "FROM creative_priorities_assignments a LEFT JOIN creative_formats f ON f.code = a.format_code"
+    scols = ", ".join("a." + c for c in STRUCT_COLS)
+    try:
+        return conn.execute(f"SELECT {acols}, {bcols}, {scols}, a.format_code, f.name AS format_name, f.length AS format_length {join} {where} ORDER BY a.for_week DESC, a.vendor, a.id", params).fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):          # migration 258 (ticket fields) not applied yet
+        conn.rollback()
     try:
         return conn.execute(f"SELECT {acols}, {bcols}, a.format_code, f.name AS format_name, f.length AS format_length {join} {where} ORDER BY a.for_week DESC, a.vendor, a.id", params).fetchall()
     except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):          # migration 245 (board), 204 (formats) or 202 (assignments) not applied yet
@@ -646,6 +661,55 @@ def _after_write(ids: list[int], vendor_view: bool = False, history: bool = True
         recs = _fetch(w, "WHERE id = ANY(%s)", (ids,))
         shaped = _shape_all(w, recs, vendor_view, history)
     return sorted(shaped, key=lambda a: ids.index(a["id"]))
+
+
+PRODUCT_SLUGS = ("vita-bull", "beef-liver", "boneflex", "vita-belle")
+TICKET_STATUSES = ("assigned", "brief_sent", "in_production", "in_review")             # a new ticket can start anywhere before Ready to launch
+
+
+def create_ticket(conn, body: dict, user: str | None = None) -> dict:
+    """A ticket added straight from the board (no row of the weekly list behind it): {concept_name, product, vendor, for_week?, cluster?, icp?, pain_point?, concept_kind?, format_code?, brief_url?, note?, due_date?,
+    status?} -> the new card. The concept key is 'ticket:<random>', so the same concept can be added twice on purpose; the text key still lets it show next to a matching concept on /priorities."""
+    if not isinstance(body, dict):
+        raise q.ApiError(400, "JSON object body required")
+    name = _text(body.get("concept_name"), "concept name", LIMITS["concept_name"])
+    if not name:
+        raise q.ApiError(400, "concept name is required")
+    product = body.get("product")
+    if product not in PRODUCT_SLUGS:
+        raise q.ApiError(400, "product must be one of: " + ", ".join(PRODUCT_SLUGS))
+    vendor = _vendor(body.get("vendor"))
+    week = monday_of(body.get("for_week") or today_pt())
+    cluster, icp, pain = (_text(body.get(k), k.replace("_", " "), 200) for k in ("cluster", "icp", "pain_point"))
+    kind = body.get("concept_kind")
+    if kind in (None, ""):
+        kind = None
+    elif kind not in ("new", "iteration"):
+        raise q.ApiError(400, "new vs iteration must be new or iteration")
+    status = body.get("status") or "assigned"
+    if status not in TICKET_STATUSES:
+        raise q.ApiError(400, "status must be one of: " + ", ".join(TICKET_STATUSES))
+    due = week + dt.timedelta(days=4) if body.get("due_date") in (None, "") else _date(body["due_date"], "due date")
+    brief = _opt_url(body.get("brief_url"))
+    note = _text(body.get("note"), "note", LIMITS["note"])
+    fc = check_format(_format_code(body.get("format_code")), formats(conn))
+    try:
+        with _rw() as w:
+            pos = w.execute("SELECT COALESCE(max(position), 0) + 1 AS p FROM creative_priorities_assignments WHERE status = %s AND dropped_at IS NULL", (status,)).fetchone()["p"]
+            row = w.execute(
+                """INSERT INTO creative_priorities_assignments (concept_key, text_key, product, vendor, line_code, cluster, icp, pain_point, story, section_at_assign, note, for_week, created_by, updated_by,
+                       concept_name, concept_kind, format_code, brief_url, brief_at, status, due_date, priority, position, status_changed_at)
+                   VALUES (%s,%s,%s,%s,'',%s,%s,%s,'','test',%s,%s,%s,%s,%s,%s,%s,%s,CASE WHEN %s::text IS NOT NULL THEN now() END,%s,%s,'normal',%s,now()) RETURNING id""",
+                ("ticket:" + secrets.token_hex(8), text_key({"product": product, "cluster": cluster, "icp": icp, "pain_point": pain}), product, vendor, cluster, icp, pain, note, week, user, user,
+                 name, kind, fc, brief, brief, status, due, pos)).fetchone()
+            _log(w, row["id"], user, "assigned", None, "assigned", f"{vendor}, week of {week}")
+            if status != "assigned":
+                _log(w, row["id"], user, "status_changed", "assigned", status, "Added on the board")
+    except psycopg.errors.UndefinedTable:
+        raise q.ApiError(503, "Production is not set up yet (migration 202 is not applied).") from None
+    except psycopg.errors.UndefinedColumn as e:
+        raise _missing_column(e) from None
+    return _after_write([row["id"]])[0]
 
 
 def create_assignments(conn, body: dict, user: str | None = None) -> dict:
@@ -809,7 +873,7 @@ def _update(aid: int, f: dict, user: str | None, vendor: str | None = None, lega
                 note = "" if legacy_ready else check_transition(was, new_status, vendor=vendor is not None, creative_url=creative, comment=comment)
             sets: list[str] = []
             params: list = []
-            for c in ("vendor", "for_week", "note", "vendor_note", "format_code", "due_date", "priority", "position"):
+            for c in ("vendor", "for_week", "note", "vendor_note", "format_code", "due_date", "priority", "position", "concept_name", "concept_kind"):
                 if c in f:
                     sets.append(f"{c} = %s")
                     params.append(f[c])

@@ -8,7 +8,7 @@ import { expander } from './priorities_panel.js';
 import { pageHeader } from '../ui/pagehead.js';
 import { filterRow, seg, selectCtl, multiCtl, checkCtl, searchCtl } from '../ui/pagefilters.js';
 
-import { eventLine, STAGES, STATUSES, STATUS_LABEL, statusOf, VENDOR_FALLBACK, md, weekLabel, ticketTitle, richLines, PRODUCT_NAMES, mediaOf, adCount, variationGroups, variationLabel, productName, stageLabel, today, mondayOf, addDays, formatLabel, rowFormat, resultText, link, short, askDialog, toast, dueInfo } from './production_common.js';
+import { eventLine, STAGES, STATUSES, STATUS_LABEL, statusOf, VENDOR_FALLBACK, md, weekLabel, ticketTitle, richLines, PRODUCT_NAMES, mediaOf, adCount, conceptName, factsEl, variationGroups, variationLabel, productName, stageLabel, today, mondayOf, addDays, formatLabel, rowFormat, resultText, link, short, askDialog, toast, dueInfo } from './production_common.js';
 import { board as boardView, loadBars } from './production_board.js';
 import { plan as planView } from './production_plan.js';
 import { openDrawer } from './production_drawer.js';
@@ -168,6 +168,29 @@ export async function productionPage(ctx) {
     const res = await askDialog({ title: 'Add Concept ID', note: 'The Concept ID of the launched ad in the Creative Tracker.', fields: [{ key: 'cid', label: 'Concept ID', value: '', placeholder: 'Lonvera-VitalBull-Static-5.4' }], okLabel: 'Add' });
     if (res && res.cid) patch(r.id, { tracker_concept_ids: [...(r.tracker_concept_ids || []), res.cid] }, 'Concept ID added.');
   }
+  // New ticket: a concept that is not on the weekly list yet, added straight to the board
+  async function newTicket() {
+    const mon = mondayOf(today());
+    const weeks = [0, 7, 14, 21, 28].map((n) => addDays(mon, n));
+    const oneVendor = picked(st.vendor).length === 1 ? picked(st.vendor)[0] : vendorNames()[0];
+    const oneProduct = picked(st.product).length === 1 ? picked(st.product)[0] : 'beef-liver';
+    const res = await askDialog({ title: 'New ticket', note: 'It starts in Assigned. Everything else can be added inside the ticket.', okLabel: 'Add ticket',
+      fields: [{ key: 'concept_name', label: 'Concept name', type: 'text', value: '', placeholder: 'Grandfather used to eat well', required: true },
+        { key: 'product', label: 'Product', type: 'select', value: oneProduct, options: Object.entries(PRODUCT_NAMES) },
+        { key: 'cluster', label: 'Market Cluster', type: 'text', value: '', placeholder: 'Primal Living' },
+        { key: 'concept_kind', label: 'New vs Iteration', type: 'select', value: '', options: [['', 'Not set'], ['new', 'New concept'], ['iteration', 'Iteration']] },
+        { key: 'vendor', label: 'Vendor', type: 'select', value: oneVendor, options: vendorNames().map((v) => [v, v]) },
+        { key: 'for_week', label: 'Week of', type: 'select', value: mon, options: weeks.map((w) => [w, weekLabel(w)]) },
+        { key: 'brief_url', label: 'Brief link (optional)', type: 'text', value: '', placeholder: 'https://' }] });
+    if (!res) return;
+    try {
+      const body = Object.fromEntries(Object.entries(res).filter(([, v]) => v !== ''));
+      const card = await api('/api/priorities/tickets', {}, { method: 'POST', body });
+      await load(); drawView(); drawChrome();
+      toast('Ticket added.'); say('Ticket added.');
+      if (card && card.id) openCard(card);
+    } catch (e) { abortOk(e); say(e.message || 'Could not add the ticket.', true); toast(e.message || 'Could not add the ticket.', true); }
+  }
   async function change(r) {
     const mon = mondayOf(today());
     const weeks = [-7, 0, 7, 14, 21, 28].map((n) => addDays(mon, n));
@@ -252,7 +275,7 @@ export async function productionPage(ctx) {
       h('td', { class: 'prod-c prod-nowrap', 'data-testid': 'prod-week' }, weekLabel(r.for_week).replace('Week of ', '')),
       h('td', { class: 'prod-c', 'data-testid': 'prod-vendor' }, r.vendor),
       h('td', { class: 'prod-c', 'data-testid': 'prod-product' }, productName(r.product)),
-      h('td', { class: 'prod-c prod-concept', 'data-testid': 'prod-concept' }, h('strong', null, x.nameButton(ticketTitle(r))), mediaOf(r) ? h('span', { class: 'prod-chip prod-chip-media', 'data-testid': 'prod-media' }, mediaOf(r)) : null, adCount(r) ? h('span', { class: 'prod-chip prod-chip-ads', 'data-testid': 'prod-ads-count' }, adCount(r) === 1 ? '1 ad' : `${adCount(r)} ads`) : null, h('div', { class: 'pri-sub' }, [r.cluster, r.icp].filter(Boolean).join(' / ')), r.note ? h('div', { class: 'pri-sub prod-note', 'data-testid': 'prod-note' }, h('strong', null, 'Note:'), h('br'), richLines(r.note)) : null, r.vendor_note ? h('div', { class: 'pri-sub', 'data-testid': 'prod-vnote' }, 'Vendor note: ' + r.vendor_note) : null, h('div', null, x.button()), historyCell(r)),
+      h('td', { class: 'prod-c prod-concept', 'data-testid': 'prod-concept' }, h('strong', null, x.nameButton(conceptName(r))), mediaOf(r) ? h('span', { class: 'prod-chip prod-chip-media', 'data-testid': 'prod-media' }, mediaOf(r)) : null, factsEl(r), r.note ? h('div', { class: 'pri-sub prod-note', 'data-testid': 'prod-note' }, h('strong', null, 'Note:'), h('br'), richLines(r.note)) : null, r.vendor_note ? h('div', { class: 'pri-sub', 'data-testid': 'prod-vnote' }, 'Vendor note: ' + r.vendor_note) : null, h('div', null, x.button()), historyCell(r)),
       linkCell(r, 'brief_url', 'Brief'), linkCell(r, 'creative_url', 'Creative'), formatCell(r),
       h('td', { class: 'prod-c prod-c-stage' }, h('span', { class: 'prod-pill prod-ps-' + statusOf(r), 'data-testid': 'prod-status', title: 'Where the card sits on the Board' }, STATUS_LABEL[statusOf(r)] || statusOf(r)),
         h('span', { class: 'prod-sr', 'data-testid': 'prod-stage' }, stageLabel(r)), h('div', { class: 'pri-sub prod-result', 'data-testid': 'prod-result' }, resultText(r))),
@@ -296,7 +319,7 @@ export async function productionPage(ctx) {
         h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-reset-link', 'aria-label': 'Reset link for ' + v, onclick: () => vendorLink(v, true) }, 'Reset link')))));
     body.replaceChildren(
       pageHeader({ title: 'Production', description: 'Concepts given to vendors to make, by week. Spend and return come from the Creative Tracker once an ad is launched.', testid: 'prod-head',
-        actions: [h('a', { class: 'btn small', href: href('/priorities', {}), 'data-testid': 'prod-back' }, 'Back to Priorities')] }),
+        actions: [h('button', { type: 'button', class: 'btn primary small', 'data-testid': 'prod-new-ticket', onclick: newTicket }, 'New ticket'), h('a', { class: 'btn small', href: href('/priorities', {}), 'data-testid': 'prod-back' }, 'Back to Priorities')] }),
       controls, h('div', { class: 'prod-team', 'data-testid': 'prod-team' }, loadSlot, links), msg, viewHost);
     drawLoad();
   }
@@ -394,7 +417,7 @@ export async function productionPage(ctx) {
   }
 
   function drawList() {
-    const all = (data.rows || []).filter(productOk).filter((r) => !st.overdue || r.overdue).filter((r) => !st.q || [r.pain_point, r.cluster, r.icp, r.vendor, r.note, r.vendor_note].filter(Boolean).join(' ').toLowerCase().includes(st.q.toLowerCase()));
+    const all = (data.rows || []).filter(productOk).filter((r) => !st.overdue || r.overdue).filter((r) => !st.q || [r.concept_name, r.pain_point, r.cluster, r.icp, r.vendor, r.note, r.vendor_note].filter(Boolean).join(' ').toLowerCase().includes(st.q.toLowerCase()));
     const shown = st.stage ? all.filter((r) => r.stage === st.stage || statusOf(r) === st.stage) : all;
     const heads = [['Week of'], ['Vendor'], ['Product'], ['Concept'], ['Brief'], ['Creative'], ['Format', 'Optional creative format chosen for this concept'], ['Stage', 'Where the card sits on the Board'], ['Due'], ['Priority'], ['Ready', 'Ready to launch: creative delivered and checked'], ['Ads'], ['Spend', 'Total ad spend on the launched ads'], ['Return', 'Return on ad spend: revenue per dollar spent'], ['']];
     const colToggle = h('details', { class: 'prod-cols', 'data-testid': 'prod-cols' }, h('summary', null, 'Columns'),

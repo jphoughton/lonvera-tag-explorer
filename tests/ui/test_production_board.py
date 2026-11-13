@@ -314,7 +314,7 @@ def test_drawer_opens_from_a_card_with_header_stepper_actions_and_tabs_and_close
     card(page, 7).locator("[data-testid=prod-card-title]").click()
     page.wait_for_selector("[data-testid=prod-drawer]")
     assert "card=7" in page.url
-    assert re.fullmatch(r"Victoria - .+ - Knee Pain - \d+/\d+", page.locator("[data-testid=prod-drawer-title]").text_content())
+    assert page.locator("[data-testid=prod-drawer-title]").text_content() == "Knee Pain"
     assert page.locator("[data-testid=prod-drawer-status]").text_content() == "In review"
     assert page.locator("[data-testid=prod-drawer-step][aria-current=step]").get_attribute("data-status") == "in_review"
     acts = [t.strip() for t in page.locator("[data-testid=prod-drawer-actions] button").all_text_contents()]
@@ -444,7 +444,7 @@ def test_list_view_has_status_due_and_priority_columns_and_opens_the_drawer(page
     assert page.locator("[data-testid=prod-row][data-id='1'] [data-testid=prod-priority]").text_content() == "Normal"
     row5.locator("[data-testid=prod-open-card]").click()
     page.wait_for_selector("[data-testid=prod-drawer]")
-    assert re.fullmatch(r"Madre - Seed cluster - Energy Crash - \d+/\d+", page.locator("[data-testid=prod-drawer-title]").text_content())
+    assert page.locator("[data-testid=prod-drawer-title]").text_content() == "Energy Crash"
     page.click("[data-testid=prod-drawer-close]")
     assert "view=list" in page.url
 
