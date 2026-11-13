@@ -525,3 +525,27 @@ def test_the_picker_disables_amazon_elsewhere_until_data_loads(browser, empty_ur
         assert platform_btn(pg, "amazon").is_disabled()
     finally:
         c.close()
+
+
+@pytest.mark.parametrize("qs,testid", [("?view=keywords&window=30d", "amz-keywords"), ("?view=adsearch&window=30d", "amz-ad-search")])
+def test_keyword_views_show_a_loading_state_before_the_table(page, qs, testid):
+    held = []
+    page.route("**/api/amazon/keywords*", lambda route: held.append(route))
+    page.route("**/api/amazon/ad-search-terms*", lambda route: held.append(route))
+    page.goto("/amazon" + qs)
+    page.wait_for_selector("[data-testid=amz-body]")
+    expect(page.locator("[data-testid=amz-loading]")).to_be_visible()
+    assert page.locator("[data-testid=amz-body]").inner_text().strip() != ""
+    page.wait_for_function("() => true")
+    for r in list(held):
+        r.continue_()
+    page.wait_for_selector("[data-testid=amz-loading]", state="detached")
+    assert page.locator("[data-testid=%s] tbody tr" % testid).count() > 0
+
+
+def test_keyword_range_caption_states_the_clamped_dates(page):
+    goto(page, "?view=keywords&window=30d")
+    w = api(page, "/api/amazon/keywords?window=30d")["window_info"]
+    assert w["label"]
+    page.wait_for_selector("[data-testid=amz-keywords]")
+    assert w["label"].split(" · ")[0] in page.locator("body").inner_text()
