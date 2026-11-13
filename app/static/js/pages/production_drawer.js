@@ -4,7 +4,7 @@
 import { h } from '../util.js';
 import { api } from '../api.js';
 import { assignmentPanel } from './priorities_panel.js';
-import { STATUSES, STATUS_LABEL, statusOf, md, weekLabel, ticketTitle, productName, formatLabel, dueInfo, nextActions, eventLine, link, resultText, mondayOf, addDays, today, askDialog } from './production_common.js';
+import { STATUSES, STATUS_LABEL, statusOf, md, weekLabel, ticketTitle, richLines, parseVariations, previewOf, adCount, productName, formatLabel, dueInfo, nextActions, eventLine, link, resultText, mondayOf, addDays, today, askDialog } from './production_common.js';
 
 const when = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`; };
 
@@ -112,7 +112,29 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
       body.replaceChildren(h('p', { class: 'pri-sub' }, 'Loading details…'));
       try { const d = await loadDetail(); body.replaceChildren(assignmentPanel(d)); more.dataset.loaded = '1'; } catch (e) { body.replaceChildren(h('p', { class: 'pri-err', role: 'alert' }, 'Could not load the details: ' + ((e && e.message) || 'error'))); }
     });
+    // the work itself: each variation (Hook 1, Hook 2 ...) or the creative link, with a Play button that opens it right here (Google Drive files and folders)
+    const vars = parseVariations(r.story);
+    const items = vars.length ? vars : (r.creative_url ? [{ label: 'Creative', url: r.creative_url }] : []);
+    const stage = h('div', { class: 'prod-viewer', 'data-testid': 'prod-viewer', hidden: true });
+    const play = (it, btn) => {
+      const pv = previewOf(it.url);
+      if (!pv) return;
+      for (const b of pane.querySelectorAll('.prod-play[aria-pressed=true]')) if (b !== btn) b.setAttribute('aria-pressed', 'false');
+      const on = btn.getAttribute('aria-pressed') !== 'true';
+      btn.setAttribute('aria-pressed', String(on));
+      if (!on) { stage.hidden = true; stage.replaceChildren(); return; }
+      stage.hidden = false;
+      stage.replaceChildren(h('div', { class: 'prod-viewer-bar' }, h('strong', null, it.label), h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer', class: 'pri-sub' }, 'Open in Drive')),
+        h('iframe', { class: 'prod-viewer-frame prod-viewer-' + pv.kind, src: pv.src, title: it.label, allow: 'autoplay; fullscreen', allowfullscreen: 'true', loading: 'lazy', referrerpolicy: 'no-referrer', sandbox: 'allow-scripts allow-same-origin allow-presentation allow-popups' }));
+    };
+    const preview = items.length ? h('div', { class: 'prod-field prod-preview', 'data-testid': 'prod-drawer-preview' },
+      h('span', { class: 'pri-k' }, items.length > 1 ? `Variations (${items.length})` : 'Creative'),
+      h('div', { class: 'prod-hooks' }, items.map((it) => { const pv = previewOf(it.url); const btn = pv ? h('button', { type: 'button', class: 'btn prod-small prod-play', 'aria-pressed': 'false', 'data-testid': 'prod-play', onclick: () => play(it, btn) }, 'Play') : null;
+        return h('span', { class: 'prod-hook', 'data-testid': 'prod-hook' }, h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer' }, it.label), btn); })),
+      stage) : null;
+    const noteView = r.note ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Note, as written'), h('div', { class: 'prod-richnote', 'data-testid': 'prod-drawer-note-view' }, richLines(r.note))) : null;
     pane.replaceChildren(h('div', { class: 'prod-drawer-form', 'data-testid': 'prod-drawer-details' },
+      preview, noteView,
       fieldInput('Vendor', vendor), fieldInput('Week of', week), fieldInput('Due date', dueRow, 'The vendor sees this date. Clear it for no due date.'), fieldInput('Priority', prio), fieldInput('Format', fmt),
       fieldInput('Brief link', brief), fieldInput('Creative link', creative), fieldInput('Note', note),
       r.vendor_note ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Vendor note'), h('p', { class: 'prod-drawer-vnote', 'data-testid': 'prod-drawer-vnote' }, r.vendor_note)) : null,

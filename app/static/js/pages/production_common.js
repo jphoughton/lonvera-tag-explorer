@@ -24,6 +24,43 @@ export function variationGroups(items, idOf = (x) => x) {
   return [...m.entries()].map(([base, list]) => ({ base, list }));
 }
 export const variationLabel = (id, base) => String(id).slice(base.length).replace(/^[-_ ]+/, '') || String(id);
+// "Label: value" lines get a bold label so a long note or brief is easy to scan; every other line stays plain. Always built with h() and text nodes (never innerHTML).
+export function richLines(text) {
+  const out = [];
+  String(text || '').split('\n').forEach((line, i) => {
+    if (i) out.push(h('br'));
+    const v = /^\s*([^:]{1,40}):\s*(https?:\/\/\S+)\s*$/.exec(line);                      // "hook1: https://..." -> bold "Hook 1:" and a link
+    const m = /^([A-Z][A-Za-z0-9'\/& -]{0,34}):\s+(.*)$/.exec(line);
+    if (v) { const hk = /^hook[\s_-]*(\d+)$/i.exec(v[1].trim()); out.push(h('strong', null, (hk ? `Hook ${hk[1]}` : v[1].trim().replace(/^./, (c) => c.toUpperCase())) + ':'), ' ', h('a', { href: v[2], target: '_blank', rel: 'noopener noreferrer' }, 'Open')); }
+    else if (m && !/^https?$/i.test(m[1])) out.push(h('strong', null, m[1] + ':'), ' ' + m[2]);
+    else out.push(line);
+  });
+  return out;
+}
+// The 'Variations' section of a brief: lines "hook1: https://..." -> [{label: 'Hook 1', url}]. Anything that is not label + link is ignored.
+export function parseVariations(story) {
+  const lines = String(story || '').split('\n');
+  const at = lines.findIndex((l) => /^variations\b/i.test(l.trim()));
+  if (at < 0) return [];
+  const out = [];
+  for (const line of lines.slice(at + 1)) {
+    const m = /^\s*([^:]{1,60}):\s*(https?:\/\/\S+)\s*$/.exec(line);
+    if (!m) { if (line.trim() === '') continue; if (out.length) break; else continue; }
+    const hk = /^hook[\s_-]*(\d+)$/i.exec(m[1].trim());
+    out.push({ label: hk ? `Hook ${hk[1]}` : m[1].trim().replace(/^./, (c) => c.toUpperCase()), url: m[2] });
+  }
+  return out;
+}
+// A link the page may play in place: a Google Drive file (video or image) or folder. Anything else returns null and stays a plain link.
+export function previewOf(url) {
+  const s = String(url || '');
+  let m = /^https:\/\/drive\.google\.com\/file\/d\/([\w-]+)/.exec(s) || /^https:\/\/drive\.google\.com\/open\?id=([\w-]+)/.exec(s);
+  if (m) return { kind: 'file', src: `https://drive.google.com/file/d/${m[1]}/preview` };
+  m = /^https:\/\/drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/([\w-]+)/.exec(s);
+  if (m) return { kind: 'folder', src: `https://drive.google.com/embeddedfolderview?id=${m[1]}#grid` };
+  return null;
+}
+export const adCount = (r) => (r.tracker_concept_ids || []).length || parseVariations(r.story).length;
 export const productName = (p) => PRODUCT_NAMES[p] || p || '';
 export const stageLabel = (r) => r.stage_label || STAGES[r.stage] || r.stage || '';
 export const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };

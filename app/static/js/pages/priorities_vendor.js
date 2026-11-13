@@ -5,7 +5,7 @@ import { h } from '../util.js';
 import { api } from '../api.js';
 import { showControls } from '../controls.js';
 import { expander } from './priorities_panel.js';
-import { weekLabel, ticketTitle, variationGroups, variationLabel, productName, stageLabel, formatLabel, rowFormat, resultText, link, short } from './production_common.js';
+import { weekLabel, ticketTitle, richLines, variationGroups, variationLabel, productName, stageLabel, formatLabel, rowFormat, resultText, link, short } from './production_common.js';
 
 // The one place the vendor routes are spelled: PATCH and detail are `${base}/<id>`, comments are `${base}/<id>/comments`.
 const vendorBase = (tok) => '/api/priorities/vendor/' + tok;
@@ -188,7 +188,7 @@ export async function vendorPage(ctx) {
       banner,
       r.brief_url ? link(r.brief_url, 'Open brief', { class: 'prod-v-brief prod-ext', 'data-testid': 'prod-v-brief', title: r.brief_url }) : h('p', { class: 'prod-v-none', 'data-testid': 'prod-v-nobrief' }, 'The brief has not been added yet.'),
       h('div', null, x.button()), host,
-      r.story ? h('p', { class: 'prod-story', 'data-testid': 'prod-story' }, r.story) : null,
+      r.story ? h('p', { class: 'prod-story', 'data-testid': 'prod-story' }, richLines(r.story)) : null,
       h('dl', { class: 'prod-dl' },
         dt('Brief', r.brief_url ? link(r.brief_url, 'Brief', { 'data-testid': 'prod-brief_url', class: 'prod-ext', title: r.brief_url }) : 'Not added yet'),
         dt('Format', h('span', { 'data-testid': 'prod-format-text' }, fmt ? formatLabel(fmt) : 'Not chosen')),

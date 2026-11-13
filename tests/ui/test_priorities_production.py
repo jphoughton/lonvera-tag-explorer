@@ -515,3 +515,41 @@ def test_a_filter_applies_on_every_tick_and_the_list_stays_open(page):
     page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 2")
     page.mouse.click(5, 400)                                                                              # a click outside closes it
     page.wait_for_function("() => !document.querySelector('.pagefilters [data-testid=prod-vendor]').hasAttribute('open')")
+
+
+def test_note_and_brief_labels_are_bold_and_variation_lines_become_hook_links(page):
+    goto(page, "?view=list")
+    got = page.evaluate("""async () => { const m = await import('/static/js/pages/production_common.js');
+      const story = 'Concept A\\n\\nAudience: Men 45-62\\nAngle: A2 Noisy knees\\n\\nVariations\\nhook1: https://drive.google.com/file/d/AAA111/view\\nhook2: https://drive.google.com/drive/folders/BBB222\\nhook3: none';
+      const wrap = document.createElement('div'); wrap.append(...m.richLines(story));
+      return { bold: [...wrap.querySelectorAll('strong')].map((e) => e.textContent), links: [...wrap.querySelectorAll('a')].map((a) => a.getAttribute('href')),
+               vars: m.parseVariations(story), pv: [m.previewOf('https://drive.google.com/file/d/AAA111/view'), m.previewOf('https://drive.google.com/drive/folders/BBB222'), m.previewOf('https://example.com/x.mp4')] }; }""")
+    assert got["bold"] == ["Audience:", "Angle:", "Hook 1:", "Hook 2:"] and len(got["links"]) == 2
+    assert got["vars"] == [{"label": "Hook 1", "url": "https://drive.google.com/file/d/AAA111/view"}, {"label": "Hook 2", "url": "https://drive.google.com/drive/folders/BBB222"}]
+    assert got["pv"][0] == {"kind": "file", "src": "https://drive.google.com/file/d/AAA111/preview"} and got["pv"][1]["src"] == "https://drive.google.com/embeddedfolderview?id=BBB222#grid" and got["pv"][2] is None
+
+
+def test_the_ticket_plays_the_creative_in_place(page):
+    goto(page, "?view=list")
+    row(page, 2).locator("[data-testid=prod-open-card]").click()
+    page.wait_for_selector("[data-testid=prod-drawer-preview]")
+    assert page.locator("[data-testid=prod-viewer]").is_hidden()
+    page.locator("[data-testid=prod-play]").first.click()
+    frame = page.locator("[data-testid=prod-viewer] iframe")
+    assert frame.get_attribute("src").startswith("https://drive.google.com/embeddedfolderview?id=creative2") and "sandbox" in frame.evaluate("e => e.getAttributeNames().join(' ')")
+    page.locator("[data-testid=prod-play]").first.click()                                   # again: closes it
+    assert page.locator("[data-testid=prod-viewer] iframe").count() == 0
+
+
+def test_cluster_icp_and_pain_point_filters_take_several_choices(page):
+    goto(page, "?view=list&closed=1")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 4")
+    choose(page, "prod-cluster-filter", "Hair Thinning")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 1")
+    choose(page, "prod-cluster-filter", "Hair Thinning", "Prostate")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 2")
+    assert "cluster=Hair" in page.url
+    choose(page, "prod-icp-filter", "Prostate Worrier")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 1")
+    choose(page, "prod-cluster-filter"); choose(page, "prod-icp-filter")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 4")

@@ -1,7 +1,7 @@
 // The Production board (kanban): six columns, cards, drag and drop, "Move to" menu, swimlanes by vendor, and the weekly load bars. Pure drawing plus events: the page (priorities_production.js) owns the data and saves moves.
 // Test ids: prod-board-*, prod-card-*. Class names start with prod- (never ad-, ads-, sponsor, banner, promo: ad blockers hide those).
 import { h, fmt, isNum } from '../util.js';
-import { STATUSES, STATUS_LABEL, statusOf, md, ticketTitle, productName, weekLabel, formatLabel, dueInfo, link, short, nextActions } from './production_common.js';
+import { STATUSES, STATUS_LABEL, statusOf, md, ticketTitle, adCount, productName, weekLabel, formatLabel, dueInfo, link, short, nextActions } from './production_common.js';
 import { enableDrag, gripEl } from './production_dnd.js';
 
 const LAUNCHED_DAYS = 14;
@@ -69,6 +69,7 @@ export function cardEl(r, ops, { compact = false } = {}) {
     compact ? null : h('p', { class: 'prod-card-sub' }, [r.cluster, r.icp].filter(Boolean).join(' / ')),
     h('div', { class: 'prod-card-chips' },
       chip('prod-chip-vendor', r.vendor, { 'data-testid': 'prod-card-vendor' }),
+      adCount(r) ? chip('prod-chip-ads', adCount(r) === 1 ? '1 ad' : `${adCount(r)} ads`, { 'data-testid': 'prod-card-ads', title: 'Ads made from this concept (variations)' }) : null,
       r.format_code ? chip('prod-chip-fmt', r.format_code, { 'data-testid': 'prod-card-format', title: formatLabel({ code: r.format_code, name: r.format_name || '', length: r.format_length || '' }) }) : null,
       due ? chip('prod-chip-due' + (due.tone ? ' prod-due-' + due.tone : ''), due.text, { 'data-testid': 'prod-card-due', 'data-tone': due.tone }) : null),
     h('div', { class: 'prod-card-meta' },
