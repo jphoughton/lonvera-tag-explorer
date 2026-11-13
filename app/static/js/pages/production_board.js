@@ -53,11 +53,6 @@ export function cardEl(r, ops, { compact = false } = {}) {
   return el;
 }
 
-function recentLaunched(r) {
-  const t = Date.parse(r.status_changed_at || '');
-  return isNaN(t) || Date.now() - t <= LAUNCHED_DAYS * 86400000;
-}
-
 // load bars: open cards for the week against the vendor's weekly capacity (capacity rows come from the board payload, one per vendor and week)
 export function loadBars(capacity, vendors, week, cards) {
   const rows = (vendors || []).map((v) => {
@@ -85,8 +80,8 @@ function colHead(label, cards, note) {
 export function board({ columns, dropped, st, vendors, capacity, ops, onDrop, allCards }) {
   const filt = (r) => (!st.overdue || r.overdue) && (!st.q || [r.pain_point, r.cluster, r.icp, r.vendor, r.note, r.vendor_note].filter(Boolean).join(' ').toLowerCase().includes(st.q.toLowerCase()));
   const byStatus = new Map(columns.map((c) => [c.status, c.cards || []]));
-  let defs = STATUSES.map(([k, l]) => ({ key: k, label: l, cards: (byStatus.get(k) || []).filter(filt) }));
-  defs = defs.map((d) => (d.key === 'launched' && !st.closed ? { ...d, cards: d.cards.filter(recentLaunched), note: `Last ${LAUNCHED_DAYS} days` } : d));
+  let defs = STATUSES.map(([k, l]) => ({ key: k, label: l, cards: (byStatus.get(k) || []).filter(filt), hidden: (columns.find((c) => c.status === k) || {}).hidden || 0 }));
+  defs = defs.map((d) => (d.key === 'launched' && !st.closed ? { ...d, note: `Last ${LAUNCHED_DAYS} days` + (d.hidden ? `, ${d.hidden} older hidden` : '') } : d));
   if (st.closed) defs.push({ key: 'dropped', label: 'Dropped', cards: (dropped || []).filter(filt), lane: true });
   if (st.stage) { const k = st.stage === 'creative_in' ? 'in_review' : st.stage; defs = defs.filter((d) => d.key === k); }
   const live = h('p', { class: 'prod-sr', 'aria-live': 'assertive', role: 'status', 'data-testid': 'prod-board-live' });
@@ -109,7 +104,7 @@ export function board({ columns, dropped, st, vendors, capacity, ops, onDrop, al
     lanes[0] === null
       ? h('div', { class: 'prod-board-cols', style: { '--cols': defs.length } }, cols(null))
       : lanes.map((v) => { const mine = defs.flatMap((d) => d.cards).filter((c) => c.vendor === v); const bar = loadBars(capacity, [v], st.week, allCards || mine);
-        return h('div', { class: 'prod-lane', 'data-testid': 'prod-board-lane', 'data-vendor': v }, h('div', { class: 'prod-lane-head' }, h('strong', null, v), h('span', { class: 'prod-lane-n' }, `${mine.length} cards`), bar),
+        return h('div', { class: 'prod-lane', 'data-testid': 'prod-board-lane', 'data-vendor': v }, h('div', { class: 'prod-lane-head' }, h('strong', null, v), h('span', { class: 'prod-lane-n' }, `${mine.length} ${mine.length === 1 ? 'card' : 'cards'}`), bar),
           h('div', { class: 'prod-board-cols', style: { '--cols': defs.length } }, cols(v))); }));
   if (lanes.length === 0) scroll.append(h('p', { 'data-testid': 'prod-board-nolanes' }, 'No cards match.'));
 

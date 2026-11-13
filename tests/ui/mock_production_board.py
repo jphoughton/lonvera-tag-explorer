@@ -99,12 +99,12 @@ def check_move(H, r, to, comment):
     if r.get("dropped_at"):
         raise Refuse("This concept was dropped. Restore it first.", 409)
     if to == "launched":
-        raise Refuse("A card is marked launched with the Mark launched button, not by moving it.")
+        raise Refuse("A card becomes Launched with Mark launched or when its Creative Tracker row is launched. It cannot be moved there.")
     before = status_of(H, r)
     if to == "in_review" and not r.get("creative_url"):
         raise Refuse("Add a creative link before sending to review.")
     if before == "in_review" and to == "in_production" and not (comment or "").strip():
-        raise Refuse("Add a comment saying what needs to change.")
+        raise Refuse("Say what to change: add a comment when requesting changes.")
     if before == "launched":
         raise Refuse("A launched card cannot move back.")
 
@@ -179,7 +179,12 @@ def register(app, deps):
         closed = a.get("closed") in ("1", "true")
         allc = cards(vendor, week, product)
         cols = [{"status": s, "label": LABEL[s], "count": 0, "cards": ordered([c for c in allc if c["status"] == s and c["stage"] != "dropped"])} for s in ORDER]
+        old = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=14)).isoformat()
         for c in cols:
+            if c["status"] == "launched":
+                keep = [x for x in c["cards"] if closed or x["status_changed_at"] >= old]
+                c["hidden"] = len(c["cards"]) - len(keep)
+                c["cards"] = keep
             c["count"] = len(c["cards"])
         wk = week or H["pa"].monday_of(dt.date.today()).isoformat()
         cap = [{"vendor": v, "per_week": S["capacity"].get(v, 10), "open": sum(1 for c in cards(v, wk) if c["status"] not in ("launched", "dropped")), "week": wk} for v in VENDORS]
@@ -232,7 +237,7 @@ def register(app, deps):
         body = ((request.get_json(silent=True) or {}).get("body") or "").strip()
         if not 1 <= len(body) <= 2000:
             return jsonify(error="A comment needs 1 to 2000 characters."), 400
-        return jsonify(add_comment(H, r, body, "app", "Josh")), 201
+        return jsonify(comment=add_comment(H, r, body, "app", "Josh")), 201
 
     @app.get("/api/priorities/vendor-capacity")
     def cap_get():
@@ -247,7 +252,7 @@ def register(app, deps):
         if not isinstance(n, int) or isinstance(n, bool) or not 0 <= n <= 200:
             return jsonify(error="per_week must be a whole number from 0 to 200."), 400
         S["capacity"][v] = n
-        return jsonify(vendor=v, per_week=n)
+        return jsonify(vendor=v, per_week=n, updated_at=_now())
 
     @app.post("/__test/board/seed")
     def seed():

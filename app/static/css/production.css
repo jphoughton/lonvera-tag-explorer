@@ -272,3 +272,6 @@ body.prod-drawer-open { overflow: hidden; }
   .prod-plan-grid { min-width: 860px; }
 }
 @media (pointer: coarse) { .prod-card-action, .prod-card-moveto { min-height: 44px; } }
+
+.prod-lane-head .prod-loadname { display: none; }
+.prod-lane-head .prod-loadrow { grid-template-columns: 1fr auto auto; }

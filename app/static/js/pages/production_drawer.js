@@ -157,7 +157,17 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
   async function drawHistory() {
     if (history === null) {
       pane.replaceChildren(h('p', { class: 'pri-sub', role: 'status' }, 'Loading history…'));
-      try { detail = null; const d = await loadDetail(); history = d.history || (d.assignment && d.assignment.history) || []; } catch (e) { if (e && e.name === 'AbortError') return; history = []; say(e.message || 'Could not load history.', true); }
+      try {
+        detail = null;
+        const d = await loadDetail();
+        history = d.history || (d.assignment && d.assignment.history) || null;
+        if (!Array.isArray(history)) {            // the detail payload carries no history: the List endpoint rows do (app users only), so read this card's row from it
+          const r = getCard();
+          const l = await api('/api/priorities/assignments', { week: r && r.for_week, vendor: r && r.vendor, include_closed: 1 }, { signal });
+          const row = (l.rows || []).find((x) => x.id === Number(id));
+          history = (row && row.history) || [];
+        }
+      } catch (e) { if (e && e.name === 'AbortError') return; history = []; say(e.message || 'Could not load history.', true); }
       if (cur !== 'history') return;
     }
     pane.replaceChildren(history.length

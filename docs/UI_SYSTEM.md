@@ -16,7 +16,7 @@ Second row: the pages of the active section as tabs. The active section and tab 
 | Performance | Trends | `/trends` | `pages/trends.js` | |
 | Performance | Email | `/email` | `pages/email.js` | Klaviyo email and text messages by flow, campaign and over time; `docs/EMAIL.md` |
 | Creative | Priorities | `/priorities`, `?view=<token>`, `/priorities/v/<token>` | `pages/priorities*.js` | |
-| Creative | Production | `/priorities/production` | `pages/priorities_production.js` | vendor page `/priorities/vendor/<token>` is public and has no app navigation |
+| Creative | Production | `/priorities/production` (`?view=board|list|plan`, `?card=<id>`) | `pages/priorities_production.js`, `production_board.js`, `production_plan.js`, `production_drawer.js`, `production_dnd.js`, `production_common.js` | vendor page `/priorities/vendor/<token>` is public and has no app navigation |
 | Creative | Test to scale | `/promotions` | `promotions.js`, `scale_views.js` | |
 | Plan | Projections | `/projection[/<module>]` | separate page (`projection.html`) | same top row; its second row is the module tabs and the scenario control |
 | (search box) | Tag lookup | `/lookup?q=...` | `pages/lookup.js` | the box is in the top bar on every page; `/lookup` still works on its own |
@@ -211,7 +211,7 @@ tests/ui/
 | `test_email.py`, `mock_email.py` | Email |
 | `test_promotions.py`, `test_scale_views.py`, `mock_promotions.py` | Test to scale |
 | `test_priorities.py`, `test_priorities_groups.py`, `mock_priorities.py`, `priorities_fixture.json` | Priorities |
-| `test_priorities_production.py`, `test_priorities_launch.py`, `mock_priorities_assign.py`, `mock_priorities_launch.py` | Production |
+| `test_priorities_production.py`, `test_production_board.py`, `test_priorities_launch.py`, `mock_priorities_assign.py`, `mock_production_board.py`, `mock_priorities_launch.py` | Production (list, board, plan, drawer) |
 | `test_lookup.py`, `mock_lookup.py` | Tag lookup |
 
 Run: `PATH=/opt/homebrew/opt/postgresql@16/bin:$PATH TEST_API_DB=<unique> UI_MOCK_PORT=<unique> UI_NOAUTH_MOCK_PORT=<unique> PYTHONPATH=. ~/lonvera-tag-explorer/.venv/bin/python -m pytest tests/ui -q -p no:cacheprovider`. Run `tests/etl/test_assignment_tags.py` in a separate command.

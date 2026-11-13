@@ -99,12 +99,14 @@ export async function productionPage(ctx) {
       await api(`/api/priorities/assignments/${card.id}/move`, {}, { method: 'POST', body: { status: to, ...(o.beforeId ? { before_id: Number(o.beforeId) } : {}), ...(o.afterId ? { after_id: Number(o.afterId) } : {}), ...(o.comment ? { comment: o.comment } : {}) } });
       await load(); drawView(); if (drawer) drawer.refresh();
       toast(`Moved to ${STATUS_LABEL[to] || to}.`);
+      focusId = null;
       return true;
     } catch (e) {
       abortOk(e);
       lastErr = e.message || 'Could not move the card.';
       if (onBoard) { const s = JSON.parse(snap); board.columns = s.columns; board.dropped = s.dropped; drawView(); }
       say(lastErr, true); toast(lastErr, true);
+      focusId = null;
       return false;
     }
   }
@@ -283,18 +285,18 @@ export async function productionPage(ctx) {
     if (st.view === 'list') drawList();
     else if (st.view === 'plan') drawPlan();
     else drawBoard();
-    if (focusId) { const el = viewHost.querySelector(`.prod-board-card[data-id="${focusId}"]`); focusId = null; if (el) el.focus(); }
+    if (focusId) { const el = viewHost.querySelector(`.prod-board-card[data-id="${focusId}"]`); if (el) el.focus(); }
   }
 
   function onBoardDrop({ card, list, before, after, via }) {
     const c = findCard(card.dataset.id);
     const to = list.dataset.status;
     if (via === 'keyboard') focusId = card.dataset.id;
-    if (!c) { drawView(); return; }
-    if (to === 'launched') { toast('Cards are marked launched with the Mark launched button, not by dragging.', true); drawView(); return; }
+    if (!c) { drawView(); focusId = null; return; }
+    if (to === 'launched') { toast('Cards are marked launched with the Mark launched button, not by dragging.', true); drawView(); focusId = null; return; }
     const nb = { beforeId: before ? before.dataset.id : null, afterId: after ? after.dataset.id : null };
     if (statusOf(c) === 'in_review' && to === 'in_production') {
-      askChanges(c, to).then((txt) => { if (txt === null) { drawView(); return; } moveCard(c, to, { ...nb, comment: txt }); });
+      askChanges(c, to).then((txt) => { if (txt === null) { drawView(); focusId = null; return; } moveCard(c, to, { ...nb, comment: txt }); });
       return;
     }
     moveCard(c, to, nb);

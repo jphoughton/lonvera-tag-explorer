@@ -12,6 +12,8 @@ export function enableDrag({ root, cardSel, gripSel, listSel, laneOf = () => '',
   const say = (t) => { if (live) live.textContent = t; };
   let drag = null;            // pointer drag in progress
   let picked = null;          // keyboard pick in progress
+  let moving = false;         // true while we move the picked card ourselves (that makes the browser blur it for a moment)
+  const relocate = (card, fn) => { moving = true; fn(); card.focus(); moving = false; };
 
   const where = (card) => { const l = card.parentElement; const sibs = cardsIn(l); return { list: l, index: sibs.indexOf(card), total: sibs.length }; };
   const neighbours = (card) => { const l = card.parentElement; const sibs = cardsIn(l); const i = sibs.indexOf(card); return { before: sibs[i + 1] || null, after: sibs[i - 1] || null }; };
@@ -125,18 +127,16 @@ export function enableDrag({ root, cardSel, gripSel, listSel, laneOf = () => '',
       if (i < 0 || i >= ls.length) return;
       const target = ls[i];
       const sibs = cardsIn(target, card);
-      target.insertBefore(card, sibs[Math.min(w.index, sibs.length)] || null);
+      relocate(card, () => target.insertBefore(card, sibs[Math.min(w.index, sibs.length)] || null));
       const n = where(card);
-      card.focus();
       say(`${listName(n.list)}, position ${n.index + 1} of ${n.total}.`);
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       const sibs = cardsIn(w.list);
       const i = w.index + (e.key === 'ArrowDown' ? 1 : -1);
       if (i < 0 || i >= sibs.length) return;
-      if (e.key === 'ArrowDown') w.list.insertBefore(card, sibs[i].nextElementSibling); else w.list.insertBefore(card, sibs[i]);
+      relocate(card, () => { if (e.key === 'ArrowDown') w.list.insertBefore(card, sibs[i].nextElementSibling); else w.list.insertBefore(card, sibs[i]); });
       const n = where(card);
-      card.focus();
       say(`${listName(n.list)}, position ${n.index + 1} of ${n.total}.`);
     } else if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
       e.preventDefault();
@@ -152,7 +152,7 @@ export function enableDrag({ root, cardSel, gripSel, listSel, laneOf = () => '',
     }
   });
   root.addEventListener('focusout', (e) => {
-    if (picked && e.target === picked.card && !root.contains(e.relatedTarget)) { const p = picked; picked = null; finish(p.card, p.origin, false); say('Move cancelled.'); }
+    if (picked && !moving && e.target === picked.card && !root.contains(e.relatedTarget)) { const p = picked; picked = null; finish(p.card, p.origin, false); say('Move cancelled.'); }
   });
   const listName = (l) => l.getAttribute('aria-label') || l.dataset.label || 'List';
 }
