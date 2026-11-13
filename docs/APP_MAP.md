@@ -142,6 +142,7 @@ Auth column: what the server checks. Page routes serve the same HTML shell; thei
 | `/api/campaigns/trend` | GET | api | signed-in session or API key | Trend of /api/campaigns (Meta, all products): same window, stage, active, Meta \| Upstack numbers and product filter, so its points add up to the table's |
 | `/api/competitors` | GET | api | signed-in session or API key | Competitors: what watched brands run on Meta this week (week=YYYY-MM-DD, default the latest snapshot; format=video\|image, default all): one row per brand, what changed since the prior week, chatter when stored. See app/competitors.py. |
 | `/api/competitors/<path:brand>` | GET | api | signed-in session or API key | One competitor: longest-running ads, new this week, angles, landing pages, Ad Library links (week, format as on /api/competitors). |
+| `/api/competitors/media/<library_id>` | GET | api | signed-in session or API key |  |
 | `/api/email/campaigns` | GET | api | signed-in session or API key | Email by campaign: one row per campaign with activity in the window, newest send first; q= filters on name and subject. |
 | `/api/email/flows` | GET | api | signed-in session or API key | Email by flow: one row per flow with activity in the window, revenue first. |
 | `/api/email/flows/<flow_id>/messages` | GET | api | signed-in session or API key | The messages of one flow with their totals for the window. |

@@ -16,12 +16,17 @@ Flow (Sundays, Pacific; any day with --week): for every active brand in competit
   4. classify concepts with no competitor_concept_class row (cap --limit, default 150): batches of BATCH concepts per `claude -p` call, text only, answer =
      an existing Lonvera line code (product / cluster / ICP / pain point from etl/autotag/catalogs) or NEW with a suggested cluster / ICP / pain point, or OUT (not our category).
      Stops early on auth / usage limit; non-fatal for the nightly pipeline (scripts/deploy/run_etl.sh).
-Usage: python -m etl.competitor_ads [--if-sunday] [--brand NAME] [--limit N] [--dry-run] [--week YYYY-MM-DD] [--no-classify] [--max-cards N]"""
+  5. media: per brand, right after its rows are stored (Ad Library image links are signed and expire in days), download the creative image (video: the poster frame) of a
+     curated slice (top MEDIA_TOP longest-running distinct concepts + up to MEDIA_NEW new this week, cap MEDIA_CAP per run, ids already stored skipped), re-encode to a small
+     JPEG and store the bytes in competitor_ad_media (served by /api/competitors/media/<library_id>). Failures are per image and never touch the brand's ad rows.
+     --media-backfill does the same for ads already stored (no re-scrape, no competitor_ads writes): one single-ad Ad Library search per missing image.
+Usage: python -m etl.competitor_ads [--if-sunday] [--brand NAME] [--limit N] [--dry-run] [--week YYYY-MM-DD] [--no-classify] [--max-cards N] [--no-media] [--media-backfill]"""
 from __future__ import annotations
 
 import argparse
 import datetime as dt
 import hashlib
+import io
 import json
 import os
 import re
@@ -31,6 +36,7 @@ import sys
 import tempfile
 import time
 import urllib.parse
+import urllib.request
 from zoneinfo import ZoneInfo
 
 from . import auto_tag as at
@@ -46,6 +52,19 @@ MAX_SCROLLS = 45
 LIBRARY = "https://www.facebook.com/ads/library/"
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 MODEL = at.MODEL
+MEDIA_TOP = 12                    # per brand: longest-running distinct concepts
+MEDIA_NEW = 8                     # per brand: distinct concepts that started within MEDIA_NEW_DAYS of the run
+MEDIA_NEW_DAYS = 7
+MEDIA_CAP = 400                   # per run
+MEDIA_MAX_W = 480
+MEDIA_QUALITY = 72
+MEDIA_MAX_BYTES = 150_000
+MEDIA_DL_MAX = 12_000_000         # refuse to read more than this from one URL
+MEDIA_PAUSE = 0.3                 # between downloads
+BACKFILL_PAUSE = 1.0              # between single-ad page loads
+MEDIA_PRUNE_DAYS = 60
+MEDIA_HOSTS = re.compile(r"(^|\.)(fbcdn\.net|facebook\.com)$")
+MEDIA_UA = "LonveraCompetitorResearch/1.0 (weekly thumbnails of public Meta Ad Library ads; contact joshphoughton@gmail.com)"
 
 # (brand, product type, exact search phrases, advertiser-name regex). Editable in the table afterwards; this only seeds missing brands.
 BRANDS = [
@@ -75,7 +94,9 @@ CARD_JS = r"""(maxCards) => {
   for (const e of els) {
     let c = e;
     while (c.parentElement) { const p = c.parentElement; if ((p.innerText.match(/Library ID: \d+/g) || []).length > 1) break; c = p; }
-    out.push({text: c.innerText, hrefs: [...c.querySelectorAll('a[href]')].map(a => a.href), vids: c.querySelectorAll('video').length});
+    out.push({text: c.innerText, hrefs: [...c.querySelectorAll('a[href]')].map(a => a.href), vids: c.querySelectorAll('video').length,
+               imgs: [...c.querySelectorAll('img')].map(i => ({src: i.src, w: i.naturalWidth, h: i.naturalHeight})),
+               posters: [...c.querySelectorAll('video')].map(v => v.poster || '').filter(Boolean)});
   }
   return out;
 }"""
@@ -115,6 +136,17 @@ def landing_from(hrefs: list[str]) -> str | None:
     return None
 
 
+def pick_media(raw: dict) -> tuple[str | None, str | None]:
+    """(url, kind) of the creative in a raw card: a video's poster frame, else the first image at least 200 px wide (the 60 px page avatar is smaller). (None, None) when there is none."""
+    for u in raw.get("posters") or []:
+        if isinstance(u, str) and u.startswith("http"):
+            return u, "video_poster"
+    for im in raw.get("imgs") or []:
+        if isinstance(im, dict) and str(im.get("src", "")).startswith("http") and (im.get("w") or 0) >= 200:
+            return im["src"], "video_poster" if raw.get("vids") else "image"
+    return None, None
+
+
 def parse_card(raw: dict) -> dict | None:
     """{text, hrefs, vids} from the page -> one ad dict, or None when it is not a readable card."""
     text = raw.get("text") or ""
@@ -133,10 +165,12 @@ def parse_card(raw: dict) -> dict | None:
     sd = START.search(text)
     start = dt.datetime.strptime(sd.group(1), "%b %d, %Y").date() if sd else None
     nm = re.search(r"(\d+) ads use this creative and text", text)
+    murl, mkind = pick_media(raw)
     first_line = (re.split(r"(?<=[.!?])\s|\n", rest[0])[0] if rest and di != 0 else "") or headline
     return {"library_id": m.group(1), "advertiser": adv[:120], "start_date": start, "variant_count": int(nm.group(1)) if nm else 1,
             "format": "video" if raw.get("vids") else "image", "primary_text": primary[:2500], "headline": headline[:200], "domain": domain,
-            "hook": (first_line or headline)[:240], "landing_url": landing_from(raw.get("hrefs") or []) or (domain or None)}
+            "hook": (first_line or headline)[:240], "landing_url": landing_from(raw.get("hrefs") or []) or (domain or None),
+            "media_url": murl, "media_kind": mkind}
 
 
 # ---- browser --------------------------------------------------------------------------------------------------------------------------
@@ -144,6 +178,11 @@ def parse_card(raw: dict) -> dict | None:
 def library_url(phrase: str) -> str:
     q = {"active_status": "active", "ad_type": "all", "country": "US", "media_type": "all", "sort_data[direction]": "desc",
          "sort_data[mode]": "total_impressions", "q": f'"{phrase}"', "search_type": "keyword_exact_phrase"}
+    return LIBRARY + "?" + urllib.parse.urlencode(q)
+
+
+def single_ad_url(library_id: str) -> str:
+    q = {"active_status": "all", "ad_type": "all", "country": "US", "q": str(library_id), "search_type": "keyword_unordered"}
     return LIBRARY + "?" + urllib.parse.urlencode(q)
 
 
@@ -176,6 +215,22 @@ class Browser:
             body = pg.inner_text("body")
             return pg.evaluate(CARD_JS, max_cards), body
         except Exception as e:                                         # noqa: BLE001
+            raise BrandFailed(f"browser error: {db.scrub(e)[:160]}") from None
+        finally:
+            pg.close()
+
+    def load_one(self, library_id: str) -> list[dict]:
+        """Raw cards of a search for one Library ID (the library finds an ad by its ID as a keyword: exactly one card). [] when it is gone. Raises BrandFailed on a browser error."""
+        pg = self._c.new_page()
+        try:
+            pg.goto(single_ad_url(library_id), wait_until="domcontentloaded", timeout=60000)
+            try:
+                pg.wait_for_function("(id) => !!document.body && document.body.innerText.includes('Library ID: ' + id)", arg=library_id, timeout=20000)
+            except Exception:                                              # noqa: BLE001  (not shown: gone, or a wall; the caller counts it)
+                return []
+            self.sleep(1.5)                                                # let the image decode
+            return pg.evaluate(CARD_JS, 5)
+        except Exception as e:                                             # noqa: BLE001
             raise BrandFailed(f"browser error: {db.scrub(e)[:160]}") from None
         finally:
             pg.close()
@@ -401,10 +456,178 @@ def classify(conn, week, limit: int, brand=None, runner=subprocess.run, sleep=ti
     return st
 
 
+# ---- media (creative thumbnails) -------------------------------------------------------------------------------------------------------
+
+def encode_jpeg(data: bytes, max_w: int = MEDIA_MAX_W, quality: int = MEDIA_QUALITY, max_bytes: int = MEDIA_MAX_BYTES) -> tuple[bytes, int, int]:
+    """Image bytes -> (JPEG bytes, width, height): at most max_w wide (never enlarged), quality lowered (then the size) until it fits max_bytes. ValueError when it is not an image or cannot fit."""
+    from PIL import Image
+    try:
+        im = Image.open(io.BytesIO(data))
+        im.load()
+    except Exception as e:                                                 # noqa: BLE001
+        raise ValueError(f"not an image: {type(e).__name__}") from None
+    if im.mode in ("RGBA", "LA", "P"):
+        bg = Image.new("RGB", im.size, (255, 255, 255))
+        im = im.convert("RGBA")
+        bg.paste(im, mask=im.split()[-1])
+        im = bg
+    else:
+        im = im.convert("RGB")
+    w = min(max_w, im.width)
+    for _ in range(6):
+        h = max(1, round(im.height * w / im.width))
+        small = im.resize((w, h), Image.LANCZOS) if w != im.width else im
+        q = quality
+        while q >= 30:
+            buf = io.BytesIO()
+            small.save(buf, "JPEG", quality=q, optimize=True)
+            if buf.tell() <= max_bytes:
+                return buf.getvalue(), w, h
+            q -= 8
+        w = int(w * 0.8)
+        if w < 120:
+            break
+    raise ValueError("image does not fit the size cap")
+
+
+def fetch_url(url: str) -> bytes:
+    """Plain GET with a polite User-Agent. Only https links on facebook / fbcdn hosts; no cookies, no login."""
+    u = urllib.parse.urlparse(url)
+    if u.scheme != "https" or not MEDIA_HOSTS.search(u.hostname or ""):
+        raise ValueError("refused host")
+    req = urllib.request.Request(url, headers={"User-Agent": MEDIA_UA, "Accept": "image/avif,image/webp,image/jpeg,image/*;q=0.8"})
+    with urllib.request.urlopen(req, timeout=30) as r:                     # noqa: S310
+        data = r.read(MEDIA_DL_MAX + 1)
+    if len(data) > MEDIA_DL_MAX:
+        raise ValueError("download too large")
+    return data
+
+
+def _days_running(a: dict, today: dt.date) -> int:
+    if a.get("days_running") is not None:
+        return a["days_running"]
+    return (today - a["start_date"]).days if a.get("start_date") else -1
+
+
+def select_media(ads: list[dict], existing: set[str], today: dt.date, cap: int = MEDIA_CAP, top: int = MEDIA_TOP, new: int = MEDIA_NEW) -> list[dict]:
+    """The ads worth a thumbnail. Per brand: the `top` longest-running (days_running, one ad per concept_key) plus up to `new` that started within MEDIA_NEW_DAYS of today (newest first, one per
+    concept_key, concepts already picked skipped). Ads whose library_id is already stored are dropped AFTER the choice (so a stored ad does not pull a deeper one in each week). Candidates are
+    interleaved across brands by rank so the cap trims every brand's tail alike. ads: dicts with brand, library_id, concept_key, days_running, start_date (and, when known, media_url). days_running is read as start_date to `today` when absent."""
+    by_brand: dict[str, list[dict]] = {}
+    for a in ads:
+        by_brand.setdefault(a["brand"], []).append(a)
+    cutoff = today - dt.timedelta(days=MEDIA_NEW_DAYS)
+    ranked: list[tuple[int, str, dict]] = []
+    for brand, rows in by_brand.items():
+        picked, seen = [], set()
+        for a in sorted(rows, key=lambda r: (-_days_running(r, today), str(r["library_id"]))):
+            if a["concept_key"] in seen:
+                continue
+            seen.add(a["concept_key"])
+            picked.append(a)
+            if len(picked) >= top:
+                break
+        fresh = [a for a in rows if a.get("start_date") and a["start_date"] >= cutoff]
+        n = 0
+        for a in sorted(fresh, key=lambda r: (r["start_date"], str(r["library_id"])), reverse=True):
+            if n >= new:
+                break
+            if a["concept_key"] in seen:
+                continue
+            seen.add(a["concept_key"])
+            picked.append(a)
+            n += 1
+        for i, a in enumerate(picked):
+            ranked.append((i, brand, a))
+    ranked.sort(key=lambda t: (t[0], t[1]))
+    out = [a for _, _, a in ranked if str(a["library_id"]) not in existing]
+    return out[:cap]
+
+
+def stored_media_ids(conn) -> set[str]:
+    return {r[0] for r in conn.execute("SELECT library_id FROM competitor_ad_media").fetchall()}
+
+
+def store_media(conn, library_id: str, kind: str, data: bytes, w: int, h: int):
+    conn.execute("""INSERT INTO competitor_ad_media (library_id, kind, content_type, width, height, bytes) VALUES (%s,%s,'image/jpeg',%s,%s,%s)
+                    ON CONFLICT (library_id) DO UPDATE SET kind=EXCLUDED.kind, content_type=EXCLUDED.content_type, width=EXCLUDED.width, height=EXCLUDED.height,
+                    bytes=EXCLUDED.bytes, fetched_at=now()""", (library_id, kind, w, h, data))
+
+
+def new_media_stats() -> dict:
+    return {"selected": 0, "stored": 0, "failed": 0, "no_image": 0, "bytes": 0}
+
+
+def capture_media(conn, picks: list[dict], st: dict, fetch=fetch_url, sleep=time.sleep, log=db.log) -> None:
+    """Download + encode + store each pick that carries a media_url. Every failure is counted and logged, never raised."""
+    for a in picks:
+        st["selected"] += 1
+        if not a.get("media_url"):
+            st["no_image"] += 1
+            continue
+        try:
+            data, w, h = encode_jpeg(fetch(a["media_url"]))
+            store_media(conn, a["library_id"], a.get("media_kind") or "image", data, w, h)
+            conn.commit()
+            st["stored"] += 1
+            st["bytes"] += len(data)
+        except Exception as e:                                             # noqa: BLE001
+            conn.rollback()
+            st["failed"] += 1
+            log(f"  competitor_ads media {a['library_id']}: {db.scrub(e)[:120]}")
+        sleep(MEDIA_PAUSE)
+
+
+def prune_media(conn) -> int:
+    """Delete thumbnails older than MEDIA_PRUNE_DAYS whose ad is not in the latest stored week."""
+    n = conn.execute("""DELETE FROM competitor_ad_media WHERE fetched_at < now() - make_interval(days => %s)
+                        AND library_id NOT IN (SELECT library_id FROM competitor_ads WHERE week_start = (SELECT max(week_start) FROM competitor_ads))""", (MEDIA_PRUNE_DAYS,)).rowcount
+    conn.commit()
+    return n
+
+
+def backfill_media(conn, browser, week: dt.date | None = None, brand: str | None = None, cap: int = MEDIA_CAP, fetch=fetch_url, sleep=time.sleep,
+                   today: dt.date | None = None, log=db.log, progress_every: int = 20) -> dict:
+    """Thumbnails for ads already in competitor_ads (no scrape of the brand pages, no competitor_ads write): the same curated selection over the stored rows of `week` (default the latest),
+    then one single-ad Ad Library search per missing image. Resumable: stored ids are skipped on the next run. A brand's `today` for the 'new this week' rule is the run day."""
+    today = today or dt.datetime.now(PT).date()
+    if week is None:
+        week = conn.execute("SELECT max(week_start) FROM competitor_ads").fetchone()[0]
+    st = {"week_start": str(week) if week else None, **new_media_stats(), "gone": 0}
+    if week is None:
+        return st
+    rows = conn.execute("""SELECT brand, library_id, concept_key, days_running, start_date FROM competitor_ads WHERE week_start=%s AND (%s::text IS NULL OR brand=%s)""",
+                        (week, brand, brand)).fetchall()
+    ads = [dict(zip(("brand", "library_id", "concept_key", "days_running", "start_date"), r)) for r in rows]
+    picks = select_media(ads, stored_media_ids(conn), today, cap)
+    total = len(picks)
+    log(f"  competitor_ads media backfill: {total} to fetch (week {week})")
+    for i, a in enumerate(picks, 1):
+        if i > 1:
+            sleep(BACKFILL_PAUSE)
+        try:
+            cards = browser.load_one(a["library_id"])
+            mine = next((c for c in cards if f"Library ID: {a['library_id']}" in (c.get("text") or "")), None)
+            if mine is None:
+                st["selected"] += 1
+                st["gone"] += 1
+            else:
+                url, kind = pick_media(mine)
+                capture_media(conn, [{**a, "media_url": url, "media_kind": kind}], st, fetch, lambda _s: None, log)
+        except BrandFailed as e:
+            st["selected"] += 1
+            st["failed"] += 1
+            log(f"  competitor_ads media {a['library_id']}: {e}")
+        if i % progress_every == 0 or i == total:
+            log(f"  competitor_ads media backfill: {i}/{total} stored={st['stored']} failed={st['failed']} no_image={st['no_image']} gone={st['gone']}")
+    return st
+
+
 # ---- run ------------------------------------------------------------------------------------------------------------------------------
 
 def run(conn, brand: str | None = None, limit: int = DEFAULT_LIMIT, dry_run: bool = False, week: dt.date | None = None, do_classify: bool = True,
-        max_cards: int = MAX_CARDS, browser=None, runner=subprocess.run, sleep=time.sleep, today: dt.date | None = None, log=db.log) -> dict:
+        max_cards: int = MAX_CARDS, browser=None, runner=subprocess.run, sleep=time.sleep, today: dt.date | None = None, log=db.log, do_media: bool = True,
+        fetch=fetch_url) -> dict:
     today = today or dt.datetime.now(PT).date()
     week = week or week_start_for(today)
     ensure_brands(conn)
@@ -412,6 +635,7 @@ def run(conn, brand: str | None = None, limit: int = DEFAULT_LIMIT, dry_run: boo
                           (brand, brand)).fetchall()
     cols = ("brand", "product_type", "search_phrases", "name_match")
     st: dict = {"week_start": str(week), "dry_run": dry_run, "brands": {}, "failed_brands": [], "ads": 0, "carried_rows": 0}
+    mst = new_media_stats()
     if not brands:
         raise db.JobFailed(f"no active brand named {brand!r}" if brand else "no active competitor brands")
     if not dry_run and do_classify and not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
@@ -431,6 +655,14 @@ def run(conn, brand: str | None = None, limit: int = DEFAULT_LIMIT, dry_run: boo
                 if not dry_run:
                     store_brand(conn, br, ads, week, today)
                     conn.commit()
+                    if do_media:
+                        try:                                                # a media problem never undoes or fails the brand's ad rows
+                            have = stored_media_ids(conn)
+                            picks = select_media([{**a, "brand": br["brand"]} for a in ads], have, today, max(0, MEDIA_CAP - mst["selected"]))
+                            capture_media(conn, picks, mst, fetch, sleep, log)
+                        except Exception as e:                              # noqa: BLE001
+                            conn.rollback()
+                            log(f"  competitor_ads {br['brand']}: media capture failed ({db.scrub(e)[:120]}); ad rows kept")
             except BrandFailed as e:
                 st["failed_brands"].append({"brand": br["brand"], "error": str(e)})
                 log(f"  competitor_ads {br['brand']}: FAILED ({e}); keeping last good data, flagged stale")
@@ -440,6 +672,13 @@ def run(conn, brand: str | None = None, limit: int = DEFAULT_LIMIT, dry_run: boo
     finally:
         if own:
             browser.close()
+    if not dry_run and do_media:
+        st["media"] = mst
+        try:
+            st["media"]["pruned"] = prune_media(conn)
+        except Exception as e:                                             # noqa: BLE001
+            conn.rollback()
+            log(f"  competitor_ads media prune failed: {db.scrub(e)[:120]}")
     if not dry_run and do_classify:
         st["classify"] = classify(conn, week, limit, brand, runner, sleep, log)
     return st
@@ -454,12 +693,25 @@ def main():
     ap.add_argument("--no-classify", action="store_true")
     ap.add_argument("--if-sunday", action="store_true", help="do nothing unless today is Sunday in Pacific time (the nightly pipeline calls it every night)")
     ap.add_argument("--max-cards", type=int, default=MAX_CARDS)
+    ap.add_argument("--no-media", action="store_true", help="skip creative thumbnail capture")
+    ap.add_argument("--media-backfill", action="store_true", help="only fetch thumbnails for ads already stored (latest week, or --week); no scrape of brand pages, no competitor_ads writes")
     a = ap.parse_args()
+    if a.media_backfill:
+        with db.JobRun("competitor_ad_media") as job, db.connect() as conn:
+            browser = Browser()
+            try:
+                st = backfill_media(conn, browser, a.week, a.brand)
+            finally:
+                browser.close()
+            job.stats = st
+            job.rows_written = st["stored"]
+            db.log("  " + json.dumps(st, default=str))
+        return
     if a.if_sunday and dt.datetime.now(PT).weekday() != 6:
         db.log("competitor_ads: not Sunday (Pacific), skipped")
         return
     with db.JobRun("competitor_ads") as job, db.connect() as conn:
-        st = run(conn, a.brand, a.limit, a.dry_run, a.week, not a.no_classify, a.max_cards)
+        st = run(conn, a.brand, a.limit, a.dry_run, a.week, not a.no_classify, a.max_cards, do_media=not a.no_media)
         job.stats = st
         job.rows_written = st["ads"]
         db.log("  " + json.dumps(st, default=str))
