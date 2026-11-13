@@ -100,6 +100,22 @@ def pick_clicks(a):
     return float(a.get("inline_link_clicks") or 0)
 
 
+def _acts(actions):
+    return {x["action_type"]: float(x["value"]) for x in (actions or [])}
+
+
+def pick_atc(actions):
+    """Adds to cart, as Ads Manager reports it: omni_add_to_cart (all channels), else add_to_cart, else the pixel event (same priority as pick for purchases)."""
+    d = _acts(actions)
+    return d.get("omni_add_to_cart", d.get("add_to_cart", d.get("offsite_conversion.fb_pixel_add_to_cart", 0.0)))
+
+
+def pick_lpv(actions):
+    """Landing page views: omni_landing_page_view, else landing_page_view."""
+    d = _acts(actions)
+    return d.get("omni_landing_page_view", d.get("landing_page_view", 0.0))
+
+
 def classify_stage(name) -> str:
     """Testing if the name contains 'test' (case-insensitive), else Scaling (meta_campaign_history.classify_stage)."""
     return "testing" if "test" in str(name).lower() else "scaling"

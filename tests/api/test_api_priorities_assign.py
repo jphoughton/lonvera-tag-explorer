@@ -803,7 +803,7 @@ def test_history_rows_go_with_the_assignment_and_old_rows_are_rebuilt_by_the_mig
     pg.execute("UPDATE creative_priorities_assignments SET created_at = now() - interval '5 days', brief_at = now() - interval '2 days', ready_at = now() WHERE id = %s", (a["id"],))
     pg.commit()
     import pathlib
-    sql = pathlib.Path(__file__).resolve().parents[2].joinpath("migrations", "242_assignment_events.sql").read_text()
+    sql = pathlib.Path(__file__).resolve().parents[2].joinpath("migrations", "243_assignment_events.sql").read_text()
     pg.execute(sql)
     pg.commit()
     pg.execute(sql)                                                                                       # idempotent

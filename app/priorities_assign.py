@@ -335,7 +335,7 @@ EVENT_KINDS = ("assigned", "brief_added", "brief_removed", "creative_added", "cr
 
 
 def _log(w, aid: int, actor: str | None, kind: str, before: str | None, after: str | None, detail: str = "") -> None:
-    """One history row, in the caller's transaction. A savepoint keeps the change itself safe when migration 242 is not applied yet."""
+    """One history row, in the caller's transaction. A savepoint keeps the change itself safe when migration 243 is not applied yet."""
     try:
         with w.transaction():
             w.execute("INSERT INTO creative_priorities_assignment_events (assignment_id, actor, kind, stage_before, stage_after, detail) VALUES (%s,%s,%s,%s,%s,%s)", (aid, actor, kind, before, after, detail))
@@ -378,7 +378,7 @@ def events_for(before: dict, after: dict) -> list[tuple[str, str | None, str, st
 
 
 def _history(conn, ids: list[int]) -> dict[int, list[dict]]:
-    """{assignment id: [event, ...]} oldest first; empty when migration 242 is not applied."""
+    """{assignment id: [event, ...]} oldest first; empty when migration 243 is not applied."""
     if not ids:
         return {}
     try:
