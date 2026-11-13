@@ -938,6 +938,17 @@
    "summary": ""
   },
   {
+   "rule": "/api/competitors/video/<library_id>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "competitors_media.competitor_video",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
    "rule": "/api/daily-story",
    "methods": [
     "GET"

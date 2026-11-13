@@ -1,12 +1,14 @@
-"""Mock of /api/competitors, /api/competitors/<brand> and /api/competitors/media/<id> for tests/ui/mock_server.py: two synthetic weeks, built by the pure functions of app/competitors.py (same shapes as the real routes).
+"""(Video: ads with base_video have a saved copy, a tiny webm served with HTTP Range at /api/competitors/video/<id>; /__test/competitors/video?on=0 hides them all.)
+Mock of /api/competitors, /api/competitors/<brand> and /api/competitors/media/<id> for tests/ui/mock_server.py: two synthetic weeks, built by the pure functions of app/competitors.py (same shapes as the real routes).
 ?week=, ?format=video|image honoured. /__test/competitors/chatter?on=1 switches the Chatter section on; /__test/competitors/media?on=0 removes every thumbnail (default on: a few ads have one, like production after the first media run)."""
 from __future__ import annotations
 
 import datetime as dt
 import struct
 import zlib
+from pathlib import Path
 
-from flask import Response
+from flask import Response, send_file
 
 from flask import jsonify, request
 
@@ -24,17 +26,18 @@ def png(seed: int, w=160, h=200) -> bytes:
 def register(app, deps):
     from app import competitors as c
 
-    st = {"chatter": False, "media": True}
+    st = {"chatter": False, "media": True, "video": True}
+    tiny = Path(__file__).with_name("competitor_tiny.webm")
     brands = [{"brand": "Acme", "product_type": "beef organ capsules", "search_phrases": ["acme"], "active": True, "last_ok_at": dt.datetime(2026, 11, 16, 12, tzinfo=dt.timezone.utc), "last_error": None},
               {"brand": "Bolt & Co", "product_type": "joint supplement", "search_phrases": ["bolt"], "active": True, "last_ok_at": dt.datetime(2026, 11, 9, 12, tzinfo=dt.timezone.utc), "last_error": "blocked"},
               {"brand": "Cedar", "product_type": "liver", "search_phrases": ["cedar"], "active": True, "last_ok_at": dt.datetime(2026, 11, 16, 12, tzinfo=dt.timezone.utc), "last_error": None}]
     for nm, pt in (("Dune Labs", "hair supplement"), ("Ember Health", "joint chews"), ("Fig & Root", "ancestral nutrition"), ("Gild", "collagen powder")):
         brands.append({"brand": nm, "product_type": pt, "search_phrases": [nm.lower()], "active": True, "last_ok_at": dt.datetime(2026, 11, 16, 12, tzinfo=dt.timezone.utc), "last_error": None})
 
-    def ad(week, lid, brand, days, fmt, url="https://www.acme.com/p1?x=1", var=1, carried=None, cls=None, hook=None, text=None, head=None, thumb=False):
+    def ad(week, lid, brand, days, fmt, url="https://www.acme.com/p1?x=1", var=1, carried=None, cls=None, hook=None, text=None, head=None, thumb=False, video=False):
         d = dict(library_id=lid, brand=brand, start_date=dt.date.fromisoformat(week) - dt.timedelta(days=days), days_running=days, variant_count=var, format=fmt, hook=hook or f"{brand} hook {lid}", headline=head,
-                 primary_text=text or (hook or f"{brand} hook {lid}") + "\n\nSee why thousands switched. Free shipping on your first order.", base_thumb=thumb,
-                 landing_url=url, concept_key=f"{brand}:{lid}", carried_from=carried, cluster=None, pain_point=None, mapped_product=None, is_new_angle=False, new_angle_label=None, has_thumb=False)
+                 primary_text=text or (hook or f"{brand} hook {lid}") + "\n\nSee why thousands switched. Free shipping on your first order.", base_thumb=thumb, base_video=video,
+                 landing_url=url, concept_key=f"{brand}:{lid}", carried_from=carried, cluster=None, pain_point=None, mapped_product=None, is_new_angle=False, new_angle_label=None, has_thumb=False, has_video=False)
         d.update(cls or {})
         return d
 
@@ -43,7 +46,7 @@ def register(app, deps):
     iron = dict(cluster="Iron and B12", pain_point="Low ferritin", mapped_product="beef-liver", is_new_angle=False)
     energy = dict(cluster="Energy", pain_point="Afternoon crash", mapped_product="vita-bull", is_new_angle=False)
     gut = dict(cluster="Gut health", pain_point="Bloating after meals", mapped_product="none", is_new_angle=True, new_angle_label="Gut reset")
-    extra1 = [ad(W1, "d1", "Dune Labs", 310, "video", "dune.co/hair", hook="I stopped the shedding in 90 days and my stylist noticed first", thumb=True, cls=hair),
+    extra1 = [ad(W1, "d1", "Dune Labs", 310, "video", "dune.co/hair", hook="I stopped the shedding in 90 days and my stylist noticed first", thumb=True, video=True, cls=hair),
               ad(W1, "d2", "Dune Labs", 120, "image", "dune.co/hair", hook="Your hair is a ferritin problem", thumb=True, cls=iron),
               ad(W1, "e1", "Ember Health", 90, "video", "ember.com/chews", hook="Knees that do not announce the stairs", cls=new_angle),
               ad(W1, "e2", "Ember Health", 60, "image", "ember.com/chews", hook="Joint chews that taste like candy", cls=new_angle),
@@ -51,7 +54,7 @@ def register(app, deps):
               ad(W1, "f1", "Fig & Root", 150, "video", "figroot.com", hook="What our great-grandparents ate for breakfast", thumb=True, cls=energy),
               ad(W1, "f2", "Fig & Root", 25, "image", "figroot.com/gut", hook="Bloated after every meal? Try this", cls=gut),
               ad(W1, "g1", "Gild", 75, "image", "gild.com/c", hook="Collagen is not a magic powder. Here is what it does.", thumb=True, cls=hair)]
-    extra2 = [ad(W2, "d1", "Dune Labs", 317, "video", "dune.co/hair", hook="I stopped the shedding in 90 days and my stylist noticed first", thumb=True, cls=hair),
+    extra2 = [ad(W2, "d1", "Dune Labs", 317, "video", "dune.co/hair", hook="I stopped the shedding in 90 days and my stylist noticed first", thumb=True, video=True, cls=hair),
               ad(W2, "d2", "Dune Labs", 127, "image", "dune.co/hair", hook="Your hair is a ferritin problem", thumb=True, cls=iron),
               ad(W2, "e1", "Ember Health", 97, "video", "ember.com/chews", hook="Knees that do not announce the stairs", cls=new_angle),
               ad(W2, "e2", "Ember Health", 67, "image", "ember.com/chews", hook="Joint chews that taste like candy", cls=new_angle),
@@ -81,6 +84,7 @@ def register(app, deps):
         for lst in ads.values():
             for a in lst:
                 a["has_thumb"] = bool(a["base_thumb"]) and st["media"]
+                a["has_video"] = bool(a["base_video"]) and st["video"]
         pick = lambda w: [a for a in ads[w] if fmt is None or a["format"] == fmt] if w else None
         return weeks, wk, prior, fmt, pick
 
@@ -109,6 +113,18 @@ def register(app, deps):
         if not st["media"] or lid not in known:
             return jsonify(error="No image."), 404
         return Response(png(sum(map(ord, lid))), mimetype="image/png", headers={"Cache-Control": "private, max-age=86400"})
+
+    @app.get("/api/competitors/video/<path:lid>")
+    def competitors_video_mock(lid):
+        known = {a["library_id"] for lst in ads.values() for a in lst if a["base_video"]}
+        if not st["video"] or lid not in known:
+            return jsonify(error="not found"), 404
+        return send_file(tiny, mimetype="video/webm", conditional=True, max_age=0)
+
+    @app.post("/__test/competitors/video")
+    def competitors_video_toggle():
+        st["video"] = request.args.get("on") != "0"
+        return jsonify(ok=True)
 
     @app.post("/__test/competitors/media")
     def competitors_media_toggle():

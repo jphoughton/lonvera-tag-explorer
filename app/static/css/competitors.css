@@ -28,6 +28,13 @@
 .comp-typo-text { position: relative; font-size: 21px; line-height: 1.16; font-weight: 800; letter-spacing: -0.02em; display: -webkit-box; -webkit-line-clamp: 7; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .comp-typo-text.comp-long { font-size: 17px; line-height: 1.22; font-weight: 700; -webkit-line-clamp: 8; }
 .comp-vis-badge { position: absolute; left: 10px; bottom: 10px; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: rgba(255,255,255,.88); color: var(--text); letter-spacing: .02em; }
+.comp-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; padding-left: 3px; box-sizing: border-box; background: rgba(14, 18, 26, .6); color: #fff; font-size: 16px; pointer-events: none; }
+.comp-vid { align-items: center; justify-content: center; background: var(--text); }
+.comp-video { display: block; width: 100%; max-height: 70vh; background: var(--text); }
+.comp-play-big { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font: inherit; font-weight: 800; font-size: 16px; padding: 12px 22px; border: 0; border-radius: 999px; background: var(--accent); color: #fff; cursor: pointer; }
+.comp-play-big[hidden] { display: none; }
+.comp-play-big:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.comp-novideo { font-weight: 500; }
 .comp-vis-big { aspect-ratio: auto; min-height: 280px; max-height: 70vh; }
 .comp-vis-big.comp-has-img { background: var(--text); align-items: center; justify-content: center; }
 .comp-vis-big img { object-fit: contain; max-height: 70vh; }
@@ -112,6 +119,7 @@
 
 /* lightbox */
 .comp-lb { border: 0; padding: 0; border-radius: 16px; width: min(960px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; background: var(--panel); color: var(--text); }
+.comp-lb:focus { outline: none; }
 .comp-lb::backdrop { background: rgba(14, 18, 26, .72); }
 .comp-lb-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; padding: 24px 56px 40px; }
 .comp-lb-stage { touch-action: pan-y; user-select: none; -webkit-user-drag: none; }

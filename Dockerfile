@@ -29,6 +29,11 @@ RUN playwright install --with-deps chromium \
  && chmod -R a+rX /ms-playwright \
  && rm -rf /var/lib/apt/lists/*
 
+# ffmpeg + ffprobe (Debian bookworm package, H.264 + AAC): etl.competitor_ads trims the saved competitor video ads to 30 seconds (stream copy; a re-encode only for odd codecs). Jobs flavor only,
+# the web image never runs it. Without it the job still stores originals that fit the 6 MB cap (docs/COMPETITOR_ADS.md).
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
+
 # Node + the Claude Code CLI (pinned): etl.auto_tag shells out to `claude -p` (auth = CLAUDE_CODE_OAUTH_TOKEN env var on the etl service). Node is copied from the
 # official node image (the python image keeps python in /usr/local, so only node + npm are taken, not the whole tree).
 COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node

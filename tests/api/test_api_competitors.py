@@ -236,7 +236,7 @@ def test_thumb_url_null_without_media_and_present_with_it(client, seeded, pg, me
     sp = {a["library_id"]: a for a in d["spotlight"]}
     assert sp["old1"]["thumb_url"] == "/api/competitors/media/old1"
     assert all(a["thumb_url"] is None for lid, a in sp.items() if lid not in ("old1", "x1"))
-    assert by(d)["Cedar"]["thumbs"][0] == {"library_id": "old1", "thumb_url": "/api/competitors/media/old1", "hook": "hook old1", "format": "video"}      # tiles lead with ads that have an image
+    assert by(d)["Cedar"]["thumbs"][0] == {"library_id": "old1", "thumb_url": "/api/competitors/media/old1", "video_url": None, "hook": "hook old1", "format": "video"}      # tiles lead with ads that have an image
     det = client.get("/api/competitors/Cedar").get_json()
     assert {g["library_id"]: g["thumb_url"] for g in det["gallery"]}["old1"] == "/api/competitors/media/old1"
 
