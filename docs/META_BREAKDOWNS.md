@@ -31,8 +31,13 @@ The catalog (`python -m etl.meta_breakdowns --list`) holds every breakdown in th
   `action_video_type`, `action_carousel_card_id`, `action_carousel_card_name` (and the pair), `action_canvas_component_name`, `action_target_id`, `conversion_destination`,
   `signal_source_bucket`, `standard_event_content_type`, `matched_persona_id`, `matched_persona_name`, `is_business_ai_assisted`. Three names are both a standard and an action breakdown at Meta; the
   standard reading is stored as `std:conversion_destination`, `std:signal_source_bucket`, `std:standard_event_content_type`.
-* Heavy, pulled last in every window and one day per request: `region`, `dma`, `zip`, `comscore_market`, `affiliate_click_region`, both hourly sets, `impression_view_time_advertiser_hour_v2`,
-  `publisher_platform,platform_position,impression_device`.
+* Heavy, pulled last in every window and one day per request: `dma`, `zip`, `affiliate_click_region`, `impression_view_time_advertiser_hour_v2`.
+* **Permanently excluded (never pulled, in any phase)**: `comscore_market`, `region`, `hourly_stats_aggregated_by_audience_time_zone`, `hourly_stats_aggregated_by_advertiser_time_zone`,
+  `publisher_platform,platform_position,impression_device` (Josh, 2026-11-13: the heavy ones are never pulled again; the last is a redundant combination of two sets that are pulled). The list is
+  the constant `EXCLUDED_SETS` in `etl/meta_breakdowns.py`; `select_sets` drops these names everywhere (catch-up, backfill, retries, async, `--probe`, `--fill-funnel`, and even when named
+  with `--sets`). The environment variable `META_BREAKDOWNS_EXCLUDE` (names separated by `;`) can only ADD sets to it, never remove one. Rows already stored for them stay in
+  `meta_breakdown_daily`; their `meta_breakdown_coverage` rows get `last_error` = `EXCLUDED: not pulled any more ...` (an `error` status is turned into `ok`), and `first_day` / `last_day`
+  stay where they stopped. `--list` marks them.
 
 A request Meta refuses with code 100 is retried without `reach`, then with the core fields only, before the set is called unsupported at that level.
 
@@ -48,13 +53,10 @@ separate from the main `etl` service, so the nightly never waits for it and neve
     set: each set x level x account is stamped `refreshed on day D` (rows `__catchup__<set>`, level `<level>:<D>` in `meta_breakdown_progress`), a set stamped for the day is skipped, and the
     "caught up" marker is written only when every set is stamped. A catch-up that does not finish (budget, quiet hours) resumes in the next run instead of starting from the top. It gets
     at most 40% of a run (`CATCHUP_SHARE`); when that share is used up the run says so and goes on to the backfill, so the backfill always has the other 60% or more.
-  * *Backfill*, in four stages, each resuming from recorded progress:
-    1. every set **except** `comscore_market`, `region`, `hourly_stats_aggregated_by_audience_time_zone`, `hourly_stats_aggregated_by_advertiser_time_zone` ("light" sets; cheap first, the other
-       tier-2 sets `dma`, `zip` ... last inside a window), newest 30-day window;
-    2. **one probe pass** of the four heavy sets on that same newest window, attempted once (marker `__heavy_probed__`), capped at 25% of a run (`PROBE_SHARE`); it exists to learn about
-       slowness, async needs and rate limits. Whatever it did not finish is kept (progress is per set x account) and resumed in stage 4; it never holds up the light sets;
-    3. the light sets through all older windows out to 365 days;
-    4. only when stage 3 has completed, the four heavy sets through all windows out to 365 days.
+  * *Backfill*, in two stages, each resuming from recorded progress, for every set that is not excluded (cheap first, the tier-2 sets `dma`, `zip` ... last inside a window):
+    1. the newest 30-day window;
+    2. all older windows out to 365 days, newest first, each window fully committed before the next.
+    There is no heavy-set probe and no time share reserved for one; the whole run goes to the backfill after the catch-up.
 * **Sets that are dead.** A (set, level) Meta refuses (code 100) is asked again after 7 days (`RECHECK_UNSUPPORTED_DAYS`), not every run; sets refused at all three levels cost no request in
   between. A set whose response rows never carry the requested keys (`user_persona_*`, `rule_set_*`, `std:conversion_destination` ...) is **quarantined** for 7 days at once; a set that fails with
   anything else and writes no rows is quarantined after 3 failing runs in a row (`FAIL_LIMIT`); a clean pull clears the count. Quarantine rows are `__quarantine__:<set>` / `__fails__:<set>`
@@ -67,9 +69,8 @@ separate from the main `etl` service, so the nightly never waits for it and neve
 * **Too big for one day** (`action_destination` ...): the first time a one-day request is refused as too big the set is remembered (`__async__:<set>`) and from then on is requested as an async
   report straight away, with no plain attempts and no halving (before: three failed plain requests per window plus one async job per day). The async job itself runs on Meta's side
   (about 80-90 s per day for `action_destination`); if an async job for several days fails, the span is halved.
-* **Log lines**: the per-set lines are unchanged. Each phase also logs `run start: phase=<catch-up | backfill/light-newest-window | backfill/heavy-probe | backfill/light | backfill/heavy> window=<from..to>
+* **Log lines**: the per-set lines are unchanged. Each phase also logs `run start: phase=<catch-up | backfill/light-newest-window | backfill/light> window=<from..to>
   sets_done=N sets_remaining=M` and the run ends with `run end: phase=... window=... sets_done=... sets_remaining=... backfill_advanced=yes|no` (yes when new backfill window records were written this run).
-  The heavy probe also logs one `heavy probe:` line with each set's status, rows and seconds.
 * Quiet hours: it never starts a request batch between 12:30 and 15:30 UTC (the main nightly Meta pull; override `META_BREAKDOWNS_QUIET_UTC=HH:MM-HH:MM`, `off` disables). At the boundary it
   stops cleanly after committing and exits 0.
 * Budget and overlap: `--max-minutes` (default 110) ends a run cleanly with exit 0, so the next cron run resumes; a Postgres advisory lock makes an overlapping run exit 0 with one log line.

@@ -15,9 +15,8 @@ after midnight to resume cleanly. On a rate limit it waits and continues.
 
 Service mode (`--auto`, the dedicated Railway cron service, every 2 hours): the backfill anchor (--until and --max-days) is stored in meta_breakdown_progress on first start, so no
 arguments are needed to resume. Each run: (1) once a day per set, a catch-up of the newest days (at least the trailing 7; sets already refreshed that day are skipped, so a catch-up
-that did not finish resumes next run) limited to 40% of the run's time; (2) the backfill, newest 30-day window first, for every set except the four heavy ones (comscore_market,
-region, both hourly sets) out to the full depth, with one probe pass of the four heavy sets on the newest window (max 25% of a run, attempted once), then the heavy sets out to the
-full depth. Sets Meta refuses are asked again after 7 days; a set whose response never has the requested keys, or that fails 3 runs in a row with no rows, is quarantined for 7 days;
+that did not finish resumes next run) limited to 40% of the run's time; (2) the backfill, newest 30-day window first, for every set (except the permanently excluded ones, see EXCLUDED_SETS) out to the full depth.
+Sets Meta refuses are asked again after 7 days; a set whose response never has the requested keys, or that fails 3 runs in a row with no rows, is quarantined for 7 days;
 retry waiting on transient errors is capped at 90 s without a successful request. A run never starts a request batch in the quiet hours (META_BREAKDOWNS_QUIET_UTC, default 12:30-15:30, the main nightly
 Meta pull), stops after --max-minutes (default 110) and exits 0 so the next cron run resumes; a Postgres advisory lock keeps two runs from overlapping (the second exits 0).
 
@@ -53,9 +52,13 @@ QUARANTINE_DAYS = 7                  # a set that fails deterministically (wrong
 MAX_BUDGET_SPLITS = 4                # per set pull: how many times a request window that keeps failing (after the set has worked) is split in two / sent as async
 FAIL_LIMIT = 3                       # consecutive failing runs with no rows before a set is quarantined
 TRANSIENT_BUDGET_S = 90              # retry waiting (HTTP 5xx, "temporarily unavailable") one set may spend per set pull (all pages, both accounts); then it is an error for this run
-PROBE_SHARE = 0.25                   # at most this share of a run goes to the one-time heavy-set probe pass
 CATCHUP_SHARE = 0.4                  # at most this share of a run's time goes to the recent-days catch-up; the rest is the backfill's
-HEAVY_LAST = ("comscore_market", "region", "hourly_stats_aggregated_by_audience_time_zone", "hourly_stats_aggregated_by_advertiser_time_zone")   # backfilled only after every other set has the full depth
+# PERMANENT EXCLUDE LIST (Josh, 2026-11-13: "dont pull any of the heavy ones ever; focus on the other ones going back 365 days"). These sets are NEVER requested, in any phase
+# (catch-up, backfill, retries, async, probe, --sets, --fill-funnel): select_sets drops them. The last one is a redundant combination of two sets that are pulled anyway.
+# Rows already stored for them stay; coverage shows them as excluded. META_BREAKDOWNS_EXCLUDE (set names separated by ';', a plus works inside a set like --sets) can only ADD to this list, never remove.
+EXCLUDED_SETS = ("comscore_market", "region", "hourly_stats_aggregated_by_audience_time_zone", "hourly_stats_aggregated_by_advertiser_time_zone",
+                 "publisher_platform,platform_position,impression_device")
+EXCLUDED_NOTE = "EXCLUDED: not pulled any more (permanent exclude list, 2026-11-13); rows already stored are kept"
 PURCHASE_TYPES = ("omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase")      # same priority as etl.resolver.pick
 LEVELS = ("ad", "campaign", "account")
 MAX_DIMS = 3
@@ -66,7 +69,6 @@ DEFAULT_MAX_DAYS = 365
 DEFAULT_QUIET_UTC = "12:30-15:30"
 DEFAULT_MAX_MINUTES = 110.0
 LOCK_KEY = 240_240                   # pg_try_advisory_lock key: one breakdown run at a time
-PROBE_SET = "__heavy_probed__"        # bookkeeping row: the one probe pass of the four heavy sets has been attempted
 ANCHOR_SET, DONE_SET, CAUGHT_SET = "__anchor__", "__backfill_done__", "__caught_up__"     # bookkeeping rows in meta_breakdown_progress (level and account '-')
 CHUNK_PREFIX = "__chunk__"            # record of one committed request window inside a window that is not finished yet (same key shape as a window record, name prefixed)
 CATCHUP_PREFIX = "__catchup__"       # per set x level x account stamp 'refreshed on day D' (level = '<level>:<D>'): the recent-days catch-up resumes and skips what is done today
@@ -183,15 +185,35 @@ def ordered(entries: list[Entry]) -> list[Entry]:
     return sorted(entries, key=lambda e: e.tier)           # stable: catalog order inside a tier
 
 
+def excluded_names() -> frozenset[str]:
+    """The permanent exclude list plus whatever META_BREAKDOWNS_EXCLUDE adds (the environment can only add)."""
+    extra = set(parse_sets_arg(os.environ.get("META_BREAKDOWNS_EXCLUDE")) or [])
+    return frozenset(EXCLUDED_SETS) | extra
+
+
 def select_sets(names: list[str] | None) -> list[Entry]:
+    """The sets to pull, cheap first. Excluded sets are dropped here, so no phase can ever ask Meta for one (also when named with --sets)."""
+    skip = excluded_names()
     if not names:
-        return ordered(list(CATALOG))
+        return ordered([e for e in CATALOG if e.name not in skip])
     out = []
     for n in names:
         if n not in BY_NAME:
             raise SystemExit(f"unknown breakdown set {n!r}; run with --list")
+        if n in skip:
+            print(f"breakdown set {n!r} is on the permanent exclude list: not pulled", file=sys.stderr)
+            continue
         out.append(BY_NAME[n])
     return ordered(out)
+
+
+def mark_excluded(conn) -> int:
+    """Coverage rows of the excluded sets say so (last_error carries the note; an 'error' status becomes 'ok' because the stored rows are fine). No request, rows untouched."""
+    names = sorted(excluded_names())
+    n = conn.execute("UPDATE meta_breakdown_coverage SET last_error = %s, status = CASE WHEN status = 'error' THEN 'ok' ELSE status END "
+                     "WHERE breakdown_set = ANY(%s) AND last_error IS DISTINCT FROM %s", (EXCLUDED_NOTE, names, EXCLUDED_NOTE)).rowcount
+    conn.commit()
+    return n
 
 
 # ---------------------------------------------------------------------------------------------------------------- requests
@@ -847,11 +869,6 @@ def pull_set_level(conn, client: Client, waiter: Waiter, entry: Entry, level: st
     return status, err, kind
 
 
-def light_and_heavy(entries: list[Entry]) -> tuple[list[Entry], list[Entry]]:
-    """Backfill order: every set except the four HEAVY_LAST ones first, then those four."""
-    return [e for e in entries if e.name not in HEAVY_LAST], [e for e in entries if e.name in HEAVY_LAST]
-
-
 def run(conn, windows: list[tuple[dt.date, dt.date]], sets: list[str] | None = None, dry_run: bool = False, client: Client | None = None, stopper: Stopper | None = None,
         accounts=None, backfill: bool = False, restart: bool = False, max_rate_waits: int = 3, pause=None, catchup_day: dt.date | None = None, today: dt.date | None = None,
         entries: list[Entry] | None = None) -> dict:
@@ -869,6 +886,7 @@ def run(conn, windows: list[tuple[dt.date, dt.date]], sets: list[str] | None = N
     live = conn is not None and not dry_run
     conn = conn if live else None
     if live:
+        mark_excluded(conn)
         ensure_partitions(conn, min(w[0] for w in windows), max(w[1] for w in windows))
         client.async_first |= async_first_sets(conn)
     recent = recently_unsupported(conn) if (live and not sets) else set()
@@ -1080,10 +1098,9 @@ def _first_open_window(conn, entries, windows, accounts, today):
 
 
 def backfill_stages(entries: list[Entry], windows: list[tuple[dt.date, dt.date]]) -> list[tuple[str, list, list[Entry]]]:
-    """The backfill order: (1) every set except the four heavy ones, newest window only; (2) one probe pass of the four heavy sets on that same newest window (to learn about
-    slowness, async needs and rate limits); (3) the light sets through all older windows; (4) the heavy sets through all windows. Each stage resumes from the recorded progress."""
-    light, heavy = light_and_heavy(entries)
-    stages = [("light-newest-window", windows[:1], light), ("heavy-probe", windows[:1], heavy), ("light", windows[1:], light), ("heavy", windows, heavy)]
+    """The backfill order: (1) every set, newest window only; (2) every set through all older windows. Each stage resumes from the recorded progress.
+    (The former heavy probe and heavy stages are gone: the heavy sets are on EXCLUDED_SETS.)"""
+    stages = [("light-newest-window", windows[:1], entries), ("light", windows[1:], entries)]
     return [x for x in stages if x[1] and x[2]]
 
 
@@ -1091,8 +1108,7 @@ def auto(conn, stopper: Stopper, names=None, max_days: int = DEFAULT_MAX_DAYS, w
          pause=None) -> dict:
     """One service run. 1) first start: store the backfill anchor (until = yesterday, max days). 2) catch-up, once a day per set (sets already refreshed that day are skipped, so a
     catch-up that did not finish resumes in the next run): the days since the last catch-up (at least the trailing 7, which Meta restates). It gets at most CATCHUP_SHARE of the
-    run's time, so the backfill always has the rest. 3) the backfill (see backfill_stages): light sets newest 30-day window first out to the full depth, the four heavy sets after
-    them, one probe pass of the heavy sets on the newest window first (at most PROBE_SHARE of the run). A StopRun (quiet hours, budget) ends the run cleanly after committing."""
+    run's time, so the backfill always has the rest. 3) the backfill (see backfill_stages): every non-excluded set, newest 30-day window first, out to the full depth. A StopRun (quiet hours, budget) ends the run cleanly after committing."""
     client = client or Client(meta_api.get_token())
     yesterday = (today - dt.timedelta(days=1)) if today else default_until()
     today_d = yesterday + dt.timedelta(days=1)
@@ -1138,42 +1154,27 @@ def auto(conn, stopper: Stopper, names=None, max_days: int = DEFAULT_MAX_DAYS, w
     if not done:
         windows = windows_newest_first(since, until, window_days)
         merged: dict = {"rows": 0, "error_pieces": 0, "stopped_early": False, "stages": [], "blocking_quarantine": 0, "per_set": {}}
-        finished, light_ok = True, True
+        finished = True
         for label, w, ents in backfill_stages(entries, windows):
-            if label == "heavy-probe" and _special(conn, PROBE_SET) is not None:
-                continue                                                 # probed in an earlier run: the heavy sets now wait for the light sets to reach the full depth
-            if label == "heavy" and not light_ok:
-                finished = False                                         # a light stage did not complete its windows in this run (stopped): heavy waits
-                continue
             win, d, r = _first_open_window(conn, ents, w, accts, today_d)
             if r == 0:
                 continue                                                 # every window of this stage is already recorded
             phase, last_window, last_ents = f"backfill/{label}", win, ents
             db.log(_phase_line("start", phase, win, d, r))
-            sub = stopper.child(PROBE_SHARE, f"heavy probe time share ({PROBE_SHARE:.0%} of the run)") if label == "heavy-probe" else stopper
-            calls0 = client.calls
-            st = run(conn, w, names, backfill=True, stopper=sub, entries=ents, **kw)
+            st = run(conn, w, names, backfill=True, stopper=stopper, entries=ents, **kw)
             out["rows"] += st["rows"]
             merged["rows"] += st["rows"]
             merged["error_pieces"] += st.get("error_pieces", 0)
             merged["blocking_quarantine"] += st.get("quarantined_failing", 0)
             merged["per_set"].update(st.get("per_set", {}))
             merged["stages"].append({"stage": label, "windows_done": st["windows_done"], "windows": st["windows"], "rows": st["rows"], "stopped_early": st["stopped_early"]})
-            if label == "heavy-probe" and (client.calls != calls0 or not st["stopped_early"]):
-                _set_special(conn, PROBE_SET, yesterday, yesterday)      # the probe was attempted: never again (partial progress is kept and resumes in the heavy stage)
-                conn.commit()
-                db.log("heavy probe: " + "; ".join(f"{n} {v['status']} {v['rows']} rows {v['seconds']:.0f}s" for n, v in st.get("per_set", {}).items()) +
-                       (f"; stopped: {st.get('stop_reason')}" if st["stopped_early"] else "; finished"))
             if st["stopped_early"]:
                 finished = False
-                if label != "heavy-probe" or stopper.reason():
-                    merged["stopped_early"] = True
-                    out.update(stopped_early=True, stop_reason=st.get("stop_reason"))
-                    break
+                merged["stopped_early"] = True
+                out.update(stopped_early=True, stop_reason=st.get("stop_reason"))
+                break
             elif st["windows_done"] != st["windows"]:
                 finished = False
-            if label.startswith("light") and (st["stopped_early"] or st["windows_done"] != st["windows"]):
-                light_ok = False
         out["backfill"] = merged
         if finished and not merged["error_pieces"] and not merged["blocking_quarantine"] and not merged["stopped_early"]:
             _set_special(conn, DONE_SET, yesterday, yesterday)
@@ -1215,7 +1216,7 @@ def main(argv=None):
     names = parse_sets_arg(a.sets)
     if a.list:
         for e in ordered(CATALOG):
-            print(f"{e.name:<75}tier {e.tier}  {'action' if e.action else 'standard'}")
+            print(f"{e.name:<75}tier {e.tier}  {'action' if e.action else 'standard'}" + ("  EXCLUDED (never pulled)" if e.name in excluded_names() else ""))
         return 0
     entries = select_sets(names)
     if a.probe:
