@@ -4265,7 +4265,7 @@ SELECT count(*) AS rows FROM analytics.amazon_orders_asin_daily;
 | `mobile_app_sessions` | bigint |  | Mobile app sessions. |
 | `page_views` | bigint |  | Page views. |
 | `buy_box_pct` | numeric |  | Page views with our offer in the buy box, percent 0-100. |
-| `unit_session_pct` | numeric |  | Units ordered per session, percent 0-100. |
+| `unit_conversion_pct` | numeric |  | Units ordered per session, percent 0-100. |
 | `units_ordered` | bigint |  | Units ordered (Amazon's ordered basis). |
 | `ordered_product_sales` | numeric |  | Ordered product sales, dollars. |
 | `total_order_items` | bigint |  | Order items. |
@@ -9860,7 +9860,7 @@ SELECT product, round(sum(nc_rev)) AS nc_revenue, sum(nc_orders) AS new_customer
 | `mobile_app_sessions` | bigint | yes | Mobile app sessions. |
 | `page_views` | bigint | yes | Page views. |
 | `buy_box_pct` | numeric | yes | Page views with our offer in the buy box, percent 0-100. |
-| `unit_session_pct` | numeric | yes | Units ordered per session, percent 0-100. |
+| `unit_conversion_pct` | numeric | yes | Units ordered per session, percent 0-100. |
 | `units_ordered` | bigint | yes | Units ordered (Amazon's ordered basis). |
 | `ordered_product_sales` | numeric | yes | Ordered product sales, dollars. |
 | `total_order_items` | bigint | yes | Order items. |

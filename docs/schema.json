@@ -23268,7 +23268,7 @@
      "description": "Page views with our offer in the buy box, percent 0-100."
     },
     {
-     "name": "unit_session_pct",
+     "name": "unit_conversion_pct",
      "type": "numeric",
      "nullable": true,
      "description": "Units ordered per session, percent 0-100."
@@ -24825,7 +24825,7 @@
      "description": "Page views with our offer in the buy box, percent 0-100."
     },
     {
-     "name": "unit_session_pct",
+     "name": "unit_conversion_pct",
      "type": "numeric",
      "nullable": null,
      "description": "Units ordered per session, percent 0-100."

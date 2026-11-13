@@ -1,5 +1,5 @@
--- 249: the Amazon data layer (ExpandFi merchant 1452, filled by the `feeds` service: etl/feeds/amazon_feeds.py; docs/AMAZON_DATA.md). Tables only; the analytics views,
--- the data_coverage rows and the data dictionary comments are in migration 250. Additive and idempotent. Every table is replaced by trailing window (delete the window, insert
+-- 250: the Amazon data layer (ExpandFi merchant 1452, filled by the `feeds` service: etl/feeds/amazon_feeds.py; docs/AMAZON_DATA.md). Tables only; the analytics views,
+-- the data_coverage rows and the data dictionary comments are in migration 251. Additive and idempotent. Every table is replaced by trailing window (delete the window, insert
 -- the pull), so a rerun leaves the same rows; an empty pull writes nothing.
 
 CREATE TABLE IF NOT EXISTS amazon_asin_products (
@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS amazon_traffic_daily (
   marketplace_id text NOT NULL,
   sessions       bigint, browser_sessions bigint, mobile_app_sessions bigint, page_views bigint,
   buy_box_pct    numeric,
-  unit_session_pct numeric,
+  unit_conversion_pct numeric,
   units_ordered  bigint,
   ordered_product_sales numeric,
   total_order_items bigint,

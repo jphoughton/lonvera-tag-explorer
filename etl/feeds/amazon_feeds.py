@@ -390,7 +390,7 @@ TRAFFIC_SQL = """
     ORDER BY report_date, updated_at DESC NULLS LAST, id DESC
 """
 
-TRAFFIC_COLS = ("day", "marketplace_id", "sessions", "browser_sessions", "mobile_app_sessions", "page_views", "buy_box_pct", "unit_session_pct", "units_ordered",
+TRAFFIC_COLS = ("day", "marketplace_id", "sessions", "browser_sessions", "mobile_app_sessions", "page_views", "buy_box_pct", "unit_conversion_pct", "units_ordered",
                 "ordered_product_sales", "total_order_items", "sessions_b2b", "page_views_b2b", "buy_box_pct_b2b", "source_updated_at")
 
 
