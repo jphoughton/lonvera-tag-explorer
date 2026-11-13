@@ -1394,7 +1394,7 @@ rel("public.creative_priorities_assignments", group="creative", kind="table",
     purpose="Production assignments from /priorities: a concept given to a vendor to make for a week (Assign to vendor), with the brief link, the creative link, the stage timestamps and the Creative Tracker Concept IDs of the ads that came out of it. The concept itself stays in the ideation list unchanged.",
     grain="one row per concept x vendor x week (open rows are unique; a dropped row can be assigned again)", source="the /priorities and /priorities/production pages and the vendor link page via /api/priorities/assignments (app/priorities_assign.py)",
     refresh="on demand (a person assigns, adds links, marks ready or launched, drops; a vendor adds a creative link and a note)", coverage="from the day the migration was deployed",
-    caveats=["The stage is not stored: it is derived at read time from the links, the timestamps and the status of the linked Creative Tracker rows (the tracker wins when it is further along).",
+    caveats=["The board column is the stored status (migration 244); the older stage field is derived from it for compatibility. A linked Creative Tracker row can pull the status forward, never back.",
              "Nothing here is written to the Google Sheet or Meta. The tag text is copied from the row at assign time, so history survives a taxonomy reload; line_id has no foreign key on purpose.",
              "created_by and updated_by hold the signed-in user, or vendor:<name> for a write made on a vendor link page."],
     cols={"id": "Primary key (bigserial).",
@@ -1412,7 +1412,11 @@ rel("public.creative_priorities_assignments", group="creative", kind="table",
           "tracker_concept_ids": "Creative Tracker Concept IDs of the ads made from this assignment, entered by hand.", "created_at": "When the assignment was created.", "updated_at": "When it was last changed.",
           "created_by": "Who created the assignment: the signed-in user name; NULL when none.",
           "updated_by": "Who last changed it: the signed-in user name, or vendor:<name> for a write made on a vendor link page; NULL when none.",
-          "format_code": "Creative format chosen when assigning or later (creative_formats.code, foreign key); NULL when none was chosen. Set by a signed-in user only; a vendor sees it but cannot change it."})
+          "format_code": "Creative format chosen when assigning or later (creative_formats.code, foreign key); NULL when none was chosen. Set by a signed-in user only; a vendor sees it but cannot change it.",
+          "status": "The board column, stored: assigned, brief_sent, in_production, in_review, ready or launched (a dropped assignment keeps its last status and has dropped_at set). Written only through set_status in app/priorities_assign.py; a linked Creative Tracker row can pull it forward (7 = ready, 8 or 9 = launched), never back.",
+          "due_date": "When the vendor should be done: the Friday of for_week unless changed; NULL when cleared.", "priority": "'normal' or 'high'; high cards sort first on the board.",
+          "position": "Order of the card inside its board column (ascending, fractional so a card can be dropped between two neighbours).",
+          "status_changed_at": "When status last changed (backfilled from the stage timestamps for rows older than migration 244)."})
 
 rel("public.creative_priorities_assignment_events", group="creative", kind="table",
     purpose="The history of each production assignment on /priorities: who assigned the concept to a vendor, and who moved it between stages (brief sent, creative delivered, ready to launch, launched, dropped) and when.",
@@ -1421,9 +1425,25 @@ rel("public.creative_priorities_assignment_events", group="creative", kind="tabl
     caveats=["actor is NULL for rebuilt history and when sign-in was off; a vendor link page writes vendor:<name>.", "stage_before and stage_after are the stage the assignment itself shows (its links and Ready / Launched / Dropped buttons); a stage reached only because a linked Creative Tracker row moved on is not an event."],
     cols={"id": "Row number (primary key).", "assignment_id": "The assignment that changed (creative_priorities_assignments.id; rows go with the assignment).", "at": "When the change was made.",
           "actor": "Who made it: the signed-in user name, vendor:<name> for a vendor link page, NULL when not known.",
-          "kind": "What changed: assigned, brief_added, brief_removed, creative_added, creative_removed, ready, ready_cleared, launched, launched_cleared, dropped, restored, vendor, week or format.",
-          "stage_before": "Stage the assignment showed before the change (assigned, brief_sent, creative_in, ready, launched, dropped); NULL on the first row.", "stage_after": "Stage it showed after the change.",
+          "kind": "What changed: assigned, brief_added, brief_removed, creative_added, creative_removed, ready, ready_cleared, launched, launched_cleared, dropped, restored, vendor, week or format (migration 243), plus status_changed, due_changed, priority_changed and comment_added (migration 244).",
+          "stage_before": "Stage or status the assignment showed before the change (assigned, brief_sent, creative_in, in_production, in_review, ready, launched, dropped); NULL on the first row. Events of kind status_changed use the status values.", "stage_after": "Stage it showed after the change.",
           "detail": "Short plain text about the change, for example 'Madre to Victoria'; empty when the kind says it all."})
+
+rel("public.creative_priorities_assignment_comments", group="creative", kind="table",
+    purpose="Comments on a production assignment, the thread between the team and the vendor on the card (including 'Changes requested: ...' when a creative is sent back).",
+    grain="one row per comment", source="app/priorities_assign.py, from the Production page (author_kind app) and the vendor link page (author_kind vendor)",
+    refresh="on every comment", coverage="from migration 244",
+    caveats=["A vendor sees only the comments of their own assignments; the internal note (creative_priorities_assignments.note) is not a comment and is never shown to a vendor."],
+    cols={"id": "Row number (primary key).", "assignment_id": "The assignment commented on (creative_priorities_assignments.id; comments go with the assignment).",
+          "author_kind": "'app' for a signed-in team member (or an API key), 'vendor' for a comment written on a vendor link page.",
+          "author_name": "Display name: the signed-in user (or Team when sign-in is off), or the vendor name.", "body": "The comment text, 1 to 2,000 characters.", "created_at": "When the comment was posted."})
+
+rel("public.creative_priorities_vendor_capacity", group="creative", kind="table",
+    purpose="How many concepts a vendor can take per week, the capacity the Production board compares each vendor's open cards with.",
+    grain="one row per vendor (vendor is the primary key)", source="seeded by migration 244 at 10 per vendor; edited on the Production page (PUT /api/priorities/vendor-capacity)",
+    refresh="on demand", coverage="the nine vendors",
+    caveats=["A soft limit only: going over shows a warning and blocks nothing."],
+    cols={"vendor": "Vendor, spelled as in creative_priorities_assignments.vendor (primary key).", "per_week": "Concepts the vendor can take in one week (0 to 1,000).", "updated_at": "When the capacity was last changed."})
 
 rel("public.creative_formats", group="creative", kind="table",
     purpose="The creative formats a production assignment can be made in (for example Whiteboard explainer): a short list that Josh picks from when assigning a concept to a vendor. Production side only; not part of the concept taxonomy.",
