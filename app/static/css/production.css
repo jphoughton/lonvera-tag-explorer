@@ -451,3 +451,11 @@ body.prod-drawer-open { overflow: hidden; }
 .prod-transcript { margin: 4px 0; }
 .prod-transcript > summary { cursor: pointer; font-weight: 600; }
 .prod-transcript-text { margin: 4px 0 6px 14px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+
+/* ticket viewer: tabs for the variations, the first one open, the transcript underneath */
+.prod-vtabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+.prod-vtab { appearance: none; font: inherit; font-size: 14px; padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--text); cursor: pointer; }
+.prod-vtab[aria-selected="true"] { background: var(--lv-ink); color: var(--panel); border-color: var(--lv-ink); }
+.prod-said { margin-top: 6px; }
+.prod-said > summary { cursor: pointer; font-weight: 600; }
+@media (max-width: 640px) { .prod-vtab { min-height: 40px; } }

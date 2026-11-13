@@ -1076,7 +1076,7 @@ def board(conn, week=None, vendor=None, product=None, closed: bool = False) -> d
         if st == "launched":
             c["hidden"] = hidden
         cols.append(c)
-    out = {"columns": cols, "week": cap_week.isoformat()}
+    out = {"columns": cols, "week": cap_week.isoformat(), "vendors": list(VENDORS), "weeks": _weeks(conn), "formats": formats(conn)}       # so the page does not need a second request for them
     if closed:
         out["dropped"] = [a for a in cards if a["stage"] == "dropped"]
     capv = {c["vendor"]: c["per_week"] for c in get_capacity(conn)["capacity"]}

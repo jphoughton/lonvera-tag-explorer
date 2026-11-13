@@ -19777,6 +19777,159 @@
    ]
   },
   {
+   "name": "analytics.ad_transcripts",
+   "schema": "analytics",
+   "relation": "ad_transcripts",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "What is said in the ad videos, taken from the real audio (speech to text), one row per ad with its tracker product, vendor, status, type and launch date. The way to ask 'which ads mention X' or 'what do the opening lines of the winners sound like'.",
+   "grain": "one row per ad (concept_id)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.creative_ad_transcripts (the transcription job) + the live tracker row of the same concept_id (public.tracker_rows, public.products)",
+   "refresh": "when the transcription job is run (on demand on the laptop; not scheduled)",
+   "coverage": "ads transcribed from 2026-11-13: every video on a Ready to launch Production card plus the ads transcribed in the Nov 3-5 tagging cycles (Vita Bull, Beef Liver, Boneflex); images and videos that could not be downloaded have none",
+   "caveats": [
+    "Speech to text as heard: brand and ingredient names can be misspelled (heme iron may come out as Heam iron). Audio is cut at 180 seconds (duration_s is the full length).",
+    "41 silent videos are stored as [no speech]: has_speech is false and word_count 0. About 237 Beef Liver videos have no transcript yet, so a missing row is not an ad without speech.",
+    "Join to the tracker views on concept_id (analytics.creative_tracker.concept_id) or ad_family / family_key. A concept_id can sit on more than one tracker row (a few repeat), so this view picks ONE live tracker row per ad (the lowest id); for spend and returns go through family_key to analytics.creative_tracker (metrics sit on the first row of each family) or analytics.creative_family_metrics, never by summing across this view.",
+    "A transcript whose ad is no longer on the tracker keeps its row with NULL product_slug, vendor, tracker_status, ad_type and launch_date.",
+    "analytics.creative_content.transcript is a different source: what Meta runs for each family. This one is the audio of the creative file the production team delivered."
+   ],
+   "like": "public.creative_ad_transcripts",
+   "domain": "creative",
+   "columns": [
+    {
+     "name": "concept_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Tracker Concept ID of the ad variation, for example Lonvera-BoneFlex-Video-8.8-hook2; unique."
+    },
+    {
+     "name": "label",
+     "type": "text",
+     "nullable": null,
+     "description": "Short name of the variation on the card: Original, Hook 2 ..."
+    },
+    {
+     "name": "ad_family",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad family of the tracker row (as typed in the tracker); NULL when the ad is not on the tracker."
+    },
+    {
+     "name": "family_key",
+     "type": "text",
+     "nullable": null,
+     "description": "lower(trim(ad_family)): the 'unique ad' key shared with analytics.creative_tracker and the Meta views; NULL when not on the tracker."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ad is not on the tracker."
+    },
+    {
+     "name": "vendor",
+     "type": "text",
+     "nullable": null,
+     "description": "Vendor named on the tracker row (Madre, Victoria, Internal ...)."
+    },
+    {
+     "name": "tracker_status",
+     "type": "text",
+     "nullable": null,
+     "description": "Status of the tracker row (for example 7 - Approved - Ready To Launch, Launched)."
+    },
+    {
+     "name": "ad_type",
+     "type": "text",
+     "nullable": null,
+     "description": "VID or IMG, from the tracker."
+    },
+    {
+     "name": "launch_date",
+     "type": "date",
+     "nullable": null,
+     "description": "Launch date typed in the tracker (NULL when blank; undercounts the older ads)."
+    },
+    {
+     "name": "transcript",
+     "type": "text",
+     "nullable": null,
+     "description": "The words spoken, as heard; [no speech] for a silent video."
+    },
+    {
+     "name": "word_count",
+     "type": "integer",
+     "nullable": null,
+     "description": "Words in the transcript; 0 for [no speech]."
+    },
+    {
+     "name": "has_speech",
+     "type": "boolean",
+     "nullable": null,
+     "description": "True when the transcript holds words (not blank and not [no speech])."
+    },
+    {
+     "name": "language",
+     "type": "text",
+     "nullable": null,
+     "description": "Language the speech was recognised as (en)."
+    },
+    {
+     "name": "duration_s",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Length of the audio in seconds, before the 180 second cut."
+    },
+    {
+     "name": "engine",
+     "type": "text",
+     "nullable": null,
+     "description": "Software that made it (faster-whisper)."
+    },
+    {
+     "name": "model",
+     "type": "text",
+     "nullable": null,
+     "description": "Model size used (base.en)."
+    },
+    {
+     "name": "source_url",
+     "type": "text",
+     "nullable": null,
+     "description": "Link to the video file the transcript was made from (Google Drive)."
+    },
+    {
+     "name": "assignment_id",
+     "type": "bigint",
+     "nullable": null,
+     "description": "creative_priorities_assignments.id of the Production card the ad belongs to; NULL when unknown. Not a foreign key."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the transcript was stored."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Ads whose transcript mentions an ingredient",
+     "sql": "SELECT concept_id, product_slug, vendor, tracker_status, left(transcript, 160) AS opening FROM analytics.ad_transcripts WHERE transcript ILIKE '%heme iron%' ORDER BY created_at DESC LIMIT 25;"
+    },
+    {
+     "title": "Most used words in the transcripts of one product",
+     "sql": "SELECT w AS word, count(*) AS uses FROM analytics.ad_transcripts t, regexp_split_to_table(lower(regexp_replace(t.transcript, '[^a-zA-Z'' ]', ' ', 'g')), '\\s+') AS w WHERE t.has_speech AND t.product_slug = 'beef-liver' AND length(w) > 3 GROUP BY 1 ORDER BY 2 DESC LIMIT 30;"
+    },
+    {
+     "title": "First sentence (hook) of each ad",
+     "sql": "SELECT concept_id, split_part(transcript, '. ', 1) AS first_sentence FROM analytics.ad_transcripts WHERE has_speech ORDER BY created_at DESC LIMIT 25;"
+    }
+   ]
+  },
+  {
    "name": "analytics.tag_products",
    "schema": "analytics",
    "relation": "tag_products",

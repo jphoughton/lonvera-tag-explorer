@@ -98,7 +98,7 @@ successful run, silent until the first row exists).
 * Meta can return purchases on a day with no spend (view-through); those rows are kept.
 * Sets whose Insights data Meta serves for a shorter period than 365 days stop at the earliest day served; coverage says where.
 
-## Funnel steps and the `why` breakdown step (migration 254, 2026-11-13)
+## Funnel steps and the `why` breakdown step (migration 255, 2026-11-13)
 
 * `meta_breakdown_daily` carries `add_to_cart` and `initiate_checkout` (Meta-reported, `omni_*` then plain then pixel action type, the same rule as purchases; NULL = not pulled yet, never 0; action-breakdown sets leave them NULL). The pull and the daily catch-up fill them with the rest of the row; a re-pull never blanks a value it already has (COALESCE).
 * Rows pulled before the columns existed: `python -m etl.meta_breakdowns --fill-funnel --since 2026-10-12 [--until D] [--sets 'age;gender;publisher_platform+platform_position']` (default sets: the seven cuts the `why` step uses). Fill-only and resumable: one weekly request window per set at ad level (read-only GETs), an UPDATE of those two columns on existing rows that still have `add_to_cart` NULL, nothing inserted, nothing else written; a window with nothing left to fill costs no request. Own advisory lock (a fill may run beside the `breakdowns` cron), quiet hours and `--max-minutes` as in the main pull; recorded in `etl_runs` as `meta_breakdowns_fill`.
