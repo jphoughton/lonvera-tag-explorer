@@ -59,14 +59,25 @@ def parse_ts(name: str) -> dt.datetime | None:
     return dt.datetime.strptime(m.group(1), "%Y%m%dT%H%M%S").replace(tzinfo=dt.timezone.utc) if m else None
 
 
+def select_monthly(files: list[dict]) -> list[dict]:
+    """The earliest good dump of each calendar month (UTC, from the file name) is that month's permanent snapshot. UNVERIFIED-* and foreign names never match."""
+    first: dict[tuple[int, int], tuple[dt.datetime, dict]] = {}
+    for f in files:
+        ts = parse_ts(f["name"])
+        if ts and ((ts.year, ts.month) not in first or ts < first[(ts.year, ts.month)][0]):
+            first[(ts.year, ts.month)] = (ts, f)
+    return [f for _, f in sorted(first.values(), key=lambda x: x[0])]
+
+
 def select_prune(files: list[dict], now: dt.datetime, keep_days: int, keep_min: int = KEEP_MIN) -> tuple[list[dict], list[dict]]:
     """files: [{id, name, ...}]. Only names that match our pattern are ever considered (UNVERIFIED-*, other files and folders are never touched).
-    Returns (keep, delete): the newest `keep_min` are always kept; of the rest, only those at least keep_days old are deleted."""
+    Returns (keep, delete): the newest `keep_min` are always kept, and the earliest good dump of every month (select_monthly) is kept forever; of the rest, only those at least keep_days old are deleted."""
     good = sorted(((parse_ts(f["name"]), f) for f in files if parse_ts(f["name"])), key=lambda x: x[0], reverse=True)
     cutoff = now - dt.timedelta(days=keep_days)
+    monthly = {f["name"] for f in select_monthly(files)}
     keep, delete = [], []
     for i, (ts, f) in enumerate(good):
-        (keep if i < keep_min or ts > cutoff else delete).append(f)
+        (keep if i < keep_min or ts > cutoff or f["name"] in monthly else delete).append(f)
     return keep, delete
 
 
@@ -382,7 +393,7 @@ def run(*, dry_run: bool = False, keep_days: int = DEFAULT_KEEP_DAYS, verify: bo
                 delete = delete + select_unverified(listing, now, keep_days)
                 for f in delete:
                     drive.delete(f["id"])
-                st.update(pruned=[f["name"] for f in delete], kept=len(keep))
+                st.update(pruned=[f["name"] for f in delete], kept=len(keep), monthly_kept=[f["name"] for f in select_monthly(listing)])
             elif drive is not None and (drive_parent or os.environ.get("BACKUP_DRIVE_ID")):
                 st["would_prune"] = [f["name"] for f in select_prune(drive.list_files(drive.ensure_folder(drive_parent or os.environ["BACKUP_DRIVE_ID"])), now, keep_days)[1]]
     finally:
