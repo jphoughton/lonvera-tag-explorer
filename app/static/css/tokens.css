@@ -6,21 +6,25 @@
    2. Layout tokens for the shell (--topbar-h --subnav-h; --header-h is their sum, set on body): the sticky header is two rows, and anything that sticks under it (filter bar, tables heads) uses --header-h.
    3. Page-scoped tokens live with their page (priorities: --lv-pri-* at the top of priorities.css). Do not add page tokens here. */
 :root {
-  --bg: #f4f5f7;
-  --panel: #fff;
-  --line: #d6dae1;
-  --line-soft: #e8ebf0;
-  --head-bg: #eef0f4;
-  --text: #1b2027;
-  --muted: #5b6676;
-  --accent: #1a5fb4;
-  --accent-bg: #e7effb;
-  --good: #14693b; --good-bg: #dff3e8;
-  --warn: #7f5200; --warn-bg: #fff0cc;
-  --bad: #a02323; --bad-bg: #fde6e6;
-  --testing: #0b7a75; --testing-bg: #dff4f2;
-  --scaling: #4b3fc4; --scaling-bg: #e9e7fb;
-  --unc: #5b6676; --unc-bg: #eceff3;
+  --bg: #FFFFFF;
+  --panel: #FFFFFF;
+  --line: #D2EAE5;
+  --line-soft: #E4F2EF;
+  --border: #D2EAE5;
+  --head-bg: #EDF8F6;
+  --head-ink: #2B4846;
+  --hover: #F2FAF8;
+  --selected: #E4F5F2;
+  --text: #16302F;
+  --muted: #4A726F;
+  --accent: #0D7A79; --accent-hover: #0B5F5E; --accent-ink: #0B5F5E; --accent-bg: #DDF2EE; --on-accent: #FFFFFF;
+  --cta: #D4432A; --cta-hover: #B53420; --on-cta: #FFFFFF; --cta-bg: #FDE8E2;
+  --good: #146C3A; --good-bg: #E3F5EA;
+  --warn: #8A5A00; --warn-bg: #FFF0C9;
+  --bad: #B3261E; --bad-bg: #FDE4E1;
+  --testing: #1E5A9E; --testing-bg: #E1EEFB;
+  --scaling: #5A43A3; --scaling-bg: #ECE8F8;
+  --unc: #3F6764; --unc-bg: #E4F2EF;
   /* layout */
   --topbar-h: 42px;                                   /* top row: Lonvera, sections, tag search, account */
   --subnav-h: 34px;                                   /* second row: the pages of the active section (0 on the sign-in page) */

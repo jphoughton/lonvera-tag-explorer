@@ -36,9 +36,9 @@ table.dt td.hookcol, table.dt th.hookcol { min-width: 170px; max-width: 300px; }
 @media (max-width: 760px) { table.dt td.hookcol, table.dt th.hookcol { min-width: 140px; max-width: 220px; } .hooktext { max-width: 220px; } }
 .cell-label { align-items: flex-start; }
 .cell-label-text { min-width: 0; flex: 1 1 140px; overflow: visible; }
-.chip-type { display: inline-block; padding: 0 6px; border-radius: 8px; font-size: 12px; font-weight: 600; background: var(--head-bg); color: #3b4452; }
-.chip-type.vid { background: #e8e4fa; color: #4b3fc4; }
-.chip-type.img { background: #e0f0f6; color: #1b6b8a; }
+.chip-type { display: inline-block; padding: 0 6px; border-radius: 8px; font-size: 12px; font-weight: 600; background: var(--head-bg); color: var(--lv-ink-2); }
+.chip-type.vid { background: var(--scaling-bg); color: var(--scaling); }
+.chip-type.img { background: var(--accent-bg); color: var(--accent-ink); }
 .legend-line { margin: 2px 0 8px; color: var(--muted); font-size: 12px; }
 .info-i { cursor: help; color: var(--accent); font-size: 13px; }
 .info-i:focus-visible { outline: 2px solid var(--accent); border-radius: 50%; }

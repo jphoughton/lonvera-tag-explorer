@@ -3,8 +3,8 @@
 .thumb.zoomable { cursor: zoom-in; }
 .thumb.zoomable:hover { outline: 2px solid var(--accent); outline-offset: 1px; }
 body.modal-open { overflow: hidden; }
-.modal-backdrop { position: fixed; inset: 0; background: rgba(15, 20, 28, 0.72); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; }
-.modal { position: relative; background: #fff; border-radius: 10px; max-width: min(96vw, 980px); max-height: 94vh; overflow: auto; padding: 14px 18px 16px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4); outline: none; }
+.modal-backdrop { position: fixed; inset: 0; background: color-mix(in srgb, var(--lv-ink) 72%, transparent); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal { position: relative; background: #fff; border-radius: 10px; max-width: min(96vw, 980px); max-height: 94vh; overflow: auto; padding: 14px 18px 16px; box-shadow: 0 12px 40px color-mix(in srgb, var(--lv-ink) 40%, transparent); outline: none; }
 .modal-close { position: absolute; top: 6px; right: 10px; appearance: none; border: 0; background: none; font-size: 26px; line-height: 1; cursor: pointer; color: var(--muted); }
 .modal-close:hover { color: var(--text); }
 .modal-title { font-size: 14px; margin: 0 28px 8px 0; }
