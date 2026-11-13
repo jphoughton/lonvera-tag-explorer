@@ -35,10 +35,11 @@ def aggregate(rows: list[dict]) -> dict[tuple, dict]:
         if a is None:
             f = fam(r["ad_name"])
             out[k] = a = {**{x: r[x] for x in ("ad_id", "day", "ad_name", "campaign_id", "campaign_name", "adset_id", "adset_name", "account")},
-                          "fam": f, "famkey": f.lower(), "spend": 0.0, "purchases": 0.0, "value": 0.0, "clicks": 0.0, "impressions": 0.0, "lpv": 0.0, "atc": 0.0}
+                          "fam": f, "famkey": f.lower(), "spend": 0.0, "purchases": 0.0, "value": 0.0, "clicks": 0.0, "impressions": 0.0, "lpv": 0.0, "atc": 0.0, "ic": 0.0, "pai": 0.0}
         a["spend"] += r["spend"]; a["purchases"] += r["purchases"]; a["value"] += r["value"]; a["clicks"] += r["clicks"]
         a["impressions"] += r.get("impressions", 0.0)
         a["lpv"] += r.get("lpv", 0.0); a["atc"] += r.get("atc", 0.0)
+        a["ic"] += r.get("ic", 0.0); a["pai"] += r.get("pai", 0.0)
     return out
 
 
@@ -68,9 +69,9 @@ def load_chunk(conn, agg: dict[tuple, dict], since: dt.date, until: dt.date, rep
     n = 0
     if replace:
         deleted = conn.execute("DELETE FROM ad_daily WHERE day BETWEEN %s AND %s", (since, until)).rowcount
-        n = db.bulk_copy(conn, "ad_daily", ["ad_id", "day", "meta_family_key", "meta_family", "campaign_id", "spend", "purchases", "conv_value", "link_clicks", "impressions", "source", "landing_page_views", "add_to_carts"],
+        n = db.bulk_copy(conn, "ad_daily", ["ad_id", "day", "meta_family_key", "meta_family", "campaign_id", "spend", "purchases", "conv_value", "link_clicks", "impressions", "source", "landing_page_views", "add_to_carts", "initiated_checkouts", "payment_info_adds"],
                          [(a["ad_id"], a["day"], a["famkey"], a["fam"], a["campaign_id"], round(a["spend"], 2), round(a["purchases"], 2), round(a["value"], 2),
-                           round(a["clicks"]), round(a["impressions"]), "meta_api", round(a["lpv"]), round(a["atc"])) for a in agg.values()])
+                           round(a["clicks"]), round(a["impressions"]), "meta_api", round(a["lpv"]), round(a["atc"]), round(a["ic"]), round(a["pai"])) for a in agg.values()])
     else:
         deleted = 0
     return {"deleted": deleted, "inserted": n, "ads": len(ads), "campaigns": len(camps)}
@@ -158,15 +159,16 @@ def reconcile_stage(conn, snapshot_dir=None, since=None, until=None) -> dict:
 
 
 def fill_funnel(conn, since, until, workers=2, chunk_days=7, pause=5.0, attempts=4, only_missing=True, dry_run=False, sleep=time.sleep) -> dict:
-    """History fill for landing_page_views / add_to_carts: re-pull [since, until] in chunk_days chunks (read-only Meta GETs) and UPDATE only those two columns of the
-    existing meta_api rows of ad_daily (matched on ad_id, day). Spend, impressions, link_clicks, purchases and conv_value are never written; the pulled spend and
+    """History fill for the funnel columns landing_page_views / add_to_carts / initiated_checkouts / payment_info_adds: re-pull [since, until] in chunk_days chunks
+    (read-only Meta GETs) and UPDATE only those four columns of the existing meta_api rows of ad_daily (matched on ad_id, day). FILL-ONLY: a column that already holds a
+    value is kept (COALESCE) unless only_missing is False (--refill), which overwrites the four. Spend, impressions, link_clicks, purchases and conv_value are never written; the pulled spend and
     link_clicks are compared with the stored ones per chunk and reported (Meta restates, so recent weeks may drift). Resumable: with only_missing a chunk whose stored
     meta_api rows all have both columns set is skipped; a chunk that fails (rate limit) is retried with a growing wait, then reported and skipped."""
     tok = meta_api.get_token()
     chunks = meta_api.date_chunks(since, until, chunk_days)
     out = {"chunks": len(chunks), "done": 0, "skipped": 0, "failed": [], "updated": 0, "pulled_ad_days_without_row": 0, "stored_rows_without_pull": 0, "per_chunk": []}
     for ci, (cs, ce) in enumerate(chunks):
-        todo = conn.execute("SELECT count(*) FROM ad_daily WHERE source = 'meta_api' AND day BETWEEN %s AND %s AND (landing_page_views IS NULL OR add_to_carts IS NULL)", (cs, ce)).fetchone()[0]
+        todo = conn.execute("SELECT count(*) FROM ad_daily WHERE source = 'meta_api' AND day BETWEEN %s AND %s AND (landing_page_views IS NULL OR add_to_carts IS NULL OR initiated_checkouts IS NULL OR payment_info_adds IS NULL)", (cs, ce)).fetchone()[0]
         total = conn.execute("SELECT count(*) FROM ad_daily WHERE source = 'meta_api' AND day BETWEEN %s AND %s", (cs, ce)).fetchone()[0]
         if only_missing and todo == 0:
             out["skipped"] += 1
@@ -192,7 +194,7 @@ def fill_funnel(conn, since, until, workers=2, chunk_days=7, pause=5.0, attempts
         upd, miss = [], 0
         for (ad, day), a in agg.items():
             if (ad, day) in stored:
-                upd.append((round(a["lpv"]), round(a["atc"]), ad, day))
+                upd.append((round(a["lpv"]), round(a["atc"]), round(a["ic"]), round(a["pai"]), ad, day))
             else:
                 miss += 1
         sp_p, sp_s = sum(a["spend"] for a in agg.values()), sum(float(r[2] or 0) for r in stored.values())
@@ -202,13 +204,18 @@ def fill_funnel(conn, since, until, workers=2, chunk_days=7, pause=5.0, attempts
         info = {"chunk": f"{cs}..{ce}", "rows_pulled": len(agg), "rows_stored": len(stored), "updated": len(upd), "pulled_without_stored_row": miss,
                 "stored_without_pull": len(stored) - len(upd), "spend_pulled": round(sp_p, 2), "spend_stored": round(sp_s, 2), "spend_diff_pct": round(d_sp, 3),
                 "link_clicks_pulled": cl_p, "link_clicks_stored": round(cl_s), "link_clicks_diff_pct": round(d_cl, 3),
-                "lpv": round(sum(a["lpv"] for a in agg.values())), "atc": round(sum(a["atc"] for a in agg.values()))}
+                "lpv": round(sum(a["lpv"] for a in agg.values())), "atc": round(sum(a["atc"] for a in agg.values())),
+                "ic": round(sum(a["ic"] for a in agg.values())), "pai": round(sum(a["pai"] for a in agg.values()))}
         out["per_chunk"].append(info)
         flag = "  <-- spend/link-click drift above 0.5%" if abs(d_sp) > 0.5 or abs(d_cl) > 0.5 else ""
-        db.log(f"chunk {ci + 1}/{len(chunks)} {cs}..{ce}: updated {len(upd)}/{len(stored)} stored rows, spend {d_sp:+.3f}%, link_clicks {d_cl:+.3f}%, lpv {info['lpv']}, atc {info['atc']}{flag}")
+        db.log(f"chunk {ci + 1}/{len(chunks)} {cs}..{ce}: updated {len(upd)}/{len(stored)} stored rows, spend {d_sp:+.3f}%, link_clicks {d_cl:+.3f}%, lpv {info['lpv']}, atc {info['atc']}, ic {info['ic']}, pai {info['pai']}{flag}")
         if not dry_run:
             with conn.transaction():
-                db.execmany(conn, "UPDATE ad_daily SET landing_page_views = %s, add_to_carts = %s WHERE ad_id = %s AND day = %s AND source = 'meta_api'", upd)
+                if only_missing:
+                    db.execmany(conn, "UPDATE ad_daily SET landing_page_views = COALESCE(landing_page_views, %s), add_to_carts = COALESCE(add_to_carts, %s), "
+                                      "initiated_checkouts = COALESCE(initiated_checkouts, %s), payment_info_adds = COALESCE(payment_info_adds, %s) WHERE ad_id = %s AND day = %s AND source = 'meta_api'", upd)
+                else:
+                    db.execmany(conn, "UPDATE ad_daily SET landing_page_views = %s, add_to_carts = %s, initiated_checkouts = %s, payment_info_adds = %s WHERE ad_id = %s AND day = %s AND source = 'meta_api'", upd)
         out["done"] += 1; out["updated"] += len(upd)
         out["pulled_ad_days_without_row"] += miss; out["stored_rows_without_pull"] += len(stored) - len(upd)
         conn.commit()
@@ -319,7 +326,7 @@ def main(argv=None):
     ap.add_argument("--no-replace", action="store_true", help="write ads/campaigns metadata but leave ad_daily untouched")
     ap.add_argument("--snapshot-dir", help="sheet snapshot for comparisons (Daily tab, Meta Campaign - History)")
     ap.add_argument("--workers", type=int, default=2)
-    ap.add_argument("--fill-funnel", action="store_true", help="history fill: UPDATE only landing_page_views / add_to_carts of existing ad_daily rows (weekly chunks, resumable; --since/--until, default 2026-05-06..yesterday)")
+    ap.add_argument("--fill-funnel", action="store_true", help="history fill: fill-only UPDATE of landing_page_views / add_to_carts / initiated_checkouts / payment_info_adds of existing ad_daily rows (weekly chunks, resumable; --since/--until, default 2026-05-06..yesterday)")
     ap.add_argument("--refill", action="store_true", help="with --fill-funnel: re-pull chunks even when already filled")
     ap.add_argument("--ad-meta", action="store_true", help="also fill created date / status for ads that have none (best effort)")
     ap.add_argument("--atomic", action="store_true", help="write nothing unless every chunk pulled cleanly (the daily run always does this)")

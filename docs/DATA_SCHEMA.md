@@ -136,8 +136,8 @@ One section per relation, grouped as in the table below. Column types, nullabili
 
 | Group | Relations |
 |---|---|
-| analytics schema: the read-only views (start here) | [`analytics.meta_ads`](#analyticsmeta_ads), [`analytics.meta_ad_daily`](#analyticsmeta_ad_daily), [`analytics.meta_adset_daily`](#analyticsmeta_adset_daily), [`analytics.meta_campaign_daily`](#analyticsmeta_campaign_daily), [`analytics.meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`analytics.meta_reach`](#analyticsmeta_reach), [`analytics.google_campaign_daily`](#analyticsgoogle_campaign_daily), [`analytics.platform_daily`](#analyticsplatform_daily), [`analytics.orders_daily`](#analyticsorders_daily), [`analytics.creative_tracker`](#analyticscreative_tracker), [`analytics.data_coverage`](#analyticsdata_coverage), [`analytics.etl_runs`](#analyticsetl_runs), [`analytics.meta_breakdown_daily`](#analyticsmeta_breakdown_daily), [`analytics.attribution_source_daily`](#analyticsattribution_source_daily), [`analytics.attribution_anyclick_daily`](#analyticsattribution_anyclick_daily), [`analytics.attribution_unmapped_daily`](#analyticsattribution_unmapped_daily), [`analytics.orders_daily_detail`](#analyticsorders_daily_detail), [`analytics.orders_by_product_daily`](#analyticsorders_by_product_daily), [`analytics.orders_hourly`](#analyticsorders_hourly), [`analytics.amazon_daily`](#analyticsamazon_daily), [`analytics.site_traffic_daily`](#analyticssite_traffic_daily), [`analytics.platform_daily_history`](#analyticsplatform_daily_history), [`analytics.meta_product_daily`](#analyticsmeta_product_daily), [`analytics.meta_product_reach`](#analyticsmeta_product_reach), [`analytics.meta_bids_daily`](#analyticsmeta_bids_daily), [`analytics.pacing_live_today`](#analyticspacing_live_today), [`analytics.pacing_amazon_month_to_date`](#analyticspacing_amazon_month_to_date), [`analytics.pacing_hourly_spend_curve`](#analyticspacing_hourly_spend_curve), [`analytics.pacing_levers`](#analyticspacing_levers), [`analytics.pacing_meta_spend_monthly`](#analyticspacing_meta_spend_monthly), [`analytics.pipeline_feeds`](#analyticspipeline_feeds), [`analytics.pipeline_feed_attempts`](#analyticspipeline_feed_attempts), [`analytics.pipeline_feed_verify`](#analyticspipeline_feed_verify), [`analytics.pipeline_refresh_runs`](#analyticspipeline_refresh_runs), [`analytics.pipeline_alerts`](#analyticspipeline_alerts), [`analytics.projection_scenarios`](#analyticsprojection_scenarios), [`analytics.projection_levers`](#analyticsprojection_levers), [`analytics.projection_series`](#analyticsprojection_series), [`analytics.projection_actuals`](#analyticsprojection_actuals), [`analytics.projection_pnl_drivers`](#analyticsprojection_pnl_drivers), [`analytics.projection_pnl_settings`](#analyticsprojection_pnl_settings), [`analytics.projection_pnl_account_map`](#analyticsprojection_pnl_account_map), [`analytics.projection_cogs_sku`](#analyticsprojection_cogs_sku), [`analytics.projection_vendor_retainers`](#analyticsprojection_vendor_retainers), [`analytics.inventory_purchase_orders`](#analyticsinventory_purchase_orders), [`analytics.inventory_fba_transfers`](#analyticsinventory_fba_transfers), [`analytics.inventory_vendor_lead_times`](#analyticsinventory_vendor_lead_times), [`analytics.inventory_vendor_costs`](#analyticsinventory_vendor_costs), [`analytics.inventory_product_costs`](#analyticsinventory_product_costs), [`analytics.inventory_reorder_params`](#analyticsinventory_reorder_params), [`analytics.inventory_stock_counts`](#analyticsinventory_stock_counts), [`analytics.inventory_stock_daily`](#analyticsinventory_stock_daily), [`analytics.inventory_units_daily`](#analyticsinventory_units_daily), [`analytics.inventory_units_monthly`](#analyticsinventory_units_monthly), [`analytics.inventory_units_by_country`](#analyticsinventory_units_by_country), [`analytics.cohorts_monthly`](#analyticscohorts_monthly), [`analytics.cohorts_curve_cumulative`](#analyticscohorts_curve_cumulative), [`analytics.cohorts_curve_goal`](#analyticscohorts_curve_goal), [`analytics.creative_family_daily`](#analyticscreative_family_daily), [`analytics.creative_family_metrics`](#analyticscreative_family_metrics), [`analytics.creative_unmatched_meta`](#analyticscreative_unmatched_meta), [`analytics.creative_stage_moves`](#analyticscreative_stage_moves), [`analytics.creative_scaling_placements`](#analyticscreative_scaling_placements), [`analytics.creative_scaling_benchmarks`](#analyticscreative_scaling_benchmarks), [`analytics.creative_content`](#analyticscreative_content), [`analytics.tag_products`](#analyticstag_products), [`analytics.tag_taxonomy_lines`](#analyticstag_taxonomy_lines), [`analytics.tag_line_ingredients`](#analyticstag_line_ingredients), [`analytics.tracker_tags`](#analyticstracker_tags), [`analytics.tracker_hooks`](#analyticstracker_hooks), [`analytics.priorities_snapshots`](#analyticspriorities_snapshots), [`analytics.priorities_thresholds`](#analyticspriorities_thresholds), [`analytics.priorities_baselines`](#analyticspriorities_baselines), [`analytics.priorities_concepts`](#analyticspriorities_concepts), [`analytics.priorities_manual_concepts`](#analyticspriorities_manual_concepts), [`analytics.production_assignments`](#analyticsproduction_assignments), [`analytics.production_formats`](#analyticsproduction_formats), [`analytics.competitor_brands`](#analyticscompetitor_brands), [`analytics.competitor_ads`](#analyticscompetitor_ads), [`analytics.competitor_concepts`](#analyticscompetitor_concepts), [`analytics.catalog`](#analyticscatalog), [`analytics.metric_glossary`](#analyticsmetric_glossary), [`analytics.klaviyo_daily`](#analyticsklaviyo_daily), [`analytics.klaviyo_campaigns`](#analyticsklaviyo_campaigns), [`analytics.klaviyo_flows`](#analyticsklaviyo_flows), [`analytics.klaviyo_flow_messages`](#analyticsklaviyo_flow_messages), [`analytics.klaviyo_message_content`](#analyticsklaviyo_message_content), [`analytics.klaviyo_message_performance`](#analyticsklaviyo_message_performance), [`analytics.landing_pages`](#analyticslanding_pages), [`analytics.landing_page_versions`](#analyticslanding_page_versions), [`analytics.landing_page_ads`](#analyticslanding_page_ads), [`analytics.landing_page_ad_checks`](#analyticslanding_page_ad_checks), [`analytics.landing_page_top_ads`](#analyticslanding_page_top_ads), [`analytics.shopify_orders`](#analyticsshopify_orders), [`analytics.shopify_order_lines`](#analyticsshopify_order_lines) |
-| Meta (Facebook / Instagram) ads: ads, campaigns, daily results | [`public.ad_daily`](#publicad_daily), [`public.meta_ads`](#publicmeta_ads), [`public.meta_campaigns`](#publicmeta_campaigns), [`public.meta_ad_lifetime`](#publicmeta_ad_lifetime), [`public.ad_lifetime`](#publicad_lifetime), [`public.meta_family_map`](#publicmeta_family_map), [`public.meta_breakdown_daily`](#publicmeta_breakdown_daily), [`public.meta_breakdown_coverage`](#publicmeta_breakdown_coverage), [`public.meta_breakdown_progress`](#publicmeta_breakdown_progress), [`public.landing_pages`](#publiclanding_pages), [`public.landing_page_versions`](#publiclanding_page_versions), [`public.landing_page_ads`](#publiclanding_page_ads), [`public.landing_page_top_ads`](#publiclanding_page_top_ads) |
+| analytics schema: the read-only views (start here) | [`analytics.meta_ads`](#analyticsmeta_ads), [`analytics.meta_ad_daily`](#analyticsmeta_ad_daily), [`analytics.meta_adset_daily`](#analyticsmeta_adset_daily), [`analytics.meta_campaign_daily`](#analyticsmeta_campaign_daily), [`analytics.meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`analytics.meta_reach`](#analyticsmeta_reach), [`analytics.google_campaign_daily`](#analyticsgoogle_campaign_daily), [`analytics.platform_daily`](#analyticsplatform_daily), [`analytics.orders_daily`](#analyticsorders_daily), [`analytics.creative_tracker`](#analyticscreative_tracker), [`analytics.data_coverage`](#analyticsdata_coverage), [`analytics.etl_runs`](#analyticsetl_runs), [`analytics.meta_breakdown_daily`](#analyticsmeta_breakdown_daily), [`analytics.meta_change_log`](#analyticsmeta_change_log), [`analytics.meta_adset_state_daily`](#analyticsmeta_adset_state_daily), [`analytics.meta_change_ledger`](#analyticsmeta_change_ledger), [`analytics.attribution_source_daily`](#analyticsattribution_source_daily), [`analytics.attribution_anyclick_daily`](#analyticsattribution_anyclick_daily), [`analytics.attribution_unmapped_daily`](#analyticsattribution_unmapped_daily), [`analytics.orders_daily_detail`](#analyticsorders_daily_detail), [`analytics.orders_by_product_daily`](#analyticsorders_by_product_daily), [`analytics.orders_hourly`](#analyticsorders_hourly), [`analytics.amazon_daily`](#analyticsamazon_daily), [`analytics.site_traffic_daily`](#analyticssite_traffic_daily), [`analytics.platform_daily_history`](#analyticsplatform_daily_history), [`analytics.meta_product_daily`](#analyticsmeta_product_daily), [`analytics.meta_product_reach`](#analyticsmeta_product_reach), [`analytics.meta_bids_daily`](#analyticsmeta_bids_daily), [`analytics.pacing_live_today`](#analyticspacing_live_today), [`analytics.pacing_amazon_month_to_date`](#analyticspacing_amazon_month_to_date), [`analytics.pacing_hourly_spend_curve`](#analyticspacing_hourly_spend_curve), [`analytics.pacing_levers`](#analyticspacing_levers), [`analytics.pacing_meta_spend_monthly`](#analyticspacing_meta_spend_monthly), [`analytics.pipeline_feeds`](#analyticspipeline_feeds), [`analytics.pipeline_feed_attempts`](#analyticspipeline_feed_attempts), [`analytics.pipeline_feed_verify`](#analyticspipeline_feed_verify), [`analytics.pipeline_refresh_runs`](#analyticspipeline_refresh_runs), [`analytics.pipeline_alerts`](#analyticspipeline_alerts), [`analytics.projection_scenarios`](#analyticsprojection_scenarios), [`analytics.projection_levers`](#analyticsprojection_levers), [`analytics.projection_series`](#analyticsprojection_series), [`analytics.projection_actuals`](#analyticsprojection_actuals), [`analytics.projection_pnl_drivers`](#analyticsprojection_pnl_drivers), [`analytics.projection_pnl_settings`](#analyticsprojection_pnl_settings), [`analytics.projection_pnl_account_map`](#analyticsprojection_pnl_account_map), [`analytics.projection_cogs_sku`](#analyticsprojection_cogs_sku), [`analytics.projection_vendor_retainers`](#analyticsprojection_vendor_retainers), [`analytics.inventory_purchase_orders`](#analyticsinventory_purchase_orders), [`analytics.inventory_fba_transfers`](#analyticsinventory_fba_transfers), [`analytics.inventory_vendor_lead_times`](#analyticsinventory_vendor_lead_times), [`analytics.inventory_vendor_costs`](#analyticsinventory_vendor_costs), [`analytics.inventory_product_costs`](#analyticsinventory_product_costs), [`analytics.inventory_reorder_params`](#analyticsinventory_reorder_params), [`analytics.inventory_stock_counts`](#analyticsinventory_stock_counts), [`analytics.inventory_stock_daily`](#analyticsinventory_stock_daily), [`analytics.inventory_units_daily`](#analyticsinventory_units_daily), [`analytics.inventory_units_monthly`](#analyticsinventory_units_monthly), [`analytics.inventory_units_by_country`](#analyticsinventory_units_by_country), [`analytics.cohorts_monthly`](#analyticscohorts_monthly), [`analytics.cohorts_curve_cumulative`](#analyticscohorts_curve_cumulative), [`analytics.cohorts_curve_goal`](#analyticscohorts_curve_goal), [`analytics.creative_family_daily`](#analyticscreative_family_daily), [`analytics.creative_family_metrics`](#analyticscreative_family_metrics), [`analytics.creative_unmatched_meta`](#analyticscreative_unmatched_meta), [`analytics.creative_stage_moves`](#analyticscreative_stage_moves), [`analytics.creative_scaling_placements`](#analyticscreative_scaling_placements), [`analytics.creative_scaling_benchmarks`](#analyticscreative_scaling_benchmarks), [`analytics.creative_content`](#analyticscreative_content), [`analytics.tag_products`](#analyticstag_products), [`analytics.tag_taxonomy_lines`](#analyticstag_taxonomy_lines), [`analytics.tag_line_ingredients`](#analyticstag_line_ingredients), [`analytics.tracker_tags`](#analyticstracker_tags), [`analytics.tracker_hooks`](#analyticstracker_hooks), [`analytics.priorities_snapshots`](#analyticspriorities_snapshots), [`analytics.priorities_thresholds`](#analyticspriorities_thresholds), [`analytics.priorities_baselines`](#analyticspriorities_baselines), [`analytics.priorities_concepts`](#analyticspriorities_concepts), [`analytics.priorities_manual_concepts`](#analyticspriorities_manual_concepts), [`analytics.production_assignments`](#analyticsproduction_assignments), [`analytics.production_formats`](#analyticsproduction_formats), [`analytics.competitor_brands`](#analyticscompetitor_brands), [`analytics.competitor_ads`](#analyticscompetitor_ads), [`analytics.competitor_concepts`](#analyticscompetitor_concepts), [`analytics.catalog`](#analyticscatalog), [`analytics.metric_glossary`](#analyticsmetric_glossary), [`analytics.klaviyo_daily`](#analyticsklaviyo_daily), [`analytics.klaviyo_campaigns`](#analyticsklaviyo_campaigns), [`analytics.klaviyo_flows`](#analyticsklaviyo_flows), [`analytics.klaviyo_flow_messages`](#analyticsklaviyo_flow_messages), [`analytics.klaviyo_message_content`](#analyticsklaviyo_message_content), [`analytics.klaviyo_message_performance`](#analyticsklaviyo_message_performance), [`analytics.landing_pages`](#analyticslanding_pages), [`analytics.landing_page_versions`](#analyticslanding_page_versions), [`analytics.landing_page_ads`](#analyticslanding_page_ads), [`analytics.landing_page_ad_checks`](#analyticslanding_page_ad_checks), [`analytics.landing_page_top_ads`](#analyticslanding_page_top_ads), [`analytics.shopify_orders`](#analyticsshopify_orders), [`analytics.shopify_order_lines`](#analyticsshopify_order_lines) |
+| Meta (Facebook / Instagram) ads: ads, campaigns, daily results | [`public.ad_daily`](#publicad_daily), [`public.meta_ads`](#publicmeta_ads), [`public.meta_campaigns`](#publicmeta_campaigns), [`public.meta_ad_lifetime`](#publicmeta_ad_lifetime), [`public.ad_lifetime`](#publicad_lifetime), [`public.meta_family_map`](#publicmeta_family_map), [`public.meta_breakdown_daily`](#publicmeta_breakdown_daily), [`public.meta_breakdown_coverage`](#publicmeta_breakdown_coverage), [`public.meta_breakdown_progress`](#publicmeta_breakdown_progress), [`public.meta_change_log`](#publicmeta_change_log), [`public.meta_adset_state_daily`](#publicmeta_adset_state_daily), [`public.landing_pages`](#publiclanding_pages), [`public.landing_page_versions`](#publiclanding_page_versions), [`public.landing_page_ads`](#publiclanding_page_ads), [`public.landing_page_top_ads`](#publiclanding_page_top_ads) |
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
 | Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily), [`public.shopify_orders`](#publicshopify_orders), [`public.shopify_order_lines`](#publicshopify_order_lines) |
@@ -149,7 +149,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 
 | Domain | Analytics views |
 |---|---|
-| **marketing**: Meta and Google ads: spend, reach, bids, product splits, platform history | [`meta_ads`](#analyticsmeta_ads), [`meta_ad_daily`](#analyticsmeta_ad_daily), [`meta_adset_daily`](#analyticsmeta_adset_daily), [`meta_campaign_daily`](#analyticsmeta_campaign_daily), [`meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`meta_reach`](#analyticsmeta_reach), [`google_campaign_daily`](#analyticsgoogle_campaign_daily), [`platform_daily`](#analyticsplatform_daily), [`meta_breakdown_daily`](#analyticsmeta_breakdown_daily), [`platform_daily_history`](#analyticsplatform_daily_history), [`meta_product_daily`](#analyticsmeta_product_daily), [`meta_product_reach`](#analyticsmeta_product_reach), [`meta_bids_daily`](#analyticsmeta_bids_daily) |
+| **marketing**: Meta and Google ads: spend, reach, bids, product splits, platform history | [`meta_ads`](#analyticsmeta_ads), [`meta_ad_daily`](#analyticsmeta_ad_daily), [`meta_adset_daily`](#analyticsmeta_adset_daily), [`meta_campaign_daily`](#analyticsmeta_campaign_daily), [`meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`meta_reach`](#analyticsmeta_reach), [`google_campaign_daily`](#analyticsgoogle_campaign_daily), [`platform_daily`](#analyticsplatform_daily), [`meta_breakdown_daily`](#analyticsmeta_breakdown_daily), [`meta_change_log`](#analyticsmeta_change_log), [`meta_adset_state_daily`](#analyticsmeta_adset_state_daily), [`meta_change_ledger`](#analyticsmeta_change_ledger), [`platform_daily_history`](#analyticsplatform_daily_history), [`meta_product_daily`](#analyticsmeta_product_daily), [`meta_product_reach`](#analyticsmeta_product_reach), [`meta_bids_daily`](#analyticsmeta_bids_daily) |
 | **attribution**: Which orders each source or campaign gets credit for (Upstack) | [`attribution_source_daily`](#analyticsattribution_source_daily), [`attribution_anyclick_daily`](#analyticsattribution_anyclick_daily), [`attribution_unmapped_daily`](#analyticsattribution_unmapped_daily) |
 | **orders**: Actual revenue, new customers, Amazon sales, site traffic | [`orders_daily`](#analyticsorders_daily), [`orders_daily_detail`](#analyticsorders_daily_detail), [`orders_by_product_daily`](#analyticsorders_by_product_daily), [`orders_hourly`](#analyticsorders_hourly), [`amazon_daily`](#analyticsamazon_daily), [`site_traffic_daily`](#analyticssite_traffic_daily), [`shopify_orders`](#analyticsshopify_orders), [`shopify_order_lines`](#analyticsshopify_order_lines) |
 | **creative**: Creative tracker, family roll-ups, test to scale, ad copy | [`creative_tracker`](#analyticscreative_tracker), [`creative_family_daily`](#analyticscreative_family_daily), [`creative_family_metrics`](#analyticscreative_family_metrics), [`creative_unmatched_meta`](#analyticscreative_unmatched_meta), [`creative_stage_moves`](#analyticscreative_stage_moves), [`creative_scaling_placements`](#analyticscreative_scaling_placements), [`creative_scaling_benchmarks`](#analyticscreative_scaling_benchmarks), [`creative_content`](#analyticscreative_content) |
@@ -271,6 +271,8 @@ ORDER BY last_day DESC LIMIT 50;
 | `upstack_order_revenue` | numeric |  | Order total of those orders, dollars (tax included, before refunds). |
 | `landing_page_views` | numeric |  | Meta landing page views (omni_landing_page_view, else landing_page_view). NULL when the day has no Meta pull of it yet; 0 on Upstack-only ad-days. |
 | `add_to_carts` | numeric |  | Meta adds to cart (omni_add_to_cart, else add_to_cart, else pixel add to cart), the 'Adds to cart' of Ads Manager; includes returning customers. NULL when not pulled yet; 0 on Upstack-only ad-days. |
+| `initiated_checkouts` | numeric |  | Meta initiated checkouts (omni_initiated_checkout, else initiate_checkout, else pixel initiate checkout), the 'Checkouts initiated' of Ads Manager; includes returning customers. NULL when not pulled yet; 0 on Upstack-only ad-days. |
+| `payment_info_adds` | numeric |  | Meta payment info added (omni_add_payment_info, else add_payment_info, else pixel add payment info), the checkout step between initiated checkout and purchase. NULL when not pulled yet; 0 on Upstack-only ad-days. |
 
 *Ad level: 30-day spend and Meta-reported ROAS*
 
@@ -320,6 +322,18 @@ SELECT coalesce(product_slug, '(no product)') AS product, sum(link_clicks) AS li
        round(sum(meta_purchases) / NULLIF(sum(add_to_carts), 0), 4) AS atc_to_purchase
 FROM analytics.meta_ad_daily
 WHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'meta_ad_daily') - 7 AND add_to_carts IS NOT NULL
+GROUP BY 1 ORDER BY sum(spend) DESC;
+```
+
+*Checkout funnel by product, last 7 days: add to cart to initiated checkout, initiated checkout to purchase*
+
+```sql
+SELECT coalesce(product_slug, '(no product)') AS product, sum(add_to_carts) AS add_to_carts, sum(initiated_checkouts) AS initiated_checkouts, sum(payment_info_adds) AS payment_info_adds,
+       sum(meta_purchases) AS purchases,
+       round(sum(initiated_checkouts) / NULLIF(sum(add_to_carts), 0), 4) AS atc_to_ic,
+       round(sum(meta_purchases) / NULLIF(sum(initiated_checkouts), 0), 4) AS ic_to_purchase
+FROM analytics.meta_ad_daily
+WHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'meta_ad_daily') - 7 AND initiated_checkouts IS NOT NULL
 GROUP BY 1 ORDER BY sum(spend) DESC;
 ```
 
@@ -905,6 +919,160 @@ FROM analytics.meta_breakdown_daily WHERE breakdown = 'age' AND day >= current_d
 ```sql
 SELECT breakdown, ad_id IS NOT NULL AS ad_level, min(day) AS first_day, max(day) AS last_day, count(*) AS rows
 FROM analytics.meta_breakdown_daily GROUP BY 1, 2 ORDER BY 1, 2;
+```
+
+### analytics.meta_change_log
+
+*view*
+
+**Purpose.** Meta's own activity log of both ad accounts: every budget, bid, strategy, status, targeting, creation and creative change with who made it and when. The first place to look when a day's spend, CPM or ROAS moved.
+
+- **Domain:** marketing
+- **Grain:** one row per activity-log event
+- **Source:** public.meta_change_log (etl.meta_changes, Meta Marketing API activity log)
+- **Refresh:** nightly, last 3 days re-read
+- **Coverage:** from the backfill start to yesterday: min(event_day) / max(event_day) over this view
+- **Caveat:** Most rows are noise for a performance story (first_delivery_event, run-status flips through Pending Review / Pending Process, billing charges, add_images / edit_images): filter object_level and event_type, for example update_ad_set_budget, update_ad_set_bid_strategy, update_campaign_budget, update_ad_set_run_status, update_ad_set_target_spec, create_ad_set.
+- **Caveat:** object_level 'adset' is what Meta's raw object_type calls CAMPAIGN; 'campaign' is CAMPAIGN_GROUP. Join object_id to meta_adset_daily.adset_id / meta_campaign_daily.campaign_id.
+- **Caveat:** old_amount / new_amount are dollars (budget and bid events); old_roas_floor / new_roas_floor are ratios. extra_data is often incomplete for bids: cross-check analytics.meta_change_ledger.
+- **Caveat:** event_day is the Pacific day of the event; Meta's own account time zones differ (Main Pacific, BackUp Eastern), so an event near midnight can sit one day off from that account's insight days.
+- **Caveat:** A change is an event, not a cause: this view says what was changed, not what it did to performance.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `event_time` | timestamptz |  | When Meta recorded the event. |
+| `event_day` | date |  | Pacific day of the event. |
+| `account` | text |  | Lonvera Main or Lonvera BackUp. |
+| `event_type` | text |  | Meta event type (update_ad_set_budget ...). |
+| `translated_event_type` | text |  | Meta's readable name of the event type. |
+| `object_level` | text |  | ad \| adset \| campaign \| account. |
+| `object_type` | text |  | Meta's raw object type (ADGROUP = ad, CAMPAIGN = ad set, CAMPAIGN_GROUP = campaign). |
+| `object_id` | text |  | Id of the changed object. |
+| `object_name` | text |  | Name of the object at the time. |
+| `campaign_id` | text |  | Campaign of the object when known. |
+| `actor_name` | text |  | Who made the change ('Meta' = system). |
+| `application_name` | text |  | App the change came through, when Meta says. |
+| `old_value` | text |  | Old value as text (status, strategy, name, targeting description); NULL for amounts. |
+| `new_value` | text |  | New value as text. |
+| `old_amount` | numeric(14,2) |  | Old budget or bid, dollars. |
+| `new_amount` | numeric(14,2) |  | New budget or bid, dollars (starting budget on create events; the amount on billing events). |
+| `old_roas_floor` | numeric(8,4) |  | Old ROAS floor, ratio. |
+| `new_roas_floor` | numeric(8,4) |  | New ROAS floor, ratio. |
+
+*Budget, bid, strategy and on / off changes by day, last 14 days*
+
+```sql
+SELECT event_day, event_type, object_level, count(*) AS events, count(DISTINCT object_id) AS objects
+FROM analytics.meta_change_log
+WHERE event_day >= current_date - 14 AND event_type IN ('update_ad_set_budget', 'update_ad_set_bid_strategy', 'update_campaign_budget', 'update_ad_set_run_status', 'update_campaign_run_status')
+GROUP BY 1, 2, 3 ORDER BY 1 DESC, 4 DESC;
+```
+
+*Ad set budget changes with old and new dollars, yesterday*
+
+```sql
+SELECT event_time, object_name, old_amount, new_amount, actor_name
+FROM analytics.meta_change_log
+WHERE event_type = 'update_ad_set_budget' AND event_day = current_date - 1
+ORDER BY event_time;
+```
+
+### analytics.meta_adset_state_daily
+
+*view*
+
+**Purpose.** Daily snapshot of every live ad set's settings (status, budget, bid, ROAS floor, optimization goal, attribution): the state of the account on each morning, the base of analytics.meta_change_ledger.
+
+- **Domain:** marketing
+- **Grain:** one row per (day, adset_id)
+- **Source:** public.meta_adset_state_daily (etl.meta_changes, Meta Marketing API adsets, read only)
+- **Refresh:** nightly (~05:00 Pacific)
+- **Coverage:** starts on the first snapshot day (min(day) over this view); it is not backfillable
+- **Caveat:** Taken in the early morning Pacific: a row for day D is the state at the start of D, so changes made on D-1 are already in it.
+- **Caveat:** daily_budget is NULL under campaign budget optimization (the campaign owns the budget); bid_strategy is NULL when inherited.
+- **Caveat:** Archived ad sets appear only for 3 days after their last update; an ad set missing from a day is archived, deleted or not pulled.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date |  | Pacific snapshot day. |
+| `adset_id` | text |  | Meta ad set id. |
+| `adset_name` | text |  | Ad set name that day. |
+| `campaign_id` | text |  | Meta campaign id. |
+| `account` | text |  | Lonvera Main or Lonvera BackUp. |
+| `status` | text |  | ACTIVE \| PAUSED \| ARCHIVED \| DELETED (configured). |
+| `effective_status` | text |  | ACTIVE only when ad set and campaign are on; else PAUSED, CAMPAIGN_PAUSED, ARCHIVED, IN_PROCESS, WITH_ISSUES. |
+| `daily_budget` | numeric(14,2) |  | Daily budget, dollars (NULL under CBO). |
+| `lifetime_budget` | numeric(14,2) |  | Lifetime budget, dollars. |
+| `bid_strategy` | text |  | Bid strategy (COST_CAP, LOWEST_COST_WITHOUT_CAP ...). |
+| `bid_amount` | numeric(14,2) |  | Bid cap or cost-cap target, dollars. |
+| `roas_average_floor` | numeric(8,4) |  | ROAS floor as a ratio. |
+| `optimization_goal` | text |  | Meta optimization goal. |
+| `attribution_spec` | jsonb |  | Attribution windows (JSON). |
+| `created_time` | timestamptz |  | Ad set creation time. |
+| `updated_time` | timestamptz |  | Meta's last-edit time of the ad set. |
+
+*Live ad sets today by strategy, with total daily budget*
+
+```sql
+SELECT coalesce(bid_strategy, '(campaign level)') AS strategy, count(*) AS adsets, sum(daily_budget) AS daily_budget
+FROM analytics.meta_adset_state_daily
+WHERE day = (SELECT max(day) FROM analytics.meta_adset_state_daily) AND effective_status = 'ACTIVE'
+GROUP BY 1 ORDER BY 2 DESC;
+```
+
+*One ad set's settings day by day (replace the id)*
+
+```sql
+SELECT day, effective_status, daily_budget, bid_strategy, bid_amount, roas_average_floor
+FROM analytics.meta_adset_state_daily
+WHERE adset_id = '120257382563100538' ORDER BY day;
+```
+
+### analytics.meta_change_ledger
+
+*view*
+
+**Purpose.** Ad set changes found by comparing each snapshot day with the previous one: new ad sets, paused / activated / archived, budget, bid, strategy, ROAS floor, optimization goal and attribution changes. Independent of the activity log, so it catches bid changes the log's extra_data omits.
+
+- **Domain:** marketing
+- **Grain:** one row per (day, adset_id, change_type)
+- **Source:** analytics.meta_adset_state_daily (lag over consecutive snapshot days)
+- **Refresh:** nightly with the snapshot
+- **Coverage:** starts on the SECOND snapshot day (min(day) over this view); a change is only visible once two consecutive snapshots exist
+- **Caveat:** A change happened between prev_day's snapshot and day's snapshot: the snapshot runs ~05:00 Pacific, so a change made on Pacific day D shows on day D+1 with prev_day D. A gap in prev_day means a missed snapshot, not a quiet period.
+- **Caveat:** Only ad sets in the snapshot are compared. new_adset needs a creation time inside the gap, so old archived ad sets that are touched again do not show as new. Campaign budgets (CBO) are not in this view: use analytics.meta_change_log update_campaign_budget.
+- **Caveat:** Several changes of the same ad set in one night collapse to the net difference; the sequence is in meta_change_log.
+- **Caveat:** old_number / new_number are dollars for daily_budget, lifetime_budget and bid_amount, a ratio for roas_floor; NULL for text changes.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date |  | Snapshot day on which the change is seen. |
+| `prev_day` | date |  | Previous snapshot day of this ad set (the change happened after it). |
+| `adset_id` | text |  | Meta ad set id. |
+| `adset_name` | text |  | Ad set name on day. |
+| `campaign_id` | text |  | Meta campaign id. |
+| `account` | text |  | Lonvera Main or Lonvera BackUp. |
+| `change_type` | text |  | new_adset \| paused (ACTIVE -> PAUSED) \| activated (PAUSED -> ACTIVE) \| archived \| effective_status \| daily_budget \| lifetime_budget \| bid_amount \| bid_strategy \| roas_floor \| optimization_goal \| attribution_spec. |
+| `old_value` | text |  | Old value as text (NULL for new_adset). |
+| `new_value` | text |  | New value as text (for new_adset: its effective status). |
+| `old_number` | numeric |  | Old amount (dollars) or floor (ratio) for numeric changes. |
+| `new_number` | numeric |  | New amount or floor. |
+
+*Bid and budget changes of the last 7 snapshot days*
+
+```sql
+SELECT day, change_type, count(*) AS adsets
+FROM analytics.meta_change_ledger
+WHERE day > current_date - 7 AND change_type IN ('daily_budget', 'bid_amount', 'bid_strategy', 'roas_floor')
+GROUP BY 1, 2 ORDER BY 1 DESC, 3 DESC;
+```
+
+*Every change to the ad sets of one campaign (replace the id)*
+
+```sql
+SELECT day, adset_name, change_type, old_value, new_value
+FROM analytics.meta_change_ledger
+WHERE campaign_id = '120257294813250538' ORDER BY day DESC, adset_name;
 ```
 
 ### analytics.attribution_source_daily
@@ -4096,6 +4264,7 @@ SELECT count(*) AS rows FROM analytics.shopify_order_lines;
 - **Caveat:** No row filter on spend: purchases booked on days without delivery are kept, so a row can have spend 0 and purchases > 0.
 - **Caveat:** link_clicks is Meta's link_click action (fallback inline_link_clicks). impressions is NULL only on legacy sheet rows (none in production).
 - **Caveat:** landing_page_views = action omni_landing_page_view (else landing_page_view); add_to_carts = omni_add_to_cart (else add_to_cart, else offsite_conversion.fb_pixel_add_to_cart), same Meta default attribution as purchases. Both are NULL (not 0) on days before they were first pulled; the 2026-11-12 backfill fills them without touching any other column.
+- **Caveat:** initiated_checkouts = omni_initiated_checkout (else initiate_checkout, else offsite_conversion.fb_pixel_initiate_checkout); payment_info_adds = omni_add_payment_info (else add_payment_info, else the pixel event; Meta returns only add_payment_info today). Both NULL (not 0) before the checkout backfill filled them (fill-only, no other column touched).
 - **Caveat:** meta_family_key / meta_family follow the ad's CURRENT name (build_metrics re-syncs them after a rename).
 - **Caveat:** Rows with source 'sheet' / ad_id 'fam:<family>' were a family-grain backfill; none remain in production.
 - **Caveat:** Reach, frequency, video metrics (thruplays, watch time), demographic / placement breakdowns, ad-level budgets and bids are NOT stored.
@@ -4116,6 +4285,8 @@ SELECT count(*) AS rows FROM analytics.shopify_order_lines;
 | `impressions` | numeric(14,0) | yes | Meta impressions (NULL = unknown, legacy rows). |
 | `landing_page_views` | numeric(12,0) | yes | Meta landing page views (omni_landing_page_view, else landing_page_view). NULL = not pulled yet (days before the 2026-11-12 funnel backfill). |
 | `add_to_carts` | numeric(12,0) | yes | Meta adds to cart (omni_add_to_cart, else add_to_cart, else pixel add to cart), the 'Adds to cart' of Ads Manager. NULL = not pulled yet. |
+| `initiated_checkouts` | numeric(12,0) | yes | Meta initiated checkouts (omni_initiated_checkout, else initiate_checkout, else pixel initiate checkout). NULL = not pulled yet. |
+| `payment_info_adds` | numeric(12,0) | yes | Meta payment info added (omni_add_payment_info, else add_payment_info, else pixel add payment info). NULL = not pulled yet. |
 
 *Meta spend and ROAS by day, last 14 days*
 
@@ -4235,6 +4406,8 @@ SELECT stage, count(*) AS campaigns, min(first_day) AS first_day, max(last_day) 
 | `first_day` | date | yes | Earliest delivery day if known (legacy). |
 | `landing_page_views` | numeric(12,0) | yes | All-time Meta landing page views (omni_landing_page_view, else landing_page_view). NULL until the next nightly lifetime pull. |
 | `add_to_carts` | numeric(12,0) | yes | All-time Meta adds to cart (omni_add_to_cart, else add_to_cart, else pixel add to cart). NULL until the next nightly lifetime pull. |
+| `initiated_checkouts` | numeric(12,0) | yes | All-time Meta initiated checkouts (omni_initiated_checkout, else initiate_checkout, else pixel initiate checkout). NULL until the next nightly lifetime pull. |
+| `payment_info_adds` | numeric(12,0) | yes | All-time Meta payment info added (omni_add_payment_info, else add_payment_info, else pixel add payment info). NULL until the next nightly lifetime pull. |
 
 *Top 20 ads by all-time spend (Meta-reported)*
 
@@ -4378,6 +4551,83 @@ SELECT coalesce(rule, '(unmatched)') AS rule, count(*) AS families FROM meta_fam
 | `window_end` | date | no | Last day of the finished window. |
 | `rows` | bigint | no | Rows written for the window (both accounts are separate rows). |
 | `done_at` | timestamptz | no | When the window finished. |
+
+### public.meta_change_log
+
+*table*
+
+**Purpose.** The Meta Marketing API activity log of both ad accounts: one row per change event (budget, bid, bid strategy, status, targeting, optimization goal, name, creation, creative, billing), who made it and when.
+
+- **Grain:** primary key `(id)`; one row per activity-log event (event_key = sha1 of account, event_time, event_type, object_id, extra_data, actor_id: Meta gives no event id)
+- **Source:** Meta Marketing API GET /act_<id>/activities (read only), etl.meta_changes
+- **Refresh:** nightly in the etl run: the last 3 days re-read (overlap, deduped); history was backfilled week by week
+- **Coverage:** the backfill start is in docs (see analytics.data_coverage / min(event_day)); account BackUp has had no events in the loaded window unless rows say otherwise
+- **Caveat:** object_type is Meta's old vocabulary: ADGROUP = an ad, CAMPAIGN = an ad SET, CAMPAIGN_GROUP = a campaign, ACCOUNT = the ad account; object_level carries the plain word (ad, adset, campaign, account).
+- **Caveat:** Budgets and bids come as minor units and are stored in dollars (old_amount / new_amount: daily or lifetime budget for the budget events, the bid cap or target for bid strategy events, the charge for billing events). The ROAS floor comes x10000 and is stored as a ratio (0.90 = a 0.90x floor).
+- **Caveat:** extra_data is often incomplete for bids and caps (a change of a bid on an ad set with no strategy change can be missing): meta_adset_state_daily and analytics.meta_change_ledger are the cross-check, from their first snapshot day on.
+- **Caveat:** Meta writes system events too: first_delivery_event (actor Meta), update_ad_run_status to or from Pending Review / Pending Process, billing charges. Filter on actor_name or event_type for human changes.
+- **Caveat:** Two byte-identical events in the same second collapse to one row. add_images / edit_images keep no extra_data in raw (signed image URLs that expire).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Surrogate row id. |
+| `event_key` | text | no | Stable dedupe key (sha1 of account, event_time, event_type, object_id, extra_data, actor_id). |
+| `account` | text | no | Lonvera Main or Lonvera BackUp. |
+| `event_time` | timestamptz | no | When Meta recorded the event (timestamptz). |
+| `event_day` | date | no | Pacific calendar day of event_time (America/Los_Angeles), the day grain every other Lonvera view uses. |
+| `event_type` | text | no | Meta's event type, for example update_ad_set_budget, update_ad_set_bid_strategy, update_ad_set_run_status, update_ad_run_status, create_ad, create_ad_set, update_campaign_budget, update_ad_set_target_spec. |
+| `translated_event_type` | text | yes | Meta's human text for the event type ('Ad set budget updated'). |
+| `object_type` | text | yes | Meta's raw object type: ADGROUP (ad), CAMPAIGN (ad set), CAMPAIGN_GROUP (campaign), ACCOUNT. |
+| `object_level` | text | yes | ad \| adset \| campaign \| account (plain word for object_type). |
+| `object_id` | text | yes | Id of the changed object (ad, ad set, campaign or ad account id, by object_level). |
+| `object_name` | text | yes | Name of the object at the time of the event. |
+| `campaign_id` | text | yes | Campaign of the object: the object itself for campaign events, extra_data.campaign_id for ad set and ad events (NULL when Meta did not send it). |
+| `actor_id` | text | yes | Meta id of who made the change (0 = Meta itself). |
+| `actor_name` | text | yes | Name of who made the change ('Meta' for system events). |
+| `application_name` | text | yes | App the change came through when Meta says (NULL otherwise). |
+| `old_value` | text | yes | Text of the old value for scalar changes (status, strategy, name, goal, targeting description); NULL for amounts, which sit in old_amount. |
+| `new_value` | text | yes | Text of the new value (same rules as old_value). |
+| `old_amount` | numeric(14,2) | yes | Old daily / lifetime budget or bid, dollars (budget and bid strategy events); NULL otherwise or when Meta did not send it. |
+| `new_amount` | numeric(14,2) | yes | New daily / lifetime budget or bid, dollars; for create_ad_set / create_campaign_group the starting budget; for billing events the amount charged. |
+| `old_roas_floor` | numeric(8,4) | yes | Old ROAS floor as a ratio (bid strategy events only). |
+| `new_roas_floor` | numeric(8,4) | yes | New ROAS floor as a ratio (bid strategy events only). |
+| `raw` | jsonb | no | The event as Meta returned it (extra_data parsed to JSON); the source of truth when a parsed column is NULL. |
+| `loaded_at` | timestamptz | no | When the row was first written. |
+
+### public.meta_adset_state_daily
+
+*table*
+
+**Purpose.** A nightly snapshot of every live ad set's settings in both ad accounts (status, budget, bid, ROAS floor, optimization goal, attribution window): the record that lets a change in a bid or budget be seen even when the activity log's extra_data is incomplete.
+
+- **Grain:** primary key `(adset_id, day)`; one row per ad set per snapshot day (Pacific)
+- **Source:** Meta Marketing API GET /act_<id>/adsets (read only), etl.meta_changes
+- **Refresh:** nightly in the etl run (~05:00 Pacific); a same-day rerun replaces that day's rows
+- **Coverage:** starts on the day the first snapshot ran (see min(day)); nothing before it exists and it cannot be backfilled
+- **Caveat:** Live ad sets (any status except archived) every day; archived ad sets only on the days within 3 days of their last update, so the archive step is visible without 4,000 dead rows a day.
+- **Caveat:** Under campaign budget optimization (CBO) the ad set has no budget of its own: daily_budget and lifetime_budget are NULL and the budget lives on the campaign (see meta_change_log update_campaign_budget).
+- **Caveat:** bid_strategy is NULL on ad sets that inherit the strategy from a CBO campaign.
+- **Caveat:** A missing day (the run did not happen) shows as a longer gap in analytics.meta_change_ledger (prev_day), never as a fake change.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `adset_id` | text | no | Meta ad set id. |
+| `day` | date | no | Pacific day of the snapshot. |
+| `account` | text | no | Lonvera Main or Lonvera BackUp. |
+| `campaign_id` | text | yes | Meta campaign id. |
+| `adset_name` | text | yes | Ad set name on the snapshot day. |
+| `status` | text | yes | Configured status: ACTIVE \| PAUSED \| ARCHIVED \| DELETED. |
+| `effective_status` | text | yes | Effective delivery status (ACTIVE, PAUSED, CAMPAIGN_PAUSED, ARCHIVED, IN_PROCESS, WITH_ISSUES): ACTIVE only when the ad set and its campaign are both on. |
+| `daily_budget` | numeric(14,2) | yes | Ad set daily budget, dollars (NULL under CBO). |
+| `lifetime_budget` | numeric(14,2) | yes | Ad set lifetime budget, dollars (NULL when not set). |
+| `bid_strategy` | text | yes | LOWEST_COST_WITHOUT_CAP \| COST_CAP \| LOWEST_COST_WITH_BID_CAP \| LOWEST_COST_WITH_MIN_ROAS ... (NULL when inherited from the campaign). |
+| `bid_amount` | numeric(14,2) | yes | Bid cap or cost-cap target, dollars (NULL when none). |
+| `roas_average_floor` | numeric(8,4) | yes | ROAS floor as a ratio (0.90 = 0.90x; Meta stores it x10000); NULL when none. |
+| `optimization_goal` | text | yes | Meta optimization goal (OFFSITE_CONVERSIONS, VALUE, LINK_CLICKS ...). |
+| `attribution_spec` | jsonb | yes | Attribution windows as Meta returns them, for example [{"event_type": "CLICK_THROUGH", "window_days": 1}]. |
+| `created_time` | timestamptz | yes | When the ad set was created. |
+| `updated_time` | timestamptz | yes | When Meta last recorded an edit of the ad set (any field). |
+| `snapshot_at` | timestamptz | no | When the row was written. |
 
 ### public.landing_pages
 
@@ -8622,6 +8872,68 @@ Read the default basis before quoting a number and name the basis in the answer.
 - **Trap:** NULL (not 0) on days before the 2026-11-12 funnel backfill.
 - **Trap:** The funnel rates are ratios of sums over the same ad-days and rows: link click to add to cart = sum(add_to_carts) / sum(link_clicks); landing page view to add to cart = sum(add_to_carts) / sum(landing_page_views); add to cart to purchase = sum(meta_purchases) / sum(add_to_carts). Never average per-ad rates.
 - **Trap:** Purchases count returning customers, so add to cart to purchase is a Meta-attribution rate, not a new-customer conversion rate.
+
+### initiated_checkouts
+
+**Meta initiated checkouts** (domain: marketing)
+
+- **Formula:** sum(initiated_checkouts): checkouts Meta reports initiated for the ad that day (omni_initiated_checkout, else initiate_checkout, else pixel initiate checkout), the 'Checkouts initiated' of Ads Manager.
+- **Source:** `analytics.meta_ad_daily.initiated_checkouts`
+- **Default basis:** Meta-reported (default attribution, includes returning customers)
+- **Other basis:** Meta purchases (analytics.meta_ad_daily.meta_purchases)
+- **Other basis:** Upstack orders (analytics.meta_ad_daily.upstack_orders): another tracker
+- **Trap:** NULL (not 0) on days before the checkout backfill: sum only over rows where it is not NULL, and divide only by sums over the same rows.
+- **Trap:** Funnel rates are ratios of sums over the same ad-days: add to cart to initiated checkout = sum(initiated_checkouts) / sum(add_to_carts); initiated checkout to purchase = sum(meta_purchases) / sum(initiated_checkouts); payment info to purchase = sum(meta_purchases) / sum(payment_info_adds). Never average per-ad rates.
+- **Trap:** Purchases count returning customers, so initiated checkout to purchase is a Meta-attribution rate, not a new-customer conversion rate. Checkout events fire on the pixel: a checkout that never loads the pixel (an in-app browser that blocks it) is not counted, so a fall in initiated checkouts is not proof of fewer checkouts.
+
+### payment_info_adds
+
+**Meta payment info added** (domain: marketing)
+
+- **Formula:** sum(payment_info_adds): payment-info-added events Meta reports for the ad that day (omni_add_payment_info, else add_payment_info, else pixel add payment info), the step between initiated checkout and purchase.
+- **Source:** `analytics.meta_ad_daily.payment_info_adds`
+- **Default basis:** Meta-reported (default attribution, includes returning customers)
+- **Other basis:** Initiated checkouts (analytics.meta_ad_daily.initiated_checkouts)
+- **Other basis:** Meta purchases (analytics.meta_ad_daily.meta_purchases)
+- **Trap:** NULL (not 0) on days before the checkout backfill.
+- **Trap:** It can exceed initiated checkouts on a day (a customer re-entering payment details, or express wallets that skip the initiate event): use it as a trend, not as a stage that must be smaller than the one before.
+- **Trap:** Same attribution as purchases, so it counts returning customers.
+
+### atc_to_ic_rate
+
+**Add to cart to initiated checkout rate** (domain: marketing)
+
+- **Formula:** sum(initiated_checkouts) / sum(add_to_carts): the share of adds to cart that go on to start checkout, as a ratio of sums over the same ad-days (Meta-reported).
+- **Source:** `analytics.meta_ad_daily.initiated_checkouts,add_to_carts`
+- **Default basis:** Meta-reported (default attribution, includes returning customers)
+- **Other basis:** Link click to add to cart and landing page view to add to cart (see add_to_carts)
+- **Trap:** Restrict to rows where both columns are not NULL; never average per-ad rates.
+- **Trap:** Not a new-customer rate: Meta counts returning customers in both counts.
+
+### ic_to_purchase_rate
+
+**Initiated checkout to purchase rate** (domain: marketing)
+
+- **Formula:** sum(meta_purchases) / sum(initiated_checkouts): the share of started checkouts that Meta credits with a purchase, as a ratio of sums over the same ad-days (Meta-reported).
+- **Source:** `analytics.meta_ad_daily.meta_purchases,initiated_checkouts`
+- **Default basis:** Meta-reported (default attribution, includes returning customers)
+- **Other basis:** Upstack new-customer orders per initiated checkout (upstack_new_customers / initiated_checkouts) mixes bases: say so if used
+- **Other basis:** Add to cart to purchase (see add_to_carts)
+- **Trap:** Restrict to rows where initiated_checkouts is not NULL; never average per-ad rates.
+- **Trap:** Purchases use Meta's attribution window and can land on a later day than the checkout, so a single day's rate is noisy and the last days still move.
+
+### meta_change_log
+
+**Meta change log (budget, bid, status, targeting changes)** (domain: marketing)
+
+- **Formula:** count of rows in analytics.meta_change_log by event_type and event_day; budget and bid amounts in old_amount / new_amount (dollars). Ad set settings by day: analytics.meta_adset_state_daily; their day-over-day differences: analytics.meta_change_ledger.
+- **Source:** `analytics.meta_change_log.event_type,old_amount,new_amount`
+- **Default basis:** Meta activity log (read only), both ad accounts
+- **Other basis:** Ad set snapshot differences (analytics.meta_change_ledger), from its first snapshot day: independent of the log's extra_data
+- **Trap:** A change is not a cause: say 'a bid change on N ad sets preceded the move', never 'the bid change caused it', unless a control supports it.
+- **Trap:** The log's extra_data is often incomplete for bids and caps; cross-check with analytics.meta_change_ledger, which only exists from its first snapshot day.
+- **Trap:** System events (first_delivery_event, Pending Review flips, billing, image adds) dominate the row count: filter to the event types you mean.
+- **Trap:** Campaign budget (CBO) changes are update_campaign_budget with object_level campaign; ad set budgets are update_ad_set_budget with object_level adset.
 
 ### meta_roas
 

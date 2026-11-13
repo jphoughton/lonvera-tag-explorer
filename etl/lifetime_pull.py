@@ -23,10 +23,11 @@ def aggregate(rows: list[dict]) -> dict[str, dict]:
             f = fam(r["ad_name"])
             out[r["ad_id"]] = a = {"ad_id": r["ad_id"], "ad_name": r["ad_name"], "famkey": f.lower(), "campaign_id": r["campaign_id"],
                                    "campaign_name": r["campaign_name"], "adset_id": r["adset_id"], "adset_name": r["adset_name"],
-                                   "account": r["account"], "spend": 0.0, "purchases": 0.0, "value": 0.0, "impressions": 0.0, "clicks": 0.0, "lpv": 0.0, "atc": 0.0}
+                                   "account": r["account"], "spend": 0.0, "purchases": 0.0, "value": 0.0, "impressions": 0.0, "clicks": 0.0, "lpv": 0.0, "atc": 0.0, "ic": 0.0, "pai": 0.0}
         a["spend"] += r["spend"]; a["purchases"] += r["purchases"]; a["value"] += r["value"]
         a["impressions"] += r.get("impressions", 0.0); a["clicks"] += r["clicks"]
         a["lpv"] += r.get("lpv", 0.0); a["atc"] += r.get("atc", 0.0)
+        a["ic"] += r.get("ic", 0.0); a["pai"] += r.get("pai", 0.0)
     return out
 
 
@@ -66,9 +67,9 @@ def load(conn, agg: dict[str, dict]) -> dict:
     deleted = conn.execute("DELETE FROM meta_ad_lifetime").rowcount
     now = dt.datetime.now(dt.timezone.utc)
     n = db.bulk_copy(conn, "meta_ad_lifetime",
-                     ["ad_id", "meta_family_key", "tracker_family_key", "spend", "purchases", "conv_value", "impressions", "link_clicks", "source", "pulled_at", "landing_page_views", "add_to_carts"],
+                     ["ad_id", "meta_family_key", "tracker_family_key", "spend", "purchases", "conv_value", "impressions", "link_clicks", "source", "pulled_at", "landing_page_views", "add_to_carts", "initiated_checkouts", "payment_info_adds"],
                      [(a["ad_id"], a["famkey"], None, round(a["spend"], 2), round(a["purchases"], 2), round(a["value"], 2), round(a["impressions"]), round(a["clicks"]),
-                       "meta_api", now, round(a["lpv"]), round(a["atc"])) for a in agg.values()])
+                       "meta_api", now, round(a["lpv"]), round(a["atc"]), round(a["ic"]), round(a["pai"])) for a in agg.values()])
     return {"deleted": deleted, "inserted": n, "campaigns": len(camps)}
 
 
