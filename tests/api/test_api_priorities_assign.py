@@ -750,3 +750,63 @@ def test_everything_still_works_before_migration_204(client, snaps, pg):
         pg.execute("ALTER TABLE creative_priorities_assignments RENAME COLUMN fc_tmp TO format_code")
         pg.execute("ALTER TABLE creative_priorities_assignments ADD CONSTRAINT creative_priorities_assignments_format_code_fkey FOREIGN KEY (format_code) REFERENCES creative_formats (code)")
         pg.commit()
+
+
+# ---------------------------------------------------------------------------------------------------------------- history (who did what, when)
+def hist(client, aid):
+    rows = client.get("/api/priorities/assignments?include_closed=1").get_json()["rows"]
+    return next(r for r in rows if r["id"] == aid)["history"]
+
+
+def test_history_records_who_assigned_and_each_stage_change_in_order(client, anon, snaps):
+    a = one(client)
+    tok = link(client)["token"]
+    assert [(e["kind"], e["actor"], e["stage_before"], e["stage_after"]) for e in a["history"]] == [("assigned", "JoshHoughton", None, "assigned")]
+    assert "Madre" in a["history"][0]["detail"] and MONDAY in a["history"][0]["detail"]
+    client.patch(f"/api/priorities/assignments/{a['id']}", json={"brief_url": "https://docs.example/brief"})
+    anon.patch(f"/api/priorities/vendor/{tok}/{a['id']}", json={"creative_url": "https://drive.example/done"})
+    anon.patch(f"/api/priorities/vendor/{tok}/{a['id']}", json={"ready": True})
+    client.patch(f"/api/priorities/assignments/{a['id']}", json={"vendor": "Victoria"})
+    client.patch(f"/api/priorities/assignments/{a['id']}", json={"launched": True})
+    client.patch(f"/api/priorities/assignments/{a['id']}", json={"dropped": True})
+    h = hist(client, a["id"])
+    assert [(e["kind"], e["actor"], e["stage_before"], e["stage_after"]) for e in h] == [
+        ("assigned", "JoshHoughton", None, "assigned"), ("brief_added", "JoshHoughton", "assigned", "brief_sent"), ("creative_added", "vendor:Madre", "brief_sent", "creative_in"),
+        ("ready", "vendor:Madre", "creative_in", "ready"), ("vendor", "JoshHoughton", "ready", "ready"), ("launched", "JoshHoughton", "ready", "launched"), ("dropped", "JoshHoughton", "launched", "dropped")]
+    assert h[4]["detail"] == "Madre to Victoria"
+    assert [e["at"] for e in h] == sorted(e["at"] for e in h) and all(e["at"] for e in h)
+
+
+def test_history_records_a_cleared_ready_and_a_restore_and_ignores_a_no_change_save(client, snaps):
+    a = one(client)
+    client.patch(f"/api/priorities/assignments/{a['id']}", json={"creative_url": "https://drive.example/x"})
+    client.patch(f"/api/priorities/assignments/{a['id']}", json={"ready": True})
+    client.patch(f"/api/priorities/assignments/{a['id']}", json={"ready": True})                          # already ready: no new event
+    client.patch(f"/api/priorities/assignments/{a['id']}", json={"ready": False})
+    client.patch(f"/api/priorities/assignments/{a['id']}", json={"dropped": True})
+    client.patch(f"/api/priorities/assignments/{a['id']}", json={"dropped": False})
+    assert [e["kind"] for e in hist(client, a["id"])] == ["assigned", "creative_added", "ready", "ready_cleared", "dropped", "restored"]
+
+
+def test_vendor_page_never_gets_the_history(client, anon, snaps):
+    a = one(client)
+    tok = link(client)["token"]
+    client.patch(f"/api/priorities/assignments/{a['id']}", json={"brief_url": "https://docs.example/brief"})
+    d = anon.get(f"/api/priorities/vendor/{tok}").get_json()
+    assert d["rows"] and all("history" not in r for r in d["rows"])
+    assert "history" not in anon.patch(f"/api/priorities/vendor/{tok}/{a['id']}", json={"vendor_note": "hi"}).get_json()
+
+
+def test_history_rows_go_with_the_assignment_and_old_rows_are_rebuilt_by_the_migration(client, snaps, pg):
+    a = one(client)
+    pg.execute("DELETE FROM creative_priorities_assignment_events WHERE assignment_id = %s", (a["id"],))
+    pg.execute("UPDATE creative_priorities_assignments SET created_at = now() - interval '5 days', brief_at = now() - interval '2 days', ready_at = now() WHERE id = %s", (a["id"],))
+    pg.commit()
+    import pathlib
+    sql = pathlib.Path(__file__).resolve().parents[2].joinpath("migrations", "243_assignment_events.sql").read_text()
+    pg.execute(sql)
+    pg.commit()
+    pg.execute(sql)                                                                                       # idempotent
+    pg.commit()
+    h = hist(client, a["id"])
+    assert [e["kind"] for e in h] == ["assigned", "brief_added", "ready"] and h[0]["actor"] == "JoshHoughton" and h[1]["actor"] is None

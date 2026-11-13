@@ -420,3 +420,31 @@ def test_vendor_page_is_a_single_column_with_big_buttons_at_375px(browser, base_
         assert pg.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1")
     finally:
         c.close()
+
+
+def test_history_shows_who_assigned_and_each_stage_change_with_the_time(page):
+    goto(page)
+    r1 = row(page, 1)
+    r1.locator("[data-testid=prod-history] summary").click()
+    ev = r1.locator("[data-testid=prod-event]")
+    assert ev.count() == 1 and "josh" in ev.first.text_content() and "Assigned to production" in ev.first.text_content()
+    r1.locator("[data-testid=prod-edit-brief_url]").click()
+    page.fill("[data-testid=prod-field-url]", "https://docs.google.com/document/d/newbrief")
+    page.click("[data-testid=prod-dialog-ok]")
+    idle(page)
+    page.wait_for_selector("[data-testid=prod-row][data-id='1'] [data-testid=prod-history] summary:has-text('History (2)')")
+    h = row(page, 1).locator("[data-testid=prod-history]")
+    h.locator("summary").click()
+    last = row(page, 1).locator("[data-testid=prod-event]").last.text_content()
+    assert "Brief link added" in last and "Stage: Assigned to Brief sent" in last and "josh" in last
+    # a row that was moved by a vendor and by an unknown person says so plainly (row 4 is launched, so it sits under Show launched and dropped)
+    goto(page, "?closed=1")
+    row(page, 4).locator("[data-testid=prod-history] summary").click()
+    txt = row(page, 4).locator("[data-testid=prod-history]").text_content()
+    assert "Madre (vendor link)" in txt and "Not recorded" in txt and "Marked ready to launch" in txt
+
+
+def test_vendor_page_has_no_history(anon_page, base_url):
+    anon_page.goto(f"{base_url}/priorities/vendor/{MADRE}")
+    anon_page.wait_for_selector("[data-testid=prod-vendor-page]")
+    assert anon_page.locator("[data-testid=prod-history]").count() == 0

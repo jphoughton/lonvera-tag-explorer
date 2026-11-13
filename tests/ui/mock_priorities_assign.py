@@ -34,6 +34,9 @@ def register(app, deps):
         ]
         S["rows"] = {r["id"]: r for r in rows}
         S["seq"] = 4
+        S["events"] = {r["id"]: [{"at": now(), "actor": "josh", "kind": "assigned", "stage_before": None, "stage_after": "assigned", "detail": f"{r['vendor']}, week of {r['for_week'].isoformat()}"}] for r in rows}
+        S["events"][4] += [{"at": now(), "actor": None, "kind": "brief_added", "stage_before": "assigned", "stage_after": "brief_sent", "detail": ""},
+                           {"at": now(), "actor": "vendor:Madre", "kind": "ready", "stage_before": "creative_in", "stage_after": "ready", "detail": ""}]
         S["tokens"] = dict(SEED_TOKENS)
         S["links"] = {v: {"token": t, "created_at": now(), "rotated_at": None} for v, t in SEED_TOKENS.items()}
         S["tracker"] = {"Lonvera-VitalBull-Static-5.4": {"concept_id": "Lonvera-VitalBull-Static-5.4", "ad_family": "Lonvera-VitalBull-Static-5.4", "status": "8 - Launched", "launch_date": (mon - dt.timedelta(days=9)).isoformat(), "spend": 1240.4, "roas": 1.8},
@@ -64,13 +67,16 @@ def register(app, deps):
         out.update(stage=stage, stage_label=pa.stage_label(stage), tracker_status=statuses[0] if statuses else None, tracker_concept_ids=list(r["tracker_concept_ids"]))
         out["suggested_concept_ids"] = [c for c in r["_suggested"] if c not in r["tracker_concept_ids"]]
         out["ads"] = ads_of(r)
+        if not vendor_side:
+            out["history"] = list(S["events"].get(r["id"], []))
         if vendor_side:                                     # a vendor sees own rows, their ads' spend and return, but nothing in INTERNAL_ONLY and no ad page links (those need a login)
             for k in pa.INTERNAL_ONLY:
                 out.pop(k, None)
             out["ads"] = [{k: v for k, v in a.items() if k != "ad_url"} for a in out["ads"]]
         return out
 
-    def apply(r, f):
+    def apply(r, f, user="josh"):
+        before = dict(r)
         for k in ("vendor", "for_week", "note", "brief_url", "creative_url", "tracker_concept_ids", "vendor_note", "format_code"):
             if k in f:
                 r[k] = f[k]
@@ -78,6 +84,8 @@ def register(app, deps):
             if b in f:
                 r[col] = now() if f[b] else None
         r["updated_at"] = now()
+        for kind, sb, sa, detail in pa.events_for(before, r):
+            S["events"].setdefault(r["id"], []).append({"at": now(), "actor": user, "kind": kind, "stage_before": sb, "stage_after": sa, "detail": detail})
 
     @app.get("/api/priorities/assignments")
     def assign_list():
@@ -130,6 +138,7 @@ def register(app, deps):
                    "for_week": f["for_week"], "product": r["product"], "line_id": r.get("line_id"), "manual_id": r["id"] if r.get("manual") else None, "line_code": r.get("line_code") or "", "cluster": r.get("cluster") or "",
                    "icp": r.get("icp") or "", "pain_point": r.get("pain_point") or "", "section_at_assign": r.get("section") or "", "format_code": f["format_code"]}
             S["rows"][rec["id"]] = rec
+            S["events"][rec["id"]] = [{"at": now(), "actor": "josh", "kind": "assigned", "stage_before": None, "stage_after": "assigned", "detail": f"{f['vendor']}, week of {f['for_week']}"}]
             created.append(view(rec))
         return jsonify(created=created, skipped=skipped), 201
 
@@ -198,7 +207,7 @@ def register(app, deps):
                 raise q.ApiError(400, "Add the creative link before marking it ready to launch.")
         except q.ApiError as e:
             return err(e)
-        apply(r, f)
+        apply(r, f, "vendor:" + v)
         return jsonify(view(r, True))
 
     # what the real vendor payload carries per example: a https Facebook / Instagram link, else nothing. The last three are links the real server would never send (Drive, plain http, javascript:): the page must still refuse them
