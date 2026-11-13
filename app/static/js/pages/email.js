@@ -20,7 +20,7 @@ const CHART_METRICS = [['revenue', 'Revenue'], ['sends', 'Sends'], ['delivered',
 const KIND_OF = { int: 'int', rate: 'rate', money: 'money', money2: 'money2' };
 const APPROX = new Set(['open_rate', 'click_rate', 'click_to_open', 'opens']);
 
-const LINE_COLOR_DARK = '#c2610f';                                // the right axis colour trendChart uses
+const LINE_COLOR_DARK = '#C2351C';                                // the right axis colour trendChart uses
 const pick = (v, list, dflt) => (list.some((x) => x[0] === v) ? v : dflt);
 const stateOf = (p) => ({
   window: pick(p.window, WINDOWS, '30d'), kind: pick(p.kind, KINDS, 'all'), channel: pick(p.channel, CHANNELS, 'all'),
@@ -128,7 +128,7 @@ function chartConfig(d, metricKey, s, lineKey) {
     datasets.push({ axis: 'left', type: 'bar', label: withLine ? `Campaigns: ${barName}` : 'Campaigns', data: bks.map((b) => val(b, 'campaigns')), color: LINE_COLOR, kind, stack: stackable ? 'src' : 'campaigns' });
   } else {
     datasets.push({ axis: 'left', type: 'bar', label: barName || 'Complete periods', data: bks.map((b) => (b.partial ? null : val(b))), color: BAR_COLOR, kind });
-    datasets.push({ axis: 'left', type: 'bar', label: withLine ? `${def.label} (bars, partial period)` : 'Partial period', data: bks.map((b) => (b.partial ? val(b) : null)), color: '#d9822b', kind });
+    datasets.push({ axis: 'left', type: 'bar', label: withLine ? `${def.label} (bars, partial period)` : 'Partial period', data: bks.map((b) => (b.partial ? val(b) : null)), color: '#E8573A', kind });
   }
   let right = null;
   if (withLine) {

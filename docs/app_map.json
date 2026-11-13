@@ -166,6 +166,14 @@
   {
    "service": "etl",
    "order": 12,
+   "module": "etl.meta_changes",
+   "args": "--days",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 13,
    "module": "etl.auto_tag",
    "args": "",
    "fatal": false,
@@ -348,6 +356,10 @@
   {
    "module": "etl.meta_breakdowns",
    "summary": "Meta Ads breakdowns: every Insights API breakdown, pulled at ad x day grain (read only) into meta_breakdown_daily, with meta_breakdown_coverage saying what exists."
+  },
+  {
+   "module": "etl.meta_changes",
+   "summary": "Meta change feeds (READ-ONLY Graph GETs, both ad accounts): the Marketing API activity log -> meta_change_log, and a snapshot of every ad set's settings ->"
   },
   {
    "module": "etl.meta_pull",
@@ -712,6 +724,17 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": "One competitor: longest-running ads, new this week, angles, landing pages, Ad Library links (week, format as on /api/competitors)."
+  },
+  {
+   "rule": "/api/competitors/media/<library_id>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "competitors_media.competitor_media",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
   },
   {
    "rule": "/api/email/campaigns",

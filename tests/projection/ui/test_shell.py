@@ -872,3 +872,15 @@ def test_503_with_a_module_list_names_every_module(page, base_url):
     page.wait_for_function("document.body.dataset.pgState === 'ready'")
     expect(page.locator("#pg-degraded")).to_contain_text("P&L")
     expect(page.locator("#pg-degraded")).to_contain_text("The P&L refresh failed at 21:30")
+
+
+def test_phone_tag_lookup_is_an_icon_that_opens_full_width(page, base_url):
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(base_url + "/projection/overview?scenario=current")
+    page.wait_for_selector("#nav-search")
+    closed = page.locator("#nav-search").bounding_box()
+    assert 36 <= closed["width"] <= 48 and closed["x"] + closed["width"] <= 375       # not a clipped "Look" box
+    page.focus("#nav-search")
+    opened = page.locator("#nav-search").bounding_box()
+    assert opened["width"] >= 330 and opened["x"] >= 0 and opened["x"] + opened["width"] <= 375
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

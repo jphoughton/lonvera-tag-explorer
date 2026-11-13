@@ -1,7 +1,7 @@
 /* priorities: Priorities (pri- classes); scoped --lv-pri-* tokens first */
 :root { --lv-pri-card: #ffffff; --lv-pri-card-line: var(--lv-line); --lv-pri-card-line-strong: var(--lv-line-strong); --lv-pri-card-shadow: 0 1px 2px color-mix(in srgb, var(--lv-ink) 10%, transparent), 0 2px 8px color-mix(in srgb, var(--lv-ink) 7%, transparent); --lv-pri-panel-bg: var(--lv-surface-2); --lv-pri-label: var(--lv-muted);
-  --lv-pri-sec-faded: #b35900; --lv-pri-sec-iterate: var(--good); --lv-pri-sec-new: #7a3db8; --lv-pri-sec-proposal: #5b3fb5; --lv-pri-sec-competitor: var(--lv-info); --lv-pri-sec-stop: var(--lv-muted);
-  --lv-pri-st-ok: var(--good); --lv-pri-st-up: var(--lv-info); --lv-pri-st-fade: #b35900; --lv-pri-st-bad: var(--bad); --lv-pri-st-flat: var(--lv-muted); --lv-pri-st-new: #7a3db8;
+  --lv-pri-sec-faded: var(--lv-viz-1); --lv-pri-sec-iterate: var(--good); --lv-pri-sec-new: #7a3db8; --lv-pri-sec-proposal: #5b3fb5; --lv-pri-sec-competitor: var(--lv-info); --lv-pri-sec-stop: var(--lv-muted);
+  --lv-pri-st-ok: var(--good); --lv-pri-st-up: var(--lv-info); --lv-pri-st-fade: var(--lv-viz-1); --lv-pri-st-bad: var(--bad); --lv-pri-st-flat: var(--lv-muted); --lv-pri-st-new: #7a3db8;
   --lv-pri-prod-vb: var(--lv-product-bull); --lv-pri-prod-bl: color-mix(in srgb, var(--lv-product-liver) 76%, #000); --lv-pri-prod-bf: var(--lv-product-bone); --lv-pri-selected: var(--lv-ink); --lv-pri-good: var(--good); --lv-pri-good-bg: var(--good-bg); --lv-pri-bad: var(--bad); --lv-pri-bad-bg: var(--bad-bg); }
 :root { --lv-pri-sec-rest: var(--lv-muted); }
 /* ---- Priorities (/priorities): one table per section, one row per concept, all collapsed; the chevron button opens the detail panel under the row ---- */
@@ -164,12 +164,12 @@ button.pri-ptile:hover { background: var(--lv-hover); }
 .pri-detail > td { padding: 8px 14px 16px 42px; border-bottom: 1px solid var(--border); background: var(--lv-hover); }
 /* ---- detail panel (expanded row) ---- */
 .pri-panel { --tone: var(--lv-muted); --tone-bg: color-mix(in srgb, var(--lv-muted) 12%, transparent); --tone-ink: color-mix(in srgb, var(--tone) 80%, #000); display: grid; gap: 12px; max-width: 1100px; font-size: 13px; color: var(--lv-ink); }
-.pri-tone-ok { --tone: var(--good); --tone-bg: color-mix(in srgb, var(--good) 12%, transparent); }
-.pri-tone-up { --tone: var(--lv-info); --tone-bg: color-mix(in srgb, var(--lv-info) 11%, transparent); }
-.pri-tone-fade { --tone: #b35900; --tone-bg: color-mix(in srgb, var(--lv-pri-sec-faded) 12%, transparent); }
-.pri-tone-bad { --tone: var(--bad); --tone-bg: color-mix(in srgb, var(--bad) 10%, transparent); }
-.pri-tone-flat { --tone: var(--lv-muted); --tone-bg: color-mix(in srgb, var(--lv-muted) 12%, transparent); }
-.pri-tone-new { --tone: #7a3db8; --tone-bg: color-mix(in srgb, var(--lv-pri-sec-new) 11%, transparent); }
+.pri-tone-ok { --tone: var(--good); --tone-bg: color-mix(in srgb, var(--good) 12%, #fff); }
+.pri-tone-up { --tone: var(--lv-info); --tone-bg: color-mix(in srgb, var(--lv-info) 11%, #fff); }
+.pri-tone-fade { --tone: var(--lv-viz-1); --tone-bg: color-mix(in srgb, var(--lv-pri-sec-faded) 12%, #fff); }
+.pri-tone-bad { --tone: var(--bad); --tone-bg: color-mix(in srgb, var(--bad) 10%, #fff); }
+.pri-tone-flat { --tone: var(--lv-muted); --tone-bg: color-mix(in srgb, var(--lv-muted) 12%, #fff); }
+.pri-tone-new { --tone: #7a3db8; --tone-bg: color-mix(in srgb, var(--lv-pri-sec-new) 11%, #fff); }
 .pri-panel p { margin: 0; max-width: 65ch; line-height: 1.5; }
 .pri-panel h4, .pri-panel h5 { margin: 0; }
 .pri-label { font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--lv-pri-label); }
@@ -221,7 +221,7 @@ button.pri-ptile:hover { background: var(--lv-hover); }
 .pri-bar-track { position: relative; height: 10px; background: var(--lv-line-soft); border-radius: 5px; }
 .pri-bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; }
 .pri-bar-ok { background: var(--good); }
-.pri-bar-bad { background: #b35900; }
+.pri-bar-bad { background: var(--lv-viz-1); }
 .pri-bar-tick { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--lv-ink); border-radius: 1px; }
 .pri-tn-text { margin-top: 8px !important; font-size: 12px; color: var(--lv-muted); }
 .pri-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; position: relative; }
@@ -290,7 +290,7 @@ button.pri-ptile:hover { background: var(--lv-hover); }
 .pri-status { font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 2px 8px; border-radius: 10px; border: 1px solid currentColor; white-space: nowrap; display: inline-block; }
 .pri-st-ok { color: var(--good); }
 .pri-st-up { color: var(--lv-info); }
-.pri-st-fade { color: #b35900; }
+.pri-st-fade { color: var(--lv-viz-1); }
 .pri-st-bad { color: var(--bad); }
 .pri-st-flat { color: var(--lv-muted); }
 .pri-st-new { color: #7a3db8; }

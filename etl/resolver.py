@@ -110,6 +110,18 @@ def pick_atc(actions):
     return d.get("omni_add_to_cart", d.get("add_to_cart", d.get("offsite_conversion.fb_pixel_add_to_cart", 0.0)))
 
 
+def pick_ic(actions):
+    """Initiated checkouts, as Ads Manager reports it: omni_initiated_checkout (all channels), else initiate_checkout, else the pixel event."""
+    d = _acts(actions)
+    return d.get("omni_initiated_checkout", d.get("initiate_checkout", d.get("offsite_conversion.fb_pixel_initiate_checkout", 0.0)))
+
+
+def pick_pai(actions):
+    """Payment info added (checkout step after initiate): omni_add_payment_info, else add_payment_info, else the pixel event. Meta returns only add_payment_info today."""
+    d = _acts(actions)
+    return d.get("omni_add_payment_info", d.get("add_payment_info", d.get("offsite_conversion.fb_pixel_add_payment_info", 0.0)))
+
+
 def pick_lpv(actions):
     """Landing page views: omni_landing_page_view, else landing_page_view."""
     d = _acts(actions)
