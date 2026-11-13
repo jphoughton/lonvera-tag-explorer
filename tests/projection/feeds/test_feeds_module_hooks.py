@@ -155,10 +155,13 @@ def test_the_runners_time_cap_is_never_mistaken_for_a_failed_pull(dconn, monkeyp
     assert dconn.execute("SELECT count(*) AS n FROM proj_feed_attempts WHERE status = 'fallback'").fetchone()["n"] == 0
 
 
+AMAZON_FEED_KEYS = [k for k, f in feeds.registry().items() if f.native and k.startswith("amazon_")]
+
+
 def test_the_stale_after_limit_depends_on_the_mode_and_every_feed_is_listed(dconn):
     reg = feeds.registry()
     twins = tuple(k for k, f in reg.items() if not f.native)                                             # the native feed has no sheet twin: it is always shadow
-    assert len(reg) == 16 and len(twins) == 14
+    assert len(reg) == 26 and len(twins) == 14
     for mode, limit in (("sheet", lambda f: f.sheet_stale_after), ("shadow", lambda f: f.stale_after), ("direct", lambda f: f.stale_after)):
         set_modes(dconn, mode, twins)
         listed = {e["key"]: e for e in feeds.freshness(dconn, TODAY, include_sheet=True)}
@@ -173,7 +176,7 @@ def test_the_stale_after_limit_depends_on_the_mode_and_every_feed_is_listed(dcon
         got[m] = {e["key"]: e for e in feeds.freshness(dconn, TODAY, include_sheet=True)}["units_intl"]["stale_after_days"]
     assert got == {"sheet": 4, "direct": 2}                                                                # intl: 4 -> 2 only while the feed is direct
     set_modes(dconn, "sheet", twins)
-    assert [e["key"] for e in feeds.freshness(dconn, TODAY)] == ["intl_estimate", "nc_hourly"]             # the hook list is still only the non-sheet feeds (the two native ones)
+    assert [e["key"] for e in feeds.freshness(dconn, TODAY)] == ["intl_estimate", "nc_hourly", *AMAZON_FEED_KEYS]   # the hook list is still only the non-sheet feeds (the native ones, the Amazon data feeds last)
 
 
 def test_the_freshness_command_lists_every_feed_in_every_mode(wired_db, dconn, monkeypatch, capsys):

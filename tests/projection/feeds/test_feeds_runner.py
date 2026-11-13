@@ -126,7 +126,7 @@ def test_freshness_hook_contract_and_the_intl_estimate_entry(conn):
     conn.execute("INSERT INTO proj_feedx_intl_nonus_daily (day, product, country, units_raw) VALUES ('2026-11-02', 'bull', 'GB', 10), ('2026-10-25', 'bull', 'GB', 4)")
     common.set_mode(conn, "orders", "shadow"); conn.commit()
     entries = {e["feed"]: e for e in feeds.freshness(conn, TODAY)}
-    assert set(entries) == {"feeds.orders", "intl_estimate", "nc_hourly"}                                      # sheet-mode feeds are not listed; the native feed is on by default
+    assert set(entries) == {"feeds.orders", "intl_estimate", "nc_hourly", *AMAZON_KEYS}                                      # sheet-mode feeds are not listed; the native feed is on by default
     e = entries["intl_estimate"]
     assert (e["cadence"], e["data_through"], e["stale_after_days"], e["status"]) == ("daily", D(2026, 11, 2), 2, "fresh")
     assert {"feed", "label", "cadence", "data_through", "stale_after_days"} <= set(e)
@@ -159,7 +159,11 @@ def test_status_lists_every_feed_with_its_mode(conn):
     st = {r["feed"]: r for r in feeds.status(conn)}
     assert st["orders"]["mode"] == "sheet" and st["intl_estimate"]["mode"] == "shadow" and st["bids"]["source"] == "meta"
     assert set(st) == {"orders", "platform", "attribution", "traffic", "anyclick", "units_revamp", "units_intl", "intl_estimate", "stock_revamp", "meta_reach", "product_reach", "bids",
-                       "amazon", "nc_product", "units_amazon", "nc_hourly"}
+                       "amazon", "nc_product", "units_amazon", "nc_hourly", *AMAZON_KEYS}
+
+
+AMAZON_KEYS = ("amazon_asin_products", "amazon_ads_campaign_daily", "amazon_ads_asin_daily", "amazon_sqp_weekly", "amazon_sqp_monthly", "amazon_orders_asin_daily",
+               "amazon_traffic_daily", "amazon_market_baskets", "amazon_repeat_purchases", "amazon_settlement_fees_daily")
 
 
 def test_registry_is_ordered_by_source_and_unique():

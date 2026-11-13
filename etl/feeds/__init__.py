@@ -46,6 +46,11 @@ def registry() -> dict[str, Feed]:
         feeds += expandfi_feeds.FEEDS
     except ImportError:
         pass
+    try:
+        from . import amazon_feeds                        # the Amazon data layer: native, non-fatal; sorts after the other ExpandFi feeds (stable sort)
+        feeds += amazon_feeds.FEEDS
+    except ImportError:
+        pass
     feeds.sort(key=lambda f: SOURCE_ORDER.index(f.source))
     return {f.key: f for f in feeds}
 
@@ -164,9 +169,19 @@ def fallback_warning(feed_key: str, res: dict) -> str | None:
     return scrub(f"{feed_key}: the direct pull failed, the sheet was read instead ({res.get('error') or 'unknown error'})", 240)
 
 
-def run(conn, only: Iterable[str] | None = None, days: int | None = None, ctx: Ctx | None = None, out: Callable[[str], None] = print) -> int:
+def backfill_days(feed: Feed, today: dt.date, since: dt.date | None = None) -> int:
+    """Window that reaches back to `since` (or to everything the source holds, Feed.history_start) from the last closed day."""
+    start = since or feed.history_start
+    if start is None:
+        return feed.days
+    return max(feed.days, (today - dt.timedelta(days=1) - start).days + 1)
+
+
+def run(conn, only: Iterable[str] | None = None, days: int | None = None, ctx: Ctx | None = None, out: Callable[[str], None] = print, *,
+        backfill: bool = False, since: dt.date | None = None) -> int:
     """Refresh every feed whose mode is shadow or direct (a sheet-mode feed is skipped). One feed failing never stops the others.
-    Returns the exit code: 1 when any pull failed or a direct-mode feed is stale."""
+    Returns the exit code: 1 when any pull failed or a direct-mode feed is stale. A failure of a non_fatal feed (the Amazon data feeds) is printed as a WARNING
+    and does not count. backfill / since: each feed pulls from `since`, else from the first day its source holds (Feed.history_start), in chunks."""
     feeds = registry()
     want = list(feeds) if not only else [k for k in only if k in feeds]
     unknown = [k for k in (only or []) if k not in feeds]
@@ -179,9 +194,13 @@ def run(conn, only: Iterable[str] | None = None, days: int | None = None, ctx: C
             out(f"[feeds] {key}: mode sheet, skipped")
             continue
         try:
-            r = pull_and_write(conn, feeds[key], "main" if mode == "direct" else "shadow", days, ctx)
+            n_days = backfill_days(feeds[key], ctx.today, since) if (backfill or since) else days
+            r = pull_and_write(conn, feeds[key], "main" if mode == "direct" else "shadow", n_days, ctx)
             out(f"[feeds] {key}: {mode} ok, {r['rows']} rows, {r['first_day']}..{r['data_through']}" + (f"; warnings: {'; '.join(r['warnings'])}" if r["warnings"] else ""))
         except FeedError as e:
+            if feeds[key].non_fatal:
+                out(f"[feeds] {key}: {mode} WARNING (non-fatal): {e}")
+                continue
             failed += 1
             out(f"[feeds] {key}: {mode} FAILED: {e}")
     for k in unknown:
