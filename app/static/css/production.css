@@ -446,3 +446,8 @@ body.prod-drawer-open { overflow: hidden; }
 .prod-viewer-frame.prod-viewer-folder { aspect-ratio: auto; height: 340px; background: var(--panel); }
 .prod-chip-ads { font-weight: 600; }
 .prod-chip-media { font-weight: 600; }
+
+/* transcripts under the hooks */
+.prod-transcript { margin: 4px 0; }
+.prod-transcript > summary { cursor: pointer; font-weight: 600; }
+.prod-transcript-text { margin: 4px 0 6px 14px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
