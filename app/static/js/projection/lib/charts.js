@@ -9,7 +9,7 @@ import * as F from './format.js';
 
 // Six categorical slots in fixed order (slots 1-3 are Vital Bull, Boneflex, Beef Liver). Values come from brand.css (--lv-viz-1..6), light/dark aware;
 // the hex list is only the light-mode fallback if the stylesheet is missing. Call refreshPalette() after a theme change before drawing.
-const FALLBACK = ['#A63D02', '#2863AB', '#5F983A', '#8166C3', '#9D7200', '#009394'];
+const FALLBACK = ['#A63D02', '#2863AB', '#5F983A', '#8166C3', '#C2185B', '#009394'];
 export const PALETTE = FALLBACK.slice();
 export function refreshPalette() {
   const cs = getComputedStyle(document.documentElement);
@@ -25,7 +25,7 @@ export function ramp(n, slot = 2, strength = 0.5) {
   const cs = getComputedStyle(document.documentElement);
   const rgb = (v) => { const m = /^#([0-9a-f]{6})$/i.exec((v || '').trim()); const k = m ? parseInt(m[1], 16) : 0; return [(k >> 16) & 255, (k >> 8) & 255, k & 255]; };
   const a = rgb(cs.getPropertyValue(`--lv-viz-${slot}`) || FALLBACK[slot - 1]);
-  const b = rgb(cs.getPropertyValue('--lv-viz-ink') || '#1C1915');
+  const b = rgb(cs.getPropertyValue('--lv-viz-ink') || '#16302F');
   return Array.from({ length: n }, (_, i) => {
     const w = n === 1 ? 0 : (strength * i) / (n - 1);
     return '#' + a.map((v, j) => Math.round(v * (1 - w) + b[j] * w).toString(16).padStart(2, '0')).join('');
@@ -75,7 +75,7 @@ function build(canvas, config) {
   refreshPalette();
   Chart.defaults.font.family = cssVar('--lv-font', 'system-ui, sans-serif');
   Chart.defaults.font.size = 12;
-  Chart.defaults.color = cssVar('--lv-viz-axis', '#665D53');
+  Chart.defaults.color = cssVar('--lv-viz-axis', '#4A726F');
   const chart = new Chart(canvas, { ...config, plugins: [...(config.plugins || []), projectedShade] });
   instances.add(chart);
   return chart;
@@ -87,9 +87,9 @@ export function monthChart(canvas, opts) {
   const { months = [], status = [], series = [], stacked = false, yFmt = 'usd0', y1Fmt = 'num', compare = [], legend = true, title = null, defaultType = 'line' } = opts;
   const proj = months.map((_, i) => status[i] === 'projected');
   const firstProj = proj.indexOf(true);
-  const muted = cssVar('--lv-viz-axis', '#665D53');
-  const grid = cssVar('--lv-viz-grid', '#E9E2D5');
-  const ink = cssVar('--lv-viz-ink', '#1C1915');
+  const muted = cssVar('--lv-viz-axis', '#4A726F');
+  const grid = cssVar('--lv-viz-grid', '#E4F2EF');
+  const ink = cssVar('--lv-viz-ink', '#16302F');
   const labels = months.map((m) => F.monthLabel(m));
   const hasY1 = series.some((s) => s.axis === 'y1');
 
@@ -133,7 +133,7 @@ export function monthChart(canvas, opts) {
         title: { display: !!title, text: title || '', color: muted, align: 'start', font: { size: 12, weight: '600' } },
         projectedShade: { from: firstProj < 0 ? null : firstProj },
         tooltip: {
-          backgroundColor: cssVar('--lv-inverse', '#161310'), titleColor: cssVar('--lv-on-inverse', '#F6F2EB'), bodyColor: cssVar('--lv-on-inverse', '#F6F2EB'), cornerRadius: 8, padding: 10, boxPadding: 4,
+          backgroundColor: cssVar('--lv-inverse', '#16302F'), titleColor: cssVar('--lv-on-inverse', '#F2FAF8'), bodyColor: cssVar('--lv-on-inverse', '#F2FAF8'), cornerRadius: 8, padding: 10, boxPadding: 4,
           callbacks: {
             title: (items) => (items.length ? items[0].label + (proj[items[0].dataIndex] ? ' (projected)' : '') : ''),
             label: (c) => `${c.dataset.label}: ${F.value(c.parsed.y, c.dataset._fmt || yFmt)}`,
@@ -152,7 +152,7 @@ export const comboChart = (canvas, opts) => monthChart(canvas, { ...opts });
 export function scenarioCompare(canvas, { months, status, baseline, others = [], fmt = 'usd0', title = null }) {
   return monthChart(canvas, {
     months, status, yFmt: fmt, title,
-    series: [{ label: baseline.name, values: baseline.values, type: 'line', color: cssVar('--lv-viz-ink', '#1C1915'), fmt }],
+    series: [{ label: baseline.name, values: baseline.values, type: 'line', color: cssVar('--lv-viz-ink', '#16302F'), fmt }],
     compare: others.map((o, i) => ({ name: o.name, values: o.values, color: PALETTE[(i + 1) % PALETTE.length], fmt })),
   });
 }

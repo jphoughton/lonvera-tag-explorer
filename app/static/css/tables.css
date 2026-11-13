@@ -2,9 +2,9 @@
 /* ---------- tables ---------- */
 .tablebox { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .tablewrap::-webkit-scrollbar { height: 11px; width: 11px; }
-.tablewrap::-webkit-scrollbar-track { background: #f1f3f6; }
-.tablewrap::-webkit-scrollbar-thumb { background: #b3bac6; border-radius: 6px; border: 2px solid #f1f3f6; }
-.scrollhint { padding: 5px 10px; border-top: 1px solid var(--line-soft); background: #fbfcfe; font-size: 12px; display: flex; gap: 10px; align-items: center; }
+.tablewrap::-webkit-scrollbar-track { background: var(--lv-surface-2); }
+.tablewrap::-webkit-scrollbar-thumb { background: var(--lv-line-strong); border-radius: 6px; border: 2px solid var(--lv-surface-2); }
+.scrollhint { padding: 5px 10px; border-top: 1px solid var(--line-soft); background: var(--lv-hover); font-size: 12px; display: flex; gap: 10px; align-items: center; }
 .scrollhint[hidden] { display: none; }
 .tablewrap { overflow: auto; max-height: calc(100vh - 290px); min-height: 60px; }
 .tablefoot { padding: 0; }
@@ -13,7 +13,7 @@ table.dt { border-collapse: separate; border-spacing: 0; width: 100%; font-size:
 table.dt th, table.dt td { padding: 5px 5px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; text-align: left; vertical-align: middle; background: var(--panel); }
 table.dt td.num, table.dt th.num { text-align: right; }
 table.dt td.center, table.dt th.center { text-align: center; }
-table.dt thead th { position: sticky; top: 0; z-index: 3; background: var(--head-bg); border-bottom: 1px solid var(--line); font-weight: 600; font-size: 12px; color: #3b4452; vertical-align: bottom; }
+table.dt thead th { position: sticky; top: 0; z-index: 3; background: var(--head-bg); border-bottom: 1px solid var(--line); font-weight: 600; font-size: 12px; color: var(--lv-ink-2); vertical-align: bottom; }
 table.dt .thbtn { appearance: none; background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; white-space: nowrap; }
 table.dt .thbtn:hover { color: var(--accent); }
 table.dt .thbtn.active { color: var(--accent); }
@@ -29,10 +29,10 @@ table.dt td.actioncol, table.dt th.actioncol { white-space: normal; width: 76px;
 table.dt th.actioncol .btnlink { white-space: normal; display: inline-block; text-align: center; line-height: 1.15; padding: 2px 6px; }
 table.dt th.caretcell, table.dt td.caretcell { width: 26px; padding: 5px 2px 5px 6px; }
 table.dt tbody tr.clickable { cursor: pointer; }
-table.dt tbody tr.clickable:hover td { background: #f1f6fd; }
+table.dt tbody tr.clickable:hover td { background: var(--lv-hover); }
 table.dt tbody tr.clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-table.dt tbody tr.not-counted td { color: #7a8493; }
-table.dt tbody tr.expandrow td { background: #fafbfd; padding: 6px 10px 10px 36px; white-space: normal; }
+table.dt tbody tr.not-counted td { color: var(--lv-muted); }
+table.dt tbody tr.expandrow td { background: var(--lv-hover); padding: 6px 10px 10px 36px; white-space: normal; }
 table.dt tbody tr.emptyrow td { color: var(--muted); padding: 18px; white-space: normal; }
 table.dt tfoot td { position: sticky; bottom: 0; z-index: 3; background: var(--head-bg); border-top: 1px solid var(--line); border-bottom: 0; font-weight: 650; }
 table.dt tfoot td.sticky { z-index: 5; }
@@ -48,7 +48,7 @@ table.dt tfoot td.sticky { z-index: 5; }
 .sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; max-width: 380px; }
 .childcount { font-weight: 400; }
 .thumb { border-radius: 4px; object-fit: cover; background: var(--head-bg); flex: 0 0 auto; display: inline-block; border: 1px solid var(--line-soft); }
-.thumb.ph { background: repeating-linear-gradient(45deg, #eef0f4, #eef0f4 4px, #e6e9ee 4px, #e6e9ee 8px); }
+.thumb.ph { background: repeating-linear-gradient(45deg, var(--lv-surface-2), var(--lv-surface-2) 4px, var(--lv-surface-3) 4px, var(--lv-surface-3) 8px); }
 table.nested { font-size: 12px; }
 table.dt.nested th, table.dt.nested td { padding: 3px 8px; }
 .expand-body .tablewrap { max-height: 320px; }

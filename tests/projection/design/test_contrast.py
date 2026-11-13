@@ -4,7 +4,7 @@ Parses brand.css (light block, dark media block, dark attribute block), resolves
   - WCAG contrast of every text/surface pair that the DESIGN.md lists (text >= 4.5, UI and graphics >= 3);
   - the dark-mode media block and the data-theme="dark" block are identical;
   - the six chart colors (OKLab distance under simulated color-vision deficiency, lightness band, chroma floor, contrast);
-  - input cells are distinguishable from calculated cells, ember is not used for status, crimson is clearly not ember;
+  - input cells are distinguishable from calculated cells, coral (the primary action) is not used for status;
   - every --lv-* token used by the projection CSS / HTML is defined, the Tag Explorer token names are mapped;
   - the self-hosted font files and the logo assets exist.
 Run:  ~/lonvera-tag-explorer/.venv/bin/python -m pytest tests/projection/design -q
@@ -136,9 +136,9 @@ TEXT = 4.5
 UI = 3.0
 PAIRS = [
     # body text on every surface it can sit on
-    *[("ink", bg, TEXT, "body text") for bg in ("bg", "surface", "surface-2", "surface-3", "hover", "input-bg", "input-hover", "total-bg", "subtotal-bg", "band-bg", "hl-bg", "actual-head", "proj-cell", "action-tint")],
+    *[("ink", bg, TEXT, "body text") for bg in ("bg", "surface", "surface-2", "surface-3", "hover", "selected", "input-bg", "input-hover", "total-bg", "subtotal-bg", "band-bg", "hl-bg", "actual-head", "proj-cell", "accent-tint", "cta-tint")],
     *[("ink-2", bg, TEXT, "secondary text") for bg in ("bg", "surface", "surface-2", "band-bg", "hl-bg")],
-    *[("muted", bg, TEXT, "muted text") for bg in ("bg", "surface", "surface-2", "surface-3", "hover", "total-bg", "subtotal-bg", "band-bg", "hl-bg", "proj-cell")],
+    *[("muted", bg, TEXT, "muted text") for bg in ("bg", "surface", "surface-2", "surface-3", "hover", "selected", "total-bg", "subtotal-bg", "band-bg", "hl-bg", "proj-cell")],
     ("calc-ink", "surface", TEXT, "calculated cell"), ("calc-ink", "proj-cell", TEXT, "calculated cell, projected month"),
     ("calc-ink", "subtotal-bg", TEXT, "calculated subtotal"), ("calc-ink", "hl-bg", TEXT, "highlighted row"),
     ("input-ink", "input-bg", TEXT, "input cell"), ("input-ink", "input-hover", TEXT, "input cell hover"),
@@ -146,9 +146,15 @@ PAIRS = [
     # links and actions
     *[("link", bg, TEXT, "link text") for bg in ("bg", "surface", "surface-2", "hover", "hl-bg")],
     ("link-hover", "surface", TEXT, "link hover"), ("link-hover", "bg", TEXT, "link hover"),
-    ("on-action", "action", TEXT, "primary button label"), ("on-action", "action-hover", TEXT, "primary button hover"),
-    ("on-action", "action-active", TEXT, "primary button pressed"),
-    ("on-action-tint", "action-tint", TEXT, "selected / tinted action"),
+    ("on-cta", "cta", TEXT, "primary button label (coral)"), ("on-cta", "cta-hover", TEXT, "primary button hover"),
+    ("on-cta", "cta-active", TEXT, "primary button pressed"),
+    ("on-cta-tint", "cta-tint", TEXT, "coral-tint callout text"), ("ink", "cta-tint", TEXT, "text on coral tint"),
+    ("on-accent", "accent", TEXT, "teal selected fill label (segmented control, chip)"), ("on-accent", "accent-hover", TEXT, "teal fill hover"),
+    ("on-accent-tint", "accent-tint", TEXT, "selected / tinted teal"), ("accent-ink", "accent-tint", TEXT, "vendor / format chip text"),
+    *[("link", bg, TEXT, "teal text (secondary button, link-like label)") for bg in ("bg", "surface", "surface-2", "selected")],
+    ("ink", "selected", TEXT, "text on selected row"), ("muted", "selected", TEXT, "muted text on selected row"),
+    ("link", "selected", TEXT, "link on selected row"),
+    ("scaling", "scaling-bg", TEXT, "scaling tag"),
     # chrome on dark bands
     ("on-inverse", "inverse", TEXT, "TLDR strip"), ("on-inverse-2", "inverse", TEXT, "TLDR strip secondary"),
     *[(f"inv-{s}", "inverse", TEXT, f"{s} number on the TLDR strip") for s in ("good", "warn", "bad")],
@@ -168,7 +174,8 @@ PAIRS = [
     ("focus", "inverse", UI, "focus ring on TLDR strip"), ("focus", "proj-head", UI, "focus ring on projected header"),
     ("input-edge", "surface", UI, "border of a standalone amber input"), ("input-edge", "bg", UI, "border of a standalone amber input on the page"),
     ("muted", "surface-2", TEXT, "disabled button label"),
-    ("action", "bg", UI, "button fill vs page"), ("action", "surface", UI, "button fill vs panel"),
+    ("cta", "bg", UI, "primary button fill vs page"), ("cta", "surface", UI, "primary button fill vs panel"),
+    ("accent", "bg", UI, "teal fill / underline vs page"), ("accent", "surface", UI, "teal fill vs panel"),
     ("proj-rule", "surface", UI, "projected boundary rule"), ("total-rule", "surface", UI, "total rule"),
     ("viz-neutral", "surface", UI, "neutral series"),
     *[(f"viz-{i}", "surface", UI, f"chart slot {i}") for i in range(1, 7)],
@@ -232,17 +239,26 @@ def test_used_tokens_are_defined():
 
 
 # --------------------------------------------------------------------------- semantics
-def test_ember_is_not_a_status_color():
-    """Ember (action) must stay visibly apart from every status color."""
+def test_coral_is_not_a_status_color():
+    """Coral (the one primary action) must stay visibly apart from every status color, and crimson (bad) from coral."""
     for mode in ("light", "dark"):
-        ember = color(mode, "action")
+        coral = color(mode, "cta")
         for s in ("good", "warn", "bad", "info"):
             fg = color(mode, f"{s}-solid") if s in ("good", "bad") else color(mode, s)
-            hue_gap = abs((ok_hue(ember) - ok_hue(fg) + 180) % 360 - 180)
-            assert hue_gap >= 12 or delta_e(ember, fg) >= 12, f"{mode}: ember vs {s} too close (hue gap {hue_gap:.0f}, dE {delta_e(ember, fg):.1f})"
-    # bad (crimson) vs ember specifically: hue gap of at least 25 degrees in OKLCH in the light theme
-    gap = abs((ok_hue(color("light", "action")) - ok_hue(color("light", "bad")) + 180) % 360 - 180)
-    assert gap >= 25, f"bad vs ember hue gap only {gap:.0f} degrees"
+            hue_gap = abs((ok_hue(coral) - ok_hue(fg) + 180) % 360 - 180)
+            if s == "bad":
+                continue
+            assert hue_gap >= 12 or delta_e(coral, fg) >= 12, f"{mode}: coral vs {s} too close (hue gap {hue_gap:.0f}, dE {delta_e(coral, fg):.1f})"
+    # coral and crimson are both reds by design (palette C); they stay apart by role (coral never carries a number or a status) and by lightness / chroma
+    assert delta_e(color("light", "cta"), color("light", "bad")) >= 8, "coral and crimson must not collapse into one color"
+
+
+def test_teal_and_coral_are_the_two_roles():
+    """Teal = links / focus / selection / navigation; coral = the primary action. They must not be the same color, and the app tokens must read the roles."""
+    assert color("light", "accent") != color("light", "cta")
+    assert LIGHT["--accent"] in ("var(--lv-accent)", "var(--lv-link)") and LIGHT["--cta"] == "var(--lv-cta)"
+    assert LIGHT["--lv-link"] == "var(--lv-accent)" or color("light", "link") == color("light", "accent")
+    assert color("light", "focus") == color("light", "accent")
 
 
 def test_input_cells_are_unmistakable():
@@ -325,3 +341,89 @@ def test_type_scale_floor():
     assert _px("--lv-fs-sm") >= _px("--lv-fs-xs")
     assert _px("--lv-fs-2xs") >= 11, "the smallest size is for bold uppercase labels only and never below 11px"
     assert _px("--lv-fs-base") >= 13
+
+
+# --------------------------------------------------------------------------- palette C: white + mint + teal + coral, no beige, no gray
+import colorsys  # noqa: E402
+
+SURFACES = ("bg", "surface", "surface-2", "surface-3", "hover", "selected", "subtotal-bg", "total-bg", "band-bg", "hl-bg", "actual-head", "proj-cell", "editor-bg")
+LINES = ("line", "line-soft", "line-strong", "viz-grid")
+INKS = ("ink", "ink-2", "muted", "calc-ink", "viz-axis", "viz-neutral", "neutral", "accent-ink")
+
+
+def _hls(h):
+    r, g, b = (int(h.lstrip("#")[i : i + 2], 16) / 255 for i in (0, 2, 4))
+    hh, l, s = colorsys.rgb_to_hls(r, g, b)
+    return hh * 360, l, s
+
+
+@pytest.mark.parametrize("token", SURFACES + LINES + INKS)
+def test_light_surface_line_and_text_tokens_are_teal_family(token):
+    """No surface, line or secondary-text token is beige / tan / cream (hue 18-62, low saturation) or an achromatic gray. Only pure white may be neutral; everything else is the mint / teal family (hue 150-200) or a cleanly tinted status / data color."""
+    c = color("light", token)
+    if c == "#FFFFFF":
+        return
+    h, l, s = _hls(c)
+    assert s >= 0.08, f"{token} {c} is an achromatic gray"
+    assert not (18 <= h <= 62 and s < 0.45 and l > 0.35), f"{token} {c} is in the beige / tan / cream range"
+    if token not in ("proj-cell", "actual-head", "hl-bg"):
+        assert 150 <= h <= 200, f"{token} {c} (hue {h:.0f}) is not in the teal / mint family"
+    else:
+        assert 150 <= h <= 215, f"{token} {c} (hue {h:.0f}) is not teal-family or a clean cool tint"
+
+
+def test_palette_c_values_and_contrast():
+    """The contrast ratios Josh's palette promises, computed from the token values."""
+    white, mint = color("light", "surface"), color("light", "surface-2")
+    assert white == "#FFFFFF" and color("light", "bg") == "#FFFFFF" and mint == "#EDF8F6"
+    for fg in ("ink", "ink-2", "muted", "link", "accent"):
+        for bg, need in ((white, 4.5), (mint, 4.5)):
+            assert contrast(color("light", fg), bg) >= need, f"{fg} on {bg}"
+    assert contrast(color("light", "on-accent"), color("light", "accent")) >= 4.5, "white on teal"
+    assert contrast(color("light", "on-cta"), color("light", "cta")) >= 4.5, "white on coral (primary button)"
+    assert contrast(color("light", "on-cta"), color("light", "cta-hover")) >= 4.5
+    for s_ in ("good", "warn", "bad"):
+        assert contrast(color("light", s_), color("light", f"{s_}-bg")) >= 4.5
+        assert contrast(color("light", s_), white) >= 4.5
+
+
+def _literal_colors():
+    """(file, line, literal) for every hex / rgb literal in the app CSS and JS, minus the dark theme blocks and vendored / generated files."""
+    pat = re.compile(r"#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b|rgba?\([^)]*\)")
+    out = []
+    for p in list((STATIC / "css").glob("*.css")) + list(STATIC.rglob("*.js")) + [STATIC / "index.html", STATIC / "projection.html", STATIC / "app.css"]:
+        if "vendor" in p.parts or not p.exists():
+            continue
+        for i, line in enumerate(p.read_text(errors="ignore").splitlines(), 1):
+            for m in pat.finditer(line):
+                out.append((p, i, m.group(0)))
+    return out
+
+
+def _rgb(lit):
+    if lit.startswith("#"):
+        h = lit[1:]
+        h = "".join(c * 2 for c in h) if len(h) == 3 else h
+        return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
+    n = re.findall(r"\d*\.?\d+", lit)
+    return tuple(int(float(x)) for x in n[:3]) if len(n) >= 3 else None
+
+
+def test_no_beige_or_gray_literals_left_in_app_css_and_js():
+    """The audit behind the recolor: no hard-coded beige / tan / cream, achromatic gray or gray-blue slate literal survives outside the (untouched) dark theme blocks."""
+    bad = []
+    for p, i, lit in _literal_colors():
+        if p.name == "brand.css" and i >= 250:        # the two dark-mode blocks (dark is not part of palette C)
+            continue
+        rgb = _rgb(lit)
+        if not rgb:
+            continue
+        h, l, s = (lambda t: (t[0] * 360, t[1], t[2]))(colorsys.rgb_to_hls(*(x / 255 for x in rgb)))
+        if l > 0.985 or l < 0.03:                     # pure white / black (text on fill, shadows)
+            continue
+        beige = 18 <= h <= 62 and s < 0.45 and l > 0.35
+        gray = s < 0.08
+        slate = s < 0.30 and not 150 <= h <= 200
+        if beige or gray or slate:
+            bad.append(f"{p.relative_to(ROOT)}:{i} {lit}")
+    assert not bad, "beige / gray literals:\n" + "\n".join(bad[:40])

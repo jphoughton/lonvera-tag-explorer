@@ -7,7 +7,7 @@ import { createTable } from '../table.js';
 import { metricColumns } from '../columns.js';
 import { setRangeInfo } from '../controls.js';
 import { breadcrumbs, viewSwitch, srcBadge } from '../components.js';
-import { trendChart, BAR_COLOR, LINE_COLOR } from '../charts.js';
+import { trendChart, BAR_COLOR, LINE_COLOR, tok } from '../charts.js';
 import { ownStrip } from '../kpis.js';
 import { pageHeader } from '../ui/pagehead.js';
 import { filterRow } from '../ui/pagefilters.js';
@@ -108,7 +108,7 @@ function trendPanel(p, scope, signal) {
       { axis: 'right', type: 'line', kind: l[2], label: l[1](), data: pts.map((x) => (isNum(x[l[0]]) ? x[l[0]] : null)), color: LINE_COLOR, width: 2.4, partialDash: true }];
     if (cmp) {
       const pad = (arr) => pts.map((_, i) => (arr[i] && isNum(arr[i][b[0]]) ? arr[i][b[0]] : null));
-      ds.push({ axis: 'left', type: 'bar', kind: b[2], label: `B ${b[1]()}`, data: pad(cmp), color: '#6b7684', outline: true, dash: [3, 3], order: 3, cmpDates: pts.map((_, i) => (cmp[i] ? cmp[i].t : null)) });
+      ds.push({ axis: 'left', type: 'bar', kind: b[2], label: `B ${b[1]()}`, data: pad(cmp), color: tok('--lv-muted'), outline: true, dash: [3, 3], order: 3, cmpDates: pts.map((_, i) => (cmp[i] ? cmp[i].t : null)) });
     }
     if (chart) chart.destroy();
     chart = trendChart(canvas, { labels: pts.map((x) => x.t), grain: st.grain, datasets: ds, left: { kind: b[2], title: `${b[1]()} (bars, left)` }, right: { kind: l[2], title: `${l[1]()} (line, right)` },
