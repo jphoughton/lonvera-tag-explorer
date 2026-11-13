@@ -35,7 +35,7 @@ def bd(conn):
 
 # ----------------------------------------------------------------------------------------------- a fake Graph API
 ADS = [("a1", "s1", "c1"), ("a2", "s1", "c1"), ("a3", "s2", "c2")]
-VALUES = {"age": ["18-24", "25-34"], "gender": ["female", "male"], "country": ["US", "GB"], "region": ["California", "Texas"]}
+VALUES = {"age": ["18-24", "25-34"], "gender": ["female", "male"], "country": ["US", "GB"], "zip": ["90001", "10001"], "region": ["California", "Texas"]}
 PAGE = 2
 
 
@@ -182,9 +182,9 @@ def test_every_entry_builds_a_valid_ad_level_request():
 
 def test_every_set_is_pulled_at_ad_level_and_cheap_sets_run_first_heavy_last():
     order = [e.name for e in mb.select_sets(None)]
-    assert len(order) == len(mb.CATALOG)
+    assert len(order) == len(mb.CATALOG) - len(mb.EXCLUDED_SETS)
     cheap = ["user_segment_key", "age", "gender", "age,gender", "country", "publisher_platform", "platform_position", "impression_device", "device_platform"]
-    heavy = ["region", "dma", "hourly_stats_aggregated_by_advertiser_time_zone", "hourly_stats_aggregated_by_audience_time_zone"]
+    heavy = ["dma", "zip"]
     assert max(order.index(n) for n in cheap) < min(order.index(n) for n in heavy)
     assert max(order.index(n) for n in cheap) < len(order) // 3 and min(order.index(n) for n in heavy) > len(order) - 15
     assert all(mb.BY_NAME[n].chunk_days == 1 for n in heavy)
@@ -274,9 +274,9 @@ def test_unsupported_set_is_recorded_and_skipped_others_continue(bd, monkeypatch
 
 
 def test_ad_level_refusal_falls_back_to_campaign_and_records_the_reason(bd, monkeypatch):
-    Fake(refuse({"ad"}, {"region"})).install(monkeypatch)
-    st = run(bd, [(D(2026, 11, 1), D(2026, 11, 2))], ["region"])
-    assert st["levels"] == {"region": "campaign"} and st["sets_ok"] == 1
+    Fake(refuse({"ad"}, {"zip"})).install(monkeypatch)
+    st = run(bd, [(D(2026, 11, 1), D(2026, 11, 2))], ["zip"])
+    assert st["levels"] == {"zip": "campaign"} and st["sets_ok"] == 1
     rows = bd.execute("SELECT level, entity_id, campaign_id, adset_id FROM meta_breakdown_daily").fetchall()
     assert rows and {r[0] for r in rows} == {"campaign"} and all(r[3] is None and r[2] == r[1] for r in rows)
     cov = {r[1]: (r[2], r[5], r[6]) for r in bd.execute("SELECT breakdown_set, level, status, first_day, last_day, last_error, rows FROM meta_breakdown_coverage")}
@@ -366,10 +366,10 @@ def test_too_big_window_is_halved(bd, monkeypatch):
 def test_one_day_too_big_uses_the_async_report_only_then(bd, monkeypatch):
     day = {"since": "2026-11-01", "until": "2026-11-01"}
     f = Fake()
-    f.async_rows["rows"] = f.rows({"level": "ad", "breakdowns": "region", "time_range": json.dumps(day), "fields": ",".join(mb.BASE_FIELDS + ["ad_id", "adset_id", "campaign_id"])})
+    f.async_rows["rows"] = f.rows({"level": "ad", "breakdowns": "zip", "time_range": json.dumps(day), "fields": ",".join(mb.BASE_FIELDS + ["ad_id", "adset_id", "campaign_id"])})
 
     def handler(p, acct):
-        if p.get("breakdowns") == "region" and p.get("level") == "ad" and not f.posted:        # plain GETs of this set are too big until a report run exists
+        if p.get("breakdowns") == "zip" and p.get("level") == "ad" and not f.posted:        # plain GETs of this set are too big until a report run exists
             return err(1, "Please reduce the amount of data you're asking for")
     f.handler, f.posted = handler, False
     real_post = f.post
@@ -379,8 +379,8 @@ def test_one_day_too_big_uses_the_async_report_only_then(bd, monkeypatch):
         return real_post(url, data, timeout)
     f.install(monkeypatch)
     monkeypatch.setattr(requests, "post", post)
-    st = run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], ["region"])
-    assert st["async_sets"] == ["region"] and st["sets_ok"] == 1
+    st = run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], ["zip"])
+    assert st["async_sets"] == ["zip"] and st["sets_ok"] == 1
     posts = [c for c in f.calls if c[0] == "POST"]
     assert len(posts) == 1 and posts[0][1].endswith("/insights") and count(bd) == len(f.async_rows["rows"]) > 0
 
@@ -861,44 +861,63 @@ def test_a_set_too_big_for_one_day_goes_straight_to_async_afterwards_and_that_is
     assert [c for c in f.calls if c[0] == "GET" and "/act_" in c[1]] == [] and len([c for c in f.calls if c[0] == "POST"]) == 1
 
 
-def test_backfill_stages_put_the_four_heavy_sets_last_with_one_probe_on_the_newest_window():
+EXCLUDED = ["comscore_market", "region", "hourly_stats_aggregated_by_audience_time_zone", "hourly_stats_aggregated_by_advertiser_time_zone",
+            "publisher_platform,platform_position,impression_device"]
+
+
+def test_the_five_excluded_sets_are_never_selected_even_when_named(monkeypatch, capsys):
+    monkeypatch.delenv("META_BREAKDOWNS_EXCLUDE", raising=False)
+    assert list(mb.EXCLUDED_SETS) == EXCLUDED
+    names = {e.name for e in mb.select_sets(None)}
+    assert not names & set(EXCLUDED) and "age" in names and "publisher_platform,platform_position" in names and "dma" in names
+    assert [e.name for e in mb.select_sets(EXCLUDED + ["age"])] == ["age"]
+    assert mb.select_sets(["region"]) == []
+
+
+def test_env_can_only_add_to_the_exclude_list(monkeypatch):
+    monkeypatch.setenv("META_BREAKDOWNS_EXCLUDE", "gender;age+gender")
+    assert mb.excluded_names() == set(EXCLUDED) | {"gender", "age,gender"}
+    assert not {"gender", "age,gender", "region"} & {e.name for e in mb.select_sets(None)}
+    monkeypatch.setenv("META_BREAKDOWNS_EXCLUDE", "")
+    assert mb.excluded_names() == set(EXCLUDED)
+
+
+def test_backfill_stages_have_no_heavy_or_probe_stage():
     ws = mb.windows_newest_first(D(2026, 1, 1), D(2026, 4, 1), 30)
-    stages = mb.backfill_stages(mb.select_sets(None), ws)
-    assert [s[0] for s in stages] == ["light-newest-window", "heavy-probe", "light", "heavy"]
-    assert stages[0][1] == stages[1][1] == ws[:1] and stages[2][1] == ws[1:] and stages[3][1] == ws
-    assert {e.name for e in stages[1][2]} == set(mb.HEAVY_LAST) == {e.name for e in stages[3][2]}
-    assert not set(mb.HEAVY_LAST) & {e.name for e in stages[0][2] + stages[2][2]} and len(stages[0][2]) + len(stages[1][2]) == len(mb.CATALOG)
-    assert [e.tier for e in stages[0][2]] == sorted(e.tier for e in stages[0][2])             # cheap first inside a stage
+    ents = mb.select_sets(None)
+    stages = mb.backfill_stages(ents, ws)
+    assert [s[0] for s in stages] == ["light-newest-window", "light"]
+    assert stages[0][1] == ws[:1] and stages[1][1] == ws[1:] and stages[0][2] == stages[1][2] == ents
+    assert [e.tier for e in ents] == sorted(e.tier for e in ents)             # cheap first
+    assert not hasattr(mb, "PROBE_SHARE") and not hasattr(mb, "HEAVY_LAST") and not hasattr(mb, "PROBE_SET")
 
 
-def test_auto_pulls_light_sets_to_full_depth_before_heavy_ones_after_a_single_probe_window(bd, monkeypatch):
+def test_auto_never_requests_an_excluded_set_in_any_phase_and_goes_to_full_depth(bd, monkeypatch):
     f = Fake().install(monkeypatch)
-    sets = ["age", "gender", "region"]
+    sets = ["age", "gender", "region", "comscore_market", "zip"]
     out = auto(bd, D(2026, 11, 10), names=sets, max_days=40)
     assert out["backfill_done"]
-    order = []
+    asked = {b for b, _ in calls_by_set(f)}
+    assert asked == {"age", "gender", "zip"}
+    assert not any(c[2].get("breakdowns") in EXCLUDED for c in f.calls)
     ws = mb.windows_newest_first(D(2026, 10, 1), D(2026, 11, 9), 15)
+    order = []
     for b, since in calls_by_set(f):
         wi = next(i for i, (a, z) in enumerate(ws) if a <= D.fromisoformat(since) <= z)
         if not order or order[-1] != (b, wi):
             order.append((b, wi))
-    assert order == [("age", 0), ("gender", 0), ("region", 0), ("age", 1), ("gender", 1), ("age", 2), ("gender", 2), ("region", 1), ("region", 2)]
-    assert mb._special(bd, mb.PROBE_SET) is not None
+    assert order[:3] == [("age", 0), ("gender", 0), ("zip", 0)] and [w for _, w in order] == sorted(w for _, w in order)      # newest window first, every set in a window
+    assert bd.execute("SELECT min(day) FROM meta_breakdown_daily WHERE breakdown_set = 'zip'").fetchone()[0] == D(2026, 10, 1)
 
 
-def test_heavy_probe_is_attempted_once_and_does_not_hold_the_light_backfill(bd, monkeypatch):
-    f = Fake().install(monkeypatch)
-    sets = ["age", "region"]
-    t = {"t": 0}
-    st = mb.auto(bd, mb.Stopper(100, None, clock=lambda: t["t"]), sets, max_days=40, window_days=15, client=client()[0], accounts=ONE, today=D(2026, 11, 10),
-                 pause=lambda s: t.__setitem__("t", t["t"] + 1500))          # 25 minutes per set pull: the probe (25% = 25 minutes) is cut off after the first heavy window piece
-    probe_done = mb._special(bd, mb.PROBE_SET) is not None
-    assert probe_done and "backfill" in st
-    f.calls.clear()
-    t["t"] = 0
-    auto(bd, D(2026, 11, 10), names=sets, max_days=40)
-    assert mb._special(bd, mb.DONE_SET) is not None                                          # the heavy stage resumed the probe's leftovers and went on to the full depth
-    assert bd.execute("SELECT min(day) FROM meta_breakdown_daily WHERE breakdown_set = 'region'").fetchone()[0] == D(2026, 10, 1)
+def test_excluded_sets_keep_their_rows_and_show_as_excluded_in_coverage(bd, monkeypatch):
+    Fake().install(monkeypatch)
+    for lv, st in (("ad", "ok"), ("campaign", "error")):
+        bd.execute("INSERT INTO meta_breakdown_coverage (breakdown_set, level, status, rows, last_error, checked_at) VALUES ('region', %s, %s, 5, 'boom', now())", (lv, st))
+    bd.commit()
+    run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], ["age"])
+    got = {r[0]: r[1:] for r in bd.execute("SELECT level, status, last_error, rows FROM meta_breakdown_coverage WHERE breakdown_set = 'region'").fetchall()}
+    assert got["ad"][1] == got["campaign"][1] == mb.EXCLUDED_NOTE and got["campaign"][0] == "ok" and got["ad"][2] == 5     # status never error, rows untouched
 
 
 def test_per_set_time_numbers_are_kept_in_the_run_stats(bd, monkeypatch):
