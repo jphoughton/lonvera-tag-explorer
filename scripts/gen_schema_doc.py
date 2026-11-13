@@ -49,7 +49,8 @@ MIGRATIONS = {"013": ROOT / "migrations" / "013_schema_comments_analytics.sql", 
               "204": ROOT / "migrations" / "204_assignment_format.sql", "205": ROOT / "migrations" / "205_api_keys.sql",
               "206": ROOT / "migrations" / "206_klaviyo_metrics.sql", "207": ROOT / "migrations" / "207_landing_pages.sql",
               "210": ROOT / "migrations" / "210_shopify_orders.sql", "220": ROOT / "migrations" / "220_brain_mcp.sql", "221": ROOT / "migrations" / "221_brain_open_app.sql",
-              "230": ROOT / "migrations" / "230_analytics_brain_views.sql", "240": ROOT / "migrations" / "240_meta_breakdowns.sql"}
+              "230": ROOT / "migrations" / "230_analytics_brain_views.sql", "240": ROOT / "migrations" / "240_meta_breakdowns.sql",
+              "242": ROOT / "migrations" / "242_meta_funnel_actions.sql"}
 # the Test to scale views (created by migration 015, after 013 runs on a fresh database): they and their comments live in migration 015
 # (migration 016 turned them into tables and added the placements tables; 015's own comment section is frozen history)
 LATE_STAGE_MOVES = {f"public.{n}{b}" for n in ("creative_stage_moves", "creative_scaling_placements") for b in ("", "_upstack_nc", "_upstack_all")}
@@ -81,6 +82,7 @@ LATE_LANDING = {f"public.{n}" for n in ("landing_pages", "landing_page_versions"
 # the hosted brain endpoint's agent keys and audit log (created by migration 220, reworked by 221 for the open app): their comments live in migration 221 (220's comment section is frozen history)
 LATE_BRAIN = {"public.brain_keys", "public.brain_audit"}
 # the Meta breakdown pull (created by migration 240): the three tables, the analytics view and their comments live in migration 240
+LATE_FUNNEL = {"analytics.meta_ad_daily", "public.ad_daily", "public.meta_ad_lifetime"}      # comments re-written by migration 242 (landing_page_views, add_to_carts)
 LATE_BREAKDOWNS = {"public.meta_breakdown_daily", "public.meta_breakdown_coverage", "public.meta_breakdown_progress", "analytics.meta_breakdown_daily"}
 PROJ_GROUPS = {"proj_feeds", "proj_engine"}
 SCHEMAS = ("public", "analytics")
@@ -422,6 +424,8 @@ def scope_of(r: dict, d=None) -> str:
         return "221"
     if r["name"] in LATE_BREAKDOWNS:
         return "240"
+    if r["name"] in LATE_FUNNEL:
+        return "242"
     return "191" if r["group"] in PROJ_GROUPS else "013"
 
 
@@ -500,12 +504,12 @@ def catalog_sql(d=None) -> str:
 
 def migration_text(which: str, model: dict, d=None) -> str:
     """013, 015 and 190 keep their hand-written DDL (everything above COMMENTS_MARKER) and get the comment section rewritten; 191 is comments only."""
-    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240"):
+    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "242"):
         path = MIGRATIONS[which]
         if not path.exists():
             raise SystemExit(f"{path} must exist with its hand-written DDL and the comments marker before comments can be emitted")
         head = path.read_text().split(COMMENTS_MARKER, 1)[0] + COMMENTS_MARKER
-        if which == "230":                                         # the catalog and the glossary are generated, so they sit below the marker, before their comments
+        if which in ("230", "242"):                                # the catalog and the glossary are generated, so they sit below the marker, before their comments
             head += "-- analytics.catalog and analytics.metric_glossary: generated from docs/schema/descriptions.py (domains, descriptions, grains, METRICS)\n" + catalog_sql(d) + "\n"
         return head + comment_sql(model, which, d)
     if which == "191":
@@ -572,7 +576,7 @@ def main(argv=None) -> int:
     g.add_argument("--write", action="store_true")
     g.add_argument("--check", action="store_true")
     g.add_argument("--problems", action="store_true")
-    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "all"))
+    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "242", "all"))
     g.add_argument("--catalog-sql", action="store_true")
     g.add_argument("--emit-migration", choices=sorted(MIGRATIONS))
     g.add_argument("--verify-live", action="store_true")
