@@ -21,6 +21,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import random
 import sys
 import time
 from zoneinfo import ZoneInfo
@@ -131,30 +132,86 @@ LOG_COLS = ["event_key", "account", "event_time", "event_day", "event_type", "tr
 
 
 # ------------------------------------------------------------------------------------------------------------------ pulls
-def pull_activities(tok, acct, an, since: dt.date, until: dt.date, pace=0.3) -> list[dict]:
-    """Activity log of [since, until] (Meta's `until` is exclusive of that date, so one day is added), paged; rate limits are retried by graph_get.
-    Meta answers 'An unknown error occurred' (code 1, which graph_get raises as TooBig) to a window with too many events (a week in May 2026 was too much, any single day was fine):
-    the window is then split in half, down to one day; a single day that still fails is retried with smaller pages (100, then 25) before the error is raised."""
-    url = f"{meta_api.G}/{acct}/activities"
-    for limit in ((500,) if since < until else (500, 100, 25)):
-        params = {"access_token": tok, "since": since.isoformat(), "until": (until + dt.timedelta(days=1)).isoformat(), "limit": limit, "fields": ACT_FIELDS}
-        out, nxt = [], url
+TRANSIENT = (meta_api.TooBig, meta_api.GraphError)       # TooBig = Graph code 1 / 'reduce the amount of data' / 'An unknown error occurred'; GraphError = exhausted transient retries
+HEAL_DAYS = 7                                            # nightly run also re-pulls any account-day in the last 7 days (before the 3-day overlap) that holds no events at all
+RECENT_DAYS = 2                                          # a failed window only fails the job when it reaches back further than today - 2: the next nightly overlap re-pulls newer days
+
+
+def _backoff(attempt: int, base=5.0, cap=120.0) -> float:
+    """Exponential backoff: base * 2^attempt with +-25% jitter, capped."""
+    w = min(cap, base * 2 ** attempt)
+    return w * (0.75 + random.random() * 0.5)
+
+
+def _fetch(tok, url, acct, an, since, until, limit, pace) -> list[dict]:
+    params = {"access_token": tok, "since": since.isoformat(), "until": (until + dt.timedelta(days=1)).isoformat(), "limit": limit, "fields": ACT_FIELDS}
+    out, nxt = [], url
+    while nxt:
+        j = meta_api.graph_get(nxt, params, f"{an} activities {since}..{until}", max_retries=3)
+        out += j.get("data", [])
+        nxt = j.get("paging", {}).get("next")
+        params = None
+        time.sleep(pace)
+    return out
+
+
+def _fetch_retry(tok, url, acct, an, since, until, limit, pace, attempts) -> list[dict]:
+    """One window at one page size, retried with exponential backoff + jitter on transient Graph errors (a mid-pagination failure restarts the window, no half-kept rows).
+    Token rejection and rate-limit exhaustion (graph_get already backed off for minutes) are not retried here."""
+    for i in range(attempts):
         try:
-            while nxt:
-                j = meta_api.graph_get(nxt, params, f"{an} activities {since}..{until}")
-                out += j.get("data", [])
-                nxt = j.get("paging", {}).get("next")
-                params = None
-                time.sleep(pace)
-            return out
-        except meta_api.TooBig as e:
-            if since < until:
-                mid = since + (until - since) // 2
-                db.log(f"  activity log {an} {since}..{until}: too much for one window ({db.scrub(e)[:60]}), splitting at {mid}")
-                return pull_activities(tok, acct, an, since, mid, pace) + pull_activities(tok, acct, an, mid + dt.timedelta(days=1), until, pace)
-            if limit == 25:
+            return _fetch(tok, url, acct, an, since, until, limit, pace)
+        except (meta_api.TokenRejected, meta_api.RateLimited):
+            raise
+        except TRANSIENT as e:
+            if i == attempts - 1:
                 raise
-    return []
+            w = _backoff(i)
+            db.log(f"  activity log {an} {since}..{until}: transient error ({db.scrub(e)[:60]}), retry {i + 1}/{attempts - 1} in {w:.0f}s")
+            time.sleep(w)
+    raise AssertionError("unreachable")
+
+
+def _pull(tok, url, acct, an, since, until, pace, failures: list) -> list[dict]:
+    """Events of [since, until]; every window that cannot be loaded is appended to `failures` as (since, until, exception) and the rest still comes back."""
+    multi = since < until
+    try:
+        if multi:
+            return _fetch_retry(tok, url, acct, an, since, until, 500, pace, attempts=2)
+        last = None
+        for limit in (500, 100, 25):                      # a stubborn single day: smaller pages, each size retried with backoff
+            try:
+                return _fetch_retry(tok, url, acct, an, since, until, limit, pace, attempts=3 if limit == 500 else 2)
+            except meta_api.RateLimited:
+                raise
+            except TRANSIENT as e:
+                last = e
+        raise last
+    except meta_api.TokenRejected:
+        raise
+    except meta_api.RateLimited as e:
+        failures.append((since, until, e))                # splitting does not help against a rate limit; the heal step re-pulls these days next night
+        return []
+    except TRANSIENT as e:
+        if not multi:
+            failures.append((since, until, e))
+            return []
+        mid = since + (until - since) // 2
+        db.log(f"  activity log {an} {since}..{until}: still failing ({db.scrub(e)[:60]}), splitting at {mid}")
+        return _pull(tok, url, acct, an, since, mid, pace, failures) + _pull(tok, url, acct, an, mid + dt.timedelta(days=1), until, pace, failures)
+
+
+def pull_activities(tok, acct, an, since: dt.date, until: dt.date, pace=0.3, failures: list | None = None) -> list[dict]:
+    """Activity log of [since, until] (Meta's `until` is exclusive of that date, so one day is added), paged.
+    Transient Graph errors (code 1 'An unknown error occurred', which Meta also gives to a window with too many events, 2, 4, 17, 32, 613, 80004, 5xx, network) are retried with
+    exponential backoff + jitter; a window that keeps failing is split in half down to one day, and a single day is retried with smaller pages (500, 100, 25).
+    With `failures` (a list) a day that never loads is recorded there and every other day still returns; without it the first such failure is raised."""
+    url = f"{meta_api.G}/{acct}/activities"
+    local: list = []
+    out = _pull(tok, url, acct, an, since, until, pace, local if failures is None else failures)
+    if failures is None and local:
+        raise local[0][2]
+    return out
 
 
 def load_log(conn, rows: list[dict]) -> int:
@@ -167,24 +224,64 @@ def load_log(conn, rows: list[dict]) -> int:
     return conn.execute("SELECT count(*) FROM meta_change_log").fetchone()[0] - before
 
 
-def run_log(conn, tok, since: dt.date, until: dt.date, chunk_days=7, dry_run=False, accounts=None) -> dict:
+def run_log(conn, tok, since: dt.date, until: dt.date, chunk_days=7, dry_run=False, accounts=None, heal=None) -> dict:
+    """Pull [since, until] in chunks per account. Each (account, chunk) is independent: a failure is recorded in out['failures'] and the rest still loads.
+    `heal` = {account name: [days]}: single days pulled in addition (days an earlier night failed to load)."""
     accounts = accounts or meta_api.ACCOUNTS
-    out = {"since": since.isoformat(), "until": until.isoformat(), "pulled": 0, "inserted": 0, "by_account": {}, "chunks": 0}
+    out = {"since": since.isoformat(), "until": until.isoformat(), "pulled": 0, "inserted": 0, "by_account": {}, "chunks": 0, "failures": [], "healed_days": 0}
+    windows = []
     d = since
     while d <= until:
         e = min(until, d + dt.timedelta(days=chunk_days - 1))
-        for acct, an in accounts:
-            evs = pull_activities(tok, acct, an, d, e)
+        windows.append((d, e))
+        d = e + dt.timedelta(days=1)
+    jobs = [(acct, an, w, False) for w in windows for acct, an in accounts]
+    for acct, an in accounts:
+        for day in sorted((heal or {}).get(an, [])):
+            jobs.append((acct, an, (day, day), True))
+    for acct, an, (d, e), is_heal in jobs:
+        fails: list = []
+        try:
+            evs = pull_activities(tok, acct, an, d, e, failures=fails)
             rows = [parse_event(an, ev) for ev in evs]
             n = 0 if dry_run else load_log(conn, rows)
             if not dry_run:
                 conn.commit()
-            out["pulled"] += len(rows); out["inserted"] += n
-            out["by_account"][an] = out["by_account"].get(an, 0) + len(rows)
-            db.log(f"  activity log {an} {d}..{e}: {len(rows)} events, {n} new")
-        out["chunks"] += 1
-        d = e + dt.timedelta(days=1)
+        except meta_api.TokenRejected:
+            raise
+        except Exception as ex:                                  # noqa: BLE001 — one bad window must not lose the others
+            conn.rollback()
+            fails.append((d, e, ex))
+            rows, n = [], 0
+        for fs, fe, ex in fails:
+            out["failures"].append({"account": an, "since": fs.isoformat(), "until": fe.isoformat(), "error": db.scrub(ex)[:160]})
+        out["pulled"] += len(rows); out["inserted"] += n
+        out["by_account"][an] = out["by_account"].get(an, 0) + len(rows)
+        if is_heal and not fails:
+            out["healed_days"] += 1
+        db.log(f"  activity log {an} {d}..{e}: {len(rows)} events, {n} new" + (f", {len(fails)} window(s) FAILED" if fails else ""))
+    out["chunks"] = len(windows)
     return out
+
+
+def missing_days(conn, accounts, lo: dt.date, hi: dt.date) -> dict:
+    """Account-days in [lo, hi] with no events in meta_change_log: a day an earlier run failed to load (a real day on the Main account always has dozens of events)."""
+    heal = {}
+    for acct, an in accounts:
+        have = {r[0] for r in conn.execute("SELECT DISTINCT event_day FROM meta_change_log WHERE account=%s AND event_day BETWEEN %s AND %s", (an, lo, hi)).fetchall()}
+        d, miss = lo, []
+        while d <= hi:
+            if d not in have:
+                miss.append(d)
+            d += dt.timedelta(days=1)
+        heal[an] = miss
+    return heal
+
+
+def fatal_failures(failures: list, today: dt.date) -> list:
+    """Failures that leave data older than RECENT_DAYS missing (the nightly 3-day overlap re-pulls anything newer)."""
+    cut = today - dt.timedelta(days=RECENT_DAYS)
+    return [f for f in failures if dt.date.fromisoformat(f["since"]) < cut]
 
 
 def _cents(x):
@@ -201,17 +298,29 @@ def adset_row(an: str, day: dt.date, a: dict) -> tuple:
             db.jsonb(a["attribution_spec"]) if a.get("attribution_spec") is not None else None, a.get("created_time"), a.get("updated_time"))
 
 
-def pull_adsets(tok, acct, an, pace=0.3) -> list[dict]:
-    url = f"{meta_api.G}/{acct}/adsets"
-    params = {"access_token": tok, "limit": 500, "fields": ADSET_FIELDS, "effective_status": ADSET_STATUSES}
-    out = []
-    while url:
-        j = meta_api.graph_get(url, params, f"{an} adsets")
-        out += j.get("data", [])
-        url = j.get("paging", {}).get("next")
-        params = None
-        time.sleep(pace)
-    return out
+def pull_adsets(tok, acct, an, pace=0.3, attempts=3) -> list[dict]:
+    """All ad sets of one account; a transient Graph error restarts the pull with exponential backoff + jitter (nothing half-kept)."""
+    for i in range(attempts):
+        url = f"{meta_api.G}/{acct}/adsets"
+        params = {"access_token": tok, "limit": 500, "fields": ADSET_FIELDS, "effective_status": ADSET_STATUSES}
+        out = []
+        try:
+            while url:
+                j = meta_api.graph_get(url, params, f"{an} adsets", max_retries=3)
+                out += j.get("data", [])
+                url = j.get("paging", {}).get("next")
+                params = None
+                time.sleep(pace)
+            return out
+        except (meta_api.TokenRejected, meta_api.RateLimited):
+            raise
+        except TRANSIENT as e:
+            if i == attempts - 1:
+                raise
+            w = _backoff(i)
+            db.log(f"  adsets {an}: transient error ({db.scrub(e)[:60]}), retry {i + 1}/{attempts - 1} in {w:.0f}s")
+            time.sleep(w)
+    return []
 
 
 def keep_adset(a: dict, today: dt.date) -> bool:
@@ -237,19 +346,25 @@ SNAP_SQL = ("INSERT INTO meta_adset_state_daily (adset_id, day, account, campaig
 
 
 def run_snapshot(conn, tok, today: dt.date | None = None, dry_run=False, accounts=None) -> dict:
-    """Pull every ad set of both accounts first (any failure raises before a write), then upsert today's rows in one transaction."""
+    """Pull each account's ad sets independently (an account that fails is reported in 'failures', the other account's rows are still written), then upsert today's rows in one transaction."""
     today = today or dt.datetime.now(PT).date()
-    rows, per = [], {}
+    rows, per, failures = [], {}, []
     for acct, an in (accounts or meta_api.ACCOUNTS):
-        sets = [a for a in pull_adsets(tok, acct, an) if keep_adset(a, today)]
+        try:
+            sets = [a for a in pull_adsets(tok, acct, an) if keep_adset(a, today)]
+        except meta_api.TokenRejected:
+            raise
+        except Exception as e:                                  # noqa: BLE001
+            failures.append({"account": an, "error": db.scrub(e)[:160]})
+            continue
         per[an] = len(sets)
         rows += [adset_row(an, today, a) for a in sets]
-    if not dry_run:
+    if not dry_run and rows:
         with conn.transaction():
             db.execmany(conn, SNAP_SQL, rows)
         conn.commit()
-    db.log(f"  adset snapshot {today}: {per}")
-    return {"day": today.isoformat(), "adsets": len(rows), "by_account": per}
+    db.log(f"  adset snapshot {today}: {per}" + (f" FAILED {failures}" if failures else ""))
+    return {"day": today.isoformat(), "adsets": len(rows), "by_account": per, "failures": failures}
 
 
 # ------------------------------------------------------------------------------------------------------------------ entry
@@ -273,16 +388,28 @@ def main(argv=None) -> int:
     with db.JobRun("meta_changes") as run_:
         tok = meta_api.get_token()
         stats: dict = {}
-        errors = []
+        errors, notes = [], []
         with db.connect() as conn:
             if not a.snapshot_only:
+                heal = None
+                if not a.backfill and not a.since and not a.dry_run:                    # nightly: also re-pull account-days before the overlap that never loaded
+                    heal = missing_days(conn, meta_api.ACCOUNTS, today - dt.timedelta(days=HEAL_DAYS), since - dt.timedelta(days=1))
+                    heal = {k: v for k, v in heal.items() if v}
                 try:
-                    stats["log"] = run_log(conn, tok, since, until, chunk_days=a.chunk_days, dry_run=a.dry_run)
+                    stats["log"] = run_log(conn, tok, since, until, chunk_days=a.chunk_days, dry_run=a.dry_run, heal=heal)
                 except meta_api.TokenRejected:
                     raise db.JobFailed("meta token rejected") from None
                 except Exception as e:                                  # noqa: BLE001 — the snapshot still runs; the job is failed at the end
                     conn.rollback()
                     errors.append("activity log: " + db.scrub(e)[:200])
+                else:
+                    fl = stats["log"]["failures"]
+                    bad = fatal_failures(fl, today)
+                    desc = "; ".join(f"{f['account']} {f['since']}..{f['until']}: {f['error']}" for f in fl)[:300]
+                    if bad:
+                        errors.append(f"activity log: {len(bad)} window(s) older than {RECENT_DAYS} days not loaded: " + desc)
+                    elif fl:
+                        notes.append(f"activity log: {len(fl)} recent window(s) failed, the next run re-pulls them: " + desc)
             if not a.no_snapshot and not a.backfill:
                 try:
                     stats["snapshot"] = run_snapshot(conn, tok, today, dry_run=a.dry_run)
@@ -291,11 +418,17 @@ def main(argv=None) -> int:
                 except Exception as e:                                  # noqa: BLE001
                     conn.rollback()
                     errors.append("adset snapshot: " + db.scrub(e)[:200])
+                else:
+                    for f in stats["snapshot"]["failures"]:
+                        errors.append(f"adset snapshot {f['account']}: {f['error']}")
         run_.stats = stats
         run_.rows_written = (stats.get("log", {}).get("inserted", 0)) + (stats.get("snapshot", {}).get("adsets", 0))
+        if notes:
+            run_.stats["notes"] = notes
+            run_.note = "; ".join(notes)[:480]
         if errors:
             run_.stats["errors"] = errors
-            raise db.JobFailed("; ".join(errors)[:480])
+            raise db.JobFailed("; ".join(errors + notes)[:480])
     return 0
 
 
