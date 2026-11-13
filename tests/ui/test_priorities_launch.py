@@ -33,7 +33,7 @@ def goto(page, ctx, base_url, ready=True):
     if ready:
         ctx.request.patch(base_url + "/api/priorities/assignments/2", data={"ready": True})      # row 2 has a creative link: becomes Ready to launch
     page.add_init_script("window.LAUNCH_POLL_MS = 120")
-    page.goto("/priorities/production")
+    page.goto("/priorities/production?view=list")
     page.wait_for_selector("[data-testid=prod-page]")
     idle(page)
 
@@ -58,7 +58,7 @@ def test_flag_off_page_is_today_s_page(page, ctx, base_url):
         assert s not in text
     assert page.locator("[data-testid^=prod-launch-]").count() == 0
     acts = row(page, 2).locator("td").last.locator("button").evaluate_all("bs => bs.map(b => b.dataset.testid)")
-    assert acts == ["prod-launched", "prod-change", "prod-drop"]
+    assert acts == ["prod-open-card", "prod-launched", "prod-change", "prod-drop"]
 
 
 def test_enabled_but_not_allowed_shows_nothing(page, ctx, base_url, cfg):
@@ -199,7 +199,7 @@ def test_no_sideways_page_scroll_at_375px_with_the_dialog_open(browser, base_url
         c.request.patch(base_url + "/api/priorities/assignments/2", data={"ready": True})
         pg = c.new_page()
         pg.add_init_script("window.LAUNCH_POLL_MS = 120")
-        pg.goto("/priorities/production")
+        pg.goto("/priorities/production?view=list")
         pg.wait_for_selector("[data-testid=prod-page]")
         idle(pg)
         assert pg.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1")
