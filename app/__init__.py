@@ -32,7 +32,7 @@ def _read_revision() -> str | None:
 
 # The HTML shell: scripts only from this origin (Chart.js is vendored), ad previews may be framed from Meta, images from here or data: URIs.
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; "
-       "frame-src https://*.facebook.com https://*.fbcdn.net https://*.fb.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+       "frame-src https://*.facebook.com https://*.fbcdn.net https://*.fb.com https://drive.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
 
 PLACEHOLDER = """<!doctype html><meta charset="utf-8"><title>Lonvera Tag Explorer</title>
 <body style="font:14px system-ui;padding:2rem"><h1>Lonvera Tag Explorer</h1><p>UI not built yet (app/static/index.html missing). The API is live under /api.</p></body>"""

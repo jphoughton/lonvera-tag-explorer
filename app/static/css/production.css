@@ -122,6 +122,7 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 .prod-ps-ready { background: var(--good-bg); color: var(--good); }
 .prod-ps-launched { background: var(--scaling-bg); color: var(--scaling); }
 .prod-dot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; background: var(--unc); }
+.prod-dot-vita-bull { background: var(--scaling); } .prod-dot-beef-liver { background: #c2610f; } .prod-dot-boneflex { background: var(--testing); } .prod-dot-vita-belle { background: var(--lv-ink); }
 .prod-dot-vita-bull { background: var(--scaling); } .prod-dot-beef-liver { background: #C2351C; } .prod-dot-boneflex { background: var(--testing); }
 
 /* weekly load bars */
@@ -432,3 +433,16 @@ body.prod-drawer-open { overflow: hidden; }
 .btn.primary.prod-card-action[data-action="send_brief"]:hover, .btn.primary.prod-card-action[data-action="start"]:hover,
 .prod-drawer-actions .btn.primary[data-testid$="-send_brief"]:hover, .prod-drawer-actions .btn.primary[data-testid$="-start"]:hover { background: var(--accent-bg); border-color: var(--accent-hover); }
 @media (max-width: 640px) { .mf-panel { position: fixed; left: 12px; right: 12px; top: auto; min-width: 0; margin-top: 4px; } }   /* phone: the list opens under its button but spans the screen, so it is never clipped at the right edge */
+
+/* ticket: variations as links, a player in place, bold labels in notes, ad count chip */
+.prod-note, .prod-richnote { white-space: normal; line-height: 1.5; }
+.prod-richnote { font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.prod-hooks { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 4px 0; }
+.prod-hook { display: inline-flex; align-items: center; gap: 6px; }
+.prod-play[aria-pressed="true"] { background: var(--accent-bg, #fbe7df); border-color: var(--accent, #b8481f); }
+.prod-viewer { margin-top: 8px; }
+.prod-viewer-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 4px; }
+.prod-viewer-frame { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--lv-ink); aspect-ratio: 16 / 9; min-height: 220px; }
+.prod-viewer-frame.prod-viewer-folder { aspect-ratio: auto; height: 340px; background: var(--panel); }
+.prod-chip-ads { font-weight: 600; }
+.prod-chip-media { font-weight: 600; }
