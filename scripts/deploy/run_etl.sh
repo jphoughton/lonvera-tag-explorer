@@ -32,6 +32,8 @@ if [ "$#" -eq 0 ]; then
   python -m etl.creative_priorities --if-sunday || echo "[run_etl] etl.creative_priorities failed (exit $?), non-fatal; see etl_runs job creative_priorities" >&2
   # Assignment tags: ads linked to a production assignment get the assignment's line (never overwrites a tag; no-op without the table). Before auto_tag so linked ads get the planned line, not a model guess. NON-FATAL (etl_runs job assignment_tags).
   python -m etl.assignment_tags || echo "[run_etl] etl.assignment_tags failed (exit $?), non-fatal; see etl_runs job assignment_tags" >&2
+  # Production board: cards move forward to what their linked Creative Tracker rows show (never backward). NON-FATAL (etl_runs job production_status); no-op before migration 244.
+  python -m etl.production_status || echo "[run_etl] etl.production_status failed (exit $?), non-fatal; see etl_runs job production_status" >&2
   # Klaviyo flow + campaign metrics: trailing 14 Pacific days re-upserted so late opens / clicks / orders land. NON-FATAL (etl_runs job klaviyo); without KLAVIYO_API_KEY it logs one line and exits 0.
   python -m etl.klaviyo --days 14 || echo "[run_etl] etl.klaviyo failed (exit $?), non-fatal; see etl_runs job klaviyo" >&2
   # Auto-tagging of new ads (headless Claude on the subscription token), LAST so a long run (up to ~150 ads) never delays the data steps above.

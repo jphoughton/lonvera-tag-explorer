@@ -159,8 +159,9 @@ def _write_rules(app):
     return out
 
 
-def test_allowed_writes_are_exactly_two_and_exist():
-    assert ak.ALLOWED_WRITES == {("POST", "/api/priorities/assignments"), ("PATCH", "/api/priorities/assignments/<int:aid>")}
+def test_allowed_writes_are_exactly_four_and_exist():
+    assert ak.ALLOWED_WRITES == {("POST", "/api/priorities/assignments"), ("PATCH", "/api/priorities/assignments/<int:aid>"), ("POST", "/api/priorities/assignments/<int:aid>/move"),
+                                 ("POST", "/api/priorities/assignments/<int:aid>/comments")}
 
 
 def test_every_other_write_route_is_refused_with_403(app, anon, key, pg, snaps):

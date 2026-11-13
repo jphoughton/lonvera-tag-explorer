@@ -23,7 +23,7 @@ bp = Blueprint("auth", __name__)
 
 PROTECTED_PREFIXES = ("/api/", "/media/")
 PUBLIC_API = {"/api/login", "/api/logout"}
-PUBLIC_API_RE = re.compile(r"/api/priorities/vendor/[A-Za-z0-9_-]{22,64}(/[0-9]+(/detail)?)?")      # the vendor link page (the list, a row edit, and GET .../<id>/detail): the unguessable link is the access (see app/priorities_assign.py); nothing else is public
+PUBLIC_API_RE = re.compile(r"/api/priorities/vendor/[A-Za-z0-9_-]{22,64}(/[0-9]+(/detail|/comments)?)?")      # the vendor link page (the list, a row edit, GET .../<id>/detail, and GET / POST .../<id>/comments): the unguessable link is the access (see app/priorities_assign.py); nothing else is public
 GENERIC_LOGIN_ERROR = "invalid username or password"
 MAX_USERNAME_LEN = 64
 

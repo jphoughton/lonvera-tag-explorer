@@ -150,6 +150,14 @@
   {
    "service": "etl",
    "order": 10,
+   "module": "etl.production_status",
+   "args": "",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 11,
    "module": "etl.klaviyo",
    "args": "--days",
    "fatal": false,
@@ -157,7 +165,7 @@
   },
   {
    "service": "etl",
-   "order": 11,
+   "order": 12,
    "module": "etl.auto_tag",
    "args": "",
    "fatal": false,
@@ -352,6 +360,10 @@
   {
    "module": "etl.names",
    "summary": "Keep meta_ads.family_name / meta_family_key equal to fam(ad_name) for every ad (a renamed ad's history follows its current name)."
+  },
+  {
+   "module": "etl.production_status",
+   "summary": "Nightly step: pull production cards forward to what the Creative Tracker shows."
   },
   {
    "module": "etl.projection_cohorts",
@@ -933,6 +945,28 @@
    "summary": "Change any of vendor, for_week, note, format_code (blank or null clears it), brief_url, creative_url, tracker_concept_ids, ready, launched, dropped (the last three booleans set or clear their timestamp). There is no delete."
   },
   {
+   "rule": "/api/priorities/assignments/<int:aid>/comments",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_comments",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The comment thread of one assignment, oldest first -> {comments: [{id, author_kind, author_name, body, created_at}]}."
+  },
+  {
+   "rule": "/api/priorities/assignments/<int:aid>/comments",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_comment_create",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Post a comment: {body} (1 to 2,000 characters) -> 201 {comment}. The author is the signed-in user (Team when none)."
+  },
+  {
    "rule": "/api/priorities/assignments/<int:aid>/detail",
    "methods": [
     "GET"
@@ -997,6 +1031,28 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": "Queue a prepare job (the worker lists the files and builds the plan). 202 {job}; 409 if the row is not ready or a job is already open."
+  },
+  {
+   "rule": "/api/priorities/assignments/<int:aid>/move",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_assignment_move",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Drag and drop on the board: {status, before_id?, after_id?, comment?} changes the status and the position in one step (before_id = put it just above that card, after_id = just below that card;"
+  },
+  {
+   "rule": "/api/priorities/board",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_board",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The Production board: ?week= (snaps to Monday) &vendor= &product= &closed=1 -> {columns: [{status, label, count, cards}], dropped (with closed=1), capacity: [{vendor, per_week, open, week}], week, generated_at}."
   },
   {
    "rule": "/api/priorities/launch/settings",
@@ -1098,6 +1154,28 @@
    "summary": "Dropdown options for the Add concept form: products, sections and the Communication Overview tree product -> cluster -> ICP -> pain point -> [stories]."
   },
   {
+   "rule": "/api/priorities/vendor-capacity",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_vendor_capacity",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Concepts per week each vendor can take -> {capacity: [{vendor, per_week, updated_at}]} (10 where none is stored)."
+  },
+  {
+   "rule": "/api/priorities/vendor-capacity",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_vendor_capacity_set",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "{vendor, per_week} (a whole number 0 to 1000) -> {vendor, per_week, updated_at}. Signed-in users only: an API key cannot change capacity."
+  },
+  {
    "rule": "/api/priorities/vendor-links",
    "methods": [
     "GET"
@@ -1150,7 +1228,29 @@
    "endpoint": "api.priorities_vendor_update",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "A vendor edits their own row: {creative_url?, vendor_note?, ready?} only (the creative format is shown to them but is not theirs to change: 400); another vendor's row is a 404."
+   "summary": "A vendor edits their own row: {creative_url?, vendor_note?, ready?, status?, comment?} only (status: start, submit for review, pull back) (the creative format is shown to them but is not theirs to change: 400); another vendor's row is a 404."
+  },
+  {
+   "rule": "/api/priorities/vendor/<token>/<int:aid>/comments",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_vendor_comments",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The comment thread of the vendor's own assignment (another vendor's row, a dropped row or an unknown id is a 404) -> {comments: [{id, author_kind, author_name, body, created_at}]}."
+  },
+  {
+   "rule": "/api/priorities/vendor/<token>/<int:aid>/comments",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_vendor_comment_create",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "A vendor posts a comment on their own assignment: {body} -> 201 {comment} with author_kind 'vendor' and the vendor's name."
   },
   {
    "rule": "/api/priorities/vendor/<token>/<int:aid>/detail",

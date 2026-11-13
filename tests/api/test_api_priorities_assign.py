@@ -375,11 +375,11 @@ def test_vendor_can_add_a_creative_link_a_note_and_mark_ready(client, anon, snap
     r = anon.patch(f"/api/priorities/vendor/{tok}/{a['id']}", json={"creative_url": "https://drive.example/done", "vendor_note": "  two  cuts \n"})
     assert r.status_code == 200
     d = r.get_json()
-    assert d["creative_url"] == "https://drive.example/done" and d["vendor_note"] == "two cuts" and d["stage"] == "creative_in" and "note" not in d and "updated_by" not in d
-    d = anon.patch(f"/api/priorities/vendor/{tok}/{a['id']}", json={"ready": True}).get_json()
-    assert d["stage"] == "ready" and d["ready_at"]
-    d = anon.patch(f"/api/priorities/vendor/{tok}/{a['id']}", json={"ready": False}).get_json()
-    assert d["stage"] == "creative_in" and d["ready_at"] is None
+    assert d["creative_url"] == "https://drive.example/done" and d["vendor_note"] == "two cuts" and d["status"] == "assigned" and "note" not in d and "updated_by" not in d      # a link alone does not submit it
+    d = anon.patch(f"/api/priorities/vendor/{tok}/{a['id']}", json={"ready": True}).get_json()             # the old Ready flag now means Submit for review
+    assert d["status"] == "in_review" and d["stage"] == "creative_in" and d["ready_at"] is None
+    d = anon.patch(f"/api/priorities/vendor/{tok}/{a['id']}", json={"ready": False}).get_json()            # and Not ready means Pull back
+    assert d["status"] == "in_production" and d["ready_at"] is None
     internal = client.get("/api/priorities/assignments").get_json()["rows"][0]
     assert internal["updated_by"] == "vendor:Madre" and internal["vendor_note"] == "two cuts"          # the author of a vendor write
 
@@ -389,7 +389,7 @@ def test_vendor_ready_needs_a_creative_link(client, anon, snaps):
     tok = link(client)["token"]
     r = anon.patch(f"/api/priorities/vendor/{tok}/{a['id']}", json={"ready": True})
     assert r.status_code == 400 and "creative link" in r.get_json()["error"]
-    assert anon.patch(f"/api/priorities/vendor/{tok}/{a['id']}", json={"ready": True, "creative_url": "https://drive.example/x"}).get_json()["stage"] == "ready"
+    assert anon.patch(f"/api/priorities/vendor/{tok}/{a['id']}", json={"ready": True, "creative_url": "https://drive.example/x"}).get_json()["status"] == "in_review"
     r = anon.patch(f"/api/priorities/vendor/{tok}/{a['id']}", json={"creative_url": ""})                 # clearing the link keeps the earlier ready stamp until it is undone
     assert r.status_code == 200
 
@@ -772,7 +772,7 @@ def test_history_records_who_assigned_and_each_stage_change_in_order(client, ano
     h = hist(client, a["id"])
     assert [(e["kind"], e["actor"], e["stage_before"], e["stage_after"]) for e in h] == [
         ("assigned", "JoshHoughton", None, "assigned"), ("brief_added", "JoshHoughton", "assigned", "brief_sent"), ("creative_added", "vendor:Madre", "brief_sent", "creative_in"),
-        ("ready", "vendor:Madre", "creative_in", "ready"), ("vendor", "JoshHoughton", "ready", "ready"), ("launched", "JoshHoughton", "ready", "launched"), ("dropped", "JoshHoughton", "launched", "dropped")]
+        ("status_changed", "vendor:Madre", "brief_sent", "in_review"), ("vendor", "JoshHoughton", "creative_in", "creative_in"), ("launched", "JoshHoughton", "creative_in", "launched"), ("dropped", "JoshHoughton", "launched", "dropped")]
     assert h[4]["detail"] == "Madre to Victoria"
     assert [e["at"] for e in h] == sorted(e["at"] for e in h) and all(e["at"] for e in h)
 
