@@ -85,8 +85,8 @@ function loadSel(week, valid, tok) {
 function saveSel(week, sel, tok) { try { sessionStorage.setItem(storeKey(week, tok), JSON.stringify([...sel])); } catch (e) { /* storage blocked: selection just is not remembered */ } }
 
 // Cluster colours: one fixed palette of soft hues, picked from a hash of the cluster NAME, so the same cluster name has the same colour under every product and on every visit.
-// The hues are stepped (index * 7 mod 16) so neighbouring palette slots are far apart on the colour wheel. The CSS turns the hue into a fill (cluster), a lighter tint (ICP) and a faint tint (other cells).
-const HUES = Array.from({ length: 16 }, (_, i) => (((i * 7) % 16) * 22.5 + 8) % 360);
+// The hues are stepped (a fixed order that alternates cool and warm-pink slots) so neighbouring palette slots are far apart on the colour wheel. The CSS turns the hue into a fill (cluster), a lighter tint (ICP) and a faint tint (other cells).
+const HUES = [172, 205, 265, 340, 120, 142, 232, 300, 188, 322, 250, 98, 160, 215, 285, 355];   // mint, sky, lilac, rose, green, periwinkle, orchid ... : no orange / peach / tan / butter hue (14-90) at all
 export const hueOf = (name) => { let x = 5381; const t = String(name || '').trim().toLowerCase(); for (let i = 0; i < t.length; i++) x = ((x * 33) ^ t.charCodeAt(i)) >>> 0; return Math.round(HUES[x % HUES.length]); };
 
 const SORT_TIP = { icp: 'Ideal customer profile: who the ad speaks to', roas14: 'Return on ad spend over the last 14 days: purchase value divided by spend', spend14: 'Meta spend over the last 14 days' };
