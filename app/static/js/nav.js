@@ -21,6 +21,7 @@ export const SECTIONS = [
     pages: [
       { key: 'priorities', label: 'Priorities', href: '/priorities', testid: 'nav-priorities', hint: 'What to make next, by product and tag' },
       { key: 'production', label: 'Production', href: '/priorities/production', testid: 'nav-production', hint: 'Concepts assigned to vendors, and where each stands' },
+      { key: 'competitors', label: 'Competitors', href: '/competitors', testid: 'nav-competitors', hint: 'What competitors run on Meta, week by week' },
       { key: 'test-to-scale', label: 'Test to scale', href: '/promotions', testid: 'nav-test-to-scale', hint: 'Which testing creatives to scale or kill' },
     ],
   },
@@ -39,6 +40,7 @@ export const SEARCH = { action: '/lookup', param: 'q', label: 'Tag lookup', plac
 // platform: '/' defaults to the Overview (platform=all); '/campaigns' always belongs to the Campaigns tab.
 const RESOLVE = [
   { re: /^\/projection(\/|$)/, section: 'plan', page: 'projections' },
+  { re: /^\/competitors\/?$/, section: 'creative', page: 'competitors' },
   { re: /^\/priorities\/production\/?$/, section: 'creative', page: 'production' },
   { re: /^\/priorities\/vendor\//, section: 'creative', page: 'production' },
   { re: /^\/priorities(\/|$)/, section: 'creative', page: 'priorities' },

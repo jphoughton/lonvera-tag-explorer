@@ -465,6 +465,13 @@
    "bare": false
   },
   {
+   "url_pattern": "/competitors",
+   "page_function": "competitorsPage",
+   "js_file": "app/static/js/pages/competitors.js",
+   "public": false,
+   "bare": false
+  },
+  {
    "url_pattern": "/connect-agent",
    "page_function": "connectAgentPage",
    "js_file": "app/static/js/pages/connect_agent.js",
@@ -641,6 +648,28 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": "Trend of /api/campaigns (Meta, all products): same window, stage, active, Meta | Upstack numbers and product filter, so its points add up to the table's"
+  },
+  {
+   "rule": "/api/competitors",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.competitors",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Competitors: what watched brands run on Meta this week (week=YYYY-MM-DD, default the latest snapshot; format=video|image, default all): one row per brand, what changed since the prior week, chatter when stored. See app/competitors.py."
+  },
+  {
+   "rule": "/api/competitors/<path:brand>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.competitor_detail",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "One competitor: longest-running ads, new this week, angles, landing pages, Ad Library links (week, format as on /api/competitors)."
   },
   {
    "rule": "/api/google/rollup",
@@ -2750,6 +2779,17 @@
    ],
    "kind": "page",
    "endpoint": "shell:/campaigns",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/competitors",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/competitors",
    "auth": "none (HTML page or health check; its data calls are protected)",
    "auth_exempt": true,
    "summary": ""
