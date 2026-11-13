@@ -6,9 +6,9 @@ import { api } from '../api.js';
 import { showControls } from '../controls.js';
 import { expander } from './priorities_panel.js';
 import { pageHeader } from '../ui/pagehead.js';
-import { filterRow, seg, selectCtl, checkCtl, searchCtl } from '../ui/pagefilters.js';
+import { filterRow, seg, selectCtl, multiCtl, checkCtl, searchCtl } from '../ui/pagefilters.js';
 
-import { eventLine, STAGES, STATUSES, STATUS_LABEL, statusOf, VENDOR_FALLBACK, md, weekLabel, productName, stageLabel, today, mondayOf, addDays, formatLabel, rowFormat, resultText, link, short, askDialog, toast, dueInfo } from './production_common.js';
+import { eventLine, STAGES, STATUSES, STATUS_LABEL, statusOf, VENDOR_FALLBACK, md, weekLabel, ticketTitle, productName, stageLabel, today, mondayOf, addDays, formatLabel, rowFormat, resultText, link, short, askDialog, toast, dueInfo } from './production_common.js';
 import { board as boardView, loadBars } from './production_board.js';
 import { plan as planView } from './production_plan.js';
 import { openDrawer } from './production_drawer.js';
@@ -52,7 +52,9 @@ export async function productionPage(ctx) {
   // ---- data
   const boardCards = () => (board ? board.columns.flatMap((c) => c.cards || []).concat(board.dropped || []) : []);
   const findCard = (id) => { const n = Number(id); return boardCards().find((c) => c.id === n) || (data.rows || []).find((c) => c.id === n) || null; };
-  const productOk = (r) => !st.product || r.product === st.product;
+  const picked = (s) => (s ? s.split(',').filter(Boolean) : []);                  // week, vendor and product hold a comma separated list of choices ("" = all)
+  const oneWeek = () => { const w = picked(st.week); return w.length === 1 ? w[0] : ''; };
+  const productOk = (r) => !st.product || picked(st.product).includes(r.product);
   async function ensureMeta() {
     if (st.view === 'list' || (meta && (meta.vendors || []).length)) return;
     try { meta = await api('/api/priorities/assignments', {}, { signal: ctx.signal }); } catch (e) { abortOk(e); meta = meta || { vendors: [], weeks: [], formats: [] }; }
@@ -238,7 +240,7 @@ export async function productionPage(ctx) {
       h('td', { class: 'prod-c prod-nowrap', 'data-testid': 'prod-week' }, weekLabel(r.for_week).replace('Week of ', '')),
       h('td', { class: 'prod-c', 'data-testid': 'prod-vendor' }, r.vendor),
       h('td', { class: 'prod-c', 'data-testid': 'prod-product' }, productName(r.product)),
-      h('td', { class: 'prod-c prod-concept', 'data-testid': 'prod-concept' }, h('strong', null, x.nameButton(r.pain_point || r.cluster)), h('div', { class: 'pri-sub' }, [r.cluster, r.icp].filter(Boolean).join(' / ')), r.note ? h('div', { class: 'pri-sub' }, 'Note: ' + r.note) : null, r.vendor_note ? h('div', { class: 'pri-sub', 'data-testid': 'prod-vnote' }, 'Vendor note: ' + r.vendor_note) : null, h('div', null, x.button()), historyCell(r)),
+      h('td', { class: 'prod-c prod-concept', 'data-testid': 'prod-concept' }, h('strong', null, x.nameButton(ticketTitle(r))), h('div', { class: 'pri-sub' }, [r.cluster, r.icp].filter(Boolean).join(' / ')), r.note ? h('div', { class: 'pri-sub' }, 'Note: ' + r.note) : null, r.vendor_note ? h('div', { class: 'pri-sub', 'data-testid': 'prod-vnote' }, 'Vendor note: ' + r.vendor_note) : null, h('div', null, x.button()), historyCell(r)),
       linkCell(r, 'brief_url', 'Brief'), linkCell(r, 'creative_url', 'Creative'), formatCell(r),
       h('td', { class: 'prod-c prod-c-stage' }, h('span', { class: 'prod-pill prod-ps-' + statusOf(r), 'data-testid': 'prod-status', title: 'Where the card sits on the Board' }, STATUS_LABEL[statusOf(r)] || statusOf(r)),
         h('span', { class: 'prod-sr', 'data-testid': 'prod-stage' }, stageLabel(r)), h('div', { class: 'pri-sub prod-result', 'data-testid': 'prod-result' }, resultText(r))),
@@ -256,7 +258,7 @@ export async function productionPage(ctx) {
   // ---- drawing
   function drawChrome() {
     loadSlot = h('div', { class: 'prod-loadslot', 'data-testid': 'prod-loadslot' });
-    const weeks = [...new Set([...weeksList(), ...(st.week ? [st.week] : [])])].sort().reverse();
+    const weeks = [...new Set([...weeksList(), ...picked(st.week)])].sort().reverse();
     const list = st.view === 'list';
     const plan = st.view === 'plan';
     const all = data.rows || [];
@@ -264,9 +266,9 @@ export async function productionPage(ctx) {
     const count = (k) => all.filter((r) => r.stage === k).length;
     const controls = filterRow(
       seg({ name: 'View', options: VIEWS.map(([k, l]) => [k, l, `${l} view`, 'prod-view-' + k]), value: st.view, onChange: (v) => { st.view = v; root.dataset.view = v; board = null; sync(); drawChrome(); reload(); }, testid: 'prod-view' }),
-      plan ? null : selectCtl({ name: 'Week', options: [['', 'All weeks'], ...weeks.map((w) => [w, weekLabel(w)])], value: st.week, onChange: (v) => { st.week = v; refresh(); }, testid: 'prod-week' }),
-      plan ? null : selectCtl({ name: 'Vendor', options: [['', 'All vendors'], ...vendorNames().map((v) => [v, v])], value: st.vendor, onChange: (v) => { st.vendor = v; refresh(); }, testid: 'prod-vendor' }),
-      plan ? null : selectCtl({ name: 'Product', options: [['', 'All products'], ...Object.entries({ 'vita-bull': 'Vita Bull', 'beef-liver': 'Beef Liver', boneflex: 'Boneflex' })], value: st.product, onChange: (v) => { st.product = v; sync(); if (list) drawView(); else reload(); drawChrome(); }, testid: 'prod-product-filter' }),
+      plan ? null : multiCtl({ name: 'Week', allLabel: 'All weeks', options: weeks.map((w) => [w, weekLabel(w)]), values: picked(st.week), onChange: (v) => { st.week = v.join(','); refresh(); }, testid: 'prod-week' }),
+      plan ? null : multiCtl({ name: 'Vendor', allLabel: 'All vendors', options: vendorNames().map((v) => [v, v]), values: picked(st.vendor), onChange: (v) => { st.vendor = v.join(','); refresh(); }, testid: 'prod-vendor' }),
+      plan ? null : multiCtl({ name: 'Product', allLabel: 'All products', options: Object.entries({ 'vita-bull': 'Vita Bull', 'beef-liver': 'Beef Liver', boneflex: 'Boneflex' }), values: picked(st.product), onChange: (v) => { st.product = v.join(','); sync(); if (list) drawView(); else reload(); drawChrome(); }, testid: 'prod-product-filter' }),
       plan ? null : checkCtl({ label: 'Overdue only', checked: st.overdue, onChange: (v) => { st.overdue = v; sync(); drawView(); }, testid: 'prod-overdue-only' }),
       plan ? null : searchCtl({ name: 'Search', value: st.q, placeholder: 'Search concepts', onInput: (v) => { st.q = v.trim(); sync(); drawView(); }, testid: 'prod-search' }),
       plan ? null : checkCtl({ label: 'Show launched and dropped', checked: st.closed, onChange: (v) => { st.closed = v; if (!v && (st.stage === 'launched' || st.stage === 'dropped')) st.stage = ''; refresh(); }, testid: 'prod-closed' }),
@@ -289,7 +291,7 @@ export async function productionPage(ctx) {
     loadSlot.replaceChildren();
     if (st.view !== 'board' || !board) return;
     const cards = (board.columns || []).flatMap((c) => c.cards || []).filter(productOk);
-    const week = st.week || mondayOf(today());
+    const week = oneWeek() || mondayOf(today());
     const bars = loadBars(board.capacity, vendorNames(), week, cards);
     if (bars) loadSlot.append(h('span', { class: 'prod-loadtitle' }, `Open cards, ${weekLabel(week).toLowerCase()}`), bars);
   }
@@ -320,7 +322,7 @@ export async function productionPage(ctx) {
     const columns = board.columns.map((c) => ({ ...c, cards: (c.cards || []).filter(productOk) }));
     const dropped = (board.dropped || []).filter(productOk);
     const cards = columns.flatMap((c) => c.cards);
-    const week = st.week || mondayOf(today());
+    const week = oneWeek() || mondayOf(today());
     drawLoad();
     const empty = !cards.length && !dropped.length;
     const stageNote = st.stage ? h('p', { class: 'prod-stagenote', 'data-testid': 'prod-board-stagenote' }, `Showing only ${STATUS_LABEL[st.stage === 'creative_in' ? 'in_review' : st.stage] || st.stage}. `, h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-board-showall', onclick: () => { st.stage = ''; sync(); drawView(); } }, 'Show all columns')) : null;
@@ -336,7 +338,7 @@ export async function productionPage(ctx) {
     const cap = {};
     for (const c of board.capacity || []) if (!(c.vendor in cap)) cap[c.vendor] = c.per_week;
     const savedCap = capSaved; capSaved = null;
-    viewHost.replaceChildren(planView({ cards, vendors: vendorNames(), capacity: cap, start: st.week, ops, saved: savedCap,
+    viewHost.replaceChildren(planView({ cards, vendors: vendorNames(), capacity: cap, start: oneWeek(), ops, saved: savedCap,
       onShift: (w) => { st.week = w; sync(); drawView(); },
       onCapacity: async (v, n) => {
         try { await api('/api/priorities/vendor-capacity', {}, { method: 'PUT', body: { vendor: v, per_week: n } }); toast(`${v}: ${n} cards per week.`); capSaved = v; await reload(); }

@@ -19,6 +19,15 @@ def fresh(ctx, base_url):
     ctx.request.post(base_url + "/__test/board/seed")
 
 
+def choose(page, tid, *values):
+    """Tick exactly these options in a multi-select filter (none = All), then close it so the choice is applied."""
+    d = page.locator(f".pagefilters [data-testid={tid}]")
+    d.locator("summary").click()
+    for cb in d.locator("input[type=checkbox]").all():
+        cb.set_checked(cb.get_attribute("value") in values)
+    page.keyboard.press("Escape")
+
+
 def idle(page):
     page.wait_for_function("() => !document.querySelector('#view').hasAttribute('aria-busy')")
 
@@ -217,6 +226,7 @@ def test_keyboard_escape_cancels_a_pick(page):
 
 
 def test_move_to_menu_moves_a_card_and_hides_launched(page):
+    page.set_viewport_size({"width": 1280, "height": 1600})                       # a scroll closes the menu, so the card must be on screen without scrolling
     goto(page)
     card(page, 9).locator("[data-testid=prod-card-more] > summary").click()
     sel = card(page, 9).locator("[data-testid=prod-card-moveto]")
@@ -266,11 +276,11 @@ def test_group_by_vendor_draws_a_lane_per_vendor_and_keeps_cards_in_their_own_la
 
 def test_filters_vendor_overdue_search_product_week_and_stage_param(page):
     goto(page)
-    page.select_option("[data-testid=prod-vendor]", "Victoria")
+    choose(page, "prod-vendor", "Victoria")
     page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-board-card]').length === 4 || true")
     page.wait_for_function("() => [...document.querySelectorAll('[data-testid=prod-card-vendor]')].every(v => v.textContent === 'Victoria')")
     assert "vendor=Victoria" in page.url
-    page.select_option("[data-testid=prod-vendor]", "")
+    choose(page, "prod-vendor")
     page.wait_for_function("() => new Set([...document.querySelectorAll('[data-testid=prod-card-vendor]')].map(v => v.textContent)).size > 1")
     page.locator("[data-testid=prod-overdue-only]").check()
     assert page.locator("[data-testid=prod-board-card]").evaluate_all("cs => cs.map(c => c.dataset.id)") == ["5"]
@@ -279,15 +289,15 @@ def test_filters_vendor_overdue_search_product_week_and_stage_param(page):
     page.fill("[data-testid=prod-search]", "knee")
     assert page.locator("[data-testid=prod-board-card]").evaluate_all("cs => cs.map(c => c.dataset.id)") == ["7"]
     page.fill("[data-testid=prod-search]", "")
-    page.select_option("[data-testid=prod-product-filter]", "boneflex")
+    choose(page, "prod-product-filter", "boneflex")
     page.wait_for_function("() => [...document.querySelectorAll('[data-testid=prod-card-product]')].every(p => p.dataset.product === 'boneflex')")
     assert sorted(page.locator("[data-testid=prod-board-card]").evaluate_all("cs => cs.map(c => c.dataset.id)")) == ["3", "7", "8"]
-    page.select_option("[data-testid=prod-product-filter]", "")
+    choose(page, "prod-product-filter")
     goto(page, "?stage=creative_in")                                  # old stage names still work: it maps to In review
     assert page.locator("[data-testid=prod-board-column]").evaluate_all("cs => cs.map(c => c.dataset.status)") == ["in_review"]
     page.click("[data-testid=prod-board-showall]")
     assert page.locator("[data-testid=prod-board-column]").count() == 6
-    week = page.locator("[data-testid=prod-week] option").nth(1).get_attribute("value")
+    week = page.locator("[data-testid=prod-week] input[type=checkbox]").nth(0).get_attribute("value")
     goto(page, f"?week={week}")
     assert page.locator("[data-testid=prod-board-card]").count() >= 1
 
@@ -298,7 +308,7 @@ def test_drawer_opens_from_a_card_with_header_stepper_actions_and_tabs_and_close
     card(page, 7).locator("[data-testid=prod-card-title]").click()
     page.wait_for_selector("[data-testid=prod-drawer]")
     assert "card=7" in page.url
-    assert page.locator("[data-testid=prod-drawer-title]").text_content() == "Knee Pain"
+    assert re.fullmatch(r"Victoria - .+ - Knee Pain - Week of \d+/\d+", page.locator("[data-testid=prod-drawer-title]").text_content())
     assert page.locator("[data-testid=prod-drawer-status]").text_content() == "In review"
     assert page.locator("[data-testid=prod-drawer-step][aria-current=step]").get_attribute("data-status") == "in_review"
     acts = [t.strip() for t in page.locator("[data-testid=prod-drawer-actions] button").all_text_contents()]
@@ -428,7 +438,7 @@ def test_list_view_has_status_due_and_priority_columns_and_opens_the_drawer(page
     assert page.locator("[data-testid=prod-row][data-id='1'] [data-testid=prod-priority]").text_content() == "Normal"
     row5.locator("[data-testid=prod-open-card]").click()
     page.wait_for_selector("[data-testid=prod-drawer]")
-    assert page.locator("[data-testid=prod-drawer-title]").text_content() == "Energy Crash"
+    assert re.fullmatch(r"Madre - Seed cluster - Energy Crash - Week of \d+/\d+", page.locator("[data-testid=prod-drawer-title]").text_content())
     page.click("[data-testid=prod-drawer-close]")
     assert "view=list" in page.url
 
