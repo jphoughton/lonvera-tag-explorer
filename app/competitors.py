@@ -10,6 +10,7 @@ import datetime as dt
 import re
 from urllib.parse import quote, urlparse
 
+from . import competitors_learn as learn
 from . import queries as q
 
 LIBRARY = "https://www.facebook.com/ads/library/"
@@ -118,21 +119,22 @@ def _video_table(conn) -> bool:
     return conn.execute("SELECT to_regclass('public.competitor_ad_video') IS NOT NULL AS ok").fetchone()["ok"]
 
 
-def _ads_sql(media: bool, video: bool = False) -> str:
+def _ads_sql(media: bool, video: bool = False, extra_sel: str = "", extra_join: str = "") -> str:
     return ("SELECT a.library_id, a.brand, a.start_date, a.days_running, a.variant_count, a.format, a.hook, a.headline, a.primary_text, a.landing_url, a.concept_key, a.carried_from,\n"
             "       c.cluster, c.pain_point, c.mapped_product, c.is_new_angle, c.new_angle_label, "
             + ("(m.library_id IS NOT NULL) AS has_thumb, " if media else "false AS has_thumb, ")
-            + ("(v.library_id IS NOT NULL) AS has_video\n" if video else "false AS has_video\n")
+            + ("(v.library_id IS NOT NULL) AS has_video" if video else "false AS has_video") + extra_sel + "\n"
             + "FROM competitor_ads a LEFT JOIN competitor_concept_class c ON c.concept_key = a.concept_key\n"
             + ("LEFT JOIN competitor_ad_media m ON m.library_id = a.library_id\n" if media else "")
-            + ("LEFT JOIN competitor_ad_video v ON v.library_id = a.library_id\n" if video else "")
+            + ("LEFT JOIN competitor_ad_video v ON v.library_id = a.library_id\n" if video else "") + extra_join
             + "WHERE a.week_start = %s\n")
 
 
 def _ads(conn, week: str | None, fmt: str | None, brand: str | None = None) -> list[dict]:
     if not week:
         return []
-    rows = conn.execute(_ads_sql(_media_table(conn), _video_table(conn)) + (" AND a.brand = %s" if brand else ""), (week, brand) if brand else (week,)).fetchall()
+    sel, join = learn.sql_parts(conn)
+    rows = conn.execute(_ads_sql(_media_table(conn), _video_table(conn), sel, join) + (" AND a.brand = %s" if brand else ""), (week, brand) if brand else (week,)).fetchall()
     return [r for r in rows if _fmt_ok(r, fmt)]
 
 
@@ -239,7 +241,7 @@ def _card(a: dict, badge: str | None = None, reason: str | None = None) -> dict:
     return {"library_id": a["library_id"], "brand": a["brand"], "hook": a["hook"] or a["headline"] or "", "headline": a.get("headline"), "primary_text": (a.get("primary_text") or "")[:700],
             "format": a["format"], "days_running": a["days_running"], "variant_count": a["variant_count"], "landing_url": a.get("landing_url"), "landing_domain": domain_of(a.get("landing_url")),
             "thumb_url": _thumb(a), "video_url": _video(a), "ad_library_url": ad_url(a["library_id"]), "angle": " / ".join(x for x in (a.get("cluster"), a.get("pain_point")) if x) or None,
-            "is_new_angle": bool(a.get("is_new_angle")), "new_angle_label": a.get("new_angle_label"), "badge": badge, "reason": reason}
+            "is_new_angle": bool(a.get("is_new_angle")), "new_angle_label": a.get("new_angle_label"), "badge": badge, "reason": reason, **learn.card_extras(a)}
 
 
 def _days_badge(a: dict) -> str | None:
@@ -374,13 +376,29 @@ def _pulse(summ: list[dict], cur: list[dict], first: bool) -> dict:
             "longest_ad_library_url": ad_url(lo[0]["library_id"]) if lo else None}
 
 
-def payload_from(weeks: list[str], sel: str | None, prior: str | None, fmt: str | None, brands: list[dict], cur: list[dict], prev: list[dict] | None) -> dict:
-    """The /api/competitors body from already-read rows (pure: the UI mock server uses it too)."""
+def _prepare(cur, prev, ctx):
+    """Merge model-read tags over the text class, then apply the tag filters (only when the tags table exists). Returns (all rows, filtered rows, filtered prior rows, active filters)."""
+    cur = [learn.merge_tags(a) for a in cur]
+    prev = None if prev is None else [learn.merge_tags(a) for a in prev]
+    f = (ctx.get("filters") or {}) if ctx.get("tags_table") else {}
+    if not f:
+        return cur, cur, prev, f
+    return cur, [a for a in cur if learn.tag_ok(a, f)], (None if prev is None else [a for a in prev if learn.tag_ok(a, f)]), f
+
+
+def _lp_visible(ctx, cur, fmt, f):
+    return learn.restrict(ctx.get("lp_rows") or [], cur, bool(f or fmt), bool(ctx.get("lp_linked")))
+
+
+def payload_from(weeks: list[str], sel: str | None, prior: str | None, fmt: str | None, brands: list[dict], cur: list[dict], prev: list[dict] | None, ctx: dict | None = None) -> dict:
+    """The /api/competitors body from already-read rows (pure: the UI mock server uses it too). ctx (all optional): tags_table, week_tagged, filters, lonvera, lp_rows, lp_linked."""
+    ctx = ctx or {}
     out = {"weeks": weeks, "week": sel, "prior_week": prior, "format": fmt or "all", "first_snapshot": bool(sel) and prior is None, "caveats": CAVEATS, "brands": [], "changes": [], "notice": None,
            "pulse": {"brands": 0, "active_ads": 0, "new_ads": None, "longest_days": None, "longest_brand": None, "longest_ad_library_url": None}, "spotlight": [], "angle_chart": []}
     if not sel:
         out["notice"] = "No competitor snapshot has been stored yet. The first one is written on a Sunday."
         return out
+    all_cur, cur, prev, f = _prepare(cur, prev, ctx)
     summ = _summaries(brands, cur, prev, sel == weeks[0])
     out["brands"] = summ
     out["changes"] = _facts(summ, cur, prev, prior is None)
@@ -389,25 +407,55 @@ def payload_from(weeks: list[str], sel: str | None, prior: str | None, fmt: str 
     out["angle_chart"] = _angle_chart(cur)
     if prior is None:
         out["notice"] = "First snapshot: changes against the week before start next week."
+    if ctx.get("tags_table"):
+        tagged = ctx.get("week_tagged")
+        tagged = sum(1 for a in all_cur if a.get("tg_present")) if tagged is None else tagged
+        out["tags"] = {"empty": tagged == 0, "options": learn.options(all_cur), "active": {learn.FILTER_PARAM[c]: v for c, v in f.items()}, "note": learn.NOTE}
+        lr = learn.learning(cur, ctx.get("lonvera"))
+        if lr:
+            out["learn"] = lr
+    lp = learn.lp_patterns(_lp_visible(ctx, cur, fmt, f))
+    if lp:
+        out["lp_patterns"] = lp
     return out
 
 
-def payload(conn, raw_week: str | None, raw_format: str | None) -> dict:
+def _ctx(conn, sel: str | None, filters: dict | None, brand: str | None = None) -> dict:
+    ctx: dict = {"tags_table": False, "filters": filters or {}}
+    if not sel:
+        return ctx
+    if learn.exists(conn, "competitor_ad_tags"):
+        ctx["tags_table"] = True
+        ctx["week_tagged"] = conn.execute("SELECT count(*) AS n FROM competitor_ads a JOIN competitor_ad_tags t ON t.library_id = a.library_id WHERE a.week_start = %s", (sel,)).fetchone()["n"]
+        if ctx["week_tagged"] and not brand:
+            ctx["lonvera"] = learn.lonvera_shares(conn)
+    ctx["lp_rows"] = learn.lp_rows(conn, sel, brand)
+    ctx["lp_linked"] = bool(ctx["lp_rows"]) and learn.lp_linked(conn, sel)
+    return ctx
+
+
+def payload(conn, raw_week: str | None, raw_format: str | None, filters: dict | None = None) -> dict:
     fmt = _format(raw_format)
     weeks, sel, prior = _pick_week(conn, raw_week)
-    out = payload_from(weeks, sel, prior, fmt, _brand_rows(conn), _ads(conn, sel, fmt), _ads(conn, prior, fmt) if prior else None)
+    out = payload_from(weeks, sel, prior, fmt, _brand_rows(conn), _ads(conn, sel, fmt), _ads(conn, prior, fmt) if prior else None, _ctx(conn, sel, filters))
     if sel and _chatter_table(conn):
         out["chatter"] = _chatter(conn, sel, None, 10)
     return out
 
 
-def detail_from(b: dict, sel: str | None, prior: str | None, fmt: str | None, cur: list[dict], prev: list[dict] | None) -> dict:
-    """The /api/competitors/<brand> body from already-read rows (pure)."""
+def detail_from(b: dict, sel: str | None, prior: str | None, fmt: str | None, cur: list[dict], prev: list[dict] | None, ctx: dict | None = None) -> dict:
+    """The /api/competitors/<brand> body from already-read rows (pure). ctx as for payload_from; lp_rows are this brand's landing pages."""
+    ctx = ctx or {}
     phrase = (b["search_phrases"] or [b["brand"]])[0]
     out = {"brand": b["brand"], "product_type": b["product_type"], "week": sel, "prior_week": prior, "format": fmt or "all", "first_snapshot": bool(sel) and prior is None,
            "brand_ad_library_url": search_url(phrase), "gallery": [], "longest_running": [], "new_this_week": [], "angles": [], "landing_pages": [], "caveats": CAVEATS[1:2]}
     if not sel:
         return out
+    cur, cur_f, prev, f = _prepare(cur, prev, ctx)
+    cur = cur_f
+    mix = learn.tag_mix(cur) if ctx.get("tags_table") else None
+    if mix:
+        out["tag_mix"] = mix
     out["longest_running"] = [_ad_row(a) for a in _longest(cur)[:TOP_ADS]]
     fresh_cards: list[dict] = []
     if prev:
@@ -437,16 +485,19 @@ def detail_from(b: dict, sel: str | None, prior: str | None, fmt: str | None, cu
     out["angles"] = sorted(({**g, "concepts": len(g["concepts"])} for g in angles.values()), key=lambda g: -g["ads"])[:10]
     pages = collections.Counter(p for p in (page_of(a["landing_url"]) for a in cur) if p)
     out["landing_pages"] = [{"page": p, "ads": n} for p, n in sorted(pages.items(), key=lambda kv: (-kv[1], kv[0]))[:8]]
+    cards = [learn.lp_card(r, sel) for r in _lp_visible(ctx, cur, fmt, f)][:8]
+    if cards:
+        out["landing_pages"] = cards                   # tagged landing pages replace the plain counts
     return out
 
 
-def brand_detail(conn, brand: str, raw_week: str | None, raw_format: str | None) -> dict:
+def brand_detail(conn, brand: str, raw_week: str | None, raw_format: str | None, filters: dict | None = None) -> dict:
     fmt = _format(raw_format)
     b = conn.execute("SELECT brand, product_type, search_phrases FROM competitor_brands WHERE brand = %s", (brand,)).fetchone()
     if b is None:
         raise q.ApiError(404, "Unknown competitor brand.")
     weeks, sel, prior = _pick_week(conn, raw_week)
-    out = detail_from(b, sel, prior, fmt, _ads(conn, sel, fmt, brand), _ads(conn, prior, fmt, brand) if prior else None)
+    out = detail_from(b, sel, prior, fmt, _ads(conn, sel, fmt, brand), _ads(conn, prior, fmt, brand) if prior else None, _ctx(conn, sel, filters, brand))
     if sel and _chatter_table(conn):
         out["chatter"] = _chatter(conn, sel, brand, 5)
     return out

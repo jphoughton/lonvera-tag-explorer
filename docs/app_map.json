@@ -913,7 +913,7 @@
    "endpoint": "api.competitors",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "Competitors: what watched brands run on Meta this week (week=YYYY-MM-DD, default the latest snapshot; format=video|image, default all): one row per brand, what changed since the prior week, chatter when stored. See app/competitors.py."
+   "summary": "Competitors: what watched brands run on Meta this week (week=YYYY-MM-DD, default the latest snapshot; format=video|image, default all; style=, hook=, device=, offer= tag filters when tags exist): one row per brand, what changed since the prior week, chatter when stored. See app/competitors.py."
   },
   {
    "rule": "/api/competitors/<path:brand>",
