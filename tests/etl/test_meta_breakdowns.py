@@ -931,3 +931,34 @@ def test_committed_request_windows_of_a_failed_window_are_not_pulled_again(bd, m
     st = mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 14))], None, client=client()[0], accounts=ONE, entries=ents, pause=lambda s: None, backfill=True, today=D(2026, 11, 12))
     assert {since for _, since in calls_by_set(f)} == {"2026-11-08"} and st["sets_ok"] == 1
     assert mb.window_done(bd, "age", "ad", ACCT[0], D(2026, 11, 1), D(2026, 11, 14))
+
+
+def test_a_window_that_keeps_failing_after_the_set_has_worked_is_split_in_halves(bd, monkeypatch):
+    def h(p, acct):
+        tr = json.loads(p["time_range"])
+        span = (D.fromisoformat(tr["until"]) - D.fromisoformat(tr["since"])).days
+        if tr["since"] >= "2026-11-08" and span >= 3:
+            return err(2, "Service temporarily unavailable")
+    f = Fake(h).install(monkeypatch)
+    st = mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 14))], None, client=client()[0], accounts=ONE, entries=[mb.BY_NAME["age"]], pause=lambda s: None, today=D(2026, 11, 12))
+    assert st["sets_ok"] == 1 and count(bd, "SELECT count(DISTINCT day) FROM meta_breakdown_daily") == 14
+
+
+def test_a_set_that_delivered_nothing_fails_fast_instead_of_splitting(bd, monkeypatch):
+    f = Fake(lambda p, acct: err(2, "Service temporarily unavailable")).install(monkeypatch)
+    st = mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 14))], None, client=client()[0], accounts=ONE, entries=[mb.BY_NAME["age"]], pause=lambda s: None, today=D(2026, 11, 12))
+    assert st["sets_error"] == 1 and len([c for c in f.calls if c[0] == "GET"]) == 4
+
+
+def test_splitting_after_progress_is_capped(bd, monkeypatch):
+    n = {"ok": 0}
+
+    def h(p, acct):
+        tr = json.loads(p["time_range"])
+        if tr["since"] == "2026-11-01" and n["ok"] == 0:
+            n["ok"] = 1                                                                      # the first request gets through ...
+            return None
+        return err(2, "Service temporarily unavailable")                                   # ... everything after it fails
+    f = Fake(h).install(monkeypatch)
+    st = mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 14))], None, client=client()[0], accounts=ONE, entries=[mb.BY_NAME["age"]], pause=lambda s: None, today=D(2026, 11, 12))
+    assert st["sets_error"] == 1 and len([c for c in f.calls if c[0] == "GET"]) <= 2 + 4 * 4 + 4
