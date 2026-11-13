@@ -4,7 +4,7 @@
 import { h } from '../util.js';
 import { api } from '../api.js';
 import { assignmentPanel } from './priorities_panel.js';
-import { STATUSES, STATUS_LABEL, statusOf, md, weekLabel, ticketTitle, richLines, parseVariations, previewOf, adCount, mediaOf, conceptName, factsEl, productName, formatLabel, dueInfo, nextActions, eventLine, link, resultText, mondayOf, addDays, today, askDialog } from './production_common.js';
+import { STATUSES, STATUS_LABEL, statusOf, md, weekLabel, ticketTitle, richLines, variationList, previewOf, adCount, mediaOf, conceptName, factsEl, productName, formatLabel, dueInfo, nextActions, eventLine, link, resultText, mondayOf, addDays, today, askDialog } from './production_common.js';
 
 const when = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`; };
 
@@ -52,7 +52,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
         : h('ol', { class: 'prod-stepper', 'data-testid': 'prod-drawer-stepper', 'aria-label': 'Status' }, STATUSES.map(([k, l], i) => h('li', { class: 'prod-step' + (i < idx ? ' prod-step-done' : '') + (i === idx ? ' prod-step-now' : ''), 'data-status': k, 'aria-current': i === idx ? 'step' : null, 'data-testid': 'prod-drawer-step' }, h('span', { class: 'prod-step-dot' }), h('span', { class: 'prod-step-label' }, l)))),
       h('div', { class: 'prod-drawer-meta' },
         h('span', { class: 'prod-pill prod-ps-' + status, 'data-testid': 'prod-drawer-status' }, STATUS_LABEL[status] || status),
-        h('span', { class: 'prod-chip prod-chip-vendor' }, r.vendor), mediaOf(r) ? h('span', { class: 'prod-chip prod-chip-media', 'data-testid': 'prod-drawer-media' }, mediaOf(r)) : null,
+        mediaOf(r) ? h('span', { class: 'prod-chip prod-chip-media', 'data-testid': 'prod-drawer-media' }, mediaOf(r)) : null,
         due ? h('span', { class: 'prod-chip prod-chip-due' + (due.tone ? ' prod-due-' + due.tone : ''), 'data-testid': 'prod-drawer-due-chip' }, due.text) : null),
       h('div', { class: 'prod-drawer-actions', 'data-testid': 'prod-drawer-actions' }, nextActions(r).map((a) => h('button', { type: 'button', class: 'btn' + (a.primary ? ' primary' : ''), 'data-testid': 'prod-drawer-action-' + a.key, onclick: () => act(r, a) }, a.label))),
       msg);
@@ -117,7 +117,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
       try { const d = await loadDetail(); body.replaceChildren(assignmentPanel(d)); more.dataset.loaded = '1'; } catch (e) { body.replaceChildren(h('p', { class: 'pri-err', role: 'alert' }, 'Could not load the details: ' + ((e && e.message) || 'error'))); }
     });
     // the work itself, in one block: a tab per variation (Original, Hook 2 ...), the first one already open as a player (Google Drive files and folders), and what is said in it underneath
-    const vars = parseVariations(r.story);
+    const vars = variationList(r);
     const items = vars.length ? vars : (r.creative_url ? [{ label: 'Creative', url: r.creative_url }] : []);
     const tmap = new Map();                                                          // label -> transcript, filled when the transcripts arrive
     const viewer = h('div', { class: 'prod-viewer', 'data-testid': 'prod-viewer' });

@@ -8113,6 +8113,12 @@
      "type": "text",
      "nullable": true,
      "description": "'new' for a new concept or 'iteration' for a variation made from an earlier concept; NULL when not set. The Creative Tracker holds the same fact in its New Concept / Iteration column."
+    },
+    {
+     "name": "variations",
+     "type": "jsonb",
+     "nullable": false,
+     "description": "The variations of the concept as a JSON list of {label, url, concept_id}: label (Original, Hook 2 ...), url (the video or image, usually Google Drive; may be empty) and concept_id (the Creative Tracker Concept ID of that variation; may be empty). Its length is the Variations number on the ticket."
     }
    ],
    "examples": []

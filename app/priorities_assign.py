@@ -25,7 +25,7 @@ FORMATS = [{"code": "F1", "name": "Long animated story, openly AI, told by the c
            {"code": "F3", "name": "Short acted scene with two people", "length": "30 to 60s"}, {"code": "F4", "name": "Whiteboard explainer", "length": "60 to 90s"},
            {"code": "F5", "name": "Opens on a sound", "length": "30 to 60s"}, {"code": "F6", "name": "Animated song", "length": "45 to 90s"}]
 CREATE_FIELDS = ("vendor", "for_week", "note", "format_code")
-PATCH_FIELDS = ("vendor", "for_week", "note", "format_code", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped", "status", "due_date", "priority", "position", "comment", "concept_name", "concept_kind")
+PATCH_FIELDS = ("vendor", "for_week", "note", "format_code", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped", "status", "due_date", "priority", "position", "comment", "concept_name", "concept_kind", "variations")
 PATCH_BOOLS = ("ready", "launched", "dropped")
 VENDOR_PATCH_FIELDS = ("creative_url", "vendor_note", "ready", "status", "comment")
 # the board (migration 245): the stored status of an assignment, in column order. `dropped` is not a status (dropped_at hides the card in an archived lane).
@@ -212,6 +212,8 @@ def clean_patch(body: dict) -> dict:
             out["concept_kind"] = body["concept_kind"]
         else:
             raise q.ApiError(400, "new vs iteration must be new or iteration")
+    if "variations" in body:
+        out["variations"] = clean_variations(body["variations"], required=False)
     if "comment" in body:
         out["comment"] = _comment_opt(body["comment"])
     return out
@@ -406,7 +408,7 @@ VENDOR_RECENT_DAYS = 28                      # the vendor page also shows what w
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{22,64}")
 COLS = ("id, concept_key, text_key, product, vendor, line_id, manual_id, line_code, cluster, icp, pain_point, story, section_at_assign, note, vendor_note, for_week, brief_url, creative_url, "
         "brief_at, creative_at, ready_at, launched_at, dropped_at, tracker_concept_ids, created_at, updated_at, created_by, updated_by")
-STRUCT_COLS = ("concept_name", "concept_kind")                                         # migration 258: the ticket fields; a database without it still serves every page
+STRUCT_COLS = ("concept_name", "concept_kind", "variations")                                         # migration 258: the ticket fields; a database without it still serves every page
 BOARD_COLS = ("status", "due_date", "priority", "position", "status_changed_at")        # migration 245; a database without it still serves every page (status is then derived from the links)
 FMT_COLS = ("format_code", "format_name", "format_length")                               # on every row; None when no format was chosen (or migration 204 is not applied)
 INTERNAL_ONLY = ("note", "created_by", "updated_by", "suggested_concept_ids")          # never sent to a vendor link page
@@ -663,53 +665,105 @@ def _after_write(ids: list[int], vendor_view: bool = False, history: bool = True
     return sorted(shaped, key=lambda a: ids.index(a["id"]))
 
 
+def clean_variations(raw, required: bool = True) -> str:
+    """The variations of a ticket: a list of {label, url?, concept_id?} (at least one when required), at most 40. Returned as a JSON string for the jsonb column. A bare number is not accepted: the list is the data."""
+    import json
+    if not isinstance(raw, list) or (required and not raw):
+        raise q.ApiError(400, "variations must be a list of {label, url?, concept_id?} with at least one entry")
+    if len(raw) > 40:
+        raise q.ApiError(400, "at most 40 variations")
+    out = []
+    for i, v in enumerate(raw):
+        if isinstance(v, str):
+            v = {"label": v}
+        if not isinstance(v, dict):
+            raise q.ApiError(400, f"variation {i + 1}: expected an object with a label")
+        label = _text(v.get("label"), "variation label", 60)
+        if not label:
+            raise q.ApiError(400, f"variation {i + 1}: label is required (Original, Hook 2 ...)")
+        out.append({"label": label, "url": _opt_url(v.get("url")) or "", "concept_id": _text(v.get("concept_id"), "variation concept id", LIMITS["concept_id"])})
+    return json.dumps(out)
+
+
+# the seven fields every ticket must carry, however it was added (the New ticket button, POST /api/priorities/tickets, an import)
+TICKET_REQUIRED = ("concept_name", "product", "variations", "cluster", "concept_kind", "vendor", "for_week")
 PRODUCT_SLUGS = ("vita-bull", "beef-liver", "boneflex", "vita-belle")
 TICKET_STATUSES = ("assigned", "brief_sent", "in_production", "in_review")             # a new ticket can start anywhere before Ready to launch
 
 
-def create_ticket(conn, body: dict, user: str | None = None) -> dict:
-    """A ticket added straight from the board (no row of the weekly list behind it): {concept_name, product, vendor, for_week?, cluster?, icp?, pain_point?, concept_kind?, format_code?, brief_url?, note?, due_date?,
-    status?} -> the new card. The concept key is 'ticket:<random>', so the same concept can be added twice on purpose; the text key still lets it show next to a matching concept on /priorities."""
+def _ticket_fields(conn, body: dict) -> dict:
+    """Validate one ticket. The seven fields of the ticket face are REQUIRED: concept_name, product, variations, cluster (Market Cluster), concept_kind (new | iteration), vendor, for_week. Optional: icp, pain_point,
+    format_code, brief_url, note, due_date, status."""
     if not isinstance(body, dict):
         raise q.ApiError(400, "JSON object body required")
+    missing = [k for k in TICKET_REQUIRED if body.get(k) in (None, "", [])]
+    if missing:
+        raise q.ApiError(400, "missing required field" + ("s" if len(missing) > 1 else "") + ": " + ", ".join(missing) + " (every ticket needs concept_name, product, variations, cluster, concept_kind, vendor, for_week)")
     name = _text(body.get("concept_name"), "concept name", LIMITS["concept_name"])
     if not name:
         raise q.ApiError(400, "concept name is required")
     product = body.get("product")
     if product not in PRODUCT_SLUGS:
         raise q.ApiError(400, "product must be one of: " + ", ".join(PRODUCT_SLUGS))
-    vendor = _vendor(body.get("vendor"))
-    week = monday_of(body.get("for_week") or today_pt())
-    cluster, icp, pain = (_text(body.get(k), k.replace("_", " "), 200) for k in ("cluster", "icp", "pain_point"))
+    cluster = _text(body.get("cluster"), "cluster", 200)
+    if not cluster:
+        raise q.ApiError(400, "cluster (Market Cluster) is required")
     kind = body.get("concept_kind")
-    if kind in (None, ""):
-        kind = None
-    elif kind not in ("new", "iteration"):
-        raise q.ApiError(400, "new vs iteration must be new or iteration")
+    if kind not in ("new", "iteration"):
+        raise q.ApiError(400, "concept_kind must be new or iteration")
+    vendor = _vendor(body.get("vendor"))
+    week = monday_of(body.get("for_week"))
     status = body.get("status") or "assigned"
     if status not in TICKET_STATUSES:
         raise q.ApiError(400, "status must be one of: " + ", ".join(TICKET_STATUSES))
-    due = week + dt.timedelta(days=4) if body.get("due_date") in (None, "") else _date(body["due_date"], "due date")
-    brief = _opt_url(body.get("brief_url"))
-    note = _text(body.get("note"), "note", LIMITS["note"])
-    fc = check_format(_format_code(body.get("format_code")), formats(conn))
+    variations = clean_variations(body.get("variations"))
+    import json
+    ids = [v["concept_id"] for v in json.loads(variations) if v["concept_id"]]
+    return {"name": name, "product": product, "cluster": cluster, "kind": kind, "vendor": vendor, "week": week, "status": status, "variations": variations, "concept_ids": ids,
+            "icp": _text(body.get("icp"), "icp", 200), "pain": _text(body.get("pain_point"), "pain point", 200), "note": _text(body.get("note"), "note", LIMITS["note"]), "brief": _opt_url(body.get("brief_url")),
+            "due": (week + dt.timedelta(days=4)) if body.get("due_date") in (None, "") else _date(body["due_date"], "due date"), "format": _format_code(body.get("format_code"))}
+
+
+def _insert_ticket(w, t: dict, user: str | None) -> int:
+    pos = w.execute("SELECT COALESCE(max(position), 0) + 1 AS p FROM creative_priorities_assignments WHERE status = %s AND dropped_at IS NULL", (t["status"],)).fetchone()["p"]
+    row = w.execute(
+        """INSERT INTO creative_priorities_assignments (concept_key, text_key, product, vendor, line_code, cluster, icp, pain_point, story, section_at_assign, note, for_week, created_by, updated_by,
+               concept_name, concept_kind, variations, tracker_concept_ids, format_code, brief_url, brief_at, status, due_date, priority, position, status_changed_at)
+           VALUES (%s,%s,%s,%s,'',%s,%s,%s,'','test',%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,CASE WHEN %s::text IS NOT NULL THEN now() END,%s,%s,'normal',%s,now()) RETURNING id""",
+        ("ticket:" + secrets.token_hex(8), text_key({"product": t["product"], "cluster": t["cluster"], "icp": t["icp"], "pain_point": t["pain"]}), t["product"], t["vendor"], t["cluster"], t["icp"], t["pain"], t["note"],
+         t["week"], user, user, t["name"], t["kind"], t["variations"], t["concept_ids"], t["format"], t["brief"], t["brief"], t["status"], t["due"], pos)).fetchone()
+    _log(w, row["id"], user, "assigned", None, "assigned", f"{t['vendor']}, week of {t['week']}")
+    if t["status"] != "assigned":
+        _log(w, row["id"], user, "status_changed", "assigned", t["status"], "Added on the board")
+    return row["id"]
+
+
+def create_ticket(conn, body: dict, user: str | None = None) -> dict:
+    """One ticket, or a batch: {tickets: [ticket, ...]} (at most 100; all are validated first and none is saved when one is wrong, the error names its position). A ticket needs the seven fields of the face
+    (see TICKET_REQUIRED). The concept key is 'ticket:<random>', so the same concept can be added twice on purpose; the text key still lets it show next to a matching concept on /priorities. -> the new card, or
+    {created: [card, ...]} for a batch."""
+    batch = isinstance(body, dict) and "tickets" in body
+    items = body["tickets"] if batch else [body]
+    if batch and (not isinstance(items, list) or not items or len(items) > 100):
+        raise q.ApiError(400, "tickets must be a list of 1 to 100 tickets")
+    clean = []
+    for i, it in enumerate(items):
+        try:
+            clean.append(_ticket_fields(conn, it))
+        except q.ApiError as e:
+            raise q.ApiError(400, (f"ticket {i + 1}: " if batch else "") + e.message) from None
+    fc = formats(conn)
+    for t in clean:
+        t["format"] = check_format(t["format"], fc)
     try:
         with _rw() as w:
-            pos = w.execute("SELECT COALESCE(max(position), 0) + 1 AS p FROM creative_priorities_assignments WHERE status = %s AND dropped_at IS NULL", (status,)).fetchone()["p"]
-            row = w.execute(
-                """INSERT INTO creative_priorities_assignments (concept_key, text_key, product, vendor, line_code, cluster, icp, pain_point, story, section_at_assign, note, for_week, created_by, updated_by,
-                       concept_name, concept_kind, format_code, brief_url, brief_at, status, due_date, priority, position, status_changed_at)
-                   VALUES (%s,%s,%s,%s,'',%s,%s,%s,'','test',%s,%s,%s,%s,%s,%s,%s,%s,CASE WHEN %s::text IS NOT NULL THEN now() END,%s,%s,'normal',%s,now()) RETURNING id""",
-                ("ticket:" + secrets.token_hex(8), text_key({"product": product, "cluster": cluster, "icp": icp, "pain_point": pain}), product, vendor, cluster, icp, pain, note, week, user, user,
-                 name, kind, fc, brief, brief, status, due, pos)).fetchone()
-            _log(w, row["id"], user, "assigned", None, "assigned", f"{vendor}, week of {week}")
-            if status != "assigned":
-                _log(w, row["id"], user, "status_changed", "assigned", status, "Added on the board")
+            ids = [_insert_ticket(w, t, user) for t in clean]
     except psycopg.errors.UndefinedTable:
         raise q.ApiError(503, "Production is not set up yet (migration 202 is not applied).") from None
     except psycopg.errors.UndefinedColumn as e:
         raise _missing_column(e) from None
-    return _after_write([row["id"]])[0]
+    cards = _after_write(ids)
+    return {"created": cards} if batch else cards[0]
 
 
 def create_assignments(conn, body: dict, user: str | None = None) -> dict:
@@ -873,7 +927,7 @@ def _update(aid: int, f: dict, user: str | None, vendor: str | None = None, lega
                 note = "" if legacy_ready else check_transition(was, new_status, vendor=vendor is not None, creative_url=creative, comment=comment)
             sets: list[str] = []
             params: list = []
-            for c in ("vendor", "for_week", "note", "vendor_note", "format_code", "due_date", "priority", "position", "concept_name", "concept_kind"):
+            for c in ("vendor", "for_week", "note", "vendor_note", "format_code", "due_date", "priority", "position", "concept_name", "concept_kind", "variations"):
                 if c in f:
                     sets.append(f"{c} = %s")
                     params.append(f[c])
