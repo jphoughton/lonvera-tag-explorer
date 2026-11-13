@@ -225,7 +225,15 @@ a.pg-mcard:hover { text-decoration: none; box-shadow: var(--lv-shadow-2); border
   .pg-navmenu .pg-navbtn { border-color: var(--lv-line-strong); }
 }
 @media (max-width: 640px) {
-  .pg-chrome .navsearch { margin-left: 0; flex: 1 1 60px; }
+  /* phones: the lookup is a 40px search icon in the one-line top bar; tapping it opens the full-width input over the bar (Enter submits) */
+  .pg-chrome .navsearch { position: relative; margin-left: auto; flex: 0 0 40px; }
+  .pg-chrome .navsearch::before { content: "\2315"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--lv-ink-2); pointer-events: none; }
+  .pg-chrome .navsearch input { width: 40px; padding: 0; color: transparent; cursor: pointer; }
+  .pg-chrome .navsearch input::placeholder { color: transparent; }
+  .pg-chrome .navsearch:focus-within { position: absolute; left: 10px; right: 10px; top: 5px; z-index: 5; flex: none; margin: 0; }
+  .pg-chrome .navsearch:focus-within::before { display: none; }
+  .pg-chrome .navsearch:focus-within input { width: 100%; padding: 0 12px; color: var(--lv-ink); cursor: text; background: var(--lv-surface); height: 32px; }
+  .pg-chrome .navsearch:focus-within input::placeholder { color: var(--lv-muted); }
   .pg-chrome .navsearch .btn { display: none; }      /* Enter submits */
   .pg-ver { display: none; }
   .pg-chrome .pg-bar select { min-width: 0; max-width: 118px; height: 32px; }

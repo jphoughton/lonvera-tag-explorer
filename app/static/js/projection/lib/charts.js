@@ -9,7 +9,7 @@ import * as F from './format.js';
 
 // Six categorical slots in fixed order (slots 1-3 are Vital Bull, Boneflex, Beef Liver). Values come from brand.css (--lv-viz-1..6), light/dark aware;
 // the hex list is only the light-mode fallback if the stylesheet is missing. Call refreshPalette() after a theme change before drawing.
-const FALLBACK = ['#A63D02', '#2863AB', '#5F983A', '#8166C3', '#C2185B', '#009394'];
+const FALLBACK = ['#C93A22', '#2863AB', '#009394', '#8166C3', '#C2185B', '#5F983A'];
 export const PALETTE = FALLBACK.slice();
 export function refreshPalette() {
   const cs = getComputedStyle(document.documentElement);

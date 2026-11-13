@@ -11,8 +11,8 @@ export function destroyCharts() {
 export const tok = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 const COLORS = {
-  spend: '#9db7e0', purchases: '#d9822b', revenue: '#1d8a56',
-  impressions: '#8a6bbf', clicks: '#c2410c',
+  spend: '#9db7e0', purchases: '#E8573A', revenue: '#1d8a56',
+  impressions: '#8a6bbf', clicks: '#E8A400',
   testing: '#1b9a96', scaling: '#5a4fd6',
   get unclassified() { return tok('--lv-line-strong'); },
 };
@@ -192,7 +192,7 @@ const stackTotals = {
 };
 
 const BAR_COLOR = '#1a5fb4';
-const LINE_COLOR = '#d9822b';
+const LINE_COLOR = '#E8573A';
 export { BAR_COLOR, LINE_COLOR };
 
 /*
@@ -253,7 +253,7 @@ export function trendChart(canvas, cfg) {
       scales: {
         x: { ticks: { maxTicksLimit: 14, maxRotation: 0, callback: grain === 'month' ? function (v) { return monthLabel(this.getLabelForValue(v)); } : tickDay }, grid: { display: false } },
         y: axis('left', cfg.left, BAR_COLOR, 'left'),
-        y1: axis('right', cfg.right, '#c2610f', 'right'),
+        y1: axis('right', cfg.right, '#C2351C', 'right'),
       },
       plugins: {
         legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10, sort: (a, b) => a.datasetIndex - b.datasetIndex, filter: (item, data) => !(data.datasets[item.datasetIndex] || {})._halo } },

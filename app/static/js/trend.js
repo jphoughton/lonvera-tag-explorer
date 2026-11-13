@@ -23,7 +23,7 @@ METRIC[NC_TOTAL.key] = NC_TOTAL;
 const totalColor = () => tok('--lv-ink');
 export const metricInfo = (key) => METRIC[key] || METRIC.spend;
 
-const PALETTE = ['#1a5fb4', '#d9822b', '#1d8a56', '#a64dc4', '#c2410c', '#0b7a75', '#c2185b', '#c0392b'];
+const PALETTE = ['#1a5fb4', '#E8573A', '#1d8a56', '#a64dc4', '#E8A400', '#0b7a75', '#c2185b', '#c0392b'];
 const STAGE_COLOR = { testing: '#1b9a96', scaling: '#5a4fd6', get unclassified() { return tok('--lv-line-strong'); } };
 const STAGE_NAME = { testing: 'Testing', scaling: 'Scaling', unclassified: 'Unclassified' };
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -522,7 +522,7 @@ export function createTrendPanel(opts) {
     if (mode === 'ad' && opts.shadeInfo) {
       const { a, b } = opts.shadeInfo;
       if (a && a.from && a.to) shades.push({ from: a.from, to: a.to, color: 'rgba(26,95,180,0.14)' });
-      if (b && b.from && b.to && cmpView.on) shades.push({ from: b.from, to: b.to, color: 'rgba(217,130,43,0.20)' });
+      if (b && b.from && b.to && cmpView.on) shades.push({ from: b.from, to: b.to, color: 'rgba(232,87,58,0.20)' });
     }
     if (totOn && tot.orders_first && labels.length && labels[0] < tot.orders_first) notes.push(`Total NC ROAS is available from ${fmt.day(tot.orders_first)}; earlier days are blank, not zero.`);
     // hover: both platforms' spend, the total and the total NC ROAS of the bucket
