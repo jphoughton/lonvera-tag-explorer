@@ -8,6 +8,7 @@ import { showControls } from '../controls.js';
 import { pageHeader } from '../ui/pagehead.js';
 import { filterRow, seg, selectCtl } from '../ui/pagefilters.js';
 import { adCard, lightbox, bars, link, safeHttp, tint } from './competitors_cards.js';
+import { TAG_PARAMS, tagFilters, learning, lpChanges, lpCards, lpLightbox } from './competitors_learn.js';
 
 const md = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ''); return m ? `${+m[2]}/${+m[3]}` : (s || ''); };
 const weekLabel = (s) => 'Week of ' + md(s);
@@ -72,7 +73,7 @@ function detailPanel(d, st) {
       h('td', null, g.cluster || '–'), h('td', null, g.pain_point || '–'), h('td', { class: 'comp-n' }, String(g.ads)), h('td', { class: 'comp-n' }, String(g.concepts)),
       h('td', null, g.is_new_angle ? (g.new_angle_label || 'Yes') : ''))), 'comp-angles') : h('p', { class: 'pri-sub' }, 'No ads in this view.'), 'comp-sec-angles'));
   parts.push(section('Landing pages', null,
-    d.landing_pages.length ? plainTable(['Page', 'Ads'], d.landing_pages.map((p) => h('tr', null, h('td', null, p.page), h('td', { class: 'comp-n' }, String(p.ads)))), 'comp-pages') : h('p', { class: 'pri-sub' }, 'No landing pages read.'), 'comp-sec-pages'));
+    d.landing_pages.length && d.landing_pages[0].lp_id ? lpCards(d.landing_pages, st.openLp) : d.landing_pages.length ? plainTable(['Page', 'Ads'], d.landing_pages.map((p) => h('tr', null, h('td', null, p.page), h('td', { class: 'comp-n' }, String(p.ads)))), 'comp-pages') : h('p', { class: 'pri-sub' }, 'No landing pages read.'), 'comp-sec-pages'));
   if (d.chatter && d.chatter.length) parts.push(section('Chatter about them', null, chatterCards(d.chatter, 'comp-bchatter'), 'comp-sec-bchatter'));
   return h('div', { class: 'comp-detail' }, parts);
 }
@@ -102,7 +103,7 @@ function angleRows(list) {
 
 export async function competitorsPage(ctx) {
   showControls(false);
-  const st = { week: ctx.params.week || '', format: FORMAT_NAMES[ctx.params.format] ? ctx.params.format : '', view: ctx.params.view === 'table' ? 'table' : 'wall', sort: 'active_ads', dir: -1, tileSort: 'active_ads' };
+  const st = { week: ctx.params.week || '', format: FORMAT_NAMES[ctx.params.format] ? ctx.params.format : '', view: ctx.params.view === 'table' ? 'table' : 'wall', style: ctx.params.style || '', hook: ctx.params.hook || '', device: ctx.params.device || '', offer: ctx.params.offer || '', sort: 'active_ads', dir: -1, tileSort: 'active_ads' };
   let data = { weeks: [], brands: [], changes: [] };
   const open = new Set();
   let openBrand = '';
@@ -110,16 +111,26 @@ export async function competitorsPage(ctx) {
   const body = h('div', { class: 'comp-body' });
   const msg = h('p', { class: 'prod-msg', role: 'status', 'data-testid': 'comp-msg' });
   const lb = lightbox();
-  const root = h('div', { class: 'page pri-page comp-page', 'data-testid': 'comp-page' }, body, lb);
+  const lplb = lpLightbox();
+  const root = h('div', { class: 'page pri-page comp-page', 'data-testid': 'comp-page' }, body, lb, lplb);
   const openAd = (list) => (ad) => lb.openAt(list, ad);
+  st.openLp = (lp, list) => lplb.openAt(list || [lp], lp);
+  const tagHref = (f, v) => href('/competitors', { ...params(), [f]: v });
+  const setTag = (f, v) => { st[f] = v; refresh(); };
+  lb.handlers = {
+    tagHref,
+    onTag: (f, v) => { lb.close(); setTag(f, v); },
+    onLp: async (ref, ad) => { try { const d = await detailFor(ad.brand); const list = (d.landing_pages || []).filter((x) => x.lp_id); const lp = list.find((x) => x.lp_id === ref.lp_id); if (lp) { lb.close(); lplb.openAt(list, lp); } } catch (e) { /* the summary is only a shortcut */ } },
+  };
 
-  const params = () => ({ week: st.week, format: st.format, view: st.view === 'table' ? 'table' : '' });
-  const load = async () => { data = await api('/api/competitors', { week: st.week, format: st.format }, { signal: ctx.signal }); if (!st.week && data.week) st.week = ''; draw(); };
+  const tagArgs = () => ({ style: st.style, hook: st.hook, device: st.device, offer: st.offer });
+  const params = () => ({ week: st.week, format: st.format, view: st.view === 'table' ? 'table' : '', ...tagArgs() });
+  const load = async () => { data = await api('/api/competitors', { week: st.week, format: st.format, ...tagArgs() }, { signal: ctx.signal }); if (!st.week && data.week) st.week = ''; draw(); };
   const refresh = () => { open.clear(); openBrand = ''; cache.clear(); navigate(href('/competitors', params()), { replace: true, render: false }); load().catch((e) => { if (!(e && e.name === 'AbortError')) { msg.textContent = e.message || 'Could not load.'; msg.classList.add('pri-err'); } }); };
 
   async function detailFor(brand) {
-    const k = [brand, data.week, st.format].join('|');
-    if (!cache.has(k)) cache.set(k, api('/api/competitors/' + encodeURIComponent(brand), { week: data.week, format: st.format }, { signal: ctx.signal }));
+    const k = [brand, data.week, st.format, ...TAG_PARAMS.map((x) => st[x])].join('|');
+    if (!cache.has(k)) cache.set(k, api('/api/competitors/' + encodeURIComponent(brand), { week: data.week, format: st.format, ...tagArgs() }, { signal: ctx.signal }));
     return cache.get(k);
   }
   async function fillDetail(cell, brand, panel) {
@@ -214,6 +225,14 @@ export async function competitorsPage(ctx) {
         ta ? h('span', { class: 'comp-chip' + (ta.is_new_angle ? ' comp-chip-hl' : ''), 'data-testid': 'comp-tile-angle', title: ta.is_new_angle ? 'An angle Lonvera does not run' : 'Most common angle' }, ta.label) : null));
   }
 
+  const MIX = [['style', 'style', 'Style'], ['hook_type', 'hook', 'Hook type'], ['device', 'device', 'Device']];
+  function tagMix(mix) {
+    if (!mix) return null;
+    return h('div', { class: 'comp-mix', 'data-testid': 'comp-mix' }, MIX.filter(([k]) => (mix[k] || []).length).map(([k, p, label]) => h('p', { class: 'comp-mixrow', 'data-testid': 'comp-mixrow', 'data-key': k },
+      h('span', { class: 'comp-mixlab' }, label), (mix[k] || []).map((o) => h('a', { class: 'comp-tchip', href: tagHref(p, o.value), 'data-testid': 'comp-mixchip', title: 'Show only ads with this ' + label.toLowerCase(),
+        onclick: (e) => { e.preventDefault(); setTag(p, o.value); } }, o.value, h('b', null, ' ' + o.count))))));
+  }
+
   function brandPanel(d) {
     const bl = safeHttp(d.brand_ad_library_url);
     const g = d.gallery || [];
@@ -222,16 +241,19 @@ export async function competitorsPage(ctx) {
     if (classified.length) second.push(h('div', { class: 'comp-half' }, h('h4', null, 'Angles they push'),
       bars(angleRows(classified), 'comp-bangles'),
       h('p', { class: 'pri-sub' }, 'Highlighted: angles Lonvera does not run.')));
-    if (d.landing_pages && d.landing_pages.length) second.push(h('div', { class: 'comp-half' }, h('h4', null, 'Landing pages'),
+    const lpc = (d.landing_pages || []).length && d.landing_pages[0].lp_id;
+    if (d.landing_pages && d.landing_pages.length && !lpc) second.push(h('div', { class: 'comp-half' }, h('h4', null, 'Landing pages'),
       h('ul', { class: 'comp-pagelist', 'data-testid': 'comp-bpages' }, d.landing_pages.map((p) => h('li', null, h('span', null, p.page), h('b', null, String(p.ads)))))));
     return h('div', { class: 'comp-bpanel', 'data-testid': 'comp-bpanel', 'data-brand': d.brand },
       h('div', { class: 'comp-bhead' }, h('h3', null, d.brand), d.product_type ? h('span', { class: 'pri-sub' }, d.product_type) : null,
         bl ? link(bl, 'Search ' + d.brand + ' in the Ad Library', { 'data-testid': 'comp-brandlink' }) : null,
         h('button', { type: 'button', class: 'comp-bclose', 'data-testid': 'comp-bclose', onclick: () => { openBrand = ''; draw(); } }, 'Close'),
         d.format !== 'all' ? h('span', { class: 'pri-sub' }, `Showing ${d.format} ads only.`) : null),
+      tagMix(d.tag_mix),
       g.length ? h('div', { class: 'comp-gallery', 'data-testid': 'comp-gallery' }, g.map((a) => adCard(a, openAd(g), { testid: 'comp-gcard' }))) : h('p', { class: 'pri-sub', 'data-testid': 'comp-gempty' }, 'No ads in this view.'),
       d.first_snapshot ? h('p', { class: 'pri-sub', 'data-testid': 'comp-first' }, 'First snapshot: new ads show from next week.') : null,
       second.length ? h('div', { class: 'comp-halves' }, second) : null,
+      lpc ? h('div', { 'data-testid': 'comp-blps' }, h('h4', null, 'Landing pages'), lpCards(d.landing_pages, st.openLp)) : null,
       d.chatter && d.chatter.length ? h('div', null, h('h4', null, 'Chatter about them'), chatterCards(d.chatter, 'comp-bchatter')) : null);
   }
 
@@ -273,19 +295,21 @@ export async function competitorsPage(ctx) {
       seg({ name: 'Format', options: [['', 'All', 'Video and image ads', 'comp-format-all'], ['video', 'Video', 'Video ads only', 'comp-format-video'], ['image', 'Image', 'Image ads only (carousels count as image)', 'comp-format-image']],
         value: st.format, onChange: (v) => { st.format = v; refresh(); }, testid: 'comp-format' }),
       seg({ name: 'View', options: [['wall', 'Brand wall', 'Tiles with pictures', 'comp-view-wall'], ['table', 'Table', 'One sortable row per brand', 'comp-view-table']], value: st.view, onChange: (v) => { st.view = v; refresh(); }, testid: 'comp-view' }));
+    const lpc = lpChanges(data);
     const changes = h('details', { class: 'comp-changes', 'data-testid': 'comp-changes' }, h('summary', null, 'What changed this week'),
-      data.changes && data.changes.length ? h('ul', null, data.changes.map((c) => h('li', { 'data-kind': c.kind, 'data-testid': 'comp-fact' }, c.text, ' ', c.ad_library_url && safeHttp(c.ad_library_url) ? link(c.ad_library_url, 'Open ad', { 'data-testid': 'comp-factlink' }) : null))) : (data.week ? h('p', { class: 'pri-sub' }, 'Nothing stands out.') : null));
+      data.changes && data.changes.length ? h('ul', null, data.changes.map((c) => h('li', { 'data-kind': c.kind, 'data-testid': 'comp-fact' }, c.text, ' ', c.ad_library_url && safeHttp(c.ad_library_url) ? link(c.ad_library_url, 'Open ad', { 'data-testid': 'comp-factlink' }) : null))) : (data.week && !lpc ? h('p', { class: 'pri-sub' }, 'Nothing stands out.') : null), lpc);
+    const tags = tagFilters(data, st, setTag, () => { for (const k of TAG_PARAMS) st[k] = ''; refresh(); });
     const notice = data.notice ? h('p', { class: 'pri-sub', 'data-testid': 'comp-notice' }, data.notice) : null;
     let main;
     if (!data.week) main = h('p', { 'data-testid': 'comp-empty' }, data.notice || 'No snapshots yet.');
     else if (!data.brands.length) main = h('p', { 'data-testid': 'comp-empty' }, 'No brands in this view.');
-    else if (st.view === 'table') main = [changes, tableView(), anglesAcross()];
-    else main = [pulse(), changes, spotlight(), wall(), anglesAcross()];
+    else if (st.view === 'table') main = [changes, tableView(), learning(data), anglesAcross()];
+    else main = [pulse(), changes, spotlight(), wall(), learning(data), anglesAcross()];
     const chatter = data.chatter ? h('section', { class: 'comp-sec', 'data-testid': 'comp-chatter-sec' }, h('h2', null, 'News and Reddit'), data.chatter.length ? chatterCards(data.chatter, 'comp-chatter') : h('p', { class: 'pri-sub' }, 'No posts stored for this week.')) : null;
     body.replaceChildren(...[
       pageHeader({ title: 'Competitors', description: 'What competitors run on Meta, week by week, from the public Ad Library. Brands show their ads running now, not spend or results.', testid: 'comp-head' }),
       h('p', { class: 'pri-sub comp-note', 'data-testid': 'comp-note' }, 'Each brand is a top slice of its ads by reach, so new and stopped counts also move with the slice. Format is video or image only: carousels count as image.'),
-      controls, msg, notice, h('div', { class: 'comp-main' }, main), chatter].filter(Boolean));
+      controls, tags, msg, notice, h('div', { class: 'comp-main' }, main), chatter].filter(Boolean));
   }
 
   await load();

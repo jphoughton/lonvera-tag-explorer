@@ -161,6 +161,74 @@
 .comp-top { margin: 6px 0; }
 .comp-detail { max-width: 100%; }
 
+
+/* learning layer: tag chips, disclosures, tags row, share charts, landing page cards */
+.comp-tchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px !important; }
+.comp-tchip { display: inline-flex; align-items: baseline; gap: 2px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--head-bg); color: var(--text); text-decoration: none; border: 1px solid var(--line); overflow-wrap: anywhere; }
+a.comp-tchip:hover { border-color: var(--accent); color: var(--accent); }
+a.comp-tchip:focus-visible, .comp-lplink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.comp-tchip-plain { cursor: default; }
+.comp-tchip-k { color: var(--muted); font-weight: 500; }
+.comp-why { font-size: 13px; line-height: 1.4; }
+.comp-quote { margin: 4px 0 !important; padding: 4px 0 4px 12px; border-left: 3px solid var(--accent); font-size: 14px; font-style: italic; overflow-wrap: anywhere; }
+.comp-disc { font-size: 13px; border-top: 1px solid var(--line); padding-top: 6px; }
+.comp-disc summary { cursor: pointer; font-weight: 700; color: var(--accent); width: fit-content; }
+.comp-disc-text { white-space: pre-wrap; max-height: 28vh; overflow: auto; margin: 6px 0 2px !important; line-height: 1.45; overflow-wrap: anywhere; }
+.comp-lplink { font-weight: 700; }
+.comp-tags-lab { font-weight: 800; }
+.comp-tags-clear { margin-left: 4px; }
+.comp-tags-empty { margin: 6px 0; }
+.comp-mix { display: flex; flex-direction: column; gap: 4px; margin: 0 0 10px; }
+.comp-mixrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 !important; font-size: 12px; }
+.comp-mixlab { color: var(--muted); font-weight: 700; min-width: 70px; }
+.comp-mixrow .comp-tchip b { color: var(--muted); font-weight: 700; }
+
+.comp-learn h2 { margin-top: 4px; }
+.comp-learn h3 { margin: 0 0 4px; font-size: 14px; }
+.comp-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+.comp-sw { display: inline-block; width: 12px; height: 8px; border-radius: 4px; margin-right: 6px; vertical-align: middle; }
+.comp-sw-c { background: var(--muted); } .comp-sw-l { background: var(--text); } .comp-sw-h { background: var(--accent); }
+.comp-lgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 10px; }
+.comp-lchart { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; min-width: 0; }
+.comp-lsent { font-size: 13px; font-weight: 600; line-height: 1.35; margin: 0 0 6px; }
+.comp-lfoot { margin: 8px 0 0; }
+.comp-dbars { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.comp-dbar { display: grid; grid-template-columns: minmax(90px, 32%) 1fr 64px; align-items: center; gap: 10px; font-size: 13px; }
+.comp-dbar-tracks { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.comp-dbar-tracks .comp-bar-track { height: 10px; border-radius: 5px; }
+.comp-dbar-c { display: block; height: 100%; background: var(--muted); border-radius: 5px; }
+.comp-dbar-hl .comp-dbar-c { background: var(--accent); }
+.comp-dbar-hl .comp-bar-label { color: var(--accent); }
+.comp-dbar-lt { height: 6px !important; }
+.comp-dbar-l { display: block; height: 100%; background: var(--text); border-radius: 3px; }
+.comp-dbar .comp-bar-n small { display: block; font-size: 11px; color: var(--text); }
+.comp-combos-wrap { margin-top: 18px; }
+.comp-combos { margin: 6px 0 0; padding-left: 20px; font-size: 13px; }
+.comp-combos li { margin: 4px 0; overflow-wrap: anywhere; }
+.comp-lpat { margin-top: 22px; }
+.comp-chgh { margin: 8px 0 2px; font-size: 13px; }
+
+.comp-lpgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-top: 6px; }
+.comp-lpcard { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.comp-lpopen { text-align: left; color: var(--text); }
+.comp-lp-vis { aspect-ratio: 4 / 3; }
+.comp-lp-vis img { object-position: top; }
+.comp-lp-vis.comp-vis-big { aspect-ratio: auto; }
+.comp-lptop { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 4px; }
+.comp-lpchip { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--head-bg); color: var(--text); margin-right: 6px; }
+.comp-lpchanged { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--accent); color: var(--panel); }
+.comp-lpnote { padding: 0 4px; font-size: 12px; }
+.comp-lptheme { padding: 0 4px; font-size: 14px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.comp-lppoints { margin: 0; padding: 0 4px 0 22px; font-size: 13px; line-height: 1.35; }
+.comp-lppoints li { margin: 2px 0; overflow-wrap: anywhere; }
+.comp-lpoffer { padding: 0 4px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.comp-lpchips { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 4px; }
+.comp-pchip { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--good-bg); color: var(--good); overflow-wrap: anywhere; }
+.comp-pchip-u { background: var(--accent-bg); color: var(--accent); }
+.comp-lpsec h4 { margin: 8px 0 2px; font-size: 13px; }
+.comp-lpsec p { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.comp-lpsec .comp-lpchips { padding: 0; }
+
 @media (max-width: 720px) {
   .comp-pulse { grid-template-columns: repeat(2, 1fr); }
   .comp-pcell strong { font-size: 26px; }
@@ -179,6 +247,8 @@
   .comp-lb-close { width: 44px; height: 44px; top: 4px; right: 6px; }
   .comp-vis-big { min-height: 220px; }
   .comp-gallery { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .comp-lgrid, .comp-lpgrid { grid-template-columns: 1fr; }
+  .comp-dbar { grid-template-columns: minmax(80px, 34%) 1fr 52px; gap: 8px; }
   .comp-gallery .comp-typo { padding: 12px 10px 32px 12px; }
   .comp-gallery .comp-typo-text, .comp-gallery .comp-typo-text.comp-long { font-size: 15px; overflow-wrap: break-word; }
 }

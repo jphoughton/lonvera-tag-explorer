@@ -6,6 +6,7 @@ export const safeHttp = (u) => { try { const x = new URL(u, location.origin); re
 /** A landing page link; the stored URL can lack its scheme (acme.com/offer), so one is added before the http(s) check. */
 export const landing = (u) => { const t = String(u || '').trim(); return t ? safeHttp(/^[a-z][a-z0-9+.-]*:/i.test(t) ? t : 'https://' + t.replace(/^\/\//, '')) : null; };
 export const safeVideo = (u) => (typeof u === 'string' && u.startsWith('/api/competitors/video/') ? u : null);
+export const safeLpMedia = (u) => (typeof u === 'string' && u.startsWith('/api/competitors/lp-media/') ? u : null);
 export const safeMedia = (u) => (typeof u === 'string' && u.startsWith('/api/competitors/media/') ? u : null);
 
 export function link(url, text, attrs) { return h('a', { href: url, target: '_blank', rel: 'noopener noreferrer', ...(attrs || {}) }, text); }
@@ -75,6 +76,29 @@ export function adCard(ad, onOpen, opts) {
     h('div', { class: 'comp-card-foot' }, formatBadge(ad.format), u ? link(u, 'Open ad', { class: 'comp-open', 'data-testid': 'comp-adlink' }) : null));
 }
 
+/** Learning parts of an ad's lightbox (all optional): tag chips that apply a page filter, why it works, the hook quote, and closed disclosures for what is on screen, what is said and the transcript.
+ *  hd = { tagHref(filter, value), onTag(filter, value), onLp(landing_page, ad) } set by the page. */
+function adExtras(ad, hd) {
+  const out = [];
+  const chips = (ad.tag_chips || []).map((c) => {
+    const kids = [h('span', { class: 'comp-tchip-k' }, c.label + ': '), c.value];
+    if (c.filter && hd.onTag) return h('a', { class: 'comp-tchip', href: hd.tagHref ? hd.tagHref(c.filter, c.value) : '#', 'data-testid': 'comp-tchip', 'data-key': c.key, title: `Show only ads with this ${c.label.toLowerCase()}`,
+      onclick: (e) => { e.preventDefault(); hd.onTag(c.filter, c.value); } }, kids);
+    return h('span', { class: 'comp-tchip comp-tchip-plain', 'data-testid': 'comp-tchip', 'data-key': c.key }, kids);
+  });
+  if (chips.length) out.push(h('div', { class: 'comp-tchips', 'data-testid': 'comp-tchips' }, chips));
+  if (ad.why_it_works) out.push(h('p', { class: 'comp-why', 'data-testid': 'comp-why' }, h('b', null, 'Why it works: '), ad.why_it_works));
+  if (ad.hook_quote) out.push(h('blockquote', { class: 'comp-quote', 'data-testid': 'comp-quote' }, ad.hook_quote));
+  if (ad.landing_page && hd.onLp) {
+    const t = [ad.landing_page.page_type, ad.landing_page.key_theme].filter(Boolean).join(', ');
+    out.push(h('p', { class: 'pri-sub', 'data-testid': 'comp-lb-lp' }, 'Landing page: ', h('a', { href: '#', class: 'comp-lplink', 'data-testid': 'comp-lb-lplink', onclick: (e) => { e.preventDefault(); hd.onLp(ad.landing_page, ad); } }, t || 'Open the page summary')));
+  }
+  for (const [key, label, text] of [['seen', 'What is on screen', ad.seen_on], ['said', 'What is said', ad.said_on], ['transcript', 'Transcript', ad.transcript]]) {
+    if (text) out.push(h('details', { class: 'comp-disc', 'data-testid': 'comp-disc-' + key }, h('summary', null, label), h('p', { class: 'comp-disc-text' }, text)));
+  }
+  return out;
+}
+
 /** The lightbox: a <dialog> that shows one ad of a list, with previous / next, swipe, Esc and the arrow keys. */
 export function lightbox() {
   const dlg = h('dialog', { class: 'comp-lb', 'data-testid': 'comp-lb', 'aria-label': 'Ad detail', tabindex: '-1' });
@@ -99,6 +123,7 @@ export function lightbox() {
       ad.headline ? h('h2', { class: 'comp-lb-headline', 'data-testid': 'comp-lb-headline' }, ad.headline) : null,
       h('p', { class: 'comp-lb-text', 'data-testid': 'comp-lb-text' }, ad.primary_text || ad.hook || 'No text on this ad.'),
       ad.angle ? h('p', { class: 'pri-sub' }, 'Angle: ', ad.angle, ad.is_new_angle ? ' (Lonvera does not run this)' : '') : null,
+      ...adExtras(ad, dlg.handlers || {}),
       isNum(ad.variant_count) && ad.variant_count > 1 ? h('p', { class: 'pri-sub' }, `${ad.variant_count} ads share this copy.`) : null,
       h('p', { class: 'comp-lb-links' },
         ad.format === 'video' && !saved ? h('span', { class: 'comp-novideo pri-sub', 'data-testid': 'comp-lb-novideo' }, 'Video not saved. Open in the Ad Library to watch.') : null,

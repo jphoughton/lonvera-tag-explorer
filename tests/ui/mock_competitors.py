@@ -1,6 +1,6 @@
 """(Video: ads with base_video have a saved copy, a tiny webm served with HTTP Range at /api/competitors/video/<id>; /__test/competitors/video?on=0 hides them all.)
 Mock of /api/competitors, /api/competitors/<brand> and /api/competitors/media/<id> for tests/ui/mock_server.py: two synthetic weeks, built by the pure functions of app/competitors.py (same shapes as the real routes).
-?week=, ?format=video|image honoured. /__test/competitors/chatter?on=1 switches the Chatter section on; /__test/competitors/media?on=0 removes every thumbnail (default on: a few ads have one, like production after the first media run)."""
+?week=, ?format=video|image honoured. /__test/competitors/tags?mode=on|empty|off switches the model-read tags (default off: no tags table) and /__test/competitors/lp?on=1 the tagged landing pages (default off); /__test/competitors/chatter?on=1 switches the Chatter section on; /__test/competitors/media?on=0 removes every thumbnail (default on: a few ads have one, like production after the first media run)."""
 from __future__ import annotations
 
 import datetime as dt
@@ -26,7 +26,7 @@ def png(seed: int, w=160, h=200) -> bytes:
 def register(app, deps):
     from app import competitors as c
 
-    st = {"chatter": False, "media": True, "video": True}
+    st = {"chatter": False, "media": True, "video": True, "tags": "off", "lp": False}
     tiny = Path(__file__).with_name("competitor_tiny.webm")
     brands = [{"brand": "Acme", "product_type": "beef organ capsules", "search_phrases": ["acme"], "active": True, "last_ok_at": dt.datetime(2026, 11, 16, 12, tzinfo=dt.timezone.utc), "last_error": None},
               {"brand": "Bolt & Co", "product_type": "joint supplement", "search_phrases": ["bolt"], "active": True, "last_ok_at": dt.datetime(2026, 11, 9, 12, tzinfo=dt.timezone.utc), "last_error": "blocked"},
@@ -71,6 +71,66 @@ def register(app, deps):
              ad(W2, "b1", "Bolt & Co", 37, "image", url="bolt.com/x", carried=W1), ad(W2, "c1", "Cedar", 47, "video", url="cedar.com", hook="Three eggs and a steak is not a supplement plan", thumb=True, cls=energy)] + extra2,
     }
 
+
+    # ---- learning layer fixtures: tags for every W2 ad (7 of 16 are Testimonial, so the share chart highlights it against Lonvera's 9%), transcripts, landing pages
+    T = {  # lid: (style, hook_type, device, offer_type, proof, emotion)
+        "a1": ("Testimonial", "Question", "Talking head", "Discount", "Reviews", "Relief"), "a4": ("Testimonial", "Statement", "Voiceover", "Discount", "Doctor quote", "Fear"),
+        "a5": ("Studio", "Offer", "Text on screen", "Bundle", "Reviews", "Desire"), "b1": ("Testimonial", "Story", "Talking head", None, "Reviews", "Relief"),
+        "c1": ("Testimonial", "Question", "Voiceover", "Discount", "Reviews", "Frustration"), "d1": ("Testimonial", "Story", "Talking head", "Bundle", "Reviews", "Relief"),
+        "d2": ("UGC demo", "Question", "Split screen", "Discount", "Before and after", "Desire"), "e1": ("UGC demo", "Question", "Split screen", "Bundle", "Before and after", "Frustration"),
+        "e2": ("Studio", "Statement", "Text on screen", "Discount", "Reviews", "Comparison"), "e4": ("Testimonial", "Story", "Talking head", "Bundle", "Reviews", "Relief"),
+        "e5": ("Studio", "Offer", "Text on screen", None, "Reviews", "Desire"), "e6": ("UGC demo", "Story", "Talking head", None, "Founder", "Pride"),
+        "e7": ("UGC demo", "Question", "Split screen", None, "Reviews", "Frustration"), "f1": ("Testimonial", "Story", "Voiceover", None, "Reviews", "Relief"),
+        "f2": ("Studio", "Statement", "Text on screen", None, "Reviews", "Comparison"), "g1": ("UGC demo", "Statement", "Split screen", "Discount", "Before and after", "Desire"),
+    }
+    WHY = {"a1": "Names the reader's pain in the first second, then lets a customer prove it.", "d1": "A before-and-after story from a real customer carries the claim."}
+    SAID = {"a1": "Your liver is not a filter, it is a vitamin warehouse.", "d1": "I stopped the shedding in 90 days."}
+    TRANSCRIPT = {"a1": "Your liver is not a filter, it is a vitamin warehouse. Beef liver has more of the nutrients you are missing than any pill. Try it for 30 days.", "d1": "I stopped the shedding in 90 days and my stylist noticed first. Here is what I changed."}
+    AD_LP = {"a1": "lpA1", "a4": "lpA1", "a5": "lpA2", "d1": "lpD1", "d2": "lpD1", "e1": "lpE1", "e2": "lpE1"}
+    LPS = [
+        dict(lp_id="lpA1", brand="Acme", final_url="https://acme.com/join", ad_count=3, page_type="Advertorial", key_theme="Your joints are starving for marrow, not more glucosamine", hero_headline="Why your knees ache on the stairs",
+             selling_points=["Grass-fed bone marrow", "No fillers or binders", "Made in the USA", "Third party tested", "60 day guarantee", "Extra point six"], offer_summary="Buy 2 get 1 free", price_text="$49 a bottle", guarantee="60-day money back",
+             proof_elements=["Reviews", "Doctor quote"], urgency_devices=["Countdown timer"], objections=["Does it work for me", "Is it safe with my medication"], cta="Start my order", why_it_works="Opens with a story the reader already lives, then offers a risk-free trial.",
+             cluster="Joints", pain_point="Knee pain", changed_from_prior=True, change_note="New hero headline and a countdown timer", has_media=True),
+        dict(lp_id="lpA2", brand="Acme", final_url="https://acme.com/shop", ad_count=1, page_type="Product page", key_theme="One simple bottle, one simple promise", hero_headline="Beef liver, finally in a capsule",
+             selling_points=["Liver and heart in one", "No taste"], offer_summary=None, price_text="$39", guarantee="30 day guarantee", proof_elements=["Reviews"], urgency_devices=[], changed_from_prior=False, has_media=False),
+        dict(lp_id="lpD1", brand="Dune Labs", final_url="https://dune.co/hair", ad_count=2, page_type="Quiz funnel", key_theme="Find your hair type, then the fix", hero_headline="Take the 60 second hair quiz", selling_points=["Personal plan", "Dermatologist built"],
+             guarantee="90 days", proof_elements=["Reviews", "Before and after"], urgency_devices=["Low stock"], changed_from_prior=False, has_media=False),
+        dict(lp_id="lpE1", brand="Ember Health", final_url="https://ember.com/chews", ad_count=2, page_type="Product page", key_theme="Joint chews that taste like candy", hero_headline="Chews, not pills", selling_points=["Tastes like candy", "No sugar"],
+             guarantee="30 day guarantee", proof_elements=["Reviews"], urgency_devices=["Countdown timer", "Low stock"], changed_from_prior=True, change_note="Price dropped to $29", has_media=False),
+    ]
+    LONVERA = {"through": "2026-11-15", "style": {"testimonial": ("Testimonial", 0.09), "ugc demo": ("UGC demo", 0.5), "studio": ("Studio", 0.41)},
+               "proof_mechanism": {"reviews": ("Reviews", 0.7), "doctor quote": ("Doctor quote", 0.3)}, "emotion": {"relief": ("Relief", 0.2), "fear": ("Fear", 0.3), "desire": ("Desire", 0.5)}}
+
+    def apply_tags():
+        for lst in ads.values():
+            for a in lst:
+                t = T.get(a["library_id"]) if st["tags"] == "on" else None
+                keys = ("style", "hook_type", "device", "offer_type", "proof_mechanism", "emotion")
+                for k in keys + ("why_it_works", "seen_on", "said_on", "hook_text", "cluster", "pain_point", "is_new_angle", "new_angle_label"):
+                    a.pop("tg_" + k, None)
+                a["tg_present"] = bool(t)
+                if t:
+                    a.update({"tg_" + k: v for k, v in zip(keys, t)})
+                    a["tg_why_it_works"], a["tg_said_on"] = WHY.get(a["library_id"]), SAID.get(a["library_id"])
+                    if a["library_id"] == "a1":
+                        a["tg_seen_on"], a["tg_hook_text"] = "A woman holds a bottle in a bright kitchen", "Your liver is not a filter"
+                a["tr_transcript"] = TRANSCRIPT.get(a["library_id"]) if st["tags"] == "on" else None
+                lp = AD_LP.get(a["library_id"]) if st["lp"] else None
+                a["lp_id"] = lp
+                a["lp_page_type"] = next((x["page_type"] for x in LPS if x["lp_id"] == lp), None)
+                a["lp_key_theme"] = next((x["key_theme"] for x in LPS if x["lp_id"] == lp), None)
+
+    def ctx_for(wk, brand=None):
+        mode = st["tags"]
+        ctx = {"tags_table": mode != "off", "filters": c.learn.filters_from(request.args), "lp_linked": st["lp"]}
+        if mode != "off":
+            ctx["week_tagged"] = sum(1 for a in ads[wk] if a["library_id"] in T) if mode == "on" else 0
+            if mode == "on" and not brand:
+                ctx["lonvera"] = LONVERA
+        ctx["lp_rows"] = [dict(x, ad_count=x["ad_count"]) for x in LPS if st["lp"] and wk == W2 and (brand is None or x["brand"] == brand)]
+        return ctx
+
     def resolve():
         weeks = sorted(ads, reverse=True)
         wk = request.args.get("week") or weeks[0]
@@ -85,13 +145,14 @@ def register(app, deps):
             for a in lst:
                 a["has_thumb"] = bool(a["base_thumb"]) and st["media"]
                 a["has_video"] = bool(a["base_video"]) and st["video"]
+        apply_tags()
         pick = lambda w: [a for a in ads[w] if fmt is None or a["format"] == fmt] if w else None
         return weeks, wk, prior, fmt, pick
 
     @app.get("/api/competitors")
     def competitors_mock():
         weeks, wk, prior, fmt, pick = resolve()
-        out = c.payload_from(weeks, wk, prior, fmt, brands, pick(wk), pick(prior))
+        out = c.payload_from(weeks, wk, prior, fmt, brands, pick(wk), pick(prior), ctx_for(wk))
         if st["chatter"]:
             out["chatter"] = [{"source": "reddit", "brand": "Acme", "title": "Is Acme worth it?", "url": "https://www.reddit.com/r/x/1", "subreddit": "r/x", "score": 40, "num_comments": 7, "posted_at": (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=3)).isoformat(), "summary": None},
                               {"source": "news", "brand": "Dune Labs", "title": "Dune Labs raises a round for its hair line", "url": "https://news.example.com/dune", "subreddit": None, "score": None, "num_comments": None, "posted_at": (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=6)).isoformat(), "summary": None}]
@@ -105,7 +166,7 @@ def register(app, deps):
             return jsonify(error="Unknown competitor brand."), 404
         cur = [a for a in pick(wk) if a["brand"] == brand]
         prev = [a for a in pick(prior) if a["brand"] == brand] if prior else None
-        return jsonify(c.detail_from(b, wk, prior, fmt, cur, prev))
+        return jsonify(c.detail_from(b, wk, prior, fmt, cur, prev, ctx_for(wk, brand)))
 
     @app.get("/api/competitors/media/<path:lid>")
     def competitors_media_mock(lid):
@@ -135,3 +196,19 @@ def register(app, deps):
     def competitors_chatter():
         st["chatter"] = request.args.get("on") == "1"
         return jsonify(ok=True)
+
+    @app.post("/__test/competitors/tags")
+    def competitors_tags_toggle():
+        st["tags"] = request.args.get("mode") if request.args.get("mode") in ("on", "empty") else "off"
+        return jsonify(ok=True)
+
+    @app.post("/__test/competitors/lp")
+    def competitors_lp_toggle():
+        st["lp"] = request.args.get("on") == "1"
+        return jsonify(ok=True)
+
+    @app.get("/api/competitors/lp-media/<path:lid>")
+    def competitors_lp_media_mock(lid):
+        if not st["lp"] or lid != "lpA1":
+            return jsonify(error="No image."), 404
+        return Response(png(7, 200, 150), mimetype="image/png", headers={"Cache-Control": "private, max-age=86400"})
