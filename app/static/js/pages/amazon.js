@@ -13,7 +13,7 @@ import { filterRow } from '../ui/pagefilters.js';
 const VIEWS = [['overview', 'Overview'], ['campaigns', 'Campaigns'], ['products', 'Products'], ['search', 'Search terms'], ['fees', 'Fees']];
 const AD_TYPES = [['sp', 'Sponsored Products'], ['sb', 'Sponsored Brands'], ['sbv', 'Sponsored Brands video'], ['sd', 'Sponsored Display']];
 const PRODUCTS = [['vita-bull', 'Vita Bull'], ['beef-liver', 'Beef Liver'], ['boneflex', 'Boneflex'], ['vita-belle', 'Vital Belle']];
-const PRODUCT_COLORS = { all: '#3b3b3b', 'vita-bull': '#5a4fd6', 'beef-liver': '#d9822b', boneflex: '#1d8a56', 'vita-belle': '#c2410c' };
+const PRODUCT_COLORS = { all: '#1f3a5f', 'vita-bull': '#5a4fd6', 'beef-liver': '#d9822b', boneflex: '#1d8a56', 'vita-belle': '#c2410c' };
 const NO_SWITCH = 'These pages show Amazon’s own reporting only, so there is no Numbers from switch. Amazon is kept apart from Meta and Google and is never added to the All platforms totals.';
 
 const money2 = (v) => fmt.money2(v);
