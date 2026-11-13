@@ -6,6 +6,7 @@
 //   seg({ name, options, value, onChange, href })   segmented control; options = [[value, label, title?]]; `href(value)` makes links instead of buttons
 //   chips({ name, options, values, onToggle })      on/off filter chips (several can be on)
 //   selectCtl({ name, options, value, onChange })   dropdown
+//   multiCtl({ name, options, values, allLabel, onChange, testid })  dropdown of checkboxes (pick any number); values = [value, ...]; [] means all; onChange(values) fires when the list closes
 //   searchCtl({ name, value, placeholder, onInput, testid })
 //   numberCtl({ name, value, min, step, onChange, testid })
 //   checkCtl({ label, checked, onChange, testid })
@@ -39,6 +40,28 @@ export function selectCtl({ name, options, value, onChange, testid } = {}) {
   const sel = h('select', { 'aria-label': name || null, 'data-testid': testid || null, onchange: () => onChange && onChange(sel.value) },
     options.map(([val, text]) => h('option', { value: val, selected: String(val) === String(value) }, text)));
   return h('div', { class: 'ctl' }, label(name), sel);
+}
+
+// A dropdown where any number of options can be ticked. Nothing ticked reads as "All ..."; one tick shows its name; more show "N selected". The change is sent once, when the list closes (click outside,
+// Escape or the summary again), so a redraw of the page never closes it under the user's hand.
+export function multiCtl({ name, options, values = [], allLabel = 'All', onChange, testid } = {}) {
+  const cur = new Set(values.map(String));
+  const start = [...cur].sort().join('|');
+  const nameOf = (v) => { const o = options.find(([x]) => String(x) === v); return o ? o[1] : v; };
+  const text = () => (cur.size === 0 ? allLabel : cur.size === 1 ? nameOf([...cur][0]) : `${cur.size} selected`);
+  const sum = h('summary', { class: 'mf-btn', 'aria-label': name || null, 'data-testid': testid ? testid + '-btn' : null }, text());
+  const rows = options.map(([val, txt]) => {
+    const cb = h('input', { type: 'checkbox', value: String(val), checked: cur.has(String(val)), 'data-testid': testid ? `${testid}-opt-${val}` : null,
+      onchange: () => { if (cb.checked) cur.add(String(val)); else cur.delete(String(val)); sum.textContent = text(); } });
+    return h('label', { class: 'mf-opt' }, cb, h('span', null, txt));
+  });
+  const clear = h('button', { type: 'button', class: 'btn prod-small', 'data-testid': testid ? testid + '-clear' : null, onclick: () => { cur.clear(); for (const r of rows) r.querySelector('input').checked = false; sum.textContent = text(); } }, 'Clear');
+  const d = h('details', { class: 'mf', 'data-testid': testid || null }, sum, h('div', { class: 'mf-panel' }, rows, h('div', { class: 'mf-foot' }, clear)));
+  d.addEventListener('toggle', () => { if (!d.open && [...cur].sort().join('|') !== start && onChange) onChange(options.map(([v]) => String(v)).filter((v) => cur.has(v))); });
+  d.addEventListener('keydown', (e) => { if (e.key === 'Escape' && d.open) { d.open = false; const b = d.querySelector('summary'); if (b) b.focus(); } });
+  const away = (e) => { if (!d.isConnected) { document.removeEventListener('click', away, true); return; } if (d.open && !d.contains(e.target)) d.open = false; };
+  document.addEventListener('click', away, true);
+  return h('div', { class: 'ctl' }, label(name), d);
 }
 
 export function searchCtl({ name, value = '', placeholder = 'Search', onInput, testid } = {}) {

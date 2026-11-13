@@ -1,7 +1,7 @@
 // Trend panel (Chart.js), sparklines and the "pin rows into the chart" store.
 import { h, enc, fmt, isNum, apiWindow, currentParams, navigate, cleanParams, qs, cmpView, onCmpRefresh, colPref, trendCollapsed, setTrendCollapsed, sparkMetric, metricLabel } from './util.js';
 import { api, AuthError } from './api.js';
-import { trendChart, fmtMetric, BAR_COLOR, LINE_COLOR } from './charts.js';
+import { trendChart, fmtMetric, BAR_COLOR, LINE_COLOR, tok } from './charts.js';
 
 export const METRICS = [
   { key: 'spend', label: 'Spend', kind: 'money', additive: true },
@@ -20,11 +20,11 @@ const METRIC = Object.fromEntries(METRICS.map((m) => [m.key, m]));
 // chart-only line on the All views: the business's actual new-customer revenue / total spend (Meta + Google), drawn from the server's `total` series
 export const NC_TOTAL = { key: 'nc_roas_total', label: 'NC ROAS (total)', kind: 'roas', virtual: true };
 METRIC[NC_TOTAL.key] = NC_TOTAL;
-const TOTAL_COLOR = '#111827';
+const totalColor = () => tok('--lv-ink');
 export const metricInfo = (key) => METRIC[key] || METRIC.spend;
 
-const PALETTE = ['#1a5fb4', '#d9822b', '#1d8a56', '#a64dc4', '#c2410c', '#0b7a75', '#b8860b', '#c0392b'];
-const STAGE_COLOR = { testing: '#1b9a96', scaling: '#5a4fd6', unclassified: '#b4bcc8' };
+const PALETTE = ['#1a5fb4', '#d9822b', '#1d8a56', '#a64dc4', '#c2410c', '#0b7a75', '#c2185b', '#c0392b'];
+const STAGE_COLOR = { testing: '#1b9a96', scaling: '#5a4fd6', get unclassified() { return tok('--lv-line-strong'); } };
 const STAGE_NAME = { testing: 'Testing', scaling: 'Scaling', unclassified: 'Unclassified' };
 const SVGNS = 'http://www.w3.org/2000/svg';
 export const MAX_PINS = 8;
@@ -481,7 +481,7 @@ export function createTrendPanel(opts) {
     const tot = src && src.total && res.total ? res.total : null;
     const totOn = !!(tot && tot.available && totalLine);
     const totPts = tot ? tot.points || [] : [];
-    const totLine = () => ({ axis: 'right', type: 'line', kind: NC_TOTAL.kind, label: NC_TOTAL.label, data: totPts.map((pt) => (pt && isNum(pt.nc_roas) ? pt.nc_roas : null)), color: TOTAL_COLOR, width: 2.6, partialDash: true, order: -1, hideInTip: true });
+    const totLine = () => ({ axis: 'right', type: 'line', kind: NC_TOTAL.kind, label: NC_TOTAL.label, data: totPts.map((pt) => (pt && isNum(pt.nc_roas) ? pt.nc_roas : null)), color: totalColor(), width: 2.6, partialDash: true, order: -1, hideInTip: true });
     if (rows) {
       // pinned rows: one line per row on the right axis (Bars = None)
       if (lm) res.pinned.forEach((pn, i) => datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: pn.label, data: val(pn.points, lm), color: PALETTE[i % PALETTE.length], width: 2, partialDash: true }));
@@ -514,8 +514,8 @@ export function createTrendPanel(opts) {
       const ci = res.compareInfo;
       const tag = ' · ' + (ci && ci.label ? ci.label : 'window B');
       const cmpDates = res.cmp.map((pt) => (pt ? pt.t : null));
-      if (bm) datasets.push({ axis: 'left', type: 'bar', kind: bm.kind, label: `B ${bm.label}${tag}`, data: val(res.cmp, bm), color: '#6b7684', outline: true, dash: [3, 3], order: 3, cmpDates });
-      if (lm) datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: `B ${lm.label}${tag}`, data: val(res.cmp, lm), color: '#8b949e', dash: [5, 4], width: 1.6, order: 0, cmpDates });
+      if (bm) datasets.push({ axis: 'left', type: 'bar', kind: bm.kind, label: `B ${bm.label}${tag}`, data: val(res.cmp, bm), color: tok('--lv-muted'), outline: true, dash: [3, 3], order: 3, cmpDates });
+      if (lm) datasets.push({ axis: 'right', type: 'line', kind: lm.kind, label: `B ${lm.label}${tag}`, data: val(res.cmp, lm), color: tok('--lv-line-strong'), dash: [5, 4], width: 1.6, order: 0, cmpDates });
     }
     // window A / B shading (ad detail: the chart always shows the full series)
     const shades = [];

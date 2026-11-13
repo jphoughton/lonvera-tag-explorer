@@ -7,10 +7,14 @@ export function destroyCharts() {
   instances.clear();
 }
 
+// Palette tokens (brand.css) read at draw time: chart canvases cannot use var(). Neutral series take the teal-family line / ink tokens, never a gray.
+export const tok = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
 const COLORS = {
   spend: '#9db7e0', purchases: '#d9822b', revenue: '#1d8a56',
   impressions: '#8a6bbf', clicks: '#c2410c',
-  testing: '#1b9a96', scaling: '#5a4fd6', unclassified: '#b4bcc8',
+  testing: '#1b9a96', scaling: '#5a4fd6',
+  get unclassified() { return tok('--lv-line-strong'); },
 };
 
 // shades category ranges: opts.shades = [{i0, i1, color}]
@@ -172,7 +176,7 @@ const stackTotals = {
     const n = chart.data.labels.length;
     ctx.save();
     ctx.font = '600 10.5px system-ui, sans-serif';
-    ctx.fillStyle = '#334155';
+    ctx.fillStyle = tok('--lv-ink-2');
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     for (let i = 0; i < n; i++) {

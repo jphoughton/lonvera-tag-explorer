@@ -16,7 +16,7 @@ import psycopg
 
 from . import queries as q
 
-VENDORS = ["Madre", "Victoria", "TrybeDCShop", "TrybeOrion", "10xROAS", "Internal", "PuredMedia", "CreateMastery", "OpenProgram"]     # spelled as in tracker_rows.vendor (Creative Tracker "Vendor" column)
+VENDORS = ["Madre", "Victoria", "TrybeDCShop", "TrybeOrion", "10xROAS", "Internal", "PuredMedia", "CreateMastery", "OpenProgram", "Studio Flow"]     # spelled as in tracker_rows.vendor (Creative Tracker "Vendor" column)
 STAGES = {"assigned": "Assigned", "brief_sent": "Brief sent", "creative_in": "Creative delivered", "ready": "Ready to launch", "launched": "Launched", "dropped": "Dropped"}
 _ORDER = ["assigned", "brief_sent", "creative_in", "ready", "launched"]                  # progress order; dropped sits outside it
 LIMITS = {"note": 500, "vendor_note": 1000, "url": 2000, "concept_id": 200, "concept_ids": 20}
@@ -615,15 +615,23 @@ def _shape_all(conn, recs: list[dict], vendor_view: bool = False, history: bool 
     return shaped
 
 
+def _multi(raw, clean) -> list:
+    """A filter value that may hold several choices, comma separated ("Madre,Victoria"): each part cleaned and de-duplicated, at most 30; [] when nothing is chosen."""
+    if raw in (None, ""):
+        return []
+    return list(dict.fromkeys(clean(p.strip()) for p in str(raw).split(",") if p.strip()))[:30]
+
+
 def list_assignments(conn, week=None, vendor=None, include_closed: bool = False) -> dict:
-    """{rows, vendors, weeks, formats}. Default: open rows (not launched, not dropped); include_closed adds launched and dropped. week snaps to its Monday; vendor must be a known vendor."""
+    """{rows, vendors, weeks, formats}. Default: open rows (not launched, not dropped); include_closed adds launched and dropped. week snaps to its Monday and vendor must be a known vendor; each may list several, comma separated."""
     where, params = [], []
-    if week not in (None, ""):
-        where.append("for_week = %s")
-        params.append(monday_of(week))
-    if vendor not in (None, ""):
-        where.append("vendor = %s")
-        params.append(_vendor(vendor))
+    weeks_, vendors_ = _multi(week, monday_of), _multi(vendor, _vendor)
+    if weeks_:
+        where.append("for_week = ANY(%s)")
+        params.append(weeks_)
+    if vendors_:
+        where.append("vendor = ANY(%s)")
+        params.append(vendors_)
     rows = _shape_all(conn, _fetch(conn, ("WHERE " + " AND ".join(where)) if where else "", tuple(params)))
     if not include_closed:
         rows = [r for r in rows if r["stage"] not in ("launched", "dropped")]
@@ -1019,22 +1027,23 @@ def _launched_on(a: dict) -> dt.date | None:
 
 
 def board(conn, week=None, vendor=None, product=None, closed: bool = False) -> dict:
-    """The Production board: {columns: [{status, label, count, cards}], dropped (only with closed), capacity: [{vendor, per_week, open, week}], week, generated_at}. Filters: week (snaps to Monday), vendor, product.
+    """The Production board: {columns: [{status, label, count, cards}], dropped (only with closed), capacity: [{vendor, per_week, open, week}], week, generated_at}. Filters: week (snaps to Monday), vendor, product; each may list several, comma separated.
     Cards are the assignment JSON without history, ordered high priority first, then position. The Launched column holds the last 14 days unless closed (then all, plus a dropped lane). Capacity counts a vendor's
-    open (not launched, not dropped) cards for the filtered week, or the current week when none is given; it ignores the product filter."""
+    open (not launched, not dropped) cards for the filtered week, or the current week when none or several are given; it ignores the product filter."""
     where, params = [], []
-    if week not in (None, ""):
-        where.append("for_week = %s")
-        params.append(monday_of(week))
-    if vendor not in (None, ""):
-        where.append("vendor = %s")
-        params.append(_vendor(vendor))
-    if product not in (None, ""):
-        where.append("product = %s")
-        params.append(str(product)[:40])
+    weeks_, vendors_, products_ = _multi(week, monday_of), _multi(vendor, _vendor), _multi(product, lambda p: p[:40])
+    if weeks_:
+        where.append("for_week = ANY(%s)")
+        params.append(weeks_)
+    if vendors_:
+        where.append("vendor = ANY(%s)")
+        params.append(vendors_)
+    if products_:
+        where.append("product = ANY(%s)")
+        params.append(products_)
     recs = _fetch(conn, ("WHERE " + " AND ".join(where)) if where else "", tuple(params))
     cards = _shape_all(conn, recs, history=False)
-    cap_week = monday_of(week) if week not in (None, "") else monday_of(today_pt())
+    cap_week = weeks_[0] if len(weeks_) == 1 else monday_of(today_pt())
     cards.sort(key=lambda a: (a["priority"] != "high", a["position"], a["id"]))
     today = today_pt()
     cols = []
@@ -1058,7 +1067,7 @@ def board(conn, week=None, vendor=None, product=None, closed: bool = False) -> d
             opened[r["vendor"]] = r["n"]
     except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
         conn.rollback()
-    out["capacity"] = [{"vendor": v, "per_week": capv.get(v, DEFAULT_CAPACITY), "open": opened.get(v, 0), "week": cap_week.isoformat()} for v in VENDORS if vendor in (None, "") or v == vendor]
+    out["capacity"] = [{"vendor": v, "per_week": capv.get(v, DEFAULT_CAPACITY), "open": opened.get(v, 0), "week": cap_week.isoformat()} for v in VENDORS if not vendors_ or v in vendors_]
     out["generated_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
     return out
 

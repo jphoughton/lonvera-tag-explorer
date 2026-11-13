@@ -17,7 +17,7 @@
 svg.spark { display: block; overflow: visible; }
 .spark-line { fill: none; stroke: #1a5fb4; stroke-width: 1.3; stroke-linejoin: round; stroke-linecap: round; }
 .spark-dot { fill: #1a5fb4; }
-.spark-empty { stroke: #c8cfd9; stroke-width: 1; stroke-dasharray: 2 2; }
+.spark-empty { stroke: var(--lv-line); stroke-width: 1; stroke-dasharray: 2 2; }
 table.dt td.trendcol, table.dt th.trendcol { width: 82px; min-width: 82px; padding-top: 2px; padding-bottom: 2px; text-align: center; }
 table.dt td.pincol, table.dt th.pincol { width: 44px; min-width: 44px; text-align: center; }
 .pin-cb { cursor: pointer; }
@@ -28,8 +28,8 @@ table.dt td.pincol, table.dt th.pincol { width: 44px; min-width: 44px; text-alig
 .tsel.line .ctl-name { color: #a8520b; font-weight: 600; }
 .tsel.bars select { border-color: #1a5fb4; }
 .tsel.line select { border-color: #d9822b; }
-.segs .seg:disabled { color: #9aa3af; cursor: not-allowed; background: #f6f7f9; }
+.segs .seg:disabled { color: var(--lv-line-strong); cursor: not-allowed; background: var(--lv-hover); }
 
 .whoami { font-weight: 600; font-size: 12px; margin-right: 2px; }
-.whoami::before { content: '● '; color: #1d9a55; font-size: 9px; vertical-align: 1px; }
+.whoami::before { content: '● '; color: var(--good); font-size: 9px; vertical-align: 1px; }
 

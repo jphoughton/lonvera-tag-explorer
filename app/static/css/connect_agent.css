@@ -2,5 +2,5 @@
 .cn-page h2 { font-size: 16px; margin: 18px 0 6px; }
 .cn-block { margin: 8px 0 14px; }
 .cn-label { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-.cn-code { margin: 0; padding: 10px 12px; font: 12px/1.5 var(--mono, ui-monospace, Menlo, monospace); background: #f6f5f2; border: 1px solid #ddd9d0; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
-.cn-fresh { border: 1px solid #c9a227; background: #fffbea; border-radius: 6px; padding: 10px 12px; margin: 8px 0 12px; }
+.cn-code { margin: 0; padding: 10px 12px; font: 12px/1.5 var(--mono, ui-monospace, Menlo, monospace); background: var(--lv-surface-2); border: 1px solid var(--lv-line); border-radius: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+.cn-fresh { border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--warn-bg)); background: var(--warn-bg); border-radius: 6px; padding: 10px 12px; margin: 8px 0 12px; }

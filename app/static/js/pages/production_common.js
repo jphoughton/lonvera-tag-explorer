@@ -9,11 +9,13 @@ export const statusOf = (r) => r.status || ({ creative_in: 'in_review' }[r.stage
 export const PRIORITY_LABEL = { normal: 'Normal', high: 'High' };
 
 export const STAGES = { assigned: 'Assigned', brief_sent: 'Brief sent', creative_in: 'Creative delivered', ready: 'Ready to launch', launched: 'Launched', dropped: 'Dropped' };
-export const VENDOR_FALLBACK = ['Madre', 'Victoria', 'TrybeDCShop', 'TrybeOrion', '10xROAS', 'Internal', 'PuredMedia', 'CreateMastery', 'OpenProgram'];
+export const VENDOR_FALLBACK = ['Madre', 'Victoria', 'TrybeDCShop', 'TrybeOrion', '10xROAS', 'Internal', 'PuredMedia', 'CreateMastery', 'OpenProgram', 'Studio Flow'];
 export const PRODUCT_NAMES = { 'vita-bull': 'Vita Bull', 'beef-liver': 'Beef Liver', boneflex: 'Boneflex' };
 
 export const md = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ''); return m ? `${+m[2]}/${+m[3]}` : (s || ''); };
 export const weekLabel = (s) => 'Week of ' + md(s);
+// Ticket title: "Madre - Hair Thinning - Hair Loss - Week of 11/9" (vendor, market cluster, pain point, week); a missing part is left out
+export const ticketTitle = (r) => [r.vendor, r.cluster, r.pain_point, r.for_week ? weekLabel(r.for_week) : ''].filter(Boolean).join(' - ') || 'Concept';
 export const productName = (p) => PRODUCT_NAMES[p] || p || '';
 export const stageLabel = (r) => r.stage_label || STAGES[r.stage] || r.stage || '';
 export const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };

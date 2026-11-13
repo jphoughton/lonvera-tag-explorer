@@ -1,7 +1,7 @@
 // The Production board (kanban): six columns, cards, drag and drop, "Move to" menu, swimlanes by vendor, and the weekly load bars. Pure drawing plus events: the page (priorities_production.js) owns the data and saves moves.
 // Test ids: prod-board-*, prod-card-*. Class names start with prod- (never ad-, ads-, sponsor, banner, promo: ad blockers hide those).
 import { h, fmt, isNum } from '../util.js';
-import { STATUSES, STATUS_LABEL, statusOf, md, productName, weekLabel, formatLabel, dueInfo, link, short, nextActions } from './production_common.js';
+import { STATUSES, STATUS_LABEL, statusOf, md, ticketTitle, productName, weekLabel, formatLabel, dueInfo, link, short, nextActions } from './production_common.js';
 import { enableDrag, gripEl } from './production_dnd.js';
 
 const LAUNCHED_DAYS = 14;
@@ -42,7 +42,7 @@ const chip = (cls, text, attrs) => h('span', { class: 'prod-chip ' + cls, ...(at
 export function cardEl(r, ops, { compact = false } = {}) {
   const status = statusOf(r);
   const due = dueInfo(r);
-  const title = r.pain_point || r.cluster || 'Concept';
+  const title = ticketTitle(r);
   const acts = nextActions(r);
   const primary = acts[0];
   const hint = !r.creative_url && status === 'in_production' ? 'Needs creative' : '';
@@ -134,7 +134,7 @@ export function board({ columns, dropped, st, vendors, capacity, ops, onDrop, al
   const scroll = h('div', { class: 'prod-board-scroll', 'data-testid': 'prod-board-scroll' },
     lanes[0] === null
       ? h('div', { class: 'prod-board-cols', style: { '--cols': defs.length } }, cols(null))
-      : lanes.map((v) => { const mine = defs.flatMap((d) => d.cards).filter((c) => c.vendor === v); const bar = loadBars(capacity, [v], st.week, allCards || mine);
+      : lanes.map((v) => { const mine = defs.flatMap((d) => d.cards).filter((c) => c.vendor === v); const bar = loadBars(capacity, [v], (st.week && !st.week.includes(',') ? st.week : ''), allCards || mine);
         return h('div', { class: 'prod-lane', 'data-testid': 'prod-board-lane', 'data-vendor': v }, h('div', { class: 'prod-lane-head' }, h('strong', null, v), h('span', { class: 'prod-lane-n' }, `${mine.length} ${mine.length === 1 ? 'card' : 'cards'}`), bar),
           h('div', { class: 'prod-board-cols', style: { '--cols': defs.length } }, cols(v))); }));
   if (lanes.length === 0) scroll.append(h('p', { 'data-testid': 'prod-board-nolanes' }, 'No cards match.'));

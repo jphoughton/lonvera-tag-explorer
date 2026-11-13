@@ -45,7 +45,7 @@ const CSS = `
 .pn-step .params { display: flex; flex-wrap: wrap; gap: var(--lv-sp-2); align-items: end; }
 .pn-step label { display: flex; flex-direction: column; gap: 2px; font-size: var(--lv-fs-xs); color: var(--lv-muted); font-weight: var(--lv-fw-semi); }
 .pn-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: var(--lv-sp-5); border: 2px dashed var(--lv-line-strong); border-radius: var(--lv-r-md); background: var(--lv-surface-2); text-align: center; cursor: pointer; }
-.pn-drop:focus-within, .pn-drop:hover { border-color: var(--lv-action); }
+.pn-drop:focus-within, .pn-drop:hover { border-color: var(--lv-accent); }
 .pn-drop input { max-width: 100%; }
 .pn-up { display: flex; flex-direction: column; gap: var(--lv-sp-3); }
 .pn-up .counts { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--lv-sp-2); }

@@ -164,7 +164,7 @@ def register(app, deps):
     def cards(vendor="", week="", product=""):
         out = []
         for r in S["rows"].values():
-            if vendor and r["vendor"] != vendor or week and r["for_week"].isoformat() != week or product and r["product"] != product:
+            if vendor and r["vendor"] not in vendor.split(",") or week and r["for_week"].isoformat() not in week.split(",") or product and r["product"] not in product.split(","):
                 continue
             out.append(H["view"](r))
         return out
