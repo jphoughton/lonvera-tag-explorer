@@ -107,9 +107,17 @@ import mock_priorities  # noqa: E402  (Creative priorities: /api/priorities from
 
 mock_priorities.register(app, dict(Bad=Bad))
 
+import mock_production_vendor  # noqa: E402  (Production vendor page "My tasks": public vendor routes with status / comments, registered first so its tokens win)
+
+mock_production_vendor.register(app, dict(Bad=Bad))
+
 import mock_priorities_assign  # noqa: E402  (Production: /api/priorities/assignments, vendor-links, vendor/<token>, in memory)
 
 mock_priorities_assign.register(app, dict(Bad=Bad))
+
+import mock_production_board  # noqa: E402  (Production board: status / due / priority on assignments, /board, /move, comments, vendor-capacity; needs mock_priorities_assign's state)
+
+mock_production_board.register(app, dict(Bad=Bad))
 
 import mock_priorities_launch  # noqa: E402  (Production launch to Meta: /api/priorities/.../launch and the `launch` flag on the assignments list, in memory, off by default)
 

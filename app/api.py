@@ -637,6 +637,53 @@ def priorities_assignment_update(aid: int):
     return jsonify(pas.update_assignment(db.get_conn(), aid, _json_body(), auth.current_user()))
 
 
+@bp.post("/api/priorities/assignments/<int:aid>/move")
+def priorities_assignment_move(aid: int):
+    """Drag and drop on the board: {status, before_id?, after_id?, comment?} changes the status and the position in one step (before_id = put it just above that card, after_id = just below that card;
+    neither = bottom of the column). -> {card, column: {status, ids}}. Same rules as PATCH status: Launched cannot be dragged to, review needs a creative link, Request changes needs a comment (400, plain English)."""
+    blocked = _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
+    if blocked is not None:
+        return blocked
+    return jsonify(pas.move_assignment(db.get_conn(), aid, _json_body(), auth.current_user()))
+
+
+@bp.get("/api/priorities/assignments/<int:aid>/comments")
+def priorities_comments(aid: int):
+    """The comment thread of one assignment, oldest first -> {comments: [{id, author_kind, author_name, body, created_at}]}."""
+    return jsonify(pas.list_comments(db.get_conn(), aid))
+
+
+@bp.post("/api/priorities/assignments/<int:aid>/comments")
+def priorities_comment_create(aid: int):
+    """Post a comment: {body} (1 to 2,000 characters) -> 201 {comment}. The author is the signed-in user (Team when none)."""
+    blocked = _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
+    if blocked is not None:
+        return blocked
+    return jsonify(pas.post_comment(db.get_conn(), aid, _json_body(), auth.current_user())), 201
+
+
+@bp.get("/api/priorities/board")
+def priorities_board():
+    """The Production board: ?week= (snaps to Monday) &vendor= &product= &closed=1 -> {columns: [{status, label, count, cards}], dropped (with closed=1), capacity: [{vendor, per_week, open, week}], week, generated_at}.
+    Cards are the assignment JSON without history, high priority first, then position. See app/priorities_assign.py (board)."""
+    return jsonify(pas.board(db.get_conn(), week=_arg("week"), vendor=_arg("vendor"), product=_arg("product"), closed=request.args.get("closed") in ("1", "true")))
+
+
+@bp.get("/api/priorities/vendor-capacity")
+def priorities_vendor_capacity():
+    """Concepts per week each vendor can take -> {capacity: [{vendor, per_week, updated_at}]} (10 where none is stored)."""
+    return jsonify(pas.get_capacity(db.get_conn()))
+
+
+@bp.put("/api/priorities/vendor-capacity")
+def priorities_vendor_capacity_set():
+    """{vendor, per_week} (a whole number 0 to 1000) -> {vendor, per_week, updated_at}. Signed-in users only: an API key cannot change capacity."""
+    blocked = _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
+    if blocked is not None:
+        return blocked
+    return jsonify(pas.set_capacity(_json_body(), auth.current_user()))
+
+
 @bp.get("/api/priorities/vendor-links")
 def priorities_vendor_links():
     """Every vendor link made so far -> {links: [{vendor, token, url, created_at, rotated_at}], vendors}."""
@@ -675,9 +722,24 @@ def priorities_vendor_detail(token: str, aid: int):
     return jsonify(pdt.vendor_detail(db.get_conn(), token, aid))
 
 
+@bp.get("/api/priorities/vendor/<token>/<int:aid>/comments")
+def priorities_vendor_comments(token: str, aid: int):
+    """The comment thread of the vendor's own assignment (another vendor's row, a dropped row or an unknown id is a 404) -> {comments: [{id, author_kind, author_name, body, created_at}]}."""
+    return jsonify(pas.list_comments(db.get_conn(), aid, vendor=pas.vendor_of_token(db.get_conn(), token)))
+
+
+@bp.post("/api/priorities/vendor/<token>/<int:aid>/comments")
+def priorities_vendor_comment_create(token: str, aid: int):
+    """A vendor posts a comment on their own assignment: {body} -> 201 {comment} with author_kind 'vendor' and the vendor's name."""
+    blocked = _views_write_guard("_vendor_limiter", "PRIORITIES_VENDOR_PER_MIN", 60)
+    if blocked is not None:
+        return blocked
+    return jsonify(pas.post_comment(db.get_conn(), aid, _json_body(), vendor=pas.vendor_of_token(db.get_conn(), token))), 201
+
+
 @bp.patch("/api/priorities/vendor/<token>/<int:aid>")
 def priorities_vendor_update(token: str, aid: int):
-    """A vendor edits their own row: {creative_url?, vendor_note?, ready?} only (the creative format is shown to them but is not theirs to change: 400); another vendor's row is a 404."""
+    """A vendor edits their own row: {creative_url?, vendor_note?, ready?, status?, comment?} only (status: start, submit for review, pull back) (the creative format is shown to them but is not theirs to change: 400); another vendor's row is a 404."""
     blocked = _views_write_guard("_vendor_limiter", "PRIORITIES_VENDOR_PER_MIN", 60)
     if blocked is not None:
         return blocked

@@ -25,9 +25,14 @@ FORMATS = [{"code": "F1", "name": "Long animated story, openly AI, told by the c
            {"code": "F3", "name": "Short acted scene with two people", "length": "30 to 60s"}, {"code": "F4", "name": "Whiteboard explainer", "length": "60 to 90s"},
            {"code": "F5", "name": "Opens on a sound", "length": "30 to 60s"}, {"code": "F6", "name": "Animated song", "length": "45 to 90s"}]
 CREATE_FIELDS = ("vendor", "for_week", "note", "format_code")
-PATCH_FIELDS = ("vendor", "for_week", "note", "format_code", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped")
+PATCH_FIELDS = ("vendor", "for_week", "note", "format_code", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped", "status", "due_date", "priority", "position", "comment")
 PATCH_BOOLS = ("ready", "launched", "dropped")
-VENDOR_PATCH_FIELDS = ("creative_url", "vendor_note", "ready")
+VENDOR_PATCH_FIELDS = ("creative_url", "vendor_note", "ready", "status", "comment")
+# the board (migration 245): the stored status of an assignment, in column order. `dropped` is not a status (dropped_at hides the card in an archived lane).
+STATUSES = ["assigned", "brief_sent", "in_production", "in_review", "ready", "launched"]
+STATUS_LABELS = {"assigned": "Assigned", "brief_sent": "Brief sent", "in_production": "In production", "in_review": "In review", "ready": "Ready to launch", "launched": "Launched"}
+PRIORITIES = ("normal", "high")
+LIMITS["comment"] = 2000
 _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _CTRL_ALL = re.compile(r"[\x00-\x1f\x7f]")
 _WS = re.compile(r"\s+")
@@ -188,7 +193,56 @@ def clean_patch(body: dict) -> dict:
             if not isinstance(body[f], bool):
                 raise q.ApiError(400, f"{f} must be true or false")
             out[f] = body[f]
+    if "status" in body:
+        out["status"] = clean_status(body["status"])
+    if "due_date" in body:
+        out["due_date"] = None if body["due_date"] in (None, "") else _date(body["due_date"], "due date")
+    if "priority" in body:
+        if body["priority"] not in PRIORITIES:
+            raise q.ApiError(400, "priority must be normal or high")
+        out["priority"] = body["priority"]
+    if "position" in body:
+        out["position"] = clean_position(body["position"])
+    if "comment" in body:
+        out["comment"] = _comment_opt(body["comment"])
     return out
+
+
+def clean_status(raw) -> str:
+    if raw == "dropped":
+        raise q.ApiError(400, "Dropped is not a status: use Drop on the card.")
+    if raw not in STATUSES:
+        raise q.ApiError(400, "status must be one of: " + ", ".join(STATUSES))
+    return raw
+
+
+def clean_position(raw) -> float:
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)) or raw != raw or abs(raw) > 1e12:
+        raise q.ApiError(400, "position must be a number")
+    return float(raw)
+
+
+def _date(raw, what: str) -> dt.date:
+    if not isinstance(raw, str):
+        raise q.ApiError(400, f"{what} must be a date like 2026-11-13")
+    try:
+        return dt.date.fromisoformat(raw.strip()[:10])
+    except ValueError:
+        raise q.ApiError(400, f"{what} must be a date like 2026-11-13") from None
+
+
+def _comment_opt(raw) -> str | None:
+    """An optional short comment sent with a status move: blank or null means none."""
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return None
+    return clean_comment(raw)
+
+
+def clean_comment(raw) -> str:
+    """A comment body: text, 1 to 2,000 characters, line breaks kept."""
+    if not isinstance(raw, str) or not raw.strip():
+        raise q.ApiError(400, "Write something before posting.")
+    return _text(raw, "comment", LIMITS["comment"])
 
 
 def clean_vendor_patch(body: dict) -> dict:
@@ -208,6 +262,10 @@ def clean_vendor_patch(body: dict) -> dict:
         if not isinstance(body["ready"], bool):
             raise q.ApiError(400, "ready must be true or false")
         out["ready"] = body["ready"]
+    if "status" in body:
+        out["status"] = clean_status(body["status"])
+    if "comment" in body:
+        out["comment"] = _comment_opt(body["comment"])
     return out
 
 
@@ -243,6 +301,71 @@ def stage_label(key: str) -> str:
     return STAGES.get(key, key)
 
 
+# ---------------------------------------------------------------------------------------------------------------- status (the board column, stored since migration 245)
+def status_rank(status) -> int:
+    return STATUSES.index(status) if status in STATUSES else 0
+
+
+def status_of_facts(rec: dict, tracker_statuses=()) -> str:
+    """The status the links and timestamps of an assignment imply: launched_at, ready_at, a creative link (in review), a brief link (brief sent), else assigned; the Creative Tracker rows can only push it
+    further (3 to 5 brief sent, 6 in review, 7 ready, 8 and 9 launched). Used to backfill, to follow link edits and to pull a card forward."""
+    own = 0
+    if rec.get("launched_at"):
+        own = 5
+    elif rec.get("ready_at"):
+        own = 4
+    elif rec.get("creative_url"):
+        own = 3
+    elif rec.get("brief_url"):
+        own = 1
+    best = max([own] + [_TRACKER_STATUS_RANK.get(_tracker_rank(s), 0) for s in (tracker_statuses or ())])
+    return STATUSES[best]
+
+
+_TRACKER_STATUS_RANK = {0: 0, 1: 1, 2: 3, 3: 4, 4: 5}      # _tracker_rank (assigned, brief, creative in, ready, launched) -> index in STATUSES
+
+
+def tracker_status_of(tracker_statuses) -> str | None:
+    """The board status the linked tracker rows imply, or None when they imply nothing (idea or no rows)."""
+    best = max([_tracker_rank(s) for s in (tracker_statuses or ())], default=0)
+    return STATUSES[_TRACKER_STATUS_RANK[best]] if best else None
+
+
+def stage_from_status(rec: dict, status: str) -> str:
+    """The older stage word the existing pages still read, derived from the status: in production reads as brief sent (creative delivered once a creative link exists), in review as creative delivered,
+    and a dropped assignment is dropped whatever its status."""
+    if rec.get("dropped_at"):
+        return "dropped"
+    if status == "in_production":
+        return "creative_in" if rec.get("creative_url") else "brief_sent"
+    return {"in_review": "creative_in"}.get(status, status)
+
+
+# transitions. App users (a login or an API key) may move a card anywhere except to Launched; vendors only start, submit and pull back.
+VENDOR_MOVES = {("assigned", "in_production"), ("brief_sent", "in_production"), ("in_production", "in_review"), ("in_review", "in_production")}
+
+
+def check_transition(cur: str, new: str, *, vendor: bool, creative_url, comment) -> str:
+    """Validate a status change; returns '' or a note for the history ('Skipped review'). Raises a 400 in plain English when it is not allowed. A move to the status the card is already in is always fine."""
+    if new == cur:
+        return ""
+    if vendor:
+        if (cur, new) not in VENDOR_MOVES:
+            raise q.ApiError(400, "You can start a task, send it for review, or pull it back from review. The rest is done by the team.")
+        if new == "in_review" and not creative_url:
+            raise q.ApiError(400, "Add the creative link before sending it for review.")
+        return ""
+    if new == "launched":
+        raise q.ApiError(400, "A card becomes Launched with Mark launched or when its Creative Tracker row is launched. It cannot be moved there.")
+    if new == "in_review" and not creative_url:
+        raise q.ApiError(400, "Add a creative link before sending to review.")
+    if cur == "in_review" and new == "in_production" and not comment:
+        raise q.ApiError(400, "Say what to change: add a comment when requesting changes.")
+    if new == "ready" and cur != "in_review":
+        return "Skipped review"
+    return ""
+
+
 # ---------------------------------------------------------------------------------------------------------------- the "In production" text
 def _week_date(v) -> dt.date:
     return v if isinstance(v, dt.date) and not isinstance(v, dt.datetime) else dt.date.fromisoformat(str(v)[:10])
@@ -274,9 +397,11 @@ VENDOR_RECENT_DAYS = 28                      # the vendor page also shows what w
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{22,64}")
 COLS = ("id, concept_key, text_key, product, vendor, line_id, manual_id, line_code, cluster, icp, pain_point, story, section_at_assign, note, vendor_note, for_week, brief_url, creative_url, "
         "brief_at, creative_at, ready_at, launched_at, dropped_at, tracker_concept_ids, created_at, updated_at, created_by, updated_by")
+BOARD_COLS = ("status", "due_date", "priority", "position", "status_changed_at")        # migration 245; a database without it still serves every page (status is then derived from the links)
 FMT_COLS = ("format_code", "format_name", "format_length")                               # on every row; None when no format was chosen (or migration 204 is not applied)
 INTERNAL_ONLY = ("note", "created_by", "updated_by", "suggested_concept_ids")          # never sent to a vendor link page
-_TS = ("brief_at", "creative_at", "ready_at", "launched_at", "dropped_at", "created_at", "updated_at")
+_TS = ("brief_at", "creative_at", "ready_at", "launched_at", "dropped_at", "created_at", "updated_at", "status_changed_at")
+VENDOR_HIDDEN = INTERNAL_ONLY + ("priority", "position")
 
 
 def _rw():
@@ -331,7 +456,8 @@ def _tracker_ads(conn, recs: list[dict]) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------------------------- history (who did what, when)
-EVENT_KINDS = ("assigned", "brief_added", "brief_removed", "creative_added", "creative_removed", "ready", "ready_cleared", "launched", "launched_cleared", "dropped", "restored", "vendor", "week", "format")
+EVENT_KINDS = ("assigned", "brief_added", "brief_removed", "creative_added", "creative_removed", "ready", "ready_cleared", "launched", "launched_cleared", "dropped", "restored", "vendor", "week", "format",
+               "status_changed", "due_changed", "priority_changed", "comment_added")
 
 
 def _log(w, aid: int, actor: str | None, kind: str, before: str | None, after: str | None, detail: str = "") -> None:
@@ -345,7 +471,7 @@ def _log(w, aid: int, actor: str | None, kind: str, before: str | None, after: s
 
 def _snapshot(w, aid: int, where: str, params: list) -> dict | None:
     """The assignment as it is now (explicit columns, so a changed table never trips a cached plan), with format_code when migration 204 is applied."""
-    rec = w.execute(f"SELECT {COLS} FROM creative_priorities_assignments WHERE {where}", params).fetchone()
+    rec = w.execute(f"SELECT {COLS}, {', '.join(BOARD_COLS)} FROM creative_priorities_assignments WHERE {where}", params).fetchone()
     if rec is None:
         return None
     try:
@@ -360,7 +486,7 @@ def events_for(before: dict, after: dict) -> list[tuple[str, str | None, str, st
     """What changed between two assignment rows, as [(kind, stage_before, stage_after, detail)]. The stage is the one the row itself shows (stage_of with no tracker rows)."""
     sb, sa = stage_of(before), stage_of(after)
     out: list[tuple[str, str | None, str, str]] = []
-    for col, kind in (("vendor", "vendor"), ("for_week", "week"), ("format_code", "format")):
+    for col, kind in (("vendor", "vendor"), ("for_week", "week"), ("format_code", "format"), ("due_date", "due_changed"), ("priority", "priority_changed")):
         a, b = before.get(col), after.get(col)
         if a != b:
             out.append((kind, sa, sa, f"{_iso(a) or 'none'} to {_iso(b) or 'none'}"))
@@ -392,11 +518,29 @@ def _history(conn, ids: list[int]) -> dict[int, list[dict]]:
     return out
 
 
-def _shape(rec: dict, ads: list[dict], vendor_view: bool = False) -> dict:
+def today_pt() -> dt.date:
+    """Today's date in Pacific time (the team's day), for due dates."""
+    from zoneinfo import ZoneInfo
+    return dt.datetime.now(ZoneInfo("America/Los_Angeles")).date()
+
+
+def effective_status(rec: dict, tracker_statuses=()) -> str:
+    """The stored status, pulled forward (never back) by the linked Creative Tracker rows; derived from the links when the row has no stored status yet (migration 245 not applied)."""
+    cur = rec.get("status") or status_of_facts(rec)
+    t = tracker_status_of(tracker_statuses)
+    return t if t and status_rank(t) > status_rank(cur) else cur
+
+
+def _shape(rec: dict, ads: list[dict], vendor_view: bool = False, today: dt.date | None = None, comment_count: int = 0) -> dict:
     statuses = [a["status"] for a in ads]
-    stage = stage_of(rec, statuses)
+    status = effective_status(rec, statuses)
+    stage = stage_from_status(rec, status)
     best = max(statuses, key=_tracker_rank, default=None) if statuses else None
-    d = {k: (_iso(rec[k]) if k in _TS or k == "for_week" else rec[k]) for k in rec}
+    d = {k: (_iso(rec[k]) if k in _TS or k in ("for_week", "due_date") else rec[k]) for k in rec}
+    due = rec.get("due_date")
+    days = None if (due is None or status == "launched" or rec.get("dropped_at")) else (due - (today or today_pt())).days
+    d.update(status=status, status_label=STATUS_LABELS[status], due_date=_iso(due), due_in_days=days, overdue=days is not None and days < 0, priority=rec.get("priority") or "normal",
+             position=rec.get("position") or 0.0, comment_count=comment_count, status_changed_at=_iso(rec.get("status_changed_at")))
     if d.get("section_at_assign"):
         from etl import creative_priorities as cp
         d["section_at_assign"] = cp.norm_section(d["section_at_assign"])        # assignments made before 2026-11-10 stored the old section name; shown as the new Action
@@ -405,7 +549,7 @@ def _shape(rec: dict, ads: list[dict], vendor_view: bool = False) -> dict:
     d["suggested_concept_ids"] = [a["concept_id"] for a in ads if not a["explicit"]]
     d["ads"] = [{k: v for k, v in a.items() if k != "explicit"} for a in ads]
     if vendor_view:
-        for k in INTERNAL_ONLY:
+        for k in VENDOR_HIDDEN:
             d.pop(k, None)
         for a in d["ads"]:
             a.pop("ad_url", None)                      # the ad page needs a login
@@ -414,9 +558,15 @@ def _shape(rec: dict, ads: list[dict], vendor_view: bool = False) -> dict:
 
 def _fetch(conn, where: str = "", params: tuple = ()) -> list[dict]:
     acols = ", ".join("a." + c.strip() for c in COLS.split(","))
+    bcols = ", ".join("a." + c for c in BOARD_COLS)
+    join = "FROM creative_priorities_assignments a LEFT JOIN creative_formats f ON f.code = a.format_code"
     try:
-        return conn.execute(f"SELECT {acols}, a.format_code, f.name AS format_name, f.length AS format_length FROM creative_priorities_assignments a LEFT JOIN creative_formats f ON f.code = a.format_code {where} ORDER BY a.for_week DESC, a.vendor, a.id", params).fetchall()
-    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):          # migration 204 (formats) or 202 (assignments) not applied yet
+        return conn.execute(f"SELECT {acols}, {bcols}, a.format_code, f.name AS format_name, f.length AS format_length {join} {where} ORDER BY a.for_week DESC, a.vendor, a.id", params).fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):          # migration 245 (board), 204 (formats) or 202 (assignments) not applied yet
+        conn.rollback()
+    try:
+        return conn.execute(f"SELECT {acols}, a.format_code, f.name AS format_name, f.length AS format_length {join} {where} ORDER BY a.for_week DESC, a.vendor, a.id", params).fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
         conn.rollback()
     try:
         return [{**r, "format_code": None, "format_name": None, "format_length": None} for r in conn.execute(f"SELECT {COLS} FROM creative_priorities_assignments {where} ORDER BY for_week DESC, vendor, id", params).fetchall()]
@@ -443,10 +593,22 @@ def _weeks(conn) -> list[str]:
         return []
 
 
-def _shape_all(conn, recs: list[dict], vendor_view: bool = False) -> list[dict]:
+def _comment_counts(conn, ids: list[int]) -> dict[int, int]:
+    if not ids:
+        return {}
+    try:
+        return {r["assignment_id"]: r["n"] for r in conn.execute("SELECT assignment_id, count(*) AS n FROM creative_priorities_assignment_comments WHERE assignment_id = ANY(%s) GROUP BY 1", (ids,)).fetchall()}
+    except psycopg.errors.UndefinedTable:
+        conn.rollback()
+        return {}
+
+
+def _shape_all(conn, recs: list[dict], vendor_view: bool = False, history: bool = True) -> list[dict]:
     ads = _tracker_ads(conn, recs)
-    shaped = [_shape(r, ads[r["id"]], vendor_view) for r in recs]
-    if not vendor_view:                                                  # who did what is internal: a vendor link page never gets it
+    counts = _comment_counts(conn, [r["id"] for r in recs])
+    today = today_pt()
+    shaped = [_shape(r, ads[r["id"]], vendor_view, today, counts.get(r["id"], 0)) for r in recs]
+    if not vendor_view and history:                                      # who did what is internal: a vendor link page never gets it
         hist = _history(conn, [r["id"] for r in recs])
         for d in shaped:
             d["history"] = hist.get(d["id"], [])
@@ -468,13 +630,13 @@ def list_assignments(conn, week=None, vendor=None, include_closed: bool = False)
     return {"rows": rows, "vendors": list(VENDORS), "weeks": _weeks(conn), "formats": formats(conn)}
 
 
-def _after_write(ids: list[int], vendor_view: bool = False) -> list[dict]:
+def _after_write(ids: list[int], vendor_view: bool = False, history: bool = True) -> list[dict]:
     """The just-written rows, read on a fresh read-write connection (the request's read connection may hold an older snapshot that does not see the write yet)."""
     if not ids:
         return []
     with _rw() as w:
         recs = _fetch(w, "WHERE id = ANY(%s)", (ids,))
-        shaped = _shape_all(w, recs, vendor_view)
+        shaped = _shape_all(w, recs, vendor_view, history)
     return sorted(shaped, key=lambda a: ids.index(a["id"]))
 
 
@@ -508,12 +670,12 @@ def create_assignments(conn, body: dict, user: str | None = None) -> dict:
                     continue
                 fc = f["format_code"]
                 row = w.execute(
-                    """INSERT INTO creative_priorities_assignments (concept_key, text_key, product, vendor, line_id, manual_id, line_code, cluster, icp, pain_point, story, section_at_assign, note, for_week, created_by, updated_by"""
+                    """INSERT INTO creative_priorities_assignments (concept_key, text_key, product, vendor, line_id, manual_id, line_code, cluster, icp, pain_point, story, section_at_assign, note, for_week, created_by, updated_by, due_date, status_changed_at, position"""
                     + (", format_code" if fc else "") + """)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s""" + (",%s" if fc else "") + """)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now(),(SELECT COALESCE(max(position), 0) + 1 FROM creative_priorities_assignments WHERE status = 'assigned' AND dropped_at IS NULL)""" + (",%s" if fc else "") + """)
                        ON CONFLICT (concept_key, vendor, for_week) WHERE dropped_at IS NULL DO NOTHING RETURNING id""",
                     (concept_key(r), text_key(r), r["product"], f["vendor"], r.get("line_id"), r["id"] if r.get("manual") else None, r.get("line_code") or "", r.get("cluster") or "", r.get("icp") or "",
-                     r.get("pain_point") or "", r.get("story") or "", r.get("section") or "", f["note"], f["for_week"], user, user, *([fc] if fc else []))).fetchone()
+                     r.get("pain_point") or "", r.get("story") or "", r.get("section") or "", f["note"], f["for_week"], user, user, f["for_week"] + dt.timedelta(days=4), *([fc] if fc else []))).fetchone()
                 if row is None:
                     skipped.append({"key": k, "reason": "already assigned to this vendor for that week"})
                 else:
@@ -521,34 +683,104 @@ def create_assignments(conn, body: dict, user: str | None = None) -> dict:
                     _log(w, row["id"], user, "assigned", None, "assigned", f"{f['vendor']}, week of {f['for_week']}")
     except psycopg.errors.UndefinedTable:
         raise q.ApiError(503, "Production is not set up yet (migration 202 is not applied).") from None
-    except psycopg.errors.UndefinedColumn:
-        raise q.ApiError(503, "Creative formats are not set up yet (migration 204 is not applied).") from None
+    except psycopg.errors.UndefinedColumn as e:
+        raise _missing_column(e) from None
     return {"created": _after_write(created_ids), "skipped": skipped}
 
 
-def _update(aid: int, f: dict, user: str | None, vendor: str | None = None) -> None:
-    """Apply a cleaned patch. Links stamp their first-added time and clear it with the link; ready / launched / dropped set or clear their timestamp. vendor= restricts to that vendor's row (404 otherwise)."""
-    sets: list[str] = []
-    params: list = []
-    for c in ("vendor", "for_week", "note", "vendor_note", "format_code"):
-        if c in f:
-            sets.append(f"{c} = %s")
-            params.append(f[c])
-    for url, at in (("brief_url", "brief_at"), ("creative_url", "creative_at")):
-        if url in f:
-            sets.append(f"{url} = %s")
-            params.append(f[url])
-            sets.append(f"{at} = " + ("COALESCE(" + at + ", now())" if f[url] else "NULL"))
-    if "tracker_concept_ids" in f:
-        sets.append("tracker_concept_ids = %s")
-        params.append(f["tracker_concept_ids"])
-    for flag, at in (("ready", "ready_at"), ("launched", "launched_at"), ("dropped", "dropped_at")):
-        if flag in f:
-            sets.append(f"{at} = " + (f"COALESCE({at}, now())" if f[flag] else "NULL"))
-    if not sets:
+def _missing_column(e) -> q.ApiError:
+    return q.ApiError(503, "Creative formats are not set up yet (migration 204 is not applied)." if "format_code" in str(e) else "The Production board is not set up yet (migration 245 is not applied).")
+
+
+def _author(user: str | None) -> str:
+    return user if user and user != "guest" else "Team"
+
+
+# ---------------------------------------------------------------------------------------------------------------- status: one helper for every writer
+def _column_ids(w, status: str) -> list[int]:
+    """Ids of the open cards of one board column in display order (high priority first, then position)."""
+    return [r["id"] for r in w.execute("SELECT id FROM creative_priorities_assignments WHERE status = %s AND dropped_at IS NULL ORDER BY (priority = 'high') DESC, position, id", (status,)).fetchall()]
+
+
+def _excerpt(text: str, n: int = 300) -> str:
+    return text if len(text) <= n else text[: n - 1].rstrip() + "..."
+
+
+def set_status(w, aid: int, new: str, actor: str | None, *, was: str | None = None, position: float | None = None, note: str = "", comment: str | None = None, event: bool = True) -> bool:
+    """The ONLY writer of creative_priorities_assignments.status (the Production page, the move route, a vendor, the tracker pull-forward, Mark ready and Mark launched all end here). In the caller's
+    transaction it sets status, status_changed_at, position (the bottom of the new column unless position is given) and keeps ready_at and launched_at in step (ready sets ready_at, launched sets both
+    launched_at and keeps ready_at, anything earlier clears them), then writes one 'status_changed' history row (stage_before / stage_after are the status values) unless event=False (a caller that already
+    wrote a more specific history row, such as 'ready' for the old Ready flag). `was` is the status the card showed (the tracker can show it further along than the stored one). Returns True when it changed."""
+    cur = w.execute("SELECT status FROM creative_priorities_assignments WHERE id = %s FOR UPDATE", (aid,)).fetchone()
+    if cur is None:
+        raise q.ApiError(404, "Assignment not found.")
+    if new not in STATUSES:
+        raise q.ApiError(400, "status must be one of: " + ", ".join(STATUSES))
+    was = was or cur["status"]
+    if new == cur["status"] and position is None:
+        return False
+    if position is None:
+        position = w.execute("SELECT COALESCE(max(position), 0) + 1 AS p FROM creative_priorities_assignments WHERE status = %s AND dropped_at IS NULL AND id <> %s", (new, aid)).fetchone()["p"]
+    w.execute("""UPDATE creative_priorities_assignments SET status = %s, status_changed_at = now(), position = %s, updated_at = now(), updated_by = %s,
+                 ready_at = CASE WHEN %s = 'ready' THEN COALESCE(ready_at, now()) WHEN %s = 'launched' THEN ready_at ELSE NULL END,
+                 launched_at = CASE WHEN %s = 'launched' THEN COALESCE(launched_at, now()) ELSE NULL END WHERE id = %s""", (new, position, actor, new, new, new, aid))
+    if event and was != new:
+        detail = "; ".join(x for x in (note, _excerpt(comment) if comment else "") if x)
+        _log(w, aid, actor, "status_changed", was, new, detail)
+    return was != new
+
+
+def _add_comment(w, aid: int, kind: str, author: str, body: str) -> dict:
+    r = w.execute("INSERT INTO creative_priorities_assignment_comments (assignment_id, author_kind, author_name, body) VALUES (%s,%s,%s,%s) RETURNING id, author_kind, author_name, body, created_at", (aid, kind, author, body)).fetchone()
+    return _comment_json(r)
+
+
+def _comment_json(r: dict) -> dict:
+    return {"id": r["id"], "author_kind": r["author_kind"], "author_name": r["author_name"], "body": r["body"], "created_at": _iso(r["created_at"])}
+
+
+def _tracker_statuses(w, rec: dict) -> list[str]:
+    return [a["status"] for a in _tracker_ads(w, [rec])[rec["id"]]]
+
+
+def _reconcile(w, aid: int, before: dict, after: dict, actor: str | None) -> None:
+    """After a link or flag edit without an explicit status: follow the links the way the old derived stage did. A link, Ready or Launched that was added pulls the status forward (never back); one that
+    was removed lets a card that depended on it fall back to what is left. The history already holds the specific row (brief_added, ready, ...), so no status_changed row is written."""
+    tstat = _tracker_statuses(w, after)
+    cur = effective_status(after, tstat)
+    own_before, own_after = status_of_facts(before), status_of_facts(after)
+    target = cur
+    if status_rank(own_after) > status_rank(own_before):
+        target = max(cur, own_after, tracker_status_of(tstat) or "assigned", key=status_rank)
+    elif status_rank(own_after) < status_rank(own_before) and status_rank(cur) >= status_rank("in_review"):
+        target = max(own_after, tracker_status_of(tstat) or "assigned", key=status_rank)
+    if target != after.get("status"):
+        set_status(w, aid, target, actor, was=after.get("status"), event=False)
+
+
+def pull_forward(w, actor: str = "tracker") -> int:
+    """Move every open assignment forward to what its linked Creative Tracker rows show (7 = ready, 8 and 9 = launched, 6 = in review, 3 to 5 = brief sent), never backward. Writes a status_changed row
+    each (actor 'tracker'). Used by the nightly etl.production_status. Returns how many cards moved."""
+    recs = _fetch(w, "WHERE dropped_at IS NULL AND status <> 'launched'")
+    ads = _tracker_ads(w, recs)
+    n = 0
+    for r in recs:
+        stats = [a["status"] for a in ads[r["id"]]]
+        t = tracker_status_of(stats)
+        if t and status_rank(t) > status_rank(r["status"]):
+            if set_status(w, r["id"], t, actor, note="Creative Tracker row moved on"):
+                n += 1
+    return n
+
+
+def _update(aid: int, f: dict, user: str | None, vendor: str | None = None, legacy_ready: bool = False) -> None:
+    """Apply a cleaned patch. Links stamp their first-added time and clear it with the link; ready / launched / dropped set or clear their timestamp. An explicit status goes through check_transition and
+    set_status; without one the status follows the links (_reconcile). vendor= restricts to that vendor's row (404 otherwise) and applies the vendor rules."""
+    f = dict(f)
+    comment = f.pop("comment", None)
+    new_status = f.pop("status", None)
+    if not f and new_status is None and comment is None:
         raise q.ApiError(400, "nothing to update")
-    sets += ["updated_at = now()", "updated_by = %s"]
-    params.append(user)
     where, wp = "id = %s", [aid]
     if vendor is not None:
         where += " AND vendor = %s"
@@ -556,19 +788,60 @@ def _update(aid: int, f: dict, user: str | None, vendor: str | None = None) -> N
     try:
         with _rw() as w:
             before = _snapshot(w, aid, where, wp)
-            n = w.execute(f"UPDATE creative_priorities_assignments SET {', '.join(sets)} WHERE {where}", [*params, *wp]).rowcount
-            if n and before:
+            if before is None:
+                raise q.ApiError(404, "Assignment not found.")
+            if "for_week" in f and "due_date" not in f and before.get("due_date") == before["for_week"] + dt.timedelta(days=4):
+                f["due_date"] = f["for_week"] + dt.timedelta(days=4)             # the default due date (Friday) follows the week
+            was = effective_status(before, _tracker_statuses(w, before))
+            note = ""
+            if new_status is not None:
+                if before["dropped_at"]:
+                    raise q.ApiError(400, "This concept was dropped. Restore it before moving it.")
+                creative = f["creative_url"] if "creative_url" in f else before["creative_url"]
+                note = "" if legacy_ready else check_transition(was, new_status, vendor=vendor is not None, creative_url=creative, comment=comment)
+            sets: list[str] = []
+            params: list = []
+            for c in ("vendor", "for_week", "note", "vendor_note", "format_code", "due_date", "priority", "position"):
+                if c in f:
+                    sets.append(f"{c} = %s")
+                    params.append(f[c])
+            for url, at in (("brief_url", "brief_at"), ("creative_url", "creative_at")):
+                if url in f:
+                    sets.append(f"{url} = %s")
+                    params.append(f[url])
+                    sets.append(f"{at} = " + ("COALESCE(" + at + ", now())" if f[url] else "NULL"))
+            if "tracker_concept_ids" in f:
+                sets.append("tracker_concept_ids = %s")
+                params.append(f["tracker_concept_ids"])
+            for flag, at in (("ready", "ready_at"), ("launched", "launched_at"), ("dropped", "dropped_at")):
+                if flag in f:
+                    sets.append(f"{at} = " + (f"COALESCE({at}, now())" if f[flag] else "NULL"))
+            after = before
+            if sets:
+                w.execute(f"UPDATE creative_priorities_assignments SET {', '.join(sets)}, updated_at = now(), updated_by = %s WHERE {where}", [*params, user, *wp])
                 after = _snapshot(w, aid, "id = %s", [aid])
                 for kind, sb, sa, detail in events_for(before, after):
                     _log(w, aid, user, kind, sb, sa, detail)
+            if new_status is not None:
+                body = comment
+                if comment and was == "in_review" and new_status == "in_production" and vendor is None:
+                    body = "Changes requested: " + comment
+                if new_status != was:
+                    set_status(w, aid, new_status, user, was=was, note=note, comment=body)
+                if body:
+                    _add_comment(w, aid, "vendor" if vendor is not None else "app", vendor or _author(user), body)
+            else:
+                if comment:
+                    _add_comment(w, aid, "vendor" if vendor is not None else "app", vendor or _author(user), comment)
+                    _log(w, aid, user, "comment_added", None, None, _excerpt(comment))
+                if sets and vendor is None:
+                    _reconcile(w, aid, before, after, user)
     except psycopg.errors.UniqueViolation:
         raise q.ApiError(409, "That concept is already assigned to this vendor for that week.") from None
-    except psycopg.errors.UndefinedColumn:
-        raise q.ApiError(503, "Creative formats are not set up yet (migration 204 is not applied).") from None
+    except psycopg.errors.UndefinedColumn as e:
+        raise _missing_column(e) from None
     except psycopg.errors.UndefinedTable:
         raise q.ApiError(503, "Production is not set up yet (migration 202 is not applied).") from None
-    if not n:
-        raise q.ApiError(404, "Assignment not found.")
 
 
 def update_assignment(conn, aid: int, body: dict, user: str | None = None) -> dict:
@@ -579,6 +852,215 @@ def update_assignment(conn, aid: int, body: dict, user: str | None = None) -> di
         f["format_code"] = check_format(f["format_code"], formats(conn))
     _update(aid, f, user)
     return _after_write([aid])[0]
+
+
+def move_assignment(conn, aid: int, body: dict, user: str | None = None) -> dict:
+    """Drag and drop: one atomic status change plus reposition. Body {status, before_id?, after_id?, comment?}: before_id = the card the moved card is put immediately above (it takes the place just before that
+    card), after_id = the card it is put immediately below; both must be open cards of the target column; neither = the bottom of the column. The same rules as PATCH status (check_transition).
+    -> {card, column: {status, ids}} where ids is the target column in display order."""
+    if not isinstance(body, dict):
+        raise q.ApiError(400, "JSON object body required")
+    unknown = set(body) - {"status", "before_id", "after_id", "comment"}
+    if unknown:
+        raise q.ApiError(400, "unknown field: " + ", ".join(sorted(unknown)))
+    new = clean_status(body.get("status"))
+    comment = _comment_opt(body.get("comment"))
+    ids = {}
+    for k in ("before_id", "after_id"):
+        v = body.get(k)
+        if v is not None:
+            if isinstance(v, bool) or not isinstance(v, int):
+                raise q.ApiError(400, f"{k.replace('_', ' ')} must be a card number")
+            ids[k] = v
+    if len(ids) == 2 and ids["before_id"] == ids["after_id"]:
+        raise q.ApiError(400, "before_id and after_id must be different cards")
+    if aid in ids.values():
+        raise q.ApiError(400, "A card cannot be placed next to itself.")
+    try:
+        with _rw() as w:
+            before = _snapshot(w, aid, "id = %s", [aid])
+            if before is None:
+                raise q.ApiError(404, "Assignment not found.")
+            if before["dropped_at"]:
+                raise q.ApiError(400, "This concept was dropped. Restore it before moving it.")
+            was = effective_status(before, _tracker_statuses(w, before))
+            note = check_transition(was, new, vendor=False, creative_url=before["creative_url"], comment=comment)
+            pos = _position_between(w, new, aid, ids.get("before_id"), ids.get("after_id"))
+            body_text = ("Changes requested: " + comment) if comment and was == "in_review" and new == "in_production" else comment
+            if new != was:
+                set_status(w, aid, new, user, was=was, position=pos, note=note, comment=body_text)
+            else:
+                w.execute("UPDATE creative_priorities_assignments SET position = %s, updated_at = now(), updated_by = %s WHERE id = %s", (pos, user, aid))
+                if new != before["status"]:                       # the tracker showed it further along than the stored status: store it now
+                    set_status(w, aid, new, user, was=new, position=pos, event=False)
+            if body_text:
+                _add_comment(w, aid, "app", _author(user), body_text)
+            column = _column_ids(w, new)
+    except psycopg.errors.UndefinedColumn as e:
+        raise _missing_column(e) from None
+    except psycopg.errors.UndefinedTable:
+        raise q.ApiError(503, "Production is not set up yet (migration 202 is not applied).") from None
+    return {"card": _after_write([aid], history=False)[0], "column": {"status": new, "ids": column}}
+
+
+def _position_between(w, status: str, aid: int, before_id: int | None, after_id: int | None) -> float:
+    """The position that puts a card in `status` just above before_id and/or just below after_id (neighbours must be open cards of that column); the bottom when neither is given. Renumbers the
+    column once when two positions get too close to split."""
+    def pos_of(cid):
+        r = w.execute("SELECT position FROM creative_priorities_assignments WHERE id = %s AND status = %s AND dropped_at IS NULL", (cid, status)).fetchone()
+        if r is None:
+            raise q.ApiError(400, "That card is not in this column any more. Refresh the board.")
+        return r["position"]
+    for attempt in (0, 1):
+        if before_id is None and after_id is None:
+            return w.execute("SELECT COALESCE(max(position), 0) + 1 AS p FROM creative_priorities_assignments WHERE status = %s AND dropped_at IS NULL AND id <> %s", (status, aid)).fetchone()["p"]
+        if before_id is not None and after_id is not None:
+            lo, hi = pos_of(after_id), pos_of(before_id)
+        elif before_id is not None:
+            hi = pos_of(before_id)
+            r = w.execute("SELECT max(position) AS p FROM creative_priorities_assignments WHERE status = %s AND dropped_at IS NULL AND id <> %s AND position < %s", (status, aid, hi)).fetchone()
+            lo = r["p"] if r["p"] is not None else hi - 2
+        else:
+            lo = pos_of(after_id)
+            r = w.execute("SELECT min(position) AS p FROM creative_priorities_assignments WHERE status = %s AND dropped_at IS NULL AND id <> %s AND position > %s", (status, aid, lo)).fetchone()
+            hi = r["p"] if r["p"] is not None else lo + 2
+        if lo > hi:
+            lo, hi = hi, lo
+        mid = (lo + hi) / 2
+        if lo < mid < hi:
+            return mid
+        if attempt == 0:                                               # the gap is exhausted: renumber this column 1..n in its current order, then try again
+            for n, cid in enumerate(_column_ids(w, status), start=1):
+                w.execute("UPDATE creative_priorities_assignments SET position = %s WHERE id = %s", (float(n), cid))
+    raise q.ApiError(400, "Could not place the card there. Refresh the board.")
+
+
+# ---------------------------------------------------------------------------------------------------------------- comments
+def list_comments(conn, aid: int, vendor: str | None = None) -> dict:
+    """{comments: [{id, author_kind, author_name, body, created_at}]} oldest first. vendor= limits to that vendor's own, not dropped assignment (404 otherwise)."""
+    where, params = "WHERE id = %s", [aid]
+    if vendor is not None:
+        where += " AND vendor = %s AND dropped_at IS NULL"
+        params.append(vendor)
+    try:
+        if conn.execute(f"SELECT 1 FROM creative_priorities_assignments {where}", params).fetchone() is None:
+            raise q.ApiError(404, "Assignment not found.")
+        rows = conn.execute("SELECT id, author_kind, author_name, body, created_at FROM creative_priorities_assignment_comments WHERE assignment_id = %s ORDER BY created_at, id", (aid,)).fetchall()
+    except psycopg.errors.UndefinedTable:
+        conn.rollback()
+        return {"comments": []}
+    return {"comments": [_comment_json(r) for r in rows]}
+
+
+def post_comment(conn, aid: int, body: dict, user: str | None = None, vendor: str | None = None) -> dict:
+    """Post a comment ({body}). App users and API keys write author_kind 'app' (name = the signed-in user, or Team), a vendor link page writes 'vendor' (name = the vendor). A vendor can only comment on their
+    own open assignment. Also lists in the history. -> {comment}"""
+    if not isinstance(body, dict):
+        raise q.ApiError(400, "JSON object body required")
+    unknown = set(body) - {"body"}
+    if unknown:
+        raise q.ApiError(400, "unknown field: " + ", ".join(sorted(unknown)))
+    text = clean_comment(body.get("body"))
+    try:
+        with _rw() as w:
+            r = w.execute("SELECT vendor, dropped_at FROM creative_priorities_assignments WHERE id = %s", (aid,)).fetchone()
+            if r is None or (vendor is not None and r["vendor"] != vendor):
+                raise q.ApiError(404, "Assignment not found.")
+            if vendor is not None and r["dropped_at"]:
+                raise q.ApiError(409, "This concept was dropped.")
+            c = _add_comment(w, aid, "vendor" if vendor is not None else "app", vendor or _author(user), text)
+            _log(w, aid, f"vendor:{vendor}" if vendor is not None else user, "comment_added", None, None, _excerpt(text))
+    except psycopg.errors.UndefinedTable:
+        raise q.ApiError(503, "Comments are not set up yet (migration 245 is not applied).") from None
+    return {"comment": c}
+
+
+# ---------------------------------------------------------------------------------------------------------------- vendor capacity, board
+DEFAULT_CAPACITY = 10
+
+
+def get_capacity(conn) -> dict:
+    """{capacity: [{vendor, per_week, updated_at}]} for every vendor (10 where nothing is stored)."""
+    try:
+        have = {r["vendor"]: r for r in conn.execute("SELECT vendor, per_week, updated_at FROM creative_priorities_vendor_capacity").fetchall()}
+    except psycopg.errors.UndefinedTable:
+        conn.rollback()
+        have = {}
+    return {"capacity": [{"vendor": v, "per_week": have[v]["per_week"] if v in have else DEFAULT_CAPACITY, "updated_at": _iso(have[v]["updated_at"]) if v in have else None} for v in VENDORS]}
+
+
+def set_capacity(body: dict, user: str | None = None) -> dict:
+    if not isinstance(body, dict):
+        raise q.ApiError(400, "JSON object body required")
+    unknown = set(body) - {"vendor", "per_week"}
+    if unknown:
+        raise q.ApiError(400, "unknown field: " + ", ".join(sorted(unknown)))
+    v = _vendor(body.get("vendor"))
+    n = body.get("per_week")
+    if isinstance(n, bool) or not isinstance(n, int) or not 0 <= n <= 1000:
+        raise q.ApiError(400, "per_week must be a whole number from 0 to 1000")
+    try:
+        with _rw() as w:
+            r = w.execute("""INSERT INTO creative_priorities_vendor_capacity (vendor, per_week) VALUES (%s, %s)
+                             ON CONFLICT (vendor) DO UPDATE SET per_week = EXCLUDED.per_week, updated_at = now() RETURNING vendor, per_week, updated_at""", (v, n)).fetchone()
+    except psycopg.errors.UndefinedTable:
+        raise q.ApiError(503, "Vendor capacity is not set up yet (migration 245 is not applied).") from None
+    return {"vendor": r["vendor"], "per_week": r["per_week"], "updated_at": _iso(r["updated_at"])}
+
+
+BOARD_LAUNCHED_DAYS = 14                     # the Launched column shows the last two weeks unless closed=1
+
+
+def _launched_on(a: dict) -> dt.date | None:
+    for k in ("launched_at", "status_changed_at"):
+        if a.get(k):
+            return dt.date.fromisoformat(a[k][:10])
+    return None
+
+
+def board(conn, week=None, vendor=None, product=None, closed: bool = False) -> dict:
+    """The Production board: {columns: [{status, label, count, cards}], dropped (only with closed), capacity: [{vendor, per_week, open, week}], week, generated_at}. Filters: week (snaps to Monday), vendor, product.
+    Cards are the assignment JSON without history, ordered high priority first, then position. The Launched column holds the last 14 days unless closed (then all, plus a dropped lane). Capacity counts a vendor's
+    open (not launched, not dropped) cards for the filtered week, or the current week when none is given; it ignores the product filter."""
+    where, params = [], []
+    if week not in (None, ""):
+        where.append("for_week = %s")
+        params.append(monday_of(week))
+    if vendor not in (None, ""):
+        where.append("vendor = %s")
+        params.append(_vendor(vendor))
+    if product not in (None, ""):
+        where.append("product = %s")
+        params.append(str(product)[:40])
+    recs = _fetch(conn, ("WHERE " + " AND ".join(where)) if where else "", tuple(params))
+    cards = _shape_all(conn, recs, history=False)
+    cap_week = monday_of(week) if week not in (None, "") else monday_of(today_pt())
+    cards.sort(key=lambda a: (a["priority"] != "high", a["position"], a["id"]))
+    today = today_pt()
+    cols = []
+    for st in STATUSES:
+        mine = [a for a in cards if a["stage"] != "dropped" and a["status"] == st]
+        hidden = 0
+        if st == "launched" and not closed:
+            keep = [a for a in mine if (_launched_on(a) or today) >= today - dt.timedelta(days=BOARD_LAUNCHED_DAYS)]
+            hidden, mine = len(mine) - len(keep), keep
+        c = {"status": st, "label": STATUS_LABELS[st], "count": len(mine), "cards": mine}
+        if st == "launched":
+            c["hidden"] = hidden
+        cols.append(c)
+    out = {"columns": cols, "week": cap_week.isoformat()}
+    if closed:
+        out["dropped"] = [a for a in cards if a["stage"] == "dropped"]
+    capv = {c["vendor"]: c["per_week"] for c in get_capacity(conn)["capacity"]}
+    opened: dict[str, int] = {}
+    try:
+        for r in conn.execute("SELECT vendor, count(*) AS n FROM creative_priorities_assignments WHERE for_week = %s AND dropped_at IS NULL AND launched_at IS NULL AND status <> 'launched' GROUP BY 1", (cap_week,)).fetchall():
+            opened[r["vendor"]] = r["n"]
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        conn.rollback()
+    out["capacity"] = [{"vendor": v, "per_week": capv.get(v, DEFAULT_CAPACITY), "open": opened.get(v, 0), "week": cap_week.isoformat()} for v in VENDORS if vendor in (None, "") or v == vendor]
+    out["generated_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------------------- vendor links
@@ -666,7 +1148,8 @@ def vendor_rows(conn, token: str, today: dt.date | None = None) -> dict:
 
 
 def vendor_update(conn, token: str, aid: int, body: dict) -> dict:
-    """A vendor edits their own row: creative link, note, Ready to launch (needs a creative link). Another vendor's row, or a row that does not exist, is a 404."""
+    """A vendor edits their own row: creative link, note, comment, and the three status moves (Start, Submit for review, Pull back; Submit needs a creative link). The old Ready to launch flag still works: true =
+    submit for review, false = pull back. Another vendor's row, or a row that does not exist, is a 404."""
     vendor = vendor_of_token(conn, token)
     f = clean_vendor_patch(body)
     if not f:
@@ -677,7 +1160,22 @@ def vendor_update(conn, token: str, aid: int, body: dict) -> dict:
     cur = recs[0]
     if cur["dropped_at"]:
         raise q.ApiError(409, "This concept was dropped.")
-    if f.get("ready") and not (f["creative_url"] if "creative_url" in f else cur["creative_url"]):
-        raise q.ApiError(400, "Add the creative link before marking it ready to launch.")
-    _update(aid, f, f"vendor:{vendor}", vendor=vendor)
+    legacy = "ready" in f
+    if legacy:
+        ready = f.pop("ready")
+        if "status" in f:
+            raise q.ApiError(400, "Send either ready or status, not both.")
+        have = effective_status(cur, [a["status"] for a in _tracker_ads(conn, [cur])[aid]])
+        creative = f["creative_url"] if "creative_url" in f else cur["creative_url"]
+        if ready and not creative:
+            raise q.ApiError(400, "Add the creative link before marking it ready to launch.")
+        if ready and have in ("assigned", "brief_sent", "in_production"):
+            f["status"] = "in_review"
+        elif not ready and have == "in_review":
+            f["status"] = "in_production"
+    if f.get("status") == "in_review" and not (f["creative_url"] if "creative_url" in f else cur["creative_url"]):
+        raise q.ApiError(400, "Add the creative link before sending it for review.")
+    if not f:
+        return _after_write([aid], vendor_view=True)[0]
+    _update(aid, f, f"vendor:{vendor}", vendor=vendor, legacy_ready=legacy)
     return _after_write([aid], vendor_view=True)[0]

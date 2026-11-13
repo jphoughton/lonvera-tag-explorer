@@ -18,8 +18,8 @@ def idle(page):
 
 
 def goto(page, qs=""):
-    page.goto("/priorities/production" + qs)
-    page.wait_for_selector("[data-testid=prod-page]")
+    page.goto("/priorities/production" + (qs + "&view=list" if qs else "?view=list"))
+    page.wait_for_selector("[data-testid=prod-table], [data-testid=prod-empty]")
     idle(page)
 
 
@@ -47,7 +47,7 @@ def fill_dialog(page, value, field="url"):
 def test_table_renders_with_plain_columns_and_open_rows_only(page):
     goto(page)
     heads = [t.strip() for t in page.locator("[data-testid=prod-table] thead th").all_text_contents()]
-    assert heads == ["Week of", "Vendor", "Product", "Concept", "Brief", "Creative", "Format", "Stage", "Ready", "Ads", "Spend", "Return", ""]
+    assert heads == ["Week of", "Vendor", "Product", "Concept", "Brief", "Creative", "Format", "Stage", "Due", "Priority", "Ready", "Ads", "Spend", "Return", ""]
     ids = page.locator("[data-testid=prod-row]").evaluate_all("rs => rs.map(r => r.dataset.id)")
     assert ids == ["3", "2", "1"]                                    # newest week first; the launched row 4 is hidden until Show launched and dropped
     assert stage(page, 1) == "Assigned" and stage(page, 2) == "Creative delivered"
@@ -161,7 +161,7 @@ def test_vendor_page_shows_only_its_rows_saves_a_creative_link_and_has_no_app_na
     assert page.locator("h1").text_content() == "Madre: concepts to make"
     assert not page.locator("#topbar").is_visible()
     cards = page.locator("[data-testid=prod-card]")
-    assert cards.count() == 3 and cards.evaluate_all("cs => cs.map(c => c.dataset.id)") == ["2", "1", "4"]    # Madre's open rows plus the one launched 2 weeks ago; not Victoria's row 3
+    assert cards.count() == 3 and cards.evaluate_all("cs => cs.map(c => c.dataset.id)") == ["1", "2", "4"]    # Madre's open rows plus the one launched 2 weeks ago; not Victoria's row 3
     text = page.locator("[data-testid=prod-vendor-page]").text_content()
     assert "Hair Thinning" in text and "Joint Pain" not in text and "Boneflex" not in text
     card = page.locator("[data-testid=prod-card][data-id='1']")
@@ -200,7 +200,7 @@ def test_bad_vendor_token_says_the_link_is_not_valid(anon_page):
     assert "not valid" in page.locator("[data-testid=prod-empty]").text_content()
 
 
-@pytest.mark.parametrize("path", ["/priorities/production", f"/priorities/vendor/{MADRE}"])
+@pytest.mark.parametrize("path", ["/priorities/production?view=list", f"/priorities/vendor/{MADRE}"])
 def test_no_sideways_page_scroll_at_375px(browser, base_url, path):
     c = browser.new_context(viewport={"width": 375, "height": 812}, base_url=base_url)
     try:
@@ -348,7 +348,7 @@ def test_vendor_card_expands_with_examples_but_no_ad_links_and_no_internal_notes
     assert "Note:" not in page.locator("body").text_content()
 
 
-@pytest.mark.parametrize("path", ["/priorities/production", f"/priorities/vendor/{MADRE}"])
+@pytest.mark.parametrize("path", ["/priorities/production?view=list", f"/priorities/vendor/{MADRE}"])
 def test_no_sideways_page_scroll_at_375px_with_a_row_open(browser, base_url, path):
     c = browser.new_context(viewport={"width": 375, "height": 812}, base_url=base_url)
     try:

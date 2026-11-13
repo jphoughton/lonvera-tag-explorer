@@ -190,3 +190,12 @@ curl -X PATCH -H "Authorization: Bearer $KEY" -H "Content-Type: application/json
 The usual write protections still apply to key requests: JSON bodies only, a request that carries an `Origin` header from another site is refused (scripts that send no `Origin` header are fine), and at most 60 assignment writes a minute per address.
 
 The launch to Meta feature (dark by default, everything created paused) is described in [PRODUCTION_LAUNCH.md](PRODUCTION_LAUNCH.md), including the checklist to switch it on.
+
+
+## Production board API (migration 245)
+
+The board column is the stored `creative_priorities_assignments.status`: assigned, brief_sent, in_production, in_review, ready, launched (a dropped card keeps its last status; `dropped_at` hides it in an archived lane). Every writer goes through `set_status` in `app/priorities_assign.py` (PATCH, move, vendor page, the old Ready / Launched flags, the nightly `etl.production_status`), which keeps `ready_at` / `launched_at` in step and writes a `status_changed` row to the history. The older `stage` field is still sent, derived from the status. The Creative Tracker can pull a card forward (3 to 5 brief sent, 6 in review, 7 ready, 8 and 9 launched), never back; it is applied when a card is read, when links change, and nightly.
+
+Rules: app users and API keys may move a card anywhere except to Launched (use Mark launched); in review needs a creative link; in review back to in production needs a comment (stored as "Changes requested: ..."); to ready from anything but in review is allowed and logged as "Skipped review". A vendor may only start (assigned or brief sent to in production), submit for review (needs a creative link) and pull back; the old vendor `ready` flag means submit (true) or pull back (false). Rejections are 400 `{"error": "..."}`.
+
+Routes (all `/api/priorities`): `PATCH /assignments/<id>` also takes `status`, `due_date`, `priority`, `position`, `comment`; `POST /assignments/<id>/move {status, before_id?, after_id?, comment?}` returns `{card, column: {status, ids}}`; `GET|POST /assignments/<id>/comments`; `GET /board?week=&vendor=&product=&closed=`; `GET|PUT /vendor-capacity` (login only: not for API keys); public vendor routes `GET|POST /vendor/<token>/<id>/comments`. Keys may also POST move and comments. `due_date` defaults to the Friday of the week and follows the week while untouched; capacity is a soft per-vendor weekly limit (default 10).

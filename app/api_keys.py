@@ -1,7 +1,7 @@
 """Scoped API keys (table api_keys, migration 205).
 
 A key looks like lvk_ plus 40 characters from secrets.token_urlsafe (240 bits). Only its sha256 hash is stored. The scope 'read_assign' lets a key read everything the app serves (GET and HEAD) and
-make exactly two writes: POST /api/priorities/assignments and PATCH /api/priorities/assignments/<aid>. Nothing else is writable with a key (see ALLOWED_WRITES). app/auth.py enforces this in its
+make exactly four writes on the production board: POST /api/priorities/assignments, PATCH /api/priorities/assignments/<aid>, POST .../<aid>/move and POST .../<aid>/comments (not vendor capacity). Nothing else is writable with a key (see ALLOWED_WRITES). app/auth.py enforces this in its
 request guard; keys never satisfy the launch gate, never open the login route and are refused on the route that returns vendor link tokens (BLOCKED_READS).
 """
 from __future__ import annotations
@@ -17,7 +17,8 @@ KEY_BODY_CHARS = 40
 KEY_RE = re.compile(r"lvk_[A-Za-z0-9_-]{40}")
 SCOPE = "read_assign"
 SAFE_METHODS = ("GET", "HEAD")
-ALLOWED_WRITES = frozenset({("POST", "/api/priorities/assignments"), ("PATCH", "/api/priorities/assignments/<int:aid>")})      # (method, Flask rule) pairs, nothing else
+ALLOWED_WRITES = frozenset({("POST", "/api/priorities/assignments"), ("PATCH", "/api/priorities/assignments/<int:aid>"), ("POST", "/api/priorities/assignments/<int:aid>/move"),
+                            ("POST", "/api/priorities/assignments/<int:aid>/comments")})      # (method, Flask rule) pairs, nothing else
 BLOCKED_READS = frozenset({"/api/priorities/vendor-links"})        # returns vendor link tokens, which are credentials for the vendor pages: a login can see them, a key cannot
 TOUCH_EVERY_SEC = 60
 READ_ONLY_MESSAGE = "This API key is read only except for assigning items on the production board."
