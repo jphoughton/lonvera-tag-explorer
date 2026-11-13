@@ -852,11 +852,12 @@ SEVEN = {"concept_name": "Grandfather used to eat well", "product": "beef-liver"
 
 
 def test_a_ticket_needs_all_seven_fields_and_keeps_its_variations(client, snaps):
-    r = client.post("/api/priorities/tickets", json={**SEVEN, "concept_name": "  Grandfather used to eat well ", "status": "in_production"})
+    r = client.post("/api/priorities/tickets", json={**SEVEN, "concept_name": "  Grandfather used to eat well ", "status": "in_production", "story": "Audience: Men 45-62\nAngle: A2 Noisy knees"})
     assert r.status_code == 201, r.get_data(as_text=True)
     c = r.get_json()
     assert c["concept_name"] == "Grandfather used to eat well" and c["concept_kind"] == "iteration" and c["status"] == "in_production" and c["vendor"] == "Studio Flow" and c["cluster"] == "Primal Living"
     assert [v["label"] for v in c["variations"]] == ["Original", "Hook 2"] and c["variations"][0]["url"].startswith("https://drive") and c["variations"][1]["url"] == "" and c["tracker_concept_ids"] == ["Lonvera-BeefLiver-Video-1.1"]
+    assert c["story"] == "Audience: Men 45-62\nAngle: A2 Noisy knees"
     assert c["concept_key"].startswith("ticket:") and c["due_date"] == "2026-11-13" and [e["kind"] for e in hist(client, c["id"])] == ["assigned", "status_changed"]
     assert client.post("/api/priorities/tickets", json=SEVEN).status_code == 201                          # the same concept may be added twice on purpose
     for k in SEVEN:                                                                                        # each one of the seven is required

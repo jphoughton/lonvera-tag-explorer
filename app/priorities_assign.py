@@ -692,7 +692,7 @@ TICKET_STATUSES = ("assigned", "brief_sent", "in_production", "in_review")      
 
 
 def _ticket_fields(conn, body: dict) -> dict:
-    """Validate one ticket. The seven fields of the ticket face are REQUIRED: concept_name, product, variations, cluster (Market Cluster), concept_kind (new | iteration), vendor, for_week. Optional: icp, pain_point,
+    """Validate one ticket. The seven fields of the ticket face are REQUIRED: concept_name, product, variations, cluster (Market Cluster), concept_kind (new | iteration), vendor, for_week. Optional: icp, pain_point, story (the brief text),
     format_code, brief_url, note, due_date, status."""
     if not isinstance(body, dict):
         raise q.ApiError(400, "JSON object body required")
@@ -720,7 +720,7 @@ def _ticket_fields(conn, body: dict) -> dict:
     import json
     ids = [v["concept_id"] for v in json.loads(variations) if v["concept_id"]]
     return {"name": name, "product": product, "cluster": cluster, "kind": kind, "vendor": vendor, "week": week, "status": status, "variations": variations, "concept_ids": ids,
-            "icp": _text(body.get("icp"), "icp", 200), "pain": _text(body.get("pain_point"), "pain point", 200), "note": _text(body.get("note"), "note", LIMITS["note"]), "brief": _opt_url(body.get("brief_url")),
+            "story": _text(body.get("story"), "story", 20000), "icp": _text(body.get("icp"), "icp", 200), "pain": _text(body.get("pain_point"), "pain point", 200), "note": _text(body.get("note"), "note", LIMITS["note"]), "brief": _opt_url(body.get("brief_url")),
             "due": (week + dt.timedelta(days=4)) if body.get("due_date") in (None, "") else _date(body["due_date"], "due date"), "format": _format_code(body.get("format_code"))}
 
 
@@ -729,8 +729,8 @@ def _insert_ticket(w, t: dict, user: str | None) -> int:
     row = w.execute(
         """INSERT INTO creative_priorities_assignments (concept_key, text_key, product, vendor, line_code, cluster, icp, pain_point, story, section_at_assign, note, for_week, created_by, updated_by,
                concept_name, concept_kind, variations, tracker_concept_ids, format_code, brief_url, brief_at, status, due_date, priority, position, status_changed_at)
-           VALUES (%s,%s,%s,%s,'',%s,%s,%s,'','test',%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,CASE WHEN %s::text IS NOT NULL THEN now() END,%s,%s,'normal',%s,now()) RETURNING id""",
-        ("ticket:" + secrets.token_hex(8), text_key({"product": t["product"], "cluster": t["cluster"], "icp": t["icp"], "pain_point": t["pain"]}), t["product"], t["vendor"], t["cluster"], t["icp"], t["pain"], t["note"],
+           VALUES (%s,%s,%s,%s,'',%s,%s,%s,%s,'test',%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,CASE WHEN %s::text IS NOT NULL THEN now() END,%s,%s,'normal',%s,now()) RETURNING id""",
+        ("ticket:" + secrets.token_hex(8), text_key({"product": t["product"], "cluster": t["cluster"], "icp": t["icp"], "pain_point": t["pain"]}), t["product"], t["vendor"], t["cluster"], t["icp"], t["pain"], t["story"], t["note"],
          t["week"], user, user, t["name"], t["kind"], t["variations"], t["concept_ids"], t["format"], t["brief"], t["brief"], t["status"], t["due"], pos)).fetchone()
     _log(w, row["id"], user, "assigned", None, "assigned", f"{t['vendor']}, week of {t['week']}")
     if t["status"] != "assigned":
