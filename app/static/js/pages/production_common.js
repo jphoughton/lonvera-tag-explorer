@@ -10,7 +10,7 @@ export const PRIORITY_LABEL = { normal: 'Normal', high: 'High' };
 
 export const STAGES = { assigned: 'Assigned', brief_sent: 'Brief sent', creative_in: 'Creative delivered', ready: 'Ready to launch', launched: 'Launched', dropped: 'Dropped' };
 export const VENDOR_FALLBACK = ['Madre', 'Victoria', 'TrybeDCShop', 'TrybeOrion', '10xROAS', 'PuredMedia', 'CreateMastery', 'OpenProgram', 'Studio Flow'];
-export const PRODUCT_NAMES = { 'vita-bull': 'Vita Bull', 'beef-liver': 'Beef Liver', boneflex: 'Boneflex' };
+export const PRODUCT_NAMES = { 'vita-bull': 'Vita Bull', 'beef-liver': 'Beef Liver', boneflex: 'Boneflex', 'vita-belle': 'Vita Belle' };
 
 export const md = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ''); return m ? `${+m[2]}/${+m[3]}` : (s || ''); };
 export const weekLabel = (s) => 'Week of ' + md(s);
@@ -47,9 +47,11 @@ export function parseVariations(story) {
     const m = /^\s*([^:]{1,60}):\s*(https?:\/\/\S+)\s*$/.exec(line);
     if (!m) { if (line.trim() === '') continue; if (out.length) break; else continue; }
     const hk = /^hook[\s_-]*(\d+)$/i.exec(m[1].trim());
-    out.push({ label: hk ? `Hook ${hk[1]}` : m[1].trim().replace(/^./, (c) => c.toUpperCase()), url: m[2] });
+    const id = !hk && /-/.test(m[1]) && /\d/.test(m[1]);                                   // the bare Concept ID is the original cut
+    out.push({ label: hk ? `Hook ${hk[1]}` : id ? 'Original' : m[1].trim().replace(/^./, (c) => c.toUpperCase()), url: m[2], n: hk ? Number(hk[1]) : 0 });
   }
-  return out;
+  out.sort((a, b) => a.n - b.n);                                                          // Original first, then Hook 1, 2, 3 ...
+  return out.map(({ label, url }) => ({ label, url }));
 }
 // A link the page may play in place: a Google Drive file (video or image) or folder. Anything else returns null and stays a plain link.
 export function previewOf(url) {
@@ -59,6 +61,14 @@ export function previewOf(url) {
   m = /^https:\/\/drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/([\w-]+)/.exec(s);
   if (m) return { kind: 'folder', src: `https://drive.google.com/embeddedfolderview?id=${m[1]}#grid` };
   return null;
+}
+// Image or video, worked out from what the card holds: its Concept IDs (...-Video-... / ...-Static-...), then the brief ('STATIC BRIEF', 'Type: VID'), then the format (every format F1 to F6 is a video). '' when nothing says.
+export function mediaOf(r) {
+  const ids = (r.tracker_concept_ids || []).join(' ');
+  const text = `${r.note || ''}\n${r.story || ''}`;
+  const vid = /video/i.test(ids) || /Type:\s*VID/i.test(text) || (!ids && !!r.format_code);
+  const img = /static|image/i.test(ids) || /Type:\s*IMG/i.test(text) || /STATIC BRIEF/i.test(text);
+  return vid && img ? 'Image + video' : vid ? 'Video' : img ? 'Image' : '';
 }
 export const adCount = (r) => (r.tracker_concept_ids || []).length || parseVariations(r.story).length;
 export const productName = (p) => PRODUCT_NAMES[p] || p || '';

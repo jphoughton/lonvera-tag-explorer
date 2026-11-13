@@ -553,3 +553,14 @@ def test_cluster_icp_and_pain_point_filters_take_several_choices(page):
     page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 1")
     choose(page, "prod-cluster-filter"); choose(page, "prod-icp-filter")
     page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 4")
+
+
+def test_each_card_says_image_or_video_and_how_many_ads_and_hooks_come_in_order(page):
+    goto(page, "?view=list&closed=1")
+    got = page.evaluate("""async () => { const m = await import('/static/js/pages/production_common.js');
+      return { media: [m.mediaOf({ tracker_concept_ids: ['Lonvera-BoneFlex-Video-8.8-hook2'] }), m.mediaOf({ tracker_concept_ids: ['Victoria-BeefLiver-Static-C1.E1'] }), m.mediaOf({ note: 'STATIC BRIEF | BL-C1-E1' }), m.mediaOf({ format_code: 'F2' }), m.mediaOf({ note: 'Type: VID' }), m.mediaOf({})],
+        vars: m.parseVariations('x\\n\\nVariations\\nhook3: https://a.co/3\\nLonvera-BoneFlex-Video-8.8: https://a.co/0\\nhook1: https://a.co/1\\nhook2: https://a.co/2').map((v) => v.label), name: m.productName('vita-belle') }; }""")
+    assert got["media"] == ["Video", "Image", "Image", "Video", "Video", ""]
+    assert got["vars"] == ["Original", "Hook 1", "Hook 2", "Hook 3"] and got["name"] == "Vita Belle"
+    row(page, 2).wait_for(state="attached")
+    assert row(page, 4).locator("[data-testid=prod-ads-count]").text_content().strip() == "1 ad"

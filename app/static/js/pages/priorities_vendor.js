@@ -5,7 +5,7 @@ import { h } from '../util.js';
 import { api } from '../api.js';
 import { showControls } from '../controls.js';
 import { expander } from './priorities_panel.js';
-import { weekLabel, ticketTitle, richLines, variationGroups, variationLabel, productName, stageLabel, formatLabel, rowFormat, resultText, link, short } from './production_common.js';
+import { weekLabel, ticketTitle, richLines, mediaOf, variationGroups, variationLabel, productName, stageLabel, formatLabel, rowFormat, resultText, link, short } from './production_common.js';
 
 // The one place the vendor routes are spelled: PATCH and detail are `${base}/<id>`, comments are `${base}/<id>/comments`.
 const vendorBase = (tok) => '/api/priorities/vendor/' + tok;
@@ -180,7 +180,7 @@ export async function vendorPage(ctx) {
 
     return h('article', { class: 'prod-card prod-vcard', 'data-testid': 'prod-card', 'data-id': r.id, 'data-stage': r.stage, 'data-status': st },
       h('div', { class: 'prod-ctop' }, h('h3', null, x.nameButton(ticketTitle(r))), h('span', { class: 'prod-pill prod-st-' + (r.stage || st), 'data-testid': 'prod-stage' }, label)),
-      h('p', { class: 'pri-sub' }, [productName(r.product), r.cluster, r.icp].filter(Boolean).join(' / ')),
+      h('p', { class: 'pri-sub' }, [productName(r.product), r.cluster, r.icp, mediaOf(r)].filter(Boolean).join(' / ')),
       h('div', { class: 'prod-v-chips' },
         h('span', { class: 'prod-v-chip', 'data-testid': 'prod-v-product' }, productName(r.product)),
         fmt ? h('span', { class: 'prod-v-chip', title: formatLabel(fmt), 'data-testid': 'prod-v-format' }, fmt.code) : null,
