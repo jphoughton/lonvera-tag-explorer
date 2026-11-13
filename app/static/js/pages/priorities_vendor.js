@@ -5,7 +5,7 @@ import { h } from '../util.js';
 import { api } from '../api.js';
 import { showControls } from '../controls.js';
 import { expander } from './priorities_panel.js';
-import { weekLabel, ticketTitle, productName, stageLabel, formatLabel, rowFormat, resultText, link, short } from './production_common.js';
+import { weekLabel, ticketTitle, variationGroups, variationLabel, productName, stageLabel, formatLabel, rowFormat, resultText, link, short } from './production_common.js';
 
 // The one place the vendor routes are spelled: PATCH and detail are `${base}/<id>`, comments are `${base}/<id>/comments`.
 const vendorBase = (tok) => '/api/priorities/vendor/' + tok;
@@ -192,7 +192,10 @@ export async function vendorPage(ctx) {
       h('dl', { class: 'prod-dl' },
         dt('Brief', r.brief_url ? link(r.brief_url, 'Brief', { 'data-testid': 'prod-brief_url', class: 'prod-ext', title: r.brief_url }) : 'Not added yet'),
         dt('Format', h('span', { 'data-testid': 'prod-format-text' }, fmt ? formatLabel(fmt) : 'Not chosen')),
-        dt('Ads', (r.ads || []).length ? (r.ads || []).map((a) => h('div', { 'data-testid': 'prod-cid' }, a.ad_url ? link(a.ad_url, a.concept_id) : a.concept_id)) : 'None yet'),
+        dt('Ads', (r.ads || []).length ? variationGroups(r.ads, (a) => a.concept_id).map(({ base, list }) => {
+          const one = (a, text) => h('div', { 'data-testid': 'prod-cid' }, a.ad_url ? link(a.ad_url, text) : text);
+          return list.length === 1 ? one(list[0], list[0].concept_id) : h('details', { class: 'prod-var', 'data-testid': 'prod-variations' }, h('summary', null, `${base} · ${list.length} variations`), list.map((a) => one(a, variationLabel(a.concept_id, base))));
+        }) : 'None yet'),
         dt('Result', h('span', { 'data-testid': 'prod-result' }, res || 'Not launched yet'))),
       h('label', { class: 'pri-dlabel' }, h('span', { class: 'pri-k' }, 'Creative link'), link_),
       h('label', { class: 'pri-dlabel' }, h('span', { class: 'pri-k' }, 'Note'), note),

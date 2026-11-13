@@ -1760,7 +1760,7 @@ def test_assign_button_shows_with_a_selection_and_the_dialog_defaults_to_next_mo
     dlg = page.locator("[data-testid=pri-as-dialog]")
     assert dlg.is_visible() and "2 concepts selected" in dlg.locator("[data-testid=pri-as-note-count]").text_content()
     vendors = dlg.locator("[data-testid=pri-as-vendor] option").all_text_contents()
-    assert vendors[0] == "Madre" and "Victoria" in vendors and len(vendors) == 10
+    assert vendors[0] == "Madre" and "Victoria" in vendors and len(vendors) == 9
     nm = _next_monday()
     chosen = dlg.locator("[data-testid=pri-as-week]").evaluate("e => e.options[e.selectedIndex].value")
     opts = dlg.locator("[data-testid=pri-as-week] option").evaluate_all("els => els.map(e => e.value)")
@@ -1849,10 +1849,10 @@ def test_new_idea_rows_and_manual_concepts_can_be_assigned_too(page, fresh_assig
     add_concept(page)
     try:
         page.locator(MROW).locator("[data-testid=pri-pick]").check()
-        _assign(page, "Internal")
-        assert page.locator("[data-testid=pri-as-created]").text_content().startswith("1 concept assigned to Internal")
+        _assign(page, "PuredMedia")
+        assert page.locator("[data-testid=pri-as-created]").text_content().startswith("1 concept assigned to PuredMedia")
         page.locator("[data-testid=pri-as-ok]").click()
-        page.wait_for_function("() => [...document.querySelectorAll('tr.pri-row[data-source=manual] .pri-c-prod')].some(e => e.textContent.includes('Internal'))")
+        page.wait_for_function("() => [...document.querySelectorAll('tr.pri-row[data-source=manual] .pri-c-prod')].some(e => e.textContent.includes('PuredMedia'))")
     finally:
         for m in page.evaluate("() => fetch('/api/priorities/manual').then(r => r.json()).then(d => d.rows)"):
             page.evaluate("(id) => fetch('/api/priorities/manual/' + id, { method: 'DELETE' })", m["id"])

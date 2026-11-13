@@ -91,7 +91,7 @@ export function enableDrag({ root, cardSel, gripSel, listSel, laneOf = () => '',
   }
   function end() {
     document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', cancel); document.removeEventListener('keydown', escKey, true);
-    if (drag && drag.ghost) drag.ghost.remove();
+    for (const g of document.querySelectorAll('.prod-ghost')) g.remove();                 // up() and cancel() clear `drag` before calling end(), so the copy is found by its class, not through `drag`
     document.body.classList.remove('prod-is-dragging');
   }
   function up() {

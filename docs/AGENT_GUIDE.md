@@ -228,7 +228,7 @@ Full spec: `docs/CREATIVE_PRIORITIES.md`. Short version:
 
 **Production board (`/priorities/production`).**
 - An **assignment** = one concept given to one vendor for one week ("week of" = a Monday). Table `creative_priorities_assignments`; one link token per vendor in `creative_priorities_vendor_links`.
-- Vendors (list `VENDORS` in `app/priorities_assign.py`, spelled as in the tracker Vendor column): Madre, Victoria, TrybeDCShop, TrybeOrion, 10xROAS, Internal, PuredMedia, CreateMastery, OpenProgram, Studio Flow.
+- Vendors (list `VENDORS` in `app/priorities_assign.py`, spelled as in the tracker Vendor column): Madre, Victoria, TrybeDCShop, TrybeOrion, 10xROAS, PuredMedia, CreateMastery, OpenProgram, Studio Flow.
 - Stages are never stored; `stage_of()` derives them on every read from the assignment's own facts and its linked Creative Tracker rows: Assigned, Brief sent, Creative delivered, Ready to launch, Launched, Dropped.
 - Vendors on their link page see only their own assignments and can do a small fixed set of things (add or change the creative link first; exact list in `docs/CREATIVE_PRIORITIES.md`).
 - Nightly `python -m etl.assignment_tags` (non-fatal, `etl_runs` job `assignment_tags`) gives each linked ad that has no current line tag the assignment's line. It never overwrites an existing tag.
