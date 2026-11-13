@@ -39,6 +39,10 @@
   {
    "key": "proj_engine",
    "title": "Projection engine tables (finance, inventory, cohorts; read them through the analytics views)"
+  },
+  {
+   "key": "story",
+   "title": "Daily story: facts, the short explanation, the change patterns and the scoreboard"
   }
  ],
  "domains": [
@@ -101,6 +105,10 @@
   {
    "key": "landing_pages",
    "title": "Landing page copy versions and the ads that send people to each page (views created by migration 231 once those tables exist)"
+  },
+  {
+   "key": "story",
+   "title": "The daily story: facts, short explanation, change patterns and the pattern scoreboard"
   }
  ],
  "relations": [
@@ -8260,6 +8268,462 @@
      "type": "boolean",
      "nullable": false,
      "description": "True while the format can be chosen on a new assignment."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.daily_story_metrics",
+   "schema": "public",
+   "relation": "daily_story_metrics",
+   "kind": "table",
+   "group": "story",
+   "purpose": "The metric registry of the daily story: every daily metric the story can use, its basis, unit, formula and the analytics view and columns it comes from.",
+   "grain": "one row per metric_key (primary key)",
+   "primary_key": [
+    "metric_key"
+   ],
+   "foreign_keys": [],
+   "source": "etl/daily_story_registry.py (REGISTRY), upserted by every run of etl.daily_story",
+   "refresh": "nightly, with the daily story job",
+   "coverage": "every metric the story computes",
+   "caveats": [
+    "basis names what the number is made of (Upstack new customers, Meta-reported, Klaviyo-attributed ...); never mix bases in one ratio."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "metric_key",
+     "type": "text",
+     "nullable": false,
+     "description": "Short key used inside daily_story_facts.facts (for example nc_roas, cpm, conv)."
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "nullable": false,
+     "description": "Display order in the registry."
+    },
+    {
+     "name": "metric_group",
+     "type": "text",
+     "nullable": false,
+     "description": "headline | meta | google | orders | klaviyo | amazon | creative | site | placement."
+    },
+    {
+     "name": "label",
+     "type": "text",
+     "nullable": false,
+     "description": "Plain-language name with the acronym spelled out."
+    },
+    {
+     "name": "unit",
+     "type": "text",
+     "nullable": false,
+     "description": "usd | pct | x | count (pct is stored as a fraction, 0.12 = 12%)."
+    },
+    {
+     "name": "basis",
+     "type": "text",
+     "nullable": false,
+     "description": "What the number is made of and which attribution it follows."
+    },
+    {
+     "name": "formula",
+     "type": "text",
+     "nullable": false,
+     "description": "How it is computed, ratios always from sums."
+    },
+    {
+     "name": "source",
+     "type": "text",
+     "nullable": false,
+     "description": "analytics view and columns the inputs come from."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.daily_story_facts",
+   "schema": "public",
+   "relation": "daily_story_facts",
+   "kind": "table",
+   "group": "story",
+   "purpose": "The facts the daily story is written from: for each Pacific day, the JSON of every metric against its same-weekday baseline, the exact decomposition of new-customer return on ad spend, mix-versus-rate cuts, the live creative mix, top movers, the change ledger and the Meta, Google, email and text, Amazon and order-mix sections.",
+   "grain": "one row per day (primary key)",
+   "primary_key": [
+    "day"
+   ],
+   "foreign_keys": [],
+   "source": "etl/daily_story.py (compute_facts) over the analytics views",
+   "refresh": "nightly (etl service 13:00 UTC, non-fatal step after Klaviyo); a day can be recomputed with --day",
+   "coverage": "every day from 2026-05-06 (Meta ad-level start) through yesterday; early days have fewer than four baseline weeks (facts.metrics.<key>.n_baseline says how many)",
+   "caveats": [
+    "Baseline = the same weekday in the previous four weeks: the metric table shows its median and its pooled value; the decomposition uses the pooled value so its terms add back exactly.",
+    "The headline is NC ROAS = orders_daily new-customer revenue / (Meta + Google spend). Ad-attributed ROAS inside the cuts is a cut for comparing ads, products and structures, never the headline.",
+    "The last 3 to 7 loaded days still move (Meta and Upstack restate): a day's facts are recomputed only when the job runs for it, so older rows can differ slightly from today's tables.",
+    "coverage = not_ready when a core source (Meta ads, Upstack orders, Google, Upstack Meta attribution) was not loaded for the day: the row then holds only facts.readiness."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Pacific day the facts describe (primary key)."
+    },
+    {
+     "name": "facts",
+     "type": "jsonb",
+     "nullable": false,
+     "description": "JSON: readiness, windows, metrics, decomposition, anomalies, cuts, movers, creative_live, changes, events, control, sections, cannot_see, basis_notes."
+    },
+    {
+     "name": "version",
+     "type": "text",
+     "nullable": false,
+     "description": "Facts schema version (v1)."
+    },
+    {
+     "name": "coverage",
+     "type": "text",
+     "nullable": false,
+     "description": "full | partial | not_ready: whether every core and optional source existed for the day."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the facts were last computed."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.daily_story",
+   "schema": "public",
+   "relation": "daily_story",
+   "kind": "table",
+   "group": "story",
+   "purpose": "The daily story: one very concise explanation (170 words or fewer) of why a day's performance was what it was, built from daily_story_facts only, with confidence labels and the list of what the database cannot show.",
+   "grain": "one row per day (primary key)",
+   "primary_key": [
+    "day"
+   ],
+   "foreign_keys": [],
+   "source": "etl/daily_story_narrative.py: the model claude-sonnet-5-5 when available and every number in its text is found in the facts, else a deterministic template",
+   "refresh": "nightly with the facts",
+   "coverage": "every day with facts; backfilled days carry the template text unless a model run was requested",
+   "caveats": [
+    "source says llm or template; note explains a fallback (model off, answer rejected for a number not in the facts).",
+    "Wording is 'consistent with': no story proves a cause unless a clean like-for-like control exists."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Pacific day (primary key)."
+    },
+    {
+     "name": "headline",
+     "type": "text",
+     "nullable": false,
+     "description": "The TLDR sentence."
+    },
+    {
+     "name": "story",
+     "type": "text",
+     "nullable": false,
+     "description": "The story text: TLDR, a few short lines, and a 'Cannot see' line."
+    },
+    {
+     "name": "confidence",
+     "type": "jsonb",
+     "nullable": false,
+     "description": "JSON: a confidence label per claim (move, drivers, mix_vs_rate, changes, cause)."
+    },
+    {
+     "name": "cannot_see",
+     "type": "jsonb",
+     "nullable": false,
+     "description": "JSON list of what the database cannot show for that day."
+    },
+    {
+     "name": "model",
+     "type": "text",
+     "nullable": true,
+     "description": "Model that wrote the text; NULL for the template."
+    },
+    {
+     "name": "source",
+     "type": "text",
+     "nullable": false,
+     "description": "llm | template."
+    },
+    {
+     "name": "note",
+     "type": "text",
+     "nullable": false,
+     "description": "Why the template was used, when it was."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the story was written."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.daily_story_patterns",
+   "schema": "public",
+   "relation": "daily_story_patterns",
+   "kind": "table",
+   "group": "story",
+   "purpose": "The pattern memory: for each day, the change types that showed (new ad sets, capped share up, tROAS share up, a large email send, a cluster entering the live mix ...) with a magnitude bucket and what the next 1-3 days did against their same-weekday baselines.",
+   "grain": "one row per (day, change_type); change_type '_all_days' is the base-rate row every day has",
+   "primary_key": [
+    "day",
+    "change_type"
+   ],
+   "foreign_keys": [],
+   "source": "etl/daily_story_patterns.py from daily_story_facts (facts.events and facts.metrics)",
+   "refresh": "nightly; the previous 3 days are refreshed as their outcome windows lengthen",
+   "coverage": "from 2026-05-06; the newest days have out_days below 3",
+   "caveats": [
+    "Correlation, not cause: several changes usually land together and consecutive days' outcome windows overlap.",
+    "out_* is the mean over days D+1..D+3 that exist of (value / same-weekday median baseline - 1); d1_* is D+1 alone; both NULL when the metric was not available."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Day the change showed."
+    },
+    {
+     "name": "change_type",
+     "type": "text",
+     "nullable": false,
+     "description": "Event type (new_adsets, budget_up, capped_share_up, troas_share_up, big_email_send, cluster_entered, google_spend_up, amazon_spend_up ... or _all_days)."
+    },
+    {
+     "name": "magnitude_bucket",
+     "type": "text",
+     "nullable": false,
+     "description": "Size bucket of the largest event of that type that day."
+    },
+    {
+     "name": "subject",
+     "type": "text",
+     "nullable": false,
+     "description": "The campaign, cluster, hook or send the largest event named; empty when none."
+    },
+    {
+     "name": "magnitude",
+     "type": "double precision",
+     "nullable": true,
+     "description": "Numeric size of the largest event (share shift, count or ratio)."
+    },
+    {
+     "name": "out_days",
+     "type": "integer",
+     "nullable": false,
+     "description": "How many of D+1..D+3 had facts (0 to 3)."
+    },
+    {
+     "name": "out_nc_roas",
+     "type": "double precision",
+     "nullable": true,
+     "description": "Mean change in NC ROAS vs the same-weekday median over D+1..D+3 (fraction)."
+    },
+    {
+     "name": "out_cpm",
+     "type": "double precision",
+     "nullable": true,
+     "description": "Same for cost per 1,000 impressions."
+    },
+    {
+     "name": "out_ctr",
+     "type": "double precision",
+     "nullable": true,
+     "description": "Same for link click-through rate."
+    },
+    {
+     "name": "out_conv",
+     "type": "double precision",
+     "nullable": true,
+     "description": "Same for conversion rate (new customers / link clicks)."
+    },
+    {
+     "name": "out_aov",
+     "type": "double precision",
+     "nullable": true,
+     "description": "Same for new-customer average order value."
+    },
+    {
+     "name": "d1_nc_roas",
+     "type": "double precision",
+     "nullable": true,
+     "description": "NC ROAS change vs baseline on D+1 only."
+    },
+    {
+     "name": "d1_cpm",
+     "type": "double precision",
+     "nullable": true,
+     "description": "CPM change on D+1."
+    },
+    {
+     "name": "d1_ctr",
+     "type": "double precision",
+     "nullable": true,
+     "description": "CTR change on D+1."
+    },
+    {
+     "name": "d1_conv",
+     "type": "double precision",
+     "nullable": true,
+     "description": "Conversion rate change on D+1."
+    },
+    {
+     "name": "d1_aov",
+     "type": "double precision",
+     "nullable": true,
+     "description": "AOV change on D+1."
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was last written."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.daily_story_pattern_scoreboard",
+   "schema": "public",
+   "relation": "daily_story_pattern_scoreboard",
+   "kind": "view",
+   "group": "story",
+   "purpose": "The pattern scoreboard: how often each change type (and size bucket) has preceded a rise or a fall of more than 5% in NC ROAS, CPM, CTR, conversion rate or AOV over the next 1-3 days, next to the same rate over all days, with sample sizes. Only rows with n of 6 or more. Correlation, not cause.",
+   "grain": "one row per (change_type, magnitude_bucket, metric); magnitude_bucket '(any size)' pools the sizes",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.daily_story_patterns",
+   "refresh": "always current: a view that recomputes on every read; the table behind it is rewritten nightly",
+   "coverage": "from 2026-05-06",
+   "caveats": [
+    "rise_lift = rise_rate minus base_rise_rate: a pattern is only informative when its lift is clearly away from 0 with a decent n.",
+    "Overlapping outcome windows and simultaneous changes mean n overstates the independent evidence.",
+    "The 5% threshold is far inside the daily noise of NC ROAS, so the base rates are not small: read the lift, not the rate."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "change_type",
+     "type": "text",
+     "nullable": null,
+     "description": "Event type."
+    },
+    {
+     "name": "magnitude_bucket",
+     "type": "text",
+     "nullable": null,
+     "description": "Size bucket or '(any size)'."
+    },
+    {
+     "name": "metric",
+     "type": "text",
+     "nullable": null,
+     "description": "nc_roas | cpm | ctr | conv | aov."
+    },
+    {
+     "name": "n",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Days with this change type and an outcome."
+    },
+    {
+     "name": "rises",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Days whose next 1-3 days averaged more than 5% above baseline."
+    },
+    {
+     "name": "falls",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Days whose next 1-3 days averaged more than 5% below baseline."
+    },
+    {
+     "name": "rise_rate",
+     "type": "double precision",
+     "nullable": null,
+     "description": "rises / n."
+    },
+    {
+     "name": "fall_rate",
+     "type": "double precision",
+     "nullable": null,
+     "description": "falls / n."
+    },
+    {
+     "name": "base_rise_rate",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Share of all days whose next 1-3 days averaged more than 5% above baseline."
+    },
+    {
+     "name": "base_fall_rate",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Same for falls."
+    },
+    {
+     "name": "rise_lift",
+     "type": "double precision",
+     "nullable": null,
+     "description": "rise_rate minus base_rise_rate."
+    },
+    {
+     "name": "fall_lift",
+     "type": "double precision",
+     "nullable": null,
+     "description": "fall_rate minus base_fall_rate."
+    },
+    {
+     "name": "median_delta",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Median outcome change vs baseline (fraction)."
+    },
+    {
+     "name": "mean_delta",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Mean outcome change (fraction)."
+    },
+    {
+     "name": "base_days",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Days behind the base rate."
+    },
+    {
+     "name": "label",
+     "type": "text",
+     "nullable": null,
+     "description": "Always 'correlation, not cause'."
     }
    ],
    "examples": []
@@ -20522,6 +20986,481 @@
    ]
   },
   {
+   "name": "analytics.daily_story",
+   "schema": "analytics",
+   "relation": "daily_story",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "The daily story: the short explanation of why each day's performance was what it was, with confidence labels and what the database cannot see.",
+   "grain": "one row per day",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.daily_story",
+   "refresh": "nightly",
+   "coverage": "2026-05-06 through yesterday",
+   "caveats": [],
+   "like": "public.daily_story",
+   "domain": "story",
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": null,
+     "description": "Pacific day (primary key)."
+    },
+    {
+     "name": "headline",
+     "type": "text",
+     "nullable": null,
+     "description": "The TLDR sentence."
+    },
+    {
+     "name": "story",
+     "type": "text",
+     "nullable": null,
+     "description": "The story text: TLDR, a few short lines, and a 'Cannot see' line."
+    },
+    {
+     "name": "confidence",
+     "type": "jsonb",
+     "nullable": null,
+     "description": "JSON: a confidence label per claim (move, drivers, mix_vs_rate, changes, cause)."
+    },
+    {
+     "name": "cannot_see",
+     "type": "jsonb",
+     "nullable": null,
+     "description": "JSON list of what the database cannot show for that day."
+    },
+    {
+     "name": "model",
+     "type": "text",
+     "nullable": null,
+     "description": "Model that wrote the text; NULL for the template."
+    },
+    {
+     "name": "source",
+     "type": "text",
+     "nullable": null,
+     "description": "llm | template."
+    },
+    {
+     "name": "note",
+     "type": "text",
+     "nullable": null,
+     "description": "Why the template was used, when it was."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the story was written."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Latest story",
+     "sql": "SELECT day, headline, story FROM analytics.daily_story ORDER BY day DESC LIMIT 1;"
+    },
+    {
+     "title": "First rows",
+     "sql": "SELECT * FROM analytics.daily_story LIMIT 20;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.daily_story_facts",
+   "schema": "analytics",
+   "relation": "daily_story_facts",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "The JSON facts each daily story is written from (metrics vs same-weekday baseline, decomposition, cuts, ledger, sections).",
+   "grain": "one row per day",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.daily_story_facts",
+   "refresh": "nightly",
+   "coverage": "2026-05-06 through yesterday",
+   "caveats": [],
+   "like": "public.daily_story_facts",
+   "domain": "story",
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": null,
+     "description": "Pacific day the facts describe (primary key)."
+    },
+    {
+     "name": "facts",
+     "type": "jsonb",
+     "nullable": null,
+     "description": "JSON: readiness, windows, metrics, decomposition, anomalies, cuts, movers, creative_live, changes, events, control, sections, cannot_see, basis_notes."
+    },
+    {
+     "name": "version",
+     "type": "text",
+     "nullable": null,
+     "description": "Facts schema version (v1)."
+    },
+    {
+     "name": "coverage",
+     "type": "text",
+     "nullable": null,
+     "description": "full | partial | not_ready: whether every core and optional source existed for the day."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the facts were last computed."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Headline decomposition of a day",
+     "sql": "SELECT day, jsonb_path_query(facts, '$.decomposition.terms[*].name') AS term FROM analytics.daily_story_facts WHERE day = (SELECT max(day) FROM analytics.daily_story_facts) LIMIT 10;"
+    },
+    {
+     "title": "First rows",
+     "sql": "SELECT * FROM analytics.daily_story_facts LIMIT 20;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.daily_story_patterns",
+   "schema": "analytics",
+   "relation": "daily_story_patterns",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Pattern memory: change types seen each day and the next 1-3 days' outcomes against same-weekday baselines.",
+   "grain": "one row per (day, change_type)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.daily_story_patterns",
+   "refresh": "nightly",
+   "coverage": "2026-05-06 through yesterday",
+   "caveats": [],
+   "like": "public.daily_story_patterns",
+   "domain": "story",
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": null,
+     "description": "Day the change showed."
+    },
+    {
+     "name": "change_type",
+     "type": "text",
+     "nullable": null,
+     "description": "Event type (new_adsets, budget_up, capped_share_up, troas_share_up, big_email_send, cluster_entered, google_spend_up, amazon_spend_up ... or _all_days)."
+    },
+    {
+     "name": "magnitude_bucket",
+     "type": "text",
+     "nullable": null,
+     "description": "Size bucket of the largest event of that type that day."
+    },
+    {
+     "name": "subject",
+     "type": "text",
+     "nullable": null,
+     "description": "The campaign, cluster, hook or send the largest event named; empty when none."
+    },
+    {
+     "name": "magnitude",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Numeric size of the largest event (share shift, count or ratio)."
+    },
+    {
+     "name": "out_days",
+     "type": "integer",
+     "nullable": null,
+     "description": "How many of D+1..D+3 had facts (0 to 3)."
+    },
+    {
+     "name": "out_nc_roas",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Mean change in NC ROAS vs the same-weekday median over D+1..D+3 (fraction)."
+    },
+    {
+     "name": "out_cpm",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Same for cost per 1,000 impressions."
+    },
+    {
+     "name": "out_ctr",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Same for link click-through rate."
+    },
+    {
+     "name": "out_conv",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Same for conversion rate (new customers / link clicks)."
+    },
+    {
+     "name": "out_aov",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Same for new-customer average order value."
+    },
+    {
+     "name": "d1_nc_roas",
+     "type": "double precision",
+     "nullable": null,
+     "description": "NC ROAS change vs baseline on D+1 only."
+    },
+    {
+     "name": "d1_cpm",
+     "type": "double precision",
+     "nullable": null,
+     "description": "CPM change on D+1."
+    },
+    {
+     "name": "d1_ctr",
+     "type": "double precision",
+     "nullable": null,
+     "description": "CTR change on D+1."
+    },
+    {
+     "name": "d1_conv",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Conversion rate change on D+1."
+    },
+    {
+     "name": "d1_aov",
+     "type": "double precision",
+     "nullable": null,
+     "description": "AOV change on D+1."
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was last written."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Days with a large email send",
+     "sql": "SELECT day, magnitude_bucket, out_nc_roas FROM analytics.daily_story_patterns WHERE change_type = 'big_email_send' ORDER BY day DESC LIMIT 10;"
+    },
+    {
+     "title": "First rows",
+     "sql": "SELECT * FROM analytics.daily_story_patterns LIMIT 20;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.daily_story_pattern_scoreboard",
+   "schema": "analytics",
+   "relation": "daily_story_pattern_scoreboard",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Which change types have preceded rises or falls, with sample sizes and the base rate (correlation, not cause).",
+   "grain": "one row per (change_type, magnitude_bucket, metric), n >= 6",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.daily_story_pattern_scoreboard",
+   "refresh": "always current (view)",
+   "coverage": "2026-05-06 through yesterday",
+   "caveats": [],
+   "like": "public.daily_story_pattern_scoreboard",
+   "domain": "story",
+   "columns": [
+    {
+     "name": "change_type",
+     "type": "text",
+     "nullable": null,
+     "description": "Event type."
+    },
+    {
+     "name": "magnitude_bucket",
+     "type": "text",
+     "nullable": null,
+     "description": "Size bucket or '(any size)'."
+    },
+    {
+     "name": "metric",
+     "type": "text",
+     "nullable": null,
+     "description": "nc_roas | cpm | ctr | conv | aov."
+    },
+    {
+     "name": "n",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Days with this change type and an outcome."
+    },
+    {
+     "name": "rises",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Days whose next 1-3 days averaged more than 5% above baseline."
+    },
+    {
+     "name": "falls",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Days whose next 1-3 days averaged more than 5% below baseline."
+    },
+    {
+     "name": "rise_rate",
+     "type": "double precision",
+     "nullable": null,
+     "description": "rises / n."
+    },
+    {
+     "name": "fall_rate",
+     "type": "double precision",
+     "nullable": null,
+     "description": "falls / n."
+    },
+    {
+     "name": "base_rise_rate",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Share of all days whose next 1-3 days averaged more than 5% above baseline."
+    },
+    {
+     "name": "base_fall_rate",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Same for falls."
+    },
+    {
+     "name": "rise_lift",
+     "type": "double precision",
+     "nullable": null,
+     "description": "rise_rate minus base_rise_rate."
+    },
+    {
+     "name": "fall_lift",
+     "type": "double precision",
+     "nullable": null,
+     "description": "fall_rate minus base_fall_rate."
+    },
+    {
+     "name": "median_delta",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Median outcome change vs baseline (fraction)."
+    },
+    {
+     "name": "mean_delta",
+     "type": "double precision",
+     "nullable": null,
+     "description": "Mean outcome change (fraction)."
+    },
+    {
+     "name": "base_days",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Days behind the base rate."
+    },
+    {
+     "name": "label",
+     "type": "text",
+     "nullable": null,
+     "description": "Always 'correlation, not cause'."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Strongest NC ROAS patterns",
+     "sql": "SELECT change_type, magnitude_bucket, n, rises, falls, round((rise_lift)::numeric, 2) AS rise_lift FROM analytics.daily_story_pattern_scoreboard WHERE metric = 'nc_roas' ORDER BY abs(rise_lift) DESC LIMIT 10;"
+    },
+    {
+     "title": "First rows",
+     "sql": "SELECT * FROM analytics.daily_story_pattern_scoreboard LIMIT 20;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.daily_story_metric_registry",
+   "schema": "analytics",
+   "relation": "daily_story_metric_registry",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "The daily story's metric registry: every daily metric, its basis, formula and source view.",
+   "grain": "one row per metric_key",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.daily_story_metrics",
+   "refresh": "nightly",
+   "coverage": "every metric the story computes",
+   "caveats": [],
+   "like": "public.daily_story_metrics",
+   "domain": "story",
+   "columns": [
+    {
+     "name": "metric_key",
+     "type": "text",
+     "nullable": null,
+     "description": "Short key used inside daily_story_facts.facts (for example nc_roas, cpm, conv)."
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "nullable": null,
+     "description": "Display order in the registry."
+    },
+    {
+     "name": "metric_group",
+     "type": "text",
+     "nullable": null,
+     "description": "headline | meta | google | orders | klaviyo | amazon | creative | site | placement."
+    },
+    {
+     "name": "label",
+     "type": "text",
+     "nullable": null,
+     "description": "Plain-language name with the acronym spelled out."
+    },
+    {
+     "name": "unit",
+     "type": "text",
+     "nullable": null,
+     "description": "usd | pct | x | count (pct is stored as a fraction, 0.12 = 12%)."
+    },
+    {
+     "name": "basis",
+     "type": "text",
+     "nullable": null,
+     "description": "What the number is made of and which attribution it follows."
+    },
+    {
+     "name": "formula",
+     "type": "text",
+     "nullable": null,
+     "description": "How it is computed, ratios always from sums."
+    },
+    {
+     "name": "source",
+     "type": "text",
+     "nullable": null,
+     "description": "analytics view and columns the inputs come from."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Metrics by group",
+     "sql": "SELECT metric_group, count(*) AS metrics FROM analytics.daily_story_metric_registry GROUP BY 1 ORDER BY 1;"
+    },
+    {
+     "title": "First rows",
+     "sql": "SELECT * FROM analytics.daily_story_metric_registry LIMIT 20;"
+    }
+   ]
+  },
+  {
    "name": "analytics.competitor_brands",
    "schema": "analytics",
    "relation": "competitor_brands",
@@ -25243,6 +26182,81 @@
     "Gross of tax and refunds; no Amazon in the Shopify-only ratio."
    ],
    "domain": "orders"
+  },
+  {
+   "name": "daily_story_baseline",
+   "label": "Same-weekday baseline (daily story)",
+   "formula": "For a target day D: the same weekday in the previous four weeks (D-7, D-14, D-21, D-28; fewer when history is short). Tables show the median of those days' own values and the pooled value (sum / sum); the decomposition uses the pooled value.",
+   "source": "analytics.daily_story_facts.facts",
+   "default_basis": "median of the up to four same-weekday days for the metric table; pooled for the exact decomposition",
+   "other_bases": [
+    "trailing 7 days before D, pooled (metrics.<key>.trailing_7d)"
+   ],
+   "traps": [
+    "A same-weekday baseline removes the weekday pattern only; it does not hold changes (new ad sets, bids, sends) constant, so it is not a like-for-like control for any one cause.",
+    "Early days (May 2026) have fewer than four baseline weeks."
+   ],
+   "domain": "story"
+  },
+  {
+   "name": "daily_story_noise_z",
+   "label": "Noise range and z-score (daily story)",
+   "formula": "noise = sample standard deviation of the previous 28 days of the same daily metric; z = (value on D - same-weekday median baseline) / noise; a metric is flagged when |z| >= 2. Needs at least 10 trailing days.",
+   "source": "analytics.daily_story_facts.facts",
+   "default_basis": "daily values of the metric on the same basis as the value (ratios from each day's sums)",
+   "other_bases": [
+    "Facts path: metrics.<key>.z, noise_std_28d and flag inside the JSON"
+   ],
+   "traps": [
+    "A daily ratio's noise is large (NC ROAS moves several tenths day to day), so most days are inside it.",
+    "z compares one day with a baseline; it does not say why the day moved."
+   ],
+   "domain": "story"
+  },
+  {
+   "name": "daily_story_decomposition",
+   "label": "Exact decomposition of NC ROAS (daily story)",
+   "formula": "NC ROAS = AOV x (Meta spend / total spend) x (1000 / CPM) x CTR x (link click to landing page view) x (view to add to cart) x (add to cart to new customer) [x add to cart to initiated checkout, initiated checkout to new customer when the column exists]. The log change against the pooled same-weekday baseline splits exactly into one contribution per term; percentage points are the total percentage move split in proportion to each term's log.",
+   "source": "analytics.daily_story_facts.facts",
+   "default_basis": "headline NC ROAS: orders_daily new-customer revenue / (Meta + Google spend); the funnel terms use Meta link clicks, landing page views and adds to cart over all actual new customers",
+   "other_bases": [
+    "ad-attributed NC ROAS (a cut for ads, products, structures): sum(upstack_new_customer_revenue) / Meta spend"
+   ],
+   "traps": [
+    "Arithmetic, not cause: it says which term moved, not why.",
+    "add to cart to new customer divides all actual new customers (including non-Meta ones) by Meta adds to cart, so it is a ratio of the day's totals, not Meta's own conversion."
+   ],
+   "domain": "story"
+  },
+  {
+   "name": "daily_story_mix_rate",
+   "label": "Mix versus rate (daily story)",
+   "formula": "Over segments (product, stage, campaign structure, market cluster, ICP, format, vendor, age, ad family): ROAS = sum(w_i r_i) with w_i the segment's share of spend and r_i its ad-attributed NC ROAS. mix_i = (w_i - w0_i) x (rbar_i - Rbar), rate_i = (r_i - r0_i) x wbar_i, where 0 is the pooled same-weekday baseline and bars are the mean of day and baseline; sum(mix_i + rate_i) equals the total move exactly.",
+   "source": "analytics.daily_story_facts.facts",
+   "default_basis": "ad-attributed NC ROAS (Upstack any-click 30-day attribution of new customers to Meta ads), a cut only",
+   "other_bases": [
+    "Facts path: cuts.<cut>.mix_rate, cuts.<cut>.rows[].effect and movers inside the JSON"
+   ],
+   "traps": [
+    "Mix = spend moving between segments with different returns; rate = the same segment earning more or less per dollar. Neither is a cause.",
+    "Ad-attributed revenue is any-click and is not the headline: it does not add up to orders_daily new-customer revenue."
+   ],
+   "domain": "story"
+  },
+  {
+   "name": "daily_story_pattern_lift",
+   "label": "Pattern lift (daily story scoreboard)",
+   "formula": "For a change type: rise_rate = days whose next 1-3 days averaged more than 5% above the same-weekday baseline / days with that change; rise_lift = rise_rate - base_rise_rate (the same rate over all days). fall_lift likewise.",
+   "source": "analytics.daily_story_pattern_scoreboard.rise_rate,base_rise_rate,rise_lift,n",
+   "default_basis": "Upstack new-customer basis for NC ROAS and AOV; Meta-reported for CPM and CTR; conversion = actual new customers / Meta link clicks",
+   "other_bases": [
+    "The base rate (all days) sits in the same row as base_rise_rate and base_fall_rate"
+   ],
+   "traps": [
+    "Correlation, not cause: changes land together and the 1-3 day outcome windows of neighbouring days overlap.",
+    "Only rows with n of 6 or more are listed; a high rate on a small n is not evidence."
+   ],
+   "domain": "story"
   }
  ]
 }
