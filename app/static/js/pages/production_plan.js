@@ -9,7 +9,8 @@ export const planWeeks = (start) => { const s = mondayOf(start || today()); retu
 
 // plan({cards, vendors, capacity, start, ops, onReassign, onCapacity}) -> {el}
 // capacity = {vendor: per_week}; cards = every card to place (launched ones show but do not count toward load)
-export function plan({ cards, vendors, capacity, start, ops, onReassign, onCapacity, onShift }) {
+let idleOpen = false;                                  // the 'nothing planned' group stays open across redraws
+export function plan({ cards, vendors, capacity, start, ops, onReassign, onCapacity, onShift, saved }) {
   const weeks = planWeeks(start);
   const open = (v, w) => cards.filter((c) => c.vendor === v && c.for_week === w && statusOf(c) !== 'launched' && c.stage !== 'dropped').length;
   const live = h('p', { class: 'prod-sr', 'aria-live': 'assertive', role: 'status', 'data-testid': 'prod-plan-live' });
@@ -23,8 +24,11 @@ export function plan({ cards, vendors, capacity, start, ops, onReassign, onCapac
     const per = capacity[v];
     const capIn = h('input', { type: 'number', min: '0', max: '200', step: '1', class: 'prod-plan-capin', value: per == null ? '' : per, 'aria-label': `Weekly capacity for ${v}`, 'data-testid': 'prod-plan-capacity', 'data-vendor': v,
       onchange: (e) => { const n = Number(e.target.value); if (!Number.isInteger(n) || n < 0) { e.target.value = per == null ? '' : per; return; } onCapacity(v, n); } });
+    capIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); capIn.blur(); } });
+    const cue = v === saved ? h('span', { class: 'prod-plan-saved', role: 'status', 'data-testid': 'prod-plan-capsaved' }, 'Saved') : null;
+    if (cue) setTimeout(() => cue.remove(), 2500);
     return h('div', { class: 'prod-plan-row', role: 'row', 'data-testid': 'prod-plan-row', 'data-vendor': v },
-      h('div', { class: 'prod-plan-vh', role: 'rowheader' }, h('strong', null, v), h('label', { class: 'prod-plan-cap' }, h('span', { class: 'pri-sub' }, 'Cards per week'), capIn)),
+      h('div', { class: 'prod-plan-vh', role: 'rowheader' }, h('strong', null, v), h('label', { class: 'prod-plan-cap' }, h('span', { class: 'pri-sub' }, 'Cards per week'), h('span', { class: 'prod-plan-capwrap' }, capIn, cue))),
       weeks.map((w) => {
         const n = open(v, w); const over = per != null && n > per; const full = per != null && n === per;
         const mine = cards.filter((c) => c.vendor === v && c.for_week === w);
@@ -34,7 +38,12 @@ export function plan({ cards, vendors, capacity, start, ops, onReassign, onCapac
           h('div', { class: 'prod-plan-list', 'data-testid': 'prod-plan-list', 'data-vendor': v, 'data-week': w, 'data-label': `${v}, ${weekLabel(w)}`, 'aria-label': `${v}, ${weekLabel(w)}`, role: 'list' }, mine.map((c) => cardEl(c, ops, { compact: true })), mine.length ? null : h('p', { class: 'prod-board-empty' }, 'Free')));
       }));
   });
-  const scroll = h('div', { class: 'prod-plan-scroll', 'data-testid': 'prod-plan-scroll' }, h('div', { class: 'prod-plan-grid', role: 'table', 'aria-label': 'Four week plan' }, head, rows));
+  const planned = (v) => cards.some((c) => c.vendor === v && weeks.includes(c.for_week));
+  const busy = rows.filter((_, i) => planned(vendors[i]));
+  const idle = rows.filter((_, i) => !planned(vendors[i]));
+  const idleBox = idle.length ? h('details', { class: 'prod-plan-idle', 'data-testid': 'prod-plan-idle', open: idleOpen, ontoggle: (e) => { idleOpen = e.target.open; } },
+    h('summary', null, `${idle.length} ${idle.length === 1 ? 'vendor has' : 'vendors have'} nothing planned in these weeks`, h('span', { class: 'prod-plan-idle-hint' }, ' · set their capacity or drop a card on them')), idle) : null;
+  const scroll = h('div', { class: 'prod-plan-scroll', 'data-testid': 'prod-plan-scroll' }, h('div', { class: 'prod-plan-grid', role: 'table', 'aria-label': 'Four week plan' }, head, busy, idleBox));
   const el = h('div', { class: 'prod-plan', 'data-testid': 'prod-plan' }, nav, live, scroll);
   enableDrag({ root: el, cardSel: '.prod-board-card', gripSel: '.prod-grip', listSel: '.prod-plan-list', laneOf: () => '', live, onDrop: ({ card, list }) => onReassign(card, list.dataset.vendor, list.dataset.week) });
   return { el, weeks };

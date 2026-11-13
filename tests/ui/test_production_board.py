@@ -218,6 +218,7 @@ def test_keyboard_escape_cancels_a_pick(page):
 
 def test_move_to_menu_moves_a_card_and_hides_launched(page):
     goto(page)
+    card(page, 9).locator("[data-testid=prod-card-more] > summary").click()
     sel = card(page, 9).locator("[data-testid=prod-card-moveto]")
     assert "Launched" not in sel.locator("option").all_text_contents()
     assert "Assigned" not in sel.locator("option").all_text_contents()            # its own status is not offered
@@ -482,6 +483,7 @@ def test_plan_capacity_is_editable_inline(page):
 def test_plan_drag_reassigns_vendor_and_week(page):
     page.set_viewport_size({"width": 1440, "height": 1900})            # every vendor row on screen: the mouse cannot drag below the window
     goto(page, "?view=plan")
+    page.click("[data-testid=prod-plan-idle] > summary")                  # TrybeOrion has nothing planned, so its row sits in the collapsed group
     heads = page.locator("[data-testid=prod-plan-weekhead]").evaluate_all("hs => hs.map(h => h.dataset.week)")
     src = page.locator("[data-testid=prod-board-card][data-id='6']")
     dst = page.locator(f"[data-testid=prod-plan-list][data-vendor=TrybeOrion][data-week='{heads[1]}']")
@@ -546,8 +548,11 @@ def test_phone_touch_targets_are_at_least_44px_and_drag_from_the_grip_works(brow
         pg.wait_for_selector("[data-testid=prod-board-card]")
         idle(pg)
         c1 = pg.locator("[data-testid=prod-board-card][data-id='1']")
-        for tid in ("prod-card-action", "prod-card-moveto"):
-            assert c1.locator(f"[data-testid={tid}]").bounding_box()["height"] >= 44
+        assert c1.locator("[data-testid=prod-card-action]").bounding_box()["height"] >= 44
+        assert c1.locator("[data-testid=prod-card-more-btn]").bounding_box()["height"] >= 44
+        assert not c1.locator("[data-testid=prod-card-moveto]").is_visible()          # behind the ... button
+        c1.locator("[data-testid=prod-card-more-btn]").click()
+        assert c1.locator("[data-testid=prod-card-moveto]").bounding_box()["height"] >= 44
         # the Move to menu is the phone path: a native select
         assert c1.locator("[data-testid=prod-card-moveto]").evaluate("e => e.tagName") == "SELECT"
         pg.locator("[data-testid=prod-card-title]").first.click()

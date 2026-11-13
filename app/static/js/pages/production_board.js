@@ -26,10 +26,19 @@ export function cardEl(r, ops, { compact = false } = {}) {
   const hint = !r.creative_url && status === 'in_production' ? 'Needs creative' : '';
   const moveSel = h('select', { class: 'prod-card-moveto', 'data-testid': 'prod-card-moveto', 'aria-label': `Move ${title} to`, onchange: (e) => { const v = e.target.value; e.target.value = ''; if (v) ops.moveTo(r, v); } },
     h('option', { value: '' }, 'Move to…'), STATUSES.filter(([k]) => k !== status && k !== 'launched').map(([k, l]) => h('option', { value: k, 'data-testid': 'prod-card-moveto-' + k }, l)));
+  // the "..." menu: everything that is not the one main button. A details element so it works with a keyboard and on a phone without any script; it opens inline under the card text.
+  const menuBtn = (testid, label, fn, extra) => h('button', { type: 'button', class: 'btn prod-small prod-menu-item', 'data-testid': testid, onclick: (e) => { const d = e.target.closest('details'); if (d) d.open = false; fn(); }, ...(extra || {}) }, label);
+  const more = h('details', { class: 'prod-card-more', 'data-testid': 'prod-card-more' },
+    h('summary', { class: 'prod-card-more-btn', 'aria-label': `More actions for ${title}`, title: 'More actions', 'data-testid': 'prod-card-more-btn' }, h('span', { 'aria-hidden': 'true' }, '…')),
+    h('div', { class: 'prod-card-menu', 'data-testid': 'prod-card-menu' },
+      status === 'launched' ? null : moveSel,
+      menuBtn('prod-card-open', 'Open card', () => ops.open(r)),
+      menuBtn('prod-card-open-comments', 'Comments', () => ops.open(r, 'comments')),
+      acts.slice(1).map((a) => menuBtn('prod-card-alt', a.label, () => ops.run(r, a), { 'data-action': a.key }))));
   const res = status === 'launched' ? resultShort(r) : '';
   const el = h('article', { class: 'prod-board-card' + (r.overdue ? ' prod-overdue' : '') + (r.priority === 'high' ? ' prod-high' : ''), 'data-testid': 'prod-board-card', 'data-id': r.id, 'data-status': status, 'data-title': title, tabindex: '0',
     role: 'group', 'aria-roledescription': 'draggable card', 'aria-label': `${title}, ${r.vendor}, ${STATUS_LABEL[status] || status}`,
-    onclick: (e) => { if (!e.target.closest('a, button, select, input, textarea')) ops.open(r); } },
+    onclick: (e) => { if (!e.target.closest('a, button, select, input, textarea, summary, details')) ops.open(r); } },
     h('div', { class: 'prod-card-top' },
       h('span', { class: 'prod-dot prod-dot-' + (r.product || 'none'), title: productName(r.product), 'data-testid': 'prod-card-product', 'data-product': r.product || '' }),
       h('button', { type: 'button', class: 'prod-card-title', 'data-testid': 'prod-card-title', 'data-dragok': '', onclick: () => ops.open(r) }, title),
@@ -39,17 +48,17 @@ export function cardEl(r, ops, { compact = false } = {}) {
     h('div', { class: 'prod-card-chips' },
       chip('prod-chip-vendor', r.vendor, { 'data-testid': 'prod-card-vendor' }),
       r.format_code ? chip('prod-chip-fmt', r.format_code, { 'data-testid': 'prod-card-format', title: formatLabel({ code: r.format_code, name: r.format_name || '', length: r.format_length || '' }) }) : null,
-      due ? chip('prod-chip-due' + (due.tone ? ' prod-due-' + due.tone : ''), due.text, { 'data-testid': 'prod-card-due', 'data-tone': due.tone }) : null,
-      hint ? chip('prod-chip-hint', hint, { 'data-testid': 'prod-card-needs' }) : null),
+      due ? chip('prod-chip-due' + (due.tone ? ' prod-due-' + due.tone : ''), due.text, { 'data-testid': 'prod-card-due', 'data-tone': due.tone }) : null),
     h('div', { class: 'prod-card-meta' },
-      h('button', { type: 'button', class: 'prod-card-comments' + (r.comment_count ? '' : ' prod-quiet'), 'data-testid': 'prod-card-comments', 'aria-label': `${r.comment_count || 0} comments, open`, onclick: () => ops.open(r, 'comments') },
-        h('span', { class: 'prod-ic-comment', 'aria-hidden': 'true' }), ' ', String(r.comment_count || 0)),
-      r.brief_url ? link(r.brief_url, 'Brief', { 'data-testid': 'prod-card-brief', class: 'prod-card-link' }) : null,
-      r.creative_url ? link(r.creative_url, 'Creative', { 'data-testid': 'prod-card-creative', class: 'prod-card-link' }) : null,
+      r.comment_count ? h('button', { type: 'button', class: 'prod-card-comments', 'data-testid': 'prod-card-comments', 'aria-label': `${r.comment_count} comments, open`, onclick: () => ops.open(r, 'comments') },
+        h('span', { class: 'prod-ic-comment', 'aria-hidden': 'true' }), ' ', String(r.comment_count)) : null,
+      hint ? h('span', { class: 'prod-card-needs', 'data-testid': 'prod-card-needs' }, hint) : null,
+      r.brief_url ? link(r.brief_url, 'Brief', { 'data-testid': 'prod-card-brief', class: 'prod-card-link prod-ext', title: r.brief_url }) : null,
+      r.creative_url ? link(r.creative_url, 'Creative', { 'data-testid': 'prod-card-creative', class: 'prod-card-link prod-ext', title: r.creative_url }) : null,
       res ? h('span', { class: 'prod-card-result', 'data-testid': 'prod-card-result' }, res) : null),
     compact ? null : h('div', { class: 'prod-card-foot' },
       primary ? h('button', { type: 'button', class: 'btn prod-card-action' + (primary.primary ? ' primary' : ''), 'data-testid': 'prod-card-action', 'data-action': primary.key, onclick: () => ops.run(r, primary) }, primary.label) : null,
-      status === 'launched' ? null : moveSel));
+      more));
   return el;
 }
 
@@ -91,7 +100,7 @@ export function board({ columns, dropped, st, vendors, capacity, ops, onDrop, al
     const cards = lane ? d.cards.filter((c) => c.vendor === lane) : d.cards;
     const dropOk = d.key !== 'dropped';
     const list = h('div', { class: 'prod-board-list' + (dropOk ? '' : ' prod-nodrop'), 'data-testid': 'prod-board-list', 'data-status': d.key, 'data-lane': lane || '', 'data-label': d.label, 'aria-label': d.label, role: 'list' },
-      cards.map((c) => cardEl(c, ops)), cards.length ? null : h('p', { class: 'prod-board-empty', 'data-testid': 'prod-board-empty' }, d.key === 'launched' ? 'Nothing launched lately' : 'Nothing here'));
+      cards.map((c) => cardEl(c, ops)), cards.length ? null : h('p', { class: 'prod-board-empty', 'data-testid': 'prod-board-empty' }, d.key === 'launched' || d.key === 'dropped' ? 'Nothing here yet' : 'Drop a card here'));
     return { cards, list };
   };
 
@@ -108,7 +117,27 @@ export function board({ columns, dropped, st, vendors, capacity, ops, onDrop, al
           h('div', { class: 'prod-board-cols', style: { '--cols': defs.length } }, cols(v))); }));
   if (lanes.length === 0) scroll.append(h('p', { 'data-testid': 'prod-board-nolanes' }, 'No cards match.'));
 
-  const el = h('div', { class: 'prod-board', 'data-testid': 'prod-board' }, live, scroll);
+  // Phone: chips above the board that jump to a column; the chip of the column in view is highlighted (aria-current). Hidden on a wide screen by CSS.
+  const chips = defs.map((d) => h('button', { type: 'button', class: 'prod-jump-chip', 'data-testid': 'prod-board-jump-' + d.key, 'data-status': d.key,
+    onclick: () => { const col = scroll.querySelector(`.prod-board-col[data-status="${d.key}"]`); if (col) { scroll.scrollTo({ left: Math.max(0, col.offsetLeft - 12), behavior: 'smooth' }); mark(d.key); } } },
+    d.label + ' ', h('span', { class: 'prod-jump-n' }, String(d.cards.length))));
+  const jump = h('nav', { class: 'prod-jump', 'data-testid': 'prod-board-jump', 'aria-label': 'Jump to a column' }, chips);
+  function mark(key) {
+    for (const c of chips) { const on = c.dataset.status === key; if (on) c.setAttribute('aria-current', 'true'); else c.removeAttribute('aria-current'); if (on && jump.scrollWidth > jump.clientWidth) { const x = c.offsetLeft - 12; if (Math.abs(jump.scrollLeft - x) > 40) jump.scrollTo({ left: x }); } }
+  }
+  let tick = 0;
+  scroll.addEventListener('scroll', () => {
+    cancelAnimationFrame(tick);
+    tick = requestAnimationFrame(() => {
+      const cols = [...scroll.querySelectorAll('.prod-board-col')].filter((c, i, a) => a.findIndex((o) => o.dataset.status === c.dataset.status) === i);
+      let best = null, bd = 1e9;
+      for (const c of cols) { const dd = Math.abs(c.offsetLeft - 12 - scroll.scrollLeft); if (dd < bd) { bd = dd; best = c; } }
+      if (best) mark(best.dataset.status);
+    });
+  }, { passive: true });
+  if (defs.length) mark(defs[0].key);
+
+  const el = h('div', { class: 'prod-board', 'data-testid': 'prod-board' }, live, jump, scroll);
   enableDrag({ root: el, cardSel: '.prod-board-card', gripSel: '.prod-grip', listSel: '.prod-board-list:not(.prod-nodrop)', laneOf: (n) => (n.closest('[data-lane]') || n).dataset.lane || '', onDrop, live });
   return { el };
 }

@@ -47,7 +47,7 @@ def fill_dialog(page, value, field="url"):
 def test_table_renders_with_plain_columns_and_open_rows_only(page):
     goto(page)
     heads = [t.strip() for t in page.locator("[data-testid=prod-table] thead th").all_text_contents()]
-    assert heads == ["Week of", "Vendor", "Product", "Concept", "Brief", "Creative", "Format", "Stage", "Status", "Due", "Priority", "Ready", "Ads", "Spend", "Return", ""]
+    assert heads == ["Week of", "Vendor", "Product", "Concept", "Brief", "Creative", "Format", "Stage", "Due", "Priority", "Ready", "Ads", "Spend", "Return", ""]
     ids = page.locator("[data-testid=prod-row]").evaluate_all("rs => rs.map(r => r.dataset.id)")
     assert ids == ["3", "2", "1"]                                    # newest week first; the launched row 4 is hidden until Show launched and dropped
     assert stage(page, 1) == "Assigned" and stage(page, 2) == "Creative delivered"

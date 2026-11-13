@@ -80,7 +80,8 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
     const mk = (tid, el) => { el.setAttribute('data-testid', tid); el.addEventListener('input', () => { dirty = true; }); el.addEventListener('change', () => { dirty = true; }); return el; };
     const vendor = mk('prod-drawer-vendor', h('select', { class: 'pri-name' }, ops.vendors().map((v) => h('option', { value: v, selected: v === r.vendor }, v))));
     const week = mk('prod-drawer-week', h('select', { class: 'pri-name' }, weeks.map((w) => h('option', { value: w, selected: w === r.for_week }, weekLabel(w)))));
-    const dueIn = mk('prod-drawer-due', h('input', { type: 'date', class: 'pri-name', value: r.due_date || '' }));
+    const dueIn = mk('prod-drawer-due', h('input', { type: 'date', class: 'pri-name', value: r.due_date || '', 'aria-label': 'Due date' }));
+    const dueRow = h('div', { class: 'prod-date-row' }, dueIn, h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-drawer-due-clear', 'aria-label': 'Clear the due date', onclick: () => { dueIn.value = ''; dirty = true; dueIn.focus(); } }, 'Clear'));
     const prio = mk('prod-drawer-priority', h('select', { class: 'pri-name' }, [['normal', 'Normal'], ['high', 'High']].map(([v, l]) => h('option', { value: v, selected: (r.priority || 'normal') === v }, l))));
     const fmt = mk('prod-drawer-format', h('select', { class: 'pri-name' }, h('option', { value: '', selected: !r.format_code }, 'No format chosen'), fmts.map((f) => h('option', { value: f.code, selected: f.code === r.format_code }, formatLabel(f)))));
     const brief = mk('prod-drawer-brief', h('input', { type: 'text', class: 'pri-name', placeholder: 'https://', value: r.brief_url || '', maxlength: '2000' }));
@@ -112,7 +113,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
       try { const d = await loadDetail(); body.replaceChildren(assignmentPanel(d)); more.dataset.loaded = '1'; } catch (e) { body.replaceChildren(h('p', { class: 'pri-err', role: 'alert' }, 'Could not load the details: ' + ((e && e.message) || 'error'))); }
     });
     pane.replaceChildren(h('div', { class: 'prod-drawer-form', 'data-testid': 'prod-drawer-details' },
-      fieldInput('Vendor', vendor), fieldInput('Week of', week), fieldInput('Due date', dueIn), fieldInput('Priority', prio), fieldInput('Format', fmt),
+      fieldInput('Vendor', vendor), fieldInput('Week of', week), fieldInput('Due date', dueRow, 'The vendor sees this date. Clear it for no due date.'), fieldInput('Priority', prio), fieldInput('Format', fmt),
       fieldInput('Brief link', brief), fieldInput('Creative link', creative), fieldInput('Note', note),
       r.vendor_note ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Vendor note'), h('p', { class: 'prod-drawer-vnote', 'data-testid': 'prod-drawer-vnote' }, r.vendor_note)) : null,
       ads.length || resText ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Ads'), h('p', { class: 'prod-drawer-vnote' }, [ads.join(', '), resText].filter(Boolean).join('. '))) : null,

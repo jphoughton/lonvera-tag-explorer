@@ -28,16 +28,18 @@ export async function productionPage(ctx) {
   showControls(false);
   const VIEWS = [['board', 'Board'], ['list', 'List'], ['plan', 'Plan']];
   const st = { view: VIEWS.some(([k]) => k === ctx.params.view) ? ctx.params.view : 'board', week: ctx.params.week || '', vendor: ctx.params.vendor || '', product: ctx.params.product || '', closed: ctx.params.closed === '1',
-    stage: ctx.params.stage || '', overdue: ctx.params.overdue === '1', q: ctx.params.q || '', group: ctx.params.group === 'vendor' ? 'vendor' : '', card: ctx.params.card || '' };
+    stage: ctx.params.stage || '', overdue: ctx.params.overdue === '1', q: ctx.params.q || '', group: ctx.params.group === 'vendor' ? 'vendor' : '', card: ctx.params.card || '', cols: { priority: false, ready: false } };
   let data = { rows: [], vendors: [], weeks: [] };          // the List payload (GET /api/priorities/assignments); also the source of vendors, weeks and formats for every view
   let board = null;                                           // the Board payload (GET /api/priorities/board)
   let meta = null;                                            // vendors, weeks, formats (and the launch flag) when the page started on the board
   let lastErr = '';
   let drawer = null;
+  let capSaved = null;                                        // vendor whose capacity was just saved: the Plan shows a Saved cue next to it once
   let focusId = null;                                         // card to focus again after a keyboard move redraws the board
   const msg = h('p', { class: 'prod-msg', role: 'status', 'data-testid': 'prod-msg' });
   const say = (t, bad) => { msg.textContent = t || ''; msg.classList.toggle('pri-err', !!bad); };
   const body = h('div', { class: 'prod-body' });
+  let loadSlot = h('div', { class: 'prod-loadslot', 'data-testid': 'prod-loadslot' });
   const viewHost = h('div', { class: 'prod-view', 'data-testid': 'prod-view-host' });
   const openIds = new Set();                                   // rows whose details are open: kept across redraws (the payload is cached, so no new request)
   const root = h('div', { class: 'page pri-page prod-page', 'data-testid': 'prod-page', 'data-view': st.view });
@@ -194,7 +196,7 @@ export async function productionPage(ctx) {
   }
 
   const linkCell = (r, field, label) => h('td', { class: 'prod-c prod-c-link' },
-    r[field] ? h('div', null, link(r[field], short(r[field]), { 'data-testid': 'prod-' + field })) : null,
+    r[field] ? h('div', null, link(r[field], label, { 'data-testid': 'prod-' + field, class: 'prod-ext', title: r[field] })) : null,
     h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-edit-' + field, onclick: () => editLink(r, field, label) }, r[field] ? 'Change' : 'Add link'));
 
   function adsCell(r) {
@@ -218,11 +220,11 @@ export async function productionPage(ctx) {
     return h('td', { class: 'prod-c prod-acts' }, b);
   }
 
-  const dueCell = (r) => { const d = dueInfo(r); return h('td', { class: 'prod-c prod-nowrap', 'data-testid': 'prod-due' }, d ? h('span', { class: 'prod-chip prod-chip-due' + (d.tone ? ' prod-due-' + d.tone : '') }, d.text) : '–'); };
+  const dueCell = (r) => { const d = dueInfo(r); return h('td', { class: 'prod-c prod-nowrap', 'data-testid': 'prod-due' }, d ? h('span', { class: 'prod-chip prod-chip-due' + (d.tone ? ' prod-due-' + d.tone : '') }, d.text) : '–', r.priority === 'high' ? h('span', { class: 'prod-chip prod-chip-high prod-hi' }, 'High') : null); };
   const readyCell = (r) => {
     const on = r.stage === 'ready' || r.stage === 'launched' || !!r.ready_at;
     const t = on ? 'Ready' + (r.ready_at ? ' ' + md(r.ready_at) : '') : (r.creative_url ? 'Not yet' : 'Needs creative');
-    return h('td', { class: 'prod-c prod-nowrap', 'data-testid': 'prod-ready-state', 'data-ready': on ? '1' : '0' }, on ? h('span', { class: 'prod-yes' }, t) : h('span', { class: 'prod-no' }, t));
+    return h('td', { class: 'prod-c prod-nowrap prod-col-ready', 'data-testid': 'prod-ready-state', 'data-ready': on ? '1' : '0' }, on ? h('span', { class: 'prod-yes' }, t) : h('span', { class: 'prod-no' }, t));
   };
   const adsOf = (r) => (r.ads || []).filter((a) => a.launch_date);
   const spendOf = (r) => { const a = adsOf(r); return a.length ? a.reduce((s, x) => s + (isNum(x.spend) ? x.spend : 0), 0) : null; };
@@ -230,7 +232,7 @@ export async function productionPage(ctx) {
 
   function row(r) {
     const host = h('div', { class: 'prod-xd', 'data-testid': 'prod-detail' });
-    const wrap = h('tr', { class: 'prod-detailrow', 'data-testid': 'prod-detail-row', 'data-id': r.id }, h('td', { colspan: '16', class: 'prod-xcell' }, host));
+    const wrap = h('tr', { class: 'prod-detailrow', 'data-testid': 'prod-detail-row', 'data-id': r.id }, h('td', { colspan: '15', class: 'prod-xcell' }, host));
     const x = expander({ key: 'a' + r.id, fetchDetail: () => api(`/api/priorities/assignments/${r.id}/detail`, {}, { signal: ctx.signal }), host, wrap, startOpen: openIds.has(r.id), onToggle: (o) => { if (o) openIds.add(r.id); else openIds.delete(r.id); } });
     const main = h('tr', { class: 'prod-row', 'data-testid': 'prod-row', 'data-id': r.id, 'data-stage': r.stage },
       h('td', { class: 'prod-c prod-nowrap', 'data-testid': 'prod-week' }, weekLabel(r.for_week).replace('Week of ', '')),
@@ -238,10 +240,10 @@ export async function productionPage(ctx) {
       h('td', { class: 'prod-c', 'data-testid': 'prod-product' }, productName(r.product)),
       h('td', { class: 'prod-c prod-concept', 'data-testid': 'prod-concept' }, h('strong', null, x.nameButton(r.pain_point || r.cluster)), h('div', { class: 'pri-sub' }, [r.cluster, r.icp].filter(Boolean).join(' / ')), r.note ? h('div', { class: 'pri-sub' }, 'Note: ' + r.note) : null, r.vendor_note ? h('div', { class: 'pri-sub', 'data-testid': 'prod-vnote' }, 'Vendor note: ' + r.vendor_note) : null, h('div', null, x.button()), historyCell(r)),
       linkCell(r, 'brief_url', 'Brief'), linkCell(r, 'creative_url', 'Creative'), formatCell(r),
-      h('td', { class: 'prod-c' }, h('span', { class: 'prod-pill prod-st-' + r.stage, 'data-testid': 'prod-stage' }, stageLabel(r)), h('div', { class: 'pri-sub prod-result', 'data-testid': 'prod-result' }, resultText(r))),
-      h('td', { class: 'prod-c prod-nowrap' }, h('span', { class: 'prod-pill prod-ps-' + statusOf(r), 'data-testid': 'prod-status' }, STATUS_LABEL[statusOf(r)] || statusOf(r))),
+      h('td', { class: 'prod-c prod-c-stage' }, h('span', { class: 'prod-pill prod-ps-' + statusOf(r), 'data-testid': 'prod-status', title: 'Where the card sits on the Board' }, STATUS_LABEL[statusOf(r)] || statusOf(r)),
+        h('span', { class: 'prod-sr', 'data-testid': 'prod-stage' }, stageLabel(r)), h('div', { class: 'pri-sub prod-result', 'data-testid': 'prod-result' }, resultText(r))),
       dueCell(r),
-      h('td', { class: 'prod-c prod-nowrap', 'data-testid': 'prod-priority' }, r.priority === 'high' ? h('span', { class: 'prod-chip prod-chip-high' }, 'High') : 'Normal'),
+      h('td', { class: 'prod-c prod-nowrap prod-col-priority', 'data-testid': 'prod-priority' }, r.priority === 'high' ? h('span', { class: 'prod-chip prod-chip-high' }, 'High') : 'Normal'),
       readyCell(r),
       adsCell(r),
       h('td', { class: 'prod-c prod-num', 'data-testid': 'prod-spend' }, spendOf(r) === null ? '–' : fmt.money(spendOf(r))),
@@ -253,6 +255,7 @@ export async function productionPage(ctx) {
 
   // ---- drawing
   function drawChrome() {
+    loadSlot = h('div', { class: 'prod-loadslot', 'data-testid': 'prod-loadslot' });
     const weeks = [...new Set([...weeksList(), ...(st.week ? [st.week] : [])])].sort().reverse();
     const list = st.view === 'list';
     const plan = st.view === 'plan';
@@ -278,7 +281,17 @@ export async function productionPage(ctx) {
     body.replaceChildren(
       pageHeader({ title: 'Production', description: 'Concepts given to vendors to make, by week. Spend and return come from the Creative Tracker once an ad is launched.', testid: 'prod-head',
         actions: [h('a', { class: 'btn small', href: href('/priorities', {}), 'data-testid': 'prod-back' }, 'Back to Priorities')] }),
-      controls, links, msg, viewHost);
+      controls, h('div', { class: 'prod-team', 'data-testid': 'prod-team' }, loadSlot, links), msg, viewHost);
+    drawLoad();
+  }
+  // the weekly load of each vendor, one slim row beside the Vendor links disclosure (board view only)
+  function drawLoad() {
+    loadSlot.replaceChildren();
+    if (st.view !== 'board' || !board) return;
+    const cards = (board.columns || []).flatMap((c) => c.cards || []).filter(productOk);
+    const week = st.week || mondayOf(today());
+    const bars = loadBars(board.capacity, vendorNames(), week, cards);
+    if (bars) loadSlot.append(h('span', { class: 'prod-loadtitle' }, `Open cards, ${weekLabel(week).toLowerCase()}`), bars);
   }
 
   function drawView() {
@@ -308,11 +321,10 @@ export async function productionPage(ctx) {
     const dropped = (board.dropped || []).filter(productOk);
     const cards = columns.flatMap((c) => c.cards);
     const week = st.week || mondayOf(today());
-    const bars = loadBars(board.capacity, vendorNames(), week, cards);
+    drawLoad();
     const empty = !cards.length && !dropped.length;
     const stageNote = st.stage ? h('p', { class: 'prod-stagenote', 'data-testid': 'prod-board-stagenote' }, `Showing only ${STATUS_LABEL[st.stage === 'creative_in' ? 'in_review' : st.stage] || st.stage}. `, h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-board-showall', onclick: () => { st.stage = ''; sync(); drawView(); } }, 'Show all columns')) : null;
     viewHost.replaceChildren(...[
-      bars ? h('div', { class: 'prod-loadwrap' }, h('p', { class: 'prod-loadtitle' }, `Open cards per vendor, ${weekLabel(week).toLowerCase()}`), bars) : null,
       stageNote,
       empty ? h('p', { 'data-testid': 'prod-empty' }, 'Nothing here yet. On Priorities, tick concepts and click Assign to vendor.') : null,
       boardView({ columns, dropped, st, vendors: vendorNames(), capacity: board.capacity, ops, onDrop: onBoardDrop, allCards: cards }).el].filter(Boolean));
@@ -323,10 +335,11 @@ export async function productionPage(ctx) {
     const cards = boardCards().filter((c) => c.stage !== 'dropped');
     const cap = {};
     for (const c of board.capacity || []) if (!(c.vendor in cap)) cap[c.vendor] = c.per_week;
-    viewHost.replaceChildren(planView({ cards, vendors: vendorNames(), capacity: cap, start: st.week, ops,
+    const savedCap = capSaved; capSaved = null;
+    viewHost.replaceChildren(planView({ cards, vendors: vendorNames(), capacity: cap, start: st.week, ops, saved: savedCap,
       onShift: (w) => { st.week = w; sync(); drawView(); },
       onCapacity: async (v, n) => {
-        try { await api('/api/priorities/vendor-capacity', {}, { method: 'PUT', body: { vendor: v, per_week: n } }); toast(`${v}: ${n} cards per week.`); await reload(); }
+        try { await api('/api/priorities/vendor-capacity', {}, { method: 'PUT', body: { vendor: v, per_week: n } }); toast(`${v}: ${n} cards per week.`); capSaved = v; await reload(); }
         catch (e) { abortOk(e); toast(e.message || 'Could not save the capacity.', true); drawView(); }
       },
       onReassign: async (card, vendor, week) => {
@@ -349,10 +362,12 @@ export async function productionPage(ctx) {
   function drawList() {
     const all = (data.rows || []).filter(productOk).filter((r) => !st.overdue || r.overdue).filter((r) => !st.q || [r.pain_point, r.cluster, r.icp, r.vendor, r.note, r.vendor_note].filter(Boolean).join(' ').toLowerCase().includes(st.q.toLowerCase()));
     const shown = st.stage ? all.filter((r) => r.stage === st.stage || statusOf(r) === st.stage) : all;
-    const heads = [['Week of'], ['Vendor'], ['Product'], ['Concept'], ['Brief'], ['Creative'], ['Format', 'Optional creative format chosen for this concept'], ['Stage'], ['Status', 'Where the card sits on the Board'], ['Due'], ['Priority'], ['Ready', 'Ready to launch: creative delivered and checked'], ['Ads'], ['Spend', 'Total ad spend on the launched ads'], ['Return', 'Return on ad spend: revenue per dollar spent'], ['']];
+    const heads = [['Week of'], ['Vendor'], ['Product'], ['Concept'], ['Brief'], ['Creative'], ['Format', 'Optional creative format chosen for this concept'], ['Stage', 'Where the card sits on the Board'], ['Due'], ['Priority'], ['Ready', 'Ready to launch: creative delivered and checked'], ['Ads'], ['Spend', 'Total ad spend on the launched ads'], ['Return', 'Return on ad spend: revenue per dollar spent'], ['']];
+    const colToggle = h('details', { class: 'prod-cols', 'data-testid': 'prod-cols' }, h('summary', null, 'Columns'),
+      h('div', { class: 'prod-cols-menu' }, [['priority', 'Priority'], ['ready', 'Ready']].map(([k, l]) => h('label', { class: 'prod-cols-opt' }, h('input', { type: 'checkbox', 'data-testid': 'prod-cols-' + k, checked: !!st.cols[k], onchange: (e) => { st.cols[k] = e.target.checked; const t = viewHost.querySelector('.prod-table'); if (t) t.classList.toggle('prod-hide-' + k, !st.cols[k]); } }), ' ' + l))));
     viewHost.replaceChildren(shown.length
-      ? h('div', { class: 'prod-scroll', 'data-testid': 'prod-scroll' }, h('table', { class: 'pri-table prod-table', 'data-testid': 'prod-table' },
-        h('thead', null, h('tr', null, heads.map(([x, t]) => h('th', { scope: 'col', title: t || null }, x)))), h('tbody', null, shown.flatMap(row))))
+      ? h('div', { class: 'prod-listwrap' }, colToggle, h('div', { class: 'prod-scroll', 'data-testid': 'prod-scroll' }, h('table', { class: 'pri-table prod-table' + (st.cols.priority ? '' : ' prod-hide-priority') + (st.cols.ready ? '' : ' prod-hide-ready'), 'data-testid': 'prod-table' },
+        h('thead', null, h('tr', null, heads.map(([x, t]) => h('th', { scope: 'col', title: t || null, class: x === 'Priority' ? 'prod-col-priority' : x === 'Ready' ? 'prod-col-ready' : null }, x)))), h('tbody', null, shown.flatMap(row)))))
       : h('p', { 'data-testid': 'prod-empty' }, (data.rows || []).length ? 'No concepts match.' : 'Nothing here yet. On Priorities, tick concepts and click Assign to vendor.'));
     launchControls();
   }

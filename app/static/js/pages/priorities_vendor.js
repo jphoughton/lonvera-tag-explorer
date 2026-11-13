@@ -118,7 +118,7 @@ export async function vendorPage(ctx) {
     const last = [...list].reverse().find((c) => c.author_kind === 'app');
     const asked = statusOf(r) === 'in_production' && (r.changes_requested === true || isChanges(last));
     const det = h('details', { class: 'prod-v-thread', 'data-testid': 'prod-v-thread', ontoggle: (e) => { if (e.target.open) openThreads.add(r.id); else openThreads.delete(r.id); } },
-      h('summary', null, n ? `Comments (${n})` : 'Comments'),
+      h('summary', null, `Comments (${n})`),
       list.length ? h('ul', { class: 'prod-v-clist' }, list.map((c) => h('li', { class: 'prod-v-comment ' + (c.author_kind === 'app' ? 'is-team' : 'is-you'), 'data-testid': 'prod-v-comment', 'data-kind': c.author_kind },
         h('div', { class: 'prod-v-cmeta' }, h('strong', null, c.author_kind === 'app' ? (c.author_name || 'Team') : 'You'), ' ', h('span', null, when(c.created_at))),
         h('div', { class: 'prod-v-cbody' }, c.body)))) : h('p', { class: 'prod-v-none' }, 'No comments yet.'),
@@ -186,11 +186,11 @@ export async function vendorPage(ctx) {
         fmt ? h('span', { class: 'prod-v-chip', title: formatLabel(fmt), 'data-testid': 'prod-v-format' }, fmt.code) : null,
         dueChip(r)),
       banner,
-      r.brief_url ? link(r.brief_url, 'Open brief', { class: 'btn prod-v-brief', 'data-testid': 'prod-v-brief' }) : h('p', { class: 'prod-v-none', 'data-testid': 'prod-v-nobrief' }, 'The brief has not been added yet.'),
+      r.brief_url ? link(r.brief_url, 'Open brief', { class: 'prod-v-brief prod-ext', 'data-testid': 'prod-v-brief', title: r.brief_url }) : h('p', { class: 'prod-v-none', 'data-testid': 'prod-v-nobrief' }, 'The brief has not been added yet.'),
       h('div', null, x.button()), host,
       r.story ? h('p', { class: 'prod-story', 'data-testid': 'prod-story' }, r.story) : null,
       h('dl', { class: 'prod-dl' },
-        dt('Brief', r.brief_url ? link(r.brief_url, short(r.brief_url), { 'data-testid': 'prod-brief_url' }) : 'Not added yet'),
+        dt('Brief', r.brief_url ? link(r.brief_url, 'Brief', { 'data-testid': 'prod-brief_url', class: 'prod-ext', title: r.brief_url }) : 'Not added yet'),
         dt('Format', h('span', { 'data-testid': 'prod-format-text' }, fmt ? formatLabel(fmt) : 'Not chosen')),
         dt('Ads', (r.ads || []).length ? (r.ads || []).map((a) => h('div', { 'data-testid': 'prod-cid' }, a.ad_url ? link(a.ad_url, a.concept_id) : a.concept_id)) : 'None yet'),
         dt('Result', h('span', { 'data-testid': 'prod-result' }, res || 'Not launched yet'))),
