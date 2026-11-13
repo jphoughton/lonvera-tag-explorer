@@ -113,19 +113,26 @@ def _media_table(conn) -> bool:
     return conn.execute("SELECT to_regclass('public.competitor_ad_media') IS NOT NULL AS ok").fetchone()["ok"]
 
 
-def _ads_sql(media: bool) -> str:
+def _video_table(conn) -> bool:
+    """True when the saved-video table (competitor_ad_video) exists. Absent or empty means every video_url is null."""
+    return conn.execute("SELECT to_regclass('public.competitor_ad_video') IS NOT NULL AS ok").fetchone()["ok"]
+
+
+def _ads_sql(media: bool, video: bool = False) -> str:
     return ("SELECT a.library_id, a.brand, a.start_date, a.days_running, a.variant_count, a.format, a.hook, a.headline, a.primary_text, a.landing_url, a.concept_key, a.carried_from,\n"
             "       c.cluster, c.pain_point, c.mapped_product, c.is_new_angle, c.new_angle_label, "
-            + ("(m.library_id IS NOT NULL) AS has_thumb\n" if media else "false AS has_thumb\n")
+            + ("(m.library_id IS NOT NULL) AS has_thumb, " if media else "false AS has_thumb, ")
+            + ("(v.library_id IS NOT NULL) AS has_video\n" if video else "false AS has_video\n")
             + "FROM competitor_ads a LEFT JOIN competitor_concept_class c ON c.concept_key = a.concept_key\n"
             + ("LEFT JOIN competitor_ad_media m ON m.library_id = a.library_id\n" if media else "")
+            + ("LEFT JOIN competitor_ad_video v ON v.library_id = a.library_id\n" if video else "")
             + "WHERE a.week_start = %s\n")
 
 
 def _ads(conn, week: str | None, fmt: str | None, brand: str | None = None) -> list[dict]:
     if not week:
         return []
-    rows = conn.execute(_ads_sql(_media_table(conn)) + (" AND a.brand = %s" if brand else ""), (week, brand) if brand else (week,)).fetchall()
+    rows = conn.execute(_ads_sql(_media_table(conn), _video_table(conn)) + (" AND a.brand = %s" if brand else ""), (week, brand) if brand else (week,)).fetchall()
     return [r for r in rows if _fmt_ok(r, fmt)]
 
 
@@ -178,6 +185,15 @@ def media_url(library_id: str) -> str:
     return f"/api/competitors/media/{quote(str(library_id), safe='')}"
 
 
+def video_url(library_id: str) -> str:
+    return f"/api/competitors/video/{quote(str(library_id), safe='')}"
+
+
+def _video(a: dict) -> str | None:
+    """The saved playable copy of an ad, only when one is stored (and the ad is a video)."""
+    return video_url(a["library_id"]) if a.get("has_video") and a.get("format") == "video" else None
+
+
 def _thumb(a: dict) -> str | None:
     return media_url(a["library_id"]) if a.get("has_thumb") else None
 
@@ -205,7 +221,7 @@ def _thumbs(ads: list[dict]) -> list[dict]:
     """Up to three of a brand's longest-running distinct ads for the tile strip, ads with a stored image first."""
     lo = _longest(ads)
     pick = ([a for a in lo if a.get("has_thumb")] + [a for a in lo if not a.get("has_thumb")])[:3]
-    return [{"library_id": a["library_id"], "thumb_url": _thumb(a), "hook": (a["hook"] or a["headline"] or "")[:90], "format": a["format"]} for a in pick]
+    return [{"library_id": a["library_id"], "thumb_url": _thumb(a), "video_url": _video(a), "hook": (a["hook"] or a["headline"] or "")[:90], "format": a["format"]} for a in pick]
 
 
 def _dedupe(ads: list[dict]) -> list[dict]:
@@ -222,7 +238,7 @@ def _card(a: dict, badge: str | None = None, reason: str | None = None) -> dict:
     """An ad as the cards and the lightbox show it: copy, landing page, links and (only when stored) a thumbnail."""
     return {"library_id": a["library_id"], "brand": a["brand"], "hook": a["hook"] or a["headline"] or "", "headline": a.get("headline"), "primary_text": (a.get("primary_text") or "")[:700],
             "format": a["format"], "days_running": a["days_running"], "variant_count": a["variant_count"], "landing_url": a.get("landing_url"), "landing_domain": domain_of(a.get("landing_url")),
-            "thumb_url": _thumb(a), "ad_library_url": ad_url(a["library_id"]), "angle": " / ".join(x for x in (a.get("cluster"), a.get("pain_point")) if x) or None,
+            "thumb_url": _thumb(a), "video_url": _video(a), "ad_library_url": ad_url(a["library_id"]), "angle": " / ".join(x for x in (a.get("cluster"), a.get("pain_point")) if x) or None,
             "is_new_angle": bool(a.get("is_new_angle")), "new_angle_label": a.get("new_angle_label"), "badge": badge, "reason": reason}
 
 

@@ -126,6 +126,10 @@ def media(ctx, base_url, on):
     ctx.request.post(base_url + f"/__test/competitors/media?on={1 if on else 0}")
 
 
+def video(ctx, base_url, on):
+    ctx.request.post(base_url + f"/__test/competitors/video?on={1 if on else 0}")
+
+
 def test_pulse_strip_and_first_snapshot_notice(page):
     goto(page)
     nums = {k: page.locator(f"[data-testid=comp-pulse-{k}] strong").text_content().strip() for k in ("brands", "active", "new", "longest")}
@@ -245,6 +249,7 @@ def test_table_toggle_and_format_toggle_on_the_wall(page):
 
 def test_typographic_fallback_when_no_thumbnail_is_stored(page, ctx, base_url):
     media(ctx, base_url, False)
+    video(ctx, base_url, False)
     try:
         goto(page)
         assert page.locator("[data-testid=comp-thumb]").count() == 0 and page.locator("[data-testid=comp-mini-img]").count() == 0
@@ -263,6 +268,7 @@ def test_typographic_fallback_when_no_thumbnail_is_stored(page, ctx, base_url):
         page.keyboard.press("Escape")
     finally:
         media(ctx, base_url, True)
+        video(ctx, base_url, True)
 
 
 def test_broken_thumbnail_falls_back_to_the_typographic_card(page, ctx, base_url):
@@ -284,3 +290,96 @@ def test_visual_page_has_no_em_dash_and_phone_width_does_not_scroll(page):
     page.keyboard.press("Escape")
     assert "\u2014" not in page.locator("[data-testid=comp-page]").text_content()
     assert page.evaluate("() => { const r = document.querySelector('[data-testid=comp-rail]'); return r.scrollWidth > r.clientWidth && r.getBoundingClientRect().right <= window.innerWidth; }")
+
+
+# ---- playable videos in the lightbox ----
+def open_card(page, brand, hook_part):
+    page.locator(f"[data-testid=comp-spot]:has-text('{hook_part}') [data-testid=comp-card-open]").first.click()
+    page.wait_for_selector("[data-testid=comp-lb]", state="visible")
+
+
+def test_saved_video_gets_a_player_in_the_lightbox_and_a_play_badge_on_the_card(page):
+    goto(page)
+    first = page.locator("[data-testid=comp-spot]").first
+    assert first.locator("[data-testid=comp-play]").count() == 1                         # the saved copy shows a play badge on the card
+    imgs = page.locator("[data-testid=comp-spot]:not(:has([data-testid=comp-play])) [data-testid=comp-play]").count()
+    assert imgs == 0
+    first.locator("[data-testid=comp-card-open]").click()
+    v = page.locator("[data-testid=comp-lb] [data-testid=comp-video]")
+    assert v.count() == 1 and v.get_attribute("src") == "/api/competitors/video/d1"
+    assert v.evaluate("e => e.controls && e.hasAttribute('playsinline') && e.preload === 'metadata' && !e.autoplay && !e.muted && e.paused")
+    assert (v.get_attribute("poster") or "").startswith("/api/competitors/media/d1")
+    assert page.locator("[data-testid=comp-play-big]").is_visible() and page.locator("[data-testid=comp-play-big]").text_content().strip().endswith("Play")
+    assert page.locator("[data-testid=comp-lb-novideo]").count() == 0
+    page.keyboard.press("Escape")
+
+
+def test_play_starts_and_next_prev_and_close_pause_it(page):
+    goto(page)
+    page.locator("[data-testid=comp-spot] [data-testid=comp-card-open]").first.click()
+    page.wait_for_function("() => document.querySelector('[data-testid=comp-video]').readyState >= 1")
+    page.click("[data-testid=comp-play-big]")
+    page.wait_for_function("() => { const v = document.querySelector('[data-testid=comp-video]'); return !v.paused && v.currentTime > 0; }")
+    assert not page.locator("[data-testid=comp-play-big]").is_visible()
+    page.evaluate("() => { window.__v = document.querySelector('[data-testid=comp-video]'); }")
+    page.click("[data-testid=comp-lb-next]")                                             # next: the old video is paused (and gone from the stage)
+    assert page.evaluate("() => window.__v.paused")
+    page.click("[data-testid=comp-lb-prev]")                                             # back: a fresh player, not playing
+    assert page.evaluate("() => document.querySelector('[data-testid=comp-video]').paused")
+    page.click("[data-testid=comp-play-big]")
+    page.wait_for_function("() => !document.querySelector('[data-testid=comp-video]').paused")
+    page.keyboard.press("ArrowRight")                                                    # keyboard arrows still navigate while the video has focus
+    assert page.locator("[data-testid=comp-lb-count]").text_content().startswith("2 /")
+    page.keyboard.press("ArrowLeft")
+    page.click("[data-testid=comp-play-big]")
+    page.wait_for_function("() => !document.querySelector('[data-testid=comp-video]').paused")
+    page.evaluate("() => { window.__v = document.querySelector('[data-testid=comp-video]'); }")
+    page.click("[data-testid=comp-lb-close]")                                            # close pauses
+    assert page.evaluate("() => window.__v.paused")
+
+
+def test_video_without_a_saved_copy_keeps_the_still_and_says_so(page):
+    goto(page, "?format=video")
+    page.locator("[data-testid=comp-spot]:has-text('Knees that do not announce') [data-testid=comp-card-open]").first.click()
+    lb = page.locator("[data-testid=comp-lb]")
+    assert lb.is_visible() and page.locator("[data-testid=comp-lb] [data-testid=comp-video]").count() == 0
+    assert page.locator("[data-testid=comp-lb-novideo]").text_content().strip() == "Video not saved. Open in the Ad Library to watch."
+    assert page.locator("[data-testid=comp-lb] [data-testid=comp-typo], [data-testid=comp-lb] [data-testid=comp-thumb]").count() == 1
+    assert page.locator("[data-testid=comp-lb-adlink]").count() == 1
+    page.keyboard.press("Escape")
+    img = None
+    goto(page, "?format=image")                                                          # an image ad never gets the line
+    page.locator("[data-testid=comp-spot] [data-testid=comp-card-open]").first.click()
+    assert page.locator("[data-testid=comp-lb-novideo]").count() == 0
+    page.keyboard.press("Escape")
+
+
+def test_play_badge_on_brand_gallery_cards_and_video_off_removes_every_player(page, ctx, base_url):
+    goto(page)
+    page.click("[data-testid=comp-tile][data-brand='Dune Labs'] [data-testid=comp-tile-open]")
+    page.wait_for_selector("[data-testid=comp-gallery]")
+    cards = page.locator("[data-testid=comp-gcard]")
+    with_badge = cards.filter(has=page.locator("[data-testid=comp-play]"))
+    assert with_badge.count() == 1 and "I stopped the shedding" in with_badge.first.text_content()
+    video(ctx, base_url, False)
+    try:
+        goto(page)
+        assert page.locator("[data-testid=comp-play]").count() == 0
+        page.locator("[data-testid=comp-spot] [data-testid=comp-card-open]").first.click()
+        assert page.locator("[data-testid=comp-video]").count() == 0 and page.locator("[data-testid=comp-lb-novideo]").count() == 1
+        page.keyboard.press("Escape")
+    finally:
+        video(ctx, base_url, True)
+
+
+def test_player_has_no_em_dash_and_fits_at_375_px(page):
+    page.set_viewport_size({"width": 375, "height": 800})
+    goto(page)
+    page.locator("[data-testid=comp-spot] [data-testid=comp-card-open]").first.click()
+    assert page.locator("[data-testid=comp-video]").count() == 1
+    assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth")
+    box = page.locator("[data-testid=comp-lb]").bounding_box()
+    vb = page.locator("[data-testid=comp-video]").bounding_box()
+    assert box["x"] >= 0 and box["x"] + box["width"] <= 375 and vb["x"] >= 0 and vb["x"] + vb["width"] <= 375
+    assert "\u2014" not in page.locator("[data-testid=comp-lb]").text_content()
+    page.keyboard.press("Escape")

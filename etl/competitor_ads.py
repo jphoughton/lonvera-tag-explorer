@@ -64,6 +64,12 @@ MEDIA_PAUSE = 0.3                 # between downloads
 BACKFILL_PAUSE = 1.0              # between single-ad page loads
 MEDIA_PRUNE_DAYS = 60
 MEDIA_HOSTS = re.compile(r"(^|\.)(fbcdn\.net|facebook\.com)$")
+VIDEO_MAX_S = 30                  # keep at most the first 30 seconds of a video
+VIDEO_MAX_BYTES = 6_000_000       # hard cap per stored video
+VIDEO_DL_MAX = 60_000_000         # refuse to read more than this from one URL (Meta's SD rendition of a 4 minute ad is about 9 MB)
+VIDEO_PAUSE = 0.5                 # between video downloads
+VIDEO_MAX_MB = 300                # default cap on the whole competitor_ad_video table
+VIDEO_PRUNE_DAYS = 21
 MEDIA_UA = "LonveraCompetitorResearch/1.0 (weekly thumbnails of public Meta Ad Library ads; contact joshphoughton@gmail.com)"
 
 # (brand, product type, exact search phrases, advertiser-name regex). Editable in the table afterwards; this only seeds missing brands.
@@ -96,7 +102,8 @@ CARD_JS = r"""(maxCards) => {
     while (c.parentElement) { const p = c.parentElement; if ((p.innerText.match(/Library ID: \d+/g) || []).length > 1) break; c = p; }
     out.push({text: c.innerText, hrefs: [...c.querySelectorAll('a[href]')].map(a => a.href), vids: c.querySelectorAll('video').length,
                imgs: [...c.querySelectorAll('img')].map(i => ({src: i.src, w: i.naturalWidth, h: i.naturalHeight})),
-               posters: [...c.querySelectorAll('video')].map(v => v.poster || '').filter(Boolean)});
+               posters: [...c.querySelectorAll('video')].map(v => v.poster || '').filter(Boolean),
+               vsrc: [...c.querySelectorAll('video')].map(v => v.currentSrc || v.src || '').filter(Boolean)});
   }
   return out;
 }"""
@@ -147,6 +154,14 @@ def pick_media(raw: dict) -> tuple[str | None, str | None]:
     return None, None
 
 
+def pick_video(raw: dict) -> str | None:
+    """The mp4 link (Meta's SD rendition, signed, valid about 4 days) of a video card, else None."""
+    for u in raw.get("vsrc") or []:
+        if isinstance(u, str) and u.startswith("https://"):
+            return u
+    return None
+
+
 def parse_card(raw: dict) -> dict | None:
     """{text, hrefs, vids} from the page -> one ad dict, or None when it is not a readable card."""
     text = raw.get("text") or ""
@@ -170,7 +185,7 @@ def parse_card(raw: dict) -> dict | None:
     return {"library_id": m.group(1), "advertiser": adv[:120], "start_date": start, "variant_count": int(nm.group(1)) if nm else 1,
             "format": "video" if raw.get("vids") else "image", "primary_text": primary[:2500], "headline": headline[:200], "domain": domain,
             "hook": (first_line or headline)[:240], "landing_url": landing_from(raw.get("hrefs") or []) or (domain or None),
-            "media_url": murl, "media_kind": mkind}
+            "media_url": murl, "media_kind": mkind, "video_url": pick_video(raw)}
 
 
 # ---- browser --------------------------------------------------------------------------------------------------------------------------
@@ -623,11 +638,222 @@ def backfill_media(conn, browser, week: dt.date | None = None, brand: str | None
     return st
 
 
+# ---- video (playable copies) ----------------------------------------------------------------------------------------------------------
+
+def fetch_video(url: str) -> bytes:
+    """Plain GET of one Ad Library mp4 with a polite User-Agent and no Referer. Only https links on facebook / fbcdn hosts; no cookies, no login."""
+    u = urllib.parse.urlparse(url)
+    if u.scheme != "https" or not MEDIA_HOSTS.search(u.hostname or ""):
+        raise ValueError("refused host")
+    req = urllib.request.Request(url, headers={"User-Agent": MEDIA_UA, "Accept": "video/mp4,video/*;q=0.8"})
+    with urllib.request.urlopen(req, timeout=60) as r:                     # noqa: S310
+        data = r.read(VIDEO_DL_MAX + 1)
+    if len(data) > VIDEO_DL_MAX:
+        raise ValueError("download too large")
+    return data
+
+
+def _probe(path: str, runner, ffprobe: str) -> dict:
+    """{vcodec, acodec, width, height, duration} of a media file via ffprobe. ValueError when it is not a video."""
+    r = runner([ffprobe, "-v", "error", "-print_format", "json", "-show_streams", "-show_format", path], capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        raise ValueError("not a video: ffprobe failed")
+    j = json.loads(r.stdout or "{}")
+    v = next((x for x in j.get("streams", []) if x.get("codec_type") == "video"), None)
+    a = next((x for x in j.get("streams", []) if x.get("codec_type") == "audio"), None)
+    if v is None:
+        raise ValueError("not a video: no video stream")
+    dur = (j.get("format") or {}).get("duration") or v.get("duration")
+    return {"vcodec": v.get("codec_name"), "acodec": a.get("codec_name") if a else None, "width": int(v.get("width") or 0) or None,
+            "height": int(v.get("height") or 0) or None, "duration": float(dur) if dur else None}
+
+
+def encode_video(data: bytes, max_s: int = VIDEO_MAX_S, max_bytes: int = VIDEO_MAX_BYTES, runner=subprocess.run, ffmpeg: str | None = None) -> tuple[bytes, float | None, int | None, int | None]:
+    """Ad Library mp4 bytes -> (mp4 bytes, seconds, width, height) holding at most the first `max_s` seconds and at most `max_bytes`.
+    Meta's SD rendition is already H.264 + AAC at about 360 px and 280 kbps, so the normal path is an ffmpeg stream copy of the first seconds with the moov atom moved to the front (no quality loss,
+    no CPU). A source in another codec is re-encoded (H.264 + AAC, at most 480 px wide, about 650 kbps, 64 kbps audio); a result over the cap is re-encoded once at a lower bitrate; still over: ValueError.
+    Without ffmpeg on the machine the original is stored as is when it looks like an mp4 and fits the cap (duration / size unknown), otherwise ValueError. ValueError carries a short skip reason."""
+    ffmpeg = ffmpeg or shutil.which("ffmpeg")
+    if not ffmpeg:
+        if len(data) > max_bytes:
+            raise ValueError("no ffmpeg and original over the size cap")
+        if data[4:8] != b"ftyp":
+            raise ValueError("no ffmpeg and not an mp4")
+        return data, None, None, None
+    ffprobe = os.path.join(os.path.dirname(ffmpeg), "ffprobe") if os.path.dirname(ffmpeg) else "ffprobe"
+    with tempfile.TemporaryDirectory(prefix="compvid_") as td:
+        src, out = os.path.join(td, "in.mp4"), os.path.join(td, "out.mp4")
+        with open(src, "wb") as f:
+            f.write(data)
+        info = _probe(src, runner, ffprobe)
+
+        def run_ff(extra: list[str]) -> bytes | None:
+            if os.path.exists(out):
+                os.remove(out)
+            r = runner([ffmpeg, "-y", "-v", "error", "-i", src, "-t", str(max_s), *extra, "-movflags", "+faststart", out], capture_output=True, text=True, timeout=300)
+            if r.returncode != 0 or not os.path.exists(out):
+                return None
+            with open(out, "rb") as f:
+                return f.read()
+
+        def reenc(vk: int, ak: int) -> bytes | None:
+            return run_ff(["-vf", "scale='min(480,iw)':-2", "-c:v", "libx264", "-preset", "veryfast", "-profile:v", "main", "-pix_fmt", "yuv420p", "-b:v", f"{vk}k", "-maxrate", f"{vk}k",
+                           "-bufsize", f"{2 * vk}k", "-c:a", "aac", "-b:a", f"{ak}k", "-ac", "2"])
+
+        res = None
+        if info["vcodec"] == "h264" and info["acodec"] in (None, "aac"):
+            res = run_ff(["-c", "copy"])
+        if res is None or len(res) > max_bytes:
+            res = reenc(650, 64)
+        if res is not None and len(res) > max_bytes:
+            res = reenc(300, 48)
+        if res is None:
+            raise ValueError("ffmpeg failed")
+        if len(res) > max_bytes:
+            raise ValueError("over the size cap after a lower bitrate")
+        with open(out, "wb") as f:
+            f.write(res)
+        o = _probe(out, runner, ffprobe)
+        return res, o["duration"], o["width"], o["height"]
+
+
+def stored_video_ids(conn) -> set[str]:
+    return {r[0] for r in conn.execute("SELECT library_id FROM competitor_ad_video").fetchall()}
+
+
+def video_total_bytes(conn) -> int:
+    return int(conn.execute("SELECT coalesce(sum(size_bytes), 0) FROM competitor_ad_video").fetchone()[0])
+
+
+def store_video(conn, library_id: str, data: bytes, dur: float | None, w: int | None, h: int | None):
+    conn.execute("""INSERT INTO competitor_ad_video (library_id, content_type, duration_s, width, height, bytes, size_bytes) VALUES (%s,'video/mp4',%s,%s,%s,%s,%s)
+                    ON CONFLICT (library_id) DO UPDATE SET content_type=EXCLUDED.content_type, duration_s=EXCLUDED.duration_s, width=EXCLUDED.width, height=EXCLUDED.height,
+                    bytes=EXCLUDED.bytes, size_bytes=EXCLUDED.size_bytes, fetched_at=now()""", (library_id, dur, w, h, data, len(data)))
+
+
+def select_video(ads: list[dict], existing: set[str], today: dt.date, cap: int = MEDIA_CAP) -> list[dict]:
+    """The curated slice (select_media: per brand the top longest-running distinct concepts plus the new ones) restricted to video ads whose video is not stored yet. The slice is chosen over
+    all formats first, so a stored or image ad never pulls a deeper video in. Same order as select_media (longest-running first, brands interleaved)."""
+    chosen = select_media(ads, set(), today, 10 ** 9)
+    return [a for a in chosen if a.get("format") == "video" and str(a["library_id"]) not in existing][:cap]
+
+
+def new_video_stats() -> dict:
+    return {"selected": 0, "stored": 0, "failed": 0, "no_video": 0, "skipped": {}, "bytes": 0, "capped": 0}
+
+
+def prune_video(conn, days: int = VIDEO_PRUNE_DAYS) -> int:
+    """Delete videos older than `days` whose ad is not in the latest stored week."""
+    n = conn.execute("""DELETE FROM competitor_ad_video WHERE fetched_at < now() - make_interval(days => %s)
+                        AND library_id NOT IN (SELECT library_id FROM competitor_ads WHERE week_start = (SELECT max(week_start) FROM competitor_ads))""", (days,)).rowcount
+    conn.commit()
+    return n
+
+
+def enforce_video_cap(conn, max_mb: float, keep_latest: bool = True) -> int:
+    """Hold the table at or under max_mb. Evicts videos of ads that are not in the latest week first (oldest first). With keep_latest=False it then trims the latest week too, shortest-running
+    ads first, so the longest-running ads of the latest week are the last to go. Returns rows deleted."""
+    cap = int(max_mb * 1_000_000)
+    n = 0
+    total = video_total_bytes(conn)
+    latest = "(SELECT library_id FROM competitor_ads WHERE week_start = (SELECT max(week_start) FROM competitor_ads))"
+    steps = [f"SELECT library_id, size_bytes FROM competitor_ad_video WHERE library_id NOT IN {latest} ORDER BY fetched_at, library_id"]
+    if not keep_latest:
+        steps.append(f"""SELECT v.library_id, v.size_bytes FROM competitor_ad_video v LEFT JOIN (SELECT library_id, max(days_running) AS d FROM competitor_ads
+                         WHERE week_start = (SELECT max(week_start) FROM competitor_ads) GROUP BY library_id) a ON a.library_id = v.library_id
+                         ORDER BY coalesce(a.d, -1), v.fetched_at, v.library_id""")
+    for sql in steps:
+        if total <= cap:
+            break
+        for lid, sz in conn.execute(sql).fetchall():
+            if total <= cap:
+                break
+            conn.execute("DELETE FROM competitor_ad_video WHERE library_id=%s", (lid,))
+            total -= sz
+            n += 1
+    conn.commit()
+    return n
+
+
+def capture_videos(conn, picks: list[dict], st: dict, max_mb: float = VIDEO_MAX_MB, fetch=fetch_video, encode=encode_video, sleep=time.sleep, log=db.log) -> None:
+    """Download + trim / encode + store each pick that carries a video_url. Every failure is counted (st['failed'], st['skipped'][reason]) and logged, never raised. Stops when the table is at
+    max_mb after evicting videos of older weeks (st['capped'] counts what was left undone)."""
+    cap = int(max_mb * 1_000_000)
+    for i, a in enumerate(picks):
+        if video_total_bytes(conn) >= cap:
+            enforce_video_cap(conn, max_mb * 0.97, keep_latest=True)
+            if video_total_bytes(conn) >= cap:
+                st["capped"] += len(picks) - i
+                log(f"  competitor_ads video: table at the {max_mb:g} MB cap, {len(picks) - i} left undone")
+                return
+        st["selected"] += 1
+        if not a.get("video_url"):
+            st["no_video"] += 1
+            continue
+        try:
+            data, dur, w, h = encode(fetch(a["video_url"]))
+            store_video(conn, a["library_id"], data, dur, w, h)
+            conn.commit()
+            st["stored"] += 1
+            st["bytes"] += len(data)
+        except ValueError as e:                                            # a reason we know: counted by reason
+            conn.rollback()
+            why = str(e)[:60]
+            st["skipped"][why] = st["skipped"].get(why, 0) + 1
+            log(f"  competitor_ads video {a['library_id']}: skipped ({why})")
+        except Exception as e:                                             # noqa: BLE001
+            conn.rollback()
+            st["failed"] += 1
+            log(f"  competitor_ads video {a['library_id']}: {db.scrub(e)[:120]}")
+        sleep(VIDEO_PAUSE)
+
+
+def backfill_video(conn, browser, week: dt.date | None = None, brand: str | None = None, cap: int = MEDIA_CAP, max_mb: float = VIDEO_MAX_MB, fetch=fetch_video, encode=encode_video,
+                   sleep=time.sleep, today: dt.date | None = None, log=db.log, progress_every: int = 10) -> dict:
+    """Playable copies for video ads already in competitor_ads (no brand-page scrape, no competitor_ads write): the same curated selection over the stored rows of `week` (default the latest),
+    videos only, then one single-ad Ad Library page per missing video to read its mp4 link. Resumable (stored ids are skipped), 1 s between pages, a failure on one ad never stops the run."""
+    today = today or dt.datetime.now(PT).date()
+    if week is None:
+        week = conn.execute("SELECT max(week_start) FROM competitor_ads").fetchone()[0]
+    st = {"week_start": str(week) if week else None, **new_video_stats(), "gone": 0}
+    if week is None:
+        return st
+    prune_video(conn)
+    rows = conn.execute("""SELECT brand, library_id, concept_key, days_running, start_date, format FROM competitor_ads WHERE week_start=%s AND (%s::text IS NULL OR brand=%s)""",
+                        (week, brand, brand)).fetchall()
+    ads = [dict(zip(("brand", "library_id", "concept_key", "days_running", "start_date", "format"), r)) for r in rows]
+    picks = select_video(ads, stored_video_ids(conn), today, cap)
+    total = len(picks)
+    log(f"  competitor_ads video backfill: {total} to fetch (week {week})")
+    for i, a in enumerate(picks, 1):
+        if i > 1:
+            sleep(BACKFILL_PAUSE)
+        try:
+            cards = browser.load_one(a["library_id"])
+            mine = next((c for c in cards if f"Library ID: {a['library_id']}" in (c.get("text") or "")), None)
+            if mine is None:
+                st["selected"] += 1
+                st["gone"] += 1
+            else:
+                capture_videos(conn, [{**a, "video_url": pick_video(mine)}], st, max_mb, fetch, encode, lambda _s: None, log)
+                if st["capped"]:
+                    st["capped"] += total - i
+                    break
+        except BrandFailed as e:
+            st["selected"] += 1
+            st["failed"] += 1
+            log(f"  competitor_ads video {a['library_id']}: {e}")
+        if i % progress_every == 0 or i == total:
+            log(f"  competitor_ads video backfill: {i}/{total} stored={st['stored']} skipped={sum(st['skipped'].values())} failed={st['failed']} no_video={st['no_video']} gone={st['gone']}")
+    st["pruned_cap"] = enforce_video_cap(conn, max_mb, keep_latest=False)
+    return st
+
+
 # ---- run ------------------------------------------------------------------------------------------------------------------------------
 
 def run(conn, brand: str | None = None, limit: int = DEFAULT_LIMIT, dry_run: bool = False, week: dt.date | None = None, do_classify: bool = True,
         max_cards: int = MAX_CARDS, browser=None, runner=subprocess.run, sleep=time.sleep, today: dt.date | None = None, log=db.log, do_media: bool = True,
-        fetch=fetch_url) -> dict:
+        fetch=fetch_url, do_video: bool = True, max_video_mb: float = VIDEO_MAX_MB, fetch_vid=fetch_video, encode=encode_video) -> dict:
     today = today or dt.datetime.now(PT).date()
     week = week or week_start_for(today)
     ensure_brands(conn)
@@ -636,6 +862,7 @@ def run(conn, brand: str | None = None, limit: int = DEFAULT_LIMIT, dry_run: boo
     cols = ("brand", "product_type", "search_phrases", "name_match")
     st: dict = {"week_start": str(week), "dry_run": dry_run, "brands": {}, "failed_brands": [], "ads": 0, "carried_rows": 0}
     mst = new_media_stats()
+    vst = new_video_stats()
     if not brands:
         raise db.JobFailed(f"no active brand named {brand!r}" if brand else "no active competitor brands")
     if not dry_run and do_classify and not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
@@ -663,6 +890,13 @@ def run(conn, brand: str | None = None, limit: int = DEFAULT_LIMIT, dry_run: boo
                         except Exception as e:                              # noqa: BLE001
                             conn.rollback()
                             log(f"  competitor_ads {br['brand']}: media capture failed ({db.scrub(e)[:120]}); ad rows kept")
+                    if do_media and do_video:
+                        try:                                                # same rule for videos: never undoes or fails the brand's ad rows
+                            vpicks = select_video([{**a, "brand": br["brand"]} for a in ads], stored_video_ids(conn), today, max(0, MEDIA_CAP - vst["selected"]))
+                            capture_videos(conn, vpicks, vst, max_video_mb, fetch_vid, encode, sleep, log)
+                        except Exception as e:                              # noqa: BLE001
+                            conn.rollback()
+                            log(f"  competitor_ads {br['brand']}: video capture failed ({db.scrub(e)[:120]}); ad rows kept")
             except BrandFailed as e:
                 st["failed_brands"].append({"brand": br["brand"], "error": str(e)})
                 log(f"  competitor_ads {br['brand']}: FAILED ({e}); keeping last good data, flagged stale")
@@ -679,6 +913,14 @@ def run(conn, brand: str | None = None, limit: int = DEFAULT_LIMIT, dry_run: boo
         except Exception as e:                                             # noqa: BLE001
             conn.rollback()
             log(f"  competitor_ads media prune failed: {db.scrub(e)[:120]}")
+        if do_video:
+            st["video"] = vst
+            try:
+                vst["pruned"] = prune_video(conn)
+                vst["pruned_cap"] = enforce_video_cap(conn, max_video_mb, keep_latest=False)
+            except Exception as e:                                         # noqa: BLE001
+                conn.rollback()
+                log(f"  competitor_ads video prune failed: {db.scrub(e)[:120]}")
     if not dry_run and do_classify:
         st["classify"] = classify(conn, week, limit, brand, runner, sleep, log)
     return st
@@ -694,6 +936,9 @@ def main():
     ap.add_argument("--if-sunday", action="store_true", help="do nothing unless today is Sunday in Pacific time (the nightly pipeline calls it every night)")
     ap.add_argument("--max-cards", type=int, default=MAX_CARDS)
     ap.add_argument("--no-media", action="store_true", help="skip creative thumbnail capture")
+    ap.add_argument("--no-video", action="store_true", help="skip the playable video copies (thumbnails are still captured)")
+    ap.add_argument("--max-video-mb", type=float, default=VIDEO_MAX_MB, help="cap on all stored videos together (default 300); at the cap capture stops and older weeks are evicted first")
+    ap.add_argument("--video-backfill", action="store_true", help="only fetch playable videos for video ads already stored (latest week, or --week); no brand-page scrape, no competitor_ads writes")
     ap.add_argument("--media-backfill", action="store_true", help="only fetch thumbnails for ads already stored (latest week, or --week); no scrape of brand pages, no competitor_ads writes")
     a = ap.parse_args()
     if a.media_backfill:
@@ -707,11 +952,22 @@ def main():
             job.rows_written = st["stored"]
             db.log("  " + json.dumps(st, default=str))
         return
+    if a.video_backfill:
+        with db.JobRun("competitor_ad_video") as job, db.connect() as conn:
+            browser = Browser()
+            try:
+                st = backfill_video(conn, browser, a.week, a.brand, max_mb=a.max_video_mb)
+            finally:
+                browser.close()
+            job.stats = st
+            job.rows_written = st["stored"]
+            db.log("  " + json.dumps(st, default=str))
+        return
     if a.if_sunday and dt.datetime.now(PT).weekday() != 6:
         db.log("competitor_ads: not Sunday (Pacific), skipped")
         return
     with db.JobRun("competitor_ads") as job, db.connect() as conn:
-        st = run(conn, a.brand, a.limit, a.dry_run, a.week, not a.no_classify, a.max_cards, do_media=not a.no_media)
+        st = run(conn, a.brand, a.limit, a.dry_run, a.week, not a.no_classify, a.max_cards, do_media=not a.no_media, do_video=not a.no_video, max_video_mb=a.max_video_mb)
         job.stats = st
         job.rows_written = st["ads"]
         db.log("  " + json.dumps(st, default=str))

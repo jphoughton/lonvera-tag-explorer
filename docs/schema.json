@@ -7502,6 +7502,80 @@
    "examples": []
   },
   {
+   "name": "public.competitor_ad_video",
+   "schema": "public",
+   "relation": "competitor_ad_video",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "A small playable copy of the watched competitors' video ads (first 30 seconds, H.264 / AAC mp4) so the /competitors lightbox can play them in the app. Bytes are stored because the Ad Library video links are signed and expire in about 4 days.",
+   "grain": "one row per Meta Ad Library ID (joins to competitor_ads.library_id and competitor_ad_media.library_id)",
+   "primary_key": [
+    "library_id"
+   ],
+   "foreign_keys": [],
+   "source": "etl.competitor_ads: the SD mp4 link on the public Ad Library card (scrape time or --video-backfill), downloaded with a plain GET, trimmed to 30 seconds with ffmpeg stream copy (re-encoded only when the source is not H.264 / AAC or is over the cap), at most 6 MB each; selection = the same curated slice as the thumbnails, videos only",
+   "refresh": "weekly with etl.competitor_ads (Sundays Pacific); python -m etl.competitor_ads --video-backfill fills ads already stored; rows older than 21 days that are not in the latest week are deleted, and the table is held under --max-video-mb (default 300)",
+   "coverage": "from 2026-11-13; only the curated video slice, not every video in competitor_ads",
+   "caveats": [
+    "No row = no saved video (never captured, over the size cap, or the link was gone), not a missing ad. The lightbox then shows the poster and a link to the Ad Library.",
+    "Served by GET /api/competitors/video/<library_id> (login required, HTTP Range supported); do not read bytes through SQL for display.",
+    "Only the first 30 seconds are kept (duration_s is the stored length, not the ad's length). Quality is Meta's SD rendition (360 px wide)."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "library_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta Ad Library ID (primary key)."
+    },
+    {
+     "name": "content_type",
+     "type": "text",
+     "nullable": false,
+     "description": "MIME type of bytes (video/mp4)."
+    },
+    {
+     "name": "duration_s",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Stored length in seconds (at most 30); NULL when ffmpeg was not available to read it."
+    },
+    {
+     "name": "width",
+     "type": "integer",
+     "nullable": true,
+     "description": "Pixel width of the stored video, NULL when unknown."
+    },
+    {
+     "name": "height",
+     "type": "integer",
+     "nullable": true,
+     "description": "Pixel height of the stored video, NULL when unknown."
+    },
+    {
+     "name": "bytes",
+     "type": "bytea",
+     "nullable": false,
+     "description": "The mp4 bytes (moov atom first, so it streams and seeks)."
+    },
+    {
+     "name": "size_bytes",
+     "type": "integer",
+     "nullable": false,
+     "description": "Length of bytes (kept as a column so the size cap never reads the bytes)."
+    },
+    {
+     "name": "fetched_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the video was downloaded."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.creative_priorities_snapshots",
    "schema": "public",
    "relation": "creative_priorities_snapshots",
