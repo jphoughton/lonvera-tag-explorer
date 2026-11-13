@@ -4,7 +4,7 @@
 import { h } from '../util.js';
 import { api } from '../api.js';
 import { assignmentPanel } from './priorities_panel.js';
-import { STATUSES, STATUS_LABEL, statusOf, md, weekLabel, productName, formatLabel, dueInfo, nextActions, eventLine, link, resultText, mondayOf, addDays, today, askDialog } from './production_common.js';
+import { STATUSES, STATUS_LABEL, statusOf, md, weekLabel, ticketTitle, productName, formatLabel, dueInfo, nextActions, eventLine, link, resultText, mondayOf, addDays, today, askDialog } from './production_common.js';
 
 const when = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`; };
 
@@ -45,7 +45,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
     const due = dueInfo(r);
     head.replaceChildren(
       h('div', { class: 'prod-drawer-titlerow' },
-        h('h2', { id: 'prod-drawer-title', 'data-testid': 'prod-drawer-title' }, r.pain_point || r.cluster || 'Concept'),
+        h('h2', { id: 'prod-drawer-title', 'data-testid': 'prod-drawer-title' }, ticketTitle(r)),
         h('button', { type: 'button', class: 'btn prod-drawer-close', 'data-testid': 'prod-drawer-close', 'aria-label': 'Close', onclick: close }, 'Close')),
       h('p', { class: 'pri-sub prod-drawer-sub' }, [productName(r.product), r.cluster, r.icp].filter(Boolean).join(' / ')),
       r.stage === 'dropped' ? h('p', { class: 'prod-pill prod-st-dropped', 'data-testid': 'prod-drawer-status' }, 'Dropped')

@@ -13,6 +13,15 @@ def fresh(ctx, base_url):
     ctx.request.post(base_url + "/__test/assign/reset")
 
 
+def choose(page, tid, *values):
+    """Tick exactly these options in a multi-select filter (none = All), then close it so the choice is applied."""
+    d = page.locator(f".pagefilters [data-testid={tid}]")
+    d.locator("summary").click()
+    for cb in d.locator("input[type=checkbox]").all():
+        cb.set_checked(cb.get_attribute("value") in values)
+    page.keyboard.press("Escape")
+
+
 def idle(page):
     page.wait_for_function("() => !document.querySelector('#view').hasAttribute('aria-busy')")
 
@@ -103,16 +112,16 @@ def test_concept_id_links_ads_and_shows_the_result(page):
 
 def test_filters_by_week_vendor_and_closed(page):
     goto(page)
-    page.select_option("[data-testid=prod-vendor]", "Victoria")
+    choose(page, "prod-vendor", "Victoria")
     page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 1")
     assert page.locator("[data-testid=prod-row]").get_attribute("data-id") == "3"
-    page.select_option("[data-testid=prod-vendor]", "")
+    choose(page, "prod-vendor")
     page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 3")
-    weeks = page.locator("[data-testid=prod-week] option").all_text_contents()
-    assert weeks[0] == "All weeks" and len(weeks) == 4
-    page.select_option("[data-testid=prod-week]", index=2)
+    wk = [cb.get_attribute("value") for cb in page.locator("[data-testid=prod-week] input[type=checkbox]").all()]
+    assert len(wk) == 3
+    choose(page, "prod-week", wk[1])
     page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 2")
-    page.select_option("[data-testid=prod-week]", "")
+    choose(page, "prod-week")
     page.check("[data-testid=prod-closed]")
     page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 4")
     assert "closed=1" in page.url
@@ -138,7 +147,7 @@ def test_change_vendor_and_drop_with_confirm(page):
 def test_vendor_links_copy_and_reset_with_confirm(page, ctx):
     ctx.grant_permissions(["clipboard-read", "clipboard-write"])
     goto(page)
-    assert page.locator("[data-testid=prod-copy-link]").count() == 9
+    assert page.locator("[data-testid=prod-copy-link]").count() == 10
     assert not page.locator("[data-testid=prod-copy-link]").first.is_visible()          # collapsed until opened
     page.locator("[data-testid=prod-links] > summary").click()
     page.locator("[data-vendor=Madre] [data-testid=prod-copy-link]").click()
@@ -448,3 +457,29 @@ def test_vendor_page_has_no_history(anon_page, base_url):
     anon_page.goto(f"{base_url}/priorities/vendor/{MADRE}")
     anon_page.wait_for_selector("[data-testid=prod-vendor-page]")
     assert anon_page.locator("[data-testid=prod-history]").count() == 0
+
+
+def test_week_vendor_and_product_filters_take_several_choices_at_once(page):
+    goto(page, "?closed=1")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 4")
+    ids = lambda: sorted(page.locator("[data-testid=prod-row]").evaluate_all("rs => rs.map(r => r.dataset.id)"))
+    btn = lambda tid: page.locator(f".pagefilters [data-testid={tid}-btn]").text_content().strip()
+    assert btn("prod-vendor") == "All vendors" and btn("prod-week") == "All weeks" and btn("prod-product-filter") == "All products"
+    choose(page, "prod-product-filter", "vita-bull", "boneflex")                       # two products at once
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 3")
+    assert ids() == ["1", "3", "4"] and btn("prod-product-filter") == "2 selected"
+    choose(page, "prod-vendor", "Madre", "Victoria")
+    assert btn("prod-vendor") == "2 selected" and ids() == ["1", "3", "4"]
+    choose(page, "prod-vendor", "Victoria")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 1")
+    assert btn("prod-vendor") == "Victoria" and "vendor=Victoria" in page.url and "product=" in page.url
+    page.reload()                                                                       # the choices live in the address
+    page.wait_for_selector("[data-testid=prod-page]")
+    idle(page)
+    assert btn("prod-vendor") == "Victoria" and btn("prod-product-filter") == "2 selected"
+    choose(page, "prod-vendor", "Madre", "Victoria")
+    choose(page, "prod-product-filter")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 4")
+    wk = [cb.get_attribute("value") for cb in page.locator("[data-testid=prod-week] input[type=checkbox]").all()]
+    choose(page, "prod-week", wk[0], wk[1])                                             # two weeks at once
+    assert btn("prod-week") == "2 selected"

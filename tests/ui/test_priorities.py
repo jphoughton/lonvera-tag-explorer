@@ -1760,7 +1760,7 @@ def test_assign_button_shows_with_a_selection_and_the_dialog_defaults_to_next_mo
     dlg = page.locator("[data-testid=pri-as-dialog]")
     assert dlg.is_visible() and "2 concepts selected" in dlg.locator("[data-testid=pri-as-note-count]").text_content()
     vendors = dlg.locator("[data-testid=pri-as-vendor] option").all_text_contents()
-    assert vendors[0] == "Madre" and "Victoria" in vendors and len(vendors) == 9
+    assert vendors[0] == "Madre" and "Victoria" in vendors and len(vendors) == 10
     nm = _next_monday()
     chosen = dlg.locator("[data-testid=pri-as-week]").evaluate("e => e.options[e.selectedIndex].value")
     opts = dlg.locator("[data-testid=pri-as-week] option").evaluate_all("els => els.map(e => e.value)")

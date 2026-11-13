@@ -109,7 +109,7 @@ def register(app, deps):
         rows = []
         for r in sorted(S["rows"].values(), key=lambda r: (r["for_week"], r["id"]), reverse=True):
             v = view(r)
-            if week and v["for_week"] != week or vendor and r["vendor"] != vendor:
+            if week and v["for_week"] not in week.split(",") or vendor and r["vendor"] not in vendor.split(","):
                 continue
             if v["stage"] in ("launched", "dropped") and not closed:
                 continue

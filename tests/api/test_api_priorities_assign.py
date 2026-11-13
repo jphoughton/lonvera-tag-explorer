@@ -169,7 +169,7 @@ def test_assign_validation(client, snaps):
         assert r.status_code == 400 and msg in r.get_json()["error"], body
     assert client.post("/api/priorities/assignments", json=[k]).status_code == 400
     assert client.post("/api/priorities/assignments", json={"keys": [k], "snapshot_week": "2025-01-05", "vendor": "Madre", "for_week": MONDAY}).status_code == 404       # no such snapshot
-    for v in ("PuredMedia", "CreateMastery", "OpenProgram", "Internal", "10xROAS"):
+    for v in ("PuredMedia", "CreateMastery", "OpenProgram", "Studio Flow", "Internal", "10xROAS"):
         assert assign(client, [k], v).status_code == 201
 
 
@@ -810,3 +810,22 @@ def test_history_rows_go_with_the_assignment_and_old_rows_are_rebuilt_by_the_mig
     pg.commit()
     h = hist(client, a["id"])
     assert [e["kind"] for e in h] == ["assigned", "brief_added", "ready"] and h[0]["actor"] == "JoshHoughton" and h[1]["actor"] is None
+
+
+def test_week_vendor_and_product_filters_take_comma_lists_on_the_list_and_the_board(client, snaps):
+    a = one(client, "Madre", MONDAY)
+    b = one(client, "Victoria", NEXT_MONDAY, key=_key(DRAFT))
+    c = one(client, "TrybeOrion", MONDAY)
+    ids = lambda d: sorted(r["id"] for r in d["rows"])
+    base = "/api/priorities/assignments?include_closed=1"
+    assert ids(client.get(base).get_json()) == sorted([a["id"], b["id"], c["id"]])
+    assert ids(client.get(base + "&vendor=Madre,Victoria").get_json()) == sorted([a["id"], b["id"]])
+    assert ids(client.get(base + f"&week={MONDAY},{NEXT_MONDAY}").get_json()) == sorted([a["id"], b["id"], c["id"]])
+    assert ids(client.get(base + f"&week={NEXT_MONDAY}").get_json()) == [b["id"]]
+    assert client.get(base + "&vendor=Madre,Nobody").status_code == 400
+    cards = lambda d: sorted(x["id"] for col in d["columns"] for x in col["cards"])
+    got = client.get("/api/priorities/board?vendor=Madre,Victoria&closed=1").get_json()
+    assert cards(got) == sorted([a["id"], b["id"]]) and sorted(x["vendor"] for x in got["capacity"]) == ["Madre", "Victoria"]
+    assert cards(client.get(f"/api/priorities/board?week={MONDAY},{NEXT_MONDAY}&closed=1").get_json()) == sorted([a["id"], b["id"], c["id"]])
+    one_week = client.get(f"/api/priorities/board?week={NEXT_MONDAY}").get_json()
+    assert one_week["week"] == NEXT_MONDAY and client.get(f"/api/priorities/board?week={MONDAY},{NEXT_MONDAY}").get_json()["week"] != NEXT_MONDAY
