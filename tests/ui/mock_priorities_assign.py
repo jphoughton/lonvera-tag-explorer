@@ -102,6 +102,16 @@ def register(app, deps):
 
     HANDLE.update(view=view, view_base=view_base)
 
+    @app.get("/api/priorities/assignments/<int:aid>/transcripts")
+    def assign_transcripts(aid):
+        r = S["rows"].get(aid)
+        if r is None:
+            return jsonify(error="Assignment not found."), 404
+        if aid != 4:
+            return jsonify(transcripts=[])
+        return jsonify(transcripts=[{"concept_id": "Lonvera-VitalBull-Static-5.4-hook2", "label": "Hook 2", "transcript": "The snooze button. The third coffee.", "language": "en", "duration_s": 41.2, "engine": "faster-whisper", "model": "base.en", "created_at": now()},
+                                    {"concept_id": "Lonvera-VitalBull-Static-5.4", "label": "Original", "transcript": "Three symptoms. One nutritional answer.", "language": "en", "duration_s": 52.8, "engine": "faster-whisper", "model": "base.en", "created_at": now()}])
+
     @app.get("/api/priorities/assignments")
     def assign_list():
         week, vendor = request.args.get("week") or "", request.args.get("vendor") or ""
