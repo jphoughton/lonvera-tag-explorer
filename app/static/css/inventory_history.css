@@ -1,0 +1,14 @@
+/* Inventory history (/inventory/history), ih- classes */
+.ih-page .ih-h2 { font-size: 16px; margin: 18px 0 8px; }
+.ih-page .ih-note { max-width: 80ch; margin: 8px 0 0; }
+.ih-page .ih-gaps { margin: 10px 0; }
+.ih-table th.ih-first { text-align: left; position: sticky; left: 0; z-index: 2; background: var(--panel); }
+.ih-table thead th.ih-first { background: var(--head-bg); z-index: 5; }
+.ih-table th.ih-loc { text-align: center; border-left: 1px solid var(--line-soft); }
+.ih-table td.ih-total { font-weight: 600; }
+.ih-table tr.ih-sumrow th, .ih-table tr.ih-sumrow td { font-weight: 600; border-top: 1px solid var(--line); }
+.ih-table tr.ih-picked th, .ih-table tr.ih-picked td { background: var(--head-bg); }
+.ih-table td.ih-none { color: var(--muted); }
+.ih-table td.ih-gap { color: var(--bad); font-weight: 600; }
+.ih-est { font-style: italic; font-size: 11px; color: var(--muted); margin-left: 2px; }
+.ih-table td.ih-none[colspan] { text-align: center; }

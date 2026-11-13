@@ -27,3 +27,4 @@
 .prod-histlist { margin: 4px 0 0; padding-left: 18px; }
 .prod-histlist li { margin: 2px 0; }
 .prod-hwhen { color: var(--muted, #666); white-space: nowrap; }
+@import url("css/inventory_history.css");

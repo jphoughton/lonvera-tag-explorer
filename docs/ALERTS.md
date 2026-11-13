@@ -20,6 +20,8 @@ It deliberately never writes `etl_runs` (an hourly row there would hide a stale 
 | `claude:limit` | auto_tag or competitor_ads stopped on a Claude usage limit (retries by itself next night) | next failed run |
 | `fresh:meta` / `fresh:upstack` / `fresh:orders` / `fresh:google` | newest day in `app_meta` data_through / upstack_through, `upstack_orders_daily`, `google_daily` is more than 2 / 2 / 2 / 3 days behind today (Los Angeles). The 2-day limit is the stale banner's (`app.queries.STALE_DATA_DAYS`; a test keeps them equal) | days |
 | `fresh:feeds` | `daily` projection feeds past their own `stale_after_days` (the `freshness()` hooks of the projection modules, same data as Projections > Freshness; inventory, pacing, drivers ...). `monthly-upload` and `manual` feeds are never alerted | per feed |
+| `inv:revamp`, `inv:amazon`, `inv:intl` | a location with a daily stock series (`proj_demand_snapshot`, since 2026-11-03) has no snapshot dated yesterday (Los Angeles). Silent until the location has its first row. Not sent when `job:feeds` (revamp) or `job:inventory_snapshots` (amazon, intl) already has a finding | 1 day |
+| `job:inventory_snapshots` | same as the other nightly etl jobs, silent until the first row exists | nightly: 36 h |
 | `web:health` | `GET <web>/healthz` is not 200 or takes more than 5 s, twice in a row 20 s apart (a deploy restarts the app for about a minute). `/healthz` is public, returns `{"ok": true}` or 503 when the web app cannot reach Postgres, and carries no data | 5 s |
 | `alerts:check:<name>` | a check itself crashed (its alerts are not being evaluated) | immediately |
 
