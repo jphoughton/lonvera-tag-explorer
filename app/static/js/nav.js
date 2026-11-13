@@ -14,6 +14,7 @@ export const SECTIONS = [
       { key: 'google', label: 'Google', href: '/?platform=google', testid: 'nav-google', hint: 'Google: campaign types and campaigns' },
       { key: 'campaigns', label: 'Campaigns', href: '/campaigns?platform=all', testid: 'nav-campaigns', hint: 'Every campaign, Meta and Google' },
       { key: 'trends', label: 'Trends', href: '/trends', testid: 'nav-trends', hint: 'Key numbers by day, week or month' },
+      { key: 'email', label: 'Email', href: '/email', testid: 'nav-email', hint: 'Klaviyo email and text messages by flow and campaign' },
     ],
   },
   {
@@ -46,6 +47,7 @@ const RESOLVE = [
   { re: /^\/lookup\/?$/, section: 'creative', page: null },
   { re: /^\/connect-agent\/?$/, section: null, page: null },
   { re: /^\/trends\/?$/, section: 'performance', page: 'trends' },
+  { re: /^\/email\/?$/, section: 'performance', page: 'email' },
   { re: /^\/campaigns\/?$/, section: 'performance', page: 'campaigns' },
   { re: /^\/(p|ad)\//, section: 'performance', page: 'meta' },
   { re: /^\/google\/?$/, section: 'performance', page: 'google' },
