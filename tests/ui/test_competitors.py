@@ -383,3 +383,57 @@ def test_player_has_no_em_dash_and_fits_at_375_px(page):
     assert box["x"] >= 0 and box["x"] + box["width"] <= 375 and vb["x"] >= 0 and vb["x"] + vb["width"] <= 375
     assert "\u2014" not in page.locator("[data-testid=comp-lb]").text_content()
     page.keyboard.press("Escape")
+
+
+def test_lightbox_controls_do_not_overlap_the_text_at_375_px(page):
+    page.set_viewport_size({"width": 375, "height": 700})
+    goto(page)
+    page.locator("[data-testid=comp-spot] [data-testid=comp-card-open]").first.click()
+    assert page.locator("[data-testid=comp-lb]").is_visible()
+
+    def box(sel):
+        return page.locator(sel).bounding_box()
+
+    def hit(a, b):
+        return a["x"] < b["x"] + b["width"] and b["x"] < a["x"] + a["width"] and a["y"] < b["y"] + b["height"] and b["y"] < a["y"] + a["height"]
+
+    text = box("[data-testid=comp-lb] .comp-lb-body")      # the scrolling area holding the video and every line of text; the controls sit outside it
+    for sel in ("[data-testid=comp-lb-prev]", "[data-testid=comp-lb-next]", "[data-testid=comp-lb-count]"):
+        b = box(sel)
+        assert not hit(b, text), sel
+    for sel in ("[data-testid=comp-lb-prev]", "[data-testid=comp-lb-next]"):
+        b = box(sel)
+        assert b["width"] >= 44 and b["height"] >= 44
+    dlg = box("[data-testid=comp-lb]")
+    for sel in ("[data-testid=comp-lb-prev]", "[data-testid=comp-lb-next]", "[data-testid=comp-lb-count]"):
+        b = box(sel)
+        assert b["y"] >= dlg["y"] and b["y"] + b["height"] <= dlg["y"] + dlg["height"] + 1
+    assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth")
+    # long text scrolls inside the body, so its last line is reachable above the controls
+    page.evaluate("() => { const b = document.querySelector('.comp-lb-body'); b.scrollTop = b.scrollHeight; }")
+    last = page.locator("[data-testid=comp-lb] .comp-lb-links").bounding_box()
+    bar = box("[data-testid=comp-lb-prev]")
+    assert last["y"] + last["height"] <= bar["y"] + 1
+
+
+def test_lightbox_keys_are_real_key_presses_and_do_not_hijack_inputs(page):
+    goto(page)
+    page.locator("[data-testid=comp-spot] [data-testid=comp-card-open]").first.click()
+    lb = page.locator("[data-testid=comp-lb]")
+    n = page.locator("[data-testid=comp-spot]").count()
+    page.locator("[data-testid=comp-lb-next]").focus()
+    page.keyboard.press("ArrowRight")
+    assert page.locator("[data-testid=comp-lb-count]").text_content() == f"2 / {n}"
+    page.evaluate("() => document.activeElement.blur()")
+    page.keyboard.press("ArrowLeft")
+    assert page.locator("[data-testid=comp-lb-count]").text_content() == f"1 / {n}"
+    page.keyboard.press("Escape")
+    assert not lb.is_visible()
+    # closed: arrows must do nothing and no listener lingers
+    page.keyboard.press("ArrowRight")
+    assert page.locator("[data-testid=comp-lb-count]").text_content() == f"1 / {n}"
+    # an input inside the open dialog keeps its arrows
+    page.locator("[data-testid=comp-spot] [data-testid=comp-card-open]").first.click()
+    page.evaluate("() => { const i = document.createElement('input'); i.id = 'zz'; document.querySelector('[data-testid=comp-lb]').append(i); i.focus(); }")
+    page.keyboard.press("ArrowRight")
+    assert page.locator("[data-testid=comp-lb-count]").text_content() == f"1 / {n}"
