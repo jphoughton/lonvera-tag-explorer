@@ -58,6 +58,7 @@ export async function productionPage(ctx) {
   const productOk = facetOk;                                                               // the old name, used where cards are filtered
   const facetValues = (field, chosen) => [...new Set([...(st.view === 'list' ? (data.rows || []) : boardCards()).map((r) => r[field]).filter(Boolean), ...picked(chosen)])].sort((a, b) => a.localeCompare(b));
   async function ensureMeta() {
+    if (board && board.formats && board.weeks) { meta = { vendors: board.vendors, weeks: board.weeks, formats: board.formats }; return; }          // the board already carried them
     if (st.view === 'list' || (meta && (meta.vendors || []).length)) return;
     try { meta = await api('/api/priorities/assignments', {}, { signal: ctx.signal }); } catch (e) { abortOk(e); meta = meta || { vendors: [], weeks: [], formats: [] }; }
   }

@@ -99,6 +99,7 @@ class JobRun:
         self.rows_written: int | None = None
         self.data_through: date | None = None
         self.run_id = None
+        self.note: str | None = None                                # goes to etl_runs.error on an ok run (a warning that did not fail the job)
         self._c = None
 
     def __enter__(self):
@@ -110,8 +111,8 @@ class JobRun:
     def __exit__(self, et, ev, tb):
         try:
             if et is None:
-                self._c.execute("UPDATE etl_runs SET finished_at=now(), status='ok', data_through=%s, rows_written=%s, stats=%s WHERE id=%s",
-                                (self.data_through, self.rows_written, Jsonb(self.stats), self.run_id))
+                self._c.execute("UPDATE etl_runs SET finished_at=now(), status='ok', data_through=%s, rows_written=%s, stats=%s, error=%s WHERE id=%s",
+                                (self.data_through, self.rows_written, Jsonb(self.stats), scrub(self.note) if self.note else None, self.run_id))
                 log(f"[{self.job}] run #{self.run_id} ok rows={self.rows_written} stats={json.dumps(self.stats, default=str)[:400]}")
             else:
                 err = scrub(str(ev)) if issubclass(et, JobFailed) else scrub("".join(traceback.format_exception(et, ev, tb))[-3000:])

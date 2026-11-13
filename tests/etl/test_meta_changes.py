@@ -162,7 +162,7 @@ def test_main_runs_snapshot_even_when_the_log_fails_then_fails_the_job_loudly(cl
     monkeypatch.setattr(mc, "pull_activities", boom)
     monkeypatch.setattr(mc, "pull_adsets", lambda tok, acct, an, pace=0.3: [adset("a")] if acct == "act_1" else [])
     with pytest.raises(db_mod.JobFailed) as e:
-        mc.main(["--days", "1"])
+        mc.main(["--since", "2026-11-01", "--until", "2026-11-03"])                                              # older than today - 2: data is missing, so the job fails
     assert "activity log" in str(e.value) and "EAAB" not in db_mod.scrub(e.value)
     assert clean.execute("SELECT count(*) FROM meta_adset_state_daily").fetchone()[0] == 1                       # the snapshot still landed
     r = clean.execute("SELECT status, error FROM etl_runs WHERE job='meta_changes' ORDER BY id DESC LIMIT 1").fetchone()
@@ -199,3 +199,129 @@ def test_a_single_day_that_never_works_raises(monkeypatch):
     monkeypatch.setattr(mc.time, "sleep", lambda s: None)
     with pytest.raises(meta_api.TooBig):
         mc.pull_activities("tok", "act_1", "Lonvera Main", D(2026, 5, 6), D(2026, 5, 6))
+
+
+# ---- resilience: transient errors, split, per-day independence, self-heal
+def _days(params):
+    return (dt.date.fromisoformat(params["until"]) - dt.date.fromisoformat(params["since"])).days
+
+
+def test_one_unknown_error_is_retried_and_the_window_loads(monkeypatch):
+    state = {"n": 0}
+
+    def fake_get(url, params, what, **kw):
+        if params is None:
+            return {"data": []}
+        state["n"] += 1
+        if state["n"] == 1:
+            raise meta_api.TooBig("An unknown error occurred")
+        return {"data": [ev("create_ad", "ADGROUP", "r1", "ad", {})]}
+    sleeps = []
+    monkeypatch.setattr(meta_api, "graph_get", fake_get)
+    monkeypatch.setattr(mc.time, "sleep", lambda s: sleeps.append(s))
+    fails = []
+    out = mc.pull_activities("tok", "act_1", "Lonvera Main", D(2026, 11, 11), D(2026, 11, 13), failures=fails)
+    assert len(out) == 1 and fails == [] and state["n"] == 2 and any(s >= 3 for s in sleeps)               # one backoff sleep happened, no split needed
+
+
+def test_backoff_is_exponential_with_jitter(monkeypatch):
+    monkeypatch.setattr(mc.random, "random", lambda: 0.0)
+    assert [round(mc._backoff(i), 2) for i in range(3)] == [3.75, 7.5, 15.0]
+    monkeypatch.setattr(mc.random, "random", lambda: 1.0)
+    assert round(mc._backoff(0), 2) == 6.25 and mc._backoff(10) <= 150
+
+
+def test_a_week_that_always_fails_but_single_days_work_is_split_and_loads_every_day(monkeypatch):
+    calls = []
+
+    def fake_get(url, params, what, **kw):
+        if params is None:
+            return {"data": []}
+        calls.append((params["since"], _days(params)))
+        if _days(params) > 1:
+            raise meta_api.TooBig("An unknown error occurred")
+        return {"data": [ev("create_ad", "ADGROUP", params["since"], "ad", {})]}
+    monkeypatch.setattr(meta_api, "graph_get", fake_get)
+    monkeypatch.setattr(mc.time, "sleep", lambda s: None)
+    fails = []
+    out = mc.pull_activities("tok", "act_1", "Lonvera Main", D(2026, 11, 7), D(2026, 11, 13), failures=fails)
+    assert fails == [] and len(out) == 7
+    assert sum(1 for c in calls if c[0] == "2026-11-07" and c[1] > 1) >= 2                                   # the week was retried before it was split
+
+
+def test_a_day_that_never_loads_is_recorded_and_the_other_days_still_load(monkeypatch):
+    def fake_get(url, params, what, **kw):
+        if params is None:
+            return {"data": []}
+        if params["since"] == "2026-11-09":
+            raise meta_api.TooBig("An unknown error occurred")
+        if _days(params) > 1:
+            raise meta_api.TooBig("An unknown error occurred")
+        return {"data": [ev("create_ad", "ADGROUP", params["since"], "ad", {})]}
+    monkeypatch.setattr(meta_api, "graph_get", fake_get)
+    monkeypatch.setattr(mc.time, "sleep", lambda s: None)
+    fails = []
+    out = mc.pull_activities("tok", "act_1", "Lonvera Main", D(2026, 11, 7), D(2026, 11, 11), failures=fails)
+    assert len(out) == 4 and [(f[0], f[1]) for f in fails] == [(D(2026, 11, 9), D(2026, 11, 9))]
+    with pytest.raises(meta_api.TooBig):                                                                       # without a failures list the old contract holds
+        mc.pull_activities("tok", "act_1", "Lonvera Main", D(2026, 11, 9), D(2026, 11, 9))
+
+
+def test_rate_limit_is_not_split_and_a_token_rejection_propagates(monkeypatch):
+    seen = []
+
+    def rl(url, params, what, **kw):
+        seen.append(params and params["since"])
+        raise meta_api.RateLimited("too many calls")
+    monkeypatch.setattr(meta_api, "graph_get", rl)
+    monkeypatch.setattr(mc.time, "sleep", lambda s: None)
+    fails = []
+    assert mc.pull_activities("tok", "act_1", "Lonvera Main", D(2026, 11, 7), D(2026, 11, 13), failures=fails) == [] and len(fails) == 1 and len(seen) == 1
+    monkeypatch.setattr(meta_api, "graph_get", lambda *a, **k: (_ for _ in ()).throw(meta_api.TokenRejected("x")))
+    with pytest.raises(meta_api.TokenRejected):
+        mc.pull_activities("tok", "act_1", "Lonvera Main", D(2026, 11, 7), D(2026, 11, 13), failures=[])
+
+
+def test_one_account_failing_does_not_lose_the_other_or_the_snapshot(clean, monkeypatch):
+    def fake_get(url, params, what, **kw):
+        if params is None:
+            return {"data": []}
+        if "act_1/" in url:
+            raise meta_api.TooBig("An unknown error occurred")
+        return {"data": [ev("create_ad", "ADGROUP", "b" + params["since"], "ad", {})]}
+    monkeypatch.setattr(meta_api, "get_token", lambda: "tok")
+    monkeypatch.setattr(meta_api, "ACCOUNTS", ACCTS)
+    monkeypatch.setattr(meta_api, "graph_get", fake_get)
+    monkeypatch.setattr(mc.time, "sleep", lambda s: None)
+    monkeypatch.setattr(mc, "pull_adsets", lambda tok, acct, an, pace=0.3: [adset("a")] if acct == "act_1" else [adset("b")])
+    today = dt.datetime.now(mc.PT).date()
+    assert mc.main(["--since", (today - dt.timedelta(days=1)).isoformat()]) == 0                               # failures are only within the last 2 days: the next run re-pulls them
+    r = clean.execute("SELECT status, error FROM etl_runs WHERE job='meta_changes' ORDER BY id DESC LIMIT 1").fetchone()
+    assert r[0] == "ok" and "next run re-pulls" in r[1]                                                        # recorded in etl_runs.error
+    assert clean.execute("SELECT count(*) FROM meta_change_log WHERE account=%s", (ACCTS[1][1],)).fetchone()[0] >= 1
+    assert clean.execute("SELECT count(*) FROM meta_adset_state_daily WHERE day=%s", (today,)).fetchone()[0] == 2
+
+
+def test_missing_old_days_fail_the_job_and_the_next_night_heals_them(clean, monkeypatch):
+    today = dt.datetime.now(mc.PT).date()
+    old = today - dt.timedelta(days=5)
+    bad = {"on": True}
+
+    def fake_get(url, params, what, **kw):
+        if params is None:
+            return {"data": []}
+        if bad["on"] and params["since"] == old.isoformat():
+            raise meta_api.TooBig("An unknown error occurred")
+        return {"data": [ev("create_ad", "ADGROUP", "d" + params["since"], "ad", {}, when=params["since"] + "T20:30:00+0000")]}
+    monkeypatch.setattr(meta_api, "get_token", lambda: "tok")
+    monkeypatch.setattr(meta_api, "ACCOUNTS", ACCTS[:1])
+    monkeypatch.setattr(meta_api, "graph_get", fake_get)
+    monkeypatch.setattr(mc.time, "sleep", lambda s: None)
+    monkeypatch.setattr(mc, "pull_adsets", lambda tok, acct, an, pace=0.3: [adset("a")])
+    with pytest.raises(db_mod.JobFailed) as e1:
+        mc.main(["--since", old.isoformat(), "--until", old.isoformat(), "--no-snapshot"])
+    assert "older than 2 days" in str(e1.value)
+    bad["on"] = False
+    assert mc.main(["--days", "3", "--no-snapshot"]) == 0                                                      # nightly run: overlap + heal of every empty day in the last 7
+    n = clean.execute("SELECT count(*) FROM meta_change_log WHERE event_day=%s", (old,)).fetchone()[0]
+    assert n >= 1
