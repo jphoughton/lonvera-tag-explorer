@@ -41,10 +41,33 @@ A request Meta refuses with code 100 is retried without `reach`, then with the c
 A dedicated Railway cron service, **`breakdowns`**, runs `scripts/deploy/run_breakdowns.sh` every 2 hours (`0 */2 * * *`): `etl.migrate`, then `python -m etl.meta_breakdowns --auto`. It is
 separate from the main `etl` service, so the nightly never waits for it and never shares its time budget. No arguments are needed:
 
-* First start: stores the backfill anchor (`--until` = yesterday, `--max-days` = 365) in `meta_breakdown_progress`. Newest 30-day window first (`--window-days`), every set in a window (cheap
-  first, region / dma / hourly last) committed before the next older window starts; coverage `first_day` moves back window by window. Progress is recorded per window x set x level x account.
-* Every run first catches up once a day: the days since the last catch-up (at least the trailing 7, which Meta restates), so recent data stays current during a multi-night backfill. Then it
-  continues the backfill; when that is finished it only does the daily catch-up (trailing 7 days).
+* First start: stores the backfill anchor (`--until` = yesterday, `--max-days` = 365) in `meta_breakdown_progress`. Windows are 30 days (`--window-days`), newest first, each fully committed
+  before the next older one; coverage `first_day` moves back window by window. Progress is recorded per window x set x level x account, so every run resumes.
+* **Run order.** Each run does, in this order: (1) the recent-days catch-up, (2) the backfill.
+  * *Catch-up*: once a day, the days since the last catch-up (at least the trailing 7, which Meta restates), for every set, cheap sets first. It is resumable and done at most once a day per
+    set: each set x level x account is stamped `refreshed on day D` (rows `__catchup__<set>`, level `<level>:<D>` in `meta_breakdown_progress`), a set stamped for the day is skipped, and the
+    "caught up" marker is written only when every set is stamped. A catch-up that does not finish (budget, quiet hours) resumes in the next run instead of starting from the top. It gets
+    at most 40% of a run (`CATCHUP_SHARE`); when that share is used up the run says so and goes on to the backfill, so the backfill always has the other 60% or more.
+  * *Backfill*, in four stages, each resuming from recorded progress:
+    1. every set **except** `comscore_market`, `region`, `hourly_stats_aggregated_by_audience_time_zone`, `hourly_stats_aggregated_by_advertiser_time_zone` ("light" sets; cheap first, the other
+       tier-2 sets `dma`, `zip` ... last inside a window), newest 30-day window;
+    2. **one probe pass** of the four heavy sets on that same newest window, attempted once (marker `__heavy_probed__`), capped at 25% of a run (`PROBE_SHARE`); it exists to learn about
+       slowness, async needs and rate limits. Whatever it did not finish is kept (progress is per set x account) and resumed in stage 4; it never holds up the light sets;
+    3. the light sets through all older windows out to 365 days;
+    4. only when stage 3 has completed, the four heavy sets through all windows out to 365 days.
+* **Sets that are dead.** A (set, level) Meta refuses (code 100) is asked again after 7 days (`RECHECK_UNSUPPORTED_DAYS`), not every run; sets refused at all three levels cost no request in
+  between. A set whose response rows never carry the requested keys (`user_persona_*`, `rule_set_*`, `std:conversion_destination` ...) is **quarantined** for 7 days at once; a set that fails with
+  anything else and writes no rows is quarantined after 3 failing runs in a row (`FAIL_LIMIT`); a clean pull clears the count. Quarantine rows are `__quarantine__:<set>` / `__fails__:<set>`
+  in `meta_breakdown_progress` (named with `--sets`, a set is always asked). A quarantined `failing` set keeps the backfill from being marked finished; a `shape` set does not.
+* **Transient failures** (HTTP 5xx, code 2 "Service temporarily unavailable"): the retry waiting one set pull may spend is capped at 90 s (`TRANSIENT_BUDGET_S`: three retries of 15, 30, 45 s), shared
+  by both accounts and all pages; then the set is an error for this run and the next run tries again (before: 7 retries per request, up to 14 minutes per set). Rate limits are separate: the
+  run waits and continues as before. Async report jobs are polled every 5 s for at most 10 minutes.
+* **Too big for one day** (`action_destination` ...): the first time a one-day request is refused as too big the set is remembered (`__async__:<set>`) and from then on is requested as an async
+  report straight away, with no plain attempts and no halving (before: three failed plain requests per window plus one async job per day). The async job itself runs on Meta's side
+  (about 80-90 s per day for `action_destination`); if an async job for several days fails, the span is halved.
+* **Log lines**: the per-set lines are unchanged. Each phase also logs `run start: phase=<catch-up | backfill/light-newest-window | backfill/heavy-probe | backfill/light | backfill/heavy> window=<from..to>
+  sets_done=N sets_remaining=M` and the run ends with `run end: phase=... window=... sets_done=... sets_remaining=... backfill_advanced=yes|no` (yes when new backfill window records were written this run).
+  The heavy probe also logs one `heavy probe:` line with each set's status, rows and seconds.
 * Quiet hours: it never starts a request batch between 12:30 and 15:30 UTC (the main nightly Meta pull; override `META_BREAKDOWNS_QUIET_UTC=HH:MM-HH:MM`, `off` disables). At the boundary it
   stops cleanly after committing and exits 0.
 * Budget and overlap: `--max-minutes` (default 110) ends a run cleanly with exit 0, so the next cron run resumes; a Postgres advisory lock makes an overlapping run exit 0 with one log line.
