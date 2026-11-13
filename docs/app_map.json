@@ -714,6 +714,17 @@
    "summary": "One competitor: longest-running ads, new this week, angles, landing pages, Ad Library links (week, format as on /api/competitors)."
   },
   {
+   "rule": "/api/competitors/media/<library_id>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "competitors_media.competitor_media",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": ""
+  },
+  {
    "rule": "/api/email/campaigns",
    "methods": [
     "GET"
