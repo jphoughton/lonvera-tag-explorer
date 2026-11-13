@@ -402,10 +402,16 @@ body.prod-drawer-open { overflow: hidden; }
 .mf > summary.mf-btn { list-style: none; cursor: pointer; font: inherit; font-size: 14px; padding: 4px 22px 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); position: relative; white-space: nowrap; }
 .mf > summary.mf-btn::-webkit-details-marker { display: none; }
 .mf > summary.mf-btn::after { content: ""; position: absolute; right: 8px; top: 50%; margin-top: -4px; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg) scale(.8); }
-.mf[open] > summary.mf-btn { border-color: var(--accent, #b8481f); }
-.mf-panel { position: absolute; z-index: 1100; top: calc(100% + 4px); left: 0; min-width: 190px; max-height: 320px; overflow: auto; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(20, 30, 50, .18); display: grid; gap: 2px; }
+.mf[open] > summary.mf-btn { border-color: var(--accent); }
+.mf-panel { position: absolute; z-index: 1100; top: calc(100% + 4px); left: 0; min-width: 190px; max-height: 320px; overflow: auto; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px color-mix(in srgb, var(--lv-ink) 18%, transparent); display: grid; gap: 2px; }
 .mf-opt { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 5px; font-size: 14px; cursor: pointer; white-space: nowrap; }
 .mf-opt:hover { background: var(--head-bg); }
 .mf-opt input { margin: 0; width: 16px; height: 16px; }
 .mf-foot { padding: 4px 2px 2px; border-top: 1px solid var(--line); margin-top: 4px; }
 @media (max-width: 640px) { .mf-opt { padding: 10px 8px; font-size: 15px; } .mf > summary.mf-btn { min-height: 36px; } }
+/* first-step actions (Send brief, Mark in production) are teal outline buttons: coral is kept for Submit for review, Approve and Mark launched, so a column of cards does not read as a wall of coral */
+.btn.primary.prod-card-action[data-action="send_brief"], .btn.primary.prod-card-action[data-action="start"],
+.prod-drawer-actions .btn.primary[data-testid$="-send_brief"], .prod-drawer-actions .btn.primary[data-testid$="-start"] { background: var(--panel); border-color: var(--accent); color: var(--accent); }
+.btn.primary.prod-card-action[data-action="send_brief"]:hover, .btn.primary.prod-card-action[data-action="start"]:hover,
+.prod-drawer-actions .btn.primary[data-testid$="-send_brief"]:hover, .prod-drawer-actions .btn.primary[data-testid$="-start"]:hover { background: var(--accent-bg); border-color: var(--accent-hover); }
+@media (max-width: 640px) { .mf-panel { position: fixed; left: 12px; right: 12px; top: auto; min-width: 0; margin-top: 4px; } }   /* phone: the list opens under its button but spans the screen, so it is never clipped at the right edge */
