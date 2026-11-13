@@ -175,3 +175,71 @@ def test_verify_api_sql_checks_pass_on_consistent_data(conn, tmp_path):
     ck = verify_api.Checks()
     verify_api.check_consistency(conn, ck)
     assert not ck.failed, ck.rows
+
+
+def test_funnel_actions_picked_like_purchases():
+    from etl.resolver import pick_atc, pick_lpv
+    assert pick_atc([{"action_type": "omni_add_to_cart", "value": "9"}, {"action_type": "add_to_cart", "value": "7"}]) == 9.0
+    assert pick_atc([{"action_type": "add_to_cart", "value": "7"}, {"action_type": "offsite_conversion.fb_pixel_add_to_cart", "value": "5"}]) == 7.0
+    assert pick_atc([{"action_type": "offsite_conversion.fb_pixel_add_to_cart", "value": "5"}]) == 5.0
+    assert pick_atc(None) == 0.0 and pick_lpv([]) == 0.0
+    assert pick_lpv([{"action_type": "landing_page_view", "value": "8"}, {"action_type": "omni_landing_page_view", "value": "10"}]) == 10.0
+    assert pick_lpv([{"action_type": "landing_page_view", "value": "8"}]) == 8.0
+    r = meta_api.rows_from([{"ad_id": 1, "ad_name": "x", "date_start": "2026-10-30", "spend": "3", "inline_link_clicks": "4",
+                             "actions": [{"action_type": "link_click", "value": "4"}, {"action_type": "landing_page_view", "value": "3"},
+                                         {"action_type": "omni_add_to_cart", "value": "2"}]}])[0]
+    assert r["lpv"] == 3.0 and r["atc"] == 2.0 and r["clicks"] == 4.0
+
+
+def test_load_chunk_stores_funnel_and_view_exposes_it(conn, tmp_path):
+    seed(conn, tmp_path)
+    rows = [dict(row("2026-10-30", "111", "Fam A"), lpv=8.0, atc=3.0), dict(row("2026-10-30", "111", "Fam A"), lpv=2.0, atc=1.0)]
+    meta_pull.load_chunk(conn, meta_pull.aggregate(rows), D(2026, 10, 30), D(2026, 10, 30))
+    assert conn.execute("SELECT landing_page_views, add_to_carts FROM ad_daily WHERE ad_id='111'").fetchone() == (10, 4)
+    assert conn.execute("SELECT landing_page_views, add_to_carts FROM analytics.meta_ad_daily WHERE ad_id='111' AND day='2026-10-30'").fetchone() == (10, 4)
+    # legacy family-grain sheet rows read NULL (not 0): never pulled
+    assert conn.execute("SELECT landing_page_views FROM analytics.meta_ad_daily WHERE source='sheet' LIMIT 1").fetchone()[0] is None
+
+
+def test_fill_funnel_updates_only_the_two_columns_and_resumes(conn, tmp_path, monkeypatch):
+    seed(conn, tmp_path)
+    meta_pull.load_chunk(conn, meta_pull.aggregate([row("2026-10-30", "111", "Fam A", spend=10, clicks=5), row("2026-10-31", "111", "Fam A", spend=20, clicks=7)]),
+                         D(2026, 10, 30), D(2026, 10, 31))
+    conn.execute("UPDATE ad_daily SET landing_page_views = NULL, add_to_carts = NULL")        # as history looks before the backfill
+    conn.commit()
+    before = conn.execute("SELECT ad_id, day, spend, purchases, conv_value, link_clicks, impressions FROM ad_daily WHERE source='meta_api' ORDER BY 1, 2").fetchall()
+    calls = []
+
+    def fake_chunk(tok, acct, an, since, until):
+        calls.append((an, since, until))
+        if an != "Lonvera Main":
+            return []
+        return [dict(row("2026-10-30", "111", "Fam A", spend=10.2, clicks=5.0), lpv=4.0, atc=2.0), dict(row("2026-10-31", "111", "Fam A", spend=20, clicks=7.0), lpv=6.0, atc=3.0),
+                dict(row("2026-10-31", "999", "Other ad", spend=1, clicks=1.0), lpv=1.0, atc=1.0)]
+    monkeypatch.setattr(meta_api, "get_token", lambda: "tok")
+    monkeypatch.setattr(meta_api, "pull_chunk", fake_chunk)
+    res = meta_pull.fill_funnel(conn, D(2026, 10, 30), D(2026, 10, 31), chunk_days=7, pause=0, sleep=lambda s: None)
+    assert res["done"] == 1 and res["updated"] == 2 and res["pulled_ad_days_without_row"] == 1 and not res["failed"]
+    assert res["per_chunk"][0]["spend_diff_pct"] != 0
+    assert conn.execute("SELECT ad_id, day, landing_page_views, add_to_carts FROM ad_daily WHERE source='meta_api' ORDER BY 2").fetchall() == [("111", D(2026, 10, 30), 4, 2), ("111", D(2026, 10, 31), 6, 3)]
+    after = conn.execute("SELECT ad_id, day, spend, purchases, conv_value, link_clicks, impressions FROM ad_daily WHERE source='meta_api' ORDER BY 1, 2").fetchall()
+    assert after == before                                              # nothing but the two new columns changed
+    n = len(calls)
+    res2 = meta_pull.fill_funnel(conn, D(2026, 10, 30), D(2026, 10, 31), chunk_days=7, pause=0, sleep=lambda s: None)
+    assert res2["skipped"] == 1 and len(calls) == n                     # resume: already filled, no Meta call
+
+
+def test_fill_funnel_reports_failed_chunk_after_retries(conn, tmp_path, monkeypatch):
+    seed(conn, tmp_path)
+    meta_pull.load_chunk(conn, meta_pull.aggregate([row("2026-10-30", "111", "Fam A")]), D(2026, 10, 30), D(2026, 10, 30))
+    conn.execute("UPDATE ad_daily SET landing_page_views = NULL, add_to_carts = NULL")
+    conn.commit()
+    monkeypatch.setattr(meta_api, "get_token", lambda: "tok")
+
+    def boom(*a):
+        raise meta_api.RateLimited("80004")
+    monkeypatch.setattr(meta_api, "pull_chunk", boom)
+    waits = []
+    res = meta_pull.fill_funnel(conn, D(2026, 10, 30), D(2026, 10, 30), chunk_days=7, pause=0, attempts=2, sleep=waits.append)
+    assert res["failed"] == ["2026-10-30..2026-10-30"] and waits == [120, 240]
+    assert conn.execute("SELECT landing_page_views FROM ad_daily WHERE ad_id='111'").fetchone()[0] is None
