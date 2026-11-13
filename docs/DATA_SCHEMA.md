@@ -143,7 +143,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
 | Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily), [`public.shopify_orders`](#publicshopify_orders), [`public.shopify_order_lines`](#publicshopify_order_lines) |
 | Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_priorities_assignment_events`](#publiccreative_priorities_assignment_events), [`public.creative_priorities_assignment_comments`](#publiccreative_priorities_assignment_comments), [`public.creative_priorities_vendor_capacity`](#publiccreative_priorities_vendor_capacity), [`public.creative_ad_transcripts`](#publiccreative_ad_transcripts), [`public.creative_formats`](#publiccreative_formats), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links), [`public.creative_launch_settings`](#publiccreative_launch_settings), [`public.creative_launch_pages`](#publiccreative_launch_pages), [`public.creative_launch_vendor_prefixes`](#publiccreative_launch_vendor_prefixes), [`public.creative_launch_drafts`](#publiccreative_launch_drafts), [`public.creative_launch_jobs`](#publiccreative_launch_jobs), [`public.creative_launch_ads`](#publiccreative_launch_ads), [`public.creative_launch_adsets`](#publiccreative_launch_adsets), [`public.creative_launch_audit`](#publiccreative_launch_audit) |
-| Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.competitor_brands`](#publiccompetitor_brands), [`public.competitor_ads`](#publiccompetitor_ads), [`public.competitor_concept_class`](#publiccompetitor_concept_class), [`public.competitor_concepts`](#publiccompetitor_concepts), [`public.competitor_posts`](#publiccompetitor_posts), [`public.competitor_ad_media`](#publiccompetitor_ad_media), [`public.competitor_ad_video`](#publiccompetitor_ad_video), [`public.competitor_ad_transcript`](#publiccompetitor_ad_transcript), [`public.competitor_ad_tags`](#publiccompetitor_ad_tags), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
+| Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.competitor_brands`](#publiccompetitor_brands), [`public.competitor_ads`](#publiccompetitor_ads), [`public.competitor_concept_class`](#publiccompetitor_concept_class), [`public.competitor_concepts`](#publiccompetitor_concepts), [`public.competitor_posts`](#publiccompetitor_posts), [`public.competitor_ad_media`](#publiccompetitor_ad_media), [`public.competitor_landing_pages`](#publiccompetitor_landing_pages), [`public.competitor_lp_media`](#publiccompetitor_lp_media), [`public.competitor_ad_lp`](#publiccompetitor_ad_lp), [`public.competitor_ad_video`](#publiccompetitor_ad_video), [`public.competitor_ad_transcript`](#publiccompetitor_ad_transcript), [`public.competitor_ad_tags`](#publiccompetitor_ad_tags), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
 | Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta), [`public.api_keys`](#publicapi_keys), [`public.klaviyo_campaigns`](#publicklaviyo_campaigns), [`public.klaviyo_flows`](#publicklaviyo_flows), [`public.klaviyo_flow_messages`](#publicklaviyo_flow_messages), [`public.klaviyo_daily`](#publicklaviyo_daily), [`public.klaviyo_message_content`](#publicklaviyo_message_content), [`public.klaviyo_message_performance`](#publicklaviyo_message_performance), [`public.landing_page_ad_checks`](#publiclanding_page_ad_checks), [`public.brain_keys`](#publicbrain_keys), [`public.brain_audit`](#publicbrain_audit) |
 | Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow) | [`public.proj_feed_config`](#publicproj_feed_config), [`public.proj_feed_runs`](#publicproj_feed_runs), [`public.proj_feed_attempts`](#publicproj_feed_attempts), [`public.proj_feed_verify`](#publicproj_feed_verify), [`public.proj_feed_verify_runs`](#publicproj_feed_verify_runs), [`public.proj_feed_levers`](#publicproj_feed_levers), [`public.proj_feed_orders`](#publicproj_feed_orders), [`public.proj_feedx_orders`](#publicproj_feedx_orders), [`public.proj_feed_amazon`](#publicproj_feed_amazon), [`public.proj_feedx_amazon`](#publicproj_feedx_amazon), [`public.proj_feed_platform`](#publicproj_feed_platform), [`public.proj_feedx_platform`](#publicproj_feedx_platform), [`public.proj_feed_attribution`](#publicproj_feed_attribution), [`public.proj_feedx_attribution`](#publicproj_feedx_attribution), [`public.proj_feed_traffic`](#publicproj_feed_traffic), [`public.proj_feedx_traffic`](#publicproj_feedx_traffic), [`public.proj_feed_meta_reach`](#publicproj_feed_meta_reach), [`public.proj_feedx_meta_reach`](#publicproj_feedx_meta_reach), [`public.proj_feed_product_reach`](#publicproj_feed_product_reach), [`public.proj_feedx_product_reach`](#publicproj_feedx_product_reach), [`public.proj_feed_nc_product`](#publicproj_feed_nc_product), [`public.proj_feedx_nc_product`](#publicproj_feedx_nc_product), [`public.proj_feed_anyclick`](#publicproj_feed_anyclick), [`public.proj_feedx_anyclick`](#publicproj_feedx_anyclick), [`public.proj_feed_bids`](#publicproj_feed_bids), [`public.proj_feedx_bids`](#publicproj_feedx_bids), [`public.proj_feed_meta_day`](#publicproj_feed_meta_day), [`public.proj_feed_meta_product`](#publicproj_feed_meta_product), [`public.proj_pacing_hourly`](#publicproj_pacing_hourly), [`public.proj_pacing_setting`](#publicproj_pacing_setting), [`public.proj_units_daily`](#publicproj_units_daily), [`public.proj_feedx_units_daily`](#publicproj_feedx_units_daily), [`public.proj_demand_snapshot`](#publicproj_demand_snapshot), [`public.proj_feedx_demand_snapshot`](#publicproj_feedx_demand_snapshot), [`public.proj_feedx_intl_nonus_daily`](#publicproj_feedx_intl_nonus_daily), [`public.proj_feed_nc_hourly`](#publicproj_feed_nc_hourly), [`public.proj_live_today_snapshots`](#publicproj_live_today_snapshots), [`public.proj_amazon_mtd_snapshots`](#publicproj_amazon_mtd_snapshots), [`public.proj_feedx_intl_estimate`](#publicproj_feedx_intl_estimate), [`public.proj_meta_spend_monthly`](#publicproj_meta_spend_monthly) |
 | Projection engine tables (finance, inventory, cohorts; read them through the analytics views) | [`public.proj_scenarios`](#publicproj_scenarios), [`public.proj_series`](#publicproj_series), [`public.proj_actuals`](#publicproj_actuals), [`public.proj_audit`](#publicproj_audit), [`public.proj_scenario_history`](#publicproj_scenario_history), [`public.proj_refresh_runs`](#publicproj_refresh_runs), [`public.proj_cohorts`](#publicproj_cohorts), [`public.proj_cohort_cum`](#publicproj_cohort_cum), [`public.proj_cohort_uploads`](#publicproj_cohort_uploads), [`public.proj_curve_goal`](#publicproj_curve_goal), [`public.proj_pnl_drivers`](#publicproj_pnl_drivers), [`public.proj_pnl_settings`](#publicproj_pnl_settings), [`public.proj_pnl_cogs_sku`](#publicproj_pnl_cogs_sku), [`public.proj_pnl_qb_map`](#publicproj_pnl_qb_map), [`public.proj_pnl_vendors`](#publicproj_pnl_vendors), [`public.proj_upload_history`](#publicproj_upload_history), [`public.proj_po`](#publicproj_po), [`public.proj_fba_transfer`](#publicproj_fba_transfer), [`public.proj_vendor_lead`](#publicproj_vendor_lead), [`public.proj_vendor_cogs`](#publicproj_vendor_cogs), [`public.proj_product_cost`](#publicproj_product_cost), [`public.proj_reorder_param`](#publicproj_reorder_param), [`public.proj_stock_snapshot`](#publicproj_stock_snapshot), [`public.proj_supply_history`](#publicproj_supply_history), [`public.proj_units_monthly`](#publicproj_units_monthly), [`public.proj_units_country`](#publicproj_units_country), [`public.proj_units_loads`](#publicproj_units_loads) |
@@ -8031,6 +8031,99 @@ GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 | `height` | integer | yes | Pixel height after re-encoding. |
 | `bytes` | bytea | no | The JPEG bytes. |
 | `fetched_at` | timestamptz | no | When the image was downloaded. |
+
+### public.competitor_landing_pages
+
+*table*
+
+**Purpose.** The landing pages the watched competitors' Meta ads point to, opened once a week and tagged: page type, the page's key theme, hero headline, selling points, offer, price, guarantee, proof, urgency devices, objections handled, CTA, and Lonvera's cluster / ICP / pain point, so we can learn from the pages and not only the ads.
+
+- **Grain:** primary key `(week_start, lp_id)`; one row per (week_start, lp_id): one distinct landing page per week, however many ads point to it (week_start = Monday, Pacific, the competitor_ads week)
+- **Source:** etl.competitor_landing_pages: distinct competitor_ads.landing_url of the week, normalised to url_key (host without www + path, tracking parameters dropped), opened with headless Chromium (Playwright; 1280x900 viewport, 3 s between pages, 20 s timeout, no login, no captcha or bot-wall bypass), visible text extracted, tagged by headless Claude (Sonnet 5.5) from the text and the screenshot in batches of 5
+- **Refresh:** by hand for now (not scheduled in the nightly etl yet); python -m etl.competitor_landing_pages [--week --brand --limit --retag --no-tag --dry-run]; a page already tagged this week is skipped
+- **Coverage:** from the first run after migration 261 (2026-11-13 build); at most 200 distinct pages per run, the most-used ones first; one row per week kept as history
+- **Caveat:** Not every ad has a page row: ads without a landing_url, on social hosts (facebook, instagram, youtube), or past the 200-page cap are unlinked in competitor_ad_lp.
+- **Caveat:** http_status / fetch_error show a blocked page (403, challenge, blank): its tag columns stay NULL. Blocked is not a missing page; the Ad Library may still show the ad.
+- **Caveat:** landing_url in competitor_ads is often only the display domain and path (the Ad Library card shows no query string), so the page opened is the display URL, which can differ from the exact page a click lands on (tracking redirects are followed; final_url is where it ended).
+- **Caveat:** content_hash covers the extracted key text (title, headings, bullets, prices, guarantee, reviews, FAQ, CTA) with clocks and counters removed; changed_from_prior compares it with the latest earlier week of the same lp_id (false when there is none) and a changed hash can still be an A/B variant served on the visit. change_note is a model summary written only for changed pages.
+- **Caveat:** Tags are the model's reading of one visit, quoted not invented; unknown fields are NULL. method 'vision_text' = the screenshot and the text, 'text' = text only (no screenshot).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `week_start` | date | no | Monday (Pacific) of the competitor_ads week (primary key with lp_id). |
+| `lp_id` | text | no | First 16 hex characters of sha1(url_key) (primary key with week_start); the same page across ads and weeks keeps one lp_id. |
+| `url_key` | text | no | Normalised page key: lowercase host without www + path without trailing slash; tracking parameters dropped, only page-selecting parameters (variant, v, offer ...) kept. |
+| `final_url` | text | yes | Where the page ended after redirects, tracking parameters removed; NULL when it never loaded. |
+| `brand` | text | yes | competitor_brands.brand with the most ads pointing to this page. |
+| `http_status` | integer | yes | HTTP status of the main document; NULL when it never answered (timeout, DNS). |
+| `fetched_at` | timestamptz | yes | When the page was opened. |
+| `ad_count` | integer | no | How many of the week's competitor_ads rows point to this page. |
+| `page_type` | text | yes | product page \| advertorial or article \| listicle or ranked list \| quiz or funnel \| video sales page \| homepage or collection \| other. |
+| `key_theme` | text | yes | One plain sentence (<= 20 words): the page's central promise or story. |
+| `hero_headline` | text | yes | The page's main headline, quoted exactly. |
+| `selling_points` | text[] | yes | 3 to 6 short phrases in the page's own terms (ingredients, doses, sourcing, benefits, comparisons). |
+| `offer_summary` | text | yes | Price, bundle, discount, free shipping, subscription as offered. |
+| `price_text` | text | yes | Price as shown on the page. |
+| `guarantee` | text | yes | Guarantee as shown (e.g. '60 day money back'). |
+| `proof_elements` | text[] | yes | From: reviews count or stars, doctor or expert, clinical study, press logos, before and after, UGC or testimonials, certifications, founder story, other. |
+| `urgency_devices` | text[] | yes | countdown, low stock, limited offer, free gift deadline, or none. |
+| `objections` | text[] | yes | FAQ topics or objection handling the page addresses. |
+| `cta` | text | yes | Main call-to-action button text. |
+| `cluster` | text | yes | Lonvera market cluster of the page's angle (from the taxonomy; a model suggestion for a new angle). |
+| `icp` | text | yes | Lonvera ICP the page speaks to. |
+| `pain_point` | text | yes | Lonvera pain point the page speaks to. |
+| `why_it_works` | text | yes | One short sentence on what the page does well for its buyer. |
+| `method` | text | yes | 'vision_text' (screenshot + text) or 'text'. |
+| `confidence` | text | yes | high \| medium \| low: how clearly the page states its buyer and promise. |
+| `content_hash` | text | yes | sha1 of the normalised key text of the page (clocks and counters removed). |
+| `changed_from_prior` | boolean | no | True when content_hash differs from the latest earlier week of the same lp_id. |
+| `change_note` | text | yes | One plain line on what changed, only for changed pages with a tagged earlier week. |
+| `fetch_error` | text | yes | Why the page could not be read (blocked, challenge, blank, timeout, DNS); NULL when read. |
+| `model` | text | yes | Model that tagged the page. |
+| `tagged_at` | timestamptz | yes | When the tags were written; NULL = captured but not tagged. |
+
+### public.competitor_lp_media
+
+*table*
+
+**Purpose.** One above-the-fold screenshot of each competitor landing page per week, so the /competitors page can show what the page looks like.
+
+- **Grain:** primary key `(week_start, lp_id)`; one row per (week_start, lp_id) (joins to competitor_landing_pages)
+- **Source:** etl.competitor_landing_pages: viewport screenshot (1280x900) taken after the page loaded, re-encoded to JPEG, at most 640 px wide and 90 KB
+- **Refresh:** weekly with the landing page run; rows older than 60 days that are not in the latest week are deleted
+- **Coverage:** from the first run after migration 261; only pages that loaded
+- **Caveat:** No row = no screenshot (blocked, blank or failed page), not a missing page.
+- **Caveat:** Served by GET /api/competitors/lp-media/<lp_id>?week=YYYY-MM-DD (login required); do not read bytes through SQL for display.
+- **Caveat:** A cookie banner or popup can cover part of the shot; only an obvious Accept / Close button is clicked.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `week_start` | date | no | Monday (Pacific) of the week (primary key with lp_id). |
+| `lp_id` | text | no | Landing page id (primary key with week_start). |
+| `content_type` | text | no | MIME type of bytes (image/jpeg). |
+| `width` | integer | yes | Pixel width after re-encoding. |
+| `height` | integer | yes | Pixel height after re-encoding. |
+| `bytes` | bytea | no | The JPEG bytes. |
+| `fetched_at` | timestamptz | no | When the screenshot was stored. |
+
+### public.competitor_ad_lp
+
+*table*
+
+**Purpose.** Links each competitor ad of a week to the landing page it points to, so an ad can show its page and a page can list its ads.
+
+- **Grain:** primary key `(week_start, library_id)`; one row per (week_start, library_id) (joins to competitor_ads and to competitor_landing_pages on lp_id)
+- **Source:** etl.competitor_landing_pages: competitor_ads.landing_url of the week normalised to lp_id
+- **Refresh:** weekly with the landing page run (rewritten for the week on every run)
+- **Coverage:** from the first run after migration 261
+- **Caveat:** Only ads with a usable landing_url on a non-social host and within the 200-page cap are linked; a missing row means unlinked, not 'no landing page'.
+- **Caveat:** Several ads usually share one page, so count ads with competitor_landing_pages.ad_count, not rows here joined to the pages table.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `week_start` | date | no | Monday (Pacific) of the competitor_ads week (primary key with library_id). |
+| `library_id` | text | no | Meta Ad Library ID (primary key with week_start). |
+| `lp_id` | text | no | competitor_landing_pages.lp_id of the ad's page. |
 
 ### public.competitor_ad_video
 

@@ -134,14 +134,6 @@
   {
    "service": "etl",
    "order": 8,
-   "module": "etl.competitor_landing_pages",
-   "args": "--if-sunday",
-   "fatal": false,
-   "note": "failure is logged and does not fail the run"
-  },
-  {
-   "service": "etl",
-   "order": 9,
    "module": "etl.creative_priorities",
    "args": "--if-sunday",
    "fatal": false,
@@ -149,7 +141,7 @@
   },
   {
    "service": "etl",
-   "order": 10,
+   "order": 9,
    "module": "etl.assignment_tags",
    "args": "",
    "fatal": false,
@@ -157,7 +149,7 @@
   },
   {
    "service": "etl",
-   "order": 11,
+   "order": 10,
    "module": "etl.production_status",
    "args": "",
    "fatal": false,
@@ -165,7 +157,7 @@
   },
   {
    "service": "etl",
-   "order": 12,
+   "order": 11,
    "module": "etl.klaviyo",
    "args": "--days",
    "fatal": false,
@@ -173,7 +165,7 @@
   },
   {
    "service": "etl",
-   "order": 13,
+   "order": 12,
    "module": "etl.meta_changes",
    "args": "--days",
    "fatal": false,
@@ -181,7 +173,7 @@
   },
   {
    "service": "etl",
-   "order": 14,
+   "order": 13,
    "module": "etl.daily_story",
    "args": "",
    "fatal": false,
@@ -189,7 +181,7 @@
   },
   {
    "service": "etl",
-   "order": 15,
+   "order": 14,
    "module": "etl.auto_tag",
    "args": "",
    "fatal": false,
@@ -320,6 +312,10 @@
   {
    "module": "etl.competitor_landing_pages",
    "summary": "Landing pages of the watched competitors' ads, opened weekly and tagged (key theme, selling points, offer, proof), so we can learn from the pages and not only the ads."
+  },
+  {
+   "module": "etl.competitor_tags",
+   "summary": "Competitor ad tags: transcribe the saved videos and tag every curated competitor ad by LOOKING at it."
   },
   {
    "module": "etl.creative_priorities",

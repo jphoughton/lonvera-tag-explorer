@@ -7515,7 +7515,7 @@
    ],
    "foreign_keys": [],
    "source": "etl.competitor_landing_pages: distinct competitor_ads.landing_url of the week, normalised to url_key (host without www + path, tracking parameters dropped), opened with headless Chromium (Playwright; 1280x900 viewport, 3 s between pages, 20 s timeout, no login, no captcha or bot-wall bypass), visible text extracted, tagged by headless Claude (Sonnet 5.5) from the text and the screenshot in batches of 5",
-   "refresh": "weekly with etl.competitor_ads (Sundays Pacific, non-fatal step in the nightly etl); python -m etl.competitor_landing_pages [--week --brand --limit --retag --no-tag --dry-run]; a page already tagged this week is skipped",
+   "refresh": "by hand for now (not scheduled in the nightly etl yet); python -m etl.competitor_landing_pages [--week --brand --limit --retag --no-tag --dry-run]; a page already tagged this week is skipped",
    "coverage": "from the first run after migration 261 (2026-11-13 build); at most 200 distinct pages per run, the most-used ones first; one row per week kept as history",
    "caveats": [
     "Not every ad has a page row: ads without a landing_url, on social hosts (facebook, instagram, youtube), or past the 200-page cap are unlinked in competitor_ad_lp.",

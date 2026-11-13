@@ -1,6 +1,6 @@
 """Landing pages of the watched competitors' ads, opened weekly and tagged (key theme, selling points, offer, proof), so we can learn from the pages and not only the ads.
 
-Flow (python -m etl.competitor_landing_pages; the nightly etl calls it with --if-sunday right after etl.competitor_ads):
+Flow (python -m etl.competitor_landing_pages; run by hand, NOT yet scheduled in run_etl.sh, pending Josh's approval; --if-sunday is ready for when it is):
   1. take the week's competitor_ads (default: the latest stored week), normalise every landing_url to a url_key (lowercase host without www + path without trailing slash,
      tracking / utm / fbclid parameters dropped, only page-selecting parameters kept) and lp_id = sha1(url_key)[:16]; the same page across ads is one LP; social hosts are
      skipped; at most MAX_LPS (200) distinct LPs per run, the most-used first; brand = the brand with the most ads on the page;
