@@ -13,6 +13,7 @@ import time
 from typing import Any, Callable
 
 from . import why_stats as S
+from . import why_breakdown_step as BS
 from . import why_tree as T
 from .sqlguard import check_select
 from .why_questions import PAST_QUESTIONS
@@ -1259,11 +1260,17 @@ class Why:
         if unexplained:
             reading.append(unexplained["text"] + ".")
         changes = self.changes_block()
+        try:
+            bdc = BS.run_step(self)
+        except BudgetExceeded:
+            bdc = {"applies": True, "error": "query budget ran out before the breakdown step; re-run with a larger max_steps"}
+        except Exception as e:                                                              # noqa: BLE001  the breakdown step must never take the rest of the answer down
+            bdc = {"applies": True, "error": f"breakdown step failed: {type(e).__name__}: {str(e)[:160]}"}
         grd = self.guardrails(tree, live)
         out = {"guardrails_checked": grd, "metric": self.metric, "window": {"start": str(self.start), "end": str(self.end)}, "comparison": {"kind": self.compare, "start": str(self.cstart), "end": str(self.cend)},
                "scope": {"product": self.product, "platform": self.platform, "basis": ("Upstack-attributed (any-click) new customers from the ad views, not actual orders" if self.scoped else "actual orders (orders_daily) and platform spend; gross, tax in, refunds not out")},
                "headline": chain_text, "arrows_mean": "'of which' (accounting identity), not 'because'", "reading": reading, "findings": [self._clean(f) for f in live], "refuted_candidates": [self._clean(f) for f in refuted],
-               "unexplained": unexplained, "next_questions": nq, "changes_in_window": changes, "known_cause_matches": matches, "tree": self._clean(tree), "steps_used": self.steps, "max_steps": self.max_steps, "budget_exhausted": self.budget_hit,
+               "unexplained": unexplained, "next_questions": nq, "changes_in_window": changes, "breakdown_changes": self._clean(bdc), "known_cause_matches": matches, "tree": self._clean(tree), "steps_used": self.steps, "max_steps": self.max_steps, "budget_exhausted": self.budget_hit,
                "routing_shift_coverage": getattr(self, "routing_cov", None), "coverage_notes": self.notes, "queries_run": self.steps}
         return out
 
@@ -1420,6 +1427,10 @@ def compact(res: dict, top: int = 6) -> dict:
     out["refuted"] = [f.get("sentence") or (f.get("label_reason")) for f in (res.get("refuted_candidates") or [])[:6]]
     out["changes_in_window"] = {"counts": ch.get("counts"), "window_for_dated_events": ch.get("window_for_dated_events"),
                                 "examples": {k: [{kk: e.get(kk) for kk in ("date", "label", "product", "spend_in_window") if kk in e} for e in v[:2]] for k, v in (ch.get("examples") or {}).items()}}
+    if res.get("breakdown_changes"):
+        out["breakdown_changes"] = BS.compact_block(res["breakdown_changes"])
+        out["how_to_answer"] += (" Then report breakdown_changes: its headline, each mover (segment, before / after, share of the aggregate move, noise band, verdict) and the coincident changes, "
+                                 "on the Meta-reported basis and with 'consistent with' wording; if it says nothing beat noise, say that.")
     out["guardrails"] = [g.get("id") for g in (res.get("guardrails_checked") or []) if g.get("ok")]
     out["note"] = "Compact view. Pass detail=true for the full tree, every finding, the refuted list and the queries run. Arrows are accounting, not cause; use the confidence words as written."
     return out

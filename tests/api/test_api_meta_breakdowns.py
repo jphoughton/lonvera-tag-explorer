@@ -8,11 +8,12 @@ from app import queries as q
 
 D = dt.date
 VIEW_COLS = ["day", "account", "campaign_id", "adset_id", "ad_id", "breakdown", "value", "spend", "impressions", "reach", "link_clicks", "unique_outbound_clicks", "purchases",
-             "purchase_value"]
+             "purchase_value", "add_to_carts", "initiated_checkouts"]
 MAIN, BACKUP = "act_1671338033619223", "act_1543579384022317"
 TEN = {"user_segment_key": "audience_segment", "age": "age", "gender": "gender", "age,gender": "age_gender", "country": "country", "region": "region",
        "publisher_platform": "publisher_platform", "platform_position": "platform_position", "device_platform": "device_platform",
-       "hourly_stats_aggregated_by_advertiser_time_zone": "hourly"}
+       "hourly_stats_aggregated_by_advertiser_time_zone": "hourly", "impression_device": "impression_device", "publisher_platform,platform_position": "placement",
+       "publisher_platform,platform_position,impression_device": "placement_device"}
 
 
 def ins(conn, day, acct, level, eid, camp, adset, bset, dims, spend=10, imps=1000, reach=800, clicks=40, link=30, ob=25, uob=20, purch=2, val=100):
@@ -156,10 +157,10 @@ def test_view_has_exactly_the_agreed_columns(pg):
     assert cols == VIEW_COLS
 
 
-def test_view_holds_only_the_ten_breakdowns_at_ad_grain(pg, mb):
+def test_view_holds_only_the_thirteen_breakdowns_at_ad_grain(pg, mb):
     ia, ic = mb["in"]
     for i, (bset, name) in enumerate(TEN.items()):
-        dims = ["25-34", "female"] if bset == "age,gender" else [f"v{i}"]
+        dims = ["25-34", "female"] if bset == "age,gender" else [f"v{i}", f"w{i}", f"x{i}"][:len(bset.split(","))]
         ins(pg, D(2026, 11, 1), MAIN, "ad", ia, ic, "s1", bset, dims, spend=i + 1)
     ins(pg, D(2026, 11, 1), MAIN, "ad", ia, ic, "s1", "image_asset", ["a"], spend=99)               # not one of the ten
     ins(pg, D(2026, 11, 1), MAIN, "ad", ia, ic, "s1", "action_device", ["iphone"], spend=None, imps=None, reach=None, clicks=None, link=None, ob=None, uob=None)
@@ -169,6 +170,7 @@ def test_view_holds_only_the_ten_breakdowns_at_ad_grain(pg, mb):
     assert [r[0] for r in rows] == list(TEN.values())
     by = {r[0]: r for r in rows}
     assert by["age_gender"][1] == "25-34|female" and by["age"][1] == "v1"
+    assert by["placement"][1] == "v11|w11" and by["placement_device"][1] == "v12|w12|x12" and by["impression_device"][1] == "v10"
     r = by["age"]
     assert r[2:6] == (ia, "s1", ic, "Lonvera Main") and r[7] == 800 and r[8] == 30 and r[9] == 20 and r[10] == 2 and r[11] == 100
     assert 99 not in [x[6] for x in rows]

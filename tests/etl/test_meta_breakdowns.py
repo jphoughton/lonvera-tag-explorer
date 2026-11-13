@@ -96,7 +96,9 @@ class Fake:
                 for c in combos:
                     out.append({**e, **c, "date_start": d.isoformat(), "spend": "10.00", "impressions": "1000", "reach": "900", "clicks": "30", "inline_link_clicks": "20",
                                 "outbound_clicks": [{"action_type": "outbound_click", "value": "15"}], "unique_outbound_clicks": [{"action_type": "outbound_click", "value": "12"}],
-                                "actions": [{"action_type": "omni_purchase", "value": "2"}], "action_values": [{"action_type": "omni_purchase", "value": "100"}]})
+                                "actions": [{"action_type": "omni_purchase", "value": "2"}, {"action_type": "omni_add_to_cart", "value": "7"},
+                                            {"action_type": "add_to_cart", "value": "99"}, {"action_type": "omni_initiated_checkout", "value": "4"}],
+                                "action_values": [{"action_type": "omni_purchase", "value": "100"}]})
             d += dt.timedelta(days=1)
         fields = set(p["fields"].split(","))
         return [{k: v for k, v in r.items() if k not in mb.BASE_FIELDS or k in fields} for r in out]
@@ -217,8 +219,8 @@ def test_pull_pages_and_stores_every_row_with_ids_and_basics(bd, monkeypatch):
     assert count(bd) == n and st["rows"] == n
     assert len([c for c in fake.calls if c[0] == "GET"]) > 2                    # paged (2 rows per page)
     r = bd.execute("SELECT level, entity_id, campaign_id, adset_id, dim1, dim2, dim3, spend, impressions, reach, clicks, inline_link_clicks, outbound_clicks, "
-                   "unique_outbound_clicks, purchases, purchase_value FROM meta_breakdown_daily WHERE entity_id='a3' AND dims_key='age=18-24|gender=female' AND day='2026-11-01'").fetchone()
-    assert r == ("ad", "a3", "c2", "s2", "18-24", "female", None, 10, 1000, 900, 30, 20, 15, 12, 2, 100)
+                   "unique_outbound_clicks, purchases, purchase_value, add_to_cart, initiate_checkout FROM meta_breakdown_daily WHERE entity_id='a3' AND dims_key='age=18-24|gender=female' AND day='2026-11-01'").fetchone()
+    assert r == ("ad", "a3", "c2", "s2", "18-24", "female", None, 10, 1000, 900, 30, 20, 15, 12, 2, 100, 7, 4)       # omni add to cart wins over the plain one
     assert all(c[0] == "GET" for c in fake.calls)
     assert all("access_token" not in c[2] for c in fake.calls)
 
@@ -234,7 +236,7 @@ def test_upsert_is_idempotent_and_refreshes_values(bd, monkeypatch):
     run(bd, w, ["age"])
     assert count(bd) == n1 and bd.execute("SELECT min(spend) FROM meta_breakdown_daily").fetchone()[0] == 10
     assert bd.execute("SELECT min(pulled_at) FROM meta_breakdown_daily").fetchone()[0] > t1
-    assert mb.dedupe([("x",) * 20, ("x",) * 20])[1] == 1
+    assert mb.dedupe([("x",) * 22, ("x",) * 22])[1] == 1
 
 
 def test_action_set_stores_purchases_only(bd, monkeypatch):
@@ -962,3 +964,54 @@ def test_splitting_after_progress_is_capped(bd, monkeypatch):
     f = Fake(h).install(monkeypatch)
     st = mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 14))], None, client=client()[0], accounts=ONE, entries=[mb.BY_NAME["age"]], pause=lambda s: None, today=D(2026, 11, 12))
     assert st["sets_error"] == 1 and len([c for c in f.calls if c[0] == "GET"]) <= 2 + 4 * 4 + 4
+
+
+# ----------------------------------------------------------------------------------------------- funnel columns and the fill-only history pass (migration 254)
+def test_action_sets_carry_no_funnel_values(bd, monkeypatch):
+    Fake().install(monkeypatch)
+    run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], ["action_device"])
+    assert bd.execute("SELECT count(*), count(add_to_cart), count(initiate_checkout) FROM meta_breakdown_daily WHERE breakdown_set = 'action_device'").fetchone()[0] > 0
+    assert bd.execute("SELECT count(add_to_cart) + count(initiate_checkout) FROM meta_breakdown_daily WHERE breakdown_set = 'action_device'").fetchone()[0] == 0
+
+
+def test_repull_never_blanks_a_filled_funnel_value(bd):
+    e = mb.BY_NAME["age"]
+    raw = [{"ad_id": "a1", "adset_id": "s1", "campaign_id": "c1", "date_start": "2026-11-01", "age": "18-24", "spend": "5", "impressions": "100",
+            "actions": [{"action_type": "omni_add_to_cart", "value": "3"}]}]
+    mb.upsert(bd, mb.normalise(e, "ad", ACCT[0], raw))
+    nofunnel = mb.normalise(e, "ad", ACCT[0], [{**raw[0], "actions": []}])
+    assert nofunnel[0][-2] == 0                                  # Meta returned no add to cart this time: 0, a real value
+    bd.execute("UPDATE meta_breakdown_daily SET add_to_cart = NULL")
+    mb.upsert(bd, nofunnel[:0] or [tuple(list(nofunnel[0][:-2]) + [None, None])])
+    assert bd.execute("SELECT add_to_cart FROM meta_breakdown_daily").fetchone()[0] is None       # a NULL re-pull does not invent a value
+
+
+def test_fill_funnel_updates_only_the_two_columns_of_existing_rows(bd, monkeypatch):
+    Fake().install(monkeypatch)
+    w = (D(2026, 11, 1), D(2026, 11, 3))
+    run(bd, [w], ["age", "gender"])
+    n = count(bd)
+    bd.execute("UPDATE meta_breakdown_daily SET add_to_cart = NULL, initiate_checkout = NULL")
+    bd.execute("UPDATE meta_breakdown_daily SET spend = 123, purchases = 77 WHERE breakdown_set = 'age'")        # values a fill must leave alone (Meta restates; the fill never writes them)
+    bd.execute("DELETE FROM meta_breakdown_daily WHERE breakdown_set = 'gender' AND day = '2026-11-03'")           # a pulled row with no stored counterpart is not inserted
+    bd.commit()
+    before = count(bd)
+    out = mb.fill_funnel(bd, w[0], w[1], ["age", "gender"], pause=lambda s: None, client=client()[0], accounts=ONE)
+    assert count(bd) == before < n
+    assert bd.execute("SELECT count(*) FROM meta_breakdown_daily WHERE add_to_cart IS NULL").fetchone()[0] == 0
+    assert bd.execute("SELECT min(add_to_cart), max(add_to_cart), min(initiate_checkout) FROM meta_breakdown_daily").fetchone() == (7, 7, 4)
+    assert bd.execute("SELECT min(spend), max(spend), min(purchases) FROM meta_breakdown_daily WHERE breakdown_set = 'age'").fetchone() == (123, 123, 77)
+    assert out["per_set"]["age"]["left"] == 0 and out["per_set"]["age"]["filled"] > 0 and not out["errors"]
+
+
+def test_fill_funnel_is_resumable_and_a_finished_window_costs_no_request(bd, monkeypatch):
+    fake = Fake().install(monkeypatch)
+    w = (D(2026, 11, 1), D(2026, 11, 3))
+    run(bd, [w], ["age"])
+    bd.execute("UPDATE meta_breakdown_daily SET add_to_cart = NULL")
+    bd.commit()
+    kw = dict(pause=lambda s: None, client=client()[0], accounts=ONE)
+    mb.fill_funnel(bd, w[0], w[1], ["age"], **kw)
+    calls = len(fake.calls)
+    out = mb.fill_funnel(bd, w[0], w[1], ["age"], **kw)
+    assert len(fake.calls) == calls and out["windows_skipped"] == 1 and out["windows_filled"] == 0
