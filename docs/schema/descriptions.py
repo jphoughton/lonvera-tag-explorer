@@ -1401,6 +1401,17 @@ rel("public.creative_priorities_assignments", group="creative", kind="table",
           "updated_by": "Who last changed it: the signed-in user name, or vendor:<name> for a write made on a vendor link page; NULL when none.",
           "format_code": "Creative format chosen when assigning or later (creative_formats.code, foreign key); NULL when none was chosen. Set by a signed-in user only; a vendor sees it but cannot change it."})
 
+rel("public.creative_priorities_assignment_events", group="creative", kind="table",
+    purpose="The history of each production assignment on /priorities: who assigned the concept to a vendor, and who moved it between stages (brief sent, creative delivered, ready to launch, launched, dropped) and when.",
+    grain="one row per change to an assignment", source="app/priorities_assign.py, written in the same transaction as the change (create, edit, vendor link page); rows before migration 242 rebuilt from the stage timestamps of creative_priorities_assignments",
+    refresh="on every change made on /priorities/production or a vendor link page", coverage="every assignment from creation; for assignments older than migration 242 only the first time each stage was reached, with no person except the creator",
+    caveats=["actor is NULL for rebuilt history and when sign-in was off; a vendor link page writes vendor:<name>.", "stage_before and stage_after are the stage the assignment itself shows (its links and Ready / Launched / Dropped buttons); a stage reached only because a linked Creative Tracker row moved on is not an event."],
+    cols={"id": "Row number (primary key).", "assignment_id": "The assignment that changed (creative_priorities_assignments.id; rows go with the assignment).", "at": "When the change was made.",
+          "actor": "Who made it: the signed-in user name, vendor:<name> for a vendor link page, NULL when not known.",
+          "kind": "What changed: assigned, brief_added, brief_removed, creative_added, creative_removed, ready, ready_cleared, launched, launched_cleared, dropped, restored, vendor, week or format.",
+          "stage_before": "Stage the assignment showed before the change (assigned, brief_sent, creative_in, ready, launched, dropped); NULL on the first row.", "stage_after": "Stage it showed after the change.",
+          "detail": "Short plain text about the change, for example 'Madre to Victoria'; empty when the kind says it all."})
+
 rel("public.creative_formats", group="creative", kind="table",
     purpose="The creative formats a production assignment can be made in (for example Whiteboard explainer): a short list that Josh picks from when assigning a concept to a vendor. Production side only; not part of the concept taxonomy.",
     grain="one row per format (code is the primary key)", source="seeded by migration 204; edited by hand in the database (no page edits it); read by /api/priorities/assignments (app/priorities_assign.py)",

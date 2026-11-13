@@ -19,3 +19,10 @@
 @import url("css/production.css");
 @import url("css/priorities_groups.css");
 @import url("css/connect_agent.css");
+
+/* production: history of an assignment (who did what, when) */
+.prod-hist { margin-top: 4px; font-size: 0.8125rem; }
+.prod-hist summary { cursor: pointer; color: var(--muted, #666); }
+.prod-histlist { margin: 4px 0 0; padding-left: 18px; }
+.prod-histlist li { margin: 2px 0; }
+.prod-hwhen { color: var(--muted, #666); white-space: nowrap; }
