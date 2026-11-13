@@ -2824,7 +2824,7 @@ rel("public.amazon_traffic_daily", group="amazon", kind="table",
     caveats=["Account level, not by ASIN (each ASIN row of the source repeats the account total). The latest restatement of each day is kept; recent days move for about a week.",
              "Percentages are 0-100. Ordered units and sales are Amazon's ordered-product figures, not the shipped orders of amazon_orders_asin_daily."],
     cols={"day": "Report day.", "marketplace_id": "ATVPDKIKX0DER (US).", "sessions": "Sessions (browser plus app).", "browser_sessions": "Browser sessions.", "mobile_app_sessions": "Mobile app sessions.",
-          "page_views": "Page views.", "buy_box_pct": "Page views with our offer in the buy box, percent 0-100.", "unit_session_pct": "Units ordered per session, percent 0-100.",
+          "page_views": "Page views.", "buy_box_pct": "Page views with our offer in the buy box, percent 0-100.", "unit_conversion_pct": "Units ordered per session, percent 0-100.",
           "units_ordered": "Units ordered (Amazon's ordered basis).", "ordered_product_sales": "Ordered product sales, dollars.", "total_order_items": "Order items.",
           "sessions_b2b": "Business-customer sessions.", "page_views_b2b": "Business-customer page views.", "buy_box_pct_b2b": "Business-customer buy box share, percent 0-100.",
           "source_updated_at": "When ExpandFi last restated this day.", **_AMZ_LOADED})

@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS amazon_traffic_daily (
   marketplace_id text NOT NULL,
   sessions       bigint, browser_sessions bigint, mobile_app_sessions bigint, page_views bigint,
   buy_box_pct    numeric,
-  unit_session_pct numeric,
+  unit_conversion_pct numeric,
   units_ordered  bigint,
   ordered_product_sales numeric,
   total_order_items bigint,

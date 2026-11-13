@@ -553,7 +553,7 @@ COMMENT ON COLUMN public.amazon_traffic_daily.browser_sessions IS 'Browser sessi
 COMMENT ON COLUMN public.amazon_traffic_daily.mobile_app_sessions IS 'Mobile app sessions.';
 COMMENT ON COLUMN public.amazon_traffic_daily.page_views IS 'Page views.';
 COMMENT ON COLUMN public.amazon_traffic_daily.buy_box_pct IS 'Page views with our offer in the buy box, percent 0-100.';
-COMMENT ON COLUMN public.amazon_traffic_daily.unit_session_pct IS 'Units ordered per session, percent 0-100.';
+COMMENT ON COLUMN public.amazon_traffic_daily.unit_conversion_pct IS 'Units ordered per session, percent 0-100.';
 COMMENT ON COLUMN public.amazon_traffic_daily.units_ordered IS 'Units ordered (Amazon''s ordered basis).';
 COMMENT ON COLUMN public.amazon_traffic_daily.ordered_product_sales IS 'Ordered product sales, dollars.';
 COMMENT ON COLUMN public.amazon_traffic_daily.total_order_items IS 'Order items.';
@@ -771,7 +771,7 @@ COMMENT ON COLUMN analytics.amazon_traffic_daily.browser_sessions IS 'Browser se
 COMMENT ON COLUMN analytics.amazon_traffic_daily.mobile_app_sessions IS 'Mobile app sessions.';
 COMMENT ON COLUMN analytics.amazon_traffic_daily.page_views IS 'Page views.';
 COMMENT ON COLUMN analytics.amazon_traffic_daily.buy_box_pct IS 'Page views with our offer in the buy box, percent 0-100.';
-COMMENT ON COLUMN analytics.amazon_traffic_daily.unit_session_pct IS 'Units ordered per session, percent 0-100.';
+COMMENT ON COLUMN analytics.amazon_traffic_daily.unit_conversion_pct IS 'Units ordered per session, percent 0-100.';
 COMMENT ON COLUMN analytics.amazon_traffic_daily.units_ordered IS 'Units ordered (Amazon''s ordered basis).';
 COMMENT ON COLUMN analytics.amazon_traffic_daily.ordered_product_sales IS 'Ordered product sales, dollars.';
 COMMENT ON COLUMN analytics.amazon_traffic_daily.total_order_items IS 'Order items.';

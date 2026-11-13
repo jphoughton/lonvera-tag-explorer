@@ -102,7 +102,7 @@ def test_every_analytics_view_has_a_domain_and_a_description():
     views = {k: v for k, v in D.REL.items() if k.startswith("analytics.")}
     assert len(views) >= 80
     domains = {k for k, _ in D.DOMAINS}
-    assert domains == {"marketing", "attribution", "orders", "creative", "tags", "priorities", "production", "projection", "inventory", "cohorts", "pacing", "competitors", "pipeline", "email", "landing_pages", "story"}
+    assert domains == {"marketing", "attribution", "orders", "creative", "tags", "priorities", "production", "projection", "inventory", "cohorts", "pacing", "competitors", "pipeline", "email", "landing_pages", "story", "amazon"}
     for k, v in views.items():
         assert v.get("domain") in domains, k
         assert len(str(v.get("purpose") or "").strip()) > 20, k
@@ -178,7 +178,7 @@ def test_metric_sources_name_real_views_and_columns(bdb):
 
 def test_generator_catalog_sql_is_what_the_migration_holds():
     text = (ROOT / "migrations" / "230_analytics_brain_views.sql").read_text()
-    assert gen.catalog_sql(D) in (ROOT / "migrations" / "248_daily_story.sql").read_text()      # the latest migration that re-issues the catalog / glossary (230 holds the first version)
+    assert gen.catalog_sql(D) in (ROOT / "migrations" / "250_amazon_views.sql").read_text()      # the latest migration that re-issues the catalog / glossary (230 holds the first version)
     assert "GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO analytics_reader" in text
     assert text.count("CREATE OR REPLACE VIEW analytics.") >= 69
 
