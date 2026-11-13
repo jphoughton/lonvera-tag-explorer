@@ -330,6 +330,68 @@ def _tracker_ads(conn, recs: list[dict]) -> dict:
     return out
 
 
+# ---------------------------------------------------------------------------------------------------------------- history (who did what, when)
+EVENT_KINDS = ("assigned", "brief_added", "brief_removed", "creative_added", "creative_removed", "ready", "ready_cleared", "launched", "launched_cleared", "dropped", "restored", "vendor", "week", "format")
+
+
+def _log(w, aid: int, actor: str | None, kind: str, before: str | None, after: str | None, detail: str = "") -> None:
+    """One history row, in the caller's transaction. A savepoint keeps the change itself safe when migration 243 is not applied yet."""
+    try:
+        with w.transaction():
+            w.execute("INSERT INTO creative_priorities_assignment_events (assignment_id, actor, kind, stage_before, stage_after, detail) VALUES (%s,%s,%s,%s,%s,%s)", (aid, actor, kind, before, after, detail))
+    except psycopg.errors.UndefinedTable:
+        pass
+
+
+def _snapshot(w, aid: int, where: str, params: list) -> dict | None:
+    """The assignment as it is now (explicit columns, so a changed table never trips a cached plan), with format_code when migration 204 is applied."""
+    rec = w.execute(f"SELECT {COLS} FROM creative_priorities_assignments WHERE {where}", params).fetchone()
+    if rec is None:
+        return None
+    try:
+        with w.transaction():
+            rec = {**rec, "format_code": w.execute("SELECT format_code FROM creative_priorities_assignments WHERE id = %s", (aid,)).fetchone()["format_code"]}
+    except psycopg.errors.UndefinedColumn:
+        pass
+    return rec
+
+
+def events_for(before: dict, after: dict) -> list[tuple[str, str | None, str, str]]:
+    """What changed between two assignment rows, as [(kind, stage_before, stage_after, detail)]. The stage is the one the row itself shows (stage_of with no tracker rows)."""
+    sb, sa = stage_of(before), stage_of(after)
+    out: list[tuple[str, str | None, str, str]] = []
+    for col, kind in (("vendor", "vendor"), ("for_week", "week"), ("format_code", "format")):
+        a, b = before.get(col), after.get(col)
+        if a != b:
+            out.append((kind, sa, sa, f"{_iso(a) or 'none'} to {_iso(b) or 'none'}"))
+    for col, on, off in (("brief_url", "brief_added", "brief_removed"), ("creative_url", "creative_added", "creative_removed")):
+        if not before.get(col) and after.get(col):
+            out.append((on, sb, sa, ""))
+        elif before.get(col) and not after.get(col):
+            out.append((off, sb, sa, ""))
+    for col, on, off in (("ready_at", "ready", "ready_cleared"), ("launched_at", "launched", "launched_cleared"), ("dropped_at", "dropped", "restored")):
+        if not before.get(col) and after.get(col):
+            out.append((on, sb, sa, ""))
+        elif before.get(col) and not after.get(col):
+            out.append((off, sb, sa, ""))
+    return out
+
+
+def _history(conn, ids: list[int]) -> dict[int, list[dict]]:
+    """{assignment id: [event, ...]} oldest first; empty when migration 243 is not applied."""
+    if not ids:
+        return {}
+    try:
+        rows = conn.execute("SELECT assignment_id, at, actor, kind, stage_before, stage_after, detail FROM creative_priorities_assignment_events WHERE assignment_id = ANY(%s) ORDER BY at, id", (ids,)).fetchall()
+    except psycopg.errors.UndefinedTable:
+        conn.rollback()
+        return {}
+    out: dict[int, list[dict]] = {i: [] for i in ids}
+    for r in rows:
+        out[r["assignment_id"]].append({"at": _iso(r["at"]), "actor": r["actor"], "kind": r["kind"], "stage_before": r["stage_before"], "stage_after": r["stage_after"], "detail": r["detail"]})
+    return out
+
+
 def _shape(rec: dict, ads: list[dict], vendor_view: bool = False) -> dict:
     statuses = [a["status"] for a in ads]
     stage = stage_of(rec, statuses)
@@ -383,7 +445,12 @@ def _weeks(conn) -> list[str]:
 
 def _shape_all(conn, recs: list[dict], vendor_view: bool = False) -> list[dict]:
     ads = _tracker_ads(conn, recs)
-    return [_shape(r, ads[r["id"]], vendor_view) for r in recs]
+    shaped = [_shape(r, ads[r["id"]], vendor_view) for r in recs]
+    if not vendor_view:                                                  # who did what is internal: a vendor link page never gets it
+        hist = _history(conn, [r["id"] for r in recs])
+        for d in shaped:
+            d["history"] = hist.get(d["id"], [])
+    return shaped
 
 
 def list_assignments(conn, week=None, vendor=None, include_closed: bool = False) -> dict:
@@ -451,6 +518,7 @@ def create_assignments(conn, body: dict, user: str | None = None) -> dict:
                     skipped.append({"key": k, "reason": "already assigned to this vendor for that week"})
                 else:
                     created_ids.append(row["id"])
+                    _log(w, row["id"], user, "assigned", None, "assigned", f"{f['vendor']}, week of {f['for_week']}")
     except psycopg.errors.UndefinedTable:
         raise q.ApiError(503, "Production is not set up yet (migration 202 is not applied).") from None
     except psycopg.errors.UndefinedColumn:
@@ -487,7 +555,12 @@ def _update(aid: int, f: dict, user: str | None, vendor: str | None = None) -> N
         wp.append(vendor)
     try:
         with _rw() as w:
+            before = _snapshot(w, aid, where, wp)
             n = w.execute(f"UPDATE creative_priorities_assignments SET {', '.join(sets)} WHERE {where}", [*params, *wp]).rowcount
+            if n and before:
+                after = _snapshot(w, aid, "id = %s", [aid])
+                for kind, sb, sa, detail in events_for(before, after):
+                    _log(w, aid, user, kind, sb, sa, detail)
     except psycopg.errors.UniqueViolation:
         raise q.ApiError(409, "That concept is already assigned to this vendor for that week.") from None
     except psycopg.errors.UndefinedColumn:
