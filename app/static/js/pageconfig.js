@@ -44,6 +44,7 @@ export const PAGES = [
   { id: 'email', re: /^\/email\/?$/, filters: [], parent: toOverview },
   { id: 'priorities', re: /^\/priorities\/?$/, filters: [], parent: toOverview },
   { id: 'priorities-view', re: /^\/priorities\/v\/([A-Za-z0-9_-]+)\/?$/, filters: [], parent: () => href('/priorities', {}) },
+  { id: 'competitors', re: /^\/competitors\/?$/, filters: [], parent: toOverview },
   { id: 'production', re: /^\/priorities\/production\/?$/, filters: [], parent: () => href('/priorities', {}) },
   { id: 'vendor', re: /^\/priorities\/vendor\/([A-Za-z0-9_-]+)\/?$/, bare: true, public: true, filters: [] },       // a vendor's own link: no login, no app navigation
   { id: 'lookup', re: /^\/lookup\/?$/, filters: [], parent: toOverview },

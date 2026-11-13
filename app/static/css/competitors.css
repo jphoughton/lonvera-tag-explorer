@@ -1,0 +1,31 @@
+/* Competitors page (/competitors). Wide table scrolls inside .comp-scroll so the page never scrolls sideways. */
+.comp-page { max-width: 1480px; }
+.comp-note { margin: 4px 0 8px; }
+.comp-scroll { overflow-x: auto; max-width: 100%; }
+.comp-table { font-size: 13px; min-width: 980px; }
+.comp-table th { font-size: 12px; white-space: nowrap; }
+.comp-page .comp-table, .comp-page .comp-sub { display: table; width: 100%; }
+.comp-page .comp-table thead, .comp-page .comp-sub thead { display: table-header-group; position: static; width: auto; height: auto; overflow: visible; clip: auto; }
+.comp-page .comp-table tbody, .comp-page .comp-sub tbody { display: table-row-group; }
+.comp-page .comp-table tr, .comp-page .comp-sub tr { display: table-row; }
+.comp-page .comp-table td, .comp-page .comp-table th, .comp-page .comp-sub td, .comp-page .comp-sub th { display: table-cell; width: auto; }
+.comp-c, .comp-sub td { padding: 7px 8px; vertical-align: top; border-bottom: 1px solid var(--line-soft, var(--line)); overflow-wrap: anywhere; }
+.comp-sub { font-size: 13px; min-width: 560px; }
+.comp-n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.comp-hook { min-width: 240px; max-width: 520px; }
+.comp-row { cursor: pointer; }
+.comp-row:hover { background: var(--panel); }
+.comp-name { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: var(--accent); cursor: pointer; text-align: left; }
+.comp-name:focus-visible, .comp-sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.comp-sort { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: inherit; cursor: pointer; white-space: nowrap; }
+.comp-stale { color: var(--warn); font-weight: 700; }
+.comp-detailrow[hidden] { display: none !important; }
+.comp-xcell { padding: 8px 12px 14px; background: var(--panel); }
+.comp-sec h3 { font-size: 14px; margin: 14px 0 2px; }
+.comp-sec h2 { font-size: 17px; margin: 18px 0 6px; }
+.comp-top { margin: 6px 0; }
+.comp-changes { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 4px 14px 8px; margin: 10px 0; }
+.comp-changes h2 { font-size: 16px; margin: 8px 0 4px; }
+.comp-changes ul { margin: 4px 0; padding-left: 18px; }
+.comp-changes li { margin: 3px 0; overflow-wrap: anywhere; }
+.comp-detail { max-width: 100%; }

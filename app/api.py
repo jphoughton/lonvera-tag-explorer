@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import auth, competitors as comp, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -395,6 +395,18 @@ def promotions_scale():
 def priorities():
     """Creative priorities: the weekly one-sheeter (week=YYYY-MM-DD, default the latest snapshot) plus the list of stored weeks. See app/creative_priorities.py."""
     return jsonify(cpr.payload(db.get_conn(), _arg("week")))
+
+
+@bp.get("/api/competitors")
+def competitors():
+    """Competitors: what watched brands run on Meta this week (week=YYYY-MM-DD, default the latest snapshot; format=video|image, default all): one row per brand, what changed since the prior week, chatter when stored. See app/competitors.py."""
+    return jsonify(comp.payload(db.get_conn(), _arg("week"), _arg("format")))
+
+
+@bp.get("/api/competitors/<path:brand>")
+def competitor_detail(brand: str):
+    """One competitor: longest-running ads, new this week, angles, landing pages, Ad Library links (week, format as on /api/competitors)."""
+    return jsonify(comp.brand_detail(db.get_conn(), brand, _arg("week"), _arg("format")))
 
 
 @bp.get("/api/priorities/lines/<int:line_id>/insights")
