@@ -252,7 +252,7 @@ def test_trend_compare_overlay_bars_and_line(page):
     assert set(kinds) == {"bar", "line"}  # B as dashed outlined bars + a dashed gray line
     assert kinds["bar"]["dash"] and kinds["line"]["dash"] and kinds["bar"]["axis"] == "left" and kinds["line"]["axis"] == "right"
     assert all(len(d["data"]) == len(info["labels"]) for d in b)  # aligned to A by position
-    assert kinds["line"]["color"].lower() in ("#6c9893", "rgb(108, 152, 147)")  # the compare line takes the teal-family line-strong token, not a gray
+    assert kinds["line"]["color"].lower() in ("#648f8a", "rgb(100, 143, 138)")  # the compare line takes the teal-family line-strong token, not a gray
     reqs = trend_requests(page)
     page.uncheck("#trend-overlay")  # a client-side toggle
     assert not any(d["label"].startswith("B ") for d in trend_info(page)["ds"]) and not reqs
