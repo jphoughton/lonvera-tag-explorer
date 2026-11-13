@@ -26,7 +26,7 @@ Primary source (Josh, 2026-11-03): the **Lonvera "Vital Bull PDP R2" prototype**
 | Ember `#C75123` action, Ember deep `#9E3E19` hover and link text, Ember tint `#F6E3D9` | artifact `:root` |
 | Night `#161310`, Night-2 `#221D18` (dark bands) | artifact `:root` |
 | Amber `#F4B43C` (basis of the input-cell tint and the "copy" scenario cue) | artifact `:root` (stars) |
-| Radii 8 / 14 / 20 px, focus ring 2px ember offset, ease `cubic-bezier(.2,.7,.2,1)`, 1px rules, stroke icons (24px, 2px round) | artifact CSS |
+| Radii 8 / 14 / 20 px, focus ring 2px teal offset, ease `cubic-bezier(.2,.7,.2,1)`, 1px rules, stroke icons (24px, 2px round) | artifact CSS |
 | Plus Jakarta Sans 400 to 800 | artifact `--sans`; self-hosted (see Fonts) |
 | Muted `#665D53` (artifact `#6E655B`, darkened to pass 4.5:1 on Sand) | adjusted by contrast test |
 | Boneflex blue `#4A76AD` / navy family, used only as the hue family of "projected" and the Boneflex chart slot | Brand Guidelines PDF |
@@ -50,7 +50,8 @@ All in `brand.css`, prefixed `--lv-`. Components use roles, never the raw brand 
 |---|---|
 | Surfaces | `--lv-bg` (page), `--lv-surface` (panels, table body), `--lv-surface-2` (headers, bands), `--lv-surface-3`, `--lv-hover`, `--lv-inverse` (TLDR strip, toasts) |
 | Ink and lines | `--lv-ink`, `--lv-ink-2`, `--lv-muted`, `--lv-line`, `--lv-line-soft`, `--lv-line-strong` (3:1 control borders) |
-| Action (ember) | `--lv-action`, `-hover`, `-active`, `--lv-on-action`, `--lv-action-tint`, `--lv-link`, `--lv-link-hover`, `--lv-focus`, `--lv-select-bg` |
+| Accent (teal, palette C 2026-11-12) | `--lv-accent`, `-hover`, `-active`, `--lv-on-accent`, `--lv-accent-tint`, `--lv-accent-ink`, `--lv-link`, `--lv-link-hover`, `--lv-focus`, `--lv-select-bg`: navigation, links, focus, selection, secondary buttons, vendor and format chips |
+| Primary action (coral) | `--lv-cta`, `-hover`, `-active`, `--lv-on-cta`, `--lv-cta-tint`, `--lv-on-cta-tint`: primary buttons only, never numbers or status |
 | Status | `--lv-good`, `-warn`, `-bad`, `-info`, `-neutral` with `-bg` tints; solids `--lv-bad-solid`, `-good-solid`, `-warn-solid`; `--lv-neg` (negative numbers) |
 | Data cells | `--lv-input-bg`, `-input-edge` (control edge, 3:1), `-input-grid` (the amber gridline between input cells), `-input-hover`, `--lv-calc-ink`, `--lv-total-bg`, `--lv-total-rule`, `--lv-subtotal-bg`, `--lv-band-bg`, `--lv-hl-bg` |
 | Month headers | `--lv-actual-head/-ink`, `--lv-proj-head/-ink`, `--lv-proj-cell`, `--lv-proj-rule`, `--lv-proj-band` |
@@ -61,7 +62,7 @@ All in `brand.css`, prefixed `--lv-`. Components use roles, never the raw brand 
 
 ### The two color problems, and how they are solved
 
-**1. Ember is close to warn and bad.** Ember (`#C75123`, OKLCH hue 40) is reserved for the primary action, the active tab underline, the focus ring and links (as ember deep `#9E3E19`). It is never used for a number, an alert or a status. Negative numbers and "bad" are **crimson** `#A3173C` (hue 14 against ember's 40, a clear step toward blue-red), always with a minus sign or parentheses, and every status chip carries an icon and a word. Warn is amber-brown on pale amber. `test_ember_is_not_a_status_color` enforces a gap of at least 25 degrees (measured 26). In dark mode the gap is wider (`#F59E74` links at hue 46 vs `#FF92AB` negatives at hue 6).
+**1. (Superseded by palette C: teal = navigation / links / focus / selection, coral `#D4432A` = the one primary action; coral stays off numbers and status. Text below describes the former ember.) Ember is close to warn and bad.** Ember (`#C75123`, OKLCH hue 40) is reserved for the primary action, the active tab underline, the focus ring and links (as ember deep `#9E3E19`). It is never used for a number, an alert or a status. Negative numbers and "bad" are **crimson** `#A3173C` (hue 14 against ember's 40, a clear step toward blue-red), always with a minus sign or parentheses, and every status chip carries an icon and a word. Warn is amber-brown on pale amber. `test_ember_is_not_a_status_color` enforces a gap of at least 25 degrees (measured 26). In dark mode the gap is wider (`#F59E74` links at hue 46 vs `#FF92AB` negatives at hue 6).
 
 **2. Yellow input cells on bone.** Input cells use a butter tint (`#FAEBC0`, amber at about 25% on Card) with a slightly stronger amber 1px gridline (`--lv-input-grid`, `#DDB650`; the control edge `--lv-input-edge` is `#A98216` so a single input passes 3:1) and semibold ink text. Measured: fill vs calculated cell distance 6.4 in OKLab x100 (unmistakable), contrast with the panel 1.12:1 (not loud), ink on it 14.8:1. Hover deepens to `#F6E0A0`. Editing turns the cell white with a 2px focus ring. In dark mode the tint becomes a deep amber `#3A3011` with cream text. A grayscale printout still shows the amber grid edge.
 

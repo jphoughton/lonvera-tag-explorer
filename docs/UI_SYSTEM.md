@@ -135,7 +135,7 @@ One layer. Names the app CSS reads:
 | `--topbar-h` (42px) `--subnav-h` (34px) | the two header rows |
 | `--header-h` | their sum; the offset for anything that sticks under the header (filter bar, table heads). Do not hard-code 42px. |
 
-Values come from the brand tokens (`--lv-*`, warm bone / ink / ember, light and dark) in `projection/brand.css`, which is linked after `app.css` and maps these names onto the brand palette. Use `--lv-*` directly in new work. Page-scoped tokens live at the top of the page's own CSS file (priorities: `--lv-pri-*` in `css/priorities.css`); never add page tokens to `tokens.css`. The two dark blocks in `brand.css` must stay identical (a test checks).
+Values come from the brand tokens (`--lv-*`, white / mint / teal / coral, teal-family ink, light and dark (dark unchanged)) in `projection/brand.css`, which is linked after `app.css` and maps these names onto the brand palette. Use `--lv-*` directly in new work. Page-scoped tokens live at the top of the page's own CSS file (priorities: `--lv-pri-*` in `css/priorities.css`); never add page tokens to `tokens.css`. The two dark blocks in `brand.css` must stay identical (a test checks).
 
 ## 5. Components
 
