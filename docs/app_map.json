@@ -486,6 +486,13 @@
    "bare": false
   },
   {
+   "url_pattern": "/amazon",
+   "page_function": "amazonPage",
+   "js_file": "app/static/js/pages/amazon.js",
+   "public": false,
+   "bare": false
+  },
+  {
    "url_pattern": "/campaigns",
    "page_function": "campaignsRoute",
    "js_file": "app/static/app.js (local function that picks a page by platform)",
@@ -615,6 +622,17 @@
    "summary": ""
   },
   {
+   "rule": "/amazon",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/amazon",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
    "rule": "/api/ads/<aint:row_id>",
    "methods": [
     "GET"
@@ -635,6 +653,94 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": ""
+  },
+  {
+   "rule": "/api/amazon/campaign-trend",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.amazon_campaign_trend",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Daily, weekly or monthly ad numbers of one Amazon campaign (campaign_id=<id>, grain=day|week|month)."
+  },
+  {
+   "rule": "/api/amazon/campaigns",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.amazon_campaigns",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Amazon ad campaigns for the range with ad type, product, status and ad-reported results; filters ad_type=sp|sb|sbv|sd, product=<slug>|none, q=<text>."
+  },
+  {
+   "rule": "/api/amazon/fees",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.amazon_fees",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Amazon settlement lines by fee type and month for the range (posted-day basis, signed as Amazon settles them)."
+  },
+  {
+   "rule": "/api/amazon/overview",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.amazon_overview",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Amazon page, Overview: revenue, orders, units, new-customer revenue, ad spend and return, sessions and conversion for the range, by product and by ad type. Amazon is its own channel and is never added into the All platforms totals; see app/amazon.py."
+  },
+  {
+   "rule": "/api/amazon/products",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.amazon_products",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Amazon by ASIN: revenue, units, new-customer revenue and the advertised-product ad numbers (Sponsored Products and Display; Brands has no product grain)."
+  },
+  {
+   "rule": "/api/amazon/search-terms",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.amazon_search_terms",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Organic search terms from Amazon Brand Analytics for the full weeks inside the range: search volume, our impression / click / cart-add / purchase share, our counts and the change vs the prior equal period; product=<slug>, branded=all|branded|nonbranded, q=<text>."
+  },
+  {
+   "rule": "/api/amazon/search-terms/history",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.amazon_search_term_history",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "One search term over every week held: search volume and our click and purchase share per product (term=<query>, optional product=<slug>); weeks the term is missing are gaps."
+  },
+  {
+   "rule": "/api/amazon/trend",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.amazon_trend",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Amazon Overview chart: revenue, ad spend, ad return and sessions by day, week (Monday) or month (grain=day|week|month)."
   },
   {
    "rule": "/api/brain/key",

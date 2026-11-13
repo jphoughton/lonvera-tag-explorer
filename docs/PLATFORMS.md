@@ -4,7 +4,7 @@ Josh: "i can choose by platform at the highest level", "by campaign by platform.
 
 ## Platform = the first control, and the default landing is All
 
-`Platform: All | Meta | Google`, first control of the bar, kept in the URL (`platform=all|meta|google`). It only means something on the platform pages (`/` and `/campaigns`); product and ad pages are Meta.
+`Platform: All | Meta | Google | Amazon`, first control of the bar, kept in the URL (`platform=all|meta|google`). It only means something on the platform pages (`/` and `/campaigns`); product and ad pages are Meta.
 
 **The default depends on the path, so old links keep their meaning:** a bare `/` (what the top-bar **Marketing metrics** link and the Lonvera brand link point at, and where a login lands) is the **All platforms roll-up**; `/campaigns` without a platform is still **Meta's** Campaigns. A link to the Meta landing therefore carries `platform=meta`, and `platform=all` is explicit on `/campaigns`. Every other parameter (`window=`, `source=`, `basis=`, `compare=`, ...) is honored on whichever platform page it lands on; a root with parameters but no platform is the roll-up with them applied.
 
@@ -18,6 +18,7 @@ Josh: "i can choose by platform at the highest level", "by campaign by platform.
 | `/campaigns?platform=google` | Google campaigns first, the campaign types as a filter row |
 | `/p/<slug>`, `/ad/<id>` | unchanged (Meta); their breadcrumb starts at **Meta** (back up = the Products table, not the roll-up) |
 | `/google` | the first Google URL; redirects to `/?platform=google` |
+| `/amazon` | **Amazon**, its own channel: Overview, Campaigns, Products, Search terms, Fees (see MARKETING_METRICS_AMAZON.md). Never added into the All platforms numbers; no Numbers from switch, stage or comparison |
 
 Switching platform keeps the range, comparison and Numbers-from choice; Stage, Active only and the chart picks (Meta only) are dropped when leaving Meta. On a Campaigns page the switch keeps you on Campaigns (All, Meta and Google each have a Campaigns view). The `View by` switch has the same pattern as the product page's `View by: Tags | Campaigns`: Platforms | Campaigns on All, Products | Campaigns on Meta, Overview | Campaigns on Google. `/api/status` lists the platforms (`sources.platforms`: key, name, available, first_day, through); the Google button is disabled when Google is not loaded.
 
@@ -30,7 +31,7 @@ Switching platform keeps the range, comparison and Numbers-from choice; Stage, A
 | TikTok (`tiktokAdsIntegration`) | **no rows**: the integration is known to the feed code but returns nothing in 2024-2026 | no TikTok source in the sampled days |
 | Bing / Microsoft | not in the channel feed | appears only as an attribution source (`Bing`, 28 orders over 21-day samples since 2025-05); it carries no spend, so it has no row here |
 
-So the picker lists exactly Meta and Google. A platform that starts returning spend and attributed orders is a loader plus one entry in `sources.platforms` away; the page code does not hard-code two platforms beyond the buttons.
+So the spend platforms of the All views are exactly Meta and Google. Amazon is in the picker too, but it is a separate channel with its own page (`/amazon`, `sources.amazon` in `/api/status`, not `sources.platforms`) and adds nothing to the All numbers. A platform that starts returning spend and attributed orders is a loader plus one entry in `sources.platforms` away; the page code does not hard-code two platforms beyond the buttons.
 
 ## All platforms (`/?platform=all`, `GET /api/platforms/overview`)
 

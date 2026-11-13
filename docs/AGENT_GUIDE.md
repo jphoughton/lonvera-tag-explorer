@@ -111,6 +111,7 @@ The browser gets `app/static/index.html` for every page route (list in `app/__in
 | Products and tag tree (Meta home) | `/`, `/p/<slug>` | `pages/products.js`, `pages/product.js`, `tree.js` | `/api/products`, `/api/products/<slug>/tree` |
 | Campaigns | `/campaigns` | `pages/campaigns.js`, `pages/all_campaigns.js` | `/api/campaigns`, `/api/campaigns/all` |
 | Google | `/google` (redirects into `/?platform=google`) | `pages/google.js` | `/api/google/rollup`, `/api/google/trend` |
+| Amazon | `/amazon` (`?view=` overview, campaigns, products, search or fees) | `pages/amazon.js` | `/api/amazon/overview`, `/trend`, `/campaigns`, `/campaign-trend`, `/products`, `/search-terms`, `/search-terms/history`, `/fees` |
 | Ad page | `/ad/<id>` | `pages/ad.js` | `/api/ads/<id>` |
 | Test to scale | `/promotions` | `pages/promotions.js`, `pages/scale_views.js` | `/api/promotions`, `/api/promotions/scale` |
 | Trends | `/trends` | `pages/trends.js` | `/api/trends`, `/api/trends/plan` |
@@ -190,6 +191,7 @@ Read endpoints (all GET, grouped; generated from the Flask routes):
 | Products and tags | `/api/products`, `/api/products/<slug>/rollup`, `/families`, `/tree`, `/coverage`, `/ads`, `/campaigns`, `/trend`, `/stage-daily`, `/unmatched` |
 | Ads | `/api/ads/<id>`, `/api/ads/<id>/preview`, `/api/meta-ads/<ad_id>/preview`, `/media/<asset_id>`, `/api/tag-lookup` |
 | Campaigns and platforms | `/api/campaigns`, `/api/campaigns/trend`, `/api/campaigns/all`, `/api/platforms/kpis`, `/api/platforms/trend`, `/api/platforms/overview`, `/api/google/rollup`, `/api/google/trend`, `/api/source/tieout` |
+| Amazon (its own channel, never added to the platform totals) | `/api/amazon/overview`, `/api/amazon/trend`, `/api/amazon/campaigns`, `/api/amazon/campaign-trend`, `/api/amazon/products`, `/api/amazon/search-terms`, `/api/amazon/search-terms/history`, `/api/amazon/fees` |
 | Landing pages | `/api/landing-pages`, `/api/landing-pages/<id>` (copy of each page the ads point to, with the top ads per page; see `docs/LANDING_PAGES.md`) |
 | Test to scale and trends | `/api/promotions`, `/api/promotions/scale`, `/api/trends`, `/api/trends/plan` |
 | Creative priorities | `/api/priorities?week=YYYY-MM-DD`, `/api/priorities.csv`, `/api/priorities/views` and `/views/<token>`, `/api/priorities/manual` and `/manual/options` |

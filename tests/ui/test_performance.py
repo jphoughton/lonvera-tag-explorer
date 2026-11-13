@@ -23,7 +23,7 @@ def test_platform_picker_google_page_and_back(page):
     goto_product(page, "?window=14d&stage=scaling")
     expect(page.locator("#platform-ctl .ctl-name")).to_have_text("Platform")
     assert page.evaluate("() => document.querySelector('#controls .ctl-row .ctl').id") == "platform-ctl"          # first control of the bar
-    assert [b.get_attribute("data-platform") for b in page.locator("#platform-ctl .seg").all()] == ["all", "meta", "google"]
+    assert [b.get_attribute("data-platform") for b in page.locator("#platform-ctl .seg").all()] == ["all", "meta", "google", "amazon"]
     expect(platform_btn(page, "meta")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#stage-ctl")).to_be_visible()
     platform_btn(page, "google").click()

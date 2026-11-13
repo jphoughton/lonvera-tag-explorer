@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, competitors as comp, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import amazon as amz, auth, competitors as comp, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -71,7 +71,9 @@ def status():
     n = len(q.rows_of(conn, f"""SELECT p.id FROM products p WHERE p.active AND (
             EXISTS (SELECT 1 FROM tracker_rows r WHERE r.product_id = p.id{q.alive("r")})
             OR EXISTS (SELECT 1 FROM unmatched_meta u WHERE u.product_id = p.id AND {"GREATEST(u.spend_all, u.spend_launch)" if q._CAPS["unm_launch"] else "u.spend_all"} > 0))"""))
-    return jsonify({**q.status(conn, meta, n), "auth": "disabled" if auth.auth_disabled() else "enabled", "user": auth.current_user()})
+    res = q.status(conn, meta, n)
+    res["sources"] = {**res["sources"], "amazon": amz.status_entry(amz.DbSource(conn))}          # not in sources.platforms: that list is the spend platforms of the All views
+    return jsonify({**res, "auth": "disabled" if auth.auth_disabled() else "enabled", "user": auth.current_user()})
 
 
 @bp.get("/api/products")
@@ -359,6 +361,70 @@ def google_trend():
     if w.is_launch:
         info["note"] = f"Trend covers every day held ({q._fmt_day(gmeta.daily_start, True)} – {q._fmt_day(gmeta.data_through, True)})." + (f" {info['note']}" if info["note"] else "")
     return jsonify({"channel": "google", "window_info": info, "compare_info": w.compare_info(gmeta), **res})
+
+
+def _amazon_ctx(kind: str):
+    """(source, data span, window) for an Amazon endpoint; the span is the days that page's tables share, never Meta's. meta is None while those tables are empty."""
+    src = amz.DbSource(db.get_conn())
+    ameta = amz.span_meta(src, kind)
+    return src, ameta, (amz.parse(request.args, ameta) if ameta is not None else None)
+
+
+def _amazon_reply(view: str, kind: str, build):
+    """Shared shape of the read-only Amazon routes: `build(src, ameta, w)` returns the payload; empty tables answer 200 with loaded=false (the page shows an empty state)."""
+    src, ameta, w = _amazon_ctx(kind)
+    if ameta is None:
+        return jsonify(amz.empty_payload(view))
+    info = amz.window_info(w, ameta)
+    return jsonify({**build(src, ameta, w), "window": info, "window_info": info, "compare_info": None})
+
+
+@bp.get("/api/amazon/overview")
+def amazon_overview():
+    """Amazon page, Overview: revenue, orders, units, new-customer revenue, ad spend and return, sessions and conversion for the range, by product and by ad type. Amazon is its own channel and is never added into the All platforms totals; see app/amazon.py."""
+    return _amazon_reply("overview", "overview", lambda s, m, w: amz.overview(s, m, w))
+
+
+@bp.get("/api/amazon/trend")
+def amazon_trend():
+    """Amazon Overview chart: revenue, ad spend, ad return and sessions by day, week (Monday) or month (grain=day|week|month)."""
+    return _amazon_reply("trend", "overview", lambda s, m, w: amz.trend(s, m, w, (_arg("grain") or "day").lower()))
+
+
+@bp.get("/api/amazon/campaigns")
+def amazon_campaigns():
+    """Amazon ad campaigns for the range with ad type, product, status and ad-reported results; filters ad_type=sp|sb|sbv|sd, product=<slug>|none, q=<text>."""
+    return _amazon_reply("campaigns", "ads", lambda s, m, w: amz.campaigns(s, m, w, _arg("ad_type"), _arg("product"), _arg("q")))
+
+
+@bp.get("/api/amazon/campaign-trend")
+def amazon_campaign_trend():
+    """Daily, weekly or monthly ad numbers of one Amazon campaign (campaign_id=<id>, grain=day|week|month)."""
+    return _amazon_reply("campaign-trend", "ads", lambda s, m, w: amz.campaign_trend(s, m, w, (_arg("grain") or "day").lower(), _arg("campaign_id")))
+
+
+@bp.get("/api/amazon/products")
+def amazon_products():
+    """Amazon by ASIN: revenue, units, new-customer revenue and the advertised-product ad numbers (Sponsored Products and Display; Brands has no product grain)."""
+    return _amazon_reply("products", "products", lambda s, m, w: amz.products(s, m, w))
+
+
+@bp.get("/api/amazon/search-terms")
+def amazon_search_terms():
+    """Organic search terms from Amazon Brand Analytics for the full weeks inside the range: search volume, our impression / click / cart-add / purchase share, our counts and the change vs the prior equal period; product=<slug>, branded=all|branded|nonbranded, q=<text>."""
+    return _amazon_reply("search-terms", "sqp", lambda s, m, w: amz.search_terms(s, m, w, _arg("product"), _arg("branded"), _arg("q")))
+
+
+@bp.get("/api/amazon/search-terms/history")
+def amazon_search_term_history():
+    """One search term over every week held: search volume and our click and purchase share per product (term=<query>, optional product=<slug>); weeks the term is missing are gaps."""
+    return _amazon_reply("search-term-history", "sqp", lambda s, m, w: amz.term_history(s, m, _arg("term"), _arg("product")))
+
+
+@bp.get("/api/amazon/fees")
+def amazon_fees():
+    """Amazon settlement lines by fee type and month for the range (posted-day basis, signed as Amazon settles them)."""
+    return _amazon_reply("fees", "fees", lambda s, m, w: amz.fees(s, m, w))
 
 
 @bp.get("/api/landing-pages")
