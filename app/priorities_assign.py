@@ -944,6 +944,25 @@ def _position_between(w, status: str, aid: int, before_id: int | None, after_id:
 
 
 # ---------------------------------------------------------------------------------------------------------------- comments
+def list_transcripts(conn, aid: int) -> dict:
+    """{transcripts: [{concept_id, label, transcript, language, duration_s, engine, model, created_at}]} for the ads of one card (its tracker_concept_ids), Original first then Hook 1, 2, 3. Internal only; empty
+    when migration 249 is not applied or nothing was transcribed yet."""
+    rec = conn.execute("SELECT tracker_concept_ids FROM creative_priorities_assignments WHERE id = %s", (aid,)).fetchone()
+    if rec is None:
+        raise q.ApiError(404, "Assignment not found.")
+    ids = list(rec["tracker_concept_ids"] or [])
+    try:
+        rows = conn.execute("SELECT concept_id, label, transcript, language, duration_s, engine, model, created_at FROM creative_ad_transcripts WHERE concept_id = ANY(%s) OR assignment_id = %s", (ids, aid)).fetchall()
+    except psycopg.errors.UndefinedTable:
+        conn.rollback()
+        return {"transcripts": []}
+    def order(r):
+        m = re.search(r"(\d+)$", r["label"] or "")
+        return (0 if (r["label"] or "") == "Original" else 1, int(m.group(1)) if m else 0, r["concept_id"])
+    out = [{"concept_id": r["concept_id"], "label": r["label"], "transcript": r["transcript"], "language": r["language"], "duration_s": _num(r["duration_s"]), "engine": r["engine"], "model": r["model"], "created_at": _iso(r["created_at"])} for r in sorted(rows, key=order)]
+    return {"transcripts": out}
+
+
 def list_comments(conn, aid: int, vendor: str | None = None) -> dict:
     """{comments: [{id, author_kind, author_name, body, created_at}]} oldest first. vendor= limits to that vendor's own, not dropped assignment (404 otherwise)."""
     where, params = "WHERE id = %s", [aid]

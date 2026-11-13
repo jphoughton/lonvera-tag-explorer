@@ -829,3 +829,19 @@ def test_week_vendor_and_product_filters_take_comma_lists_on_the_list_and_the_bo
     assert cards(client.get(f"/api/priorities/board?week={MONDAY},{NEXT_MONDAY}&closed=1").get_json()) == sorted([a["id"], b["id"], c["id"]])
     one_week = client.get(f"/api/priorities/board?week={NEXT_MONDAY}").get_json()
     assert one_week["week"] == NEXT_MONDAY and client.get(f"/api/priorities/board?week={MONDAY},{NEXT_MONDAY}").get_json()["week"] != NEXT_MONDAY
+
+
+def test_transcripts_of_a_cards_ads_come_back_original_first_and_a_missing_card_is_a_404(client, snaps, pg):
+    a = one(client)
+    pg.execute("UPDATE creative_priorities_assignments SET tracker_concept_ids = %s WHERE id = %s", (["ZZ-T-Video-1", "ZZ-T-Video-1-hook2", "ZZ-T-Video-1-hook10"], a["id"]))
+    for cid, label, text in (("ZZ-T-Video-1-hook10", "Hook 10", "ten"), ("ZZ-T-Video-1-hook2", "Hook 2", "two"), ("ZZ-T-Video-1", "Original", "one")):
+        pg.execute("INSERT INTO creative_ad_transcripts (concept_id, assignment_id, label, transcript, language, duration_s, engine, model) VALUES (%s,%s,%s,%s,'en',30.5,'faster-whisper','base.en')", (cid, a["id"], label, text))
+    pg.commit()
+    try:
+        d = client.get(f"/api/priorities/assignments/{a['id']}/transcripts").get_json()
+        assert [t["label"] for t in d["transcripts"]] == ["Original", "Hook 2", "Hook 10"] and d["transcripts"][0]["transcript"] == "one" and d["transcripts"][0]["duration_s"] == 30.5
+        assert client.get("/api/priorities/assignments/999999/transcripts").status_code == 404
+        assert client.get(f"/api/priorities/assignments/{one(client, 'Victoria', NEXT_MONDAY)['id']}/transcripts").get_json() == {"transcripts": []}
+    finally:
+        pg.execute("DELETE FROM creative_ad_transcripts WHERE concept_id LIKE 'ZZ-T-%'")
+        pg.commit()

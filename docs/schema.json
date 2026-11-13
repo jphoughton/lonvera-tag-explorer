@@ -8227,6 +8227,110 @@
    "examples": []
   },
   {
+   "name": "public.creative_ad_transcripts",
+   "schema": "public",
+   "relation": "creative_ad_transcripts",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "Transcripts of ads taken from the real audio: one row per ad variation (its tracker Concept ID), made for the videos on Production cards that are Ready to launch and shown on the card's ticket under the matching Hook.",
+   "grain": "one row per ad (concept_id is unique)",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "the transcription job (lonvera_creative_key/cycles/c2026-11-13-transcribe-ready/transcribe_ready.py: downloads the video from Google Drive and runs faster-whisper on this Mac)",
+   "refresh": "when the job is run (on demand, or on a schedule once one is set); a transcript is written once per ad and never overwritten",
+   "coverage": "videos of Ready to launch Production cards from 2026-11-13; images and silent videos have no speech to transcribe (a silent video is stored as [no speech])",
+   "caveats": [
+    "Speech to text as heard: brand and ingredient names can be misspelled (heme iron may come out as Heam iron).",
+    "Audio is cut at 180 seconds.",
+    "assignment_id is the Production card the ad was made for; it is not a foreign key."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Row number (primary key)."
+    },
+    {
+     "name": "concept_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Tracker Concept ID of the ad variation, for example Lonvera-BoneFlex-Video-8.8-hook2; unique."
+    },
+    {
+     "name": "assignment_id",
+     "type": "bigint",
+     "nullable": true,
+     "description": "creative_priorities_assignments.id of the Production card the ad belongs to; NULL when unknown. Not a foreign key."
+    },
+    {
+     "name": "label",
+     "type": "text",
+     "nullable": false,
+     "description": "Short name of the variation on the card: Original, Hook 2 ..."
+    },
+    {
+     "name": "source_url",
+     "type": "text",
+     "nullable": true,
+     "description": "Link to the video file the transcript was made from (Google Drive)."
+    },
+    {
+     "name": "file_id",
+     "type": "text",
+     "nullable": true,
+     "description": "The Google Drive file id inside source_url."
+    },
+    {
+     "name": "language",
+     "type": "text",
+     "nullable": true,
+     "description": "Language the speech was recognised as (en)."
+    },
+    {
+     "name": "duration_s",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Length of the audio in seconds, before the 180 second cut."
+    },
+    {
+     "name": "engine",
+     "type": "text",
+     "nullable": true,
+     "description": "Software that made it (faster-whisper)."
+    },
+    {
+     "name": "model",
+     "type": "text",
+     "nullable": true,
+     "description": "Model size used (base.en)."
+    },
+    {
+     "name": "transcript",
+     "type": "text",
+     "nullable": false,
+     "description": "The words spoken, as heard; [no speech] for a silent video."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the transcript was stored."
+    },
+    {
+     "name": "created_by",
+     "type": "text",
+     "nullable": true,
+     "description": "Who or what stored it."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.creative_formats",
    "schema": "public",
    "relation": "creative_formats",

@@ -133,9 +133,19 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
       h('div', { class: 'prod-hooks' }, items.map((it) => { const pv = previewOf(it.url); const btn = pv ? h('button', { type: 'button', class: 'btn prod-small prod-play', 'aria-pressed': 'false', 'data-testid': 'prod-play', onclick: () => play(it, btn) }, 'Play') : null;
         return h('span', { class: 'prod-hook', 'data-testid': 'prod-hook' }, h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer' }, it.label), btn); })),
       stage) : null;
+    // what is said in each ad: the real transcript of every video, loaded after the ticket opens (nothing is shown until there is one)
+    const tbox = h('div', { class: 'prod-field prod-transcripts', 'data-testid': 'prod-transcripts', hidden: true });
+    api(`/api/priorities/assignments/${r.id}/transcripts`, {}, { signal }).then((d) => {
+      const list = (d && d.transcripts) || [];
+      if (!list.length) return;
+      tbox.hidden = false;
+      tbox.replaceChildren(h('span', { class: 'pri-k' }, `Transcripts (${list.length})`),
+        ...list.map((t) => h('details', { class: 'prod-transcript', 'data-testid': 'prod-transcript', 'data-label': t.label }, h('summary', null, t.label || t.concept_id, h('span', { class: 'pri-sub' }, t.duration_s ? ` · ${Math.round(t.duration_s)}s` : '')),
+          h('p', { class: 'prod-transcript-text' }, t.transcript))));
+    }).catch(() => { /* a failed load just leaves the transcripts out */ });
     const noteView = r.note ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Note, as written'), h('div', { class: 'prod-richnote', 'data-testid': 'prod-drawer-note-view' }, richLines(r.note))) : null;
     pane.replaceChildren(h('div', { class: 'prod-drawer-form', 'data-testid': 'prod-drawer-details' },
-      preview, noteView,
+      preview, tbox, noteView,
       fieldInput('Vendor', vendor), fieldInput('Week of', week), fieldInput('Due date', dueRow, 'The vendor sees this date. Clear it for no due date.'), fieldInput('Priority', prio), fieldInput('Format', fmt),
       fieldInput('Brief link', brief), fieldInput('Creative link', creative), fieldInput('Note', note),
       r.vendor_note ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Vendor note'), h('p', { class: 'prod-drawer-vnote', 'data-testid': 'prod-drawer-vnote' }, r.vendor_note)) : null,

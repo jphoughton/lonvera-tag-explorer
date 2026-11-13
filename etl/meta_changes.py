@@ -132,17 +132,29 @@ LOG_COLS = ["event_key", "account", "event_time", "event_day", "event_type", "tr
 
 # ------------------------------------------------------------------------------------------------------------------ pulls
 def pull_activities(tok, acct, an, since: dt.date, until: dt.date, pace=0.3) -> list[dict]:
-    """Activity log of [since, until] (Meta's `until` is exclusive of that date, so one day is added), paged; rate limits are retried by graph_get."""
+    """Activity log of [since, until] (Meta's `until` is exclusive of that date, so one day is added), paged; rate limits are retried by graph_get.
+    Meta answers 'An unknown error occurred' (code 1, which graph_get raises as TooBig) to a window with too many events (a week in May 2026 was too much, any single day was fine):
+    the window is then split in half, down to one day; a single day that still fails is retried with smaller pages (100, then 25) before the error is raised."""
     url = f"{meta_api.G}/{acct}/activities"
-    params = {"access_token": tok, "since": since.isoformat(), "until": (until + dt.timedelta(days=1)).isoformat(), "limit": 500, "fields": ACT_FIELDS}
-    out = []
-    while url:
-        j = meta_api.graph_get(url, params, f"{an} activities {since}..{until}")
-        out += j.get("data", [])
-        url = j.get("paging", {}).get("next")
-        params = None
-        time.sleep(pace)
-    return out
+    for limit in ((500,) if since < until else (500, 100, 25)):
+        params = {"access_token": tok, "since": since.isoformat(), "until": (until + dt.timedelta(days=1)).isoformat(), "limit": limit, "fields": ACT_FIELDS}
+        out, nxt = [], url
+        try:
+            while nxt:
+                j = meta_api.graph_get(nxt, params, f"{an} activities {since}..{until}")
+                out += j.get("data", [])
+                nxt = j.get("paging", {}).get("next")
+                params = None
+                time.sleep(pace)
+            return out
+        except meta_api.TooBig as e:
+            if since < until:
+                mid = since + (until - since) // 2
+                db.log(f"  activity log {an} {since}..{until}: too much for one window ({db.scrub(e)[:60]}), splitting at {mid}")
+                return pull_activities(tok, acct, an, since, mid, pace) + pull_activities(tok, acct, an, mid + dt.timedelta(days=1), until, pace)
+            if limit == 25:
+                raise
+    return []
 
 
 def load_log(conn, rows: list[dict]) -> int:

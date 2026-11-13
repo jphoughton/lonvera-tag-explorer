@@ -1,6 +1,6 @@
 # Amazon data layer
 
-Ten tables filled nightly from ExpandFi (merchant 1452, read only) by the `feeds` service, each with a read-only view in the `analytics` schema (domain `amazon`). There is no Amazon page yet; this is the data underneath it. Tables are created by migration 247, the views, the `analytics.data_coverage` rows and the data dictionary comments by migration 247. Column meanings live in `docs/DATA_SCHEMA.md` (generated); this page says what each table is for and where it can mislead.
+Ten tables filled nightly from ExpandFi (merchant 1452, read only) by the `feeds` service, each with a read-only view in the `analytics` schema (domain `amazon`). There is no Amazon page yet; this is the data underneath it. Tables are created by migration 250, the views, the `analytics.data_coverage` rows and the data dictionary comments by migration 251. Column meanings live in `docs/DATA_SCHEMA.md` (generated); this page says what each table is for and where it can mislead.
 
 How it runs: `python -m etl.feeds run` (the 21:00 UTC cron) pulls every feed. The Amazon feeds are native (no sheet twin, mode `shadow`, they write their own table) and non-fatal: a failed or empty pull is logged in `proj_feed_attempts` and printed as a warning, never turns the run red and never stops another feed. They run after the older ExpandFi feeds and share the same login and credential. An empty pull writes nothing and deletes nothing. Every pull deletes its trailing window and inserts the pulled rows, so a rerun leaves the same rows.
 

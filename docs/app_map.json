@@ -1158,6 +1158,17 @@
    "summary": "Drag and drop on the board: {status, before_id?, after_id?, comment?} changes the status and the position in one step (before_id = put it just above that card, after_id = just below that card;"
   },
   {
+   "rule": "/api/priorities/assignments/<int:aid>/transcripts",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_transcripts",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The transcripts of the ads on one card (made from the real audio of each video that is Ready to launch) -> {transcripts: [{concept_id, label, transcript, language, duration_s, engine, model, created_at}]}, Original first. Internal only."
+  },
+  {
    "rule": "/api/priorities/board",
    "methods": [
     "GET"
