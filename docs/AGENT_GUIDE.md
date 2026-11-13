@@ -24,7 +24,7 @@ Live URL: https://web-production-358da.up.railway.app
 | Service | What it does | Start command | Schedule (UTC) | Source |
 |---|---|---|---|---|
 | `web` | Flask API and the single-page app (gunicorn, 2 workers x 8 threads), healthcheck `/healthz` | image default `scripts/deploy/start_web.sh` (runs `python -m etl.migrate`, then gunicorn) | always on | `Dockerfile`, `railway.json` |
-| `etl` | Nightly refresh, in order: `etl.run_daily`, `etl.upstack_daily`, `etl.stage_moves`, `etl.projection_daily`, `etl.amazon_mtd`, then non-fatal: `etl.competitor_ads --if-sunday`, `etl.creative_priorities --if-sunday`, `etl.assignment_tags`, `etl.auto_tag` | `scripts/deploy/run_etl.sh` | `0 13 * * *` | `run_etl.sh`, `apply_service_config.py` |
+| `etl` | Nightly refresh, in order: `etl.run_daily`, `etl.upstack_daily`, `etl.stage_moves`, `etl.projection_daily`, `etl.amazon_mtd`, then non-fatal: `etl.competitor_ads --if-sunday`, `etl.creative_priorities --if-sunday`, `etl.assignment_tags`, `etl.production_status`, `etl.auto_tag` | `scripts/deploy/run_etl.sh` | `0 13 * * *` | `run_etl.sh`, `apply_service_config.py` |
 | `feeds` | Pulls Upstack, Warehance, Meta reach and ExpandFi feeds into `proj_feedx_*` and `proj_feed_*` tables, then `etl.amazon_mtd`, then `etl.shopify_orders` (120-day order tables, docs/SHOPIFY_ORDERS.md), then `etl.feeds verify` | `scripts/deploy/run_feeds.sh` | `0 21 * * *` | `apply_feeds_service.py` |
 | `live` | Hourly Upstack pull of the Pacific day so far into `proj_live_today_snapshots` | `scripts/deploy/run_live.sh` (`python -m etl.live_today`) | `0 * * * *` (from project notes; the repo has no `apply_live_service.py`, so UNVERIFIED in-repo) | `run_live.sh`, `etl/live_today.py` |
 | `breakdowns` | Meta Insights breakdowns at ad grain (age, gender, country, region, placement, hour ...): resumable 365-day backfill then a daily trailing-7 catch-up; read API `/api/meta/breakdowns`, view `analytics.meta_breakdown_daily` | `scripts/deploy/run_breakdowns.sh` (`python -m etl.meta_breakdowns --auto`) | `0 */2 * * *` (proposed; no apply script in the repo, so UNVERIFIED) | `docs/META_BREAKDOWNS.md`, `etl/meta_breakdowns.py` |
@@ -84,6 +84,7 @@ Live URL: https://web-production-358da.up.railway.app
 | `etl/launch_worker.py` | Turns queued launch jobs into a plan or PAUSED Meta ads. Dark, not wired to any service |
 | `etl/creative_priorities.py` | Builds the weekly priorities snapshot. Thresholds are constants at the top |
 | `etl/assignment_tags.py` | Nightly: gives ads linked to an assignment that assignment's line tags |
+| `etl/production_status.py` | Nightly: moves Production cards forward to what their linked Creative Tracker rows show (never backward) |
 | `etl/auto_tag.py` | Nightly auto-tagging of untagged ads with headless Claude |
 | `etl/load_taxonomy.py`, `etl/load_tags.py`, `etl/load_hooks.py` | Load the Communication Overview taxonomy, tagging results, ad hooks |
 | `etl/build_metrics.py` | Rebuilds `family_daily`, `ad_metrics` and friends in one transaction |

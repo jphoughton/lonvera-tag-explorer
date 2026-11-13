@@ -7599,7 +7599,7 @@
    "refresh": "on demand (a person assigns, adds links, marks ready or launched, drops; a vendor adds a creative link and a note)",
    "coverage": "from the day the migration was deployed",
    "caveats": [
-    "The stage is not stored: it is derived at read time from the links, the timestamps and the status of the linked Creative Tracker rows (the tracker wins when it is further along).",
+    "The board column is the stored status (migration 244); the older stage field is derived from it for compatibility. A linked Creative Tracker row can pull the status forward, never back.",
     "Nothing here is written to the Google Sheet or Meta. The tag text is copied from the row at assign time, so history survives a taxonomy reload; line_id has no foreign key on purpose.",
     "created_by and updated_by hold the signed-in user, or vendor:<name> for a write made on a vendor link page."
    ],
@@ -7779,6 +7779,36 @@
      "type": "text",
      "nullable": true,
      "description": "Creative format chosen when assigning or later (creative_formats.code, foreign key); NULL when none was chosen. Set by a signed-in user only; a vendor sees it but cannot change it."
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "nullable": false,
+     "description": "The board column, stored: assigned, brief_sent, in_production, in_review, ready or launched (a dropped assignment keeps its last status and has dropped_at set). Written only through set_status in app/priorities_assign.py; a linked Creative Tracker row can pull it forward (7 = ready, 8 or 9 = launched), never back."
+    },
+    {
+     "name": "due_date",
+     "type": "date",
+     "nullable": true,
+     "description": "When the vendor should be done: the Friday of for_week unless changed; NULL when cleared."
+    },
+    {
+     "name": "priority",
+     "type": "text",
+     "nullable": false,
+     "description": "'normal' or 'high'; high cards sort first on the board."
+    },
+    {
+     "name": "position",
+     "type": "double precision",
+     "nullable": false,
+     "description": "Order of the card inside its board column (ascending, fractional so a card can be dropped between two neighbours)."
+    },
+    {
+     "name": "status_changed_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When status last changed (backfilled from the stage timestamps for rows older than migration 244)."
     }
    ],
    "examples": []
@@ -7843,13 +7873,13 @@
      "name": "kind",
      "type": "text",
      "nullable": false,
-     "description": "What changed: assigned, brief_added, brief_removed, creative_added, creative_removed, ready, ready_cleared, launched, launched_cleared, dropped, restored, vendor, week or format."
+     "description": "What changed: assigned, brief_added, brief_removed, creative_added, creative_removed, ready, ready_cleared, launched, launched_cleared, dropped, restored, vendor, week or format (migration 243), plus status_changed, due_changed, priority_changed and comment_added (migration 244)."
     },
     {
      "name": "stage_before",
      "type": "text",
      "nullable": true,
-     "description": "Stage the assignment showed before the change (assigned, brief_sent, creative_in, ready, launched, dropped); NULL on the first row."
+     "description": "Stage or status the assignment showed before the change (assigned, brief_sent, creative_in, in_production, in_review, ready, launched, dropped); NULL on the first row. Events of kind status_changed use the status values."
     },
     {
      "name": "stage_after",
@@ -7862,6 +7892,118 @@
      "type": "text",
      "nullable": false,
      "description": "Short plain text about the change, for example 'Madre to Victoria'; empty when the kind says it all."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.creative_priorities_assignment_comments",
+   "schema": "public",
+   "relation": "creative_priorities_assignment_comments",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "Comments on a production assignment, the thread between the team and the vendor on the card (including 'Changes requested: ...' when a creative is sent back).",
+   "grain": "one row per comment",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [
+    {
+     "columns": [
+      "assignment_id"
+     ],
+     "references": "public.creative_priorities_assignments",
+     "referenced_columns": [
+      "id"
+     ]
+    }
+   ],
+   "source": "app/priorities_assign.py, from the Production page (author_kind app) and the vendor link page (author_kind vendor)",
+   "refresh": "on every comment",
+   "coverage": "from migration 244",
+   "caveats": [
+    "A vendor sees only the comments of their own assignments; the internal note (creative_priorities_assignments.note) is not a comment and is never shown to a vendor."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Row number (primary key)."
+    },
+    {
+     "name": "assignment_id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "The assignment commented on (creative_priorities_assignments.id; comments go with the assignment)."
+    },
+    {
+     "name": "author_kind",
+     "type": "text",
+     "nullable": false,
+     "description": "'app' for a signed-in team member (or an API key), 'vendor' for a comment written on a vendor link page."
+    },
+    {
+     "name": "author_name",
+     "type": "text",
+     "nullable": false,
+     "description": "Display name: the signed-in user (or Team when sign-in is off), or the vendor name."
+    },
+    {
+     "name": "body",
+     "type": "text",
+     "nullable": false,
+     "description": "The comment text, 1 to 2,000 characters."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the comment was posted."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.creative_priorities_vendor_capacity",
+   "schema": "public",
+   "relation": "creative_priorities_vendor_capacity",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "How many concepts a vendor can take per week, the capacity the Production board compares each vendor's open cards with.",
+   "grain": "one row per vendor (vendor is the primary key)",
+   "primary_key": [
+    "vendor"
+   ],
+   "foreign_keys": [],
+   "source": "seeded by migration 244 at 10 per vendor; edited on the Production page (PUT /api/priorities/vendor-capacity)",
+   "refresh": "on demand",
+   "coverage": "the nine vendors",
+   "caveats": [
+    "A soft limit only: going over shows a warning and blocks nothing."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "vendor",
+     "type": "text",
+     "nullable": false,
+     "description": "Vendor, spelled as in creative_priorities_assignments.vendor (primary key)."
+    },
+    {
+     "name": "per_week",
+     "type": "integer",
+     "nullable": false,
+     "description": "Concepts the vendor can take in one week (0 to 1,000)."
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the capacity was last changed."
     }
    ],
    "examples": []
