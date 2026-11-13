@@ -318,7 +318,7 @@ export async function promotionsPage(ctx) {
     left: { kind: 'int', title: 'Creatives moved' }, right: { kind: 'money', title: 'Scaling spend' },
     datasets: [
       { axis: 'left', type: 'bar', label: 'Moved to scaling', data: pts.map((x) => x.moves), color: '#1a5fb4', kind: 'int', stack: 'moves', opaque: true },
-      { axis: 'left', type: 'bar', label: 'Moved on a bulk day', data: pts.map((x) => x.bulk_moves), color: '#c2610f', kind: 'int', stack: 'moves', opaque: true },
+      { axis: 'left', type: 'bar', label: 'Moved on a bulk day', data: pts.map((x) => x.bulk_moves), color: '#C2351C', kind: 'int', stack: 'moves', opaque: true },
       { axis: 'right', type: 'line', label: 'Scaling spend of these creatives', data: pts.map((x) => x.scale_spend), color: '#1d8a56', kind: 'money' },
     ],
     extra: (i) => [`Began in testing: ${fmt.int(pts[i].launched)}`, `Scaling ${L.roas || 'ROAS'}: ${isNum(pts[i].scale_roas) ? fmt.roas(pts[i].scale_roas) : '–'}`],

@@ -243,3 +243,58 @@ def test_fill_funnel_reports_failed_chunk_after_retries(conn, tmp_path, monkeypa
     res = meta_pull.fill_funnel(conn, D(2026, 10, 30), D(2026, 10, 30), chunk_days=7, pause=0, attempts=2, sleep=waits.append)
     assert res["failed"] == ["2026-10-30..2026-10-30"] and waits == [120, 240]
     assert conn.execute("SELECT landing_page_views FROM ad_daily WHERE ad_id='111'").fetchone()[0] is None
+
+
+def test_checkout_actions_picked_with_omni_priority_and_plain_equals_omni():
+    from etl.resolver import pick_ic, pick_pai
+    assert pick_ic([{"action_type": "omni_initiated_checkout", "value": "9"}, {"action_type": "initiate_checkout", "value": "7"}]) == 9.0
+    assert pick_ic([{"action_type": "initiate_checkout", "value": "7"}, {"action_type": "offsite_conversion.fb_pixel_initiate_checkout", "value": "5"}]) == 7.0
+    assert pick_ic([{"action_type": "offsite_conversion.fb_pixel_initiate_checkout", "value": "5"}]) == 5.0
+    assert pick_ic(None) == 0.0 and pick_pai([]) == 0.0
+    assert pick_pai([{"action_type": "add_payment_info", "value": "6"}, {"action_type": "omni_add_payment_info", "value": "8"}]) == 8.0
+    assert pick_pai([{"action_type": "add_payment_info", "value": "6"}, {"action_type": "offsite_conversion.fb_pixel_add_payment_info", "value": "4"}]) == 6.0
+    assert pick_pai([{"action_type": "offsite_conversion.fb_pixel_add_payment_info", "value": "4"}]) == 4.0
+    # a real Ads Manager day: plain, omni and pixel variants carry the same number (2026-11-05: 504 checkouts, 652 payment info), omni_add_payment_info does not exist
+    acts = [{"action_type": "initiate_checkout", "value": "504"}, {"action_type": "omni_initiated_checkout", "value": "504"}, {"action_type": "offsite_conversion.fb_pixel_initiate_checkout", "value": "504"},
+            {"action_type": "add_payment_info", "value": "652"}, {"action_type": "offsite_conversion.fb_pixel_add_payment_info", "value": "652"}]
+    assert pick_ic(acts) == 504.0 == {x["action_type"]: float(x["value"]) for x in acts}["initiate_checkout"]
+    assert pick_pai(acts) == 652.0
+    r = meta_api.rows_from([{"ad_id": 1, "ad_name": "x", "date_start": "2026-10-30", "spend": "3", "actions": acts}])[0]
+    assert r["ic"] == 504.0 and r["pai"] == 652.0
+
+
+def test_load_chunk_stores_checkouts_and_view_exposes_them(conn, tmp_path):
+    seed(conn, tmp_path)
+    rows = [dict(row("2026-10-30", "111", "Fam A"), ic=5.0, pai=4.0), dict(row("2026-10-30", "111", "Fam A"), ic=1.0, pai=1.0)]
+    meta_pull.load_chunk(conn, meta_pull.aggregate(rows), D(2026, 10, 30), D(2026, 10, 30))
+    assert conn.execute("SELECT initiated_checkouts, payment_info_adds FROM ad_daily WHERE ad_id='111'").fetchone() == (6, 5)
+    assert conn.execute("SELECT initiated_checkouts, payment_info_adds FROM analytics.meta_ad_daily WHERE ad_id='111' AND day='2026-10-30'").fetchone() == (6, 5)
+    assert conn.execute("SELECT initiated_checkouts FROM analytics.meta_ad_daily WHERE source='sheet' LIMIT 1").fetchone()[0] is None      # never pulled: NULL, not 0
+
+
+def test_fill_funnel_fills_the_checkout_columns_only_and_keeps_existing_funnel_values(conn, tmp_path, monkeypatch):
+    seed(conn, tmp_path)
+    meta_pull.load_chunk(conn, meta_pull.aggregate([row("2026-10-30", "111", "Fam A", spend=10, clicks=5), row("2026-10-31", "111", "Fam A", spend=20, clicks=7)]),
+                         D(2026, 10, 30), D(2026, 10, 31))
+    # history as it looks after PR 123 (landing page views / adds to cart filled) but before the checkout columns exist
+    conn.execute("UPDATE ad_daily SET landing_page_views = 11, add_to_carts = 7, initiated_checkouts = NULL, payment_info_adds = NULL WHERE source='meta_api'")
+    conn.commit()
+    before = conn.execute("SELECT ad_id, day, spend, purchases, conv_value, link_clicks, impressions, landing_page_views, add_to_carts FROM ad_daily WHERE source='meta_api' ORDER BY 1, 2").fetchall()
+    calls = []
+
+    def fake_chunk(tok, acct, an, since, until):
+        calls.append((an, since, until))
+        if an != "Lonvera Main":
+            return []
+        return [dict(row("2026-10-30", "111", "Fam A", spend=10.2, clicks=5.0), lpv=99.0, atc=99.0, ic=4.0, pai=3.0),     # lpv / atc restated: must NOT overwrite
+                dict(row("2026-10-31", "111", "Fam A", spend=20, clicks=7.0), lpv=99.0, atc=99.0, ic=6.0, pai=5.0)]
+    monkeypatch.setattr(meta_api, "get_token", lambda: "tok")
+    monkeypatch.setattr(meta_api, "pull_chunk", fake_chunk)
+    res = meta_pull.fill_funnel(conn, D(2026, 10, 30), D(2026, 10, 31), chunk_days=7, pause=0, sleep=lambda s: None)
+    assert res["done"] == 1 and res["updated"] == 2 and not res["failed"]
+    assert res["per_chunk"][0]["ic"] == 10 and res["per_chunk"][0]["pai"] == 8
+    assert conn.execute("SELECT initiated_checkouts, payment_info_adds FROM ad_daily WHERE source='meta_api' ORDER BY day").fetchall() == [(4, 3), (6, 5)]
+    after = conn.execute("SELECT ad_id, day, spend, purchases, conv_value, link_clicks, impressions, landing_page_views, add_to_carts FROM ad_daily WHERE source='meta_api' ORDER BY 1, 2").fetchall()
+    assert after == before                                              # nothing else changed, the already-filled funnel columns kept their values
+    n = len(calls)
+    assert meta_pull.fill_funnel(conn, D(2026, 10, 30), D(2026, 10, 31), chunk_days=7, pause=0, sleep=lambda s: None)["skipped"] == 1 and len(calls) == n     # resumable

@@ -5,7 +5,7 @@ import { h } from '../util.js';
 import { api } from '../api.js';
 import { showControls } from '../controls.js';
 import { expander } from './priorities_panel.js';
-import { weekLabel, ticketTitle, variationGroups, variationLabel, productName, stageLabel, formatLabel, rowFormat, resultText, link, short } from './production_common.js';
+import { weekLabel, ticketTitle, richLines, mediaOf, variationGroups, variationLabel, productName, stageLabel, formatLabel, rowFormat, resultText, link, short } from './production_common.js';
 
 // The one place the vendor routes are spelled: PATCH and detail are `${base}/<id>`, comments are `${base}/<id>/comments`.
 const vendorBase = (tok) => '/api/priorities/vendor/' + tok;
@@ -180,7 +180,7 @@ export async function vendorPage(ctx) {
 
     return h('article', { class: 'prod-card prod-vcard', 'data-testid': 'prod-card', 'data-id': r.id, 'data-stage': r.stage, 'data-status': st },
       h('div', { class: 'prod-ctop' }, h('h3', null, x.nameButton(ticketTitle(r))), h('span', { class: 'prod-pill prod-st-' + (r.stage || st), 'data-testid': 'prod-stage' }, label)),
-      h('p', { class: 'pri-sub' }, [productName(r.product), r.cluster, r.icp].filter(Boolean).join(' / ')),
+      h('p', { class: 'pri-sub' }, [productName(r.product), r.cluster, r.icp, mediaOf(r)].filter(Boolean).join(' / ')),
       h('div', { class: 'prod-v-chips' },
         h('span', { class: 'prod-v-chip', 'data-testid': 'prod-v-product' }, productName(r.product)),
         fmt ? h('span', { class: 'prod-v-chip', title: formatLabel(fmt), 'data-testid': 'prod-v-format' }, fmt.code) : null,
@@ -188,7 +188,7 @@ export async function vendorPage(ctx) {
       banner,
       r.brief_url ? link(r.brief_url, 'Open brief', { class: 'prod-v-brief prod-ext', 'data-testid': 'prod-v-brief', title: r.brief_url }) : h('p', { class: 'prod-v-none', 'data-testid': 'prod-v-nobrief' }, 'The brief has not been added yet.'),
       h('div', null, x.button()), host,
-      r.story ? h('p', { class: 'prod-story', 'data-testid': 'prod-story' }, r.story) : null,
+      r.story ? h('p', { class: 'prod-story', 'data-testid': 'prod-story' }, richLines(r.story)) : null,
       h('dl', { class: 'prod-dl' },
         dt('Brief', r.brief_url ? link(r.brief_url, 'Brief', { 'data-testid': 'prod-brief_url', class: 'prod-ext', title: r.brief_url }) : 'Not added yet'),
         dt('Format', h('span', { 'data-testid': 'prod-format-text' }, fmt ? formatLabel(fmt) : 'Not chosen')),

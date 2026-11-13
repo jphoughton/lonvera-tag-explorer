@@ -27,21 +27,61 @@ def files(*names):
 def test_prune_keeps_seven_days_of_dailies():
     fl = files(*[nm(k) for k in range(12)])
     keep, delete = backup.select_prune(fl, NOW, 7)
-    assert len(keep) == 7 and {f["name"] for f in keep} == {nm(k) for k in range(7)}
-    assert {f["name"] for f in delete} == {nm(k) for k in range(7, 12)}
+    # plus the earliest of each month: Nov 1 = nm(9), Oct 30 = nm(11)
+    assert len(keep) == 9 and {f["name"] for f in keep} == {nm(k) for k in range(7)} | {nm(9), nm(11)}
+    assert {f["name"] for f in delete} == {nm(7), nm(8), nm(10)}
 
 
 def test_prune_never_goes_below_three_whatever_the_age():
     fl = files(*[nm(k) for k in (30, 40, 50, 60, 70)])
     keep, delete = backup.select_prune(fl, NOW, 7)
-    assert [f["name"] for f in keep] == [nm(30), nm(40), nm(50)] and len(delete) == 2
+    # nm(70) is the earliest of its month (Sep 1), so it survives too; only nm(60) goes
+    assert [f["name"] for f in keep] == [nm(30), nm(40), nm(50), nm(70)] and [f["name"] for f in delete] == [nm(60)]
 
 
 def test_prune_ignores_foreign_files_and_unverified_dumps():
     fl = files(nm(1), nm(20), "UNVERIFIED-" + nm(30), "notes.txt", "lonvera-tag-explorer_bad.dump", nm(25))
     keep, delete = backup.select_prune(fl, NOW, 7, keep_min=1)
     touched = {f["name"] for f in keep + delete}
-    assert touched == {nm(1), nm(20), nm(25)} and {f["name"] for f in delete} == {nm(20), nm(25)}
+    assert touched == {nm(1), nm(20), nm(25)} and {f["name"] for f in delete} == {nm(20)}      # nm(25) is the earliest of October: monthly snapshot
+
+
+def at(y, m, d, hour=8):
+    return backup.file_name(dt.datetime(y, m, d, hour, 30, tzinfo=dt.timezone.utc))
+
+
+def test_monthly_one_month_many_dumps_earliest_survives_after_seven_days():
+    month = [at(2026, 9, d) for d in range(1, 29)]
+    keep, delete = backup.select_prune(files(*month, nm(0), nm(1), nm(2)), NOW, 7)
+    assert {f["name"] for f in keep} == {at(2026, 9, 1), nm(0), nm(1), nm(2)}
+    assert {f["name"] for f in delete} == set(month[1:])
+
+
+def test_monthly_one_survivor_per_month_however_old():
+    old = [at(2025, 3, 5), at(2025, 3, 6), at(2025, 7, 2), at(2025, 7, 30), at(2026, 1, 9), at(2026, 1, 10)]
+    recent = [nm(0), nm(1), nm(2)]
+    keep, delete = backup.select_prune(files(*old, *recent), NOW, 7)
+    assert {f["name"] for f in keep} == {at(2025, 3, 5), at(2025, 7, 2), at(2026, 1, 9), *recent}
+    assert {f["name"] for f in delete} == {at(2025, 3, 6), at(2025, 7, 30), at(2026, 1, 10)}
+    assert [f["name"] for f in backup.select_monthly(files(*old))] == [at(2025, 3, 5), at(2025, 7, 2), at(2026, 1, 9)]
+
+
+def test_monthly_snapshot_inside_window_or_newest_three_is_not_double_counted():
+    fl = files(at(2026, 11, 1), at(2026, 11, 5), at(2026, 11, 9), at(2026, 10, 1), at(2026, 10, 2))
+    keep, delete = backup.select_prune(fl, NOW, 7)
+    names = [f["name"] for f in keep]
+    assert len(names) == len(set(names)) and set(names) == {at(2026, 11, 9), at(2026, 11, 5), at(2026, 11, 1), at(2026, 10, 1)}
+    assert {f["name"] for f in delete} == {at(2026, 10, 2)}
+    # earliest of month also among the newest 3 (small folder): kept once
+    keep2, delete2 = backup.select_prune(files(at(2026, 11, 1), at(2026, 11, 2)), NOW, 7)
+    assert len(keep2) == 2 and delete2 == []
+
+
+def test_monthly_ignores_unverified_and_foreign_files():
+    fl = files("UNVERIFIED-" + at(2026, 9, 1), at(2026, 9, 3), at(2026, 9, 4), "notes.txt", "lonvera-tag-explorer_bad.dump")
+    assert [f["name"] for f in backup.select_monthly(fl)] == [at(2026, 9, 3)]
+    keep, delete = backup.select_prune(fl, NOW, 7, keep_min=0)
+    assert {f["name"] for f in keep} == {at(2026, 9, 3)} and {f["name"] for f in delete} == {at(2026, 9, 4)}
 
 
 def test_unverified_copies_expire_with_the_prune():
@@ -155,7 +195,8 @@ def test_success_uploads_verifies_prunes_and_records(conn, env):
     d = FakeDrive(existing=[nm(k) for k in range(1, 12)])
     st = run(d)
     assert backup.file_name(NOW) in d.files and st["verified"] and st["drive_roundtrip_ok"]
-    assert set(d.deleted) == {nm(k) for k in range(7, 12)} and st["kept"] == 7                  # 7 days of dailies incl. today's: today + 1..6 = 7 files
+    # 7 days of dailies incl. today's (today + 1..6), plus the earliest dump of each month (Nov 1 = nm(9), Oct 30 = nm(11)) kept forever
+    assert set(d.deleted) == {nm(7), nm(8), nm(10)} and st["kept"] == 9 and st["monthly_kept"] == [nm(11), nm(9)]
     status, err, stats = last_run(conn)
     assert status == "ok" and err is None and stats["file"] == backup.file_name(NOW) and stats["size_bytes"] > 2000
     assert stats["tables_verified"]["ad_metrics"] == {"live": 10, "live_after": 10, "restored": 10} and "verify_seconds" in stats and stats["pruned"]
@@ -220,7 +261,7 @@ def test_dry_run_dumps_and_verifies_but_writes_nothing(conn, env):
     conn.rollback()
     assert st["verified"] and len(d.files) == 11 and d.deleted == []
     assert conn.execute("SELECT count(*) FROM etl_runs").fetchone()[0] == n_before
-    assert set(st["would_prune"]) == {nm(k) for k in range(7, 12)}
+    assert set(st["would_prune"]) == {nm(7), nm(8), nm(10)}
 
 
 def test_no_verify_skips_restore_and_no_local_copy_is_left(conn, env, tmp_path):

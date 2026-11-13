@@ -873,7 +873,7 @@ def test_existing_deep_links_keep_their_meaning(page, base_url):
 
 # ---------------------------------------------------------------- top navigation (js/nav.js): sections, page tabs, tag search
 SECTION_TABS = {
-    "performance": ["Overview", "Meta", "Google", "Campaigns", "Trends", "Email"],
+    "performance": ["Overview", "Meta", "Google", "Campaigns", "Trends", "Daily story", "Email"],
     "creative": ["Priorities", "Production", "Competitors", "Test to scale"],
 }
 
@@ -905,7 +905,7 @@ def test_top_nav_has_three_sections_and_the_active_sections_tabs(page):
 
 @pytest.mark.parametrize("url,section,tab", [
     ("/", "Performance", "Overview"), ("/?platform=meta", "Performance", "Meta"), ("/?platform=google", "Performance", "Google"), ("/google", "Performance", "Google"),
-    ("/campaigns", "Performance", "Campaigns"), ("/campaigns?platform=all", "Performance", "Campaigns"), ("/trends", "Performance", "Trends"), ("/email", "Performance", "Email"),
+    ("/campaigns", "Performance", "Campaigns"), ("/campaigns?platform=all", "Performance", "Campaigns"), ("/trends", "Performance", "Trends"), ("/daily", "Performance", "Daily story"), ("/email", "Performance", "Email"),
     (f"/p/{SLUG}", "Performance", "Meta"), ("/priorities", "Creative", "Priorities"), ("/priorities/production", "Creative", "Production"),
     ("/promotions", "Creative", "Test to scale"), ("/competitors", "Creative", "Competitors"), ("/lookup", "Creative", None),
 ])
