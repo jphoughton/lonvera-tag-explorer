@@ -270,6 +270,10 @@
    "summary": "Competitor ads on Meta, refreshed automatically (no laptop): scrape the PUBLIC Meta Ad Library with headless Chromium (Playwright), then classify each new concept"
   },
   {
+   "module": "etl.competitor_chatter",
+   "summary": "Competitor / category chatter: what people and the press say about watched brands, from public sources that need no login and no paid scraper."
+  },
+  {
    "module": "etl.creative_priorities",
    "summary": "Weekly creative priorities: the one-sheeter of market cluster / ICP / pain point / story lines to produce ads for next."
   },

@@ -80,7 +80,8 @@ def test_stale_brand_flagged_and_carried_rows_make_no_changes(client, seeded, pg
     assert any(c["kind"] == "stale" and c["brand"] == "Bolt" for c in d["changes"])
 
 
-def test_detail_sections(client, seeded):
+def test_detail_sections(client, seeded, monkeypatch):
+    monkeypatch.setattr("app.competitors._chatter_table", lambda conn: False)
     seeded(TWO + [ad(W2, "a6", "Acme", 207, copy="a1")], classes=CLS)       # a6 repeats a1's copy: one concept, longest-running listed once
     det = client.get("/api/competitors/Acme").get_json()
     assert [x["library_id"] for x in det["longest_running"]][0] == "a1" and len({x["library_id"] for x in det["longest_running"]}) == len(det["longest_running"])
@@ -116,14 +117,16 @@ def test_format_filter_applies_everywhere(client, seeded):
     assert client.get("/api/competitors?format=all").get_json()["format"] == "all"
 
 
-def test_chatter_included_only_when_table_exists(client, seeded, pg):
+def test_chatter_included_only_when_table_exists(client, seeded, pg, monkeypatch):
     seeded(TWO)
-    pg.execute("DROP TABLE IF EXISTS competitor_posts"); pg.commit()
+    monkeypatch.setattr("app.competitors._chatter_table", lambda conn: False)
     assert "chatter" not in client.get("/api/competitors").get_json()
-    pg.execute("CREATE TABLE competitor_posts (week_start date, source text, brand text, title text, url text, subreddit text, score int, num_comments int, posted_at timestamptz, summary text)")
+    monkeypatch.undo()
+    pg.execute("DELETE FROM competitor_posts"); pg.commit()
     for n in range(12):
-        pg.execute("INSERT INTO competitor_posts VALUES (%s,'reddit',%s,%s,%s,'r/x',%s,3,now(),NULL)", (W2, "Acme" if n % 2 == 0 else None, f"post {n}", f"https://reddit.com/{n}", n))
-    pg.execute("INSERT INTO competitor_posts VALUES (%s,'reddit',NULL,'old','https://reddit.com/o','r/x',999,1,now(),NULL)", (W1,))
+        pg.execute("INSERT INTO competitor_posts (week_start, source, brand, title, url, subreddit, score, num_comments, posted_at, seen_on) VALUES (%s,'reddit',%s,%s,%s,'r/x',%s,3,now(),%s)",
+                   (W2, "Acme" if n % 2 == 0 else None, f"post {n}", f"https://reddit.com/{n}", n, W2))
+    pg.execute("INSERT INTO competitor_posts (week_start, source, brand, title, url, subreddit, score, num_comments, posted_at, seen_on) VALUES (%s,'reddit',NULL,'old','https://reddit.com/o','r/x',999,1,now(),%s)", (W1, W1))
     pg.commit()
     try:
         d = client.get("/api/competitors").get_json()
@@ -131,7 +134,7 @@ def test_chatter_included_only_when_table_exists(client, seeded, pg):
         det = client.get("/api/competitors/Acme").get_json()
         assert all(p["brand"] == "Acme" for p in det["chatter"]) and det["chatter"][0]["title"] == "post 10"
     finally:
-        pg.execute("DROP TABLE competitor_posts"); pg.commit()
+        pg.execute("DELETE FROM competitor_posts"); pg.commit()
 
 
 def test_login_required(anon):
