@@ -136,7 +136,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 
 | Group | Relations |
 |---|---|
-| analytics schema: the read-only views (start here) | [`analytics.meta_ads`](#analyticsmeta_ads), [`analytics.meta_ad_daily`](#analyticsmeta_ad_daily), [`analytics.meta_adset_daily`](#analyticsmeta_adset_daily), [`analytics.meta_campaign_daily`](#analyticsmeta_campaign_daily), [`analytics.meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`analytics.meta_reach`](#analyticsmeta_reach), [`analytics.google_campaign_daily`](#analyticsgoogle_campaign_daily), [`analytics.platform_daily`](#analyticsplatform_daily), [`analytics.orders_daily`](#analyticsorders_daily), [`analytics.creative_tracker`](#analyticscreative_tracker), [`analytics.data_coverage`](#analyticsdata_coverage), [`analytics.etl_runs`](#analyticsetl_runs), [`analytics.meta_breakdown_daily`](#analyticsmeta_breakdown_daily), [`analytics.meta_change_log`](#analyticsmeta_change_log), [`analytics.meta_adset_state_daily`](#analyticsmeta_adset_state_daily), [`analytics.meta_change_ledger`](#analyticsmeta_change_ledger), [`analytics.attribution_source_daily`](#analyticsattribution_source_daily), [`analytics.attribution_anyclick_daily`](#analyticsattribution_anyclick_daily), [`analytics.attribution_unmapped_daily`](#analyticsattribution_unmapped_daily), [`analytics.orders_daily_detail`](#analyticsorders_daily_detail), [`analytics.orders_by_product_daily`](#analyticsorders_by_product_daily), [`analytics.orders_hourly`](#analyticsorders_hourly), [`analytics.amazon_daily`](#analyticsamazon_daily), [`analytics.site_traffic_daily`](#analyticssite_traffic_daily), [`analytics.platform_daily_history`](#analyticsplatform_daily_history), [`analytics.meta_product_daily`](#analyticsmeta_product_daily), [`analytics.meta_product_reach`](#analyticsmeta_product_reach), [`analytics.meta_bids_daily`](#analyticsmeta_bids_daily), [`analytics.pacing_live_today`](#analyticspacing_live_today), [`analytics.pacing_amazon_month_to_date`](#analyticspacing_amazon_month_to_date), [`analytics.pacing_hourly_spend_curve`](#analyticspacing_hourly_spend_curve), [`analytics.pacing_levers`](#analyticspacing_levers), [`analytics.pacing_meta_spend_monthly`](#analyticspacing_meta_spend_monthly), [`analytics.pipeline_feeds`](#analyticspipeline_feeds), [`analytics.pipeline_feed_attempts`](#analyticspipeline_feed_attempts), [`analytics.pipeline_feed_verify`](#analyticspipeline_feed_verify), [`analytics.pipeline_refresh_runs`](#analyticspipeline_refresh_runs), [`analytics.pipeline_alerts`](#analyticspipeline_alerts), [`analytics.projection_scenarios`](#analyticsprojection_scenarios), [`analytics.projection_levers`](#analyticsprojection_levers), [`analytics.projection_series`](#analyticsprojection_series), [`analytics.projection_actuals`](#analyticsprojection_actuals), [`analytics.projection_pnl_drivers`](#analyticsprojection_pnl_drivers), [`analytics.projection_pnl_settings`](#analyticsprojection_pnl_settings), [`analytics.projection_pnl_account_map`](#analyticsprojection_pnl_account_map), [`analytics.projection_cogs_sku`](#analyticsprojection_cogs_sku), [`analytics.projection_vendor_retainers`](#analyticsprojection_vendor_retainers), [`analytics.inventory_purchase_orders`](#analyticsinventory_purchase_orders), [`analytics.inventory_fba_transfers`](#analyticsinventory_fba_transfers), [`analytics.inventory_vendor_lead_times`](#analyticsinventory_vendor_lead_times), [`analytics.inventory_vendor_costs`](#analyticsinventory_vendor_costs), [`analytics.inventory_product_costs`](#analyticsinventory_product_costs), [`analytics.inventory_reorder_params`](#analyticsinventory_reorder_params), [`analytics.inventory_stock_counts`](#analyticsinventory_stock_counts), [`analytics.inventory_stock_daily`](#analyticsinventory_stock_daily), [`analytics.inventory_units_daily`](#analyticsinventory_units_daily), [`analytics.inventory_units_monthly`](#analyticsinventory_units_monthly), [`analytics.inventory_units_by_country`](#analyticsinventory_units_by_country), [`analytics.cohorts_monthly`](#analyticscohorts_monthly), [`analytics.cohorts_curve_cumulative`](#analyticscohorts_curve_cumulative), [`analytics.cohorts_curve_goal`](#analyticscohorts_curve_goal), [`analytics.creative_family_daily`](#analyticscreative_family_daily), [`analytics.creative_family_metrics`](#analyticscreative_family_metrics), [`analytics.creative_unmatched_meta`](#analyticscreative_unmatched_meta), [`analytics.creative_stage_moves`](#analyticscreative_stage_moves), [`analytics.creative_scaling_placements`](#analyticscreative_scaling_placements), [`analytics.creative_scaling_benchmarks`](#analyticscreative_scaling_benchmarks), [`analytics.creative_content`](#analyticscreative_content), [`analytics.tag_products`](#analyticstag_products), [`analytics.tag_taxonomy_lines`](#analyticstag_taxonomy_lines), [`analytics.tag_line_ingredients`](#analyticstag_line_ingredients), [`analytics.tracker_tags`](#analyticstracker_tags), [`analytics.tracker_hooks`](#analyticstracker_hooks), [`analytics.priorities_snapshots`](#analyticspriorities_snapshots), [`analytics.priorities_thresholds`](#analyticspriorities_thresholds), [`analytics.priorities_baselines`](#analyticspriorities_baselines), [`analytics.priorities_concepts`](#analyticspriorities_concepts), [`analytics.priorities_manual_concepts`](#analyticspriorities_manual_concepts), [`analytics.production_assignments`](#analyticsproduction_assignments), [`analytics.production_formats`](#analyticsproduction_formats), [`analytics.competitor_brands`](#analyticscompetitor_brands), [`analytics.competitor_ads`](#analyticscompetitor_ads), [`analytics.competitor_concepts`](#analyticscompetitor_concepts), [`analytics.catalog`](#analyticscatalog), [`analytics.metric_glossary`](#analyticsmetric_glossary), [`analytics.klaviyo_daily`](#analyticsklaviyo_daily), [`analytics.klaviyo_campaigns`](#analyticsklaviyo_campaigns), [`analytics.klaviyo_flows`](#analyticsklaviyo_flows), [`analytics.klaviyo_flow_messages`](#analyticsklaviyo_flow_messages), [`analytics.klaviyo_message_content`](#analyticsklaviyo_message_content), [`analytics.klaviyo_message_performance`](#analyticsklaviyo_message_performance), [`analytics.landing_pages`](#analyticslanding_pages), [`analytics.landing_page_versions`](#analyticslanding_page_versions), [`analytics.landing_page_ads`](#analyticslanding_page_ads), [`analytics.landing_page_ad_checks`](#analyticslanding_page_ad_checks), [`analytics.landing_page_top_ads`](#analyticslanding_page_top_ads), [`analytics.shopify_orders`](#analyticsshopify_orders), [`analytics.shopify_order_lines`](#analyticsshopify_order_lines) |
+| analytics schema: the read-only views (start here) | [`analytics.meta_ads`](#analyticsmeta_ads), [`analytics.meta_ad_daily`](#analyticsmeta_ad_daily), [`analytics.meta_adset_daily`](#analyticsmeta_adset_daily), [`analytics.meta_campaign_daily`](#analyticsmeta_campaign_daily), [`analytics.meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`analytics.meta_reach`](#analyticsmeta_reach), [`analytics.google_campaign_daily`](#analyticsgoogle_campaign_daily), [`analytics.platform_daily`](#analyticsplatform_daily), [`analytics.orders_daily`](#analyticsorders_daily), [`analytics.creative_tracker`](#analyticscreative_tracker), [`analytics.data_coverage`](#analyticsdata_coverage), [`analytics.etl_runs`](#analyticsetl_runs), [`analytics.meta_breakdown_daily`](#analyticsmeta_breakdown_daily), [`analytics.meta_change_log`](#analyticsmeta_change_log), [`analytics.meta_adset_state_daily`](#analyticsmeta_adset_state_daily), [`analytics.meta_change_ledger`](#analyticsmeta_change_ledger), [`analytics.attribution_source_daily`](#analyticsattribution_source_daily), [`analytics.attribution_anyclick_daily`](#analyticsattribution_anyclick_daily), [`analytics.attribution_unmapped_daily`](#analyticsattribution_unmapped_daily), [`analytics.orders_daily_detail`](#analyticsorders_daily_detail), [`analytics.orders_by_product_daily`](#analyticsorders_by_product_daily), [`analytics.orders_hourly`](#analyticsorders_hourly), [`analytics.amazon_daily`](#analyticsamazon_daily), [`analytics.site_traffic_daily`](#analyticssite_traffic_daily), [`analytics.platform_daily_history`](#analyticsplatform_daily_history), [`analytics.meta_product_daily`](#analyticsmeta_product_daily), [`analytics.meta_product_reach`](#analyticsmeta_product_reach), [`analytics.meta_bids_daily`](#analyticsmeta_bids_daily), [`analytics.pacing_live_today`](#analyticspacing_live_today), [`analytics.pacing_amazon_month_to_date`](#analyticspacing_amazon_month_to_date), [`analytics.pacing_hourly_spend_curve`](#analyticspacing_hourly_spend_curve), [`analytics.pacing_levers`](#analyticspacing_levers), [`analytics.pacing_meta_spend_monthly`](#analyticspacing_meta_spend_monthly), [`analytics.pipeline_feeds`](#analyticspipeline_feeds), [`analytics.pipeline_feed_attempts`](#analyticspipeline_feed_attempts), [`analytics.pipeline_feed_verify`](#analyticspipeline_feed_verify), [`analytics.pipeline_refresh_runs`](#analyticspipeline_refresh_runs), [`analytics.pipeline_alerts`](#analyticspipeline_alerts), [`analytics.projection_scenarios`](#analyticsprojection_scenarios), [`analytics.projection_levers`](#analyticsprojection_levers), [`analytics.projection_series`](#analyticsprojection_series), [`analytics.projection_actuals`](#analyticsprojection_actuals), [`analytics.projection_pnl_drivers`](#analyticsprojection_pnl_drivers), [`analytics.projection_pnl_settings`](#analyticsprojection_pnl_settings), [`analytics.projection_pnl_account_map`](#analyticsprojection_pnl_account_map), [`analytics.projection_cogs_sku`](#analyticsprojection_cogs_sku), [`analytics.projection_vendor_retainers`](#analyticsprojection_vendor_retainers), [`analytics.inventory_purchase_orders`](#analyticsinventory_purchase_orders), [`analytics.inventory_fba_transfers`](#analyticsinventory_fba_transfers), [`analytics.inventory_vendor_lead_times`](#analyticsinventory_vendor_lead_times), [`analytics.inventory_vendor_costs`](#analyticsinventory_vendor_costs), [`analytics.inventory_product_costs`](#analyticsinventory_product_costs), [`analytics.inventory_reorder_params`](#analyticsinventory_reorder_params), [`analytics.inventory_stock_counts`](#analyticsinventory_stock_counts), [`analytics.inventory_stock_daily`](#analyticsinventory_stock_daily), [`analytics.inventory_units_daily`](#analyticsinventory_units_daily), [`analytics.inventory_units_monthly`](#analyticsinventory_units_monthly), [`analytics.inventory_units_by_country`](#analyticsinventory_units_by_country), [`analytics.cohorts_monthly`](#analyticscohorts_monthly), [`analytics.cohorts_curve_cumulative`](#analyticscohorts_curve_cumulative), [`analytics.cohorts_curve_goal`](#analyticscohorts_curve_goal), [`analytics.creative_family_daily`](#analyticscreative_family_daily), [`analytics.creative_family_metrics`](#analyticscreative_family_metrics), [`analytics.creative_unmatched_meta`](#analyticscreative_unmatched_meta), [`analytics.creative_stage_moves`](#analyticscreative_stage_moves), [`analytics.creative_scaling_placements`](#analyticscreative_scaling_placements), [`analytics.creative_scaling_benchmarks`](#analyticscreative_scaling_benchmarks), [`analytics.creative_content`](#analyticscreative_content), [`analytics.tag_products`](#analyticstag_products), [`analytics.tag_taxonomy_lines`](#analyticstag_taxonomy_lines), [`analytics.tag_line_ingredients`](#analyticstag_line_ingredients), [`analytics.tracker_tags`](#analyticstracker_tags), [`analytics.tracker_hooks`](#analyticstracker_hooks), [`analytics.priorities_snapshots`](#analyticspriorities_snapshots), [`analytics.priorities_thresholds`](#analyticspriorities_thresholds), [`analytics.priorities_baselines`](#analyticspriorities_baselines), [`analytics.priorities_concepts`](#analyticspriorities_concepts), [`analytics.priorities_manual_concepts`](#analyticspriorities_manual_concepts), [`analytics.production_assignments`](#analyticsproduction_assignments), [`analytics.production_formats`](#analyticsproduction_formats), [`analytics.daily_story`](#analyticsdaily_story), [`analytics.daily_story_facts`](#analyticsdaily_story_facts), [`analytics.daily_story_patterns`](#analyticsdaily_story_patterns), [`analytics.daily_story_pattern_scoreboard`](#analyticsdaily_story_pattern_scoreboard), [`analytics.daily_story_metric_registry`](#analyticsdaily_story_metric_registry), [`analytics.competitor_brands`](#analyticscompetitor_brands), [`analytics.competitor_ads`](#analyticscompetitor_ads), [`analytics.competitor_concepts`](#analyticscompetitor_concepts), [`analytics.catalog`](#analyticscatalog), [`analytics.metric_glossary`](#analyticsmetric_glossary), [`analytics.klaviyo_daily`](#analyticsklaviyo_daily), [`analytics.klaviyo_campaigns`](#analyticsklaviyo_campaigns), [`analytics.klaviyo_flows`](#analyticsklaviyo_flows), [`analytics.klaviyo_flow_messages`](#analyticsklaviyo_flow_messages), [`analytics.klaviyo_message_content`](#analyticsklaviyo_message_content), [`analytics.klaviyo_message_performance`](#analyticsklaviyo_message_performance), [`analytics.landing_pages`](#analyticslanding_pages), [`analytics.landing_page_versions`](#analyticslanding_page_versions), [`analytics.landing_page_ads`](#analyticslanding_page_ads), [`analytics.landing_page_ad_checks`](#analyticslanding_page_ad_checks), [`analytics.landing_page_top_ads`](#analyticslanding_page_top_ads), [`analytics.shopify_orders`](#analyticsshopify_orders), [`analytics.shopify_order_lines`](#analyticsshopify_order_lines) |
 | Meta (Facebook / Instagram) ads: ads, campaigns, daily results | [`public.ad_daily`](#publicad_daily), [`public.meta_ads`](#publicmeta_ads), [`public.meta_campaigns`](#publicmeta_campaigns), [`public.meta_ad_lifetime`](#publicmeta_ad_lifetime), [`public.ad_lifetime`](#publicad_lifetime), [`public.meta_family_map`](#publicmeta_family_map), [`public.meta_breakdown_daily`](#publicmeta_breakdown_daily), [`public.meta_breakdown_coverage`](#publicmeta_breakdown_coverage), [`public.meta_breakdown_progress`](#publicmeta_breakdown_progress), [`public.meta_change_log`](#publicmeta_change_log), [`public.meta_adset_state_daily`](#publicmeta_adset_state_daily), [`public.landing_pages`](#publiclanding_pages), [`public.landing_page_versions`](#publiclanding_page_versions), [`public.landing_page_ads`](#publiclanding_page_ads), [`public.landing_page_top_ads`](#publiclanding_page_top_ads) |
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
@@ -146,6 +146,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta), [`public.api_keys`](#publicapi_keys), [`public.klaviyo_campaigns`](#publicklaviyo_campaigns), [`public.klaviyo_flows`](#publicklaviyo_flows), [`public.klaviyo_flow_messages`](#publicklaviyo_flow_messages), [`public.klaviyo_daily`](#publicklaviyo_daily), [`public.klaviyo_message_content`](#publicklaviyo_message_content), [`public.klaviyo_message_performance`](#publicklaviyo_message_performance), [`public.landing_page_ad_checks`](#publiclanding_page_ad_checks), [`public.brain_keys`](#publicbrain_keys), [`public.brain_audit`](#publicbrain_audit) |
 | Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow) | [`public.proj_feed_config`](#publicproj_feed_config), [`public.proj_feed_runs`](#publicproj_feed_runs), [`public.proj_feed_attempts`](#publicproj_feed_attempts), [`public.proj_feed_verify`](#publicproj_feed_verify), [`public.proj_feed_verify_runs`](#publicproj_feed_verify_runs), [`public.proj_feed_levers`](#publicproj_feed_levers), [`public.proj_feed_orders`](#publicproj_feed_orders), [`public.proj_feedx_orders`](#publicproj_feedx_orders), [`public.proj_feed_amazon`](#publicproj_feed_amazon), [`public.proj_feedx_amazon`](#publicproj_feedx_amazon), [`public.proj_feed_platform`](#publicproj_feed_platform), [`public.proj_feedx_platform`](#publicproj_feedx_platform), [`public.proj_feed_attribution`](#publicproj_feed_attribution), [`public.proj_feedx_attribution`](#publicproj_feedx_attribution), [`public.proj_feed_traffic`](#publicproj_feed_traffic), [`public.proj_feedx_traffic`](#publicproj_feedx_traffic), [`public.proj_feed_meta_reach`](#publicproj_feed_meta_reach), [`public.proj_feedx_meta_reach`](#publicproj_feedx_meta_reach), [`public.proj_feed_product_reach`](#publicproj_feed_product_reach), [`public.proj_feedx_product_reach`](#publicproj_feedx_product_reach), [`public.proj_feed_nc_product`](#publicproj_feed_nc_product), [`public.proj_feedx_nc_product`](#publicproj_feedx_nc_product), [`public.proj_feed_anyclick`](#publicproj_feed_anyclick), [`public.proj_feedx_anyclick`](#publicproj_feedx_anyclick), [`public.proj_feed_bids`](#publicproj_feed_bids), [`public.proj_feedx_bids`](#publicproj_feedx_bids), [`public.proj_feed_meta_day`](#publicproj_feed_meta_day), [`public.proj_feed_meta_product`](#publicproj_feed_meta_product), [`public.proj_pacing_hourly`](#publicproj_pacing_hourly), [`public.proj_pacing_setting`](#publicproj_pacing_setting), [`public.proj_units_daily`](#publicproj_units_daily), [`public.proj_feedx_units_daily`](#publicproj_feedx_units_daily), [`public.proj_demand_snapshot`](#publicproj_demand_snapshot), [`public.proj_feedx_demand_snapshot`](#publicproj_feedx_demand_snapshot), [`public.proj_feedx_intl_nonus_daily`](#publicproj_feedx_intl_nonus_daily), [`public.proj_feed_nc_hourly`](#publicproj_feed_nc_hourly), [`public.proj_live_today_snapshots`](#publicproj_live_today_snapshots), [`public.proj_amazon_mtd_snapshots`](#publicproj_amazon_mtd_snapshots), [`public.proj_feedx_intl_estimate`](#publicproj_feedx_intl_estimate), [`public.proj_meta_spend_monthly`](#publicproj_meta_spend_monthly) |
 | Projection engine tables (finance, inventory, cohorts; read them through the analytics views) | [`public.proj_scenarios`](#publicproj_scenarios), [`public.proj_series`](#publicproj_series), [`public.proj_actuals`](#publicproj_actuals), [`public.proj_audit`](#publicproj_audit), [`public.proj_scenario_history`](#publicproj_scenario_history), [`public.proj_refresh_runs`](#publicproj_refresh_runs), [`public.proj_cohorts`](#publicproj_cohorts), [`public.proj_cohort_cum`](#publicproj_cohort_cum), [`public.proj_cohort_uploads`](#publicproj_cohort_uploads), [`public.proj_curve_goal`](#publicproj_curve_goal), [`public.proj_pnl_drivers`](#publicproj_pnl_drivers), [`public.proj_pnl_settings`](#publicproj_pnl_settings), [`public.proj_pnl_cogs_sku`](#publicproj_pnl_cogs_sku), [`public.proj_pnl_qb_map`](#publicproj_pnl_qb_map), [`public.proj_pnl_vendors`](#publicproj_pnl_vendors), [`public.proj_upload_history`](#publicproj_upload_history), [`public.proj_po`](#publicproj_po), [`public.proj_fba_transfer`](#publicproj_fba_transfer), [`public.proj_vendor_lead`](#publicproj_vendor_lead), [`public.proj_vendor_cogs`](#publicproj_vendor_cogs), [`public.proj_product_cost`](#publicproj_product_cost), [`public.proj_reorder_param`](#publicproj_reorder_param), [`public.proj_stock_snapshot`](#publicproj_stock_snapshot), [`public.proj_supply_history`](#publicproj_supply_history), [`public.proj_units_monthly`](#publicproj_units_monthly), [`public.proj_units_country`](#publicproj_units_country), [`public.proj_units_loads`](#publicproj_units_loads) |
+| Daily story: facts, the short explanation, the change patterns and the scoreboard | [`public.daily_story_metrics`](#publicdaily_story_metrics), [`public.daily_story_facts`](#publicdaily_story_facts), [`public.daily_story`](#publicdaily_story), [`public.daily_story_patterns`](#publicdaily_story_patterns), [`public.daily_story_pattern_scoreboard`](#publicdaily_story_pattern_scoreboard) |
 
 | Domain | Analytics views |
 |---|---|
@@ -164,6 +165,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | **pipeline**: Data freshness, feed health, ETL runs, the catalog and the glossary | [`data_coverage`](#analyticsdata_coverage), [`etl_runs`](#analyticsetl_runs), [`pipeline_feeds`](#analyticspipeline_feeds), [`pipeline_feed_attempts`](#analyticspipeline_feed_attempts), [`pipeline_feed_verify`](#analyticspipeline_feed_verify), [`pipeline_refresh_runs`](#analyticspipeline_refresh_runs), [`pipeline_alerts`](#analyticspipeline_alerts), [`catalog`](#analyticscatalog), [`metric_glossary`](#analyticsmetric_glossary) |
 | **email**: Klaviyo campaigns, flows, messages: sends, opens, clicks, orders, revenue and the copy (views created by migration 231 once the Klaviyo tables exist) | [`klaviyo_daily`](#analyticsklaviyo_daily), [`klaviyo_campaigns`](#analyticsklaviyo_campaigns), [`klaviyo_flows`](#analyticsklaviyo_flows), [`klaviyo_flow_messages`](#analyticsklaviyo_flow_messages), [`klaviyo_message_content`](#analyticsklaviyo_message_content), [`klaviyo_message_performance`](#analyticsklaviyo_message_performance) |
 | **landing_pages**: Landing page copy versions and the ads that send people to each page (views created by migration 231 once those tables exist) | [`landing_pages`](#analyticslanding_pages), [`landing_page_versions`](#analyticslanding_page_versions), [`landing_page_ads`](#analyticslanding_page_ads), [`landing_page_ad_checks`](#analyticslanding_page_ad_checks), [`landing_page_top_ads`](#analyticslanding_page_top_ads) |
+| **story**: The daily story: facts, short explanation, change patterns and the pattern scoreboard | [`daily_story`](#analyticsdaily_story), [`daily_story_facts`](#analyticsdaily_story_facts), [`daily_story_patterns`](#analyticsdaily_story_patterns), [`daily_story_pattern_scoreboard`](#analyticsdaily_story_pattern_scoreboard), [`daily_story_metric_registry`](#analyticsdaily_story_metric_registry) |
 
 ## analytics schema: the read-only views (start here)
 
@@ -3492,6 +3494,196 @@ SELECT format_code, name, length FROM analytics.production_formats WHERE active 
 
 ```sql
 SELECT * FROM analytics.production_formats LIMIT 20;
+```
+
+### analytics.daily_story
+
+*view*, columns like `public.daily_story`
+
+**Purpose.** The daily story: the short explanation of why each day's performance was what it was, with confidence labels and what the database cannot see.
+
+- **Domain:** story
+- **Grain:** one row per day
+- **Source:** public.daily_story
+- **Refresh:** nightly
+- **Coverage:** 2026-05-06 through yesterday
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date |  | Pacific day (primary key). |
+| `headline` | text |  | The TLDR sentence. |
+| `story` | text |  | The story text: TLDR, a few short lines, and a 'Cannot see' line. |
+| `confidence` | jsonb |  | JSON: a confidence label per claim (move, drivers, mix_vs_rate, changes, cause). |
+| `cannot_see` | jsonb |  | JSON list of what the database cannot show for that day. |
+| `model` | text |  | Model that wrote the text; NULL for the template. |
+| `source` | text |  | llm \| template. |
+| `note` | text |  | Why the template was used, when it was. |
+| `created_at` | timestamptz |  | When the story was written. |
+
+*Latest story*
+
+```sql
+SELECT day, headline, story FROM analytics.daily_story ORDER BY day DESC LIMIT 1;
+```
+
+*First rows*
+
+```sql
+SELECT * FROM analytics.daily_story LIMIT 20;
+```
+
+### analytics.daily_story_facts
+
+*view*, columns like `public.daily_story_facts`
+
+**Purpose.** The JSON facts each daily story is written from (metrics vs same-weekday baseline, decomposition, cuts, ledger, sections).
+
+- **Domain:** story
+- **Grain:** one row per day
+- **Source:** public.daily_story_facts
+- **Refresh:** nightly
+- **Coverage:** 2026-05-06 through yesterday
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date |  | Pacific day the facts describe (primary key). |
+| `facts` | jsonb |  | JSON: readiness, windows, metrics, decomposition, anomalies, cuts, movers, creative_live, changes, events, control, sections, cannot_see, basis_notes. |
+| `version` | text |  | Facts schema version (v1). |
+| `coverage` | text |  | full \| partial \| not_ready: whether every core and optional source existed for the day. |
+| `created_at` | timestamptz |  | When the facts were last computed. |
+
+*Headline decomposition of a day*
+
+```sql
+SELECT day, jsonb_path_query(facts, '$.decomposition.terms[*].name') AS term FROM analytics.daily_story_facts WHERE day = (SELECT max(day) FROM analytics.daily_story_facts) LIMIT 10;
+```
+
+*First rows*
+
+```sql
+SELECT * FROM analytics.daily_story_facts LIMIT 20;
+```
+
+### analytics.daily_story_patterns
+
+*view*, columns like `public.daily_story_patterns`
+
+**Purpose.** Pattern memory: change types seen each day and the next 1-3 days' outcomes against same-weekday baselines.
+
+- **Domain:** story
+- **Grain:** one row per (day, change_type)
+- **Source:** public.daily_story_patterns
+- **Refresh:** nightly
+- **Coverage:** 2026-05-06 through yesterday
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date |  | Day the change showed. |
+| `change_type` | text |  | Event type (new_adsets, budget_up, capped_share_up, troas_share_up, big_email_send, cluster_entered, google_spend_up, amazon_spend_up ... or _all_days). |
+| `magnitude_bucket` | text |  | Size bucket of the largest event of that type that day. |
+| `subject` | text |  | The campaign, cluster, hook or send the largest event named; empty when none. |
+| `magnitude` | float8 |  | Numeric size of the largest event (share shift, count or ratio). |
+| `out_days` | integer |  | How many of D+1..D+3 had facts (0 to 3). |
+| `out_nc_roas` | float8 |  | Mean change in NC ROAS vs the same-weekday median over D+1..D+3 (fraction). |
+| `out_cpm` | float8 |  | Same for cost per 1,000 impressions. |
+| `out_ctr` | float8 |  | Same for link click-through rate. |
+| `out_conv` | float8 |  | Same for conversion rate (new customers / link clicks). |
+| `out_aov` | float8 |  | Same for new-customer average order value. |
+| `d1_nc_roas` | float8 |  | NC ROAS change vs baseline on D+1 only. |
+| `d1_cpm` | float8 |  | CPM change on D+1. |
+| `d1_ctr` | float8 |  | CTR change on D+1. |
+| `d1_conv` | float8 |  | Conversion rate change on D+1. |
+| `d1_aov` | float8 |  | AOV change on D+1. |
+| `updated_at` | timestamptz |  | When the row was last written. |
+
+*Days with a large email send*
+
+```sql
+SELECT day, magnitude_bucket, out_nc_roas FROM analytics.daily_story_patterns WHERE change_type = 'big_email_send' ORDER BY day DESC LIMIT 10;
+```
+
+*First rows*
+
+```sql
+SELECT * FROM analytics.daily_story_patterns LIMIT 20;
+```
+
+### analytics.daily_story_pattern_scoreboard
+
+*view*, columns like `public.daily_story_pattern_scoreboard`
+
+**Purpose.** Which change types have preceded rises or falls, with sample sizes and the base rate (correlation, not cause).
+
+- **Domain:** story
+- **Grain:** one row per (change_type, magnitude_bucket, metric), n >= 6
+- **Source:** public.daily_story_pattern_scoreboard
+- **Refresh:** always current (view)
+- **Coverage:** 2026-05-06 through yesterday
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `change_type` | text |  | Event type. |
+| `magnitude_bucket` | text |  | Size bucket or '(any size)'. |
+| `metric` | text |  | nc_roas \| cpm \| ctr \| conv \| aov. |
+| `n` | bigint |  | Days with this change type and an outcome. |
+| `rises` | bigint |  | Days whose next 1-3 days averaged more than 5% above baseline. |
+| `falls` | bigint |  | Days whose next 1-3 days averaged more than 5% below baseline. |
+| `rise_rate` | float8 |  | rises / n. |
+| `fall_rate` | float8 |  | falls / n. |
+| `base_rise_rate` | float8 |  | Share of all days whose next 1-3 days averaged more than 5% above baseline. |
+| `base_fall_rate` | float8 |  | Same for falls. |
+| `rise_lift` | float8 |  | rise_rate minus base_rise_rate. |
+| `fall_lift` | float8 |  | fall_rate minus base_fall_rate. |
+| `median_delta` | float8 |  | Median outcome change vs baseline (fraction). |
+| `mean_delta` | float8 |  | Mean outcome change (fraction). |
+| `base_days` | bigint |  | Days behind the base rate. |
+| `label` | text |  | Always 'correlation, not cause'. |
+
+*Strongest NC ROAS patterns*
+
+```sql
+SELECT change_type, magnitude_bucket, n, rises, falls, round((rise_lift)::numeric, 2) AS rise_lift FROM analytics.daily_story_pattern_scoreboard WHERE metric = 'nc_roas' ORDER BY abs(rise_lift) DESC LIMIT 10;
+```
+
+*First rows*
+
+```sql
+SELECT * FROM analytics.daily_story_pattern_scoreboard LIMIT 20;
+```
+
+### analytics.daily_story_metric_registry
+
+*view*, columns like `public.daily_story_metrics`
+
+**Purpose.** The daily story's metric registry: every daily metric, its basis, formula and source view.
+
+- **Domain:** story
+- **Grain:** one row per metric_key
+- **Source:** public.daily_story_metrics
+- **Refresh:** nightly
+- **Coverage:** every metric the story computes
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `metric_key` | text |  | Short key used inside daily_story_facts.facts (for example nc_roas, cpm, conv). |
+| `sort_order` | integer |  | Display order in the registry. |
+| `metric_group` | text |  | headline \| meta \| google \| orders \| klaviyo \| amazon \| creative \| site \| placement. |
+| `label` | text |  | Plain-language name with the acronym spelled out. |
+| `unit` | text |  | usd \| pct \| x \| count (pct is stored as a fraction, 0.12 = 12%). |
+| `basis` | text |  | What the number is made of and which attribution it follows. |
+| `formula` | text |  | How it is computed, ratios always from sums. |
+| `source` | text |  | analytics view and columns the inputs come from. |
+
+*Metrics by group*
+
+```sql
+SELECT metric_group, count(*) AS metrics FROM analytics.daily_story_metric_registry GROUP BY 1 ORDER BY 1;
+```
+
+*First rows*
+
+```sql
+SELECT * FROM analytics.daily_story_metric_registry LIMIT 20;
 ```
 
 ### analytics.competitor_brands
@@ -8815,6 +9007,145 @@ SELECT product, round(sum(nc_rev)) AS nc_revenue, sum(nc_orders) AS new_customer
 | `actor` | text | yes | Who. |
 | `note` | text | yes | Note. |
 
+## Daily story: facts, the short explanation, the change patterns and the scoreboard
+
+### public.daily_story_metrics
+
+*table*
+
+**Purpose.** The metric registry of the daily story: every daily metric the story can use, its basis, unit, formula and the analytics view and columns it comes from.
+
+- **Grain:** primary key `(metric_key)`; one row per metric_key (primary key)
+- **Source:** etl/daily_story_registry.py (REGISTRY), upserted by every run of etl.daily_story
+- **Refresh:** nightly, with the daily story job
+- **Coverage:** every metric the story computes
+- **Caveat:** basis names what the number is made of (Upstack new customers, Meta-reported, Klaviyo-attributed ...); never mix bases in one ratio.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `metric_key` | text | no | Short key used inside daily_story_facts.facts (for example nc_roas, cpm, conv). |
+| `sort_order` | integer | no | Display order in the registry. |
+| `metric_group` | text | no | headline \| meta \| google \| orders \| klaviyo \| amazon \| creative \| site \| placement. |
+| `label` | text | no | Plain-language name with the acronym spelled out. |
+| `unit` | text | no | usd \| pct \| x \| count (pct is stored as a fraction, 0.12 = 12%). |
+| `basis` | text | no | What the number is made of and which attribution it follows. |
+| `formula` | text | no | How it is computed, ratios always from sums. |
+| `source` | text | no | analytics view and columns the inputs come from. |
+
+### public.daily_story_facts
+
+*table*
+
+**Purpose.** The facts the daily story is written from: for each Pacific day, the JSON of every metric against its same-weekday baseline, the exact decomposition of new-customer return on ad spend, mix-versus-rate cuts, the live creative mix, top movers, the change ledger and the Meta, Google, email and text, Amazon and order-mix sections.
+
+- **Grain:** primary key `(day)`; one row per day (primary key)
+- **Source:** etl/daily_story.py (compute_facts) over the analytics views
+- **Refresh:** nightly (etl service 13:00 UTC, non-fatal step after Klaviyo); a day can be recomputed with --day
+- **Coverage:** every day from 2026-05-06 (Meta ad-level start) through yesterday; early days have fewer than four baseline weeks (facts.metrics.<key>.n_baseline says how many)
+- **Caveat:** Baseline = the same weekday in the previous four weeks: the metric table shows its median and its pooled value; the decomposition uses the pooled value so its terms add back exactly.
+- **Caveat:** The headline is NC ROAS = orders_daily new-customer revenue / (Meta + Google spend). Ad-attributed ROAS inside the cuts is a cut for comparing ads, products and structures, never the headline.
+- **Caveat:** The last 3 to 7 loaded days still move (Meta and Upstack restate): a day's facts are recomputed only when the job runs for it, so older rows can differ slightly from today's tables.
+- **Caveat:** coverage = not_ready when a core source (Meta ads, Upstack orders, Google, Upstack Meta attribution) was not loaded for the day: the row then holds only facts.readiness.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date | no | Pacific day the facts describe (primary key). |
+| `facts` | jsonb | no | JSON: readiness, windows, metrics, decomposition, anomalies, cuts, movers, creative_live, changes, events, control, sections, cannot_see, basis_notes. |
+| `version` | text | no | Facts schema version (v1). |
+| `coverage` | text | no | full \| partial \| not_ready: whether every core and optional source existed for the day. |
+| `created_at` | timestamptz | no | When the facts were last computed. |
+
+### public.daily_story
+
+*table*
+
+**Purpose.** The daily story: one very concise explanation (170 words or fewer) of why a day's performance was what it was, built from daily_story_facts only, with confidence labels and the list of what the database cannot show.
+
+- **Grain:** primary key `(day)`; one row per day (primary key)
+- **Source:** etl/daily_story_narrative.py: the model claude-sonnet-5-5 when available and every number in its text is found in the facts, else a deterministic template
+- **Refresh:** nightly with the facts
+- **Coverage:** every day with facts; backfilled days carry the template text unless a model run was requested
+- **Caveat:** source says llm or template; note explains a fallback (model off, answer rejected for a number not in the facts).
+- **Caveat:** Wording is 'consistent with': no story proves a cause unless a clean like-for-like control exists.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date | no | Pacific day (primary key). |
+| `headline` | text | no | The TLDR sentence. |
+| `story` | text | no | The story text: TLDR, a few short lines, and a 'Cannot see' line. |
+| `confidence` | jsonb | no | JSON: a confidence label per claim (move, drivers, mix_vs_rate, changes, cause). |
+| `cannot_see` | jsonb | no | JSON list of what the database cannot show for that day. |
+| `model` | text | yes | Model that wrote the text; NULL for the template. |
+| `source` | text | no | llm \| template. |
+| `note` | text | no | Why the template was used, when it was. |
+| `created_at` | timestamptz | no | When the story was written. |
+
+### public.daily_story_patterns
+
+*table*
+
+**Purpose.** The pattern memory: for each day, the change types that showed (new ad sets, capped share up, tROAS share up, a large email send, a cluster entering the live mix ...) with a magnitude bucket and what the next 1-3 days did against their same-weekday baselines.
+
+- **Grain:** primary key `(day, change_type)`; one row per (day, change_type); change_type '_all_days' is the base-rate row every day has
+- **Source:** etl/daily_story_patterns.py from daily_story_facts (facts.events and facts.metrics)
+- **Refresh:** nightly; the previous 3 days are refreshed as their outcome windows lengthen
+- **Coverage:** from 2026-05-06; the newest days have out_days below 3
+- **Caveat:** Correlation, not cause: several changes usually land together and consecutive days' outcome windows overlap.
+- **Caveat:** out_* is the mean over days D+1..D+3 that exist of (value / same-weekday median baseline - 1); d1_* is D+1 alone; both NULL when the metric was not available.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date | no | Day the change showed. |
+| `change_type` | text | no | Event type (new_adsets, budget_up, capped_share_up, troas_share_up, big_email_send, cluster_entered, google_spend_up, amazon_spend_up ... or _all_days). |
+| `magnitude_bucket` | text | no | Size bucket of the largest event of that type that day. |
+| `subject` | text | no | The campaign, cluster, hook or send the largest event named; empty when none. |
+| `magnitude` | float8 | yes | Numeric size of the largest event (share shift, count or ratio). |
+| `out_days` | integer | no | How many of D+1..D+3 had facts (0 to 3). |
+| `out_nc_roas` | float8 | yes | Mean change in NC ROAS vs the same-weekday median over D+1..D+3 (fraction). |
+| `out_cpm` | float8 | yes | Same for cost per 1,000 impressions. |
+| `out_ctr` | float8 | yes | Same for link click-through rate. |
+| `out_conv` | float8 | yes | Same for conversion rate (new customers / link clicks). |
+| `out_aov` | float8 | yes | Same for new-customer average order value. |
+| `d1_nc_roas` | float8 | yes | NC ROAS change vs baseline on D+1 only. |
+| `d1_cpm` | float8 | yes | CPM change on D+1. |
+| `d1_ctr` | float8 | yes | CTR change on D+1. |
+| `d1_conv` | float8 | yes | Conversion rate change on D+1. |
+| `d1_aov` | float8 | yes | AOV change on D+1. |
+| `updated_at` | timestamptz | no | When the row was last written. |
+
+### public.daily_story_pattern_scoreboard
+
+*view*
+
+**Purpose.** The pattern scoreboard: how often each change type (and size bucket) has preceded a rise or a fall of more than 5% in NC ROAS, CPM, CTR, conversion rate or AOV over the next 1-3 days, next to the same rate over all days, with sample sizes. Only rows with n of 6 or more. Correlation, not cause.
+
+- **Grain:** one row per (change_type, magnitude_bucket, metric); magnitude_bucket '(any size)' pools the sizes
+- **Source:** public.daily_story_patterns
+- **Refresh:** always current: a view that recomputes on every read; the table behind it is rewritten nightly
+- **Coverage:** from 2026-05-06
+- **Caveat:** rise_lift = rise_rate minus base_rise_rate: a pattern is only informative when its lift is clearly away from 0 with a decent n.
+- **Caveat:** Overlapping outcome windows and simultaneous changes mean n overstates the independent evidence.
+- **Caveat:** The 5% threshold is far inside the daily noise of NC ROAS, so the base rates are not small: read the lift, not the rate.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `change_type` | text |  | Event type. |
+| `magnitude_bucket` | text |  | Size bucket or '(any size)'. |
+| `metric` | text |  | nc_roas \| cpm \| ctr \| conv \| aov. |
+| `n` | bigint |  | Days with this change type and an outcome. |
+| `rises` | bigint |  | Days whose next 1-3 days averaged more than 5% above baseline. |
+| `falls` | bigint |  | Days whose next 1-3 days averaged more than 5% below baseline. |
+| `rise_rate` | float8 |  | rises / n. |
+| `fall_rate` | float8 |  | falls / n. |
+| `base_rise_rate` | float8 |  | Share of all days whose next 1-3 days averaged more than 5% above baseline. |
+| `base_fall_rate` | float8 |  | Same for falls. |
+| `rise_lift` | float8 |  | rise_rate minus base_rise_rate. |
+| `fall_lift` | float8 |  | fall_rate minus base_fall_rate. |
+| `median_delta` | float8 |  | Median outcome change vs baseline (fraction). |
+| `mean_delta` | float8 |  | Mean outcome change (fraction). |
+| `base_days` | bigint |  | Days behind the base rate. |
+| `label` | text |  | Always 'correlation, not cause'. |
+
 ## Metrics
 
 The canonical definition of every headline metric, taken from the code (the file is named in `Source` or in a trap). Also `analytics.metric_glossary` (SQL) and the `metrics` key of `docs/schema.json`
@@ -9206,6 +9537,61 @@ Read the default basis before quoting a number and name the basis in the answer.
 - **Default basis:** Actual orders feed, Shopify only (app/trends.py build_catalog(), repeat_share)
 - **Other basis:** Business-wide: (Shopify returning + Amazon non-new-customer revenue) / (Shopify + Amazon revenue) (app/projection/pacing/catalog.py, biz_repeat_share)
 - **Trap:** Gross of tax and refunds; no Amazon in the Shopify-only ratio.
+
+### daily_story_baseline
+
+**Same-weekday baseline (daily story)** (domain: story)
+
+- **Formula:** For a target day D: the same weekday in the previous four weeks (D-7, D-14, D-21, D-28; fewer when history is short). Tables show the median of those days' own values and the pooled value (sum / sum); the decomposition uses the pooled value.
+- **Source:** `analytics.daily_story_facts.facts`
+- **Default basis:** median of the up to four same-weekday days for the metric table; pooled for the exact decomposition
+- **Other basis:** trailing 7 days before D, pooled (metrics.<key>.trailing_7d)
+- **Trap:** A same-weekday baseline removes the weekday pattern only; it does not hold changes (new ad sets, bids, sends) constant, so it is not a like-for-like control for any one cause.
+- **Trap:** Early days (May 2026) have fewer than four baseline weeks.
+
+### daily_story_noise_z
+
+**Noise range and z-score (daily story)** (domain: story)
+
+- **Formula:** noise = sample standard deviation of the previous 28 days of the same daily metric; z = (value on D - same-weekday median baseline) / noise; a metric is flagged when |z| >= 2. Needs at least 10 trailing days.
+- **Source:** `analytics.daily_story_facts.facts`
+- **Default basis:** daily values of the metric on the same basis as the value (ratios from each day's sums)
+- **Other basis:** Facts path: metrics.<key>.z, noise_std_28d and flag inside the JSON
+- **Trap:** A daily ratio's noise is large (NC ROAS moves several tenths day to day), so most days are inside it.
+- **Trap:** z compares one day with a baseline; it does not say why the day moved.
+
+### daily_story_decomposition
+
+**Exact decomposition of NC ROAS (daily story)** (domain: story)
+
+- **Formula:** NC ROAS = AOV x (Meta spend / total spend) x (1000 / CPM) x CTR x (link click to landing page view) x (view to add to cart) x (add to cart to new customer) [x add to cart to initiated checkout, initiated checkout to new customer when the column exists]. The log change against the pooled same-weekday baseline splits exactly into one contribution per term; percentage points are the total percentage move split in proportion to each term's log.
+- **Source:** `analytics.daily_story_facts.facts`
+- **Default basis:** headline NC ROAS: orders_daily new-customer revenue / (Meta + Google spend); the funnel terms use Meta link clicks, landing page views and adds to cart over all actual new customers
+- **Other basis:** ad-attributed NC ROAS (a cut for ads, products, structures): sum(upstack_new_customer_revenue) / Meta spend
+- **Trap:** Arithmetic, not cause: it says which term moved, not why.
+- **Trap:** add to cart to new customer divides all actual new customers (including non-Meta ones) by Meta adds to cart, so it is a ratio of the day's totals, not Meta's own conversion.
+
+### daily_story_mix_rate
+
+**Mix versus rate (daily story)** (domain: story)
+
+- **Formula:** Over segments (product, stage, campaign structure, market cluster, ICP, format, vendor, age, ad family): ROAS = sum(w_i r_i) with w_i the segment's share of spend and r_i its ad-attributed NC ROAS. mix_i = (w_i - w0_i) x (rbar_i - Rbar), rate_i = (r_i - r0_i) x wbar_i, where 0 is the pooled same-weekday baseline and bars are the mean of day and baseline; sum(mix_i + rate_i) equals the total move exactly.
+- **Source:** `analytics.daily_story_facts.facts`
+- **Default basis:** ad-attributed NC ROAS (Upstack any-click 30-day attribution of new customers to Meta ads), a cut only
+- **Other basis:** Facts path: cuts.<cut>.mix_rate, cuts.<cut>.rows[].effect and movers inside the JSON
+- **Trap:** Mix = spend moving between segments with different returns; rate = the same segment earning more or less per dollar. Neither is a cause.
+- **Trap:** Ad-attributed revenue is any-click and is not the headline: it does not add up to orders_daily new-customer revenue.
+
+### daily_story_pattern_lift
+
+**Pattern lift (daily story scoreboard)** (domain: story)
+
+- **Formula:** For a change type: rise_rate = days whose next 1-3 days averaged more than 5% above the same-weekday baseline / days with that change; rise_lift = rise_rate - base_rise_rate (the same rate over all days). fall_lift likewise.
+- **Source:** `analytics.daily_story_pattern_scoreboard.rise_rate,base_rise_rate,rise_lift,n`
+- **Default basis:** Upstack new-customer basis for NC ROAS and AOV; Meta-reported for CPM and CTR; conversion = actual new customers / Meta link clicks
+- **Other basis:** The base rate (all days) sits in the same row as base_rise_rate and base_fall_rate
+- **Trap:** Correlation, not cause: changes land together and the 1-3 day outcome windows of neighbouring days overlap.
+- **Trap:** Only rows with n of 6 or more are listed; a high rate on a small n is not evidence.
 
 ## Regenerating
 
