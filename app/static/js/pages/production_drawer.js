@@ -4,7 +4,7 @@
 import { h } from '../util.js';
 import { api } from '../api.js';
 import { assignmentPanel } from './priorities_panel.js';
-import { STATUSES, STATUS_LABEL, statusOf, md, weekLabel, ticketTitle, richLines, parseVariations, previewOf, adCount, mediaOf, productName, formatLabel, dueInfo, nextActions, eventLine, link, resultText, mondayOf, addDays, today, askDialog } from './production_common.js';
+import { STATUSES, STATUS_LABEL, statusOf, md, weekLabel, ticketTitle, richLines, parseVariations, previewOf, adCount, mediaOf, conceptName, factsEl, productName, formatLabel, dueInfo, nextActions, eventLine, link, resultText, mondayOf, addDays, today, askDialog } from './production_common.js';
 
 const when = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`; };
 
@@ -45,15 +45,14 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
     const due = dueInfo(r);
     head.replaceChildren(
       h('div', { class: 'prod-drawer-titlerow' },
-        h('h2', { id: 'prod-drawer-title', 'data-testid': 'prod-drawer-title' }, ticketTitle(r)),
+        h('h2', { id: 'prod-drawer-title', 'data-testid': 'prod-drawer-title' }, conceptName(r)),
         h('button', { type: 'button', class: 'btn prod-drawer-close', 'data-testid': 'prod-drawer-close', 'aria-label': 'Close', onclick: close }, 'Close')),
-      h('p', { class: 'pri-sub prod-drawer-sub' }, [productName(r.product), r.cluster, r.icp].filter(Boolean).join(' / ')),
+      factsEl(r, 'prod-facts prod-drawer-facts'),
       r.stage === 'dropped' ? h('p', { class: 'prod-pill prod-st-dropped', 'data-testid': 'prod-drawer-status' }, 'Dropped')
         : h('ol', { class: 'prod-stepper', 'data-testid': 'prod-drawer-stepper', 'aria-label': 'Status' }, STATUSES.map(([k, l], i) => h('li', { class: 'prod-step' + (i < idx ? ' prod-step-done' : '') + (i === idx ? ' prod-step-now' : ''), 'data-status': k, 'aria-current': i === idx ? 'step' : null, 'data-testid': 'prod-drawer-step' }, h('span', { class: 'prod-step-dot' }), h('span', { class: 'prod-step-label' }, l)))),
       h('div', { class: 'prod-drawer-meta' },
         h('span', { class: 'prod-pill prod-ps-' + status, 'data-testid': 'prod-drawer-status' }, STATUS_LABEL[status] || status),
         h('span', { class: 'prod-chip prod-chip-vendor' }, r.vendor), mediaOf(r) ? h('span', { class: 'prod-chip prod-chip-media', 'data-testid': 'prod-drawer-media' }, mediaOf(r)) : null,
-        adCount(r) ? h('span', { class: 'prod-chip prod-chip-ads', 'data-testid': 'prod-drawer-ads' }, adCount(r) === 1 ? '1 ad' : `${adCount(r)} ads`) : null, h('span', { class: 'pri-sub' }, weekLabel(r.for_week)),
         due ? h('span', { class: 'prod-chip prod-chip-due' + (due.tone ? ' prod-due-' + due.tone : ''), 'data-testid': 'prod-drawer-due-chip' }, due.text) : null),
       h('div', { class: 'prod-drawer-actions', 'data-testid': 'prod-drawer-actions' }, nextActions(r).map((a) => h('button', { type: 'button', class: 'btn' + (a.primary ? ' primary' : ''), 'data-testid': 'prod-drawer-action-' + a.key, onclick: () => act(r, a) }, a.label))),
       msg);
@@ -79,6 +78,8 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
     const fmts = (ops.formats() || []).slice();
     if (r.format_code && !fmts.some((f) => f.code === r.format_code)) fmts.push({ code: r.format_code, name: r.format_name || '', length: r.format_length || '' });
     const mk = (tid, el) => { el.setAttribute('data-testid', tid); el.addEventListener('input', () => { dirty = true; }); el.addEventListener('change', () => { dirty = true; }); return el; };
+    const cname = mk('prod-drawer-concept-name', h('input', { type: 'text', class: 'pri-name', maxlength: '200', placeholder: 'Name of the concept', value: r.concept_name || '', 'aria-label': 'Concept name' }));
+    const kind = mk('prod-drawer-kind', h('select', { class: 'pri-name' }, [['', 'Not set'], ['new', 'New concept'], ['iteration', 'Iteration']].map(([v, l]) => h('option', { value: v, selected: (r.concept_kind || '') === v }, l))));
     const vendor = mk('prod-drawer-vendor', h('select', { class: 'pri-name' }, ops.vendors().map((v) => h('option', { value: v, selected: v === r.vendor }, v))));
     const week = mk('prod-drawer-week', h('select', { class: 'pri-name' }, weeks.map((w) => h('option', { value: w, selected: w === r.for_week }, weekLabel(w)))));
     const dueIn = mk('prod-drawer-due', h('input', { type: 'date', class: 'pri-name', value: r.due_date || '', 'aria-label': 'Due date' }));
@@ -90,6 +91,8 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
     const note = mk('prod-drawer-note', h('textarea', { class: 'pri-name', rows: '3', maxlength: '500', placeholder: 'Internal note (the vendor never sees this)' }, r.note || ''));
     const save = h('button', { type: 'button', class: 'btn primary', 'data-testid': 'prod-drawer-save', onclick: async () => {
       const body = {};
+      if (cname.value.trim() !== (r.concept_name || '')) body.concept_name = cname.value.trim();
+      if ((kind.value || null) !== (r.concept_kind || null)) body.concept_kind = kind.value || null;
       if (vendor.value !== r.vendor) body.vendor = vendor.value;
       if (week.value !== r.for_week) body.for_week = week.value;
       if ((dueIn.value || null) !== (r.due_date || null)) body.due_date = dueIn.value || null;
@@ -145,6 +148,8 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
     const noteView = r.note ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Note, as written'), h('div', { class: 'prod-richnote', 'data-testid': 'prod-drawer-note-view' }, richLines(r.note))) : null;
     pane.replaceChildren(h('div', { class: 'prod-drawer-form', 'data-testid': 'prod-drawer-details' },
       preview, noteView,
+      fieldInput('Concept name', cname), fieldInput('New vs Iteration', kind),
+      h('dl', { class: 'prod-about', 'data-testid': 'prod-about' }, [['Vendor', r.vendor], ['Week of', weekLabel(r.for_week).replace('Week of ', '')], ['ICP', r.icp], ['Pain point', r.pain_point], ['Market Cluster', r.cluster], ['Line', r.line_code]].filter(([, v]) => v).map(([k, v]) => h('div', { class: 'prod-fact' }, h('dt', null, k + ':'), h('dd', null, v)))),
       fieldInput('Vendor', vendor), fieldInput('Week of', week), fieldInput('Due date', dueRow, 'The vendor sees this date. Clear it for no due date.'), fieldInput('Priority', prio), fieldInput('Format', fmt),
       fieldInput('Brief link', brief), fieldInput('Creative link', creative), fieldInput('Note', note),
       r.vendor_note ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Vendor note'), h('p', { class: 'prod-drawer-vnote', 'data-testid': 'prod-drawer-vnote' }, r.vendor_note)) : null,

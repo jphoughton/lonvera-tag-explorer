@@ -1444,6 +1444,17 @@
    "summary": "Dropdown options for the Add concept form: products, sections and the Communication Overview tree product -> cluster -> ICP -> pain point -> [stories]."
   },
   {
+   "rule": "/api/priorities/tickets",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_ticket_create",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Add a ticket right from the Production board: {concept_name, product, vendor, for_week?, cluster?, icp?, pain_point?, concept_kind?, format_code?, brief_url?, note?, due_date?, status?} -> the new card"
+  },
+  {
    "rule": "/api/priorities/vendor-capacity",
    "methods": [
     "GET"

@@ -464,3 +464,12 @@ body.prod-drawer-open { overflow: hidden; }
 @keyframes prod-landed { from { background: color-mix(in srgb, var(--accent) 13%, var(--panel)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); } to { background: var(--panel); box-shadow: 0 1px 1px color-mix(in srgb, var(--lv-ink) 4%, transparent); } }
 .prod-board-card.prod-landed { animation: prod-landed 1.4s ease-out; }
 @media (prefers-reduced-motion: reduce) { .prod-board-card.prod-landed { animation: none; } }
+
+/* the ticket face: the concept name, then Product / Variations / Market Cluster / New vs Iteration; everything else is inside the ticket */
+.prod-facts { margin: 4px 0 0; display: grid; gap: 1px; font-size: 13px; line-height: 1.4; }
+.prod-fact { display: flex; gap: 5px; align-items: baseline; }
+.prod-fact dt { font-weight: 700; color: var(--text); white-space: nowrap; }
+.prod-fact dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.prod-card-facts { margin-top: 2px; }
+.prod-drawer-facts { font-size: 14px; margin: 6px 0 8px; }
+.prod-about { margin: 2px 0 8px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; display: grid; gap: 2px; font-size: 13px; }

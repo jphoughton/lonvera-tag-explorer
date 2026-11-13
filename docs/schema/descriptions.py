@@ -1461,7 +1461,9 @@ rel("public.creative_priorities_assignments", group="creative", kind="table",
           "status": "The board column, stored: assigned, brief_sent, in_production, in_review, ready or launched (a dropped assignment keeps its last status and has dropped_at set). Written only through set_status in app/priorities_assign.py; a linked Creative Tracker row can pull it forward (7 = ready, 8 or 9 = launched), never back.",
           "due_date": "When the vendor should be done: the Friday of for_week unless changed; NULL when cleared.", "priority": "'normal' or 'high'; high cards sort first on the board.",
           "position": "Order of the card inside its board column (ascending, fractional so a card can be dropped between two neighbours).",
-          "status_changed_at": "When status last changed (backfilled from the stage timestamps for rows older than migration 245)."})
+          "status_changed_at": "When status last changed (backfilled from the stage timestamps for rows older than migration 245).",
+          "concept_name": "The concept's own name as the team and the vendor call it (for example Grandfather used to eat well); empty until set. Shown as the title of the card.",
+          "concept_kind": "'new' for a new concept or 'iteration' for a variation made from an earlier concept; NULL when not set. The Creative Tracker holds the same fact in its New Concept / Iteration column."})
 
 rel("public.creative_priorities_assignment_events", group="creative", kind="table",
     purpose="The history of each production assignment on /priorities: who assigned the concept to a vendor, and who moved it between stages (brief sent, creative delivered, ready to launch, launched, dropped) and when.",

@@ -6898,6 +6898,8 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `priority` | text | no | 'normal' or 'high'; high cards sort first on the board. |
 | `position` | float8 | no | Order of the card inside its board column (ascending, fractional so a card can be dropped between two neighbours). |
 | `status_changed_at` | timestamptz | yes | When status last changed (backfilled from the stage timestamps for rows older than migration 245). |
+| `concept_name` | text | no | The concept's own name as the team and the vendor call it (for example Grandfather used to eat well); empty until set. Shown as the title of the card. |
+| `concept_kind` | text | yes | 'new' for a new concept or 'iteration' for a variation made from an earlier concept; NULL when not set. The Creative Tracker holds the same fact in its New Concept / Iteration column. |
 
 ### public.creative_priorities_assignment_events
 
