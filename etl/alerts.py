@@ -84,6 +84,7 @@ JOBS = [
     JobSpec("feeds", NIGHTLY_H, True, kind="heartbeat:feeds", fix="Railway > feeds service logs (cron 0 21 * * * UTC); `python -m etl.feeds verify` shows per-feed state."),
     JobSpec("live", HOURLY_H, True, kind="heartbeat:live", fix="Railway > live service logs; the Pacing cards fall back to typed values until it recovers."),
     JobSpec("amazon_mtd", NIGHTLY_H, True, kind="heartbeat:amazon_mtd", fix="Railway > etl or feeds logs for etl.amazon_mtd; the Pacing page computes the Amazon month live meanwhile."),
+    JobSpec("inventory_snapshots", NIGHTLY_H, False, fix="Railway > etl logs for etl.inventory_snapshots (it reads the typed counts, the units feed and the landed purchase orders and transfers; no outside service)."),
     JobSpec("projection_daily", NIGHTLY_H, True, kind="heartbeat:projection_daily", fix="Railway > etl logs for etl.projection_daily; the module named above failed."),
 ]
 CLAUDE_JOBS = ("auto_tag", "competitor_ads")
@@ -255,6 +256,26 @@ def _feed_freshness(conn, ctx: Ctx, today: dt.date) -> list[Finding]:
     return out
 
 
+INVENTORY_SNAPSHOT_FLOOR = dt.date(2026, 11, 3)       # first day of the daily stock series
+INVENTORY_LOCATIONS = (("revamp", "US warehouse (Warehance)", "Railway > feeds service logs for stock_revamp (Warehance products call); `python -m etl.feeds status`."),
+                       ("amazon", "Amazon FBA (estimate)", "Railway > etl logs for etl.inventory_snapshots; it needs a typed count in proj_stock_snapshot and the Amazon units feed."),
+                       ("intl", "International 3PL (estimate)", "Railway > etl logs for etl.inventory_snapshots; it needs a typed count in proj_stock_snapshot and the international units feed."))
+
+
+def check_inventory_snapshots(conn, ctx: Ctx) -> list[Finding]:
+    """Every location that has a daily stock series needs a snapshot dated yesterday (Los Angeles). A location with no row since 2026-11-03 is not started yet and stays silent."""
+    yesterday = ctx.now.astimezone(PT).date() - dt.timedelta(days=1)
+    out: list[Finding] = []
+    for loc, label, fix in INVENTORY_LOCATIONS:
+        r = one(conn, "SELECT max(as_of) AS last, bool_or(as_of = %s) AS has_yesterday FROM proj_demand_snapshot WHERE location = %s AND as_of >= %s",
+                (yesterday, loc, INVENTORY_SNAPSHOT_FLOOR))
+        if not r or r["last"] is None or r["has_yesterday"]:
+            continue
+        out.append(Finding(f"inv:{loc}", f"{label} has no daily stock snapshot for {yesterday.isoformat()}; the last one is {r['last'].isoformat()}.", fix,
+                           dt.datetime.combine(r["last"] + dt.timedelta(days=2), dt.time(0), tzinfo=PT), f"d{r['last'].isoformat()}"))
+    return out
+
+
 def check_web(conn, ctx: Ctx) -> list[Finding]:
     """GET /healthz (no auth, no data; 503 when the web app cannot reach its database). Two tries: a deploy restarts the app for about a minute."""
     url = ctx.web_url.rstrip("/") + "/healthz"
@@ -277,8 +298,8 @@ def check_web(conn, ctx: Ctx) -> list[Finding]:
 
 # a data-gap finding is a symptom of the job that feeds it: when that job already has a finding in the same run, the gap is not reported separately
 SYMPTOM_OF = {"fresh:meta": "job:run_daily", "fresh:upstack": "job:upstack_daily", "fresh:orders": "job:upstack_daily", "fresh:google": "job:upstack_daily",
-              "fresh:feeds": "job:feeds"}
-CHECKS: list[tuple[str, Callable]] = [("etl_jobs", check_etl_jobs), ("heartbeats", check_heartbeats), ("freshness", check_freshness), ("web", check_web)]
+              "fresh:feeds": "job:feeds", "inv:revamp": "job:feeds", "inv:amazon": "job:inventory_snapshots", "inv:intl": "job:inventory_snapshots"}
+CHECKS: list[tuple[str, Callable]] = [("etl_jobs", check_etl_jobs), ("heartbeats", check_heartbeats), ("freshness", check_freshness), ("inventory_snapshots", check_inventory_snapshots), ("web", check_web)]
 
 
 def run_checks(conn, ctx: Ctx, checks=None) -> tuple[list[Finding], list[Finding]]:
@@ -379,7 +400,7 @@ def plan(findings: list[Finding], state: dict[str, dict], now: dt.datetime) -> l
         if cid not in seen and st["resolved_at"] is None:
             out.append(("recovered" if st["last_alerted"] is not None else "resolve_quiet", cid, None, st))
     order = {"new": 0, "changed": 1, "repeat": 2, "recovered": 3, "resolve_quiet": 4, "quiet": 5}
-    return sorted(out, key=lambda a: (order[a[0]], a[1].startswith("fresh:"), a[1]))          # root causes (jobs, web) before their data symptoms when the cap bites
+    return sorted(out, key=lambda a: (order[a[0]], a[1].startswith(("fresh:", "inv:")), a[1]))          # root causes (jobs, web) before their data symptoms when the cap bites
 
 
 def _upsert(conn, f: Finding, st: dict | None, now: dt.datetime, delivered: bool) -> None:
