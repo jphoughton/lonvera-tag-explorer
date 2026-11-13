@@ -13,10 +13,13 @@ Backfill (--since D and/or --max-days N): NEWEST window first (--window-days, de
 committed before the next older window starts; progress is recorded per window x set x account, so running the same command again resumes. Pass the same --until
 after midnight to resume cleanly. On a rate limit it waits and continues.
 
-Service mode (`--auto`, the dedicated Railway cron service, every 2 hours): continues the backfill until it is finished, then keeps the trailing 7 days current. The backfill anchor
-(--until and --max-days) is stored in meta_breakdown_progress on first start, so no arguments are needed to resume. Newly elapsed days between the anchor and yesterday are pulled
-before going further back. A run never starts a request batch in the quiet hours (META_BREAKDOWNS_QUIET_UTC, default 12:30-15:30, the main nightly Meta pull), stops after --max-minutes
-(default 110) and exits 0 so the next cron run resumes; a Postgres advisory lock keeps two runs from overlapping (the second exits 0).
+Service mode (`--auto`, the dedicated Railway cron service, every 2 hours): the backfill anchor (--until and --max-days) is stored in meta_breakdown_progress on first start, so no
+arguments are needed to resume. Each run: (1) once a day per set, a catch-up of the newest days (at least the trailing 7; sets already refreshed that day are skipped, so a catch-up
+that did not finish resumes next run) limited to 40% of the run's time; (2) the backfill, newest 30-day window first, for every set except the four heavy ones (comscore_market,
+region, both hourly sets) out to the full depth, with one probe pass of the four heavy sets on the newest window (max 25% of a run, attempted once), then the heavy sets out to the
+full depth. Sets Meta refuses are asked again after 7 days; a set whose response never has the requested keys, or that fails 3 runs in a row with no rows, is quarantined for 7 days;
+retry waiting on transient errors is capped at 90 s per set pull. A run never starts a request batch in the quiet hours (META_BREAKDOWNS_QUIET_UTC, default 12:30-15:30, the main nightly
+Meta pull), stops after --max-minutes (default 110) and exits 0 so the next cron run resumes; a Postgres advisory lock keeps two runs from overlapping (the second exits 0).
 
 Usage: python -m etl.meta_breakdowns --auto
        python -m etl.meta_breakdowns [--days 7 | --since D --until D | --max-days 365] [--window-days 30] [--sets 'age;age+gender'] [--dry-run] [--restart]
@@ -45,17 +48,27 @@ HEAVY_CHUNK_DAYS = 1                 # region, dma, hourly ...: one day per requ
 PACE = 0.4                           # seconds between pages (same as etl.meta_api paging)
 SET_PAUSE = 1.0                      # seconds between breakdown sets
 RATE_WAIT = 900                      # seconds to sleep after the client's own retries are used up, before trying the same window again
-RECHECK_UNSUPPORTED_DAYS = 14        # a (set, level) Meta refused is asked again after this long (always asked when named with --sets)
+RECHECK_UNSUPPORTED_DAYS = 7         # a (set, level) Meta refused is asked again after this long (always asked when named with --sets)
+QUARANTINE_DAYS = 7                  # a set that fails deterministically (wrong response shape) or keeps failing is not asked again for this long
+FAIL_LIMIT = 3                       # consecutive failing runs with no rows before a set is quarantined
+TRANSIENT_BUDGET_S = 90              # retry waiting (HTTP 5xx, "temporarily unavailable") one set may spend per set pull (all pages, both accounts); then it is an error for this run
+PROBE_SHARE = 0.25                   # at most this share of a run goes to the one-time heavy-set probe pass
+CATCHUP_SHARE = 0.4                  # at most this share of a run's time goes to the recent-days catch-up; the rest is the backfill's
+HEAVY_LAST = ("comscore_market", "region", "hourly_stats_aggregated_by_audience_time_zone", "hourly_stats_aggregated_by_advertiser_time_zone")   # backfilled only after every other set has the full depth
 PURCHASE_TYPES = ("omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase")      # same priority as etl.resolver.pick
 LEVELS = ("ad", "campaign", "account")
 MAX_DIMS = 3
-ASYNC_POLLS = 360
+ASYNC_POLL_S = 5
+ASYNC_POLLS = 120                    # 10 minutes per async report job
 RETENTION_RX = re.compile(r"retention|too far|37 months|months? (ago|back)|beyond|older than|before .{0,20}(date|year)|not available for|start date|since", re.I)
 DEFAULT_MAX_DAYS = 365
 DEFAULT_QUIET_UTC = "12:30-15:30"
 DEFAULT_MAX_MINUTES = 110.0
 LOCK_KEY = 240_240                   # pg_try_advisory_lock key: one breakdown run at a time
+PROBE_SET = "__heavy_probed__"        # bookkeeping row: the one probe pass of the four heavy sets has been attempted
 ANCHOR_SET, DONE_SET, CAUGHT_SET = "__anchor__", "__backfill_done__", "__caught_up__"     # bookkeeping rows in meta_breakdown_progress (level and account '-')
+CATCHUP_PREFIX = "__catchup__"       # per set x level x account stamp 'refreshed on day D' (level = '<level>:<D>'): the recent-days catch-up resumes and skips what is done today
+QUARANTINE_PREFIX, FAILS_PREFIX, ASYNC_PREFIX = "__quarantine__:", "__fails__:", "__async__:"     # per-set rows (level and account '-'), see set_quarantine / note_outcome / mark_async_first
 
 
 class Unsupported(Exception):
@@ -68,6 +81,14 @@ class ShapeError(Exception):
 
 class StopRun(Exception):
     """The run must stop cleanly (quiet hours, wall-clock budget): everything pulled so far is committed."""
+
+
+class SetBudgetExceeded(meta_api.GraphError):
+    """A set used up its retry-wait budget on transient failures: an error for this run (a later run tries again)."""
+
+
+class AsyncTimeout(meta_api.GraphError):
+    """An async report job did not finish in time."""
 
 
 class TooBigError(Exception):
@@ -206,14 +227,27 @@ def _classify(e: Exception) -> Exception:
 class Client:
     """GET-only paging over the repo's read client (plus the async report run). sleep is injectable so tests never wait."""
 
-    def __init__(self, tok: str, pace: float | None = None, sleep=None, max_retries: int = 7):
+    def __init__(self, tok: str, pace: float | None = None, sleep=None, max_retries: int = 7, transient_budget: float | None = TRANSIENT_BUDGET_S):
         self.tok, self.pace, self.sleep, self.max_retries = tok, PACE if pace is None else pace, sleep or time.sleep, max_retries
         self.calls = 0
-        self.async_sets: set[str] = set()
+        self.async_sets: set[str] = set()                    # sets that needed an async report in this run (run stats)
+        self.async_first: set[str] = set()                   # sets known to be too big even for one day: asked as an async report straight away (persisted by run())
+        self.transient_budget, self.transient_spent = transient_budget, 0.0
+
+    def begin_set(self) -> None:
+        """A new set pull starts: its retry-wait budget is full again."""
+        self.transient_spent = 0.0
+
+    def _on_wait(self, wait: float, rate: bool) -> None:
+        if rate or self.transient_budget is None:
+            return                                           # rate limits are the Waiter's business, not a per-set failure
+        if self.transient_spent + wait > self.transient_budget:
+            raise SetBudgetExceeded(f"transient failures used the {self.transient_budget:g}s retry budget for this set (HTTP 5xx / temporarily unavailable)")
+        self.transient_spent += wait
 
     def get(self, url, params, what):
         self.calls += 1
-        return meta_api.graph_get(url, params, what, max_retries=self.max_retries, sleep=self.sleep)
+        return meta_api.graph_get(url, params, what, max_retries=self.max_retries, sleep=self.sleep, on_wait=self._on_wait)
 
     def pages_url(self, url: str, params: dict | None, what: str, max_pages: int | None = None):
         n = 0
@@ -251,14 +285,14 @@ class Client:
             raise meta_api.GraphError(f"{what}: async report did not start")
         try:
             for _ in range(ASYNC_POLLS):
-                self.sleep(10)
+                self.sleep(ASYNC_POLL_S)
                 s = self.get(f"{meta_api.G}/{rid}", {"access_token": self.tok}, what + " async poll")
                 if s.get("async_status") == "Job Completed":
                     break
                 if s.get("async_status") in ("Job Failed", "Job Skipped"):
                     raise meta_api.GraphError(f"{what}: async job {s.get('async_status')}")
             else:
-                raise meta_api.GraphError(f"{what}: async job timed out")
+                raise AsyncTimeout(f"{what}: async job timed out")
             out: list[dict] = []
             for page in self.pages_url(f"{meta_api.G}/{rid}/insights", {"access_token": self.tok, "limit": LIMIT}, what + " async"):
                 out += page
@@ -271,6 +305,18 @@ def fetch_window(client: Client, acct: str, entry: Entry, level: str, since: dt.
     """Rows for [since, until]. Too big -> halve the window; one day too big or timing out -> the async report run."""
     what = f"{an} {entry.name} {since}..{until}"
     params = build_params(entry, level, client.tok, since, until, ladder_step)
+    if entry.name in client.async_first:                     # learned: even one day is too big as a plain request, so skip the plain attempts and the halving
+        try:
+            return _async_day(client, acct, params, entry, what)
+        except (meta_api.TokenRejected, meta_api.RateLimited, Unsupported, SetBudgetExceeded, AsyncTimeout):
+            raise
+        except (meta_api.GraphError, TooBigError):
+            if since >= until:
+                raise
+            mid = since + (until - since) // 2
+            db.log(f"  {what} async report failed -> splitting")
+            return (fetch_window(client, acct, entry, level, since, mid, an, ladder_step)
+                    + fetch_window(client, acct, entry, level, mid + dt.timedelta(days=1), until, an, ladder_step))
     try:
         return client.fetch(acct, params, what)
     except meta_api.TooBig as e:
@@ -279,9 +325,10 @@ def fetch_window(client: Client, acct: str, entry: Entry, level: str, since: dt.
             db.log(f"  {what} too big -> splitting ({db.scrub(e)[:50]})")
             return (fetch_window(client, acct, entry, level, since, mid, an, ladder_step)
                     + fetch_window(client, acct, entry, level, mid + dt.timedelta(days=1), until, an, ladder_step))
-        db.log(f"  {what} too big at one day -> async report run")
+        db.log(f"  {what} too big at one day -> async report run (this set goes straight to async from now on)")
+        client.async_first.add(entry.name)
         return _async_day(client, acct, params, entry, what)
-    except (meta_api.TokenRejected, meta_api.RateLimited, Unsupported):
+    except (meta_api.TokenRejected, meta_api.RateLimited, Unsupported, SetBudgetExceeded):
         raise
     except meta_api.GraphError as e:
         if since < until or "gave up" not in str(e):
@@ -458,6 +505,11 @@ def recently_unsupported(conn) -> set[tuple[str, str]]:
                                               "AND checked_at > now() - make_interval(days => %s)", (RECHECK_UNSUPPORTED_DAYS,)).fetchall()}
 
 
+def progress_key(name: str, level: str, catchup_day: dt.date | None) -> tuple[str, str]:
+    """Where a finished window is recorded: the backfill under (set, level); the catch-up under a per-day stamp ('__catchup__<set>', '<level>:<day>')."""
+    return (name, level) if catchup_day is None else (CATCHUP_PREFIX + name, f"{level}:{catchup_day.isoformat()}")
+
+
 def window_done(conn, name: str, level: str, acct: str, ws: dt.date, we: dt.date) -> bool:
     """True when a finished window that covers [ws, we] is recorded for this set, level and account (resume)."""
     return conn.execute("SELECT 1 FROM meta_breakdown_progress WHERE breakdown_set=%s AND level=%s AND account_id=%s AND window_start <= %s AND window_end >= %s LIMIT 1",
@@ -468,6 +520,92 @@ def mark_window(conn, name: str, level: str, acct: str, ws: dt.date, we: dt.date
     conn.execute("""INSERT INTO meta_breakdown_progress (breakdown_set, level, account_id, window_start, window_end, rows, done_at) VALUES (%s,%s,%s,%s,%s,%s,now())
                     ON CONFLICT (breakdown_set, level, account_id, window_start, window_end) DO UPDATE SET rows = EXCLUDED.rows, done_at = now()""",
                  (name, level, acct, ws, we, rows))
+
+
+# ---------------------------------------------------------------------------------------------------------------- per-set state (rows in meta_breakdown_progress, no extra table)
+def _put(conn, name: str, level: str, start: dt.date, end: dt.date, rows: int = 0) -> None:
+    """One row per (name, level), replacing any older row of that name and level (account '-')."""
+    conn.execute("DELETE FROM meta_breakdown_progress WHERE breakdown_set=%s AND level=%s AND account_id='-'", (name, level))
+    conn.execute("INSERT INTO meta_breakdown_progress (breakdown_set, level, account_id, window_start, window_end, rows, done_at) VALUES (%s,%s,'-',%s,%s,%s,now())",
+                 (name, level, start, end, rows))
+
+
+def quarantined_sets(conn, today: dt.date) -> dict[str, str]:
+    """set -> kind ('shape' | 'failing') of the sets that are not asked again until their re-probe day."""
+    return {r[0][len(QUARANTINE_PREFIX):]: r[1] for r in conn.execute(
+        "SELECT breakdown_set, level FROM meta_breakdown_progress WHERE breakdown_set LIKE %s AND account_id='-' AND window_end > %s", (QUARANTINE_PREFIX.replace("_", "\\_") + "%", today)).fetchall()}
+
+
+def set_quarantine(conn, name: str, kind: str, today: dt.date) -> None:
+    conn.execute("DELETE FROM meta_breakdown_progress WHERE breakdown_set=%s AND account_id='-'", (QUARANTINE_PREFIX + name,))
+    _put(conn, QUARANTINE_PREFIX + name, kind, today, today + dt.timedelta(days=QUARANTINE_DAYS))
+    conn.execute("DELETE FROM meta_breakdown_progress WHERE breakdown_set=%s AND account_id='-'", (FAILS_PREFIX + name,))
+
+
+def note_outcome(conn, name: str, status: str, kind: str, rows_written: int, today: dt.date) -> str | None:
+    """Failure bookkeeping after one set pull. 'shape' (the response never carries the requested keys) quarantines at once; any other failure that wrote no rows counts as a
+    failing run, FAIL_LIMIT in a row quarantine the set; a clean pull (or one that wrote rows) clears the count. Returns the quarantine kind if one was set."""
+    if status == "error" and kind == "shape":
+        set_quarantine(conn, name, "shape", today)
+        return "shape"
+    if status == "ok" or rows_written > 0:
+        conn.execute("DELETE FROM meta_breakdown_progress WHERE breakdown_set=%s AND account_id='-'", (FAILS_PREFIX + name,))
+        return None
+    if status == "error":
+        r = conn.execute("SELECT rows FROM meta_breakdown_progress WHERE breakdown_set=%s AND account_id='-'", (FAILS_PREFIX + name,)).fetchone()
+        n = (int(r[0]) if r else 0) + 1
+        if n >= FAIL_LIMIT:
+            set_quarantine(conn, name, "failing", today)
+            return "failing"
+        _put(conn, FAILS_PREFIX + name, "-", today, today, n)
+    return None
+
+
+def async_first_sets(conn) -> set[str]:
+    return {r[0][len(ASYNC_PREFIX):] for r in conn.execute("SELECT breakdown_set FROM meta_breakdown_progress WHERE breakdown_set LIKE %s AND account_id='-'",
+                                                          (ASYNC_PREFIX.replace("_", "\\_") + "%",)).fetchall()}
+
+
+def mark_async_first(conn, name: str, today: dt.date) -> None:
+    _put(conn, ASYNC_PREFIX + name, "-", today, today)
+
+
+def clear_old_catchup_stamps(conn, day: dt.date) -> None:
+    conn.execute("DELETE FROM meta_breakdown_progress WHERE breakdown_set LIKE %s AND level NOT LIKE %s", (CATCHUP_PREFIX.replace("_", "\\_") + "%", "%:" + day.isoformat()))
+
+
+def catchup_counts(conn, entries: list["Entry"], day: dt.date, accounts) -> tuple[int, int]:
+    """(sets refreshed on `day`, sets still to do) for the catch-up: a set is done when every account has a stamp at some level; sets quarantined or refused at every
+    level count as done (they are skipped)."""
+    stamped: dict[str, set] = {}
+    for n, lv, ac in conn.execute("SELECT breakdown_set, level, account_id FROM meta_breakdown_progress WHERE breakdown_set LIKE %s AND level LIKE %s",
+                                  (CATCHUP_PREFIX.replace("_", "\\_") + "%", "%:" + day.isoformat())).fetchall():
+        stamped.setdefault(n[len(CATCHUP_PREFIX):], set()).add(ac)
+    skip = _skipped_sets(conn, entries, day)
+    done = sum(1 for e in entries if e.name in skip or len(stamped.get(e.name, ())) >= len(accounts))
+    return done, len(entries) - done
+
+
+def _skipped_sets(conn, entries, today: dt.date) -> set[str]:
+    q = quarantined_sets(conn, today)
+    ref = recently_unsupported(conn)
+    return {e.name for e in entries if e.name in q or all((e.name, lv) in ref for lv in LEVELS)}
+
+
+def backfill_counts(conn, entries: list["Entry"], ws: dt.date, we: dt.date, accounts, today: dt.date) -> tuple[int, int]:
+    """(sets finished, sets still to do) in backfill window [ws, we]. Finished = progress rows for every account at some level, or skipped (quarantined, refused everywhere)."""
+    got: dict[str, set] = {}
+    for n, ac in conn.execute("SELECT breakdown_set, account_id FROM meta_breakdown_progress WHERE window_start <= %s AND window_end >= %s AND level IN ('ad','campaign','account')",
+                              (ws, we)).fetchall():
+        got.setdefault(n, set()).add(ac)
+    skip = _skipped_sets(conn, entries, today)
+    done = sum(1 for e in entries if e.name in skip or len(got.get(e.name, ())) >= len(accounts))
+    return done, len(entries) - done
+
+
+def backfill_rows(conn) -> int:
+    """Number of finished backfill window x set x level x account records (grows whenever the backfill advances)."""
+    return int(conn.execute("SELECT count(*) FROM meta_breakdown_progress WHERE level IN ('ad','campaign','account')").fetchone()[0])
 
 
 # ---------------------------------------------------------------------------------------------------------------- the run
@@ -506,14 +644,21 @@ def in_quiet(quiet: tuple[int, int] | None, now: dt.datetime) -> bool:
 class Stopper:
     """check() raises StopRun when the wall-clock budget is used up or the quiet hours have begun. Injectable clocks for tests."""
 
-    def __init__(self, max_minutes: float | None = None, quiet: tuple[int, int] | None = None, clock=None, now=None):
-        self.max_minutes, self.quiet, self.clock = max_minutes or None, quiet, clock or time.monotonic
+    def __init__(self, max_minutes: float | None = None, quiet: tuple[int, int] | None = None, clock=None, now=None, label: str = "time budget"):
+        self.max_minutes, self.quiet, self.clock, self.label = max_minutes or None, quiet, clock or time.monotonic, label
         self.now = now or (lambda: dt.datetime.now(dt.timezone.utc))
         self.t0 = self.clock()
 
+    def child(self, share: float, label: str) -> "Stopper":
+        """A stopper for one phase of the run: `share` of this stopper's whole budget (no limit of its own when this one has none), never more than what is left; the quiet hours still apply."""
+        if not self.max_minutes:
+            return Stopper(None, self.quiet, self.clock, self.now, label)
+        left = self.max_minutes - (self.clock() - self.t0) / 60
+        return Stopper(max(0.0, min(self.max_minutes * share, left)) or 1e-9, self.quiet, self.clock, self.now, label)
+
     def reason(self) -> str | None:
         if self.max_minutes and (self.clock() - self.t0) / 60 > self.max_minutes:
-            return f"time budget of {self.max_minutes:g} minutes used up"
+            return f"{self.label} of {self.max_minutes:g} minutes used up"
         if in_quiet(self.quiet, self.now()):
             return "quiet hours began (the main nightly Meta pull needs the rate limit)"
         return None
@@ -544,12 +689,17 @@ class Waiter:
                 self.client.sleep(self.wait_s)
 
 
-def pull_set_level(conn, client: Client, waiter: Waiter, entry: Entry, level: str, ws: dt.date, we: dt.date, accounts, st: dict, backfill: bool, restart: bool) -> tuple[str, str | None]:
-    """One set at one level over window [ws, we], both accounts. Each request window is committed as it arrives; with backfill the finished window is recorded per
-    account (and skipped on a rerun). conn None = dry run (pull and count, write nothing)."""
-    status, err, any_ok = "ok", None, False
+def pull_set_level(conn, client: Client, waiter: Waiter, entry: Entry, level: str, ws: dt.date, we: dt.date, accounts, st: dict, backfill: bool, restart: bool,
+                   catchup_day: dt.date | None = None) -> tuple[str, str | None, str]:
+    """One set at one level over window [ws, we], both accounts. Each request window is committed as it arrives; with backfill (or, for the daily catch-up, catchup_day) the
+    finished window is recorded per account and skipped on a rerun. conn None = dry run (pull and count, write nothing). Returns (status, error, kind); kind says why a failure
+    happened: 'shape' (the response never carries the requested keys: deterministic), 'transient' (HTTP 5xx / the retry budget), 'other'; '' when ok."""
+    status, err, kind, any_ok = "ok", None, "", False
+    track = (backfill or catchup_day is not None) and conn is not None
+    pname, plevel = progress_key(entry.name, level, catchup_day)
+    client.begin_set()
     for ai, (acct, an) in enumerate(accounts):
-        if backfill and conn is not None and not restart and window_done(conn, entry.name, level, acct, ws, we):
+        if track and not restart and window_done(conn, pname, plevel, acct, ws, we):
             any_ok = True
             st["windows_skipped"] = st.get("windows_skipped", 0) + 1
             continue
@@ -568,58 +718,76 @@ def pull_set_level(conn, client: Client, waiter: Waiter, entry: Entry, level: st
                 n_acct += n
                 st["rows"] = st.get("rows", 0) + n
                 st["duplicates_dropped"] = st.get("duplicates_dropped", 0) + dups
-            if conn is not None and backfill:
-                mark_window(conn, entry.name, level, acct, ws, we, n_acct)
+            if track:
+                mark_window(conn, pname, plevel, acct, ws, we, n_acct)
                 conn.commit()
             any_ok = True
         except Unsupported as e:
             if conn is not None:
                 conn.rollback()
             if not any_ok and ai == 0:
-                return "unsupported", db.scrub(e)[:300]          # Meta refuses the request itself, so the second account would refuse it too
-            status, err = "error", f"{an}: {db.scrub(e)[:250]}"
-        except (ShapeError, TooBigError) as e:
+                return "unsupported", db.scrub(e)[:300], ""          # Meta refuses the request itself, so the second account would refuse it too
+            status, err, kind = "error", f"{an}: {db.scrub(e)[:250]}", "other"
+        except ShapeError as e:
             if conn is not None:
                 conn.rollback()
-            status, err = "error", f"{an}: {db.scrub(e)[:250]}"
+            status, err, kind = "error", f"{an}: {db.scrub(e)[:250]}", "shape"
+        except TooBigError as e:
+            if conn is not None:
+                conn.rollback()
+            status, err, kind = "error", f"{an}: {db.scrub(e)[:250]}", "other"
         except (meta_api.TokenRejected, meta_api.RateLimited, StopRun):
             if conn is not None:
                 conn.rollback()
             raise
-        except meta_api.GraphError as e:
+        except meta_api.GraphError as e:                        # includes SetBudgetExceeded and AsyncTimeout
             if conn is not None:
                 conn.rollback()
-            status, err = "error", f"{an}: {db.scrub(e)[:250]}"
+            status, err, kind = "error", f"{an}: {db.scrub(e)[:250]}", "transient"
+            if isinstance(e, SetBudgetExceeded):
+                break                                           # the budget is per set: the other account would only spend more of it
         except Exception as e:                                  # noqa: BLE001  one set failing (a bad value, a database error) must not end the run
             if conn is not None:
                 conn.rollback()
-            status, err = "error", f"{an}: {type(e).__name__}: {db.scrub(e)[:230]}"
+            status, err, kind = "error", f"{an}: {type(e).__name__}: {db.scrub(e)[:230]}", "other"
             db.log(f"  {entry.name} {level} {ws}..{we} {an} FAILED, continuing with the next set: {err}")
-    return status, err
+    return status, err, kind
+
+
+def light_and_heavy(entries: list[Entry]) -> tuple[list[Entry], list[Entry]]:
+    """Backfill order: every set except the four HEAVY_LAST ones first, then those four."""
+    return [e for e in entries if e.name not in HEAVY_LAST], [e for e in entries if e.name in HEAVY_LAST]
 
 
 def run(conn, windows: list[tuple[dt.date, dt.date]], sets: list[str] | None = None, dry_run: bool = False, client: Client | None = None, stopper: Stopper | None = None,
-        accounts=None, backfill: bool = False, restart: bool = False, max_rate_waits: int = 3, pause=None) -> dict:
+        accounts=None, backfill: bool = False, restart: bool = False, max_rate_waits: int = 3, pause=None, catchup_day: dt.date | None = None, today: dt.date | None = None,
+        entries: list[Entry] | None = None) -> dict:
     """Pull `windows` (given order: newest first for a backfill), every chosen set in a window before the next window starts. Never fatal per set: unsupported / error sets are
     recorded in meta_breakdown_coverage and skipped. A set Meta refuses at ad level is pulled at campaign level, then account level. A rejected token, or a rate limit that
-    outlasts max_rate_waits, stops the run (raises). A StopRun from the stopper (quiet hours, time budget) ends the run cleanly: stats['stopped_early'] / ['stop_reason']."""
+    outlasts max_rate_waits, stops the run (raises). A StopRun from the stopper (quiet hours, time budget) ends the run cleanly: stats['stopped_early'] / ['stop_reason'].
+    catchup_day: the recent-days catch-up of that day (a set x level x account refreshed that day is skipped, so a stopped catch-up resumes and runs once a day).
+    Sets quarantined by earlier runs (see note_outcome) are skipped until their re-probe day unless named with `sets`. `entries` overrides the catalog selection (backfill stages)."""
     client = client or Client(meta_api.get_token())
     pause = pause or time.sleep
     accounts = accounts or meta_api.ACCOUNTS
     waiter = Waiter(client, max_rate_waits, stopper=stopper)
-    entries = select_sets(sets)
+    entries = entries if entries is not None else select_sets(sets)
+    today = today or dt.datetime.now(PT).date()
     live = conn is not None and not dry_run
     conn = conn if live else None
     if live:
         ensure_partitions(conn, min(w[0] for w in windows), max(w[1] for w in windows))
+        client.async_first |= async_first_sets(conn)
     recent = recently_unsupported(conn) if (live and not sets) else set()
+    quarantine = quarantined_sets(conn, today) if (live and not sets) else {}
     state: dict[str, str] = {}                  # set -> level that works (decided in the first window that pulls it)
     dead: set[str] = set()
     exhausted: set[str] = set()                 # sets whose older windows Meta no longer serves (retention): not asked again
-    stats: dict = {"windows": len(windows), "windows_done": 0, "sets_requested": len(entries), "rows": 0, "levels": {}, "errors": {}, "stopped_early": False}
+    stats: dict = {"windows": len(windows), "windows_done": 0, "sets_requested": len(entries), "rows": 0, "levels": {}, "errors": {}, "stopped_early": False,
+                   "sets_skipped_quarantined": 0, "quarantined_failing": 0, "sets_pulled": 0}
     final: dict[str, str] = {}
     try:
-        _windows_loop(conn, live, client, waiter, stopper, windows, entries, accounts, backfill, restart, recent, state, dead, exhausted, stats, final, pause)
+        _windows_loop(conn, live, client, waiter, stopper, windows, entries, accounts, backfill, restart, recent, state, dead, exhausted, stats, final, pause, catchup_day, quarantine, today)
     except StopRun as e:
         stats["stopped_early"], stats["stop_reason"] = True, str(e)
         db.log(f"stopping cleanly: {e}")
@@ -630,30 +798,35 @@ def run(conn, windows: list[tuple[dt.date, dt.date]], sets: list[str] | None = N
             conn.commit()
     stats["levels"] = dict(state)
     stats.update(sets_ok=sum(1 for v in final.values() if v == "ok"), sets_error=sum(1 for v in final.values() if v == "error"),
-                 sets_unsupported=sum(1 for v in final.values() if v == "unsupported"), rate_waits=waiter.n, async_sets=sorted(client.async_sets), api_calls=client.calls)
+                 sets_unsupported=sum(1 for v in final.values() if v == "unsupported"), rate_waits=waiter.n, async_sets=sorted(client.async_sets), api_calls=client.calls,
+                 quarantined_failing=sum(1 for n, k in quarantine.items() if k == "failing" and any(e.name == n for e in entries)))
     return stats
 
 
-def _windows_loop(conn, live, client, waiter, stopper, windows, entries, accounts, backfill, restart, recent, state, dead, exhausted, stats, final, pause):
+def _windows_loop(conn, live, client, waiter, stopper, windows, entries, accounts, backfill, restart, recent, state, dead, exhausted, stats, final, pause, catchup_day, quarantine, today):
+    failed_run: set[str] = set()                # sets that already counted as a failing run in this run (one count per run, not per window)
     for wi, (ws, we) in enumerate(windows):
         w_rows0 = stats["rows"]
         db.log(f"window {wi + 1}/{len(windows)} {ws}..{we}: starting {len(entries)} sets")
         for si, entry in enumerate(entries):
             if stopper:
                 stopper.check()
+            if entry.name in quarantine:
+                stats["sets_skipped_quarantined"] += 1
+                continue
             if entry.name in dead or entry.name in exhausted:
                 continue
             levels = [state[entry.name]] if entry.name in state else [lv for lv in LEVELS if (entry.name, lv) not in recent]
             st = stats                                          # pull_set_level adds rows / duplicates straight into the run stats (so a stop mid-set still counts them)
-            result = "unsupported"
+            result, kind_final, set_rows0, calls0, t_set = "unsupported", "", st["rows"], client.calls, time.monotonic()
             for lv in levels:
                 t0, rows0 = time.monotonic(), st["rows"]
-                status, err = pull_set_level(conn, client, waiter, entry, lv, ws, we, accounts, st, backfill, restart)
+                status, err, kind = pull_set_level(conn, client, waiter, entry, lv, ws, we, accounts, st, backfill, restart, catchup_day)
                 db.log(f"  set {entry.name} level {lv} window {ws}..{we}: {status}, {st['rows'] - rows0} rows, {time.monotonic() - t0:.1f}s")
                 if entry.name in state and (status == "unsupported" or (status == "error" and RETENTION_RX.search(err or ""))):
                     # an older window than one Meta already served: Meta's own retention limit for this breakdown. Keep what we have, say so in coverage, move on.
                     exhausted.add(entry.name)
-                    status, err = "ok", f"Meta serves nothing before {we + dt.timedelta(days=1)} for this breakdown (retention limit): {db.scrub(err)[:200]}"
+                    status, err, kind = "ok", f"Meta serves nothing before {we + dt.timedelta(days=1)} for this breakdown (retention limit): {db.scrub(err)[:200]}", ""
                     db.log(f"  {entry.name}: older windows not served, stopping this set at {we + dt.timedelta(days=1)}")
                 if live:
                     record_coverage(conn, entry, lv, status, err)
@@ -662,9 +835,10 @@ def _windows_loop(conn, live, client, waiter, stopper, windows, entries, account
                     db.log(f"  {entry.name} refused at {lv} level: {err}")
                     continue
                 state[entry.name] = lv
-                result = status
+                result, kind_final = status, kind
                 if status != "ok":
-                    stats["error_pieces"] = stats.get("error_pieces", 0) + 1
+                    if kind != "shape":                         # a deterministic shape error is quarantined below and must not keep the backfill open
+                        stats["error_pieces"] = stats.get("error_pieces", 0) + 1
                     stats["errors"][entry.name] = f"{status} ({lv}): {err}"
                     db.log(f"  {entry.name}: {status}: {err}")
                 break
@@ -672,7 +846,22 @@ def _windows_loop(conn, live, client, waiter, stopper, windows, entries, account
                 dead.add(entry.name)
                 stats["errors"][entry.name] = "unsupported at every level"
             final[entry.name] = result
-            pause(SET_PAUSE)
+            if live and client.async_first and entry.name in client.async_first:
+                mark_async_first(conn, entry.name, today)
+                conn.commit()
+            if live and result != "unsupported" and not (result == "error" and entry.name in failed_run):
+                q = note_outcome(conn, entry.name, result, kind_final, st["rows"] - set_rows0, today)
+                conn.commit()
+                if result == "error":
+                    failed_run.add(entry.name)
+                if q:
+                    quarantine[entry.name] = q
+                    db.log(f"  {entry.name}: quarantined for {QUARANTINE_DAYS} days ({q}); asked again after that")
+            if client.calls != calls0:
+                ps = stats.setdefault("per_set", {}).setdefault(entry.name, {"status": result, "rows": 0, "seconds": 0.0})
+                ps["status"], ps["rows"], ps["seconds"] = result, ps["rows"] + st["rows"] - set_rows0, round(ps["seconds"] + time.monotonic() - t_set, 1)
+                stats["sets_pulled"] += 1
+                pause(SET_PAUSE)                                # a set skipped as already done costs no request and no pause
         else:
             stats["windows_done"] += 1
             db.log(f"window {wi + 1}/{len(windows)} {ws}..{we} complete: {stats['rows'] - w_rows0} rows this window, {stats['rows']} total, "
@@ -783,12 +972,37 @@ def try_lock(conn) -> bool:
     return bool(conn.execute("SELECT pg_try_advisory_lock(%s)", (LOCK_KEY,)).fetchone()[0])
 
 
+def _phase_line(kind: str, phase: str, window, done: int, remaining: int, advanced: bool | None = None) -> str:
+    w = f"{window[0]}..{window[1]}" if window else "-"
+    return f"run {kind}: phase={phase} window={w} sets_done={done} sets_remaining={remaining}" + ("" if advanced is None else f" backfill_advanced={'yes' if advanced else 'no'}")
+
+
+def _first_open_window(conn, entries, windows, accounts, today):
+    """(window, done, remaining) of the newest backfill window that still has sets to do; the last window with 0 remaining when everything is done."""
+    for w in windows:
+        d, r = backfill_counts(conn, entries, w[0], w[1], accounts, today)
+        if r:
+            return w, d, r
+    return windows[-1], len(entries), 0
+
+
+def backfill_stages(entries: list[Entry], windows: list[tuple[dt.date, dt.date]]) -> list[tuple[str, list, list[Entry]]]:
+    """The backfill order: (1) every set except the four heavy ones, newest window only; (2) one probe pass of the four heavy sets on that same newest window (to learn about
+    slowness, async needs and rate limits); (3) the light sets through all older windows; (4) the heavy sets through all windows. Each stage resumes from the recorded progress."""
+    light, heavy = light_and_heavy(entries)
+    stages = [("light-newest-window", windows[:1], light), ("heavy-probe", windows[:1], heavy), ("light", windows[1:], light), ("heavy", windows, heavy)]
+    return [x for x in stages if x[1] and x[2]]
+
+
 def auto(conn, stopper: Stopper, names=None, max_days: int = DEFAULT_MAX_DAYS, window_days: int = 30, client: Client | None = None, accounts=None, today: dt.date | None = None,
          pause=None) -> dict:
-    """One service run. 1) first start: store the backfill anchor (until = yesterday, max days). 2) catch-up, once a day: the days since the last catch-up (at least the trailing 7, which Meta restates) so recent data stays current during a multi-night backfill and after it. 3) the backfill, newest 30-day window
-    first, until finished (then a marker row says so). A StopRun (quiet hours, budget) ends the run cleanly after committing."""
+    """One service run. 1) first start: store the backfill anchor (until = yesterday, max days). 2) catch-up, once a day per set (sets already refreshed that day are skipped, so a
+    catch-up that did not finish resumes in the next run): the days since the last catch-up (at least the trailing 7, which Meta restates). It gets at most CATCHUP_SHARE of the
+    run's time, so the backfill always has the rest. 3) the backfill (see backfill_stages): light sets newest 30-day window first out to the full depth, the four heavy sets after
+    them, one probe pass of the heavy sets on the newest window first (at most PROBE_SHARE of the run). A StopRun (quiet hours, budget) ends the run cleanly after committing."""
     client = client or Client(meta_api.get_token())
     yesterday = (today - dt.timedelta(days=1)) if today else default_until()
+    today_d = yesterday + dt.timedelta(days=1)
     anchor = get_anchor(conn)
     if anchor is None:
         until = yesterday
@@ -800,31 +1014,88 @@ def auto(conn, stopper: Stopper, names=None, max_days: int = DEFAULT_MAX_DAYS, w
     done = _special(conn, DONE_SET) is not None
     caught = _special(conn, CAUGHT_SET)
     out: dict = {"anchor": [since.isoformat(), until.isoformat()], "backfill_done": done, "stopped_early": False, "rows": 0}
-    kw = dict(client=client, accounts=accounts, stopper=stopper, max_rate_waits=24, pause=pause)
+    accts = accounts or meta_api.ACCOUNTS
+    entries = select_sets(names)
+    kw = dict(client=client, accounts=accounts, max_rate_waits=24, pause=pause, today=today_d)
     caught_end = caught[1] if caught else None
+    adv0, phase, last_window, last_ents = backfill_rows(conn), "idle", None, entries
     if caught_end != yesterday and (done or until < yesterday):          # once a day: the new days, plus the trailing 7 (Meta restates recent days)
         start = max(min((caught_end or until) + dt.timedelta(days=1), yesterday - dt.timedelta(days=6)), since)
+        windows = windows_newest_first(start, yesterday, window_days)
+        clear_old_catchup_stamps(conn, yesterday)
+        conn.commit()
+        d, r = catchup_counts(conn, entries, yesterday, accts)
+        phase, last_window = "catch-up", (start, yesterday)
         db.log(f"catch-up {start}..{yesterday}")
-        st = run(conn, windows_newest_first(start, yesterday, window_days), names, backfill=False, **kw)
+        db.log(_phase_line("start", phase, last_window, d, r))
+        sub = stopper.child(CATCHUP_SHARE, f"catch-up time share ({CATCHUP_SHARE:.0%} of the run)")
+        st = run(conn, windows, names, backfill=False, catchup_day=yesterday, stopper=sub, **kw)
         out["catch_up"] = st
         out["rows"] += st["rows"]
         if st["stopped_early"]:
-            out.update(stopped_early=True, stop_reason=st.get("stop_reason"))
-            return out
-        _set_special(conn, CAUGHT_SET, yesterday, yesterday)
-        conn.commit()
+            if stopper.reason():                                         # the run itself is over (budget, quiet hours)
+                d, r = catchup_counts(conn, entries, yesterday, accts)
+                out.update(stopped_early=True, stop_reason=st.get("stop_reason"))
+                db.log(_phase_line("end", phase, last_window, d, r, backfill_rows(conn) > adv0))
+                return out
+            db.log(f"catch-up paused ({st.get('stop_reason')}); it resumes in the next run, the backfill takes the rest of this one")
+        else:
+            _set_special(conn, CAUGHT_SET, yesterday, yesterday)
+            conn.commit()
     if not done:
         windows = windows_newest_first(since, until, window_days)
-        st = run(conn, windows, names, backfill=True, **kw)
-        out["backfill"] = st
-        out["rows"] += st["rows"]
-        if st["stopped_early"]:
-            out.update(stopped_early=True, stop_reason=st.get("stop_reason"))
-        elif st["windows_done"] == len(windows) and not st.get("error_pieces"):     # a failed set/window is retried by the next run, so the backfill is not finished
+        merged: dict = {"rows": 0, "error_pieces": 0, "stopped_early": False, "stages": [], "blocking_quarantine": 0, "per_set": {}}
+        finished, light_ok = True, True
+        for label, w, ents in backfill_stages(entries, windows):
+            if label == "heavy-probe" and _special(conn, PROBE_SET) is not None:
+                continue                                                 # probed in an earlier run: the heavy sets now wait for the light sets to reach the full depth
+            if label == "heavy" and not light_ok:
+                finished = False                                         # a light stage did not complete its windows in this run (stopped): heavy waits
+                continue
+            win, d, r = _first_open_window(conn, ents, w, accts, today_d)
+            if r == 0:
+                continue                                                 # every window of this stage is already recorded
+            phase, last_window, last_ents = f"backfill/{label}", win, ents
+            db.log(_phase_line("start", phase, win, d, r))
+            sub = stopper.child(PROBE_SHARE, f"heavy probe time share ({PROBE_SHARE:.0%} of the run)") if label == "heavy-probe" else stopper
+            calls0 = client.calls
+            st = run(conn, w, names, backfill=True, stopper=sub, entries=ents, **kw)
+            out["rows"] += st["rows"]
+            merged["rows"] += st["rows"]
+            merged["error_pieces"] += st.get("error_pieces", 0)
+            merged["blocking_quarantine"] += st.get("quarantined_failing", 0)
+            merged["per_set"].update(st.get("per_set", {}))
+            merged["stages"].append({"stage": label, "windows_done": st["windows_done"], "windows": st["windows"], "rows": st["rows"], "stopped_early": st["stopped_early"]})
+            if label == "heavy-probe" and (client.calls != calls0 or not st["stopped_early"]):
+                _set_special(conn, PROBE_SET, yesterday, yesterday)      # the probe was attempted: never again (partial progress is kept and resumes in the heavy stage)
+                conn.commit()
+                db.log("heavy probe: " + "; ".join(f"{n} {v['status']} {v['rows']} rows {v['seconds']:.0f}s" for n, v in st.get("per_set", {}).items()) +
+                       (f"; stopped: {st.get('stop_reason')}" if st["stopped_early"] else "; finished"))
+            if st["stopped_early"]:
+                finished = False
+                if label != "heavy-probe" or stopper.reason():
+                    merged["stopped_early"] = True
+                    out.update(stopped_early=True, stop_reason=st.get("stop_reason"))
+                    break
+            elif st["windows_done"] != st["windows"]:
+                finished = False
+            if label.startswith("light") and (st["stopped_early"] or st["windows_done"] != st["windows"]):
+                light_ok = False
+        out["backfill"] = merged
+        if finished and not merged["error_pieces"] and not merged["blocking_quarantine"] and not merged["stopped_early"]:
             _set_special(conn, DONE_SET, yesterday, yesterday)
             conn.commit()
             out["backfill_done"] = True
             db.log("backfill finished: from now on each run pulls the trailing 7 days")
+    if last_window is None:
+        db.log(_phase_line("start", phase, None, len(entries), 0))
+        db.log(_phase_line("end", phase, None, len(entries), 0, False))
+    elif phase.startswith("backfill"):
+        d, r = backfill_counts(conn, last_ents, last_window[0], last_window[1], accts, today_d)
+        db.log(_phase_line("end", phase, last_window, d, r, backfill_rows(conn) > adv0))
+    else:
+        d, r = catchup_counts(conn, entries, yesterday, accts)
+        db.log(_phase_line("end", phase, last_window, d, r, backfill_rows(conn) > adv0))
     return out
 
 
