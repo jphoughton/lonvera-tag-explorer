@@ -113,7 +113,7 @@ def _register_pages(app: Flask) -> None:
         resp.headers["Content-Security-Policy"] = CSP
         return resp
 
-    for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/email", "/inventory/history", "/priorities", "/priorities/v/<token>", "/priorities/production", "/competitors", "/priorities/vendor/<token>", "/lookup", "/connect-agent", "/p/<slug>", "/ad/<id>"):
+    for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/daily", "/email", "/inventory/history", "/priorities", "/priorities/v/<token>", "/priorities/production", "/competitors", "/priorities/vendor/<token>", "/lookup", "/connect-agent", "/p/<slug>", "/ad/<id>"):
         app.add_url_rule(rule, endpoint="shell:" + rule, view_func=shell)
 
 

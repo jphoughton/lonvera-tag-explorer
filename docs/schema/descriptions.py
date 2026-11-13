@@ -26,6 +26,7 @@ GROUPS = [
     ("ops", "Pipeline bookkeeping"),
     ("proj_feeds", "Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow)"),
     ("proj_engine", "Projection engine tables (finance, inventory, cohorts; read them through the analytics views)"),
+    ("story", "Daily story: facts, the short explanation, the change patterns and the scoreboard"),
 ]
 
 # Public relations that are not described column by column. Anything else in the public schema MUST have an entry in REL.
@@ -1486,6 +1487,54 @@ rel("public.creative_formats", group="creative", kind="table",
     cols={"code": "Short code (primary key), F1 to F6.", "name": "What the format is, shown in the pick list.", "length": "Typical running time, as text (for example '45 to 90s'); NULL when not set.",
           "sort": "Order in the pick list (ascending).", "active": "True while the format can be chosen on a new assignment."})
 
+# ---- daily story (migration 248)
+rel("public.daily_story_metrics", group="story", kind="table",
+    purpose="The metric registry of the daily story: every daily metric the story can use, its basis, unit, formula and the analytics view and columns it comes from.",
+    grain="one row per metric_key (primary key)", source="etl/daily_story_registry.py (REGISTRY), upserted by every run of etl.daily_story", refresh="nightly, with the daily story job", coverage="every metric the story computes",
+    caveats=["basis names what the number is made of (Upstack new customers, Meta-reported, Klaviyo-attributed ...); never mix bases in one ratio."],
+    cols={"metric_key": "Short key used inside daily_story_facts.facts (for example nc_roas, cpm, conv).", "sort_order": "Display order in the registry.", "metric_group": "headline | meta | google | orders | klaviyo | amazon | creative | site | placement.",
+          "label": "Plain-language name with the acronym spelled out.", "unit": "usd | pct | x | count (pct is stored as a fraction, 0.12 = 12%).", "basis": "What the number is made of and which attribution it follows.",
+          "formula": "How it is computed, ratios always from sums.", "source": "analytics view and columns the inputs come from."})
+
+rel("public.daily_story_facts", group="story", kind="table",
+    purpose="The facts the daily story is written from: for each Pacific day, the JSON of every metric against its same-weekday baseline, the exact decomposition of new-customer return on ad spend, mix-versus-rate cuts, the live creative mix, top movers, the change ledger and the Meta, Google, email and text, Amazon and order-mix sections.",
+    grain="one row per day (primary key)", source="etl/daily_story.py (compute_facts) over the analytics views", refresh="nightly (etl service 13:00 UTC, non-fatal step after Klaviyo); a day can be recomputed with --day",
+    coverage="every day from 2026-05-06 (Meta ad-level start) through yesterday; early days have fewer than four baseline weeks (facts.metrics.<key>.n_baseline says how many)",
+    caveats=["Baseline = the same weekday in the previous four weeks: the metric table shows its median and its pooled value; the decomposition uses the pooled value so its terms add back exactly.",
+             "The headline is NC ROAS = orders_daily new-customer revenue / (Meta + Google spend). Ad-attributed ROAS inside the cuts is a cut for comparing ads, products and structures, never the headline.",
+             "The last 3 to 7 loaded days still move (Meta and Upstack restate): a day's facts are recomputed only when the job runs for it, so older rows can differ slightly from today's tables.",
+             "coverage = not_ready when a core source (Meta ads, Upstack orders, Google, Upstack Meta attribution) was not loaded for the day: the row then holds only facts.readiness."],
+    cols={"day": "Pacific day the facts describe (primary key).", "facts": "JSON: readiness, windows, metrics, decomposition, anomalies, cuts, movers, creative_live, changes, events, control, sections, cannot_see, basis_notes.",
+          "version": "Facts schema version (v1).", "coverage": "full | partial | not_ready: whether every core and optional source existed for the day.", "created_at": "When the facts were last computed."})
+
+rel("public.daily_story", group="story", kind="table",
+    purpose="The daily story: one very concise explanation (170 words or fewer) of why a day's performance was what it was, built from daily_story_facts only, with confidence labels and the list of what the database cannot show.",
+    grain="one row per day (primary key)", source="etl/daily_story_narrative.py: the model claude-sonnet-5-5 when available and every number in its text is found in the facts, else a deterministic template", refresh="nightly with the facts",
+    coverage="every day with facts; backfilled days carry the template text unless a model run was requested",
+    caveats=["source says llm or template; note explains a fallback (model off, answer rejected for a number not in the facts).", "Wording is 'consistent with': no story proves a cause unless a clean like-for-like control exists."],
+    cols={"day": "Pacific day (primary key).", "headline": "The TLDR sentence.", "story": "The story text: TLDR, a few short lines, and a 'Cannot see' line.", "confidence": "JSON: a confidence label per claim (move, drivers, mix_vs_rate, changes, cause).",
+          "cannot_see": "JSON list of what the database cannot show for that day.", "model": "Model that wrote the text; NULL for the template.", "source": "llm | template.", "note": "Why the template was used, when it was.", "created_at": "When the story was written."})
+
+rel("public.daily_story_patterns", group="story", kind="table",
+    purpose="The pattern memory: for each day, the change types that showed (new ad sets, capped share up, tROAS share up, a large email send, a cluster entering the live mix ...) with a magnitude bucket and what the next 1-3 days did against their same-weekday baselines.",
+    grain="one row per (day, change_type); change_type '_all_days' is the base-rate row every day has", source="etl/daily_story_patterns.py from daily_story_facts (facts.events and facts.metrics)", refresh="nightly; the previous 3 days are refreshed as their outcome windows lengthen",
+    coverage="from 2026-05-06; the newest days have out_days below 3",
+    caveats=["Correlation, not cause: several changes usually land together and consecutive days' outcome windows overlap.", "out_* is the mean over days D+1..D+3 that exist of (value / same-weekday median baseline - 1); d1_* is D+1 alone; both NULL when the metric was not available."],
+    cols={"day": "Day the change showed.", "change_type": "Event type (new_adsets, budget_up, capped_share_up, troas_share_up, big_email_send, cluster_entered, google_spend_up, amazon_spend_up ... or _all_days).",
+          "magnitude_bucket": "Size bucket of the largest event of that type that day.", "subject": "The campaign, cluster, hook or send the largest event named; empty when none.", "magnitude": "Numeric size of the largest event (share shift, count or ratio).",
+          "out_days": "How many of D+1..D+3 had facts (0 to 3).", "out_nc_roas": "Mean change in NC ROAS vs the same-weekday median over D+1..D+3 (fraction).", "out_cpm": "Same for cost per 1,000 impressions.", "out_ctr": "Same for link click-through rate.",
+          "out_conv": "Same for conversion rate (new customers / link clicks).", "out_aov": "Same for new-customer average order value.", "d1_nc_roas": "NC ROAS change vs baseline on D+1 only.", "d1_cpm": "CPM change on D+1.", "d1_ctr": "CTR change on D+1.",
+          "d1_conv": "Conversion rate change on D+1.", "d1_aov": "AOV change on D+1.", "updated_at": "When the row was last written."})
+
+rel("public.daily_story_pattern_scoreboard", group="story", kind="view",
+    purpose="The pattern scoreboard: how often each change type (and size bucket) has preceded a rise or a fall of more than 5% in NC ROAS, CPM, CTR, conversion rate or AOV over the next 1-3 days, next to the same rate over all days, with sample sizes. Only rows with n of 6 or more. Correlation, not cause.",
+    grain="one row per (change_type, magnitude_bucket, metric); magnitude_bucket '(any size)' pools the sizes", source="public.daily_story_patterns", refresh="always current: a view that recomputes on every read; the table behind it is rewritten nightly", coverage="from 2026-05-06",
+    caveats=["rise_lift = rise_rate minus base_rise_rate: a pattern is only informative when its lift is clearly away from 0 with a decent n.", "Overlapping outcome windows and simultaneous changes mean n overstates the independent evidence.", "The 5% threshold is far inside the daily noise of NC ROAS, so the base rates are not small: read the lift, not the rate."],
+    cols={"change_type": "Event type.", "magnitude_bucket": "Size bucket or '(any size)'.", "metric": "nc_roas | cpm | ctr | conv | aov.", "n": "Days with this change type and an outcome.", "rises": "Days whose next 1-3 days averaged more than 5% above baseline.",
+          "falls": "Days whose next 1-3 days averaged more than 5% below baseline.", "rise_rate": "rises / n.", "fall_rate": "falls / n.", "base_rise_rate": "Share of all days whose next 1-3 days averaged more than 5% above baseline.",
+          "base_fall_rate": "Same for falls.", "rise_lift": "rise_rate minus base_rise_rate.", "fall_lift": "fall_rate minus base_fall_rate.", "median_delta": "Median outcome change vs baseline (fraction).", "mean_delta": "Mean outcome change (fraction).",
+          "base_days": "Days behind the base rate.", "label": "Always 'correlation, not cause'."})
+
 rel("public.creative_priorities_vendor_links", group="creative", kind="table",
     purpose="One permanent unguessable link per vendor for the vendor page /priorities/vendor/<token>, where the vendor sees only their own concepts and adds a creative link and a note.",
     grain="one row per vendor (vendor is the primary key)", source="the Production page via /api/priorities/vendor-links (app/priorities_assign.py)",
@@ -2098,6 +2147,7 @@ DOMAINS = [
     ("pipeline", "Data freshness, feed health, ETL runs, the catalog and the glossary"),
     ("email", "Klaviyo campaigns, flows, messages: sends, opens, clicks, orders, revenue and the copy (views created by migration 231 once the Klaviyo tables exist)"),
     ("landing_pages", "Landing page copy versions and the ads that send people to each page (views created by migration 231 once those tables exist)"),
+    ("story", "The daily story: facts, short explanation, change patterns and the pattern scoreboard"),
 ]
 
 BRAIN_VIEWS: set[str] = set()                   # analytics views created by migration 230 (their comments live in that migration)
@@ -2589,6 +2639,23 @@ av("production_formats", src="public.creative_formats", domain="production", bas
    ren={"format_code": "code"},
    examples=[("Formats", "SELECT format_code, name, length FROM analytics.production_formats WHERE active ORDER BY sort;")])
 
+# ------------------------------------------------------------------------------------------------------------------------------- daily story
+av("daily_story", src="public.daily_story", domain="story", span=("daily_story", "day"), purpose="The daily story: the short explanation of why each day's performance was what it was, with confidence labels and what the database cannot see.", grain="one row per day",
+   source="public.daily_story", refresh="nightly", coverage="2026-05-06 through yesterday",
+   examples=[("Latest story", "SELECT day, headline, story FROM analytics.daily_story ORDER BY day DESC LIMIT 1;")])
+av("daily_story_facts", src="public.daily_story_facts", domain="story", span=("daily_story_facts", "day"), purpose="The JSON facts each daily story is written from (metrics vs same-weekday baseline, decomposition, cuts, ledger, sections).", grain="one row per day",
+   source="public.daily_story_facts", refresh="nightly", coverage="2026-05-06 through yesterday",
+   examples=[("Headline decomposition of a day", "SELECT day, jsonb_path_query(facts, '$.decomposition.terms[*].name') AS term FROM analytics.daily_story_facts WHERE day = (SELECT max(day) FROM analytics.daily_story_facts) LIMIT 10;")])
+av("daily_story_patterns", src="public.daily_story_patterns", domain="story", span=("daily_story_patterns", "day"), purpose="Pattern memory: change types seen each day and the next 1-3 days' outcomes against same-weekday baselines.", grain="one row per (day, change_type)",
+   source="public.daily_story_patterns", refresh="nightly", coverage="2026-05-06 through yesterday",
+   examples=[("Days with a large email send", "SELECT day, magnitude_bucket, out_nc_roas FROM analytics.daily_story_patterns WHERE change_type = 'big_email_send' ORDER BY day DESC LIMIT 10;")])
+av("daily_story_pattern_scoreboard", src="public.daily_story_pattern_scoreboard", domain="story", base="daily_story_patterns", purpose="Which change types have preceded rises or falls, with sample sizes and the base rate (correlation, not cause).",
+   grain="one row per (change_type, magnitude_bucket, metric), n >= 6", source="public.daily_story_pattern_scoreboard", refresh="always current (view)", coverage="2026-05-06 through yesterday",
+   examples=[("Strongest NC ROAS patterns", "SELECT change_type, magnitude_bucket, n, rises, falls, round((rise_lift)::numeric, 2) AS rise_lift FROM analytics.daily_story_pattern_scoreboard WHERE metric = 'nc_roas' ORDER BY abs(rise_lift) DESC LIMIT 10;")])
+av("daily_story_metric_registry", src="public.daily_story_metrics", domain="story", span=None, purpose="The daily story's metric registry: every daily metric, its basis, formula and source view.", grain="one row per metric_key",
+   source="public.daily_story_metrics", refresh="nightly", coverage="every metric the story computes",
+   examples=[("Metrics by group", "SELECT metric_group, count(*) AS metrics FROM analytics.daily_story_metric_registry GROUP BY 1 ORDER BY 1;")])
+
 # ------------------------------------------------------------------------------------------------------------------------------- competitors
 av("competitor_brands", src="public.competitor_brands", domain="competitors", base="competitor_brands",
    purpose="The competitor brands tracked in the Meta Ad Library and when each was last read.", grain="one row per brand", source="public.competitor_brands without last_error", refresh="Sundays (etl.competitor_ads)",
@@ -2931,6 +2998,36 @@ METRICS = [
          formula="sum(returning_customer_revenue) / sum(total_revenue).", source="analytics.orders_daily.returning_customer_revenue,total_revenue",
          default_basis="Actual orders feed, Shopify only (" + _TRENDS + ", repeat_share)", other_bases=["Business-wide: (Shopify returning + Amazon non-new-customer revenue) / (Shopify + Amazon revenue) (" + _PACING + ", biz_repeat_share)"],
          traps=["Gross of tax and refunds; no Amazon in the Shopify-only ratio."]),
+    dict(name="daily_story_baseline", label="Same-weekday baseline (daily story)", domain="story",
+         formula="For a target day D: the same weekday in the previous four weeks (D-7, D-14, D-21, D-28; fewer when history is short). Tables show the median of those days' own values and the pooled value (sum / sum); the decomposition uses the pooled value.",
+         source="analytics.daily_story_facts.facts",
+         default_basis="median of the up to four same-weekday days for the metric table; pooled for the exact decomposition",
+         other_bases=["trailing 7 days before D, pooled (metrics.<key>.trailing_7d)"],
+         traps=["A same-weekday baseline removes the weekday pattern only; it does not hold changes (new ad sets, bids, sends) constant, so it is not a like-for-like control for any one cause.", "Early days (May 2026) have fewer than four baseline weeks."]),
+    dict(name="daily_story_noise_z", label="Noise range and z-score (daily story)", domain="story",
+         formula="noise = sample standard deviation of the previous 28 days of the same daily metric; z = (value on D - same-weekday median baseline) / noise; a metric is flagged when |z| >= 2. Needs at least 10 trailing days.",
+         source="analytics.daily_story_facts.facts",
+         default_basis="daily values of the metric on the same basis as the value (ratios from each day's sums)",
+         other_bases=["Facts path: metrics.<key>.z, noise_std_28d and flag inside the JSON"],
+         traps=["A daily ratio's noise is large (NC ROAS moves several tenths day to day), so most days are inside it.", "z compares one day with a baseline; it does not say why the day moved."]),
+    dict(name="daily_story_decomposition", label="Exact decomposition of NC ROAS (daily story)", domain="story",
+         formula="NC ROAS = AOV x (Meta spend / total spend) x (1000 / CPM) x CTR x (link click to landing page view) x (view to add to cart) x (add to cart to new customer) [x add to cart to initiated checkout, initiated checkout to new customer when the column exists]. The log change against the pooled same-weekday baseline splits exactly into one contribution per term; percentage points are the total percentage move split in proportion to each term's log.",
+         source="analytics.daily_story_facts.facts",
+         default_basis="headline NC ROAS: orders_daily new-customer revenue / (Meta + Google spend); the funnel terms use Meta link clicks, landing page views and adds to cart over all actual new customers",
+         other_bases=["ad-attributed NC ROAS (a cut for ads, products, structures): sum(upstack_new_customer_revenue) / Meta spend"],
+         traps=["Arithmetic, not cause: it says which term moved, not why.", "add to cart to new customer divides all actual new customers (including non-Meta ones) by Meta adds to cart, so it is a ratio of the day's totals, not Meta's own conversion."]),
+    dict(name="daily_story_mix_rate", label="Mix versus rate (daily story)", domain="story",
+         formula="Over segments (product, stage, campaign structure, market cluster, ICP, format, vendor, age, ad family): ROAS = sum(w_i r_i) with w_i the segment's share of spend and r_i its ad-attributed NC ROAS. mix_i = (w_i - w0_i) x (rbar_i - Rbar), rate_i = (r_i - r0_i) x wbar_i, where 0 is the pooled same-weekday baseline and bars are the mean of day and baseline; sum(mix_i + rate_i) equals the total move exactly.",
+         source="analytics.daily_story_facts.facts",
+         default_basis="ad-attributed NC ROAS (Upstack any-click 30-day attribution of new customers to Meta ads), a cut only",
+         other_bases=["Facts path: cuts.<cut>.mix_rate, cuts.<cut>.rows[].effect and movers inside the JSON"],
+         traps=["Mix = spend moving between segments with different returns; rate = the same segment earning more or less per dollar. Neither is a cause.", "Ad-attributed revenue is any-click and is not the headline: it does not add up to orders_daily new-customer revenue."]),
+    dict(name="daily_story_pattern_lift", label="Pattern lift (daily story scoreboard)", domain="story",
+         formula="For a change type: rise_rate = days whose next 1-3 days averaged more than 5% above the same-weekday baseline / days with that change; rise_lift = rise_rate - base_rise_rate (the same rate over all days). fall_lift likewise.",
+         source="analytics.daily_story_pattern_scoreboard.rise_rate,base_rise_rate,rise_lift,n",
+         default_basis="Upstack new-customer basis for NC ROAS and AOV; Meta-reported for CPM and CTR; conversion = actual new customers / Meta link clicks",
+         other_bases=["The base rate (all days) sits in the same row as base_rise_rate and base_fall_rate"],
+         traps=["Correlation, not cause: changes land together and the 1-3 day outcome windows of neighbouring days overlap.", "Only rows with n of 6 or more are listed; a high rate on a small n is not evidence."]),
 ]
 
 

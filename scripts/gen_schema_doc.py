@@ -51,7 +51,7 @@ MIGRATIONS = {"013": ROOT / "migrations" / "013_schema_comments_analytics.sql", 
               "210": ROOT / "migrations" / "210_shopify_orders.sql", "220": ROOT / "migrations" / "220_brain_mcp.sql", "221": ROOT / "migrations" / "221_brain_open_app.sql",
               "230": ROOT / "migrations" / "230_analytics_brain_views.sql", "240": ROOT / "migrations" / "240_meta_breakdowns.sql",
               "242": ROOT / "migrations" / "242_meta_funnel_actions.sql", "243": ROOT / "migrations" / "243_assignment_events.sql", "245": ROOT / "migrations" / "245_production_board.sql",
-              "247": ROOT / "migrations" / "247_meta_checkout_changelog.sql"}
+              "247": ROOT / "migrations" / "247_meta_checkout_changelog.sql", "248": ROOT / "migrations" / "248_daily_story.sql"}
 # the Test to scale views (created by migration 015, after 013 runs on a fresh database): they and their comments live in migration 015
 # (migration 016 turned them into tables and added the placements tables; 015's own comment section is frozen history)
 LATE_STAGE_MOVES = {f"public.{n}{b}" for n in ("creative_stage_moves", "creative_scaling_placements") for b in ("", "_upstack_nc", "_upstack_all")}
