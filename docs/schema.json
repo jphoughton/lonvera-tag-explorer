@@ -7576,6 +7576,249 @@
    "examples": []
   },
   {
+   "name": "public.competitor_ad_transcript",
+   "schema": "public",
+   "relation": "competitor_ad_transcript",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "What is said in the saved competitor video ads: a speech-to-text transcript of the first 30 seconds of each video in competitor_ad_video, so the ads can be read and tagged, not only watched.",
+   "grain": "one row per Meta Ad Library ID (joins to competitor_ads.library_id and competitor_ad_video.library_id)",
+   "primary_key": [
+    "library_id"
+   ],
+   "foreign_keys": [],
+   "source": "etl.competitor_tags: faster-whisper (model base, int8, CPU, voice-activity filter) on the stored mp4 audio",
+   "refresh": "with etl.competitor_tags (by hand: python -m etl.competitor_tags; ads already transcribed are skipped, --retag redoes them)",
+   "coverage": "from 2026-11-13; only videos that have a row in competitor_ad_video",
+   "caveats": [
+    "transcript is an empty string when the video has no speech (music only or silent); no row = not transcribed (faster-whisper not installed on that machine, or the transcription failed), not a silent ad.",
+    "Only the first 30 seconds (the stored copy), in Meta's SD audio; names and product terms can be misheard."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "library_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta Ad Library ID (primary key)."
+    },
+    {
+     "name": "transcript",
+     "type": "text",
+     "nullable": false,
+     "description": "Speech-to-text of the saved video; '' = no speech."
+    },
+    {
+     "name": "language",
+     "type": "text",
+     "nullable": true,
+     "description": "Detected language code (en ...)."
+    },
+    {
+     "name": "duration_s",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Audio length in seconds that was read."
+    },
+    {
+     "name": "model",
+     "type": "text",
+     "nullable": false,
+     "description": "Transcription model, for example faster-whisper-base-int8."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When it was transcribed."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.competitor_ad_tags",
+   "schema": "public",
+   "relation": "competitor_ad_tags",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "Tags of each curated competitor ad (one with a saved picture or video), made by headless Claude LOOKING at the picture (video: cover plus 4 frames), the transcript and the copy: Lonvera's own taxonomy (line, cluster, ICP, pain point, emotional trigger), the Creative Tracker's style / fidelity / proof mechanism / emotion values (so competitor and Lonvera ads compare 1:1) and learning tags (hook type, offer type, device, call to action, hook text, why it works, what was seen and said).",
+   "grain": "one row per Meta Ad Library ID (joins to competitor_ads.library_id; concept_key joins to competitor_concept_class)",
+   "primary_key": [
+    "library_id"
+   ],
+   "foreign_keys": [],
+   "source": "etl.competitor_tags: claude -p (Sonnet, Read tool only) on batches of 6 ads, validated against taxonomy_lines and the distinct Creative Tracker values",
+   "refresh": "with etl.competitor_tags (python -m etl.competitor_tags; ads already tagged at the current tag_version are skipped, --retag replaces the row)",
+   "coverage": "from 2026-11-13; only the curated slice that has a saved picture or video, not every ad in competitor_ads",
+   "caveats": [
+    "method says what the tagger had: vision_transcript (picture and speech), vision (picture, no speech or not transcribed) or text (no picture could be read, confidence capped at medium). The tags are the model's reading, not a measured result: no spend or performance exists for competitor ads.",
+    "line_code is NULL for a new angle (is_new_angle, new_angle_label; cluster / icp / pain_point hold the suggestion) and for out-of-category ads (cluster NULL too). style / fidelity / proof_mechanism / emotion hold a Creative Tracker value, or 'PROPOSE: <value>' when none fitted.",
+    "competitor_concept_class stays the text-only, per-concept classification; the two can disagree, and this table (which saw the picture) is the better read for a single ad."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "library_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta Ad Library ID (primary key)."
+    },
+    {
+     "name": "concept_key",
+     "type": "text",
+     "nullable": true,
+     "description": "competitor_ads.concept_key of the ad."
+    },
+    {
+     "name": "tag_version",
+     "type": "text",
+     "nullable": false,
+     "description": "Prompt / list version that made the row (ctags-v1-2026-11-13)."
+    },
+    {
+     "name": "method",
+     "type": "text",
+     "nullable": false,
+     "description": "vision_transcript | vision | text: what the tagger saw."
+    },
+    {
+     "name": "confidence",
+     "type": "text",
+     "nullable": true,
+     "description": "high | medium | low (the tagger's own)."
+    },
+    {
+     "name": "line_code",
+     "type": "text",
+     "nullable": true,
+     "description": "Lonvera line (L.. Vital Bull, B.. Beef Liver, BF.. Boneflex) or NULL."
+    },
+    {
+     "name": "cluster",
+     "type": "text",
+     "nullable": true,
+     "description": "Market cluster (taxonomy value, or suggested for a new angle)."
+    },
+    {
+     "name": "icp",
+     "type": "text",
+     "nullable": true,
+     "description": "ICP (taxonomy value, or suggested)."
+    },
+    {
+     "name": "pain_point",
+     "type": "text",
+     "nullable": true,
+     "description": "Pain point (taxonomy value, or suggested)."
+    },
+    {
+     "name": "emotional_trigger",
+     "type": "text",
+     "nullable": true,
+     "description": "The line's emotional trigger (or suggested for a new angle)."
+    },
+    {
+     "name": "is_new_angle",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True when no Lonvera line covers the angle."
+    },
+    {
+     "name": "new_angle_label",
+     "type": "text",
+     "nullable": true,
+     "description": "4-10 word label of the new angle."
+    },
+    {
+     "name": "style",
+     "type": "text",
+     "nullable": true,
+     "description": "Creative Tracker Style value, or 'PROPOSE: x'."
+    },
+    {
+     "name": "fidelity",
+     "type": "text",
+     "nullable": true,
+     "description": "Creative Tracker Creative Fidelity value, or 'PROPOSE: x'."
+    },
+    {
+     "name": "proof_mechanism",
+     "type": "text",
+     "nullable": true,
+     "description": "Creative Tracker Proof Mechanism value, or 'PROPOSE: x'."
+    },
+    {
+     "name": "emotion",
+     "type": "text",
+     "nullable": true,
+     "description": "Creative Tracker Emotion value, or 'PROPOSE: x'."
+    },
+    {
+     "name": "hook_type",
+     "type": "text",
+     "nullable": true,
+     "description": "question | stat or number | story | call-out | comparison | authority or doctor | myth-bust | curiosity | social proof | offer-led | other."
+    },
+    {
+     "name": "offer_type",
+     "type": "text",
+     "nullable": true,
+     "description": "discount | bundle or multi-pack | free shipping | guarantee | free gift | subscription | none shown | other."
+    },
+    {
+     "name": "device",
+     "type": "text",
+     "nullable": true,
+     "description": "testimonial | listicle or ranked list | before and after | founder or brand story | doctor or expert | podcast clip | demo or unboxing | news-style | comparison chart | text-on-image | other."
+    },
+    {
+     "name": "cta",
+     "type": "text",
+     "nullable": true,
+     "description": "Call to action, 8 words or fewer."
+    },
+    {
+     "name": "hook_text",
+     "type": "text",
+     "nullable": true,
+     "description": "First line seen or said, quoted, 20 words or fewer."
+    },
+    {
+     "name": "why_it_works",
+     "type": "text",
+     "nullable": true,
+     "description": "One plain sentence, 25 words or fewer: what Lonvera could learn from it."
+    },
+    {
+     "name": "seen_on",
+     "type": "text",
+     "nullable": true,
+     "description": "What the tagger saw on screen (the evidence)."
+    },
+    {
+     "name": "said_on",
+     "type": "text",
+     "nullable": true,
+     "description": "What was said (the evidence), or 'no speech'."
+    },
+    {
+     "name": "model",
+     "type": "text",
+     "nullable": false,
+     "description": "Model id used."
+    },
+    {
+     "name": "tagged_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was written."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.creative_priorities_snapshots",
    "schema": "public",
    "relation": "creative_priorities_snapshots",
