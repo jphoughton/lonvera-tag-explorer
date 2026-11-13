@@ -254,6 +254,157 @@ def test_a_range_with_no_full_week_says_so(page):
     expect(rows(page, "amz-search-terms")).to_have_count(0)
 
 
+# ------------------------------------------------------------------------------------------------------------------------------ keyword layer
+ACRONYMS = ("ACOS", "ROAS", "CPC", "CTR", "SQP", "NC ")
+EM_DASH = "\u2014"
+
+
+def heads(page, table):
+    return [t.split("\n")[0].strip() for t in page.locator(f"[data-testid={table}] thead th").all_inner_texts()]       # without the sort arrow
+
+
+def test_keywords_table_says_what_it_is_made_of_and_shows_the_current_bid(page):
+    goto(page, "?view=keywords&window=30d")
+    page.wait_for_selector("[data-testid=amz-keywords]")
+    d = api(page, "/api/amazon/keywords?window=30d")
+    assert rows(page, "amz-keywords").count() == len(d["rows"]) > 20
+    cov = page.locator("[data-testid=amz-kw-coverage]").inner_text()
+    assert cov == d["coverage_text"] and cov.startswith("Sponsored Products only, Amazon's 7-day attribution, search terms from Sep 9, 2026 and targeting from Aug 10, 2026, last loaded Nov 13, 2026")
+    h = heads(page, "amz-keywords")
+    assert h[:7] == ["Keyword or target", "Campaign", "Ad group", "Product", "State", "Current bid", "Impressions"] and "Ad cost as % of ad sales" in h and "Return on ad spend" in h
+    assert "Click-through rate" in h and "Cost per click" in h and not [x for x in h if any(a in x for a in ACRONYMS)]
+    assert "snapshot" in page.locator("[data-testid=amz-kw-bids]").inner_text()
+    first = rows(page, "amz-keywords").first.locator("td").all_inner_texts()
+    assert d["rows"][0]["text"] in first[0] and first[3].strip() == d["rows"][0]["product_label"]
+    text = page.locator("[data-testid=amz-body]").inner_text()
+    assert EM_DASH not in text and "Mixed products" in text
+    page.screenshot(path=str(SHOTS / "amazon_kw_keywords_desktop.png"), full_page=True)
+
+
+def test_keyword_filters_and_search(page):
+    goto(page, "?view=keywords&window=30d")
+    page.wait_for_selector("[data-testid=amz-keywords]")
+    n = rows(page, "amz-keywords").count()
+    page.locator("[data-testid=amz-product-filter] [data-value=mixed]").click()
+    page.wait_for_function("() => new URLSearchParams(location.search).get('product') === 'mixed'")
+    idle(page)
+    d = api(page, "/api/amazon/keywords?window=30d&product=mixed")
+    assert rows(page, "amz-keywords").count() == len(d["rows"]) and 0 < len(d["rows"]) < n
+    assert all("Mixed products" in t for t in page.locator("[data-testid=amz-keywords] tbody tr[data-key] td:nth-child(4)").all_inner_texts())
+    page.locator("[data-testid=amz-product-filter] [data-value=all]").click()
+    idle(page)
+    page.locator("[data-testid=amz-state-filter] [data-value=paused]").click()
+    page.wait_for_function("() => new URLSearchParams(location.search).get('state') === 'paused'")
+    idle(page)
+    paused = api(page, "/api/amazon/keywords?window=30d&state=paused")["total_rows"]
+    page.wait_for_function("(k) => document.querySelectorAll('[data-testid=amz-keywords] tbody tr[data-key]').length === k", arg=paused)
+    assert all(t.strip().lower() == "paused" for t in page.locator("[data-testid=amz-keywords] tbody tr[data-key] td:nth-child(5)").all_inner_texts())
+    page.locator("[data-testid=amz-state-filter] [data-value=all]").click()
+    idle(page)
+    page.locator("[data-testid=amz-show-filter] [data-value=all]").click()
+    page.wait_for_function("() => new URLSearchParams(location.search).get('all') === '1'")
+    idle(page)
+    every = api(page, "/api/amazon/keywords?window=30d&all=1")["total_rows"]
+    assert every > n
+    page.wait_for_function("(k) => document.querySelectorAll('[data-testid=amz-keywords] tbody tr[data-key]').length === k", arg=every)
+    page.fill("[data-testid=amz-kw-search]", "vital bull")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=amz-keywords] tbody tr[data-key]').length < 12")
+    assert qparams(page).get("q") == "vital bull"
+
+
+def test_the_date_range_changes_the_keyword_numbers(page):
+    goto(page, "?view=keywords&window=30d")
+    a7 = api(page, "/api/amazon/keywords?window=7d")["total"]["cost"]
+    a30 = api(page, "/api/amazon/keywords?window=30d")["total"]["cost"]
+    assert 0 < a7 < a30
+    for win, cost in (("7d", a7), ("30d", a30)):
+        goto(page, f"?view=keywords&window={win}")
+        page.wait_for_selector("[data-testid=amz-keywords]")
+        page.wait_for_function("(c) => document.querySelector('[data-testid=amz-keywords]').textContent.includes(c)", arg=f"${cost:,.2f}")      # the Total row carries the range's cost
+        assert qparams(page).get("window") == win
+
+
+def test_keyword_csv(page):
+    goto(page, "?view=keywords&window=30d")
+    page.wait_for_selector("[data-testid=amz-keywords]")
+    with page.expect_download() as dl:
+        page.locator("[data-testid=amz-csv]").click()
+    text = open(dl.value.path(), encoding="utf-8").read().splitlines()
+    n = api(page, "/api/amazon/keywords?window=30d")["total_rows"]
+    assert dl.value.suggested_filename == "amazon-keywords.csv" and text[0].startswith("Keyword or target,Match type,Campaign,Ad group,Product,State,Current bid,Impressions") and len(text) == n + 1
+    assert "Ad cost as % of ad sales" in text[0]
+
+
+def test_ad_search_terms_show_paid_numbers_and_blank_organic_columns(page):
+    goto(page, "?view=adsearch&window=launch")
+    page.wait_for_selector("[data-testid=amz-ad-search]")
+    d = api(page, "/api/amazon/ad-search-terms?window=launch")
+    assert rows(page, "amz-ad-search").count() == len(d["rows"]) == d["total_terms"]
+    assert page.locator("[data-testid=amz-kw-coverage]").inner_text() == d["coverage_text"]
+    h = heads(page, "amz-ad-search")
+    assert h[0] == "Customer search term" and "Search volume, weekly average" in h and "Our purchase share" in h and not [x for x in h if any(a in x for a in ACRONYMS)]
+    idx = h.index("Search volume, weekly average")
+    by_term = {r["key"]: r for r in d["rows"]}
+    with_org = next(k for k, r in by_term.items() if r["search_volume"] is not None)
+    without = next(k for k, r in by_term.items() if r["search_volume"] is None)
+    cells = lambda key: page.locator(f"[data-testid=amz-ad-search] tbody tr[data-key='{key}'] td").all_inner_texts()      # noqa: E731
+    assert cells(with_org)[idx].strip() not in ("–", "") and cells(without)[idx].strip() == "–"                       # no Search Query Performance row: blank, never 0
+    assert "0" != cells(without)[idx].strip() and EM_DASH not in page.locator("[data-testid=amz-body]").inner_text()
+
+
+def test_a_search_term_opens_the_keywords_and_campaigns_that_matched_it(page):
+    goto(page, "?view=adsearch&window=launch")
+    page.wait_for_selector("[data-testid=amz-ad-search]")
+    page.locator("[data-term='beef liver capsules']").click()
+    page.wait_for_selector("[data-testid=amz-matches-table]")
+    assert qparams(page).get("term") == "beef liver capsules"
+    d = api(page, "/api/amazon/ad-search-terms/matches?window=launch&term=beef+liver+capsules")
+    assert rows(page, "amz-matches-table").count() == len(d["rows"]) >= 1
+    expect(page.locator("[data-testid=amz-matches-title]")).to_contain_text("matched")
+    page.screenshot(path=str(SHOTS / "amazon_kw_adsearch_desktop.png"), full_page=True)
+    page.locator("[data-testid=amz-matches-close]").click()
+    expect(page.locator("[data-testid=amz-matches]")).to_have_count(0)
+    assert "term" not in qparams(page)
+
+
+def test_ad_search_term_link_opens_the_drill_on_load_and_search_filters(page):
+    goto(page, "?view=adsearch&window=launch&term=vital+bull")
+    page.wait_for_selector("[data-testid=amz-matches-table]")
+    n = len(api(page, "/api/amazon/ad-search-terms?window=launch&q=bone")["rows"])
+    assert n == 3                                                                                               # bone marrow supplement, bone flex, beef bone marrow capsules
+    page.fill("[data-testid=amz-ad-search-input]", "bone")
+    page.wait_for_function("(k) => document.querySelectorAll('[data-testid=amz-ad-search] tbody tr[data-key]').length === k", arg=n)
+
+
+def test_negatives_list_count_filters_and_full_csv(page):
+    goto(page, "?view=negatives&window=30d")
+    page.wait_for_selector("[data-testid=amz-negatives]")
+    d = api(page, "/api/amazon/negatives")
+    assert d["matched"] == d["total"] == 2600 and d["shown"] == 2000 and d["truncated"] is True
+    summary = page.locator("[data-testid=amz-neg-summary]").inner_text()
+    assert "2,600 of 2,600" in summary and "first 2,000" in summary
+    assert page.locator("[data-testid=amz-kw-coverage]").inner_text() == d["coverage_text"]
+    assert "Campaign-level negatives" in page.locator("[data-testid=amz-neg-note]").inner_text()
+    assert heads(page, "amz-negatives") == ["Negative keyword", "Match type", "Campaign", "Ad group", "Product", "State"]
+    page.fill("[data-testid=amz-neg-search]", "collagen")
+    page.wait_for_function("() => /\\b52 of 2,600/.test(document.querySelector('[data-testid=amz-neg-summary]').textContent)")
+    assert "first" not in page.locator("[data-testid=amz-neg-summary]").inner_text()
+    with page.expect_download() as dl:
+        page.locator("[data-testid=amz-csv]").click()
+    text = open(dl.value.path(), encoding="utf-8").read().splitlines()
+    assert dl.value.suggested_filename == "amazon-negative-keywords.csv" and text[0] == "Negative keyword,Match type,Campaign,Ad group,Product,State" and len(text) == 53 and all("collagen" in t.lower() for t in text[1:])
+    page.fill("[data-testid=amz-neg-search]", "")
+    page.wait_for_function("() => /2,600 of 2,600/.test(document.querySelector('[data-testid=amz-neg-summary]').textContent)")
+    with page.expect_download() as dl:
+        page.locator("[data-testid=amz-csv]").click()
+    assert len(open(dl.value.path(), encoding="utf-8").read().splitlines()) == 2601                                    # the file has every match, not the 2,000 on screen
+    page.locator("[data-testid=amz-match-filter] [data-value=exact]").click()
+    page.wait_for_function("() => new URLSearchParams(location.search).get('match') === 'exact'")
+    idle(page)
+    assert api(page, "/api/amazon/negatives?match=exact")["matched"] == 289 and "289 of 2,600" in page.locator("[data-testid=amz-neg-summary]").inner_text()
+    page.screenshot(path=str(SHOTS / "amazon_kw_negatives_desktop.png"), full_page=True)
+
+
 # ------------------------------------------------------------------------------------------------------------------------------ fees
 def test_fees_table_by_month(page):
     goto(page, "?view=fees&from=2026-08-01&to=2026-10-31")
@@ -270,7 +421,7 @@ def test_fees_table_by_month(page):
 def test_view_switch_keeps_the_range_and_marks_the_current_view(page):
     goto(page, "?window=60d")
     labels = [a.inner_text() for a in page.locator("[data-testid=amz-views] a.seg").all()]
-    assert labels == ["Overview", "Campaigns", "Products", "Search terms", "Fees"]
+    assert labels == ["Overview", "Campaigns", "Products", "Keywords", "Ad search terms", "Negative keywords", "Search terms", "Fees"]
     page.locator("[data-amz-view=search]").click()
     page.wait_for_selector("[data-testid=amz-search-terms]")
     assert qparams(page).get("view") == "search" and qparams(page).get("window") == "60d"
@@ -291,7 +442,8 @@ def test_csv_download_of_the_search_terms(page):
 
 
 # ------------------------------------------------------------------------------------------------------------------------------ phone
-@pytest.mark.parametrize("qs", ["?window=30d", "?view=campaigns&window=30d", "?view=products&window=30d", "?view=search&window=30d&term=vital+bull", "?view=fees&window=90d"])
+@pytest.mark.parametrize("qs", ["?window=30d", "?view=campaigns&window=30d", "?view=products&window=30d", "?view=search&window=30d&term=vital+bull", "?view=fees&window=90d",
+                                "?view=keywords&window=30d", "?view=adsearch&window=launch&term=beef+liver+capsules", "?view=negatives&window=30d"])
 def test_no_sideways_page_scroll_at_375px(browser, base_url, qs):
     from conftest import PASSWORD, USERNAME
     c = browser.new_context(viewport={"width": 375, "height": 812}, base_url=base_url)
@@ -302,6 +454,8 @@ def test_no_sideways_page_scroll_at_375px(browser, base_url, qs):
         pg.on("pageerror", lambda e: errs.append(str(e)))
         pg.goto("/amazon" + qs)
         pg.wait_for_selector("[data-testid=amz-body] table, [data-testid=amz-body] .kpi")
+        if "view=adsearch" in qs:
+            pg.wait_for_selector("[data-testid=amz-matches-table]")
         pg.wait_for_function("() => !document.querySelector('#view').hasAttribute('aria-busy')")
         pg.wait_for_timeout(400)
         assert no_sideways_scroll(pg), qs
@@ -337,6 +491,24 @@ def test_empty_amazon_tables_show_the_empty_state(browser, empty_url, view):
         if not view:
             assert platform_btn(pg, "amazon").is_enabled()                                                       # you can be on the page; the picker only disables it elsewhere
             pg.screenshot(path=str(SHOTS / "amazon_06_empty.png"))
+    finally:
+        c.close()
+
+
+@pytest.mark.parametrize("view", ["keywords", "adsearch", "negatives"])
+def test_empty_keyword_tables_show_their_own_empty_state(browser, empty_url, view):
+    from conftest import PASSWORD, USERNAME
+    c = browser.new_context(viewport={"width": 1440, "height": 900}, base_url=empty_url)
+    try:
+        assert c.request.post(empty_url + "/api/login", data={"username": USERNAME, "password": PASSWORD}).status == 204
+        pg = c.new_page()
+        errs = []
+        pg.on("pageerror", lambda e: errs.append(str(e)))
+        pg.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
+        pg.goto(f"/amazon?window=30d&view={view}")
+        pg.wait_for_selector("[data-testid=amz-empty]")
+        expect(pg.locator("[data-testid=amz-empty]")).to_contain_text("Amazon keyword data has not been loaded yet")
+        assert pg.locator(".errorbox").count() == 0 and not errs, errs
     finally:
         c.close()
 

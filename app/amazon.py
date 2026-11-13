@@ -12,6 +12,11 @@ made-up rows, so the rules below are production code in both places. Rules that 
   * ads: Sponsored Products sales are 14-day, Brands and Display carry the one figure Amazon reports (`sales_reported`); orders likewise;
   * orders: `orders` is a count per ASIN, so it is summed per product / total as "orders counted per product" (an order of two of our products counts for each);
   * the ad share of revenue and the ad return only use days the ads data covers (it starts 2025-12-30, orders 2024-09-24).
+
+Keyword layer (views keywords, adsearch, negatives; docs/AMAZON_DATA.md): Sponsored Products only, Amazon's 7-day attribution only, loaded by hand from Data Dash pulls
+(etl/amazon_dash_load.py, tables of migration 252). A keyword row is a report key summed over the range plus the latest snapshot's bid and state; an ad group that advertises more
+than one product is product key "mixed" and one with no mapped ASIN is "unmapped" (never guessed); a customer search term is matched to Search Query Performance by its normalised text
+over the full Sunday to Saturday weeks inside the range, with the same MAX / SUM / recomputed-share rules as the organic search terms view; no Search Query Performance row is blank.
 """
 from __future__ import annotations
 
@@ -30,11 +35,20 @@ GRAINS = ("day", "week", "month")
 EMPTY_MESSAGE = "Amazon data has not loaded yet"
 NO_SWITCH = "Amazon pages show Amazon's own reporting only; there is no Numbers from switch here."
 MAX_TERMS = 2000
+KW_VIEWS = ("keywords", "ad-search-terms", "ad-search-term-matches", "negatives")
+KW_EMPTY_MESSAGE = "Amazon keyword data has not been loaded yet"
+MAX_KEYWORDS = 5000
+NEG_LIMIT, NEG_MAX = 2000, 50000
+KW_PRODUCT_KEYS = ("mixed", "unmapped")
+MATCH_LABELS = {"BROAD": "Broad", "PHRASE": "Phrase", "EXACT": "Exact", "NEGATIVE_PHRASE": "Negative phrase", "NEGATIVE_EXACT": "Negative exact", "TARGETING_EXPRESSION": "Product or category target",
+                "TARGETING_EXPRESSION_PREDEFINED": "Automatic target"}
 
 # which tables each page needs: its window is the span they share (the earliest start, the earliest end); traffic is not one of them (it lags by days, so it is aligned inside the Overview instead)
-KINDS = {"overview": ("orders", "ads"), "ads": ("ads",), "products": ("orders", "ads_asin"), "sqp": ("sqp",), "fees": ("fees",)}
+KINDS = {"overview": ("orders", "ads"), "ads": ("ads",), "products": ("orders", "ads_asin"), "sqp": ("sqp",), "fees": ("fees",),
+         "keywords": ("kw_tg",), "adsearch": ("kw_st",), "negatives": ("kw_neg", "kw_tg")}
 TABLES = {"orders": ("amazon_orders_asin_daily", "day", "day"), "ads": ("amazon_ads_campaign_daily", "day", "day"), "ads_asin": ("amazon_ads_asin_daily", "day", "day"),
-          "traffic": ("amazon_traffic_daily", "day", "day"), "fees": ("amazon_settlement_fees_daily", "day", "day"), "sqp": ("amazon_sqp_weekly", "period_start", "period_end")}
+          "traffic": ("amazon_traffic_daily", "day", "day"), "fees": ("amazon_settlement_fees_daily", "day", "day"), "sqp": ("amazon_sqp_weekly", "period_start", "period_end"),
+          "kw_st": ("amazon_ads_search_term_daily", "day", "day"), "kw_tg": ("amazon_ads_targeting_daily", "day", "day"), "kw_neg": ("amazon_ads_negative_keywords_snapshot", "snapshot_date", "snapshot_date")}
 
 
 # ---------------------------------------------------------------------------------------------------------------- small helpers
@@ -127,7 +141,7 @@ def window_info(w: q.WindowSpec, ameta: q.DataMeta, sp: dict | None = None) -> d
 
 
 def empty_payload(view: str) -> dict:
-    return {"channel": "amazon", "view": view, "loaded": False, "message": EMPTY_MESSAGE, "window_info": None}
+    return {"channel": "amazon", "view": view, "loaded": False, "message": KW_EMPTY_MESSAGE if view in KW_VIEWS else EMPTY_MESSAGE, "window_info": None}
 
 
 def status_entry(src) -> dict:
@@ -550,6 +564,198 @@ def fees(src, ameta: q.DataMeta, w: q.WindowSpec) -> dict:
                     "Cost of Advertising here is the settlement debit, not the Ads report spend."}
 
 
+# ---------------------------------------------------------------------------------------------------------------- keyword layer (Sponsored Products, loaded by hand)
+KW_LABEL = {"mixed": "Mixed products", "unmapped": "No product found"}
+
+
+def _pkey_label(key: str | None) -> str:
+    return PRODUCTS.get(key) or KW_LABEL.get(key or "unmapped", "No product found")
+
+
+def _check_kw_product(v: str | None) -> str | None:
+    if v is None or v == "all":
+        return None
+    if v not in PRODUCTS and v not in KW_PRODUCT_KEYS:
+        raise q.ApiError(400, "product must be one of " + ", ".join(PRODUCTS) + ", mixed or unmapped")
+    return v
+
+
+def _check_state(v: str | None) -> str | None:
+    if v is None or v == "all":
+        return None
+    if v not in ("enabled", "paused"):
+        raise q.ApiError(400, "state must be all, enabled or paused")
+    return v
+
+
+def _kw_sums(rows: list[dict]) -> dict:
+    return {k: _sum(r.get(k) for r in rows) for k in ("impressions", "clicks", "cost", "purchases", "sales")}
+
+
+def _kw_m(r: dict) -> dict:
+    """Keyword numbers of one group from its sums (ratios of sums). Conversion rate = purchases / clicks; return on ad spend = sales / cost; ACOS (ad cost as % of ad sales) = cost / sales."""
+    imp, clk, cost, pur, sales = r.get("impressions"), r.get("clicks"), r.get("cost"), r.get("purchases"), r.get("sales")
+    return {"impressions": _int(imp), "clicks": _int(clk), "ctr": _div(clk, imp, 5), "cost": _money(cost), "cpc": _div(cost, clk, 4), "purchases": _int(pur), "conversion_rate": _div(pur, clk, 5),
+            "sales": _money(sales), "return_on_ad_spend": _div(sales, cost, 4), "acos": _div(cost, sales, 4)}
+
+
+def _zero_sums() -> dict:
+    return {"impressions": 0, "clicks": 0, "cost": 0.0, "purchases": 0, "sales": 0.0}
+
+
+def kw_coverage(info: dict) -> dict:
+    """What the keyword tables hold, read from the data: the sentence under every keyword table says Sponsored Products only, 7-day attribution, where each report starts and when it was last loaded."""
+    st, tg = info.get("st"), info.get("tg")
+    loaded = info.get("loaded")
+    part_st = f"search terms from {q._fmt_day(st[0], True)}" if st else "no search terms loaded"
+    part_tg = f"targeting from {q._fmt_day(tg[0], True)}" if tg else "no targeting loaded"
+    text = f"Sponsored Products only, Amazon's 7-day attribution, {part_st} and {part_tg}, last loaded {q._fmt_day(loaded, True) if loaded else 'never'}."
+    return {"search_terms_from": _day(st[0]) if st else None, "search_terms_through": _day(st[1]) if st else None, "targeting_from": _day(tg[0]) if tg else None,
+            "targeting_through": _day(tg[1]) if tg else None, "last_loaded": _day(loaded), "keywords_snapshot": _day(info.get("kw_snapshot")), "targets_snapshot": _day(info.get("tg_snapshot")),
+            "negatives_snapshot": _day(info.get("neg_snapshot")), "text": text}
+
+
+def _bid_note(info: dict, tg_through: dt.date | None) -> str | None:
+    snap = [d for d in (info.get("kw_snapshot"), info.get("tg_snapshot")) if d]
+    if not snap:
+        return None
+    return f"Bids are the current bids from the {q._fmt_day(max(snap), True)} snapshot, not the bids in force on each day of the range; Amazon gives no bid history, so it builds up one snapshot at a time."
+
+
+def keywords(src, ameta: q.DataMeta, w: q.WindowSpec, product: str | None, state: str | None, text: str | None, with_impressions: bool = True) -> dict:
+    """One row per keyword or target: its report numbers summed over the range plus the current bid and state of the latest snapshot."""
+    product, state = _check_kw_product(product), _check_state(state)
+    f, t = w.span(ameta)
+    info = src.kw_info()
+    k = _known(info.get("tg"), f, t)
+    rep = src.kw_report(k[0], k[1]) if k else []
+    cur = src.kw_list()
+    by_id = {e["keyword_id"]: e for e in cur}
+    rows: list[dict] = []
+    seen = set()
+    for r in rep:
+        e = by_id.get(r["keyword_id"])
+        seen.add(r["keyword_id"])
+        rows.append({"s": r, "e": e, "campaign_id": r["campaign_id"], "ad_group_id": r["ad_group_id"], "keyword_id": r["keyword_id"], "match_type": r["match_type"], "text": r["text"],
+                     "campaign": r.get("campaign_name") or (e or {}).get("campaign_name"), "ad_group": r.get("ad_group_name") or (e or {}).get("ad_group_name"), "product": r.get("product") or "unmapped"})
+    if not with_impressions:
+        for e in cur:
+            if e["keyword_id"] not in seen:
+                rows.append({"s": _zero_sums() if k else {}, "e": e, "campaign_id": e["campaign_id"], "ad_group_id": e["ad_group_id"], "keyword_id": e["keyword_id"], "match_type": e["match_type"],
+                             "text": e["text"], "campaign": e.get("campaign_name"), "ad_group": e.get("ad_group_name"), "product": e.get("product") or "unmapped"})
+    needle = norm_query(text) if text else ""
+    textual = [r for r in rows if not needle or needle in norm_query(f"{r['text']} {r['campaign'] or ''} {r['ad_group'] or ''}")]
+    facets_p: dict[str, float] = {}
+    for r in textual:
+        facets_p[r["product"]] = facets_p.get(r["product"], 0.0) + float(r["s"].get("cost") or 0)
+    kept = [r for r in textual if (not product or r["product"] == product) and (not state or ((r["e"] or {}).get("state") or "").lower() == state)]
+    kept.sort(key=lambda r: (-(float(r["s"].get("cost") or 0)), -(int(r["s"].get("impressions") or 0)), str(r["text"]).lower(), r["keyword_id"]))
+    total_rows = len(kept)
+    out = []
+    for r in kept[:MAX_KEYWORDS]:
+        e = r["e"] or {}
+        out.append({"key": f"{r['campaign_id']}:{r['ad_group_id']}:{r['keyword_id']}:{r['match_type']}", "keyword_id": r["keyword_id"], "text": r["text"], "match_type": r["match_type"],
+                    "match_label": MATCH_LABELS.get(r["match_type"], r["match_type"]), "campaign_id": r["campaign_id"], "campaign": r["campaign"] or f"Campaign {r['campaign_id']}",
+                    "ad_group_id": r["ad_group_id"], "ad_group": r["ad_group"] or f"Ad group {r['ad_group_id']}", "product": r["product"], "product_label": _pkey_label(r["product"]),
+                    "state": (e.get("state") or "").lower() or None, "bid": _money(e.get("bid")), "bid_inherited": bool(e) and e.get("bid") is None, **_kw_m(r["s"])})
+    total = _kw_m(_kw_sums([r["s"] for r in kept]) if k else {})
+    cov = kw_coverage(info)
+    note = "Cost, clicks, purchases and sales are summed over the range. " + ("Keywords with no impressions in the range are left out; choose All keywords to list them." if with_impressions else "Keywords with no impressions in the range show zeros.")
+    return {"channel": "amazon", "view": "keywords", "loaded": True, "rows": out, "total": total, "total_rows": total_rows, "truncated": total_rows > MAX_KEYWORDS,
+            "facets": {"products": [{"key": p, "label": _pkey_label(p), "cost": _money(facets_p[p])} for p in list(PRODUCTS) + list(KW_PRODUCT_KEYS) if p in facets_p]},
+            "scope": {"product": product, "state": state, "q": text or None, "with_impressions": with_impressions}, "range": _rng(k), "coverage": cov, "coverage_text": cov["text"],
+            "bids_note": _bid_note(info, k[1] if k else None), "note": note}
+
+
+def ad_search_terms(src, ameta: q.DataMeta, w: q.WindowSpec, product: str | None, text: str | None) -> dict:
+    """One row per customer search term (all campaigns together) with the paid numbers of the range and, where Search Query Performance has the term, the organic search numbers of the full weeks inside the range."""
+    product = _check_kw_product(product)
+    f, t = w.span(ameta)
+    info = src.kw_info()
+    k = _known(info.get("st"), f, t)
+    raw = src.adsearch_grouped(k[0], k[1], product) if k else []
+    needle = norm_query(text) if text else ""
+    raw = [r for r in raw if not needle or needle in r["key"] or needle in norm_query(r.get("term"))]
+    weeks = src.weeks()
+    sel = _weeks_in(weeks, f, t)
+    org: dict[str, list[dict]] = {}
+    if sel and raw:
+        tw = term_weeks(src.sqp_rows(sel[0][0], sel[-1][0], product if product in PRODUCTS else None, None, None, None))
+        starts = [a for a, _ in sel]
+        want = {r["key"] for r in raw}
+        for key in want:
+            ent = [tw[(wk, key)] for wk in starts if (wk, key) in tw]
+            if ent:
+                org[key] = ent
+    raw.sort(key=lambda r: (-(float(r.get("cost") or 0)), -(int(r.get("impressions") or 0)), r["key"]))
+    total_terms = len(raw)
+    out = []
+    for r in raw[:MAX_KEYWORDS]:
+        pe = _period(org[r["key"]]) if r["key"] in org else None
+        out.append({"key": r["key"], "term": r.get("term") or r["key"], "keywords": _int(r.get("keywords")), "campaigns": _int(r.get("campaigns")), **_kw_m(r),
+                    "search_volume": pe["volume_avg"] if pe else None, "our_click_share": pe["click_share"] if pe else None, "our_purchase_share": pe["purchase_share"] if pe else None,
+                    "weeks_listed": pe["weeks_present"] if pe else None, "weeks_in_range": len(sel)})
+    total = _kw_m(_kw_sums(raw) if k else {})
+    matched_cost = sum(float(r.get("cost") or 0) for r in raw if r["key"] in org)
+    all_cost = sum(float(r.get("cost") or 0) for r in raw)
+    cov = kw_coverage(info)
+    if not sel:
+        onote = "No full week (Sunday to Saturday) of Search Query Performance fits in this range, so the organic columns are blank."
+    elif product in KW_PRODUCT_KEYS:
+        onote = "This product group has no single product, so the organic columns read all products together."
+    else:
+        onote = (f"Organic columns cover {len(sel)} full week{'' if len(sel) == 1 else 's'} ({q._fmt_day(sel[0][0], True)} to {q._fmt_day(sel[-1][1], True)}) and are blank where Amazon's Search Query Performance "
+                 "does not list the term (it lists about the top 100 terms per product per week), which is not the same as zero.")
+    return {"channel": "amazon", "view": "ad-search-terms", "loaded": True, "rows": out, "total": total, "total_terms": total_terms, "truncated": total_terms > MAX_KEYWORDS,
+            "organic_cost_share": _div(matched_cost, all_cost, 4) if all_cost else None, "organic_terms": len(org), "weeks_in_range": len(sel),
+            "facets": {"products": [{"key": p, "label": _pkey_label(p)} for p in list(PRODUCTS) + list(KW_PRODUCT_KEYS)]},
+            "scope": {"product": product, "q": text or None}, "range": _rng(k), "coverage": cov, "coverage_text": cov["text"], "note": "A search term is what the customer typed; one term can match several keywords and campaigns. " + onote}
+
+
+def ad_search_term_matches(src, ameta: q.DataMeta, w: q.WindowSpec, term: str | None, product: str | None) -> dict:
+    """The keywords and campaigns that matched one customer search term in the range."""
+    key = norm_query(term)
+    if not key:
+        raise q.ApiError(400, "term is required")
+    product = _check_kw_product(product)
+    f, t = w.span(ameta)
+    info = src.kw_info()
+    k = _known(info.get("st"), f, t)
+    raw = src.adsearch_matches(k[0], k[1], key, product) if k else []
+    raw.sort(key=lambda r: (-(float(r.get("cost") or 0)), -(int(r.get("impressions") or 0)), str(r.get("text") or "")))
+    rows = [{"key": f"{r['campaign_id']}:{r['ad_group_id']}:{r['keyword_id']}:{r['match_type']}", "text": r["text"], "match_type": r["match_type"], "match_label": MATCH_LABELS.get(r["match_type"], r["match_type"]),
+             "campaign_id": r["campaign_id"], "campaign": r.get("campaign_name") or f"Campaign {r['campaign_id']}", "ad_group": r.get("ad_group_name") or f"Ad group {r['ad_group_id']}",
+             "product": r.get("product") or "unmapped", "product_label": _pkey_label(r.get("product")), **_kw_m(r)} for r in raw]
+    cov = kw_coverage(info)
+    return {"channel": "amazon", "view": "ad-search-term-matches", "loaded": True, "term": (raw[0].get("term") if raw else None) or term, "key": key, "rows": rows,
+            "total": _kw_m(_kw_sums(raw) if raw else {}), "coverage_text": cov["text"], "range": _rng(k)}
+
+
+def negatives(src, ameta: q.DataMeta | None, text: str | None, match: str | None, state: str | None, product: str | None, limit: int | None = None) -> dict:
+    """The negative keyword list of the latest snapshot (ad group level), filtered by text, match type, state and product; at most `limit` rows come back, the count is of every match."""
+    match = (match or "all").lower()
+    if match not in ("all", "phrase", "exact"):
+        raise q.ApiError(400, "match must be all, phrase or exact")
+    state = (state or "all").lower()
+    if state not in ("all", "enabled", "archived"):
+        raise q.ApiError(400, "state must be all, enabled or archived")
+    product = _check_kw_product(product)
+    lim = NEG_LIMIT if limit is None else max(1, min(int(limit), NEG_MAX))
+    info = src.kw_info()
+    needle = norm_query(text) if text else ""
+    res = src.negatives(needle, {"all": None, "phrase": "NEGATIVE_PHRASE", "exact": "NEGATIVE_EXACT"}[match], None if state == "all" else state.upper(), product, lim)
+    rows = [{"key": r["keyword_id"], "text": r["text"], "match_type": r["match_type"], "match_label": MATCH_LABELS.get(r["match_type"], r["match_type"]), "campaign_id": r["campaign_id"],
+             "campaign": r.get("campaign_name") or f"Campaign {r['campaign_id']}", "ad_group_id": r["ad_group_id"], "ad_group": r.get("ad_group_name") or f"Ad group {r['ad_group_id']}",
+             "product": r.get("product") or "unmapped", "product_label": _pkey_label(r.get("product")), "state": (r.get("state") or "").lower() or None} for r in res["rows"]]
+    cov = kw_coverage(info)
+    return {"channel": "amazon", "view": "negatives", "loaded": True, "rows": rows, "matched": res["matched"], "total": res["total"], "shown": len(rows), "truncated": res["matched"] > len(rows),
+            "snapshot_date": _day(res.get("snapshot_date")), "facets": {"states": res["by_state"], "match": res["by_match"], "products": [{"key": p, "label": _pkey_label(p), "count": res["by_product"][p]}
+                                                                                                                                              for p in list(PRODUCTS) + list(KW_PRODUCT_KEYS) if p in res["by_product"]]},
+            "scope": {"q": text or None, "match": match, "state": state, "product": product}, "coverage": cov, "coverage_text": cov["text"],
+            "note": f"Ad group level negative keywords only, as of the {q._fmt_day(res['snapshot_date'], True) if res.get('snapshot_date') else 'latest'} snapshot. "
+                    "Campaign-level negatives and negative product targets are not available from Amazon, so a term that is not listed here may still be negated."}
+
+
 # ---------------------------------------------------------------------------------------------------------------- Postgres source
 class DbSource:
     """The database side of every builder. All SQL of the Amazon pages is here."""
@@ -633,3 +839,104 @@ class DbSource:
     def fees_grouped(self, f, t):
         return self._all("""SELECT date_trunc('month', day)::date AS month, transaction_type, amount_type, amount_description, sum(lines) AS lines, sum(COALESCE(amount_usd, amount)) AS amount
                             FROM amazon_settlement_fees_daily WHERE day BETWEEN %s AND %s GROUP BY 1, 2, 3, 4""", (f, t))
+
+    # ------------------------------------------------------------------------------------------------ keyword layer (tables of migration 252, read through analytics.amazon_ads_ad_group_products)
+    _PK = "COALESCE(g.product_slug, g.product_resolution, 'unmapped')"
+    _GJ = "LEFT JOIN analytics.amazon_ads_ad_group_products g ON g.campaign_id = {a}.campaign_id AND g.ad_group_id = {a}.ad_group_id"
+
+    def _has(self, table: str) -> bool:
+        return self.c.execute("SELECT to_regclass(%s) IS NOT NULL AS ok", ("public." + table,)).fetchone()["ok"]
+
+    def kw_info(self) -> dict:
+        """First and last day of each report, the date each list was snapshotted and when anything was last loaded (Pacific day): all read from the data."""
+        if getattr(self, "_kwi", None) is not None:
+            return self._kwi
+        out: dict = {"st": None, "tg": None, "loaded": None, "kw_snapshot": None, "tg_snapshot": None, "neg_snapshot": None}
+        if not self._has("amazon_ads_targeting_daily"):
+            self._kwi = out
+            return out
+        r = self.c.execute("SELECT min(day) AS lo, max(day) AS hi FROM amazon_ads_search_term_daily").fetchone()
+        out["st"] = (r["lo"], r["hi"]) if r and r["lo"] is not None else None
+        r = self.c.execute("SELECT min(day) AS lo, max(day) AS hi FROM amazon_ads_targeting_daily").fetchone()
+        out["tg"] = (r["lo"], r["hi"]) if r and r["lo"] is not None else None
+        for key, table in (("kw_snapshot", "amazon_ads_keywords_snapshot"), ("tg_snapshot", "amazon_ads_targets_snapshot"), ("neg_snapshot", "amazon_ads_negative_keywords_snapshot")):
+            out[key] = self.c.execute(f"SELECT max(snapshot_date) AS d FROM {table}").fetchone()["d"]
+        out["loaded"] = self.c.execute("""SELECT (max(l) AT TIME ZONE 'America/Los_Angeles')::date AS d FROM (
+            SELECT max(loaded_at) AS l FROM amazon_ads_search_term_daily UNION ALL SELECT max(loaded_at) FROM amazon_ads_targeting_daily UNION ALL SELECT max(loaded_at) FROM amazon_ads_keywords_snapshot
+            UNION ALL SELECT max(loaded_at) FROM amazon_ads_targets_snapshot UNION ALL SELECT max(loaded_at) FROM amazon_ads_negative_keywords_snapshot UNION ALL SELECT max(loaded_at) FROM amazon_ads_campaigns_snapshot
+            UNION ALL SELECT max(loaded_at) FROM amazon_ads_product_ads) x""").fetchone()["d"]
+        self._kwi = out
+        return out
+
+    def kw_report(self, f, t):
+        return self._all(f"""SELECT t.campaign_id, t.ad_group_id, t.keyword_id, t.match_type, t.targeting AS text,
+                                    (array_agg(t.campaign_name ORDER BY t.day DESC) FILTER (WHERE t.campaign_name IS NOT NULL))[1] AS campaign_name,
+                                    (array_agg(t.ad_group_name ORDER BY t.day DESC) FILTER (WHERE t.ad_group_name IS NOT NULL))[1] AS ad_group_name,
+                                    {self._PK} AS product, sum(t.impressions) AS impressions, sum(t.clicks) AS clicks, sum(t.cost) AS cost, sum(t.purchases_7d) AS purchases, sum(t.sales_7d) AS sales
+                             FROM amazon_ads_targeting_daily t {self._GJ.format(a='t')}
+                             WHERE t.day BETWEEN %s AND %s
+                             GROUP BY t.campaign_id, t.ad_group_id, t.keyword_id, t.match_type, t.targeting, g.product_slug, g.product_resolution""", (f, t))
+
+    def kw_list(self):
+        """Every keyword and target of the latest snapshots with its bid and state; campaign and ad group names from the newest campaign snapshot and report rows."""
+        return self._all(f"""WITH kl AS (SELECT * FROM amazon_ads_keywords_snapshot WHERE snapshot_date = (SELECT max(snapshot_date) FROM amazon_ads_keywords_snapshot)),
+                                  tl AS (SELECT * FROM amazon_ads_targets_snapshot WHERE snapshot_date = (SELECT max(snapshot_date) FROM amazon_ads_targets_snapshot)),
+                                  agn AS (SELECT DISTINCT ON (campaign_id, ad_group_id) campaign_id, ad_group_id, ad_group_name FROM amazon_ads_targeting_daily
+                                          WHERE ad_group_name IS NOT NULL ORDER BY campaign_id, ad_group_id, day DESC),
+                                  cn AS (SELECT DISTINCT ON (campaign_id) campaign_id, name FROM amazon_ads_campaigns_snapshot ORDER BY campaign_id, snapshot_date DESC),
+                                  e AS (SELECT 'keyword'::text AS kind, keyword_id, COALESCE(keyword_text, '') AS text, match_type, campaign_id, ad_group_id, bid, state FROM kl
+                                        UNION ALL SELECT 'target', target_id, COALESCE(expression_text, ''), CASE expression_type WHEN 'AUTO' THEN 'TARGETING_EXPRESSION_PREDEFINED' ELSE 'TARGETING_EXPRESSION' END,
+                                                         campaign_id, ad_group_id, bid, state FROM tl)
+                             SELECT e.kind, e.keyword_id, e.text, e.match_type, e.campaign_id, e.ad_group_id, e.bid, e.state, cn.name AS campaign_name, agn.ad_group_name,
+                                    {self._PK} AS product
+                             FROM e LEFT JOIN cn ON cn.campaign_id = e.campaign_id LEFT JOIN agn ON agn.campaign_id = e.campaign_id AND agn.ad_group_id = e.ad_group_id {self._GJ.format(a='e')}""")
+
+    def adsearch_grouped(self, f, t, product):
+        sql = f"""SELECT d.search_term_key AS key, (array_agg(d.search_term ORDER BY d.cost DESC NULLS LAST))[1] AS term, count(DISTINCT d.keyword_id) AS keywords, count(DISTINCT d.campaign_id) AS campaigns,
+                         sum(d.impressions) AS impressions, sum(d.clicks) AS clicks, sum(d.cost) AS cost, sum(d.purchases_7d) AS purchases, sum(d.sales_7d) AS sales
+                  FROM amazon_ads_search_term_daily d {self._GJ.format(a='d')} WHERE d.day BETWEEN %s AND %s"""
+        params: list = [f, t]
+        if product:
+            sql += f" AND {self._PK} = %s"
+            params.append(product)
+        return self._all(sql + " GROUP BY d.search_term_key", params)
+
+    def adsearch_matches(self, f, t, key, product):
+        sql = f"""SELECT d.campaign_id, d.ad_group_id, d.keyword_id, d.match_type, (array_agg(d.keyword ORDER BY d.day DESC))[1] AS text, (array_agg(d.search_term ORDER BY d.cost DESC NULLS LAST))[1] AS term,
+                         (array_agg(d.campaign_name ORDER BY d.day DESC) FILTER (WHERE d.campaign_name IS NOT NULL))[1] AS campaign_name,
+                         (array_agg(d.ad_group_name ORDER BY d.day DESC) FILTER (WHERE d.ad_group_name IS NOT NULL))[1] AS ad_group_name, {self._PK} AS product,
+                         sum(d.impressions) AS impressions, sum(d.clicks) AS clicks, sum(d.cost) AS cost, sum(d.purchases_7d) AS purchases, sum(d.sales_7d) AS sales
+                  FROM amazon_ads_search_term_daily d {self._GJ.format(a='d')} WHERE d.day BETWEEN %s AND %s AND d.search_term_key = %s"""
+        params: list = [f, t, key]
+        if product:
+            sql += f" AND {self._PK} = %s"
+            params.append(product)
+        return self._all(sql + " GROUP BY d.campaign_id, d.ad_group_id, d.keyword_id, d.match_type, g.product_slug, g.product_resolution", params)
+
+    def negatives(self, needle, match_type, state, product, limit):
+        snap = self.c.execute("SELECT max(snapshot_date) AS d FROM amazon_ads_negative_keywords_snapshot").fetchone()["d"]
+        if snap is None:
+            return {"snapshot_date": None, "rows": [], "matched": 0, "total": 0, "by_state": {}, "by_match": {}, "by_product": {}}
+        where, params = "", [snap]
+        if needle:
+            where = " WHERE strpos(lower(COALESCE(n.keyword_text, '') || ' ' || COALESCE(cn.name, '') || ' ' || COALESCE(agn.ad_group_name, '')), %s) > 0"
+            params.append(needle)
+        cte = f"""WITH cn AS MATERIALIZED (SELECT DISTINCT ON (campaign_id) campaign_id, name FROM amazon_ads_campaigns_snapshot ORDER BY campaign_id, snapshot_date DESC),
+                       agn AS MATERIALIZED (SELECT DISTINCT ON (campaign_id, ad_group_id) campaign_id, ad_group_id, ad_group_name FROM amazon_ads_targeting_daily WHERE ad_group_name IS NOT NULL
+                                            ORDER BY campaign_id, ad_group_id, day DESC),
+                       b AS MATERIALIZED (SELECT n.keyword_id, n.keyword_text AS text, n.match_type, n.state, n.campaign_id, n.ad_group_id, cn.name AS campaign_name, agn.ad_group_name, {self._PK} AS product
+                                          FROM (SELECT * FROM amazon_ads_negative_keywords_snapshot WHERE snapshot_date = %s) n {self._GJ.format(a='n')}
+                                          LEFT JOIN cn ON cn.campaign_id = n.campaign_id LEFT JOIN agn ON agn.campaign_id = n.campaign_id AND agn.ad_group_id = n.ad_group_id{where})"""
+        flt, fparams = "true", []
+        for col, val in (("match_type", match_type), ("state", state), ("product", product)):
+            if val:
+                flt += f" AND {col} = %s"
+                fparams.append(val)
+        total = self.c.execute("SELECT count(*) AS n FROM amazon_ads_negative_keywords_snapshot WHERE snapshot_date = %s", (snap,)).fetchone()["n"]
+        facets = self._all(cte + """ SELECT 'state' AS kind, state AS k, count(*) AS n FROM b GROUP BY 2 UNION ALL SELECT 'match', match_type, count(*) FROM b GROUP BY 2
+                                     UNION ALL SELECT 'product', product, count(*) FROM b GROUP BY 2 UNION ALL SELECT 'matched', NULL, count(*) FROM b WHERE """ + flt, params + fparams)
+        rows = self._all(cte + " SELECT keyword_id, text, match_type, state, campaign_id, ad_group_id, campaign_name, ad_group_name, product FROM b WHERE " + flt
+                         + " ORDER BY lower(text), keyword_id LIMIT %s", params + fparams + [limit])
+        pick = lambda kind: {(r["k"] or ""): r["n"] for r in facets if r["kind"] == kind}      # noqa: E731
+        return {"snapshot_date": snap, "rows": rows, "matched": next((r["n"] for r in facets if r["kind"] == "matched"), 0), "total": total,
+                "by_state": {k.lower(): v for k, v in pick("state").items()}, "by_match": pick("match"), "by_product": pick("product")}

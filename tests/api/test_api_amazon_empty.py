@@ -24,6 +24,16 @@ def test_empty_tables_give_an_empty_state_not_an_error(empty, client, route):
     assert d["loaded"] is False and d["message"] == "Amazon data has not loaded yet" and d["window_info"] is None and d["channel"] == "amazon"
 
 
+KW_ROUTES = ["keywords", "ad-search-terms", "ad-search-terms/matches?term=beef+liver", "negatives"]
+
+
+@pytest.mark.parametrize("route", KW_ROUTES)
+def test_empty_keyword_tables_give_an_empty_state_not_an_error(empty, client, route):
+    sep = "&" if "?" in route else "?"
+    d = get_ok(client, f"/api/amazon/{route}{sep}window=30d")
+    assert d["loaded"] is False and d["message"] == "Amazon keyword data has not been loaded yet" and d["window_info"] is None and d["channel"] == "amazon"
+
+
 def test_status_says_amazon_is_not_available_yet(empty, client):
     s = get_ok(client, "/api/status")["sources"]
     assert s["amazon"] == {"available": False, "through": None, "first_day": None}
