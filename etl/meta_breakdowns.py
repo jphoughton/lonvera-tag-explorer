@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
 from . import db, meta_api
-from .resolver import pick
+from .resolver import pick, pick_atc, pick_ic
 
 PT = ZoneInfo("America/Los_Angeles")
 LIMIT = 500
@@ -441,16 +441,17 @@ def _purch(d: dict) -> float:
     return d.get("omni_purchase", d.get("purchase", d.get("offsite_conversion.fb_pixel_purchase", 0.0)))
 
 
-def _row(day, acct, level, eid, camp, adset, name, dims: dict, basics: tuple, purchases, value) -> tuple:
+def _row(day, acct, level, eid, camp, adset, name, dims: dict, basics: tuple, purchases, value, atc=None, ic=None) -> tuple:
     vals = [_dim_text(v) for v in dims.values()][:MAX_DIMS]
     vals += [None] * (MAX_DIMS - len(vals))
-    return (day, acct, level, eid, camp, adset, name, vals[0], vals[1], vals[2], dims_key(dims), *basics, purchases, value)
+    return (day, acct, level, eid, camp, adset, name, vals[0], vals[1], vals[2], dims_key(dims), *basics, purchases, value, atc, ic)
 
 
 def normalise(entry: Entry, level: str, acct: str, raw: list[dict]) -> list[tuple]:
     """API rows -> table rows (day, account_id, level, entity_id, campaign_id, adset_id, breakdown_set, dim1, dim2, dim3, dims_key, spend, impressions, reach, clicks,
-    inline_link_clicks, outbound_clicks, unique_outbound_clicks, purchases, purchase_value). Standard sets: one row per API row. Action sets: one row per API row x
-    action-breakdown value that has a purchase (the basics are NULL: an action breakdown does not split spend or impressions)."""
+    inline_link_clicks, outbound_clicks, unique_outbound_clicks, purchases, purchase_value, add_to_cart, initiate_checkout). Standard sets: one row per API row
+    (adds to cart and initiated checkouts with the same omni / plain / pixel priority as the purchases). Action sets: one row per API row x action-breakdown value that has a
+    purchase (the basics and the two funnel columns are NULL: an action breakdown does not split spend, impressions or the funnel steps)."""
     out: list[tuple] = []
     nulls = (None,) * 7
     for a in raw:
@@ -469,18 +470,20 @@ def normalise(entry: Entry, level: str, acct: str, raw: list[dict]) -> list[tupl
             continue
         basics = (round(_num(a.get("spend")) or 0.0, 2), _int(a.get("impressions")), _int(a.get("reach")), _int(a.get("clicks")), _int(a.get("inline_link_clicks")),
                   _outbound(a, "outbound_clicks"), _outbound(a, "unique_outbound_clicks"))
-        out.append(_row(day, acct, level, eid, camp, adset, entry.name, extract_dims(entry, a), basics, round(pick(a.get("actions")), 2), round(pick(a.get("action_values")), 2)))
+        out.append(_row(day, acct, level, eid, camp, adset, entry.name, extract_dims(entry, a), basics, round(pick(a.get("actions")), 2), round(pick(a.get("action_values")), 2),
+                        round(pick_atc(a.get("actions")), 2), round(pick_ic(a.get("actions")), 2)))
     return out
 
 
 # ---------------------------------------------------------------------------------------------------------------- storage
 COLS = ("day, account_id, level, entity_id, campaign_id, adset_id, breakdown_set, dim1, dim2, dim3, dims_key, spend, impressions, reach, clicks, inline_link_clicks, "
-        "outbound_clicks, unique_outbound_clicks, purchases, purchase_value")
-UPSERT = f"""INSERT INTO meta_breakdown_daily ({COLS}) VALUES ({",".join(["%s"] * 20)})
+        "outbound_clicks, unique_outbound_clicks, purchases, purchase_value, add_to_cart, initiate_checkout")
+UPSERT = f"""INSERT INTO meta_breakdown_daily ({COLS}) VALUES ({",".join(["%s"] * 22)})
 ON CONFLICT (day, account_id, level, entity_id, breakdown_set, dims_hash) DO UPDATE SET campaign_id=EXCLUDED.campaign_id, adset_id=EXCLUDED.adset_id,
   dim1=EXCLUDED.dim1, dim2=EXCLUDED.dim2, dim3=EXCLUDED.dim3, spend=EXCLUDED.spend, impressions=EXCLUDED.impressions, reach=EXCLUDED.reach, clicks=EXCLUDED.clicks,
   inline_link_clicks=EXCLUDED.inline_link_clicks, outbound_clicks=EXCLUDED.outbound_clicks, unique_outbound_clicks=EXCLUDED.unique_outbound_clicks,
-  purchases=EXCLUDED.purchases, purchase_value=EXCLUDED.purchase_value, pulled_at=now()"""
+  purchases=EXCLUDED.purchases, purchase_value=EXCLUDED.purchase_value, add_to_cart=COALESCE(EXCLUDED.add_to_cart, meta_breakdown_daily.add_to_cart),
+  initiate_checkout=COALESCE(EXCLUDED.initiate_checkout, meta_breakdown_daily.initiate_checkout), pulled_at=now()"""
 KEY_IDX = (0, 1, 2, 3, 6, 10)
 
 
@@ -497,6 +500,70 @@ def upsert(conn, rows: list[tuple]) -> tuple[int, int]:
     for i in range(0, len(rows), 5000):
         db.execmany(conn, UPSERT, rows[i:i + 5000])
     return len(rows), dups
+
+
+FILL_SETS = ("publisher_platform", "publisher_platform,platform_position", "impression_device", "device_platform", "age", "gender", "country")   # the cuts the why tool decomposes
+FILL_SQL = ("UPDATE meta_breakdown_daily SET add_to_cart = COALESCE(add_to_cart, %s), initiate_checkout = COALESCE(initiate_checkout, %s) "
+            "WHERE day = %s AND account_id = %s AND level = %s AND entity_id = %s AND breakdown_set = %s AND dims_hash = md5(%s) AND add_to_cart IS NULL")
+FILL_LOCK_KEY = 240_241
+
+
+def fill_writer(conn, rows: list[tuple]) -> tuple[int, int]:
+    """FILL-ONLY writer for the two funnel columns: UPDATE add_to_cart / initiate_checkout of rows that exist and still have add_to_cart NULL. Spend, impressions, clicks, purchases
+    and every other column of an existing row are never written; a pulled row with no stored counterpart is not inserted. Action-set rows (no funnel values) are skipped."""
+    upd = [(r[-2], r[-1], r[0], r[1], r[2], r[3], r[6], r[10]) for r in dedupe(rows)[0] if r[-2] is not None]
+    for i in range(0, len(upd), 5000):
+        db.execmany(conn, FILL_SQL, upd[i:i + 5000])
+    return len(upd), 0
+
+
+def fill_todo(conn, name: str, level: str, ws: dt.date, we: dt.date) -> int:
+    """Stored rows of the set in [ws, we] that carry spend and still have add_to_cart NULL (what a fill pass would fill)."""
+    return conn.execute("SELECT count(*) FROM meta_breakdown_daily WHERE breakdown_set = %s AND level = %s AND day BETWEEN %s AND %s AND spend IS NOT NULL AND add_to_cart IS NULL",
+                        (name, level, ws, we)).fetchone()[0]
+
+
+def fill_funnel(conn, since: dt.date, until: dt.date, sets: list[str] | None = None, stopper: Stopper | None = None, client: Client | None = None, accounts=None,
+                max_rate_waits: int = 24, pause=None, window_days: int = CHUNK_DAYS) -> dict:
+    """History fill of add_to_cart / initiate_checkout for rows pulled before those columns existed. Re-pulls [since, until] (read-only Meta GETs, one weekly request window per
+    set, newest first) at AD level and UPDATEs only those two columns of existing rows that have add_to_cart NULL (fill_writer). Resumable: a window x set with nothing left to
+    fill costs no request. Honours the quiet hours and the time budget like the main pull; coverage and progress tables are not touched."""
+    client = client or Client(meta_api.get_token())
+    pause = pause or time.sleep
+    accounts = accounts or meta_api.ACCOUNTS
+    waiter = Waiter(client, max_rate_waits, stopper=stopper)
+    entries = select_sets(list(sets) if sets else list(FILL_SETS))
+    st: dict = {"rows": 0}
+    out = {"windows": 0, "windows_filled": 0, "windows_skipped": 0, "per_set": {}, "errors": {}, "stopped_early": False}
+    try:
+        for ws, we in windows_newest_first(since, until, window_days):
+            out["windows"] += 1
+            for entry in entries:
+                todo = fill_todo(conn, entry.name, "ad", ws, we)
+                if not todo:
+                    out["windows_skipped"] += 1
+                    continue
+                if stopper:
+                    stopper.check()
+                t0, r0 = time.monotonic(), st["rows"]
+                status, err, _ = pull_set_level(conn, client, waiter, entry, "ad", ws, we, accounts, st, False, False, writer=fill_writer)
+                left = fill_todo(conn, entry.name, "ad", ws, we)
+                db.log(f"  fill {entry.name} {ws}..{we}: {status}, {todo} stored rows without add_to_cart before, {left} after, {time.monotonic() - t0:.0f}s")
+                ps = out["per_set"].setdefault(entry.name, {"filled": 0, "left": 0})
+                ps["filled"] += todo - left
+                ps["left"] += left
+                if status != "ok":
+                    out["errors"][f"{entry.name} {ws}"] = (status, err)
+                else:
+                    out["windows_filled"] += 1
+                pause(SET_PAUSE)
+    except StopRun as e:
+        out["stopped_early"], out["stop_reason"] = True, str(e)
+        conn.rollback()
+        db.log(f"fill stopping cleanly: {e}")
+    out["rows_seen"] = st["rows"]
+    out["api_calls"] = client.calls
+    return out
 
 
 def ensure_partitions(conn, since: dt.date, until: dt.date) -> int:
@@ -710,7 +777,7 @@ class Waiter:
 
 
 def pull_set_level(conn, client: Client, waiter: Waiter, entry: Entry, level: str, ws: dt.date, we: dt.date, accounts, st: dict, backfill: bool, restart: bool,
-                   catchup_day: dt.date | None = None) -> tuple[str, str | None, str]:
+                   catchup_day: dt.date | None = None, writer=None) -> tuple[str, str | None, str]:
     """One set at one level over window [ws, we], both accounts. Each request window is committed as it arrives; with backfill (or, for the daily catch-up, catchup_day) the
     finished window is recorded per account and skipped on a rerun. conn None = dry run (pull and count, write nothing). Returns (status, error, kind); kind says why a failure
     happened: 'shape' (the response never carries the requested keys: deterministic), 'transient' (HTTP 5xx / the retry budget), 'other'; '' when ok."""
@@ -734,7 +801,7 @@ def pull_set_level(conn, client: Client, waiter: Waiter, entry: Entry, level: st
                 raw = waiter.call(lambda cs=cs, ce=ce: fetch_entry_window(client, acct, entry, level, cs, ce, an), f"{an} {entry.name} {cs}..{ce}")
                 rows = normalise(entry, level, acct, raw)
                 if conn is not None:
-                    n, dups = upsert(conn, rows)
+                    n, dups = (writer or upsert)(conn, rows)
                     conn.commit()
                 else:
                     n, dups = len(dedupe(rows)[0]), 0
@@ -1138,6 +1205,7 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true", help="pull and count, write nothing")
     ap.add_argument("--restart", action="store_true", help="forget the stored anchor and every recorded backfill window, pull everything again")
     ap.add_argument("--list", action="store_true", help="print the catalog and exit")
+    ap.add_argument("--fill-funnel", action="store_true", help="history fill of add_to_cart / initiate_checkout (UPDATE of those two columns of existing rows only) for --since..--until and --sets (default: the seven cuts the why tool uses)")
     ap.add_argument("--probe", action="store_true", help="read-only probe for one day on the main account (no database writes)")
     ap.add_argument("--probe-day", help="day for --probe (default: 2 days ago, Pacific)")
     ap.add_argument("--probe-out", help="write the probe result as JSON to this path")
@@ -1164,6 +1232,26 @@ def main(argv=None):
                 json.dump({"day": day.isoformat(), "account": an, "results": res}, f, indent=1, default=str)
         return 0
     until = dt.date.fromisoformat(a.until) if a.until else default_until()
+    if a.fill_funnel:
+        if not a.since:
+            ap.error("--fill-funnel needs --since")
+        quiet = None if a.ignore_quiet else parse_quiet(os.environ.get("META_BREAKDOWNS_QUIET_UTC", DEFAULT_QUIET_UTC))
+        stopper = Stopper(a.max_minutes, quiet)
+        with db.connect() as conn:
+            if not conn.execute("SELECT pg_try_advisory_lock(%s)", (FILL_LOCK_KEY,)).fetchone()[0]:
+                db.log("another funnel fill holds the lock; exiting")
+                return 0
+            if stopper.reason() and in_quiet(stopper.quiet, stopper.now()):
+                db.log("quiet hours: nothing started")
+                return 0
+            with db.JobRun("meta_breakdowns_fill") as job:
+                stats = fill_funnel(conn, dt.date.fromisoformat(a.since), until, names, stopper)
+                job.stats = stats
+                job.rows_written = sum(v["filled"] for v in stats["per_set"].values())
+                job.data_through = until
+                db.log(f"funnel fill done: {json.dumps(stats, default=str)[:600]}")
+            conn.execute("SELECT pg_advisory_unlock(%s)", (FILL_LOCK_KEY,))
+        return 0
     backfill = bool(a.since or a.max_days) and not a.auto
     quiet = None if a.ignore_quiet else parse_quiet(os.environ.get("META_BREAKDOWNS_QUIET_UTC", DEFAULT_QUIET_UTC))
     if a.dry_run and not a.auto:

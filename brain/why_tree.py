@@ -461,7 +461,7 @@ NOT_IN_DB = [
     {"what": "Bid, cost-cap, ROAS-floor and budget edits", "where": "Ads Manager activity log; proj_feed_bids (not in analytics)"},
     {"what": "Price, offer, checkout / CheckoutChamp configuration, subscription intervals", "where": "Shopify admin, CheckoutChamp, Skio"},
     {"what": "Pixel / tracking / attribution-setting changes", "where": "Events Manager, Ads Manager attribution setting"},
-    {"what": "Country, age, gender, placement breakdowns", "where": "Ads Manager breakdowns"},
+    {"what": "Breakdown history before the backfill's first day (analytics.meta_breakdown_daily starts 2026-10-12 and moves back window by window) and Upstack new-customer attribution by placement / device / age / gender / country (breakdown rows are Meta-reported only)", "where": "Ads Manager breakdowns; the breakdown_changes block of `why` covers the loaded days"},
 ]
 
 

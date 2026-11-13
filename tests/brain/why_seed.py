@@ -40,7 +40,7 @@ OPTIONAL = {
     "landing_page_ads": "ad_id text, landing_page_id bigint, raw_url text, source text, first_seen_date date, last_seen_date date",
     "shopify_orders": "order_id bigint, order_date date, is_new_customer boolean, is_cancelled boolean, is_test boolean, is_trybe_gift boolean, total_price numeric, total_discounts numeric, ship_country text",
     "shopify_order_lines": "order_id bigint, line_no int, quantity int, product text, line_net numeric",
-    "meta_breakdown_daily": "day date, account text, campaign_id text, adset_id text, ad_id text, breakdown text, value text, spend numeric, impressions numeric, reach numeric, link_clicks numeric, unique_outbound_clicks numeric, purchases numeric, purchase_value numeric",
+    "meta_breakdown_daily": "day date, account text, campaign_id text, adset_id text, ad_id text, breakdown text, value text, spend numeric, impressions numeric, reach numeric, link_clicks numeric, unique_outbound_clicks numeric, purchases numeric, purchase_value numeric, add_to_carts numeric, initiated_checkouts numeric",
 }
 
 
