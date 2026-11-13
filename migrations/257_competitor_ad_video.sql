@@ -1,4 +1,4 @@
--- 255: playable copies of watched competitor video ads for the /competitors lightbox. Filled by etl.competitor_ads (scrape-time capture, or --video-backfill for ads already stored);
+-- 257: playable copies of watched competitor video ads for the /competitors lightbox. Filled by etl.competitor_ads (scrape-time capture, or --video-backfill for ads already stored);
 -- served by GET /api/competitors/video/<library_id> (HTTP Range).
 --   competitor_ad_video  one row per Meta Ad Library ID: the first 30 seconds of the SD mp4 (H.264 / AAC, moov first), at most 6 MB.
 -- Ad Library video links are signed and expire in about 4 days, so the bytes are stored, never the URL. Only the curated video slice is kept (see docs/COMPETITOR_ADS.md).
