@@ -59,9 +59,11 @@ separate from the main `etl` service, so the nightly never waits for it and neve
   between. A set whose response rows never carry the requested keys (`user_persona_*`, `rule_set_*`, `std:conversion_destination` ...) is **quarantined** for 7 days at once; a set that fails with
   anything else and writes no rows is quarantined after 3 failing runs in a row (`FAIL_LIMIT`); a clean pull clears the count. Quarantine rows are `__quarantine__:<set>` / `__fails__:<set>`
   in `meta_breakdown_progress` (named with `--sets`, a set is always asked). A quarantined `failing` set keeps the backfill from being marked finished; a `shape` set does not.
-* **Transient failures** (HTTP 5xx, code 2 "Service temporarily unavailable"): the retry waiting one set pull may spend is capped at 90 s (`TRANSIENT_BUDGET_S`: three retries of 15, 30, 45 s), shared
-  by both accounts and all pages; then the set is an error for this run and the next run tries again (before: 7 retries per request, up to 14 minutes per set). Rate limits are separate: the
-  run waits and continues as before. Async report jobs are polled every 5 s for at most 10 minutes.
+* **Transient failures** (HTTP 5xx, code 2 "Service temporarily unavailable"): the retry waiting one set pull may spend without a single request getting through is capped at 90 s
+  (`TRANSIENT_BUDGET_S`: three retries of 15, 30, 45 s; the allowance is refilled by every request that succeeds, so a long productive pull with sporadic errors is not cut off). It is shared
+  by both accounts; when it is used up the set is an error for this run and the next run tries again (before: 7 retries per request, up to 14 minutes per set). Request windows (7 days, or 1 day
+  for heavy sets) that were committed inside an unfinished window are recorded as they finish (rows in `meta_breakdown_progress` with the chunk's own dates), so the next run does not pull them
+  again. Rate limits are separate: the run waits and continues as before. Async report jobs are polled every 5 s for at most 10 minutes.
 * **Too big for one day** (`action_destination` ...): the first time a one-day request is refused as too big the set is remembered (`__async__:<set>`) and from then on is requested as an async
   report straight away, with no plain attempts and no halving (before: three failed plain requests per window plus one async job per day). The async job itself runs on Meta's side
   (about 80-90 s per day for `action_destination`); if an async job for several days fails, the span is halved.
