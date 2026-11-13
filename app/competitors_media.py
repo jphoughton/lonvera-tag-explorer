@@ -1,5 +1,5 @@
 """Competitor ad media. GET /api/competitors/media/<library_id> returns the stored JPEG of one watched competitor ad (table competitor_ad_media, migration 246); GET /api/competitors/video/<library_id>
-returns its saved playable copy (table competitor_ad_video, migration 254) with HTTP Range support so seeking and iOS Safari playback work. Both are written only by etl.competitor_ads, read-only here,
+returns its saved playable copy (table competitor_ad_video, migration 255) with HTTP Range support so seeking and iOS Safari playback work. Both are written only by etl.competitor_ads, read-only here,
 login required like every other /api route (not in auth.PUBLIC_API_RE), and nothing is fetched from Meta in this process."""
 from __future__ import annotations
 
