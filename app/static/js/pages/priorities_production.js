@@ -103,7 +103,11 @@ export async function productionPage(ctx) {
     if (onBoard) { optimistic(card, to, o.beforeId, o.afterId); drawView(); }
     try {
       await api(`/api/priorities/assignments/${card.id}/move`, {}, { method: 'POST', body: { status: to, ...(o.beforeId ? { before_id: Number(o.beforeId) } : {}), ...(o.afterId ? { after_id: Number(o.afterId) } : {}), ...(o.comment ? { comment: o.comment } : {}) } });
-      await load(); drawView(); if (drawer) drawer.refresh();
+      const layout = () => (board ? JSON.stringify(board.columns.map((c) => [c.status, (c.cards || []).map((x) => x.id)])) : '');
+      const shown = onBoard ? layout() : null;
+      await load();
+      if (!onBoard || layout() !== shown) drawView();         // the card is already where the server put it: no second redraw, so nothing flickers or jumps
+      if (drawer) drawer.refresh();
       toast(`Moved to ${STATUS_LABEL[to] || to}.`);
       focusId = null;
       return true;
@@ -304,10 +308,21 @@ export async function productionPage(ctx) {
     if (bars) loadSlot.append(h('span', { class: 'prod-loadtitle' }, `Open cards, ${weekLabel(week).toLowerCase()}`), bars);
   }
 
+  // A redraw replaces the board's elements, which resets their scroll; put it back so a move does not make the columns jump
+  function keepScroll(fn) {
+    const sc = viewHost.querySelector('.prod-board-scroll');
+    const x = sc ? sc.scrollLeft : 0, y = window.scrollY;
+    const lists = new Map([...viewHost.querySelectorAll('.prod-board-list')].map((l) => [l.dataset.status + '|' + (l.dataset.lane || ''), l.scrollTop]));
+    fn();
+    const sc2 = viewHost.querySelector('.prod-board-scroll');
+    if (sc2) sc2.scrollLeft = x;
+    for (const l of viewHost.querySelectorAll('.prod-board-list')) { const t = lists.get(l.dataset.status + '|' + (l.dataset.lane || '')); if (t) l.scrollTop = t; }
+    if (window.scrollY !== y) window.scrollTo(window.scrollX, y);
+  }
   function drawView() {
     if (st.view === 'list') drawList();
     else if (st.view === 'plan') drawPlan();
-    else drawBoard();
+    else keepScroll(drawBoard);
     if (focusId) { const el = viewHost.querySelector(`.prod-board-card[data-id="${focusId}"]`); if (el) el.focus(); }
   }
 
