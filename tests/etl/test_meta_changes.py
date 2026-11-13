@@ -172,3 +172,30 @@ def test_main_runs_snapshot_even_when_the_log_fails_then_fails_the_job_loudly(cl
 def test_module_makes_no_write_calls_to_meta():
     src = open(mc.__file__).read()
     assert "requests.post" not in src and "requests.delete" not in src and "method=\"POST\"" not in src
+
+
+def test_a_window_meta_calls_too_big_is_split_down_to_days(monkeypatch):
+    calls = []
+
+    def fake_get(url, params, what, **kw):
+        if params is None:
+            return {"data": [ev("create_ad", "ADGROUP", "x2", "ad", {})]}
+        calls.append((params["since"], params["until"], params["limit"]))
+        if (dt.date.fromisoformat(params["until"]) - dt.date.fromisoformat(params["since"])).days > 1:
+            raise meta_api.TooBig("An unknown error occurred")
+        if params["limit"] == 500 and params["since"] == "2026-05-08":                       # one day that only works with smaller pages
+            raise meta_api.TooBig("An unknown error occurred")
+        return {"data": [ev("create_ad", "ADGROUP", params["since"], "ad", {})], "paging": {"next": "https://graph.example/n"}} if params["limit"] == 100 and params["since"] == "2026-05-08" else {"data": [ev("create_ad", "ADGROUP", params["since"], "ad", {})]}
+    monkeypatch.setattr(meta_api, "graph_get", fake_get)
+    monkeypatch.setattr(mc.time, "sleep", lambda s: None)
+    out = mc.pull_activities("tok", "act_1", "Lonvera Main", D(2026, 5, 6), D(2026, 5, 9))
+    days = sorted({c[0] for c in calls if (dt.date.fromisoformat(c[1]) - dt.date.fromisoformat(c[0])).days == 1})
+    assert days == ["2026-05-06", "2026-05-07", "2026-05-08", "2026-05-09"]
+    assert ("2026-05-08", "2026-05-09", 100) in calls and len(out) == 5                     # 4 days + the second page of the day that needed smaller pages
+
+
+def test_a_single_day_that_never_works_raises(monkeypatch):
+    monkeypatch.setattr(meta_api, "graph_get", lambda *a, **k: (_ for _ in ()).throw(meta_api.TooBig("An unknown error occurred")))
+    monkeypatch.setattr(mc.time, "sleep", lambda s: None)
+    with pytest.raises(meta_api.TooBig):
+        mc.pull_activities("tok", "act_1", "Lonvera Main", D(2026, 5, 6), D(2026, 5, 6))
