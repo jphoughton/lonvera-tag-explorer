@@ -29,7 +29,7 @@ IMG = ev("add_images", "ACCOUNT", "1671338033619223", "Lonvera Main", {"image_ur
 def test_parse_event_budget_bid_floor_status_and_levels():
     b = mc.parse_event("Lonvera Main", BUDGET)
     assert (b["object_level"], b["old_amount"], b["new_amount"], b["old_value"], b["new_value"]) == ("adset", 500.0, 600.0, None, None)
-    assert b["event_day"] == D(2026, 11, 10) and b["raw"]["extra_data"]["type"] == "composite_data"
+    assert b["event_day"] == D(2026, 11, 10) and b["raw"]["type"] == "composite_data"
     g = mc.parse_event("Lonvera Main", BID)
     assert (g["old_value"], g["new_value"], g["old_amount"], g["new_amount"], g["old_roas_floor"], g["new_roas_floor"]) == ("COST_CAP", "COST_CAP", 68.0, 80.0, 0.9, 1.05)
     s = mc.parse_event("Lonvera Main", STATUS)
@@ -39,10 +39,10 @@ def test_parse_event_budget_bid_floor_status_and_levels():
     t = mc.parse_event("Lonvera Main", TARGET)
     assert t["old_value"] == "Location: United States | Age: 18 - 65+" and t["new_value"] == "plain text"
     i = mc.parse_event("Lonvera Main", IMG)
-    assert "extra_data" not in i["raw"] and i["object_level"] == "account"
+    assert i["raw"] == {} and i["object_level"] == "account"
     # an odd extra_data never raises and stays in raw
     o = mc.parse_event("Lonvera Main", ev("something_new", "WEIRD", "1", "x", "not json"))
-    assert o["old_value"] is None and o["raw"]["extra_data"] == "not json" and o["object_level"] == "weird"
+    assert o["old_value"] is None and o["raw"] == {"_unparsed": "not json"} and o["object_level"] == "weird"
     # midnight Pacific: 2026-11-11T07:30Z is Nov 10 23:30 PT
     assert mc.parse_event("Lonvera Main", ev("x", "CAMPAIGN", "1", "n", {}, when="2026-11-11T07:30:00+0000"))["event_day"] == D(2026, 11, 10)
 

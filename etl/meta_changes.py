@@ -11,7 +11,7 @@ Activity log (GET /act_<id>/activities, fields event_type, object_type, object_i
 so event_key = sha1(account | event_time | event_type | object_id | extra_data | actor_id); two byte-identical events in the same second collapse to one row. Meta object types:
 ADGROUP = an ad, CAMPAIGN = an ad SET (Meta's old name), CAMPAIGN_GROUP = a campaign, ACCOUNT = the ad account; object_level carries the plain word. Budgets and bids arrive in minor units
 (cents) and are stored in dollars in old_amount / new_amount; the ROAS floor arrives x10000 (9000 = 0.90x) and is stored as a ratio. add_images / edit_images keep no extra_data in raw
-(signed CDN URLs that expire).
+(signed CDN URLs that expire); raw holds only extra_data (parsed), everything else is a column.
 Snapshot (GET /act_<id>/adsets, non-archived ad sets plus archived ones touched in the last 3 days): one row per ad set per Pacific day, replaced on a same-day rerun. It starts accumulating on
 the day the first run happens; nothing before that exists.
 Token: META_ACCESS_TOKEN (never printed). Every error text is scrubbed."""
@@ -115,11 +115,8 @@ def parse_event(account: str, ev: dict) -> dict:
         new_floor = None if _num(fl.get("new_value")) is None else round(_num(fl["new_value"]) / 10000.0, 4)
     if et == "ad_account_billing_charge":
         new_amt = _money(ex.get("new_value"))
-    raw = dict(ev)
-    if et in NO_EXTRA:
-        raw.pop("extra_data", None)
-    else:
-        raw["extra_data"] = ex if ex else ex_raw
+    # raw = the event's extra_data (parsed JSON), the only part of the event that is not already a column; add_images / edit_images keep none (signed image URLs that expire)
+    raw = {} if et in NO_EXTRA else (ex if ex else ({"_unparsed": ex_raw} if ex_raw else {}))
     key = hashlib.sha1("|".join([account, str(ev.get("event_time")), et, str(ev.get("object_id")), str(ex_raw), str(ev.get("actor_id"))]).encode()).hexdigest()
     return {"event_key": key, "account": account, "event_time": when, "event_day": when.astimezone(PT).date(), "event_type": et,
             "translated_event_type": ev.get("translated_event_type"), "object_type": ev.get("object_type"), "object_level": LEVELS.get(ev.get("object_type"), (ev.get("object_type") or "").lower() or None),

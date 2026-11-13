@@ -925,14 +925,14 @@ FROM analytics.meta_breakdown_daily GROUP BY 1, 2 ORDER BY 1, 2;
 
 *view*
 
-**Purpose.** Meta's own activity log of both ad accounts: every budget, bid, strategy, status, targeting, creation and creative change with who made it and when. The first place to look when a day's spend, CPM or ROAS moved.
+**Purpose.** Meta's own activity log of both ad accounts: every budget, bid, strategy, status, targeting, creation and creative change with when it happened and whether Meta itself or a person / app made it. The first place to look when a day's spend, CPM or ROAS moved.
 
 - **Domain:** marketing
 - **Grain:** one row per activity-log event
 - **Source:** public.meta_change_log (etl.meta_changes, Meta Marketing API activity log)
 - **Refresh:** nightly, last 3 days re-read
 - **Coverage:** from the backfill start to yesterday: min(event_day) / max(event_day) over this view
-- **Caveat:** Most rows are noise for a performance story (first_delivery_event, run-status flips through Pending Review / Pending Process, billing charges, add_images / edit_images): filter object_level and event_type, for example update_ad_set_budget, update_ad_set_bid_strategy, update_campaign_budget, update_ad_set_run_status, update_ad_set_target_spec, create_ad_set.
+- **Caveat:** Most rows are noise for a performance story (first_delivery_event, run-status flips through Pending Review / Pending Process, billing charges, add_images / edit_images): filter is_system_event = false and object_level / event_type, for example update_ad_set_budget, update_ad_set_bid_strategy, update_campaign_budget, update_ad_set_run_status, update_ad_set_target_spec, create_ad_set.
 - **Caveat:** object_level 'adset' is what Meta's raw object_type calls CAMPAIGN; 'campaign' is CAMPAIGN_GROUP. Join object_id to meta_adset_daily.adset_id / meta_campaign_daily.campaign_id.
 - **Caveat:** old_amount / new_amount are dollars (budget and bid events); old_roas_floor / new_roas_floor are ratios. extra_data is often incomplete for bids: cross-check analytics.meta_change_ledger.
 - **Caveat:** event_day is the Pacific day of the event; Meta's own account time zones differ (Main Pacific, BackUp Eastern), so an event near midnight can sit one day off from that account's insight days.
@@ -950,7 +950,7 @@ FROM analytics.meta_breakdown_daily GROUP BY 1, 2 ORDER BY 1, 2;
 | `object_id` | text |  | Id of the changed object. |
 | `object_name` | text |  | Name of the object at the time. |
 | `campaign_id` | text |  | Campaign of the object when known. |
-| `actor_name` | text |  | Who made the change ('Meta' = system). |
+| `is_system_event` | boolean |  | true when Meta itself made the event (first delivery, review status flips, billing), false when a person or an app did; the person's name is not exposed in analytics. |
 | `application_name` | text |  | App the change came through, when Meta says. |
 | `old_value` | text |  | Old value as text (status, strategy, name, targeting description); NULL for amounts. |
 | `new_value` | text |  | New value as text. |
@@ -971,7 +971,7 @@ GROUP BY 1, 2, 3 ORDER BY 1 DESC, 4 DESC;
 *Ad set budget changes with old and new dollars, yesterday*
 
 ```sql
-SELECT event_time, object_name, old_amount, new_amount, actor_name
+SELECT event_time, object_name, old_amount, new_amount, is_system_event
 FROM analytics.meta_change_log
 WHERE event_type = 'update_ad_set_budget' AND event_day = current_date - 1
 ORDER BY event_time;
@@ -4566,7 +4566,7 @@ SELECT coalesce(rule, '(unmatched)') AS rule, count(*) AS families FROM meta_fam
 - **Caveat:** Budgets and bids come as minor units and are stored in dollars (old_amount / new_amount: daily or lifetime budget for the budget events, the bid cap or target for bid strategy events, the charge for billing events). The ROAS floor comes x10000 and is stored as a ratio (0.90 = a 0.90x floor).
 - **Caveat:** extra_data is often incomplete for bids and caps (a change of a bid on an ad set with no strategy change can be missing): meta_adset_state_daily and analytics.meta_change_ledger are the cross-check, from their first snapshot day on.
 - **Caveat:** Meta writes system events too: first_delivery_event (actor Meta), update_ad_run_status to or from Pending Review / Pending Process, billing charges. Filter on actor_name or event_type for human changes.
-- **Caveat:** Two byte-identical events in the same second collapse to one row. add_images / edit_images keep no extra_data in raw (signed image URLs that expire).
+- **Caveat:** Two byte-identical events in the same second collapse to one row. add_images / edit_images keep an empty raw (their extra_data is a signed image URL that expires).
 
 | Column | Type | Null | Meaning |
 |---|---|---|---|
@@ -4591,7 +4591,7 @@ SELECT coalesce(rule, '(unmatched)') AS rule, count(*) AS families FROM meta_fam
 | `new_amount` | numeric(14,2) | yes | New daily / lifetime budget or bid, dollars; for create_ad_set / create_campaign_group the starting budget; for billing events the amount charged. |
 | `old_roas_floor` | numeric(8,4) | yes | Old ROAS floor as a ratio (bid strategy events only). |
 | `new_roas_floor` | numeric(8,4) | yes | New ROAS floor as a ratio (bid strategy events only). |
-| `raw` | jsonb | no | The event as Meta returned it (extra_data parsed to JSON); the source of truth when a parsed column is NULL. |
+| `raw` | jsonb | no | The event's extra_data as Meta returned it, parsed to JSON ({} when none; {"_unparsed": text} when it was not JSON): the source of truth when a parsed column is NULL. Every other field of the event is a column. |
 | `loaded_at` | timestamptz | no | When the row was first written. |
 
 ### public.meta_adset_state_daily
