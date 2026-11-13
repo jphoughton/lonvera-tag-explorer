@@ -65,7 +65,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
 
   function drawTabs(r) {
     const defs = [['details', 'Details'], ['comments', `Comments (${r.comment_count || 0})`], ['history', 'History']];
-    tabsEl.replaceChildren(defs.map(([k, l]) => h('button', { type: 'button', role: 'tab', class: 'prod-drawer-tab', 'aria-selected': String(k === cur), 'data-testid': 'prod-drawer-tab-' + k, onclick: () => { cur = k; draw(); } }, l)));
+    tabsEl.replaceChildren(...defs.map(([k, l]) => h('button', { type: 'button', role: 'tab', class: 'prod-drawer-tab', 'aria-selected': String(k === cur), 'data-testid': 'prod-drawer-tab-' + k, onclick: () => { cur = k; draw(); } }, l)));
   }
 
   // ---- details

@@ -31,7 +31,7 @@ export function plan({ cards, vendors, capacity, start, ops, onReassign, onCapac
         const pct = per ? Math.min(100, Math.round(100 * n / per)) : 0;
         return h('div', { class: 'prod-plan-cell' + (over ? ' prod-plan-over' : full ? ' prod-plan-full' : ''), role: 'cell', 'data-testid': 'prod-plan-cell', 'data-vendor': v, 'data-week': w, 'data-open': String(n), 'data-over': over ? '1' : '0' },
           h('div', { class: 'prod-plan-load' }, h('span', { class: 'prod-loadtrack', 'aria-hidden': 'true' }, h('span', { class: 'prod-loadfill', style: { width: pct + '%' } })), h('span', { class: 'prod-loadnum', 'data-testid': 'prod-plan-load' }, per != null ? `${n} of ${per}` : String(n)), over ? h('span', { class: 'prod-loadwarn' }, 'Over capacity') : null),
-          h('div', { class: 'prod-plan-list', 'data-testid': 'prod-plan-list', 'data-vendor': v, 'data-week': w, 'data-label': `${v}, ${weekLabel(w)}`, 'aria-label': `${v}, ${weekLabel(w)}`, role: 'list' }, mine.map((c) => cardEl(c, ops, { compact: true })), mine.length ? null : h('p', { class: 'prod-board-empty' }, 'Open')));
+          h('div', { class: 'prod-plan-list', 'data-testid': 'prod-plan-list', 'data-vendor': v, 'data-week': w, 'data-label': `${v}, ${weekLabel(w)}`, 'aria-label': `${v}, ${weekLabel(w)}`, role: 'list' }, mine.map((c) => cardEl(c, ops, { compact: true })), mine.length ? null : h('p', { class: 'prod-board-empty' }, 'Free')));
       }));
   });
   const scroll = h('div', { class: 'prod-plan-scroll', 'data-testid': 'prod-plan-scroll' }, h('div', { class: 'prod-plan-grid', role: 'table', 'aria-label': 'Four week plan' }, head, rows));

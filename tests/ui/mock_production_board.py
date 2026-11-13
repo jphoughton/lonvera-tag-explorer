@@ -43,10 +43,10 @@ def ensure(r):
 
 def status_of(H, r):
     ensure(r)
-    if r.get("_status"):
-        return r["_status"]
     if r.get("dropped_at"):
         return "dropped"
+    if r.get("_status"):
+        return r["_status"]
     v = H["view_base"](r)
     return STATUS_OF_STAGE.get(v["stage"], "assigned")
 

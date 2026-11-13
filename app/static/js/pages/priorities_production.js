@@ -309,11 +309,11 @@ export async function productionPage(ctx) {
     const bars = loadBars(board.capacity, vendorNames(), week, cards);
     const empty = !cards.length && !dropped.length;
     const stageNote = st.stage ? h('p', { class: 'prod-stagenote', 'data-testid': 'prod-board-stagenote' }, `Showing only ${STATUS_LABEL[st.stage === 'creative_in' ? 'in_review' : st.stage] || st.stage}. `, h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-board-showall', onclick: () => { st.stage = ''; sync(); drawView(); } }, 'Show all columns')) : null;
-    viewHost.replaceChildren(
+    viewHost.replaceChildren(...[
       bars ? h('div', { class: 'prod-loadwrap' }, h('p', { class: 'prod-loadtitle' }, `Open cards per vendor, ${weekLabel(week).toLowerCase()}`), bars) : null,
       stageNote,
       empty ? h('p', { 'data-testid': 'prod-empty' }, 'Nothing here yet. On Priorities, tick concepts and click Assign to vendor.') : null,
-      boardView({ columns, dropped, st, vendors: vendorNames(), capacity: board.capacity, ops, onDrop: onBoardDrop, allCards: cards }).el);
+      boardView({ columns, dropped, st, vendors: vendorNames(), capacity: board.capacity, ops, onDrop: onBoardDrop, allCards: cards }).el].filter(Boolean));
   }
 
   function drawPlan() {

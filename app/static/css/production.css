@@ -174,7 +174,8 @@ body.prod-is-dragging { user-select: none; cursor: grabbing; }
 .prod-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
 .prod-card-action { font-size: 12px; padding: 4px 10px; }
 .prod-card-moveto { font-size: 12px; padding: 3px 4px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--muted); max-width: 110px; }
-.prod-grip { flex: 0 0 auto; width: 14px; height: 18px; margin: 0 -2px 0 0; opacity: .35; cursor: grab; touch-action: none; background: radial-gradient(circle, currentColor 1.3px, transparent 1.6px) 0 0 / 6px 6px; }
+.prod-grip { position: relative; flex: 0 0 auto; width: 12px; height: 18px; margin: 0 2px 0 0; opacity: .4; cursor: grab; touch-action: none; background: radial-gradient(circle, currentColor 1.3px, transparent 1.6px) 0 0 / 6px 6px; }
+.prod-grip::before { content: ''; position: absolute; inset: -13px -10px; touch-action: none; }
 .prod-board-card:hover .prod-grip { opacity: .7; }
 /* swimlanes */
 .prod-lane { margin: 0 0 16px; }
@@ -267,7 +268,6 @@ body.prod-drawer-open { overflow: hidden; }
   .prod-card-moveto { max-width: none; flex: 1; }
   .prod-card-foot { flex-wrap: nowrap; }
   .prod-card-title, .prod-card-comments { min-height: 28px; }
-  .prod-grip { width: 28px; height: 36px; margin: -6px -8px -6px 0; background-position: center; background-repeat: no-repeat; }
   .prod-step-label { font-size: 10px; }
   .prod-plan-grid { min-width: 860px; }
 }

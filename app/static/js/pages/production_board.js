@@ -65,7 +65,7 @@ export function loadBars(capacity, vendors, week, cards) {
     const per = c.length ? c[0].per_week : null;
     const open = c.length ? c.reduce((s, x) => s + (x.open || 0), 0) : cards.filter((x) => x.vendor === v && (!week || x.for_week === week) && statusOf(x) !== 'launched').length;
     return { vendor: v, per, open };
-  }).filter((x) => x.per != null || x.open > 0);
+  }).filter((x) => x.open > 0);
   if (!rows.length) return null;
   return h('div', { class: 'prod-board-load', 'data-testid': 'prod-board-load', role: 'list', 'aria-label': 'Weekly load by vendor' },
     rows.map((x) => { const pct = x.per ? Math.min(100, Math.round(100 * x.open / x.per)) : 0; const over = x.per != null && x.open >= x.per;
