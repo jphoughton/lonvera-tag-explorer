@@ -1,5 +1,5 @@
 // Lonvera, platform Amazon: sales, advertising and organic search of the Amazon account, from Amazon through ExpandFi (see app/amazon.py, docs/MARKETING_METRICS_AMAZON.md).
-// One page, five views chosen with the View switch (?view=): Overview, Campaigns, Products, Search terms, Fees. Amazon is its own channel: nothing here is added to the
+// One page, eight views chosen with the View switch (?view=): Overview, Campaigns, Products, Keywords, Ad search terms, Negative keywords (the last three are Sponsored Products keyword data loaded by hand), Search terms, Fees. Amazon is its own channel: nothing here is added to the
 // All platforms totals, and there is no Numbers from switch (only Amazon's own reporting exists). The range control of the bar above applies to every view.
 import { h, fmt, href, isNum, navigate, currentParams, qs, cleanParams, debounce } from '../util.js';
 import { api } from '../api.js';
@@ -10,7 +10,7 @@ import { trendChart, BAR_COLOR, LINE_COLOR } from '../charts.js';
 import { pageHeader } from '../ui/pagehead.js';
 import { filterRow } from '../ui/pagefilters.js';
 
-const VIEWS = [['overview', 'Overview'], ['campaigns', 'Campaigns'], ['products', 'Products'], ['search', 'Search terms'], ['fees', 'Fees']];
+const VIEWS = [['overview', 'Overview'], ['campaigns', 'Campaigns'], ['products', 'Products'], ['keywords', 'Keywords'], ['adsearch', 'Ad search terms'], ['negatives', 'Negative keywords'], ['search', 'Search terms'], ['fees', 'Fees']];
 const AD_TYPES = [['sp', 'Sponsored Products'], ['sb', 'Sponsored Brands'], ['sbv', 'Sponsored Brands video'], ['sd', 'Sponsored Display']];
 const PRODUCTS = [['vita-bull', 'Vita Bull'], ['beef-liver', 'Beef Liver'], ['boneflex', 'Boneflex'], ['vita-belle', 'Vital Belle']];
 const PRODUCT_COLORS = { all: '#1f3a5f', 'vita-bull': '#5a4fd6', 'beef-liver': '#d9822b', boneflex: '#1d8a56', 'vita-belle': '#c2410c' };
@@ -65,9 +65,9 @@ function noteLine(text, testid) {
 
 function csvButton(filename, headers, rowsOf) {
   const b = h('button', { type: 'button', class: 'btn small', 'data-testid': 'amz-csv', title: 'Download the rows now shown as a CSV file' }, 'Download CSV');
-  b.addEventListener('click', () => {
+  b.addEventListener('click', async () => {
     const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-    const text = [headers, ...rowsOf()].map((r) => r.map(esc).join(',')).join('\n') + '\n';
+    const text = [headers, ...(await rowsOf())].map((r) => r.map(esc).join(',')).join('\n') + '\n';        // rowsOf may be async (the negatives file is fetched whole)
     const a = h('a', { href: URL.createObjectURL(new Blob([text], { type: 'text/csv' })), download: filename });
     document.body.append(a);
     a.click();
@@ -448,13 +448,242 @@ async function feesView(ctx, p, mount) {
     t.el));
 }
 
+// ---------------------------------------------------------------------------------------------------------------- keyword layer (Sponsored Products, loaded by hand)
+const KW_PRODUCTS = [...PRODUCTS, ['mixed', 'Mixed products'], ['unmapped', 'No product found']];
+const kwHref = (p, extra) => amzHref(p, extra);
+
+function kwEmptyState() {
+  return h('div', { class: 'empty-range', role: 'status', 'data-testid': 'amz-empty' },
+    h('strong', 'Amazon keyword data has not been loaded yet.'),
+    h('span', ' It is loaded by hand from Amazon Ads reports pulled through ExpandFi Data Dash; it does not refresh on its own. See docs/AMAZON_DATA.md for the load command.'));
+}
+
+function setKwFooter(d) {
+  const el = document.getElementById('source');
+  if (el) { el.hidden = false; el.textContent = `Source: Amazon Ads Sponsored Products reports pulled through ExpandFi Data Dash and loaded by hand${d && d.window_info ? `, data through ${fmt.day(d.window_info.data_through)}` : ''}.`; }
+}
+
+function coverageLine(d) {
+  return noteLine(d.coverage_text, 'amz-kw-coverage');
+}
+
+function kwMetricCols() {
+  return [
+    col('impressions', 'Impressions', (r) => r.impressions, fmt.int, { total: true }),
+    col('clicks', 'Clicks', (r) => r.clicks, fmt.int, { total: true }),
+    col('ctr', 'Click-through rate', (r) => r.ctr, fmt.rate, { total: true, title: 'Clicks / impressions' }),
+    col('cost', 'Cost', (r) => r.cost, money2, { total: true, title: 'Ad spend' }),
+    col('cpc', 'Cost per click', (r) => r.cpc, money2, { total: true, title: 'Cost / clicks' }),
+    col('purchases', 'Purchases', (r) => r.purchases, fmt.int, { total: true, title: 'Purchases within Amazon’s 7-day attribution window' }),
+    col('conversion_rate', 'Conversion rate', (r) => r.conversion_rate, fmt.rate, { total: true, title: 'Purchases / clicks' }),
+    col('sales', 'Sales', (r) => r.sales, fmt.money, { total: true, title: 'Sales within Amazon’s 7-day attribution window' }),
+    col('return_on_ad_spend', 'Return on ad spend', (r) => r.return_on_ad_spend, times, { total: true, title: 'Sales / cost' }),
+    col('acos', 'Ad cost as % of ad sales', (r) => r.acos, fmt.rate, { total: true, title: 'Cost / sales (known as ACOS on Amazon)' }),
+  ];
+}
+
+const KW_METRIC_HEADERS = ['Impressions', 'Clicks', 'Click-through rate', 'Cost', 'Cost per click', 'Purchases', 'Conversion rate', 'Sales', 'Return on ad spend', 'Ad cost as % of ad sales'];
+const kwMetricValues = (r) => [r.impressions, r.clicks, r.ctr, r.cost, r.cpc, r.purchases, r.conversion_rate, r.sales, r.return_on_ad_spend, r.acos];
+const trunc = (v, title) => h('span', { class: 'rowname', title: title || v }, v);
+
+async function keywordsView(ctx, p, mount) {
+  const state = ['enabled', 'paused'].includes(p.state) ? p.state : null;
+  const product = KW_PRODUCTS.some(([k]) => k === p.product) ? p.product : null;
+  const all = p.all === '1';
+  const baseArgs = { ...winParams(p), ...(product ? { product } : {}), ...(state ? { state } : {}), ...(all ? { all: '1' } : {}) };
+  const first = await api('/api/amazon/keywords', { ...baseArgs, ...(p.q ? { q: p.q } : {}) }, { signal: ctx.signal });
+  if (!ctx.alive()) return;
+  if (first.loaded === false) { setRangeInfo(p, null, null); mount(kwEmptyState()); return; }
+  setRangeInfo(p, first.window_info, null, { unclassified: false });
+  setKwFooter(first);
+  let cur = first, seq = 0;
+  const cols = [
+    { key: 'text', label: 'Keyword or target', sticky: true, sort: (r) => r.text, total: () => 'Total',
+      cell: (r) => h('div', { class: 'cell-label-text' }, h('div', { class: 'nm' }, trunc(r.text)), h('div', { class: 'sub' }, h('span', { class: 'badge muted-badge' }, r.match_label))) },
+    col('campaign', 'Campaign', (r) => r.campaign, (v) => trunc(v), { num: false }),
+    col('ad_group', 'Ad group', (r) => r.ad_group, (v) => trunc(v), { num: false }),
+    col('product', 'Product', (r) => r.product_label, (v) => v, { num: false }),
+    col('state', 'State', (r) => r.state || 'removed', (v, r) => (r.state ? v : h('span', { title: 'Not in the latest keyword or target list: archived or removed since' }, 'Not listed')), { num: false }),
+    col('bid', 'Current bid', (r) => r.bid, (v, r) => (isNum(v) ? money2(v) : r.bid_inherited ? h('span', { title: 'The target uses the ad group bid' }, 'Ad group bid') : '–'), { title: 'Bid in the latest snapshot' }),
+    ...kwMetricCols(),
+  ];
+  const t = createTable({ columns: cols, rows: cur.rows, total: { ...cur.total }, rowKey: (r) => r.key, tableClass: 'compact', testid: 'amz-keywords', sortKey: 'cost', sortDir: 'desc', emptyText: 'No keywords match.' });
+  const summary = h('div', { class: 'note-line', 'data-testid': 'amz-kw-summary' });
+  function describe() {
+    summary.textContent = `${fmt.int(cur.total_rows)} keywords and targets${cur.truncated ? ` (the ${fmt.int(cur.rows.length)} with most cost are shown)` : ''}.`;
+  }
+  describe();
+  async function refetch(q) {
+    const my = ++seq;
+    let d;
+    try { d = await api('/api/amazon/keywords', { ...baseArgs, ...(q ? { q } : {}) }, { signal: ctx.signal }); } catch (e) { if (e && e.name === 'AbortError') return; summary.textContent = 'Search failed: ' + e.message; return; }
+    if (my !== seq || d.loaded === false) return;
+    cur = d;
+    t.setRows(d.rows, { ...d.total });
+    describe();
+  }
+  const box = searchBox(p.q, (q) => { replaceParam('q', q); refetch(q); }, 'amz-kw-search', 'Keyword, campaign or ad group');
+  const hf = (extra) => kwHref(p, { view: 'keywords', product, state, all: all ? '1' : null, q: p.q, ...extra });
+  mount(h('div', null,
+    h('div', { class: 'tablehead' }, h('h2', { id: 'amz-keywords-title' }, 'Keywords and targets'),
+      csvButton('amazon-keywords.csv', ['Keyword or target', 'Match type', 'Campaign', 'Ad group', 'Product', 'State', 'Current bid', ...KW_METRIC_HEADERS],
+        () => cur.rows.map((r) => [r.text, r.match_label, r.campaign, r.ad_group, r.product_label, r.state || 'not listed', r.bid, ...kwMetricValues(r)]))),
+    coverageLine(first),
+    first.bids_note ? noteLine(first.bids_note, 'amz-kw-bids') : null,
+    noteLine(first.note, 'amz-kw-note'),
+    filterRow(chips('Product', [['all', 'All'], ...first.facets.products.map((x) => [x.key, x.label])], product, (k) => hf({ product: k === 'all' ? null : k }), 'amz-product-filter'),
+      chips('State', [['all', 'All'], ['enabled', 'Enabled'], ['paused', 'Paused']], state, (k) => hf({ state: k === 'all' ? null : k }), 'amz-state-filter'),
+      chips('Show', [['imp', 'With impressions'], ['all', 'All keywords']], all ? 'all' : 'imp', (k) => hf({ all: k === 'all' ? '1' : null }), 'amz-show-filter'), box),
+    summary, t.el));
+}
+
+// ---- ad search terms
+function matchesCard(p, term, signal, onClose) {
+  const title = h('h3', { 'data-testid': 'amz-matches-title' }, `${term.term} · what matched it`);
+  const slot = h('div', { 'data-testid': 'amz-matches-slot' }, h('div', { class: 'trend-note' }, 'Loading…'));
+  const close = h('button', { type: 'button', class: 'btn small', 'data-testid': 'amz-matches-close' }, 'Close');
+  close.addEventListener('click', onClose);
+  const el = h('div', { class: 'card trendcard', 'data-testid': 'amz-matches' }, h('div', { class: 'card-head' }, title, close), slot);
+  async function load() {
+    let d;
+    try { d = await api('/api/amazon/ad-search-terms/matches', { ...winParams(p), ...(p.product ? { product: p.product } : {}), term: term.key || term.term }, { signal }); } catch (e) { if (e && e.name === 'AbortError') return; slot.textContent = 'Unavailable: ' + e.message; return; }
+    if (d.loaded === false) { slot.textContent = d.message; return; }
+    const cols = [
+      { key: 'text', label: 'Keyword or target', sticky: true, sort: (r) => r.text, total: () => 'Total', cell: (r) => h('div', { class: 'cell-label-text' }, h('div', { class: 'nm' }, trunc(r.text)), h('div', { class: 'sub' }, h('span', { class: 'badge muted-badge' }, r.match_label))) },
+      col('campaign', 'Campaign', (r) => r.campaign, (v) => trunc(v), { num: false }),
+      col('ad_group', 'Ad group', (r) => r.ad_group, (v) => trunc(v), { num: false }),
+      col('product', 'Product', (r) => r.product_label, (v) => v, { num: false }),
+      ...kwMetricCols(),
+    ];
+    const t = createTable({ columns: cols, rows: d.rows, total: { ...d.total }, rowKey: (r) => r.key, tableClass: 'compact', testid: 'amz-matches-table', sortKey: 'cost', sortDir: 'desc', emptyText: 'No matches in this range.' });
+    title.textContent = `${d.term} · matched ${d.rows.length} keyword${d.rows.length === 1 ? '' : 's'} or target${d.rows.length === 1 ? '' : 's'}`;
+    slot.replaceChildren(t.el);
+  }
+  return { el, load };
+}
+
+async function adSearchView(ctx, p, mount) {
+  const product = KW_PRODUCTS.some(([k]) => k === p.product) ? p.product : null;
+  const baseArgs = { ...winParams(p), ...(product ? { product } : {}) };
+  const first = await api('/api/amazon/ad-search-terms', { ...baseArgs, ...(p.q ? { q: p.q } : {}) }, { signal: ctx.signal });
+  if (!ctx.alive()) return;
+  if (first.loaded === false) { setRangeInfo(p, null, null); mount(kwEmptyState()); return; }
+  setRangeInfo(p, first.window_info, null, { unclassified: false });
+  setKwFooter(first);
+  let cur = first, seq = 0, open = null;
+  const slot = h('div', { 'data-testid': 'amz-matches-host' });
+  const termCell = (r) => h('div', { class: 'cell-label-text' }, h('div', { class: 'nm' }, h('button', { type: 'button', class: 'linkbtn rowlink', title: 'Show the keywords and campaigns that matched this term', 'data-term': r.key, onclick: () => openTerm(r) }, r.term)),
+    h('div', { class: 'sub' }, h('span', { class: 'muted small' }, `${fmt.int(r.keywords)} keyword${r.keywords === 1 ? '' : 's'} · ${fmt.int(r.campaigns)} campaign${r.campaigns === 1 ? '' : 's'}`)));
+  const cols = [
+    { key: 'term', label: 'Customer search term', sticky: true, sort: (r) => r.term, total: () => 'Total', cell: termCell },
+    ...kwMetricCols(),
+    col('search_volume', 'Search volume, weekly average', (r) => r.search_volume, (v) => (isNum(v) ? fmt.int(v) : '–'), { title: 'Amazon searches for the term per week, averaged over the full weeks of the range in which Search Query Performance lists it (blank if it never does)' }),
+    col('our_click_share', 'Our click share', (r) => r.our_click_share, pct2, { title: 'Our clicks / all clicks for the term, from Search Query Performance (includes our sponsored clicks)' }),
+    col('our_purchase_share', 'Our purchase share', (r) => r.our_purchase_share, pct2, { title: 'Our purchases / all purchases for the term, from Search Query Performance' }),
+    col('weeks_listed', 'Weeks listed', (r) => (isNum(r.weeks_listed) && r.weeks_in_range ? r.weeks_listed / r.weeks_in_range : null), (_v, r) => (isNum(r.weeks_listed) ? `${r.weeks_listed} of ${r.weeks_in_range}` : '–'), { title: 'Full weeks of the range in which Search Query Performance lists the term' }),
+  ];
+  const t = createTable({ columns: cols, rows: cur.rows, total: { ...cur.total }, rowKey: (r) => r.key, tableClass: 'compact', testid: 'amz-ad-search', sortKey: 'cost', sortDir: 'desc', emptyText: 'No search terms match.' });
+  const summary = h('div', { class: 'note-line', 'data-testid': 'amz-ad-summary' });
+  function describe() {
+    summary.textContent = `${fmt.int(cur.total_terms)} search terms${cur.truncated ? ` (the ${fmt.int(cur.rows.length)} with most cost are shown)` : ''}`
+      + (isNum(cur.organic_cost_share) ? ` · ${(cur.organic_cost_share * 100).toFixed(0)}% of the cost is on terms Search Query Performance lists` : '') + '.';
+  }
+  describe();
+  async function refetch(q) {
+    const my = ++seq;
+    let d;
+    try { d = await api('/api/amazon/ad-search-terms', { ...baseArgs, ...(q ? { q } : {}) }, { signal: ctx.signal }); } catch (e) { if (e && e.name === 'AbortError') return; summary.textContent = 'Search failed: ' + e.message; return; }
+    if (my !== seq || d.loaded === false) return;
+    cur = d;
+    t.setRows(d.rows, { ...d.total });
+    describe();
+  }
+  const box = searchBox(p.q, (q) => { replaceParam('q', q); refetch(q); }, 'amz-ad-search-input', 'Search term');
+  function openTerm(r) {
+    open = matchesCard(p, r, ctx.signal, closeTerm);
+    slot.replaceChildren(open.el);
+    replaceParam('term', r.key);
+    open.load();
+    slot.scrollIntoView({ block: 'nearest' });
+  }
+  function closeTerm() { open = null; slot.replaceChildren(); replaceParam('term', null); }
+  const hf = (extra) => kwHref(p, { view: 'adsearch', product, q: p.q, ...extra });
+  mount(h('div', null,
+    h('div', { class: 'tablehead' }, h('h2', { id: 'amz-ad-search-title' }, 'Ad search terms'),
+      csvButton('amazon-ad-search-terms.csv', ['Customer search term', 'Keywords matched', 'Campaigns matched', ...KW_METRIC_HEADERS, 'Search volume weekly average', 'Our click share %', 'Our purchase share %', 'Weeks listed', 'Weeks in range'],
+        () => cur.rows.map((r) => [r.term, r.keywords, r.campaigns, ...kwMetricValues(r), r.search_volume, r.our_click_share, r.our_purchase_share, r.weeks_listed, r.weeks_in_range]))),
+    coverageLine(first),
+    noteLine(first.note, 'amz-ad-note'),
+    filterRow(chips('Product', [['all', 'All'], ...first.facets.products.map((x) => [x.key, x.label])], product, (k) => hf({ product: k === 'all' ? null : k, term: null }), 'amz-product-filter'), box),
+    summary, slot, t.el));
+  if (p.term) openTerm(cur.rows.find((x) => x.key === p.term) || { key: p.term, term: p.term });
+}
+
+// ---- negative keywords
+async function negativesView(ctx, p, mount) {
+  const match = ['phrase', 'exact'].includes(p.match) ? p.match : null;
+  const state = ['enabled', 'archived'].includes(p.state) ? p.state : null;
+  const product = KW_PRODUCTS.some(([k]) => k === p.product) ? p.product : null;
+  const baseArgs = { ...winParams(p), ...(match ? { match } : {}), ...(state ? { state } : {}), ...(product ? { product } : {}) };
+  const first = await api('/api/amazon/negatives', { ...baseArgs, ...(p.q ? { q: p.q } : {}) }, { signal: ctx.signal });
+  if (!ctx.alive()) return;
+  if (first.loaded === false) { setRangeInfo(p, null, null); mount(kwEmptyState()); return; }
+  setRangeInfo(p, first.window_info, null, { unclassified: false });
+  setKwFooter(first);
+  let cur = first, seq = 0;
+  const cols = [
+    { key: 'text', label: 'Negative keyword', sticky: true, sort: (r) => r.text, cell: (r) => h('div', { class: 'cell-label-text' }, h('div', { class: 'nm' }, trunc(r.text))) },
+    col('match_label', 'Match type', (r) => r.match_label, (v) => v, { num: false }),
+    col('campaign', 'Campaign', (r) => r.campaign, (v) => trunc(v), { num: false }),
+    col('ad_group', 'Ad group', (r) => r.ad_group, (v) => trunc(v), { num: false }),
+    col('product', 'Product', (r) => r.product_label, (v) => v, { num: false }),
+    col('state', 'State', (r) => r.state, (v) => fmt.text(v ? v.charAt(0).toUpperCase() + v.slice(1) : null), { num: false }),
+  ];
+  const t = createTable({ columns: cols, rows: cur.rows, rowKey: (r) => r.key, tableClass: 'compact', testid: 'amz-negatives', sortKey: 'text', sortDir: 'asc', emptyText: 'No negative keywords match.' });
+  const summary = h('div', { class: 'note-line', 'data-testid': 'amz-neg-summary' });
+  function describe() {
+    summary.textContent = `${fmt.int(cur.matched)} of ${fmt.int(cur.total)} negative keywords match${cur.truncated ? `; the first ${fmt.int(cur.shown)} are listed, narrow the search to see the rest` : ''}.`;
+  }
+  describe();
+  async function refetch(q) {
+    const my = ++seq;
+    let d;
+    try { d = await api('/api/amazon/negatives', { ...baseArgs, ...(q ? { q } : {}) }, { signal: ctx.signal }); } catch (e) { if (e && e.name === 'AbortError') return; summary.textContent = 'Search failed: ' + e.message; return; }
+    if (my !== seq || d.loaded === false) return;
+    cur = d;
+    t.setRows(d.rows);
+    describe();
+  }
+  const box = searchBox(p.q, (q) => { replaceParam('q', q); refetch(q); }, 'amz-neg-search', 'Keyword, campaign or ad group');
+  const hf = (extra) => kwHref(p, { view: 'negatives', match, state, product, q: p.q, ...extra });
+  const count = (n) => (isNum(n) ? ` (${fmt.int(n)})` : '');
+  const sf = first.facets;
+  // the file holds every match, not just the rows on screen (the capped list is a display limit)
+  const csv = csvButton('amazon-negative-keywords.csv', ['Negative keyword', 'Match type', 'Campaign', 'Ad group', 'Product', 'State'], async () => {
+    const qv = box.querySelector('input').value.trim();
+    const d = await api('/api/amazon/negatives', { ...baseArgs, ...(qv ? { q: qv } : {}), limit: 50000 }, { signal: ctx.signal });
+    return d.rows.map((r) => [r.text, r.match_label, r.campaign, r.ad_group, r.product_label, r.state]);
+  });
+  mount(h('div', null,
+    h('div', { class: 'tablehead' }, h('h2', { id: 'amz-negatives-title' }, 'Negative keywords'), csv),
+    coverageLine(first),
+    noteLine(first.note, 'amz-neg-note'),
+    filterRow(chips('Match type', [['all', 'All'], ['phrase', 'Phrase' + count(sf.match.NEGATIVE_PHRASE)], ['exact', 'Exact' + count(sf.match.NEGATIVE_EXACT)]], match, (k) => hf({ match: k === 'all' ? null : k }), 'amz-match-filter'),
+      chips('State', [['all', 'All'], ['enabled', 'Enabled' + count(sf.states.enabled)], ['archived', 'Archived' + count(sf.states.archived)]], state, (k) => hf({ state: k === 'all' ? null : k }), 'amz-state-filter'),
+      chips('Product', [['all', 'All'], ...sf.products.map((x) => [x.key, x.label + count(x.count)])], product, (k) => hf({ product: k === 'all' ? null : k }), 'amz-product-filter'), box),
+    summary, t.el));
+}
+
 // ---------------------------------------------------------------------------------------------------------------- page
-const VIEW_FNS = { overview: overviewView, campaigns: campaignsView, products: productsView, search: searchView, fees: feesView };
-const TITLES = { overview: 'Amazon', campaigns: 'Amazon campaigns', products: 'Amazon products', search: 'Amazon search terms', fees: 'Amazon fees' };
+const VIEW_FNS = { overview: overviewView, campaigns: campaignsView, products: productsView, keywords: keywordsView, adsearch: adSearchView, negatives: negativesView, search: searchView, fees: feesView };
+const TITLES = { overview: 'Amazon', campaigns: 'Amazon campaigns', products: 'Amazon products', keywords: 'Amazon keywords', adsearch: 'Amazon ad search terms', negatives: 'Amazon negative keywords', search: 'Amazon search terms', fees: 'Amazon fees' };
 const DESCRIPTIONS = {
   overview: 'Amazon sales, orders and advertising for the range, from Amazon through ExpandFi.',
   campaigns: 'Every Amazon ad campaign with spend and the results Amazon credits to it.',
   products: 'Revenue and advertising by Amazon product (ASIN).',
+  keywords: 'Every Sponsored Products keyword and target with its cost, sales and current bid.',
+  adsearch: 'The customer search terms your ads served on, next to how much of that search you win without paying.',
+  negatives: 'The negative keywords set on your Sponsored Products ad groups.',
   search: 'Organic search: how many people search each term on Amazon and how much of it we win.',
   fees: 'What Amazon settled with us, by type of fee and month.',
 };

@@ -137,7 +137,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 
 | Group | Relations |
 |---|---|
-| analytics schema: the read-only views (start here) | [`analytics.meta_ads`](#analyticsmeta_ads), [`analytics.meta_ad_daily`](#analyticsmeta_ad_daily), [`analytics.meta_adset_daily`](#analyticsmeta_adset_daily), [`analytics.meta_campaign_daily`](#analyticsmeta_campaign_daily), [`analytics.meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`analytics.meta_reach`](#analyticsmeta_reach), [`analytics.google_campaign_daily`](#analyticsgoogle_campaign_daily), [`analytics.platform_daily`](#analyticsplatform_daily), [`analytics.orders_daily`](#analyticsorders_daily), [`analytics.creative_tracker`](#analyticscreative_tracker), [`analytics.data_coverage`](#analyticsdata_coverage), [`analytics.etl_runs`](#analyticsetl_runs), [`analytics.meta_breakdown_daily`](#analyticsmeta_breakdown_daily), [`analytics.meta_change_log`](#analyticsmeta_change_log), [`analytics.meta_adset_state_daily`](#analyticsmeta_adset_state_daily), [`analytics.meta_change_ledger`](#analyticsmeta_change_ledger), [`analytics.attribution_source_daily`](#analyticsattribution_source_daily), [`analytics.attribution_anyclick_daily`](#analyticsattribution_anyclick_daily), [`analytics.attribution_unmapped_daily`](#analyticsattribution_unmapped_daily), [`analytics.orders_daily_detail`](#analyticsorders_daily_detail), [`analytics.orders_by_product_daily`](#analyticsorders_by_product_daily), [`analytics.orders_hourly`](#analyticsorders_hourly), [`analytics.amazon_daily`](#analyticsamazon_daily), [`analytics.site_traffic_daily`](#analyticssite_traffic_daily), [`analytics.platform_daily_history`](#analyticsplatform_daily_history), [`analytics.meta_product_daily`](#analyticsmeta_product_daily), [`analytics.meta_product_reach`](#analyticsmeta_product_reach), [`analytics.meta_bids_daily`](#analyticsmeta_bids_daily), [`analytics.pacing_live_today`](#analyticspacing_live_today), [`analytics.pacing_amazon_month_to_date`](#analyticspacing_amazon_month_to_date), [`analytics.pacing_hourly_spend_curve`](#analyticspacing_hourly_spend_curve), [`analytics.pacing_levers`](#analyticspacing_levers), [`analytics.pacing_meta_spend_monthly`](#analyticspacing_meta_spend_monthly), [`analytics.pipeline_feeds`](#analyticspipeline_feeds), [`analytics.pipeline_feed_attempts`](#analyticspipeline_feed_attempts), [`analytics.pipeline_feed_verify`](#analyticspipeline_feed_verify), [`analytics.pipeline_refresh_runs`](#analyticspipeline_refresh_runs), [`analytics.pipeline_alerts`](#analyticspipeline_alerts), [`analytics.projection_scenarios`](#analyticsprojection_scenarios), [`analytics.projection_levers`](#analyticsprojection_levers), [`analytics.projection_series`](#analyticsprojection_series), [`analytics.projection_actuals`](#analyticsprojection_actuals), [`analytics.projection_pnl_drivers`](#analyticsprojection_pnl_drivers), [`analytics.projection_pnl_settings`](#analyticsprojection_pnl_settings), [`analytics.projection_pnl_account_map`](#analyticsprojection_pnl_account_map), [`analytics.projection_cogs_sku`](#analyticsprojection_cogs_sku), [`analytics.projection_vendor_retainers`](#analyticsprojection_vendor_retainers), [`analytics.inventory_purchase_orders`](#analyticsinventory_purchase_orders), [`analytics.inventory_fba_transfers`](#analyticsinventory_fba_transfers), [`analytics.inventory_vendor_lead_times`](#analyticsinventory_vendor_lead_times), [`analytics.inventory_vendor_costs`](#analyticsinventory_vendor_costs), [`analytics.inventory_product_costs`](#analyticsinventory_product_costs), [`analytics.inventory_reorder_params`](#analyticsinventory_reorder_params), [`analytics.inventory_stock_counts`](#analyticsinventory_stock_counts), [`analytics.inventory_stock_daily`](#analyticsinventory_stock_daily), [`analytics.inventory_units_daily`](#analyticsinventory_units_daily), [`analytics.inventory_units_monthly`](#analyticsinventory_units_monthly), [`analytics.inventory_units_by_country`](#analyticsinventory_units_by_country), [`analytics.cohorts_monthly`](#analyticscohorts_monthly), [`analytics.cohorts_curve_cumulative`](#analyticscohorts_curve_cumulative), [`analytics.cohorts_curve_goal`](#analyticscohorts_curve_goal), [`analytics.creative_family_daily`](#analyticscreative_family_daily), [`analytics.creative_family_metrics`](#analyticscreative_family_metrics), [`analytics.creative_unmatched_meta`](#analyticscreative_unmatched_meta), [`analytics.creative_stage_moves`](#analyticscreative_stage_moves), [`analytics.creative_scaling_placements`](#analyticscreative_scaling_placements), [`analytics.creative_scaling_benchmarks`](#analyticscreative_scaling_benchmarks), [`analytics.creative_content`](#analyticscreative_content), [`analytics.tag_products`](#analyticstag_products), [`analytics.tag_taxonomy_lines`](#analyticstag_taxonomy_lines), [`analytics.tag_line_ingredients`](#analyticstag_line_ingredients), [`analytics.tracker_tags`](#analyticstracker_tags), [`analytics.tracker_hooks`](#analyticstracker_hooks), [`analytics.priorities_snapshots`](#analyticspriorities_snapshots), [`analytics.priorities_thresholds`](#analyticspriorities_thresholds), [`analytics.priorities_baselines`](#analyticspriorities_baselines), [`analytics.priorities_concepts`](#analyticspriorities_concepts), [`analytics.priorities_manual_concepts`](#analyticspriorities_manual_concepts), [`analytics.production_assignments`](#analyticsproduction_assignments), [`analytics.production_formats`](#analyticsproduction_formats), [`analytics.daily_story`](#analyticsdaily_story), [`analytics.daily_story_facts`](#analyticsdaily_story_facts), [`analytics.daily_story_patterns`](#analyticsdaily_story_patterns), [`analytics.daily_story_pattern_scoreboard`](#analyticsdaily_story_pattern_scoreboard), [`analytics.daily_story_metric_registry`](#analyticsdaily_story_metric_registry), [`analytics.competitor_brands`](#analyticscompetitor_brands), [`analytics.competitor_ads`](#analyticscompetitor_ads), [`analytics.competitor_concepts`](#analyticscompetitor_concepts), [`analytics.catalog`](#analyticscatalog), [`analytics.metric_glossary`](#analyticsmetric_glossary), [`analytics.amazon_asin_products`](#analyticsamazon_asin_products), [`analytics.amazon_ads_campaign_daily`](#analyticsamazon_ads_campaign_daily), [`analytics.amazon_ads_asin_daily`](#analyticsamazon_ads_asin_daily), [`analytics.amazon_search_queries_weekly`](#analyticsamazon_search_queries_weekly), [`analytics.amazon_search_queries_monthly`](#analyticsamazon_search_queries_monthly), [`analytics.amazon_orders_asin_daily`](#analyticsamazon_orders_asin_daily), [`analytics.amazon_traffic_daily`](#analyticsamazon_traffic_daily), [`analytics.amazon_market_baskets`](#analyticsamazon_market_baskets), [`analytics.amazon_repeat_purchases`](#analyticsamazon_repeat_purchases), [`analytics.amazon_settlement_fees_daily`](#analyticsamazon_settlement_fees_daily), [`analytics.klaviyo_daily`](#analyticsklaviyo_daily), [`analytics.klaviyo_campaigns`](#analyticsklaviyo_campaigns), [`analytics.klaviyo_flows`](#analyticsklaviyo_flows), [`analytics.klaviyo_flow_messages`](#analyticsklaviyo_flow_messages), [`analytics.klaviyo_message_content`](#analyticsklaviyo_message_content), [`analytics.klaviyo_message_performance`](#analyticsklaviyo_message_performance), [`analytics.landing_pages`](#analyticslanding_pages), [`analytics.landing_page_versions`](#analyticslanding_page_versions), [`analytics.landing_page_ads`](#analyticslanding_page_ads), [`analytics.landing_page_ad_checks`](#analyticslanding_page_ad_checks), [`analytics.landing_page_top_ads`](#analyticslanding_page_top_ads), [`analytics.shopify_orders`](#analyticsshopify_orders), [`analytics.shopify_order_lines`](#analyticsshopify_order_lines) |
+| analytics schema: the read-only views (start here) | [`analytics.meta_ads`](#analyticsmeta_ads), [`analytics.meta_ad_daily`](#analyticsmeta_ad_daily), [`analytics.meta_adset_daily`](#analyticsmeta_adset_daily), [`analytics.meta_campaign_daily`](#analyticsmeta_campaign_daily), [`analytics.meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`analytics.meta_reach`](#analyticsmeta_reach), [`analytics.google_campaign_daily`](#analyticsgoogle_campaign_daily), [`analytics.platform_daily`](#analyticsplatform_daily), [`analytics.orders_daily`](#analyticsorders_daily), [`analytics.creative_tracker`](#analyticscreative_tracker), [`analytics.data_coverage`](#analyticsdata_coverage), [`analytics.etl_runs`](#analyticsetl_runs), [`analytics.meta_breakdown_daily`](#analyticsmeta_breakdown_daily), [`analytics.meta_change_log`](#analyticsmeta_change_log), [`analytics.meta_adset_state_daily`](#analyticsmeta_adset_state_daily), [`analytics.meta_change_ledger`](#analyticsmeta_change_ledger), [`analytics.attribution_source_daily`](#analyticsattribution_source_daily), [`analytics.attribution_anyclick_daily`](#analyticsattribution_anyclick_daily), [`analytics.attribution_unmapped_daily`](#analyticsattribution_unmapped_daily), [`analytics.orders_daily_detail`](#analyticsorders_daily_detail), [`analytics.orders_by_product_daily`](#analyticsorders_by_product_daily), [`analytics.orders_hourly`](#analyticsorders_hourly), [`analytics.amazon_daily`](#analyticsamazon_daily), [`analytics.site_traffic_daily`](#analyticssite_traffic_daily), [`analytics.platform_daily_history`](#analyticsplatform_daily_history), [`analytics.meta_product_daily`](#analyticsmeta_product_daily), [`analytics.meta_product_reach`](#analyticsmeta_product_reach), [`analytics.meta_bids_daily`](#analyticsmeta_bids_daily), [`analytics.pacing_live_today`](#analyticspacing_live_today), [`analytics.pacing_amazon_month_to_date`](#analyticspacing_amazon_month_to_date), [`analytics.pacing_hourly_spend_curve`](#analyticspacing_hourly_spend_curve), [`analytics.pacing_levers`](#analyticspacing_levers), [`analytics.pacing_meta_spend_monthly`](#analyticspacing_meta_spend_monthly), [`analytics.pipeline_feeds`](#analyticspipeline_feeds), [`analytics.pipeline_feed_attempts`](#analyticspipeline_feed_attempts), [`analytics.pipeline_feed_verify`](#analyticspipeline_feed_verify), [`analytics.pipeline_refresh_runs`](#analyticspipeline_refresh_runs), [`analytics.pipeline_alerts`](#analyticspipeline_alerts), [`analytics.projection_scenarios`](#analyticsprojection_scenarios), [`analytics.projection_levers`](#analyticsprojection_levers), [`analytics.projection_series`](#analyticsprojection_series), [`analytics.projection_actuals`](#analyticsprojection_actuals), [`analytics.projection_pnl_drivers`](#analyticsprojection_pnl_drivers), [`analytics.projection_pnl_settings`](#analyticsprojection_pnl_settings), [`analytics.projection_pnl_account_map`](#analyticsprojection_pnl_account_map), [`analytics.projection_cogs_sku`](#analyticsprojection_cogs_sku), [`analytics.projection_vendor_retainers`](#analyticsprojection_vendor_retainers), [`analytics.inventory_purchase_orders`](#analyticsinventory_purchase_orders), [`analytics.inventory_fba_transfers`](#analyticsinventory_fba_transfers), [`analytics.inventory_vendor_lead_times`](#analyticsinventory_vendor_lead_times), [`analytics.inventory_vendor_costs`](#analyticsinventory_vendor_costs), [`analytics.inventory_product_costs`](#analyticsinventory_product_costs), [`analytics.inventory_reorder_params`](#analyticsinventory_reorder_params), [`analytics.inventory_stock_counts`](#analyticsinventory_stock_counts), [`analytics.inventory_stock_daily`](#analyticsinventory_stock_daily), [`analytics.inventory_units_daily`](#analyticsinventory_units_daily), [`analytics.inventory_units_monthly`](#analyticsinventory_units_monthly), [`analytics.inventory_units_by_country`](#analyticsinventory_units_by_country), [`analytics.cohorts_monthly`](#analyticscohorts_monthly), [`analytics.cohorts_curve_cumulative`](#analyticscohorts_curve_cumulative), [`analytics.cohorts_curve_goal`](#analyticscohorts_curve_goal), [`analytics.creative_family_daily`](#analyticscreative_family_daily), [`analytics.creative_family_metrics`](#analyticscreative_family_metrics), [`analytics.creative_unmatched_meta`](#analyticscreative_unmatched_meta), [`analytics.creative_stage_moves`](#analyticscreative_stage_moves), [`analytics.creative_scaling_placements`](#analyticscreative_scaling_placements), [`analytics.creative_scaling_benchmarks`](#analyticscreative_scaling_benchmarks), [`analytics.creative_content`](#analyticscreative_content), [`analytics.tag_products`](#analyticstag_products), [`analytics.tag_taxonomy_lines`](#analyticstag_taxonomy_lines), [`analytics.tag_line_ingredients`](#analyticstag_line_ingredients), [`analytics.tracker_tags`](#analyticstracker_tags), [`analytics.tracker_hooks`](#analyticstracker_hooks), [`analytics.priorities_snapshots`](#analyticspriorities_snapshots), [`analytics.priorities_thresholds`](#analyticspriorities_thresholds), [`analytics.priorities_baselines`](#analyticspriorities_baselines), [`analytics.priorities_concepts`](#analyticspriorities_concepts), [`analytics.priorities_manual_concepts`](#analyticspriorities_manual_concepts), [`analytics.production_assignments`](#analyticsproduction_assignments), [`analytics.production_formats`](#analyticsproduction_formats), [`analytics.daily_story`](#analyticsdaily_story), [`analytics.daily_story_facts`](#analyticsdaily_story_facts), [`analytics.daily_story_patterns`](#analyticsdaily_story_patterns), [`analytics.daily_story_pattern_scoreboard`](#analyticsdaily_story_pattern_scoreboard), [`analytics.daily_story_metric_registry`](#analyticsdaily_story_metric_registry), [`analytics.competitor_brands`](#analyticscompetitor_brands), [`analytics.competitor_ads`](#analyticscompetitor_ads), [`analytics.competitor_concepts`](#analyticscompetitor_concepts), [`analytics.catalog`](#analyticscatalog), [`analytics.metric_glossary`](#analyticsmetric_glossary), [`analytics.amazon_asin_products`](#analyticsamazon_asin_products), [`analytics.amazon_ads_campaign_daily`](#analyticsamazon_ads_campaign_daily), [`analytics.amazon_ads_asin_daily`](#analyticsamazon_ads_asin_daily), [`analytics.amazon_search_queries_weekly`](#analyticsamazon_search_queries_weekly), [`analytics.amazon_search_queries_monthly`](#analyticsamazon_search_queries_monthly), [`analytics.amazon_orders_asin_daily`](#analyticsamazon_orders_asin_daily), [`analytics.amazon_traffic_daily`](#analyticsamazon_traffic_daily), [`analytics.amazon_market_baskets`](#analyticsamazon_market_baskets), [`analytics.amazon_repeat_purchases`](#analyticsamazon_repeat_purchases), [`analytics.amazon_settlement_fees_daily`](#analyticsamazon_settlement_fees_daily), [`analytics.amazon_ads_search_terms_daily`](#analyticsamazon_ads_search_terms_daily), [`analytics.amazon_ads_targeting_daily`](#analyticsamazon_ads_targeting_daily), [`analytics.amazon_ads_keywords_snapshot`](#analyticsamazon_ads_keywords_snapshot), [`analytics.amazon_ads_targets_snapshot`](#analyticsamazon_ads_targets_snapshot), [`analytics.amazon_ads_negative_keywords_snapshot`](#analyticsamazon_ads_negative_keywords_snapshot), [`analytics.amazon_ads_campaigns_snapshot`](#analyticsamazon_ads_campaigns_snapshot), [`analytics.amazon_ads_product_ads`](#analyticsamazon_ads_product_ads), [`analytics.amazon_ads_ad_group_products`](#analyticsamazon_ads_ad_group_products), [`analytics.amazon_ads_search_terms_vs_organic`](#analyticsamazon_ads_search_terms_vs_organic), [`analytics.klaviyo_daily`](#analyticsklaviyo_daily), [`analytics.klaviyo_campaigns`](#analyticsklaviyo_campaigns), [`analytics.klaviyo_flows`](#analyticsklaviyo_flows), [`analytics.klaviyo_flow_messages`](#analyticsklaviyo_flow_messages), [`analytics.klaviyo_message_content`](#analyticsklaviyo_message_content), [`analytics.klaviyo_message_performance`](#analyticsklaviyo_message_performance), [`analytics.landing_pages`](#analyticslanding_pages), [`analytics.landing_page_versions`](#analyticslanding_page_versions), [`analytics.landing_page_ads`](#analyticslanding_page_ads), [`analytics.landing_page_ad_checks`](#analyticslanding_page_ad_checks), [`analytics.landing_page_top_ads`](#analyticslanding_page_top_ads), [`analytics.shopify_orders`](#analyticsshopify_orders), [`analytics.shopify_order_lines`](#analyticsshopify_order_lines) |
 | Meta (Facebook / Instagram) ads: ads, campaigns, daily results | [`public.ad_daily`](#publicad_daily), [`public.meta_ads`](#publicmeta_ads), [`public.meta_campaigns`](#publicmeta_campaigns), [`public.meta_ad_lifetime`](#publicmeta_ad_lifetime), [`public.ad_lifetime`](#publicad_lifetime), [`public.meta_family_map`](#publicmeta_family_map), [`public.meta_breakdown_daily`](#publicmeta_breakdown_daily), [`public.meta_breakdown_coverage`](#publicmeta_breakdown_coverage), [`public.meta_breakdown_progress`](#publicmeta_breakdown_progress), [`public.meta_change_log`](#publicmeta_change_log), [`public.meta_adset_state_daily`](#publicmeta_adset_state_daily), [`public.landing_pages`](#publiclanding_pages), [`public.landing_page_versions`](#publiclanding_page_versions), [`public.landing_page_ads`](#publiclanding_page_ads), [`public.landing_page_top_ads`](#publiclanding_page_top_ads) |
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
@@ -147,7 +147,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta), [`public.api_keys`](#publicapi_keys), [`public.klaviyo_campaigns`](#publicklaviyo_campaigns), [`public.klaviyo_flows`](#publicklaviyo_flows), [`public.klaviyo_flow_messages`](#publicklaviyo_flow_messages), [`public.klaviyo_daily`](#publicklaviyo_daily), [`public.klaviyo_message_content`](#publicklaviyo_message_content), [`public.klaviyo_message_performance`](#publicklaviyo_message_performance), [`public.landing_page_ad_checks`](#publiclanding_page_ad_checks), [`public.brain_keys`](#publicbrain_keys), [`public.brain_audit`](#publicbrain_audit) |
 | Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow) | [`public.proj_feed_config`](#publicproj_feed_config), [`public.proj_feed_runs`](#publicproj_feed_runs), [`public.proj_feed_attempts`](#publicproj_feed_attempts), [`public.proj_feed_verify`](#publicproj_feed_verify), [`public.proj_feed_verify_runs`](#publicproj_feed_verify_runs), [`public.proj_feed_levers`](#publicproj_feed_levers), [`public.proj_feed_orders`](#publicproj_feed_orders), [`public.proj_feedx_orders`](#publicproj_feedx_orders), [`public.proj_feed_amazon`](#publicproj_feed_amazon), [`public.proj_feedx_amazon`](#publicproj_feedx_amazon), [`public.proj_feed_platform`](#publicproj_feed_platform), [`public.proj_feedx_platform`](#publicproj_feedx_platform), [`public.proj_feed_attribution`](#publicproj_feed_attribution), [`public.proj_feedx_attribution`](#publicproj_feedx_attribution), [`public.proj_feed_traffic`](#publicproj_feed_traffic), [`public.proj_feedx_traffic`](#publicproj_feedx_traffic), [`public.proj_feed_meta_reach`](#publicproj_feed_meta_reach), [`public.proj_feedx_meta_reach`](#publicproj_feedx_meta_reach), [`public.proj_feed_product_reach`](#publicproj_feed_product_reach), [`public.proj_feedx_product_reach`](#publicproj_feedx_product_reach), [`public.proj_feed_nc_product`](#publicproj_feed_nc_product), [`public.proj_feedx_nc_product`](#publicproj_feedx_nc_product), [`public.proj_feed_anyclick`](#publicproj_feed_anyclick), [`public.proj_feedx_anyclick`](#publicproj_feedx_anyclick), [`public.proj_feed_bids`](#publicproj_feed_bids), [`public.proj_feedx_bids`](#publicproj_feedx_bids), [`public.proj_feed_meta_day`](#publicproj_feed_meta_day), [`public.proj_feed_meta_product`](#publicproj_feed_meta_product), [`public.proj_pacing_hourly`](#publicproj_pacing_hourly), [`public.proj_pacing_setting`](#publicproj_pacing_setting), [`public.proj_units_daily`](#publicproj_units_daily), [`public.proj_feedx_units_daily`](#publicproj_feedx_units_daily), [`public.proj_demand_snapshot`](#publicproj_demand_snapshot), [`public.proj_feedx_demand_snapshot`](#publicproj_feedx_demand_snapshot), [`public.proj_feedx_intl_nonus_daily`](#publicproj_feedx_intl_nonus_daily), [`public.proj_feed_nc_hourly`](#publicproj_feed_nc_hourly), [`public.proj_live_today_snapshots`](#publicproj_live_today_snapshots), [`public.proj_amazon_mtd_snapshots`](#publicproj_amazon_mtd_snapshots), [`public.proj_feedx_intl_estimate`](#publicproj_feedx_intl_estimate), [`public.proj_meta_spend_monthly`](#publicproj_meta_spend_monthly) |
 | Projection engine tables (finance, inventory, cohorts; read them through the analytics views) | [`public.proj_scenarios`](#publicproj_scenarios), [`public.proj_series`](#publicproj_series), [`public.proj_actuals`](#publicproj_actuals), [`public.proj_audit`](#publicproj_audit), [`public.proj_scenario_history`](#publicproj_scenario_history), [`public.proj_refresh_runs`](#publicproj_refresh_runs), [`public.proj_cohorts`](#publicproj_cohorts), [`public.proj_cohort_cum`](#publicproj_cohort_cum), [`public.proj_cohort_uploads`](#publicproj_cohort_uploads), [`public.proj_curve_goal`](#publicproj_curve_goal), [`public.proj_pnl_drivers`](#publicproj_pnl_drivers), [`public.proj_pnl_settings`](#publicproj_pnl_settings), [`public.proj_pnl_cogs_sku`](#publicproj_pnl_cogs_sku), [`public.proj_pnl_qb_map`](#publicproj_pnl_qb_map), [`public.proj_pnl_vendors`](#publicproj_pnl_vendors), [`public.proj_upload_history`](#publicproj_upload_history), [`public.proj_po`](#publicproj_po), [`public.proj_fba_transfer`](#publicproj_fba_transfer), [`public.proj_vendor_lead`](#publicproj_vendor_lead), [`public.proj_vendor_cogs`](#publicproj_vendor_cogs), [`public.proj_product_cost`](#publicproj_product_cost), [`public.proj_reorder_param`](#publicproj_reorder_param), [`public.proj_stock_snapshot`](#publicproj_stock_snapshot), [`public.proj_supply_history`](#publicproj_supply_history), [`public.proj_units_monthly`](#publicproj_units_monthly), [`public.proj_units_country`](#publicproj_units_country), [`public.proj_units_loads`](#publicproj_units_loads) |
-| Amazon data layer (ExpandFi merchant 1452): the tables behind the analytics.amazon_* views | [`public.amazon_asin_products`](#publicamazon_asin_products), [`public.amazon_ads_campaign_daily`](#publicamazon_ads_campaign_daily), [`public.amazon_ads_asin_daily`](#publicamazon_ads_asin_daily), [`public.amazon_sqp_weekly`](#publicamazon_sqp_weekly), [`public.amazon_sqp_monthly`](#publicamazon_sqp_monthly), [`public.amazon_orders_asin_daily`](#publicamazon_orders_asin_daily), [`public.amazon_traffic_daily`](#publicamazon_traffic_daily), [`public.amazon_market_baskets`](#publicamazon_market_baskets), [`public.amazon_repeat_purchases`](#publicamazon_repeat_purchases), [`public.amazon_settlement_fees_daily`](#publicamazon_settlement_fees_daily) |
+| Amazon data layer (ExpandFi merchant 1452): the tables behind the analytics.amazon_* views | [`public.amazon_asin_products`](#publicamazon_asin_products), [`public.amazon_ads_campaign_daily`](#publicamazon_ads_campaign_daily), [`public.amazon_ads_asin_daily`](#publicamazon_ads_asin_daily), [`public.amazon_sqp_weekly`](#publicamazon_sqp_weekly), [`public.amazon_sqp_monthly`](#publicamazon_sqp_monthly), [`public.amazon_orders_asin_daily`](#publicamazon_orders_asin_daily), [`public.amazon_traffic_daily`](#publicamazon_traffic_daily), [`public.amazon_market_baskets`](#publicamazon_market_baskets), [`public.amazon_repeat_purchases`](#publicamazon_repeat_purchases), [`public.amazon_settlement_fees_daily`](#publicamazon_settlement_fees_daily), [`public.amazon_ads_search_term_daily`](#publicamazon_ads_search_term_daily), [`public.amazon_ads_targeting_daily`](#publicamazon_ads_targeting_daily), [`public.amazon_ads_keywords_snapshot`](#publicamazon_ads_keywords_snapshot), [`public.amazon_ads_targets_snapshot`](#publicamazon_ads_targets_snapshot), [`public.amazon_ads_negative_keywords_snapshot`](#publicamazon_ads_negative_keywords_snapshot), [`public.amazon_ads_campaigns_snapshot`](#publicamazon_ads_campaigns_snapshot), [`public.amazon_ads_product_ads`](#publicamazon_ads_product_ads) |
 | Daily story: facts, the short explanation, the change patterns and the scoreboard | [`public.daily_story_metrics`](#publicdaily_story_metrics), [`public.daily_story_facts`](#publicdaily_story_facts), [`public.daily_story`](#publicdaily_story), [`public.daily_story_patterns`](#publicdaily_story_patterns), [`public.daily_story_pattern_scoreboard`](#publicdaily_story_pattern_scoreboard) |
 
 | Domain | Analytics views |
@@ -167,7 +167,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | **pipeline**: Data freshness, feed health, ETL runs, the catalog and the glossary | [`data_coverage`](#analyticsdata_coverage), [`etl_runs`](#analyticsetl_runs), [`pipeline_feeds`](#analyticspipeline_feeds), [`pipeline_feed_attempts`](#analyticspipeline_feed_attempts), [`pipeline_feed_verify`](#analyticspipeline_feed_verify), [`pipeline_refresh_runs`](#analyticspipeline_refresh_runs), [`pipeline_alerts`](#analyticspipeline_alerts), [`catalog`](#analyticscatalog), [`metric_glossary`](#analyticsmetric_glossary) |
 | **email**: Klaviyo campaigns, flows, messages: sends, opens, clicks, orders, revenue and the copy (views created by migration 231 once the Klaviyo tables exist) | [`klaviyo_daily`](#analyticsklaviyo_daily), [`klaviyo_campaigns`](#analyticsklaviyo_campaigns), [`klaviyo_flows`](#analyticsklaviyo_flows), [`klaviyo_flow_messages`](#analyticsklaviyo_flow_messages), [`klaviyo_message_content`](#analyticsklaviyo_message_content), [`klaviyo_message_performance`](#analyticsklaviyo_message_performance) |
 | **landing_pages**: Landing page copy versions and the ads that send people to each page (views created by migration 231 once those tables exist) | [`landing_pages`](#analyticslanding_pages), [`landing_page_versions`](#analyticslanding_page_versions), [`landing_page_ads`](#analyticslanding_page_ads), [`landing_page_ad_checks`](#analyticslanding_page_ad_checks), [`landing_page_top_ads`](#analyticslanding_page_top_ads) |
-| **amazon**: Amazon (ExpandFi): ads by campaign and ASIN, organic search queries, orders by ASIN, traffic, market baskets, repeat purchases, settlement fees | [`amazon_asin_products`](#analyticsamazon_asin_products), [`amazon_ads_campaign_daily`](#analyticsamazon_ads_campaign_daily), [`amazon_ads_asin_daily`](#analyticsamazon_ads_asin_daily), [`amazon_search_queries_weekly`](#analyticsamazon_search_queries_weekly), [`amazon_search_queries_monthly`](#analyticsamazon_search_queries_monthly), [`amazon_orders_asin_daily`](#analyticsamazon_orders_asin_daily), [`amazon_traffic_daily`](#analyticsamazon_traffic_daily), [`amazon_market_baskets`](#analyticsamazon_market_baskets), [`amazon_repeat_purchases`](#analyticsamazon_repeat_purchases), [`amazon_settlement_fees_daily`](#analyticsamazon_settlement_fees_daily) |
+| **amazon**: Amazon (ExpandFi): ads by campaign and ASIN, organic search queries, orders by ASIN, traffic, market baskets, repeat purchases, settlement fees | [`amazon_asin_products`](#analyticsamazon_asin_products), [`amazon_ads_campaign_daily`](#analyticsamazon_ads_campaign_daily), [`amazon_ads_asin_daily`](#analyticsamazon_ads_asin_daily), [`amazon_search_queries_weekly`](#analyticsamazon_search_queries_weekly), [`amazon_search_queries_monthly`](#analyticsamazon_search_queries_monthly), [`amazon_orders_asin_daily`](#analyticsamazon_orders_asin_daily), [`amazon_traffic_daily`](#analyticsamazon_traffic_daily), [`amazon_market_baskets`](#analyticsamazon_market_baskets), [`amazon_repeat_purchases`](#analyticsamazon_repeat_purchases), [`amazon_settlement_fees_daily`](#analyticsamazon_settlement_fees_daily), [`amazon_ads_search_terms_daily`](#analyticsamazon_ads_search_terms_daily), [`amazon_ads_targeting_daily`](#analyticsamazon_ads_targeting_daily), [`amazon_ads_keywords_snapshot`](#analyticsamazon_ads_keywords_snapshot), [`amazon_ads_targets_snapshot`](#analyticsamazon_ads_targets_snapshot), [`amazon_ads_negative_keywords_snapshot`](#analyticsamazon_ads_negative_keywords_snapshot), [`amazon_ads_campaigns_snapshot`](#analyticsamazon_ads_campaigns_snapshot), [`amazon_ads_product_ads`](#analyticsamazon_ads_product_ads), [`amazon_ads_ad_group_products`](#analyticsamazon_ads_ad_group_products), [`amazon_ads_search_terms_vs_organic`](#analyticsamazon_ads_search_terms_vs_organic) |
 | **story**: The daily story: facts, short explanation, change patterns and the pattern scoreboard | [`daily_story`](#analyticsdaily_story), [`daily_story_facts`](#analyticsdaily_story_facts), [`daily_story_patterns`](#analyticsdaily_story_patterns), [`daily_story_pattern_scoreboard`](#analyticsdaily_story_pattern_scoreboard), [`daily_story_metric_registry`](#analyticsdaily_story_metric_registry) |
 
 ## analytics schema: the read-only views (start here)
@@ -4411,6 +4411,410 @@ GROUP BY 1, 2 ORDER BY 3;
 
 ```sql
 SELECT count(*) AS rows FROM analytics.amazon_settlement_fees_daily;
+```
+
+### analytics.amazon_ads_search_terms_daily
+
+*view*, columns like `public.amazon_ads_search_term_daily`
+
+**Purpose.** Sponsored Products search-term report: the customer queries your ads served on, by day, campaign, ad group and the keyword or target that matched them, with impressions, clicks, cost and 7-day purchases and sales.
+
+- **Domain:** amazon
+- **Grain:** one row per (day, campaign_id, ad_group_id, keyword_id, match_type, search_term)
+- **Source:** public.amazon_ads_search_term_daily joined to the product of the ad group (analytics.amazon_ads_ad_group_products)
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled
+- **Coverage:** 2026-09-09 to 2026-11-10 as first loaded; Amazon keeps about 64 days of search terms (nothing returns before 2026-09-09) and the window moves forward one day a day, so days not loaded in time are lost
+- **Caveat:** Sponsored Products only, Amazon's 7-day attribution only (no 1, 14 or 30-day columns).
+- **Caveat:** Only queries your ads served on appear: no row is not zero. A day's newest rows can restate for a few days, so re-load the trailing week.
+- **Caveat:** Search terms are not the keywords bid on: one search term can match several keywords and campaigns. No ASIN or placement column; the product comes from the ad group.
+- **Caveat:** search_term_key is the normalised term (lower case, whitespace collapsed), the join key to amazon_sqp_weekly.query_key.
+- **Caveat:** product_slug is NULL for an ad group that advertises more than one product (product_resolution = 'mixed') and for one with no product ad on file or no mapped ASIN ('unmapped'): count those rows as 'no single product', never as a product.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date |  | Amazon Ads report day (US Pacific). |
+| `campaign_id` | text |  | Campaign id (text; the reports send an integer). |
+| `ad_group_id` | text |  | Ad group id (text). |
+| `keyword_id` | text |  | Keyword id; for auto and product targets the id of the target (the same id as amazon_ads_targets_snapshot.target_id). |
+| `match_type` | text |  | BROAD \| PHRASE \| EXACT \| TARGETING_EXPRESSION \| TARGETING_EXPRESSION_PREDEFINED (auto and product targets). |
+| `search_term` | text |  | The customer's query as Amazon reports it (an ASIN in lower case for product-target matches). |
+| `campaign_name` | text |  | Campaign name on the report row. |
+| `ad_group_name` | text |  | Ad group name on the report row. |
+| `keyword` | text |  | Target text as the report names it: the keyword, or loose-match / close-match / substitutes / complements for auto targets, or an asin or category expression. |
+| `search_term_key` | text |  | Normalised search_term: lower case, trimmed, runs of whitespace collapsed (the same rule as amazon_sqp_weekly.query_key). |
+| `impressions` | bigint |  | Impressions. |
+| `clicks` | bigint |  | Clicks. |
+| `cost` | numeric |  | Ad spend, US dollars. |
+| `purchases_7d` | bigint |  | Purchases credited to the ad within Amazon's 7-day attribution window (the only window these reports carry). |
+| `sales_7d` | numeric |  | Sales dollars credited to the ad within the 7-day window. |
+| `loaded_at` | timestamptz |  | When the row was last written by the loader. |
+| `product_slug` | text |  | vita-bull \| beef-liver \| boneflex \| vita-belle \| vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped'). |
+| `product_name` | text |  | Display name of product_slug; NULL when product_slug is NULL. |
+| `product_resolution` | text |  | single \| mixed \| unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products). |
+
+*Top search terms by spend with 7-day return on ad spend*
+
+```sql
+SELECT search_term_key, sum(clicks) AS clicks, round(sum(cost), 2) AS cost, round(sum(sales_7d), 2) AS sales_7d,
+       round(sum(sales_7d) / NULLIF(sum(cost), 0), 2) AS return_on_ad_spend
+FROM analytics.amazon_ads_search_terms_daily GROUP BY 1 ORDER BY 3 DESC LIMIT 25;
+```
+
+*Rows and spend with no single product*
+
+```sql
+SELECT product_resolution, count(*) AS rows, round(sum(cost)) AS cost FROM analytics.amazon_ads_search_terms_daily GROUP BY 1 ORDER BY 1;
+```
+
+### analytics.amazon_ads_targeting_daily
+
+*view*, columns like `public.amazon_ads_targeting_daily`
+
+**Purpose.** Sponsored Products targeting report: every keyword and target (including auto and product targets) by day with impressions, clicks, cost and 7-day purchases and sales: the bid side. It cannot say which query drove the spend.
+
+- **Domain:** amazon
+- **Grain:** one row per (day, campaign_id, ad_group_id, keyword_id, match_type, targeting)
+- **Source:** public.amazon_ads_targeting_daily joined to the product of the ad group (analytics.amazon_ads_ad_group_products)
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled
+- **Coverage:** 2026-08-10 to 2026-11-10 as first loaded; Amazon keeps about 95 days of targeting data and the window moves forward one day a day
+- **Caveat:** Sponsored Products only, Amazon's 7-day attribution only (no 1, 14 or 30-day columns).
+- **Caveat:** Includes zero-click rows with impressions only, so the older months are mostly impressions without spend.
+- **Caveat:** Targeting cost and search-term cost for the same days differ by about 0.1% (search terms list only the queries served on).
+- **Caveat:** product_slug is NULL for an ad group that advertises more than one product (product_resolution = 'mixed') and for one with no product ad on file or no mapped ASIN ('unmapped'): count those rows as 'no single product', never as a product.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date |  | Amazon Ads report day (US Pacific). |
+| `campaign_id` | text |  | Campaign id (text; the reports send an integer). |
+| `ad_group_id` | text |  | Ad group id (text). |
+| `keyword_id` | text |  | Keyword id; for auto and product targets the id of the target (the same id as amazon_ads_targets_snapshot.target_id). |
+| `match_type` | text |  | BROAD \| PHRASE \| EXACT \| TARGETING_EXPRESSION \| TARGETING_EXPRESSION_PREDEFINED (auto and product targets). |
+| `targeting` | text |  | The target expression: the keyword text, loose-match / close-match / substitutes / complements, asin="..." or category="...". |
+| `campaign_name` | text |  | Campaign name on the report row. |
+| `ad_group_name` | text |  | Ad group name on the report row. |
+| `keyword` | text |  | Target text as the report names it: the keyword, or loose-match / close-match / substitutes / complements for auto targets, or an asin or category expression. |
+| `impressions` | bigint |  | Impressions. |
+| `clicks` | bigint |  | Clicks. |
+| `cost` | numeric |  | Ad spend, US dollars. |
+| `purchases_7d` | bigint |  | Purchases credited to the ad within Amazon's 7-day attribution window (the only window these reports carry). |
+| `sales_7d` | numeric |  | Sales dollars credited to the ad within the 7-day window. |
+| `loaded_at` | timestamptz |  | When the row was last written by the loader. |
+| `product_slug` | text |  | vita-bull \| beef-liver \| boneflex \| vita-belle \| vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped'). |
+| `product_name` | text |  | Display name of product_slug; NULL when product_slug is NULL. |
+| `product_resolution` | text |  | single \| mixed \| unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products). |
+
+*Spend by product and match type*
+
+```sql
+SELECT coalesce(product_slug, '(' || product_resolution || ')') AS product, match_type, round(sum(cost)) AS cost, sum(clicks) AS clicks
+FROM analytics.amazon_ads_targeting_daily GROUP BY 1, 2 ORDER BY 3 DESC;
+```
+
+*Daily spend*
+
+```sql
+SELECT day, round(sum(cost), 2) AS cost FROM analytics.amazon_ads_targeting_daily GROUP BY 1 ORDER BY 1 DESC LIMIT 14;
+```
+
+### analytics.amazon_ads_keywords_snapshot
+
+*view*, columns like `public.amazon_ads_keywords_snapshot`
+
+**Purpose.** Sponsored Products keywords with their current bid and state, one snapshot per load date: the bid history accumulates as snapshots are loaded on later days.
+
+- **Domain:** amazon
+- **Grain:** one row per (snapshot_date, keyword_id)
+- **Source:** public.amazon_ads_keywords_snapshot joined to the product of the ad group (analytics.amazon_ads_ad_group_products)
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled
+- **Coverage:** one snapshot (2026-11-12, 3,677 keywords: 3,227 enabled, 450 paused); archived keywords are not returned by Amazon; no bid history exists before the first snapshot
+- **Caveat:** snapshot_date is the date in the snapshot folder name; the latest snapshot is the current bid. Ad group level only (the ad group list was not pulled, so there is no ad group default bid).
+- **Caveat:** product_slug is NULL for an ad group that advertises more than one product (product_resolution = 'mixed') and for one with no product ad on file or no mapped ASIN ('unmapped'): count those rows as 'no single product', never as a product.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `snapshot_date` | date |  | Date of the snapshot (from the folder name). |
+| `keyword_id` | text |  | Keyword id (text); the same id as keyword_id in the report tables. |
+| `ad_group_id` | text |  | Ad group id. |
+| `campaign_id` | text |  | Campaign id. |
+| `keyword_text` | text |  | Keyword text. |
+| `match_type` | text |  | BROAD \| PHRASE \| EXACT. |
+| `bid` | numeric |  | Bid in US dollars at the snapshot. |
+| `state` | text |  | ENABLED \| PAUSED. |
+| `loaded_at` | timestamptz |  | When the row was last written by the loader. |
+| `product_slug` | text |  | vita-bull \| beef-liver \| boneflex \| vita-belle \| vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped'). |
+| `product_name` | text |  | Display name of product_slug; NULL when product_slug is NULL. |
+| `product_resolution` | text |  | single \| mixed \| unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products). |
+
+*Current bid of the keywords with most spend*
+
+```sql
+SELECT k.keyword_text, k.match_type, k.bid, k.state, round(sum(t.cost), 2) AS cost
+FROM analytics.amazon_ads_keywords_snapshot k
+JOIN analytics.amazon_ads_targeting_daily t ON t.keyword_id = k.keyword_id
+WHERE k.snapshot_date = (SELECT max(snapshot_date) FROM analytics.amazon_ads_keywords_snapshot)
+GROUP BY 1, 2, 3, 4 ORDER BY 5 DESC LIMIT 25;
+```
+
+*Snapshots held*
+
+```sql
+SELECT snapshot_date, count(*) AS keywords FROM analytics.amazon_ads_keywords_snapshot GROUP BY 1 ORDER BY 1;
+```
+
+### analytics.amazon_ads_targets_snapshot
+
+*view*, columns like `public.amazon_ads_targets_snapshot`
+
+**Purpose.** Sponsored Products product and auto targets (targeting clauses) with their current bid and state, one snapshot per load date.
+
+- **Domain:** amazon
+- **Grain:** one row per (snapshot_date, target_id)
+- **Source:** public.amazon_ads_targets_snapshot joined to the product of the ad group (analytics.amazon_ads_ad_group_products)
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled
+- **Coverage:** one snapshot (2026-11-12, 919 clauses: 696 enabled, 223 paused; 775 manual, 144 auto)
+- **Caveat:** target_id equals keyword_id in the report tables. An auto target can have no bid of its own (it inherits the ad group default, which was not pulled).
+- **Caveat:** product_slug is NULL for an ad group that advertises more than one product (product_resolution = 'mixed') and for one with no product ad on file or no mapped ASIN ('unmapped'): count those rows as 'no single product', never as a product.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `snapshot_date` | date |  | Date of the snapshot. |
+| `target_id` | text |  | Target id (text); the keyword_id of the report rows for product and auto targets. |
+| `ad_group_id` | text |  | Ad group id. |
+| `campaign_id` | text |  | Campaign id. |
+| `bid` | numeric |  | Bid in US dollars; NULL when the target inherits the ad group bid. |
+| `state` | text |  | ENABLED \| PAUSED. |
+| `expression_type` | text |  | MANUAL \| AUTO. |
+| `expression_text` | text |  | The expression in plain text, e.g. 'ASIN_SAME_AS b07tyrty26' or 'QUERY_HIGH_REL_MATCHES'. |
+| `expression` | jsonb |  | The expression as Amazon sends it (json array of type / value). |
+| `resolved_expression` | jsonb |  | The resolved expression (json). |
+| `loaded_at` | timestamptz |  | When the row was last written by the loader. |
+| `product_slug` | text |  | vita-bull \| beef-liver \| boneflex \| vita-belle \| vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped'). |
+| `product_name` | text |  | Display name of product_slug; NULL when product_slug is NULL. |
+| `product_resolution` | text |  | single \| mixed \| unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products). |
+
+*Enabled targets by type*
+
+```sql
+SELECT expression_type, state, count(*) AS targets FROM analytics.amazon_ads_targets_snapshot GROUP BY 1, 2 ORDER BY 1, 2;
+```
+
+*Row count*
+
+```sql
+SELECT count(*) AS rows FROM analytics.amazon_ads_targets_snapshot;
+```
+
+### analytics.amazon_ads_negative_keywords_snapshot
+
+*view*, columns like `public.amazon_ads_negative_keywords_snapshot`
+
+**Purpose.** Sponsored Products negative keywords at ad group level, one snapshot per load date.
+
+- **Domain:** amazon
+- **Grain:** one row per (snapshot_date, keyword_id)
+- **Source:** public.amazon_ads_negative_keywords_snapshot joined to the product of the ad group (analytics.amazon_ads_ad_group_products)
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled
+- **Coverage:** one snapshot (2026-11-13, 29,995 rows: 29,969 enabled, 26 archived; 28,987 negative phrase, 1,008 negative exact)
+- **Caveat:** Ad group level only: campaign-level negative keywords and negative product targets are not available through any Data Dash dataset, so absence here does not mean a term is not negated.
+- **Caveat:** product_slug is NULL for an ad group that advertises more than one product (product_resolution = 'mixed') and for one with no product ad on file or no mapped ASIN ('unmapped'): count those rows as 'no single product', never as a product.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `snapshot_date` | date |  | Date of the snapshot. |
+| `keyword_id` | text |  | Negative keyword id (text). |
+| `ad_group_id` | text |  | Ad group id. |
+| `campaign_id` | text |  | Campaign id. |
+| `keyword_text` | text |  | The negative keyword text. |
+| `match_type` | text |  | NEGATIVE_PHRASE \| NEGATIVE_EXACT. |
+| `state` | text |  | ENABLED \| ARCHIVED. |
+| `loaded_at` | timestamptz |  | When the row was last written by the loader. |
+| `product_slug` | text |  | vita-bull \| beef-liver \| boneflex \| vita-belle \| vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped'). |
+| `product_name` | text |  | Display name of product_slug; NULL when product_slug is NULL. |
+| `product_resolution` | text |  | single \| mixed \| unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products). |
+
+*Negative keywords by match type and state*
+
+```sql
+SELECT match_type, state, count(*) AS negatives FROM analytics.amazon_ads_negative_keywords_snapshot GROUP BY 1, 2 ORDER BY 1, 2;
+```
+
+*Negatives per product*
+
+```sql
+SELECT coalesce(product_slug, '(' || product_resolution || ')') AS product, count(*) AS negatives FROM analytics.amazon_ads_negative_keywords_snapshot GROUP BY 1 ORDER BY 2 DESC;
+```
+
+### analytics.amazon_ads_campaigns_snapshot
+
+*view*, columns like `public.amazon_ads_campaigns_snapshot`
+
+**Purpose.** Sponsored Products campaigns with budget, bidding strategy and placement bid adjustments, one snapshot per load date.
+
+- **Domain:** amazon
+- **Grain:** one row per (snapshot_date, campaign_id)
+- **Source:** public.amazon_ads_campaigns_snapshot joined to the product of the ad group (analytics.amazon_ads_ad_group_products)
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled
+- **Coverage:** one snapshot (2026-11-13, 963 campaigns: 746 enabled, 217 paused)
+- **Caveat:** Placement bid adjustments live here; Amazon has no placement performance report for these pulls, so the effect of a placement bid cannot be measured from this data.
+- **Caveat:** A placement percentage that is NULL means the campaign sets no adjustment for it.
+- **Caveat:** product_slug is NULL for an ad group that advertises more than one product (product_resolution = 'mixed') and for one with no product ad on file or no mapped ASIN ('unmapped'): count those rows as 'no single product', never as a product.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `snapshot_date` | date |  | Date of the snapshot. |
+| `campaign_id` | text |  | Campaign id (text). |
+| `name` | text |  | Campaign name. |
+| `state` | text |  | ENABLED \| PAUSED. |
+| `targeting_type` | text |  | MANUAL \| AUTO. |
+| `start_date` | date |  | Campaign start date. |
+| `budget` | numeric |  | Budget in US dollars. |
+| `budget_type` | text |  | DAILY. |
+| `portfolio_id` | text |  | Portfolio id, if any. |
+| `bidding_strategy` | text |  | Dynamic bidding strategy: LEGACY_FOR_SALES \| AUTO_FOR_SALES \| MANUAL. |
+| `placement_top_pct` | numeric |  | Bid adjustment for top of search, percent. |
+| `placement_product_page_pct` | numeric |  | Bid adjustment for product pages, percent. |
+| `placement_rest_of_search_pct` | numeric |  | Bid adjustment for the rest of search, percent. |
+| `dynamic_bidding` | jsonb |  | The whole dynamic bidding block as Amazon sends it (json: strategy, placement bidding, shopper cohort bidding). |
+| `loaded_at` | timestamptz |  | When the row was last written by the loader. |
+| `product_slug` | text |  | vita-bull \| beef-liver \| boneflex \| vita-belle \| vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped'). |
+| `product_name` | text |  | Display name of product_slug; NULL when product_slug is NULL. |
+| `product_resolution` | text |  | single \| mixed \| unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products). |
+
+*Campaigns by strategy and state*
+
+```sql
+SELECT bidding_strategy, state, count(*) AS campaigns FROM analytics.amazon_ads_campaigns_snapshot GROUP BY 1, 2 ORDER BY 1, 2;
+```
+
+*Placement bid adjustments*
+
+```sql
+SELECT placement_top_pct, placement_product_page_pct, placement_rest_of_search_pct, count(*) AS campaigns FROM analytics.amazon_ads_campaigns_snapshot GROUP BY 1, 2, 3 ORDER BY 4 DESC;
+```
+
+### analytics.amazon_ads_product_ads
+
+*view*, columns like `public.amazon_ads_product_ads`
+
+**Purpose.** Sponsored Products product ads: which ASIN and SKU each campaign and ad group advertises. The map that gives every keyword row its product.
+
+- **Domain:** amazon
+- **Grain:** one row per ad_id (the latest snapshot that holds it)
+- **Source:** public.amazon_ads_product_ads joined to amazon_asin_products on the ASIN
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled
+- **Coverage:** 1,063 product ads from the 2026-11-13 snapshot
+- **Caveat:** Latest map, not history: an ad that disappears from a later snapshot keeps its older snapshot_date. An ad group with ASINs of more than one product resolves to no single product (see analytics.amazon_ads_ad_group_products).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `ad_id` | text |  | Product ad id (text). |
+| `ad_group_id` | text |  | Ad group id. |
+| `campaign_id` | text |  | Campaign id. |
+| `asin` | text |  | Advertised ASIN. |
+| `sku` | text |  | Advertised SKU. |
+| `state` | text |  | ENABLED \| PAUSED. |
+| `snapshot_date` | date |  | Date of the snapshot this row came from. |
+| `loaded_at` | timestamptz |  | When the row was last written by the loader. |
+| `product_slug` | text |  | vita-bull \| beef-liver \| boneflex \| vita-belle \| vital-flow; NULL when the ASIN is not in amazon_asin_products. |
+| `product_name` | text |  | Display name of product_slug; NULL when product_slug is NULL. |
+
+*ASINs advertised per product*
+
+```sql
+SELECT product_slug, count(DISTINCT asin) AS asins, count(*) AS ads FROM analytics.amazon_ads_product_ads GROUP BY 1 ORDER BY 3 DESC;
+```
+
+*Row count*
+
+```sql
+SELECT count(*) AS rows FROM analytics.amazon_ads_product_ads;
+```
+
+### analytics.amazon_ads_ad_group_products
+
+*view*
+
+**Purpose.** Which product each Sponsored Products ad group advertises, from its product ads and the ASIN map: the product behind every keyword, search term and negative keyword row.
+
+- **Domain:** amazon
+- **Grain:** one row per (campaign_id, ad_group_id) that has at least one product ad
+- **Source:** public.amazon_ads_product_ads joined to public.amazon_asin_products on the ASIN
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled (the ASIN map is refreshed nightly by the feeds service)
+- **Coverage:** 962 ad groups from the 2026-11-13 product ad snapshot
+- **Caveat:** An ad group that advertises ASINs of more than one product is 'mixed' and has no product_slug: it is counted as no single product, not guessed. 31 of 962 ad groups were mixed on the first load.
+- **Caveat:** An ad group in a report with no product ad on file is not in this view; the views that join it read it as 'unmapped'.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `campaign_id` | text |  | Campaign id (text). |
+| `ad_group_id` | text |  | Ad group id (text). |
+| `asins` | integer |  | Distinct ASINs advertised in the ad group. |
+| `products` | integer |  | Distinct products among those ASINs (ASINs with no product mapping are not counted). |
+| `product_slug` | text |  | vita-bull \| beef-liver \| boneflex \| vita-belle \| vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped'). |
+| `product_name` | text |  | Display name of product_slug; NULL when product_slug is NULL. |
+| `product_resolution` | text |  | single \| mixed \| unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products). |
+
+*Ad groups by resolution*
+
+```sql
+SELECT product_resolution, count(*) AS ad_groups FROM analytics.amazon_ads_ad_group_products GROUP BY 1 ORDER BY 1;
+```
+
+*Mixed ad groups*
+
+```sql
+SELECT campaign_id, ad_group_id, asins, products FROM analytics.amazon_ads_ad_group_products WHERE product_resolution = 'mixed' ORDER BY asins DESC;
+```
+
+### analytics.amazon_ads_search_terms_vs_organic
+
+*view*
+
+**Purpose.** Paid search terms (Sponsored Products) next to the organic Search Query Performance numbers of the same term, product and week: what you pay for against how much of that search you win.
+
+- **Domain:** amazon
+- **Grain:** one row per (week_start, product_slug, search_term_key); product_slug NULL = an ad group with no single product
+- **Source:** public.amazon_ads_search_term_daily + analytics.amazon_ads_ad_group_products + public.amazon_sqp_weekly (US)
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled (the organic side is refreshed nightly by the feeds service)
+- **Coverage:** paid side from 2026-09-09; organic columns only where Amazon listed the term for the product that week (about the top 100 terms per product per week)
+- **Caveat:** week_start is a Sunday: Amazon's Search Query Performance week (Sunday to Saturday), not an ISO (Monday) week, so paid days and organic weeks line up exactly. The first and last paid weeks can be partial.
+- **Caveat:** Organic columns are NULL (not zero) when Amazon did not list the term that week: absence only means it was outside the top terms. has_organic_row says which.
+- **Caveat:** Search Query Performance market totals are the MAX over the ASIN rows of a term-week and our counts the SUM; shares are recomputed here, percent 0 to 100. Our impressions, clicks and purchases include sponsored placements, so they overlap the paid columns: do not add paid and organic.
+- **Caveat:** A paid row with no single product reads all products together in the organic columns (organic_scope = 'all products').
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `week_start` | date |  | Sunday that starts the Search Query Performance week. |
+| `product_slug` | text |  | vita-bull \| beef-liver \| boneflex \| vita-belle \| vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped'). |
+| `product_name` | text |  | Display name of product_slug; NULL when product_slug is NULL. |
+| `product_resolution` | text |  | single \| mixed \| unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products). |
+| `search_term_key` | text |  | Normalised search term (lower case, whitespace collapsed). |
+| `impressions` | numeric |  | Paid impressions of the week. |
+| `clicks` | numeric |  | Paid clicks. |
+| `cost` | numeric |  | Paid cost, US dollars. |
+| `purchases_7d` | numeric |  | Paid purchases, 7-day attribution. |
+| `sales_7d` | numeric |  | Paid sales, 7-day attribution. |
+| `organic_scope` | text |  | product (the organic columns read that product's rows) \| all products (the paid row has no single product). |
+| `search_volume` | bigint |  | Amazon searches for the term that week (market total); NULL when not listed. |
+| `our_impression_share` | numeric |  | Our impressions / all impressions for the term, percent 0-100 (includes our sponsored placements). |
+| `our_click_share` | numeric |  | Our clicks / all clicks for the term, percent 0-100. |
+| `our_cart_add_share` | numeric |  | Our cart adds / all cart adds, percent 0-100. |
+| `our_purchase_share` | numeric |  | Our purchases / all purchases for the term, percent 0-100. |
+| `our_clicks` | numeric |  | Our clicks on the term in Search Query Performance (organic and sponsored). |
+| `our_purchases` | numeric |  | Our purchases of the term in Search Query Performance (search-origin, same day). |
+| `has_organic_row` | boolean |  | True when Search Query Performance has a row for this term, product scope and week. |
+
+*Top paid terms with our purchase share*
+
+```sql
+SELECT search_term_key, round(sum(cost), 2) AS cost, round(sum(sales_7d), 2) AS sales_7d, max(our_purchase_share) AS best_purchase_share
+FROM analytics.amazon_ads_search_terms_vs_organic GROUP BY 1 ORDER BY 2 DESC LIMIT 25;
+```
+
+*Share of paid cost that has an organic row*
+
+```sql
+SELECT round(100.0 * sum(cost) FILTER (WHERE has_organic_row) / NULLIF(sum(cost), 0), 1) AS pct_of_cost_with_organic FROM analytics.amazon_ads_search_terms_vs_organic;
 ```
 
 ### analytics.klaviyo_daily
@@ -9948,6 +10352,199 @@ SELECT product, round(sum(nc_rev)) AS nc_revenue, sum(nc_orders) AS new_customer
 | `amount_usd` | numeric | yes | Sum of amount in US dollars, signed. |
 | `currency` | text | yes | Currency code of the lines. |
 | `loaded_at` | timestamptz | no | When the row was loaded. |
+
+### public.amazon_ads_search_term_daily
+
+*table*
+
+**Purpose.** Sponsored Products search-term report: the customer queries your ads served on, by day, campaign, ad group and the keyword or target that matched them, with impressions, clicks, cost and 7-day purchases and sales.
+
+- **Grain:** primary key `(day, campaign_id, ad_group_id, keyword_id, match_type, search_term)`; one row per (day, campaign_id, ad_group_id, keyword_id, match_type, search_term)
+- **Source:** ExpandFi Data Dash pull of Amazon Ads search-term report (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled
+- **Coverage:** 2026-09-09 to 2026-11-10 as first loaded; Amazon keeps about 64 days of search terms (nothing returns before 2026-09-09) and the window moves forward one day a day, so days not loaded in time are lost
+- **Caveat:** Sponsored Products only, Amazon's 7-day attribution only (no 1, 14 or 30-day columns).
+- **Caveat:** Only queries your ads served on appear: no row is not zero. A day's newest rows can restate for a few days, so re-load the trailing week.
+- **Caveat:** Search terms are not the keywords bid on: one search term can match several keywords and campaigns. No ASIN or placement column; the product comes from the ad group.
+- **Caveat:** search_term_key is the normalised term (lower case, whitespace collapsed), the join key to amazon_sqp_weekly.query_key.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date | no | Amazon Ads report day (US Pacific). |
+| `campaign_id` | text | no | Campaign id (text; the reports send an integer). |
+| `ad_group_id` | text | no | Ad group id (text). |
+| `keyword_id` | text | no | Keyword id; for auto and product targets the id of the target (the same id as amazon_ads_targets_snapshot.target_id). |
+| `match_type` | text | no | BROAD \| PHRASE \| EXACT \| TARGETING_EXPRESSION \| TARGETING_EXPRESSION_PREDEFINED (auto and product targets). |
+| `search_term` | text | no | The customer's query as Amazon reports it (an ASIN in lower case for product-target matches). |
+| `campaign_name` | text | yes | Campaign name on the report row. |
+| `ad_group_name` | text | yes | Ad group name on the report row. |
+| `keyword` | text | yes | Target text as the report names it: the keyword, or loose-match / close-match / substitutes / complements for auto targets, or an asin or category expression. |
+| `search_term_key` | text | no | Normalised search_term: lower case, trimmed, runs of whitespace collapsed (the same rule as amazon_sqp_weekly.query_key). |
+| `impressions` | bigint | yes | Impressions. |
+| `clicks` | bigint | yes | Clicks. |
+| `cost` | numeric | yes | Ad spend, US dollars. |
+| `purchases_7d` | bigint | yes | Purchases credited to the ad within Amazon's 7-day attribution window (the only window these reports carry). |
+| `sales_7d` | numeric | yes | Sales dollars credited to the ad within the 7-day window. |
+| `loaded_at` | timestamptz | no | When the row was last written by the loader. |
+
+### public.amazon_ads_targeting_daily
+
+*table*
+
+**Purpose.** Sponsored Products targeting report: every keyword and target (including auto and product targets) by day with impressions, clicks, cost and 7-day purchases and sales: the bid side. It cannot say which query drove the spend.
+
+- **Grain:** primary key `(day, campaign_id, ad_group_id, keyword_id, match_type, targeting)`; one row per (day, campaign_id, ad_group_id, keyword_id, match_type, targeting)
+- **Source:** ExpandFi Data Dash pull of Amazon Ads targeting report (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled
+- **Coverage:** 2026-08-10 to 2026-11-10 as first loaded; Amazon keeps about 95 days of targeting data and the window moves forward one day a day
+- **Caveat:** Sponsored Products only, Amazon's 7-day attribution only (no 1, 14 or 30-day columns).
+- **Caveat:** Includes zero-click rows with impressions only, so the older months are mostly impressions without spend.
+- **Caveat:** Targeting cost and search-term cost for the same days differ by about 0.1% (search terms list only the queries served on).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date | no | Amazon Ads report day (US Pacific). |
+| `campaign_id` | text | no | Campaign id (text; the reports send an integer). |
+| `ad_group_id` | text | no | Ad group id (text). |
+| `keyword_id` | text | no | Keyword id; for auto and product targets the id of the target (the same id as amazon_ads_targets_snapshot.target_id). |
+| `match_type` | text | no | BROAD \| PHRASE \| EXACT \| TARGETING_EXPRESSION \| TARGETING_EXPRESSION_PREDEFINED (auto and product targets). |
+| `targeting` | text | no | The target expression: the keyword text, loose-match / close-match / substitutes / complements, asin="..." or category="...". |
+| `campaign_name` | text | yes | Campaign name on the report row. |
+| `ad_group_name` | text | yes | Ad group name on the report row. |
+| `keyword` | text | yes | Target text as the report names it: the keyword, or loose-match / close-match / substitutes / complements for auto targets, or an asin or category expression. |
+| `impressions` | bigint | yes | Impressions. |
+| `clicks` | bigint | yes | Clicks. |
+| `cost` | numeric | yes | Ad spend, US dollars. |
+| `purchases_7d` | bigint | yes | Purchases credited to the ad within Amazon's 7-day attribution window (the only window these reports carry). |
+| `sales_7d` | numeric | yes | Sales dollars credited to the ad within the 7-day window. |
+| `loaded_at` | timestamptz | no | When the row was last written by the loader. |
+
+### public.amazon_ads_keywords_snapshot
+
+*table*
+
+**Purpose.** Sponsored Products keywords with their current bid and state, one snapshot per load date: the bid history accumulates as snapshots are loaded on later days.
+
+- **Grain:** primary key `(snapshot_date, keyword_id)`; one row per (snapshot_date, keyword_id)
+- **Source:** ExpandFi Data Dash pull of Amazon Ads keyword list (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled
+- **Coverage:** one snapshot (2026-11-12, 3,677 keywords: 3,227 enabled, 450 paused); archived keywords are not returned by Amazon; no bid history exists before the first snapshot
+- **Caveat:** snapshot_date is the date in the snapshot folder name; the latest snapshot is the current bid. Ad group level only (the ad group list was not pulled, so there is no ad group default bid).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `snapshot_date` | date | no | Date of the snapshot (from the folder name). |
+| `keyword_id` | text | no | Keyword id (text); the same id as keyword_id in the report tables. |
+| `ad_group_id` | text | no | Ad group id. |
+| `campaign_id` | text | no | Campaign id. |
+| `keyword_text` | text | yes | Keyword text. |
+| `match_type` | text | yes | BROAD \| PHRASE \| EXACT. |
+| `bid` | numeric | yes | Bid in US dollars at the snapshot. |
+| `state` | text | yes | ENABLED \| PAUSED. |
+| `loaded_at` | timestamptz | no | When the row was last written by the loader. |
+
+### public.amazon_ads_targets_snapshot
+
+*table*
+
+**Purpose.** Sponsored Products product and auto targets (targeting clauses) with their current bid and state, one snapshot per load date.
+
+- **Grain:** primary key `(snapshot_date, target_id)`; one row per (snapshot_date, target_id)
+- **Source:** ExpandFi Data Dash pull of Amazon Ads targeting clause list (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled
+- **Coverage:** one snapshot (2026-11-12, 919 clauses: 696 enabled, 223 paused; 775 manual, 144 auto)
+- **Caveat:** target_id equals keyword_id in the report tables. An auto target can have no bid of its own (it inherits the ad group default, which was not pulled).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `snapshot_date` | date | no | Date of the snapshot. |
+| `target_id` | text | no | Target id (text); the keyword_id of the report rows for product and auto targets. |
+| `ad_group_id` | text | no | Ad group id. |
+| `campaign_id` | text | no | Campaign id. |
+| `bid` | numeric | yes | Bid in US dollars; NULL when the target inherits the ad group bid. |
+| `state` | text | yes | ENABLED \| PAUSED. |
+| `expression_type` | text | yes | MANUAL \| AUTO. |
+| `expression_text` | text | yes | The expression in plain text, e.g. 'ASIN_SAME_AS b07tyrty26' or 'QUERY_HIGH_REL_MATCHES'. |
+| `expression` | jsonb | yes | The expression as Amazon sends it (json array of type / value). |
+| `resolved_expression` | jsonb | yes | The resolved expression (json). |
+| `loaded_at` | timestamptz | no | When the row was last written by the loader. |
+
+### public.amazon_ads_negative_keywords_snapshot
+
+*table*
+
+**Purpose.** Sponsored Products negative keywords at ad group level, one snapshot per load date.
+
+- **Grain:** primary key `(snapshot_date, keyword_id)`; one row per (snapshot_date, keyword_id)
+- **Source:** ExpandFi Data Dash pull of Amazon Ads negative keyword list (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled
+- **Coverage:** one snapshot (2026-11-13, 29,995 rows: 29,969 enabled, 26 archived; 28,987 negative phrase, 1,008 negative exact)
+- **Caveat:** Ad group level only: campaign-level negative keywords and negative product targets are not available through any Data Dash dataset, so absence here does not mean a term is not negated.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `snapshot_date` | date | no | Date of the snapshot. |
+| `keyword_id` | text | no | Negative keyword id (text). |
+| `ad_group_id` | text | no | Ad group id. |
+| `campaign_id` | text | no | Campaign id. |
+| `keyword_text` | text | yes | The negative keyword text. |
+| `match_type` | text | yes | NEGATIVE_PHRASE \| NEGATIVE_EXACT. |
+| `state` | text | yes | ENABLED \| ARCHIVED. |
+| `loaded_at` | timestamptz | no | When the row was last written by the loader. |
+
+### public.amazon_ads_campaigns_snapshot
+
+*table*
+
+**Purpose.** Sponsored Products campaigns with budget, bidding strategy and placement bid adjustments, one snapshot per load date.
+
+- **Grain:** primary key `(snapshot_date, campaign_id)`; one row per (snapshot_date, campaign_id)
+- **Source:** ExpandFi Data Dash pull of Amazon Ads campaign list (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled
+- **Coverage:** one snapshot (2026-11-13, 963 campaigns: 746 enabled, 217 paused)
+- **Caveat:** Placement bid adjustments live here; Amazon has no placement performance report for these pulls, so the effect of a placement bid cannot be measured from this data.
+- **Caveat:** A placement percentage that is NULL means the campaign sets no adjustment for it.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `snapshot_date` | date | no | Date of the snapshot. |
+| `campaign_id` | text | no | Campaign id (text). |
+| `name` | text | yes | Campaign name. |
+| `state` | text | yes | ENABLED \| PAUSED. |
+| `targeting_type` | text | yes | MANUAL \| AUTO. |
+| `start_date` | date | yes | Campaign start date. |
+| `budget` | numeric | yes | Budget in US dollars. |
+| `budget_type` | text | yes | DAILY. |
+| `portfolio_id` | text | yes | Portfolio id, if any. |
+| `bidding_strategy` | text | yes | Dynamic bidding strategy: LEGACY_FOR_SALES \| AUTO_FOR_SALES \| MANUAL. |
+| `placement_top_pct` | numeric | yes | Bid adjustment for top of search, percent. |
+| `placement_product_page_pct` | numeric | yes | Bid adjustment for product pages, percent. |
+| `placement_rest_of_search_pct` | numeric | yes | Bid adjustment for the rest of search, percent. |
+| `dynamic_bidding` | jsonb | yes | The whole dynamic bidding block as Amazon sends it (json: strategy, placement bidding, shopper cohort bidding). |
+| `loaded_at` | timestamptz | no | When the row was last written by the loader. |
+
+### public.amazon_ads_product_ads
+
+*table*
+
+**Purpose.** Sponsored Products product ads: which ASIN and SKU each campaign and ad group advertises. The map that gives every keyword row its product.
+
+- **Grain:** primary key `(ad_id)`; one row per ad_id (the latest snapshot that holds it)
+- **Source:** ExpandFi Data Dash pull of Amazon Ads product ad list (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py
+- **Refresh:** manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled
+- **Coverage:** 1,063 product ads from the 2026-11-13 snapshot
+- **Caveat:** Latest map, not history: an ad that disappears from a later snapshot keeps its older snapshot_date. An ad group with ASINs of more than one product resolves to no single product (see analytics.amazon_ads_ad_group_products).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `ad_id` | text | no | Product ad id (text). |
+| `ad_group_id` | text | no | Ad group id. |
+| `campaign_id` | text | no | Campaign id. |
+| `asin` | text | yes | Advertised ASIN. |
+| `sku` | text | yes | Advertised SKU. |
+| `state` | text | yes | ENABLED \| PAUSED. |
+| `snapshot_date` | date | no | Date of the snapshot this row came from. |
+| `loaded_at` | timestamptz | no | When the row was last written by the loader. |
 
 ## Daily story: facts, the short explanation, the change patterns and the scoreboard
 

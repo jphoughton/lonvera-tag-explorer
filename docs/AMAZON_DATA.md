@@ -46,6 +46,22 @@ Product on every table is the app's product slug (`vita-bull`, `beef-liver`, `bo
 - Baskets and repeat purchases: weekly, from 2026-06-28 only (that is all ExpandFi holds at weekly grain). Percentages are 0 to 100.
 - Settlement fees: signed as stored (sales positive, fees, promotions and ad debits negative). Posted-day basis; settlements arrive in batches, so the newest day can be two weeks old. "Cost of Advertising" is the settlement debit, not the Ads report spend.
 
+## Keyword layer (Sponsored Products, loaded by hand)
+
+Keyword, target, search-term and negative keyword data for Sponsored Products. It comes from ExpandFi Data Dash pulls (Amazon Ads reports and entity lists), not from the feeds service, which cannot reach Dash. Nothing schedules it: Josh decides when to pull and load.
+
+**Tables (migration 252, all ids text):** `amazon_ads_search_term_daily` (key: day, campaign_id, ad_group_id, keyword_id, match_type, search_term), `amazon_ads_targeting_daily` (key: day, campaign_id, ad_group_id, keyword_id, match_type, targeting), `amazon_ads_keywords_snapshot`, `amazon_ads_targets_snapshot`, `amazon_ads_negative_keywords_snapshot`, `amazon_ads_campaigns_snapshot` (each keyed by snapshot_date + id, so bid history builds up one snapshot per load date) and `amazon_ads_product_ads` (latest map, keyed on ad_id).
+
+**Views (migration 253, schema `analytics`, domain `amazon`):** one per table with the product resolved (`amazon_ads_search_terms_daily`, `amazon_ads_targeting_daily`, `amazon_ads_keywords_snapshot`, `amazon_ads_targets_snapshot`, `amazon_ads_negative_keywords_snapshot`, `amazon_ads_campaigns_snapshot`, `amazon_ads_product_ads`), the helper `amazon_ads_ad_group_products`, and `amazon_ads_search_terms_vs_organic` (paid search terms by Sunday-start Search Query Performance week x product x normalised term next to the organic numbers; blank where Search Query Performance has no row).
+
+**Product rule:** ad group -> its product ads -> ASIN -> `amazon_asin_products`. An ad group advertising more than one product has `product_slug` NULL and `product_resolution` = `mixed`; no mapped ASIN or no product ad on file = `unmapped`. Never guessed. On the first load 31 of 962 ad groups were mixed (344 of 3,909 search-term rows, 2,121 of 30,688 targeting rows).
+
+**Load:** `python -m etl.amazon_dash_load --dir ~/lonvera-tag-explorer-data/amazon_dash [--dry-run] [--database-url URL]` (needs `DATABASE_URL`; read FORMAT.md in that folder). It reads every window and snapshot under the folder, upserts on the natural keys (loading twice changes nothing; a restated day replaces the stored row), prints row counts and first and last date per table, and reconciles the daily search-term cost and targeting cost against Sponsored Products spend in `amazon_ads_campaign_daily` on the days both hold. Re-pull and re-load the trailing week each time: a day's newest rows restate for a few days.
+
+**Retention at Amazon (verified 2026-11-12):** targeting reports go back about 95 days (from 2026-08-10 then, moving forward one day a day); search terms only about 64 days (nothing before 2026-09-09). Days not loaded in time are lost for good. Sponsored Brands and Sponsored Display keyword data and placement performance do not exist as datasets; placement bid adjustments are in the campaign snapshot but their effect cannot be measured. Campaign-level negative keywords and negative product targets are not available (only ad group level negatives). Attribution is 7-day only. No bid history exists: the first snapshot is the start of it.
+
+**Page:** `/amazon?view=keywords|adsearch|negatives` (routes `/api/amazon/keywords`, `/ad-search-terms`, `/ad-search-terms/matches`, `/negatives`). Not response-cached, because a manual load does not move the cache version.
+
 ## Freshness
 
 `analytics.data_coverage` has one row per table (period tables report weeks or months held in `days`). Stale limits used by the feeds freshness check: ads, orders, traffic 3 days; settlements 21; weekly tables 16; monthly search 50.

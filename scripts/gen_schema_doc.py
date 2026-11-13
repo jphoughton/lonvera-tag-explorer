@@ -52,7 +52,7 @@ MIGRATIONS = {"013": ROOT / "migrations" / "013_schema_comments_analytics.sql", 
               "230": ROOT / "migrations" / "230_analytics_brain_views.sql", "240": ROOT / "migrations" / "240_meta_breakdowns.sql",
               "242": ROOT / "migrations" / "242_meta_funnel_actions.sql", "243": ROOT / "migrations" / "243_assignment_events.sql", "249": ROOT / "migrations" / "249_ad_transcripts.sql", "245": ROOT / "migrations" / "245_production_board.sql",
               "247": ROOT / "migrations" / "247_meta_checkout_changelog.sql", "248": ROOT / "migrations" / "248_daily_story.sql",
-              "251": ROOT / "migrations" / "251_amazon_views.sql"}
+              "251": ROOT / "migrations" / "251_amazon_views.sql", "253": ROOT / "migrations" / "253_amazon_keyword_views.sql"}
 # the Test to scale views (created by migration 015, after 013 runs on a fresh database): they and their comments live in migration 015
 # (migration 016 turned them into tables and added the placements tables; 015's own comment section is frozen history)
 LATE_STAGE_MOVES = {f"public.{n}{b}" for n in ("creative_stage_moves", "creative_scaling_placements") for b in ("", "_upstack_nc", "_upstack_all")}
@@ -99,6 +99,10 @@ LATE_AMAZON_TABLES = {f"public.amazon_{n}" for n in ("asin_products", "ads_campa
                                                       "market_baskets", "repeat_purchases", "settlement_fees_daily")}
 LATE_AMAZON = LATE_AMAZON_TABLES | {f"analytics.amazon_{n}" for n in ("asin_products", "ads_campaign_daily", "ads_asin_daily", "search_queries_weekly", "search_queries_monthly",
                                                                        "orders_asin_daily", "traffic_daily", "market_baskets", "repeat_purchases", "settlement_fees_daily")}
+# the Amazon Ads keyword layer (tables created by migration 252, analytics views by 253): all their comments live in migration 253
+LATE_AMAZON_KW = ({f"public.amazon_ads_{n}" for n in ("search_term_daily", "targeting_daily", "keywords_snapshot", "targets_snapshot", "negative_keywords_snapshot", "campaigns_snapshot", "product_ads")}
+                  | {f"analytics.amazon_ads_{n}" for n in ("search_terms_daily", "targeting_daily", "keywords_snapshot", "targets_snapshot", "negative_keywords_snapshot", "campaigns_snapshot",
+                                                           "product_ads", "ad_group_products", "search_terms_vs_organic")})
 PROJ_GROUPS = {"proj_feeds", "proj_engine"}
 SCHEMAS = ("public", "analytics")
 KIND = {"r": "table", "p": "table", "v": "view", "m": "view"}
@@ -421,6 +425,8 @@ def scope_of(r: dict, d=None) -> str:
         return "197"
     if r["name"] in LATE_MANUAL:
         return "199"
+    if r["name"] in LATE_AMAZON_KW:
+        return "253"
     if r["name"] in LATE_AMAZON:
         return "251"
     if r["name"] in LATE_BOARD:
@@ -527,12 +533,12 @@ def catalog_sql(d=None) -> str:
 
 def migration_text(which: str, model: dict, d=None) -> str:
     """013, 015 and 190 keep their hand-written DDL (everything above COMMENTS_MARKER) and get the comment section rewritten; 191 is comments only."""
-    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "242", "243", "245", "247", "249", "251"):
+    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "242", "243", "245", "247", "249", "251", "253"):
         path = MIGRATIONS[which]
         if not path.exists():
             raise SystemExit(f"{path} must exist with its hand-written DDL and the comments marker before comments can be emitted")
         head = path.read_text().split(COMMENTS_MARKER, 1)[0] + COMMENTS_MARKER
-        if which in ("230", "247", "251"):                                # the catalog and the glossary are generated, so they sit below the marker, before their comments
+        if which in ("230", "247", "251", "253"):                                # the catalog and the glossary are generated, so they sit below the marker, before their comments
             head += "-- analytics.catalog and analytics.metric_glossary: generated from docs/schema/descriptions.py (domains, descriptions, grains, METRICS)\n" + catalog_sql(d) + "\n"
         return head + comment_sql(model, which, d)
     if which == "191":
@@ -599,7 +605,7 @@ def main(argv=None) -> int:
     g.add_argument("--write", action="store_true")
     g.add_argument("--check", action="store_true")
     g.add_argument("--problems", action="store_true")
-    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "242", "243", "245", "247", "249", "251", "all"))
+    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "242", "243", "245", "247", "249", "251", "253", "all"))
     g.add_argument("--catalog-sql", action="store_true")
     g.add_argument("--emit-migration", choices=sorted(MIGRATIONS))
     g.add_argument("--verify-live", action="store_true")

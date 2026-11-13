@@ -25183,6 +25183,1749 @@
    ]
   },
   {
+   "name": "public.amazon_ads_search_term_daily",
+   "schema": "public",
+   "relation": "amazon_ads_search_term_daily",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Sponsored Products search-term report: the customer queries your ads served on, by day, campaign, ad group and the keyword or target that matched them, with impressions, clicks, cost and 7-day purchases and sales.",
+   "grain": "one row per (day, campaign_id, ad_group_id, keyword_id, match_type, search_term)",
+   "primary_key": [
+    "day",
+    "campaign_id",
+    "ad_group_id",
+    "keyword_id",
+    "match_type",
+    "search_term"
+   ],
+   "foreign_keys": [],
+   "source": "ExpandFi Data Dash pull of Amazon Ads search-term report (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled",
+   "coverage": "2026-09-09 to 2026-11-10 as first loaded; Amazon keeps about 64 days of search terms (nothing returns before 2026-09-09) and the window moves forward one day a day, so days not loaded in time are lost",
+   "caveats": [
+    "Sponsored Products only, Amazon's 7-day attribution only (no 1, 14 or 30-day columns).",
+    "Only queries your ads served on appear: no row is not zero. A day's newest rows can restate for a few days, so re-load the trailing week.",
+    "Search terms are not the keywords bid on: one search term can match several keywords and campaigns. No ASIN or placement column; the product comes from the ad group.",
+    "search_term_key is the normalised term (lower case, whitespace collapsed), the join key to amazon_sqp_weekly.query_key."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Amazon Ads report day (US Pacific)."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Campaign id (text; the reports send an integer)."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Ad group id (text)."
+    },
+    {
+     "name": "keyword_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Keyword id; for auto and product targets the id of the target (the same id as amazon_ads_targets_snapshot.target_id)."
+    },
+    {
+     "name": "match_type",
+     "type": "text",
+     "nullable": false,
+     "description": "BROAD | PHRASE | EXACT | TARGETING_EXPRESSION | TARGETING_EXPRESSION_PREDEFINED (auto and product targets)."
+    },
+    {
+     "name": "search_term",
+     "type": "text",
+     "nullable": false,
+     "description": "The customer's query as Amazon reports it (an ASIN in lower case for product-target matches)."
+    },
+    {
+     "name": "campaign_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Campaign name on the report row."
+    },
+    {
+     "name": "ad_group_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Ad group name on the report row."
+    },
+    {
+     "name": "keyword",
+     "type": "text",
+     "nullable": true,
+     "description": "Target text as the report names it: the keyword, or loose-match / close-match / substitutes / complements for auto targets, or an asin or category expression."
+    },
+    {
+     "name": "search_term_key",
+     "type": "text",
+     "nullable": false,
+     "description": "Normalised search_term: lower case, trimmed, runs of whitespace collapsed (the same rule as amazon_sqp_weekly.query_key)."
+    },
+    {
+     "name": "impressions",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Impressions."
+    },
+    {
+     "name": "clicks",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Clicks."
+    },
+    {
+     "name": "cost",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Ad spend, US dollars."
+    },
+    {
+     "name": "purchases_7d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Purchases credited to the ad within Amazon's 7-day attribution window (the only window these reports carry)."
+    },
+    {
+     "name": "sales_7d",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Sales dollars credited to the ad within the 7-day window."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was last written by the loader."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_ads_targeting_daily",
+   "schema": "public",
+   "relation": "amazon_ads_targeting_daily",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Sponsored Products targeting report: every keyword and target (including auto and product targets) by day with impressions, clicks, cost and 7-day purchases and sales: the bid side. It cannot say which query drove the spend.",
+   "grain": "one row per (day, campaign_id, ad_group_id, keyword_id, match_type, targeting)",
+   "primary_key": [
+    "day",
+    "campaign_id",
+    "ad_group_id",
+    "keyword_id",
+    "match_type",
+    "targeting"
+   ],
+   "foreign_keys": [],
+   "source": "ExpandFi Data Dash pull of Amazon Ads targeting report (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled",
+   "coverage": "2026-08-10 to 2026-11-10 as first loaded; Amazon keeps about 95 days of targeting data and the window moves forward one day a day",
+   "caveats": [
+    "Sponsored Products only, Amazon's 7-day attribution only (no 1, 14 or 30-day columns).",
+    "Includes zero-click rows with impressions only, so the older months are mostly impressions without spend.",
+    "Targeting cost and search-term cost for the same days differ by about 0.1% (search terms list only the queries served on)."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Amazon Ads report day (US Pacific)."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Campaign id (text; the reports send an integer)."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Ad group id (text)."
+    },
+    {
+     "name": "keyword_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Keyword id; for auto and product targets the id of the target (the same id as amazon_ads_targets_snapshot.target_id)."
+    },
+    {
+     "name": "match_type",
+     "type": "text",
+     "nullable": false,
+     "description": "BROAD | PHRASE | EXACT | TARGETING_EXPRESSION | TARGETING_EXPRESSION_PREDEFINED (auto and product targets)."
+    },
+    {
+     "name": "targeting",
+     "type": "text",
+     "nullable": false,
+     "description": "The target expression: the keyword text, loose-match / close-match / substitutes / complements, asin=\"...\" or category=\"...\"."
+    },
+    {
+     "name": "campaign_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Campaign name on the report row."
+    },
+    {
+     "name": "ad_group_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Ad group name on the report row."
+    },
+    {
+     "name": "keyword",
+     "type": "text",
+     "nullable": true,
+     "description": "Target text as the report names it: the keyword, or loose-match / close-match / substitutes / complements for auto targets, or an asin or category expression."
+    },
+    {
+     "name": "impressions",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Impressions."
+    },
+    {
+     "name": "clicks",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Clicks."
+    },
+    {
+     "name": "cost",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Ad spend, US dollars."
+    },
+    {
+     "name": "purchases_7d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Purchases credited to the ad within Amazon's 7-day attribution window (the only window these reports carry)."
+    },
+    {
+     "name": "sales_7d",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Sales dollars credited to the ad within the 7-day window."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was last written by the loader."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_ads_keywords_snapshot",
+   "schema": "public",
+   "relation": "amazon_ads_keywords_snapshot",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Sponsored Products keywords with their current bid and state, one snapshot per load date: the bid history accumulates as snapshots are loaded on later days.",
+   "grain": "one row per (snapshot_date, keyword_id)",
+   "primary_key": [
+    "snapshot_date",
+    "keyword_id"
+   ],
+   "foreign_keys": [],
+   "source": "ExpandFi Data Dash pull of Amazon Ads keyword list (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled",
+   "coverage": "one snapshot (2026-11-12, 3,677 keywords: 3,227 enabled, 450 paused); archived keywords are not returned by Amazon; no bid history exists before the first snapshot",
+   "caveats": [
+    "snapshot_date is the date in the snapshot folder name; the latest snapshot is the current bid. Ad group level only (the ad group list was not pulled, so there is no ad group default bid)."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "snapshot_date",
+     "type": "date",
+     "nullable": false,
+     "description": "Date of the snapshot (from the folder name)."
+    },
+    {
+     "name": "keyword_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Keyword id (text); the same id as keyword_id in the report tables."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Ad group id."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Campaign id."
+    },
+    {
+     "name": "keyword_text",
+     "type": "text",
+     "nullable": true,
+     "description": "Keyword text."
+    },
+    {
+     "name": "match_type",
+     "type": "text",
+     "nullable": true,
+     "description": "BROAD | PHRASE | EXACT."
+    },
+    {
+     "name": "bid",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Bid in US dollars at the snapshot."
+    },
+    {
+     "name": "state",
+     "type": "text",
+     "nullable": true,
+     "description": "ENABLED | PAUSED."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was last written by the loader."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_ads_targets_snapshot",
+   "schema": "public",
+   "relation": "amazon_ads_targets_snapshot",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Sponsored Products product and auto targets (targeting clauses) with their current bid and state, one snapshot per load date.",
+   "grain": "one row per (snapshot_date, target_id)",
+   "primary_key": [
+    "snapshot_date",
+    "target_id"
+   ],
+   "foreign_keys": [],
+   "source": "ExpandFi Data Dash pull of Amazon Ads targeting clause list (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled",
+   "coverage": "one snapshot (2026-11-12, 919 clauses: 696 enabled, 223 paused; 775 manual, 144 auto)",
+   "caveats": [
+    "target_id equals keyword_id in the report tables. An auto target can have no bid of its own (it inherits the ad group default, which was not pulled)."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "snapshot_date",
+     "type": "date",
+     "nullable": false,
+     "description": "Date of the snapshot."
+    },
+    {
+     "name": "target_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Target id (text); the keyword_id of the report rows for product and auto targets."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Ad group id."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Campaign id."
+    },
+    {
+     "name": "bid",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Bid in US dollars; NULL when the target inherits the ad group bid."
+    },
+    {
+     "name": "state",
+     "type": "text",
+     "nullable": true,
+     "description": "ENABLED | PAUSED."
+    },
+    {
+     "name": "expression_type",
+     "type": "text",
+     "nullable": true,
+     "description": "MANUAL | AUTO."
+    },
+    {
+     "name": "expression_text",
+     "type": "text",
+     "nullable": true,
+     "description": "The expression in plain text, e.g. 'ASIN_SAME_AS b07tyrty26' or 'QUERY_HIGH_REL_MATCHES'."
+    },
+    {
+     "name": "expression",
+     "type": "jsonb",
+     "nullable": true,
+     "description": "The expression as Amazon sends it (json array of type / value)."
+    },
+    {
+     "name": "resolved_expression",
+     "type": "jsonb",
+     "nullable": true,
+     "description": "The resolved expression (json)."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was last written by the loader."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_ads_negative_keywords_snapshot",
+   "schema": "public",
+   "relation": "amazon_ads_negative_keywords_snapshot",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Sponsored Products negative keywords at ad group level, one snapshot per load date.",
+   "grain": "one row per (snapshot_date, keyword_id)",
+   "primary_key": [
+    "snapshot_date",
+    "keyword_id"
+   ],
+   "foreign_keys": [],
+   "source": "ExpandFi Data Dash pull of Amazon Ads negative keyword list (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled",
+   "coverage": "one snapshot (2026-11-13, 29,995 rows: 29,969 enabled, 26 archived; 28,987 negative phrase, 1,008 negative exact)",
+   "caveats": [
+    "Ad group level only: campaign-level negative keywords and negative product targets are not available through any Data Dash dataset, so absence here does not mean a term is not negated."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "snapshot_date",
+     "type": "date",
+     "nullable": false,
+     "description": "Date of the snapshot."
+    },
+    {
+     "name": "keyword_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Negative keyword id (text)."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Ad group id."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Campaign id."
+    },
+    {
+     "name": "keyword_text",
+     "type": "text",
+     "nullable": true,
+     "description": "The negative keyword text."
+    },
+    {
+     "name": "match_type",
+     "type": "text",
+     "nullable": true,
+     "description": "NEGATIVE_PHRASE | NEGATIVE_EXACT."
+    },
+    {
+     "name": "state",
+     "type": "text",
+     "nullable": true,
+     "description": "ENABLED | ARCHIVED."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was last written by the loader."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_ads_campaigns_snapshot",
+   "schema": "public",
+   "relation": "amazon_ads_campaigns_snapshot",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Sponsored Products campaigns with budget, bidding strategy and placement bid adjustments, one snapshot per load date.",
+   "grain": "one row per (snapshot_date, campaign_id)",
+   "primary_key": [
+    "snapshot_date",
+    "campaign_id"
+   ],
+   "foreign_keys": [],
+   "source": "ExpandFi Data Dash pull of Amazon Ads campaign list (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled",
+   "coverage": "one snapshot (2026-11-13, 963 campaigns: 746 enabled, 217 paused)",
+   "caveats": [
+    "Placement bid adjustments live here; Amazon has no placement performance report for these pulls, so the effect of a placement bid cannot be measured from this data.",
+    "A placement percentage that is NULL means the campaign sets no adjustment for it."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "snapshot_date",
+     "type": "date",
+     "nullable": false,
+     "description": "Date of the snapshot."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Campaign id (text)."
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "nullable": true,
+     "description": "Campaign name."
+    },
+    {
+     "name": "state",
+     "type": "text",
+     "nullable": true,
+     "description": "ENABLED | PAUSED."
+    },
+    {
+     "name": "targeting_type",
+     "type": "text",
+     "nullable": true,
+     "description": "MANUAL | AUTO."
+    },
+    {
+     "name": "start_date",
+     "type": "date",
+     "nullable": true,
+     "description": "Campaign start date."
+    },
+    {
+     "name": "budget",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Budget in US dollars."
+    },
+    {
+     "name": "budget_type",
+     "type": "text",
+     "nullable": true,
+     "description": "DAILY."
+    },
+    {
+     "name": "portfolio_id",
+     "type": "text",
+     "nullable": true,
+     "description": "Portfolio id, if any."
+    },
+    {
+     "name": "bidding_strategy",
+     "type": "text",
+     "nullable": true,
+     "description": "Dynamic bidding strategy: LEGACY_FOR_SALES | AUTO_FOR_SALES | MANUAL."
+    },
+    {
+     "name": "placement_top_pct",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Bid adjustment for top of search, percent."
+    },
+    {
+     "name": "placement_product_page_pct",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Bid adjustment for product pages, percent."
+    },
+    {
+     "name": "placement_rest_of_search_pct",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Bid adjustment for the rest of search, percent."
+    },
+    {
+     "name": "dynamic_bidding",
+     "type": "jsonb",
+     "nullable": true,
+     "description": "The whole dynamic bidding block as Amazon sends it (json: strategy, placement bidding, shopper cohort bidding)."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was last written by the loader."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_ads_product_ads",
+   "schema": "public",
+   "relation": "amazon_ads_product_ads",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Sponsored Products product ads: which ASIN and SKU each campaign and ad group advertises. The map that gives every keyword row its product.",
+   "grain": "one row per ad_id (the latest snapshot that holds it)",
+   "primary_key": [
+    "ad_id"
+   ],
+   "foreign_keys": [],
+   "source": "ExpandFi Data Dash pull of Amazon Ads product ad list (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled",
+   "coverage": "1,063 product ads from the 2026-11-13 snapshot",
+   "caveats": [
+    "Latest map, not history: an ad that disappears from a later snapshot keeps its older snapshot_date. An ad group with ASINs of more than one product resolves to no single product (see analytics.amazon_ads_ad_group_products)."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "ad_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Product ad id (text)."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Ad group id."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Campaign id."
+    },
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": true,
+     "description": "Advertised ASIN."
+    },
+    {
+     "name": "sku",
+     "type": "text",
+     "nullable": true,
+     "description": "Advertised SKU."
+    },
+    {
+     "name": "state",
+     "type": "text",
+     "nullable": true,
+     "description": "ENABLED | PAUSED."
+    },
+    {
+     "name": "snapshot_date",
+     "type": "date",
+     "nullable": false,
+     "description": "Date of the snapshot this row came from."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was last written by the loader."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "analytics.amazon_ads_search_terms_daily",
+   "schema": "analytics",
+   "relation": "amazon_ads_search_terms_daily",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Sponsored Products search-term report: the customer queries your ads served on, by day, campaign, ad group and the keyword or target that matched them, with impressions, clicks, cost and 7-day purchases and sales.",
+   "grain": "one row per (day, campaign_id, ad_group_id, keyword_id, match_type, search_term)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_ads_search_term_daily joined to the product of the ad group (analytics.amazon_ads_ad_group_products)",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled",
+   "coverage": "2026-09-09 to 2026-11-10 as first loaded; Amazon keeps about 64 days of search terms (nothing returns before 2026-09-09) and the window moves forward one day a day, so days not loaded in time are lost",
+   "caveats": [
+    "Sponsored Products only, Amazon's 7-day attribution only (no 1, 14 or 30-day columns).",
+    "Only queries your ads served on appear: no row is not zero. A day's newest rows can restate for a few days, so re-load the trailing week.",
+    "Search terms are not the keywords bid on: one search term can match several keywords and campaigns. No ASIN or placement column; the product comes from the ad group.",
+    "search_term_key is the normalised term (lower case, whitespace collapsed), the join key to amazon_sqp_weekly.query_key.",
+    "product_slug is NULL for an ad group that advertises more than one product (product_resolution = 'mixed') and for one with no product ad on file or no mapped ASIN ('unmapped'): count those rows as 'no single product', never as a product."
+   ],
+   "like": "public.amazon_ads_search_term_daily",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": null,
+     "description": "Amazon Ads report day (US Pacific)."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign id (text; the reports send an integer)."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad group id (text)."
+    },
+    {
+     "name": "keyword_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Keyword id; for auto and product targets the id of the target (the same id as amazon_ads_targets_snapshot.target_id)."
+    },
+    {
+     "name": "match_type",
+     "type": "text",
+     "nullable": null,
+     "description": "BROAD | PHRASE | EXACT | TARGETING_EXPRESSION | TARGETING_EXPRESSION_PREDEFINED (auto and product targets)."
+    },
+    {
+     "name": "search_term",
+     "type": "text",
+     "nullable": null,
+     "description": "The customer's query as Amazon reports it (an ASIN in lower case for product-target matches)."
+    },
+    {
+     "name": "campaign_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign name on the report row."
+    },
+    {
+     "name": "ad_group_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad group name on the report row."
+    },
+    {
+     "name": "keyword",
+     "type": "text",
+     "nullable": null,
+     "description": "Target text as the report names it: the keyword, or loose-match / close-match / substitutes / complements for auto targets, or an asin or category expression."
+    },
+    {
+     "name": "search_term_key",
+     "type": "text",
+     "nullable": null,
+     "description": "Normalised search_term: lower case, trimmed, runs of whitespace collapsed (the same rule as amazon_sqp_weekly.query_key)."
+    },
+    {
+     "name": "impressions",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Impressions."
+    },
+    {
+     "name": "clicks",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Clicks."
+    },
+    {
+     "name": "cost",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Ad spend, US dollars."
+    },
+    {
+     "name": "purchases_7d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Purchases credited to the ad within Amazon's 7-day attribution window (the only window these reports carry)."
+    },
+    {
+     "name": "sales_7d",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Sales dollars credited to the ad within the 7-day window."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was last written by the loader."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped')."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug; NULL when product_slug is NULL."
+    },
+    {
+     "name": "product_resolution",
+     "type": "text",
+     "nullable": null,
+     "description": "single | mixed | unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products)."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Top search terms by spend with 7-day return on ad spend",
+     "sql": "SELECT search_term_key, sum(clicks) AS clicks, round(sum(cost), 2) AS cost, round(sum(sales_7d), 2) AS sales_7d,\n       round(sum(sales_7d) / NULLIF(sum(cost), 0), 2) AS return_on_ad_spend\nFROM analytics.amazon_ads_search_terms_daily GROUP BY 1 ORDER BY 3 DESC LIMIT 25;"
+    },
+    {
+     "title": "Rows and spend with no single product",
+     "sql": "SELECT product_resolution, count(*) AS rows, round(sum(cost)) AS cost FROM analytics.amazon_ads_search_terms_daily GROUP BY 1 ORDER BY 1;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_ads_targeting_daily",
+   "schema": "analytics",
+   "relation": "amazon_ads_targeting_daily",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Sponsored Products targeting report: every keyword and target (including auto and product targets) by day with impressions, clicks, cost and 7-day purchases and sales: the bid side. It cannot say which query drove the spend.",
+   "grain": "one row per (day, campaign_id, ad_group_id, keyword_id, match_type, targeting)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_ads_targeting_daily joined to the product of the ad group (analytics.amazon_ads_ad_group_products)",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled",
+   "coverage": "2026-08-10 to 2026-11-10 as first loaded; Amazon keeps about 95 days of targeting data and the window moves forward one day a day",
+   "caveats": [
+    "Sponsored Products only, Amazon's 7-day attribution only (no 1, 14 or 30-day columns).",
+    "Includes zero-click rows with impressions only, so the older months are mostly impressions without spend.",
+    "Targeting cost and search-term cost for the same days differ by about 0.1% (search terms list only the queries served on).",
+    "product_slug is NULL for an ad group that advertises more than one product (product_resolution = 'mixed') and for one with no product ad on file or no mapped ASIN ('unmapped'): count those rows as 'no single product', never as a product."
+   ],
+   "like": "public.amazon_ads_targeting_daily",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": null,
+     "description": "Amazon Ads report day (US Pacific)."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign id (text; the reports send an integer)."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad group id (text)."
+    },
+    {
+     "name": "keyword_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Keyword id; for auto and product targets the id of the target (the same id as amazon_ads_targets_snapshot.target_id)."
+    },
+    {
+     "name": "match_type",
+     "type": "text",
+     "nullable": null,
+     "description": "BROAD | PHRASE | EXACT | TARGETING_EXPRESSION | TARGETING_EXPRESSION_PREDEFINED (auto and product targets)."
+    },
+    {
+     "name": "targeting",
+     "type": "text",
+     "nullable": null,
+     "description": "The target expression: the keyword text, loose-match / close-match / substitutes / complements, asin=\"...\" or category=\"...\"."
+    },
+    {
+     "name": "campaign_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign name on the report row."
+    },
+    {
+     "name": "ad_group_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad group name on the report row."
+    },
+    {
+     "name": "keyword",
+     "type": "text",
+     "nullable": null,
+     "description": "Target text as the report names it: the keyword, or loose-match / close-match / substitutes / complements for auto targets, or an asin or category expression."
+    },
+    {
+     "name": "impressions",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Impressions."
+    },
+    {
+     "name": "clicks",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Clicks."
+    },
+    {
+     "name": "cost",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Ad spend, US dollars."
+    },
+    {
+     "name": "purchases_7d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Purchases credited to the ad within Amazon's 7-day attribution window (the only window these reports carry)."
+    },
+    {
+     "name": "sales_7d",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Sales dollars credited to the ad within the 7-day window."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was last written by the loader."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped')."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug; NULL when product_slug is NULL."
+    },
+    {
+     "name": "product_resolution",
+     "type": "text",
+     "nullable": null,
+     "description": "single | mixed | unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products)."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Spend by product and match type",
+     "sql": "SELECT coalesce(product_slug, '(' || product_resolution || ')') AS product, match_type, round(sum(cost)) AS cost, sum(clicks) AS clicks\nFROM analytics.amazon_ads_targeting_daily GROUP BY 1, 2 ORDER BY 3 DESC;"
+    },
+    {
+     "title": "Daily spend",
+     "sql": "SELECT day, round(sum(cost), 2) AS cost FROM analytics.amazon_ads_targeting_daily GROUP BY 1 ORDER BY 1 DESC LIMIT 14;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_ads_keywords_snapshot",
+   "schema": "analytics",
+   "relation": "amazon_ads_keywords_snapshot",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Sponsored Products keywords with their current bid and state, one snapshot per load date: the bid history accumulates as snapshots are loaded on later days.",
+   "grain": "one row per (snapshot_date, keyword_id)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_ads_keywords_snapshot joined to the product of the ad group (analytics.amazon_ads_ad_group_products)",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled",
+   "coverage": "one snapshot (2026-11-12, 3,677 keywords: 3,227 enabled, 450 paused); archived keywords are not returned by Amazon; no bid history exists before the first snapshot",
+   "caveats": [
+    "snapshot_date is the date in the snapshot folder name; the latest snapshot is the current bid. Ad group level only (the ad group list was not pulled, so there is no ad group default bid).",
+    "product_slug is NULL for an ad group that advertises more than one product (product_resolution = 'mixed') and for one with no product ad on file or no mapped ASIN ('unmapped'): count those rows as 'no single product', never as a product."
+   ],
+   "like": "public.amazon_ads_keywords_snapshot",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "snapshot_date",
+     "type": "date",
+     "nullable": null,
+     "description": "Date of the snapshot (from the folder name)."
+    },
+    {
+     "name": "keyword_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Keyword id (text); the same id as keyword_id in the report tables."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad group id."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign id."
+    },
+    {
+     "name": "keyword_text",
+     "type": "text",
+     "nullable": null,
+     "description": "Keyword text."
+    },
+    {
+     "name": "match_type",
+     "type": "text",
+     "nullable": null,
+     "description": "BROAD | PHRASE | EXACT."
+    },
+    {
+     "name": "bid",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Bid in US dollars at the snapshot."
+    },
+    {
+     "name": "state",
+     "type": "text",
+     "nullable": null,
+     "description": "ENABLED | PAUSED."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was last written by the loader."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped')."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug; NULL when product_slug is NULL."
+    },
+    {
+     "name": "product_resolution",
+     "type": "text",
+     "nullable": null,
+     "description": "single | mixed | unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products)."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Current bid of the keywords with most spend",
+     "sql": "SELECT k.keyword_text, k.match_type, k.bid, k.state, round(sum(t.cost), 2) AS cost\nFROM analytics.amazon_ads_keywords_snapshot k\nJOIN analytics.amazon_ads_targeting_daily t ON t.keyword_id = k.keyword_id\nWHERE k.snapshot_date = (SELECT max(snapshot_date) FROM analytics.amazon_ads_keywords_snapshot)\nGROUP BY 1, 2, 3, 4 ORDER BY 5 DESC LIMIT 25;"
+    },
+    {
+     "title": "Snapshots held",
+     "sql": "SELECT snapshot_date, count(*) AS keywords FROM analytics.amazon_ads_keywords_snapshot GROUP BY 1 ORDER BY 1;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_ads_targets_snapshot",
+   "schema": "analytics",
+   "relation": "amazon_ads_targets_snapshot",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Sponsored Products product and auto targets (targeting clauses) with their current bid and state, one snapshot per load date.",
+   "grain": "one row per (snapshot_date, target_id)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_ads_targets_snapshot joined to the product of the ad group (analytics.amazon_ads_ad_group_products)",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled",
+   "coverage": "one snapshot (2026-11-12, 919 clauses: 696 enabled, 223 paused; 775 manual, 144 auto)",
+   "caveats": [
+    "target_id equals keyword_id in the report tables. An auto target can have no bid of its own (it inherits the ad group default, which was not pulled).",
+    "product_slug is NULL for an ad group that advertises more than one product (product_resolution = 'mixed') and for one with no product ad on file or no mapped ASIN ('unmapped'): count those rows as 'no single product', never as a product."
+   ],
+   "like": "public.amazon_ads_targets_snapshot",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "snapshot_date",
+     "type": "date",
+     "nullable": null,
+     "description": "Date of the snapshot."
+    },
+    {
+     "name": "target_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Target id (text); the keyword_id of the report rows for product and auto targets."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad group id."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign id."
+    },
+    {
+     "name": "bid",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Bid in US dollars; NULL when the target inherits the ad group bid."
+    },
+    {
+     "name": "state",
+     "type": "text",
+     "nullable": null,
+     "description": "ENABLED | PAUSED."
+    },
+    {
+     "name": "expression_type",
+     "type": "text",
+     "nullable": null,
+     "description": "MANUAL | AUTO."
+    },
+    {
+     "name": "expression_text",
+     "type": "text",
+     "nullable": null,
+     "description": "The expression in plain text, e.g. 'ASIN_SAME_AS b07tyrty26' or 'QUERY_HIGH_REL_MATCHES'."
+    },
+    {
+     "name": "expression",
+     "type": "jsonb",
+     "nullable": null,
+     "description": "The expression as Amazon sends it (json array of type / value)."
+    },
+    {
+     "name": "resolved_expression",
+     "type": "jsonb",
+     "nullable": null,
+     "description": "The resolved expression (json)."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was last written by the loader."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped')."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug; NULL when product_slug is NULL."
+    },
+    {
+     "name": "product_resolution",
+     "type": "text",
+     "nullable": null,
+     "description": "single | mixed | unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products)."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Enabled targets by type",
+     "sql": "SELECT expression_type, state, count(*) AS targets FROM analytics.amazon_ads_targets_snapshot GROUP BY 1, 2 ORDER BY 1, 2;"
+    },
+    {
+     "title": "Row count",
+     "sql": "SELECT count(*) AS rows FROM analytics.amazon_ads_targets_snapshot;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_ads_negative_keywords_snapshot",
+   "schema": "analytics",
+   "relation": "amazon_ads_negative_keywords_snapshot",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Sponsored Products negative keywords at ad group level, one snapshot per load date.",
+   "grain": "one row per (snapshot_date, keyword_id)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_ads_negative_keywords_snapshot joined to the product of the ad group (analytics.amazon_ads_ad_group_products)",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled",
+   "coverage": "one snapshot (2026-11-13, 29,995 rows: 29,969 enabled, 26 archived; 28,987 negative phrase, 1,008 negative exact)",
+   "caveats": [
+    "Ad group level only: campaign-level negative keywords and negative product targets are not available through any Data Dash dataset, so absence here does not mean a term is not negated.",
+    "product_slug is NULL for an ad group that advertises more than one product (product_resolution = 'mixed') and for one with no product ad on file or no mapped ASIN ('unmapped'): count those rows as 'no single product', never as a product."
+   ],
+   "like": "public.amazon_ads_negative_keywords_snapshot",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "snapshot_date",
+     "type": "date",
+     "nullable": null,
+     "description": "Date of the snapshot."
+    },
+    {
+     "name": "keyword_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Negative keyword id (text)."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad group id."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign id."
+    },
+    {
+     "name": "keyword_text",
+     "type": "text",
+     "nullable": null,
+     "description": "The negative keyword text."
+    },
+    {
+     "name": "match_type",
+     "type": "text",
+     "nullable": null,
+     "description": "NEGATIVE_PHRASE | NEGATIVE_EXACT."
+    },
+    {
+     "name": "state",
+     "type": "text",
+     "nullable": null,
+     "description": "ENABLED | ARCHIVED."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was last written by the loader."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped')."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug; NULL when product_slug is NULL."
+    },
+    {
+     "name": "product_resolution",
+     "type": "text",
+     "nullable": null,
+     "description": "single | mixed | unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products)."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Negative keywords by match type and state",
+     "sql": "SELECT match_type, state, count(*) AS negatives FROM analytics.amazon_ads_negative_keywords_snapshot GROUP BY 1, 2 ORDER BY 1, 2;"
+    },
+    {
+     "title": "Negatives per product",
+     "sql": "SELECT coalesce(product_slug, '(' || product_resolution || ')') AS product, count(*) AS negatives FROM analytics.amazon_ads_negative_keywords_snapshot GROUP BY 1 ORDER BY 2 DESC;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_ads_campaigns_snapshot",
+   "schema": "analytics",
+   "relation": "amazon_ads_campaigns_snapshot",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Sponsored Products campaigns with budget, bidding strategy and placement bid adjustments, one snapshot per load date.",
+   "grain": "one row per (snapshot_date, campaign_id)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_ads_campaigns_snapshot joined to the product of the ad group (analytics.amazon_ads_ad_group_products)",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled",
+   "coverage": "one snapshot (2026-11-13, 963 campaigns: 746 enabled, 217 paused)",
+   "caveats": [
+    "Placement bid adjustments live here; Amazon has no placement performance report for these pulls, so the effect of a placement bid cannot be measured from this data.",
+    "A placement percentage that is NULL means the campaign sets no adjustment for it.",
+    "product_slug is NULL for an ad group that advertises more than one product (product_resolution = 'mixed') and for one with no product ad on file or no mapped ASIN ('unmapped'): count those rows as 'no single product', never as a product."
+   ],
+   "like": "public.amazon_ads_campaigns_snapshot",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "snapshot_date",
+     "type": "date",
+     "nullable": null,
+     "description": "Date of the snapshot."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign id (text)."
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign name."
+    },
+    {
+     "name": "state",
+     "type": "text",
+     "nullable": null,
+     "description": "ENABLED | PAUSED."
+    },
+    {
+     "name": "targeting_type",
+     "type": "text",
+     "nullable": null,
+     "description": "MANUAL | AUTO."
+    },
+    {
+     "name": "start_date",
+     "type": "date",
+     "nullable": null,
+     "description": "Campaign start date."
+    },
+    {
+     "name": "budget",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Budget in US dollars."
+    },
+    {
+     "name": "budget_type",
+     "type": "text",
+     "nullable": null,
+     "description": "DAILY."
+    },
+    {
+     "name": "portfolio_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Portfolio id, if any."
+    },
+    {
+     "name": "bidding_strategy",
+     "type": "text",
+     "nullable": null,
+     "description": "Dynamic bidding strategy: LEGACY_FOR_SALES | AUTO_FOR_SALES | MANUAL."
+    },
+    {
+     "name": "placement_top_pct",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Bid adjustment for top of search, percent."
+    },
+    {
+     "name": "placement_product_page_pct",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Bid adjustment for product pages, percent."
+    },
+    {
+     "name": "placement_rest_of_search_pct",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Bid adjustment for the rest of search, percent."
+    },
+    {
+     "name": "dynamic_bidding",
+     "type": "jsonb",
+     "nullable": null,
+     "description": "The whole dynamic bidding block as Amazon sends it (json: strategy, placement bidding, shopper cohort bidding)."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was last written by the loader."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped')."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug; NULL when product_slug is NULL."
+    },
+    {
+     "name": "product_resolution",
+     "type": "text",
+     "nullable": null,
+     "description": "single | mixed | unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products)."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Campaigns by strategy and state",
+     "sql": "SELECT bidding_strategy, state, count(*) AS campaigns FROM analytics.amazon_ads_campaigns_snapshot GROUP BY 1, 2 ORDER BY 1, 2;"
+    },
+    {
+     "title": "Placement bid adjustments",
+     "sql": "SELECT placement_top_pct, placement_product_page_pct, placement_rest_of_search_pct, count(*) AS campaigns FROM analytics.amazon_ads_campaigns_snapshot GROUP BY 1, 2, 3 ORDER BY 4 DESC;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_ads_product_ads",
+   "schema": "analytics",
+   "relation": "amazon_ads_product_ads",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Sponsored Products product ads: which ASIN and SKU each campaign and ad group advertises. The map that gives every keyword row its product.",
+   "grain": "one row per ad_id (the latest snapshot that holds it)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_ads_product_ads joined to amazon_asin_products on the ASIN",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled",
+   "coverage": "1,063 product ads from the 2026-11-13 snapshot",
+   "caveats": [
+    "Latest map, not history: an ad that disappears from a later snapshot keeps its older snapshot_date. An ad group with ASINs of more than one product resolves to no single product (see analytics.amazon_ads_ad_group_products)."
+   ],
+   "like": "public.amazon_ads_product_ads",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "ad_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Product ad id (text)."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad group id."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign id."
+    },
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": null,
+     "description": "Advertised ASIN."
+    },
+    {
+     "name": "sku",
+     "type": "text",
+     "nullable": null,
+     "description": "Advertised SKU."
+    },
+    {
+     "name": "state",
+     "type": "text",
+     "nullable": null,
+     "description": "ENABLED | PAUSED."
+    },
+    {
+     "name": "snapshot_date",
+     "type": "date",
+     "nullable": null,
+     "description": "Date of the snapshot this row came from."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was last written by the loader."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN is not in amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug; NULL when product_slug is NULL."
+    }
+   ],
+   "examples": [
+    {
+     "title": "ASINs advertised per product",
+     "sql": "SELECT product_slug, count(DISTINCT asin) AS asins, count(*) AS ads FROM analytics.amazon_ads_product_ads GROUP BY 1 ORDER BY 3 DESC;"
+    },
+    {
+     "title": "Row count",
+     "sql": "SELECT count(*) AS rows FROM analytics.amazon_ads_product_ads;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_ads_ad_group_products",
+   "schema": "analytics",
+   "relation": "amazon_ads_ad_group_products",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Which product each Sponsored Products ad group advertises, from its product ads and the ASIN map: the product behind every keyword, search term and negative keyword row.",
+   "grain": "one row per (campaign_id, ad_group_id) that has at least one product ad",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_ads_product_ads joined to public.amazon_asin_products on the ASIN",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled (the ASIN map is refreshed nightly by the feeds service)",
+   "coverage": "962 ad groups from the 2026-11-13 product ad snapshot",
+   "caveats": [
+    "An ad group that advertises ASINs of more than one product is 'mixed' and has no product_slug: it is counted as no single product, not guessed. 31 of 962 ad groups were mixed on the first load.",
+    "An ad group in a report with no product ad on file is not in this view; the views that join it read it as 'unmapped'."
+   ],
+   "like": null,
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign id (text)."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad group id (text)."
+    },
+    {
+     "name": "asins",
+     "type": "integer",
+     "nullable": null,
+     "description": "Distinct ASINs advertised in the ad group."
+    },
+    {
+     "name": "products",
+     "type": "integer",
+     "nullable": null,
+     "description": "Distinct products among those ASINs (ASINs with no product mapping are not counted)."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped')."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug; NULL when product_slug is NULL."
+    },
+    {
+     "name": "product_resolution",
+     "type": "text",
+     "nullable": null,
+     "description": "single | mixed | unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products)."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Ad groups by resolution",
+     "sql": "SELECT product_resolution, count(*) AS ad_groups FROM analytics.amazon_ads_ad_group_products GROUP BY 1 ORDER BY 1;"
+    },
+    {
+     "title": "Mixed ad groups",
+     "sql": "SELECT campaign_id, ad_group_id, asins, products FROM analytics.amazon_ads_ad_group_products WHERE product_resolution = 'mixed' ORDER BY asins DESC;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_ads_search_terms_vs_organic",
+   "schema": "analytics",
+   "relation": "amazon_ads_search_terms_vs_organic",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Paid search terms (Sponsored Products) next to the organic Search Query Performance numbers of the same term, product and week: what you pay for against how much of that search you win.",
+   "grain": "one row per (week_start, product_slug, search_term_key); product_slug NULL = an ad group with no single product",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_ads_search_term_daily + analytics.amazon_ads_ad_group_products + public.amazon_sqp_weekly (US)",
+   "refresh": "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled (the organic side is refreshed nightly by the feeds service)",
+   "coverage": "paid side from 2026-09-09; organic columns only where Amazon listed the term for the product that week (about the top 100 terms per product per week)",
+   "caveats": [
+    "week_start is a Sunday: Amazon's Search Query Performance week (Sunday to Saturday), not an ISO (Monday) week, so paid days and organic weeks line up exactly. The first and last paid weeks can be partial.",
+    "Organic columns are NULL (not zero) when Amazon did not list the term that week: absence only means it was outside the top terms. has_organic_row says which.",
+    "Search Query Performance market totals are the MAX over the ASIN rows of a term-week and our counts the SUM; shares are recomputed here, percent 0 to 100. Our impressions, clicks and purchases include sponsored placements, so they overlap the paid columns: do not add paid and organic.",
+    "A paid row with no single product reads all products together in the organic columns (organic_scope = 'all products')."
+   ],
+   "like": null,
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "week_start",
+     "type": "date",
+     "nullable": null,
+     "description": "Sunday that starts the Search Query Performance week."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped')."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug; NULL when product_slug is NULL."
+    },
+    {
+     "name": "product_resolution",
+     "type": "text",
+     "nullable": null,
+     "description": "single | mixed | unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products)."
+    },
+    {
+     "name": "search_term_key",
+     "type": "text",
+     "nullable": null,
+     "description": "Normalised search term (lower case, whitespace collapsed)."
+    },
+    {
+     "name": "impressions",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Paid impressions of the week."
+    },
+    {
+     "name": "clicks",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Paid clicks."
+    },
+    {
+     "name": "cost",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Paid cost, US dollars."
+    },
+    {
+     "name": "purchases_7d",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Paid purchases, 7-day attribution."
+    },
+    {
+     "name": "sales_7d",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Paid sales, 7-day attribution."
+    },
+    {
+     "name": "organic_scope",
+     "type": "text",
+     "nullable": null,
+     "description": "product (the organic columns read that product's rows) | all products (the paid row has no single product)."
+    },
+    {
+     "name": "search_volume",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Amazon searches for the term that week (market total); NULL when not listed."
+    },
+    {
+     "name": "our_impression_share",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Our impressions / all impressions for the term, percent 0-100 (includes our sponsored placements)."
+    },
+    {
+     "name": "our_click_share",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Our clicks / all clicks for the term, percent 0-100."
+    },
+    {
+     "name": "our_cart_add_share",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Our cart adds / all cart adds, percent 0-100."
+    },
+    {
+     "name": "our_purchase_share",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Our purchases / all purchases for the term, percent 0-100."
+    },
+    {
+     "name": "our_clicks",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Our clicks on the term in Search Query Performance (organic and sponsored)."
+    },
+    {
+     "name": "our_purchases",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Our purchases of the term in Search Query Performance (search-origin, same day)."
+    },
+    {
+     "name": "has_organic_row",
+     "type": "boolean",
+     "nullable": null,
+     "description": "True when Search Query Performance has a row for this term, product scope and week."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Top paid terms with our purchase share",
+     "sql": "SELECT search_term_key, round(sum(cost), 2) AS cost, round(sum(sales_7d), 2) AS sales_7d, max(our_purchase_share) AS best_purchase_share\nFROM analytics.amazon_ads_search_terms_vs_organic GROUP BY 1 ORDER BY 2 DESC LIMIT 25;"
+    },
+    {
+     "title": "Share of paid cost that has an organic row",
+     "sql": "SELECT round(100.0 * sum(cost) FILTER (WHERE has_organic_row) / NULLIF(sum(cost), 0), 1) AS pct_of_cost_with_organic FROM analytics.amazon_ads_search_terms_vs_organic;"
+    }
+   ]
+  },
+  {
    "name": "analytics.klaviyo_daily",
    "schema": "analytics",
    "relation": "klaviyo_daily",

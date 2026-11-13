@@ -5,6 +5,8 @@ rule, the share recompute, the gaps and the alignment of ad days are production 
 
 Facts of the mock (the production spans, shifted): orders Oct 1 2025 .. Nov 9 2026; ads Jan 4 2026 .. Nov 9 2026 (three campaigns of Sponsored Products, one of each other type,
 one campaign for all products); traffic Oct 1 2025 .. Nov 7 2026 (it lags two days); search weeks Sundays Jul 13 2025 .. Nov 1 2026 (69 weeks); settlement days Jan 2026 .. Nov 2026.
+Keyword layer (Sponsored Products, loaded by hand): targeting Aug 10 .. Nov 10 2026, search terms Sep 9 .. Nov 10, lists snapshotted Nov 12 / 13; nine ad groups (one advertises two products, one has no
+product ad), 42 keywords and targets, 24 customer search terms (nine of them in Search Query Performance), 2,600 negative keywords (more than the 2,000 shown at once).
 Run with MOCK_AMAZON_EMPTY=1 for the "Amazon data has not loaded yet" state. `?fail=1` answers a 503.
 """
 from __future__ import annotations
@@ -91,6 +93,64 @@ for _d in _dates(FEE_FIRST, FEE_LAST)[::4]:
         FEES.append({"day": _d, "transaction_type": _tt, "amount_type": _at, "amount_description": _desc, "lines": 9, "amount": round(_amt * _wave(_d, len(_desc)), 2)})
 
 
+# ---------------------------------------------------------------------------------------------------------------- keyword layer
+KW_TG_FIRST, KW_LAST, KW_ST_FIRST = D(2026, 8, 10), D(2026, 11, 10), D(2026, 9, 9)
+KW_SNAP, NEG_SNAP, KW_LOADED = D(2026, 11, 12), D(2026, 11, 13), D(2026, 11, 13)
+# (ad group id, campaign id, campaign name, ad group name, product key)
+AGS = [("g1", "c1", "Vita Bull | Exact", "Vita Bull exact", "vita-bull"), ("g2", "c1", "Vita Bull | Exact", "Vita Bull phrase", "vita-bull"), ("g3", "c2", "Beef Liver | Broad", "Beef Liver broad", "beef-liver"),
+       ("g4", "c2", "Beef Liver | Broad", "Beef Liver exact", "beef-liver"), ("g5", "c3", "Boneflex | Auto", "Boneflex auto", "boneflex"), ("g6", "c4", "Vital Belle | Phrase", "Vital Belle phrase", "vita-belle"),
+       ("g7", "c5", "All Products | Catch all", "Catch all keywords", "mixed"), ("g8", "c5", "All Products | Catch all", "Catch all targets", "mixed"), ("g9", "c6", "Old campaign", "Old ad group", "unmapped")]
+KW_TEXT = {"vita-bull": ["testosterone support", "bovine prostate supplement", "vital bull", "men's health vitamins", "beef organs for men", "lonvera vital bull"],
+           "beef-liver": ["beef liver capsules", "desiccated beef liver", "lonvera beef liver", "organ meat supplement", "grass fed liver pills", "liver support cleanse", "beef liver supplement"],
+           "boneflex": ["joint support supplement", "bone marrow supplement", "glucosamine chondroitin", "bone flex"], "vita-belle": ["menopause support", "vital belle", "hair growth vitamins"],
+           "mixed": ["lonvera", "organ supplements", "ancestral supplements", "natural vitamins"], "unmapped": ["old keyword", "legacy term"]}
+KW_ITEMS = []                  # one per keyword or target: id, text, match, ad group, bid, state
+_n = 0
+for _ag, _cid, _cn, _agn, _pk in AGS:
+    for _i, _txt in enumerate(KW_TEXT[_pk][:4 + (_pk == "beef-liver")]):
+        _n += 1
+        _m = ["EXACT", "PHRASE", "BROAD"][_i % 3]
+        KW_ITEMS.append({"keyword_id": f"k{_n}", "text": _txt, "match_type": _m, "ad_group_id": _ag, "campaign_id": _cid, "campaign_name": _cn, "ad_group_name": _agn, "product": _pk,
+                         "bid": round(1.2 + 0.35 * (_n % 9), 2), "state": "ENABLED" if _n % 7 else "PAUSED", "kind": "keyword"})
+for _ag, _cid, _cn, _agn, _pk in (AGS[4], AGS[7]):
+    for _j, _t in enumerate(["loose-match", "asin=\"B0VB000001\"", "substitutes"]):
+        _n += 1
+        KW_ITEMS.append({"keyword_id": f"t{_n}", "text": _t, "match_type": "TARGETING_EXPRESSION_PREDEFINED" if _j != 1 else "TARGETING_EXPRESSION", "ad_group_id": _ag, "campaign_id": _cid, "campaign_name": _cn,
+                         "ad_group_name": _agn, "product": _pk, "bid": None if _j == 0 else 0.9, "state": "ENABLED", "kind": "target"})
+KW_DAILY = []                  # (day, item, impressions, clicks, cost, purchases, sales); the last two keywords of the list never get an impression
+for _k, _it in enumerate(KW_ITEMS[:-2]):
+    for _d in _dates(KW_TG_FIRST, KW_LAST):
+        _imp = round((400 + 90 * (_k % 7)) * _wave(_d, _k + 70))
+        _clk = round(_imp * (0.004 + 0.002 * (_k % 5)))
+        _cost = round(_clk * (0.8 + 0.25 * (_k % 6)), 2)
+        _pur = round(_clk * (0.08 + 0.03 * (_k % 4)))
+        KW_DAILY.append((_d, _it, _imp, _clk, _cost, _pur, round(_pur * 31.5, 2)))
+# customer search terms: (term, share of the keyword list it is served on); nine of them are organic search terms of TERMS above
+ST_TERMS = ["beef liver capsules", "desiccated beef liver", "lonvera beef liver", "organ meat supplement", "bovine prostate supplement", "bone marrow supplement", "vital bull", "bone flex", "vital belle",
+            "beef liver pills for women", "liver supplement without taste", "best organ supplement", "b0vb000001", "desiccated  Beef Liver Pills", "cheap beef liver", "ox liver tablets", "joint pain pills",
+            "beef bone marrow capsules", "men testosterone booster", "prostate health", "menopause hair loss", "energy supplement", "bull testicle supplement", "liver detox"]
+ST_DAILY = []
+for _t, _term in enumerate(ST_TERMS):
+    for _c in range(1 + _t % 3):
+        _it = KW_ITEMS[(_t * 5 + _c * 11) % (len(KW_ITEMS) - 2)]
+        for _d in _dates(KW_ST_FIRST, KW_LAST):
+            _imp = round((60 + 25 * (_t % 6)) * _wave(_d, _t + _c))
+            _clk = max(0, round(_imp * 0.05))
+            _cost = round(_clk * (1.1 + 0.2 * (_t % 5)), 2)
+            _pur = round(_clk * 0.15)
+            ST_DAILY.append((_d, _term, _it, _imp, _clk, _cost, _pur, round(_pur * 33.0, 2)))
+NEGS = []
+for _i in range(2600):
+    _ag = AGS[_i % len(AGS)]
+    NEGS.append({"keyword_id": f"n{_i}", "text": f"negative term {_i:04d}" if _i % 50 else f"collagen {_i}", "match_type": "NEGATIVE_EXACT" if _i % 9 == 0 else "NEGATIVE_PHRASE",
+                 "state": "ARCHIVED" if _i % 130 == 0 else "ENABLED", "campaign_id": _ag[1], "ad_group_id": _ag[0], "campaign_name": _ag[2], "ad_group_name": _ag[3], "product": _ag[4]})
+
+
+def _kw_sums_of(rows):
+    return {"impressions": sum(r[2] for r in rows), "clicks": sum(r[3] for r in rows), "cost": round(sum(r[4] for r in rows), 2), "purchases": sum(r[5] for r in rows), "sales": round(sum(r[6] for r in rows), 2)}
+
+
+
 def _sum(rows, keys):
     return {k: (sum(float(r[k]) for r in rows if r.get(k) is not None) if any(r.get(k) is not None for r in rows) else None) for k in keys}
 
@@ -112,11 +172,71 @@ ORD_KEYS = ("orders", "units", "revenue", "nc_orders", "nc_revenue")
 AD_KEYS = ("spend", "impressions", "clicks", "sales", "orders")
 
 
-class MemSource:
+def _kw_inrange(f, t):
+    return [r for r in KW_DAILY if f <= r[0] <= t]
+
+
+class KwMixin:
+    """the keyword layer's source methods: the same return shapes as app.amazon.DbSource"""
+
+    def kw_info(self):
+        if EMPTY:
+            return {"st": None, "tg": None, "loaded": None, "kw_snapshot": None, "tg_snapshot": None, "neg_snapshot": None}
+        return {"st": (KW_ST_FIRST, KW_LAST), "tg": (KW_TG_FIRST, KW_LAST), "loaded": KW_LOADED, "kw_snapshot": KW_SNAP, "tg_snapshot": KW_SNAP, "neg_snapshot": NEG_SNAP}
+
+    def kw_report(self, f, t):
+        out: dict = {}
+        for r in _kw_inrange(f, t):
+            out.setdefault(r[1]["keyword_id"], []).append(r)
+        res = []
+        for kid, rows in out.items():
+            it = rows[0][1]
+            res.append({"campaign_id": it["campaign_id"], "ad_group_id": it["ad_group_id"], "keyword_id": kid, "match_type": it["match_type"], "text": it["text"], "campaign_name": it["campaign_name"],
+                        "ad_group_name": it["ad_group_name"], "product": it["product"], **_kw_sums_of(rows)})
+        return res
+
+    def kw_list(self):
+        return [{**{k: v for k, v in it.items() if k != "kind"}, "kind": it["kind"], "text": it["text"], "keyword_id": it["keyword_id"]} for it in KW_ITEMS]
+
+    def _st_rows(self, f, t, product, key=None):
+        return [r for r in ST_DAILY if f <= r[0] <= t and (not product or r[2]["product"] == product) and (key is None or A.norm_query(r[1]) == key)]
+
+    def adsearch_grouped(self, f, t, product):
+        out: dict = {}
+        for r in self._st_rows(f, t, product):
+            out.setdefault(A.norm_query(r[1]), []).append(r)
+        res = []
+        for key, rows in out.items():
+            sm = {"impressions": sum(r[3] for r in rows), "clicks": sum(r[4] for r in rows), "cost": round(sum(r[5] for r in rows), 2), "purchases": sum(r[6] for r in rows), "sales": round(sum(r[7] for r in rows), 2)}
+            res.append({"key": key, "term": rows[0][1], "keywords": len({r[2]["keyword_id"] for r in rows}), "campaigns": len({r[2]["campaign_id"] for r in rows}), **sm})
+        return res
+
+    def adsearch_matches(self, f, t, key, product):
+        out: dict = {}
+        for r in self._st_rows(f, t, product, key):
+            out.setdefault(r[2]["keyword_id"], []).append(r)
+        res = []
+        for kid, rows in out.items():
+            it = rows[0][2]
+            res.append({"campaign_id": it["campaign_id"], "ad_group_id": it["ad_group_id"], "keyword_id": kid, "match_type": it["match_type"], "text": it["text"], "term": rows[0][1],
+                        "campaign_name": it["campaign_name"], "ad_group_name": it["ad_group_name"], "product": it["product"],
+                        "impressions": sum(r[3] for r in rows), "clicks": sum(r[4] for r in rows), "cost": round(sum(r[5] for r in rows), 2), "purchases": sum(r[6] for r in rows), "sales": round(sum(r[7] for r in rows), 2)})
+        return res
+
+    def negatives(self, needle, match_type, state, product, limit):
+        base = [r for r in NEGS if not needle or needle in (r["text"] + " " + r["campaign_name"] + " " + r["ad_group_name"]).lower()]
+        kept = [r for r in base if (not match_type or r["match_type"] == match_type) and (not state or r["state"] == state) and (not product or r["product"] == product)]
+        kept.sort(key=lambda r: (r["text"].lower(), r["keyword_id"]))
+        count = lambda key: {k: sum(1 for r in base if r[key] == k) for k in {r[key] for r in base}}      # noqa: E731
+        return {"snapshot_date": NEG_SNAP, "rows": kept[:limit], "matched": len(kept), "total": len(NEGS), "by_state": {k.lower(): v for k, v in count("state").items()},
+                "by_match": count("match_type"), "by_product": count("product")}
+
+
+class MemSource(KwMixin):
     def spans(self):
         if EMPTY:
-            return dict.fromkeys(("orders", "ads", "ads_asin", "traffic", "fees", "sqp"))
-        return {"orders": (ORD_FIRST, ORD_LAST), "ads": (ADS_FIRST, ADS_LAST), "ads_asin": (ADS_FIRST, ADS_LAST), "traffic": (TRF_FIRST, TRF_LAST), "fees": (FEE_FIRST, FEE_LAST),
+            return dict.fromkeys(("orders", "ads", "ads_asin", "traffic", "fees", "sqp", "kw_st", "kw_tg", "kw_neg"))
+        return {"kw_st": (KW_ST_FIRST, KW_LAST), "kw_tg": (KW_TG_FIRST, KW_LAST), "kw_neg": (NEG_SNAP, NEG_SNAP), "orders": (ORD_FIRST, ORD_LAST), "ads": (ADS_FIRST, ADS_LAST), "ads_asin": (ADS_FIRST, ADS_LAST), "traffic": (TRF_FIRST, TRF_LAST), "fees": (FEE_FIRST, FEE_LAST),
                 "sqp": (FIRST_WEEK, LAST_WEEK + dt.timedelta(days=6))}
 
     def orders_by_day(self, f, t):
@@ -218,6 +338,22 @@ def register(app, deps):
     @app.get("/api/amazon/search-terms/history")
     def amz_term_history():
         return reply("search-term-history", "sqp", lambda s, m, w: A.term_history(s, m, arg("term"), arg("product")))
+
+    @app.get("/api/amazon/keywords")
+    def amz_keywords():
+        return reply("keywords", "keywords", lambda s, m, w: A.keywords(s, m, w, arg("product"), arg("state"), arg("q"), arg("all") not in ("1", "true", "yes")))
+
+    @app.get("/api/amazon/ad-search-terms")
+    def amz_ad_search_terms():
+        return reply("ad-search-terms", "adsearch", lambda s, m, w: A.ad_search_terms(s, m, w, arg("product"), arg("q")))
+
+    @app.get("/api/amazon/ad-search-terms/matches")
+    def amz_ad_search_matches():
+        return reply("ad-search-term-matches", "adsearch", lambda s, m, w: A.ad_search_term_matches(s, m, w, arg("term"), arg("product")))
+
+    @app.get("/api/amazon/negatives")
+    def amz_negatives():
+        return reply("negatives", "negatives", lambda s, m, w: A.negatives(s, m, arg("q"), arg("match"), arg("state"), arg("product"), int(arg("limit")) if (arg("limit") or "").isdigit() else None))
 
     @app.get("/api/amazon/fees")
     def amz_fees():

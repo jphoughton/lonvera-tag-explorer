@@ -421,6 +421,30 @@ def amazon_search_term_history():
     return _amazon_reply("search-term-history", "sqp", lambda s, m, w: amz.term_history(s, m, _arg("term"), _arg("product")))
 
 
+@bp.get("/api/amazon/keywords")
+def amazon_keywords():
+    """Amazon keyword layer: one row per Sponsored Products keyword or target with the range's cost, clicks, purchases and sales (7-day attribution) and the current bid; filters product=<slug>|mixed|unmapped, state=enabled|paused, q=<text>, all=1 (also keywords with no impressions). Loaded by hand; see docs/AMAZON_DATA.md."""
+    return _amazon_reply("keywords", "keywords", lambda s, m, w: amz.keywords(s, m, w, _arg("product"), _arg("state"), _arg("q"), _arg("all") not in ("1", "true", "yes")))
+
+
+@bp.get("/api/amazon/ad-search-terms")
+def amazon_ad_search_terms():
+    """Amazon customer search terms your Sponsored Products ads served on, one row per term across campaigns, with the paid numbers and the organic Search Query Performance columns (search volume, our click and purchase share) where Amazon lists the term; product=<slug>|mixed|unmapped, q=<text>."""
+    return _amazon_reply("ad-search-terms", "adsearch", lambda s, m, w: amz.ad_search_terms(s, m, w, _arg("product"), _arg("q")))
+
+
+@bp.get("/api/amazon/ad-search-terms/matches")
+def amazon_ad_search_term_matches():
+    """The keywords and campaigns that matched one customer search term in the range (term=<text>, optional product)."""
+    return _amazon_reply("ad-search-term-matches", "adsearch", lambda s, m, w: amz.ad_search_term_matches(s, m, w, _arg("term"), _arg("product")))
+
+
+@bp.get("/api/amazon/negatives")
+def amazon_negatives():
+    """Amazon negative keywords (ad group level, latest snapshot): q=<text>, match=all|phrase|exact, state=all|enabled|archived, product=<slug>|mixed|unmapped, limit (default 2000, at most 50000); the count is of every match."""
+    return _amazon_reply("negatives", "negatives", lambda s, m, w: amz.negatives(s, m, _arg("q"), _arg("match"), _arg("state"), _arg("product"), int(_arg("limit")) if (_arg("limit") or "").isdigit() else None))
+
+
 @bp.get("/api/amazon/fees")
 def amazon_fees():
     """Amazon settlement lines by fee type and month for the range (posted-day basis, signed as Amazon settles them)."""

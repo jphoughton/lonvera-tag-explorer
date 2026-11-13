@@ -2918,6 +2918,161 @@ for _t, _v, _dom, _span in [
         purpose=_extra + _s["purpose"], grain=_s["grain"], source=f"public.{_t} (ExpandFi merchant 1452)", refresh=_s["refresh"], coverage=_s["coverage"], caveats=list(_s["caveats"]), cols={}, examples=_ex)
 
 
+# ---------------------------------------------------------------------------------------------------------------------------- Amazon Ads keyword layer (migrations 252 tables, 253 views)
+# Sponsored Products only, loaded BY HAND from ExpandFi Data Dash pulls: `python -m etl.amazon_dash_load --dir <folder>` (no cron, not the feeds service). docs/AMAZON_DATA.md
+_KW_REFRESH = "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled"
+_KW_SRC = "ExpandFi Data Dash pull of Amazon Ads {what} (Sponsored Products, US profile), loaded by etl/amazon_dash_load.py"
+_KW_LOADED = {"loaded_at": "When the row was last written by the loader."}
+_KW_REPORT_COLS = {
+    "day": "Amazon Ads report day (US Pacific).", "campaign_id": "Campaign id (text; the reports send an integer).", "ad_group_id": "Ad group id (text).",
+    "keyword_id": "Keyword id; for auto and product targets the id of the target (the same id as amazon_ads_targets_snapshot.target_id).",
+    "match_type": "BROAD | PHRASE | EXACT | TARGETING_EXPRESSION | TARGETING_EXPRESSION_PREDEFINED (auto and product targets).",
+    "campaign_name": "Campaign name on the report row.", "ad_group_name": "Ad group name on the report row.",
+    "keyword": "Target text as the report names it: the keyword, or loose-match / close-match / substitutes / complements for auto targets, or an asin or category expression.",
+    "impressions": "Impressions.", "clicks": "Clicks.", "cost": "Ad spend, US dollars.",
+    "purchases_7d": "Purchases credited to the ad within Amazon's 7-day attribution window (the only window these reports carry).",
+    "sales_7d": "Sales dollars credited to the ad within the 7-day window.",
+}
+_KW_PRODUCT = {"product_slug": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow when the ad group advertises one product; NULL when it advertises several (product_resolution 'mixed') or none is mapped ('unmapped').",
+               "product_name": "Display name of product_slug; NULL when product_slug is NULL.",
+               "product_resolution": "single | mixed | unmapped: how the ad group's product was found (product ads -> ASIN -> amazon_asin_products)."}
+_KW_PRODUCT_CAVEAT = ("product_slug is NULL for an ad group that advertises more than one product (product_resolution = 'mixed') and for one with no product ad on file or no mapped ASIN ('unmapped'): "
+                      "count those rows as 'no single product', never as a product.")
+_KW_ATTR = "Sponsored Products only, Amazon's 7-day attribution only (no 1, 14 or 30-day columns)."
+
+rel("public.amazon_ads_search_term_daily", group="amazon", kind="table",
+    purpose="Sponsored Products search-term report: the customer queries your ads served on, by day, campaign, ad group and the keyword or target that matched them, with impressions, clicks, cost and 7-day purchases and sales.",
+    grain="one row per (day, campaign_id, ad_group_id, keyword_id, match_type, search_term)", source=_KW_SRC.format(what="search-term report"), refresh=_KW_REFRESH,
+    coverage="2026-09-09 to 2026-11-10 as first loaded; Amazon keeps about 64 days of search terms (nothing returns before 2026-09-09) and the window moves forward one day a day, so days not loaded in time are lost",
+    caveats=[_KW_ATTR, "Only queries your ads served on appear: no row is not zero. A day's newest rows can restate for a few days, so re-load the trailing week.",
+             "Search terms are not the keywords bid on: one search term can match several keywords and campaigns. No ASIN or placement column; the product comes from the ad group.",
+             "search_term_key is the normalised term (lower case, whitespace collapsed), the join key to amazon_sqp_weekly.query_key."],
+    cols={**_KW_REPORT_COLS, "search_term": "The customer's query as Amazon reports it (an ASIN in lower case for product-target matches).",
+          "search_term_key": "Normalised search_term: lower case, trimmed, runs of whitespace collapsed (the same rule as amazon_sqp_weekly.query_key).", **_KW_LOADED})
+
+rel("public.amazon_ads_targeting_daily", group="amazon", kind="table",
+    purpose="Sponsored Products targeting report: every keyword and target (including auto and product targets) by day with impressions, clicks, cost and 7-day purchases and sales: the bid side. It cannot say which query drove the spend.",
+    grain="one row per (day, campaign_id, ad_group_id, keyword_id, match_type, targeting)", source=_KW_SRC.format(what="targeting report"), refresh=_KW_REFRESH,
+    coverage="2026-08-10 to 2026-11-10 as first loaded; Amazon keeps about 95 days of targeting data and the window moves forward one day a day",
+    caveats=[_KW_ATTR, "Includes zero-click rows with impressions only, so the older months are mostly impressions without spend.",
+             "Targeting cost and search-term cost for the same days differ by about 0.1% (search terms list only the queries served on)."],
+    cols={**_KW_REPORT_COLS, "targeting": "The target expression: the keyword text, loose-match / close-match / substitutes / complements, asin=\"...\" or category=\"...\".", **_KW_LOADED})
+
+rel("public.amazon_ads_keywords_snapshot", group="amazon", kind="table",
+    purpose="Sponsored Products keywords with their current bid and state, one snapshot per load date: the bid history accumulates as snapshots are loaded on later days.",
+    grain="one row per (snapshot_date, keyword_id)", source=_KW_SRC.format(what="keyword list"), refresh=_KW_REFRESH,
+    coverage="one snapshot (2026-11-12, 3,677 keywords: 3,227 enabled, 450 paused); archived keywords are not returned by Amazon; no bid history exists before the first snapshot",
+    caveats=["snapshot_date is the date in the snapshot folder name; the latest snapshot is the current bid. Ad group level only (the ad group list was not pulled, so there is no ad group default bid)."],
+    cols={"snapshot_date": "Date of the snapshot (from the folder name).", "keyword_id": "Keyword id (text); the same id as keyword_id in the report tables.", "ad_group_id": "Ad group id.", "campaign_id": "Campaign id.",
+          "keyword_text": "Keyword text.", "match_type": "BROAD | PHRASE | EXACT.", "bid": "Bid in US dollars at the snapshot.", "state": "ENABLED | PAUSED.", **_KW_LOADED})
+
+rel("public.amazon_ads_targets_snapshot", group="amazon", kind="table",
+    purpose="Sponsored Products product and auto targets (targeting clauses) with their current bid and state, one snapshot per load date.",
+    grain="one row per (snapshot_date, target_id)", source=_KW_SRC.format(what="targeting clause list"), refresh=_KW_REFRESH,
+    coverage="one snapshot (2026-11-12, 919 clauses: 696 enabled, 223 paused; 775 manual, 144 auto)",
+    caveats=["target_id equals keyword_id in the report tables. An auto target can have no bid of its own (it inherits the ad group default, which was not pulled)."],
+    cols={"snapshot_date": "Date of the snapshot.", "target_id": "Target id (text); the keyword_id of the report rows for product and auto targets.", "ad_group_id": "Ad group id.", "campaign_id": "Campaign id.",
+          "bid": "Bid in US dollars; NULL when the target inherits the ad group bid.", "state": "ENABLED | PAUSED.", "expression_type": "MANUAL | AUTO.",
+          "expression_text": "The expression in plain text, e.g. 'ASIN_SAME_AS b07tyrty26' or 'QUERY_HIGH_REL_MATCHES'.", "expression": "The expression as Amazon sends it (json array of type / value).",
+          "resolved_expression": "The resolved expression (json).", **_KW_LOADED})
+
+rel("public.amazon_ads_negative_keywords_snapshot", group="amazon", kind="table",
+    purpose="Sponsored Products negative keywords at ad group level, one snapshot per load date.",
+    grain="one row per (snapshot_date, keyword_id)", source=_KW_SRC.format(what="negative keyword list"), refresh=_KW_REFRESH,
+    coverage="one snapshot (2026-11-13, 29,995 rows: 29,969 enabled, 26 archived; 28,987 negative phrase, 1,008 negative exact)",
+    caveats=["Ad group level only: campaign-level negative keywords and negative product targets are not available through any Data Dash dataset, so absence here does not mean a term is not negated."],
+    cols={"snapshot_date": "Date of the snapshot.", "keyword_id": "Negative keyword id (text).", "ad_group_id": "Ad group id.", "campaign_id": "Campaign id.", "keyword_text": "The negative keyword text.",
+          "match_type": "NEGATIVE_PHRASE | NEGATIVE_EXACT.", "state": "ENABLED | ARCHIVED.", **_KW_LOADED})
+
+rel("public.amazon_ads_campaigns_snapshot", group="amazon", kind="table",
+    purpose="Sponsored Products campaigns with budget, bidding strategy and placement bid adjustments, one snapshot per load date.",
+    grain="one row per (snapshot_date, campaign_id)", source=_KW_SRC.format(what="campaign list"), refresh=_KW_REFRESH,
+    coverage="one snapshot (2026-11-13, 963 campaigns: 746 enabled, 217 paused)",
+    caveats=["Placement bid adjustments live here; Amazon has no placement performance report for these pulls, so the effect of a placement bid cannot be measured from this data.",
+             "A placement percentage that is NULL means the campaign sets no adjustment for it."],
+    cols={"snapshot_date": "Date of the snapshot.", "campaign_id": "Campaign id (text).", "name": "Campaign name.", "state": "ENABLED | PAUSED.", "targeting_type": "MANUAL | AUTO.",
+          "start_date": "Campaign start date.", "budget": "Budget in US dollars.", "budget_type": "DAILY.", "portfolio_id": "Portfolio id, if any.",
+          "bidding_strategy": "Dynamic bidding strategy: LEGACY_FOR_SALES | AUTO_FOR_SALES | MANUAL.", "placement_top_pct": "Bid adjustment for top of search, percent.",
+          "placement_product_page_pct": "Bid adjustment for product pages, percent.", "placement_rest_of_search_pct": "Bid adjustment for the rest of search, percent.",
+          "dynamic_bidding": "The whole dynamic bidding block as Amazon sends it (json: strategy, placement bidding, shopper cohort bidding).", **_KW_LOADED})
+
+rel("public.amazon_ads_product_ads", group="amazon", kind="table",
+    purpose="Sponsored Products product ads: which ASIN and SKU each campaign and ad group advertises. The map that gives every keyword row its product.",
+    grain="one row per ad_id (the latest snapshot that holds it)", source=_KW_SRC.format(what="product ad list"), refresh=_KW_REFRESH,
+    coverage="1,063 product ads from the 2026-11-13 snapshot",
+    caveats=["Latest map, not history: an ad that disappears from a later snapshot keeps its older snapshot_date. An ad group with ASINs of more than one product resolves to no single product (see analytics.amazon_ads_ad_group_products)."],
+    cols={"ad_id": "Product ad id (text).", "ad_group_id": "Ad group id.", "campaign_id": "Campaign id.", "asin": "Advertised ASIN.", "sku": "Advertised SKU.", "state": "ENABLED | PAUSED.",
+          "snapshot_date": "Date of the snapshot this row came from.", **_KW_LOADED})
+
+# the analytics views (migration 253): the tables with the resolved product, one helper at ad group grain and the paid-versus-organic search term view
+for _t, _v, _span in [("amazon_ads_search_term_daily", "amazon_ads_search_terms_daily", ("amazon_ads_search_term_daily", "day")),
+                      ("amazon_ads_targeting_daily", "amazon_ads_targeting_daily", ("amazon_ads_targeting_daily", "day")),
+                      ("amazon_ads_keywords_snapshot", "amazon_ads_keywords_snapshot", ("amazon_ads_keywords_snapshot", "snapshot_date")),
+                      ("amazon_ads_targets_snapshot", "amazon_ads_targets_snapshot", ("amazon_ads_targets_snapshot", "snapshot_date")),
+                      ("amazon_ads_negative_keywords_snapshot", "amazon_ads_negative_keywords_snapshot", ("amazon_ads_negative_keywords_snapshot", "snapshot_date")),
+                      ("amazon_ads_campaigns_snapshot", "amazon_ads_campaigns_snapshot", ("amazon_ads_campaigns_snapshot", "snapshot_date")),
+                      ("amazon_ads_product_ads", "amazon_ads_product_ads", ("amazon_ads_product_ads", "snapshot_date"))]:
+    _s = REL[f"public.{_t}"]
+    _extra_cols = {k: v for k, v in _KW_PRODUCT.items()} if _v != "amazon_ads_product_ads" else {k: _KW_PRODUCT[k] for k in ("product_slug", "product_name")}
+    if _v == "amazon_ads_product_ads":
+        _extra_cols["product_slug"] = "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN is not in amazon_asin_products."
+    _noun = {"amazon_ads_search_terms_daily": "search_term", "amazon_ads_targeting_daily": "targeting"}.get(_v)
+    _ex = {
+        "amazon_ads_search_terms_daily": [("Top search terms by spend with 7-day return on ad spend", "SELECT search_term_key, sum(clicks) AS clicks, round(sum(cost), 2) AS cost, round(sum(sales_7d), 2) AS sales_7d,\n"
+                                           "       round(sum(sales_7d) / NULLIF(sum(cost), 0), 2) AS return_on_ad_spend\nFROM analytics.amazon_ads_search_terms_daily GROUP BY 1 ORDER BY 3 DESC LIMIT 25;"),
+                                          ("Rows and spend with no single product", "SELECT product_resolution, count(*) AS rows, round(sum(cost)) AS cost FROM analytics.amazon_ads_search_terms_daily GROUP BY 1 ORDER BY 1;")],
+        "amazon_ads_targeting_daily": [("Spend by product and match type", "SELECT coalesce(product_slug, '(' || product_resolution || ')') AS product, match_type, round(sum(cost)) AS cost, sum(clicks) AS clicks\n"
+                                        "FROM analytics.amazon_ads_targeting_daily GROUP BY 1, 2 ORDER BY 3 DESC;"),
+                                       ("Daily spend", "SELECT day, round(sum(cost), 2) AS cost FROM analytics.amazon_ads_targeting_daily GROUP BY 1 ORDER BY 1 DESC LIMIT 14;")],
+        "amazon_ads_keywords_snapshot": [("Current bid of the keywords with most spend", "SELECT k.keyword_text, k.match_type, k.bid, k.state, round(sum(t.cost), 2) AS cost\nFROM analytics.amazon_ads_keywords_snapshot k\n"
+                                          "JOIN analytics.amazon_ads_targeting_daily t ON t.keyword_id = k.keyword_id\nWHERE k.snapshot_date = (SELECT max(snapshot_date) FROM analytics.amazon_ads_keywords_snapshot)\n"
+                                          "GROUP BY 1, 2, 3, 4 ORDER BY 5 DESC LIMIT 25;"), ("Snapshots held", "SELECT snapshot_date, count(*) AS keywords FROM analytics.amazon_ads_keywords_snapshot GROUP BY 1 ORDER BY 1;")],
+        "amazon_ads_targets_snapshot": [("Enabled targets by type", "SELECT expression_type, state, count(*) AS targets FROM analytics.amazon_ads_targets_snapshot GROUP BY 1, 2 ORDER BY 1, 2;"),
+                                        ("Row count", "SELECT count(*) AS rows FROM analytics.amazon_ads_targets_snapshot;")],
+        "amazon_ads_negative_keywords_snapshot": [("Negative keywords by match type and state", "SELECT match_type, state, count(*) AS negatives FROM analytics.amazon_ads_negative_keywords_snapshot GROUP BY 1, 2 ORDER BY 1, 2;"),
+                                                  ("Negatives per product", "SELECT coalesce(product_slug, '(' || product_resolution || ')') AS product, count(*) AS negatives FROM analytics.amazon_ads_negative_keywords_snapshot GROUP BY 1 ORDER BY 2 DESC;")],
+        "amazon_ads_campaigns_snapshot": [("Campaigns by strategy and state", "SELECT bidding_strategy, state, count(*) AS campaigns FROM analytics.amazon_ads_campaigns_snapshot GROUP BY 1, 2 ORDER BY 1, 2;"),
+                                          ("Placement bid adjustments", "SELECT placement_top_pct, placement_product_page_pct, placement_rest_of_search_pct, count(*) AS campaigns FROM analytics.amazon_ads_campaigns_snapshot GROUP BY 1, 2, 3 ORDER BY 4 DESC;")],
+        "amazon_ads_product_ads": [("ASINs advertised per product", "SELECT product_slug, count(DISTINCT asin) AS asins, count(*) AS ads FROM analytics.amazon_ads_product_ads GROUP BY 1 ORDER BY 3 DESC;"),
+                                   ("Row count", "SELECT count(*) AS rows FROM analytics.amazon_ads_product_ads;")],
+    }[_v]
+    rel(f"analytics.{_v}", group="analytics", kind="view", like=f"public.{_t}", domain="amazon", span=_span, base=_t,
+        purpose=_s["purpose"], grain=_s["grain"], source=f"public.{_t} joined to the product of the ad group (analytics.amazon_ads_ad_group_products)" if _v != "amazon_ads_product_ads" else "public.amazon_ads_product_ads joined to amazon_asin_products on the ASIN",
+        refresh=_s["refresh"], coverage=_s["coverage"], caveats=list(_s["caveats"]) + ([_KW_PRODUCT_CAVEAT] if _v != "amazon_ads_product_ads" else []), cols=_extra_cols, examples=_ex)
+
+rel("analytics.amazon_ads_ad_group_products", group="analytics", kind="view", domain="amazon", span=("amazon_ads_product_ads", "snapshot_date"), base="amazon_ads_product_ads",
+    purpose="Which product each Sponsored Products ad group advertises, from its product ads and the ASIN map: the product behind every keyword, search term and negative keyword row.",
+    grain="one row per (campaign_id, ad_group_id) that has at least one product ad", source="public.amazon_ads_product_ads joined to public.amazon_asin_products on the ASIN",
+    refresh=_KW_REFRESH + " (the ASIN map is refreshed nightly by the feeds service)", coverage="962 ad groups from the 2026-11-13 product ad snapshot",
+    caveats=["An ad group that advertises ASINs of more than one product is 'mixed' and has no product_slug: it is counted as no single product, not guessed. 31 of 962 ad groups were mixed on the first load.",
+             "An ad group in a report with no product ad on file is not in this view; the views that join it read it as 'unmapped'."],
+    cols={"campaign_id": "Campaign id (text).", "ad_group_id": "Ad group id (text).", "asins": "Distinct ASINs advertised in the ad group.", "products": "Distinct products among those ASINs (ASINs with no product mapping are not counted).",
+          **_KW_PRODUCT},
+    examples=[("Ad groups by resolution", "SELECT product_resolution, count(*) AS ad_groups FROM analytics.amazon_ads_ad_group_products GROUP BY 1 ORDER BY 1;"),
+              ("Mixed ad groups", "SELECT campaign_id, ad_group_id, asins, products FROM analytics.amazon_ads_ad_group_products WHERE product_resolution = 'mixed' ORDER BY asins DESC;")])
+
+rel("analytics.amazon_ads_search_terms_vs_organic", group="analytics", kind="view", domain="amazon", span=("amazon_ads_search_term_daily", "day"), base="amazon_ads_search_term_daily",
+    purpose="Paid search terms (Sponsored Products) next to the organic Search Query Performance numbers of the same term, product and week: what you pay for against how much of that search you win.",
+    grain="one row per (week_start, product_slug, search_term_key); product_slug NULL = an ad group with no single product",
+    source="public.amazon_ads_search_term_daily + analytics.amazon_ads_ad_group_products + public.amazon_sqp_weekly (US)", refresh=_KW_REFRESH + " (the organic side is refreshed nightly by the feeds service)",
+    coverage="paid side from 2026-09-09; organic columns only where Amazon listed the term for the product that week (about the top 100 terms per product per week)",
+    caveats=["week_start is a Sunday: Amazon's Search Query Performance week (Sunday to Saturday), not an ISO (Monday) week, so paid days and organic weeks line up exactly. The first and last paid weeks can be partial.",
+             "Organic columns are NULL (not zero) when Amazon did not list the term that week: absence only means it was outside the top terms. has_organic_row says which.",
+             "Search Query Performance market totals are the MAX over the ASIN rows of a term-week and our counts the SUM; shares are recomputed here, percent 0 to 100. Our impressions, clicks and purchases include sponsored placements, so they overlap the paid columns: do not add paid and organic.",
+             "A paid row with no single product reads all products together in the organic columns (organic_scope = 'all products')."],
+    cols={"week_start": "Sunday that starts the Search Query Performance week.", **_KW_PRODUCT, "search_term_key": "Normalised search term (lower case, whitespace collapsed).",
+          "impressions": "Paid impressions of the week.", "clicks": "Paid clicks.", "cost": "Paid cost, US dollars.", "purchases_7d": "Paid purchases, 7-day attribution.", "sales_7d": "Paid sales, 7-day attribution.",
+          "organic_scope": "product (the organic columns read that product's rows) | all products (the paid row has no single product).",
+          "search_volume": "Amazon searches for the term that week (market total); NULL when not listed.",
+          "our_impression_share": "Our impressions / all impressions for the term, percent 0-100 (includes our sponsored placements).", "our_click_share": "Our clicks / all clicks for the term, percent 0-100.",
+          "our_cart_add_share": "Our cart adds / all cart adds, percent 0-100.", "our_purchase_share": "Our purchases / all purchases for the term, percent 0-100.",
+          "our_clicks": "Our clicks on the term in Search Query Performance (organic and sponsored).", "our_purchases": "Our purchases of the term in Search Query Performance (search-origin, same day).",
+          "has_organic_row": "True when Search Query Performance has a row for this term, product scope and week."},
+    examples=[("Top paid terms with our purchase share", "SELECT search_term_key, round(sum(cost), 2) AS cost, round(sum(sales_7d), 2) AS sales_7d, max(our_purchase_share) AS best_purchase_share\n"
+                                                      "FROM analytics.amazon_ads_search_terms_vs_organic GROUP BY 1 ORDER BY 2 DESC LIMIT 25;"),
+              ("Share of paid cost that has an organic row", "SELECT round(100.0 * sum(cost) FILTER (WHERE has_organic_row) / NULLIF(sum(cost), 0), 1) AS pct_of_cost_with_organic FROM analytics.amazon_ads_search_terms_vs_organic;")])
+
+
 # ---------------------------------------------------------------------------------------------------------------------------- deferred views (migration 231)
 # Views over tables that live on open pull requests (Klaviyo 206, landing pages 207, Shopify orders 210). Migration 231 creates each one only when its source table exists, with the
 # source's own COMMENTs (docs/schema/deferred.py is generated from them), so they are described here but absent from a database that does not have the source yet.

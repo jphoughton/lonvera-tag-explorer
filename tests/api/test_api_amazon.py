@@ -18,7 +18,8 @@ ADS_DAYS = [D(2026, 10, 31) + dt.timedelta(days=i) for i in range(8)]           
 TRF_DAYS = [D(2026, 10, 25) + dt.timedelta(days=i) for i in range(12)]            # Oct 25 .. Nov 5
 WEEKS = [D(2026, 9, 13) + dt.timedelta(days=7 * i) for i in range(8)]             # Sundays Sep 13 .. Nov 1
 TABLES = ("amazon_asin_products", "amazon_ads_campaign_daily", "amazon_ads_asin_daily", "amazon_sqp_weekly", "amazon_sqp_monthly", "amazon_orders_asin_daily", "amazon_traffic_daily",
-          "amazon_market_baskets", "amazon_repeat_purchases", "amazon_settlement_fees_daily")
+          "amazon_market_baskets", "amazon_repeat_purchases", "amazon_settlement_fees_daily", "amazon_ads_search_term_daily", "amazon_ads_targeting_daily", "amazon_ads_keywords_snapshot",
+          "amazon_ads_targets_snapshot", "amazon_ads_negative_keywords_snapshot", "amazon_ads_campaigns_snapshot", "amazon_ads_product_ads")
 W_ADS = "from=2026-10-31&to=2026-11-07"                       # the 8 ads days; orders cover them all, traffic only the first 6
 W_ALL = "window=launch"
 W_SQP = "from=2026-10-11&to=2026-11-07"                       # full weeks starting Oct 11, 18, 25, Nov 1; the prior four start Sep 13 .. Oct 4
