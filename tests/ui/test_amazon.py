@@ -56,6 +56,7 @@ def test_platform_picker_gains_amazon_and_goes_to_the_amazon_page(page):
     assert [b.get_attribute("data-platform") for b in page.locator("#platform-ctl .seg").all()] == ["all", "meta", "google", "amazon"]
     platform_btn(page, "amazon").click()
     page.wait_for_selector("[data-testid=amz-body]")
+    page.wait_for_selector("[data-testid=amz-loading]", state="detached")      # the view has its data (and its source footer) once the loading line is gone
     idle(page)
     assert page.evaluate("location.pathname") == "/amazon" and qparams(page).get("window") == "14d"             # the range carries over
     expect(platform_btn(page, "amazon")).to_have_attribute("aria-pressed", "true")
