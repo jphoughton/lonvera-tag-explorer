@@ -322,7 +322,8 @@ def test_meta_reach_history_and_coverage(sdb):
     assert cov["orders_daily"][1:3] == (dt.date(2026, 10, 25), dt.date(2026, 11, 2))
     assert cov["google_campaign_daily"][2] == dt.date(2026, 11, 2)
     assert set(cov) == {"meta_ad_daily", "upstack_meta_attribution", "google_campaign_daily", "upstack_google_attribution", "orders_daily", "meta_reach (day grain)",
-                        "meta_campaign_daily_history"}
+                        "meta_campaign_daily_history"} | {f"amazon_{n}" for n in ("ads_campaign_daily", "ads_asin_daily", "search_queries_weekly", "search_queries_monthly", "orders_asin_daily",
+                                                                      "traffic_daily", "market_baskets", "repeat_purchases", "settlement_fees_daily")}
 
 
 def test_creative_tracker_view(sdb):

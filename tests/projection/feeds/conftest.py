@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 PG_BASE = os.environ.get("TEST_PG_BASE", "postgresql://localhost")
 DB_NAME = os.environ.get("TEST_PROJ_FEEDS_DB", "tagexp_proj_feeds")
 DB_URL = f"{PG_BASE}/{DB_NAME}"
-MIGRATIONS = ("001_init.sql", "020_proj_feed_nc_hourly.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "105_proj_refresh.sql", "180_proj_feeds.sql")
+MIGRATIONS = ("001_init.sql", "020_proj_feed_nc_hourly.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "105_proj_refresh.sql", "180_proj_feeds.sql", "250_amazon_data.sql")
 SHEET_FED = ("140_proj_inventory_demand.sql", "170_proj_pacing.sql")
 
 

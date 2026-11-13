@@ -50,6 +50,8 @@ class Feed:
     fresh_where: str = ""                      # extra WHERE used by the freshness check only (e.g. "grain = 'day'")
     native: bool = False                       # no sheet twin: the feed always runs (default mode shadow) and `main` is the table it writes
     conflict_nothing: bool = False             # insert with ON CONFLICT DO NOTHING (never overwrite a row the delete did not remove)
+    non_fatal: bool = False                    # a failed or empty pull is logged and reported but never makes `run` exit non-zero (the Amazon data feeds)
+    history_start: dt.date | None = None       # first day the source holds: `run --backfill` pulls from here (in chunks inside the feed's pull)
     notes: str = ""
 
     def module_days(self, days: int | None) -> int:

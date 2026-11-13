@@ -26,6 +26,7 @@ GROUPS = [
     ("ops", "Pipeline bookkeeping"),
     ("proj_feeds", "Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow)"),
     ("proj_engine", "Projection engine tables (finance, inventory, cohorts; read them through the analytics views)"),
+    ("amazon", "Amazon data layer (ExpandFi merchant 1452): the tables behind the analytics.amazon_* views"),
     ("story", "Daily story: facts, the short explanation, the change patterns and the scoreboard"),
 ]
 
@@ -488,7 +489,7 @@ rel("analytics.data_coverage", group="analytics", kind="view",
              "The meta_reach day grain ends today and the last row is partial.",
              "The last 3 to 7 days still move: Meta restates conversions for weeks (28 trailing days re-pulled nightly), Upstack and orders re-pull 7 days."],
     cols={
-        "source": "meta_ad_daily | upstack_meta_attribution | google_campaign_daily | upstack_google_attribution | orders_daily | meta_reach (day grain) | meta_campaign_daily_history.",
+        "source": "meta_ad_daily | upstack_meta_attribution | google_campaign_daily | upstack_google_attribution | orders_daily | meta_reach (day grain) | meta_campaign_daily_history | amazon_ads_campaign_daily | amazon_ads_asin_daily | amazon_search_queries_weekly | amazon_search_queries_monthly | amazon_orders_asin_daily | amazon_traffic_daily | amazon_market_baskets | amazon_repeat_purchases | amazon_settlement_fees_daily.",
         "first_day": "First day held.",
         "last_day": "Last day held.",
         "days": "Distinct days held.",
@@ -2157,6 +2158,7 @@ DOMAINS = [
     ("pipeline", "Data freshness, feed health, ETL runs, the catalog and the glossary"),
     ("email", "Klaviyo campaigns, flows, messages: sends, opens, clicks, orders, revenue and the copy (views created by migration 231 once the Klaviyo tables exist)"),
     ("landing_pages", "Landing page copy versions and the ads that send people to each page (views created by migration 231 once those tables exist)"),
+    ("amazon", "Amazon (ExpandFi): ads by campaign and ASIN, organic search queries, orders by ASIN, traffic, market baskets, repeat purchases, settlement fees"),
     ("story", "The daily story: facts, short explanation, change patterns and the pattern scoreboard"),
 ]
 
@@ -2710,6 +2712,212 @@ rel("analytics.metric_glossary", group="analytics", kind="view", domain="pipelin
               ("All metrics by domain", "SELECT domain, name, label FROM analytics.metric_glossary ORDER BY domain, name;")])
 
 
+# =====================================================================================================================================
+# Amazon data layer (migrations 250 tables, 251 views): ExpandFi merchant 1452, filled by the feeds service (etl/feeds/amazon_feeds.py); docs/AMAZON_DATA.md
+# =====================================================================================================================================
+
+_AMZ_REFRESH = "feeds service 21:00 UTC (python -m etl.feeds run), trailing {w}; each run replaces its window, an empty pull writes nothing"
+_AMZ_SRC = "etl.feeds {feed} (ExpandFi warehouse, merchant 1452: {tables})"
+_AMZ_PRODUCT = {"product_slug": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products.",
+                "product_name": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."}
+_AMZ_LOADED = {"loaded_at": "When the row was loaded."}
+_AMZ_WINDOWS = {
+    "sales_1d": "Ad-attributed sales, dollars, 1-day click window. Sponsored Products (v3 report) only; NULL for every other row.",
+    "sales_7d": "Ad-attributed sales, dollars, 7-day click window. Sponsored Products v3 only; NULL otherwise.",
+    "sales_14d": "Ad-attributed sales, dollars, 14-day click window. Sponsored Products v3 only; NULL otherwise. Matures for 14 days after the day.",
+    "sales_30d": "Ad-attributed sales, dollars, 30-day click window. Sponsored Products v3 only; NULL otherwise.",
+    "purchases_1d": "Ad-attributed purchases, 1-day window. Sponsored Products v3 only; NULL otherwise.",
+    "purchases_7d": "Ad-attributed purchases, 7-day window. Sponsored Products v3 only; NULL otherwise.",
+    "purchases_14d": "Ad-attributed purchases, 14-day window. Sponsored Products v3 only; NULL otherwise.",
+    "purchases_30d": "Ad-attributed purchases, 30-day window. Sponsored Products v3 only; NULL otherwise.",
+    "units_1d": "Units sold on ad clicks, 1-day window. Sponsored Products v3 only; NULL otherwise.",
+    "units_7d": "Units sold on ad clicks, 7-day window. Sponsored Products v3 only; NULL otherwise.",
+    "units_14d": "Units sold on ad clicks, 14-day window. Sponsored Products v3 only; NULL otherwise.",
+    "units_30d": "Units sold on ad clicks, 30-day window. Sponsored Products v3 only; NULL otherwise.",
+}
+_AMZ_ADS_NOTES = [
+    "ad_type comes from the report type. Rows from the older v1 report that ExpandFi files under spCampaigns also hold Sponsored Brands, Sponsored Display and Full-Funnel campaigns, so they read 'sp'.",
+    "Amazon has no ad-attributed revenue on one basis: sales_reported is Sponsored Products 14-day sales and the single reported sales figure of the other types. Do not add it to Meta or Google revenue.",
+    "The 1/7/14/30-day columns exist for Sponsored Products v3 only; older generations store zeros there, so they are NULL here. NULL is not zero.",
+]
+
+rel("public.amazon_asin_products", group="amazon", kind="table",
+    purpose="Amazon.com ASIN to SKU to product map (ExpandFi asin_skus), the join key of every other Amazon table.",
+    grain="one row per (asin, sku)", source=_AMZ_SRC.format(feed="amazon_asin_products", tables="asin_skus, channel Amazon.com"), refresh="feeds service 21:00 UTC, full refresh every run",
+    coverage="8 ASINs for 5 products (Vital Flow has no Amazon ASIN)",
+    caveats=["Product comes from the SKU prefix (LV-VBULL, LV-BLC, LV-BFLEX, LV-VBELLE), the listing title as fallback. Aggregates only."],
+    cols={"asin": "Amazon ASIN.", "sku": "Seller SKU.", **_AMZ_PRODUCT, "friendly_name": "Listing title (first 200 characters).", "refreshed_on": "Pacific day of the refresh.", **_AMZ_LOADED})
+
+rel("public.amazon_ads_campaign_daily", group="amazon", kind="table",
+    purpose="Amazon Ads (Sponsored Products, Brands, Brand video, Display) by day, campaign and ad group, de-duplicated v3 > v2 > v1 per campaign-day; the daily spend sum equals proj_feed_amazon.ad_spend.",
+    grain="one row per (day, marketplace, campaign_id, ad_group_id, ad_type); ad_group_id is '' for types that report no ad group",
+    source=_AMZ_SRC.format(feed="amazon_ads_campaign_daily", tables="amazon_ads_campaign_data"), refresh=_AMZ_REFRESH.format(w="21 days"),
+    coverage="2025-12-30 (Sponsored Products v3) to yesterday; Sponsored Display from 2026-01-29, Sponsored Brands from 2026-02-03. Rows with no spend, impressions, clicks or sales are not stored.",
+    caveats=_AMZ_ADS_NOTES + ["Campaigns carry no product in the report: product_slug is the ASIN the campaign name contains (about 88% of spend); campaigns such as 'All Products' and 'Full-Funnel' have NULL."],
+    cols={"day": "Calendar day of the report (Amazon Ads account day).", "marketplace": "Ads marketplace code; rows from the v1 report carry none and are stored as 'US'.",
+          "campaign_id": "Amazon Ads campaign id.", "ad_group_id": "Ad group id (Sponsored Products); '' when the report has none.",
+          "ad_type": "sp (Sponsored Products) | sb (Sponsored Brands) | sbv (Sponsored Brands video) | sd (Sponsored Display), from api_report_type.",
+          "api_version": "Report generation kept for this campaign-day: v3, v2 or v1.", "campaign_name": "Campaign name that day.", "ad_group_name": "Ad group name that day.",
+          "campaign_status": "Campaign status that day (not on every report type).", "budget_amount": "Campaign daily budget in the account currency (not on every report type).",
+          "budget_type": "Budget type, e.g. DAILY.", "bidding_strategy": "Campaign bidding strategy (Sponsored Products v3 only).", **_AMZ_PRODUCT,
+          "spend": "Ad spend, US dollars (cost_usd).", "impressions": "Ad impressions.", "clicks": "Ad clicks.", **_AMZ_WINDOWS,
+          "sales": "The report's bare attributed sales, dollars: the single reported figure for Sponsored Brands and Display, an aggregate for the v1 report.",
+          "purchases": "The report's bare attributed purchases.", "units_sold": "The report's bare units sold.",
+          "ntb_purchases": "New-to-brand purchases (Sponsored Brands and Display; populated for Display only, 0 for Brands).", "ntb_sales": "New-to-brand sales, dollars.",
+          "ntb_units": "New-to-brand units.", "video_complete_views": "Video complete views (Sponsored Brands).", "video_5s_views": "Video 5-second views.",
+          "video_q1_views": "Video views to the first quartile.", "video_midpoint_views": "Video views to the midpoint.", "video_q3_views": "Video views to the third quartile.",
+          "brand_searches": "Branded searches after the ad (Sponsored Brands).",
+          "sales_reported": "Attributed sales on the one basis available per type: Sponsored Products v3 sales_14d, otherwise the bare sales. Use it for a total-ads return on spend.", **_AMZ_LOADED})
+
+rel("public.amazon_ads_asin_daily", group="amazon", kind="table",
+    purpose="Amazon Ads advertised products (Sponsored Products and Display) by day, campaign, ad group and ASIN: which product each ad dollar went to.",
+    grain="one row per (day, marketplace, campaign_id, ad_group_id, asin, ad_type)", source=_AMZ_SRC.format(feed="amazon_ads_asin_daily", tables="amazon_ads_raw_data v3 spAdvertisedProduct and sdAdvertisedProduct"),
+    refresh=_AMZ_REFRESH.format(w="21 days"), coverage="2026-01-04 (Sponsored Products) / 2026-01-29 (Display) to yesterday",
+    caveats=["v3 only: the v1 advertised-product reports are one report stored twice under two names. Sponsored Products v3 spend ties to amazon_ads_campaign_daily; there is no Sponsored Brands ASIN grain anywhere.",
+             "The 1/7/14/30-day columns are Sponsored Products only (NULL for Display); Display reports its single attributed figure in sales and purchases."],
+    cols={"day": "Calendar day of the report.", "marketplace": "Ads marketplace code.", "campaign_id": "Amazon Ads campaign id.", "ad_group_id": "Ad group id.", "asin": "Advertised ASIN.",
+          "ad_type": "sp | sd.", "sku": "Advertised SKU.", "campaign_name": "Campaign name that day.", "ad_group_name": "Ad group name that day.", **_AMZ_PRODUCT,
+          "spend": "Ad spend, US dollars.", "impressions": "Ad impressions.", "clicks": "Ad clicks.", **_AMZ_WINDOWS,
+          "sales": "Display only: the single reported attributed sales, dollars (sales_aggregate). NULL for Sponsored Products.", "purchases": "Display only: the single reported purchases. NULL for Sponsored Products.",
+          "sales_reported": "Sponsored Products sales_14d, Display bare sales.", **_AMZ_LOADED})
+
+_SQP_COLS = {
+    "period_start": "First day of the period (Sunday for a week, the 1st for a month).", "period_end": "Last day of the period.",
+    "marketplace_id": "Amazon marketplace id (ATVPDKIKX0DER = US, A1AM78C64UM0Y8 = MX).", "marketplace": "US | MX | CA | BR from marketplace_id.", "asin": "Our ASIN the shares belong to.",
+    "query_key": "The search query lower-cased, trimmed, runs of spaces collapsed to one: the join key to other query tables.", "search_query": "The query text as Amazon reported it.",
+    **_AMZ_PRODUCT, "is_branded": "True when the query names the brand or a product (Lonvera, Vita / Vital Bull, Vita / Vital Belle, Vital Flow, Bone Flex / Boneflex); one rule in etl/feeds/amazon_feeds.py.",
+    "search_query_score": "Amazon's relative popularity score of the query among our ASIN's queries (1 = most searched).", "search_query_volume": "MARKET total: searches for the query on Amazon in the period. Repeated on every ASIN row of the query.",
+    "total_impressions": "MARKET total: impressions of all products for the query (organic and sponsored). Repeated on every ASIN row: never SUM across ASINs, use MAX.",
+    "asin_impressions": "Impressions of our ASIN for the query (organic and sponsored).", "asin_impression_share": "Our ASIN's share of the query's impressions, percent 0-100.",
+    "total_clicks": "MARKET total clicks for the query (repeated per ASIN row: MAX).", "total_click_rate": "Market clicks per search, percent 0-100.", "asin_clicks": "Clicks on our ASIN.",
+    "asin_click_share": "Our ASIN's share of the query's clicks, percent 0-100.", "total_median_click_price": "Market median price of clicked products, dollars.", "asin_median_click_price": "Median price of our ASIN's clicks, dollars.",
+    "total_cart_adds": "MARKET total cart adds for the query (repeated per ASIN row: MAX).", "total_cart_add_rate": "Market cart adds per search, percent 0-100.", "asin_cart_adds": "Cart adds of our ASIN.",
+    "asin_cart_add_share": "Our ASIN's share of the query's cart adds, percent 0-100.", "total_median_cart_add_price": "Market median price of carted products, dollars.", "asin_median_cart_add_price": "Median price of our ASIN's cart adds, dollars.",
+    "total_purchases": "MARKET total purchases for the query (repeated per ASIN row: MAX).", "total_purchase_rate": "Market purchases per search, percent 0-100.", "asin_purchases": "Purchases of our ASIN (search-origin, same day).",
+    "asin_purchase_share": "Our ASIN's share of the query's purchases, percent 0-100: the best outcome proxy for organic rank.", "total_median_purchase_price": "Market median purchase price, dollars.", "asin_median_purchase_price": "Median price of our ASIN's purchases, dollars.",
+    **_AMZ_LOADED}
+_SQP_CAVEATS = [
+    "SUM vs MAX: total_* columns and search_query_volume are market totals repeated on every ASIN row of a query, so SUM across ASINs overstates them (5 ASIN rows = 5x): use MAX per query and period; to total OUR side SUM the asin_* columns.",
+    "Top-100 cap: Amazon reports only about the top 100 queries per ASIN and period. A query that is absent is not in that list, not zero, and a query dropping out looks like a share collapse.",
+    "Shares are percent 0-100, not fractions (2.95 = 2.95 percent).",
+    "Impressions include sponsored placements: our own ads count in asin_impressions and the shares. Purchases are search-origin and same-day and will not tie to orders.",
+    "No organic rank position exists anywhere in the data; the click, cart add and purchase shares are the proxy.",
+    "Never sum weekly rows into a month or compare a week with a month: periods overlap in meaning and the query lists differ.",
+    "Duplicate source rows (restated re-pulls) are collapsed to the latest; the newest week or month can still be partial for a week or two."]
+
+rel("public.amazon_sqp_weekly", group="amazon", kind="table",
+    purpose="Amazon Brand Analytics Search Query Performance by week: for each search query and each of our ASINs, the query's market size and our share of impressions, clicks, cart adds and purchases (the organic search signal).",
+    grain="one row per (period_start = Sunday, marketplace_id, asin, query_key)", source=_AMZ_SRC.format(feed="amazon_sqp_weekly", tables="brand_analytics_search_query_performances, period WEEK"),
+    refresh=_AMZ_REFRESH.format(w="6 weeks") + "; a week lands about 5 days after its Saturday", coverage="weeks from 2025-07-13 to the last landed week; 8 ASINs, mostly US",
+    caveats=_SQP_CAVEATS, cols=_SQP_COLS)
+rel("public.amazon_sqp_monthly", group="amazon", kind="table", like="public.amazon_sqp_weekly",
+    purpose="Amazon Brand Analytics Search Query Performance by month: same columns as amazon_sqp_weekly, one period per calendar month.",
+    grain="one row per (period_start = 1st of the month, marketplace_id, asin, query_key)", source=_AMZ_SRC.format(feed="amazon_sqp_monthly", tables="brand_analytics_search_query_performances, period MONTH"),
+    refresh=_AMZ_REFRESH.format(w="3 months") + "; a month lands about 2 weeks after it ends", coverage="months from 2025-06 to the last landed month",
+    caveats=_SQP_CAVEATS, cols={})
+
+rel("public.amazon_orders_asin_daily", group="amazon", kind="table",
+    purpose="Actual Amazon.com orders by day, ASIN and channel (Amazon.com and Amazon.com B2B): units, orders, revenue and new customers, on the same basis as proj_feed_amazon.",
+    grain="one row per (day, asin, sales_channel)", source=_AMZ_SRC.format(feed="amazon_orders_asin_daily", tables="sales joined to customers"),
+    refresh=_AMZ_REFRESH.format(w="21 days"), coverage="2024-09-24 to about 2 days ago (late orders post for about two weeks)",
+    caveats=["Purchase-date basis. New customer = the order is on the customer's first purchase day (customers.cohort_day), the rule of proj_feed_amazon; orders without a customer row are excluded, as there.",
+             "Daily units and revenue sums equal proj_feed_amazon. orders counts distinct orders per ASIN, so an order with two ASINs counts under both: do not sum orders across ASINs.",
+             "Revenue is total_amount_usd (tax and shipping as Amazon reports the line), before refunds."],
+    cols={"day": "Purchase day (Pacific, as ExpandFi stores it).", "asin": "ASIN of the order line ('' when the line has none).", "sales_channel": "Amazon.com | Amazon.com B2B.", **_AMZ_PRODUCT,
+          "orders": "Distinct orders with this ASIN that day.", "units": "Units shipped.", "revenue": "Order line revenue, US dollars.", "nc_orders": "Orders placed by a customer on their first purchase day.",
+          "nc_revenue": "Revenue of those orders, dollars.", **_AMZ_LOADED})
+
+rel("public.amazon_traffic_daily", group="amazon", kind="table",
+    purpose="Amazon.com account traffic by day: sessions, page views and buy box share (Sales and Traffic report), with ordered units and sales as Amazon counts them.",
+    grain="one row per (day, marketplace_id); US only", source=_AMZ_SRC.format(feed="amazon_traffic_daily", tables="sales_and_traffic_reports, PARENT rows"),
+    refresh=_AMZ_REFRESH.format(w="14 days"), coverage="2024-04-07 to yesterday",
+    caveats=["Account level, not by ASIN (each ASIN row of the source repeats the account total). The latest restatement of each day is kept; recent days move for about a week.",
+             "Percentages are 0-100. Ordered units and sales are Amazon's ordered-product figures, not the shipped orders of amazon_orders_asin_daily."],
+    cols={"day": "Report day.", "marketplace_id": "ATVPDKIKX0DER (US).", "sessions": "Sessions (browser plus app).", "browser_sessions": "Browser sessions.", "mobile_app_sessions": "Mobile app sessions.",
+          "page_views": "Page views.", "buy_box_pct": "Page views with our offer in the buy box, percent 0-100.", "unit_conversion_pct": "Units ordered per session, percent 0-100.",
+          "units_ordered": "Units ordered (Amazon's ordered basis).", "ordered_product_sales": "Ordered product sales, dollars.", "total_order_items": "Order items.",
+          "sessions_b2b": "Business-customer sessions.", "page_views_b2b": "Business-customer page views.", "buy_box_pct_b2b": "Business-customer buy box share, percent 0-100.",
+          "source_updated_at": "When ExpandFi last restated this day.", **_AMZ_LOADED})
+
+rel("public.amazon_market_baskets", group="amazon", kind="table",
+    purpose="Amazon Brand Analytics market baskets by week: the other products bought together with each of our ASINs.",
+    grain="one row per (week_start, marketplace_id, asin, purchased_with_asin)", source=_AMZ_SRC.format(feed="amazon_market_baskets", tables="brand_analytics_market_baskets, period WEEK"),
+    refresh=_AMZ_REFRESH.format(w="6 weeks"), coverage="weeks from 2026-06-28 (US; one MX week)",
+    caveats=["combination_pct is the percent (0-100) of orders containing our ASIN that also contained the other ASIN; only the top few companions are reported."],
+    cols={"week_start": "Sunday starting the week.", "week_end": "Saturday ending the week.", "marketplace_id": "Amazon marketplace id.", "asin": "Our ASIN.", **_AMZ_PRODUCT,
+          "purchased_with_asin": "ASIN bought in the same order.", "purchased_with_slug": "Product slug when the companion is one of ours, else NULL.", "purchased_with_rank": "Rank of the companion (1 = most common).",
+          "combination_pct": "Percent 0-100 of orders with our ASIN that also held the companion.", **_AMZ_LOADED})
+
+rel("public.amazon_repeat_purchases", group="amazon", kind="table",
+    purpose="Amazon Brand Analytics repeat purchase behaviour by week and ASIN: orders, unique customers and the share that are repeat customers.",
+    grain="one row per (week_start, marketplace_id, asin)", source=_AMZ_SRC.format(feed="amazon_repeat_purchases", tables="brand_analytics_repeat_purchases, period WEEK"),
+    refresh=_AMZ_REFRESH.format(w="6 weeks"), coverage="weeks from 2026-06-28 (US and MX)",
+    caveats=["Percentages are 0-100. Amazon computes repeat over its own look-back window, so the figures do not tie to the cohort tables."],
+    cols={"week_start": "Sunday starting the week.", "week_end": "Saturday ending the week.", "marketplace_id": "Amazon marketplace id.", "asin": "Our ASIN.", **_AMZ_PRODUCT,
+          "orders": "Orders of the ASIN in the week.", "unique_customers": "Unique customers.", "repeat_customers_pct_total": "Percent 0-100 of customers that are repeat customers.",
+          "repeat_purchase_revenue": "Revenue from repeat purchases, dollars.", "repeat_purchase_revenue_pct_total": "Percent 0-100 of revenue from repeat purchases.", **_AMZ_LOADED})
+
+rel("public.amazon_settlement_fees_daily", group="amazon", kind="table",
+    purpose="Amazon settlement lines summed by posted day and fee or transaction type: what Amazon actually charged and paid (referral and FBA fees, promotions, advertising charges, reimbursements).",
+    grain="one row per (day, marketplace_name, transaction_type, amount_type, amount_description)", source=_AMZ_SRC.format(feed="amazon_settlement_fees_daily", tables="amazon_settlement_reports"),
+    refresh=_AMZ_REFRESH.format(w="45 days"), coverage="2024-03-18 (a few older rows from 2017) to the newest settlement; settlements arrive in batches, so the newest day can be two weeks old",
+    caveats=["Amounts are signed as Amazon stores them: sales are positive, fees, promotions and ad charges negative, refunds negative.",
+             "Posted-day basis, so it does not tie to the purchase-day revenue of amazon_orders_asin_daily. 'Cost of Advertising' here is the settlement debit, not the Ads report spend."],
+    cols={"day": "Posted day of the settlement line.", "marketplace_name": "Marketplace of the line ('' when blank).", "transaction_type": "Order | Refund | ServiceFee | FBAFees | AmazonFees | other-transaction ...",
+          "amount_type": "Fee group, e.g. ItemPrice, ItemFees, Promotion, Cost of Advertising.", "amount_description": "Detail, e.g. Principal, Commission, FBAPerUnitFulfillmentFee.",
+          "lines": "Settlement lines summed.", "amount": "Sum of amount in the line currency, signed.", "amount_usd": "Sum of amount in US dollars, signed.", "currency": "Currency code of the lines.", **_AMZ_LOADED})
+
+# the analytics views (one per table; migration 251). Columns and text are inherited from the table.
+for _t, _v, _dom, _span in [
+    ("amazon_asin_products", "amazon_asin_products", "amazon", ("amazon_asin_products", "refreshed_on")),
+    ("amazon_ads_campaign_daily", "amazon_ads_campaign_daily", "amazon", ("amazon_ads_campaign_daily", "day")),
+    ("amazon_ads_asin_daily", "amazon_ads_asin_daily", "amazon", ("amazon_ads_asin_daily", "day")),
+    ("amazon_sqp_weekly", "amazon_search_queries_weekly", "amazon", ("amazon_sqp_weekly", "period_start", "period_end")),
+    ("amazon_sqp_monthly", "amazon_search_queries_monthly", "amazon", ("amazon_sqp_monthly", "period_start", "period_end")),
+    ("amazon_orders_asin_daily", "amazon_orders_asin_daily", "amazon", ("amazon_orders_asin_daily", "day")),
+    ("amazon_traffic_daily", "amazon_traffic_daily", "amazon", ("amazon_traffic_daily", "day")),
+    ("amazon_market_baskets", "amazon_market_baskets", "amazon", ("amazon_market_baskets", "week_start", "week_end")),
+    ("amazon_repeat_purchases", "amazon_repeat_purchases", "amazon", ("amazon_repeat_purchases", "week_start", "week_end")),
+    ("amazon_settlement_fees_daily", "amazon_settlement_fees_daily", "amazon", ("amazon_settlement_fees_daily", "day")),
+]:
+    _s = REL[f"public.{_t}"]
+    _ex = {
+        "amazon_asin_products": [("Products and their ASINs", "SELECT product_slug, asin, sku FROM analytics.amazon_asin_products ORDER BY 1, 2;"), ("Row count", "SELECT count(*) AS rows FROM analytics.amazon_asin_products;")],
+        "amazon_ads_campaign_daily": [
+            ("Spend and sales by ad type, last 30 days", "SELECT ad_type, round(sum(spend)) AS spend, round(sum(sales_reported)) AS sales_reported, round(sum(sales_reported) / NULLIF(sum(spend), 0), 2) AS roas\n"
+             "FROM analytics.amazon_ads_campaign_daily\nWHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'amazon_ads_campaign_daily') - 30\nGROUP BY 1 ORDER BY 2 DESC;"),
+            ("Spend by product (NULL = campaign name has no ASIN)", "SELECT coalesce(product_slug, '(no product)') AS product, round(sum(spend)) AS spend\nFROM analytics.amazon_ads_campaign_daily GROUP BY 1 ORDER BY 2 DESC;")],
+        "amazon_ads_asin_daily": [("Spend and 14-day sales by ASIN (Sponsored Products)", "SELECT asin, product_slug, round(sum(spend)) AS spend, round(sum(sales_14d)) AS sales_14d\nFROM analytics.amazon_ads_asin_daily WHERE ad_type = 'sp' GROUP BY 1, 2 ORDER BY 3 DESC;"),
+                                  ("Row count", "SELECT count(*) AS rows FROM analytics.amazon_ads_asin_daily;")],
+        "amazon_search_queries_weekly": [
+            ("Brand vs non-brand: our side summed over ASINs, market volume as MAX per query-week",
+             "WITH q AS (SELECT period_start, query_key, is_branded, max(search_query_volume) AS volume, sum(asin_purchases) AS our_purchases\n"
+             "           FROM analytics.amazon_search_queries_weekly WHERE marketplace = 'US' GROUP BY 1, 2, 3)\n"
+             "SELECT is_branded, sum(volume) AS market_searches, sum(our_purchases) AS our_purchases FROM q GROUP BY 1;"),
+            ("Top non-branded queries by our purchases, latest week", "SELECT query_key, max(search_query_volume) AS volume, sum(asin_purchases) AS purchases\nFROM analytics.amazon_search_queries_weekly\n"
+             "WHERE NOT is_branded AND period_start = (SELECT max(period_start) FROM analytics.amazon_search_queries_weekly) GROUP BY 1 ORDER BY 3 DESC LIMIT 20;")],
+        "amazon_search_queries_monthly": [("Row count by month", "SELECT period_start, count(*) AS rows FROM analytics.amazon_search_queries_monthly GROUP BY 1 ORDER BY 1;"),
+                                          ("Our purchase share of one query over time", "SELECT period_start, asin, asin_purchase_share FROM analytics.amazon_search_queries_monthly WHERE query_key = 'beef liver' ORDER BY 1, 2;")],
+        "amazon_orders_asin_daily": [("Revenue and new-customer revenue by product, last 30 days", "SELECT product_slug, sum(units) AS units, round(sum(revenue)) AS revenue, round(sum(nc_revenue)) AS nc_revenue\nFROM analytics.amazon_orders_asin_daily\n"
+                                      "WHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'amazon_orders_asin_daily') - 30 GROUP BY 1 ORDER BY 3 DESC;"),
+                                     ("Row count", "SELECT count(*) AS rows FROM analytics.amazon_orders_asin_daily;")],
+        "amazon_traffic_daily": [("Sessions and buy box share by week", "SELECT date_trunc('week', day)::date AS week, sum(sessions) AS sessions, round(avg(buy_box_pct), 2) AS buy_box_pct\nFROM analytics.amazon_traffic_daily GROUP BY 1 ORDER BY 1 DESC LIMIT 12;"),
+                                 ("Row count", "SELECT count(*) AS rows FROM analytics.amazon_traffic_daily;")],
+        "amazon_market_baskets": [("Top companions of each ASIN, latest week", "SELECT asin, purchased_with_asin, purchased_with_rank, combination_pct\nFROM analytics.amazon_market_baskets\nWHERE week_start = (SELECT max(week_start) FROM analytics.amazon_market_baskets) ORDER BY 1, 3;"),
+                                  ("Row count", "SELECT count(*) AS rows FROM analytics.amazon_market_baskets;")],
+        "amazon_repeat_purchases": [("Repeat customer share by ASIN, latest week", "SELECT asin, orders, unique_customers, repeat_customers_pct_total\nFROM analytics.amazon_repeat_purchases\nWHERE week_start = (SELECT max(week_start) FROM analytics.amazon_repeat_purchases) ORDER BY 2 DESC;"),
+                                    ("Row count", "SELECT count(*) AS rows FROM analytics.amazon_repeat_purchases;")],
+        "amazon_settlement_fees_daily": [("Fees by type, last 30 days", "SELECT amount_type, amount_description, round(sum(amount_usd)) AS usd\nFROM analytics.amazon_settlement_fees_daily\n"
+                                          "WHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'amazon_settlement_fees_daily') - 30 AND transaction_type IN ('Order', 'FBAFees', 'AmazonFees', 'ServiceFee')\nGROUP BY 1, 2 ORDER BY 3;"),
+                                         ("Row count", "SELECT count(*) AS rows FROM analytics.amazon_settlement_fees_daily;")],
+    }[_v]
+    _extra = ""
+    if _v in ("amazon_search_queries_weekly", "amazon_search_queries_monthly"):
+        _extra = "Read the SUM-vs-MAX rule first. "
+    rel(f"analytics.{_v}", group="analytics", kind="view", like=f"public.{_t}", domain=_dom, span=_span, base=_t,
+        purpose=_extra + _s["purpose"], grain=_s["grain"], source=f"public.{_t} (ExpandFi merchant 1452)", refresh=_s["refresh"], coverage=_s["coverage"], caveats=list(_s["caveats"]), cols={}, examples=_ex)
+
+
 # ---------------------------------------------------------------------------------------------------------------------------- deferred views (migration 231)
 # Views over tables that live on open pull requests (Klaviyo 206, landing pages 207, Shopify orders 210). Migration 231 creates each one only when its source table exists, with the
 # source's own COMMENTs (docs/schema/deferred.py is generated from them), so they are described here but absent from a database that does not have the source yet.
@@ -3175,6 +3383,7 @@ views only); everything else is the app's own storage. **Start with `select * fr
 | which view answers a question; what a metric means and how it goes wrong | `analytics.catalog`, `analytics.metric_glossary` |
 | Meta / Google spend back to 2025-01-01; Meta spend and unique outbound clicks by product; bid caps | `analytics.platform_daily_history`, `analytics.meta_product_daily`, `analytics.meta_product_reach`, `analytics.meta_bids_daily` |
 | last-click credit by source; any-click new customers by stage; orders no ad gets credit for | `analytics.attribution_source_daily`, `analytics.attribution_anyclick_daily`, `analytics.attribution_unmapped_daily` |
+| Amazon: ads by campaign / ASIN, organic search queries (shares, not rank), orders by ASIN, traffic, settlement fees | `analytics.amazon_ads_campaign_daily`, `amazon_ads_asin_daily`, `amazon_search_queries_weekly`, `amazon_search_queries_monthly`, `amazon_orders_asin_daily`, `amazon_traffic_daily`, `amazon_market_baskets`, `amazon_repeat_purchases`, `amazon_settlement_fees_daily`, `amazon_asin_products` (domain `amazon`, docs/AMAZON_DATA.md) |
 | actual new-customer revenue by product or hour; tax and refunds; Amazon; site traffic | `analytics.orders_by_product_daily`, `analytics.orders_hourly`, `analytics.orders_daily_detail`, `analytics.amazon_daily`, `analytics.site_traffic_daily` |
 | creative family spend / results by basis, test to scale, copy and transcript | `analytics.creative_family_daily`, `analytics.creative_family_metrics`, `analytics.creative_stage_moves`, `analytics.creative_scaling_placements`, `analytics.creative_content` |
 | tags, taxonomy lines, ingredients, hooks | `analytics.tracker_tags`, `analytics.tag_taxonomy_lines`, `analytics.tag_line_ingredients`, `analytics.tracker_hooks`, `analytics.tag_products` |

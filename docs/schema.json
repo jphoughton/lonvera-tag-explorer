@@ -41,6 +41,10 @@
    "title": "Projection engine tables (finance, inventory, cohorts; read them through the analytics views)"
   },
   {
+   "key": "amazon",
+   "title": "Amazon data layer (ExpandFi merchant 1452): the tables behind the analytics.amazon_* views"
+  },
+  {
    "key": "story",
    "title": "Daily story: facts, the short explanation, the change patterns and the scoreboard"
   }
@@ -105,6 +109,10 @@
   {
    "key": "landing_pages",
    "title": "Landing page copy versions and the ads that send people to each page (views created by migration 231 once those tables exist)"
+  },
+  {
+   "key": "amazon",
+   "title": "Amazon (ExpandFi): ads by campaign and ASIN, organic search queries, orders by ASIN, traffic, market baskets, repeat purchases, settlement fees"
   },
   {
    "key": "story",
@@ -1605,7 +1613,7 @@
      "name": "source",
      "type": "text",
      "nullable": null,
-     "description": "meta_ad_daily | upstack_meta_attribution | google_campaign_daily | upstack_google_attribution | orders_daily | meta_reach (day grain) | meta_campaign_daily_history."
+     "description": "meta_ad_daily | upstack_meta_attribution | google_campaign_daily | upstack_google_attribution | orders_daily | meta_reach (day grain) | meta_campaign_daily_history | amazon_ads_campaign_daily | amazon_ads_asin_daily | amazon_search_queries_weekly | amazon_search_queries_monthly | amazon_orders_asin_daily | amazon_traffic_daily | amazon_market_baskets | amazon_repeat_purchases | amazon_settlement_fees_daily."
     },
     {
      "name": "first_day",
@@ -22057,6 +22065,3120 @@
     {
      "title": "All metrics by domain",
      "sql": "SELECT domain, name, label FROM analytics.metric_glossary ORDER BY domain, name;"
+    }
+   ]
+  },
+  {
+   "name": "public.amazon_asin_products",
+   "schema": "public",
+   "relation": "amazon_asin_products",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Amazon.com ASIN to SKU to product map (ExpandFi asin_skus), the join key of every other Amazon table.",
+   "grain": "one row per (asin, sku)",
+   "primary_key": [
+    "asin",
+    "sku"
+   ],
+   "foreign_keys": [],
+   "source": "etl.feeds amazon_asin_products (ExpandFi warehouse, merchant 1452: asin_skus, channel Amazon.com)",
+   "refresh": "feeds service 21:00 UTC, full refresh every run",
+   "coverage": "8 ASINs for 5 products (Vital Flow has no Amazon ASIN)",
+   "caveats": [
+    "Product comes from the SKU prefix (LV-VBULL, LV-BLC, LV-BFLEX, LV-VBELLE), the listing title as fallback. Aggregates only."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": false,
+     "description": "Amazon ASIN."
+    },
+    {
+     "name": "sku",
+     "type": "text",
+     "nullable": false,
+     "description": "Seller SKU."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": true,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "friendly_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Listing title (first 200 characters)."
+    },
+    {
+     "name": "refreshed_on",
+     "type": "date",
+     "nullable": false,
+     "description": "Pacific day of the refresh."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_ads_campaign_daily",
+   "schema": "public",
+   "relation": "amazon_ads_campaign_daily",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Amazon Ads (Sponsored Products, Brands, Brand video, Display) by day, campaign and ad group, de-duplicated v3 > v2 > v1 per campaign-day; the daily spend sum equals proj_feed_amazon.ad_spend.",
+   "grain": "one row per (day, marketplace, campaign_id, ad_group_id, ad_type); ad_group_id is '' for types that report no ad group",
+   "primary_key": [
+    "day",
+    "marketplace",
+    "campaign_id",
+    "ad_group_id",
+    "ad_type"
+   ],
+   "foreign_keys": [],
+   "source": "etl.feeds amazon_ads_campaign_daily (ExpandFi warehouse, merchant 1452: amazon_ads_campaign_data)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 21 days; each run replaces its window, an empty pull writes nothing",
+   "coverage": "2025-12-30 (Sponsored Products v3) to yesterday; Sponsored Display from 2026-01-29, Sponsored Brands from 2026-02-03. Rows with no spend, impressions, clicks or sales are not stored.",
+   "caveats": [
+    "ad_type comes from the report type. Rows from the older v1 report that ExpandFi files under spCampaigns also hold Sponsored Brands, Sponsored Display and Full-Funnel campaigns, so they read 'sp'.",
+    "Amazon has no ad-attributed revenue on one basis: sales_reported is Sponsored Products 14-day sales and the single reported sales figure of the other types. Do not add it to Meta or Google revenue.",
+    "The 1/7/14/30-day columns exist for Sponsored Products v3 only; older generations store zeros there, so they are NULL here. NULL is not zero.",
+    "Campaigns carry no product in the report: product_slug is the ASIN the campaign name contains (about 88% of spend); campaigns such as 'All Products' and 'Full-Funnel' have NULL."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Calendar day of the report (Amazon Ads account day)."
+    },
+    {
+     "name": "marketplace",
+     "type": "text",
+     "nullable": false,
+     "description": "Ads marketplace code; rows from the v1 report carry none and are stored as 'US'."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Amazon Ads campaign id."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Ad group id (Sponsored Products); '' when the report has none."
+    },
+    {
+     "name": "ad_type",
+     "type": "text",
+     "nullable": false,
+     "description": "sp (Sponsored Products) | sb (Sponsored Brands) | sbv (Sponsored Brands video) | sd (Sponsored Display), from api_report_type."
+    },
+    {
+     "name": "api_version",
+     "type": "text",
+     "nullable": true,
+     "description": "Report generation kept for this campaign-day: v3, v2 or v1."
+    },
+    {
+     "name": "campaign_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Campaign name that day."
+    },
+    {
+     "name": "ad_group_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Ad group name that day."
+    },
+    {
+     "name": "campaign_status",
+     "type": "text",
+     "nullable": true,
+     "description": "Campaign status that day (not on every report type)."
+    },
+    {
+     "name": "budget_amount",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Campaign daily budget in the account currency (not on every report type)."
+    },
+    {
+     "name": "budget_type",
+     "type": "text",
+     "nullable": true,
+     "description": "Budget type, e.g. DAILY."
+    },
+    {
+     "name": "bidding_strategy",
+     "type": "text",
+     "nullable": true,
+     "description": "Campaign bidding strategy (Sponsored Products v3 only)."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": true,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "spend",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Ad spend, US dollars (cost_usd)."
+    },
+    {
+     "name": "impressions",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Ad impressions."
+    },
+    {
+     "name": "clicks",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Ad clicks."
+    },
+    {
+     "name": "sales_1d",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Ad-attributed sales, dollars, 1-day click window. Sponsored Products (v3 report) only; NULL for every other row."
+    },
+    {
+     "name": "sales_7d",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Ad-attributed sales, dollars, 7-day click window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "sales_14d",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Ad-attributed sales, dollars, 14-day click window. Sponsored Products v3 only; NULL otherwise. Matures for 14 days after the day."
+    },
+    {
+     "name": "sales_30d",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Ad-attributed sales, dollars, 30-day click window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_1d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Ad-attributed purchases, 1-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_7d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Ad-attributed purchases, 7-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_14d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Ad-attributed purchases, 14-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_30d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Ad-attributed purchases, 30-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_1d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Units sold on ad clicks, 1-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_7d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Units sold on ad clicks, 7-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_14d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Units sold on ad clicks, 14-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_30d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Units sold on ad clicks, 30-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "sales",
+     "type": "numeric",
+     "nullable": true,
+     "description": "The report's bare attributed sales, dollars: the single reported figure for Sponsored Brands and Display, an aggregate for the v1 report."
+    },
+    {
+     "name": "purchases",
+     "type": "bigint",
+     "nullable": true,
+     "description": "The report's bare attributed purchases."
+    },
+    {
+     "name": "units_sold",
+     "type": "bigint",
+     "nullable": true,
+     "description": "The report's bare units sold."
+    },
+    {
+     "name": "ntb_purchases",
+     "type": "bigint",
+     "nullable": true,
+     "description": "New-to-brand purchases (Sponsored Brands and Display; populated for Display only, 0 for Brands)."
+    },
+    {
+     "name": "ntb_sales",
+     "type": "numeric",
+     "nullable": true,
+     "description": "New-to-brand sales, dollars."
+    },
+    {
+     "name": "ntb_units",
+     "type": "bigint",
+     "nullable": true,
+     "description": "New-to-brand units."
+    },
+    {
+     "name": "video_complete_views",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Video complete views (Sponsored Brands)."
+    },
+    {
+     "name": "video_5s_views",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Video 5-second views."
+    },
+    {
+     "name": "video_q1_views",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Video views to the first quartile."
+    },
+    {
+     "name": "video_midpoint_views",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Video views to the midpoint."
+    },
+    {
+     "name": "video_q3_views",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Video views to the third quartile."
+    },
+    {
+     "name": "brand_searches",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Branded searches after the ad (Sponsored Brands)."
+    },
+    {
+     "name": "sales_reported",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Attributed sales on the one basis available per type: Sponsored Products v3 sales_14d, otherwise the bare sales. Use it for a total-ads return on spend."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_ads_asin_daily",
+   "schema": "public",
+   "relation": "amazon_ads_asin_daily",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Amazon Ads advertised products (Sponsored Products and Display) by day, campaign, ad group and ASIN: which product each ad dollar went to.",
+   "grain": "one row per (day, marketplace, campaign_id, ad_group_id, asin, ad_type)",
+   "primary_key": [
+    "day",
+    "marketplace",
+    "campaign_id",
+    "ad_group_id",
+    "asin",
+    "ad_type"
+   ],
+   "foreign_keys": [],
+   "source": "etl.feeds amazon_ads_asin_daily (ExpandFi warehouse, merchant 1452: amazon_ads_raw_data v3 spAdvertisedProduct and sdAdvertisedProduct)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 21 days; each run replaces its window, an empty pull writes nothing",
+   "coverage": "2026-01-04 (Sponsored Products) / 2026-01-29 (Display) to yesterday",
+   "caveats": [
+    "v3 only: the v1 advertised-product reports are one report stored twice under two names. Sponsored Products v3 spend ties to amazon_ads_campaign_daily; there is no Sponsored Brands ASIN grain anywhere.",
+    "The 1/7/14/30-day columns are Sponsored Products only (NULL for Display); Display reports its single attributed figure in sales and purchases."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Calendar day of the report."
+    },
+    {
+     "name": "marketplace",
+     "type": "text",
+     "nullable": false,
+     "description": "Ads marketplace code."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Amazon Ads campaign id."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Ad group id."
+    },
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": false,
+     "description": "Advertised ASIN."
+    },
+    {
+     "name": "ad_type",
+     "type": "text",
+     "nullable": false,
+     "description": "sp | sd."
+    },
+    {
+     "name": "sku",
+     "type": "text",
+     "nullable": true,
+     "description": "Advertised SKU."
+    },
+    {
+     "name": "campaign_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Campaign name that day."
+    },
+    {
+     "name": "ad_group_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Ad group name that day."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": true,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "spend",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Ad spend, US dollars."
+    },
+    {
+     "name": "impressions",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Ad impressions."
+    },
+    {
+     "name": "clicks",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Ad clicks."
+    },
+    {
+     "name": "sales_1d",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Ad-attributed sales, dollars, 1-day click window. Sponsored Products (v3 report) only; NULL for every other row."
+    },
+    {
+     "name": "sales_7d",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Ad-attributed sales, dollars, 7-day click window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "sales_14d",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Ad-attributed sales, dollars, 14-day click window. Sponsored Products v3 only; NULL otherwise. Matures for 14 days after the day."
+    },
+    {
+     "name": "sales_30d",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Ad-attributed sales, dollars, 30-day click window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_1d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Ad-attributed purchases, 1-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_7d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Ad-attributed purchases, 7-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_14d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Ad-attributed purchases, 14-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_30d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Ad-attributed purchases, 30-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_1d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Units sold on ad clicks, 1-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_7d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Units sold on ad clicks, 7-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_14d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Units sold on ad clicks, 14-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_30d",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Units sold on ad clicks, 30-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "sales",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Display only: the single reported attributed sales, dollars (sales_aggregate). NULL for Sponsored Products."
+    },
+    {
+     "name": "purchases",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Display only: the single reported purchases. NULL for Sponsored Products."
+    },
+    {
+     "name": "sales_reported",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Sponsored Products sales_14d, Display bare sales."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_sqp_weekly",
+   "schema": "public",
+   "relation": "amazon_sqp_weekly",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Amazon Brand Analytics Search Query Performance by week: for each search query and each of our ASINs, the query's market size and our share of impressions, clicks, cart adds and purchases (the organic search signal).",
+   "grain": "one row per (period_start = Sunday, marketplace_id, asin, query_key)",
+   "primary_key": [
+    "period_start",
+    "marketplace_id",
+    "asin",
+    "query_key"
+   ],
+   "foreign_keys": [],
+   "source": "etl.feeds amazon_sqp_weekly (ExpandFi warehouse, merchant 1452: brand_analytics_search_query_performances, period WEEK)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 6 weeks; each run replaces its window, an empty pull writes nothing; a week lands about 5 days after its Saturday",
+   "coverage": "weeks from 2025-07-13 to the last landed week; 8 ASINs, mostly US",
+   "caveats": [
+    "SUM vs MAX: total_* columns and search_query_volume are market totals repeated on every ASIN row of a query, so SUM across ASINs overstates them (5 ASIN rows = 5x): use MAX per query and period; to total OUR side SUM the asin_* columns.",
+    "Top-100 cap: Amazon reports only about the top 100 queries per ASIN and period. A query that is absent is not in that list, not zero, and a query dropping out looks like a share collapse.",
+    "Shares are percent 0-100, not fractions (2.95 = 2.95 percent).",
+    "Impressions include sponsored placements: our own ads count in asin_impressions and the shares. Purchases are search-origin and same-day and will not tie to orders.",
+    "No organic rank position exists anywhere in the data; the click, cart add and purchase shares are the proxy.",
+    "Never sum weekly rows into a month or compare a week with a month: periods overlap in meaning and the query lists differ.",
+    "Duplicate source rows (restated re-pulls) are collapsed to the latest; the newest week or month can still be partial for a week or two."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "period_start",
+     "type": "date",
+     "nullable": false,
+     "description": "First day of the period (Sunday for a week, the 1st for a month)."
+    },
+    {
+     "name": "period_end",
+     "type": "date",
+     "nullable": false,
+     "description": "Last day of the period."
+    },
+    {
+     "name": "marketplace_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Amazon marketplace id (ATVPDKIKX0DER = US, A1AM78C64UM0Y8 = MX)."
+    },
+    {
+     "name": "marketplace",
+     "type": "text",
+     "nullable": true,
+     "description": "US | MX | CA | BR from marketplace_id."
+    },
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": false,
+     "description": "Our ASIN the shares belong to."
+    },
+    {
+     "name": "query_key",
+     "type": "text",
+     "nullable": false,
+     "description": "The search query lower-cased, trimmed, runs of spaces collapsed to one: the join key to other query tables."
+    },
+    {
+     "name": "search_query",
+     "type": "text",
+     "nullable": true,
+     "description": "The query text as Amazon reported it."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": true,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "is_branded",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True when the query names the brand or a product (Lonvera, Vita / Vital Bull, Vita / Vital Belle, Vital Flow, Bone Flex / Boneflex); one rule in etl/feeds/amazon_feeds.py."
+    },
+    {
+     "name": "search_query_score",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Amazon's relative popularity score of the query among our ASIN's queries (1 = most searched)."
+    },
+    {
+     "name": "search_query_volume",
+     "type": "bigint",
+     "nullable": true,
+     "description": "MARKET total: searches for the query on Amazon in the period. Repeated on every ASIN row of the query."
+    },
+    {
+     "name": "total_impressions",
+     "type": "bigint",
+     "nullable": true,
+     "description": "MARKET total: impressions of all products for the query (organic and sponsored). Repeated on every ASIN row: never SUM across ASINs, use MAX."
+    },
+    {
+     "name": "asin_impressions",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Impressions of our ASIN for the query (organic and sponsored)."
+    },
+    {
+     "name": "asin_impression_share",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Our ASIN's share of the query's impressions, percent 0-100."
+    },
+    {
+     "name": "total_clicks",
+     "type": "bigint",
+     "nullable": true,
+     "description": "MARKET total clicks for the query (repeated per ASIN row: MAX)."
+    },
+    {
+     "name": "total_click_rate",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Market clicks per search, percent 0-100."
+    },
+    {
+     "name": "asin_clicks",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Clicks on our ASIN."
+    },
+    {
+     "name": "asin_click_share",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Our ASIN's share of the query's clicks, percent 0-100."
+    },
+    {
+     "name": "total_median_click_price",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Market median price of clicked products, dollars."
+    },
+    {
+     "name": "asin_median_click_price",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Median price of our ASIN's clicks, dollars."
+    },
+    {
+     "name": "total_cart_adds",
+     "type": "bigint",
+     "nullable": true,
+     "description": "MARKET total cart adds for the query (repeated per ASIN row: MAX)."
+    },
+    {
+     "name": "total_cart_add_rate",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Market cart adds per search, percent 0-100."
+    },
+    {
+     "name": "asin_cart_adds",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Cart adds of our ASIN."
+    },
+    {
+     "name": "asin_cart_add_share",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Our ASIN's share of the query's cart adds, percent 0-100."
+    },
+    {
+     "name": "total_median_cart_add_price",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Market median price of carted products, dollars."
+    },
+    {
+     "name": "asin_median_cart_add_price",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Median price of our ASIN's cart adds, dollars."
+    },
+    {
+     "name": "total_purchases",
+     "type": "bigint",
+     "nullable": true,
+     "description": "MARKET total purchases for the query (repeated per ASIN row: MAX)."
+    },
+    {
+     "name": "total_purchase_rate",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Market purchases per search, percent 0-100."
+    },
+    {
+     "name": "asin_purchases",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Purchases of our ASIN (search-origin, same day)."
+    },
+    {
+     "name": "asin_purchase_share",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Our ASIN's share of the query's purchases, percent 0-100: the best outcome proxy for organic rank."
+    },
+    {
+     "name": "total_median_purchase_price",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Market median purchase price, dollars."
+    },
+    {
+     "name": "asin_median_purchase_price",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Median price of our ASIN's purchases, dollars."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_sqp_monthly",
+   "schema": "public",
+   "relation": "amazon_sqp_monthly",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Amazon Brand Analytics Search Query Performance by month: same columns as amazon_sqp_weekly, one period per calendar month.",
+   "grain": "one row per (period_start = 1st of the month, marketplace_id, asin, query_key)",
+   "primary_key": [
+    "period_start",
+    "marketplace_id",
+    "asin",
+    "query_key"
+   ],
+   "foreign_keys": [],
+   "source": "etl.feeds amazon_sqp_monthly (ExpandFi warehouse, merchant 1452: brand_analytics_search_query_performances, period MONTH)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 3 months; each run replaces its window, an empty pull writes nothing; a month lands about 2 weeks after it ends",
+   "coverage": "months from 2025-06 to the last landed month",
+   "caveats": [
+    "SUM vs MAX: total_* columns and search_query_volume are market totals repeated on every ASIN row of a query, so SUM across ASINs overstates them (5 ASIN rows = 5x): use MAX per query and period; to total OUR side SUM the asin_* columns.",
+    "Top-100 cap: Amazon reports only about the top 100 queries per ASIN and period. A query that is absent is not in that list, not zero, and a query dropping out looks like a share collapse.",
+    "Shares are percent 0-100, not fractions (2.95 = 2.95 percent).",
+    "Impressions include sponsored placements: our own ads count in asin_impressions and the shares. Purchases are search-origin and same-day and will not tie to orders.",
+    "No organic rank position exists anywhere in the data; the click, cart add and purchase shares are the proxy.",
+    "Never sum weekly rows into a month or compare a week with a month: periods overlap in meaning and the query lists differ.",
+    "Duplicate source rows (restated re-pulls) are collapsed to the latest; the newest week or month can still be partial for a week or two."
+   ],
+   "like": "public.amazon_sqp_weekly",
+   "domain": null,
+   "columns": [
+    {
+     "name": "period_start",
+     "type": "date",
+     "nullable": false,
+     "description": "First day of the period (Sunday for a week, the 1st for a month)."
+    },
+    {
+     "name": "period_end",
+     "type": "date",
+     "nullable": false,
+     "description": "Last day of the period."
+    },
+    {
+     "name": "marketplace_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Amazon marketplace id (ATVPDKIKX0DER = US, A1AM78C64UM0Y8 = MX)."
+    },
+    {
+     "name": "marketplace",
+     "type": "text",
+     "nullable": true,
+     "description": "US | MX | CA | BR from marketplace_id."
+    },
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": false,
+     "description": "Our ASIN the shares belong to."
+    },
+    {
+     "name": "query_key",
+     "type": "text",
+     "nullable": false,
+     "description": "The search query lower-cased, trimmed, runs of spaces collapsed to one: the join key to other query tables."
+    },
+    {
+     "name": "search_query",
+     "type": "text",
+     "nullable": true,
+     "description": "The query text as Amazon reported it."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": true,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "is_branded",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True when the query names the brand or a product (Lonvera, Vita / Vital Bull, Vita / Vital Belle, Vital Flow, Bone Flex / Boneflex); one rule in etl/feeds/amazon_feeds.py."
+    },
+    {
+     "name": "search_query_score",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Amazon's relative popularity score of the query among our ASIN's queries (1 = most searched)."
+    },
+    {
+     "name": "search_query_volume",
+     "type": "bigint",
+     "nullable": true,
+     "description": "MARKET total: searches for the query on Amazon in the period. Repeated on every ASIN row of the query."
+    },
+    {
+     "name": "total_impressions",
+     "type": "bigint",
+     "nullable": true,
+     "description": "MARKET total: impressions of all products for the query (organic and sponsored). Repeated on every ASIN row: never SUM across ASINs, use MAX."
+    },
+    {
+     "name": "asin_impressions",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Impressions of our ASIN for the query (organic and sponsored)."
+    },
+    {
+     "name": "asin_impression_share",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Our ASIN's share of the query's impressions, percent 0-100."
+    },
+    {
+     "name": "total_clicks",
+     "type": "bigint",
+     "nullable": true,
+     "description": "MARKET total clicks for the query (repeated per ASIN row: MAX)."
+    },
+    {
+     "name": "total_click_rate",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Market clicks per search, percent 0-100."
+    },
+    {
+     "name": "asin_clicks",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Clicks on our ASIN."
+    },
+    {
+     "name": "asin_click_share",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Our ASIN's share of the query's clicks, percent 0-100."
+    },
+    {
+     "name": "total_median_click_price",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Market median price of clicked products, dollars."
+    },
+    {
+     "name": "asin_median_click_price",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Median price of our ASIN's clicks, dollars."
+    },
+    {
+     "name": "total_cart_adds",
+     "type": "bigint",
+     "nullable": true,
+     "description": "MARKET total cart adds for the query (repeated per ASIN row: MAX)."
+    },
+    {
+     "name": "total_cart_add_rate",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Market cart adds per search, percent 0-100."
+    },
+    {
+     "name": "asin_cart_adds",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Cart adds of our ASIN."
+    },
+    {
+     "name": "asin_cart_add_share",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Our ASIN's share of the query's cart adds, percent 0-100."
+    },
+    {
+     "name": "total_median_cart_add_price",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Market median price of carted products, dollars."
+    },
+    {
+     "name": "asin_median_cart_add_price",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Median price of our ASIN's cart adds, dollars."
+    },
+    {
+     "name": "total_purchases",
+     "type": "bigint",
+     "nullable": true,
+     "description": "MARKET total purchases for the query (repeated per ASIN row: MAX)."
+    },
+    {
+     "name": "total_purchase_rate",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Market purchases per search, percent 0-100."
+    },
+    {
+     "name": "asin_purchases",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Purchases of our ASIN (search-origin, same day)."
+    },
+    {
+     "name": "asin_purchase_share",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Our ASIN's share of the query's purchases, percent 0-100: the best outcome proxy for organic rank."
+    },
+    {
+     "name": "total_median_purchase_price",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Market median purchase price, dollars."
+    },
+    {
+     "name": "asin_median_purchase_price",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Median price of our ASIN's purchases, dollars."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_orders_asin_daily",
+   "schema": "public",
+   "relation": "amazon_orders_asin_daily",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Actual Amazon.com orders by day, ASIN and channel (Amazon.com and Amazon.com B2B): units, orders, revenue and new customers, on the same basis as proj_feed_amazon.",
+   "grain": "one row per (day, asin, sales_channel)",
+   "primary_key": [
+    "day",
+    "asin",
+    "sales_channel"
+   ],
+   "foreign_keys": [],
+   "source": "etl.feeds amazon_orders_asin_daily (ExpandFi warehouse, merchant 1452: sales joined to customers)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 21 days; each run replaces its window, an empty pull writes nothing",
+   "coverage": "2024-09-24 to about 2 days ago (late orders post for about two weeks)",
+   "caveats": [
+    "Purchase-date basis. New customer = the order is on the customer's first purchase day (customers.cohort_day), the rule of proj_feed_amazon; orders without a customer row are excluded, as there.",
+    "Daily units and revenue sums equal proj_feed_amazon. orders counts distinct orders per ASIN, so an order with two ASINs counts under both: do not sum orders across ASINs.",
+    "Revenue is total_amount_usd (tax and shipping as Amazon reports the line), before refunds."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Purchase day (Pacific, as ExpandFi stores it)."
+    },
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": false,
+     "description": "ASIN of the order line ('' when the line has none)."
+    },
+    {
+     "name": "sales_channel",
+     "type": "text",
+     "nullable": false,
+     "description": "Amazon.com | Amazon.com B2B."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": true,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "orders",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Distinct orders with this ASIN that day."
+    },
+    {
+     "name": "units",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Units shipped."
+    },
+    {
+     "name": "revenue",
+     "type": "numeric",
+     "nullable": false,
+     "description": "Order line revenue, US dollars."
+    },
+    {
+     "name": "nc_orders",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Orders placed by a customer on their first purchase day."
+    },
+    {
+     "name": "nc_revenue",
+     "type": "numeric",
+     "nullable": false,
+     "description": "Revenue of those orders, dollars."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_traffic_daily",
+   "schema": "public",
+   "relation": "amazon_traffic_daily",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Amazon.com account traffic by day: sessions, page views and buy box share (Sales and Traffic report), with ordered units and sales as Amazon counts them.",
+   "grain": "one row per (day, marketplace_id); US only",
+   "primary_key": [
+    "day",
+    "marketplace_id"
+   ],
+   "foreign_keys": [],
+   "source": "etl.feeds amazon_traffic_daily (ExpandFi warehouse, merchant 1452: sales_and_traffic_reports, PARENT rows)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 14 days; each run replaces its window, an empty pull writes nothing",
+   "coverage": "2024-04-07 to yesterday",
+   "caveats": [
+    "Account level, not by ASIN (each ASIN row of the source repeats the account total). The latest restatement of each day is kept; recent days move for about a week.",
+    "Percentages are 0-100. Ordered units and sales are Amazon's ordered-product figures, not the shipped orders of amazon_orders_asin_daily."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Report day."
+    },
+    {
+     "name": "marketplace_id",
+     "type": "text",
+     "nullable": false,
+     "description": "ATVPDKIKX0DER (US)."
+    },
+    {
+     "name": "sessions",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Sessions (browser plus app)."
+    },
+    {
+     "name": "browser_sessions",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Browser sessions."
+    },
+    {
+     "name": "mobile_app_sessions",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Mobile app sessions."
+    },
+    {
+     "name": "page_views",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Page views."
+    },
+    {
+     "name": "buy_box_pct",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Page views with our offer in the buy box, percent 0-100."
+    },
+    {
+     "name": "unit_conversion_pct",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Units ordered per session, percent 0-100."
+    },
+    {
+     "name": "units_ordered",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Units ordered (Amazon's ordered basis)."
+    },
+    {
+     "name": "ordered_product_sales",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Ordered product sales, dollars."
+    },
+    {
+     "name": "total_order_items",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Order items."
+    },
+    {
+     "name": "sessions_b2b",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Business-customer sessions."
+    },
+    {
+     "name": "page_views_b2b",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Business-customer page views."
+    },
+    {
+     "name": "buy_box_pct_b2b",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Business-customer buy box share, percent 0-100."
+    },
+    {
+     "name": "source_updated_at",
+     "type": "timestamp without time zone",
+     "nullable": true,
+     "description": "When ExpandFi last restated this day."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_market_baskets",
+   "schema": "public",
+   "relation": "amazon_market_baskets",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Amazon Brand Analytics market baskets by week: the other products bought together with each of our ASINs.",
+   "grain": "one row per (week_start, marketplace_id, asin, purchased_with_asin)",
+   "primary_key": [
+    "week_start",
+    "marketplace_id",
+    "asin",
+    "purchased_with_asin"
+   ],
+   "foreign_keys": [],
+   "source": "etl.feeds amazon_market_baskets (ExpandFi warehouse, merchant 1452: brand_analytics_market_baskets, period WEEK)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 6 weeks; each run replaces its window, an empty pull writes nothing",
+   "coverage": "weeks from 2026-06-28 (US; one MX week)",
+   "caveats": [
+    "combination_pct is the percent (0-100) of orders containing our ASIN that also contained the other ASIN; only the top few companions are reported."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "week_start",
+     "type": "date",
+     "nullable": false,
+     "description": "Sunday starting the week."
+    },
+    {
+     "name": "week_end",
+     "type": "date",
+     "nullable": false,
+     "description": "Saturday ending the week."
+    },
+    {
+     "name": "marketplace_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Amazon marketplace id."
+    },
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": false,
+     "description": "Our ASIN."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": true,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "purchased_with_asin",
+     "type": "text",
+     "nullable": false,
+     "description": "ASIN bought in the same order."
+    },
+    {
+     "name": "purchased_with_slug",
+     "type": "text",
+     "nullable": true,
+     "description": "Product slug when the companion is one of ours, else NULL."
+    },
+    {
+     "name": "purchased_with_rank",
+     "type": "integer",
+     "nullable": true,
+     "description": "Rank of the companion (1 = most common)."
+    },
+    {
+     "name": "combination_pct",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Percent 0-100 of orders with our ASIN that also held the companion."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_repeat_purchases",
+   "schema": "public",
+   "relation": "amazon_repeat_purchases",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Amazon Brand Analytics repeat purchase behaviour by week and ASIN: orders, unique customers and the share that are repeat customers.",
+   "grain": "one row per (week_start, marketplace_id, asin)",
+   "primary_key": [
+    "week_start",
+    "marketplace_id",
+    "asin"
+   ],
+   "foreign_keys": [],
+   "source": "etl.feeds amazon_repeat_purchases (ExpandFi warehouse, merchant 1452: brand_analytics_repeat_purchases, period WEEK)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 6 weeks; each run replaces its window, an empty pull writes nothing",
+   "coverage": "weeks from 2026-06-28 (US and MX)",
+   "caveats": [
+    "Percentages are 0-100. Amazon computes repeat over its own look-back window, so the figures do not tie to the cohort tables."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "week_start",
+     "type": "date",
+     "nullable": false,
+     "description": "Sunday starting the week."
+    },
+    {
+     "name": "week_end",
+     "type": "date",
+     "nullable": false,
+     "description": "Saturday ending the week."
+    },
+    {
+     "name": "marketplace_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Amazon marketplace id."
+    },
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": false,
+     "description": "Our ASIN."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": true,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "orders",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Orders of the ASIN in the week."
+    },
+    {
+     "name": "unique_customers",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Unique customers."
+    },
+    {
+     "name": "repeat_customers_pct_total",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Percent 0-100 of customers that are repeat customers."
+    },
+    {
+     "name": "repeat_purchase_revenue",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Revenue from repeat purchases, dollars."
+    },
+    {
+     "name": "repeat_purchase_revenue_pct_total",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Percent 0-100 of revenue from repeat purchases."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.amazon_settlement_fees_daily",
+   "schema": "public",
+   "relation": "amazon_settlement_fees_daily",
+   "kind": "table",
+   "group": "amazon",
+   "purpose": "Amazon settlement lines summed by posted day and fee or transaction type: what Amazon actually charged and paid (referral and FBA fees, promotions, advertising charges, reimbursements).",
+   "grain": "one row per (day, marketplace_name, transaction_type, amount_type, amount_description)",
+   "primary_key": [
+    "day",
+    "marketplace_name",
+    "transaction_type",
+    "amount_type",
+    "amount_description"
+   ],
+   "foreign_keys": [],
+   "source": "etl.feeds amazon_settlement_fees_daily (ExpandFi warehouse, merchant 1452: amazon_settlement_reports)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 45 days; each run replaces its window, an empty pull writes nothing",
+   "coverage": "2024-03-18 (a few older rows from 2017) to the newest settlement; settlements arrive in batches, so the newest day can be two weeks old",
+   "caveats": [
+    "Amounts are signed as Amazon stores them: sales are positive, fees, promotions and ad charges negative, refunds negative.",
+    "Posted-day basis, so it does not tie to the purchase-day revenue of amazon_orders_asin_daily. 'Cost of Advertising' here is the settlement debit, not the Ads report spend."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Posted day of the settlement line."
+    },
+    {
+     "name": "marketplace_name",
+     "type": "text",
+     "nullable": false,
+     "description": "Marketplace of the line ('' when blank)."
+    },
+    {
+     "name": "transaction_type",
+     "type": "text",
+     "nullable": false,
+     "description": "Order | Refund | ServiceFee | FBAFees | AmazonFees | other-transaction ..."
+    },
+    {
+     "name": "amount_type",
+     "type": "text",
+     "nullable": false,
+     "description": "Fee group, e.g. ItemPrice, ItemFees, Promotion, Cost of Advertising."
+    },
+    {
+     "name": "amount_description",
+     "type": "text",
+     "nullable": false,
+     "description": "Detail, e.g. Principal, Commission, FBAPerUnitFulfillmentFee."
+    },
+    {
+     "name": "lines",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Settlement lines summed."
+    },
+    {
+     "name": "amount",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Sum of amount in the line currency, signed."
+    },
+    {
+     "name": "amount_usd",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Sum of amount in US dollars, signed."
+    },
+    {
+     "name": "currency",
+     "type": "text",
+     "nullable": true,
+     "description": "Currency code of the lines."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "analytics.amazon_asin_products",
+   "schema": "analytics",
+   "relation": "amazon_asin_products",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Amazon.com ASIN to SKU to product map (ExpandFi asin_skus), the join key of every other Amazon table.",
+   "grain": "one row per (asin, sku)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_asin_products (ExpandFi merchant 1452)",
+   "refresh": "feeds service 21:00 UTC, full refresh every run",
+   "coverage": "8 ASINs for 5 products (Vital Flow has no Amazon ASIN)",
+   "caveats": [
+    "Product comes from the SKU prefix (LV-VBULL, LV-BLC, LV-BFLEX, LV-VBELLE), the listing title as fallback. Aggregates only."
+   ],
+   "like": "public.amazon_asin_products",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": null,
+     "description": "Amazon ASIN."
+    },
+    {
+     "name": "sku",
+     "type": "text",
+     "nullable": null,
+     "description": "Seller SKU."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "friendly_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Listing title (first 200 characters)."
+    },
+    {
+     "name": "refreshed_on",
+     "type": "date",
+     "nullable": null,
+     "description": "Pacific day of the refresh."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Products and their ASINs",
+     "sql": "SELECT product_slug, asin, sku FROM analytics.amazon_asin_products ORDER BY 1, 2;"
+    },
+    {
+     "title": "Row count",
+     "sql": "SELECT count(*) AS rows FROM analytics.amazon_asin_products;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_ads_campaign_daily",
+   "schema": "analytics",
+   "relation": "amazon_ads_campaign_daily",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Amazon Ads (Sponsored Products, Brands, Brand video, Display) by day, campaign and ad group, de-duplicated v3 > v2 > v1 per campaign-day; the daily spend sum equals proj_feed_amazon.ad_spend.",
+   "grain": "one row per (day, marketplace, campaign_id, ad_group_id, ad_type); ad_group_id is '' for types that report no ad group",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_ads_campaign_daily (ExpandFi merchant 1452)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 21 days; each run replaces its window, an empty pull writes nothing",
+   "coverage": "2025-12-30 (Sponsored Products v3) to yesterday; Sponsored Display from 2026-01-29, Sponsored Brands from 2026-02-03. Rows with no spend, impressions, clicks or sales are not stored.",
+   "caveats": [
+    "ad_type comes from the report type. Rows from the older v1 report that ExpandFi files under spCampaigns also hold Sponsored Brands, Sponsored Display and Full-Funnel campaigns, so they read 'sp'.",
+    "Amazon has no ad-attributed revenue on one basis: sales_reported is Sponsored Products 14-day sales and the single reported sales figure of the other types. Do not add it to Meta or Google revenue.",
+    "The 1/7/14/30-day columns exist for Sponsored Products v3 only; older generations store zeros there, so they are NULL here. NULL is not zero.",
+    "Campaigns carry no product in the report: product_slug is the ASIN the campaign name contains (about 88% of spend); campaigns such as 'All Products' and 'Full-Funnel' have NULL."
+   ],
+   "like": "public.amazon_ads_campaign_daily",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": null,
+     "description": "Calendar day of the report (Amazon Ads account day)."
+    },
+    {
+     "name": "marketplace",
+     "type": "text",
+     "nullable": null,
+     "description": "Ads marketplace code; rows from the v1 report carry none and are stored as 'US'."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Amazon Ads campaign id."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad group id (Sponsored Products); '' when the report has none."
+    },
+    {
+     "name": "ad_type",
+     "type": "text",
+     "nullable": null,
+     "description": "sp (Sponsored Products) | sb (Sponsored Brands) | sbv (Sponsored Brands video) | sd (Sponsored Display), from api_report_type."
+    },
+    {
+     "name": "api_version",
+     "type": "text",
+     "nullable": null,
+     "description": "Report generation kept for this campaign-day: v3, v2 or v1."
+    },
+    {
+     "name": "campaign_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign name that day."
+    },
+    {
+     "name": "ad_group_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad group name that day."
+    },
+    {
+     "name": "campaign_status",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign status that day (not on every report type)."
+    },
+    {
+     "name": "budget_amount",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Campaign daily budget in the account currency (not on every report type)."
+    },
+    {
+     "name": "budget_type",
+     "type": "text",
+     "nullable": null,
+     "description": "Budget type, e.g. DAILY."
+    },
+    {
+     "name": "bidding_strategy",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign bidding strategy (Sponsored Products v3 only)."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "spend",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Ad spend, US dollars (cost_usd)."
+    },
+    {
+     "name": "impressions",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Ad impressions."
+    },
+    {
+     "name": "clicks",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Ad clicks."
+    },
+    {
+     "name": "sales_1d",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Ad-attributed sales, dollars, 1-day click window. Sponsored Products (v3 report) only; NULL for every other row."
+    },
+    {
+     "name": "sales_7d",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Ad-attributed sales, dollars, 7-day click window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "sales_14d",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Ad-attributed sales, dollars, 14-day click window. Sponsored Products v3 only; NULL otherwise. Matures for 14 days after the day."
+    },
+    {
+     "name": "sales_30d",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Ad-attributed sales, dollars, 30-day click window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_1d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Ad-attributed purchases, 1-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_7d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Ad-attributed purchases, 7-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_14d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Ad-attributed purchases, 14-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_30d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Ad-attributed purchases, 30-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_1d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Units sold on ad clicks, 1-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_7d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Units sold on ad clicks, 7-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_14d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Units sold on ad clicks, 14-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_30d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Units sold on ad clicks, 30-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "sales",
+     "type": "numeric",
+     "nullable": null,
+     "description": "The report's bare attributed sales, dollars: the single reported figure for Sponsored Brands and Display, an aggregate for the v1 report."
+    },
+    {
+     "name": "purchases",
+     "type": "bigint",
+     "nullable": null,
+     "description": "The report's bare attributed purchases."
+    },
+    {
+     "name": "units_sold",
+     "type": "bigint",
+     "nullable": null,
+     "description": "The report's bare units sold."
+    },
+    {
+     "name": "ntb_purchases",
+     "type": "bigint",
+     "nullable": null,
+     "description": "New-to-brand purchases (Sponsored Brands and Display; populated for Display only, 0 for Brands)."
+    },
+    {
+     "name": "ntb_sales",
+     "type": "numeric",
+     "nullable": null,
+     "description": "New-to-brand sales, dollars."
+    },
+    {
+     "name": "ntb_units",
+     "type": "bigint",
+     "nullable": null,
+     "description": "New-to-brand units."
+    },
+    {
+     "name": "video_complete_views",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Video complete views (Sponsored Brands)."
+    },
+    {
+     "name": "video_5s_views",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Video 5-second views."
+    },
+    {
+     "name": "video_q1_views",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Video views to the first quartile."
+    },
+    {
+     "name": "video_midpoint_views",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Video views to the midpoint."
+    },
+    {
+     "name": "video_q3_views",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Video views to the third quartile."
+    },
+    {
+     "name": "brand_searches",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Branded searches after the ad (Sponsored Brands)."
+    },
+    {
+     "name": "sales_reported",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Attributed sales on the one basis available per type: Sponsored Products v3 sales_14d, otherwise the bare sales. Use it for a total-ads return on spend."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Spend and sales by ad type, last 30 days",
+     "sql": "SELECT ad_type, round(sum(spend)) AS spend, round(sum(sales_reported)) AS sales_reported, round(sum(sales_reported) / NULLIF(sum(spend), 0), 2) AS roas\nFROM analytics.amazon_ads_campaign_daily\nWHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'amazon_ads_campaign_daily') - 30\nGROUP BY 1 ORDER BY 2 DESC;"
+    },
+    {
+     "title": "Spend by product (NULL = campaign name has no ASIN)",
+     "sql": "SELECT coalesce(product_slug, '(no product)') AS product, round(sum(spend)) AS spend\nFROM analytics.amazon_ads_campaign_daily GROUP BY 1 ORDER BY 2 DESC;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_ads_asin_daily",
+   "schema": "analytics",
+   "relation": "amazon_ads_asin_daily",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Amazon Ads advertised products (Sponsored Products and Display) by day, campaign, ad group and ASIN: which product each ad dollar went to.",
+   "grain": "one row per (day, marketplace, campaign_id, ad_group_id, asin, ad_type)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_ads_asin_daily (ExpandFi merchant 1452)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 21 days; each run replaces its window, an empty pull writes nothing",
+   "coverage": "2026-01-04 (Sponsored Products) / 2026-01-29 (Display) to yesterday",
+   "caveats": [
+    "v3 only: the v1 advertised-product reports are one report stored twice under two names. Sponsored Products v3 spend ties to amazon_ads_campaign_daily; there is no Sponsored Brands ASIN grain anywhere.",
+    "The 1/7/14/30-day columns are Sponsored Products only (NULL for Display); Display reports its single attributed figure in sales and purchases."
+   ],
+   "like": "public.amazon_ads_asin_daily",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": null,
+     "description": "Calendar day of the report."
+    },
+    {
+     "name": "marketplace",
+     "type": "text",
+     "nullable": null,
+     "description": "Ads marketplace code."
+    },
+    {
+     "name": "campaign_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Amazon Ads campaign id."
+    },
+    {
+     "name": "ad_group_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad group id."
+    },
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": null,
+     "description": "Advertised ASIN."
+    },
+    {
+     "name": "ad_type",
+     "type": "text",
+     "nullable": null,
+     "description": "sp | sd."
+    },
+    {
+     "name": "sku",
+     "type": "text",
+     "nullable": null,
+     "description": "Advertised SKU."
+    },
+    {
+     "name": "campaign_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Campaign name that day."
+    },
+    {
+     "name": "ad_group_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad group name that day."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "spend",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Ad spend, US dollars."
+    },
+    {
+     "name": "impressions",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Ad impressions."
+    },
+    {
+     "name": "clicks",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Ad clicks."
+    },
+    {
+     "name": "sales_1d",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Ad-attributed sales, dollars, 1-day click window. Sponsored Products (v3 report) only; NULL for every other row."
+    },
+    {
+     "name": "sales_7d",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Ad-attributed sales, dollars, 7-day click window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "sales_14d",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Ad-attributed sales, dollars, 14-day click window. Sponsored Products v3 only; NULL otherwise. Matures for 14 days after the day."
+    },
+    {
+     "name": "sales_30d",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Ad-attributed sales, dollars, 30-day click window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_1d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Ad-attributed purchases, 1-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_7d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Ad-attributed purchases, 7-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_14d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Ad-attributed purchases, 14-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "purchases_30d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Ad-attributed purchases, 30-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_1d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Units sold on ad clicks, 1-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_7d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Units sold on ad clicks, 7-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_14d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Units sold on ad clicks, 14-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "units_30d",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Units sold on ad clicks, 30-day window. Sponsored Products v3 only; NULL otherwise."
+    },
+    {
+     "name": "sales",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Display only: the single reported attributed sales, dollars (sales_aggregate). NULL for Sponsored Products."
+    },
+    {
+     "name": "purchases",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Display only: the single reported purchases. NULL for Sponsored Products."
+    },
+    {
+     "name": "sales_reported",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Sponsored Products sales_14d, Display bare sales."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Spend and 14-day sales by ASIN (Sponsored Products)",
+     "sql": "SELECT asin, product_slug, round(sum(spend)) AS spend, round(sum(sales_14d)) AS sales_14d\nFROM analytics.amazon_ads_asin_daily WHERE ad_type = 'sp' GROUP BY 1, 2 ORDER BY 3 DESC;"
+    },
+    {
+     "title": "Row count",
+     "sql": "SELECT count(*) AS rows FROM analytics.amazon_ads_asin_daily;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_search_queries_weekly",
+   "schema": "analytics",
+   "relation": "amazon_search_queries_weekly",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Read the SUM-vs-MAX rule first. Amazon Brand Analytics Search Query Performance by week: for each search query and each of our ASINs, the query's market size and our share of impressions, clicks, cart adds and purchases (the organic search signal).",
+   "grain": "one row per (period_start = Sunday, marketplace_id, asin, query_key)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_sqp_weekly (ExpandFi merchant 1452)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 6 weeks; each run replaces its window, an empty pull writes nothing; a week lands about 5 days after its Saturday",
+   "coverage": "weeks from 2025-07-13 to the last landed week; 8 ASINs, mostly US",
+   "caveats": [
+    "SUM vs MAX: total_* columns and search_query_volume are market totals repeated on every ASIN row of a query, so SUM across ASINs overstates them (5 ASIN rows = 5x): use MAX per query and period; to total OUR side SUM the asin_* columns.",
+    "Top-100 cap: Amazon reports only about the top 100 queries per ASIN and period. A query that is absent is not in that list, not zero, and a query dropping out looks like a share collapse.",
+    "Shares are percent 0-100, not fractions (2.95 = 2.95 percent).",
+    "Impressions include sponsored placements: our own ads count in asin_impressions and the shares. Purchases are search-origin and same-day and will not tie to orders.",
+    "No organic rank position exists anywhere in the data; the click, cart add and purchase shares are the proxy.",
+    "Never sum weekly rows into a month or compare a week with a month: periods overlap in meaning and the query lists differ.",
+    "Duplicate source rows (restated re-pulls) are collapsed to the latest; the newest week or month can still be partial for a week or two."
+   ],
+   "like": "public.amazon_sqp_weekly",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "period_start",
+     "type": "date",
+     "nullable": null,
+     "description": "First day of the period (Sunday for a week, the 1st for a month)."
+    },
+    {
+     "name": "period_end",
+     "type": "date",
+     "nullable": null,
+     "description": "Last day of the period."
+    },
+    {
+     "name": "marketplace_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Amazon marketplace id (ATVPDKIKX0DER = US, A1AM78C64UM0Y8 = MX)."
+    },
+    {
+     "name": "marketplace",
+     "type": "text",
+     "nullable": null,
+     "description": "US | MX | CA | BR from marketplace_id."
+    },
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": null,
+     "description": "Our ASIN the shares belong to."
+    },
+    {
+     "name": "query_key",
+     "type": "text",
+     "nullable": null,
+     "description": "The search query lower-cased, trimmed, runs of spaces collapsed to one: the join key to other query tables."
+    },
+    {
+     "name": "search_query",
+     "type": "text",
+     "nullable": null,
+     "description": "The query text as Amazon reported it."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "is_branded",
+     "type": "boolean",
+     "nullable": null,
+     "description": "True when the query names the brand or a product (Lonvera, Vita / Vital Bull, Vita / Vital Belle, Vital Flow, Bone Flex / Boneflex); one rule in etl/feeds/amazon_feeds.py."
+    },
+    {
+     "name": "search_query_score",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Amazon's relative popularity score of the query among our ASIN's queries (1 = most searched)."
+    },
+    {
+     "name": "search_query_volume",
+     "type": "bigint",
+     "nullable": null,
+     "description": "MARKET total: searches for the query on Amazon in the period. Repeated on every ASIN row of the query."
+    },
+    {
+     "name": "total_impressions",
+     "type": "bigint",
+     "nullable": null,
+     "description": "MARKET total: impressions of all products for the query (organic and sponsored). Repeated on every ASIN row: never SUM across ASINs, use MAX."
+    },
+    {
+     "name": "asin_impressions",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Impressions of our ASIN for the query (organic and sponsored)."
+    },
+    {
+     "name": "asin_impression_share",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Our ASIN's share of the query's impressions, percent 0-100."
+    },
+    {
+     "name": "total_clicks",
+     "type": "bigint",
+     "nullable": null,
+     "description": "MARKET total clicks for the query (repeated per ASIN row: MAX)."
+    },
+    {
+     "name": "total_click_rate",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Market clicks per search, percent 0-100."
+    },
+    {
+     "name": "asin_clicks",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Clicks on our ASIN."
+    },
+    {
+     "name": "asin_click_share",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Our ASIN's share of the query's clicks, percent 0-100."
+    },
+    {
+     "name": "total_median_click_price",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Market median price of clicked products, dollars."
+    },
+    {
+     "name": "asin_median_click_price",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Median price of our ASIN's clicks, dollars."
+    },
+    {
+     "name": "total_cart_adds",
+     "type": "bigint",
+     "nullable": null,
+     "description": "MARKET total cart adds for the query (repeated per ASIN row: MAX)."
+    },
+    {
+     "name": "total_cart_add_rate",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Market cart adds per search, percent 0-100."
+    },
+    {
+     "name": "asin_cart_adds",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Cart adds of our ASIN."
+    },
+    {
+     "name": "asin_cart_add_share",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Our ASIN's share of the query's cart adds, percent 0-100."
+    },
+    {
+     "name": "total_median_cart_add_price",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Market median price of carted products, dollars."
+    },
+    {
+     "name": "asin_median_cart_add_price",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Median price of our ASIN's cart adds, dollars."
+    },
+    {
+     "name": "total_purchases",
+     "type": "bigint",
+     "nullable": null,
+     "description": "MARKET total purchases for the query (repeated per ASIN row: MAX)."
+    },
+    {
+     "name": "total_purchase_rate",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Market purchases per search, percent 0-100."
+    },
+    {
+     "name": "asin_purchases",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Purchases of our ASIN (search-origin, same day)."
+    },
+    {
+     "name": "asin_purchase_share",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Our ASIN's share of the query's purchases, percent 0-100: the best outcome proxy for organic rank."
+    },
+    {
+     "name": "total_median_purchase_price",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Market median purchase price, dollars."
+    },
+    {
+     "name": "asin_median_purchase_price",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Median price of our ASIN's purchases, dollars."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Brand vs non-brand: our side summed over ASINs, market volume as MAX per query-week",
+     "sql": "WITH q AS (SELECT period_start, query_key, is_branded, max(search_query_volume) AS volume, sum(asin_purchases) AS our_purchases\n           FROM analytics.amazon_search_queries_weekly WHERE marketplace = 'US' GROUP BY 1, 2, 3)\nSELECT is_branded, sum(volume) AS market_searches, sum(our_purchases) AS our_purchases FROM q GROUP BY 1;"
+    },
+    {
+     "title": "Top non-branded queries by our purchases, latest week",
+     "sql": "SELECT query_key, max(search_query_volume) AS volume, sum(asin_purchases) AS purchases\nFROM analytics.amazon_search_queries_weekly\nWHERE NOT is_branded AND period_start = (SELECT max(period_start) FROM analytics.amazon_search_queries_weekly) GROUP BY 1 ORDER BY 3 DESC LIMIT 20;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_search_queries_monthly",
+   "schema": "analytics",
+   "relation": "amazon_search_queries_monthly",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Read the SUM-vs-MAX rule first. Amazon Brand Analytics Search Query Performance by month: same columns as amazon_sqp_weekly, one period per calendar month.",
+   "grain": "one row per (period_start = 1st of the month, marketplace_id, asin, query_key)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_sqp_monthly (ExpandFi merchant 1452)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 3 months; each run replaces its window, an empty pull writes nothing; a month lands about 2 weeks after it ends",
+   "coverage": "months from 2025-06 to the last landed month",
+   "caveats": [
+    "SUM vs MAX: total_* columns and search_query_volume are market totals repeated on every ASIN row of a query, so SUM across ASINs overstates them (5 ASIN rows = 5x): use MAX per query and period; to total OUR side SUM the asin_* columns.",
+    "Top-100 cap: Amazon reports only about the top 100 queries per ASIN and period. A query that is absent is not in that list, not zero, and a query dropping out looks like a share collapse.",
+    "Shares are percent 0-100, not fractions (2.95 = 2.95 percent).",
+    "Impressions include sponsored placements: our own ads count in asin_impressions and the shares. Purchases are search-origin and same-day and will not tie to orders.",
+    "No organic rank position exists anywhere in the data; the click, cart add and purchase shares are the proxy.",
+    "Never sum weekly rows into a month or compare a week with a month: periods overlap in meaning and the query lists differ.",
+    "Duplicate source rows (restated re-pulls) are collapsed to the latest; the newest week or month can still be partial for a week or two."
+   ],
+   "like": "public.amazon_sqp_monthly",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "period_start",
+     "type": "date",
+     "nullable": null,
+     "description": "First day of the period (Sunday for a week, the 1st for a month)."
+    },
+    {
+     "name": "period_end",
+     "type": "date",
+     "nullable": null,
+     "description": "Last day of the period."
+    },
+    {
+     "name": "marketplace_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Amazon marketplace id (ATVPDKIKX0DER = US, A1AM78C64UM0Y8 = MX)."
+    },
+    {
+     "name": "marketplace",
+     "type": "text",
+     "nullable": null,
+     "description": "US | MX | CA | BR from marketplace_id."
+    },
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": null,
+     "description": "Our ASIN the shares belong to."
+    },
+    {
+     "name": "query_key",
+     "type": "text",
+     "nullable": null,
+     "description": "The search query lower-cased, trimmed, runs of spaces collapsed to one: the join key to other query tables."
+    },
+    {
+     "name": "search_query",
+     "type": "text",
+     "nullable": null,
+     "description": "The query text as Amazon reported it."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "is_branded",
+     "type": "boolean",
+     "nullable": null,
+     "description": "True when the query names the brand or a product (Lonvera, Vita / Vital Bull, Vita / Vital Belle, Vital Flow, Bone Flex / Boneflex); one rule in etl/feeds/amazon_feeds.py."
+    },
+    {
+     "name": "search_query_score",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Amazon's relative popularity score of the query among our ASIN's queries (1 = most searched)."
+    },
+    {
+     "name": "search_query_volume",
+     "type": "bigint",
+     "nullable": null,
+     "description": "MARKET total: searches for the query on Amazon in the period. Repeated on every ASIN row of the query."
+    },
+    {
+     "name": "total_impressions",
+     "type": "bigint",
+     "nullable": null,
+     "description": "MARKET total: impressions of all products for the query (organic and sponsored). Repeated on every ASIN row: never SUM across ASINs, use MAX."
+    },
+    {
+     "name": "asin_impressions",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Impressions of our ASIN for the query (organic and sponsored)."
+    },
+    {
+     "name": "asin_impression_share",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Our ASIN's share of the query's impressions, percent 0-100."
+    },
+    {
+     "name": "total_clicks",
+     "type": "bigint",
+     "nullable": null,
+     "description": "MARKET total clicks for the query (repeated per ASIN row: MAX)."
+    },
+    {
+     "name": "total_click_rate",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Market clicks per search, percent 0-100."
+    },
+    {
+     "name": "asin_clicks",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Clicks on our ASIN."
+    },
+    {
+     "name": "asin_click_share",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Our ASIN's share of the query's clicks, percent 0-100."
+    },
+    {
+     "name": "total_median_click_price",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Market median price of clicked products, dollars."
+    },
+    {
+     "name": "asin_median_click_price",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Median price of our ASIN's clicks, dollars."
+    },
+    {
+     "name": "total_cart_adds",
+     "type": "bigint",
+     "nullable": null,
+     "description": "MARKET total cart adds for the query (repeated per ASIN row: MAX)."
+    },
+    {
+     "name": "total_cart_add_rate",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Market cart adds per search, percent 0-100."
+    },
+    {
+     "name": "asin_cart_adds",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Cart adds of our ASIN."
+    },
+    {
+     "name": "asin_cart_add_share",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Our ASIN's share of the query's cart adds, percent 0-100."
+    },
+    {
+     "name": "total_median_cart_add_price",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Market median price of carted products, dollars."
+    },
+    {
+     "name": "asin_median_cart_add_price",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Median price of our ASIN's cart adds, dollars."
+    },
+    {
+     "name": "total_purchases",
+     "type": "bigint",
+     "nullable": null,
+     "description": "MARKET total purchases for the query (repeated per ASIN row: MAX)."
+    },
+    {
+     "name": "total_purchase_rate",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Market purchases per search, percent 0-100."
+    },
+    {
+     "name": "asin_purchases",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Purchases of our ASIN (search-origin, same day)."
+    },
+    {
+     "name": "asin_purchase_share",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Our ASIN's share of the query's purchases, percent 0-100: the best outcome proxy for organic rank."
+    },
+    {
+     "name": "total_median_purchase_price",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Market median purchase price, dollars."
+    },
+    {
+     "name": "asin_median_purchase_price",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Median price of our ASIN's purchases, dollars."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Row count by month",
+     "sql": "SELECT period_start, count(*) AS rows FROM analytics.amazon_search_queries_monthly GROUP BY 1 ORDER BY 1;"
+    },
+    {
+     "title": "Our purchase share of one query over time",
+     "sql": "SELECT period_start, asin, asin_purchase_share FROM analytics.amazon_search_queries_monthly WHERE query_key = 'beef liver' ORDER BY 1, 2;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_orders_asin_daily",
+   "schema": "analytics",
+   "relation": "amazon_orders_asin_daily",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Actual Amazon.com orders by day, ASIN and channel (Amazon.com and Amazon.com B2B): units, orders, revenue and new customers, on the same basis as proj_feed_amazon.",
+   "grain": "one row per (day, asin, sales_channel)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_orders_asin_daily (ExpandFi merchant 1452)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 21 days; each run replaces its window, an empty pull writes nothing",
+   "coverage": "2024-09-24 to about 2 days ago (late orders post for about two weeks)",
+   "caveats": [
+    "Purchase-date basis. New customer = the order is on the customer's first purchase day (customers.cohort_day), the rule of proj_feed_amazon; orders without a customer row are excluded, as there.",
+    "Daily units and revenue sums equal proj_feed_amazon. orders counts distinct orders per ASIN, so an order with two ASINs counts under both: do not sum orders across ASINs.",
+    "Revenue is total_amount_usd (tax and shipping as Amazon reports the line), before refunds."
+   ],
+   "like": "public.amazon_orders_asin_daily",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": null,
+     "description": "Purchase day (Pacific, as ExpandFi stores it)."
+    },
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": null,
+     "description": "ASIN of the order line ('' when the line has none)."
+    },
+    {
+     "name": "sales_channel",
+     "type": "text",
+     "nullable": null,
+     "description": "Amazon.com | Amazon.com B2B."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "orders",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Distinct orders with this ASIN that day."
+    },
+    {
+     "name": "units",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Units shipped."
+    },
+    {
+     "name": "revenue",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Order line revenue, US dollars."
+    },
+    {
+     "name": "nc_orders",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Orders placed by a customer on their first purchase day."
+    },
+    {
+     "name": "nc_revenue",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Revenue of those orders, dollars."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Revenue and new-customer revenue by product, last 30 days",
+     "sql": "SELECT product_slug, sum(units) AS units, round(sum(revenue)) AS revenue, round(sum(nc_revenue)) AS nc_revenue\nFROM analytics.amazon_orders_asin_daily\nWHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'amazon_orders_asin_daily') - 30 GROUP BY 1 ORDER BY 3 DESC;"
+    },
+    {
+     "title": "Row count",
+     "sql": "SELECT count(*) AS rows FROM analytics.amazon_orders_asin_daily;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_traffic_daily",
+   "schema": "analytics",
+   "relation": "amazon_traffic_daily",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Amazon.com account traffic by day: sessions, page views and buy box share (Sales and Traffic report), with ordered units and sales as Amazon counts them.",
+   "grain": "one row per (day, marketplace_id); US only",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_traffic_daily (ExpandFi merchant 1452)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 14 days; each run replaces its window, an empty pull writes nothing",
+   "coverage": "2024-04-07 to yesterday",
+   "caveats": [
+    "Account level, not by ASIN (each ASIN row of the source repeats the account total). The latest restatement of each day is kept; recent days move for about a week.",
+    "Percentages are 0-100. Ordered units and sales are Amazon's ordered-product figures, not the shipped orders of amazon_orders_asin_daily."
+   ],
+   "like": "public.amazon_traffic_daily",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": null,
+     "description": "Report day."
+    },
+    {
+     "name": "marketplace_id",
+     "type": "text",
+     "nullable": null,
+     "description": "ATVPDKIKX0DER (US)."
+    },
+    {
+     "name": "sessions",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Sessions (browser plus app)."
+    },
+    {
+     "name": "browser_sessions",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Browser sessions."
+    },
+    {
+     "name": "mobile_app_sessions",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Mobile app sessions."
+    },
+    {
+     "name": "page_views",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Page views."
+    },
+    {
+     "name": "buy_box_pct",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Page views with our offer in the buy box, percent 0-100."
+    },
+    {
+     "name": "unit_conversion_pct",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Units ordered per session, percent 0-100."
+    },
+    {
+     "name": "units_ordered",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Units ordered (Amazon's ordered basis)."
+    },
+    {
+     "name": "ordered_product_sales",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Ordered product sales, dollars."
+    },
+    {
+     "name": "total_order_items",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Order items."
+    },
+    {
+     "name": "sessions_b2b",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Business-customer sessions."
+    },
+    {
+     "name": "page_views_b2b",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Business-customer page views."
+    },
+    {
+     "name": "buy_box_pct_b2b",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Business-customer buy box share, percent 0-100."
+    },
+    {
+     "name": "source_updated_at",
+     "type": "timestamp without time zone",
+     "nullable": null,
+     "description": "When ExpandFi last restated this day."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Sessions and buy box share by week",
+     "sql": "SELECT date_trunc('week', day)::date AS week, sum(sessions) AS sessions, round(avg(buy_box_pct), 2) AS buy_box_pct\nFROM analytics.amazon_traffic_daily GROUP BY 1 ORDER BY 1 DESC LIMIT 12;"
+    },
+    {
+     "title": "Row count",
+     "sql": "SELECT count(*) AS rows FROM analytics.amazon_traffic_daily;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_market_baskets",
+   "schema": "analytics",
+   "relation": "amazon_market_baskets",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Amazon Brand Analytics market baskets by week: the other products bought together with each of our ASINs.",
+   "grain": "one row per (week_start, marketplace_id, asin, purchased_with_asin)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_market_baskets (ExpandFi merchant 1452)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 6 weeks; each run replaces its window, an empty pull writes nothing",
+   "coverage": "weeks from 2026-06-28 (US; one MX week)",
+   "caveats": [
+    "combination_pct is the percent (0-100) of orders containing our ASIN that also contained the other ASIN; only the top few companions are reported."
+   ],
+   "like": "public.amazon_market_baskets",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "week_start",
+     "type": "date",
+     "nullable": null,
+     "description": "Sunday starting the week."
+    },
+    {
+     "name": "week_end",
+     "type": "date",
+     "nullable": null,
+     "description": "Saturday ending the week."
+    },
+    {
+     "name": "marketplace_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Amazon marketplace id."
+    },
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": null,
+     "description": "Our ASIN."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "purchased_with_asin",
+     "type": "text",
+     "nullable": null,
+     "description": "ASIN bought in the same order."
+    },
+    {
+     "name": "purchased_with_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "Product slug when the companion is one of ours, else NULL."
+    },
+    {
+     "name": "purchased_with_rank",
+     "type": "integer",
+     "nullable": null,
+     "description": "Rank of the companion (1 = most common)."
+    },
+    {
+     "name": "combination_pct",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Percent 0-100 of orders with our ASIN that also held the companion."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Top companions of each ASIN, latest week",
+     "sql": "SELECT asin, purchased_with_asin, purchased_with_rank, combination_pct\nFROM analytics.amazon_market_baskets\nWHERE week_start = (SELECT max(week_start) FROM analytics.amazon_market_baskets) ORDER BY 1, 3;"
+    },
+    {
+     "title": "Row count",
+     "sql": "SELECT count(*) AS rows FROM analytics.amazon_market_baskets;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_repeat_purchases",
+   "schema": "analytics",
+   "relation": "amazon_repeat_purchases",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Amazon Brand Analytics repeat purchase behaviour by week and ASIN: orders, unique customers and the share that are repeat customers.",
+   "grain": "one row per (week_start, marketplace_id, asin)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_repeat_purchases (ExpandFi merchant 1452)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 6 weeks; each run replaces its window, an empty pull writes nothing",
+   "coverage": "weeks from 2026-06-28 (US and MX)",
+   "caveats": [
+    "Percentages are 0-100. Amazon computes repeat over its own look-back window, so the figures do not tie to the cohort tables."
+   ],
+   "like": "public.amazon_repeat_purchases",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "week_start",
+     "type": "date",
+     "nullable": null,
+     "description": "Sunday starting the week."
+    },
+    {
+     "name": "week_end",
+     "type": "date",
+     "nullable": null,
+     "description": "Saturday ending the week."
+    },
+    {
+     "name": "marketplace_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Amazon marketplace id."
+    },
+    {
+     "name": "asin",
+     "type": "text",
+     "nullable": null,
+     "description": "Our ASIN."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex | vita-belle | vital-flow; NULL when the ASIN (or the campaign name's ASIN) is not an Amazon.com ASIN of amazon_asin_products."
+    },
+    {
+     "name": "product_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Display name of product_slug (Vita Bull, Beef Liver, Boneflex, Vita Belle, Vital Flow)."
+    },
+    {
+     "name": "orders",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Orders of the ASIN in the week."
+    },
+    {
+     "name": "unique_customers",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Unique customers."
+    },
+    {
+     "name": "repeat_customers_pct_total",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Percent 0-100 of customers that are repeat customers."
+    },
+    {
+     "name": "repeat_purchase_revenue",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Revenue from repeat purchases, dollars."
+    },
+    {
+     "name": "repeat_purchase_revenue_pct_total",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Percent 0-100 of revenue from repeat purchases."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Repeat customer share by ASIN, latest week",
+     "sql": "SELECT asin, orders, unique_customers, repeat_customers_pct_total\nFROM analytics.amazon_repeat_purchases\nWHERE week_start = (SELECT max(week_start) FROM analytics.amazon_repeat_purchases) ORDER BY 2 DESC;"
+    },
+    {
+     "title": "Row count",
+     "sql": "SELECT count(*) AS rows FROM analytics.amazon_repeat_purchases;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.amazon_settlement_fees_daily",
+   "schema": "analytics",
+   "relation": "amazon_settlement_fees_daily",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Amazon settlement lines summed by posted day and fee or transaction type: what Amazon actually charged and paid (referral and FBA fees, promotions, advertising charges, reimbursements).",
+   "grain": "one row per (day, marketplace_name, transaction_type, amount_type, amount_description)",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.amazon_settlement_fees_daily (ExpandFi merchant 1452)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 45 days; each run replaces its window, an empty pull writes nothing",
+   "coverage": "2024-03-18 (a few older rows from 2017) to the newest settlement; settlements arrive in batches, so the newest day can be two weeks old",
+   "caveats": [
+    "Amounts are signed as Amazon stores them: sales are positive, fees, promotions and ad charges negative, refunds negative.",
+    "Posted-day basis, so it does not tie to the purchase-day revenue of amazon_orders_asin_daily. 'Cost of Advertising' here is the settlement debit, not the Ads report spend."
+   ],
+   "like": "public.amazon_settlement_fees_daily",
+   "domain": "amazon",
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": null,
+     "description": "Posted day of the settlement line."
+    },
+    {
+     "name": "marketplace_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Marketplace of the line ('' when blank)."
+    },
+    {
+     "name": "transaction_type",
+     "type": "text",
+     "nullable": null,
+     "description": "Order | Refund | ServiceFee | FBAFees | AmazonFees | other-transaction ..."
+    },
+    {
+     "name": "amount_type",
+     "type": "text",
+     "nullable": null,
+     "description": "Fee group, e.g. ItemPrice, ItemFees, Promotion, Cost of Advertising."
+    },
+    {
+     "name": "amount_description",
+     "type": "text",
+     "nullable": null,
+     "description": "Detail, e.g. Principal, Commission, FBAPerUnitFulfillmentFee."
+    },
+    {
+     "name": "lines",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Settlement lines summed."
+    },
+    {
+     "name": "amount",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Sum of amount in the line currency, signed."
+    },
+    {
+     "name": "amount_usd",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Sum of amount in US dollars, signed."
+    },
+    {
+     "name": "currency",
+     "type": "text",
+     "nullable": null,
+     "description": "Currency code of the lines."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Fees by type, last 30 days",
+     "sql": "SELECT amount_type, amount_description, round(sum(amount_usd)) AS usd\nFROM analytics.amazon_settlement_fees_daily\nWHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'amazon_settlement_fees_daily') - 30 AND transaction_type IN ('Order', 'FBAFees', 'AmazonFees', 'ServiceFee')\nGROUP BY 1, 2 ORDER BY 3;"
+    },
+    {
+     "title": "Row count",
+     "sql": "SELECT count(*) AS rows FROM analytics.amazon_settlement_fees_daily;"
     }
    ]
   },

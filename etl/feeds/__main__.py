@@ -19,6 +19,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("run", help="refresh every feed in shadow or direct mode")
     p.add_argument("--only")
     p.add_argument("--days", type=int)
+    p.add_argument("--backfill", action="store_true", help="each selected feed pulls everything its source holds (Feed.history_start), in chunks")
+    p.add_argument("--since", help="YYYY-MM-DD: each selected feed pulls from this day (overrides --days)")
     p = sub.add_parser("mode", help="show or set a feed's mode")
     p.add_argument("feed", nargs="?")
     p.add_argument("mode", nargs="?", choices=common.MODES)
@@ -57,7 +59,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         with _conn() as conn:
             if a.cmd == "run":
-                return run(conn, a.only.split(",") if a.only else None, a.days)
+                import datetime as dt
+                return run(conn, a.only.split(",") if a.only else None, a.days, backfill=a.backfill, since=dt.date.fromisoformat(a.since) if a.since else None)
             if a.cmd == "mode":
                 modes = common.all_modes(conn)
                 if a.feed and a.mode:
