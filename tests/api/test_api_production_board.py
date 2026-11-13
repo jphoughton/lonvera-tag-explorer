@@ -447,7 +447,7 @@ def test_board_shape_order_filters_and_capacity(client, snaps):
     d = client.get(f"/api/priorities/board?week={MONDAY}").get_json()
     assert [x["status"] for x in d["columns"]] == pa.STATUSES
     assert [x["label"] for x in d["columns"]] == ["Assigned", "Brief sent", "In production", "In review", "Ready to launch", "Launched"]
-    assert set(d) == {"columns", "capacity", "week", "generated_at"} and d["week"] == MONDAY
+    assert set(d) == {"columns", "capacity", "week", "generated_at", "vendors", "weeks", "formats"} and d["week"] == MONDAY
     first = d["columns"][0]
     assert first["count"] == 2 and [x["id"] for x in first["cards"]] == [b["id"], a["id"]]          # high priority first
     assert all("history" not in x for col in d["columns"] for x in col["cards"])
@@ -630,3 +630,8 @@ def test_write_routes_keep_the_origin_check_and_the_rate_limit(client, anon, sna
     assert 429 in vcodes and vcodes[0] == 201
     api_mod._assign_limiter = None
     api_mod._vendor_limiter = None
+
+
+def test_the_board_carries_vendors_weeks_and_formats_so_the_page_needs_one_request(client, snaps):
+    d = client.get("/api/priorities/board").get_json()
+    assert d["vendors"] == pa.VENDORS and isinstance(d["weeks"], list) and [f["code"] for f in d["formats"]][:2] == ["F1", "F2"]
