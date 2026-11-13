@@ -2,7 +2,7 @@
 
 Amazon is its own channel. It has a page, `/amazon`, reached from the **Amazon** button of the Platform picker (All | Meta | Google | Amazon) and the Amazon tab of the Performance section. It is **not** added to anything on the All platforms pages: no Amazon spend, purchases or revenue enters Total spend, Total new-customer ROAS, the Meta and Google charts or any existing number. Amazon sales overlap what Meta and Google credit, and Upstack has no Amazon data, so only Amazon's own reporting exists and the **Numbers from** switch is absent on Amazon pages (the page says so in one line). Stage, Active only and comparison are absent too.
 
-The data is the ten tables of migration 249 (see [AMAZON_DATA.md](AMAZON_DATA.md)), filled nightly from ExpandFi. Code: `app/amazon.py` (all SQL and every builder), routes in `app/api.py`, page `app/static/js/pages/amazon.js`, style `app/static/css/amazon.css`, mock `tests/ui/mock_amazon.py`.
+The data is the ten tables of migration 250 (see [AMAZON_DATA.md](AMAZON_DATA.md)), filled nightly from ExpandFi. Code: `app/amazon.py` (all SQL and every builder), routes in `app/api.py`, page `app/static/js/pages/amazon.js`, style `app/static/css/amazon.css`, mock `tests/ui/mock_amazon.py`.
 
 ## Views
 `/amazon?view=overview|campaigns|products|search|fees` (View switch at the top right; the range of the bar above applies to all of them and carries between them; the page opens on the last 30 days).

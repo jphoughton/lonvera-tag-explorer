@@ -1,4 +1,4 @@
-"""Amazon pages (/api/amazon/*, app/amazon.py): seeds the Amazon tables of migration 249 and checks every route against hand-computed numbers.
+"""Amazon pages (/api/amazon/*, app/amazon.py): seeds the Amazon tables of migration 250 and checks every route against hand-computed numbers.
 
 Seed facts (per day unless said): ORDERS Oct 25 - Nov 7 (14 days) on three ASINs; ADS Oct 31 - Nov 7 (8 days, three campaigns, two ASIN rows); TRAFFIC Oct 25 - Nov 5 (12 days);
 SEARCH eight weeks (Sundays Sep 13 .. Nov 1). Windows are given as from/to so they do not depend on today's date."""
