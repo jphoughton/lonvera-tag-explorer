@@ -396,3 +396,16 @@ body.prod-drawer-open { overflow: hidden; }
 
 .prod-card-menu { visibility: hidden; }
 .prod-card-more[data-placed] .prod-card-menu { visibility: visible; }
+
+/* multi-select filter (ui/pagefilters.js multiCtl): a button that opens a list of tick boxes */
+.mf { position: relative; display: inline-block; }
+.mf > summary.mf-btn { list-style: none; cursor: pointer; font: inherit; font-size: 14px; padding: 4px 22px 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); position: relative; white-space: nowrap; }
+.mf > summary.mf-btn::-webkit-details-marker { display: none; }
+.mf > summary.mf-btn::after { content: ""; position: absolute; right: 8px; top: 50%; margin-top: -4px; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg) scale(.8); }
+.mf[open] > summary.mf-btn { border-color: var(--accent, #b8481f); }
+.mf-panel { position: absolute; z-index: 1100; top: calc(100% + 4px); left: 0; min-width: 190px; max-height: 320px; overflow: auto; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(20, 30, 50, .18); display: grid; gap: 2px; }
+.mf-opt { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 5px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.mf-opt:hover { background: var(--head-bg); }
+.mf-opt input { margin: 0; width: 16px; height: 16px; }
+.mf-foot { padding: 4px 2px 2px; border-top: 1px solid var(--line); margin-top: 4px; }
+@media (max-width: 640px) { .mf-opt { padding: 10px 8px; font-size: 15px; } .mf > summary.mf-btn { min-height: 36px; } }
