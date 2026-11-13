@@ -692,7 +692,7 @@ export async function amazonPage(ctx) {
   const { params: p } = ctx;
   const v = view(p);
   document.title = TITLES[v] + ' · Lonvera';
-  const body = h('div', { 'data-testid': 'amz-body' });
+  const body = h('div', { 'data-testid': 'amz-body' }, h('p', { class: 'muted', role: 'status', 'data-testid': 'amz-loading' }, h('span', { class: 'spinner', 'aria-hidden': 'true' }), ' Loading…'));
   const root = { label: 'Lonvera', href: href('/', winParams(p)) };
   const page = h('div', { class: 'page', 'data-level': 'amazon', 'data-amz': v },
     pageHeader({ title: v === 'overview' ? 'Amazon' : VIEWS.find(([k]) => k === v)[1], badge: 'Amazon’s own reporting', actions: viewSwitch(p), description: DESCRIPTIONS[v], testid: 'amz-head' }),
