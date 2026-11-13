@@ -34,7 +34,7 @@ td.eml-empty, p.eml-empty { padding: 18px; color: var(--muted); max-width: none;
 .eml-detail { padding-top: 6px; }
 .eml-dtitle { margin: 0 28px 2px 0; font-size: 18px; overflow-wrap: anywhere; }
 .eml-dsub, .eml-dwin, .eml-asof, .eml-copyfacts { margin: 2px 0 6px; font-size: 12.5px; max-width: none; overflow-wrap: anywhere; }
-.eml-preview { margin: 4px 0 8px; max-width: 100ch; }
+.eml-subject, .eml-preview, .eml-from { margin: 4px 0 8px; max-width: 100ch; }
 .eml-dtiles .kpi-row { grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
 .eml-dtiles .kpi-value { font-size: 18px; }
 .eml-copy h3, .eml-dchart h3 { margin: 12px 0 4px; font-size: 14px; }

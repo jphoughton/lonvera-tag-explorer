@@ -37,3 +37,5 @@ An empty `klaviyo_daily` answers `{"empty": true}` (summary, timeseries, flows, 
 ## Tests
 
 `tests/api/test_api_email.py` (own database `<TEST_API_DB>_email`; every expected number from plain Python over the generated rows, `MemSource` proves the pure builders equal the database path), `tests/ui/test_email.py` against `tests/ui/mock_email.py` (the real builders over made-up days).
+
+Message dialog: the Subject, Preview text and From name lines each appear only when Klaviyo returned that field; a missing field shows no line and no label (the page never prints null or undefined).

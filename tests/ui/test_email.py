@@ -326,3 +326,40 @@ def test_a_failing_endpoint_ends_in_the_error_box_with_retry(page):
     page.unroute("**/api/email/summary*")
     page.locator(".errorbox button", has_text="Retry").click()
     page.wait_for_selector("[data-testid=eml-page]")
+
+
+def _no_junk(text):
+    return not re.search(r"\b(null|undefined|None|NaN)\b", text)
+
+
+@pytest.mark.allow_errors
+def test_dialogs_and_tables_never_print_null_or_undefined(page):
+    # tables: every row of both lists, over all loaded days
+    goto(page, "?window=all")
+    for t in ("eml-flows-table", "eml-campaigns-table"):
+        if page.locator(f"[data-testid={t}]").count():
+            assert _no_junk(page.locator(f"[data-testid={t}]").inner_text()), t
+    goto(page, "?kind=campaigns&window=all")
+    assert _no_junk(page.locator("[data-testid=eml-campaigns-table]").inner_text())
+    # a message with no subject, preview text or from name (the text campaign): no line and no label for the missing fields
+    goto(page, "?kind=campaigns&window=all&message=cm08")
+    page.wait_for_selector("[data-testid=eml-detail-title]")
+    page.wait_for_selector("[data-testid=eml-detail] canvas")
+    detail = page.locator("[data-testid=eml-detail]").inner_text()
+    assert _no_junk(detail), detail
+    assert page.locator("[data-testid=eml-subject]").count() == 0 and page.locator("[data-testid=eml-preview]").count() == 0 and page.locator("[data-testid=eml-from]").count() == 0
+    assert "Subject" not in detail and "Preview text" not in detail and "From name" not in detail
+    # a message with everything: labelled subject line, preview text and from name
+    goto(page, "?kind=campaigns&window=all&message=cm09")
+    page.wait_for_selector("[data-testid=eml-detail-title]")
+    page.wait_for_selector("[data-testid=eml-detail] canvas")
+    detail = page.locator("[data-testid=eml-detail]").inner_text()
+    assert _no_junk(detail), detail
+    assert page.locator("[data-testid=eml-subject]").inner_text() == "Subject: Holiday Gift Guide: read this first"
+    assert page.locator("[data-testid=eml-preview]").inner_text() == "Preview text: Open for the details"
+    assert page.locator("[data-testid=eml-from]").inner_text() == "From name: Lonvera"
+    # a flow message with no copy at all (fm2) and a text flow message (fm5, no subject)
+    for mid in ("fm2", "fm5"):
+        goto(page, f"?kind=flows&message={mid}")
+        page.wait_for_selector("[data-testid=eml-detail-title]")
+        assert _no_junk(page.locator("[data-testid=eml-detail]").inner_text()), mid
