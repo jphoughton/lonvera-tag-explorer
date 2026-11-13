@@ -178,7 +178,7 @@ def test_metric_sources_name_real_views_and_columns(bdb):
 
 def test_generator_catalog_sql_is_what_the_migration_holds():
     text = (ROOT / "migrations" / "230_analytics_brain_views.sql").read_text()
-    assert gen.catalog_sql(D) in (ROOT / "migrations" / "253_amazon_keyword_views.sql").read_text()      # the latest migration that re-issues the catalog / glossary (230 holds the first version)
+    assert gen.catalog_sql(D) in (ROOT / "migrations" / "254_ad_transcripts_view.sql").read_text()      # the latest migration that re-issues the catalog / glossary (230 holds the first version)
     assert "GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO analytics_reader" in text
     assert text.count("CREATE OR REPLACE VIEW analytics.") >= 69
 
@@ -393,3 +393,30 @@ def test_231_skips_a_source_whose_shape_changed():
             assert one(c, "SELECT to_regclass('analytics.klaviyo_daily') IS NOT NULL")[0]
     except psycopg.OperationalError as e:
         pytest.skip(f"Postgres not available: {e}")
+
+
+# ---------------------------------------------------------------------------------------------------------------- migration 254: analytics.ad_transcripts
+def test_ad_transcripts_view_is_in_the_catalog_readable_and_joined_to_the_tracker(bdb):
+    live = q(bdb, "SELECT t.concept_id, t.ad_family, t.family_key, t.status, t.ad_type, t.vendor, p.slug FROM public.tracker_rows t JOIN public.products p ON p.id = t.product_id "
+                  "WHERE t.deleted_at IS NULL ORDER BY t.id LIMIT 1")[0]
+    gone = one(bdb, "SELECT concept_id FROM public.tracker_rows WHERE deleted_at IS NOT NULL LIMIT 1")[0]
+    with psycopg.connect(DB_URL, autocommit=True) as w:
+        w.execute("DELETE FROM creative_ad_transcripts")
+        w.execute("INSERT INTO creative_ad_transcripts (concept_id, label, transcript, language, duration_s, engine, model) VALUES (%s, 'Original', %s, 'en', 31.5, 'faster-whisper', 'base.en')",
+                  (live[0], "  If your joints ache every morning, try this.  "))
+        w.execute("INSERT INTO creative_ad_transcripts (concept_id, label, transcript) VALUES (%s, 'Hook 2', '[no speech]')", (gone,))
+        w.execute("INSERT INTO creative_ad_transcripts (concept_id, label, transcript) VALUES ('not-on-the-tracker', 'Original', 'one two three')")
+    rows = {r[0]: r for r in q(bdb, "SELECT concept_id, ad_family, family_key, product_slug, vendor, tracker_status, ad_type, word_count, has_speech, language, duration_s FROM analytics.ad_transcripts")}
+    assert len(rows) == 3 == one(bdb, "SELECT count(*) FROM analytics.ad_transcripts")[0]                  # one row per ad, even when a concept_id repeats on the tracker
+    assert rows[live[0]] == (live[0], live[1], live[2], live[6], live[5], live[3], live[4], 8, True, "en", 31.5)      # joined to the live tracker row; words counted after trimming
+    assert rows[gone][3:7] == (None, None, None, None) and rows[gone][7:9] == (0, False)               # soft-deleted tracker row: the transcript stays, tracker columns are NULL, [no speech] = 0 words
+    assert rows["not-on-the-tracker"][7:9] == (3, True) and rows["not-on-the-tracker"][3] is None
+    cat = one(bdb, "SELECT domain, grain, row_estimate FROM analytics.catalog WHERE view_name = 'ad_transcripts'")
+    assert cat[0] == "creative" and cat[1] == "one row per ad (concept_id)"
+    assert "ad_transcripts" in {r[0] for r in q(bdb, "SELECT table_name FROM information_schema.views WHERE table_schema = 'analytics'")}
+    assert D.REL["analytics.ad_transcripts"]["domain"] == "creative"
+    with psycopg.connect(DB_URL, autocommit=True) as w:                                                    # a repeated concept_id on the tracker must not repeat the transcript
+        w.execute("DELETE FROM creative_ad_transcripts WHERE concept_id IN (%s, 'not-on-the-tracker')", (gone,))
+        w.execute("INSERT INTO tracker_rows (product_id, row_key, concept_id, ad_family, family_key, sheet_row, status, ad_type, raw) "
+                  "SELECT product_id, row_key || '#dup', concept_id, ad_family, family_key, sheet_row + 5000, status, ad_type, '{}'::jsonb FROM tracker_rows WHERE concept_id = %s AND deleted_at IS NULL LIMIT 1", (live[0],))
+    assert one(bdb, "SELECT count(*) FROM analytics.ad_transcripts WHERE concept_id = %s", (live[0],))[0] == 1
