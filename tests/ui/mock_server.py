@@ -78,10 +78,15 @@ def status():
     extra["stale"] = dict(is_stale=os.environ.get("MOCK_STALE") == "1", reason="the last Meta pull failed (token rejected)" if os.environ.get("MOCK_STALE") == "1" else None)
     extra["last_ok_at"] = "2026-11-02T22:12:00+00:00"
     extra["sources"] = dict(platforms=[dict(key="meta", name="Meta", available=True, first_day=DAILY_START.isoformat(), through=DATA_THROUGH.isoformat()),
-                                       dict(key="google", name="Google", available=True, first_day=DAILY_START.isoformat(), through=DATA_THROUGH.isoformat())])
+                                       dict(key="google", name="Google", available=True, first_day=DAILY_START.isoformat(), through=DATA_THROUGH.isoformat())],
+                         amazon=dict(available=os.environ.get("MOCK_AMAZON_EMPTY") != "1", through="2026-11-09", first_day="2026-01-04"))
     return jsonify(**extra, data_through=DATA_THROUGH.isoformat(), daily_start=DAILY_START.isoformat(), lifetime_cutoff=CUTOFF.isoformat(),
                    last_refresh=dict(job="run_daily", finished_at="2026-11-03T06:12:00+00:00", status="ok"), products=len(PRODUCTS))
 
+
+import mock_amazon  # noqa: E402  (Amazon: /api/amazon/*, built on the real payload code in app/amazon.py over made-up Amazon rows)
+
+mock_amazon.register(app, dict(Bad=Bad))
 
 import mock_promotions  # noqa: E402  (Test to scale: /api/promotions, built on the real payload code in app/promotions.py)
 
@@ -136,7 +141,7 @@ def shell(*_a, **_k):
     return send_from_directory(STATIC, "index.html")
 
 
-for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/daily", "/email", "/inventory/history", "/priorities", "/priorities/v/<tok>", "/priorities/production", "/competitors", "/priorities/vendor/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
+for rule in ("/", "/login", "/google", "/amazon", "/campaigns", "/promotions", "/trends", "/daily", "/email", "/inventory/history", "/priorities", "/priorities/v/<tok>", "/priorities/production", "/competitors", "/priorities/vendor/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
     app.add_url_rule(rule, endpoint="shell" + rule, view_func=shell)
 
 

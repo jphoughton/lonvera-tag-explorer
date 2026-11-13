@@ -100,7 +100,7 @@ export function buildShell({ onBack, onSearch }) {
   perDayWrap = h('label', { class: 'check', id: 'perday-wrap', hidden: true }, perDayCb, ' Per day');
 
   platformBtns = {};
-  for (const [key, text, title] of [['all', 'All', 'Every platform side by side'], ['meta', 'Meta', 'Meta: products, tags, creatives and campaigns'], ['google', 'Google', 'Google: campaign types and campaigns']]) {
+  for (const [key, text, title] of [['all', 'All', 'Every platform side by side'], ['meta', 'Meta', 'Meta: products, tags, creatives and campaigns'], ['google', 'Google', 'Google: campaign types and campaigns'], ['amazon', 'Amazon', 'Amazon: sales, advertising, search terms and fees (its own channel, not added to All)']]) {
     const b = h('button', { type: 'button', class: 'seg', 'data-platform': key, 'aria-pressed': String(key === 'meta'), title }, text);
     b.addEventListener('click', () => goPlatform(key));
     platformBtns[key] = b;
@@ -314,6 +314,10 @@ export function syncControls(p, { keepRangeInfo = false } = {}) {
 const META_ONLY_KEYS = ['stage', 'active', 'tb', 'tl', 'tg', 'ts'];
 function goPlatform(key) {
   const p = { ...globalParams(currentParams()) };
+  if (key === 'amazon') {                                              // its own page; only the range carries over (no Numbers from, stage, Active only or comparison there)
+    navigate(href('/amazon', { window: p.window, from: p.from, to: p.to }));
+    return;
+  }
   if (key !== 'meta') for (const k of META_ONLY_KEYS) delete p[k];
   const onCampaigns = /^\/campaigns\/?$/.test(location.pathname);
   navigate(platformUrl(onCampaigns ? '/campaigns' : '/', key, p));
@@ -324,6 +328,8 @@ function syncPlatform() {
   const st = status && status.sources && status.sources.platforms;
   const g = st && st.find((x) => x.key === 'google');
   if (platformBtns.google) { platformBtns.google.disabled = !!(g && !g.available) && pl !== 'google'; platformBtns.google.title = g && !g.available ? 'Google data is not loaded yet' : 'Google: campaign types and campaigns'; }
+  const az = status && status.sources && status.sources.amazon;
+  if (platformBtns.amazon) { platformBtns.amazon.disabled = !!(az && !az.available) && pl !== 'amazon'; platformBtns.amazon.title = az && !az.available ? 'Amazon data has not loaded yet' : 'Amazon: sales, advertising, search terms and fees (its own channel, not added to All)'; }
   if (stageCtl) stageCtl.hidden = pl !== 'meta' || !needs.has('stage');
   const cmpCtl = document.getElementById('compare-ctl');
   if (cmpCtl) cmpCtl.hidden = !needs.has('compare');
@@ -395,7 +401,8 @@ export function setRangeInfo(p, a, b, { unclassified = false } = {}) {
   if (a && a.source) { applySourceState(a); if (srcView.key === 'upstack') setSrcText(srcView.label + '. ', `${srcView.summary || ''} ${srcView.note || ''}`.trim()); else setSrcText(null, a.source.summary || META_SUMMARY); }
   const foot = document.getElementById('source');
   const pl = currentPlatform();
-  if (foot && pl === 'all') foot.textContent = 'Sources: Meta Marketing API for Meta; Upstack (Google Ads feed and any-click attribution) for Google and for the Upstack rows' + (status && status.data_through ? ' · Meta data through ' + fmt.day(status.data_through) : '');
+  if (foot && pl === 'amazon') { foot.hidden = false; foot.textContent = 'Source: Amazon through ExpandFi' + (a && a.data_through ? ` · data through ${fmt.day(a.data_through)}` : ''); }
+  else if (foot && pl === 'all') foot.textContent = 'Sources: Meta Marketing API for Meta; Upstack (Google Ads feed and any-click attribution) for Google and for the Upstack rows' + (status && status.data_through ? ' · Meta data through ' + fmt.day(status.data_through) : '');
   else if (foot && pl === 'google' && a && a.source) foot.textContent = `Source: Upstack, Google Ads feed${a.source.key === 'upstack' ? ` and attribution (${a.source.model})` : ''}, through ${fmt.day(a.source.through)}; spend, clicks and impressions are Google's.`;
   else if (foot && a && a.source && a.source.key === 'upstack') foot.textContent = `Numbers: Upstack attribution (${a.source.model}), through ${fmt.day(a.source.through)}; spend, clicks and impressions: Meta Marketing API.`;
   else if (foot && status) foot.textContent = 'Source: Meta Marketing API' + (status.last_refresh && status.last_refresh.finished_at ? ', refreshed ' + fmt.dateTime(status.last_refresh.finished_at) : '') + (status.data_through ? ' · data through ' + fmt.day(status.data_through) : '');

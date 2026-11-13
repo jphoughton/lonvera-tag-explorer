@@ -873,7 +873,7 @@ def test_existing_deep_links_keep_their_meaning(page, base_url):
 
 # ---------------------------------------------------------------- top navigation (js/nav.js): sections, page tabs, tag search
 SECTION_TABS = {
-    "performance": ["Overview", "Meta", "Google", "Campaigns", "Trends", "Daily story", "Email"],
+    "performance": ["Overview", "Meta", "Google", "Amazon", "Campaigns", "Trends", "Daily story", "Email"],
     "creative": ["Priorities", "Production", "Competitors", "Test to scale"],
 }
 

@@ -171,6 +171,7 @@ export const DEFAULT_PLATFORM = { '/': 'all', '/campaigns': 'meta' };
 const platformPath = (path) => (path.length > 1 ? path.replace(/\/$/, '') : path);
 export function currentPlatform() {
   const path = location.pathname;
+  if (/^\/amazon\/?$/.test(path)) return 'amazon';                                  // Amazon has its own page and is never part of the All roll-up
   if (/^\/google\/?$/.test(path)) return 'google';                                  // the first Google URL; redirected to /?platform=google by the router
   if (!PLATFORM_PATHS.test(path)) return 'meta';
   const v = new URLSearchParams(location.search).get('platform');

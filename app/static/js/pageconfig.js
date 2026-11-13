@@ -36,6 +36,8 @@ function productParent({ path, p, G }) {
 export const PAGES = [
   { id: 'login', re: /^\/login\/?$/, public: true, filters: [] },
   { id: 'home', re: /^\/?$/, filters: ALL_FILTERS, parent: ({ p, G }) => (p.type ? platformUrl('/', 'google', G) : null) },
+  // Amazon is its own channel: the platform picker and the range only (no Numbers from switch, no stage, no comparison); it opens on the last 30 days
+  { id: 'amazon', re: /^\/amazon\/?$/, filters: ['platform', 'range'], parent: toOverview, defaults: { window: '30d' }, skipDefaultsWhen: (p) => hasDateWindow(p) || p.window === 'launch' },
   { id: 'campaigns', re: /^\/campaigns\/?$/, filters: ALL_FILTERS, parent: ({ G }) => platformUrl('/', currentPlatform(), G) },
   // Test to scale is about stages and has no comparison; it opens on the last 30 days
   { id: 'promotions', re: /^\/promotions\/?$/, filters: ['platform', 'source', 'range'], parent: toOverview, defaults: { window: '30d' }, skipDefaultsWhen: (p) => hasDateWindow(p) || p.window === 'launch' },
