@@ -18,7 +18,7 @@ arguments are needed to resume. Each run: (1) once a day per set, a catch-up of 
 that did not finish resumes next run) limited to 40% of the run's time; (2) the backfill, newest 30-day window first, for every set except the four heavy ones (comscore_market,
 region, both hourly sets) out to the full depth, with one probe pass of the four heavy sets on the newest window (max 25% of a run, attempted once), then the heavy sets out to the
 full depth. Sets Meta refuses are asked again after 7 days; a set whose response never has the requested keys, or that fails 3 runs in a row with no rows, is quarantined for 7 days;
-retry waiting on transient errors is capped at 90 s per set pull. A run never starts a request batch in the quiet hours (META_BREAKDOWNS_QUIET_UTC, default 12:30-15:30, the main nightly
+retry waiting on transient errors is capped at 90 s without a successful request. A run never starts a request batch in the quiet hours (META_BREAKDOWNS_QUIET_UTC, default 12:30-15:30, the main nightly
 Meta pull), stops after --max-minutes (default 110) and exits 0 so the next cron run resumes; a Postgres advisory lock keeps two runs from overlapping (the second exits 0).
 
 Usage: python -m etl.meta_breakdowns --auto
@@ -67,6 +67,7 @@ DEFAULT_MAX_MINUTES = 110.0
 LOCK_KEY = 240_240                   # pg_try_advisory_lock key: one breakdown run at a time
 PROBE_SET = "__heavy_probed__"        # bookkeeping row: the one probe pass of the four heavy sets has been attempted
 ANCHOR_SET, DONE_SET, CAUGHT_SET = "__anchor__", "__backfill_done__", "__caught_up__"     # bookkeeping rows in meta_breakdown_progress (level and account '-')
+CHUNK_PREFIX = "__chunk__"            # record of one committed request window inside a window that is not finished yet (same key shape as a window record, name prefixed)
 CATCHUP_PREFIX = "__catchup__"       # per set x level x account stamp 'refreshed on day D' (level = '<level>:<D>'): the recent-days catch-up resumes and skips what is done today
 QUARANTINE_PREFIX, FAILS_PREFIX, ASYNC_PREFIX = "__quarantine__:", "__fails__:", "__async__:"     # per-set rows (level and account '-'), see set_quarantine / note_outcome / mark_async_first
 
@@ -235,7 +236,7 @@ class Client:
         self.transient_budget, self.transient_spent = transient_budget, 0.0
 
     def begin_set(self) -> None:
-        """A new set pull starts: its retry-wait budget is full again."""
+        """A new set pull starts: its retry-wait budget is full again (it is also refilled by every request that succeeds)."""
         self.transient_spent = 0.0
 
     def _on_wait(self, wait: float, rate: bool) -> None:
@@ -247,7 +248,9 @@ class Client:
 
     def get(self, url, params, what):
         self.calls += 1
-        return meta_api.graph_get(url, params, what, max_retries=self.max_retries, sleep=self.sleep, on_wait=self._on_wait)
+        j = meta_api.graph_get(url, params, what, max_retries=self.max_retries, sleep=self.sleep, on_wait=self._on_wait)
+        self.transient_spent = 0.0                           # a request that got through: the budget bounds time spent failing with no progress, not a long productive pull
+        return j
 
     def pages_url(self, url: str, params: dict | None, what: str, max_pages: int | None = None):
         n = 0
@@ -571,7 +574,8 @@ def mark_async_first(conn, name: str, today: dt.date) -> None:
 
 
 def clear_old_catchup_stamps(conn, day: dt.date) -> None:
-    conn.execute("DELETE FROM meta_breakdown_progress WHERE breakdown_set LIKE %s AND level NOT LIKE %s", (CATCHUP_PREFIX.replace("_", "\\_") + "%", "%:" + day.isoformat()))
+    for prefix in (CATCHUP_PREFIX, CHUNK_PREFIX + CATCHUP_PREFIX):
+        conn.execute("DELETE FROM meta_breakdown_progress WHERE breakdown_set LIKE %s AND level NOT LIKE %s", (prefix.replace("_", "\\_") + "%", "%:" + day.isoformat()))
 
 
 def catchup_counts(conn, entries: list["Entry"], day: dt.date, accounts) -> tuple[int, int]:
@@ -706,6 +710,9 @@ def pull_set_level(conn, client: Client, waiter: Waiter, entry: Entry, level: st
         try:
             n_acct = 0
             for cs, ce in meta_api.date_chunks(ws, we, entry.chunk_days):
+                whole = (cs, ce) == (ws, we)
+                if track and not whole and not restart and window_done(conn, CHUNK_PREFIX + pname, plevel, acct, cs, ce):
+                    continue                                # this request window finished in an earlier run that then failed later in the window: do not pull it again
                 if waiter.stopper:
                     waiter.stopper.check()                  # never start a request batch in the quiet hours or past the budget
                 raw = waiter.call(lambda cs=cs, ce=ce: fetch_entry_window(client, acct, entry, level, cs, ce, an), f"{an} {entry.name} {cs}..{ce}")
@@ -718,6 +725,9 @@ def pull_set_level(conn, client: Client, waiter: Waiter, entry: Entry, level: st
                 n_acct += n
                 st["rows"] = st.get("rows", 0) + n
                 st["duplicates_dropped"] = st.get("duplicates_dropped", 0) + dups
+                if track and not whole:
+                    mark_window(conn, CHUNK_PREFIX + pname, plevel, acct, cs, ce, n)          # chunk record: the committed request windows of an unfinished window are kept
+                    conn.commit()
             if track:
                 mark_window(conn, pname, plevel, acct, ws, we, n_acct)
                 conn.commit()
