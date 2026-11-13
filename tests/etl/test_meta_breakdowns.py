@@ -405,7 +405,7 @@ def test_backfill_commits_each_window_newest_first_and_updates_coverage(bd, monk
     assert win == sorted(win) and set(win) == {0, 1, 2}                                         # every request of window 1, then window 2, then window 3
     assert seen[0][0] >= D(2026, 10, 20) and seen[-1][0] == D(2026, 10, 1)                       # committed and visible after each window, moving back
     assert bd.execute("SELECT first_day, last_day FROM meta_breakdown_coverage WHERE breakdown_set='age' AND level='ad'").fetchone() == (D(2026, 10, 1), D(2026, 11, 3))
-    assert count(bd, "SELECT count(*) FROM meta_breakdown_progress") == 3
+    assert count(bd, "SELECT count(*) FROM meta_breakdown_progress WHERE breakdown_set NOT LIKE '\\_\\_chunk%'") == 3
 
 
 def test_resume_skips_finished_windows_and_finishes_the_rest(bd, monkeypatch):
@@ -422,11 +422,11 @@ def test_resume_skips_finished_windows_and_finishes_the_rest(bd, monkeypatch):
         mb.run(bd, w, ["age", "gender"], client=c, accounts=ONE, pause=lambda s: None, backfill=True, max_rate_waits=0)
     assert bd.execute("SELECT min(day) FROM meta_breakdown_daily").fetchone()[0] >= D(2026, 10, 20)           # window 1 is committed and visible
     assert bd.execute("SELECT first_day FROM meta_breakdown_coverage WHERE breakdown_set='age'").fetchone()[0] >= D(2026, 10, 20)
-    assert count(bd, "SELECT count(*) FROM meta_breakdown_progress") == 2                                      # age and gender of window 1
+    assert count(bd, "SELECT count(*) FROM meta_breakdown_progress WHERE breakdown_set NOT LIKE '\\_\\_chunk%'") == 2                                      # age and gender of window 1
     state["fail"] = False
     f.calls.clear()
     st = mb.run(bd, w, ["age", "gender"], client=client()[0], accounts=ONE, pause=lambda s: None, backfill=True)
-    assert st["windows_done"] == 3 and count(bd, "SELECT count(*) FROM meta_breakdown_progress") == 6
+    assert st["windows_done"] == 3 and count(bd, "SELECT count(*) FROM meta_breakdown_progress WHERE breakdown_set NOT LIKE '\\_\\_chunk%'") == 6
     assert bd.execute("SELECT min(day), max(day) FROM meta_breakdown_daily").fetchone() == (D(2026, 10, 1), D(2026, 11, 3))
     requested = {json.loads(c[2]["time_range"])["since"] for c in f.calls if "time_range" in c[2]}
     assert "2026-10-20" not in requested and "2026-11-03" not in requested                                     # window 1 was not pulled again
@@ -519,7 +519,7 @@ def test_quiet_hours_beginning_mid_run_stop_cleanly_commit_and_resume(bd, monkey
                 pause=lambda s: clock.__setitem__("t", dt.datetime(2026, 11, 9, 12, 31, tzinfo=UTC)) if f.calls else None)         # quiet begins after the first set
     assert st["stopped_early"] and "quiet" in st["stop_reason"]
     n_calls = len(f.calls)
-    assert bd.execute("SELECT count(*) FROM meta_breakdown_progress").fetchone()[0] == 1                       # the first set of window 1 is recorded
+    assert bd.execute("SELECT count(*) FROM meta_breakdown_progress WHERE breakdown_set NOT LIKE '\\_\\_chunk%'").fetchone()[0] == 1                       # the first set of window 1 is recorded
     assert bd.execute("SELECT first_day, status FROM meta_breakdown_coverage WHERE breakdown_set='age'").fetchone()[0] >= D(2026, 10, 20)
     st2 = mb.run(bd, w, ["age", "gender"], client=client()[0], accounts=ONE, stopper=mb.Stopper(None, None), backfill=True, pause=lambda s: None)
     assert not st2["stopped_early"] and st2["windows_done"] == 3 and len(f.calls) > n_calls
@@ -903,3 +903,31 @@ def test_per_set_time_numbers_are_kept_in_the_run_stats(bd, monkeypatch):
     Fake().install(monkeypatch)
     st = run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], ["age", "gender"])
     assert set(st["per_set"]) == {"age", "gender"} and st["per_set"]["age"]["rows"] > 0 and st["sets_pulled"] == 2
+
+
+def test_retry_budget_is_refilled_by_every_request_that_gets_through(bd, monkeypatch):
+    n = {"k": 0}
+
+    def flaky(p, acct):
+        n["k"] += 1
+        if n["k"] % 3 == 0:
+            return err(2, "Service temporarily unavailable")
+    Fake(flaky).install(monkeypatch)
+    c, sleeps = client()
+    st = mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 14))], None, client=c, accounts=ONE, entries=[mb.BY_NAME["age"]], pause=lambda s: None, today=D(2026, 11, 12))
+    assert st["sets_ok"] == 1 and sum(sleeps) > mb.TRANSIENT_BUDGET_S                 # many sporadic errors over a long pull: more than the budget in total, none of it consecutive
+
+
+def test_committed_request_windows_of_a_failed_window_are_not_pulled_again(bd, monkeypatch):
+    f = Fake()
+    f.handler = lambda p, acct: err(2, "Service temporarily unavailable") if json.loads(p["time_range"])["since"] == "2026-11-08" and f.fail else None
+    f.fail = True
+    f.install(monkeypatch)
+    ents = [mb.BY_NAME["age"]]
+    st = mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 14))], None, client=client()[0], accounts=ONE, entries=ents, pause=lambda s: None, backfill=True, today=D(2026, 11, 12))
+    assert st["sets_error"] == 1 and st["rows"] > 0
+    f.fail = False
+    f.calls.clear()
+    st = mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 14))], None, client=client()[0], accounts=ONE, entries=ents, pause=lambda s: None, backfill=True, today=D(2026, 11, 12))
+    assert {since for _, since in calls_by_set(f)} == {"2026-11-08"} and st["sets_ok"] == 1
+    assert mb.window_done(bd, "age", "ad", ACCT[0], D(2026, 11, 1), D(2026, 11, 14))
