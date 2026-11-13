@@ -602,3 +602,31 @@ def test_board_text_has_no_em_dashes_and_cards_have_names(page):
     assert all(re.search(r", ", l) for l in labels) and "—" not in " ".join(labels)
     goto(page, "?card=7")
     assert "—" not in page.locator("[data-testid=prod-drawer]").text_content()
+
+
+def no_ghost(page):
+    page.wait_for_function("() => !document.querySelector('.prod-ghost')")
+    assert page.locator(".prod-ghost").count() == 0 and not page.evaluate("() => document.body.classList.contains('prod-is-dragging')")
+
+
+def test_no_dragged_copy_is_left_floating_after_a_drop(page):
+    goto(page)
+    drag_card(page, 8, "in_production", "bottom")
+    no_ghost(page)
+
+
+@pytest.mark.allow_errors
+def test_no_dragged_copy_is_left_floating_after_a_refused_drop(page):
+    goto(page)
+    drag_card(page, 5, "in_review")                                                   # card 5 has no creative link: the move is refused and the card goes back
+    page.wait_for_selector("[data-testid=prod-toast]", state="attached")
+    no_ghost(page)
+
+
+def test_no_dragged_copy_is_left_floating_after_escape(page):
+    goto(page)
+    a = card(page, 9).locator("[data-testid=prod-card-title]").bounding_box()
+    page.mouse.move(a["x"] + 20, a["y"] + 10); page.mouse.down(); page.mouse.move(a["x"] + 200, a["y"] + 80, steps=6)
+    assert page.locator(".prod-ghost").count() == 1
+    page.keyboard.press("Escape"); page.mouse.up()
+    no_ghost(page)
