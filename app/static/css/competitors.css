@@ -27,9 +27,9 @@
 .comp-typo::before { content: "\201C"; position: absolute; top: -6px; left: 10px; font-size: 76px; line-height: 1; font-weight: 800; color: var(--tint-edge, var(--accent)); opacity: .28; font-family: Georgia, "Times New Roman", serif; }
 .comp-typo-text { position: relative; font-size: 21px; line-height: 1.16; font-weight: 800; letter-spacing: -0.02em; display: -webkit-box; -webkit-line-clamp: 7; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .comp-typo-text.comp-long { font-size: 17px; line-height: 1.22; font-weight: 700; -webkit-line-clamp: 8; }
-.comp-vis-badge { position: absolute; left: 10px; bottom: 10px; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: rgba(255,255,255,.88); color: #1b2027; letter-spacing: .02em; }
+.comp-vis-badge { position: absolute; left: 10px; bottom: 10px; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: rgba(255,255,255,.88); color: var(--text); letter-spacing: .02em; }
 .comp-vis-big { aspect-ratio: auto; min-height: 280px; max-height: 70vh; }
-.comp-vis-big.comp-has-img { background: #14171c; align-items: center; justify-content: center; }
+.comp-vis-big.comp-has-img { background: var(--text); align-items: center; justify-content: center; }
 .comp-vis-big img { object-fit: contain; max-height: 70vh; }
 .comp-vis-big .comp-typo-text { font-size: 30px; -webkit-line-clamp: 9; }
 
@@ -97,7 +97,7 @@
 .comp-bar-label { font-weight: 600; overflow-wrap: anywhere; line-height: 1.2; }
 .comp-bar-label small { display: block; font-weight: 500; color: var(--muted); font-size: 11px; }
 .comp-bar-track { height: 14px; background: var(--head-bg); border-radius: 7px; overflow: hidden; display: block; }
-.comp-bar-fill { display: block; height: 100%; background: #9aa3b2; border-radius: 7px; }
+.comp-bar-fill { display: block; height: 100%; background: var(--muted); border-radius: 7px; }
 .comp-bar-hl .comp-bar-fill { background: var(--accent); }
 .comp-bar-hl .comp-bar-label small { color: var(--accent); font-weight: 700; }
 .comp-bar-n { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
