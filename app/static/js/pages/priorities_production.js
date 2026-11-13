@@ -35,6 +35,7 @@ export async function productionPage(ctx) {
   let lastErr = '';
   let drawer = null;
   let capSaved = null;                                        // vendor whose capacity was just saved: the Plan shows a Saved cue next to it once
+  let landedId = null;                                        // card that was just moved: gets a brief faint highlight on the next board draw
   let focusId = null;                                         // card to focus again after a keyboard move redraws the board
   const msg = h('p', { class: 'prod-msg', role: 'status', 'data-testid': 'prod-msg' });
   const say = (t, bad) => { msg.textContent = t || ''; msg.classList.toggle('pri-err', !!bad); };
@@ -101,7 +102,7 @@ export async function productionPage(ctx) {
     lastErr = '';
     const onBoard = st.view !== 'list' && board && boardCards().some((c) => c.id === card.id);
     const snap = onBoard ? JSON.stringify({ columns: board.columns, dropped: board.dropped }) : null;
-    if (onBoard) { optimistic(card, to, o.beforeId, o.afterId); drawView(); }
+    if (onBoard) { optimistic(card, to, o.beforeId, o.afterId); landedId = card.id; drawView(); landedId = null; }
     try {
       await api(`/api/priorities/assignments/${card.id}/move`, {}, { method: 'POST', body: { status: to, ...(o.beforeId ? { before_id: Number(o.beforeId) } : {}), ...(o.afterId ? { after_id: Number(o.afterId) } : {}), ...(o.comment ? { comment: o.comment } : {}) } });
       const layout = () => (board ? JSON.stringify(board.columns.map((c) => [c.status, (c.cards || []).map((x) => x.id)])) : '');
@@ -323,7 +324,14 @@ export async function productionPage(ctx) {
   function drawView() {
     if (st.view === 'list') drawList();
     else if (st.view === 'plan') drawPlan();
-    else keepScroll(drawBoard);
+    else {
+      keepScroll(drawBoard);
+      if (landedId) {                                         // a very faint wash on the card that just landed, so you can see the move took
+        const el = viewHost.querySelector(`.prod-board-card[data-id="${landedId}"]`);
+        if (el) el.classList.add('prod-landed');
+        landedId = null;
+      }
+    }
     if (focusId) { const el = viewHost.querySelector(`.prod-board-card[data-id="${focusId}"]`); if (el) el.focus(); }
   }
 
