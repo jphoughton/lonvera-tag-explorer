@@ -95,6 +95,10 @@ import mock_inventory  # noqa: E402  (Inventory history: /api/inventory/history,
 
 mock_inventory.register(app, dict(Bad=Bad))
 
+import mock_email  # noqa: E402  (Email: /api/email/*, built on the real payload code in app/email_view.py over made-up Klaviyo days)
+
+mock_email.register(app, dict(Bad=Bad))
+
 import mock_lookup  # noqa: E402  (Tag lookup: /api/tag-lookup, built on the real matching code in app/lookup.py over a few made-up rows)
 
 mock_lookup.register(app, dict(Bad=Bad))
@@ -116,7 +120,7 @@ def shell(*_a, **_k):
     return send_from_directory(STATIC, "index.html")
 
 
-for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/inventory/history", "/priorities", "/priorities/v/<tok>", "/priorities/production", "/priorities/vendor/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
+for rule in ("/", "/login", "/google", "/campaigns", "/promotions", "/trends", "/email", "/inventory/history", "/priorities", "/priorities/v/<tok>", "/priorities/production", "/priorities/vendor/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
     app.add_url_rule(rule, endpoint="shell" + rule, view_func=shell)
 
 

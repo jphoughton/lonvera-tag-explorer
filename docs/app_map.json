@@ -484,6 +484,13 @@
    "bare": false
   },
   {
+   "url_pattern": "/email",
+   "page_function": "emailPage",
+   "js_file": "app/static/js/pages/email.js",
+   "public": false,
+   "bare": false
+  },
+  {
    "url_pattern": "/inventory/history",
    "page_function": "inventoryHistoryPage",
    "js_file": "app/static/js/pages/inventory_history.js",
@@ -660,6 +667,72 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": "Trend of /api/campaigns (Meta, all products): same window, stage, active, Meta | Upstack numbers and product filter, so its points add up to the table's"
+  },
+  {
+   "rule": "/api/email/campaigns",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.email_campaigns",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Email by campaign: one row per campaign with activity in the window, newest send first; q= filters on name and subject."
+  },
+  {
+   "rule": "/api/email/flows",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.email_flows",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Email by flow: one row per flow with activity in the window, revenue first."
+  },
+  {
+   "rule": "/api/email/flows/<flow_id>/messages",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.email_flow_messages",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The messages of one flow with their totals for the window."
+  },
+  {
+   "rule": "/api/email/message/<message_id>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.email_message",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "One message: its copy (latest version only), totals for the window and a daily series."
+  },
+  {
+   "rule": "/api/email/summary",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.email_summary",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Email page header: totals for a window (window=7d|30d|90d|all, kind=all|flows|campaigns, channel=all|email|sms) with the change against the prior period when it is fully loaded."
+  },
+  {
+   "rule": "/api/email/timeseries",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.email_timeseries",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Email over time: grain=day|week|month (default day), split=1 adds flows and campaigns separately when kind=all. A bucket that runs past the loaded days is marked partial."
   },
   {
    "rule": "/api/google/rollup",
@@ -2791,6 +2864,17 @@
    ],
    "kind": "page",
    "endpoint": "shell:/connect-agent",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/email",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/email",
    "auth": "none (HTML page or health check; its data calls are protected)",
    "auth_exempt": true,
    "summary": ""

@@ -10,7 +10,7 @@ import time
 from zoneinfo import ZoneInfo
 
 from . import db
-from .resolver import pick, pick_clicks
+from .resolver import pick, pick_atc, pick_clicks, pick_lpv
 
 G = "https://graph.facebook.com/v23.0"
 ACCOUNTS = [("act_1671338033619223", "Lonvera Main"), ("act_1543579384022317", "Lonvera BackUp")]
@@ -94,7 +94,8 @@ def rows_from(data) -> list[dict]:
                     "campaign_id": str(a.get("campaign_id", "") or ""), "campaign_name": str(a.get("campaign_name", "") or ""),
                     "adset_id": str(a.get("adset_id", "") or ""), "adset_name": str(a.get("adset_name", "") or ""),
                     "spend": float(a.get("spend") or 0), "impressions": float(a.get("impressions") or 0), "purchases": pick(a.get("actions")),
-                    "value": pick(a.get("action_values")), "clicks": pick_clicks(a)})
+                    "value": pick(a.get("action_values")), "clicks": pick_clicks(a),
+                    "lpv": pick_lpv(a.get("actions")), "atc": pick_atc(a.get("actions"))})
     return out
 
 

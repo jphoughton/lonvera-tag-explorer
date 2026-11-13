@@ -41,6 +41,7 @@ export const PAGES = [
   { id: 'promotions', re: /^\/promotions\/?$/, filters: ['platform', 'source', 'range'], parent: toOverview, defaults: { window: '30d' }, skipDefaultsWhen: (p) => hasDateWindow(p) || p.window === 'launch' },
   { id: 'trends', re: /^\/trends\/?$/, filters: [], parent: toOverview },
   { id: 'inventory-history', re: /^\/inventory\/history\/?$/, filters: [], parent: toOverview },
+  { id: 'email', re: /^\/email\/?$/, filters: [], parent: toOverview },
   { id: 'priorities', re: /^\/priorities\/?$/, filters: [], parent: toOverview },
   { id: 'priorities-view', re: /^\/priorities\/v\/([A-Za-z0-9_-]+)\/?$/, filters: [], parent: () => href('/priorities', {}) },
   { id: 'production', re: /^\/priorities\/production\/?$/, filters: [], parent: () => href('/priorities', {}) },

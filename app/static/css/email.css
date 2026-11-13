@@ -1,0 +1,51 @@
+/* email: Email (eml- classes) */
+/* ---------- Email (/email): Klaviyo email and text message results by flow, by campaign and over time. Class names start with eml- (never ad-, ads-, sponsor, promo, banner). ---------- */
+.eml-controls { margin: 6px 0 4px; }
+.eml-winline { margin: 4px 2px 2px; font-size: 12.5px; max-width: none; }
+.eml-kpis .kpi-row { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); }
+.eml-kpi .kpi-value { font-size: 23px; }
+.eml-approx { font-style: italic; }
+.eml-chg { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.eml-vs, .eml-nochg { color: var(--muted); }
+.eml-good { color: var(--good); }
+.eml-bad { color: var(--bad); }
+.eml-flat { color: var(--muted); }
+.eml-notes { margin: 6px 2px 8px; font-size: 12.5px; }
+.eml-notes p { margin: 3px 0; max-width: 110ch; overflow-wrap: anywhere; }
+.eml-help { background: var(--panel); border: 1px solid var(--line-soft); border-radius: 6px; padding: 5px 12px; margin: 4px 0 10px; font-size: 12.5px; }
+.eml-help summary { cursor: pointer; font-weight: 600; }
+.eml-help dt { font-weight: 650; margin-top: 8px; }
+.eml-help dd { margin: 2px 0 0; max-width: 100ch; overflow-wrap: anywhere; }
+.eml-chart { margin-top: 8px; }
+.eml-ctlslot { display: inline-block; }
+.eml-section { margin: 14px 0 8px; }
+.eml-section h2 { margin: 0 0 2px; font-size: 16px; }
+.eml-lead { margin: 2px 0 6px; font-size: 12.5px; max-width: 100ch; }
+.eml-count { font-size: 12.5px; }
+.eml-name { display: inline-block; max-width: 300px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; white-space: nowrap; }
+.eml-namecol .eml-name { max-width: 260px; }
+.eml-status, .eml-nocopy { margin-left: 6px; font-size: 12px; }
+table.eml-grid th.eml-namecol, table.eml-grid td.eml-namecol { min-width: 160px; max-width: 280px; }
+table.eml-grid th, table.eml-grid td { font-size: 12.5px; }
+.eml-sub { max-height: 360px; border: 1px solid var(--line-soft); border-radius: 4px; margin: 2px 0; }
+td.eml-empty, p.eml-empty { padding: 18px; color: var(--muted); max-width: none; }
+/* the message dialog */
+.eml-modal { width: min(96vw, 860px); }
+.eml-detail { padding-top: 6px; }
+.eml-dtitle { margin: 0 28px 2px 0; font-size: 18px; overflow-wrap: anywhere; }
+.eml-dsub, .eml-dwin, .eml-asof, .eml-copyfacts { margin: 2px 0 6px; font-size: 12.5px; max-width: none; overflow-wrap: anywhere; }
+.eml-subject, .eml-preview, .eml-from { margin: 4px 0 8px; max-width: 100ch; }
+.eml-dtiles .kpi-row { grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+.eml-dtiles .kpi-value { font-size: 18px; }
+.eml-copy h3, .eml-dchart h3 { margin: 12px 0 4px; font-size: 14px; }
+.eml-body { white-space: pre-wrap; max-width: 90ch; margin: 4px 0; background: var(--bg); border: 1px solid var(--line-soft); border-radius: 6px; padding: 8px 10px; overflow-wrap: anywhere; font-size: 13px; }
+.eml-dbox { height: 220px; }
+.eml-nocopy-text { max-width: 90ch; }
+@media (max-width: 640px) {
+  .eml-controls .ctl-row { gap: 6px 10px; }
+  .eml-kpis .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .eml-kpi .kpi-value { font-size: 20px; }
+  .eml-name { max-width: 190px; }
+  .eml-modal { padding: 12px 12px 14px; }
+  .eml-dtiles .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

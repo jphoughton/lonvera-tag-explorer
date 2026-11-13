@@ -269,6 +269,8 @@ ORDER BY last_day DESC LIMIT 50;
 | `upstack_new_customer_revenue` | numeric |  | Order total (tax included, before refunds) of those first orders, dollars. / spend = NC ROAS. |
 | `upstack_orders` | numeric |  | All orders (new and returning customers) Upstack credits to the ad. NULL on days not pulled. |
 | `upstack_order_revenue` | numeric |  | Order total of those orders, dollars (tax included, before refunds). |
+| `landing_page_views` | numeric |  | Meta landing page views (omni_landing_page_view, else landing_page_view). NULL when the day has no Meta pull of it yet; 0 on Upstack-only ad-days. |
+| `add_to_carts` | numeric |  | Meta adds to cart (omni_add_to_cart, else add_to_cart, else pixel add to cart), the 'Adds to cart' of Ads Manager; includes returning customers. NULL when not pulled yet; 0 on Upstack-only ad-days. |
 
 *Ad level: 30-day spend and Meta-reported ROAS*
 
@@ -306,6 +308,19 @@ SELECT day, coalesce(product_slug, '(no product)') AS product, round(sum(spend),
 FROM analytics.meta_ad_daily
 WHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'meta_ad_daily') - 14
 GROUP BY 1, 2 ORDER BY 1 DESC, 3 DESC;
+```
+
+*Funnel by product, last 7 days: link click to add to cart, landing page view to add to cart, add to cart to purchase*
+
+```sql
+SELECT coalesce(product_slug, '(no product)') AS product, sum(link_clicks) AS link_clicks, sum(landing_page_views) AS landing_page_views, sum(add_to_carts) AS add_to_carts,
+       sum(meta_purchases) AS purchases,
+       round(sum(add_to_carts) / NULLIF(sum(link_clicks), 0), 4) AS link_click_to_atc,
+       round(sum(add_to_carts) / NULLIF(sum(landing_page_views), 0), 4) AS lpv_to_atc,
+       round(sum(meta_purchases) / NULLIF(sum(add_to_carts), 0), 4) AS atc_to_purchase
+FROM analytics.meta_ad_daily
+WHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'meta_ad_daily') - 7 AND add_to_carts IS NOT NULL
+GROUP BY 1 ORDER BY sum(spend) DESC;
 ```
 
 ### analytics.meta_adset_daily
@@ -4080,6 +4095,7 @@ SELECT count(*) AS rows FROM analytics.shopify_order_lines;
 - **Caveat:** purchases = Meta action omni_purchase, else purchase, else offsite_conversion.fb_pixel_purchase, under Meta's default attribution (no window is requested); it counts returning customers. conv_value is the matching action value. Neither is Upstack's new-customer number.
 - **Caveat:** No row filter on spend: purchases booked on days without delivery are kept, so a row can have spend 0 and purchases > 0.
 - **Caveat:** link_clicks is Meta's link_click action (fallback inline_link_clicks). impressions is NULL only on legacy sheet rows (none in production).
+- **Caveat:** landing_page_views = action omni_landing_page_view (else landing_page_view); add_to_carts = omni_add_to_cart (else add_to_cart, else offsite_conversion.fb_pixel_add_to_cart), same Meta default attribution as purchases. Both are NULL (not 0) on days before they were first pulled; the 2026-11-12 backfill fills them without touching any other column.
 - **Caveat:** meta_family_key / meta_family follow the ad's CURRENT name (build_metrics re-syncs them after a rename).
 - **Caveat:** Rows with source 'sheet' / ad_id 'fam:<family>' were a family-grain backfill; none remain in production.
 - **Caveat:** Reach, frequency, video metrics (thruplays, watch time), demographic / placement breakdowns, ad-level budgets and bids are NOT stored.
@@ -4098,6 +4114,8 @@ SELECT count(*) AS rows FROM analytics.shopify_order_lines;
 | `source` | text | no | 'meta_api' \| 'sheet'. |
 | `loaded_at` | timestamptz | no | When the row was written. |
 | `impressions` | numeric(14,0) | yes | Meta impressions (NULL = unknown, legacy rows). |
+| `landing_page_views` | numeric(12,0) | yes | Meta landing page views (omni_landing_page_view, else landing_page_view). NULL = not pulled yet (days before the 2026-11-12 funnel backfill). |
+| `add_to_carts` | numeric(12,0) | yes | Meta adds to cart (omni_add_to_cart, else add_to_cart, else pixel add to cart), the 'Adds to cart' of Ads Manager. NULL = not pulled yet. |
 
 *Meta spend and ROAS by day, last 14 days*
 
@@ -4215,6 +4233,8 @@ SELECT stage, count(*) AS campaigns, min(first_day) AS first_day, max(last_day) 
 | `source` | text | no | 'meta_api' (production) \| 'sheet' (legacy). |
 | `pulled_at` | timestamptz | yes | When the all-time pull ran. |
 | `first_day` | date | yes | Earliest delivery day if known (legacy). |
+| `landing_page_views` | numeric(12,0) | yes | All-time Meta landing page views (omni_landing_page_view, else landing_page_view). NULL until the next nightly lifetime pull. |
+| `add_to_carts` | numeric(12,0) | yes | All-time Meta adds to cart (omni_add_to_cart, else add_to_cart, else pixel add to cart). NULL until the next nightly lifetime pull. |
 
 *Top 20 ads by all-time spend (Meta-reported)*
 
@@ -8455,6 +8475,31 @@ Read the default basis before quoting a number and name the basis in the answer.
 - **Trap:** Never compare Upstack new customers with Meta's all purchases: Meta counts returning customers, Upstack's new-customer basis does not (they are different quantities, not one number measured twice).
 - **Trap:** Meta and Google credit the same orders: never add Meta purchases to Google's.
 - **Trap:** Meta counts a returning customer's order as a purchase; it is not a new customer.
+
+### landing_page_views
+
+**Meta landing page views** (domain: marketing)
+
+- **Formula:** sum(landing_page_views): landing page views Meta reports for the ad that day (omni_landing_page_view, else landing_page_view): clicks where the page actually loaded.
+- **Source:** `analytics.meta_ad_daily.landing_page_views`
+- **Default basis:** Meta-reported (default attribution), all ad accounts
+- **Other basis:** Link clicks (analytics.meta_ad_daily.link_clicks): clicks before the page loads, always at least as large
+- **Other basis:** Unique outbound clicks (analytics.meta_reach / meta_product_reach): de-duplicated per person, a different denominator
+- **Trap:** NULL (not 0) on days before the 2026-11-12 funnel backfill: sum only over rows where it is not NULL, and divide by the matching rows' other columns.
+- **Trap:** LPV / link clicks is typically 70-95%: a lower share means slow pages or lost clicks, not fewer buyers.
+- **Trap:** Not comparable to Upstack site visitors (analytics.site_traffic_daily): different tracker.
+
+### add_to_carts
+
+**Meta adds to cart** (domain: marketing)
+
+- **Formula:** sum(add_to_carts): adds to cart Meta reports for the ad that day (omni_add_to_cart, else add_to_cart, else pixel add to cart), the 'Adds to cart' of Ads Manager.
+- **Source:** `analytics.meta_ad_daily.add_to_carts`
+- **Default basis:** Meta-reported (default attribution, includes returning customers)
+- **Other basis:** Meta purchases (analytics.meta_ad_daily.meta_purchases)
+- **Trap:** NULL (not 0) on days before the 2026-11-12 funnel backfill.
+- **Trap:** The funnel rates are ratios of sums over the same ad-days and rows: link click to add to cart = sum(add_to_carts) / sum(link_clicks); landing page view to add to cart = sum(add_to_carts) / sum(landing_page_views); add to cart to purchase = sum(meta_purchases) / sum(add_to_carts). Never average per-ad rates.
+- **Trap:** Purchases count returning customers, so add to cart to purchase is a Meta-attribution rate, not a new-customer conversion rate.
 
 ### meta_roas
 

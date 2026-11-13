@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, db, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import auth, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -691,6 +691,43 @@ def inventory_history():
     """Inventory history: units on hand and allocated per product and location on one past day (date=YYYY-MM-DD, default the newest day with a snapshot), plus a daily
     trend per location over the last days=<n> days (default 30, at most 180) ending on that day. Estimate rows are marked, missing days are listed as gaps. See app/inventory_history.py."""
     return jsonify(invh.history(db.get_conn(), request.args))
+
+
+@bp.get("/api/email/summary")
+def email_summary():
+    """Email page header: totals for a window (window=7d|30d|90d|all, kind=all|flows|campaigns, channel=all|email|sms) with the change against the prior period when it is fully loaded.
+    Rates come from sums. Revenue is Klaviyo-attributed. See app/email_view.py and docs/EMAIL.md."""
+    return jsonify(em.summary(em.DbSource(db.get_conn()), em.parse_params(request.args)))
+
+
+@bp.get("/api/email/timeseries")
+def email_timeseries():
+    """Email over time: grain=day|week|month (default day), split=1 adds flows and campaigns separately when kind=all. A bucket that runs past the loaded days is marked partial."""
+    return jsonify(em.timeseries(em.DbSource(db.get_conn()), em.parse_params(request.args), (_arg("grain") or "day").lower(), _arg("split") == "1"))
+
+
+@bp.get("/api/email/flows")
+def email_flows():
+    """Email by flow: one row per flow with activity in the window, revenue first."""
+    return jsonify(em.flows(em.DbSource(db.get_conn()), em.parse_params(request.args)))
+
+
+@bp.get("/api/email/flows/<flow_id>/messages")
+def email_flow_messages(flow_id: str):
+    """The messages of one flow with their totals for the window."""
+    return jsonify(em.flow_messages(em.DbSource(db.get_conn()), em.parse_params(request.args), flow_id))
+
+
+@bp.get("/api/email/campaigns")
+def email_campaigns():
+    """Email by campaign: one row per campaign with activity in the window, newest send first; q= filters on name and subject."""
+    return jsonify(em.campaigns(em.DbSource(db.get_conn()), em.parse_params(request.args), _arg("q")))
+
+
+@bp.get("/api/email/message/<message_id>")
+def email_message(message_id: str):
+    """One message: its copy (latest version only), totals for the window and a daily series."""
+    return jsonify(em.message(em.DbSource(db.get_conn()), em.parse_params(request.args), message_id))
 
 
 @bp.get("/api/tag-lookup")
