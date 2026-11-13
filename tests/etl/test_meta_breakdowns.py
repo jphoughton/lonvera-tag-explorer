@@ -707,3 +707,199 @@ def test_failed_set_keeps_the_backfill_open_so_a_later_run_retries_it(bd, monkey
     out = auto(bd, today, names=["gender", "age"], max_days=2)
     assert out["backfill_done"]
     assert count(bd, "SELECT count(*) FROM meta_breakdown_daily WHERE breakdown_set='gender'") > 0
+
+
+# ----------------------------------------------------------------------------------------------- pacing: resumable catch-up, time share, dead sets, per-set budget, heavy sets last
+def calls_by_set(f):
+    """(breakdowns, since) of every plain insights GET, in order."""
+    return [(c[2].get("breakdowns", c[2].get("action_breakdowns")), json.loads(c[2]["time_range"])["since"]) for c in f.calls if c[0] == "GET" and "time_range" in c[2]]
+
+
+def stopper_after(k_sets, n):
+    return mb.Stopper(1, None, clock=lambda: 0 if n["k"] < k_sets else 10_000)
+
+
+def test_catch_up_resumes_and_skips_sets_already_refreshed_today(bd, monkeypatch):
+    f = Fake().install(monkeypatch)
+    w = [(D(2026, 11, 5), D(2026, 11, 11))]
+    n = {"k": 0}
+    st = mb.run(bd, w, ["age", "gender", "country"], client=client()[0], accounts=ONE, catchup_day=D(2026, 11, 11), stopper=stopper_after(1, n), pause=lambda s: n.__setitem__("k", n["k"] + 1))
+    assert st["stopped_early"] and {b for b, _ in calls_by_set(f)} == {"age"}               # stopped after the first set
+    f.calls.clear()
+    run(bd, w, ["age", "gender", "country"], catchup_day=D(2026, 11, 11))                    # same day again: age is skipped, the rest is pulled
+    assert {b for b, _ in calls_by_set(f)} == {"gender", "country"}
+    f.calls.clear()
+    run(bd, w, ["age", "gender", "country"], catchup_day=D(2026, 11, 11))                    # and a third time: nothing at all
+    assert calls_by_set(f) == []
+    run(bd, w, ["age", "gender", "country"], catchup_day=D(2026, 11, 12))                    # next day: everything again
+    assert {b for b, _ in calls_by_set(f)} == {"age", "gender", "country"}
+    assert count(bd, "SELECT count(*) FROM meta_breakdown_progress WHERE breakdown_set LIKE '\\_\\_catchup\\_\\_%' AND level NOT LIKE '%:2026-11-12'") > 0
+    mb.clear_old_catchup_stamps(bd, D(2026, 11, 12))
+    assert count(bd, "SELECT count(*) FROM meta_breakdown_progress WHERE breakdown_set LIKE '\\_\\_catchup\\_\\_%' AND level NOT LIKE '%:2026-11-12'") == 0
+
+
+def test_auto_catch_up_that_did_not_finish_resumes_in_the_next_run(bd, monkeypatch):
+    f = Fake().install(monkeypatch)
+    auto(bd, D(2026, 11, 10), names=["age", "gender"])                                       # whole backfill
+    n = {"k": 0}
+    st = mb.auto(bd, stopper_after(1, n), ["age", "gender"], max_days=40, window_days=15, client=client()[0], accounts=ONE, today=D(2026, 11, 12), pause=lambda s: n.__setitem__("k", n["k"] + 1))
+    assert st["stopped_early"] and mb._special(bd, mb.CAUGHT_SET) is None      # not marked caught up
+    f.calls.clear()
+    st = auto(bd, D(2026, 11, 12), names=["age", "gender"])
+    assert {b for b, _ in calls_by_set(f)} == {"gender"} and mb._special(bd, mb.CAUGHT_SET)[1] == D(2026, 11, 11)
+
+
+def test_backfill_gets_time_when_the_catch_up_is_unfinished(bd, monkeypatch, capsys):
+    f = Fake().install(monkeypatch)
+    sets = ["age", "gender", "country", "device_platform", "impression_device", "publisher_platform", "frequency_value", "product_id"]
+    t0 = {"t": 0}
+    mb.auto(bd, mb.Stopper(100, None, clock=lambda: t0["t"]), sets, max_days=40, window_days=15, client=client()[0], accounts=ONE, today=D(2026, 11, 10),
+            pause=lambda s: t0.__setitem__("t", t0["t"] + 3000))                              # day one: stops after the first set of the backfill (50 min each)
+    assert mb.get_anchor(bd) is not None
+    t = {"t": 0}
+    clock = lambda: t["t"]                                                                   # noqa: E731
+    f.calls.clear()
+    adv0 = mb.backfill_rows(bd)
+    st = mb.auto(bd, mb.Stopper(100, None, clock=clock), sets, max_days=40, window_days=15, client=client()[0], accounts=ONE, today=D(2026, 11, 12),
+                 pause=lambda s: t.__setitem__("t", t["t"] + 600))                           # 10 minutes per set: the catch-up share is 40 of 100 minutes
+    assert st["catch_up"]["stopped_early"] and "catch-up time share" in st["catch_up"]["stop_reason"] and mb._special(bd, mb.CAUGHT_SET) is None
+    assert st["catch_up"]["sets_pulled"] == 5 and st["backfill"]["rows"] > 0 and mb.backfill_rows(bd) > adv0       # the backfill ran in the same run and advanced
+    out = capsys.readouterr().out
+    assert re.search(r"run start: phase=catch-up window=2026-11-05\.\.2026-11-11 sets_done=0 sets_remaining=8", out)
+    assert re.search(r"run start: phase=backfill/light-newest-window window=\S+ sets_done=\d+ sets_remaining=\d+", out)
+    assert re.search(r"run end: phase=backfill/\S+ window=\S+ sets_done=\d+ sets_remaining=\d+ backfill_advanced=yes", out)
+
+
+def test_dead_sets_are_skipped_until_the_reprobe_day(bd, monkeypatch):
+    f = Fake(refuse({"ad", "campaign", "account"}, {"gender"})).install(monkeypatch)
+    ents = [mb.BY_NAME["gender"], mb.BY_NAME["age"]]
+    mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], None, client=client()[0], accounts=ONE, entries=ents, pause=lambda s: None)
+    f.calls.clear()
+    mb.run(bd, [(D(2026, 11, 2), D(2026, 11, 2))], None, client=client()[0], accounts=ONE, entries=ents, pause=lambda s: None)
+    assert {b for b, _ in calls_by_set(f)} == {"age"}                                        # gender: no request at any of the three levels
+    bd.execute("UPDATE meta_breakdown_coverage SET checked_at = now() - interval '8 days' WHERE breakdown_set = 'gender'")
+    bd.commit()
+    f.calls.clear()
+    mb.run(bd, [(D(2026, 11, 3), D(2026, 11, 3))], None, client=client()[0], accounts=ONE, entries=ents, pause=lambda s: None)
+    assert {c[2]["level"] for c in f.calls if c[2].get("breakdowns") == "gender"} == {"ad", "campaign", "account"}      # asked again after the re-probe period
+    assert mb.RECHECK_UNSUPPORTED_DAYS == 7
+
+
+def shape_less(p, acct):
+    if p.get("breakdowns") == "gender":
+        return Resp({"data": [{"ad_id": "a1", "adset_id": "s1", "campaign_id": "c1", "date_start": "2026-11-01", "spend": "1", "impressions": "1"}]})
+
+
+def test_a_set_whose_rows_never_carry_the_keys_is_quarantined_and_does_not_hold_the_backfill_open(bd, monkeypatch):
+    f = Fake(shape_less).install(monkeypatch)
+    ents = [mb.BY_NAME["gender"], mb.BY_NAME["age"]]
+    kw = dict(client=None, accounts=ONE, entries=ents, pause=lambda s: None)
+    st = mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], None, today=D(2026, 11, 12), **{**kw, "client": client()[0]})
+    assert st["sets_error"] == 1 and st.get("error_pieces", 0) == 0                           # deterministic: not a retry-later error
+    assert mb.quarantined_sets(bd, D(2026, 11, 12)) == {"gender": "shape"}
+    f.calls.clear()
+    mb.run(bd, [(D(2026, 11, 2), D(2026, 11, 2))], None, today=D(2026, 11, 13), **{**kw, "client": client()[0]})
+    assert {b for b, _ in calls_by_set(f)} == {"age"}
+    f.calls.clear()
+    mb.run(bd, [(D(2026, 11, 3), D(2026, 11, 3))], None, today=D(2026, 11, 12) + dt.timedelta(days=mb.QUARANTINE_DAYS + 1), **{**kw, "client": client()[0]})
+    assert {b for b, _ in calls_by_set(f)} == {"gender", "age"}                              # re-probed after the quarantine
+
+
+def unavailable(p, acct):
+    if p.get("breakdowns") == "age":
+        return err(2, "Service temporarily unavailable")
+
+
+def test_a_failing_set_is_bounded_per_run_then_quarantined_after_three_failing_runs(bd, monkeypatch):
+    f = Fake(unavailable).install(monkeypatch)
+    ents = [mb.BY_NAME["age"]]
+    c, sleeps = client()
+    st = mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], None, client=c, accounts=[ACCT, meta_api.ACCOUNTS[1]], entries=ents, pause=lambda s: None, today=D(2026, 11, 12))
+    assert sum(sleeps) <= mb.TRANSIENT_BUDGET_S and len([x for x in f.calls if x[0] == "GET"]) == 4        # three retries (15+30+45 s), then the set is an error for this run, both accounts
+    assert st["sets_error"] == 1 and "retry budget" in st["errors"]["age"] and mb.quarantined_sets(bd, D(2026, 11, 12)) == {}
+    for _ in range(mb.FAIL_LIMIT - 1):
+        mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], None, client=client()[0], accounts=ONE, entries=ents, pause=lambda s: None, today=D(2026, 11, 12))
+    assert mb.quarantined_sets(bd, D(2026, 11, 12)) == {"age": "failing"}
+    f.calls.clear()
+    st = mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], None, client=client()[0], accounts=ONE, entries=ents, pause=lambda s: None, today=D(2026, 11, 13))
+    assert f.calls == [] and st["quarantined_failing"] == 1 and st["sets_skipped_quarantined"] == 1
+
+
+def test_a_clean_pull_clears_the_failing_count(bd, monkeypatch):
+    f = Fake(unavailable).install(monkeypatch)
+    ents = [mb.BY_NAME["age"]]
+    mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], None, client=client()[0], accounts=ONE, entries=ents, pause=lambda s: None, today=D(2026, 11, 12))
+    assert count(bd, "SELECT rows FROM meta_breakdown_progress WHERE breakdown_set = '__fails__:age'") == 1
+    f.handler = None
+    mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], None, client=client()[0], accounts=ONE, entries=ents, pause=lambda s: None, today=D(2026, 11, 12))
+    assert count(bd, "SELECT count(*) FROM meta_breakdown_progress WHERE breakdown_set = '__fails__:age'") == 0
+
+
+def test_a_set_too_big_for_one_day_goes_straight_to_async_afterwards_and_that_is_remembered(bd, monkeypatch):
+    f = Fake()
+
+    def handler(p, acct):
+        if p.get("breakdowns") == "age" and p.get("level") == "ad" and not f.posted:
+            return err(1, "Please reduce the amount of data you're asking for")
+    f.handler, f.posted = handler, False
+    real_post = f.post
+
+    def post(url, data=None, timeout=None):
+        f.posted = True
+        return real_post(url, data, timeout)
+    f.install(monkeypatch)
+    monkeypatch.setattr(requests, "post", post)
+    ents = [mb.BY_NAME["age"]]
+    mb.run(bd, [(D(2026, 11, 1), D(2026, 11, 2))], None, client=client()[0], accounts=ONE, entries=ents, pause=lambda s: None, today=D(2026, 11, 12))
+    assert mb.async_first_sets(bd) == {"age"}
+    plain_before = [c for c in f.calls if c[0] == "GET" and "/act_" in c[1]]
+    assert len(plain_before) == 2                                                           # whole span, then day one; day two goes straight to async
+    f.calls.clear()
+    mb.run(bd, [(D(2026, 11, 3), D(2026, 11, 4))], None, client=client()[0], accounts=ONE, entries=ents, pause=lambda s: None, today=D(2026, 11, 13))      # a later run: loaded from the database
+    assert [c for c in f.calls if c[0] == "GET" and "/act_" in c[1]] == [] and len([c for c in f.calls if c[0] == "POST"]) == 1
+
+
+def test_backfill_stages_put_the_four_heavy_sets_last_with_one_probe_on_the_newest_window():
+    ws = mb.windows_newest_first(D(2026, 1, 1), D(2026, 4, 1), 30)
+    stages = mb.backfill_stages(mb.select_sets(None), ws)
+    assert [s[0] for s in stages] == ["light-newest-window", "heavy-probe", "light", "heavy"]
+    assert stages[0][1] == stages[1][1] == ws[:1] and stages[2][1] == ws[1:] and stages[3][1] == ws
+    assert {e.name for e in stages[1][2]} == set(mb.HEAVY_LAST) == {e.name for e in stages[3][2]}
+    assert not set(mb.HEAVY_LAST) & {e.name for e in stages[0][2] + stages[2][2]} and len(stages[0][2]) + len(stages[1][2]) == len(mb.CATALOG)
+    assert [e.tier for e in stages[0][2]] == sorted(e.tier for e in stages[0][2])             # cheap first inside a stage
+
+
+def test_auto_pulls_light_sets_to_full_depth_before_heavy_ones_after_a_single_probe_window(bd, monkeypatch):
+    f = Fake().install(monkeypatch)
+    sets = ["age", "gender", "region"]
+    out = auto(bd, D(2026, 11, 10), names=sets, max_days=40)
+    assert out["backfill_done"]
+    order = []
+    ws = mb.windows_newest_first(D(2026, 10, 1), D(2026, 11, 9), 15)
+    for b, since in calls_by_set(f):
+        wi = next(i for i, (a, z) in enumerate(ws) if a <= D.fromisoformat(since) <= z)
+        if not order or order[-1] != (b, wi):
+            order.append((b, wi))
+    assert order == [("age", 0), ("gender", 0), ("region", 0), ("age", 1), ("gender", 1), ("age", 2), ("gender", 2), ("region", 1), ("region", 2)]
+    assert mb._special(bd, mb.PROBE_SET) is not None
+
+
+def test_heavy_probe_is_attempted_once_and_does_not_hold_the_light_backfill(bd, monkeypatch):
+    f = Fake().install(monkeypatch)
+    sets = ["age", "region"]
+    t = {"t": 0}
+    st = mb.auto(bd, mb.Stopper(100, None, clock=lambda: t["t"]), sets, max_days=40, window_days=15, client=client()[0], accounts=ONE, today=D(2026, 11, 10),
+                 pause=lambda s: t.__setitem__("t", t["t"] + 1500))          # 25 minutes per set pull: the probe (25% = 25 minutes) is cut off after the first heavy window piece
+    probe_done = mb._special(bd, mb.PROBE_SET) is not None
+    assert probe_done and "backfill" in st
+    f.calls.clear()
+    t["t"] = 0
+    auto(bd, D(2026, 11, 10), names=sets, max_days=40)
+    assert mb._special(bd, mb.DONE_SET) is not None                                          # the heavy stage resumed the probe's leftovers and went on to the full depth
+    assert bd.execute("SELECT min(day) FROM meta_breakdown_daily WHERE breakdown_set = 'region'").fetchone()[0] == D(2026, 10, 1)
+
+
+def test_per_set_time_numbers_are_kept_in_the_run_stats(bd, monkeypatch):
+    Fake().install(monkeypatch)
+    st = run(bd, [(D(2026, 11, 1), D(2026, 11, 1))], ["age", "gender"])
+    assert set(st["per_set"]) == {"age", "gender"} and st["per_set"]["age"]["rows"] > 0 and st["sets_pulled"] == 2

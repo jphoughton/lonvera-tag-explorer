@@ -37,7 +37,7 @@ def normalise_set(v: str) -> str:
 
 def coverage(conn) -> dict:
     rows = conn.execute("SELECT breakdown_set, level, status, first_day, last_day, last_error, rows, checked_at FROM meta_breakdown_coverage ORDER BY breakdown_set, level").fetchall()
-    prog = conn.execute("SELECT count(*) AS n, max(done_at) AS last FROM meta_breakdown_progress").fetchone()
+    prog = conn.execute("SELECT count(*) AS n, max(done_at) AS last FROM meta_breakdown_progress WHERE level IN ('ad', 'campaign', 'account')").fetchone()
     out = [{"breakdown_set": r["breakdown_set"], "level": r["level"], "status": r["status"], "first_day": r["first_day"].isoformat() if r["first_day"] else None,
             "last_day": r["last_day"].isoformat() if r["last_day"] else None, "rows": int(r["rows"]), "last_error": r["last_error"],
             "checked_at": r["checked_at"].isoformat()} for r in rows]

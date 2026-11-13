@@ -55,7 +55,8 @@ def get_token() -> str:
         raise GraphError("no Meta token available (set META_ACCESS_TOKEN): " + db.scrub(e)) from None
 
 
-def graph_get(url: str, params: dict | None, what: str, max_retries: int = 7, sleep=time.sleep):
+def graph_get(url: str, params: dict | None, what: str, max_retries: int = 7, sleep=time.sleep, on_wait=None):
+    """on_wait(seconds, is_rate_limit) is called before every retry sleep and may raise to stop the retrying (the caller's own time budget)."""
     import requests
     fails = 0
     while True:
@@ -83,6 +84,8 @@ def graph_get(url: str, params: dict | None, what: str, max_retries: int = 7, sl
         if fails > max_retries:
             raise (RateLimited if rate else GraphError)(f"{what}: gave up after {max_retries} retries: HTTP {code} code {ecode}: {msg[:160]}")
         wait = min(900, 60 * 2 ** (fails - 1)) if rate else 15 * fails
+        if on_wait:
+            on_wait(wait, bool(rate))
         db.log(f"  {what}: {'rate limit' if rate else 'transient error'} (HTTP {code}, code {ecode}) retry {fails}/{max_retries} in {wait}s")
         sleep(wait)
 

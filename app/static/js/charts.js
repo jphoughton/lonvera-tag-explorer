@@ -199,7 +199,7 @@ export { BAR_COLOR, LINE_COLOR };
 export function trendChart(canvas, cfg) {
   const { labels, grain } = cfg;
   const sh = (cfg.shades || []).filter((x) => x && x.from && x.to).map((x) => { const [i0, i1] = shadeIdx(labels, grain, x.from, x.to); return { i0, i1, color: x.color }; });
-  const datasets = cfg.datasets.map((ds) => {
+  const datasets = cfg.datasets.flatMap((ds) => {
     const bar = ds.type === 'bar';
     const o = {
       type: ds.type, label: ds.label, data: ds.data, yAxisID: ds.axis === 'right' ? 'y1' : 'y',
@@ -208,6 +208,7 @@ export function trendChart(canvas, cfg) {
       _kind: ds.kind,
       _cmpDates: ds.cmpDates || null,
       _hideInTip: !!ds.hideInTip,                 // its value is already said by cfg.extra
+      _halo: false,
     };
     if (bar) {
       o.borderRadius = 0;
@@ -219,14 +220,25 @@ export function trendChart(canvas, cfg) {
       if (ds.partialDash && cfg.partial && cfg.partial.some(Boolean)) {
         o.segment = { borderDash: (c) => (cfg.partial[c.p1DataIndex] || cfg.partial[c.p0DataIndex] ? [3, 3] : undefined) };
       }
+      if (ds.markers) {                                // point markers; a partial period gets an open marker
+        const open = (c) => !!(cfg.partial && cfg.partial[c.dataIndex]);
+        o.pointRadius = 4; o.pointHoverRadius = 6; o.pointBorderWidth = 2; o.pointHitRadius = 8;
+        o.pointBackgroundColor = (c) => (open(c) ? '#ffffff' : ds.color);
+        o.pointBorderColor = (c) => (open(c) ? ds.color : '#ffffff');
+      }
     }
-    return o;
+    if (ds.halo && !bar) {                             // a wider white line under the line so it stays visible over bars
+      const halo = { ...o, label: ds.label + ' (outline)', _halo: true, _hideInTip: true, borderColor: '#ffffff', borderWidth: (ds.width || 2.2) + 4, order: o.order + 0.5,
+        pointRadius: 0, pointHoverRadius: 0, pointHitRadius: 0, pointBackgroundColor: '#ffffff', pointBorderColor: '#ffffff' };
+      return [halo, o];
+    }
+    return [o];
   });
   const axis = (side, a, color, position) => (a ? {
     position, stacked: side === 'left' && !!cfg.stackedBars, beginAtZero: !['roas', 'rate', 'money2'].includes(a.kind) || side === 'left',
     grid: side === 'left' ? undefined : { drawOnChartArea: false },
     border: { color },
-    ticks: { color, callback: (v) => tickFmt(a.kind, v) },
+    ticks: { color, callback: (v) => tickFmt(a.kind, v), ...(a.maxTicks ? { maxTicksLimit: a.maxTicks } : {}) },
     title: { display: true, text: a.title, color, font: { weight: '600' } },
   } : { display: false, position, grid: { drawOnChartArea: false } });
   const chart = new Chart(canvas, {
@@ -240,7 +252,7 @@ export function trendChart(canvas, cfg) {
         y1: axis('right', cfg.right, '#c2610f', 'right'),
       },
       plugins: {
-        legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10, sort: (a, b) => a.datasetIndex - b.datasetIndex } },
+        legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10, sort: (a, b) => a.datasetIndex - b.datasetIndex, filter: (item, data) => !(data.datasets[item.datasetIndex] || {})._halo } },
         windowShade: { shades: sh },
         stackTotals: { on: !!(cfg.stackTotals && cfg.stackedBars && labels.length <= 16 && cfg.left), format: (v) => fmtMetric(cfg.left ? cfg.left.kind : 'money', v) },
         tooltip: {

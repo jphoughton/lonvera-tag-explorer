@@ -49,3 +49,7 @@ td.eml-empty, p.eml-empty { padding: 18px; color: var(--muted); max-width: none;
   .eml-modal { padding: 12px 12px 14px; }
   .eml-dtiles .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+@media (max-width: 520px) {
+  .eml-chart .chartbox { min-height: 300px; }
+  .eml-chart .ctl select { max-width: 100%; }
+}

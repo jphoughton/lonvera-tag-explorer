@@ -166,7 +166,7 @@ def test_chart_grain_metric_and_partial_marking(page):
     expect(page.locator("[data-testid=eml-chart-title]")).to_have_text("Opens (views) by month")
     assert {"grain": "month", "metric": "opens"}.items() <= params(page).items()
     labels = page.locator("[data-testid=eml-metric] option").all_inner_texts()
-    assert labels == ["Revenue", "Sends", "Delivered", "Opens (views)", "Open rate", "Click rate", "Orders", "Revenue per delivered"]
+    assert labels == ["Revenue", "Sends", "Delivered", "Opens (views)", "Open rate", "Click rate", "Orders", "Revenue per delivered", "Click to open", "Orders per delivered", "Unsubscribe rate"]
     page.locator("[data-testid=eml-split]").check()
     page.wait_for_function("() => new URLSearchParams(location.search).get('split') === '1'")
     idle(page)
@@ -177,6 +177,95 @@ def test_chart_grain_metric_and_partial_marking(page):
     page.wait_for_selector("[data-testid=eml-page]")
     idle(page)
     expect(page.locator("[data-testid=eml-chart-title]")).to_have_text("Opens (views) by month")        # the choices live in the URL
+
+
+def chart_info(page):
+    return page.evaluate("""() => { const c = Chart.getChart(document.getElementById('eml-chart'));
+      const shown = (c.legend.legendItems || []).map(i => i.text);
+      const line = c.data.datasets.find(d => d.type === 'line' && !d._halo);
+      return { legend: shown, y1: !!c.scales.y1 && c.scales.y1.options.display !== false, y1title: c.scales.y1 && c.scales.y1.options.title && c.scales.y1.options.title.text,
+        y1ticks: c.scales.y1 ? c.scales.y1.ticks.map(t => t.label) : [], line: line ? { axis: line.yAxisID, data: line.data, label: line.label } : null,
+        bars: c.data.datasets.filter(d => d.type === 'bar').map(d => d.label), n: c.data.labels.length }; }""")
+
+
+def test_second_metric_line_on_a_right_axis(page):
+    msgs = []
+    page.on("console", lambda m: msgs.append(m.text) if m.type == "error" else None)
+    goto(page, "?kind=all")
+    # default: no line, no right axis
+    assert chart_info(page)["line"] is None and not chart_info(page)["y1"]
+    assert page.locator("[data-testid=eml-line] option").all_inner_texts()[0] == "None"
+    page.locator("[data-testid=eml-metric]").select_option("sends")
+    page.locator("[data-testid=eml-line]").select_option("click_rate")
+    expect(page.locator("[data-testid=eml-chart-title]")).to_have_text("Sends (bars) and Click rate (line) by day")
+    assert {"metric": "sends", "line": "click_rate"}.items() <= params(page).items()
+    info = chart_info(page)
+    assert info["y1"] and info["y1title"].startswith("Click rate")
+    assert info["line"]["axis"] == "y1" and info["line"]["label"] == "Click rate (line, right)"
+    assert "Sends (bars, left)" in info["legend"] and "Click rate (line, right)" in info["legend"] and not any("outline" in t for t in info["legend"])
+    assert any(t.endswith("%") for t in info["y1ticks"])
+    ts = api(page, "/api/email/timeseries?window=30d&grain=day")
+    assert info["n"] == len(ts["buckets"]) == len(info["line"]["data"]) and all(isinstance(v, float) for v in info["line"]["data"])
+    assert [round(v, 9) for v in info["line"]["data"]] == [round(b["v"]["click_rate"], 9) for b in ts["buckets"]]
+    # both values on hover
+    box = page.locator("#eml-chart").bounding_box()
+    page.mouse.move(box["x"] + box["width"] * 0.5, box["y"] + box["height"] * 0.5)
+    tip = page.evaluate("() => { const c = Chart.getChart(document.getElementById('eml-chart')); const a = c.getActiveElements(); return a.map(e => c.data.datasets[e.datasetIndex].label); }")
+    assert "Sends (bars, left)" in tip and "Click rate (line, right)" in tip
+    # week and month: partial bucket is an open marker with a dashed segment, the note says so, line has a point per bucket
+    page.locator("[data-testid=eml-grain-week]").click()
+    pressed(page, "eml-grain-week")
+    expect(page.locator("[data-testid=eml-chart-title]")).to_have_text("Sends (bars) and Click rate (line) by week")
+    note = page.locator("[data-testid=eml-chart-note]").inner_text()
+    assert "partial" in note and "open marker" in note and "right axis" in note
+    wk = api(page, "/api/email/timeseries?window=30d&grain=week")
+    assert chart_info(page)["n"] == len(wk["buckets"])
+    page.locator("[data-testid=eml-grain-month]").click()
+    pressed(page, "eml-grain-month")
+    assert chart_info(page)["line"]["data"] and all(v is not None for v in chart_info(page)["line"]["data"])
+    # split: bars stay split, the line is the combined total, and the note says so
+    page.locator("[data-testid=eml-split]").check()
+    page.wait_for_function("() => new URLSearchParams(location.search).get('split') === '1'")
+    idle(page)
+    page.wait_for_function("() => Chart.getChart(document.getElementById('eml-chart')).data.datasets.some(d => d.label.startsWith('Flows: Sends'))")
+    info = chart_info(page)
+    assert any(b.startswith("Flows: Sends") for b in info["bars"]) and any(b.startswith("Campaigns: Sends") for b in info["bars"]) and info["line"]["axis"] == "y1"
+    assert "combined total of flows and campaigns" in page.locator("[data-testid=eml-chart-note]").inner_text()
+    page.locator("[data-testid=eml-split]").uncheck()
+    idle(page)
+    # reload restores
+    page.reload()
+    page.wait_for_selector("[data-testid=eml-page]")
+    idle(page)
+    assert params(page).get("line") == "click_rate" and page.locator("[data-testid=eml-line]").input_value() == "click_rate"
+    assert chart_info(page)["y1"] and chart_info(page)["line"]["label"] == "Click rate (line, right)"
+    page.screenshot(path=str(SHOTS / "email_06_bar_and_line.png"), full_page=True)
+    # a rate as the bar measure still draws bars when a line is chosen; same metric twice is allowed
+    page.locator("[data-testid=eml-metric]").select_option("open_rate")
+    page.locator("[data-testid=eml-line]").select_option("open_rate")
+    assert chart_info(page)["bars"] and chart_info(page)["y1"]
+    # None removes the line and the right axis; an invalid value falls back to None
+    page.locator("[data-testid=eml-line]").select_option("")
+    info = chart_info(page)
+    assert not info["y1"] and (info["line"] is None or info["line"]["axis"] == "y") and "line" not in params(page)        # a rate alone is its own single-axis line, as before
+    expect(page.locator("[data-testid=eml-chart-title]")).to_have_text("Open rate by month")
+    goto(page, "?line=bogus")
+    assert page.locator("[data-testid=eml-line]").input_value() == "" and not chart_info(page)["y1"]
+    text = page.locator("[data-testid=eml-chart-panel]").inner_text()
+    assert "null" not in text and "undefined" not in text and "\u2014" not in text
+    assert not msgs, msgs
+
+
+def test_second_metric_chart_on_a_phone(page):
+    page.set_viewport_size({"width": 375, "height": 812})
+    goto(page, "?metric=sends&line=click_rate&grain=week")
+    assert no_sideways_scroll(page)
+    info = chart_info(page)
+    assert info["y1"] and info["line"]["label"] == "Click rate (line)" and "Sends (bars)" in info["legend"]
+    assert len(info["y1ticks"]) <= 6
+    assert page.evaluate("() => document.getElementById('eml-chart').getBoundingClientRect().width") <= 375
+    assert no_sideways_scroll(page)
+    page.screenshot(path=str(SHOTS / "email_07_bar_and_line_phone.png"), full_page=True)
 
 
 def test_flows_table_sorts_and_opens_the_flows_messages(page):

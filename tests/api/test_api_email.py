@@ -300,6 +300,30 @@ def test_split_flows_and_campaigns_adds_up_to_the_total(ec):
         check_totals(b["v"], expect(pick(ROWS, max(s, FIRST), min(e, THROUGH), channel="email")))
 
 
+def test_one_response_holds_a_bar_and_a_line_measure_per_bucket_from_sums(ec):
+    """The two-axis chart (bars = sends, line = click rate) needs no second request: each bucket's `v` carries every measure, rates from that bucket's sums."""
+    for grain, window in (("day", "30d"), ("week", "all"), ("month", "all")):
+        d = get(ec, "/api/email/timeseries", window=window, grain=grain, split="1")
+        assert d["split"] is True
+        for b in d["buckets"]:
+            s, e = D.fromisoformat(b["start"]), D.fromisoformat(b["end"])
+            rows = pick(ROWS, max(s, FIRST), min(e, THROUGH))
+            bar, line = sum(r["sends"] for r in rows), (sum(r["unique_clicks"] for r in rows) / sum(r["delivered"] for r in rows) if rows and sum(r["delivered"] for r in rows) else None)
+            assert b["v"]["sends"] == bar and near(b["v"]["click_rate"], line), (grain, b["start"])
+            # with the split on the line is still the combined total: flows plus campaigns sums, not either alone
+            fl, ca = (pick(ROWS, max(s, FIRST), min(e, THROUGH), source=k) for k in ("flow", "campaign"))
+            dl = sum(r["delivered"] for r in fl + ca)
+            assert near(b["v"]["click_rate"], sum(r["unique_clicks"] for r in fl + ca) / dl if dl else None)
+    # a ratio of sums is not an average of the daily ratios: the month's click rate differs from the mean of its days' rates
+    m = get(ec, "/api/email/timeseries", window="all", grain="month")["buckets"][2]
+    days = [pick(ROWS, x, x) for x in (D(2026, 9, 1) + dt.timedelta(days=i) for i in range(30))]
+    mean_daily = sum(sum(r["unique_clicks"] for r in x) / sum(r["delivered"] for r in x) for x in days) / len(days)
+    assert m["v"]["click_rate"] != pytest.approx(mean_daily, abs=1e-12)
+    # partial bucket flags ride along with the same payload (the line's open marker reads them)
+    wk = get(ec, "/api/email/timeseries", window="all", grain="week")["buckets"]
+    assert wk[0]["partial"] and wk[-1]["partial"] and wk[0]["v"]["click_rate"] is not None
+
+
 # ----------------------------------------------------------------------------- flows
 def test_flows_table_ties_and_sorts_by_revenue(ec):
     d = get(ec, "/api/email/flows", window="30d")
