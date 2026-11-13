@@ -178,7 +178,7 @@ def test_metric_sources_name_real_views_and_columns(bdb):
 
 def test_generator_catalog_sql_is_what_the_migration_holds():
     text = (ROOT / "migrations" / "230_analytics_brain_views.sql").read_text()
-    assert gen.catalog_sql(D) in (ROOT / "migrations" / "253_amazon_keyword_views.sql").read_text()      # the latest migration that re-issues the catalog / glossary (230 holds the first version)
+    assert gen.catalog_sql(D) in (ROOT / "migrations" / "255_meta_breakdown_catalog.sql").read_text()      # the latest migration that re-issues the catalog / glossary (230 holds the first version)
     assert "GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO analytics_reader" in text
     assert text.count("CREATE OR REPLACE VIEW analytics.") >= 69
 

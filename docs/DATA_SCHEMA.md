@@ -881,11 +881,11 @@ SELECT id, job, started_at, error FROM analytics.etl_runs WHERE status = 'failed
 
 *view*
 
-**Purpose.** Meta results split by ten everyday breakdowns (audience segment, age, gender, age x gender, country, region, publisher platform, platform position, device platform, hour of day), one row per day x ad x breakdown x value. Meta-reported numbers.
+**Purpose.** Meta results split by thirteen everyday breakdowns (audience segment, age, gender, age x gender, country, region, publisher platform, platform position, impression device, device platform, placement, placement x device, hour of day), one row per day x ad x breakdown x value. Meta-reported numbers, including adds to cart and initiated checkouts (the funnel the why tool decomposes by segment).
 
 - **Domain:** marketing
 - **Grain:** one row per (day, account, ad_id, breakdown, value); NO aggregation above ad
-- **Source:** public.meta_breakdown_daily (etl.meta_breakdowns, Meta Insights API) joined to the ten breakdown names
+- **Source:** public.meta_breakdown_daily (etl.meta_breakdowns, Meta Insights API) joined to the thirteen breakdown names
 - **Refresh:** nightly, trailing 7 days re-pulled; older windows come from the backfill (newest first)
 - **Coverage:** first and last day per breakdown: min(day) / max(day) over this view (a backfill moves first_day back window by window, up to 365 days; a breakdown Meta only serves for a shorter period stops earlier); ad_id and adset_id are NULL only where Meta refused a breakdown at ad level
 - **Caveat:** Every one of the ten breakdowns is requested at AD level; ad_id and adset_id are NULL only for a breakdown Meta refused at ad level (then campaign_id is set and ad_id and adset_id are NULL; at account level campaign_id is NULL too). Query this view with ad_id IS NOT NULL (or read public.meta_breakdown_coverage: status and level per breakdown) to see which breakdowns have ad-level rows.
@@ -894,6 +894,8 @@ SELECT id, job, started_at, error FROM analytics.etl_runs WHERE status = 'failed
 - **Caveat:** Different breakdowns are different cuts of the same spend: sum within one breakdown only, never across breakdowns.
 - **Caveat:** value for age_gender is 'age|gender' (for example '25-34|female'); hourly values are Meta's advertiser-time-zone hour buckets ('00:00:00 - 00:59:59').
 - **Caveat:** Meta can return purchases for a day with no spend (view-through): keep those rows.
+- **Caveat:** add_to_carts and initiated_checkouts are NULL (not 0) for rows pulled before 2026-11-13 until etl.meta_breakdowns --fill-funnel has filled them; sum them only over days where they are not NULL. placement values are 'publisher|position', placement_device 'publisher|position|device'.
+- **Caveat:** The why tool reads this view to split a move in CPM, click rate, cost per click, link click to add to cart, add to cart to purchase and cost per purchase into segment mix and within-segment rate shifts (shift-share), against a same-weekday control and the segment's own daily noise.
 
 | Column | Type | Null | Meaning |
 |---|---|---|---|
@@ -902,7 +904,7 @@ SELECT id, job, started_at, error FROM analytics.etl_runs WHERE status = 'failed
 | `campaign_id` | text |  | Meta campaign id (NULL only for a breakdown held at account level). |
 | `adset_id` | text |  | Meta ad set id (NULL only for a breakdown Meta refused at ad level). |
 | `ad_id` | text |  | Meta ad id (NULL only for a breakdown Meta refused at ad level: campaign or account rows). |
-| `breakdown` | text |  | audience_segment (from user_segment_key) \| age \| gender \| age_gender \| country \| region \| publisher_platform \| platform_position \| device_platform \| hourly (advertiser time zone). All ten are requested at ad level. |
+| `breakdown` | text |  | audience_segment (from user_segment_key) \| age \| gender \| age_gender \| country \| region \| publisher_platform \| platform_position \| impression_device \| device_platform \| placement \| placement_device \| hourly (advertiser time zone). All are requested at ad level. |
 | `value` | text |  | The text value of the breakdown ('25-34', 'female', 'US', 'facebook', '25-34\|female' for age_gender, an hour bucket for hourly). |
 | `spend` | numeric(14,2) |  | Meta spend, dollars. |
 | `impressions` | bigint |  | Meta impressions. |
@@ -911,6 +913,8 @@ SELECT id, job, started_at, error FROM analytics.etl_runs WHERE status = 'failed
 | `unique_outbound_clicks` | bigint |  | Unique outbound clicks within the row (not additive). |
 | `purchases` | numeric(12,2) |  | Meta-reported purchases. |
 | `purchase_value` | numeric(14,2) |  | Meta-reported purchase value, dollars. |
+| `add_to_carts` | numeric(12,2) |  | Meta-reported adds to cart (omni_add_to_cart, else add_to_cart, else pixel). NULL for rows not filled yet, never 0. |
+| `initiated_checkouts` | numeric(12,2) |  | Meta-reported initiated checkouts (omni_initiated_checkout, else initiate_checkout, else pixel). NULL for rows not filled yet. |
 
 *Spend and Meta ROAS by age, last 7 complete days*
 
@@ -5628,6 +5632,8 @@ SELECT coalesce(rule, '(unmatched)') AS rule, count(*) AS families FROM meta_fam
 | `purchase_value` | numeric(14,2) | yes | Meta-reported purchase value (same action type rule), gross dollars. |
 | `pulled_at` | timestamptz | no | When this row was last written by the pull. |
 | `dims_hash` | text | no | md5 of dims_key (generated column), the fixed-size stand-in for dims_key in the primary key so very long values (ad copy assets) can be indexed. |
+| `add_to_cart` | numeric(12,2) | yes | Meta-reported adds to cart (omni_add_to_cart, else add_to_cart, else pixel add to cart, same rule as ad_daily). NULL for action breakdown sets and for rows not filled yet (never 0); history is filled by etl.meta_breakdowns --fill-funnel. |
+| `initiate_checkout` | numeric(12,2) | yes | Meta-reported initiated checkouts (omni_initiated_checkout, else initiate_checkout, else pixel). NULL for action breakdown sets and for rows not filled yet. |
 
 ### public.meta_breakdown_coverage
 

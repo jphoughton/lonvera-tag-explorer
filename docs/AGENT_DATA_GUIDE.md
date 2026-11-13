@@ -92,7 +92,7 @@ Monthly CPM before 2026-05-06 comes from `meta_campaign_daily_history` (`sum(spe
 
 ## Not in the database (say so instead of guessing)
 
-Reach / frequency below account level, video and hook-rate metrics, age / gender / placement / country breakdowns, ad budgets and bids per ad set, Google ad groups / keywords / search terms,
+Reach / frequency below account level, video and hook-rate metrics, age / gender / placement / country breakdowns before 2026-10-12 and Upstack new-customer attribution for any breakdown (the breakdown views in `analytics.meta_breakdown_daily` are Meta-reported), ad budgets and bids per ad set before the change feeds (`meta_change_ledger`, `meta_change_log`, `meta_adset_state_daily`) began, Google ad groups / keywords / search terms,
 TikTok / Bing, customer- or order-level data, email and SMS. **Projection outputs** (the computed P&L, cash, financing and inventory-burn results) are calculated by the app on demand and are not stored:
 the views hold their inputs (levers, series, actuals, cohorts, purchase orders, stock); read the results from the HTTP API (`/api/projection/...`). Nothing here names a person (audit trails and
 `*_by` columns are not exposed) and nothing is a secret. The complete list is under "Gaps" and "Excluded from the analytics schema" in `docs/DATA_SCHEMA.md`.

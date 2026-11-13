@@ -9543,6 +9543,18 @@
      "type": "text",
      "nullable": false,
      "description": "md5 of dims_key (generated column), the fixed-size stand-in for dims_key in the primary key so very long values (ad copy assets) can be indexed."
+    },
+    {
+     "name": "add_to_cart",
+     "type": "numeric(12,2)",
+     "nullable": true,
+     "description": "Meta-reported adds to cart (omni_add_to_cart, else add_to_cart, else pixel add to cart, same rule as ad_daily). NULL for action breakdown sets and for rows not filled yet (never 0); history is filled by etl.meta_breakdowns --fill-funnel."
+    },
+    {
+     "name": "initiate_checkout",
+     "type": "numeric(12,2)",
+     "nullable": true,
+     "description": "Meta-reported initiated checkouts (omni_initiated_checkout, else initiate_checkout, else pixel). NULL for action breakdown sets and for rows not filled yet."
     }
    ],
    "examples": []
@@ -9700,11 +9712,11 @@
    "relation": "meta_breakdown_daily",
    "kind": "view",
    "group": "analytics",
-   "purpose": "Meta results split by ten everyday breakdowns (audience segment, age, gender, age x gender, country, region, publisher platform, platform position, device platform, hour of day), one row per day x ad x breakdown x value. Meta-reported numbers.",
+   "purpose": "Meta results split by thirteen everyday breakdowns (audience segment, age, gender, age x gender, country, region, publisher platform, platform position, impression device, device platform, placement, placement x device, hour of day), one row per day x ad x breakdown x value. Meta-reported numbers, including adds to cart and initiated checkouts (the funnel the why tool decomposes by segment).",
    "grain": "one row per (day, account, ad_id, breakdown, value); NO aggregation above ad",
    "primary_key": [],
    "foreign_keys": [],
-   "source": "public.meta_breakdown_daily (etl.meta_breakdowns, Meta Insights API) joined to the ten breakdown names",
+   "source": "public.meta_breakdown_daily (etl.meta_breakdowns, Meta Insights API) joined to the thirteen breakdown names",
    "refresh": "nightly, trailing 7 days re-pulled; older windows come from the backfill (newest first)",
    "coverage": "first and last day per breakdown: min(day) / max(day) over this view (a backfill moves first_day back window by window, up to 365 days; a breakdown Meta only serves for a shorter period stops earlier); ad_id and adset_id are NULL only where Meta refused a breakdown at ad level",
    "caveats": [
@@ -9713,7 +9725,9 @@
     "reach and unique_outbound_clicks are per row (one ad, one day, one value): never sum them across days, ads or values. spend, impressions, link_clicks, purchases and purchase_value are additive within one breakdown.",
     "Different breakdowns are different cuts of the same spend: sum within one breakdown only, never across breakdowns.",
     "value for age_gender is 'age|gender' (for example '25-34|female'); hourly values are Meta's advertiser-time-zone hour buckets ('00:00:00 - 00:59:59').",
-    "Meta can return purchases for a day with no spend (view-through): keep those rows."
+    "Meta can return purchases for a day with no spend (view-through): keep those rows.",
+    "add_to_carts and initiated_checkouts are NULL (not 0) for rows pulled before 2026-11-13 until etl.meta_breakdowns --fill-funnel has filled them; sum them only over days where they are not NULL. placement values are 'publisher|position', placement_device 'publisher|position|device'.",
+    "The why tool reads this view to split a move in CPM, click rate, cost per click, link click to add to cart, add to cart to purchase and cost per purchase into segment mix and within-segment rate shifts (shift-share), against a same-weekday control and the segment's own daily noise."
    ],
    "like": null,
    "domain": "marketing",
@@ -9752,7 +9766,7 @@
      "name": "breakdown",
      "type": "text",
      "nullable": null,
-     "description": "audience_segment (from user_segment_key) | age | gender | age_gender | country | region | publisher_platform | platform_position | device_platform | hourly (advertiser time zone). All ten are requested at ad level."
+     "description": "audience_segment (from user_segment_key) | age | gender | age_gender | country | region | publisher_platform | platform_position | impression_device | device_platform | placement | placement_device | hourly (advertiser time zone). All are requested at ad level."
     },
     {
      "name": "value",
@@ -9801,6 +9815,18 @@
      "type": "numeric(14,2)",
      "nullable": null,
      "description": "Meta-reported purchase value, dollars."
+    },
+    {
+     "name": "add_to_carts",
+     "type": "numeric(12,2)",
+     "nullable": null,
+     "description": "Meta-reported adds to cart (omni_add_to_cart, else add_to_cart, else pixel). NULL for rows not filled yet, never 0."
+    },
+    {
+     "name": "initiated_checkouts",
+     "type": "numeric(12,2)",
+     "nullable": null,
+     "description": "Meta-reported initiated checkouts (omni_initiated_checkout, else initiate_checkout, else pixel). NULL for rows not filled yet."
     }
    ],
    "examples": [
