@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import auth, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, db, google as gg, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import auth, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, db, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -684,6 +684,13 @@ def trends_plan():
     """Trends, month grain: the Pacing page's projected / target / % diff per month (from=YYYY-MM-DD&to=YYYY-MM-DD). Answers 200 with available=false and the reason when the
     plan cannot be built, so the Trends table still renders. See app/trends.py (plan_payload)."""
     return jsonify(trn.plan_payload(request.args))
+
+
+@bp.get("/api/inventory/history")
+def inventory_history():
+    """Inventory history: units on hand and allocated per product and location on one past day (date=YYYY-MM-DD, default the newest day with a snapshot), plus a daily
+    trend per location over the last days=<n> days (default 30, at most 180) ending on that day. Estimate rows are marked, missing days are listed as gaps. See app/inventory_history.py."""
+    return jsonify(invh.history(db.get_conn(), request.args))
 
 
 @bp.get("/api/tag-lookup")

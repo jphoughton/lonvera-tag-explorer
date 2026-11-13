@@ -251,3 +251,42 @@ def test_data_gap_is_not_reported_when_its_job_already_is(conn):
     assert [f.id for f in findings] == ["job:run_daily"]
     findings, _ = A.run_checks(conn, ctx(), [("a", lambda c, x: [gap])])
     assert [f.id for f in findings] == ["fresh:meta"]                                  # job looks fine but the data is behind: still reported
+
+
+# ---------------------------------------------------------------------------------------------------------------- daily stock snapshots (inventory)
+@pytest.fixture
+def clean_snapshots(conn):
+    """proj_demand_snapshot is not truncated by the shared fixture: empty it before and after so no other test sees these rows."""
+    conn.execute("TRUNCATE proj_demand_snapshot")
+    conn.commit()
+    yield
+    conn.rollback()
+    conn.execute("TRUNCATE proj_demand_snapshot")
+    conn.commit()
+
+
+def _snap(conn, loc, days):
+    conn.execute("INSERT INTO proj_demand_snapshot (location, product, as_of, on_hand, allocated, source) "
+                 "SELECT %s, 'bull', d::date, 10, 0, 'x' FROM unnest(%s::date[]) d", (loc, days))
+    conn.commit()
+
+
+def test_inventory_gap_is_flagged_per_location_and_quiet_when_yesterday_exists(conn, clean_snapshots):
+    yesterday = dt.date(2026, 11, 8)                     # NOW = Mon 2026-11-09 12:00 PT
+    _snap(conn, "revamp", [dt.date(2026, 11, 3), yesterday, dt.date(2026, 11, 9)])
+    _snap(conn, "amazon", [dt.date(2026, 11, 3), dt.date(2026, 11, 6), dt.date(2026, 11, 7)])       # last day Nov 7: yesterday (Nov 8) is missing
+    got = by_id(A.check_inventory_snapshots(conn, ctx()))
+    assert list(got) == ["inv:amazon"]
+    assert "Amazon" in got["inv:amazon"].title and "2026-11-08" in got["inv:amazon"].title and "2026-11-07" in got["inv:amazon"].title
+    _snap(conn, "amazon", [yesterday])
+    assert A.check_inventory_snapshots(conn, ctx()) == []
+
+
+def test_inventory_location_with_no_series_is_silent_and_gap_is_a_symptom_of_its_job(conn, clean_snapshots):
+    assert A.check_inventory_snapshots(conn, ctx()) == []          # intl and amazon have not started: nothing to be late
+    _snap(conn, "intl", [dt.date(2026, 11, 4)])
+    f = A.check_inventory_snapshots(conn, ctx())
+    assert [x.id for x in f] == ["inv:intl"]
+    job = A.Finding("job:inventory_snapshots", "failed", "fix")
+    kept, _ = A.run_checks(conn, ctx(), checks=[("a", lambda c, x: f + [job])])
+    assert [x.id for x in kept] == ["job:inventory_snapshots"]      # the gap is reported through its job, not twice

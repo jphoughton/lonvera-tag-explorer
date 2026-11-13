@@ -28,6 +28,7 @@ export const SECTIONS = [
     key: 'plan', label: 'Plan', hint: 'What will happen: the projections model',
     pages: [
       { key: 'projections', label: 'Projections', href: '/projection', testid: 'nav-projections', hint: 'Pacing, scenarios, profit and loss, inventory and cash', external: true },
+      { key: 'inventory-history', label: 'Inventory history', href: '/inventory/history', testid: 'nav-inventory-history', hint: 'Units on hand for any past day, every warehouse' },
     ],
   },
 ];
@@ -45,6 +46,7 @@ const RESOLVE = [
   { re: /^\/promotions\/?$/, section: 'creative', page: 'test-to-scale' },
   { re: /^\/lookup\/?$/, section: 'creative', page: null },
   { re: /^\/connect-agent\/?$/, section: null, page: null },
+  { re: /^\/inventory\/history\/?$/, section: 'plan', page: 'inventory-history' },
   { re: /^\/trends\/?$/, section: 'performance', page: 'trends' },
   { re: /^\/campaigns\/?$/, section: 'performance', page: 'campaigns' },
   { re: /^\/(p|ad)\//, section: 'performance', page: 'meta' },

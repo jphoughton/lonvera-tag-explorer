@@ -118,6 +118,14 @@
   {
    "service": "etl",
    "order": 6,
+   "module": "etl.inventory_snapshots",
+   "args": "",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 7,
    "module": "etl.competitor_ads",
    "args": "--if-sunday",
    "fatal": false,
@@ -125,7 +133,7 @@
   },
   {
    "service": "etl",
-   "order": 7,
+   "order": 8,
    "module": "etl.creative_priorities",
    "args": "--if-sunday",
    "fatal": false,
@@ -133,7 +141,7 @@
   },
   {
    "service": "etl",
-   "order": 8,
+   "order": 9,
    "module": "etl.assignment_tags",
    "args": "",
    "fatal": false,
@@ -141,7 +149,7 @@
   },
   {
    "service": "etl",
-   "order": 9,
+   "order": 10,
    "module": "etl.klaviyo",
    "args": "--days",
    "fatal": false,
@@ -149,7 +157,7 @@
   },
   {
    "service": "etl",
-   "order": 10,
+   "order": 11,
    "module": "etl.auto_tag",
    "args": "",
    "fatal": false,
@@ -280,6 +288,10 @@
   {
    "module": "etl.drive_io",
    "summary": "Read-only Google Drive access for the ad launch worker: turn a pasted Drive link into a list of image and video files, and stream one file to disk. Uses the"
+  },
+  {
+   "module": "etl.inventory_snapshots",
+   "summary": "Daily stock snapshots for the two locations that have no automatic stock feed: Amazon FBA and the international 3PL.  -> proj_demand_snapshot"
   },
   {
    "module": "etl.klaviyo",
@@ -468,6 +480,13 @@
    "url_pattern": "/connect-agent",
    "page_function": "connectAgentPage",
    "js_file": "app/static/js/pages/connect_agent.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/inventory/history",
+   "page_function": "inventoryHistoryPage",
+   "js_file": "app/static/js/pages/inventory_history.js",
    "public": false,
    "bare": false
   },
@@ -663,6 +682,17 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": ""
+  },
+  {
+   "rule": "/api/inventory/history",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.inventory_history",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Inventory history: units on hand and allocated per product and location on one past day (date=YYYY-MM-DD, default the newest day with a snapshot), plus a daily"
   },
   {
    "rule": "/api/landing-pages",
@@ -2783,6 +2813,17 @@
    ],
    "kind": "other",
    "endpoint": "healthz",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/inventory/history",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/inventory/history",
    "auth": "none (HTML page or health check; its data calls are protected)",
    "auth_exempt": true,
    "summary": ""

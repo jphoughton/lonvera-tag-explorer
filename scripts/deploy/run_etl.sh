@@ -1,7 +1,7 @@
 #!/bin/sh
 # ETL service entrypoint (Railway cron): migrate, then the daily refresh. Exits non-zero on failure so the
 # Railway deployment is marked failed (visible in the dashboard / notifications).
-# Usage: run_etl.sh                -> python -m etl.run_daily, then etl.upstack_daily (Upstack source), then etl.stage_moves (Test to scale tables), then etl.projection_daily, then etl.amazon_mtd, then etl.competitor_ads --if-sunday (non-fatal), then etl.assignment_tags (non-fatal), then etl.klaviyo --days 14 (non-fatal), then etl.auto_tag (non-fatal) (all always run; non-zero if any failed)
+# Usage: run_etl.sh                -> python -m etl.run_daily, then etl.upstack_daily (Upstack source), then etl.stage_moves (Test to scale tables), then etl.projection_daily, then etl.amazon_mtd, then etl.inventory_snapshots (non-fatal), then etl.competitor_ads --if-sunday (non-fatal), then etl.assignment_tags (non-fatal), then etl.klaviyo --days 14 (non-fatal), then etl.auto_tag (non-fatal) (all always run; non-zero if any failed)
 # Usage: run_etl.sh                -> python -m etl.run_daily, then etl.upstack_daily (Upstack source), then etl.stage_moves (Test to scale tables), then etl.projection_daily, then etl.amazon_mtd, then etl.creative_priorities --if-sunday (non-fatal; runs AFTER the competitor step when that exists, it reads the competitor_concepts view), then etl.assignment_tags (non-fatal), then etl.klaviyo --days 14 (non-fatal), then etl.auto_tag (non-fatal) (all always run; non-zero if any failed)
 #        run_etl.sh <module> [args] -> python -m etl.<module> [args]   (manual one-offs, e.g. `meta_pull --days 185`)
 set -eu
@@ -22,6 +22,9 @@ if [ "$#" -eq 0 ]; then
   # Amazon month-to-date snapshot (safety net for the feeds service's run): after projection_daily, which loads the Amazon feed when it is sheet-fed
   amz_rc=0
   python -m etl.amazon_mtd || amz_rc=$?
+  # Daily stock snapshots for Amazon FBA and the international 3PL (the typed count carried forward minus units shipped since, plus landed receipts; real rows are never overwritten).
+  # After projection_daily and amazon_mtd, which refresh the units it reads. NON-FATAL (etl_runs job inventory_snapshots).
+  python -m etl.inventory_snapshots || echo "[run_etl] etl.inventory_snapshots failed (exit $?), non-fatal; see etl_runs job inventory_snapshots" >&2
   # Competitor ads (public Meta Ad Library via headless Chromium + Claude classification): weekly, `--if-sunday` makes it a no-op on other days (Pacific). Before any step
   # that snapshots the weekly Creative priorities (they read view competitor_concepts). NON-FATAL like auto_tag: failures land in etl_runs (job competitor_ads).
   python -m etl.competitor_ads --if-sunday || echo "[run_etl] etl.competitor_ads failed (exit $?), non-fatal; see etl_runs job competitor_ads" >&2
