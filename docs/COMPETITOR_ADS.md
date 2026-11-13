@@ -25,7 +25,7 @@ No spend, impressions or ROAS are visible. `days_running` (start date to the day
 - With one stored week, change / new / stopped are null, the new-this-week list is empty and the page says "First snapshot: changes start next week". A brand with no rows in the earlier week gets null changes too. Carried-forward (stale) rows have the same Library IDs as before, so they show no new or stopped ads.
 - Ad links are `https://www.facebook.com/ads/library/?id=<Library ID>`. No images are stored and nothing calls Meta, Google or Reddit from the web process. Code: `app/competitors.py`, `app/static/js/pages/competitors.js`.
 
-## Chatter sources (`python -m etl.competitor_chatter`, table `competitor_posts`, migration 242)
+## Chatter sources (`python -m etl.competitor_chatter`, table `competitor_posts`, migration 244)
 Non-Meta signal: what people and the press say about watched brands and the category. Tested 2026-11-12 from a Mac (residential IP), logged out, descriptive User-Agent, no paid scrapers, no captcha or bot-detection bypass.
 
 | Source | Works | Evidence / limit |

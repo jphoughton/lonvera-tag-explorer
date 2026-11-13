@@ -141,7 +141,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
 | Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily), [`public.shopify_orders`](#publicshopify_orders), [`public.shopify_order_lines`](#publicshopify_order_lines) |
-| Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_formats`](#publiccreative_formats), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links), [`public.creative_launch_settings`](#publiccreative_launch_settings), [`public.creative_launch_pages`](#publiccreative_launch_pages), [`public.creative_launch_vendor_prefixes`](#publiccreative_launch_vendor_prefixes), [`public.creative_launch_drafts`](#publiccreative_launch_drafts), [`public.creative_launch_jobs`](#publiccreative_launch_jobs), [`public.creative_launch_ads`](#publiccreative_launch_ads), [`public.creative_launch_adsets`](#publiccreative_launch_adsets), [`public.creative_launch_audit`](#publiccreative_launch_audit) |
+| Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_priorities_assignment_events`](#publiccreative_priorities_assignment_events), [`public.creative_formats`](#publiccreative_formats), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links), [`public.creative_launch_settings`](#publiccreative_launch_settings), [`public.creative_launch_pages`](#publiccreative_launch_pages), [`public.creative_launch_vendor_prefixes`](#publiccreative_launch_vendor_prefixes), [`public.creative_launch_drafts`](#publiccreative_launch_drafts), [`public.creative_launch_jobs`](#publiccreative_launch_jobs), [`public.creative_launch_ads`](#publiccreative_launch_ads), [`public.creative_launch_adsets`](#publiccreative_launch_adsets), [`public.creative_launch_audit`](#publiccreative_launch_audit) |
 | Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.competitor_brands`](#publiccompetitor_brands), [`public.competitor_ads`](#publiccompetitor_ads), [`public.competitor_concept_class`](#publiccompetitor_concept_class), [`public.competitor_concepts`](#publiccompetitor_concepts), [`public.competitor_posts`](#publiccompetitor_posts), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
 | Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta), [`public.api_keys`](#publicapi_keys), [`public.klaviyo_campaigns`](#publicklaviyo_campaigns), [`public.klaviyo_flows`](#publicklaviyo_flows), [`public.klaviyo_flow_messages`](#publicklaviyo_flow_messages), [`public.klaviyo_daily`](#publicklaviyo_daily), [`public.klaviyo_message_content`](#publicklaviyo_message_content), [`public.klaviyo_message_performance`](#publicklaviyo_message_performance), [`public.landing_page_ad_checks`](#publiclanding_page_ad_checks), [`public.brain_keys`](#publicbrain_keys), [`public.brain_audit`](#publicbrain_audit) |
 | Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow) | [`public.proj_feed_config`](#publicproj_feed_config), [`public.proj_feed_runs`](#publicproj_feed_runs), [`public.proj_feed_attempts`](#publicproj_feed_attempts), [`public.proj_feed_verify`](#publicproj_feed_verify), [`public.proj_feed_verify_runs`](#publicproj_feed_verify_runs), [`public.proj_feed_levers`](#publicproj_feed_levers), [`public.proj_feed_orders`](#publicproj_feed_orders), [`public.proj_feedx_orders`](#publicproj_feedx_orders), [`public.proj_feed_amazon`](#publicproj_feed_amazon), [`public.proj_feedx_amazon`](#publicproj_feedx_amazon), [`public.proj_feed_platform`](#publicproj_feed_platform), [`public.proj_feedx_platform`](#publicproj_feedx_platform), [`public.proj_feed_attribution`](#publicproj_feed_attribution), [`public.proj_feedx_attribution`](#publicproj_feedx_attribution), [`public.proj_feed_traffic`](#publicproj_feed_traffic), [`public.proj_feedx_traffic`](#publicproj_feedx_traffic), [`public.proj_feed_meta_reach`](#publicproj_feed_meta_reach), [`public.proj_feedx_meta_reach`](#publicproj_feedx_meta_reach), [`public.proj_feed_product_reach`](#publicproj_feed_product_reach), [`public.proj_feedx_product_reach`](#publicproj_feedx_product_reach), [`public.proj_feed_nc_product`](#publicproj_feed_nc_product), [`public.proj_feedx_nc_product`](#publicproj_feedx_nc_product), [`public.proj_feed_anyclick`](#publicproj_feed_anyclick), [`public.proj_feedx_anyclick`](#publicproj_feedx_anyclick), [`public.proj_feed_bids`](#publicproj_feed_bids), [`public.proj_feedx_bids`](#publicproj_feedx_bids), [`public.proj_feed_meta_day`](#publicproj_feed_meta_day), [`public.proj_feed_meta_product`](#publicproj_feed_meta_product), [`public.proj_pacing_hourly`](#publicproj_pacing_hourly), [`public.proj_pacing_setting`](#publicproj_pacing_setting), [`public.proj_units_daily`](#publicproj_units_daily), [`public.proj_feedx_units_daily`](#publicproj_feedx_units_daily), [`public.proj_demand_snapshot`](#publicproj_demand_snapshot), [`public.proj_feedx_demand_snapshot`](#publicproj_feedx_demand_snapshot), [`public.proj_feedx_intl_nonus_daily`](#publicproj_feedx_intl_nonus_daily), [`public.proj_feed_nc_hourly`](#publicproj_feed_nc_hourly), [`public.proj_live_today_snapshots`](#publicproj_live_today_snapshots), [`public.proj_amazon_mtd_snapshots`](#publicproj_amazon_mtd_snapshots), [`public.proj_feedx_intl_estimate`](#publicproj_feedx_intl_estimate), [`public.proj_meta_spend_monthly`](#publicproj_meta_spend_monthly) |
@@ -269,6 +269,8 @@ ORDER BY last_day DESC LIMIT 50;
 | `upstack_new_customer_revenue` | numeric |  | Order total (tax included, before refunds) of those first orders, dollars. / spend = NC ROAS. |
 | `upstack_orders` | numeric |  | All orders (new and returning customers) Upstack credits to the ad. NULL on days not pulled. |
 | `upstack_order_revenue` | numeric |  | Order total of those orders, dollars (tax included, before refunds). |
+| `landing_page_views` | numeric |  | Meta landing page views (omni_landing_page_view, else landing_page_view). NULL when the day has no Meta pull of it yet; 0 on Upstack-only ad-days. |
+| `add_to_carts` | numeric |  | Meta adds to cart (omni_add_to_cart, else add_to_cart, else pixel add to cart), the 'Adds to cart' of Ads Manager; includes returning customers. NULL when not pulled yet; 0 on Upstack-only ad-days. |
 
 *Ad level: 30-day spend and Meta-reported ROAS*
 
@@ -306,6 +308,19 @@ SELECT day, coalesce(product_slug, '(no product)') AS product, round(sum(spend),
 FROM analytics.meta_ad_daily
 WHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'meta_ad_daily') - 14
 GROUP BY 1, 2 ORDER BY 1 DESC, 3 DESC;
+```
+
+*Funnel by product, last 7 days: link click to add to cart, landing page view to add to cart, add to cart to purchase*
+
+```sql
+SELECT coalesce(product_slug, '(no product)') AS product, sum(link_clicks) AS link_clicks, sum(landing_page_views) AS landing_page_views, sum(add_to_carts) AS add_to_carts,
+       sum(meta_purchases) AS purchases,
+       round(sum(add_to_carts) / NULLIF(sum(link_clicks), 0), 4) AS link_click_to_atc,
+       round(sum(add_to_carts) / NULLIF(sum(landing_page_views), 0), 4) AS lpv_to_atc,
+       round(sum(meta_purchases) / NULLIF(sum(add_to_carts), 0), 4) AS atc_to_purchase
+FROM analytics.meta_ad_daily
+WHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'meta_ad_daily') - 7 AND add_to_carts IS NOT NULL
+GROUP BY 1 ORDER BY sum(spend) DESC;
 ```
 
 ### analytics.meta_adset_daily
@@ -4080,6 +4095,7 @@ SELECT count(*) AS rows FROM analytics.shopify_order_lines;
 - **Caveat:** purchases = Meta action omni_purchase, else purchase, else offsite_conversion.fb_pixel_purchase, under Meta's default attribution (no window is requested); it counts returning customers. conv_value is the matching action value. Neither is Upstack's new-customer number.
 - **Caveat:** No row filter on spend: purchases booked on days without delivery are kept, so a row can have spend 0 and purchases > 0.
 - **Caveat:** link_clicks is Meta's link_click action (fallback inline_link_clicks). impressions is NULL only on legacy sheet rows (none in production).
+- **Caveat:** landing_page_views = action omni_landing_page_view (else landing_page_view); add_to_carts = omni_add_to_cart (else add_to_cart, else offsite_conversion.fb_pixel_add_to_cart), same Meta default attribution as purchases. Both are NULL (not 0) on days before they were first pulled; the 2026-11-12 backfill fills them without touching any other column.
 - **Caveat:** meta_family_key / meta_family follow the ad's CURRENT name (build_metrics re-syncs them after a rename).
 - **Caveat:** Rows with source 'sheet' / ad_id 'fam:<family>' were a family-grain backfill; none remain in production.
 - **Caveat:** Reach, frequency, video metrics (thruplays, watch time), demographic / placement breakdowns, ad-level budgets and bids are NOT stored.
@@ -4098,6 +4114,8 @@ SELECT count(*) AS rows FROM analytics.shopify_order_lines;
 | `source` | text | no | 'meta_api' \| 'sheet'. |
 | `loaded_at` | timestamptz | no | When the row was written. |
 | `impressions` | numeric(14,0) | yes | Meta impressions (NULL = unknown, legacy rows). |
+| `landing_page_views` | numeric(12,0) | yes | Meta landing page views (omni_landing_page_view, else landing_page_view). NULL = not pulled yet (days before the 2026-11-12 funnel backfill). |
+| `add_to_carts` | numeric(12,0) | yes | Meta adds to cart (omni_add_to_cart, else add_to_cart, else pixel add to cart), the 'Adds to cart' of Ads Manager. NULL = not pulled yet. |
 
 *Meta spend and ROAS by day, last 14 days*
 
@@ -4215,6 +4233,8 @@ SELECT stage, count(*) AS campaigns, min(first_day) AS first_day, max(last_day) 
 | `source` | text | no | 'meta_api' (production) \| 'sheet' (legacy). |
 | `pulled_at` | timestamptz | yes | When the all-time pull ran. |
 | `first_day` | date | yes | Earliest delivery day if known (legacy). |
+| `landing_page_views` | numeric(12,0) | yes | All-time Meta landing page views (omni_landing_page_view, else landing_page_view). NULL until the next nightly lifetime pull. |
+| `add_to_carts` | numeric(12,0) | yes | All-time Meta adds to cart (omni_add_to_cart, else add_to_cart, else pixel add to cart). NULL until the next nightly lifetime pull. |
 
 *Top 20 ads by all-time spend (Meta-reported)*
 
@@ -5434,6 +5454,31 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `created_by` | text | yes | Who created the assignment: the signed-in user name; NULL when none. |
 | `updated_by` | text | yes | Who last changed it: the signed-in user name, or vendor:<name> for a write made on a vendor link page; NULL when none. |
 | `format_code` | text | yes | Creative format chosen when assigning or later (creative_formats.code, foreign key); NULL when none was chosen. Set by a signed-in user only; a vendor sees it but cannot change it. |
+
+### public.creative_priorities_assignment_events
+
+*table*
+
+**Purpose.** The history of each production assignment on /priorities: who assigned the concept to a vendor, and who moved it between stages (brief sent, creative delivered, ready to launch, launched, dropped) and when.
+
+- **Grain:** primary key `(id)`; one row per change to an assignment
+- **References:** `(assignment_id)` -> `public.creative_priorities_assignments(id)`
+- **Source:** app/priorities_assign.py, written in the same transaction as the change (create, edit, vendor link page); rows before migration 243 rebuilt from the stage timestamps of creative_priorities_assignments
+- **Refresh:** on every change made on /priorities/production or a vendor link page
+- **Coverage:** every assignment from creation; for assignments older than migration 243 only the first time each stage was reached, with no person except the creator
+- **Caveat:** actor is NULL for rebuilt history and when sign-in was off; a vendor link page writes vendor:<name>.
+- **Caveat:** stage_before and stage_after are the stage the assignment itself shows (its links and Ready / Launched / Dropped buttons); a stage reached only because a linked Creative Tracker row moved on is not an event.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Row number (primary key). |
+| `assignment_id` | bigint | no | The assignment that changed (creative_priorities_assignments.id; rows go with the assignment). |
+| `at` | timestamptz | no | When the change was made. |
+| `actor` | text | yes | Who made it: the signed-in user name, vendor:<name> for a vendor link page, NULL when not known. |
+| `kind` | text | no | What changed: assigned, brief_added, brief_removed, creative_added, creative_removed, ready, ready_cleared, launched, launched_cleared, dropped, restored, vendor, week or format. |
+| `stage_before` | text | yes | Stage the assignment showed before the change (assigned, brief_sent, creative_in, ready, launched, dropped); NULL on the first row. |
+| `stage_after` | text | yes | Stage it showed after the change. |
+| `detail` | text | no | Short plain text about the change, for example 'Madre to Victoria'; empty when the kind says it all. |
 
 ### public.creative_formats
 
@@ -8483,6 +8528,31 @@ Read the default basis before quoting a number and name the basis in the answer.
 - **Trap:** Never compare Upstack new customers with Meta's all purchases: Meta counts returning customers, Upstack's new-customer basis does not (they are different quantities, not one number measured twice).
 - **Trap:** Meta and Google credit the same orders: never add Meta purchases to Google's.
 - **Trap:** Meta counts a returning customer's order as a purchase; it is not a new customer.
+
+### landing_page_views
+
+**Meta landing page views** (domain: marketing)
+
+- **Formula:** sum(landing_page_views): landing page views Meta reports for the ad that day (omni_landing_page_view, else landing_page_view): clicks where the page actually loaded.
+- **Source:** `analytics.meta_ad_daily.landing_page_views`
+- **Default basis:** Meta-reported (default attribution), all ad accounts
+- **Other basis:** Link clicks (analytics.meta_ad_daily.link_clicks): clicks before the page loads, always at least as large
+- **Other basis:** Unique outbound clicks (analytics.meta_reach / meta_product_reach): de-duplicated per person, a different denominator
+- **Trap:** NULL (not 0) on days before the 2026-11-12 funnel backfill: sum only over rows where it is not NULL, and divide by the matching rows' other columns.
+- **Trap:** LPV / link clicks is typically 70-95%: a lower share means slow pages or lost clicks, not fewer buyers.
+- **Trap:** Not comparable to Upstack site visitors (analytics.site_traffic_daily): different tracker.
+
+### add_to_carts
+
+**Meta adds to cart** (domain: marketing)
+
+- **Formula:** sum(add_to_carts): adds to cart Meta reports for the ad that day (omni_add_to_cart, else add_to_cart, else pixel add to cart), the 'Adds to cart' of Ads Manager.
+- **Source:** `analytics.meta_ad_daily.add_to_carts`
+- **Default basis:** Meta-reported (default attribution, includes returning customers)
+- **Other basis:** Meta purchases (analytics.meta_ad_daily.meta_purchases)
+- **Trap:** NULL (not 0) on days before the 2026-11-12 funnel backfill.
+- **Trap:** The funnel rates are ratios of sums over the same ad-days and rows: link click to add to cart = sum(add_to_carts) / sum(link_clicks); landing page view to add to cart = sum(add_to_carts) / sum(landing_page_views); add to cart to purchase = sum(meta_purchases) / sum(add_to_carts). Never average per-ad rates.
+- **Trap:** Purchases count returning customers, so add to cart to purchase is a Meta-attribution rate, not a new-customer conversion rate.
 
 ### meta_roas
 

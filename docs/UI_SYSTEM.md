@@ -14,6 +14,7 @@ Second row: the pages of the active section as tabs. The active section and tab 
 | Performance | Google | `/?platform=google` (`/google` redirects here) | `pages/google.js` | |
 | Performance | Campaigns | `/campaigns` (`?platform=all` is the nav link) | `all_campaigns.js`, `campaigns.js`, `google.js` | one Campaigns tab, platform filter inside |
 | Performance | Trends | `/trends` | `pages/trends.js` | |
+| Performance | Email | `/email` | `pages/email.js` | Klaviyo email and text messages by flow, campaign and over time; `docs/EMAIL.md` |
 | Creative | Priorities | `/priorities`, `?view=<token>`, `/priorities/v/<token>` | `pages/priorities*.js` | |
 | Creative | Production | `/priorities/production` | `pages/priorities_production.js` | vendor page `/priorities/vendor/<token>` is public and has no app navigation |
 | Creative | Test to scale | `/promotions` | `promotions.js`, `scale_views.js` | |
@@ -24,7 +25,7 @@ Every old URL keeps working. Pages that are not tabs (ad, product, campaign deta
 
 ### Naming (one name per concept)
 
-Overview, Meta, Google, Campaigns, Trends, Priorities, Production, Test to scale, Projections, Tag lookup. The nav labels, page titles (`h1`), `document.title` (`<Page> · Lonvera`), breadcrumbs and in-page links all use these names now. Retired names, which must not come back in page text:
+Overview, Meta, Google, Campaigns, Trends, Email, Priorities, Production, Test to scale, Projections, Tag lookup. The nav labels, page titles (`h1`), `document.title` (`<Page> · Lonvera`), breadcrumbs and in-page links all use these names now. Retired names, which must not come back in page text:
 
 | Retired | Use |
 |---|---|
@@ -67,7 +68,7 @@ Edit `SECTIONS` to add, rename or move a menu entry. Nothing else defines naviga
 ```js
 { key: 'priorities', label: 'Priorities', href: '/priorities', testid: 'nav-priorities', hint: 'What to make next' }
 ```
-Tab testids (immutable): `nav-overview nav-meta nav-google nav-campaigns nav-trends nav-priorities nav-production nav-test-to-scale nav-projections`; section links `nav-section-<key>`; search form `nav-lookup`, input `nav-lookup-input`, button `nav-lookup-go`; sub-nav container `subnav`.
+Tab testids (immutable): `nav-overview nav-meta nav-google nav-campaigns nav-trends nav-email nav-priorities nav-production nav-test-to-scale nav-projections`; section links `nav-section-<key>`; search form `nav-lookup`, input `nav-lookup-input`, button `nav-lookup-go`; sub-nav container `subnav`.
 `resolveNav(path, params)` maps a URL to `{ section, page }`. Add a row to `RESOLVE` when you add a route that is not a tab.
 
 ### Page config: `js/pageconfig.js`
@@ -165,6 +166,7 @@ Segmented controls and chips always carry `aria-pressed="true|false"`. Buttons t
 | `performance.css` | Overview, Meta, Google, Campaigns | totals strip, KPI tiles |
 | `test_to_scale.css` | Test to scale | `tts-`, `sv-`, `kv-` |
 | `trends.css` | Trends | `trn-` |
+| `email.css` | Email | `eml-` |
 | `lookup.css` | Tag lookup | `tl-` (page and result cards) |
 | `priorities.css`, `priorities_groups.css` | Priorities | `pri-`, saved views, detail panel, grouped table, sticky bars |
 | `production.css` | Production | `prod-`, vendor page, launch dialog |
@@ -206,6 +208,7 @@ tests/ui/
 | `test_ad.py` | Ad page, lightbox, preview |
 | `test_trend_panel.py` | shared trend panel |
 | `test_trends.py`, `mock_trends.py` | Trends |
+| `test_email.py`, `mock_email.py` | Email |
 | `test_promotions.py`, `test_scale_views.py`, `mock_promotions.py` | Test to scale |
 | `test_priorities.py`, `test_priorities_groups.py`, `mock_priorities.py`, `priorities_fixture.json` | Priorities |
 | `test_priorities_production.py`, `test_priorities_launch.py`, `mock_priorities_assign.py`, `mock_priorities_launch.py` | Production |

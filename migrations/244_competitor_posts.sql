@@ -1,4 +1,4 @@
--- 242: competitor / category chatter (non-Meta signal): public posts and news that mention a watched competitor brand or a category term. Filled by `python -m etl.competitor_chatter` (weekly-ish, additive).
+-- 244: competitor / category chatter (non-Meta signal): public posts and news that mention a watched competitor brand or a category term. Filled by `python -m etl.competitor_chatter` (weekly-ish, additive).
 --   competitor_posts  one row per (source, url): Reddit posts via public subreddit RSS, news via Google News RSS. No model calls, no login, no paid scrapers.
 -- Read by the /competitors page; the table is idempotent (upsert on (source, url)); rows older than the 14-day window are kept as history.
 CREATE TABLE IF NOT EXISTS competitor_posts (

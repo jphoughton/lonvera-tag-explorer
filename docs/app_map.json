@@ -118,6 +118,14 @@
   {
    "service": "etl",
    "order": 6,
+   "module": "etl.inventory_snapshots",
+   "args": "",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 7,
    "module": "etl.competitor_ads",
    "args": "--if-sunday",
    "fatal": false,
@@ -125,7 +133,7 @@
   },
   {
    "service": "etl",
-   "order": 7,
+   "order": 8,
    "module": "etl.creative_priorities",
    "args": "--if-sunday",
    "fatal": false,
@@ -133,7 +141,7 @@
   },
   {
    "service": "etl",
-   "order": 8,
+   "order": 9,
    "module": "etl.assignment_tags",
    "args": "",
    "fatal": false,
@@ -141,7 +149,7 @@
   },
   {
    "service": "etl",
-   "order": 9,
+   "order": 10,
    "module": "etl.klaviyo",
    "args": "--days",
    "fatal": false,
@@ -149,7 +157,7 @@
   },
   {
    "service": "etl",
-   "order": 10,
+   "order": 11,
    "module": "etl.auto_tag",
    "args": "",
    "fatal": false,
@@ -284,6 +292,10 @@
   {
    "module": "etl.drive_io",
    "summary": "Read-only Google Drive access for the ad launch worker: turn a pasted Drive link into a list of image and video files, and stream one file to disk. Uses the"
+  },
+  {
+   "module": "etl.inventory_snapshots",
+   "summary": "Daily stock snapshots for the two locations that have no automatic stock feed: Amazon FBA and the international 3PL.  -> proj_demand_snapshot"
   },
   {
    "module": "etl.klaviyo",
@@ -483,6 +495,20 @@
    "bare": false
   },
   {
+   "url_pattern": "/email",
+   "page_function": "emailPage",
+   "js_file": "app/static/js/pages/email.js",
+   "public": false,
+   "bare": false
+  },
+  {
+   "url_pattern": "/inventory/history",
+   "page_function": "inventoryHistoryPage",
+   "js_file": "app/static/js/pages/inventory_history.js",
+   "public": false,
+   "bare": false
+  },
+  {
    "url_pattern": "/login",
    "page_function": "loginPage",
    "js_file": "app/static/js/pages/login.js",
@@ -676,6 +702,72 @@
    "summary": "One competitor: longest-running ads, new this week, angles, landing pages, Ad Library links (week, format as on /api/competitors)."
   },
   {
+   "rule": "/api/email/campaigns",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.email_campaigns",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Email by campaign: one row per campaign with activity in the window, newest send first; q= filters on name and subject."
+  },
+  {
+   "rule": "/api/email/flows",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.email_flows",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Email by flow: one row per flow with activity in the window, revenue first."
+  },
+  {
+   "rule": "/api/email/flows/<flow_id>/messages",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.email_flow_messages",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The messages of one flow with their totals for the window."
+  },
+  {
+   "rule": "/api/email/message/<message_id>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.email_message",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "One message: its copy (latest version only), totals for the window and a daily series."
+  },
+  {
+   "rule": "/api/email/summary",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.email_summary",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Email page header: totals for a window (window=7d|30d|90d|all, kind=all|flows|campaigns, channel=all|email|sms) with the change against the prior period when it is fully loaded."
+  },
+  {
+   "rule": "/api/email/timeseries",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.email_timeseries",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Email over time: grain=day|week|month (default day), split=1 adds flows and campaigns separately when kind=all. A bucket that runs past the loaded days is marked partial."
+  },
+  {
    "rule": "/api/google/rollup",
    "methods": [
     "GET"
@@ -696,6 +788,17 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": ""
+  },
+  {
+   "rule": "/api/inventory/history",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.inventory_history",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Inventory history: units on hand and allocated per product and location on one past day (date=YYYY-MM-DD, default the newest day with a snapshot), plus a daily"
   },
   {
    "rule": "/api/landing-pages",
@@ -2810,6 +2913,17 @@
    "summary": ""
   },
   {
+   "rule": "/email",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/email",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
    "rule": "/google",
    "methods": [
     "GET"
@@ -2827,6 +2941,17 @@
    ],
    "kind": "other",
    "endpoint": "healthz",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/inventory/history",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/inventory/history",
    "auth": "none (HTML page or health check; its data calls are protected)",
    "auth_exempt": true,
    "summary": ""

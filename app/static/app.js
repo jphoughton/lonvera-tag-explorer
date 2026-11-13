@@ -15,11 +15,13 @@ import { allPlatformsPage } from './js/pages/platforms.js';
 import { allCampaignsPage } from './js/pages/all_campaigns.js';
 import { promotionsPage } from './js/pages/promotions.js';
 import { trendsPage } from './js/pages/trends.js';
+import { emailPage } from './js/pages/email.js';
 import { prioritiesPage, prioritiesViewPage } from './js/pages/priorities.js';
 import { productionPage, vendorPage } from './js/pages/priorities_production.js';
 import { competitorsPage } from './js/pages/competitors.js';
 import { lookupPage } from './js/pages/lookup.js';
 import { connectAgentPage } from './js/pages/connect_agent.js';
+import { inventoryHistoryPage } from './js/pages/inventory_history.js';
 
 // Platform pages: '/' is the home of the chosen platform (platform=all overview, google, else Meta's products) and '/campaigns' its Campaigns view.
 // Google's campaigns are part of its one page, so its Campaigns view is the same page with the campaigns table first.
@@ -27,7 +29,7 @@ const homePage = (ctx) => { const pl = currentPlatform(); return pl === 'all' ? 
 const campaignsRoute = (ctx) => { const pl = currentPlatform(); return pl === 'google' ? googlePage(ctx) : pl === 'all' ? allCampaignsPage(ctx) : campaignsPage(ctx); };
 // page functions by id; the URL patterns, Back targets, filters and defaults of each page are in js/pageconfig.js (PAGES)
 const PAGE_FNS = {
-  login: loginPage, home: homePage, campaigns: campaignsRoute, promotions: promotionsPage, trends: trendsPage, priorities: prioritiesPage, 'priorities-view': prioritiesViewPage,
+  login: loginPage, home: homePage, campaigns: campaignsRoute, promotions: promotionsPage, trends: trendsPage, email: emailPage, 'inventory-history': inventoryHistoryPage, priorities: prioritiesPage, 'priorities-view': prioritiesViewPage,
   production: productionPage, competitors: competitorsPage, vendor: vendorPage, lookup: lookupPage, 'connect-agent': connectAgentPage, product: productPage, ad: adPage,
 };
 const routes = PAGES.map((r) => ({ ...r, page: PAGE_FNS[r.id] }));

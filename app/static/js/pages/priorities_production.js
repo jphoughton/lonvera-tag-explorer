@@ -36,6 +36,24 @@ export function resultText(r) {
   return `Launched ${md(first)}, ${fmt.money(spend)} spent` + (ret !== null ? `, ${fmt.roas(ret)} return` : '');
 }
 
+// History of an assignment: "11/10 2:14 PM  Josh: Brief sent to Creative delivered". Who did it comes from the sign-in name; a vendor link page shows as "Madre (vendor link)"; older rows have no name.
+const EVENT_TEXT = { assigned: 'Assigned to production', brief_added: 'Brief link added', brief_removed: 'Brief link removed', creative_added: 'Creative link added', creative_removed: 'Creative link removed', ready: 'Marked ready to launch', ready_cleared: 'Ready to launch removed',
+  launched: 'Marked launched', launched_cleared: 'Launched removed', dropped: 'Dropped', restored: 'Restored', vendor: 'Vendor changed', week: 'Week changed', format: 'Format changed' };
+const actorName = (a) => (!a ? 'Not recorded' : a.startsWith('vendor:') ? a.slice(7) + ' (vendor link)' : a);
+const whenText = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`; };
+export function eventLine(e) {
+  const what = EVENT_TEXT[e.kind] || e.kind;
+  const move = e.stage_before && e.stage_after && e.stage_before !== e.stage_after ? `Stage: ${STAGES[e.stage_before] || e.stage_before} to ${STAGES[e.stage_after] || e.stage_after}` : '';
+  return { when: whenText(e.at), who: actorName(e.actor), what: what + (e.detail ? ` (${e.detail})` : ''), move };
+}
+function historyCell(r) {
+  const ev = r.history || [];
+  if (!ev.length) return null;
+  return h('details', { class: 'prod-hist', 'data-testid': 'prod-history' }, h('summary', null, `History (${ev.length})`),
+    h('ol', { class: 'prod-histlist' }, ev.map((e) => { const l = eventLine(e); return h('li', { 'data-testid': 'prod-event', 'data-kind': e.kind },
+      h('span', { class: 'prod-hwhen' }, l.when), ' ', h('strong', null, l.who), ': ', l.what, l.move ? h('span', { class: 'pri-sub' }, ' · ' + l.move) : null); })));
+}
+
 function link(url, text, attrs) {
   return h('a', { href: url, target: '_blank', rel: 'noopener noreferrer', ...(attrs || {}) }, text);
 }
@@ -184,7 +202,7 @@ export async function productionPage(ctx) {
       h('td', { class: 'prod-c prod-nowrap', 'data-testid': 'prod-week' }, weekLabel(r.for_week).replace('Week of ', '')),
       h('td', { class: 'prod-c', 'data-testid': 'prod-vendor' }, r.vendor),
       h('td', { class: 'prod-c', 'data-testid': 'prod-product' }, productName(r.product)),
-      h('td', { class: 'prod-c prod-concept', 'data-testid': 'prod-concept' }, h('strong', null, x.nameButton(r.pain_point || r.cluster)), h('div', { class: 'pri-sub' }, [r.cluster, r.icp].filter(Boolean).join(' / ')), r.note ? h('div', { class: 'pri-sub' }, 'Note: ' + r.note) : null, r.vendor_note ? h('div', { class: 'pri-sub', 'data-testid': 'prod-vnote' }, 'Vendor note: ' + r.vendor_note) : null, h('div', null, x.button())),
+      h('td', { class: 'prod-c prod-concept', 'data-testid': 'prod-concept' }, h('strong', null, x.nameButton(r.pain_point || r.cluster)), h('div', { class: 'pri-sub' }, [r.cluster, r.icp].filter(Boolean).join(' / ')), r.note ? h('div', { class: 'pri-sub' }, 'Note: ' + r.note) : null, r.vendor_note ? h('div', { class: 'pri-sub', 'data-testid': 'prod-vnote' }, 'Vendor note: ' + r.vendor_note) : null, h('div', null, x.button()), historyCell(r)),
       linkCell(r, 'brief_url', 'Brief'), linkCell(r, 'creative_url', 'Creative'), formatCell(r),
       h('td', { class: 'prod-c' }, h('span', { class: 'prod-pill prod-st-' + r.stage, 'data-testid': 'prod-stage' }, stageLabel(r)), h('div', { class: 'pri-sub prod-result', 'data-testid': 'prod-result' }, resultText(r))),
       readyCell(r),
