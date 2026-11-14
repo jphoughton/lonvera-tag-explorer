@@ -143,7 +143,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
 | Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily), [`public.shopify_orders`](#publicshopify_orders), [`public.shopify_order_lines`](#publicshopify_order_lines) |
 | Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_priorities_assignment_events`](#publiccreative_priorities_assignment_events), [`public.creative_priorities_assignment_comments`](#publiccreative_priorities_assignment_comments), [`public.creative_priorities_vendor_capacity`](#publiccreative_priorities_vendor_capacity), [`public.creative_ad_transcripts`](#publiccreative_ad_transcripts), [`public.creative_formats`](#publiccreative_formats), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links), [`public.creative_launch_settings`](#publiccreative_launch_settings), [`public.creative_launch_pages`](#publiccreative_launch_pages), [`public.creative_launch_vendor_prefixes`](#publiccreative_launch_vendor_prefixes), [`public.creative_launch_drafts`](#publiccreative_launch_drafts), [`public.creative_launch_jobs`](#publiccreative_launch_jobs), [`public.creative_launch_ads`](#publiccreative_launch_ads), [`public.creative_launch_adsets`](#publiccreative_launch_adsets), [`public.creative_launch_audit`](#publiccreative_launch_audit) |
-| Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.competitor_brands`](#publiccompetitor_brands), [`public.competitor_ads`](#publiccompetitor_ads), [`public.competitor_concept_class`](#publiccompetitor_concept_class), [`public.competitor_concepts`](#publiccompetitor_concepts), [`public.competitor_posts`](#publiccompetitor_posts), [`public.competitor_ad_media`](#publiccompetitor_ad_media), [`public.competitor_landing_pages`](#publiccompetitor_landing_pages), [`public.competitor_lp_media`](#publiccompetitor_lp_media), [`public.competitor_ad_lp`](#publiccompetitor_ad_lp), [`public.competitor_ad_video`](#publiccompetitor_ad_video), [`public.competitor_ad_transcript`](#publiccompetitor_ad_transcript), [`public.competitor_ad_tags`](#publiccompetitor_ad_tags), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
+| Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.competitor_brands`](#publiccompetitor_brands), [`public.competitor_ads`](#publiccompetitor_ads), [`public.competitor_concept_class`](#publiccompetitor_concept_class), [`public.competitor_concepts`](#publiccompetitor_concepts), [`public.competitor_posts`](#publiccompetitor_posts), [`public.competitor_ad_media`](#publiccompetitor_ad_media), [`public.competitor_landing_pages`](#publiccompetitor_landing_pages), [`public.competitor_lp_media`](#publiccompetitor_lp_media), [`public.competitor_ad_lp`](#publiccompetitor_ad_lp), [`public.ad_transcript`](#publicad_transcript), [`public.ad_learning_tags`](#publicad_learning_tags), [`public.ad_family_lp`](#publicad_family_lp), [`public.competitor_ad_video`](#publiccompetitor_ad_video), [`public.competitor_ad_transcript`](#publiccompetitor_ad_transcript), [`public.competitor_ad_tags`](#publiccompetitor_ad_tags), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
 | Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta), [`public.api_keys`](#publicapi_keys), [`public.klaviyo_campaigns`](#publicklaviyo_campaigns), [`public.klaviyo_flows`](#publicklaviyo_flows), [`public.klaviyo_flow_messages`](#publicklaviyo_flow_messages), [`public.klaviyo_daily`](#publicklaviyo_daily), [`public.klaviyo_message_content`](#publicklaviyo_message_content), [`public.klaviyo_message_performance`](#publicklaviyo_message_performance), [`public.landing_page_ad_checks`](#publiclanding_page_ad_checks), [`public.brain_keys`](#publicbrain_keys), [`public.brain_audit`](#publicbrain_audit) |
 | Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow) | [`public.proj_feed_config`](#publicproj_feed_config), [`public.proj_feed_runs`](#publicproj_feed_runs), [`public.proj_feed_attempts`](#publicproj_feed_attempts), [`public.proj_feed_verify`](#publicproj_feed_verify), [`public.proj_feed_verify_runs`](#publicproj_feed_verify_runs), [`public.proj_feed_levers`](#publicproj_feed_levers), [`public.proj_feed_orders`](#publicproj_feed_orders), [`public.proj_feedx_orders`](#publicproj_feedx_orders), [`public.proj_feed_amazon`](#publicproj_feed_amazon), [`public.proj_feedx_amazon`](#publicproj_feedx_amazon), [`public.proj_feed_platform`](#publicproj_feed_platform), [`public.proj_feedx_platform`](#publicproj_feedx_platform), [`public.proj_feed_attribution`](#publicproj_feed_attribution), [`public.proj_feedx_attribution`](#publicproj_feedx_attribution), [`public.proj_feed_traffic`](#publicproj_feed_traffic), [`public.proj_feedx_traffic`](#publicproj_feedx_traffic), [`public.proj_feed_meta_reach`](#publicproj_feed_meta_reach), [`public.proj_feedx_meta_reach`](#publicproj_feedx_meta_reach), [`public.proj_feed_product_reach`](#publicproj_feed_product_reach), [`public.proj_feedx_product_reach`](#publicproj_feedx_product_reach), [`public.proj_feed_nc_product`](#publicproj_feed_nc_product), [`public.proj_feedx_nc_product`](#publicproj_feedx_nc_product), [`public.proj_feed_anyclick`](#publicproj_feed_anyclick), [`public.proj_feedx_anyclick`](#publicproj_feedx_anyclick), [`public.proj_feed_bids`](#publicproj_feed_bids), [`public.proj_feedx_bids`](#publicproj_feedx_bids), [`public.proj_feed_meta_day`](#publicproj_feed_meta_day), [`public.proj_feed_meta_product`](#publicproj_feed_meta_product), [`public.proj_pacing_hourly`](#publicproj_pacing_hourly), [`public.proj_pacing_setting`](#publicproj_pacing_setting), [`public.proj_units_daily`](#publicproj_units_daily), [`public.proj_feedx_units_daily`](#publicproj_feedx_units_daily), [`public.proj_demand_snapshot`](#publicproj_demand_snapshot), [`public.proj_feedx_demand_snapshot`](#publicproj_feedx_demand_snapshot), [`public.proj_feedx_intl_nonus_daily`](#publicproj_feedx_intl_nonus_daily), [`public.proj_feed_nc_hourly`](#publicproj_feed_nc_hourly), [`public.proj_live_today_snapshots`](#publicproj_live_today_snapshots), [`public.proj_amazon_mtd_snapshots`](#publicproj_amazon_mtd_snapshots), [`public.proj_feedx_intl_estimate`](#publicproj_feedx_intl_estimate), [`public.proj_meta_spend_monthly`](#publicproj_meta_spend_monthly) |
 | Projection engine tables (finance, inventory, cohorts; read them through the analytics views) | [`public.proj_scenarios`](#publicproj_scenarios), [`public.proj_series`](#publicproj_series), [`public.proj_actuals`](#publicproj_actuals), [`public.proj_audit`](#publicproj_audit), [`public.proj_scenario_history`](#publicproj_scenario_history), [`public.proj_refresh_runs`](#publicproj_refresh_runs), [`public.proj_cohorts`](#publicproj_cohorts), [`public.proj_cohort_cum`](#publicproj_cohort_cum), [`public.proj_cohort_uploads`](#publicproj_cohort_uploads), [`public.proj_curve_goal`](#publicproj_curve_goal), [`public.proj_pnl_drivers`](#publicproj_pnl_drivers), [`public.proj_pnl_settings`](#publicproj_pnl_settings), [`public.proj_pnl_cogs_sku`](#publicproj_pnl_cogs_sku), [`public.proj_pnl_qb_map`](#publicproj_pnl_qb_map), [`public.proj_pnl_vendors`](#publicproj_pnl_vendors), [`public.proj_upload_history`](#publicproj_upload_history), [`public.proj_po`](#publicproj_po), [`public.proj_fba_transfer`](#publicproj_fba_transfer), [`public.proj_vendor_lead`](#publicproj_vendor_lead), [`public.proj_vendor_cogs`](#publicproj_vendor_cogs), [`public.proj_product_cost`](#publicproj_product_cost), [`public.proj_reorder_param`](#publicproj_reorder_param), [`public.proj_stock_snapshot`](#publicproj_stock_snapshot), [`public.proj_supply_history`](#publicproj_supply_history), [`public.proj_units_monthly`](#publicproj_units_monthly), [`public.proj_units_country`](#publicproj_units_country), [`public.proj_units_loads`](#publicproj_units_loads) |
@@ -8081,6 +8081,7 @@ GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 | `fetch_error` | text | yes | Why the page could not be read (blocked, challenge, blank, timeout, DNS); NULL when read. |
 | `model` | text | yes | Model that tagged the page. |
 | `tagged_at` | timestamptz | yes | When the tags were written; NULL = captured but not tagged. |
+| `is_own` | boolean | no | True for one of Lonvera's own landing pages (brand 'Lonvera', added by etl.competitor_landing_pages --own); false for a competitor. Competitor views and charts filter is_own = false. |
 
 ### public.competitor_lp_media
 
@@ -8124,6 +8125,80 @@ GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 | `week_start` | date | no | Monday (Pacific) of the competitor_ads week (primary key with library_id). |
 | `library_id` | text | no | Meta Ad Library ID (primary key with week_start). |
 | `lp_id` | text | no | competitor_landing_pages.lp_id of the ad's page. |
+
+### public.ad_transcript
+
+*table*
+
+**Purpose.** What is said in each Lonvera video ad family, from the real audio, so every ad can be tagged by what it says as well as what it shows.
+
+- **Grain:** primary key `(family_key)`; one row per ad family (family_key = tracker family_key, or the Meta family key for a Meta ad with no tracker row)
+- **Source:** etl.own_ad_tags: transcripts already made by earlier tagging cycles (faster-whisper base on the real audio of the Vita Bull, Beef Liver and Boneflex cycles, imported once with --import-transcripts) and, for videos without one, faster-whisper on the video fetched in spend order
+- **Refresh:** by hand: python -m etl.own_ad_tags (a family that already has a transcript is never transcribed again)
+- **Coverage:** from the first import after migration 262
+- **Caveat:** source says how it was made: 'cycle_whisper' (earlier cycle, real audio), 'whisper' (this job), 'tracker_copy' (the Creative Tracker's typed transcript; the tracker text is sometimes from a different video than the one running, so it is a fallback only).
+- **Caveat:** transcript '[no speech]' = a silent or music-only video. Audio over 3 minutes is skipped, not cut; no row = not transcribed (image ad, download failed, or not reached yet).
+- **Caveat:** creative_ad_transcripts (migration 249) is a separate table at concept_id grain for Production cards.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `family_key` | text | no | Ad family (primary key); same key as ad_learning_tags and creative_tracker.family_key. |
+| `transcript` | text | no | The words spoken, as heard; '[no speech]' for a silent video. |
+| `language` | text | yes | Language the speech was recognised as. |
+| `duration_s` | numeric | yes | Audio length in seconds. |
+| `source` | text | no | cycle_whisper \| whisper \| tracker_copy. |
+| `model` | text | yes | Transcription model, for example faster-whisper-base-int8. |
+| `created_at` | timestamptz | no | When the transcript was stored. |
+
+### public.ad_learning_tags
+
+*table*
+
+**Purpose.** Learning tags of every Lonvera ad family, made the same way as the competitor ad tags (competitor_ad_tags) so charts can compare our ads and the competitors' 1:1: hook type, offer type, device, call to action, hook text, why it works, what was seen and said.
+
+- **Grain:** primary key `(family_key)`; one row per ad family (family_key; count families, not tracker rows or ad_ids)
+- **Source:** etl.own_ad_tags: claude -p (Sonnet, Read tool only) on batches of 6 families, looking at the stored thumbnail / video frames plus the transcript, the tracker copy and the hook line; values validated against the same closed lists as competitor_ad_tags
+- **Refresh:** by hand: python -m etl.own_ad_tags (highest spend first; families already tagged at the current tag_version are skipped, --retag replaces the row)
+- **Coverage:** from the first run after migration 262; every ad family with Meta spend since 2026-05-06 plus the tracker families
+- **Caveat:** Style, fidelity, proof mechanism and emotion are NOT here: the Creative Tracker tags are the source of truth for those, and cluster / ICP / pain point / trigger come from ad_tags (line map).
+- **Caveat:** method: 'vision_transcript' = pictures and the real audio transcript, 'vision' = pictures and copy only (image ad, or a video whose audio could not be had), 'text' = copy only (no picture); a text-only tag is capped at medium confidence.
+- **Caveat:** A tag is the model's reading of the ad, quoted not invented; hook_text / seen_on / said_on can be a short phrase or 'nothing readable' / 'no speech'.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `family_key` | text | no | Ad family (primary key). |
+| `tag_version` | text | no | Run version, for example owntags-v1-2026-11-13; a newer version re-tags. |
+| `method` | text | no | vision_transcript \| vision \| text. |
+| `confidence` | text | yes | high \| medium \| low. |
+| `hook_type` | text | yes | question \| stat or number \| story \| call-out \| comparison \| authority or doctor \| myth-bust \| curiosity \| social proof \| offer-led \| other. |
+| `offer_type` | text | yes | discount \| bundle or multi-pack \| free shipping \| guarantee \| free gift \| subscription \| none shown \| other. |
+| `device` | text | yes | testimonial \| listicle or ranked list \| before and after \| founder or brand story \| doctor or expert \| podcast clip \| demo or unboxing \| news-style \| comparison chart \| text-on-image \| other. |
+| `cta` | text | yes | The call to action, 8 words or fewer. |
+| `hook_text` | text | yes | The first line seen or said, quoted, 20 words or fewer. |
+| `why_it_works` | text | yes | One plain sentence on what the ad does well. |
+| `seen_on` | text | yes | What is on screen, 25 words or fewer. |
+| `said_on` | text | yes | What is said, 25 words or fewer, or 'no speech'. |
+| `model` | text | no | Model that tagged the ad. |
+| `tagged_at` | timestamptz | no | When the tag was written. |
+
+### public.ad_family_lp
+
+*table*
+
+**Purpose.** Which of our own landing pages each Lonvera ad family sends most of its spend to, per week, so ad tags and landing page tags can be put side by side.
+
+- **Grain:** primary key `(family_key, week_start)`; one row per (family_key, week_start) (joins to competitor_landing_pages on lp_id with is_own = true)
+- **Source:** etl.competitor_landing_pages --own: landing_page_ads (ad to page map, migration 207) x ad_daily spend over the last 120 days, ad to family through meta_family_map
+- **Refresh:** by hand: python -m etl.competitor_landing_pages --own (rewritten for the week on every run)
+- **Coverage:** from the first --own run after migration 263; only the top 25 own pages by spend
+- **Caveat:** An ad that lists several links appears under each page with its full spend; the family row keeps the page with the largest spend share (ties: alphabetical url_key).
+- **Caveat:** Only families whose ads have a row in landing_page_ads and whose page is in the top 25 are linked; a missing row means unlinked, not 'no landing page'.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `family_key` | text | no | Ad family (primary key with week_start). |
+| `lp_id` | text | no | competitor_landing_pages.lp_id of the family's page. |
+| `week_start` | date | no | Monday (Pacific) of the run week (primary key with family_key). |
 
 ### public.competitor_ad_video
 

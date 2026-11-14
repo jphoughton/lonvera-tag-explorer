@@ -430,6 +430,10 @@
    "summary": "Keep meta_ads.family_name / meta_family_key equal to fam(ad_name) for every ad (a renamed ad's history follows its current name)."
   },
   {
+   "module": "etl.own_ad_tags",
+   "summary": "Own ad tags: the SAME learning tags the competitor ads carry (hook type, offer type, device, call to action, hook text, why it works, what was seen / said) on EVERY Lonvera ad family,"
+  },
+  {
    "module": "etl.production_status",
    "summary": "Nightly step: pull production cards forward to what the Creative Tracker shows."
   },
