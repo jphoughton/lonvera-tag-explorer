@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, g, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -102,6 +102,17 @@ def rollup(slug: str):
     info = w.info(meta)
     return jsonify({"product": q.product_brief(product), "level": level, "filters": {"cluster": cluster, "icp": icp}, "scope": SCOPE_TRACKER,
                     "window": info, "window_info": info, "compare_info": w.compare_info(meta), **res})
+
+
+@bp.get("/api/products/<slug>/learning-tags")
+def learning_tags(slug: str):
+    """Performance by hook type / device / offer type (our own ad learning tags) for one product: same window, stage, source filters and cluster / ICP / pain point scope as the tag tree.
+    {"available": false} until the learning table holds rows; both the Meta and the NC (Upstack new customer) numbers are in every row."""
+    conn, _meta, _w = _ctx(with_window=False)
+    product = q.get_product(conn, slug)
+    flt = {"cluster": _arg("cluster"), "icp": _arg("icp"), "pain": _arg("pain")}
+    res = own.cuts(conn, request.args, product, {k: v for k, v in flt.items() if v is not None})
+    return jsonify({"product": q.product_brief(product), "scope": SCOPE_TRACKER, "filters": flt, **res})
 
 
 @bp.get("/api/products/<slug>/families")
@@ -320,6 +331,9 @@ def ad_detail(row_id: int):
     res["window_info"] = w.info(meta)
     res["compare_info"] = w.compare_info(meta)
     res["scope"] = SCOPE_TRACKER
+    learning = own.ad_learning(conn, res.get("family_key"))
+    if learning:
+        res["learning"] = learning
     return jsonify(res)
 
 

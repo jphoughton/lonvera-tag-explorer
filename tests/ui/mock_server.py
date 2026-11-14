@@ -23,6 +23,7 @@ from mock_app import app  # noqa: F401
 from mock_data import *  # noqa: F401,F403
 import mock_performance  # noqa: F401,E402  (Overview, Google, Campaigns routes)
 import mock_product  # noqa: F401,E402  (products, tag tree, ad page, trend, preview routes)
+import mock_own_tags  # noqa: F401,E402  (our own ad learning tags: performance cuts, ad page block; off by default)
 
 
 # ----------------------------------------------------------------------------------------------- routes

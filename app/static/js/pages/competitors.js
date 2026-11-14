@@ -8,7 +8,7 @@ import { showControls } from '../controls.js';
 import { pageHeader } from '../ui/pagehead.js';
 import { filterRow, seg, selectCtl } from '../ui/pagefilters.js';
 import { adCard, lightbox, bars, link, safeHttp, tint } from './competitors_cards.js';
-import { TAG_PARAMS, tagFilters, learning, lpChanges, lpCards, lpLightbox } from './competitors_learn.js';
+import { TAG_PARAMS, tagFilters, learning, ownLandingPages, lpChanges, lpCards, lpLightbox } from './competitors_learn.js';
 
 const md = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ''); return m ? `${+m[2]}/${+m[3]}` : (s || ''); };
 const weekLabel = (s) => 'Week of ' + md(s);
@@ -303,8 +303,8 @@ export async function competitorsPage(ctx) {
     let main;
     if (!data.week) main = h('p', { 'data-testid': 'comp-empty' }, data.notice || 'No snapshots yet.');
     else if (!data.brands.length) main = h('p', { 'data-testid': 'comp-empty' }, 'No brands in this view.');
-    else if (st.view === 'table') main = [changes, tableView(), learning(data), anglesAcross()];
-    else main = [pulse(), changes, spotlight(), wall(), learning(data), anglesAcross()];
+    else if (st.view === 'table') main = [changes, tableView(), learning(data), ownLandingPages(data, st.openLp), anglesAcross()];
+    else main = [pulse(), changes, spotlight(), wall(), learning(data), ownLandingPages(data, st.openLp), anglesAcross()];
     const chatter = data.chatter ? h('section', { class: 'comp-sec', 'data-testid': 'comp-chatter-sec' }, h('h2', null, 'News and Reddit'), data.chatter.length ? chatterCards(data.chatter, 'comp-chatter') : h('p', { class: 'pri-sub' }, 'No posts stored for this week.')) : null;
     body.replaceChildren(...[
       pageHeader({ title: 'Competitors', description: 'What competitors run on Meta, week by week, from the public Ad Library. Brands show their ads running now, not spend or results.', testid: 'comp-head' }),

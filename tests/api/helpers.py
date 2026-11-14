@@ -125,3 +125,18 @@ def group_rows(rows, level_cols):
         lab = F.tag_labels(r)
         out[tuple(lab[: len(level_cols)])].append(r)
     return out
+
+
+def restore_own_tables(pg):
+    """Put the real own-tag tables (migrations 266 / 267: ad_transcript, ad_learning_tags, ad_family_lp) back after a test replaced or dropped them; other test files share the database."""
+    import glob
+    import os
+    pg.rollback()
+    for t in ("ad_transcript", "ad_learning_tags", "ad_family_lp"):
+        pg.execute(f"DROP TABLE IF EXISTS {t}")
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    for name in ("266_own_ad_tags.sql", "267_own_landing_pages.sql"):
+        for path in glob.glob(os.path.join(root, "migrations", name)):
+            with open(path) as f:
+                pg.execute(f.read())
+    pg.commit()

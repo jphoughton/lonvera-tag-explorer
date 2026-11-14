@@ -18,7 +18,7 @@ from flask import Response, g, request
 
 from . import db
 
-CACHEABLE = re.compile(r"^/api/(products|campaigns|campaigns/(trend|all)|platforms/(overview|trend|kpis)|promotions(/scale)?|products/[^/]+/(rollup|families|tree|ads|campaigns|unmatched|trend|stage-daily|coverage)|ads/[0-9]+|google/(rollup|trend)|amazon/(overview|trend|campaigns|campaign-trend|products|search-terms|search-terms/history|fees))$")
+CACHEABLE = re.compile(r"^/api/(products|campaigns|campaigns/(trend|all)|platforms/(overview|trend|kpis)|promotions(/scale)?|products/[^/]+/(rollup|families|tree|learning-tags|ads|campaigns|unmatched|trend|stage-daily|coverage)|ads/[0-9]+|google/(rollup|trend)|amazon/(overview|trend|campaigns|campaign-trend|products|search-terms|search-terms/history|fees))$")
 MAX_ENTRY_BYTES = 16 * 1024 * 1024
 VERSION_SQL = """
 SELECT (SELECT md5(COALESCE(string_agg(key || '=' || value, '|' ORDER BY key), '')) FROM app_meta) AS meta,

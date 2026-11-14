@@ -1,6 +1,6 @@
 // Competitors page, learning layer: the Tags filter row, the "What competitors are doing" section (competitor share against Lonvera's share of spend, most copied combinations, landing page patterns),
 // tagged landing page cards and their lightbox. Everything from the API goes in through textContent / h(). Class names and test ids start with `comp-` (ad blockers hide ad-, ads-, sponsor, banner, promo).
-import { h, isNum } from '../util.js';
+import { h, isNum, fmt } from '../util.js';
 import { filterRow, selectCtl } from '../ui/pagefilters.js';
 import { link, safeHttp, safeLpMedia, bars, tint } from './competitors_cards.js';
 
@@ -42,6 +42,7 @@ function dualBars(ch) {
 function chartCard(ch) {
   return h('article', { class: 'comp-lchart', 'data-testid': 'comp-lchart', 'data-key': ch.key },
     h('h3', null, ch.title), h('p', { class: 'comp-lsent', 'data-testid': 'comp-lsent' }, ch.sentence), dualBars(ch),
+    ch.working && ch.working.sentence ? h('p', { class: 'comp-lwork', 'data-testid': 'comp-lwork', 'data-thin': ch.working.items.some((x) => x.thin) ? '1' : '0' }, h('strong', null, 'What is working for us. '), ch.working.sentence) : null,
     h('p', { class: 'pri-sub comp-lfoot' }, `${ch.n} tagged ads`, ch.has_lonvera ? '' : '. No Lonvera equivalent.'));
 }
 
@@ -55,6 +56,7 @@ export function learning(data) {
       L.charts.some((c) => c.has_lonvera) ? h('p', { class: 'comp-legend', 'data-testid': 'comp-legend' },
         h('span', null, h('i', { class: 'comp-sw comp-sw-c' }), 'Competitors: share of tagged ads'), h('span', null, h('i', { class: 'comp-sw comp-sw-l' }), `Lonvera: share of spend, last 30 days${L.lonvera_through ? ' to ' + L.lonvera_through : ''}`),
         h('span', null, h('i', { class: 'comp-sw comp-sw-h' }), 'Competitors lean on it 15 points or more harder')) : null,
+      L.charts.some((c) => c.working) ? h('p', { class: 'pri-sub comp-lwnote', 'data-testid': 'comp-lwnote' }, `What is working for us: NC ROAS is Upstack new customer revenue divided by spend (return on ad spend), last 30 days${L.best_through ? ' to ' + L.best_through : ''}, only values with at least $1,000 of spend. Thin sample means under $5,000 of spend or under 3 ad families.`) : null,
       h('div', { class: 'comp-lgrid', 'data-testid': 'comp-lgrid' }, L.charts.map(chartCard)));
     if (L.combos && L.combos.length) kids.push(h('div', { class: 'comp-combos-wrap' }, h('h3', null, 'Most copied this week'),
       h('p', { class: 'pri-sub' }, 'The hook and device pairings that show up most often across competitor ads.'),
@@ -108,7 +110,7 @@ export function lpCards(list, onOpen) {
         lp.selling_points.length ? h('ul', { class: 'comp-lppoints', 'data-testid': 'comp-lppoints' }, lp.selling_points.slice(0, 5).map((p) => h('li', null, p))) : null,
         offer ? h('span', { class: 'comp-lpoffer', 'data-testid': 'comp-lpoffer' }, offer) : null,
         chipList('comp-pchip', lp.proof_elements, 'comp-lpproof'), chipList('comp-pchip comp-pchip-u', lp.urgency_devices, 'comp-lpurgency')),
-      h('div', { class: 'comp-card-foot' }, h('span', { class: 'comp-fmt', 'data-testid': 'comp-lpads' }, `${lp.ad_count} ad${lp.ad_count === 1 ? '' : 's'} point here`),
+      h('div', { class: 'comp-card-foot' }, h('span', { class: 'comp-fmt', 'data-testid': 'comp-lpads' }, lp.own ? `${lp.ad_count} ad ${lp.ad_count === 1 ? 'family points' : 'families point'} here` : `${lp.ad_count} ad${lp.ad_count === 1 ? '' : 's'} point here`),
         u ? link(u, 'Open page', { class: 'comp-open', 'data-testid': 'comp-lplink' }) : null));
   }));
 }
@@ -140,7 +142,7 @@ export function lpLightbox() {
       sec('Objections it answers', bullets(lp.objections)), sec('Call to action', lp.cta ? h('p', null, lp.cta) : null),
       sec('Why it works', lp.why_it_works ? h('p', { 'data-testid': 'comp-lplb-why' }, lp.why_it_works) : null),
       lp.angle ? h('p', { class: 'pri-sub' }, 'Angle: ', lp.angle) : null,
-      h('p', { class: 'pri-sub' }, `${lp.ad_count} ad${lp.ad_count === 1 ? '' : 's'} point to this page.`),
+      h('p', { class: 'pri-sub' }, lp.own ? `${lp.ad_count} ad ${lp.ad_count === 1 ? 'family points' : 'families point'} to this page.` : `${lp.ad_count} ad${lp.ad_count === 1 ? '' : 's'} point to this page.`),
       u ? h('p', { class: 'comp-lb-links' }, link(u, 'Open page', { 'data-testid': 'comp-lplb-open' })) : null].filter(Boolean));
     count.textContent = `${i + 1} / ${list.length}`;
     prev.hidden = next.hidden = list.length < 2;
@@ -156,4 +158,27 @@ export function lpLightbox() {
   dlg.addEventListener('close', () => { document.removeEventListener('keydown', onKey); if (from && from.isConnected) from.focus(); });
   dlg.openAt = (lps, lp) => { list = lps; i = Math.max(0, lps.findIndex((x) => x.lp_id === lp.lp_id)); from = document.activeElement; show(); if (!dlg.open) dlg.showModal(); document.removeEventListener('keydown', onKey); document.addEventListener('keydown', onKey); };
   return dlg;
+}
+
+// ---------- our own landing pages ----------
+const roasTxt = (v) => (isNum(v) ? v.toFixed(2) : '–');
+function ownPerf(lp) {
+  const fam = lp.families || [];
+  if (!lp.ad_count) return h('p', { class: 'pri-sub comp-own-perf', 'data-testid': 'comp-own-perf' }, 'No ad family is linked to this page yet.');
+  return h('div', { class: 'comp-own-perf', 'data-testid': 'comp-own-perf' },
+    h('p', { class: 'comp-own-nums' }, `Last 30 days: ${fmt.money(lp.spend)} spend, NC ROAS ${roasTxt(lp.nc_roas)}, Meta ROAS ${roasTxt(lp.meta_roas)}`),
+    fam.length ? h('ul', { class: 'comp-own-fams', 'data-testid': 'comp-own-fams' }, fam.map((f) => h('li', null, h('span', { class: 'comp-own-fn' }, f.name), ' ', h('span', { class: 'pri-sub' }, fmt.money(f.spend)))),
+      lp.more_families ? h('li', { class: 'pri-sub' }, `and ${lp.more_families} more`) : null) : null);
+}
+
+/** "Our landing pages": the same cards as the competitor pages, with the ad families that point to each page and their last 30 days, and one-line comparisons against the competitor pages. Hidden when there are none. */
+export function ownLandingPages(data, onOpen) {
+  const o = data.own_lp;
+  if (!o || !o.pages || !o.pages.length) return null;
+  const grid = lpCards(o.pages, onOpen);
+  const arts = grid.querySelectorAll('.comp-lpcard');
+  o.pages.forEach((lp, i) => { if (arts[i]) { arts[i].setAttribute('data-testid', 'comp-own-card'); arts[i].append(ownPerf(lp)); } });
+  return h('section', { class: 'comp-sec comp-own', 'data-testid': 'comp-own' }, h('h2', null, 'Our landing pages'),
+    h('p', { class: 'pri-sub' }, `${o.pages.length} page${o.pages.length === 1 ? '' : 's'} read for the week of ${o.week}. NC ROAS is Upstack new customer revenue divided by spend (return on ad spend); Meta ROAS is Meta's own reporting. Ad family numbers are the last ${o.days} days${o.through ? ' to ' + o.through : ''}.`),
+    o.compare && o.compare.length ? h('ul', { class: 'comp-own-cmp', 'data-testid': 'comp-own-compare' }, o.compare.map((t) => h('li', null, t))) : null, grid);
 }

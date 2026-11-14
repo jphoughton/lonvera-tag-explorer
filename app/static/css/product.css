@@ -48,3 +48,23 @@ tr.lv4 td { font-size: 12px; }
 .keynum { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; min-width: 0; }
 .keynum .k { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .keynum .big { font-size: 22px; font-weight: 650; line-height: 1.25; }
+
+/* ---- our own ad learning tags: performance by hook type / device / offer type (pages/own_tags.js) and the ad page card (pages/ad.js learningBlock) ---- */
+.own-learn[hidden] { display: none; }
+.own-cuts { display: flex; flex-direction: column; gap: 16px; margin-top: 8px; }
+.own-cut { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; min-width: 0; }
+.own-cut h3 { margin: 0 0 2px; font-size: 14px; }
+.own-cut-note { margin: 0 0 8px; }
+.own-scroll { overflow-x: auto; max-width: 100%; }
+.own-table { width: 100%; min-width: 760px; }
+.own-table th, .own-table td { white-space: nowrap; }
+.own-table .own-val { text-align: left; font-weight: 600; white-space: normal; min-width: 110px; }
+.own-table td.nc-roas { font-weight: 700; }
+.learn-card .learn-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+.learn-chip { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--head-bg); color: var(--text); overflow-wrap: anywhere; }
+.learn-chip-k { color: var(--muted); font-weight: 500; }
+.learn-quote { margin: 0 0 10px; padding: 2px 0 2px 12px; border-left: 3px solid var(--accent); font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
+.learn-more { margin: 6px 0; }
+.learn-more summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.own-hint { display: none; margin: 0 0 6px; }
+@media (max-width: 720px) { .own-hint { display: block; } .own-table .own-val { position: sticky; left: 0; background: var(--panel); } }

@@ -37,7 +37,7 @@ PARTNER_READ_RULES = frozenset({
     "/api/campaigns", "/api/campaigns/all", "/api/campaigns/trend", "/api/platforms/kpis", "/api/platforms/overview", "/api/platforms/trend", "/api/google/rollup", "/api/google/trend",
     "/api/promotions", "/api/promotions/scale", "/api/trends", "/api/meta/breakdowns", "/api/meta/breakdowns/coverage",
     # tags, hooks, landing pages and their top ads, competitors and their concepts
-    "/api/tag-lookup", "/api/landing-pages", "/api/landing-pages/<int:page_id>", "/api/competitors", "/api/competitors/<path:brand>", "/api/competitors/media/<library_id>", "/api/competitors/video/<library_id>", "/api/competitors/lp-media/<lp_id>",
+    "/api/tag-lookup", "/api/landing-pages", "/api/landing-pages/<int:page_id>", "/api/competitors", "/api/products/<slug>/learning-tags", "/api/competitors/<path:brand>", "/api/competitors/media/<library_id>", "/api/competitors/video/<library_id>", "/api/competitors/lp-media/<lp_id>",
     # the weekly ideas list, what is working on one line, and the Communication Overview tree (product, cluster, ICP, pain point) the tags come from
     "/api/priorities", "/api/priorities/lines/<int:line_id>/insights", "/api/priorities/manual/options",
     # thumbnails and creative files
