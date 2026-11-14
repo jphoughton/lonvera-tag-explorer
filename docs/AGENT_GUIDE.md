@@ -95,6 +95,7 @@ Live URL: https://web-production-358da.up.railway.app
 | `etl/alerts.py`, `etl/backup.py` | Hourly alerts; nightly database backup |
 | `etl/reader_role.py` | Creates the read-only `analytics_reader` login |
 | `etl/api_keys.py` | `create` (`--scope read_assign` default, or `--scope partner_push --vendor <Vendor>`), `list`, `revoke` API keys |
+| `app/api_keys.py` (partner scopes) | `partner_push` (creative data only) and `partner_read_all` (everything except `SECRET_BLOCKED`, and the brain at `/mcp`); upgrade a key in place with `python -m etl.api_keys set-scope --name <key> --scope partner_read_all`. See `docs/PARTNER_API.md` (Full read access, Connect your AI tool) |
 | `app/partner_tickets.py` | What a `partner_push` key does: push tickets, list / fix its own vendor's tickets, add creative links. Guide for partners: `docs/PARTNER_API.md` |
 | `etl/migrate.py` | Migration runner |
 

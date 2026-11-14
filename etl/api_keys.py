@@ -1,6 +1,7 @@
 """Manage scoped API keys (table api_keys, migration 205; what a key may do is in app/api_keys.py).
 
-    python -m etl.api_keys create --name <name> [--scope read_assign|partner_push --vendor <Vendor>] [--out <file>]   make a key; the key is printed ONCE to stdout (or written to <file> with mode 0600) and can never be shown again
+    python -m etl.api_keys create --name <name> [--scope read_assign|partner_push|partner_read_all --vendor <Vendor>] [--out <file>]   make a key; the key is printed ONCE to stdout (or written to <file> with mode 0600) and can never be shown again
+    python -m etl.api_keys set-scope --name <name> --scope partner_push|partner_read_all   upgrade or downgrade a partner key in place (no new key)
     python -m etl.api_keys list                                  name, prefix, created, last used, revoked (never the key or its hash)
     python -m etl.api_keys revoke --name <name>                  the key stops working at once (the row stays for the history)
 
@@ -32,10 +33,10 @@ def create_key(conn, name: str, created_by: str | None = None, scope: str = ak.S
     from app.priorities_assign import VENDORS
     if scope not in ak.SCOPES:
         raise CliError("scope must be one of: " + ", ".join(ak.SCOPES))
-    if scope == ak.PARTNER_SCOPE and vendor not in VENDORS:
-        raise CliError("a partner_push key needs --vendor, one of: " + ", ".join(VENDORS))
-    if scope != ak.PARTNER_SCOPE and vendor:
-        raise CliError("--vendor only goes with --scope partner_push")
+    if scope in ak.PARTNER_SCOPES and vendor not in VENDORS:
+        raise CliError("a partner key (partner_push or partner_read_all) needs --vendor, one of: " + ", ".join(VENDORS))
+    if scope not in ak.PARTNER_SCOPES and vendor:
+        raise CliError("--vendor only goes with --scope partner_push or partner_read_all")
     if not NAME_RE.fullmatch(name or ""):
         raise CliError("name must be 1 to 40 characters: letters, digits, dot, dash or underscore, starting with a letter or digit")
     raw = ak.generate_key()
@@ -52,6 +53,25 @@ def create_key(conn, name: str, created_by: str | None = None, scope: str = ak.S
         raise CliError("migration 205 has not been applied to this database (python -m etl.migrate)") from None
     conn.commit()
     return raw, raw[:8]
+
+
+def set_scope(conn, name: str, scope: str) -> bool:
+    """Change the scope of an existing ACTIVE partner key between partner_push and partner_read_all (same key, hash, prefix and vendor; nothing is shown). True when it changed, False when it already had
+    that scope. Takes effect on the key's next request. Raises CliError for an unknown, revoked or non-partner key."""
+    if scope not in ak.PARTNER_SCOPES:
+        raise CliError("scope must be one of: " + ", ".join(ak.PARTNER_SCOPES))
+    row = conn.execute("SELECT scope, vendor, revoked_at FROM api_keys WHERE name = %s", (name,)).fetchone()
+    if row is None:
+        raise CliError(f"no key named {name!r}")
+    if row[2] is not None:
+        raise CliError(f"key {name!r} is revoked")
+    if row[0] not in ak.PARTNER_SCOPES or not row[1]:
+        raise CliError(f"key {name!r} is not a partner key (scope {row[0]}); make a new partner key instead")
+    if row[0] == scope:
+        return False
+    conn.execute("UPDATE api_keys SET scope = %s WHERE name = %s AND revoked_at IS NULL", (scope, name))
+    conn.commit()
+    return True
 
 
 def list_keys(conn) -> list[tuple]:
@@ -85,10 +105,13 @@ def main(argv=None, url: str | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("create", help="make a key and print it once")
     c.add_argument("--name", required=True)
-    c.add_argument("--scope", default=ak.SCOPE, choices=ak.SCOPES, help="read_assign (default: read everything, assign on the board) or partner_push (an outside creative partner: push tickets and creative links for one vendor)")
-    c.add_argument("--vendor", help="required for partner_push: the one vendor the key speaks for (Madre, Victoria, Studio Flow ...)")
+    c.add_argument("--scope", default=ak.SCOPE, choices=ak.SCOPES, help="read_assign (default: read everything, assign on the board), partner_push (an outside creative partner: push tickets and creative links for one vendor, read the creative data) or partner_read_all (partner_push plus read everything except secrets)")
+    c.add_argument("--vendor", help="required for partner_push and partner_read_all: the one vendor the key speaks for (Madre, Victoria, Studio Flow ...)")
     c.add_argument("--out", help="write the key to this new file (mode 0600) instead of printing it")
     sub.add_parser("list", help="show every key (never the key itself)")
+    ss = sub.add_parser("set-scope", help="change an existing partner key between partner_push and partner_read_all (the key itself does not change)")
+    ss.add_argument("--name", required=True)
+    ss.add_argument("--scope", required=True, choices=ak.PARTNER_SCOPES)
     r = sub.add_parser("revoke", help="stop a key from working")
     r.add_argument("--name", required=True)
     a = ap.parse_args(argv)
@@ -111,6 +134,8 @@ def main(argv=None, url: str | None = None) -> int:
                     print(f"{name:<24}{prefix + '...':<10}{scope:<14}{(vendor or '-'):<16}{_ts(created):<18}{_ts(last):<18}{_ts(revoked)}")
                 if not rows:
                     print("(no keys)")
+            elif a.cmd == "set-scope":
+                print(f"Key {a.name!r} is now {a.scope}." if set_scope(conn, a.name, a.scope) else f"Key {a.name!r} already has scope {a.scope}.")
             else:
                 print(f"Key {a.name!r} revoked." if revoke_key(conn, a.name) else f"Key {a.name!r} was already revoked.")
     except CliError as e:

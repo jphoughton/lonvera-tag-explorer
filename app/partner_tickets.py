@@ -383,10 +383,12 @@ def add_creative_batch(vendor: str, body, user: str) -> dict:
 
 
 # ----------------------------------------------------------------------------------------------------------------------------- contract
-def contract(vendor: str, limit_per_min: int = WRITES_PER_MIN) -> dict:
+def contract(vendor: str, limit_per_min: int = WRITES_PER_MIN, scope: str = "partner_push") -> dict:
     """A machine-readable description of what this key can do, so a partner's tooling can check itself."""
     return {
         "vendor": vendor,
+        "read_scope": "everything except secret-bearing routes (and the data brain at /mcp)" if scope == "partner_read_all" else "creative and performance data only",
+        "key_scope": scope,
         "required_fields": ["concept_name", "brief or brief_url (at least one)"],
         "implied": {"vendor": "filled in from your key; sending a different vendor is refused"},
         "optional_fields": ["brief", "brief_url", "product", "cluster", "concept_kind", "variations", "icp", "pain_point", "story", "for_week", "format_code", "note", "due_date", "status"],

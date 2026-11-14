@@ -2,7 +2,7 @@
 
 For outside creative partners (agencies, studios, freelancers). Use it to send us your concepts as tickets, to add your creative to those tickets as links, and to look at what is working so your next concepts are better. Everything you send shows up on Lonvera's Production board the moment you send it.
 
-Base URL: `https://web-production-358da.up.railway.app`
+Base URL: Josh sends you the address together with your key. In every example below it is written `$LONVERA_URL`; set it once in your terminal, for example `export LONVERA_URL=https://partner-production-62a3d596.up.railway.app`, and your key as `export LONVERA_KEY=lvk_...`.
 
 ## Your key
 
@@ -53,7 +53,7 @@ Your tickets start in the column you choose with `status`. Moving them further i
 The smallest ticket:
 
 ```bash
-curl -s https://web-production-358da.up.railway.app/api/priorities/tickets \
+curl -s $LONVERA_URL/api/priorities/tickets \
   -H "Authorization: Bearer $LONVERA_KEY" -H "Content-Type: application/json" \
   -d '{"concept_name": "Grandma back on the floor", "brief": "A grandmother plays on the floor with her grandkids and gets up without a hand. Warm, real kitchen footage."}'
 ```
@@ -61,7 +61,7 @@ curl -s https://web-production-358da.up.railway.app/api/priorities/tickets \
 A full ticket, with every optional field:
 
 ```bash
-curl -s https://web-production-358da.up.railway.app/api/priorities/tickets \
+curl -s $LONVERA_URL/api/priorities/tickets \
   -H "Authorization: Bearer $LONVERA_KEY" -H "Content-Type: application/json" \
   -d '{
     "concept_name": "Grandma back on the floor",
@@ -83,7 +83,7 @@ You get the ticket back (status 201) with its `id`. Keep the id: you need it to 
 Three tickets in one request (all or nothing: if one is wrong, none is saved and the message says which, like `ticket 2: ...`):
 
 ```bash
-curl -s https://web-production-358da.up.railway.app/api/priorities/tickets \
+curl -s $LONVERA_URL/api/priorities/tickets \
   -H "Authorization: Bearer $LONVERA_KEY" -H "Content-Type: application/json" \
   -d '{"tickets": [
     {"concept_name": "Concept A", "brief": "What A is."},
@@ -95,7 +95,7 @@ curl -s https://web-production-358da.up.railway.app/api/priorities/tickets \
 ## Seeing what you sent
 
 ```bash
-curl -s "https://web-production-358da.up.railway.app/api/priorities/partner/tickets?status=in_production&week=2026-11-16&limit=100" \
+curl -s "$LONVERA_URL/api/priorities/partner/tickets?status=in_production&week=2026-11-16&limit=100" \
   -H "Authorization: Bearer $LONVERA_KEY"
 ```
 
@@ -106,7 +106,7 @@ Filters (all optional): `status` (`assigned`, `brief_sent`, `in_production`, `in
 You can look at every company's tickets, not only your own, so you can see what is already in production and avoid doubling up. This is read only: you can never change, add creative to, or comment on another company's ticket (those calls answer `404 Ticket not found.`).
 
 ```bash
-curl -s "https://web-production-358da.up.railway.app/api/priorities/partner/all-tickets?vendor=Studio%20Flow&status=in_production&week=2026-11-16&product=boneflex&limit=100" \
+curl -s "$LONVERA_URL/api/priorities/partner/all-tickets?vendor=Studio%20Flow&status=in_production&week=2026-11-16&product=boneflex&limit=100" \
   -H "Authorization: Bearer $LONVERA_KEY"
 ```
 
@@ -115,7 +115,7 @@ Filters (all optional): `vendor`, `status`, `week`, `product`, `limit` (up to 50
 ## Fixing a ticket
 
 ```bash
-curl -s -X PATCH https://web-production-358da.up.railway.app/api/priorities/partner/tickets/123 \
+curl -s -X PATCH $LONVERA_URL/api/priorities/partner/tickets/123 \
   -H "Authorization: Bearer $LONVERA_KEY" -H "Content-Type: application/json" \
   -d '{"concept_name": "Grandma back on the floor v2", "cluster": "Menopause"}'
 ```
@@ -129,7 +129,7 @@ Your creative arrives as **links**, not file uploads. Put the file on whatever y
 One ticket, one or more variations:
 
 ```bash
-curl -s https://web-production-358da.up.railway.app/api/priorities/partner/tickets/123/creative \
+curl -s $LONVERA_URL/api/priorities/partner/tickets/123/creative \
   -H "Authorization: Bearer $LONVERA_KEY" -H "Content-Type: application/json" \
   -d '{"variations": [
     {"label": "Original", "url": "https://app.frame.io/reviews/abc", "concept_id": "Madre-BoneFlex-Video-1.1"},
@@ -158,7 +158,7 @@ Python (with `requests`):
 ```python
 import os, requests
 
-BASE = "https://web-production-358da.up.railway.app"
+BASE = os.environ["LONVERA_URL"]
 H = {"Authorization": f"Bearer {os.environ['LONVERA_KEY']}"}
 
 t = requests.post(f"{BASE}/api/priorities/tickets", headers=H,
@@ -196,13 +196,47 @@ What you CAN read:
 Which ads are working (Boneflex, last 30 days, best first):
 
 ```bash
-curl -s "https://web-production-358da.up.railway.app/api/products/boneflex/ads?window=30d" \
+curl -s "$LONVERA_URL/api/products/boneflex/ads?window=30d" \
   -H "Authorization: Bearer $LONVERA_KEY"
 ```
 
 Products in the URL are `vita-bull`, `beef-liver`, `boneflex`, `vita-belle`. The numbers are Meta-reported unless a view says otherwise.
 
 What you can NOT read (you get a plain 403): finance and planning (pacing, P&L, cash, financing, scenarios), inventory and purchase orders, Amazon fees and profit, email and SMS revenue, Shopify orders and customers, the team board, vendor links and keys, anything else not in the table above. If you need something that is not listed, ask Josh.
+
+## Full read access (only if Josh turned it on for your key)
+
+Read access is chosen per key. A normal partner key reads the creative and performance data listed above. If Josh upgrades your key to **full read access** (scope `partner_read_all`; the key itself does not change, it just starts working on more), you can read everything the Lonvera app serves, read only: finance and planning (pacing, P&L, cash, financing, scenarios), inventory and purchase orders, Amazon, email and SMS, the daily story, status and tie-out, the production board, all assignments and capacity, launch settings, and the CSV export. Your writes do not change: you still create tickets and add creative only for your own company, and another company's ticket on a write call is still `404 Ticket not found.`
+
+Still blocked for every partner key, always, because they hand out access: saved-view links and their tokens (`/api/priorities/views` and `/api/priorities/views/<token>` and `.../csv`), vendor link lists and vendor link pages' tokens (`/api/priorities/vendor-links`, `/api/priorities/vendor/<token>...`), the agent key route (`/api/brain/key`), and key administration (there is no route for it at all). Nothing that returns a key, a key hash, a password or a setting that is a secret is served.
+
+To see which one your key has, ask `GET /api/priorities/partner/contract` (it shows `read_scope`).
+
+## Connect your AI tool (full read access keys only)
+
+Keys with full read access can also connect an AI tool to the Lonvera data brain, so the AI can discover our data schema and endpoints itself. It is read only: it can only run `SELECT` queries on the analytics views, with row and time limits, and it cannot change anything.
+
+Claude Code:
+
+```bash
+claude mcp add --transport http lonvera "$LONVERA_URL/mcp" --header "Authorization: Bearer $LONVERA_KEY"
+```
+
+Any other client that speaks MCP over HTTP (generic settings JSON):
+
+```json
+{
+  "mcpServers": {
+    "lonvera": {
+      "type": "http",
+      "url": "<your LONVERA_URL>/mcp",
+      "headers": { "Authorization": "Bearer <your key>" }
+    }
+  }
+}
+```
+
+After connecting, tell your AI to work in this order: **`catalog`** first (what data exists, by area), then **`describe`** a view or table (columns, meaning, caveats), then **`sql`** (one `SELECT` on what it just described), and **`app_map`** for the list of routes, pages and jobs. `metric`, `search`, `why`, `why_tree`, `past_questions` and `freshness` are there when it needs a definition, a lead on why something moved, or to check how fresh the data is. A key without full read access gets `403` on `/mcp`.
 
 ## Messages and what they mean
 
@@ -233,4 +267,4 @@ It cannot read anything outside the tables above, change another company's ticke
 
 ## Copy-paste prompt for your AI tool
 
-> You are helping me send creative concepts to Lonvera's production board through its partner API. Base URL: https://web-production-358da.up.railway.app. Authenticate every request with the header `Authorization: Bearer <my key>` (the key starts with `lvk_`; never print it or put it in a file that is shared). A ticket needs only `concept_name` (up to 200 characters) and a brief: `brief` (plain text) and/or `brief_url` (an https link). My company is filled in from the key; never send a different `vendor`. Optional fields: `product` (vita-bull, beef-liver, boneflex or vita-belle), `cluster` (market cluster), `concept_kind` (new or iteration), `icp`, `pain_point`, `story`, `for_week` (a date, snaps to Monday), `due_date`, `format_code` (F1 to F6), `note`, `variations` (a list of `{label, url, concept_id}`), `status` (assigned, brief_sent or in_production). Lonvera fills in anything missing from the brief; anything I send is kept as sent. Create with `POST /api/priorities/tickets` (one ticket, or `{"tickets": [...]}` for up to 100; all or nothing). List my tickets with `GET /api/priorities/partner/tickets?status=&week=&limit=&offset=` (read-only view of every company's tickets: `GET /api/priorities/partner/all-tickets`, filters vendor, status, week, product) (each has `needs_creative` and `tags`). Fix with `PATCH /api/priorities/partner/tickets/<id>` (only concept_name, concept_kind, cluster, variations, brief_url, creative_url, story). Add creative as links with `POST /api/priorities/partner/tickets/<id>/creative` and body `{"variations": [{"label": "Original", "url": "https://...", "concept_id": "optional"}], "submit": false}`; links merge by label and nothing is deleted; `{"creative_url": "https://..."}` means the Original; `submit: true` sends a ticket that is In production to review. For many tickets use `POST /api/priorities/partner/creative` with `{"creatives": [{"ticket_id": 1, "variations": [...]}]}`. All links must be https (Google Drive, Frame.io, Dropbox, Vimeo, YouTube, Loom, Box and similar all work; Drive, YouTube, Vimeo and Loom also play inside the ticket). Limits: 60 writes per minute, 100 items per batch, 1 MB per request. Before I act, read `GET /api/priorities/partner/contract` for the current rules. If a request returns 400, read the message: it names the field that is wrong. Do not retry on 401, 403 or 404; on 429 wait for the Retry-After header.
+> You are helping me send creative concepts to Lonvera's production board through its partner API. Base URL: the address in my environment variable LONVERA_URL. Authenticate every request with the header `Authorization: Bearer <my key>` (the key starts with `lvk_`; never print it or put it in a file that is shared). A ticket needs only `concept_name` (up to 200 characters) and a brief: `brief` (plain text) and/or `brief_url` (an https link). My company is filled in from the key; never send a different `vendor`. Optional fields: `product` (vita-bull, beef-liver, boneflex or vita-belle), `cluster` (market cluster), `concept_kind` (new or iteration), `icp`, `pain_point`, `story`, `for_week` (a date, snaps to Monday), `due_date`, `format_code` (F1 to F6), `note`, `variations` (a list of `{label, url, concept_id}`), `status` (assigned, brief_sent or in_production). Lonvera fills in anything missing from the brief; anything I send is kept as sent. Create with `POST /api/priorities/tickets` (one ticket, or `{"tickets": [...]}` for up to 100; all or nothing). List my tickets with `GET /api/priorities/partner/tickets?status=&week=&limit=&offset=` (read-only view of every company's tickets: `GET /api/priorities/partner/all-tickets`, filters vendor, status, week, product) (each has `needs_creative` and `tags`). Fix with `PATCH /api/priorities/partner/tickets/<id>` (only concept_name, concept_kind, cluster, variations, brief_url, creative_url, story). Add creative as links with `POST /api/priorities/partner/tickets/<id>/creative` and body `{"variations": [{"label": "Original", "url": "https://...", "concept_id": "optional"}], "submit": false}`; links merge by label and nothing is deleted; `{"creative_url": "https://..."}` means the Original; `submit: true` sends a ticket that is In production to review. For many tickets use `POST /api/priorities/partner/creative` with `{"creatives": [{"ticket_id": 1, "variations": [...]}]}`. All links must be https (Google Drive, Frame.io, Dropbox, Vimeo, YouTube, Loom, Box and similar all work; Drive, YouTube, Vimeo and Loom also play inside the ticket). Limits: 60 writes per minute, 100 items per batch, 1 MB per request. Before I act, read `GET /api/priorities/partner/contract` for the current rules. If a request returns 400, read the message: it names the field that is wrong. Do not retry on 401, 403 or 404; on 429 wait for the Retry-After header.

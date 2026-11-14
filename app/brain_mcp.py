@@ -84,7 +84,7 @@ def _identify():
         if bk:
             return (f"brain:{bk['username']}" if bk["username"] else f"brain:open-app:{bk['prefix']}"), None
         if ak and ak["scope"] == api_keys.PARTNER_SCOPE:
-            return None, (jsonify(error=api_keys.PARTNER_MESSAGE), 403)       # an outside partner's key never reaches the data brain
+            return None, (jsonify(error=api_keys.PARTNER_MESSAGE), 403)       # a partner_push key never reaches the data brain (partner_read_all is a deliberate per-key choice and does)
         if ak:
             return f"key:{ak['name']}", None
         throttle.fail(ip)

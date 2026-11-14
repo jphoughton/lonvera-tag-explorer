@@ -8539,7 +8539,7 @@ SELECT key, left(value, 80) AS value, updated_at FROM app_meta WHERE key NOT LIK
 
 *table*
 
-**Purpose.** Scoped API keys for the Tag Explorer API: one row per key handed to a colleague (read_assign: reads everything the app serves, assigns on the production board) or to an outside creative partner (partner_push: bound to one vendor, pushes tickets and creative links, reads only the creative and performance data).
+**Purpose.** Scoped API keys for the Tag Explorer API: one row per key handed to a colleague (read_assign: reads everything the app serves, assigns on the production board) or to an outside creative partner (partner_push: bound to one vendor, pushes tickets and creative links, reads only the creative and performance data; partner_read_all: the same writes, and reads everything except secret-bearing routes).
 
 - **Grain:** primary key `(id)`; one row per key (id is the primary key; name and key_hash are each unique)
 - **Source:** python -m etl.api_keys create / revoke (etl/api_keys.py); last_used_at is touched by the web app (app/api_keys.py)
@@ -8554,7 +8554,7 @@ SELECT key, left(value, 80) AS value, updated_at FROM app_meta WHERE key NOT LIK
 | `name` | text | no | Short name of the key, for example the colleague it was given to (unique). Shown in the audit columns as key:<name>. |
 | `key_hash` | text | no | sha256 hex digest of the full key (unique). The key is looked up by this hash. |
 | `prefix` | text | no | First 8 characters of the key ('lvk_' plus 4), for display only. |
-| `scope` | text | no | What the key may do. 'read_assign': every GET, plus five writes on the production board (assign, create tickets, edit, move, comment). 'partner_push': an outside creative partner, bound to one vendor; pushes tickets and creative links for that vendor, looks at its own tickets and reads the creative and performance data only. |
+| `scope` | text | no | What the key may do. 'read_assign': every GET, plus five writes on the production board (assign, create tickets, edit, move, comment). 'partner_push': an outside creative partner, bound to one vendor; pushes tickets and creative links for that vendor, looks at tickets and reads the creative and performance data only. 'partner_read_all': the same writes as partner_push, and it may also read every route and the data brain except the secret-bearing ones (saved-view and vendor link tokens, the brain key). |
 | `created_at` | timestamptz | no | When the key was made. |
 | `created_by` | text | yes | Operating-system user who ran the create command; NULL when unknown. |
 | `last_used_at` | timestamptz | yes | When the key last made a request (updated at most once a minute); NULL while unused. |

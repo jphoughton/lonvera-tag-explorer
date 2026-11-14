@@ -30184,7 +30184,7 @@
    "relation": "api_keys",
    "kind": "table",
    "group": "ops",
-   "purpose": "Scoped API keys for the Tag Explorer API: one row per key handed to a colleague (read_assign: reads everything the app serves, assigns on the production board) or to an outside creative partner (partner_push: bound to one vendor, pushes tickets and creative links, reads only the creative and performance data).",
+   "purpose": "Scoped API keys for the Tag Explorer API: one row per key handed to a colleague (read_assign: reads everything the app serves, assigns on the production board) or to an outside creative partner (partner_push: bound to one vendor, pushes tickets and creative links, reads only the creative and performance data; partner_read_all: the same writes, and reads everything except secret-bearing routes).",
    "grain": "one row per key (id is the primary key; name and key_hash are each unique)",
    "primary_key": [
     "id"
@@ -30228,7 +30228,7 @@
      "name": "scope",
      "type": "text",
      "nullable": false,
-     "description": "What the key may do. 'read_assign': every GET, plus five writes on the production board (assign, create tickets, edit, move, comment). 'partner_push': an outside creative partner, bound to one vendor; pushes tickets and creative links for that vendor, looks at its own tickets and reads the creative and performance data only."
+     "description": "What the key may do. 'read_assign': every GET, plus five writes on the production board (assign, create tickets, edit, move, comment). 'partner_push': an outside creative partner, bound to one vendor; pushes tickets and creative links for that vendor, looks at tickets and reads the creative and performance data only. 'partner_read_all': the same writes as partner_push, and it may also read every route and the data brain except the secret-bearing ones (saved-view and vendor link tokens, the brain key)."
     },
     {
      "name": "created_at",
