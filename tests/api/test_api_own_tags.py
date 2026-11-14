@@ -37,6 +37,23 @@ def world(pg):
 
 
 @pytest.fixture()
+def no_upstack(pg):
+    """No Upstack new customer data for the test (other files in the same worker may have left some); the previous contents come back afterwards."""
+    for t in ("family_daily_upstack_nc", "ad_metrics_upstack_nc"):
+        pg.execute(f"CREATE TEMP TABLE IF NOT EXISTS nb_{t} AS SELECT * FROM {t} WHERE false")
+        pg.execute(f"DELETE FROM nb_{t}"); pg.execute(f"INSERT INTO nb_{t} SELECT * FROM {t}"); pg.execute(f"DELETE FROM {t}")
+    old = pg.execute("SELECT key, value FROM app_meta WHERE key IN ('upstack_through', 'upstack_first_day')").fetchall()
+    pg.execute("DELETE FROM app_meta WHERE key IN ('upstack_through', 'upstack_first_day')")
+    pg.commit()
+    yield
+    for t in ("family_daily_upstack_nc", "ad_metrics_upstack_nc"):
+        pg.execute(f"DELETE FROM {t}"); pg.execute(f"INSERT INTO {t} SELECT * FROM nb_{t}"); pg.execute(f"DROP TABLE nb_{t}")
+    for k, v in old:
+        pg.execute("INSERT INTO app_meta (key, value) VALUES (%s,%s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", (k, v))
+    pg.commit()
+
+
+@pytest.fixture()
 def upstack(pg):
     """An Upstack new customer twin of the fixture: family rows and tracker-row metrics scaled by FACTOR, plus the two app_meta days. The previous contents come back afterwards."""
     for t in ("family_daily_upstack_nc", "ad_metrics_upstack_nc"):
@@ -101,7 +118,7 @@ def test_tags_only_on_other_products_hide_the_section(client, world):
 
 # ------------------------------------------------------------------------------------------------ the numbers
 
-def test_meta_numbers_unique_families_and_note(client, world, pg):
+def test_meta_numbers_unique_families_and_note(client, world, pg, no_upstack):
     world(rows=ROWS)
     d = client.get("/api/products/vita-bull/learning-tags?window=30d").get_json()
     assert d["available"] is True and d["has_nc"] is False and [c["key"] for c in d["cuts"]] == ["hook_type", "device", "offer_type"]
