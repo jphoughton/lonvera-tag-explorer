@@ -446,12 +446,12 @@ class Inv:
         evs = getattr(self, "events", [])
         lo = self.start - dt.timedelta(days=3)
         so = [e for e in evs if e["kind"] in ("stockout", "stock_near_zero")]
-        self.add("H12", "Inventory (stockouts / near zero in the window and the 3 days before)", "consistent with" if so else "ruled out",
+        self.add("H12", "Inventory (stockouts / near zero in the window and the 3 days before)", ("consistent with" if self.gate_real else "inside noise") if so else "ruled out",
                  ("; ".join(f"{e['object_names']} {e['kind']} on {e['event_day']}" for e in so[:4])) if so else "no stockout or near-zero stock event; product on-hand did not hit zero")
-        fe = [e for e in evs if e["kind"] == "feed_run_failed"]
+        fe = [e for e in evs if e["kind"] == "feed_run_failed" and str(e.get("object_names")) not in ("meta_breakdowns", "lifetime_pull")]    # breakdown / lifetime pulls do not feed the headline
         gaps = [d for d in (self.start + dt.timedelta(days=i) for i in range((self.end - self.start).days + 1)) if d not in self.daily or self.daily[d]["spend"] == 0]
         if fe or gaps:
-            self.add("H13", "Tracking / feed breaks (failed ETL runs, days with no data)", "consistent with", f"{len(fe)} failed run(s): {'; '.join(e['object_names'] for e in fe[:3])}; days with no spend rows: {[str(g) for g in gaps[:3]]}")
+            self.add("H13", "Tracking / feed breaks (failed ETL runs, days with no data)", "consistent with" if self.gate_real else "inside noise", f"{len(fe)} failed run(s): {'; '.join(e['object_names'] for e in fe[:3])}; days with no spend rows: {[str(g) for g in gaps[:3]]}")
         else:
             self.add("H13", "Tracking / feed breaks (failed ETL runs, days with no data)", "ruled out", "no failed ETL run and no empty day in the window")
 
@@ -599,6 +599,8 @@ class Inv:
         action = None
         if not self.gate_real:
             answer = f"Inside noise at every grain tested ({cur_s}; {gs}). No cause is claimed."
+            if self.controlled:
+                answer += " Logged changes in the window were still controlled: " + "; ".join(f"{c['event'].split(' at ')[0]}: {c['verdict']}" for c in self.controlled[:3]) + "."
             nxt = (self.next_needed or {}).get("reading")
             next_check = nxt or "wait one more day; re-run with the same windows"
         elif ok or cons:
