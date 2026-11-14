@@ -83,9 +83,18 @@ class MoreHypotheses:
         beyond = bool(movers)
         v = X.factor_verdict(real, mix_share if beyond else 0.0, beyond)
         label_pm = {"nc_roas": "NC ROAS", "cost_per_nc": "cost per new customer", "conversion": "conversion (new customers per link click)"}[pm]
-        head = (f"{label_pm} on the ad-view Upstack basis {first['value_cmp']:.3g} -> {first['value_cur']:.3g} ({tot:+.3f}); biggest mix share {best[0]} {mix_share:.0%} of it" if mix_share is not None else f"{label_pm} total {tot:+.3f}")
-        caveat = ("tags are today's, applied to past days; " + ("window ends within 7 days of the last loaded day, so Upstack attribution is still maturing: only share shifts are read, rates are not" if maturing else "")).rstrip("; ")
-        ev = f"{head}. " + ("Material movers: " + " | ".join(lines) if lines else "no tag value moved beyond its band") + f". Untagged spend {unt.get('cmp', 0) / tcmp:.0%} -> {unt.get('cur', 0) / tcur:.0%}. Caveat: {caveat}."
+        shifts = []                                     # big share moves whose own rate sat near the average: they moved a lot and explain little
+        seen = {(lab, m["key"]) for _, lab, m in movers}
+        for label, res in all_dims.items():
+            for m in res["rows"]:
+                if abs(m["share_cur"] - m["share_cmp"]) * 100 >= 5 and (label, m["key"]) not in seen:
+                    shifts.append((abs(m["share_cur"] - m["share_cmp"]), label, m))
+        shifts.sort(key=lambda x: -x[0])
+        sl = [f"{label} {m['key']} {m['share_cmp']:.1%} -> {m['share_cur']:.1%} (own rate {fmt(m['rate_cmp'])} -> {fmt(m['rate_cur'])}, mix part {m['mix_part']:+.3f})" for _, label, m in shifts[:3]]
+        caveat = ("tags are today's, applied to past days; " + ("window ends within 7 days of the last loaded day: Upstack attribution is still maturing, so only share shifts are read, not rates" if maturing else "")).rstrip("; ")
+        head = (f"{label_pm} on the ad-view Upstack basis {fmt(first['value_cmp'])} -> {fmt(first['value_cur'])} ({tot:+.3f}); the mix part of the largest dimension is {mix_share:.0%} of that move" if mix_share is not None else f"{label_pm} total {tot:+.3f}")
+        ev = ("Material movers: " + " | ".join(lines) if lines else "no tag value moved the ratio beyond its band") + ". " + ("Large share shifts with little effect (valued at their own rate): " + "; ".join(sl) + ". " if sl else "") + \
+             f"{head}. Untagged spend {unt.get('cmp', 0) / tcmp:.0%} -> {unt.get('cur', 0) / tcur:.0%}. Caveat: {caveat}."
         drill = self._persona_changes(movers[:2])
         if drill:
             ev += " Changes touching the top mover's ad sets: " + drill

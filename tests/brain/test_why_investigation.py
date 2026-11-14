@@ -292,6 +292,10 @@ def _extend(url):
     return keys
 
 
+def cmp_ledger_text(out, hid):
+    return next(e["evidence"] for e in W.compact(out)["ledger"] if e["id"] == hid)
+
+
 def test_new_hypotheses_run_on_seeded_views_and_report_the_story(whydb):
     seed(whydb, Scenario(x_mode="new", with_shopify=True))
     _extend(whydb)
@@ -301,6 +305,7 @@ def test_new_hypotheses_run_on_seeded_views_and_report_the_story(whydb):
     for need in ("H1b", "H4b", "H14", "H16", "H17", "H18"):
         assert need in led and led[need]["verdict"] in X.VERDICTS and led[need]["evidence"], need
     assert "Thin" in led["H14"]["evidence"] and "share" in led["H14"]["evidence"] and "tags are today's" in led["H14"]["evidence"]
+    assert led["H14"]["evidence"].startswith("Material movers") and "Caveat" in cmp_ledger_text(out, "H14")
     assert led["H4b"]["verdict"] != "untestable" and "30%" in led["H4b"]["evidence"] and "80%" in led["H4b"]["evidence"]
     assert led["H1b"]["verdict"] != "untestable" and "no Meta ad" in led["H1b"]["evidence"]
     assert led["H16"]["verdict"] != "untestable" and ("back-loaded" in led["H16"]["evidence"] or "inside the band" in led["H16"]["evidence"])
@@ -310,7 +315,7 @@ def test_new_hypotheses_run_on_seeded_views_and_report_the_story(whydb):
     assert out["steps_used"] <= 60
     cmp_ = W.compact(out)
     assert {"H1b", "H4b", "H14", "H16", "H17", "H18"} <= {e["id"] for e in cmp_["ledger"]}
-    assert all(len(e["evidence"]) <= 260 for e in cmp_["ledger"])
+    assert all(len(e["evidence"]) <= (420 if e["id"] in ("H1b", "H4b", "H14", "H16", "H17", "H18") else 260) for e in cmp_["ledger"])
     assert "hook type" in " ".join(inv["untestable"])
 
 
