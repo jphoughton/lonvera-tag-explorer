@@ -42,6 +42,8 @@ if [ "$#" -eq 0 ]; then
   # NON-FATAL (etl_runs job daily_story); writes a 'data not ready' row naming the source when a core source is not loaded; without ANTHROPIC_API_KEY / the claude CLI it writes the template story.
   # No Slack / email: deliver() is an empty hook.
   python -m etl.daily_story || echo "[run_etl] etl.daily_story failed (exit $?), non-fatal; see etl_runs job daily_story" >&2
+  # Tickets added with only a name, a vendor and a brief: the system adds product, market cluster, ICP, pain point and new vs iteration (etl/ticket_tags.py, same headless Claude). Small and quick, before the long ad tagging. NON-FATAL (etl_runs job ticket_tags).
+  python -m etl.ticket_tags || echo "[run_etl] etl.ticket_tags failed (exit $?), non-fatal; see etl_runs job ticket_tags" >&2
   # Auto-tagging of new ads (headless Claude on the subscription token), LAST so a long run (up to ~150 ads) never delays the data steps above.
   # NON-FATAL by design: a failure is recorded in etl_runs (job auto_tag) and logged, never changes the exit code. Needs run_daily's tracker rows + metrics.
   python -m etl.auto_tag || echo "[run_etl] etl.auto_tag failed (exit $?), non-fatal; see etl_runs job auto_tag" >&2
