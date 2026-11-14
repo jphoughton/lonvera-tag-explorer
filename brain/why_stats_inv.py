@@ -313,3 +313,227 @@ def factor_verdict(gate_real: bool, share_of_move: float | None, beyond_noise: b
     if not beyond_noise or abs(share_of_move) < 0.15:
         return "ruled out"
     return "consistent with"
+
+
+# ------------------------------------------------------------------ persona / tag mix: exact shift-share of a ratio
+SHIFT_METRICS = {                       # name: (numerator key, weight key, label); ratio = sum(num) / sum(weight); segment weight share = weight_k / weight
+    "nc_roas": ("ncr", "spend"),
+    "cost_per_nc": ("spend", "nc"),
+    "conversion": ("nc", "clicks"),
+    "aov": ("rev", "kept"),
+}
+
+
+def two_prop_z(k1: float, n1: float, k0: float, n0: float):
+    """(p1, p0, z) for two binomial proportions (pooled standard error). None when a window has no trials."""
+    if n1 <= 0 or n0 <= 0:
+        return None
+    p1, p0 = k1 / n1, k0 / n0
+    pp = (k1 + k0) / (n1 + n0)
+    se = math.sqrt(pp * (1 - pp) * (1 / n1 + 1 / n0)) if 0 < pp < 1 else 0.0
+    return p1, p0, ((p1 - p0) / se if se else 0.0)
+
+
+def shift_share(rows: list[dict], metric: str, min_count: float = 10.0, share_pts: float = 3.0, min_part: float = 0.10) -> dict | None:
+    """rows: {p ('cur'|'cmp'), key, spend, nc, ncr, clicks} (one per segment and period; several rows for one segment are summed).
+    ratio R = sum num / sum weight. Exact split of R_cur - R_cmp into a MIX effect (the segment's weight share moved, valued at its own comparison rate against the comparison total)
+    and a RATE effect (its own rate moved, at its current share): sum over segments of mix + rate = R_cur - R_cmp, with no residual (a segment absent from a window takes the
+    other window's rate, or the overall rate when it was never present, so its missing side contributes only through shares). Each segment gets a count noise band on its rate change
+    (2 x sqrt(1/nc_cur + 1/nc_cmp), new customers as the count). A MOVER is a segment whose mix part or rate part is at least `min_part` of the total move and whose mix share shift is at least
+    `share_pts` points (mix) or whose rate change is beyond its band with at least `min_count` new customers in both windows (rate)."""
+    nk, wk = SHIFT_METRICS[metric]
+    agg: dict = {}
+    for r in rows:
+        a = agg.setdefault(r["key"] if r["key"] is not None else "(none)", {"cur": [0.0, 0.0, 0.0], "cmp": [0.0, 0.0, 0.0]})[r["p"]]
+        a[0] += _f(r.get(nk))
+        a[1] += _f(r.get(wk))
+        a[2] += _f(r.get("nc"))
+    tc = sum(a["cur"][1] for a in agg.values())
+    tb = sum(a["cmp"][1] for a in agg.values())
+    if not tc or not tb:
+        return None
+    rc = sum(a["cur"][0] for a in agg.values()) / tc
+    rb = sum(a["cmp"][0] for a in agg.values()) / tb
+    total = rc - rb
+    out, mix_t, rate_t = [], 0.0, 0.0
+    for k, a in agg.items():
+        sc, sb = a["cur"][1] / tc, a["cmp"][1] / tb
+        r_c = a["cur"][0] / a["cur"][1] if a["cur"][1] else None
+        r_b = a["cmp"][0] / a["cmp"][1] if a["cmp"][1] else None
+        rbm = r_b if r_b is not None else (r_c if r_c is not None else rb)
+        rcm = r_c if r_c is not None else rbm
+        if r_b is None and r_c is not None:
+            rbm = rb                                    # never present in the comparison: valued at the overall comparison rate
+            rcm = r_c
+        m = (sc - sb) * (rbm - rb)
+        rt = sc * (rcm - rbm)
+        mix_t += m
+        rate_t += rt
+        n_c, n_b = a["cur"][2], a["cmp"][2]
+        band = K_SIGMA * math.sqrt(1 / n_c + 1 / n_b) if n_c > 0 and n_b > 0 else None
+        rel = None if r_c is None or not r_b else r_c / r_b - 1
+        mix_mat = abs(sc - sb) * 100 >= share_pts and abs(m) >= min_part * abs(total)
+        rate_mat = bool(band is not None and rel is not None and n_c >= min_count and n_b >= min_count and abs(rel) > band and abs(rt) >= min_part * abs(total))
+        out.append({"key": k, "share_cmp": round(sb, 4), "share_cur": round(sc, 4), "rate_cmp": None if r_b is None else round(r_b, 4), "rate_cur": None if r_c is None else round(r_c, 4),
+                    "mix_part": m, "rate_part": rt, "nc_cmp": round(n_b), "nc_cur": round(n_c), "rate_change_pct": None if rel is None else round(rel * 100, 1),
+                    "rate_band_pct": None if band is None else round(band * 100, 1), "mix_material": mix_mat, "rate_material": rate_mat})
+    out.sort(key=lambda r: -(abs(r["mix_part"]) + abs(r["rate_part"])))
+    return {"metric": metric, "total": total, "mix_total": mix_t, "rate_total": rate_t, "residual": total - (mix_t + rate_t), "value_cmp": rb, "value_cur": rc,
+            "rows": out, "movers": [r for r in out if r["mix_material"] or r["rate_material"]]}
+
+
+# ------------------------------------------------------------------ cap and floor exposure
+def cap_exposure(cur: dict, cmp_: dict) -> dict | None:
+    """cur / cmp: sums of meta_bids_daily over a window {spend, capped_spend, spend_times_cap, floor_spend, spend_times_floor} plus optional meta_cpp (Meta-reported cost per purchase)
+    and meta_roas on the same days. Shares of spend under a cost cap / ROAS floor, the spend-weighted cap and floor levels, and how far delivery sits from them."""
+    def side(s):
+        sp = _f(s.get("spend"))
+        if sp <= 0:
+            return None
+        cs, fs = _f(s.get("capped_spend")), _f(s.get("floor_spend"))
+        o = {"capped_share": cs / sp, "floor_share": fs / sp, "avg_cap": _f(s.get("spend_times_cap")) / cs if cs else None, "avg_floor": _f(s.get("spend_times_floor")) / fs if fs else None,
+             "cpp": s.get("meta_cpp"), "roas": s.get("meta_roas"), "spend": sp}
+        o["cpp_over_cap"] = (o["cpp"] / o["avg_cap"]) if o["cpp"] and o["avg_cap"] else None
+        o["roas_over_floor"] = (o["roas"] / o["avg_floor"]) if o["roas"] and o["avg_floor"] else None
+        return o
+    a, b = side(cur), side(cmp_)
+    if not a or not b:
+        return None
+    def binding(o):
+        r = o["cpp_over_cap"]
+        f = o["roas_over_floor"]
+        return {"cost_cap": None if r is None else ("binding (delivery cost within 15% of the cap or above it)" if r >= 0.85 else "not binding (delivery cost well under the cap)"),
+                "roas_floor": None if f is None else ("binding (return within 15% of the floor or below it)" if f <= 1.15 else "not binding (return well above the floor)")}
+    out = {"cur": a, "cmp": b, "binding_cur": binding(a), "binding_cmp": binding(b)}
+    out["capped_share_shift_pts"] = (a["capped_share"] - b["capped_share"]) * 100
+    out["floor_share_shift_pts"] = (a["floor_share"] - b["floor_share"]) * 100
+    out["cap_level_change_pct"] = None if not a["avg_cap"] or not b["avg_cap"] else (a["avg_cap"] / b["avg_cap"] - 1) * 100
+    out["floor_level_change_pct"] = None if not a["avg_floor"] or not b["avg_floor"] else (a["avg_floor"] / b["avg_floor"] - 1) * 100
+    out["moved"] = (abs(out["capped_share_shift_pts"]) >= 10 or abs(out["floor_share_shift_pts"]) >= 10 or abs(out["cap_level_change_pct"] or 0) >= 10 or abs(out["floor_level_change_pct"] or 0) >= 10)
+    return out
+
+
+# ------------------------------------------------------------------ intraday shape
+def intraday_shape(target: dict, baselines: list[dict], checkpoints=(6, 9, 12, 15, 18, 21), min_baseline: int = 2, complete: bool = True) -> dict | None:
+    """target / each baseline: {hour: amount in that hour} (new-customer revenue, or spend from the latest snapshot per hour). The cumulative SHARE of the day's total by hour on the target day
+    against the mean share of the same weekday over the prior weeks, band = K_SIGMA x the spread of the baseline shares (floor 2 points). `complete` False = the target day is still running, so
+    shares are against the hours seen so far and the verdict is about the cumulative amount instead (done by hourly_curve). Reports the first hour outside the band and its direction."""
+    bl = [b for b in baselines if b and sum(_f(v) for v in b.values()) > 0]
+    if not target or len(bl) < min_baseline or sum(_f(v) for v in target.values()) <= 0:
+        return None
+    last = max(max(target), 23 if complete else max(target))
+    def cum(d):
+        run, out = 0.0, {}
+        for h in range(0, last + 1):
+            run += _f(d.get(h))
+            out[h] = run
+        return out
+    ct = cum(target)
+    cbs = [cum(b) for b in bl]
+    tot_t = ct[last] if ct[last] else 1.0
+    tot_b = [c[last] for c in cbs]
+    first, rows = None, []
+    for h in range(0, last + 1):
+        st = ct[h] / tot_t
+        sbs = [c[h] / t for c, t in zip(cbs, tot_b)]
+        mb = statistics.fmean(sbs)
+        sd = statistics.stdev(sbs) if len(sbs) >= 3 else 0.0
+        band = max(K_SIGMA * sd, 0.02)
+        dev = st - mb
+        out_ = abs(dev) > band and mb >= 0.05
+        if out_ and first is None:
+            first = {"hour": h, "target_share": st, "baseline_share": mb, "band": band, "direction": "front-loaded" if dev > 0 else "back-loaded"}
+        if h in checkpoints or h == last:
+            rows.append({"hour": h, "target_share": round(st, 3), "baseline_share": round(mb, 3), "band": round(band, 3), "outside": out_})
+    return {"checkpoints": rows, "first_outside": first, "baseline_days": len(bl), "hours": last + 1, "day_total": tot_t}
+
+
+# ------------------------------------------------------------------ calendar
+def _nth_weekday(y, m, wd, n):
+    d = dt.date(y, m, 1)
+    d += dt.timedelta(days=(wd - d.weekday()) % 7)
+    return d + dt.timedelta(days=7 * (n - 1))
+
+
+def _last_weekday(y, m, wd):
+    d = (dt.date(y + (m == 12), m % 12 + 1, 1)) - dt.timedelta(days=1)
+    return d - dt.timedelta(days=(d.weekday() - wd) % 7)
+
+
+def _last_business_day(y, m):
+    d = dt.date(y + (m == 12), m % 12 + 1, 1) - dt.timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= dt.timedelta(days=1)
+    return d
+
+
+def calendar_flags(d: dt.date) -> list[str]:
+    """Static calendar: US federal holidays, Black Friday / Cyber Monday and the BFCM ramp window (Nov 15 - Dec 2), month start (days 1-3), typical paydays (1st, 15th - or the business day before
+    when it falls on a weekend - and the last business day)."""
+    y = d.year
+    fl = []
+    hol = {dt.date(y, 1, 1): "new year", _nth_weekday(y, 1, 0, 3): "MLK day", _nth_weekday(y, 2, 0, 3): "presidents day", _last_weekday(y, 5, 0): "memorial day", dt.date(y, 6, 19): "juneteenth",
+           dt.date(y, 7, 4): "independence day", _nth_weekday(y, 9, 0, 1): "labor day", _nth_weekday(y, 10, 0, 2): "columbus day", dt.date(y, 11, 11): "veterans day",
+           _nth_weekday(y, 11, 3, 4): "thanksgiving", dt.date(y, 12, 25): "christmas"}
+    if d in hol:
+        fl.append("holiday: " + hol[d])
+    tg = _nth_weekday(y, 11, 3, 4)
+    if d == tg + dt.timedelta(days=1):
+        fl.append("black friday")
+    if d == tg + dt.timedelta(days=4):
+        fl.append("cyber monday")
+    if dt.date(y, 11, 15) <= d <= dt.date(y, 12, 2):
+        fl.append("BFCM ramp window")
+    if d.day <= 3:
+        fl.append("month start")
+    def pay(day):
+        p = dt.date(y, d.month, day)
+        while p.weekday() >= 5:
+            p -= dt.timedelta(days=1)
+        return p
+    if d == pay(1) or d == pay(15):
+        fl.append("payday (1st / 15th)")
+    if d == _last_business_day(y, d.month):
+        fl.append("payday (last business day)")
+    return fl
+
+
+def calendar_counts(lo: dt.date, hi: dt.date) -> dict:
+    out, n = {}, 0
+    d = lo
+    while d <= hi:
+        n += 1
+        for f in calendar_flags(d):
+            out[f] = out.get(f, 0) + 1
+        d += dt.timedelta(days=1)
+    return {"days": n, "flags": out}
+
+
+def _shift_month(d: dt.date, k: int) -> dt.date:
+    m = d.month - 1 + k
+    y, m = d.year + m // 12, m % 12 + 1
+    last = (dt.date(y + (m == 12), m % 12 + 1, 1) - dt.timedelta(days=1)).day
+    return dt.date(y, m, min(d.day, last))
+
+
+def calendar_check(daily: dict, metric: str, cur: tuple, cmp_: tuple) -> dict:
+    """cur / cmp: (lo, hi). Flags the calendar days that sit in one window and not the other (share of days differs by 10 points or more), then asks whether the same calendar position one month
+    earlier (both windows moved back a calendar month) and one year earlier (both moved back 364 days, same weekdays) moved the metric the same way. `daily` rows carry nc_rev, nc, spend."""
+    fn = METRICS[metric][0]
+    cc, bc = calendar_counts(*cur), calendar_counts(*cmp_)
+    diff = {}
+    for f in set(cc["flags"]) | set(bc["flags"]):
+        a, b = cc["flags"].get(f, 0) / cc["days"], bc["flags"].get(f, 0) / bc["days"]
+        if abs(a - b) >= 0.10:
+            diff[f] = {"cur_days": cc["flags"].get(f, 0), "cmp_days": bc["flags"].get(f, 0)}
+    def mv(c, b):
+        vc, vb = fn(window_sum(daily, *c)), fn(window_sum(daily, *b))
+        n_c, n_b = (c[1] - c[0]).days + 1, (b[1] - b[0]).days + 1
+        full = window_sum(daily, *c)["days"] == n_c and window_sum(daily, *b)["days"] == n_b
+        return None if not full or vc is None or not vb else vc / vb - 1
+    now = mv(cur, cmp_)
+    hist = {}
+    for name, f in (("last month", lambda d: _shift_month(d, -1)), ("last year", lambda d: d - dt.timedelta(days=364))):
+        hist[name] = mv((f(cur[0]), f(cur[1])), (f(cmp_[0]), f(cmp_[1])))
+    return {"flags_cur": cc["flags"], "flags_cmp": bc["flags"], "differing": diff, "move_now": now, "move_before": hist,
+            "same_sign": {k: (None if v is None or now is None else (v > 0) == (now > 0)) for k, v in hist.items()}}
