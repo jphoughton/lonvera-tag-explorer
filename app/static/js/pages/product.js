@@ -9,6 +9,7 @@ import { createTree } from '../tree.js';
 import { createTrendPanel, createPins } from '../trend.js';
 import { pageHeader } from '../ui/pagehead.js';
 import { filterRow, searchCtl, checkCtl } from '../ui/pagefilters.js';
+import { learningSection } from './own_tags.js';
 
 const CONF_RANK = { low: 1, medium: 2, high: 3 };
 const winInfo = (d) => d.window_info || (d.window && typeof d.window === 'object' ? d.window : null);
@@ -142,6 +143,7 @@ async function tagsView(ctx, slug) {
       h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, untestedOn ? 'Not tested' : title)),
       untestedOn ? null : legendLine(),
       untestedOn ? untestedPanel(cov, { path, G, windowLabel: data.window_info && data.window_info.label }) : tree.el),
+    untestedOn ? null : learningSection(slug, p, filters, signal),
     pgSection('sec-unmatched', unmatchedPanel(slug, p, um, signal)),
   ));
   if (!untestedOn) { panel.load(); tree.afterMount(ctx.restore); }

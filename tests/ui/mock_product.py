@@ -14,6 +14,7 @@ from flask import Flask, Response, g, jsonify, request, send_from_directory
 from mock_app import app  # noqa: F401
 from mock_data import *  # noqa: F401,F403
 from mock_data import _cpa, _roas  # noqa: F401
+import mock_own_tags
 
 
 @app.get("/api/products")
@@ -298,7 +299,7 @@ def ad_detail(rid):
                    siblings=[dict(id=r["id"], concept_id=r["concept_id"], line_code=r["line"][0] if r["line"] else None, cluster=r["cluster"], icp=r["icp"], pain_point=r["pain"], status=fam["status"]) for r in nxt],
                    metrics=dict(counted_on_this_row=row["ordinal"] == 0, family=dict(launch=fm(L), d7=fm(D7), d30=fm(D30), window=fm(win), live=live, **cmp_fam)),
                    window_info=win["info"], compare_info=cinfo(), daily=daily, meta_ads=meta_ads,
-                   campaigns=[dict(e, spend=round(e["spend"], 2), revenue=round(e["revenue"], 2)) for e in camps.values()])
+                   campaigns=[dict(e, spend=round(e["spend"], 2), revenue=round(e["revenue"], 2)) for e in camps.values()], learning=mock_own_tags.learning_for(row, fam))
 
 
 @app.get("/api/products/<slug>/trend")

@@ -252,3 +252,14 @@ a.comp-tchip:focus-visible, .comp-lplink:focus-visible { outline: 2px solid var(
   .comp-gallery .comp-typo { padding: 12px 10px 32px 12px; }
   .comp-gallery .comp-typo-text, .comp-gallery .comp-typo-text.comp-long { font-size: 15px; overflow-wrap: break-word; }
 }
+
+/* ---- our own numbers next to the competitor charts, and our own landing pages ---- */
+.comp-lwork { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.comp-lwnote { margin: 8px 0 0; }
+.comp-own { margin-top: 22px; }
+.comp-own-cmp { margin: 8px 0 6px; padding-left: 20px; font-size: 13px; line-height: 1.45; }
+.comp-own-cmp li { margin: 3px 0; overflow-wrap: anywhere; }
+.comp-own-perf { padding: 6px 4px 2px; border-top: 1px solid var(--line); font-size: 13px; min-width: 0; }
+.comp-own-nums { margin: 0 0 4px; font-weight: 600; }
+.comp-own-fams { margin: 0; padding-left: 18px; }
+.comp-own-fams li { margin: 2px 0; overflow-wrap: anywhere; }

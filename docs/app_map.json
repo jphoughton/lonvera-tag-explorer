@@ -1727,6 +1727,17 @@
    "summary": ""
   },
   {
+   "rule": "/api/products/<slug>/learning-tags",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.learning_tags",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Performance by hook type / device / offer type (our own ad learning tags) for one product: same window, stage, source filters and cluster / ICP / pain point scope as the tag tree."
+  },
+  {
    "rule": "/api/products/<slug>/rollup",
    "methods": [
     "GET"

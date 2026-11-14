@@ -150,6 +150,23 @@ function hookBlock(d) {
     k.version ? h('div', { class: 'muted small' }, `Hooks ${k.version}`) : null);
 }
 
+// our own learning tags for this ad family (hook type, device, offer type, CTA, hook quote, why it works; seen / said / transcript collapsed). Each part only when present; no card when none.
+function learningBlock(d) {
+  const l = d.learning;
+  if (!l) return null;
+  const quiet = (label, text, id) => (text ? h('details', { class: 'subblock learn-more', id }, h('summary', label), textBlock(text)) : null);
+  const sameTranscript = l.transcript && d.content && d.content.transcript && d.content.transcript.trim() === l.transcript.trim();
+  const parts = [
+    (l.chips || []).length ? h('div', { class: 'learn-chips', 'data-testid': 'learn-chips' }, l.chips.map((c) => h('span', { class: 'learn-chip', 'data-key': c.key, title: c.label }, h('span', { class: 'learn-chip-k' }, c.label), ' ', c.value))) : null,
+    l.hook_quote ? h('blockquote', { class: 'learn-quote', 'data-testid': 'learn-quote' }, l.hook_quote) : null,
+    kv('Why it works', l.why_it_works),
+    quiet('Seen on screen', l.seen_on, 'learn-seen'), quiet('Said', l.said_on, 'learn-said'),
+    l.transcript && !sameTranscript ? quiet('Transcript', l.transcript, 'learn-transcript') : null,
+    l.version || l.method ? h('div', { class: 'muted small' }, ['Learning tags', l.version, l.method, l.confidence ? l.confidence + ' confidence' : null].filter(Boolean).join(' \u00b7 ')) : null,
+  ].filter(Boolean);
+  return h('div', { class: 'card learn-card', id: 'learning-block', 'data-testid': 'learning-block' }, h('div', { class: 'card-head' }, h('h3', 'What the ad does')), parts);
+}
+
 function lineBlock(d) {
   const l = d.line;
   if (!l) return null;
@@ -303,6 +320,7 @@ export async function adPage(ctx) {
     head,
     keyNumbers(d),
     hookBlock(d),
+    learningBlock(d),
     jumpEl,
     section('See the ad', preview.el, { id: 'see-ad' }),
     h('div', { class: 'adgrid' },

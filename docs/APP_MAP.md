@@ -243,6 +243,7 @@ Auth column: what the server checks. Page routes serve the same HTML shell; thei
 | `/api/products/<slug>/campaigns` | GET | api | signed-in session or API key |  |
 | `/api/products/<slug>/coverage` | GET | api | signed-in session or API key | Which ICPs / pain points have no ads (tracker based) or ads but $0 spend (selected window, stage, source). See queries.coverage. |
 | `/api/products/<slug>/families` | GET | api | signed-in session or API key |  |
+| `/api/products/<slug>/learning-tags` | GET | api | signed-in session or API key | Performance by hook type / device / offer type (our own ad learning tags) for one product: same window, stage, source filters and cluster / ICP / pain point scope as the tag tree. |
 | `/api/products/<slug>/rollup` | GET | api | signed-in session or API key |  |
 | `/api/products/<slug>/stage-daily` | GET | api | signed-in session or API key |  |
 | `/api/products/<slug>/tree` | GET | api | signed-in session or API key |  |

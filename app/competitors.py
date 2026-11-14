@@ -417,6 +417,9 @@ def payload_from(weeks: list[str], sel: str | None, prior: str | None, fmt: str 
     lp = learn.lp_patterns(_lp_visible(ctx, cur, fmt, f))
     if lp:
         out["lp_patterns"] = lp
+    own = learn.own_lp_panel(ctx.get("own_lp"), ctx.get("lp_rows") or [])
+    if own:
+        out["own_lp"] = own
     return out
 
 
@@ -431,6 +434,8 @@ def _ctx(conn, sel: str | None, filters: dict | None, brand: str | None = None) 
             ctx["lonvera"] = learn.lonvera_shares(conn)
     ctx["lp_rows"] = learn.lp_rows(conn, sel, brand)
     ctx["lp_linked"] = bool(ctx["lp_rows"]) and learn.lp_linked(conn, sel)
+    if not brand:
+        ctx["own_lp"] = learn.own_lp_ctx(conn, sel)
     return ctx
 
 

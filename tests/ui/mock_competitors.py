@@ -26,7 +26,7 @@ def png(seed: int, w=160, h=200) -> bytes:
 def register(app, deps):
     from app import competitors as c
 
-    st = {"chatter": False, "media": True, "video": True, "tags": "off", "lp": False}
+    st = {"chatter": False, "media": True, "video": True, "tags": "off", "lp": False, "own": False}
     tiny = Path(__file__).with_name("competitor_tiny.webm")
     brands = [{"brand": "Acme", "product_type": "beef organ capsules", "search_phrases": ["acme"], "active": True, "last_ok_at": dt.datetime(2026, 11, 16, 12, tzinfo=dt.timezone.utc), "last_error": None},
               {"brand": "Bolt & Co", "product_type": "joint supplement", "search_phrases": ["bolt"], "active": True, "last_ok_at": dt.datetime(2026, 11, 9, 12, tzinfo=dt.timezone.utc), "last_error": "blocked"},
@@ -102,6 +102,21 @@ def register(app, deps):
     LONVERA = {"through": "2026-11-15", "style": {"testimonial": ("Testimonial", 0.09), "ugc demo": ("UGC demo", 0.5), "studio": ("Studio", 0.41)},
                "proof_mechanism": {"reviews": ("Reviews", 0.7), "doctor quote": ("Doctor quote", 0.3)}, "emotion": {"relief": ("Relief", 0.2), "fear": ("Fear", 0.3), "desire": ("Desire", 0.5)}}
 
+    # our own side (switched by /__test/competitors/own?on=1): Lonvera's hook / device / offer shares + 'what is working for us', and our own landing pages
+    LONVERA_OWN = dict(LONVERA, hook_type={"question": ("Question", 0.2), "statement": ("Statement", 0.5), "story": ("Story", 0.3)}, device={"talking head": ("Talking head", 0.25), "voiceover": ("Voiceover", 0.35), "split screen": ("Split screen", 0.4)},
+                       offer_type={"discount": ("Discount", 0.6), "bundle": ("Bundle", 0.4)},
+                       best={"_through": "2026-11-15", "style": [{"value": "UGC demo", "nc_roas": 0.81, "spend": 24000.0, "ads": 12, "thin": False}, {"value": "Studio", "nc_roas": 0.62, "spend": 15000.0, "ads": 7, "thin": False}],
+                             "hook_type": [{"value": "Question", "nc_roas": 0.81, "spend": 24000.0, "ads": 9, "thin": False}, {"value": "Story", "nc_roas": 0.7, "spend": 2400.0, "ads": 2, "thin": True}],
+                             "device": [{"value": "Talking head", "nc_roas": 0.9, "spend": 18000.0, "ads": 8, "thin": False}, {"value": "Voiceover", "nc_roas": 0.66, "spend": 9000.0, "ads": 5, "thin": False}],
+                             "offer_type": [{"value": "Discount", "nc_roas": 0.77, "spend": 30000.0, "ads": 15, "thin": False}, {"value": "Bundle", "nc_roas": 0.6, "spend": 11000.0, "ads": 6, "thin": False}]})
+    OWN_ROWS = [dict(lp_id="ab12cd34ef560001", brand="Lonvera", final_url="https://lonvera.com/try-bl", page_type="Advertorial", key_theme="Your liver is a vitamin warehouse", hero_headline="Why your face shows last night",
+                     selling_points=["Grass-fed liver", "90 day guarantee", "Third party tested"], offer_summary="Buy 2 get 1", price_text="$29 a bottle", guarantee="90-day money back", proof_elements=["Reviews"], urgency_devices=["Countdown timer"],
+                     objections=[], cta="Start my order", cluster="Liver", pain_point="Alcohol face", why_it_works="Opens on a face the reader knows.", ad_count=3, changed_from_prior=False, has_media=True),
+                dict(lp_id="ab12cd34ef560002", brand="Lonvera", final_url="https://lonvera.com/vb", page_type="Product page", key_theme="One bottle, one promise", hero_headline="Vita Bull", selling_points=["Beef organs"], guarantee=None,
+                     proof_elements=[], urgency_devices=[], ad_count=0, changed_from_prior=False, has_media=False)]
+    OWN_FAMS = {"ab12cd34ef560001": [dict(name="Bull-33-B3-Hook 2", spend=4200.0, meta_revenue=3900.0, nc_revenue=2900.0), dict(name="cedFat5", spend=1800.0, meta_revenue=1900.0, nc_revenue=1100.0),
+                                     dict(name="Liver-12-A", spend=900.0, meta_revenue=700.0, nc_revenue=400.0)]}
+
     def apply_tags():
         for lst in ads.values():
             for a in lst:
@@ -127,8 +142,10 @@ def register(app, deps):
         if mode != "off":
             ctx["week_tagged"] = sum(1 for a in ads[wk] if a["library_id"] in T) if mode == "on" else 0
             if mode == "on" and not brand:
-                ctx["lonvera"] = LONVERA
+                ctx["lonvera"] = LONVERA_OWN if st["own"] else LONVERA
         ctx["lp_rows"] = [dict(x, ad_count=x["ad_count"]) for x in LPS if st["lp"] and wk == W2 and (brand is None or x["brand"] == brand)]
+        if st["own"] and wk == W2 and brand is None:
+            ctx["own_lp"] = {"week": W2, "rows": OWN_ROWS, "families": OWN_FAMS, "through": "2026-11-15", "has_nc": True}
         return ctx
 
     def resolve():
@@ -202,6 +219,11 @@ def register(app, deps):
         st["tags"] = request.args.get("mode") if request.args.get("mode") in ("on", "empty") else "off"
         return jsonify(ok=True)
 
+    @app.post("/__test/competitors/own")
+    def competitors_own_toggle():
+        st["own"] = request.args.get("on") == "1"
+        return jsonify(ok=True)
+
     @app.post("/__test/competitors/lp")
     def competitors_lp_toggle():
         st["lp"] = request.args.get("on") == "1"
@@ -209,6 +231,6 @@ def register(app, deps):
 
     @app.get("/api/competitors/lp-media/<path:lid>")
     def competitors_lp_media_mock(lid):
-        if not st["lp"] or lid != "lpA1":
+        if not ((st["lp"] and lid == "lpA1") or (st["own"] and lid == "ab12cd34ef560001")):
             return jsonify(error="No image."), 404
         return Response(png(7, 200, 150), mimetype="image/png", headers={"Cache-Control": "private, max-age=86400"})
