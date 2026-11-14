@@ -29271,7 +29271,7 @@
    "relation": "api_keys",
    "kind": "table",
    "group": "ops",
-   "purpose": "Scoped API keys for the Tag Explorer API: one row per key handed to a colleague. A key can read everything the app serves and can only assign items on the production board.",
+   "purpose": "Scoped API keys for the Tag Explorer API: one row per key handed to a colleague (read_assign: reads everything the app serves, assigns on the production board) or to an outside creative partner (partner_push: bound to one vendor, pushes tickets and creative links, reads only the creative and performance data).",
    "grain": "one row per key (id is the primary key; name and key_hash are each unique)",
    "primary_key": [
     "id"
@@ -29315,7 +29315,7 @@
      "name": "scope",
      "type": "text",
      "nullable": false,
-     "description": "What the key may do. 'read_assign' (the only scope): every GET, plus POST /api/priorities/assignments and PATCH /api/priorities/assignments/<id>."
+     "description": "What the key may do. 'read_assign': every GET, plus five writes on the production board (assign, create tickets, edit, move, comment). 'partner_push': an outside creative partner, bound to one vendor; pushes tickets and creative links for that vendor, looks at its own tickets and reads the creative and performance data only."
     },
     {
      "name": "created_at",
@@ -29340,6 +29340,12 @@
      "type": "timestamp with time zone",
      "nullable": true,
      "description": "When the key was revoked; NULL while active. A revoked key is refused with 401."
+    },
+    {
+     "name": "vendor",
+     "type": "text",
+     "nullable": true,
+     "description": "The one vendor a partner_push key speaks for (as spelled in app.priorities_assign.VENDORS); every ticket it creates carries this vendor and it sees only that vendor's tickets. NULL for read_assign keys; required for partner_push keys."
     }
    ],
    "examples": []

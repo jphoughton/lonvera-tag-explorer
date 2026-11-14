@@ -1444,6 +1444,83 @@
    "summary": "Dropdown options for the Add concept form: products, sections and the Communication Overview tree product -> cluster -> ICP -> pain point -> [stories]."
   },
   {
+   "rule": "/api/priorities/partner/all-tickets",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_partner_all_tickets",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Every vendor's non-dropped tickets in full (brief, notes, spend and return, links, history), READ ONLY: ?vendor= ?status= ?week= ?product= &limit &offset -> {tickets, count, limit, offset}."
+  },
+  {
+   "rule": "/api/priorities/partner/all-tickets/<int:tid>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_partner_one_ticket",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "One ticket of any vendor in full, with its comments and transcripts. Read only."
+  },
+  {
+   "rule": "/api/priorities/partner/contract",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_partner_contract",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "What this partner key can do, as data (required and optional fields, allowed values, limits, the key's own vendor)."
+  },
+  {
+   "rule": "/api/priorities/partner/creative",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_partner_creative_batch",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Add creative links to several of the key's own tickets at once: {creatives: [{ticket_id, variations | creative_url, submit?}, ...]} (up to 100, all or nothing)."
+  },
+  {
+   "rule": "/api/priorities/partner/tickets",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_partner_tickets",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The key's own vendor's non-dropped tickets, minimal fields: ?status= &week= &limit (100, at most 500) &offset -> {tickets, count, limit, offset}."
+  },
+  {
+   "rule": "/api/priorities/partner/tickets/<int:tid>",
+   "methods": [
+    "PATCH"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_partner_ticket_patch",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Fix one of the key's own tickets: concept_name, concept_kind, cluster, variations, brief_url, creative_url, story. Anything else is a 400; another vendor's ticket is a 404."
+  },
+  {
+   "rule": "/api/priorities/partner/tickets/<int:tid>/creative",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_partner_creative",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Add the creative (links) to one of the key's own tickets: {variations: [{label, url, concept_id?}] | creative_url, submit?} merged by label -> {ticket, submitted, status, message?}."
+  },
+  {
    "rule": "/api/priorities/tickets",
    "methods": [
     "POST"

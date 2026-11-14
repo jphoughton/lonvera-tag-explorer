@@ -3760,14 +3760,15 @@ rel("public.creative_launch_audit", group="creative", kind="table",
     cols={'id': 'Primary key (bigserial).', 'at': 'When the action happened.', 'actor': 'Signed-in user or worker name.', 'action': 'Short action name.', 'assignment_id': 'Assignment the action concerns; NULL when none. No foreign key, so the log outlives its subject.', 'detail': 'Action details as JSON, never containing a token.'})
 
 rel("public.api_keys", group="ops", kind="table",
-    purpose="Scoped API keys for the Tag Explorer API: one row per key handed to a colleague. A key can read everything the app serves and can only assign items on the production board.",
+    purpose="Scoped API keys for the Tag Explorer API: one row per key handed to a colleague (read_assign: reads everything the app serves, assigns on the production board) or to an outside creative partner (partner_push: bound to one vendor, pushes tickets and creative links, reads only the creative and performance data).",
     grain="one row per key (id is the primary key; name and key_hash are each unique)", source="python -m etl.api_keys create / revoke (etl/api_keys.py); last_used_at is touched by the web app (app/api_keys.py)",
     refresh="on demand (a person creates or revokes a key; last_used_at moves at most once a minute while a key is in use)", coverage="from the day the migration was deployed",
     caveats=["Only the sha256 hash of the key is stored. The key itself is shown once when it is made and cannot be recovered; make a new key and revoke the old one instead.",
              "A revoked key is never deleted, so the history stays. Assignments made with a key carry created_by / updated_by 'key:<name>' in creative_priorities_assignments."],
     cols={"id": "Primary key (bigserial).", "name": "Short name of the key, for example the colleague it was given to (unique). Shown in the audit columns as key:<name>.",
           "key_hash": "sha256 hex digest of the full key (unique). The key is looked up by this hash.", "prefix": "First 8 characters of the key ('lvk_' plus 4), for display only.",
-          "scope": "What the key may do. 'read_assign' (the only scope): every GET, plus POST /api/priorities/assignments and PATCH /api/priorities/assignments/<id>.",
+          "scope": "What the key may do. 'read_assign': every GET, plus five writes on the production board (assign, create tickets, edit, move, comment). 'partner_push': an outside creative partner, bound to one vendor; pushes tickets and creative links for that vendor, looks at its own tickets and reads the creative and performance data only.",
+          "vendor": "The one vendor a partner_push key speaks for (as spelled in app.priorities_assign.VENDORS); every ticket it creates carries this vendor and it sees only that vendor's tickets. NULL for read_assign keys; required for partner_push keys.",
           "created_at": "When the key was made.", "created_by": "Operating-system user who ran the create command; NULL when unknown.",
           "last_used_at": "When the key last made a request (updated at most once a minute); NULL while unused.", "revoked_at": "When the key was revoked; NULL while active. A revoked key is refused with 401."})
 

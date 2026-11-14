@@ -1,0 +1,15 @@
+-- 260: partner API keys. An outside creative partner (Madre, Victoria, Studio Flow ...) gets a key with the scope 'partner_push', bound to ONE vendor (api_keys.vendor).
+-- A partner_push key may push production tickets for its own vendor (POST /api/priorities/tickets, vendor forced to the key's vendor), look at its own tickets (GET /api/priorities/partner/tickets),
+-- fix them (PATCH /api/priorities/partner/tickets/<id>), add the creative as links (POST /api/priorities/partner/tickets/<id>/creative and POST /api/priorities/partner/creative) and read the contract
+-- (GET /api/priorities/partner/contract). Every other route, every other GET and the data brain refuse it with 403. Enforced in app/api_keys.py, app/auth.py and app/partner_tickets.py.
+-- Additive and idempotent: existing read_assign keys keep working, vendor stays NULL for them.
+ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS vendor text;
+ALTER TABLE api_keys DROP CONSTRAINT IF EXISTS api_keys_scope_check;
+ALTER TABLE api_keys ADD CONSTRAINT api_keys_scope_check CHECK (scope IN ('read_assign', 'partner_push'));
+ALTER TABLE api_keys DROP CONSTRAINT IF EXISTS api_keys_vendor_scope_check;
+ALTER TABLE api_keys ADD CONSTRAINT api_keys_vendor_scope_check CHECK ((scope = 'partner_push') = (vendor IS NOT NULL));
+
+-- ---------------------------------------------------------------- comments
+COMMENT ON COLUMN public.api_keys.scope IS 'What the key may do. ''read_assign'': every GET, plus five writes on the production board (assign, create tickets, edit, move, comment). ''partner_push'': an outside creative partner, bound to one vendor; pushes tickets and creative links for that vendor, looks at its own tickets and reads the creative and performance data only.';
+COMMENT ON COLUMN public.api_keys.vendor IS 'The one vendor a partner_push key speaks for (as spelled in app.priorities_assign.VENDORS); every ticket it creates carries this vendor and it sees only that vendor''s tickets. NULL for read_assign keys; required for partner_push keys.';
+COMMENT ON TABLE public.api_keys IS 'Scoped API keys for the Tag Explorer API: one row per key handed to a colleague (read_assign: reads everything the app serves, assigns on the production board) or to an outside creative partner (partner_push: bound to one vendor, pushes tickets and creative links, reads only the creative and performance data). Grain: one row per key (id is the primary key; name and key_hash are each unique). Source: python -m etl.api_keys create / revoke (etl/api_keys.py); last_used_at is touched by the web app (app/api_keys.py). Refresh: on demand (a person creates or revokes a key; last_used_at moves at most once a minute while a key is in use). Coverage: from the day the migration was deployed. Caveats: Only the sha256 hash of the key is stored. The key itself is shown once when it is made and cannot be recovered; make a new key and revoke the old one instead. | A revoked key is never deleted, so the history stays. Assignments made with a key carry created_by / updated_by ''key:<name>'' in creative_priorities_assignments.';

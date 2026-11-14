@@ -1,6 +1,6 @@
 """Manage scoped API keys (table api_keys, migration 205; what a key may do is in app/api_keys.py).
 
-    python -m etl.api_keys create --name <name> [--out <file>]   make a key; the key is printed ONCE to stdout (or written to <file> with mode 0600) and can never be shown again
+    python -m etl.api_keys create --name <name> [--scope read_assign|partner_push --vendor <Vendor>] [--out <file>]   make a key; the key is printed ONCE to stdout (or written to <file> with mode 0600) and can never be shown again
     python -m etl.api_keys list                                  name, prefix, created, last used, revoked (never the key or its hash)
     python -m etl.api_keys revoke --name <name>                  the key stops working at once (the row stays for the history)
 
@@ -27,16 +27,26 @@ class CliError(Exception):
     pass
 
 
-def create_key(conn, name: str, created_by: str | None = None) -> tuple[str, str]:
-    """Insert a new active key; returns (raw key, prefix). Raises CliError for a bad or taken name."""
+def create_key(conn, name: str, created_by: str | None = None, scope: str = ak.SCOPE, vendor: str | None = None) -> tuple[str, str]:
+    """Insert a new active key; returns (raw key, prefix). Raises CliError for a bad or taken name, an unknown scope, or a partner_push key without a valid vendor."""
+    from app.priorities_assign import VENDORS
+    if scope not in ak.SCOPES:
+        raise CliError("scope must be one of: " + ", ".join(ak.SCOPES))
+    if scope == ak.PARTNER_SCOPE and vendor not in VENDORS:
+        raise CliError("a partner_push key needs --vendor, one of: " + ", ".join(VENDORS))
+    if scope != ak.PARTNER_SCOPE and vendor:
+        raise CliError("--vendor only goes with --scope partner_push")
     if not NAME_RE.fullmatch(name or ""):
         raise CliError("name must be 1 to 40 characters: letters, digits, dot, dash or underscore, starting with a letter or digit")
     raw = ak.generate_key()
     try:
-        conn.execute("INSERT INTO api_keys (name, key_hash, prefix, scope, created_by) VALUES (%s, %s, %s, %s, %s)", (name, ak.hash_key(raw), raw[:8], ak.SCOPE, created_by))
+        conn.execute("INSERT INTO api_keys (name, key_hash, prefix, scope, vendor, created_by) VALUES (%s, %s, %s, %s, %s, %s)", (name, ak.hash_key(raw), raw[:8], scope, vendor, created_by))
     except psycopg.errors.UniqueViolation:
         conn.rollback()
         raise CliError(f"a key named {name!r} already exists (revoked keys keep their name; pick another)") from None
+    except psycopg.errors.UndefinedColumn:
+        conn.rollback()
+        raise CliError("migration 260 has not been applied to this database (python -m etl.migrate)") from None
     except psycopg.errors.UndefinedTable:
         conn.rollback()
         raise CliError("migration 205 has not been applied to this database (python -m etl.migrate)") from None
@@ -45,7 +55,7 @@ def create_key(conn, name: str, created_by: str | None = None) -> tuple[str, str
 
 
 def list_keys(conn) -> list[tuple]:
-    return conn.execute("SELECT name, prefix, scope, created_at, created_by, last_used_at, revoked_at FROM api_keys ORDER BY id").fetchall()
+    return conn.execute("SELECT name, prefix, scope, vendor, created_at, created_by, last_used_at, revoked_at FROM api_keys ORDER BY id").fetchall()
 
 
 def revoke_key(conn, name: str) -> bool:
@@ -75,6 +85,8 @@ def main(argv=None, url: str | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("create", help="make a key and print it once")
     c.add_argument("--name", required=True)
+    c.add_argument("--scope", default=ak.SCOPE, choices=ak.SCOPES, help="read_assign (default: read everything, assign on the board) or partner_push (an outside creative partner: push tickets and creative links for one vendor)")
+    c.add_argument("--vendor", help="required for partner_push: the one vendor the key speaks for (Madre, Victoria, Studio Flow ...)")
     c.add_argument("--out", help="write the key to this new file (mode 0600) instead of printing it")
     sub.add_parser("list", help="show every key (never the key itself)")
     r = sub.add_parser("revoke", help="stop a key from working")
@@ -85,7 +97,7 @@ def main(argv=None, url: str | None = None) -> int:
             if a.cmd == "create":
                 if a.out and os.path.exists(a.out):
                     raise CliError(f"{a.out} already exists; it is not overwritten")
-                raw, prefix = create_key(conn, a.name, getpass.getuser())
+                raw, prefix = create_key(conn, a.name, getpass.getuser(), a.scope, a.vendor)
                 if a.out:
                     _write_private(a.out, raw + "\n")
                     print(f"Key {a.name!r} ({prefix}...) written to {a.out} (mode 0600). It cannot be shown again.")
@@ -94,9 +106,9 @@ def main(argv=None, url: str | None = None) -> int:
                     print("Shown once. It cannot be shown again. Stored only as a hash.", file=sys.stderr)
             elif a.cmd == "list":
                 rows = list_keys(conn)
-                print(f"{'name':<24}{'prefix':<10}{'created':<18}{'last used':<18}revoked")
-                for name, prefix, _scope, created, _by, last, revoked in rows:
-                    print(f"{name:<24}{prefix + '...':<10}{_ts(created):<18}{_ts(last):<18}{_ts(revoked)}")
+                print(f"{'name':<24}{'prefix':<10}{'scope':<14}{'vendor':<16}{'created':<18}{'last used':<18}revoked")
+                for name, prefix, scope, vendor, created, _by, last, revoked in rows:
+                    print(f"{name:<24}{prefix + '...':<10}{scope:<14}{(vendor or '-'):<16}{_ts(created):<18}{_ts(last):<18}{_ts(revoked)}")
                 if not rows:
                     print("(no keys)")
             else:
