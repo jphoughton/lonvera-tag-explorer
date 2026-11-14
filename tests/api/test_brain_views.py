@@ -22,7 +22,7 @@ from .test_schema_docs import D, gen
 
 ROOT = Path(__file__).resolve().parents[2]
 PG_BASE = os.environ.get("TEST_PG_BASE", "postgresql://localhost")
-DB_NAME = os.environ.get("TEST_API_DB", "tagexp_apitest") + "_brain"
+DB_NAME = os.environ.get("TEST_API_DB", "tagexp_apitest") + "_brainviews"          # not "_brain": tests/brain holds a session database of that name, and a worker running both would drop it
 DB_URL = f"{PG_BASE}/{DB_NAME}"
 
 ROWS = [

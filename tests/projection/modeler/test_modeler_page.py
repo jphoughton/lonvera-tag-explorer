@@ -331,6 +331,7 @@ def test_the_retention_selector_shows_each_option_and_writes_the_scenario(restor
     assert money(years_table(page)["Repeat revenue"][1]) == pytest.approx(next(y for y in api(server, "/modeler/state?scenario=modeler")["outputs"]["years"] if y["year"] == 2027)["repeat_rev"], abs=0.5)
     page.locator(".mo-opt[data-key=asof] .seg", has_text="6 cohorts").click()
     page.wait_for_function("document.querySelector('.mo-opt[data-key=asof] .mo-opt-pick')?.getAttribute('aria-checked') === 'false'", timeout=5000)
+    page.wait_for_function("document.querySelector('.mo-opt[data-key=asof] .seg[data-n=\"6\"]')?.getAttribute('aria-pressed') === 'true'", timeout=10000)      # the 6-cohort choice must be drawn before the card is picked, or a loaded machine saved the old count
     cards["asof"].click()
     page.wait_for_function("document.querySelector('.mo-opt[data-key=asof] .mo-opt-pick')?.getAttribute('aria-checked') === 'true'", timeout=10000)
     wait_saved(page)

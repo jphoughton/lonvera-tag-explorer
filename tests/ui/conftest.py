@@ -63,6 +63,9 @@ def browser():
 @pytest.fixture
 def ctx(browser, base_url):
     c = browser.new_context(viewport={"width": 1440, "height": 900}, base_url=base_url)
+    # the ticket drawer embeds a Google Drive preview iframe for the fixture's fake file ids; the real drive.google.com answers 404 for them, but only if the
+    # request finishes before the test ends, so a slow or fast machine decided whether the console-error check at teardown failed. The test never talks to Google.
+    c.route("https://drive.google.com/**", lambda route: route.fulfill(status=200, content_type="text/html", body="<!doctype html><title>preview</title>"))
     yield c
     c.close()
 
@@ -74,6 +77,7 @@ def anon_page(ctx, request):
     page.errors = []
     page.on("console", lambda m: page.errors.append(m.text) if m.type == "error" else None)
     page.on("pageerror", lambda e: page.errors.append("pageerror: " + str(e)))
+    page.on("response", lambda r: page.errors.append(f"[{r.status} {r.request.method} {r.url}]") if r.status == 404 else None)      # names the URL behind a bare "Failed to load resource"
     yield page
     if request.node.get_closest_marker("allow_errors") is None:
         allow = os.environ.get("UI_ALLOW_RESOURCE_ERRORS") == "1"
