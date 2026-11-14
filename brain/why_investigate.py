@@ -460,7 +460,7 @@ class Inv:
         if not self.w.has("change_timeline"):
             self.events = []
             return
-        rows = self.q(f"select event_time, event_day, source, kind, scope, object_ids, object_names, product, old_value, new_value, magnitude, actor, objects_affected, prior_day_spend_share "
+        rows = self.q(f"select event_time, event_day, source, kind, scope, object_ids, object_names, product, old_value, new_value, magnitude, editor, objects_affected, prior_day_spend_share "
                       f"from analytics.change_timeline where event_day between date '{self.start - dt.timedelta(days=3)}' and date '{self.end}' order by event_time", 600)
         out = []
         for r in rows or []:
@@ -494,7 +494,7 @@ class Inv:
                 rows = self.q(f"select day, hour, new_customer_revenue nc_rev from analytics.orders_hourly where day between date '{et.date() - dt.timedelta(days=30)}' and date '{et.date()}'")
                 if rows:
                     split = X.event_hour_split([{**r, "day": _day(r["day"])} for r in rows], et.date(), et.hour)
-            ent = {"event": f"{e['kind']} by {e.get('actor') or '?'} on {e['objects_affected']} {e['scope']}(s): {e.get('old_value')} -> {e.get('new_value')} at {et:%Y-%m-%d %H:%M} PT, {((e.get('prior_day_spend_share') or 0) * 100):.0f}% of prior-day Meta spend",
+            ent = {"event": f"{e['kind']} by {e.get('editor') or '?'} on {e['objects_affected']} {e['scope']}(s): {e.get('old_value')} -> {e.get('new_value')} at {et:%Y-%m-%d %H:%M} PT, {((e.get('prior_day_spend_share') or 0) * 100):.0f}% of prior-day Meta spend",
                    "verdict": ver, "control": word, "event_time": f"{et:%Y-%m-%d %H:%M} PT", "_ctl": ctl, "_ev": e, "hour_split": split}
             self.controlled.append(ent)
             summ = ""

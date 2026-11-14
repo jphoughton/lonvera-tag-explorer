@@ -10603,7 +10603,7 @@
    "coverage": "Meta log from its backfill start; orders-derived events only inside the 120-day order window (and 14+ days after its start); landing page versions from the first fetch",
    "caveats": [
     "An event is not a cause: a control (edited vs unedited objects, before vs after) is what `why` adds. Bulk edits list every id in object_ids; objects_affected is their count.",
-    "actor is the stored actor name, else the app name, else the id; it is NULL-safe but exposes a person's name: do not paste it outside the team.",
+    "editor is the stored person / actor name, else the app name, else the id (exposed on purpose: Josh asked for who made a change); do not paste it outside the team.",
     "prior_day_spend_share is the affected ad sets' / campaigns' share of Meta spend on the day before the event (Meta events only; NULL otherwise).",
     "Derived events (price_point_first_seen, discount_code_first_seen) come from order lines: a first-seen price can be a data artifact, treat as a lead. new_ad_families counts families by first spend day, not copies.",
     "Only update_ / create_ ad set, campaign and ad events appear for Meta; system events (first delivery, review flips, billing) are excluded by design."
@@ -10678,10 +10678,10 @@
      "description": "Relative change of the average amount (0.4 = +40%) for budget / bid events."
     },
     {
-     "name": "actor",
+     "name": "editor",
      "type": "text",
      "nullable": null,
-     "description": "Who or what made it."
+     "description": "Who or what made it (person name, else app, else id)."
     },
     {
      "name": "objects_affected",
@@ -10705,11 +10705,11 @@
    "examples": [
     {
      "title": "Everything that changed in the last 3 days, biggest spend share first",
-     "sql": "SELECT event_time, source, kind, objects_affected, old_value, new_value, actor, prior_day_spend_share\nFROM analytics.change_timeline WHERE event_day >= current_date - 3\nORDER BY prior_day_spend_share DESC NULLS LAST, event_time DESC LIMIT 50;"
+     "sql": "SELECT event_time, source, kind, objects_affected, old_value, new_value, editor, prior_day_spend_share\nFROM analytics.change_timeline WHERE event_day >= current_date - 3\nORDER BY prior_day_spend_share DESC NULLS LAST, event_time DESC LIMIT 50;"
     },
     {
      "title": "Bulk Meta edits by who made them, last 14 days",
-     "sql": "SELECT event_day, kind, actor, objects_affected, old_value, new_value\nFROM analytics.change_timeline WHERE source = 'meta_activity_log' AND objects_affected >= 5 AND event_day >= current_date - 14 ORDER BY event_time DESC;"
+     "sql": "SELECT event_day, kind, editor, objects_affected, old_value, new_value\nFROM analytics.change_timeline WHERE source = 'meta_activity_log' AND objects_affected >= 5 AND event_day >= current_date - 14 ORDER BY event_time DESC;"
     }
    ]
   },

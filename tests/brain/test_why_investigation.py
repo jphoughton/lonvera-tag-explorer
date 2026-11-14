@@ -141,11 +141,11 @@ def test_change_timeline_view_groups_bulk_edits_and_exposes_the_actor(migrated):
             from generate_series(0, 90) i""")
         c.execute("insert into meta_change_log(event_key, account, event_time, event_day, event_type, object_level, object_id, object_name, actor_id, old_amount, new_amount, raw) "
                   "values ('sys', 'Main', '2026-11-11 13:00-08', '2026-11-11', 'update_ad_set_bid_amount', 'adset', 'as1', 'Set 1', '0', 80, 68, '{}')")
-        rows = c.execute("select event_day, kind, actor, objects_affected, old_value, new_value, array_length(object_ids, 1) from analytics.change_timeline where source = 'meta_activity_log' order by event_time").fetchall()
+        rows = c.execute("select event_day, kind, editor, objects_affected, old_value, new_value, array_length(object_ids, 1) from analytics.change_timeline where source = 'meta_activity_log' order by event_time").fetchall()
         cols = {r[0] for r in c.execute("select column_name from information_schema.columns where table_schema = 'analytics' and table_name = 'change_timeline'")}
     assert [(r[3], r[6]) for r in rows] == [(89, 89), (91, 91)]                      # the system event is excluded, each bulk edit is one row
     assert rows[0][2] == "Rodolfo" and rows[0][4] == "45.00 to 64.00" and rows[0][5] == "80.00" and rows[1][5] == "68.00"
-    assert {"event_time", "event_day", "source", "kind", "scope", "object_ids", "object_names", "old_value", "new_value", "magnitude", "actor", "objects_affected", "prior_day_spend_share"} <= cols
+    assert {"event_time", "event_day", "source", "kind", "scope", "object_ids", "object_names", "old_value", "new_value", "magnitude", "editor", "objects_affected", "prior_day_spend_share"} <= cols
 
 
 @pytest.fixture(scope="module")
@@ -165,7 +165,7 @@ def test_answer_contract_and_a_verdict_for_every_hypothesis(whydb):
     with psycopg.connect(whydb, autocommit=True) as c:
         ids = [r[0] for r in c.execute("select distinct adset_id from analytics.meta_ad_daily where adset_id is not null limit 20").fetchall()]
         c.execute("create table analytics.change_timeline (event_time timestamptz, event_day date, source text, kind text, scope text, object_ids text[], object_names text, product text, old_value text, new_value text, "
-                  "magnitude numeric, actor text, objects_affected int, last_event_time timestamptz, prior_day_spend_share numeric)")
+                  "magnitude numeric, editor text, objects_affected int, last_event_time timestamptz, prior_day_spend_share numeric)")
         c.execute("insert into analytics.change_timeline values ('2026-10-29 10:11-07', '2026-10-29', 'meta_activity_log', 'update_ad_set_bid_amount', 'adset', %s, '10 adsets', null, '45.00 to 68.00', '80.00', 0.4, 'Rodolfo', 10, "
                   "'2026-10-29 11:07-07', 0.5)", (ids[:10],))
     out = W.run_why({"start": "2026-10-29", "end": "2026-10-31", "compare": "prior_period"}, make_runner(whydb, []), KN)
