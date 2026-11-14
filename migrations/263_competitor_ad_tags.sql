@@ -1,4 +1,4 @@
--- 261: transcripts and tags of the curated competitor ads (the ones with a saved picture or video). Filled by `python -m etl.competitor_tags`; read by the /competitors page.
+-- 263: transcripts and tags of the curated competitor ads (the ones with a saved picture or video). Filled by `python -m etl.competitor_tags`; read by the /competitors page.
 --   competitor_ad_transcript  one row per Meta Ad Library ID: what is said in the saved video (faster-whisper)
 --   competitor_ad_tags        one row per Meta Ad Library ID: Lonvera's taxonomy (line / cluster / ICP / pain point / trigger), the Creative Tracker's style / fidelity / proof / emotion
 --                             lists, and the learning tags (hook type, offer type, device, call to action, hook text, why it works, what was seen / said), made by headless Claude

@@ -13,7 +13,7 @@ def restore_real_tables(pg):
     """Drop whatever this test left and re-run the migrations that own the competitor learning tables (idempotent CREATE ... IF NOT EXISTS)."""
     for t in REAL:
         pg.execute(f"DROP TABLE IF EXISTS {t}")
-    for name in ("261_competitor_ad_tags.sql", "262_competitor_landing_pages.sql"):
+    for name in ("263_competitor_ad_tags.sql", "264_competitor_landing_pages.sql"):
         for path in glob.glob(os.path.join(ROOT, "migrations", name)):
             with open(path) as f:
                 pg.execute(f.read())

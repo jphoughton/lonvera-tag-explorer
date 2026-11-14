@@ -7516,7 +7516,7 @@
    "foreign_keys": [],
    "source": "etl.competitor_landing_pages: distinct competitor_ads.landing_url of the week, normalised to url_key (host without www + path, tracking parameters dropped), opened with headless Chromium (Playwright; 1280x900 viewport, 3 s between pages, 20 s timeout, no login, no captcha or bot-wall bypass), visible text extracted, tagged by headless Claude (Sonnet 5.5) from the text and the screenshot in batches of 5",
    "refresh": "by hand for now (not scheduled in the nightly etl yet); python -m etl.competitor_landing_pages [--week --brand --limit --retag --no-tag --dry-run]; a page already tagged this week is skipped",
-   "coverage": "from the first run after migration 262 (2026-11-13 build); at most 200 distinct pages per run, the most-used ones first; one row per week kept as history",
+   "coverage": "from the first run after migration 264 (2026-11-13 build); at most 200 distinct pages per run, the most-used ones first; one row per week kept as history",
    "caveats": [
     "Not every ad has a page row: ads without a landing_url, on social hosts (facebook, instagram, youtube), or past the 200-page cap are unlinked in competitor_ad_lp.",
     "http_status / fetch_error show a blocked page (403, challenge, blank): its tag columns stay NULL. Blocked is not a missing page; the Ad Library may still show the ad.",
@@ -7731,7 +7731,7 @@
    "foreign_keys": [],
    "source": "etl.competitor_landing_pages: viewport screenshot (1280x900) taken after the page loaded, re-encoded to JPEG, at most 640 px wide and 90 KB",
    "refresh": "weekly with the landing page run; rows older than 60 days that are not in the latest week are deleted",
-   "coverage": "from the first run after migration 262; only pages that loaded",
+   "coverage": "from the first run after migration 264; only pages that loaded",
    "caveats": [
     "No row = no screenshot (blocked, blank or failed page), not a missing page.",
     "Served by GET /api/competitors/lp-media/<lp_id>?week=YYYY-MM-DD (login required); do not read bytes through SQL for display.",
@@ -7800,7 +7800,7 @@
    "foreign_keys": [],
    "source": "etl.competitor_landing_pages: competitor_ads.landing_url of the week normalised to lp_id",
    "refresh": "weekly with the landing page run (rewritten for the week on every run)",
-   "coverage": "from the first run after migration 262",
+   "coverage": "from the first run after migration 264",
    "caveats": [
     "Only ads with a usable landing_url on a non-social host and within the 200-page cap are linked; a missing row means unlinked, not 'no landing page'.",
     "Several ads usually share one page, so count ads with competitor_landing_pages.ad_count, not rows here joined to the pages table."
