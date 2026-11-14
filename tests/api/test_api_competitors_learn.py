@@ -1,5 +1,5 @@
 """Competitors learning layer (app/competitors_learn.py): model-read tags and transcripts, tag filters, the share charts against Lonvera's own spend, brand tag mix, and tagged landing pages.
-The tag / transcript / landing-page tables are real migration tables (261, 262) that other tests share, so the fixture swaps them for contract-column versions per test (or drops them to test the absent case) and puts the real tables back afterwards from the migration files; with them absent the payloads must be unchanged."""
+The tag / transcript / landing-page tables are real migration tables (263, 264) that other tests share, so the fixture swaps them for contract-column versions per test (or drops them to test the absent case) and puts the real tables back afterwards from the migration files; with them absent the payloads must be unchanged."""
 import glob
 import os
 
@@ -280,3 +280,26 @@ def test_landing_pages_old_shape_when_no_rows_for_the_brand(client, world):
     det = client.get("/api/competitors/Acme").get_json()
     assert all(set(p) == {"page", "ads"} for p in det["landing_pages"]) and det["landing_pages"]
     assert "lp_patterns" in client.get("/api/competitors").get_json()
+
+
+def test_proof_spellings_around_a_slash_are_one_value(client, world, pg):
+    from app.competitors_learn import normv
+    assert normv("Clinical/Ingredient Stat") == normv("Clinical / Ingredient Stat") == normv(" Clinical  /Ingredient Stat ") == "Clinical / Ingredient Stat"
+    # competitors: 4 ads spelled one way, 4 the other -> one chart row at 8/8; ours: 30 + 70 spend across the two spellings -> 100%
+    tags = [tag(f"a{i}", style="Demo", proof="Clinical/Ingredient Stat") for i in range(1, 5)] + [tag(f"a{i}", style="Demo", proof="Clinical / Ingredient Stat") for i in range(5, 9)]
+    world(tables=("competitor_ad_tags",), tags=tags)
+    pg.execute("DELETE FROM family_daily WHERE family_key LIKE 'zzp-%'"); pg.execute("DELETE FROM tracker_rows WHERE row_key LIKE 'zzp-%'")
+    pid = pg.execute("SELECT id FROM products ORDER BY id LIMIT 1").fetchone()
+    if pid is None:
+        pid = pg.execute("INSERT INTO products (slug, name) VALUES ('zzl-test', 'Zzl') RETURNING id").fetchone()
+    for i, (proof, spend) in enumerate((("Clinical/Ingredient Stat", 30), ("Clinical / Ingredient Stat", 70))):
+        pg.execute("INSERT INTO tracker_rows (product_id, row_key, concept_id, family_key, sheet_row, style, proof, tracker_emotion) VALUES (%s,%s,%s,%s,%s,'Demo',%s,'Relief')", (pid[0], f"zzp-{i}", f"zzp-{i}", f"zzp-{i}", i, proof))
+        pg.execute("INSERT INTO family_daily (family_key, day, stage, spend) VALUES (%s, '2099-01-01', 'scaling', %s)", (f"zzp-{i}", spend))
+    pg.commit()
+    try:
+        d = client.get("/api/competitors").get_json()
+        proof = {c["key"]: c for c in d["learn"]["charts"]}["proof_mechanism"]
+        assert [r["value"] for r in proof["rows"]] == ["Clinical / Ingredient Stat"]
+        assert proof["rows"][0]["share"] == pytest.approx(1.0) and proof["rows"][0]["lonvera_share"] == pytest.approx(1.0, abs=1e-3)
+    finally:
+        pg.execute("DELETE FROM family_daily WHERE family_key LIKE 'zzp-%'"); pg.execute("DELETE FROM tracker_rows WHERE row_key LIKE 'zzp-%'"); pg.commit()

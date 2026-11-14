@@ -52,6 +52,11 @@ def norm(v) -> str:
     return (v or "").strip() if isinstance(v, str) else ""
 
 
+def normv(v) -> str:
+    """A tag VALUE for grouping and display: trimmed, runs of spaces collapsed and spacing around '/' made uniform, so 'Clinical/Ingredient Stat' and 'Clinical / Ingredient Stat' (both exist in the Creative Tracker) are one value."""
+    return re.sub(r"\s*/\s*", " / ", re.sub(r"\s+", " ", norm(v))).strip()
+
+
 # ---------------------------------------------------------------- reading rows
 
 def sql_parts(conn) -> tuple[str, str]:
@@ -101,7 +106,7 @@ def filters_from(args) -> dict:
 def tag_ok(a: dict, f: dict) -> bool:
     if not f:
         return True
-    return bool(a.get("tg_present")) and all(norm(a.get("tg_" + col)).casefold() == v.casefold() for col, v in f.items())
+    return bool(a.get("tg_present")) and all(normv(a.get("tg_" + col)).casefold() == normv(v).casefold() for col, v in f.items())
 
 
 def options(rows: list[dict]) -> dict:
@@ -111,7 +116,7 @@ def options(rows: list[dict]) -> dict:
         c: collections.Counter = collections.Counter()
         names: dict[str, str] = {}
         for a in rows:
-            v = norm(a.get("tg_" + col)) if a.get("tg_present") else ""
+            v = normv(a.get("tg_" + col)) if a.get("tg_present") else ""
             if v:
                 c[v.casefold()] += 1
                 names.setdefault(v.casefold(), v)
@@ -124,7 +129,7 @@ def card_extras(a: dict) -> dict:
     """Keys the lightbox needs, present only when there is something to show."""
     out: dict = {}
     if a.get("tg_present"):
-        chips = [{"key": k, "label": lab, "value": norm(a.get("tg_" + k)), "filter": FILTER_PARAM.get(k)} for k, lab in CHIP_ORDER if norm(a.get("tg_" + k))]
+        chips = [{"key": k, "label": lab, "value": normv(a.get("tg_" + k)), "filter": FILTER_PARAM.get(k)} for k, lab in CHIP_ORDER if normv(a.get("tg_" + k))]
         if chips:
             out["tag_chips"] = chips
         for src, dst, cap in (("tg_why_it_works", "why_it_works", 400), ("tg_hook_text", "hook_quote", 400), ("tg_seen_on", "seen_on", SEEN_MAX), ("tg_said_on", "said_on", SEEN_MAX)):
@@ -172,7 +177,7 @@ def lonvera_shares(conn) -> dict | None:
         tot: collections.Counter = collections.Counter()
         names: dict[str, str] = {}
         for r in rows:
-            v = norm(r[col])
+            v = normv(r[col])
             if v:
                 tot[v.casefold()] += float(r["spend"] or 0)
                 names.setdefault(v.casefold(), v)
@@ -204,7 +209,7 @@ def lonvera_best(conn, fr: str, cols: str, join: str) -> dict:
         agg: dict[str, list] = {}
         names: dict[str, str] = {}
         for r in rows:
-            v = norm(r[col])
+            v = normv(r[col])
             if v:
                 a = agg.setdefault(v.casefold(), [0.0, 0.0, 0])
                 a[0] += float(r["spend"] or 0)
@@ -262,7 +267,7 @@ def learning(cur: list[dict], lon: dict | None) -> dict | None:
         cnt: collections.Counter = collections.Counter()
         names: dict[str, str] = {}
         for a in tagged:
-            v = norm(a.get("tg_" + col))
+            v = normv(a.get("tg_" + col))
             if v:
                 cnt[v.casefold()] += 1
                 names.setdefault(v.casefold(), v)
@@ -290,7 +295,7 @@ def learning(cur: list[dict], lon: dict | None) -> dict | None:
         charts.append(chart)
     combos: dict[tuple, dict] = {}
     for a in tagged:
-        h, d = norm(a.get("tg_hook_type")), norm(a.get("tg_device"))
+        h, d = normv(a.get("tg_hook_type")), normv(a.get("tg_device"))
         if not (h and d):
             continue
         g = combos.setdefault((h.casefold(), d.casefold()), {"hook_type": h, "device": d, "ads": 0, "brands": set(), "ex": None})
@@ -313,7 +318,7 @@ def tag_mix(cur: list[dict]) -> dict | None:
         c: collections.Counter = collections.Counter()
         names: dict[str, str] = {}
         for a in cur:
-            v = norm(a.get("tg_" + col)) if a.get("tg_present") else ""
+            v = normv(a.get("tg_" + col)) if a.get("tg_present") else ""
             if v:
                 c[v.casefold()] += 1
                 names.setdefault(v.casefold(), v)

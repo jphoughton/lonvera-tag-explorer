@@ -8263,7 +8263,7 @@ GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 - **Grain:** primary key `(family_key)`; one row per ad family (family_key = tracker family_key, or the Meta family key for a Meta ad with no tracker row)
 - **Source:** etl.own_ad_tags: transcripts already made by earlier tagging cycles (faster-whisper base on the real audio of the Vita Bull, Beef Liver and Boneflex cycles, imported once with --import-transcripts) and, for videos without one, faster-whisper on the video fetched in spend order
 - **Refresh:** by hand: python -m etl.own_ad_tags (a family that already has a transcript is never transcribed again)
-- **Coverage:** from the first import after migration 262
+- **Coverage:** from the first import after migration 266
 - **Caveat:** source says how it was made: 'cycle_whisper' (earlier cycle, real audio), 'whisper' (this job), 'tracker_copy' (the Creative Tracker's typed transcript; the tracker text is sometimes from a different video than the one running, so it is a fallback only).
 - **Caveat:** transcript '[no speech]' = a silent or music-only video. Audio over 3 minutes is skipped, not cut; no row = not transcribed (image ad, download failed, or not reached yet).
 - **Caveat:** creative_ad_transcripts (migration 249) is a separate table at concept_id grain for Production cards.
@@ -8287,7 +8287,7 @@ GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 - **Grain:** primary key `(family_key)`; one row per ad family (family_key; count families, not tracker rows or ad_ids)
 - **Source:** etl.own_ad_tags: claude -p (Sonnet, Read tool only) on batches of 6 families, looking at the stored thumbnail / video frames plus the transcript, the tracker copy and the hook line; values validated against the same closed lists as competitor_ad_tags
 - **Refresh:** by hand: python -m etl.own_ad_tags (highest spend first; families already tagged at the current tag_version are skipped, --retag replaces the row)
-- **Coverage:** from the first run after migration 262; every ad family with Meta spend since 2026-05-06 plus the tracker families
+- **Coverage:** from the first run after migration 266; every ad family with Meta spend since 2026-05-06 plus the tracker families
 - **Caveat:** Style, fidelity, proof mechanism and emotion are NOT here: the Creative Tracker tags are the source of truth for those, and cluster / ICP / pain point / trigger come from ad_tags (line map).
 - **Caveat:** method: 'vision_transcript' = pictures and the real audio transcript, 'vision' = pictures and copy only (image ad, or a video whose audio could not be had), 'text' = copy only (no picture); a text-only tag is capped at medium confidence.
 - **Caveat:** A tag is the model's reading of the ad, quoted not invented; hook_text / seen_on / said_on can be a short phrase or 'nothing readable' / 'no speech'.
@@ -8318,7 +8318,7 @@ GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 - **Grain:** primary key `(family_key, week_start)`; one row per (family_key, week_start) (joins to competitor_landing_pages on lp_id with is_own = true)
 - **Source:** etl.competitor_landing_pages --own: landing_page_ads (ad to page map, migration 207) x ad_daily spend over the last 120 days, ad to family through meta_family_map
 - **Refresh:** by hand: python -m etl.competitor_landing_pages --own (rewritten for the week on every run)
-- **Coverage:** from the first --own run after migration 263; only the top 25 own pages by spend
+- **Coverage:** from the first --own run after migration 267; only the top 25 own pages by spend
 - **Caveat:** An ad that lists several links appears under each page with its full spend; the family row keeps the page with the largest spend share (ties: alphabetical url_key).
 - **Caveat:** Only families whose ads have a row in landing_page_ads and whose page is in the top 25 are linked; a missing row means unlinked, not 'no landing page'.
 

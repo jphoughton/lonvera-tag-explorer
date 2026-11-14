@@ -13,7 +13,7 @@ Flow (python -m etl.competitor_landing_pages; run by hand, NOT yet scheduled in 
      writes change_note from the old vs new tag lines.
 Resumable: an LP already tagged this week is skipped, a page blocked this week is not retried (use --retag), a capture-only (--no-tag) page is re-opened by the next tagging run because
 the text is not stored (only its screenshot and hash are).
---own (migration 263): the same flow for LONVERA'S OWN landing pages. The pages are the destination URLs of our Meta ads (landing_page_ads, migration 207: ad -> page) ranked by spend over the
+--own (migration 267): the same flow for LONVERA'S OWN landing pages. The pages are the destination URLs of our Meta ads (landing_page_ads, migration 207: ad -> page) ranked by spend over the
 last OWN_DAYS days (ad_daily; an ad that lists several links counts its full spend under each), top OWN_LIMIT pages, brand 'Lonvera', competitor_landing_pages.is_own = true, week = this Monday
 (Pacific); ad_family_lp records which ad family (tracker family_key, or the Meta family key) sends most of its spend to which page. Competitor views must filter is_own = false.
 Usage: python -m etl.competitor_landing_pages [--week YYYY-MM-DD] [--brand NAME] [--limit N] [--retag] [--no-tag] [--dry-run] [--if-sunday] [--own]"""
