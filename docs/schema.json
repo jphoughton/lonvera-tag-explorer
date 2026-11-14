@@ -8690,6 +8690,24 @@
      "type": "jsonb",
      "nullable": false,
      "description": "The variations of the concept as a JSON list of {label, url, concept_id}: label (Original, Hook 2 ...), url (the video or image, usually Google Drive; may be empty) and concept_id (the Creative Tracker Concept ID of that variation; may be empty). Its length is the Variations number on the ticket."
+    },
+    {
+     "name": "tag_state",
+     "type": "text",
+     "nullable": false,
+     "description": "'complete' when every tag of the ticket was given or has been added by the system, 'pending' while a brief is there and tags are still missing (etl/ticket_tags.py fills them), 'failed' when the tagger gave up after three tries."
+    },
+    {
+     "name": "tagged_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the system added tags from the brief (etl/ticket_tags.py); NULL when it did not."
+    },
+    {
+     "name": "tag_note",
+     "type": "text",
+     "nullable": false,
+     "description": "The tagger's confidence and one-line reason, or why it failed; empty when nothing was auto-tagged."
     }
    ],
    "examples": []

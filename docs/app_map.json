@@ -182,6 +182,14 @@
   {
    "service": "etl",
    "order": 14,
+   "module": "etl.ticket_tags",
+   "args": "",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 15,
    "module": "etl.auto_tag",
    "args": "",
    "fatal": false,
@@ -500,6 +508,10 @@
   {
    "module": "etl.status_refresh",
    "summary": "Refresh meta_ads from Graph on every run: effective_status (for every ad with delivery in the last 60 days and every ad whose stored status is not"
+  },
+  {
+   "module": "etl.ticket_tags",
+   "summary": "Tag the tickets that were added with only a name, a vendor and a brief (docs/CREATIVE_PRIORITIES.md, Ticket contract)."
   },
   {
    "module": "etl.tracker_sync",
