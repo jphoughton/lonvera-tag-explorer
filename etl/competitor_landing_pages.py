@@ -13,7 +13,10 @@ Flow (python -m etl.competitor_landing_pages; run by hand, NOT yet scheduled in 
      writes change_note from the old vs new tag lines.
 Resumable: an LP already tagged this week is skipped, a page blocked this week is not retried (use --retag), a capture-only (--no-tag) page is re-opened by the next tagging run because
 the text is not stored (only its screenshot and hash are).
-Usage: python -m etl.competitor_landing_pages [--week YYYY-MM-DD] [--brand NAME] [--limit N] [--retag] [--no-tag] [--dry-run] [--if-sunday]"""
+--own (migration 263): the same flow for LONVERA'S OWN landing pages. The pages are the destination URLs of our Meta ads (landing_page_ads, migration 207: ad -> page) ranked by spend over the
+last OWN_DAYS days (ad_daily; an ad that lists several links counts its full spend under each), top OWN_LIMIT pages, brand 'Lonvera', competitor_landing_pages.is_own = true, week = this Monday
+(Pacific); ad_family_lp records which ad family (tracker family_key, or the Meta family key) sends most of its spend to which page. Competitor views must filter is_own = false.
+Usage: python -m etl.competitor_landing_pages [--week YYYY-MM-DD] [--brand NAME] [--limit N] [--retag] [--no-tag] [--dry-run] [--if-sunday] [--own]"""
 from __future__ import annotations
 
 import argparse
@@ -38,6 +41,9 @@ from . import db
 PT = ca.PT
 MODEL = at.MODEL
 MAX_LPS = 200
+OWN_LIMIT = 25
+OWN_DAYS = 120
+OWN_BRAND = "Lonvera"
 BATCH = 5
 PAGE_PAUSE = 3.0
 PAGE_TIMEOUT_MS = 20_000
@@ -153,6 +159,53 @@ def plan_lps(ads: list[dict], limit: int = MAX_LPS) -> tuple[list[dict], dict[st
         for lid in d["ads"]:
             links[lid] = d["lp_id"]
     return out, links, {"distinct": len(by), "kept": len(out), "dropped_over_cap": dropped, "skipped": dict(skipped)}
+
+
+def plan_own_lps(rows: list[tuple], limit: int = OWN_LIMIT) -> tuple[list[dict], dict[str, str], dict]:
+    """rows: (family_key, url, spend) -> (lps ranked by spend desc then url_key, {family_key: lp_id of the page that family sends most spend to}, stats). The same url_key from several
+    URLs / families is one page; social hosts and invalid links are skipped; pages past `limit` are dropped together with their links."""
+    by: dict[str, dict] = {}
+    fam: dict[str, dict[str, float]] = {}
+    skipped = Counter()
+    for fk, url, spend in rows:
+        k = url_key(url or "")
+        if not k:
+            skipped["skipped_host_or_invalid"] += 1
+            continue
+        d = by.setdefault(k, {"url_key": k, "lp_id": lp_id_for(k), "spend": 0.0, "fams": set(), "open": url, "open_spend": -1.0})
+        sp = float(spend or 0)
+        d["spend"] += sp
+        d["fams"].add(fk)
+        if sp > d["open_spend"]:
+            d["open"], d["open_spend"] = url, sp
+        fam.setdefault(fk, {})[k] = fam.setdefault(fk, {}).get(k, 0.0) + sp
+    ranked = sorted(by.values(), key=lambda d: (-d["spend"], d["url_key"]))
+    kept = ranked[:limit]
+    keys = {d["url_key"] for d in kept}
+    lps = [{"url_key": d["url_key"], "lp_id": d["lp_id"], "brand": OWN_BRAND, "ad_count": len(d["fams"]), "spend": round(d["spend"], 2), "open": d["open"]} for d in kept]
+    links = {}
+    for fk, per in fam.items():
+        cand = sorted(((-v, k) for k, v in per.items() if k in keys))
+        if cand:
+            links[fk] = by[cand[0][1]]["lp_id"]
+    return lps, links, {"distinct": len(by), "kept": len(lps), "dropped_over_cap": max(0, len(by) - len(kept)), "skipped": dict(skipped), "families_linked": len(links)}
+
+
+OWN_SQL = """SELECT COALESCE(m.tracker_family_key, a.meta_family_key) AS family_key, lp.url, sum(s.spend) AS spend
+             FROM landing_page_ads la JOIN landing_pages lp ON lp.id = la.landing_page_id
+             JOIN meta_ads a ON a.ad_id = la.ad_id LEFT JOIN meta_family_map m ON m.meta_family_key = a.meta_family_key
+             JOIN (SELECT ad_id, sum(spend) AS spend FROM ad_daily WHERE day > (now() AT TIME ZONE 'America/Los_Angeles')::date - %s GROUP BY ad_id HAVING sum(spend) > 0) s ON s.ad_id = a.ad_id
+             WHERE COALESCE(m.tracker_family_key, a.meta_family_key) IS NOT NULL
+             GROUP BY 1, 2 ORDER BY 3 DESC, 1, 2"""
+
+
+def load_own_rows(conn, days: int = OWN_DAYS) -> list[tuple]:
+    return [(r[0], r[1], float(r[2])) for r in conn.execute(OWN_SQL, (days,)).fetchall()]
+
+
+def own_week() -> dt.date:
+    today = dt.datetime.now(PT).date()
+    return today - dt.timedelta(days=today.weekday())
 
 
 # ---- page capture ---------------------------------------------------------------------------------------------------------------------
@@ -472,11 +525,18 @@ def load_ads(conn, week: dt.date, brand: str | None = None) -> list[dict]:
     return [{"library_id": r[0], "brand": r[1], "landing_url": r[2]} for r in rows]
 
 
-def store_plan(conn, week: dt.date, lps: list[dict], links: dict[str, str]) -> None:
-    """Links (replaced for the week's mapped ads) + a placeholder row per LP; an LP already captured keeps its row, only brand / ad_count are refreshed."""
+def store_plan(conn, week: dt.date, lps: list[dict], links: dict[str, str], own: bool = False) -> None:
+    """Links (replaced for the week's mapped ads) + a placeholder row per LP; an LP already captured keeps its row, only brand / ad_count are refreshed. own: the pages are Lonvera's
+    (is_own = true) and the links go to ad_family_lp (family_key, lp_id, week), rewritten for the week."""
     for lp in lps:
-        conn.execute("""INSERT INTO competitor_landing_pages (week_start, lp_id, url_key, brand, ad_count) VALUES (%s,%s,%s,%s,%s)
-                        ON CONFLICT (week_start, lp_id) DO UPDATE SET brand=EXCLUDED.brand, ad_count=EXCLUDED.ad_count""", (week, lp["lp_id"], lp["url_key"], lp["brand"], lp["ad_count"]))
+        conn.execute("""INSERT INTO competitor_landing_pages (week_start, lp_id, url_key, brand, ad_count, is_own) VALUES (%s,%s,%s,%s,%s,%s)
+                        ON CONFLICT (week_start, lp_id) DO UPDATE SET brand=EXCLUDED.brand, ad_count=EXCLUDED.ad_count, is_own=EXCLUDED.is_own""",
+                     (week, lp["lp_id"], lp["url_key"], lp["brand"], lp["ad_count"], own))
+    if own:
+        conn.execute("DELETE FROM ad_family_lp WHERE week_start=%s", (week,))
+        for fk, lpid in links.items():
+            conn.execute("INSERT INTO ad_family_lp (family_key, lp_id, week_start) VALUES (%s,%s,%s)", (fk, lpid, week))
+        return
     for lid, lpid in links.items():
         conn.execute("INSERT INTO competitor_ad_lp (week_start, library_id, lp_id) VALUES (%s,%s,%s) ON CONFLICT (week_start, library_id) DO UPDATE SET lp_id=EXCLUDED.lp_id", (week, lid, lpid))
 
@@ -548,20 +608,28 @@ def capture_one(browser, lp: dict) -> dict:
 
 
 def run(conn, week: dt.date | None = None, brand: str | None = None, limit: int = MAX_LPS, retag: bool = False, no_tag: bool = False, dry_run: bool = False, browser=None,
-        runner=subprocess.run, sleep=time.sleep, log=db.log) -> dict:
-    week = week or latest_week(conn)
-    if week is None:
-        raise db.JobFailed("competitor_ads has no rows: run etl.competitor_ads first")
-    ads = load_ads(conn, week, brand)
-    if not ads:
-        raise db.JobFailed(f"no competitor_ads rows for week {week}" + (f" and brand {brand!r}" if brand else ""))
-    lps, links, pst = plan_lps(ads, max(1, min(limit, MAX_LPS)))
-    st: dict = {"week_start": str(week), "dry_run": dry_run, "ads": len(ads), "lps": pst, "linked_ads": len(links), "captured": 0, "blocked": 0, "failed": 0, "tagged": 0,
+        runner=subprocess.run, sleep=time.sleep, log=db.log, own: bool = False) -> dict:
+    if own:
+        week = week or own_week()
+        rows = load_own_rows(conn)
+        if not rows:
+            raise db.JobFailed(f"no own ads with a landing page and spend in the last {OWN_DAYS} days: run python -m etl.landing_pages --no-pages first")
+        lps, links, pst = plan_own_lps(rows, max(1, min(limit, OWN_LIMIT)))
+        ads = sorted({r[0] for r in rows})
+    else:
+        week = week or latest_week(conn)
+        if week is None:
+            raise db.JobFailed("competitor_ads has no rows: run etl.competitor_ads first")
+        ads = load_ads(conn, week, brand)
+        if not ads:
+            raise db.JobFailed(f"no competitor_ads rows for week {week}" + (f" and brand {brand!r}" if brand else ""))
+        lps, links, pst = plan_lps(ads, max(1, min(limit, MAX_LPS)))
+    st: dict = {"week_start": str(week), "dry_run": dry_run, "own": own, "ads": len(ads), "lps": pst, "linked_ads": len(links), "captured": 0, "blocked": 0, "failed": 0, "tagged": 0,
                 "tag_failed": 0, "changed": 0, "skipped_done": 0, "stopped_early": None, "seconds_per_page": None, "errors": {}}
     if dry_run:
         st["sample"] = [{"brand": lp["brand"], "lp_id": lp["lp_id"], "url_key": lp["url_key"], "ads": lp["ad_count"]} for lp in lps[:10]]
         return st
-    store_plan(conn, week, lps, links)
+    store_plan(conn, week, lps, links, own)
     conn.commit()
     done = done_lps(conn, week)
     todo = [lp for lp in lps if not is_done(done.get(lp["lp_id"]), retag, no_tag)]
@@ -671,13 +739,14 @@ def main():
     ap.add_argument("--retag", action="store_true", help="re-open and re-tag pages already done this week (also retries blocked pages)")
     ap.add_argument("--no-tag", action="store_true", help="capture text hash and screenshots only; no claude calls")
     ap.add_argument("--dry-run", action="store_true", help="plan only: count distinct pages, no browser, no writes, no claude")
+    ap.add_argument("--own", action="store_true", help=f"Lonvera's own landing pages (top {OWN_LIMIT} by spend over {OWN_DAYS} days, is_own = true, week = this Monday) instead of the competitors'")
     ap.add_argument("--if-sunday", action="store_true", help="do nothing unless today is Sunday in Pacific time (the nightly pipeline calls it every night)")
     a = ap.parse_args()
     if a.if_sunday and dt.datetime.now(PT).weekday() != 6:
         db.log("competitor_landing_pages: not Sunday (Pacific), skipped")
         return
-    with db.JobRun("competitor_landing_pages") as job, db.connect() as conn:
-        st = run(conn, a.week, a.brand, a.limit, a.retag, a.no_tag, a.dry_run)
+    with db.JobRun("competitor_landing_pages_own" if a.own else "competitor_landing_pages") as job, db.connect() as conn:
+        st = run(conn, a.week, a.brand, a.limit, a.retag, a.no_tag, a.dry_run, own=a.own)
         job.stats = st
         job.rows_written = st["captured"] + st["blocked"] + st["failed"]
         db.log("  " + json.dumps(st, default=str))
