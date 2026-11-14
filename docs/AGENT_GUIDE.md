@@ -94,7 +94,9 @@ Live URL: https://web-production-358da.up.railway.app
 | `etl/competitor_ads.py` | Weekly public Meta Ad Library scrape plus classification |
 | `etl/alerts.py`, `etl/backup.py` | Hourly alerts; nightly database backup |
 | `etl/reader_role.py` | Creates the read-only `analytics_reader` login |
-| `etl/api_keys.py` | `create`, `list`, `revoke` API keys |
+| `etl/api_keys.py` | `create` (`--scope read_assign` default, or `--scope partner_push --vendor <Vendor>`), `list`, `revoke` API keys |
+| `app/api_keys.py` (partner scopes) | `partner_push` (creative data only) and `partner_read_all` (everything except `SECRET_BLOCKED`, and the brain at `/mcp`); upgrade a key in place with `python -m etl.api_keys set-scope --name <key> --scope partner_read_all`. See `docs/PARTNER_API.md` (Full read access, Connect your AI tool) |
+| `app/partner_tickets.py` | What a `partner_push` key does: push tickets, list / fix its own vendor's tickets, add creative links. Guide for partners: `docs/PARTNER_API.md` |
 | `etl/migrate.py` | Migration runner |
 
 ### Docs index
@@ -350,4 +352,4 @@ export TEST_API_DB=tagexp_apitest_$RANDOM        # unique per run so two runs ne
 
 
 ## Pushing tickets into Production (2026-11-13)
-A scoped key (`read_assign`) may `POST /api/priorities/tickets` (one ticket or `{"tickets": [...]}` up to 100). Every ticket needs the seven fields concept_name, product, variations, cluster, concept_kind, vendor, for_week: see docs/CREATIVE_PRIORITIES.md, "Ticket contract". Bad input is a 400 that names the field; a bad batch saves nothing.
+A scoped key (`read_assign`) may `POST /api/priorities/tickets` (one ticket or `{"tickets": [...]}` up to 100). Every ticket needs only concept_name, vendor and a brief (`brief` text and / or `brief_url`); product, market cluster, ICP, pain point and new vs iteration are filled in from the brief by etl.ticket_tags when you leave them out: see docs/CREATIVE_PRIORITIES.md, "Ticket contract". Bad input is a 400 that names the field; a bad batch saves nothing.

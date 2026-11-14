@@ -1,6 +1,23 @@
 """Competitors learning layer (app/competitors_learn.py): model-read tags and transcripts, tag filters, the share charts against Lonvera's own spend, brand tag mix, and tagged landing pages.
-The tag / transcript / landing-page tables belong to other jobs, so the fixtures create them here (contract columns) and drop them afterwards; with them absent the payloads must be unchanged."""
+The tag / transcript / landing-page tables are real migration tables (261, 262) that other tests share, so the fixture swaps them for contract-column versions per test (or drops them to test the absent case) and puts the real tables back afterwards from the migration files; with them absent the payloads must be unchanged."""
+import glob
+import os
+
 import pytest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+REAL = ("competitor_ad_tags", "competitor_ad_transcript", "competitor_landing_pages", "competitor_lp_media", "competitor_ad_lp")
+
+
+def restore_real_tables(pg):
+    """Drop whatever this test left and re-run the migrations that own the competitor learning tables (idempotent CREATE ... IF NOT EXISTS)."""
+    for t in REAL:
+        pg.execute(f"DROP TABLE IF EXISTS {t}")
+    for name in ("263_competitor_ad_tags.sql", "264_competitor_landing_pages.sql"):
+        for path in glob.glob(os.path.join(ROOT, "migrations", name)):
+            with open(path) as f:
+                pg.execute(f.read())
+    pg.commit()
 
 W1, W2 = "2026-11-09", "2026-11-16"
 
@@ -58,11 +75,11 @@ def world(pg):
             pg.execute("INSERT INTO competitor_lp_media (week_start, lp_id, content_type, bytes) VALUES (%s,%s,'image/png',%s)", (W2, lp, b"x"))
         pg.commit()
     yield build
-    for t in ("competitor_ad_tags", "competitor_ad_transcript", "competitor_landing_pages", "competitor_lp_media", "competitor_ad_lp"):
-        pg.execute(f"DROP TABLE IF EXISTS {t}")
+    pg.rollback()
     for t in ("competitor_ads", "competitor_concept_class", "competitor_brands"):
         pg.execute(f"DELETE FROM {t}")
     pg.commit()
+    restore_real_tables(pg)
 
 
 def tag(lid, style=None, hook=None, device=None, offer=None, proof=None, emotion=None, cluster=None, pain=None, new=False, label=None, why=None, quote=None, seen=None, said=None):

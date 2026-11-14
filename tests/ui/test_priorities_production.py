@@ -523,10 +523,12 @@ def test_note_and_brief_labels_are_bold_and_variation_lines_become_hook_links(pa
       const story = 'Concept A\\n\\nAudience: Men 45-62\\nAngle: A2 Noisy knees\\n\\nVariations\\nhook1: https://drive.google.com/file/d/AAA111/view\\nhook2: https://drive.google.com/drive/folders/BBB222\\nhook3: none';
       const wrap = document.createElement('div'); wrap.append(...m.richLines(story));
       return { bold: [...wrap.querySelectorAll('strong')].map((e) => e.textContent), links: [...wrap.querySelectorAll('a')].map((a) => a.getAttribute('href')),
-               vars: m.parseVariations(story), pv: [m.previewOf('https://drive.google.com/file/d/AAA111/view'), m.previewOf('https://drive.google.com/drive/folders/BBB222'), m.previewOf('https://example.com/x.mp4')] }; }""")
+               vars: m.parseVariations(story), pv: [m.previewOf('https://drive.google.com/file/d/AAA111/view'), m.previewOf('https://drive.google.com/drive/folders/BBB222'), m.previewOf('https://example.com/x.mp4'), m.previewOf('https://www.youtube.com/watch?v=abcDEF12345&t=3'), m.previewOf('https://youtu.be/abcDEF12345'), m.previewOf('https://www.youtube.com/shorts/abcDEF12345'), m.previewOf('https://vimeo.com/123456789'), m.previewOf('https://www.loom.com/share/0123456789abcdef0123456789abcdef'), m.previewOf('http://youtu.be/abcDEF12345'), m.previewOf('https://evil.example/youtu.be/abcDEF12345')] }; }""")
     assert got["bold"] == ["Audience:", "Angle:", "Hook 1:", "Hook 2:"] and len(got["links"]) == 2
     assert got["vars"] == [{"label": "Hook 1", "url": "https://drive.google.com/file/d/AAA111/view"}, {"label": "Hook 2", "url": "https://drive.google.com/drive/folders/BBB222"}]
     assert got["pv"][0] == {"kind": "file", "src": "https://drive.google.com/file/d/AAA111/preview"} and got["pv"][1]["src"] == "https://drive.google.com/embeddedfolderview?id=BBB222#grid" and got["pv"][2] is None
+    assert [p and p["src"] for p in got["pv"][3:8]] == ["https://www.youtube.com/embed/abcDEF12345"] * 3 + ["https://player.vimeo.com/video/123456789", "https://www.loom.com/embed/0123456789abcdef0123456789abcdef"]
+    assert got["pv"][8] is None and got["pv"][9] is None                       # http and look-alike hosts stay plain links
 
 
 def test_the_ticket_opens_with_the_creative_already_loaded_in_place(page):
@@ -582,28 +584,22 @@ def test_the_variations_are_tabs_and_the_first_one_is_open(page):
     assert got == 2
 
 
-def test_a_ticket_can_be_added_from_the_board_and_shows_the_new_face(page):
-    goto(page, "?view=list")
-    page.click("[data-testid=prod-new-ticket]")
-    page.fill("[data-testid=prod-field-concept_name]", "Grandfather used to eat well")
-    page.select_option("[data-testid=prod-field-product]", "beef-liver")
-    page.fill("[data-testid=prod-field-cluster]", "Primal Living")
-    page.select_option("[data-testid=prod-field-concept_kind]", "iteration")
-    page.click("[data-testid=prod-dialog-ok]")
-    page.wait_for_selector("[data-testid=prod-drawer]")                                              # the new ticket opens
-    assert page.locator("[data-testid=prod-drawer-title]").text_content() == "Grandfather used to eat well"
-    facts = {e.get_attribute("data-fact"): e.locator("dd").text_content() for e in page.locator("[data-testid=prod-drawer] .prod-drawer-facts [data-fact]").all()}
-    assert list(facts) == ["Product", "Variations", "Market Cluster", "New vs Iteration", "Vendor", "Week"]                  # the face is always all six lines under the concept name
-    assert facts["Product"] == "Beef Liver" and facts["Variations"] == "1" and facts["Market Cluster"] == "Primal Living" and facts["New vs Iteration"] == "Iteration" and facts["Vendor"] and "/" in facts["Week"]
-    page.keyboard.press("Escape")
-    assert page.locator("[data-testid=prod-row]", has_text="Grandfather used to eat well").count() == 1
-
-
-def test_a_new_ticket_needs_a_name_and_a_market_cluster(page):
+def test_a_ticket_needs_only_a_name_a_vendor_and_a_brief_and_shows_tagging_until_tags_arrive(page):
     goto(page, "?view=list")
     page.click("[data-testid=prod-new-ticket]")
     page.click("[data-testid=prod-dialog-ok]")
     assert "Concept name is required" in page.locator("[data-testid=prod-dialog]").text_content()
-    page.fill("[data-testid=prod-field-concept_name]", "x")
+    page.fill("[data-testid=prod-field-concept_name]", "Grandfather used to eat well")
     page.click("[data-testid=prod-dialog-ok]")
-    assert "Market Cluster is required" in page.locator("[data-testid=prod-dialog]").text_content()
+    assert "Brief: what is it? is required" in page.locator("[data-testid=prod-dialog]").text_content()
+    page.fill("[data-testid=prod-field-brief]", "A man whose grandfather ate liver every week. Iteration of the primal-living angle.")
+    page.click("[data-testid=prod-dialog-ok]")
+    page.wait_for_selector("[data-testid=prod-drawer]")                                              # the new ticket opens
+    assert page.locator("[data-testid=prod-drawer-title]").text_content() == "Grandfather used to eat well"
+    facts = {e.get_attribute("data-fact"): e.locator("dd").text_content() for e in page.locator("[data-testid=prod-drawer] .prod-drawer-facts [data-fact]").all()}
+    assert list(facts) == ["Product", "Variations", "Market Cluster", "New vs Iteration", "Vendor", "Week"]
+    assert facts["Product"] == "Tagging…" and facts["Market Cluster"] == "Tagging…" and facts["New vs Iteration"] == "Tagging…" and facts["Variations"] == "0" and facts["Vendor"] and "/" in facts["Week"]
+    page.keyboard.press("Escape")
+    assert page.locator("[data-testid=prod-row]", has_text="Grandfather used to eat well").count() == 1
+
+

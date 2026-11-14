@@ -160,7 +160,7 @@ def test_new_ad_takes_the_spend_at_low_conversion_and_the_chain_reaches_ad_and_p
     conv = find(out["tree"], "conversion")
     assert conv["denominator"].startswith("per ") and "of which" in out["arrows_mean"]
     assert all("label" in f for f in out["findings"])
-    assert out["steps_used"] <= 40 and len(log) == out["steps_used"]
+    assert out["steps_used"] <= 40 and len(log) == out["steps_used"] + (out["investigation"].get("steps_used") or 0)
 
 
 def test_decoy_change_on_the_same_day_in_an_unmoved_product_is_refuted(whydb):

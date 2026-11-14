@@ -361,7 +361,7 @@ def test_csp_on_the_html_shell(anon):
     for path in ("/", "/login", "/p/vita-bull", "/ad/1000"):
         csp = anon.get(path).headers["Content-Security-Policy"]
         parts = {p.split()[0]: p.split()[1:] for p in csp.split(";") if p.strip()}
-        assert parts["frame-src"] == ["https://*.facebook.com", "https://*.fbcdn.net", "https://*.fb.com", "https://drive.google.com"], path
+        assert parts["frame-src"] == ["https://*.facebook.com", "https://*.fbcdn.net", "https://*.fb.com", "https://drive.google.com", "https://www.youtube.com", "https://player.vimeo.com", "https://www.loom.com"], path
         assert parts["img-src"] == ["'self'", "data:"] and parts["script-src"] == ["'self'"], path       # scripts: this origin only (Chart.js is vendored)
         assert parts["default-src"] == ["'self'"] and parts["object-src"] == ["'none'"] and "'unsafe-inline'" not in parts["script-src"]
         assert parts["frame-ancestors"] == ["'none'"] and parts["connect-src"] == ["'self'"], path

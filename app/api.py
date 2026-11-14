@@ -4,10 +4,10 @@ from __future__ import annotations
 import datetime as dt
 import re
 
-from flask import Blueprint, Response, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, g, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import amazon as amz, auth, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -727,10 +727,103 @@ def priorities_assignment_detail(aid: int):
 def priorities_ticket_create():
     """Add a ticket right from the Production board: {concept_name, product, vendor, for_week?, cluster?, icp?, pain_point?, concept_kind?, format_code?, brief_url?, note?, due_date?, status?} -> the new card
     (201). Signed-in users only, same limits as Assign to vendor. See app/priorities_assign.py (create_ticket)."""
+    if g.get("api_key_scope") in ak.PARTNER_SCOPES:
+        blocked = _partner_guard()
+        if blocked is not None:
+            return blocked
+        res, _batch = ptk.create(db.get_conn(), _json_body(), g.api_key_vendor, auth.current_user())
+        return jsonify(res), 201
     blocked = _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
     if blocked is not None:
         return blocked
     return jsonify(pas.create_ticket(db.get_conn(), _json_body(), auth.current_user())), 201
+
+
+# ---- outside creative partners (partner_push API keys, migration 261). See app/partner_tickets.py and docs/PARTNER_API.md.
+_partner_limiter = None
+
+
+def _partner() -> str:
+    """The vendor of the partner key making this request; 403 for anyone else (a login or a read_assign key has no business on the partner routes)."""
+    if g.get("api_key_scope") not in ak.PARTNER_SCOPES or not g.get("api_key_vendor"):
+        raise q.ApiError(403, "These routes are for partner API keys only.")
+    return g.api_key_vendor
+
+
+def _partner_guard():
+    """Writes of a partner key: Origin header (when sent) must match, 60 writes a minute PER KEY (429 with Retry-After), body at most 1 MB."""
+    from urllib.parse import urlsplit
+    from .projection.limits import SlidingWindow
+    origin = request.headers.get("Origin")
+    if origin is not None and urlsplit(origin).netloc.lower() != request.host.lower():
+        raise q.ApiError(403, "origin mismatch")
+    global _partner_limiter
+    if _partner_limiter is None:
+        _partner_limiter = SlidingWindow(int(current_app.config.get("PARTNER_WRITES_PER_MIN") or ptk.WRITES_PER_MIN), 60)
+    wait = _partner_limiter.hit(f"key:{g.get('api_key_id')}")
+    if wait:
+        resp = jsonify(error="rate_limited", retry_after=wait, message="Too many requests from this key. Wait and try again.")
+        resp.status_code = 429
+        resp.headers["Retry-After"] = str(wait)
+        return resp
+    request.max_content_length = ptk.BODY_BYTES
+    return None
+
+
+@bp.get("/api/priorities/partner/contract")
+def priorities_partner_contract():
+    """What this partner key can do, as data (required and optional fields, allowed values, limits, the key's own vendor)."""
+    return jsonify(ptk.contract(_partner(), int(current_app.config.get("PARTNER_WRITES_PER_MIN") or ptk.WRITES_PER_MIN), g.api_key_scope))
+
+
+@bp.get("/api/priorities/partner/tickets")
+def priorities_partner_tickets():
+    """The key's own vendor's non-dropped tickets, minimal fields: ?status= &week= &limit (100, at most 500) &offset -> {tickets, count, limit, offset}."""
+    return jsonify(ptk.list_tickets(db.get_conn(), _partner(), _arg("status"), _arg("week"), _arg("limit"), _arg("offset")))
+
+
+@bp.get("/api/priorities/partner/all-tickets")
+def priorities_partner_all_tickets():
+    """Every vendor's non-dropped tickets in full (brief, notes, spend and return, links, history), READ ONLY: ?vendor= ?status= ?week= ?product= &limit &offset -> {tickets, count, limit, offset}."""
+    _partner()
+    return jsonify(ptk.all_tickets(db.get_conn(), request.args))
+
+
+@bp.get("/api/priorities/partner/all-tickets/<int:tid>")
+def priorities_partner_one_ticket(tid: int):
+    """One ticket of any vendor in full, with its comments and transcripts. Read only."""
+    _partner()
+    return jsonify(ptk.one_ticket(db.get_conn(), tid))
+
+
+@bp.patch("/api/priorities/partner/tickets/<int:tid>")
+def priorities_partner_ticket_patch(tid: int):
+    """Fix one of the key's own tickets: concept_name, concept_kind, cluster, variations, brief_url, creative_url, story. Anything else is a 400; another vendor's ticket is a 404."""
+    vendor = _partner()
+    blocked = _partner_guard()
+    if blocked is not None:
+        return blocked
+    return jsonify(ptk.patch(db.get_conn(), vendor, tid, _json_body(), auth.current_user()))
+
+
+@bp.post("/api/priorities/partner/tickets/<int:tid>/creative")
+def priorities_partner_creative(tid: int):
+    """Add the creative (links) to one of the key's own tickets: {variations: [{label, url, concept_id?}] | creative_url, submit?} merged by label -> {ticket, submitted, status, message?}."""
+    vendor = _partner()
+    blocked = _partner_guard()
+    if blocked is not None:
+        return blocked
+    return jsonify(ptk.add_creative(vendor, tid, _json_body(), auth.current_user()))
+
+
+@bp.post("/api/priorities/partner/creative")
+def priorities_partner_creative_batch():
+    """Add creative links to several of the key's own tickets at once: {creatives: [{ticket_id, variations | creative_url, submit?}, ...]} (up to 100, all or nothing)."""
+    vendor = _partner()
+    blocked = _partner_guard()
+    if blocked is not None:
+        return blocked
+    return jsonify(ptk.add_creative_batch(vendor, _json_body(), auth.current_user()))
 
 
 @bp.post("/api/priorities/assignments")

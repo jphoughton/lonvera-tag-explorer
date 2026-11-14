@@ -847,26 +847,37 @@ def test_transcripts_of_a_cards_ads_come_back_original_first_and_a_missing_card_
         pg.commit()
 
 
-SEVEN = {"concept_name": "Grandfather used to eat well", "product": "beef-liver", "variations": [{"label": "Original", "url": "https://drive.google.com/file/d/AAA/view", "concept_id": "Lonvera-BeefLiver-Video-1.1"}, {"label": "Hook 2"}],
-         "cluster": "Primal Living", "concept_kind": "iteration", "vendor": "Studio Flow", "for_week": MONDAY}
+MIN = {"concept_name": "Grandfather used to eat well", "vendor": "Studio Flow", "brief": "A man whose grandfather ate liver every week. Iteration of the primal-living angle."}
+FULL = {**MIN, "product": "beef-liver", "variations": [{"label": "Original", "url": "https://drive.google.com/file/d/AAA/view", "concept_id": "Lonvera-BeefLiver-Video-1.1"}, {"label": "Hook 2"}],
+        "cluster": "Primal Living", "concept_kind": "iteration", "for_week": MONDAY}
 
 
-def test_a_ticket_needs_all_seven_fields_and_keeps_its_variations(client, snaps):
-    r = client.post("/api/priorities/tickets", json={**SEVEN, "concept_name": "  Grandfather used to eat well ", "status": "in_production", "story": "Audience: Men 45-62\nAngle: A2 Noisy knees"})
+def test_a_ticket_needs_a_name_a_vendor_and_a_brief_and_the_rest_is_optional(client, snaps):
+    r = client.post("/api/priorities/tickets", json=MIN)
     assert r.status_code == 201, r.get_data(as_text=True)
     c = r.get_json()
-    assert c["concept_name"] == "Grandfather used to eat well" and c["concept_kind"] == "iteration" and c["status"] == "in_production" and c["vendor"] == "Studio Flow" and c["cluster"] == "Primal Living"
-    assert [v["label"] for v in c["variations"]] == ["Original", "Hook 2"] and c["variations"][0]["url"].startswith("https://drive") and c["variations"][1]["url"] == "" and c["tracker_concept_ids"] == ["Lonvera-BeefLiver-Video-1.1"]
-    assert c["story"] == "Audience: Men 45-62\nAngle: A2 Noisy knees"
-    assert c["concept_key"].startswith("ticket:") and c["due_date"] == "2026-11-13" and [e["kind"] for e in hist(client, c["id"])] == ["assigned", "status_changed"]
-    assert client.post("/api/priorities/tickets", json=SEVEN).status_code == 201                          # the same concept may be added twice on purpose
-    for k in SEVEN:                                                                                        # each one of the seven is required
-        bad = {x: v for x, v in SEVEN.items() if x != k}
+    assert c["concept_name"] == "Grandfather used to eat well" and c["vendor"] == "Studio Flow" and c["story"] == MIN["brief"] and c["product"] == "" and c["cluster"] == "" and c["concept_kind"] is None
+    assert c["tag_state"] == "pending" and c["variations"] == [] and c["status"] == "assigned" and c["for_week"] == dt.date(2026, 11, 9).isoformat() or c["for_week"]   # this week by default
+    for k in ("concept_name", "vendor"):
+        bad = {x: v for x, v in MIN.items() if x != k}
         r = client.post("/api/priorities/tickets", json=bad)
         assert r.status_code == 400 and k in r.get_json()["error"], (k, r.get_json())
-    for bad in ({**SEVEN, "product": "nope"}, {**SEVEN, "vendor": "Nobody"}, {**SEVEN, "concept_kind": "maybe"}, {**SEVEN, "status": "launched"}, {**SEVEN, "variations": 3}, {**SEVEN, "variations": [{"url": "https://x.co"}]},
-                {**SEVEN, "variations": [{"label": "Original", "url": "javascript:alert(1)"}]}):
+    r = client.post("/api/priorities/tickets", json={x: v for x, v in MIN.items() if x != "brief"})
+    assert r.status_code == 400 and "brief" in r.get_json()["error"]
+    assert client.post("/api/priorities/tickets", json={**{x: v for x, v in MIN.items() if x != "brief"}, "brief_url": "https://docs.google.com/document/d/abc"}).status_code == 201      # a brief link counts as a brief
+    for bad in ({**MIN, "product": "nope"}, {**MIN, "vendor": "Nobody"}, {**MIN, "concept_kind": "maybe"}, {**MIN, "status": "launched"}, {**MIN, "variations": [{"url": "https://x.co"}]},
+                {**MIN, "variations": [{"label": "Original", "url": "javascript:alert(1)"}]}):
         assert client.post("/api/priorities/tickets", json=bad).status_code == 400, bad
+
+
+def test_a_ticket_with_every_tag_given_is_complete_and_keeps_its_variations(client, snaps):
+    r = client.post("/api/priorities/tickets", json={**FULL, "status": "in_production", "story": "Audience: Men 45-62\nAngle: A2 Noisy knees"})
+    assert r.status_code == 201, r.get_data(as_text=True)
+    c = r.get_json()
+    assert c["tag_state"] == "complete" and c["status"] == "in_production" and c["product"] == "beef-liver" and c["cluster"] == "Primal Living" and c["concept_kind"] == "iteration"
+    assert c["story"] == "Audience: Men 45-62\nAngle: A2 Noisy knees\n\n" + MIN["brief"]                 # the story first, then the brief text
+    assert [v["label"] for v in c["variations"]] == ["Original", "Hook 2"] and c["tracker_concept_ids"] == ["Lonvera-BeefLiver-Video-1.1"]
+    assert c["concept_key"].startswith("ticket:") and [e["kind"] for e in hist(client, c["id"])] == ["assigned", "status_changed"]
     p = client.patch(f"/api/priorities/assignments/{c['id']}", json={"concept_name": "Grandfather ate well", "concept_kind": None, "variations": [{"label": "Original"}]})
     assert p.status_code == 200 and p.get_json()["concept_name"] == "Grandfather ate well" and p.get_json()["concept_kind"] is None and len(p.get_json()["variations"]) == 1
     assert client.patch(f"/api/priorities/assignments/{c['id']}", json={"concept_kind": "maybe"}).status_code == 400
@@ -874,9 +885,9 @@ def test_a_ticket_needs_all_seven_fields_and_keeps_its_variations(client, snaps)
 
 def test_tickets_can_be_pushed_in_a_batch_all_or_nothing(client, snaps, pg):
     before = pg.execute("SELECT count(*) FROM creative_priorities_assignments").fetchone()[0]
-    ok = client.post("/api/priorities/tickets", json={"tickets": [SEVEN, {**SEVEN, "concept_name": "Second", "vendor": "Victoria"}]})
+    ok = client.post("/api/priorities/tickets", json={"tickets": [MIN, {**FULL, "concept_name": "Second", "vendor": "Victoria"}]})
     assert ok.status_code == 201 and [c["concept_name"] for c in ok.get_json()["created"]] == ["Grandfather used to eat well", "Second"]
-    bad = client.post("/api/priorities/tickets", json={"tickets": [SEVEN, {**SEVEN, "cluster": ""}]})
+    bad = client.post("/api/priorities/tickets", json={"tickets": [MIN, {**MIN, "concept_name": ""}]})
     assert bad.status_code == 400 and bad.get_json()["error"].startswith("ticket 2:")
     assert pg.execute("SELECT count(*) FROM creative_priorities_assignments").fetchone()[0] == before + 2          # the bad batch saved nothing
     assert client.post("/api/priorities/tickets", json={"tickets": []}).status_code == 400

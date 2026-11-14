@@ -169,11 +169,16 @@ def _key_guard(raw: str):
     if row is None:
         throttle.fail(ip)
         return jsonify(error="unauthorized"), 401
-    if api_keys.blocked_read(request):
-        return jsonify(error=api_keys.BLOCKED_MESSAGE), 403
-    if not api_keys.scope_allows(request):
-        return jsonify(error=api_keys.READ_ONLY_MESSAGE), 403
+    if row["scope"] in api_keys.PARTNER_SCOPES:
+        if not row.get("vendor") or not api_keys.scope_allows(request, row["scope"]):
+            return jsonify(error=api_keys.PARTNER_MESSAGE), 403
+    else:
+        if api_keys.blocked_read(request):
+            return jsonify(error=api_keys.BLOCKED_MESSAGE), 403
+        if not api_keys.scope_allows(request, row["scope"]):
+            return jsonify(error=api_keys.READ_ONLY_MESSAGE), 403
     g.api_key_user = f"key:{row['name']}"
+    g.api_key_id, g.api_key_scope, g.api_key_vendor = row["id"], row["scope"], row.get("vendor")
     return None
 
 

@@ -130,7 +130,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
       const it = items[i]; const pv = previewOf(it.url);
       tabEls.forEach((bt, j) => bt.setAttribute('aria-selected', String(j === i)));
       viewer.replaceChildren(h('div', { class: 'prod-viewer-bar' }, h('strong', null, it.label), h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer', class: 'pri-sub' }, 'Open in Drive')),
-        pv ? h('iframe', { class: 'prod-viewer-frame prod-viewer-' + pv.kind, src: pv.src, title: it.label, allow: 'autoplay; fullscreen', allowfullscreen: 'true', referrerpolicy: 'no-referrer', sandbox: 'allow-scripts allow-same-origin allow-presentation allow-popups' })
+        pv ? h('iframe', { class: 'prod-viewer-frame prod-viewer-' + pv.kind, src: pv.src, title: it.label, allow: 'autoplay; fullscreen', allowfullscreen: 'true', referrerpolicy: pv.src.startsWith('https://www.youtube.com/') ? 'strict-origin-when-cross-origin' : 'no-referrer', sandbox: 'allow-scripts allow-same-origin allow-presentation allow-popups' })
           : h('p', { class: 'pri-sub' }, 'This link opens outside the app: use Open in Drive.'));
       showSaid();
     };
