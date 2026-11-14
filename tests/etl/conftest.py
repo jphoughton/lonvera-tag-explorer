@@ -26,6 +26,15 @@ def dburl():
     return TEST_URL
 
 
+@pytest.fixture(autouse=True)
+def _database_url_for_dburl_tests(request, monkeypatch):
+    """Tests that take `dburl` call code that reads DATABASE_URL. The session fixture sets it once, but other tests' monkeypatch undo (or another
+    directory's fixtures in the same xdist worker) can leave it unset by the time a later test runs, so every such test gets it set again."""
+    if "dburl" in request.fixturenames or "conn" in request.fixturenames:
+        request.getfixturevalue("dburl")
+        monkeypatch.setenv("DATABASE_URL", TEST_URL)
+
+
 @pytest.fixture
 def conn(dburl):
     c = psycopg.connect(dburl)

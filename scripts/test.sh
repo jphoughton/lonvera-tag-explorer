@@ -8,6 +8,8 @@
 #                                      prints which rule picked which tests; a hub / migration / conftest / unknown file runs the whole suite instead
 #
 # Env: TEST_WORKERS (default 8; n|auto), PY (python; default .venv or ~/lonvera-tag-explorer/.venv),
+#      TEST_PG=persistent (opt-in: a long-lived test-only Postgres 16 on 127.0.0.1:55432, data in ~/lonvera-tag-explorer-data/pg-test, started if not running and
+#      left running; fsync/synchronous_commit/full_page_writes off; it keeps the migrated template database between runs, so a run skips the migrations altogether),
 #      TEST_PRIVATE_PG=0 (use the shared local Postgres on :5432 instead of a private one), TEST_PG_BASE (use that Postgres, e.g. postgresql://localhost),
 #      TEST_API_DB (base name for databases; every worker adds its own suffix), TEST_STRICT=0 (let a missing Postgres / Chromium skip instead of fail)
 #
@@ -59,6 +61,25 @@ start_private_pg() {
   echo "[test.sh] private Postgres up ($PGDIR, unix socket only)"
 }
 
+start_persistent_pg() {
+  local d="${TEST_PG_DIR:-$HOME/lonvera-tag-explorer-data/pg-test}" port=55432
+  if ! pg_isready -q -h 127.0.0.1 -p $port 2>/dev/null; then
+    if [ ! -f "$d/PG_VERSION" ]; then
+      mkdir -p "$d" && chmod 700 "$d"
+      LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 initdb -D "$d" -U "$(id -un)" -E UTF8 --locale=en_US.UTF-8 -A trust -N >"$d.initdb.log" 2>&1 \
+        || { echo "[test.sh] initdb failed (see $d.initdb.log)" >&2; exit 2; }
+    fi
+    LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 pg_ctl -D "$d" -l "$d.server.log" -w -t 60 \
+      -o "-p $port -c listen_addresses=127.0.0.1 -c unix_socket_directories=/tmp -c max_connections=300 -c fsync=off -c synchronous_commit=off -c full_page_writes=off -c shared_buffers=256MB -c max_locks_per_transaction=128" start >/dev/null 2>&1 \
+      || { echo "[test.sh] could not start the test Postgres on :$port (see $d.server.log)" >&2; exit 2; }
+    echo "[test.sh] test-only Postgres started on 127.0.0.1:$port ($d); stop it with: pg_ctl -D $d stop"
+  fi
+  export TEST_PG_BASE="postgresql://127.0.0.1:$port"
+}
+
+if [ -z "${TEST_PG_BASE:-}" ] && [ "${TEST_PG:-}" = "persistent" ]; then
+  start_persistent_pg
+fi
 if [ -z "${TEST_PG_BASE:-}" ]; then
   if [ "${TEST_PRIVATE_PG:-1}" = "1" ]; then
     start_private_pg
@@ -66,7 +87,9 @@ if [ -z "${TEST_PG_BASE:-}" ]; then
     export TEST_PG_BASE="postgresql://%2Ftmp"                          # the shared server over its unix socket: no TCP ports used up
   fi
 fi
-if [ "$TEST_STRICT" = "1" ] && ! pg_isready -q -h "$(echo "${TEST_PG_BASE:-postgresql://localhost}" | sed -E 's|^postgresql://||;s|%2F|/|g')" 2>/dev/null; then
+PGHOSTPORT="$(echo "${TEST_PG_BASE:-postgresql://localhost}" | sed -E 's|^postgresql://||;s|%2F|/|g')"
+PGH="${PGHOSTPORT%%:*}"; PGP=(); case "$PGHOSTPORT" in *:*) PGP=(-p "${PGHOSTPORT##*:}");; esac
+if [ "$TEST_STRICT" = "1" ] && ! pg_isready -q -h "$PGH" ${PGP[@]+"${PGP[@]}"} 2>/dev/null; then
   echo "[test.sh] Postgres is not answering (${TEST_PG_BASE:-localhost}): start it, or run with TEST_STRICT=0 to let the database tests skip" >&2; exit 2
 fi
 

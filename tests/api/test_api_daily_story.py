@@ -116,7 +116,20 @@ def test_analytics_views_are_readable_and_documented(dconn):
     assert {r["name"] for r in g} >= {"daily_story_decomposition", "daily_story_mix_rate", "daily_story_baseline"}
 
 
-def test_a_missing_core_source_makes_a_not_ready_row_that_names_it(fx, dconn, orders_and_google):
+@pytest.fixture()
+def no_upstack_attribution(dconn):
+    """This test's premise is that the database holds no Upstack attribution load. Other files of the same session database (test_api_source) load some and
+    leave it, so under a parallel run the premise depended on file order: the rows are set aside for the test and put back afterwards."""
+    dconn.execute("CREATE TEMP TABLE _attr_days_aside AS SELECT * FROM upstack_attr_days")
+    dconn.execute("DELETE FROM upstack_attr_days")
+    dconn.commit()
+    yield
+    dconn.execute("INSERT INTO upstack_attr_days SELECT * FROM _attr_days_aside")
+    dconn.execute("DROP TABLE _attr_days_aside")
+    dconn.commit()
+
+
+def test_a_missing_core_source_makes_a_not_ready_row_that_names_it(fx, dconn, orders_and_google, no_upstack_attribution):
     through = dconn.execute("SELECT max(day) AS d FROM analytics.meta_ad_daily").fetchone()["d"]
     DS.run_day(dconn, through)                                                  # the fixture has no Upstack attribution load: that is the named source
     f = dconn.execute("SELECT facts, coverage FROM daily_story_facts WHERE day = %s", (through,)).fetchone()
