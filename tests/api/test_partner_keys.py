@@ -1,4 +1,4 @@
-"""partner_push API keys (migration 260; app/api_keys.py, app/auth.py, app/partner_tickets.py): an outside creative partner, bound to one vendor, pushes tickets and creative links, sees only its own
+"""partner_push API keys (migration 261; app/api_keys.py, app/auth.py, app/partner_tickets.py): an outside creative partner, bound to one vendor, pushes tickets and creative links, sees only its own
 vendor's tickets, reads only the creative and performance data (an explicit allow-list), and nothing else."""
 import pytest
 
@@ -121,7 +121,6 @@ def test_partner_ticket_validation_names_the_field(anon, pk, pg, snaps):
     assert pg.execute("SELECT count(*) FROM creative_priorities_assignments WHERE concept_name = 'Knees that keep up'").fetchone()[0] == 1       # the in_production one only: the batch saved nothing
 
 
-@pytest.mark.skipif(pas.TICKET_REQUIRED != ("concept_name", "vendor", "brief"), reason="the 3-field minimum contract (feat/ticket-min-contract) is not in this build yet")
 def test_the_minimal_ticket(anon, pk, snaps):
     r = anon.post("/api/priorities/tickets", json={"concept_name": "Just a name", "brief": "Short brief"}, headers=bearer(pk))
     assert r.status_code == 201 and r.get_json()["vendor"] == "Madre"

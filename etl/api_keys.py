@@ -46,7 +46,7 @@ def create_key(conn, name: str, created_by: str | None = None, scope: str = ak.S
         raise CliError(f"a key named {name!r} already exists (revoked keys keep their name; pick another)") from None
     except psycopg.errors.UndefinedColumn:
         conn.rollback()
-        raise CliError("migration 260 has not been applied to this database (python -m etl.migrate)") from None
+        raise CliError("migration 261 has not been applied to this database (python -m etl.migrate)") from None
     except psycopg.errors.UndefinedTable:
         conn.rollback()
         raise CliError("migration 205 has not been applied to this database (python -m etl.migrate)") from None

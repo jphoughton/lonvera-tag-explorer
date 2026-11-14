@@ -725,7 +725,7 @@ def priorities_ticket_create():
     return jsonify(pas.create_ticket(db.get_conn(), _json_body(), auth.current_user())), 201
 
 
-# ---- outside creative partners (partner_push API keys, migration 260). See app/partner_tickets.py and docs/PARTNER_API.md.
+# ---- outside creative partners (partner_push API keys, migration 261). See app/partner_tickets.py and docs/PARTNER_API.md.
 _partner_limiter = None
 
 

@@ -1,4 +1,4 @@
-"""What an outside creative partner can do with a partner_push API key (app/api_keys.py, migration 260), and nothing else.
+"""What an outside creative partner can do with a partner_push API key (app/api_keys.py, migration 261), and nothing else.
 
 A partner key is bound to one vendor. Everything here reads and writes only that vendor's tickets (rows of creative_priorities_assignments): push tickets (the ticket contract, vendor forced), list
 them in a minimal shape (no spend, notes or history), fix them, and add the creative as LINKS to an outside platform (Drive, Frame.io, Dropbox, Vimeo, YouTube, Loom ...). Writes reuse the

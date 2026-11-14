@@ -22,7 +22,7 @@ SCOPES = (SCOPE, PARTNER_SCOPE)
 SAFE_METHODS = ("GET", "HEAD")
 ALLOWED_WRITES = frozenset({("POST", "/api/priorities/assignments"), ("PATCH", "/api/priorities/assignments/<int:aid>"), ("POST", "/api/priorities/assignments/<int:aid>/move"),
                             ("POST", "/api/priorities/assignments/<int:aid>/comments"), ("POST", "/api/priorities/tickets")})      # (method, Flask rule) pairs, nothing else
-# What a partner_push key may do (migration 260). WRITES: the partner routes below, nothing else. READS: only the creative and performance families of PARTNER_READ_RULES (default deny: a GET that is
+# What a partner_push key may do (migration 261). WRITES: the partner routes below, nothing else. READS: only the creative and performance families of PARTNER_READ_RULES (default deny: a GET that is
 # not on that list is a 403). Every /api/ and /media/ GET rule of the app must be in PARTNER_READ_RULES or PARTNER_READ_BLOCKED (tests/api/test_partner_keys.py fails when a new route is in neither),
 # so a future route can never leak to a partner by default. A partner reads its OWN tickets only through /api/priorities/partner/tickets. Every route also checks the key's vendor in app/partner_tickets.py.
 PARTNER_ROUTES = frozenset({("POST", "/api/priorities/tickets"), ("GET", "/api/priorities/partner/tickets"), ("GET", "/api/priorities/partner/all-tickets"), ("GET", "/api/priorities/partner/all-tickets/<int:tid>"), ("PATCH", "/api/priorities/partner/tickets/<int:tid>"),
@@ -85,7 +85,7 @@ def lookup(conn, raw: str) -> dict | None:
            "WHERE key_hash = %s AND revoked_at IS NULL")
     try:
         row = conn.execute(sql.format(v="vendor"), (TOUCH_EVERY_SEC, hash_key(raw))).fetchone()
-    except psycopg.errors.UndefinedColumn:                 # migration 260 not applied yet: only read_assign keys exist
+    except psycopg.errors.UndefinedColumn:                 # migration 261 not applied yet: only read_assign keys exist
         conn.rollback()
         row = conn.execute(sql.format(v="NULL::text"), (TOUCH_EVERY_SEC, hash_key(raw))).fetchone()
     if row is None:

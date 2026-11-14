@@ -1,4 +1,4 @@
--- 260: partner API keys. An outside creative partner (Madre, Victoria, Studio Flow ...) gets a key with the scope 'partner_push', bound to ONE vendor (api_keys.vendor).
+-- 261: partner API keys. An outside creative partner (Madre, Victoria, Studio Flow ...) gets a key with the scope 'partner_push', bound to ONE vendor (api_keys.vendor).
 -- A partner_push key may push production tickets for its own vendor (POST /api/priorities/tickets, vendor forced to the key's vendor), look at its own tickets (GET /api/priorities/partner/tickets),
 -- fix them (PATCH /api/priorities/partner/tickets/<id>), add the creative as links (POST /api/priorities/partner/tickets/<id>/creative and POST /api/priorities/partner/creative) and read the contract
 -- (GET /api/priorities/partner/contract). Every other route, every other GET and the data brain refuse it with 403. Enforced in app/api_keys.py, app/auth.py and app/partner_tickets.py.

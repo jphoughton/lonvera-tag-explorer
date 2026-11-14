@@ -87,7 +87,8 @@ export function conceptName(r) {
 }
 export const kindLabel = (r) => (r.concept_kind === 'iteration' ? 'Iteration' : r.concept_kind === 'new' ? 'New' : '');
 // The five facts a ticket leads with, as [label, value] (an empty value is left out): Product, Variations, Market Cluster, New vs Iteration.
-export const ticketFacts = (r) => [['Product', productName(r.product)], ['Variations', adCount(r) ? String(adCount(r)) : '0'], ['Market Cluster', r.cluster || '–'], ['New vs Iteration', kindLabel(r) || '–'], ['Vendor', r.vendor || '–'], ['Week', r.for_week ? md(r.for_week) : '–']];
+const blank = (r) => (r.tag_state === 'pending' ? 'Tagging…' : '–');                         // a tag the system has not added yet
+export const ticketFacts = (r) => [['Product', productName(r.product) || blank(r)], ['Variations', adCount(r) ? String(adCount(r)) : '0'], ['Market Cluster', r.cluster || blank(r)], ['New vs Iteration', kindLabel(r) || blank(r)], ['Vendor', r.vendor || '–'], ['Week', r.for_week ? md(r.for_week) : '–']];
 // The face of a ticket: Concept name (the title, shown by the caller) and these six lines, always all of them. `ids` puts a test id on the Vendor value (the board card keeps prod-card-vendor).
 export function factsEl(r, cls = 'prod-facts', ids = {}) {
   return h('dl', { class: cls, 'data-testid': 'prod-facts' }, ticketFacts(r).map(([k, v]) => h('div', { class: 'prod-fact', 'data-fact': k }, h('dt', null, k + ':'), h('dd', ids[k] ? { 'data-testid': ids[k] } : null, v))));
@@ -190,8 +191,8 @@ export function nextActions(r) {
 }
 
 // History of an assignment: "11/10 2:14 PM  Josh: Brief sent to Creative delivered". Who did it comes from the sign-in name; a vendor link page shows as "Madre (vendor link)"; older rows have no name.
-const EVENT_TEXT = { assigned: 'Assigned to production', brief_added: 'Brief link added', brief_removed: 'Brief link removed', creative_added: 'Creative link added', creative_removed: 'Creative link removed', ready: 'Marked ready to launch', ready_cleared: 'Ready to launch removed',
-  launched: 'Marked launched', status_changed: 'Status changed', due_changed: 'Due date changed', comment_added: 'Comment added', priority_changed: 'Priority changed', capacity_changed: 'Weekly capacity changed', launched_cleared: 'Launched removed', dropped: 'Dropped', restored: 'Restored', vendor: 'Vendor changed', week: 'Week changed', format: 'Format changed' };
+const EVENT_TEXT = { tagged: 'Tags added from the brief', assigned: 'Assigned to production', brief_added: 'Brief link added', brief_removed: 'Brief link removed', creative_added: 'Creative link added', creative_removed: 'Creative link removed', ready: 'Marked ready to launch', ready_cleared: 'Ready to launch removed',
+  launched: 'Marked launched', status_changed: 'Status changed', due_changed: 'Due date changed', comment_added: 'Comment added', priority_changed: 'Priority changed', capacity_changed: 'Weekly capacity changed', launched_cleared: 'Launched removed', dropped: 'Dropped', restored: 'Restored', vendor: 'Vendor changed', tagged: 'Tags added by the system', week: 'Week changed', format: 'Format changed' };
 const actorName = (a) => (!a ? 'Not recorded' : a.startsWith('vendor:') ? a.slice(7) + ' (vendor link)' : a);
 const whenText = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`; };
 export function eventLine(e) {

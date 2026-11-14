@@ -412,11 +412,11 @@ VENDOR_RECENT_DAYS = 28                      # the vendor page also shows what w
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{22,64}")
 COLS = ("id, concept_key, text_key, product, vendor, line_id, manual_id, line_code, cluster, icp, pain_point, story, section_at_assign, note, vendor_note, for_week, brief_url, creative_url, "
         "brief_at, creative_at, ready_at, launched_at, dropped_at, tracker_concept_ids, created_at, updated_at, created_by, updated_by")
-STRUCT_COLS = ("concept_name", "concept_kind", "variations")                                         # migration 258: the ticket fields; a database without it still serves every page
+STRUCT_COLS = ("concept_name", "concept_kind", "variations", "tag_state", "tagged_at", "tag_note")                                         # migration 258: the ticket fields; a database without it still serves every page
 BOARD_COLS = ("status", "due_date", "priority", "position", "status_changed_at")        # migration 245; a database without it still serves every page (status is then derived from the links)
 FMT_COLS = ("format_code", "format_name", "format_length")                               # on every row; None when no format was chosen (or migration 204 is not applied)
 INTERNAL_ONLY = ("note", "created_by", "updated_by", "suggested_concept_ids")          # never sent to a vendor link page
-_TS = ("brief_at", "creative_at", "ready_at", "launched_at", "dropped_at", "created_at", "updated_at", "status_changed_at")
+_TS = ("tagged_at", "brief_at", "creative_at", "ready_at", "launched_at", "dropped_at", "created_at", "updated_at", "status_changed_at")
 VENDOR_HIDDEN = INTERNAL_ONLY + ("priority", "position")
 
 
@@ -472,7 +472,7 @@ def _tracker_ads(conn, recs: list[dict]) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------------------------- history (who did what, when)
-EVENT_KINDS = ("assigned", "brief_added", "brief_removed", "creative_added", "creative_removed", "ready", "ready_cleared", "launched", "launched_cleared", "dropped", "restored", "vendor", "week", "format",
+EVENT_KINDS = ("tagged", "assigned", "brief_added", "brief_removed", "creative_added", "creative_removed", "ready", "ready_cleared", "launched", "launched_cleared", "dropped", "restored", "vendor", "week", "format",
                "status_changed", "due_changed", "priority_changed", "comment_added")
 
 
@@ -689,53 +689,62 @@ def clean_variations(raw, required: bool = True) -> str:
     return json.dumps(out)
 
 
-# the seven fields every ticket must carry, however it was added (the New ticket button, POST /api/priorities/tickets, an import)
-TICKET_REQUIRED = ("concept_name", "product", "variations", "cluster", "concept_kind", "vendor", "for_week")
+# what every ticket must carry, however it was added (the New ticket button, POST /api/priorities/tickets, an import): a NAME, a VENDOR and a BRIEF (text saying what it is, and / or a brief link).
+# The rest (product, market cluster, ICP, pain point, new vs iteration, variations, week) is optional: whatever is given is kept, and etl/ticket_tags.py fills the missing tags from the brief.
+TICKET_REQUIRED = ("concept_name", "vendor")
+TICKET_TAGS = ("product", "cluster", "concept_kind")                                  # the tags the system looks for when a brief is there
 PRODUCT_SLUGS = ("vita-bull", "beef-liver", "boneflex", "vita-belle")
 TICKET_STATUSES = ("assigned", "brief_sent", "in_production", "in_review")             # a new ticket can start anywhere before Ready to launch
 
 
 def _ticket_fields(conn, body: dict) -> dict:
-    """Validate one ticket. The seven fields of the ticket face are REQUIRED: concept_name, product, variations, cluster (Market Cluster), concept_kind (new | iteration), vendor, for_week. Optional: icp, pain_point, story (the brief text),
-    format_code, brief_url, note, due_date, status."""
+    """Validate one ticket. REQUIRED: concept_name, vendor and a brief (`brief` text and / or `brief_url`). Optional: product, cluster (Market Cluster), concept_kind (new | iteration), variations, for_week (default this
+    week), icp, pain_point, story, format_code, note, due_date, status. When a brief is present and a tag is missing the ticket is saved with tag_state 'pending' and the system tags it later."""
     if not isinstance(body, dict):
         raise q.ApiError(400, "JSON object body required")
+    brief_text = _text(body.get("brief"), "brief", 20000)
+    brief_url = _opt_url(body.get("brief_url"))
     missing = [k for k in TICKET_REQUIRED if body.get(k) in (None, "", [])]
+    if not brief_text and not brief_url and not _text(body.get("story"), "story", 20000):
+        missing.append("brief")
     if missing:
-        raise q.ApiError(400, "missing required field" + ("s" if len(missing) > 1 else "") + ": " + ", ".join(missing) + " (every ticket needs concept_name, product, variations, cluster, concept_kind, vendor, for_week)")
+        raise q.ApiError(400, "missing required field" + ("s" if len(missing) > 1 else "") + ": " + ", ".join(missing) + " (every ticket needs concept_name, vendor and a brief: `brief` text and / or `brief_url`; the system fills in the rest)")
     name = _text(body.get("concept_name"), "concept name", LIMITS["concept_name"])
     if not name:
         raise q.ApiError(400, "concept name is required")
-    product = body.get("product")
-    if product not in PRODUCT_SLUGS:
+    product = body.get("product") or ""
+    if product and product not in PRODUCT_SLUGS:
         raise q.ApiError(400, "product must be one of: " + ", ".join(PRODUCT_SLUGS))
     cluster = _text(body.get("cluster"), "cluster", 200)
-    if not cluster:
-        raise q.ApiError(400, "cluster (Market Cluster) is required")
     kind = body.get("concept_kind")
-    if kind not in ("new", "iteration"):
+    if kind in (None, ""):
+        kind = None
+    elif kind not in ("new", "iteration"):
         raise q.ApiError(400, "concept_kind must be new or iteration")
     vendor = _vendor(body.get("vendor"))
-    week = monday_of(body.get("for_week"))
+    week = monday_of(body.get("for_week") or today_pt())
     status = body.get("status") or "assigned"
     if status not in TICKET_STATUSES:
         raise q.ApiError(400, "status must be one of: " + ", ".join(TICKET_STATUSES))
-    variations = clean_variations(body.get("variations"))
     import json
+    variations = clean_variations(body["variations"], required=False) if body.get("variations") else "[]"
     ids = [v["concept_id"] for v in json.loads(variations) if v["concept_id"]]
-    return {"name": name, "product": product, "cluster": cluster, "kind": kind, "vendor": vendor, "week": week, "status": status, "variations": variations, "concept_ids": ids,
-            "story": _text(body.get("story"), "story", 20000), "icp": _text(body.get("icp"), "icp", 200), "pain": _text(body.get("pain_point"), "pain point", 200), "note": _text(body.get("note"), "note", LIMITS["note"]), "brief": _opt_url(body.get("brief_url")),
-            "due": (week + dt.timedelta(days=4)) if body.get("due_date") in (None, "") else _date(body["due_date"], "due date"), "format": _format_code(body.get("format_code"))}
+    story = _text(body.get("story"), "story", 20000)
+    story = "\n\n".join(dict.fromkeys(x for x in (story, brief_text) if x))                 # the brief text is the story the ticket shows
+    pending = bool(story or brief_url) and not (product and cluster and kind)
+    return {"name": name, "product": product, "cluster": cluster, "kind": kind, "vendor": vendor, "week": week, "status": status, "variations": variations, "concept_ids": ids, "story": story,
+            "tag_state": "pending" if pending else "complete", "icp": _text(body.get("icp"), "icp", 200), "pain": _text(body.get("pain_point"), "pain point", 200), "note": _text(body.get("note"), "note", LIMITS["note"]),
+            "brief": brief_url, "due": (week + dt.timedelta(days=4)) if body.get("due_date") in (None, "") else _date(body["due_date"], "due date"), "format": _format_code(body.get("format_code"))}
 
 
 def _insert_ticket(w, t: dict, user: str | None) -> int:
     pos = w.execute("SELECT COALESCE(max(position), 0) + 1 AS p FROM creative_priorities_assignments WHERE status = %s AND dropped_at IS NULL", (t["status"],)).fetchone()["p"]
     row = w.execute(
         """INSERT INTO creative_priorities_assignments (concept_key, text_key, product, vendor, line_code, cluster, icp, pain_point, story, section_at_assign, note, for_week, created_by, updated_by,
-               concept_name, concept_kind, variations, tracker_concept_ids, format_code, brief_url, brief_at, status, due_date, priority, position, status_changed_at)
-           VALUES (%s,%s,%s,%s,'',%s,%s,%s,%s,'test',%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,CASE WHEN %s::text IS NOT NULL THEN now() END,%s,%s,'normal',%s,now()) RETURNING id""",
+               concept_name, concept_kind, variations, tracker_concept_ids, format_code, brief_url, brief_at, status, due_date, priority, position, status_changed_at, tag_state)
+           VALUES (%s,%s,%s,%s,'',%s,%s,%s,%s,'test',%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,CASE WHEN %s::text IS NOT NULL THEN now() END,%s,%s,'normal',%s,now(),%s) RETURNING id""",
         ("ticket:" + secrets.token_hex(8), text_key({"product": t["product"], "cluster": t["cluster"], "icp": t["icp"], "pain_point": t["pain"]}), t["product"], t["vendor"], t["cluster"], t["icp"], t["pain"], t["story"], t["note"],
-         t["week"], user, user, t["name"], t["kind"], t["variations"], t["concept_ids"], t["format"], t["brief"], t["brief"], t["status"], t["due"], pos)).fetchone()
+         t["week"], user, user, t["name"], t["kind"], t["variations"], t["concept_ids"], t["format"], t["brief"], t["brief"], t["status"], t["due"], pos, t["tag_state"])).fetchone()
     _log(w, row["id"], user, "assigned", None, "assigned", f"{t['vendor']}, week of {t['week']}")
     if t["status"] != "assigned":
         _log(w, row["id"], user, "status_changed", "assigned", t["status"], "Added on the board")
