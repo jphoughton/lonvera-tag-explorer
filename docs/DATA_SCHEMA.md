@@ -8044,7 +8044,7 @@ GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 - **Grain:** primary key `(week_start, lp_id)`; one row per (week_start, lp_id): one distinct landing page per week, however many ads point to it (week_start = Monday, Pacific, the competitor_ads week)
 - **Source:** etl.competitor_landing_pages: distinct competitor_ads.landing_url of the week, normalised to url_key (host without www + path, tracking parameters dropped), opened with headless Chromium (Playwright; 1280x900 viewport, 3 s between pages, 20 s timeout, no login, no captcha or bot-wall bypass), visible text extracted, tagged by headless Claude (Sonnet 5.5) from the text and the screenshot in batches of 5
 - **Refresh:** by hand for now (not scheduled in the nightly etl yet); python -m etl.competitor_landing_pages [--week --brand --limit --retag --no-tag --dry-run]; a page already tagged this week is skipped
-- **Coverage:** from the first run after migration 261 (2026-11-13 build); at most 200 distinct pages per run, the most-used ones first; one row per week kept as history
+- **Coverage:** from the first run after migration 262 (2026-11-13 build); at most 200 distinct pages per run, the most-used ones first; one row per week kept as history
 - **Caveat:** Not every ad has a page row: ads without a landing_url, on social hosts (facebook, instagram, youtube), or past the 200-page cap are unlinked in competitor_ad_lp.
 - **Caveat:** http_status / fetch_error show a blocked page (403, challenge, blank): its tag columns stay NULL. Blocked is not a missing page; the Ad Library may still show the ad.
 - **Caveat:** landing_url in competitor_ads is often only the display domain and path (the Ad Library card shows no query string), so the page opened is the display URL, which can differ from the exact page a click lands on (tracking redirects are followed; final_url is where it ended).
@@ -8094,7 +8094,7 @@ GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 - **Grain:** primary key `(week_start, lp_id)`; one row per (week_start, lp_id) (joins to competitor_landing_pages)
 - **Source:** etl.competitor_landing_pages: viewport screenshot (1280x900) taken after the page loaded, re-encoded to JPEG, at most 640 px wide and 90 KB
 - **Refresh:** weekly with the landing page run; rows older than 60 days that are not in the latest week are deleted
-- **Coverage:** from the first run after migration 261; only pages that loaded
+- **Coverage:** from the first run after migration 262; only pages that loaded
 - **Caveat:** No row = no screenshot (blocked, blank or failed page), not a missing page.
 - **Caveat:** Served by GET /api/competitors/lp-media/<lp_id>?week=YYYY-MM-DD (login required); do not read bytes through SQL for display.
 - **Caveat:** A cookie banner or popup can cover part of the shot; only an obvious Accept / Close button is clicked.
@@ -8118,7 +8118,7 @@ GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 - **Grain:** primary key `(week_start, library_id)`; one row per (week_start, library_id) (joins to competitor_ads and to competitor_landing_pages on lp_id)
 - **Source:** etl.competitor_landing_pages: competitor_ads.landing_url of the week normalised to lp_id
 - **Refresh:** weekly with the landing page run (rewritten for the week on every run)
-- **Coverage:** from the first run after migration 261
+- **Coverage:** from the first run after migration 262
 - **Caveat:** Only ads with a usable landing_url on a non-social host and within the 200-page cap are linked; a missing row means unlinked, not 'no landing page'.
 - **Caveat:** Several ads usually share one page, so count ads with competitor_landing_pages.ad_count, not rows here joined to the pages table.
 

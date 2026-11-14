@@ -1,7 +1,7 @@
 """Competitor ad media. GET /api/competitors/media/<library_id> returns the stored JPEG of one watched competitor ad (table competitor_ad_media, migration 246); GET /api/competitors/video/<library_id>
 returns its saved playable copy (table competitor_ad_video, migration 257) with HTTP Range support so seeking and iOS Safari playback work. Both are written only by etl.competitor_ads, read-only here,
 login required like every other /api route (not in auth.PUBLIC_API_RE), and nothing is fetched from Meta in this process.
-GET /api/competitors/lp-media/<lp_id>?week=YYYY-MM-DD returns the above-the-fold screenshot of one competitor landing page (table competitor_lp_media, migration 261, written by etl.competitor_landing_pages)."""
+GET /api/competitors/lp-media/<lp_id>?week=YYYY-MM-DD returns the above-the-fold screenshot of one competitor landing page (table competitor_lp_media, migration 262, written by etl.competitor_landing_pages)."""
 from __future__ import annotations
 
 import datetime as dt
