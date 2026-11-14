@@ -1,0 +1,4 @@
+# Optional: speech-to-text for etl.competitor_tags (transcripts of saved competitor videos). NOT in requirements.txt: without it the module tags videos from pictures + copy (method vision).
+# Cost measured 2026-11-13 on a Mac: see docs/COMPETITOR_ADS.md. Model "base" (int8) downloads on first use into the Hugging Face cache.
+faster-whisper==1.2.1
+huggingface_hub<1.0

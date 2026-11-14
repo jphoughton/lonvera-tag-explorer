@@ -1,8 +1,10 @@
 """Competitor ad media. GET /api/competitors/media/<library_id> returns the stored JPEG of one watched competitor ad (table competitor_ad_media, migration 246); GET /api/competitors/video/<library_id>
 returns its saved playable copy (table competitor_ad_video, migration 257) with HTTP Range support so seeking and iOS Safari playback work. Both are written only by etl.competitor_ads, read-only here,
-login required like every other /api route (not in auth.PUBLIC_API_RE), and nothing is fetched from Meta in this process."""
+login required like every other /api route (not in auth.PUBLIC_API_RE), and nothing is fetched from Meta in this process.
+GET /api/competitors/lp-media/<lp_id>?week=YYYY-MM-DD returns the above-the-fold screenshot of one competitor landing page (table competitor_lp_media, migration 264, written by etl.competitor_landing_pages)."""
 from __future__ import annotations
 
+import datetime as dt
 import re
 
 from flask import Blueprint, Response, jsonify, request
@@ -12,6 +14,7 @@ from . import db
 bp = Blueprint("competitors_media", __name__)
 
 _DIGITS = re.compile(r"[0-9]{1,32}")
+_LP_ID = re.compile(r"[0-9a-f]{16}")
 _RANGE = re.compile(r"bytes=(\d*)-(\d*)")
 
 
@@ -70,5 +73,27 @@ def competitor_video(library_id: str):
         resp = Response(data, mimetype=row["content_type"])
     resp.headers["Accept-Ranges"] = "bytes"
     resp.headers["Content-Length"] = str(size if kind == "full" else 0 if kind == "bad" else rng[1] - rng[0] + 1)
+    resp.headers["Cache-Control"] = "private, max-age=86400"
+    return resp
+
+
+@bp.get("/api/competitors/lp-media/<lp_id>")
+def competitor_lp_media(lp_id: str):
+    """Screenshot of one landing page: ?week=YYYY-MM-DD picks the week, default the latest stored for that lp_id."""
+    if not _LP_ID.fullmatch(lp_id):
+        return jsonify(error="not found"), 404
+    week = request.args.get("week")
+    conn = db.get_conn()
+    if week:
+        try:
+            wk = dt.date.fromisoformat(week)
+        except ValueError:
+            return jsonify(error="not found"), 404
+        row = conn.execute("SELECT content_type, bytes FROM competitor_lp_media WHERE lp_id = %s AND week_start = %s", (lp_id, wk)).fetchone()
+    else:
+        row = conn.execute("SELECT content_type, bytes FROM competitor_lp_media WHERE lp_id = %s ORDER BY week_start DESC LIMIT 1", (lp_id,)).fetchone()
+    if row is None:
+        return jsonify(error="not found"), 404
+    resp = Response(bytes(row["bytes"]), mimetype=row["content_type"])
     resp.headers["Cache-Control"] = "private, max-age=86400"
     return resp

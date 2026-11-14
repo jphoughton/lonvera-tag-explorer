@@ -318,6 +318,14 @@
    "summary": "Competitor / category chatter: what people and the press say about watched brands, from public sources that need no login and no paid scraper."
   },
   {
+   "module": "etl.competitor_landing_pages",
+   "summary": "Landing pages of the watched competitors' ads, opened weekly and tagged (key theme, selling points, offer, proof), so we can learn from the pages and not only the ads."
+  },
+  {
+   "module": "etl.competitor_tags",
+   "summary": "Competitor ad tags: transcribe the saved videos and tag every curated competitor ad by LOOKING at it."
+  },
+  {
    "module": "etl.creative_priorities",
    "summary": "Weekly creative priorities: the one-sheeter of market cluster / ICP / pain point / story lines to produce ads for next."
   },
@@ -925,7 +933,7 @@
    "endpoint": "api.competitors",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "Competitors: what watched brands run on Meta this week (week=YYYY-MM-DD, default the latest snapshot; format=video|image, default all): one row per brand, what changed since the prior week, chatter when stored. See app/competitors.py."
+   "summary": "Competitors: what watched brands run on Meta this week (week=YYYY-MM-DD, default the latest snapshot; format=video|image, default all; style=, hook=, device=, offer= tag filters when tags exist): one row per brand, what changed since the prior week, chatter when stored. See app/competitors.py."
   },
   {
    "rule": "/api/competitors/<path:brand>",
@@ -937,6 +945,17 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": "One competitor: longest-running ads, new this week, angles, landing pages, Ad Library links (week, format as on /api/competitors)."
+  },
+  {
+   "rule": "/api/competitors/lp-media/<lp_id>",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "competitors_media.competitor_lp_media",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Screenshot of one landing page: ?week=YYYY-MM-DD picks the week, default the latest stored for that lp_id."
   },
   {
    "rule": "/api/competitors/media/<library_id>",

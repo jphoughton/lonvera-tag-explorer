@@ -7502,6 +7502,334 @@
    "examples": []
   },
   {
+   "name": "public.competitor_landing_pages",
+   "schema": "public",
+   "relation": "competitor_landing_pages",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "The landing pages the watched competitors' Meta ads point to, opened once a week and tagged: page type, the page's key theme, hero headline, selling points, offer, price, guarantee, proof, urgency devices, objections handled, CTA, and Lonvera's cluster / ICP / pain point, so we can learn from the pages and not only the ads.",
+   "grain": "one row per (week_start, lp_id): one distinct landing page per week, however many ads point to it (week_start = Monday, Pacific, the competitor_ads week)",
+   "primary_key": [
+    "week_start",
+    "lp_id"
+   ],
+   "foreign_keys": [],
+   "source": "etl.competitor_landing_pages: distinct competitor_ads.landing_url of the week, normalised to url_key (host without www + path, tracking parameters dropped), opened with headless Chromium (Playwright; 1280x900 viewport, 3 s between pages, 20 s timeout, no login, no captcha or bot-wall bypass), visible text extracted, tagged by headless Claude (Sonnet 5.5) from the text and the screenshot in batches of 5",
+   "refresh": "by hand for now (not scheduled in the nightly etl yet); python -m etl.competitor_landing_pages [--week --brand --limit --retag --no-tag --dry-run]; a page already tagged this week is skipped",
+   "coverage": "from the first run after migration 264 (2026-11-13 build); at most 200 distinct pages per run, the most-used ones first; one row per week kept as history",
+   "caveats": [
+    "Not every ad has a page row: ads without a landing_url, on social hosts (facebook, instagram, youtube), or past the 200-page cap are unlinked in competitor_ad_lp.",
+    "http_status / fetch_error show a blocked page (403, challenge, blank): its tag columns stay NULL. Blocked is not a missing page; the Ad Library may still show the ad.",
+    "landing_url in competitor_ads is often only the display domain and path (the Ad Library card shows no query string), so the page opened is the display URL, which can differ from the exact page a click lands on (tracking redirects are followed; final_url is where it ended).",
+    "content_hash covers the extracted key text (title, headings, bullets, prices, guarantee, reviews, FAQ, CTA) with clocks and counters removed; changed_from_prior compares it with the latest earlier week of the same lp_id (false when there is none) and a changed hash can still be an A/B variant served on the visit. change_note is a model summary written only for changed pages.",
+    "Tags are the model's reading of one visit, quoted not invented; unknown fields are NULL. method 'vision_text' = the screenshot and the text, 'text' = text only (no screenshot)."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "week_start",
+     "type": "date",
+     "nullable": false,
+     "description": "Monday (Pacific) of the competitor_ads week (primary key with lp_id)."
+    },
+    {
+     "name": "lp_id",
+     "type": "text",
+     "nullable": false,
+     "description": "First 16 hex characters of sha1(url_key) (primary key with week_start); the same page across ads and weeks keeps one lp_id."
+    },
+    {
+     "name": "url_key",
+     "type": "text",
+     "nullable": false,
+     "description": "Normalised page key: lowercase host without www + path without trailing slash; tracking parameters dropped, only page-selecting parameters (variant, v, offer ...) kept."
+    },
+    {
+     "name": "final_url",
+     "type": "text",
+     "nullable": true,
+     "description": "Where the page ended after redirects, tracking parameters removed; NULL when it never loaded."
+    },
+    {
+     "name": "brand",
+     "type": "text",
+     "nullable": true,
+     "description": "competitor_brands.brand with the most ads pointing to this page."
+    },
+    {
+     "name": "http_status",
+     "type": "integer",
+     "nullable": true,
+     "description": "HTTP status of the main document; NULL when it never answered (timeout, DNS)."
+    },
+    {
+     "name": "fetched_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the page was opened."
+    },
+    {
+     "name": "ad_count",
+     "type": "integer",
+     "nullable": false,
+     "description": "How many of the week's competitor_ads rows point to this page."
+    },
+    {
+     "name": "page_type",
+     "type": "text",
+     "nullable": true,
+     "description": "product page | advertorial or article | listicle or ranked list | quiz or funnel | video sales page | homepage or collection | other."
+    },
+    {
+     "name": "key_theme",
+     "type": "text",
+     "nullable": true,
+     "description": "One plain sentence (<= 20 words): the page's central promise or story."
+    },
+    {
+     "name": "hero_headline",
+     "type": "text",
+     "nullable": true,
+     "description": "The page's main headline, quoted exactly."
+    },
+    {
+     "name": "selling_points",
+     "type": "text[]",
+     "nullable": true,
+     "description": "3 to 6 short phrases in the page's own terms (ingredients, doses, sourcing, benefits, comparisons)."
+    },
+    {
+     "name": "offer_summary",
+     "type": "text",
+     "nullable": true,
+     "description": "Price, bundle, discount, free shipping, subscription as offered."
+    },
+    {
+     "name": "price_text",
+     "type": "text",
+     "nullable": true,
+     "description": "Price as shown on the page."
+    },
+    {
+     "name": "guarantee",
+     "type": "text",
+     "nullable": true,
+     "description": "Guarantee as shown (e.g. '60 day money back')."
+    },
+    {
+     "name": "proof_elements",
+     "type": "text[]",
+     "nullable": true,
+     "description": "From: reviews count or stars, doctor or expert, clinical study, press logos, before and after, UGC or testimonials, certifications, founder story, other."
+    },
+    {
+     "name": "urgency_devices",
+     "type": "text[]",
+     "nullable": true,
+     "description": "countdown, low stock, limited offer, free gift deadline, or none."
+    },
+    {
+     "name": "objections",
+     "type": "text[]",
+     "nullable": true,
+     "description": "FAQ topics or objection handling the page addresses."
+    },
+    {
+     "name": "cta",
+     "type": "text",
+     "nullable": true,
+     "description": "Main call-to-action button text."
+    },
+    {
+     "name": "cluster",
+     "type": "text",
+     "nullable": true,
+     "description": "Lonvera market cluster of the page's angle (from the taxonomy; a model suggestion for a new angle)."
+    },
+    {
+     "name": "icp",
+     "type": "text",
+     "nullable": true,
+     "description": "Lonvera ICP the page speaks to."
+    },
+    {
+     "name": "pain_point",
+     "type": "text",
+     "nullable": true,
+     "description": "Lonvera pain point the page speaks to."
+    },
+    {
+     "name": "why_it_works",
+     "type": "text",
+     "nullable": true,
+     "description": "One short sentence on what the page does well for its buyer."
+    },
+    {
+     "name": "method",
+     "type": "text",
+     "nullable": true,
+     "description": "'vision_text' (screenshot + text) or 'text'."
+    },
+    {
+     "name": "confidence",
+     "type": "text",
+     "nullable": true,
+     "description": "high | medium | low: how clearly the page states its buyer and promise."
+    },
+    {
+     "name": "content_hash",
+     "type": "text",
+     "nullable": true,
+     "description": "sha1 of the normalised key text of the page (clocks and counters removed)."
+    },
+    {
+     "name": "changed_from_prior",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True when content_hash differs from the latest earlier week of the same lp_id."
+    },
+    {
+     "name": "change_note",
+     "type": "text",
+     "nullable": true,
+     "description": "One plain line on what changed, only for changed pages with a tagged earlier week."
+    },
+    {
+     "name": "fetch_error",
+     "type": "text",
+     "nullable": true,
+     "description": "Why the page could not be read (blocked, challenge, blank, timeout, DNS); NULL when read."
+    },
+    {
+     "name": "model",
+     "type": "text",
+     "nullable": true,
+     "description": "Model that tagged the page."
+    },
+    {
+     "name": "tagged_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the tags were written; NULL = captured but not tagged."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.competitor_lp_media",
+   "schema": "public",
+   "relation": "competitor_lp_media",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "One above-the-fold screenshot of each competitor landing page per week, so the /competitors page can show what the page looks like.",
+   "grain": "one row per (week_start, lp_id) (joins to competitor_landing_pages)",
+   "primary_key": [
+    "week_start",
+    "lp_id"
+   ],
+   "foreign_keys": [],
+   "source": "etl.competitor_landing_pages: viewport screenshot (1280x900) taken after the page loaded, re-encoded to JPEG, at most 640 px wide and 90 KB",
+   "refresh": "weekly with the landing page run; rows older than 60 days that are not in the latest week are deleted",
+   "coverage": "from the first run after migration 264; only pages that loaded",
+   "caveats": [
+    "No row = no screenshot (blocked, blank or failed page), not a missing page.",
+    "Served by GET /api/competitors/lp-media/<lp_id>?week=YYYY-MM-DD (login required); do not read bytes through SQL for display.",
+    "A cookie banner or popup can cover part of the shot; only an obvious Accept / Close button is clicked."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "week_start",
+     "type": "date",
+     "nullable": false,
+     "description": "Monday (Pacific) of the week (primary key with lp_id)."
+    },
+    {
+     "name": "lp_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Landing page id (primary key with week_start)."
+    },
+    {
+     "name": "content_type",
+     "type": "text",
+     "nullable": false,
+     "description": "MIME type of bytes (image/jpeg)."
+    },
+    {
+     "name": "width",
+     "type": "integer",
+     "nullable": true,
+     "description": "Pixel width after re-encoding."
+    },
+    {
+     "name": "height",
+     "type": "integer",
+     "nullable": true,
+     "description": "Pixel height after re-encoding."
+    },
+    {
+     "name": "bytes",
+     "type": "bytea",
+     "nullable": false,
+     "description": "The JPEG bytes."
+    },
+    {
+     "name": "fetched_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the screenshot was stored."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.competitor_ad_lp",
+   "schema": "public",
+   "relation": "competitor_ad_lp",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "Links each competitor ad of a week to the landing page it points to, so an ad can show its page and a page can list its ads.",
+   "grain": "one row per (week_start, library_id) (joins to competitor_ads and to competitor_landing_pages on lp_id)",
+   "primary_key": [
+    "week_start",
+    "library_id"
+   ],
+   "foreign_keys": [],
+   "source": "etl.competitor_landing_pages: competitor_ads.landing_url of the week normalised to lp_id",
+   "refresh": "weekly with the landing page run (rewritten for the week on every run)",
+   "coverage": "from the first run after migration 264",
+   "caveats": [
+    "Only ads with a usable landing_url on a non-social host and within the 200-page cap are linked; a missing row means unlinked, not 'no landing page'.",
+    "Several ads usually share one page, so count ads with competitor_landing_pages.ad_count, not rows here joined to the pages table."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "week_start",
+     "type": "date",
+     "nullable": false,
+     "description": "Monday (Pacific) of the competitor_ads week (primary key with library_id)."
+    },
+    {
+     "name": "library_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta Ad Library ID (primary key with week_start)."
+    },
+    {
+     "name": "lp_id",
+     "type": "text",
+     "nullable": false,
+     "description": "competitor_landing_pages.lp_id of the ad's page."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.competitor_ad_video",
    "schema": "public",
    "relation": "competitor_ad_video",
@@ -7571,6 +7899,249 @@
      "type": "timestamp with time zone",
      "nullable": false,
      "description": "When the video was downloaded."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.competitor_ad_transcript",
+   "schema": "public",
+   "relation": "competitor_ad_transcript",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "What is said in the saved competitor video ads: a speech-to-text transcript of the first 30 seconds of each video in competitor_ad_video, so the ads can be read and tagged, not only watched.",
+   "grain": "one row per Meta Ad Library ID (joins to competitor_ads.library_id and competitor_ad_video.library_id)",
+   "primary_key": [
+    "library_id"
+   ],
+   "foreign_keys": [],
+   "source": "etl.competitor_tags: faster-whisper (model base, int8, CPU, voice-activity filter) on the stored mp4 audio",
+   "refresh": "with etl.competitor_tags (by hand: python -m etl.competitor_tags; ads already transcribed are skipped, --retag redoes them)",
+   "coverage": "from 2026-11-13; only videos that have a row in competitor_ad_video",
+   "caveats": [
+    "transcript is an empty string when the video has no speech (music only or silent); no row = not transcribed (faster-whisper not installed on that machine, or the transcription failed), not a silent ad.",
+    "Only the first 30 seconds (the stored copy), in Meta's SD audio; names and product terms can be misheard."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "library_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta Ad Library ID (primary key)."
+    },
+    {
+     "name": "transcript",
+     "type": "text",
+     "nullable": false,
+     "description": "Speech-to-text of the saved video; '' = no speech."
+    },
+    {
+     "name": "language",
+     "type": "text",
+     "nullable": true,
+     "description": "Detected language code (en ...)."
+    },
+    {
+     "name": "duration_s",
+     "type": "numeric",
+     "nullable": true,
+     "description": "Audio length in seconds that was read."
+    },
+    {
+     "name": "model",
+     "type": "text",
+     "nullable": false,
+     "description": "Transcription model, for example faster-whisper-base-int8."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When it was transcribed."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.competitor_ad_tags",
+   "schema": "public",
+   "relation": "competitor_ad_tags",
+   "kind": "table",
+   "group": "rollups",
+   "purpose": "Tags of each curated competitor ad (one with a saved picture or video), made by headless Claude LOOKING at the picture (video: cover plus 4 frames), the transcript and the copy: Lonvera's own taxonomy (line, cluster, ICP, pain point, emotional trigger), the Creative Tracker's style / fidelity / proof mechanism / emotion values (so competitor and Lonvera ads compare 1:1) and learning tags (hook type, offer type, device, call to action, hook text, why it works, what was seen and said).",
+   "grain": "one row per Meta Ad Library ID (joins to competitor_ads.library_id; concept_key joins to competitor_concept_class)",
+   "primary_key": [
+    "library_id"
+   ],
+   "foreign_keys": [],
+   "source": "etl.competitor_tags: claude -p (Sonnet, Read tool only) on batches of 6 ads, validated against taxonomy_lines and the distinct Creative Tracker values",
+   "refresh": "with etl.competitor_tags (python -m etl.competitor_tags; ads already tagged at the current tag_version are skipped, --retag replaces the row)",
+   "coverage": "from 2026-11-13; only the curated slice that has a saved picture or video, not every ad in competitor_ads",
+   "caveats": [
+    "method says what the tagger had: vision_transcript (picture and speech), vision (picture, no speech or not transcribed) or text (no picture could be read, confidence capped at medium). The tags are the model's reading, not a measured result: no spend or performance exists for competitor ads.",
+    "line_code is NULL for a new angle (is_new_angle, new_angle_label; cluster / icp / pain_point hold the suggestion) and for out-of-category ads (cluster NULL too). style / fidelity / proof_mechanism / emotion hold a Creative Tracker value, or 'PROPOSE: <value>' when none fitted.",
+    "competitor_concept_class stays the text-only, per-concept classification; the two can disagree, and this table (which saw the picture) is the better read for a single ad."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "library_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta Ad Library ID (primary key)."
+    },
+    {
+     "name": "concept_key",
+     "type": "text",
+     "nullable": true,
+     "description": "competitor_ads.concept_key of the ad."
+    },
+    {
+     "name": "tag_version",
+     "type": "text",
+     "nullable": false,
+     "description": "Prompt / list version that made the row (ctags-v1-2026-11-13)."
+    },
+    {
+     "name": "method",
+     "type": "text",
+     "nullable": false,
+     "description": "vision_transcript | vision | text: what the tagger saw."
+    },
+    {
+     "name": "confidence",
+     "type": "text",
+     "nullable": true,
+     "description": "high | medium | low (the tagger's own)."
+    },
+    {
+     "name": "line_code",
+     "type": "text",
+     "nullable": true,
+     "description": "Lonvera line (L.. Vital Bull, B.. Beef Liver, BF.. Boneflex) or NULL."
+    },
+    {
+     "name": "cluster",
+     "type": "text",
+     "nullable": true,
+     "description": "Market cluster (taxonomy value, or suggested for a new angle)."
+    },
+    {
+     "name": "icp",
+     "type": "text",
+     "nullable": true,
+     "description": "ICP (taxonomy value, or suggested)."
+    },
+    {
+     "name": "pain_point",
+     "type": "text",
+     "nullable": true,
+     "description": "Pain point (taxonomy value, or suggested)."
+    },
+    {
+     "name": "emotional_trigger",
+     "type": "text",
+     "nullable": true,
+     "description": "The line's emotional trigger (or suggested for a new angle)."
+    },
+    {
+     "name": "is_new_angle",
+     "type": "boolean",
+     "nullable": false,
+     "description": "True when no Lonvera line covers the angle."
+    },
+    {
+     "name": "new_angle_label",
+     "type": "text",
+     "nullable": true,
+     "description": "4-10 word label of the new angle."
+    },
+    {
+     "name": "style",
+     "type": "text",
+     "nullable": true,
+     "description": "Creative Tracker Style value, or 'PROPOSE: x'."
+    },
+    {
+     "name": "fidelity",
+     "type": "text",
+     "nullable": true,
+     "description": "Creative Tracker Creative Fidelity value, or 'PROPOSE: x'."
+    },
+    {
+     "name": "proof_mechanism",
+     "type": "text",
+     "nullable": true,
+     "description": "Creative Tracker Proof Mechanism value, or 'PROPOSE: x'."
+    },
+    {
+     "name": "emotion",
+     "type": "text",
+     "nullable": true,
+     "description": "Creative Tracker Emotion value, or 'PROPOSE: x'."
+    },
+    {
+     "name": "hook_type",
+     "type": "text",
+     "nullable": true,
+     "description": "question | stat or number | story | call-out | comparison | authority or doctor | myth-bust | curiosity | social proof | offer-led | other."
+    },
+    {
+     "name": "offer_type",
+     "type": "text",
+     "nullable": true,
+     "description": "discount | bundle or multi-pack | free shipping | guarantee | free gift | subscription | none shown | other."
+    },
+    {
+     "name": "device",
+     "type": "text",
+     "nullable": true,
+     "description": "testimonial | listicle or ranked list | before and after | founder or brand story | doctor or expert | podcast clip | demo or unboxing | news-style | comparison chart | text-on-image | other."
+    },
+    {
+     "name": "cta",
+     "type": "text",
+     "nullable": true,
+     "description": "Call to action, 8 words or fewer."
+    },
+    {
+     "name": "hook_text",
+     "type": "text",
+     "nullable": true,
+     "description": "First line seen or said, quoted, 20 words or fewer."
+    },
+    {
+     "name": "why_it_works",
+     "type": "text",
+     "nullable": true,
+     "description": "One plain sentence, 25 words or fewer: what Lonvera could learn from it."
+    },
+    {
+     "name": "seen_on",
+     "type": "text",
+     "nullable": true,
+     "description": "What the tagger saw on screen (the evidence)."
+    },
+    {
+     "name": "said_on",
+     "type": "text",
+     "nullable": true,
+     "description": "What was said (the evidence), or 'no speech'."
+    },
+    {
+     "name": "model",
+     "type": "text",
+     "nullable": false,
+     "description": "Model id used."
+    },
+    {
+     "name": "tagged_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was written."
     }
    ],
    "examples": []

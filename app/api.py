@@ -489,14 +489,14 @@ def priorities():
 
 @bp.get("/api/competitors")
 def competitors():
-    """Competitors: what watched brands run on Meta this week (week=YYYY-MM-DD, default the latest snapshot; format=video|image, default all): one row per brand, what changed since the prior week, chatter when stored. See app/competitors.py."""
-    return jsonify(comp.payload(db.get_conn(), _arg("week"), _arg("format")))
+    """Competitors: what watched brands run on Meta this week (week=YYYY-MM-DD, default the latest snapshot; format=video|image, default all; style=, hook=, device=, offer= tag filters when tags exist): one row per brand, what changed since the prior week, chatter when stored. See app/competitors.py."""
+    return jsonify(comp.payload(db.get_conn(), _arg("week"), _arg("format"), comp.learn.filters_from(request.args)))
 
 
 @bp.get("/api/competitors/<path:brand>")
 def competitor_detail(brand: str):
     """One competitor: longest-running ads, new this week, angles, landing pages, Ad Library links (week, format as on /api/competitors)."""
-    return jsonify(comp.brand_detail(db.get_conn(), brand, _arg("week"), _arg("format")))
+    return jsonify(comp.brand_detail(db.get_conn(), brand, _arg("week"), _arg("format"), comp.learn.filters_from(request.args)))
 
 
 @bp.get("/api/priorities/lines/<int:line_id>/insights")

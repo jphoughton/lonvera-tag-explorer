@@ -160,7 +160,7 @@ def _register_headers(app: Flask) -> None:
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers.setdefault("Referrer-Policy", "same-origin")
-        if request.path.startswith("/api/") and not request.path.startswith(("/api/competitors/media/", "/api/competitors/video/")):      # thumbnails and videos set their own private, 1-day Cache-Control
+        if request.path.startswith("/api/") and not request.path.startswith(("/api/competitors/media/", "/api/competitors/video/", "/api/competitors/lp-media/")):      # thumbnails, videos and landing page screenshots set their own private, 1-day Cache-Control
             resp.headers["Cache-Control"] = "no-store"
         elif request.path.startswith("/static/") and resp.status_code in (200, 304):
             resp.headers["Cache-Control"] = "no-cache"          # ES modules are not content-hashed: always revalidate (ETag / Last-Modified still apply)
