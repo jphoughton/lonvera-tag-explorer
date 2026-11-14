@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 from . import why_stats as S
 from . import why_breakdown_step as BS
+from . import why_investigate as INV
 from . import why_tree as T
 from .sqlguard import check_select
 from .why_questions import PAST_QUESTIONS
@@ -1266,8 +1267,14 @@ class Why:
             bdc = {"applies": True, "error": "query budget ran out before the breakdown step; re-run with a larger max_steps"}
         except Exception as e:                                                              # noqa: BLE001  the breakdown step must never take the rest of the answer down
             bdc = {"applies": True, "error": f"breakdown step failed: {type(e).__name__}: {str(e)[:160]}"}
+        try:
+            inv = INV.run_step(self, self._clean(bdc))
+        except BudgetExceeded:
+            inv = {"applies": True, "error": "query budget ran out before the investigation; re-run with a larger max_steps"}
+        except Exception as e:                                                              # noqa: BLE001  the investigation must never take the rest of the answer down
+            inv = {"applies": True, "error": f"investigation failed: {type(e).__name__}: {str(e)[:160]}"}
         grd = self.guardrails(tree, live)
-        out = {"guardrails_checked": grd, "metric": self.metric, "window": {"start": str(self.start), "end": str(self.end)}, "comparison": {"kind": self.compare, "start": str(self.cstart), "end": str(self.cend)},
+        out = {"investigation": self._clean(inv), "guardrails_checked": grd, "metric": self.metric, "window": {"start": str(self.start), "end": str(self.end)}, "comparison": {"kind": self.compare, "start": str(self.cstart), "end": str(self.cend)},
                "scope": {"product": self.product, "platform": self.platform, "basis": ("Upstack-attributed (any-click) new customers from the ad views, not actual orders" if self.scoped else "actual orders (orders_daily) and platform spend; gross, tax in, refunds not out")},
                "headline": chain_text, "arrows_mean": "'of which' (accounting identity), not 'because'", "reading": reading, "findings": [self._clean(f) for f in live], "refuted_candidates": [self._clean(f) for f in refuted],
                "unexplained": unexplained, "next_questions": nq, "changes_in_window": changes, "breakdown_changes": self._clean(bdc), "known_cause_matches": matches, "tree": self._clean(tree), "steps_used": self.steps, "max_steps": self.max_steps, "budget_exhausted": self.budget_hit,
@@ -1418,7 +1425,24 @@ def compact(res: dict, top: int = 6) -> dict:
     ch = res.get("changes_in_window") or {}
     root = res.get("metric")
     kcs = sorted(res.get("known_cause_matches") or [], key=lambda m: (m.get("node") != root, m.get("status") == "refuted"))   # the asked metric's own causes first, refuted ones last
-    out = {k: res.get(k) for k in ("metric", "window", "comparison", "scope", "headline") if res.get(k) not in (None, [], {})}
+    inv = res.get("investigation") or {}
+    out = {}
+    if inv.get("applies") and inv.get("answer"):
+        out.update({"answer": inv["answer"], "confidence": inv.get("confidence"), "chain": inv.get("chain"), "ruled_out": inv.get("ruled_out"), "untestable": inv.get("untestable"),
+                    "next_check": inv.get("next_check"), "depth_stopped_at": inv.get("depth_stopped_at")})
+        if inv.get("action"):
+            out["action"] = inv["action"]
+        ng = inv.get("noise_gate") or {}
+        out["noise_gate"] = {"basis": ng.get("basis"), "grains": {str(g): {k: r.get(k) for k in ("change_pct", "noise_band_pct", "verdict") if k in r} for g, r in (ng.get("grains") or {}).items()},
+                             "next_day_needed": (ng.get("next_day_needed") or {}).get("reading"), "hour_of_day": {k: (ng.get("hour_of_day") or {}).get(k) for k in ("through_hour", "first_hour_outside_noise")} if ng.get("hour_of_day") else None}
+        out["ledger"] = [{"id": e["id"], "verdict": e["verdict"], "hypothesis": e["hypothesis"][:110], "evidence": e["evidence"][:260]} for e in inv.get("ledger", [])]
+        if inv.get("priors_seen_before"):
+            out["priors_seen_before"] = inv["priors_seen_before"]
+        out["how_to_answer_first"] = ("Lead with `answer` and `chain` exactly as written, in their confidence word. Then report ruled_out and untestable (what data is missing). Never present a table of what happened as a cause. "
+                                      "A ledger verdict of 'consistent with' is not proof; only 'supported by control' names a likely cause, and even then it is not randomized.")
+    elif inv.get("error") or inv.get("reason"):
+        out["investigation_note"] = inv.get("error") or inv.get("reason")
+    out.update({k: res.get(k) for k in ("metric", "window", "comparison", "scope", "headline") if res.get(k) not in (None, [], {})})
     out["known_causes_to_report"] = [{k: m.get(k) for k in ("node", "claim", "status", "confidence", "between", "note") if m.get(k)} for m in kcs[:8]]
     out["how_to_answer"] = ("Lead with the headline numbers; then report EACH known cause above in its own words and confidence (a refuted one is a finding too: say it was ruled out); then say what is not in the database (next_questions / coverage_notes). "
                             "Do not add a cause that is not listed unless you tested it with a control.")
