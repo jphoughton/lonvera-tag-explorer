@@ -440,7 +440,7 @@ def intraday_shape(target: dict, baselines: list[dict], checkpoints=(6, 9, 12, 1
         sd = statistics.stdev(sbs) if len(sbs) >= 3 else 0.0
         band = max(K_SIGMA * sd, 0.02)
         dev = st - mb
-        out_ = abs(dev) > band and mb >= 0.05
+        out_ = abs(dev) > band and mb >= 0.15          # early hours hold a few percent of the day: their share is noise, not shape
         if out_ and first is None:
             first = {"hour": h, "target_share": st, "baseline_share": mb, "band": band, "direction": "front-loaded" if dev > 0 else "back-loaded"}
         if h in checkpoints or h == last:

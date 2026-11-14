@@ -1435,7 +1435,7 @@ def compact(res: dict, top: int = 6) -> dict:
         ng = inv.get("noise_gate") or {}
         out["noise_gate"] = {"basis": ng.get("basis"), "grains": {str(g): {k: r.get(k) for k in ("change_pct", "noise_band_pct", "verdict") if k in r} for g, r in (ng.get("grains") or {}).items()},
                              "next_day_needed": (ng.get("next_day_needed") or {}).get("reading"), "hour_of_day": {k: (ng.get("hour_of_day") or {}).get(k) for k in ("through_hour", "first_hour_outside_noise")} if ng.get("hour_of_day") else None}
-        out["ledger"] = [{"id": e["id"], "verdict": e["verdict"], "hypothesis": e["hypothesis"][:110], "evidence": e["evidence"][:260]} for e in inv.get("ledger", [])]
+        out["ledger"] = [{"id": e["id"], "verdict": e["verdict"], "hypothesis": e["hypothesis"][:110], "evidence": e["evidence"][:(420 if e["id"] in ("H1b", "H4b", "H14", "H16", "H17", "H18") else 260)]} for e in inv.get("ledger", [])]
         if inv.get("priors_seen_before"):
             out["priors_seen_before"] = inv["priors_seen_before"]
         out["how_to_answer_first"] = ("Lead with `answer` and `chain` exactly as written, in their confidence word. Then report ruled_out and untestable (what data is missing). Never present a table of what happened as a cause. "
