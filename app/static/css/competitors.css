@@ -119,7 +119,7 @@
 
 /* lightbox */
 .comp-lb { border: 0; padding: 0; border-radius: 16px; width: min(960px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; background: var(--panel); color: var(--text); }
-.comp-lb { display: flex; flex-direction: column; overflow: hidden; }
+.comp-lb[open] { display: flex; flex-direction: column; overflow: hidden; }
 .comp-lb-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .comp-lb:focus { outline: none; }
 .comp-lb::backdrop { background: rgba(14, 18, 26, .72); }
@@ -238,7 +238,7 @@ a.comp-tchip:focus-visible, .comp-lplink:focus-visible { outline: 2px solid var(
   .comp-wall { grid-template-columns: 1fr; }
   .comp-bar { grid-template-columns: minmax(90px, 36%) 1fr 44px; gap: 8px; }
   .comp-lb-body { grid-template-columns: 1fr; padding: 48px 16px 40px; }
-  .comp-lb { display: flex; flex-direction: column; overflow: hidden; max-height: calc(100dvh - 24px); }
+  .comp-lb[open] { display: flex; flex-direction: column; overflow: hidden; max-height: calc(100dvh - 24px); }
   .comp-lb-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 12px; }
   .comp-lb-text { max-height: none; overflow: visible; }
   .comp-lb-bar { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 14px 12px; border-top: 1px solid var(--line); background: var(--panel); }

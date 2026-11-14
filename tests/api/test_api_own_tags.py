@@ -6,7 +6,7 @@ import datetime as dt
 import pytest
 
 from . import fixture_data as F
-from .helpers import THROUGH
+from .helpers import THROUGH, restore_own_tables
 
 DDL = """CREATE TABLE IF NOT EXISTS ad_learning_tags (family_key text PRIMARY KEY, tag_version text, method text, confidence text, hook_type text, offer_type text, device text, cta text,
          hook_text text, why_it_works text, seen_on text, said_on text, model text, tagged_at timestamptz DEFAULT now())"""
@@ -33,8 +33,7 @@ def world(pg):
             tag_row(pg, fkey(pg, fam), hook, device, offer)
         pg.commit()
     yield build
-    pg.execute("DROP TABLE IF EXISTS ad_learning_tags")
-    pg.commit()
+    restore_own_tables(pg)
 
 
 @pytest.fixture()
@@ -217,12 +216,11 @@ def test_ad_page_only_present_parts_and_transcript_sources(client, world, pg):
         l = client.get(f"/api/ads/{rid}").get_json()["learning"]
         assert [c["key"] for c in l["chips"]] == ["hook_type"] and "hook_quote" not in l and "why_it_works" not in l and "seen_on" not in l
         assert l["transcript"] == "from family content"
-        pg.execute("CREATE TABLE IF NOT EXISTS ad_transcript (family_key text, transcript text, language text, duration_s numeric, source text, model text, created_at timestamptz DEFAULT now())")
-        pg.execute("INSERT INTO ad_transcript (family_key, transcript) VALUES (%s, 'from ad_transcript')", (fam,))
+        pg.execute("INSERT INTO ad_transcript (family_key, transcript, source) VALUES (%s, 'from ad_transcript', 'whisper')", (fam,))
         pg.commit()
         assert client.get(f"/api/ads/{rid}").get_json()["learning"]["transcript"] == "from ad_transcript"          # the new table wins when it exists
     finally:
-        pg.execute("DROP TABLE IF EXISTS ad_transcript"); pg.execute("DELETE FROM family_content WHERE family_key = %s", (fam,)); pg.commit()
+        pg.rollback(); pg.execute("DELETE FROM ad_transcript WHERE family_key = %s", (fam,)); pg.execute("DELETE FROM family_content WHERE family_key = %s", (fam,)); pg.commit()
 
 
 def test_empty_tag_row_gives_no_block(client, world, pg):

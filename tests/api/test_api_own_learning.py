@@ -3,6 +3,8 @@ $1,000 floor), and our own landing pages (competitor_landing_pages.is_own, ad_fa
 Tables of other jobs are created here with their contract columns and dropped afterwards."""
 import pytest
 
+from .helpers import restore_own_tables
+
 from .test_api_competitors_learn import W1, W2, tag, world  # noqa: F401  (world is a fixture)
 
 DAY = "2099-01-01"                  # later than any fixture day, so the 30-day window holds only these rows
@@ -15,6 +17,13 @@ def full():
     """All 15 competitor ads tagged: UGC demo, Question, Talking head, Discount."""
     ids = [f"a{i}" for i in range(1, 11)] + [f"b{i}" for i in range(1, 6)]
     return [tag(i, style="UGC demo", hook="Question", device="Talking head", offer="Discount") for i in ids]
+
+
+@pytest.fixture(autouse=True)
+def _real_own_tables_back(pg):
+    """Tests here replace or drop the real own-tag tables; put them back from the migrations afterwards (other files share the database)."""
+    yield
+    restore_own_tables(pg)
 
 
 def pid(pg):
