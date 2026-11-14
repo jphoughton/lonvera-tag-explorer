@@ -25,7 +25,7 @@ FORMATS = [{"code": "F1", "name": "Long animated story, openly AI, told by the c
            {"code": "F3", "name": "Short acted scene with two people", "length": "30 to 60s"}, {"code": "F4", "name": "Whiteboard explainer", "length": "60 to 90s"},
            {"code": "F5", "name": "Opens on a sound", "length": "30 to 60s"}, {"code": "F6", "name": "Animated song", "length": "45 to 90s"}]
 CREATE_FIELDS = ("vendor", "for_week", "note", "format_code")
-PATCH_FIELDS = ("vendor", "for_week", "note", "format_code", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped", "status", "due_date", "priority", "position", "comment", "concept_name", "concept_kind", "variations")
+PATCH_FIELDS = ("vendor", "for_week", "note", "format_code", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped", "status", "due_date", "priority", "position", "comment", "concept_name", "concept_kind", "variations", "cluster", "story")
 PATCH_BOOLS = ("ready", "launched", "dropped")
 VENDOR_PATCH_FIELDS = ("creative_url", "vendor_note", "ready", "status", "comment")
 # the board (migration 245): the stored status of an assignment, in column order. `dropped` is not a status (dropped_at hides the card in an archived lane).
@@ -214,6 +214,10 @@ def clean_patch(body: dict) -> dict:
             raise q.ApiError(400, "new vs iteration must be new or iteration")
     if "variations" in body:
         out["variations"] = clean_variations(body["variations"], required=False)
+    if "cluster" in body:
+        out["cluster"] = _text(body["cluster"], "cluster", 200)
+    if "story" in body:
+        out["story"] = _text(body["story"], "story", 20000)
     if "comment" in body:
         out["comment"] = _comment_opt(body["comment"])
     return out
@@ -936,7 +940,7 @@ def _update(aid: int, f: dict, user: str | None, vendor: str | None = None, lega
                 note = "" if legacy_ready else check_transition(was, new_status, vendor=vendor is not None, creative_url=creative, comment=comment)
             sets: list[str] = []
             params: list = []
-            for c in ("vendor", "for_week", "note", "vendor_note", "format_code", "due_date", "priority", "position", "concept_name", "concept_kind", "variations"):
+            for c in ("vendor", "for_week", "note", "vendor_note", "format_code", "due_date", "priority", "position", "concept_name", "concept_kind", "variations", "cluster", "story"):
                 if c in f:
                     sets.append(f"{c} = %s")
                     params.append(f[c])
