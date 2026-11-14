@@ -181,3 +181,143 @@ def test_answer_contract_and_a_verdict_for_every_hypothesis(whydb):
     c = W.compact(out)
     assert list(c)[0] == "answer" and "chain" in c and c["ledger"] and "how_to_answer_first" in c
     assert out["steps_used"] <= 40
+
+
+# ---------------------------------------------------------------- six added hypotheses (pure statistics)
+def _seg(p, key, spend, ncr, nc, clicks=1000):
+    return {"p": p, "key": key, "spend": spend, "ncr": ncr, "nc": nc, "clicks": clicks}
+
+
+def test_shift_share_is_exact_for_every_metric_and_names_the_mover():
+    rows = [_seg("cmp", "A", 1760, 3500, 150, 3000), _seg("cmp", "B", 1000, 500, 40, 2000), _seg("cmp", "C", 3240, 3000, 200, 6000),
+            _seg("cur", "A", 690, 1380, 60, 1200), _seg("cur", "B", 3000, 1500, 120, 6000), _seg("cur", "C", 2310, 1900, 140, 4300), _seg("cur", "D", 500, 100, 8, 700)]   # D is new, A shrinks
+    for m in ("nc_roas", "cost_per_nc", "conversion"):
+        r = X.shift_share(rows, m)
+        assert abs(r["residual"]) < 1e-12, (m, r["residual"])
+        assert abs(r["mix_total"] + r["rate_total"] - r["total"]) < 1e-12
+    r = X.shift_share(rows, "nc_roas")
+    assert any(mv["key"] == "A" and mv["mix_material"] for mv in r["movers"])           # A's spend share 17.6% -> 6.9%
+    assert all(mv["key"] != "D" or not mv["rate_material"] for mv in r["movers"])        # 8 new customers: below the count floor
+
+
+def test_shift_share_with_a_flat_mix_and_flat_rates_has_no_movers_and_empty_input_is_none():
+    rows = [_seg("cmp", "A", 1000, 900, 50), _seg("cmp", "B", 1000, 800, 50), _seg("cur", "A", 1000, 905, 50), _seg("cur", "B", 1000, 795, 50)]
+    assert X.shift_share(rows, "nc_roas")["movers"] == []
+    assert X.shift_share([], "nc_roas") is None and X.shift_share([_seg("cur", "A", 5, 5, 1)], "nc_roas") is None
+
+
+def test_cap_exposure_shares_levels_and_binding():
+    cur = {"spend": 1000, "capped_spend": 800, "spend_times_cap": 800 * 80, "floor_spend": 100, "spend_times_floor": 100 * 0.9, "meta_cpp": 78.0, "meta_roas": 0.8}
+    cmp_ = {"spend": 1000, "capped_spend": 300, "spend_times_cap": 300 * 95, "floor_spend": 100, "spend_times_floor": 100 * 0.9, "meta_cpp": 60.0, "meta_roas": 1.0}
+    r = X.cap_exposure(cur, cmp_)
+    assert round(r["capped_share_shift_pts"]) == 50 and round(r["cap_level_change_pct"], 1) == round((80 / 95 - 1) * 100, 1) and r["moved"]
+    assert r["cur"]["avg_cap"] == 80 and "binding" in r["binding_cur"]["cost_cap"] and r["binding_cmp"]["cost_cap"].startswith("not binding")
+    assert X.cap_exposure({"spend": 0}, cmp_) is None
+    flat = X.cap_exposure(cmp_, dict(cmp_))
+    assert not flat["moved"]
+
+
+def test_intraday_shape_flags_back_loaded_day_from_the_right_hour_and_needs_baselines():
+    def day(f):                       # f(hour) amount
+        return {h: f(h) for h in range(24)}
+    base = [day(lambda h: 10.0) for _ in range(4)]
+    tgt = day(lambda h: 10.0 if h < 14 else 25.0)               # same morning, heavier after 14:00 -> back-loaded vs front
+    r = X.intraday_shape(tgt, base)
+    assert r["first_outside"]["direction"] == "back-loaded"
+    assert X.intraday_shape(dict(base[0]), base)["first_outside"] is None                      # a normal day is inside the band at every hour
+    slow = day(lambda h: 4.0 if h < 18 else 40.0)
+    s = X.intraday_shape(slow, [day(lambda h: 10.0 + (i % 2)) for i in range(4)])
+    assert s["first_outside"]["direction"] == "back-loaded" and s["first_outside"]["hour"] < 18
+    c18 = next(c for c in s["checkpoints"] if c["hour"] == 18)
+    assert c18["target_share"] < c18["baseline_share"]
+    assert X.intraday_shape(tgt, base[:1]) is None and X.intraday_shape({}, base) is None
+
+
+def test_calendar_flags_and_history():
+    D = dt.date
+    assert "holiday: thanksgiving" in X.calendar_flags(D(2026, 11, 26)) and "black friday" in X.calendar_flags(D(2026, 11, 27)) and "cyber monday" in X.calendar_flags(D(2026, 11, 30))
+    assert "BFCM ramp window" in X.calendar_flags(D(2026, 11, 20)) and "BFCM ramp window" not in X.calendar_flags(D(2026, 12, 3))
+    assert "payday (last business day)" in X.calendar_flags(D(2026, 10, 30)) and "month start" in X.calendar_flags(D(2026, 11, 2))
+    assert "payday (1st / 15th)" in X.calendar_flags(D(2026, 5, 15)) and "payday (1st / 15th)" in X.calendar_flags(D(2026, 11, 13))          # Nov 15 2026 is a Sunday
+    daily = {}
+    d = D(2025, 1, 1)
+    while d <= D(2026, 11, 20):
+        daily[d] = {"nc_rev": 100.0 * (1.5 if X.calendar_flags(d) and "BFCM ramp window" in X.calendar_flags(d) else 1.0), "nc": 2.0, "spend": 100.0, "imps": 0, "clicks": 0}
+        d += dt.timedelta(days=1)
+    res = X.calendar_check(daily, "nc_revenue", (D(2025, 11, 17), D(2025, 11, 23)), (D(2025, 11, 3), D(2025, 11, 9)))
+    assert "BFCM ramp window" in res["differing"] and res["move_now"] > 0.4
+    res2 = X.calendar_check(daily, "nc_revenue", (D(2026, 11, 16), D(2026, 11, 20)), (D(2026, 11, 2), D(2026, 11, 6)))
+    assert res2["same_sign"]["last year"] is True and res2["differing"]["BFCM ramp window"]["cur_days"] == 5
+    same = X.calendar_check(daily, "nc_revenue", (D(2026, 3, 24), D(2026, 3, 27)), (D(2026, 3, 17), D(2026, 3, 20)))
+    assert same["differing"] == {}
+
+
+def test_two_prop_z():
+    p1, p0, z = X.two_prop_z(30, 1000, 10, 1000)
+    assert (p1, p0) == (0.03, 0.01) and z > 3 and X.two_prop_z(1, 0, 1, 5) is None
+
+
+def _extend(url):
+    """Add the views the six new hypotheses read, with a known story: one persona loses its spend share, caps tighten, orders move to another source."""
+    with psycopg.connect(url, autocommit=True) as c:
+        c.execute("alter table analytics.creative_tracker add column product_slug text")
+        keys = [r[0] for r in c.execute("select family_key from analytics.creative_tracker order by family_key limit 2").fetchall()]
+        c.execute("update analytics.creative_tracker set icp = 'Thin', product_slug = 'vita-bull' where family_key = %s", (keys[0],))
+        c.execute("update analytics.creative_tracker set icp = 'Beginner', product_slug = 'vita-bull' where family_key = %s", (keys[1],))
+        c.execute("create table analytics.creative_family_daily (basis text, ads_scope text, family_key text, product_slug text, day date, stage text, spend numeric, purchases numeric, revenue numeric, link_clicks numeric, impressions numeric)")
+        c.execute("create table analytics.meta_bids_daily (day date, spend numeric, capped_spend numeric, spend_times_cap numeric, floor_spend numeric, spend_times_floor numeric, loaded_at timestamptz)")
+        c.execute("create table analytics.orders_hourly (day date, hour int, new_customer_revenue numeric, new_customers numeric, loaded_at timestamptz)")
+        c.execute("create table analytics.pacing_live_today (pulled_at timestamptz, day date, pacific_time time, meta_spend numeric, google_spend numeric, total_spend numeric, new_customer_revenue numeric, new_customers int)")
+        c.execute("create table analytics.attribution_unmapped_daily (day date, campaign text, ad text, reason text, new_customers numeric, new_customer_revenue numeric, orders numeric, order_revenue numeric)")
+        c.execute("create table analytics.attribution_source_daily (day date, ad_source text, new_customers numeric, new_customer_revenue numeric, orders numeric, order_revenue numeric, loaded_at timestamptz)")
+        for col, typ in (("source_name", "text"), ("refunded_amount", "numeric"), ("is_rebill", "boolean")):
+            c.execute(f"alter table analytics.shopify_orders add column {col} {typ}")
+        c.execute("update analytics.shopify_orders set refunded_amount = 0, is_rebill = false, source_name = case when order_date < date '2026-10-25' then 'web' else '322223865857' end")
+        cur_days = [D(2026, 10, 25) + dt.timedelta(days=i) for i in range(7)]
+        for d in (D(2026, 10, 18) + dt.timedelta(days=i) for i in range(14)):
+            late = d >= D(2026, 10, 25)
+            sp = (690 / 7, 3000 / 7) if late else (1760 / 7, 1000 / 7)
+            rv = (1380 / 7, 1500 / 7) if late else (3500 / 7, 500 / 7)
+            for k, s_, r_ in zip(keys, sp, rv):
+                c.execute("insert into analytics.creative_family_daily values ('upstack_new_customers', 'all_ads', %s, 'vita-bull', %s, 'scaling', %s, %s, %s, %s, %s)", (k, d, s_, r_ / 60, r_, s_ * 2, s_ * 40))
+            c.execute("insert into analytics.meta_bids_daily values (%s, 1000, %s, %s, 100, 90, now())", (d, 800 if late else 300, (800 * 80) if late else (300 * 95)))
+            c.execute("insert into analytics.attribution_unmapped_daily values (%s, 'c', 'a', 'no_ad', %s, 0, 0, 0)", (d, 30 if late else 5))
+            c.execute("insert into analytics.attribution_source_daily values (%s, 'Meta Ads', %s, 0, 0, 0, now()), (%s, 'Google Ads', %s, 0, 0, 0, now())", (d, 200, d, 20 if late else 5))
+        # hourly: same weekday baseline front-loaded, the target day (10-31) back-loaded
+        for k in range(0, 29, 7):
+            d = D(2026, 10, 31) - dt.timedelta(days=k)
+            for h in range(24):
+                v = 5.0 if (k == 0 and h < 18) else (30.0 if k == 0 else 12.0)
+                c.execute("insert into analytics.orders_hourly values (%s, %s, %s, %s, now())", (d, h, v * 60, v))
+    return keys
+
+
+def test_new_hypotheses_run_on_seeded_views_and_report_the_story(whydb):
+    seed(whydb, Scenario(x_mode="new", with_shopify=True))
+    _extend(whydb)
+    out = W.run_why({"start": "2026-10-25", "end": "2026-10-31", "compare": "custom", "compare_start": "2026-10-18", "compare_end": "2026-10-24"}, make_runner(whydb, []), KN)
+    inv = out["investigation"]
+    led = {e["id"]: e for e in inv["ledger"]}
+    for need in ("H1b", "H4b", "H14", "H16", "H17", "H18"):
+        assert need in led and led[need]["verdict"] in X.VERDICTS and led[need]["evidence"], need
+    assert "Thin" in led["H14"]["evidence"] and "share" in led["H14"]["evidence"] and "tags are today's" in led["H14"]["evidence"]
+    assert led["H4b"]["verdict"] != "untestable" and "30%" in led["H4b"]["evidence"] and "80%" in led["H4b"]["evidence"]
+    assert led["H1b"]["verdict"] != "untestable" and "no Meta ad" in led["H1b"]["evidence"]
+    assert led["H16"]["verdict"] != "untestable" and ("back-loaded" in led["H16"]["evidence"] or "inside the band" in led["H16"]["evidence"])
+    assert led["H17"]["verdict"] != "untestable" and "source_name" in led["H17"]["evidence"] and "untestable-meaning" in led["H17"]["evidence"]
+    assert "payday" in led["H18"]["evidence"] and led["H18"]["verdict"] in ("consistent with", "ruled out", "inside noise", "untestable")
+    assert "consistent with a calendar effect" in led["H18"]["evidence"] or led["H18"]["verdict"] != "consistent with"
+    assert out["steps_used"] <= 60
+    cmp_ = W.compact(out)
+    assert {"H1b", "H4b", "H14", "H16", "H17", "H18"} <= {e["id"] for e in cmp_["ledger"]}
+    assert all(len(e["evidence"]) <= 260 for e in cmp_["ledger"])
+    assert "hook type" in " ".join(inv["untestable"])
+
+
+def test_new_hypotheses_are_untestable_with_the_missing_data_named_when_views_are_absent(whydb):
+    seed(whydb, Scenario(x_mode="new"))
+    out = W.run_why({"start": "2026-10-29", "end": "2026-10-31", "compare": "prior_period"}, make_runner(whydb, []), KN)
+    led = {e["id"]: e for e in out["investigation"]["ledger"]}
+    for need, miss in (("H1b", "attribution"), ("H4b", "meta_bids_daily"), ("H14", "creative_family_daily"), ("H16", "orders_hourly"), ("H17", "shopify_orders")):
+        assert led[need]["verdict"] == "untestable" and miss in led[need].get("missing", ""), (need, led[need])
+    assert led["H18"]["verdict"] in X.VERDICTS

@@ -13,9 +13,10 @@ import statistics
 from zoneinfo import ZoneInfo
 
 from . import why_stats_inv as X
+from .why_more import MoreHypotheses
 
-EXTRA_STEPS = 24
-EXTRA_SECONDS = 45.0
+EXTRA_STEPS = 36                                   # was 24: the six added hypotheses use about 12 more queries (cached ones are free)
+EXTRA_SECONDS = 60.0
 MAX_EVENTS = 4
 MAX_DEPTH = 4
 PT = ZoneInfo("America/Los_Angeles")
@@ -43,7 +44,7 @@ def _ts(v) -> dt.datetime:
     return d.astimezone(PT) if d.tzinfo else d.replace(tzinfo=PT)
 
 
-class Inv:
+class Inv(MoreHypotheses):
     def __init__(self, w, bdc=None):
         self.w, self.bdc = w, bdc or {}
         self.main_steps, self.main_max, self.main_time = w.steps, w.max_steps, w.time_budget
@@ -162,9 +163,11 @@ class Inv:
         cur, cmp_ = self.window("cur"), self.window("cmp")
         real = self.gate_real
         self.h_measurement()
+        self.h_attribution_leak(real)
         self.h_spend(cur, cmp_, real)
         self.h_mix(real)
         self.h_auction(cur, cmp_, real)
+        self.h_caps(cur, cmp_, real)
         self.h_creative(real)
         self.h_funnel(real)
         self.h_order_side(real)
@@ -172,6 +175,10 @@ class Inv:
         self.h_breakdowns(real)
         self.h_email(real)
         self.h_inventory_feeds()
+        self.h_persona(real)
+        self.h_intraday(real)
+        self.h_order_mix(real)
+        self.h_calendar(real)
 
     def h_measurement(self):
         rows = [(d, r) for d, r in sorted(self.ads.items())]
