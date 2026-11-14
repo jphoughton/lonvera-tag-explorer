@@ -523,10 +523,12 @@ def test_note_and_brief_labels_are_bold_and_variation_lines_become_hook_links(pa
       const story = 'Concept A\\n\\nAudience: Men 45-62\\nAngle: A2 Noisy knees\\n\\nVariations\\nhook1: https://drive.google.com/file/d/AAA111/view\\nhook2: https://drive.google.com/drive/folders/BBB222\\nhook3: none';
       const wrap = document.createElement('div'); wrap.append(...m.richLines(story));
       return { bold: [...wrap.querySelectorAll('strong')].map((e) => e.textContent), links: [...wrap.querySelectorAll('a')].map((a) => a.getAttribute('href')),
-               vars: m.parseVariations(story), pv: [m.previewOf('https://drive.google.com/file/d/AAA111/view'), m.previewOf('https://drive.google.com/drive/folders/BBB222'), m.previewOf('https://example.com/x.mp4')] }; }""")
+               vars: m.parseVariations(story), pv: [m.previewOf('https://drive.google.com/file/d/AAA111/view'), m.previewOf('https://drive.google.com/drive/folders/BBB222'), m.previewOf('https://example.com/x.mp4'), m.previewOf('https://www.youtube.com/watch?v=abcDEF12345&t=3'), m.previewOf('https://youtu.be/abcDEF12345'), m.previewOf('https://www.youtube.com/shorts/abcDEF12345'), m.previewOf('https://vimeo.com/123456789'), m.previewOf('https://www.loom.com/share/0123456789abcdef0123456789abcdef'), m.previewOf('http://youtu.be/abcDEF12345'), m.previewOf('https://evil.example/youtu.be/abcDEF12345')] }; }""")
     assert got["bold"] == ["Audience:", "Angle:", "Hook 1:", "Hook 2:"] and len(got["links"]) == 2
     assert got["vars"] == [{"label": "Hook 1", "url": "https://drive.google.com/file/d/AAA111/view"}, {"label": "Hook 2", "url": "https://drive.google.com/drive/folders/BBB222"}]
     assert got["pv"][0] == {"kind": "file", "src": "https://drive.google.com/file/d/AAA111/preview"} and got["pv"][1]["src"] == "https://drive.google.com/embeddedfolderview?id=BBB222#grid" and got["pv"][2] is None
+    assert [p and p["src"] for p in got["pv"][3:8]] == ["https://www.youtube.com/embed/abcDEF12345"] * 3 + ["https://player.vimeo.com/video/123456789", "https://www.loom.com/embed/0123456789abcdef0123456789abcdef"]
+    assert got["pv"][8] is None and got["pv"][9] is None                       # http and look-alike hosts stay plain links
 
 
 def test_the_ticket_opens_with_the_creative_already_loaded_in_place(page):

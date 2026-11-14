@@ -94,7 +94,8 @@ Live URL: https://web-production-358da.up.railway.app
 | `etl/competitor_ads.py` | Weekly public Meta Ad Library scrape plus classification |
 | `etl/alerts.py`, `etl/backup.py` | Hourly alerts; nightly database backup |
 | `etl/reader_role.py` | Creates the read-only `analytics_reader` login |
-| `etl/api_keys.py` | `create`, `list`, `revoke` API keys |
+| `etl/api_keys.py` | `create` (`--scope read_assign` default, or `--scope partner_push --vendor <Vendor>`), `list`, `revoke` API keys |
+| `app/partner_tickets.py` | What a `partner_push` key does: push tickets, list / fix its own vendor's tickets, add creative links. Guide for partners: `docs/PARTNER_API.md` |
 | `etl/migrate.py` | Migration runner |
 
 ### Docs index
