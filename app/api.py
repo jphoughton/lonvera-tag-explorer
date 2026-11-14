@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, g, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import amazon as amz, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -713,7 +713,7 @@ def priorities_assignment_detail(aid: int):
 def priorities_ticket_create():
     """Add a ticket right from the Production board: {concept_name, product, vendor, for_week?, cluster?, icp?, pain_point?, concept_kind?, format_code?, brief_url?, note?, due_date?, status?} -> the new card
     (201). Signed-in users only, same limits as Assign to vendor. See app/priorities_assign.py (create_ticket)."""
-    if g.get("api_key_scope") == "partner_push":
+    if g.get("api_key_scope") in ak.PARTNER_SCOPES:
         blocked = _partner_guard()
         if blocked is not None:
             return blocked
@@ -731,7 +731,7 @@ _partner_limiter = None
 
 def _partner() -> str:
     """The vendor of the partner key making this request; 403 for anyone else (a login or a read_assign key has no business on the partner routes)."""
-    if g.get("api_key_scope") != "partner_push" or not g.get("api_key_vendor"):
+    if g.get("api_key_scope") not in ak.PARTNER_SCOPES or not g.get("api_key_vendor"):
         raise q.ApiError(403, "These routes are for partner API keys only.")
     return g.api_key_vendor
 
@@ -759,7 +759,7 @@ def _partner_guard():
 @bp.get("/api/priorities/partner/contract")
 def priorities_partner_contract():
     """What this partner key can do, as data (required and optional fields, allowed values, limits, the key's own vendor)."""
-    return jsonify(ptk.contract(_partner(), int(current_app.config.get("PARTNER_WRITES_PER_MIN") or ptk.WRITES_PER_MIN)))
+    return jsonify(ptk.contract(_partner(), int(current_app.config.get("PARTNER_WRITES_PER_MIN") or ptk.WRITES_PER_MIN), g.api_key_scope))
 
 
 @bp.get("/api/priorities/partner/tickets")

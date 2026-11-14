@@ -18,7 +18,9 @@ KEY_BODY_CHARS = 40
 KEY_RE = re.compile(r"lvk_[A-Za-z0-9_-]{40}")
 SCOPE = "read_assign"
 PARTNER_SCOPE = "partner_push"
-SCOPES = (SCOPE, PARTNER_SCOPE)
+PARTNER_READ_ALL_SCOPE = "partner_read_all"          # a partner key that may also READ everything except the secret-bearing routes (migration 265); writes are identical to partner_push
+PARTNER_SCOPES = (PARTNER_SCOPE, PARTNER_READ_ALL_SCOPE)
+SCOPES = (SCOPE, PARTNER_SCOPE, PARTNER_READ_ALL_SCOPE)
 SAFE_METHODS = ("GET", "HEAD")
 ALLOWED_WRITES = frozenset({("POST", "/api/priorities/assignments"), ("PATCH", "/api/priorities/assignments/<int:aid>"), ("POST", "/api/priorities/assignments/<int:aid>/move"),
                             ("POST", "/api/priorities/assignments/<int:aid>/comments"), ("POST", "/api/priorities/tickets")})      # (method, Flask rule) pairs, nothing else
@@ -55,7 +57,11 @@ PARTNER_READ_BLOCKED = frozenset({
     "/api/priorities/assignments/<int:aid>/transcripts", "/api/priorities/board", "/api/priorities/vendor-capacity", "/api/priorities/launch/settings",
     # the team's own idea notes (manual concepts carry internal notes)
     "/api/priorities/manual", "/api/priorities/manual/<int:rid>"})
-PARTNER_MESSAGE = "This API key can only push tickets and creative links for its own vendor, look at its own tickets, and read the creative and performance data (see docs/PARTNER_API.md)."
+# Reads that stay blocked for EVERY partner scope, partner_read_all included, because they return or open something that gives access: saved-view tokens, vendor link tokens, the brain key.
+# (API key admin has no HTTP route at all; /mcp is refused separately in app/brain_mcp.py; no route serves key hashes or environment values.)
+SECRET_BLOCKED = frozenset({"/api/brain/key", "/api/priorities/views", "/api/priorities/views/<token>", "/api/priorities/views/<token>/csv", "/api/priorities/vendor-links",
+                            "/api/priorities/vendor/<token>", "/api/priorities/vendor/<token>/<int:aid>/comments", "/api/priorities/vendor/<token>/<int:aid>/detail"})
+PARTNER_MESSAGE = "This API key can only push tickets and creative links for its own vendor, look at tickets, and read the data its scope allows (see docs/PARTNER_API.md)."
 BLOCKED_READS = frozenset({"/api/priorities/vendor-links"})        # returns vendor link tokens, which are credentials for the vendor pages: a login can see them, a key cannot
 TOUCH_EVERY_SEC = 60
 READ_ONLY_MESSAGE = "This API key is read only except for assigning items on the production board."
@@ -107,12 +113,16 @@ def _touch(key_id: int) -> None:
 
 def scope_allows(req: Request, scope: str = SCOPE) -> bool:
     """True when a key may make this request. read_assign: any GET / HEAD, or exactly one of ALLOWED_WRITES (matched on the Flask URL rule, so /assignments/12 matches <int:aid>).
-    partner_push: one of PARTNER_ROUTES, or a GET / HEAD on PARTNER_READ_RULES; everything else is refused."""
-    if scope == PARTNER_SCOPE:
+    partner_push: one of PARTNER_ROUTES, or a GET / HEAD on PARTNER_READ_RULES. partner_read_all: the same writes, and a GET / HEAD on every route except SECRET_BLOCKED. Everything else is refused."""
+    if scope in PARTNER_SCOPES:
         rule = req.url_rule.rule if req.url_rule is not None else None
         if rule is None:
             return False
-        return (req.method, rule) in PARTNER_ROUTES or (req.method in SAFE_METHODS and rule in PARTNER_READ_RULES)
+        if (req.method, rule) in PARTNER_ROUTES:
+            return True
+        if req.method not in SAFE_METHODS:
+            return False
+        return rule in PARTNER_READ_RULES or (scope == PARTNER_READ_ALL_SCOPE and rule not in SECRET_BLOCKED)
     if req.method in SAFE_METHODS:
         return req.url_rule is None or req.url_rule.rule not in BLOCKED_READS
     rule = req.url_rule.rule if req.url_rule is not None else None

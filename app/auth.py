@@ -169,7 +169,7 @@ def _key_guard(raw: str):
     if row is None:
         throttle.fail(ip)
         return jsonify(error="unauthorized"), 401
-    if row["scope"] == api_keys.PARTNER_SCOPE:
+    if row["scope"] in api_keys.PARTNER_SCOPES:
         if not row.get("vendor") or not api_keys.scope_allows(request, row["scope"]):
             return jsonify(error=api_keys.PARTNER_MESSAGE), 403
     else:
