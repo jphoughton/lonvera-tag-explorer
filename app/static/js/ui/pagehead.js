@@ -2,7 +2,7 @@
 // It renders the same markup the Meta, Trends and Test to scale pages already use (.pagehead > .titleline > h1 + .note-line), so adopting it changes nothing visually.
 //
 //   pageHeader({ title, description, badge, actions, testid, titleTestid })
-//     title        the page name from the naming table in docs/UI_SYSTEM.md (Overview, Meta, Google, Campaigns, Trends, Priorities, Production, Test to scale, Projections)
+//     title        the page name from the naming table in docs/UI_SYSTEM.md (Overview, Meta, Google, Campaigns, Trends, Priorities, Creative Pipeline, Test to scale, Projections)
 //     description  one sentence, plain English, no unexpanded acronyms
 //     badge        optional short qualifier shown next to the title ("Meta only")
 //     actions      node or array of nodes (buttons, links) placed at the right of the title line

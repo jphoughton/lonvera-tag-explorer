@@ -12,6 +12,7 @@ import { eventLine, STAGES, STATUSES, STATUS_LABEL, statusOf, VENDOR_FALLBACK, m
 import { board as boardView, loadBars } from './production_board.js';
 import { plan as planView } from './production_plan.js';
 import { openDrawer } from './production_drawer.js';
+import { cutsView, presetRange, DIMS as CUT_DIMS } from './production_cuts.js';
 const vendorLinkUrl = (tok) => `${location.origin}/priorities/vendor/${tok}`;
 export { mondayOf, addDays, today, VENDOR_FALLBACK, formatLabel, resultText };           // used by priorities_assign.js (the Assign to vendor dialog on /priorities)
 
@@ -26,9 +27,18 @@ function historyCell(r) {
 
 export async function productionPage(ctx) {
   showControls(false);
-  const VIEWS = [['board', 'Board'], ['list', 'List'], ['plan', 'Plan']];
+  const VIEWS = [['board', 'Board'], ['list', 'List'], ['plan', 'Plan'], ['cuts', 'By cut']];
   const st = { view: VIEWS.some(([k]) => k === ctx.params.view) ? ctx.params.view : 'board', week: ctx.params.week || '', vendor: ctx.params.vendor || '', product: ctx.params.product || '', cluster: ctx.params.cluster || '', icp: ctx.params.icp || '', pain: ctx.params.pain || '', closed: ctx.params.closed === '1',
     stage: ctx.params.stage || '', overdue: ctx.params.overdue === '1', q: ctx.params.q || '', group: ctx.params.group === 'vendor' ? 'vendor' : '', card: ctx.params.card || '', cols: { priority: false, ready: false } };
+  const CUT_KEYS = CUT_DIMS.map(([k]) => k);
+  const CUT_STAGES = ['assigned', 'brief_sent', 'in_production', 'in_review', 'ready', 'launched'];
+  const CUT_PRESETS = ['7', '14', '30', '90', 'mtd', 'lastmonth'];
+  const cpre = CUT_PRESETS.includes(ctx.params.preset) ? ctx.params.preset : (ctx.params.from && ctx.params.to ? '' : '30');       // a named preset is recomputed from today; only a custom range keeps its dates
+  const cr = cpre ? presetRange(cpre) : { from: ctx.params.from, to: ctx.params.to };
+  st.cuts = { by: (ctx.params.by || 'product,icp').split(',').filter((k, i, a) => CUT_KEYS.includes(k) && a.indexOf(k) === i), preset: cpre, ...cr, pipelineOnly: ctx.params.po === '1',
+    stages: ctx.params.cs ? ctx.params.cs.split(',').filter((k) => CUT_STAGES.includes(k)) : CUT_STAGES.slice(), sort: { key: ctx.params.sort || '', dir: ctx.params.dir === 'asc' ? 'asc' : 'desc' } };
+  if (!st.cuts.by.length) st.cuts.by = ['product', 'icp'];
+  let cuts = null;                                             // the By cut view (production_cuts.js)
   let data = { rows: [], vendors: [], weeks: [] };          // the List payload (GET /api/priorities/assignments); also the source of vendors, weeks and formats for every view
   let board = null;                                           // the Board payload (GET /api/priorities/board)
   let meta = null;                                            // vendors, weeks, formats (and the launch flag) when the page started on the board
@@ -64,6 +74,7 @@ export async function productionPage(ctx) {
     try { meta = await api('/api/priorities/assignments', {}, { signal: ctx.signal }); } catch (e) { abortOk(e); meta = meta || { vendors: [], weeks: [], formats: [] }; }
   }
   async function load() {
+    if (st.view === 'cuts') { board = null; await ensureMeta(); return; }
     if (st.view === 'list') {
       data = await api('/api/priorities/assignments', { week: st.week, vendor: st.vendor, include_closed: st.closed ? 1 : '' }, { signal: ctx.signal });
       meta = null;
@@ -76,7 +87,7 @@ export async function productionPage(ctx) {
   async function reload() {
     try { await load(); drawView(); if (drawer) drawer.refresh(); return true; } catch (e) { abortOk(e); say(e.message || 'Could not load.', true); return false; }
   }
-  const sync = () => navigate(href('/priorities/production', { view: st.view === 'board' ? '' : st.view, week: st.week, vendor: st.vendor, product: st.product, cluster: st.cluster, icp: st.icp, pain: st.pain, closed: st.closed ? 1 : '', stage: st.stage, overdue: st.overdue ? 1 : '', q: st.q, group: st.group, card: st.card }), { replace: true, render: false });
+  const sync = () => navigate(href('/priorities/production', { view: st.view === 'board' ? '' : st.view, week: st.week, vendor: st.vendor, product: st.product, cluster: st.cluster, icp: st.icp, pain: st.pain, closed: st.closed ? 1 : '', stage: st.stage, overdue: st.overdue ? 1 : '', q: st.q, group: st.group, card: st.card, ...(st.view === 'cuts' ? { by: st.cuts.by.join(','), preset: st.cuts.preset || 'custom', from: st.cuts.from, to: st.cuts.to, po: st.cuts.pipelineOnly ? 1 : '', cs: st.cuts.stages.length === CUT_STAGES.length ? '' : st.cuts.stages.join(','), sort: st.cuts.sort.key, dir: st.cuts.sort.key ? st.cuts.sort.dir : '' } : {}) }), { replace: true, render: false });
   const refresh = () => { sync(); drawChrome(); reload(); };
 
   // ---- saving
@@ -296,19 +307,20 @@ export async function productionPage(ctx) {
     const weeks = [...new Set([...weeksList(), ...picked(st.week)])].sort().reverse();
     const list = st.view === 'list';
     const plan = st.view === 'plan';
+    const cutv = st.view === 'cuts';
     const all = data.rows || [];
     const keys = Object.keys(STAGES).filter((k) => st.closed || (k !== 'launched' && k !== 'dropped'));
     const count = (k) => all.filter((r) => r.stage === k).length;
     const controls = filterRow(
-      seg({ name: 'View', options: VIEWS.map(([k, l]) => [k, l, `${l} view`, 'prod-view-' + k]), value: st.view, onChange: (v) => { st.view = v; root.dataset.view = v; board = null; sync(); drawChrome(); reload(); }, testid: 'prod-view' }),
+      seg({ name: 'View', options: VIEWS.map(([k, l]) => [k, l, `${l} view`, 'prod-view-' + k]), value: st.view, onChange: (v) => { st.view = v; root.dataset.view = v; board = null; cuts = null; sync(); drawChrome(); reload(); }, testid: 'prod-view' }),
       plan ? null : multiCtl({ name: 'Week', allLabel: 'All weeks', options: weeks.map((w) => [w, weekLabel(w)]), values: picked(st.week), onChange: (v) => { st.week = v.join(','); refresh(); }, testid: 'prod-week' }),
       plan ? null : multiCtl({ name: 'Vendor', allLabel: 'All vendors', options: vendorNames().map((v) => [v, v]), values: picked(st.vendor), onChange: (v) => { st.vendor = v.join(','); refresh(); }, testid: 'prod-vendor' }),
       plan ? null : multiCtl({ name: 'Product', allLabel: 'All products', options: Object.entries(PRODUCT_NAMES), values: picked(st.product), onChange: (v) => { st.product = v.join(','); sync(); if (list) drawView(); else reload(); drawChrome(); }, testid: 'prod-product-filter' }),
-      ...[['Cluster', 'cluster', 'cluster', 'All clusters', 'prod-cluster-filter'], ['ICP', 'icp', 'icp', 'All ICPs', 'prod-icp-filter'], ['Pain point', 'pain_point', 'pain', 'All pain points', 'prod-pain-filter']].map(([name, field, key, all, tid]) => (plan ? null
+      ...[['Cluster', 'cluster', 'cluster', 'All clusters', 'prod-cluster-filter'], ['ICP', 'icp', 'icp', 'All ICPs', 'prod-icp-filter'], ['Pain point', 'pain_point', 'pain', 'All pain points', 'prod-pain-filter']].map(([name, field, key, all, tid]) => (plan || cutv ? null
         : multiCtl({ name, allLabel: all, options: facetValues(field, st[key]).map((v) => [v, v]), values: picked(st[key]), onChange: (v) => { st[key] = v.join(','); sync(); drawView(); drawChrome(); }, testid: tid }))),
-      plan ? null : checkCtl({ label: 'Overdue only', checked: st.overdue, onChange: (v) => { st.overdue = v; sync(); drawView(); }, testid: 'prod-overdue-only' }),
-      plan ? null : searchCtl({ name: 'Search', value: st.q, placeholder: 'Search concepts', onInput: (v) => { st.q = v.trim(); sync(); drawView(); }, testid: 'prod-search' }),
-      plan ? null : checkCtl({ label: 'Show launched and dropped', checked: st.closed, onChange: (v) => { st.closed = v; if (!v && (st.stage === 'launched' || st.stage === 'dropped')) st.stage = ''; refresh(); }, testid: 'prod-closed' }),
+      plan || cutv ? null : checkCtl({ label: 'Overdue only', checked: st.overdue, onChange: (v) => { st.overdue = v; sync(); drawView(); }, testid: 'prod-overdue-only' }),
+      plan || cutv ? null : searchCtl({ name: 'Search', value: st.q, placeholder: 'Search concepts', onInput: (v) => { st.q = v.trim(); sync(); drawView(); }, testid: 'prod-search' }),
+      plan || cutv ? null : checkCtl({ label: 'Show launched and dropped', checked: st.closed, onChange: (v) => { st.closed = v; if (!v && (st.stage === 'launched' || st.stage === 'dropped')) st.stage = ''; refresh(); }, testid: 'prod-closed' }),
       st.view === 'board' ? checkCtl({ label: 'Group by vendor', checked: st.group === 'vendor', onChange: (v) => { st.group = v ? 'vendor' : ''; sync(); drawView(); }, testid: 'prod-board-group' }) : null,
       list ? seg({ name: 'Status', options: [['', `All ${all.length}`, 'Every concept in the list', 'prod-stagebtn-all'], ...keys.map((k) => [k, `${STAGES[k]} ${count(k)}`, `Only concepts at: ${STAGES[k]}`, 'prod-stagebtn-' + k])], value: st.stage, onChange: (v) => { st.stage = v; sync(); drawChrome(); drawView(); }, testid: 'prod-stage-filter' }) : null);
     const links = h('details', { class: 'prod-links', 'data-testid': 'prod-links' }, h('summary', null, `Vendor links (${vendorNames().length})`),
@@ -318,7 +330,7 @@ export async function productionPage(ctx) {
         h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-copy-link', 'aria-label': 'Copy link for ' + v, onclick: () => vendorLink(v, false) }, 'Copy link'),
         h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-reset-link', 'aria-label': 'Reset link for ' + v, onclick: () => vendorLink(v, true) }, 'Reset link')))));
     body.replaceChildren(
-      pageHeader({ title: 'Production', description: 'Concepts given to vendors to make, by week. Spend and return come from the Creative Tracker once an ad is launched.', testid: 'prod-head',
+      pageHeader({ title: 'Creative Pipeline', description: 'Concepts given to vendors to make, by week, and the spend and return behind each cut of them. By cut groups the pipeline by product, market cluster, ICP or pain point.', testid: 'prod-head',
         actions: [h('button', { type: 'button', class: 'btn primary small', 'data-testid': 'prod-new-ticket', onclick: newTicket }, 'New ticket'), h('a', { class: 'btn small', href: href('/priorities', {}), 'data-testid': 'prod-back' }, 'Back to Priorities')] }),
       controls, h('div', { class: 'prod-team', 'data-testid': 'prod-team' }, loadSlot, links), msg, viewHost);
     drawLoad();
@@ -344,8 +356,17 @@ export async function productionPage(ctx) {
     for (const l of viewHost.querySelectorAll('.prod-board-list')) { const t = lists.get(l.dataset.status + '|' + (l.dataset.lane || '')); if (t) l.scrollTop = t; }
     if (window.scrollY !== y) window.scrollTo(window.scrollX, y);
   }
+  function drawCuts() {
+    if (!cuts) {
+      cuts = cutsView({ host: viewHost, st: st.cuts, filters: () => ({ week: st.week, vendor: st.vendor, product: st.product }), signal: ctx.signal, onState: sync, say });
+      return cuts.init().catch(() => {});
+    }
+    return cuts.refresh().catch(() => {});
+  }
   function drawView() {
-    if (st.view === 'list') drawList();
+    if (st.view !== 'cuts') cuts = null;
+    if (st.view === 'cuts') drawCuts();
+    else if (st.view === 'list') drawList();
     else if (st.view === 'plan') drawPlan();
     else {
       keepScroll(drawBoard);
@@ -434,7 +455,7 @@ export async function productionPage(ctx) {
   drawChrome();
   drawView();
   ctx.mount(root);
-  document.title = 'Production · Lonvera';
+  document.title = 'Creative Pipeline · Lonvera';
   if (st.card) { const c = findCard(st.card); if (c) openCard(c); else { st.card = ''; sync(); } }
 }
 

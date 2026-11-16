@@ -39,7 +39,7 @@ export function assignControls({ d, selected, keyOf, refresh }) {
   const paintCell = (c) => { const t = inProductionText(forRow(c.r)); c.el.textContent = st.failed ? '' : (t || '–'); c.el.title = t ? 'Open assignments for this concept. Full history is in the row detail.' : 'Not assigned to a vendor yet'; };
   function paintHist(x) {
     const list = forRow(x.r).sort((a, b) => (a.for_week < b.for_week ? 1 : a.for_week > b.for_week ? -1 : b.id - a.id));
-    if (st.rows === null) { x.body.replaceChildren(h('p', { class: 'pri-k' }, st.failed ? 'Production history could not be loaded.' : 'Loading production history…')); return; }
+    if (st.rows === null) { x.body.replaceChildren(h('p', { class: 'pri-k' }, st.failed ? 'Creative Pipeline history could not be loaded.' : 'Loading Creative Pipeline history…')); return; }
     if (!list.length) { x.body.replaceChildren(h('p', { class: 'pri-k', 'data-testid': 'pri-prod-none' }, 'Not assigned to a vendor yet.')); return; }
     const row = (a) => {
       const ids = a.tracker_concept_ids || [];
@@ -87,7 +87,7 @@ export function assignControls({ d, selected, keyOf, refresh }) {
     const skippedNote = all.length > rows.length ? h('p', { class: 'pri-k' }, `${all.length - rows.length} selected row${all.length - rows.length === 1 ? ' is' : 's are'} ads without a line, not a concept, and will not be assigned.`) : null;
     const form = h('form', { method: 'dialog', class: 'pri-dform', onsubmit: (e) => { e.preventDefault(); if (finished === 'sent') done(); else submit(); } },
       h('h2', { class: 'pri-dtitle', id: 'pri-as-title' }, 'Assign to vendor'),
-      h('p', { class: 'pri-dnote', 'data-testid': 'pri-as-note-count' }, `${rows.length} concept${rows.length === 1 ? '' : 's'} selected. They stay in the list; this adds each to the Production page for the vendor and week below.`), skippedNote,
+      h('p', { class: 'pri-dnote', 'data-testid': 'pri-as-note-count' }, `${rows.length} concept${rows.length === 1 ? '' : 's'} selected. They stay in the list; this adds each to the Creative Pipeline page for the vendor and week below.`), skippedNote,
       h('label', { class: 'pri-dlabel' }, h('span', { class: 'pri-k' }, 'Vendor'), vendor), h('label', { class: 'pri-dlabel' }, h('span', { class: 'pri-k' }, 'Week of'), week),
       h('label', { class: 'pri-dlabel' }, h('span', { class: 'pri-k' }, 'Format (optional)'), format),
       h('label', { class: 'pri-dlabel' }, h('span', { class: 'pri-k' }, 'Note (optional)'), note), out,
@@ -109,7 +109,7 @@ export function assignControls({ d, selected, keyOf, refresh }) {
         out.replaceChildren(
           h('p', { 'data-testid': 'pri-as-created' }, `${made} concept${made === 1 ? '' : 's'} assigned to ${vendor.value} for the ${weekOf(week.value)}.`),
           skipped.length ? h('div', { 'data-testid': 'pri-as-skipped' }, h('p', null, `${skipped.length} skipped:`), h('ul', null, skipped.map((s) => h('li', null, `${labelOf(s.key)}: ${s.reason}.`)))) : null,
-          h('p', null, h('a', { href: href('/priorities/production', { week: week.value }), 'data-testid': 'pri-as-open-production' }, 'Open Production')));
+          h('p', null, h('a', { href: href('/priorities/production', { week: week.value }), 'data-testid': 'pri-as-open-production' }, 'Open Creative Pipeline')));
         finished = 'sent';
         ok.textContent = 'Close'; ok.disabled = false; ok.type = 'submit'; cancel.hidden = true;
         [vendor, week, format, note].forEach((el) => { el.disabled = true; });
@@ -137,6 +137,6 @@ export function assignControls({ d, selected, keyOf, refresh }) {
     hidden: (r) => st.hide && assignedNow(r),
     text: (r) => inProductionText(forRow(r)),
     cell(r) { const c = { r, el: h('span', { class: 'pri-inprod', 'data-testid': 'pri-inprod' }) }; cells.add(c); paintCell(c); return c.el; },
-    history(r) { const x = { r, body: h('div', null) }; hists.add(x); paintHist(x); return h('section', { class: 'pri-card pri-prodhist', 'data-testid': 'pri-prod-history', 'aria-label': 'Production' }, h('h4', { class: 'pri-h' }, 'Production'), x.body); },
+    history(r) { const x = { r, body: h('div', null) }; hists.add(x); paintHist(x); return h('section', { class: 'pri-card pri-prodhist', 'data-testid': 'pri-prod-history', 'aria-label': 'Creative Pipeline' }, h('h4', { class: 'pri-h' }, 'Creative Pipeline'), x.body); },
   };
 }

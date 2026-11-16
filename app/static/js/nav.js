@@ -20,10 +20,10 @@ export const SECTIONS = [
     ],
   },
   {
-    key: 'creative', label: 'Creative', hint: 'What to make: weekly priorities, the production board and test-to-scale decisions',
+    key: 'creative', label: 'Creative', hint: 'What to make: weekly priorities, the creative pipeline and test-to-scale decisions',
     pages: [
       { key: 'priorities', label: 'Priorities', href: '/priorities', testid: 'nav-priorities', hint: 'What to make next, by product and tag' },
-      { key: 'production', label: 'Production', href: '/priorities/production', testid: 'nav-production', hint: 'Concepts assigned to vendors, and where each stands' },
+      { key: 'production', label: 'Creative Pipeline', href: '/priorities/production', testid: 'nav-production', hint: 'Concepts assigned to vendors, and where each stands' },
       { key: 'competitors', label: 'Competitors', href: '/competitors', testid: 'nav-competitors', hint: 'What competitors run on Meta, week by week' },
       { key: 'test-to-scale', label: 'Test to scale', href: '/promotions', testid: 'nav-test-to-scale', hint: 'Which testing creatives to scale or kill' },
     ],

@@ -67,7 +67,7 @@ def test_table_renders_with_plain_columns_and_open_rows_only(page):
     assert ids == ["3", "2", "1"]                                    # newest week first; the launched row 4 is hidden until Show launched and dropped
     assert stage(page, 1) == "Assigned" and stage(page, 2) == "Creative delivered"
     assert "Hair Loss" in row(page, 2).locator("[data-testid=prod-concept]").text_content()
-    assert page.locator("h1").text_content() == "Production"
+    assert page.locator("h1").text_content() == "Creative Pipeline"
     assert "—" not in page.locator("[data-testid=prod-page]").text_content()          # no em dashes in UI text
 
 
@@ -385,11 +385,11 @@ def test_no_sideways_page_scroll_at_375px_with_a_row_open(browser, base_url, pat
 # ---------------------------------------------------------------------------------------------------------------- shared header and filters, status board, ready / spend / return columns
 def test_page_uses_the_shared_header_and_filter_row_and_new_names(page):
     goto(page)
-    assert page.locator("[data-testid=prod-head].pagehead .titleline h1").text_content() == "Production"
+    assert page.locator("[data-testid=prod-head].pagehead .titleline h1").text_content() == "Creative Pipeline"
     assert page.locator(".pagefilters [data-testid=prod-week]").count() == 1 and page.locator(".pagefilters [data-testid=prod-vendor]").count() == 1
     assert page.locator(".pagefilters [data-testid=prod-closed]").count() == 1
     assert page.locator("[data-testid=prod-back]").text_content().strip() == "Back to Priorities"
-    assert page.title() == "Production · Lonvera"
+    assert page.title() == "Creative Pipeline · Lonvera"
     assert "Production board" not in page.locator("[data-testid=prod-page]").text_content()
 
 

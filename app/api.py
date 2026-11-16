@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, g, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -880,6 +880,15 @@ def priorities_board():
     """The Production board: ?week= (snaps to Monday) &vendor= &product= &closed=1 -> {columns: [{status, label, count, cards}], dropped (with closed=1), capacity: [{vendor, per_week, open, week}], week, generated_at}.
     Cards are the assignment JSON without history, high priority first, then position. See app/priorities_assign.py (board)."""
     return jsonify(pas.board(db.get_conn(), week=_arg("week"), vendor=_arg("vendor"), product=_arg("product"), closed=request.args.get("closed") in ("1", "true")))
+
+
+@bp.get("/api/priorities/cuts")
+def priorities_cuts():
+    """Creative Pipeline by cut: ?group=product,icp (any ordered subset of product, cluster, icp, pain_point) &from= &to= (YYYY-MM-DD, default the last 30 loaded days) &week= &vendor= (pipeline side only) &product= (both sides)
+    -> {group, from, to, rows: [{labels, stages, concepts, stats}], totals, stages, dims, basis, warning}. Stage counts are production assignments by board status; stats are the Meta spend and Upstack new-customer return of
+    ads tagged to the cut in the window. See app/priorities_cuts.py."""
+    prods = [p for p in (_arg("product") or "").split(",") if p.strip()]
+    return jsonify(pcu.cuts(db.get_conn(), pcu.parse_group(_arg("group")), _arg("from"), _arg("to"), week=_arg("week"), vendor=_arg("vendor"), products=[p.strip() for p in prods] or None))
 
 
 @bp.get("/api/priorities/vendor-capacity")

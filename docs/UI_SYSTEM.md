@@ -17,7 +17,7 @@ Second row: the pages of the active section as tabs. The active section and tab 
 | Performance | Daily story | `/daily` (`?day=YYYY-MM-DD`) | `pages/daily.js` | the day's short story and every table behind it; `docs/DAILY_STORY.md` |
 | Performance | Email | `/email` | `pages/email.js` | Klaviyo email and text messages by flow, campaign and over time; `docs/EMAIL.md` |
 | Creative | Priorities | `/priorities`, `?view=<token>`, `/priorities/v/<token>` | `pages/priorities*.js` | |
-| Creative | Production | `/priorities/production` (`?view=board|list|plan`, `?card=<id>`) | `pages/priorities_production.js`, `production_board.js`, `production_plan.js`, `production_drawer.js`, `production_dnd.js`, `production_common.js` | vendor page `/priorities/vendor/<token>` is public and has no app navigation |
+| Creative | Creative Pipeline | `/priorities/production` (`?view=board|list|plan|cuts`, `?card=<id>`; By cut takes `by=product,icp`, `preset=7|14|30|90|mtd|lastmonth|custom`, `from`, `to`, `po=1`, `cs=<status list>`, `sort`, `dir`) | `pages/priorities_production.js`, `production_cuts.js`, `production_board.js`, `production_plan.js`, `production_drawer.js`, `production_dnd.js`, `production_common.js` | vendor page `/priorities/vendor/<token>` is public and has no app navigation |
 | Creative | Test to scale | `/promotions` | `promotions.js`, `scale_views.js` | |
 | Plan | Projections | `/projection[/<module>]` | separate page (`projection.html`) | same top row; its second row is the module tabs and the scenario control |
 | (search box) | Tag lookup | `/lookup?q=...` | `pages/lookup.js` | the box is in the top bar on every page; `/lookup` still works on its own |
@@ -26,14 +26,14 @@ Every old URL keeps working. Pages that are not tabs (ad, product, campaign deta
 
 ### Naming (one name per concept)
 
-Overview, Meta, Google, Campaigns, Trends, Daily story, Email, Priorities, Production, Test to scale, Projections, Tag lookup. The nav labels, page titles (`h1`), `document.title` (`<Page> · Lonvera`), breadcrumbs and in-page links all use these names now. Retired names, which must not come back in page text:
+Overview, Meta, Google, Campaigns, Trends, Daily story, Email, Priorities, Creative Pipeline, Test to scale, Projections, Tag lookup. The nav labels, page titles (`h1`), `document.title` (`<Page> · Lonvera`), breadcrumbs and in-page links all use these names now. Retired names, which must not come back in page text:
 
 | Retired | Use |
 |---|---|
 | All platforms | Overview |
 | All campaigns | Campaigns |
 | Creative priorities, Back to Creative priorities | Priorities, Back to Priorities |
-| Production board, Production history (link and block heading) | Production |
+| Production, Production board, Production history (nav label, page title, link and block heading; the URL stays /priorities/production) | Creative Pipeline |
 | Marketing metrics (title, crumb root, login heading) | Lonvera |
 
 Legacy names survive only where a saved view or URL stores them (priorities saved views store the old Action names; the legacy-label mapping stays), in developer comments, and in the Python docstrings.
@@ -84,7 +84,7 @@ One row per page in `PAGES`:
 | `parent({ path, p, G })` | where Back goes with no in-app history (`p` = URL params, `G` = the global filter params to carry along) |
 | `defaults`, `skipDefaultsWhen(p)` | default URL params (Test to scale opens on `window=30d`) |
 
-A page that draws its own controls (Trends, Priorities, Production, Lookup) declares `filters: []` and builds them with `js/ui/pagefilters.js`.
+A page that draws its own controls (Trends, Priorities, Creative Pipeline, Lookup) declares `filters: []` and builds them with `js/ui/pagefilters.js`.
 
 ## 3. Page header and filter bar
 
@@ -170,7 +170,7 @@ Segmented controls and chips always carry `aria-pressed="true|false"`. Buttons t
 | `email.css` | Email | `eml-` |
 | `lookup.css` | Tag lookup | `tl-` (page and result cards) |
 | `priorities.css`, `priorities_groups.css` | Priorities | `pri-`, saved views, detail panel, grouped table, sticky bars |
-| `production.css` | Production | `prod-`, vendor page, launch dialog |
+| `production.css` | Creative Pipeline | `prod-`, vendor page, launch dialog |
 
 The files load in the order listed in `app.css`; the cascade follows it. The old "contrast pass" override block of `/priorities` is folded into the rules it overrode (27 selectors); what could not move without changing the cascade against print and media rules is now ordinary rules under "priorities: cards, tiles, chips, hit rate, totals" in `priorities.css`. Computed styles were compared element by element before and after on 15 page states at 1440px and 375px: no differences.
 
