@@ -25,13 +25,16 @@ function deltaClass(k, cur, prev) {
   return ((LOWER_BETTER.has(k) ? ch < 0 : ch > 0)) ? 'mr-up' : 'mr-down';
 }
 
-function metricTable(t) {
+function metricTable(t, vendor) {
   const tops = [];
-  for (const c of t.cols) { if (tops.length && tops[tops.length - 1][0] === c.group) tops[tops.length - 1][1] += 1; else tops.push([c.group, 1]); }
-  const head1 = h('tr', null, h('th'), tops.map(([g, n]) => h('th', { colspan: n, class: 'mr-grp' }, g)));
-  const head2 = h('tr', null, h('th'), t.cols.map((c) => h('th', { class: 'mr-win' }, c.window)));
-  const body = t.keys.map((k) => h('tr', null, h('td', { class: 'mr-lab' }, ROWS[k][0]),
-    t.cols.map((c) => h('td', { class: 'mr-n ' + (c.p ? deltaClass(k, c.m[k], c.p[k]) : '') }, ROWS[k][1](c.m[k])))));
+  const gi = t.cols.map((c) => { if (!tops.length || tops[tops.length - 1][0] !== c.group) tops.push([c.group, 0]); tops[tops.length - 1][1] += 1; return tops.length - 1; });
+  // class hooks per column: alternating tint, left/right box edges, accent for the vendor's own group
+  const gcls = t.cols.map((c, i) => `mr-g${gi[i] % 2}` + (i === 0 || gi[i - 1] !== gi[i] ? ' mr-gs' : '') + (i === t.cols.length - 1 || gi[i + 1] !== gi[i] ? ' mr-ge' : '') + (vendor && c.group === vendor ? ' mr-gv' : ''));
+  const first = []; t.cols.forEach((c, i) => { if (first[gi[i]] === undefined) first[gi[i]] = i; });
+  const head1 = h('tr', null, h('th'), tops.map(([g, n], k) => h('th', { colspan: n, class: 'mr-grp ' + gcls[first[k]].replace(' mr-ge', '') + (gcls[first[k] + n - 1].includes('mr-ge') ? ' mr-ge' : '') }, g)));
+  const head2 = h('tr', null, h('th'), t.cols.map((c, i) => h('th', { class: 'mr-win ' + gcls[i] }, c.window)));
+  const body = t.keys.map((k, r) => h('tr', { class: r === t.keys.length - 1 ? 'mr-last' : '' }, h('td', { class: 'mr-lab' }, ROWS[k][0]),
+    t.cols.map((c, i) => h('td', { class: 'mr-n ' + gcls[i] + ' ' + (c.p ? deltaClass(k, c.m[k], c.p[k]) : '') }, ROWS[k][1](c.m[k])))));
   return h('table', { class: 'mr-mt' }, h('thead', null, head1, head2), h('tbody', null, body));
 }
 
@@ -68,7 +71,7 @@ export async function madreReviewPage(ctx) {
       h('div', { class: 'mr-big' }, s.big.map(([lab, v, f]) => h('div', null, h('b', null, FMT[f](v)), h('span', null, lab)))), h('p', { class: 'mr-sub' }, s.foot || ''))),
     week: (s) => body(s, h('div', { class: 'mr-cols3' }, s.cards.map((c) => h('div', { class: 'mr-card' }, ck(c.label), h('b', null, c.value), h('p', null, c.text)))),
       h('ul', { class: 'mr-list' }, s.bullets.map((b) => h('li', null, b)))),
-    table: (s) => body(s, metricTable(s.table), foot(s.foot), s.vendors ? vendorTable(s.vendors) : null),
+    table: (s) => body(s, metricTable(s.table, d.vendor), foot(s.foot), s.vendors ? vendorTable(s.vendors) : null),
     ads: (s) => body(s, s.ads.length ? h('div', { class: 'mr-tiles' }, s.ads.map((k) => adTile(k))) : h('p', { class: 'mr-empty' }, s.empty), foot(s.foot)),
     pockets: (s) => body(s, pocketTable(s), foot(s.foot)),
     board: (s) => body(s, s.columns.length ? h('div', { class: 'mr-board', style: { gridTemplateColumns: `repeat(${s.columns.length}, minmax(0, 1fr))` } }, s.columns.map((c) => h('div', { class: 'mr-stcol' }, ck(c.label),
