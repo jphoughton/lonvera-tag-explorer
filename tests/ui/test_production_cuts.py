@@ -276,3 +276,70 @@ def test_adding_by_hand_and_pipeline_share_metric_and_media_cut(page):
     page.locator("[data-testid=prod-cuts-metrics] > summary").click()
     page.locator("[data-testid=prod-cuts-metric-pipeline_share]").uncheck()
     assert "% of concepts in pipeline" not in heads(page)
+
+
+def test_popup_shows_top_hooks_and_a_hook_under_each_ad(page):
+    goto(page)
+    page.locator("[data-testid=prod-cuts-row]").first.click()
+    page.wait_for_selector("[data-testid=prod-cutads-hooks]")
+    assert page.locator("[data-testid=prod-cutads-hookrow]").count() == 3
+    assert page.locator("[data-testid=prod-cutads-hook]").first.text_content().startswith("Hook line")
+
+
+def test_metric_cells_are_colour_graded_against_the_total_row(page):
+    goto(page)
+    grades = {c for c in page.locator("[data-testid=prod-cuts-row] td[data-grade]").evaluate_all("els => els.map(e => e.dataset.grade)")}
+    assert grades <= {"g2", "g1", "g0", "r1", "r2"} and grades
+    assert page.locator("[data-testid=prod-cuts-total] td[data-grade]").count() == 0                      # the Total row is the baseline: never coloured
+    assert "Colours compare each cut" in page.locator("[data-testid=prod-cuts-legend]").text_content()
+
+
+def test_grade_function_rules():
+    # pure rule check through the page's own module would need a browser; the rule is mirrored here so a change to it is a visible change to this test
+    def grade(dir_, value, base, spend):
+        if spend < 250 or not base:
+            return ""
+        r = value / base if dir_ == 1 else (base / value if value > 0 else 0)
+        return "g2" if r >= 1.25 else "g1" if r >= 1.05 else "g0" if r >= 0.95 else "r1" if r >= 0.75 else "r2"
+    assert grade(1, 0.9, 0.5, 1000) == "g2" and grade(1, 0.5, 0.5, 1000) == "g0" and grade(-1, 80, 100, 1000) == "g2" and grade(-1, 200, 100, 1000) == "r2" and grade(1, 0.9, 0.5, 100) == ""
+
+
+def test_metrics_can_be_reordered_by_keyboard_and_by_drag(page):
+    page.set_viewport_size({"width": 1440, "height": 1300})
+    goto(page)
+    before = heads(page)
+    assert before.index("Spend") < before.index("NC revenue")
+    page.locator("[data-testid=prod-cuts-metrics] > summary").click()
+    grip = page.locator("[data-testid=prod-cuts-metric-grip-spend]")
+    grip.focus()
+    page.keyboard.press("ArrowDown")
+    page.wait_for_function("() => { const h = [...document.querySelectorAll('[data-testid=prod-cuts-table] thead th')].map(t => t.textContent.trim()); return h.indexOf('Spend') > h.indexOf('NC revenue'); }")
+    assert "mo=" in page.url
+    src = page.locator("[data-testid=prod-cuts-metric-grip-aov]")
+    dst = page.locator("[data-testid=prod-cuts-metric-grip-live_ads]")
+    a, b = src.bounding_box(), dst.bounding_box()
+    page.mouse.move(a["x"] + 4, a["y"] + 8)
+    page.mouse.down()
+    page.mouse.move(a["x"] + 4, a["y"] - 30, steps=5)
+    page.mouse.move(b["x"] + 4, b["y"] + 1, steps=10)
+    page.mouse.up()
+    page.wait_for_function("() => { const h = [...document.querySelectorAll('[data-testid=prod-cuts-table] thead th')].map(t => t.textContent.trim()); return h.indexOf('AOV') < h.indexOf('Live concepts'); }")
+    page.reload()
+    page.wait_for_selector("[data-testid=prod-cuts-table]")
+    h2 = heads(page)
+    assert h2.index("AOV") < h2.index("Live concepts") and h2.index("Spend") > h2.index("NC revenue")      # the order survives a reload (it is in the address)
+
+
+def test_save_load_and_delete_a_view(page):
+    goto(page, "&by=icp")
+    page.fill("[data-testid=prod-cuts-view-name]", "ICP view")
+    page.locator("[data-testid=prod-cuts-view-save]").click()
+    page.wait_for_function("() => document.querySelector('[data-testid=prod-cuts-view-msg]').textContent.includes('Saved ICP view')")
+    goto(page, "&by=product,cluster")
+    assert heads(page)[0] == "Product"
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-cuts-view-select] option').length === 2")
+    page.select_option("[data-testid=prod-cuts-view-select]", label="ICP view")
+    page.wait_for_function("() => document.querySelector('[data-testid=prod-cuts-table] thead th:nth-child(2)').textContent.includes('ICP')")
+    assert heads(page)[0] == "ICP"
+    page.locator("[data-testid=prod-cuts-view-delete]").click()
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-cuts-view-select] option').length === 1")

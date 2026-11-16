@@ -1625,6 +1625,14 @@ rel("public.creative_backlog", group="creative", kind="table",
           "status": "needs_brief (waiting for a partner and a brief) or assigned (a ticket was created).", "assignment_id": "creative_priorities_assignments.id of the ticket created from this item; NULL until assigned. No foreign key.",
           "created_by": "Signed-in user who added the item.", "created_at": "When the item was added.", "updated_at": "When the item last changed."})
 
+rel("public.creative_cut_views", group="creative", kind="table",
+    purpose="Saved views of the Creative Pipeline By cut page: a name and the page state (cuts, dates, filters, metrics and their order, status columns, quick view, sort), shared by the team.",
+    grain="one row per saved view (the name is unique, any case)", source="the Creative Pipeline By cut view, via /api/priorities/cut-views (app/priorities_cut_views.py)",
+    refresh="on demand (a person saves, replaces or deletes a view)", coverage="from the day migration 270 was deployed",
+    caveats=["state is the page's own JSON; the server keeps only the keys the page knows and caps it at 8 KB."],
+    cols={"id": "Primary key (bigserial).", "name": "The view's name (1 to 80 characters; unique ignoring case; saving under an existing name replaces that view).", "state": "The page state as JSON: by, preset, from, to, f, metrics, order, stages, quick, sort, pipelineOnly, product, vendor, week.",
+          "created_by": "Signed-in user (or key:<name>) who first saved the view.", "created_at": "When the view was first saved.", "updated_at": "When the view was last replaced."})
+
 # ---- daily story (migration 248)
 rel("public.daily_story_metrics", group="story", kind="table",
     purpose="The metric registry of the daily story: every daily metric the story can use, its basis, unit, formula and the analytics view and columns it comes from.",

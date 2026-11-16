@@ -560,3 +560,26 @@ body.prod-drawer-open { overflow: hidden; }
 .prod-bl-bar { margin: 6px 0; }
 .prod-bl-table select, .prod-bl-table td input[type=text] { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); max-width: 100%; }
 .prod-bl-missing { border-color: var(--bad) !important; background: var(--bad-bg) !important; }
+
+/* By cut: colour grading of the metric cells, and hooks in the ads popup */
+.prod-heat-g2 { background: color-mix(in srgb, var(--good) 28%, var(--bg)); }
+.prod-heat-g1 { background: color-mix(in srgb, var(--good) 13%, var(--bg)); }
+.prod-heat-g0 { background: transparent; }
+.prod-heat-r1 { background: color-mix(in srgb, var(--bad) 12%, var(--bg)); }
+.prod-heat-r2 { background: color-mix(in srgb, var(--bad) 26%, var(--bg)); }
+.prod-legend-chip { display: inline-block; margin: 0 4px 0 0; padding: 1px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; }
+.prod-cuts-legend { margin: 6px 0 2px; }
+.prod-cutads-hook { flex: 1 1 100%; font-size: 12px; font-style: italic; color: var(--muted); font-weight: 400; }
+.prod-cutads-hooktext { white-space: normal; max-width: 70ch; }
+.prod-cutads-hookline { font-weight: 600; margin-right: 4px; }
+
+/* By cut: saved views bar and the reorderable metric list */
+.prod-cuts-views { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 6px 0 4px; }
+.prod-cuts-views select, .prod-cuts-views input[type=text] { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); min-width: 170px; }
+.prod-ordlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.prod-ordrow { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+.prod-ordrow-drag { opacity: .4; }
+.prod-ordgrip { background: none; border: 0; padding: 4px 2px; cursor: grab; touch-action: none; }
+.prod-ordgrip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.prod-orddrop { height: 3px; margin: 0; border-radius: 2px; background: var(--accent); }
+.prod-colpanel { max-height: 78vh; overflow: auto; }

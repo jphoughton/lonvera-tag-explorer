@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, g, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_cut_views as pcv, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -893,7 +893,7 @@ def priorities_cuts():
 
 @bp.get("/api/priorities/cuts/ads")
 def priorities_cut_ads():
-    """The ads behind one cut (the popup on a By cut row): ?product=<slug> &cluster= &icp= &pain_point= &vendor= (any subset; '(none)' = untagged) &from= &to= -> {cut, from, to, window: [ad], top: [ad], warning}.
+    """The ads behind one cut (the popup on a By cut row): ?product=<slug> &cluster= &icp= &pain_point= &vendor= (any subset; '(none)' = untagged) &from= &to= -> {cut, from, to, window: [ad], top: [ad], top_hooks: [{hook, name, spend, nc_roas, ...}], warning}. Each ad carries its hook (spoken first line + on-image text) when one is stored; top_hooks = the 5 best NC ROAS hooks among ads that spent $250 or more in the dates.
     window = unique ads tagged to the cut that spent in the dates (top 60 by spend) with Meta and Upstack new-customer numbers; top = the 5 biggest spenders since launch (Meta basis). See app/priorities_cuts.py (cut_ads)."""
     return jsonify(pcu.cut_ads(db.get_conn(), {d: _arg(d) for d in pcu.DIMS}, _arg("from"), _arg("to")))
 
@@ -946,6 +946,30 @@ def priorities_backlog_assign():
     if blocked is not None:
         return blocked
     return jsonify(pbl.assign(db.get_conn(), _json_body(), auth.current_user())), 201
+
+
+@bp.get("/api/priorities/cut-views")
+def priorities_cut_views():
+    """Saved views of the By cut page: -> {views: [{id, name, state, created_by, created_at, updated_at}], ready}. See app/priorities_cut_views.py."""
+    return jsonify(pcv.list_views(db.get_conn()))
+
+
+@bp.post("/api/priorities/cut-views")
+def priorities_cut_view_save():
+    """Save (or replace by name) a view: {name, state: {by, preset, from, to, f, metrics, order, stages, quick, sort, pipelineOnly, product, vendor, week}} -> the view. Signed-in users and team keys."""
+    blocked = _backlog_guard()
+    if blocked is not None:
+        return blocked
+    return jsonify(pcv.save_view(db.get_conn(), _json_body(), auth.current_user())), 201
+
+
+@bp.delete("/api/priorities/cut-views/<int:view_id>")
+def priorities_cut_view_delete(view_id: int):
+    """Delete a saved view. Signed-in users and team keys."""
+    blocked = _backlog_guard()
+    if blocked is not None:
+        return blocked
+    return jsonify(pcv.delete_view(db.get_conn(), view_id))
 
 
 @bp.get("/api/priorities/vendor-capacity")

@@ -223,6 +223,7 @@ Everything on the Creative Pipeline page is on the HTTP API, so an agent or scri
 | Fix or move an item | `PATCH /api/priorities/backlog/<id>` (product, cluster, icp, pain_point, media_type, for_week, note, title; the five tags are never empty) |
 | Remove a waiting item | `DELETE /api/priorities/backlog/<id>` |
 | Assign a partner and a brief (creates the board tickets) | `POST /api/priorities/backlog/assign` `{ids, vendor, brief_url and / or brief}` |
+| Saved By cut views (team-shared) | `GET /api/priorities/cut-views`; `POST /api/priorities/cut-views` `{name, state}` (saving under an existing name replaces it); `DELETE /api/priorities/cut-views/<id>` |
 | Set image or video on a ticket | `PATCH /api/priorities/assignments/<id>` `{media_type: image or video}` (also accepted by `POST /api/priorities/tickets`) |
 
 ## 6. Production board (`/priorities` and `/priorities/production`)

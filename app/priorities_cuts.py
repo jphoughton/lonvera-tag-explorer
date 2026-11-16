@@ -271,6 +271,14 @@ LINKS_SQL = """
 SELECT fc.family_key, fc.story_url, (SELECT tr.id FROM tracker_rows tr WHERE tr.family_key = fc.family_key ORDER BY tr.sheet_row NULLS LAST, tr.id LIMIT 1) AS tracker_row_id
 FROM family_content fc WHERE fc.family_key = ANY(%s)
 """
+HOOKS_SQL = """
+SELECT DISTINCT ON (tr.family_key) tr.family_key, h.hook
+FROM tracker_rows tr JOIN ad_hooks h ON h.tracker_row_id = tr.id
+WHERE tr.family_key = ANY(%s) AND tr.deleted_at IS NULL AND btrim(COALESCE(h.hook, '')) <> ''
+ORDER BY tr.family_key, tr.sheet_row NULLS LAST, tr.id
+"""
+HOOK_MIN_SPEND = 250.0                       # an ad must have spent this much in the dates before its hook can be called a top performer
+HOOKS_TOP = 5
 LIVE_KEYS_SQL = "SELECT DISTINCT m.tracker_family_key AS k FROM ad_daily d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key WHERE d.spend > 0 AND d.day >= (SELECT max(day) FROM ad_daily) - 1 AND m.tracker_family_key = ANY(%s)"
 
 
@@ -279,7 +287,7 @@ def cut_ads(conn, cut: dict, raw_from: str | None, raw_to: str | None) -> dict:
     new-customer numbers and a live flag; top = the ADS_TOP highest spenders of the cut since launch (Meta basis, whatever the dates). An ad = one tracker family, copies counted once."""
     frm, to = window(conn, raw_from, raw_to)
     flt, fp = _cut_filter(cut)
-    out = {"cut": {d: cut.get(d) for d in DIMS if cut.get(d) not in (None, "")}, "from": frm.isoformat(), "to": to.isoformat(), "window": [], "top": [], "window_shown": 0, "warning": None}
+    out = {"cut": {d: cut.get(d) for d in DIMS if cut.get(d) not in (None, "")}, "from": frm.isoformat(), "to": to.isoformat(), "window": [], "top": [], "top_hooks": [], "window_shown": 0, "warning": None}
     try:
         wrows = conn.execute(WINDOW_ADS_SQL.format(flt=flt), (frm, to, *fp, ADS_WINDOW_MAX)).fetchall()
         trows = conn.execute(TOP_ADS_SQL.format(flt=flt), (*fp, ADS_TOP)).fetchall()
@@ -291,6 +299,11 @@ def cut_ads(conn, cut: dict, raw_from: str | None, raw_to: str | None) -> dict:
         conn.rollback()
         out["warning"] = "The ads behind this cut could not be read here (a table is missing)."
         return out
+    try:
+        hooks = {r["family_key"]: r["hook"].strip() for r in conn.execute(HOOKS_SQL, (keys,)).fetchall()} if keys else {}
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):          # hooks are optional (migration 010)
+        conn.rollback()
+        hooks = {}
 
     def link(k):
         l = links.get(k) or {}
@@ -301,10 +314,21 @@ def cut_ads(conn, cut: dict, raw_from: str | None, raw_to: str | None) -> dict:
         spend = _f(r["spend"])
         out["window"].append({"key": r["family_key"], "name": r["name"], "product": PRODUCT_NAMES.get(r["product"], r["product"]), "live": r["family_key"] in live, "spend": spend,
                               "nc_purchases": _f(n.get("nc_purchases")), "nc_revenue": _f(n.get("nc_revenue")), "nc_roas": _ratio(_f(n.get("nc_revenue")), spend), "nc_cpa": _ratio(spend, _f(n.get("nc_purchases"))),
-                              "meta_roas": _ratio(_f(r["meta_revenue"]), spend), **link(r["family_key"])})
+                              "meta_roas": _ratio(_f(r["meta_revenue"]), spend), **link(r["family_key"]), "hook": hooks.get(r["family_key"])})
     for r in trows:
         spend = _f(r["spend"])
         out["top"].append({"key": r["family_key"], "name": r["name"], "product": PRODUCT_NAMES.get(r["product"], r["product"]), "live": r["family_key"] in live, "spend": spend, "revenue": _f(r["revenue"]),
-                           "purchases": _f(r["purchases"]), "meta_roas": _ratio(_f(r["revenue"]), spend), **link(r["family_key"])})
+                           "purchases": _f(r["purchases"]), "meta_roas": _ratio(_f(r["revenue"]), spend), **link(r["family_key"]), "hook": hooks.get(r["family_key"])})
+    # top hooks: best new-customer return among the window's ads that spent at least HOOK_MIN_SPEND, one entry per distinct hook text
+    seen: set[str] = set()
+    cand = sorted((a for a in out["window"] if a["hook"] and a["spend"] >= HOOK_MIN_SPEND and a["nc_roas"] is not None), key=lambda a: (-a["nc_roas"], -a["spend"]))
+    for a in cand:
+        k = _norm(a["hook"])
+        if k in seen:
+            continue
+        seen.add(k)
+        out["top_hooks"].append({key: a[key] for key in ("hook", "name", "spend", "nc_roas", "nc_cpa", "live", "ad_id", "story_url")})
+        if len(out["top_hooks"]) >= HOOKS_TOP:
+            break
     out["window_shown"] = len(out["window"])
     return out

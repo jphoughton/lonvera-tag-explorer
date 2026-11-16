@@ -38,6 +38,16 @@ export const QUICK = [
 ];
 const PRODUCT_SLUG = { 'Vita Bull': 'vita-bull', 'Beef Liver': 'beef-liver', Boneflex: 'boneflex', 'Vita Belle': 'vita-belle' };
 export const ADS_MIN_SPEND = 250;
+// Colour grading: each graded metric is compared with the Total row (the blended number of every cut in the window); a cut needs at least GRADE_MIN_SPEND spent to be coloured, so a tiny sample never looks like a winner.
+// dir 1 = higher is better, -1 = lower is better. ratio = value / total, flipped for lower-is-better; 5 steps from strong red to strong green.
+export const GRADE_MIN_SPEND = 250;
+export const GRADED = { nc_roas: 1, meta_roas: 1, nc_cpa: -1, cpm: -1, cplc: -1, ctr: 1, conv_rate: 1, aov: 1 };
+export function gradeOf(key, value, base, spend) {
+  const dir = GRADED[key];
+  if (!dir || !isNum(value) || !isNum(base) || base <= 0 || !(spend >= GRADE_MIN_SPEND)) return '';
+  const r = dir === 1 ? value / base : (value > 0 ? base / value : 0);
+  return r >= 1.25 ? 'g2' : r >= 1.05 ? 'g1' : r >= 0.95 ? 'g0' : r >= 0.75 ? 'r1' : 'r2';
+}
 const roasText = (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–');
 const iso = (d) => (typeof d === 'string' ? d : d.toISOString().slice(0, 10));
 const dateOf = (s) => new Date(s + 'T12:00:00Z');
@@ -53,8 +63,43 @@ export function presetRange(key, now = today()) {
   return { from: addDays(yest, -(n - 1)), to: yest };
 }
 
+// Drag a row of a vertical list by its grip (pointer events: mouse and touch), or press the up and down arrows on the grip. keysOf() gives the current order, onMove(newKeys) gets the new one.
+function enableReorder(list, keysOf, onMove) {
+  const rows = () => [...list.querySelectorAll('.prod-ordrow')];
+  list.addEventListener('keydown', (e) => {
+    const grip = e.target.closest('.prod-ordgrip');
+    if (!grip || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    const key = grip.closest('.prod-ordrow').dataset.key, keys = keysOf(), i = keys.indexOf(key), j = i + (e.key === 'ArrowUp' ? -1 : 1);
+    if (j < 0 || j >= keys.length) return;
+    [keys[i], keys[j]] = [keys[j], keys[i]];
+    onMove(keys);
+    requestAnimationFrame(() => document.querySelector(`.prod-ordgrip[data-testid="prod-cuts-metric-grip-${key}"]`)?.focus());
+  });
+  list.addEventListener('pointerdown', (e) => {
+    const grip = e.target.closest('.prod-ordgrip');
+    if (!grip || e.button !== 0) return;
+    e.preventDefault();
+    const row = grip.closest('.prod-ordrow'), key = row.dataset.key;
+    row.classList.add('prod-ordrow-drag');
+    const at = (y) => { const others = rows().filter((r) => r !== row); let n = 0; for (const r of others) { const b = r.getBoundingClientRect(); if (y > b.top + b.height / 2) n++; } return n; };
+    const bar = h('li', { class: 'prod-orddrop', 'aria-hidden': 'true' });
+    const move = (ev) => { const others = rows().filter((r) => r !== row), n = at(ev.clientY); bar.remove(); if (others[n]) list.insertBefore(bar, others[n]); else list.append(bar); };
+    const end = (ev, commit) => {
+      document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', cancel);
+      bar.remove(); row.classList.remove('prod-ordrow-drag');
+      if (!commit) return;
+      const rest = keysOf().filter((k) => k !== key), n = at(ev.clientY);
+      rest.splice(n, 0, key);
+      if (rest.join() !== keysOf().join()) onMove(rest);
+    };
+    const up = (ev) => end(ev, true), cancel = (ev) => end(ev, false);
+    document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', cancel);
+  });
+}
+
 // st: { by: ['product', ...], preset, from, to, pipelineOnly, stages: [status...], sort: {key, dir} }  (plain object kept by the page so it survives a redraw)
-export function cutsView({ host, st, filters, signal, onState, say }) {
+export function cutsView({ host, st, filters, signal, onState, say, pageFilters }) {
   let out = null;
   let metricOpen = false;
   const sel = new Map();                                         // rows ticked for Needs brief: key = the cut's labels, value = the row
@@ -67,7 +112,8 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
   const filterHost = h('div', { class: 'ctl-row prod-cuts-filters', 'data-testid': 'prod-cuts-filters' });
   const tableHost = h('div', { class: 'prod-cuts-out', 'data-testid': 'prod-cuts-out' });
   const live = h('p', { class: 'pri-sub prod-cuts-live', role: 'status', 'data-testid': 'prod-cuts-live' });
-  host.replaceChildren(builder, when, filterHost, tableHost, live);
+  const viewsHost = h('div', { class: 'prod-cuts-views', 'data-testid': 'prod-cuts-views' });
+  host.replaceChildren(viewsHost, builder, when, filterHost, tableHost, live);
   let combos = [];                                               // every (product slug, cluster, ICP, pain point) the data knows, for the filter lists
 
   const changed = () => { if (onState) onState(); };
@@ -152,6 +198,44 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
       h('p', { class: 'pri-sub prod-cuts-hint' }, 'Drag a cut into Group by (or out of it) and left or right to change the order. Rows are grouped by the first cut, then the second, and so on.'));
   }
 
+  // ---- saved views: the whole page state under a name, shared with the team
+  let views = [], viewId = '', viewMsg = '';
+  const orderedMetrics = () => { const keys = [...st.order.filter((k) => METRICS.some(([m]) => m === k)), ...METRICS.map(([k]) => k).filter((k) => !st.order.includes(k))]; return keys.map((k) => METRICS.find(([m]) => m === k)); };
+  const stateOf = () => ({ by: st.by, preset: st.preset, ...(st.preset ? {} : { from: st.from, to: st.to }), f: st.f, metrics: st.metrics, order: st.order, stages: st.stages, quick: st.quick, sort: { key: st.sort.key || '', dir: st.sort.dir }, pipelineOnly: st.pipelineOnly, ...(pageFilters ? pageFilters.get() : {}) });
+  function applyState(s) {
+    if (Array.isArray(s.by) && s.by.length) st.by = s.by.filter((k) => DIMS.some(([d]) => d === k));
+    if (s.preset !== undefined) { st.preset = s.preset; Object.assign(st, s.preset ? presetRange(s.preset) : { from: s.from || st.from, to: s.to || st.to }); }
+    if (s.f) st.f = { cluster: s.f.cluster || [], icp: s.f.icp || [], pain_point: s.f.pain_point || [] };
+    if (Array.isArray(s.metrics)) st.metrics = s.metrics.filter((k) => METRICS.some(([m]) => m === k));
+    if (Array.isArray(s.order)) st.order = s.order.filter((k) => METRICS.some(([m]) => m === k));
+    if (Array.isArray(s.stages)) st.stages = s.stages;
+    if (typeof s.quick === 'string') st.quick = QUICK.some(([k]) => k === s.quick) ? s.quick : '';
+    if (s.sort) st.sort = { key: s.sort.key || '', dir: s.sort.dir === 'asc' ? 'asc' : 'desc' };
+    if (s.pipelineOnly !== undefined) st.pipelineOnly = !!s.pipelineOnly;
+    if (pageFilters) pageFilters.set({ product: s.product || '', vendor: s.vendor || '', week: s.week || '' });
+    drawBuilder(); drawWhen(); drawFilters(); changed(); fetchNow();
+  }
+  async function loadViews() {
+    try { const d = await api('/api/priorities/cut-views', {}, { signal }); views = d.views || []; } catch (e) { if (e && e.name === 'AbortError') throw e; views = []; }
+    drawViews();
+  }
+  function drawViews() {
+    const name = h('input', { type: 'text', maxlength: 80, placeholder: 'Name this view', 'aria-label': 'View name', 'data-testid': 'prod-cuts-view-name', value: (views.find((v) => String(v.id) === viewId) || {}).name || '' });
+    const flash = h('span', { class: 'pri-sub', role: 'status', 'data-testid': 'prod-cuts-view-msg' }, viewMsg);
+    viewsHost.replaceChildren(...[h('span', { class: 'prod-cuts-zonelabel' }, 'Views'),
+      h('select', { 'aria-label': 'Saved views', 'data-testid': 'prod-cuts-view-select', onchange: (e) => { viewId = e.target.value; const v = views.find((x) => String(x.id) === viewId); viewMsg = v ? `Loaded ${v.name}.` : ''; if (v) applyState(v.state); drawViews(); } },
+        h('option', { value: '' }, views.length ? 'Choose a saved view' : 'No saved views yet'), views.map((v) => h('option', { value: String(v.id), selected: String(v.id) === viewId }, v.name))),
+      name,
+      h('button', { type: 'button', class: 'btn small primary', 'data-testid': 'prod-cuts-view-save', onclick: async () => {
+        const nm = name.value.trim();
+        if (!nm) { flash.textContent = 'Type a name first.'; return; }
+        try { const v = await api('/api/priorities/cut-views', {}, { method: 'POST', body: { name: nm, state: stateOf() } }); viewId = String(v.id); viewMsg = `Saved ${v.name}.`; toast(viewMsg); await loadViews(); }
+        catch (e) { if (e && e.name === 'AbortError') throw e; flash.textContent = e.message || 'Could not save.'; } } }, 'Save view'),
+      viewId ? h('button', { type: 'button', class: 'btn small', 'data-testid': 'prod-cuts-view-delete', onclick: async () => {
+        try { await api('/api/priorities/cut-views/' + viewId, {}, { method: 'DELETE' }); viewId = ''; viewMsg = 'Deleted.'; await loadViews(); } catch (e) { if (e && e.name === 'AbortError') throw e; flash.textContent = e.message || 'Could not delete.'; } } }, 'Delete view') : null,
+      flash].filter(Boolean));
+  }
+
   // ---- dates
   function drawWhen() {
     const presetBtns = PRESETS.map(([k, t]) => h('button', { type: 'button', class: 'seg', 'aria-pressed': String(st.preset === k), 'data-testid': 'prod-cuts-preset-' + k, onclick: () => { Object.assign(st, { preset: k }, presetRange(k)); drawWhen(); changed(); fetchNow(); } }, t));
@@ -174,7 +258,7 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
     let d;
     try { d = await api('/api/priorities/cuts/ads', { ...cut, from: st.from, to: st.to }, { signal }); } catch (e) { if (e && e.name === 'AbortError') return; body.replaceChildren(h('p', { class: 'pri-err' }, e.message || 'Could not load the ads.')); return; }
     const name = (a) => h('span', { class: 'prod-cutads-name' }, a.ad_id ? h('a', { href: href('/ad/' + encodeURIComponent(a.ad_id), {}), target: '_blank', rel: 'noopener noreferrer', 'data-testid': 'prod-cutads-link' }, a.name) : a.name,
-      a.story_url && /^https:\/\/(www\.)?(facebook|instagram)\.com\//.test(a.story_url) ? h('a', { class: 'pri-sub', href: a.story_url, target: '_blank', rel: 'noopener noreferrer' }, 'post') : null, a.live ? h('span', { class: 'prod-chip prod-chip-live', title: 'Spent in the last two loaded days' }, 'Live') : null);
+      a.story_url && /^https:\/\/(www\.)?(facebook|instagram)\.com\//.test(a.story_url) ? h('a', { class: 'pri-sub', href: a.story_url, target: '_blank', rel: 'noopener noreferrer' }, 'post') : null, a.live ? h('span', { class: 'prod-chip prod-chip-live', title: 'Spent in the last two loaded days' }, 'Live') : null, a.hook ? h('span', { class: 'prod-cutads-hook', 'data-testid': 'prod-cutads-hook' }, a.hook) : null);
     const table = (heads, rows, tid, none) => (rows.length ? h('div', { class: 'prod-scroll' }, h('table', { class: 'pri-table prod-table prod-cuts-table', 'data-testid': tid }, h('thead', null, h('tr', null, heads.map((x, i) => h('th', { scope: 'col', class: i ? 'prod-num' : null }, x)))),
       h('tbody', null, rows))) : h('p', { class: 'pri-sub' }, none || 'None.'));
     const tr = (cells) => h('tr', { 'data-testid': 'prod-cutads-row' }, cells.map((c, i) => h('td', { class: 'prod-c' + (i ? ' prod-num' : '') }, c)));
@@ -190,6 +274,10 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
     body.replaceChildren(...[d.warning ? h('p', { class: 'pri-err' }, d.warning) : null,
       h('h4', { class: 'pri-h' }, 'Top 5 spenders since launch ', h('span', { class: 'pri-hnote' }, 'all time, Meta numbers, for inspiration')),
       table(['Ad', 'Spend', 'Revenue', 'Meta ROAS', 'Purchases'], d.top.map((a) => tr([name(a), fmt.money(a.spend), fmt.money(a.revenue), roasText(a.meta_roas), fmt.int(a.purchases)])), 'prod-cutads-top'),
+      h('h4', { class: 'pri-h' }, 'Top hooks ', h('span', { class: 'pri-hnote' }, `best NC ROAS among ads that spent $${ADS_MIN_SPEND} or more in these dates`)),
+      (d.top_hooks || []).length ? h('div', { class: 'prod-scroll' }, h('table', { class: 'pri-table prod-table prod-cuts-table', 'data-testid': 'prod-cutads-hooks' }, h('thead', null, h('tr', null, ['Hook', 'Spend', 'NC ROAS', 'NC CPA'].map((x, i) => h('th', { scope: 'col', class: i ? 'prod-num' : null }, x)))),
+        h('tbody', null, d.top_hooks.map((a) => h('tr', { 'data-testid': 'prod-cutads-hookrow' }, h('td', { class: 'prod-c prod-cutads-hooktext' }, h('span', { class: 'prod-cutads-hookline' }, a.hook), h('span', { class: 'pri-sub' }, ' ', a.ad_id ? h('a', { href: href('/ad/' + encodeURIComponent(a.ad_id), {}), target: '_blank', rel: 'noopener noreferrer' }, a.name) : a.name, a.live ? ' · Live' : '')),
+          h('td', { class: 'prod-c prod-num' }, fmt.money(a.spend)), h('td', { class: 'prod-c prod-num' }, roasText(a.nc_roas)), h('td', { class: 'prod-c prod-num' }, fmt.money2(a.nc_cpa))))))) : h('p', { class: 'pri-sub', 'data-testid': 'prod-cutads-nohooks' }, 'No hooks stored for the ads that spent enough in these dates.'),
       h('h4', { class: 'pri-h' }, 'Ads driving this row ', h('span', { class: 'pri-hnote' }, `spent between ${d.from} and ${d.to}`)), winHost].filter(Boolean));
     drawWindow();
   }
@@ -281,7 +369,7 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
     const quick = QUICK.find(([k]) => k === st.quick) || QUICK[0];
     const inScope = out.rows.filter((r) => !st.pipelineOnly || openCount(r) > 0);
     const rows = sorted(inScope.filter((r) => quick[3](r, base)));
-    const metrics = METRICS.filter(([k]) => st.metrics.includes(k));
+    const metrics = orderedMetrics().filter(([k]) => st.metrics.includes(k));
     const sortBtn = (key, text, title, right) => {
       const on = st.sort.key === key;
       return h('th', { scope: 'col', class: right ? 'prod-num' : null, title: title || null, 'aria-sort': on ? (st.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none' },
@@ -290,17 +378,25 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
     const heads = [h('th', { scope: 'col' }, h('input', { type: 'checkbox', 'aria-label': 'Select all shown cuts', 'data-testid': 'prod-cuts-selall', checked: rows.length > 0 && rows.every((r) => sel.has(rowKey(r))), onchange: (e) => { for (const r of rows) { if (e.target.checked) sel.set(rowKey(r), r); else sel.delete(rowKey(r)); } drawTable(); } })), ...out.group.map((d) => sortBtn('label:' + d, DIM_LABEL[d])), ...shown.map(([k, t]) => sortBtn('stage:' + k, t, 'Concepts at this status (not dropped)', true)), sortBtn('open', 'Concepts in pipeline', 'Concepts given out and not yet launched (assigned through ready to launch); dropped ones left out', true), ...metrics.map(([k, t, , tip]) => sortBtn(k, t, tip, true))];
     const cells = (r, total) => [h('td', { class: 'prod-c' }, total ? null : h('input', { type: 'checkbox', 'aria-label': 'Select this cut for Needs brief', 'data-testid': 'prod-cuts-sel', checked: sel.has(rowKey(r)), onchange: (e) => { if (e.target.checked) sel.set(rowKey(r), r); else sel.delete(rowKey(r)); drawTable(); } })), ...out.group.map((d, i) => h('td', { class: 'prod-c prod-cut-label' + (r.labels[d] === '(none)' ? ' prod-cut-none' : '') }, total ? (i === 0 ? 'Total' : '') : r.labels[d])),
       ...shown.map(([k]) => h('td', { class: 'prod-c prod-num' + (r.stages[k] ? ' prod-cut-has' : ' prod-cut-zero'), 'data-stage': k }, r.stages[k] ? String(r.stages[k]) : '–')),
-      h('td', { class: 'prod-c prod-num', 'data-metric': 'open' }, openCount(r) ? String(openCount(r)) : '–'), ...metrics.map(([k, , f]) => h('td', { class: 'prod-c prod-num', 'data-metric': k }, f(r.stats[k])))];
+      h('td', { class: 'prod-c prod-num', 'data-metric': 'open' }, openCount(r) ? String(openCount(r)) : '–'), ...metrics.map(([k, , f]) => h('td', { class: 'prod-c prod-num' + (total ? '' : (g => (g ? ' prod-heat-' + g : ''))(gradeOf(k, r.stats[k], out.totals.stats[k], r.stats.spend))), 'data-metric': k, 'data-grade': total ? null : gradeOf(k, r.stats[k], out.totals.stats[k], r.stats.spend) || null }, f(r.stats[k])))];
     const tot = { labels: {}, stages: out.totals.stages, concepts: out.totals.concepts, stats: out.totals.stats };
     const stageKeys = stages.map(([x]) => x), metricKeys = METRICS.map(([x]) => x);
     const group = (title, items, on, tidPrefix, setter) => h('fieldset', { class: 'prod-colgroup' }, h('legend', null, title),
       items.map(([k, t]) => h('label', { class: 'prod-cols-opt' }, h('input', { type: 'checkbox', checked: on.includes(k), 'data-testid': tidPrefix + k, onchange: (e) => setter(k, e.target.checked) }), ' ' + t)));
+    const metricGroup = () => {
+      const list = h('ul', { class: 'prod-ordlist', 'data-testid': 'prod-cuts-metric-list' }, orderedMetrics().map(([k, t]) => h('li', { class: 'prod-ordrow', 'data-key': k },
+        h('button', { type: 'button', class: 'prod-ordgrip', 'aria-label': `Move ${t}. Drag, or press the up and down arrows.`, title: 'Drag to reorder', 'data-testid': 'prod-cuts-metric-grip-' + k }, h('span', { class: 'prod-grip', 'aria-hidden': 'true' })),
+        h('label', { class: 'prod-cols-opt' }, h('input', { type: 'checkbox', checked: st.metrics.includes(k), 'data-testid': 'prod-cuts-metric-' + k, onchange: (e) => { st.metrics = metricKeys.filter((x) => (x === k ? e.target.checked : st.metrics.includes(x))); changed(); drawTable(); } }), ' ' + t))));
+      const move = (keys) => { st.order = keys; changed(); drawTable(); };
+      enableReorder(list, () => orderedMetrics().map(([k]) => k), move);
+      return h('fieldset', { class: 'prod-colgroup' }, h('legend', null, 'Metrics (drag to reorder)'), list);
+    };
     const columns = h('details', { class: 'prod-cuts-columns', 'data-testid': 'prod-cuts-metrics' }, h('summary', null, `Columns · ${shown.length + metrics.length} shown`),
       h('div', { class: 'prod-colpanel' }, group('Status', stages, st.stages, 'prod-cuts-stage-', (k, on) => { st.stages = stageKeys.filter((x) => (x === k ? on : st.stages.includes(x))); changed(); drawTable(); }),
-        group('Metrics', METRICS.map(([k, t]) => [k, t]), st.metrics, 'prod-cuts-metric-', (k, on) => { st.metrics = metricKeys.filter((x) => (x === k ? on : st.metrics.includes(x))); changed(); drawTable(); }),
+        metricGroup(),
         h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-cuts-metrics-all', onclick: () => { st.stages = stageKeys.slice(); st.metrics = metricKeys.slice(); changed(); drawTable(); } }, 'Show all columns')));
     if (metricOpen) columns.setAttribute('open', '');
-    columns.addEventListener('toggle', () => { metricOpen = columns.open; });
+    columns.querySelector('summary').addEventListener('click', () => { metricOpen = !columns.open; });                       // read before the browser flips it: survives every redraw of the table
     tableHost.replaceChildren(
       h('div', { class: 'prod-cuts-toolbar' },
         h('div', { class: 'prod-qv' }, h('span', { class: 'prod-cuts-zonelabel', id: 'prod-qv-l' }, 'Quick view'),
@@ -314,11 +410,13 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
         ? h('div', { class: 'prod-scroll prod-cuts-scroll', 'data-testid': 'prod-cuts-scroll' }, h('table', { class: 'pri-table prod-table prod-cuts-table', 'data-testid': 'prod-cuts-table' },
           h('thead', null, h('tr', null, heads)), h('tbody', null, h('tr', { class: 'prod-cuts-total', 'data-testid': 'prod-cuts-total' }, cells(tot, true)), rows.map((r) => h('tr', { 'data-testid': 'prod-cuts-row', class: 'prod-cuts-clickrow', tabindex: '0', title: 'Click to see the ads behind this row', onclick: (e) => { if (!e.target.closest('a, button, input, label')) openAds(r); }, onkeydown: (e) => { if (e.key === 'Enter' && !e.target.closest('input')) openAds(r); } }, cells(r, false))))))
         : h('p', { 'data-testid': 'prod-cuts-empty' }, 'No cuts match these filters and dates.'),
+      h('p', { class: 'pri-sub prod-cuts-legend', 'data-testid': 'prod-cuts-legend' }, 'Colours compare each cut with the Total row: ', h('span', { class: 'prod-heat-r2 prod-legend-chip' }, 'well below'), h('span', { class: 'prod-heat-r1 prod-legend-chip' }, 'below'), h('span', { class: 'prod-heat-g0 prod-legend-chip' }, 'about the same'), h('span', { class: 'prod-heat-g1 prod-legend-chip' }, 'better'), h('span', { class: 'prod-heat-g2 prod-legend-chip' }, 'well better'), ` (lower is better for NC CPA, CPM and cost per link click; cuts under $${GRADE_MIN_SPEND} spent are not coloured).`),
       h('p', { class: 'pri-sub prod-cuts-basis', 'data-testid': 'prod-cuts-basis' }, `${out.from} to ${out.to}. ${out.basis} Status columns count production concepts (dropped ones left out) for the chosen week, vendor and product filters; they do not depend on the dates. A concept with no ICP or pain point yet shows under (none). Quick filters: blended NC ROAS of all cuts here is ${isNum(base) ? fmt.roas(base) + 'x' : 'n/a'}; working = at least $${MIN_SPEND.toLocaleString('en-US')} spent and NC ROAS at or above it; in pipeline = concepts not yet launched. `
         + (out.warning || '')));
   }
 
   drawBuilder();
   drawWhen();
-  return { refresh: fetchNow, init: fetchNow };
+  drawViews();
+  return { refresh: fetchNow, init: async () => { loadViews().catch(() => {}); return fetchNow(); } };
 }

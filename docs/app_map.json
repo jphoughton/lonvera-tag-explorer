@@ -1467,6 +1467,39 @@
    "summary": "The Production board: ?week= (snaps to Monday) &vendor= &product= &closed=1 -> {columns: [{status, label, count, cards}], dropped (with closed=1), capacity: [{vendor, per_week, open, week}], week, generated_at}."
   },
   {
+   "rule": "/api/priorities/cut-views",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_cut_views",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Saved views of the By cut page: -> {views: [{id, name, state, created_by, created_at, updated_at}], ready}. See app/priorities_cut_views.py."
+  },
+  {
+   "rule": "/api/priorities/cut-views",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_cut_view_save",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Save (or replace by name) a view: {name, state: {by, preset, from, to, f, metrics, order, stages, quick, sort, pipelineOnly, product, vendor, week}} -> the view. Signed-in users and team keys."
+  },
+  {
+   "rule": "/api/priorities/cut-views/<int:view_id>",
+   "methods": [
+    "DELETE"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_cut_view_delete",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Delete a saved view. Signed-in users and team keys."
+  },
+  {
    "rule": "/api/priorities/cuts",
    "methods": [
     "GET"
@@ -1486,7 +1519,7 @@
    "endpoint": "api.priorities_cut_ads",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "The ads behind one cut (the popup on a By cut row): ?product=<slug> &cluster= &icp= &pain_point= &vendor= (any subset; '(none)' = untagged) &from= &to= -> {cut, from, to, window: [ad], top: [ad], warning}."
+   "summary": "The ads behind one cut (the popup on a By cut row): ?product=<slug> &cluster= &icp= &pain_point= &vendor= (any subset; '(none)' = untagged) &from= &to= -> {cut, from, to, window: [ad], top: [ad], top_hooks: [{hook, name, spend, nc_roas, ...}], warning}. Each ad carries its hook (spoken first line + on-image text) when one is stored; top_hooks = the 5 best NC ROAS hooks among ads that spent $250 or more in the dates."
   },
   {
    "rule": "/api/priorities/launch/settings",
