@@ -482,8 +482,8 @@ function render(d, view = null, opts = {}) {
     actionsHost.replaceChildren(
       readonly || !opts.reload ? null : h('button', { type: 'button', class: 'btn primary pri-add', 'data-testid': 'pri-add-concept', onclick: () => mctl.add() }, 'Add concept'),
       h('span', { class: 'pri-btngroup', role: 'group', 'aria-label': 'Export' }, csvLink, h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-print', onclick: () => window.print() }, printLabel)));
-    const prodLink = h('a', { class: 'btn pri-prodlink', href: href('/priorities/production', {}), title: 'Concepts assigned to vendors, by week', 'data-testid': 'pri-prod-link' }, 'Production');
-    if (actl) actl.onCount((n) => { prodLink.textContent = n === null ? 'Production' : `Production (${n})`; });
+    const prodLink = h('a', { class: 'btn pri-prodlink', href: href('/priorities/production', {}), title: 'Concepts assigned to vendors, by week', 'data-testid': 'pri-prod-link' }, 'Creative Pipeline');
+    if (actl) actl.onCount((n) => { prodLink.textContent = n === null ? 'Creative Pipeline' : `Creative Pipeline (${n})`; });
     const about = (title, tid, ...kids) => h('details', { class: 'pri-about', 'data-testid': tid }, h('summary', null, title), h('div', { class: 'pri-about-b' }, ...kids));
     const head = pageHeader({
       title: readonly ? `Priorities: ${view.name}` : act ? `Priorities: ${act.view.name}` : 'Priorities',

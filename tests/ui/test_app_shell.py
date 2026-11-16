@@ -874,7 +874,7 @@ def test_existing_deep_links_keep_their_meaning(page, base_url):
 # ---------------------------------------------------------------- top navigation (js/nav.js): sections, page tabs, tag search
 SECTION_TABS = {
     "performance": ["Overview", "Meta", "Google", "Amazon", "Campaigns", "Trends", "Daily story", "Email"],
-    "creative": ["Priorities", "Production", "Competitors", "Test to scale"],
+    "creative": ["Priorities", "Creative Pipeline", "Competitors", "Test to scale"],
 }
 
 
@@ -898,7 +898,7 @@ def test_top_nav_has_three_sections_and_the_active_sections_tabs(page):
     expect(page.locator("#subnav a.navtab[aria-current=page]")).to_have_text("Priorities")
     page.locator("[data-testid=nav-production]").click()
     page.wait_for_url(re.compile(r"/priorities/production$"))
-    expect(page.locator("#subnav a.navtab[aria-current=page]")).to_have_text("Production")
+    expect(page.locator("#subnav a.navtab[aria-current=page]")).to_have_text("Creative Pipeline")
     assert page.locator("[data-testid=nav-projections]").count() == 0                                   # Plan's own tabs are on the Projections page
     assert page.locator("a.navgroup[data-section=plan]").get_attribute("href") == "/projection"
 
@@ -906,7 +906,7 @@ def test_top_nav_has_three_sections_and_the_active_sections_tabs(page):
 @pytest.mark.parametrize("url,section,tab", [
     ("/", "Performance", "Overview"), ("/?platform=meta", "Performance", "Meta"), ("/?platform=google", "Performance", "Google"), ("/google", "Performance", "Google"),
     ("/campaigns", "Performance", "Campaigns"), ("/campaigns?platform=all", "Performance", "Campaigns"), ("/trends", "Performance", "Trends"), ("/daily", "Performance", "Daily story"), ("/email", "Performance", "Email"),
-    (f"/p/{SLUG}", "Performance", "Meta"), ("/priorities", "Creative", "Priorities"), ("/priorities/production", "Creative", "Production"),
+    (f"/p/{SLUG}", "Performance", "Meta"), ("/priorities", "Creative", "Priorities"), ("/priorities/production", "Creative", "Creative Pipeline"),
     ("/promotions", "Creative", "Test to scale"), ("/competitors", "Creative", "Competitors"), ("/lookup", "Creative", None),
 ])
 def test_every_page_url_still_loads_and_lights_its_section_and_tab(page, url, section, tab):

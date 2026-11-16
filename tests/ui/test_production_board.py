@@ -93,7 +93,7 @@ def test_board_is_the_default_view_with_six_columns_in_order_and_counts(page):
     assert counts == ["3", "1", "2", "2", "1", "1"]                  # launched column: only row 4 (recent); row 11 is 30 days old
     assert col_ids(page, "in_production") == ["5", "6"]              # high priority first
     assert col_ids(page, "assigned") == ["1", "3", "9"]              # then by position
-    assert page.locator("h1").text_content() == "Production"
+    assert page.locator("h1").text_content() == "Creative Pipeline"
     assert "—" not in page.locator("[data-testid=prod-page]").text_content()
 
 

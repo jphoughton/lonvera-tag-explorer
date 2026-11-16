@@ -193,6 +193,38 @@ def register(app, deps):
             out["dropped"] = ordered([c for c in allc if c["status"] == "dropped" or c["stage"] == "dropped"])
         return jsonify(out)
 
+    @app.get("/api/priorities/cuts")
+    def cuts():
+        """Mock of GET /api/priorities/cuts: stage counts from the cards, deterministic spend that scales with the number of days in the window."""
+        a = request.args
+        group = [g for g in (a.get("group") or "product").split(",") if g]
+        frm = dt.date.fromisoformat(a.get("from") or "2026-10-01")
+        to = dt.date.fromisoformat(a.get("to") or "2026-10-30")
+        days = (to - frm).days + 1
+        names = {"vita-bull": "Vita Bull", "beef-liver": "Beef Liver", "boneflex": "Boneflex", "vita-belle": "Vita Belle"}
+        acc = {}
+        for c in cards(a.get("vendor") or "", a.get("week") or "", a.get("product") or ""):
+            if c["status"] == "dropped" or c["stage"] == "dropped":
+                continue
+            lab = tuple((names.get(c.get(g)) or c.get(g) or "(none)") if g == "product" else (c.get(g) or "(none)") for g in group)
+            e = acc.setdefault(lab, {"stages": {s: 0 for s in ORDER}, "concepts": 0})
+            e["stages"][c["status"]] += 1
+            e["concepts"] += 1
+        rows, tot = [], {s: 0 for s in ORDER}
+        for lab, e in acc.items():
+            spend = float(10 * days * (len("".join(lab)) % 7 + 1))
+            rev = spend * 0.8
+            n = max(1, round(spend / 80))
+            stats = {"spend": spend, "nc_revenue": rev, "nc_purchases": n, "nc_roas": rev / spend, "nc_cpa": spend / n, "meta_roas": 1.1, "cpm": 20.0, "ctr": 0.012, "cplc": 1.5, "conv_rate": 0.03, "aov": rev / n}
+            rows.append({"labels": dict(zip(group, lab)), "stages": e["stages"], "concepts": e["concepts"], "stats": stats})
+            for s2 in ORDER:
+                tot[s2] += e["stages"][s2]
+        rows.sort(key=lambda r: -r["stats"]["spend"])
+        sp = sum(r["stats"]["spend"] for r in rows)
+        totals = {"stages": tot, "concepts": sum(r["concepts"] for r in rows), "stats": {"spend": sp, "nc_revenue": sp * 0.8, "nc_purchases": 1, "nc_roas": 0.8, "nc_cpa": sp, "meta_roas": 1.1, "cpm": 20.0, "ctr": 0.012, "cplc": 1.5, "conv_rate": 0.03, "aov": 1.0}}
+        return jsonify({"group": group, "from": frm.isoformat(), "to": to.isoformat(), "rows": rows, "totals": totals, "stages": [{"status": s, "label": LABEL[s]} for s in ORDER],
+                        "dims": [], "basis": "Mock basis.", "warning": None})
+
     @app.post("/api/priorities/assignments/<int:aid>/move")
     def move(aid):
         r = S["rows"].get(aid)
