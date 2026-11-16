@@ -5,7 +5,7 @@ What it manages (production environment of the linked project):
   * service `tagging`, no GitHub source (deployed with `railway up -s tagging` from this repo, like `etl`)
   * instance settings: dockerfilePath Dockerfile, startCommand scripts/deploy/run_tagging.sh, cronSchedule 0 18 * * * (UTC, daily; the tagging steps inside only run on Sundays), restartPolicyType NEVER
   * variables: IMAGE_FLAVOR=tagging (Railway passes it to the Docker build, which selects the whisper + yt-dlp stage; the nightly etl image stays slim) and, by REFERENCE to the `etl`
-    service (`${{etl.NAME}}`), DATABASE_URL, CLAUDE_CODE_OAUTH_TOKEN and META_ACCESS_TOKEN, so no secret is copied or printed.
+    service (`${{etl.NAME}}`), DATABASE_URL, CLAUDE_CODE_OAUTH_TOKEN, META_ACCESS_TOKEN and GOOGLE_SA_JSON (Drive read access for etl.transcribe_ads), so no secret is copied or printed.
 It never touches `web` or `etl`, never sets a secret value, and never deploys.
 
 Usage (from a directory linked to the project, e.g. ~/lonvera-tag-explorer):
@@ -27,7 +27,7 @@ SERVICE = "tagging"
 DEFAULT_CRON = "0 18 * * *"           # daily 18:00 UTC (10:00 / 11:00 Pacific), after the etl's 13:00 UTC run: transcripts every day, competitor / own ad tagging only on Sundays (run_tagging.sh decides)
 INSTANCE = {"dockerfilePath": "Dockerfile", "startCommand": "scripts/deploy/run_tagging.sh", "restartPolicyType": "NEVER"}
 # variable name -> the service it is referenced from. Names only; values stay on `etl`.
-REFERENCES = ["DATABASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "META_ACCESS_TOKEN"]
+REFERENCES = ["DATABASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "META_ACCESS_TOKEN", "GOOGLE_SA_JSON"]
 OPTIONAL_REFERENCES = []
 PLAIN = {"IMAGE_FLAVOR": "tagging"}                              # build argument: selects the tagging stage of the Dockerfile
 READ = "dockerfilePath startCommand cronSchedule restartPolicyType"
