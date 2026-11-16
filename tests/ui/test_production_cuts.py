@@ -417,3 +417,17 @@ def test_the_explainer_says_which_time_windows_it_reads(page):
     page.locator("[data-testid=prod-scorehelp-open]").click()
     t = page.locator("[data-testid=prod-scorehelp-windows]").text_content()
     assert "last 7 days" in t and "30 days before that" in t and "revive candidate" in t and "carries no weight" in t
+
+
+def test_the_table_header_stays_pinned_while_the_rows_scroll(page):
+    page.set_viewport_size({"width": 1440, "height": 520})
+    goto(page)
+    th = page.locator("[data-testid=prod-cuts-table] thead th").nth(1)
+    assert page.evaluate("(el) => getComputedStyle(el).position", th.element_handle()) == "sticky"
+    box = page.locator("[data-testid=prod-cuts-scroll]")
+    assert page.evaluate("() => { const s = document.querySelector('[data-testid=prod-cuts-scroll]'); return s.scrollHeight > s.clientHeight }")
+    box.evaluate("(el) => { el.scrollTop = 400 }")
+    page.wait_for_timeout(100)
+    top_head = th.bounding_box()["y"]
+    top_box = box.bounding_box()["y"]
+    assert abs(top_head - top_box) < 3, (top_head, top_box)                                                  # the header is still at the top of the frame after scrolling down
