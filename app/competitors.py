@@ -240,7 +240,7 @@ def _card(a: dict, badge: str | None = None, reason: str | None = None) -> dict:
     """An ad as the cards and the lightbox show it: copy, landing page, links and (only when stored) a thumbnail."""
     return {"library_id": a["library_id"], "brand": a["brand"], "hook": a["hook"] or a["headline"] or "", "headline": a.get("headline"), "primary_text": (a.get("primary_text") or "")[:700],
             "format": a["format"], "days_running": a["days_running"], "variant_count": a["variant_count"], "landing_url": a.get("landing_url"), "landing_domain": domain_of(a.get("landing_url")),
-            "thumb_url": _thumb(a), "video_url": _video(a), "ad_library_url": ad_url(a["library_id"]), "angle": " / ".join(x for x in (a.get("cluster"), a.get("pain_point")) if x) or None,
+            "thumb_url": _thumb(a), "video_url": _video(a), "ad_library_url": ad_url(a["library_id"]), "angle": " / ".join(x for x in (a.get("cluster"), a.get("pain_point")) if x) or None, "cluster": a.get("cluster"), "pain_point": a.get("pain_point"), "mapped_product": a.get("mapped_product"),
             "is_new_angle": bool(a.get("is_new_angle")), "new_angle_label": a.get("new_angle_label"), "badge": badge, "reason": reason, **learn.card_extras(a)}
 
 
@@ -250,7 +250,7 @@ def _days_badge(a: dict) -> str | None:
 
 def _ad_row(a: dict) -> dict:
     return {"library_id": a["library_id"], "brand": a["brand"], "hook": a["hook"] or a["headline"] or "", "headline": a["headline"], "format": a["format"], "days_running": a["days_running"],
-            "start_date": _iso(a["start_date"]), "variant_count": a["variant_count"], "landing_domain": domain_of(a["landing_url"]), "cluster": a["cluster"], "pain_point": a["pain_point"],
+            "start_date": _iso(a["start_date"]), "variant_count": a["variant_count"], "landing_domain": domain_of(a["landing_url"]), "cluster": a["cluster"], "pain_point": a["pain_point"], "mapped_product": a.get("mapped_product"),
             "ad_library_url": ad_url(a["library_id"])}
 
 

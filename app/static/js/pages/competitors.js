@@ -8,6 +8,7 @@ import { showControls } from '../controls.js';
 import { pageHeader } from '../ui/pagehead.js';
 import { filterRow, seg, selectCtl } from '../ui/pagefilters.js';
 import { adCard, lightbox, bars, link, safeHttp, tint } from './competitors_cards.js';
+import { sendToNeedsBrief } from './competitors_brief.js';
 import { TAG_PARAMS, tagFilters, learning, ownLandingPages, lpChanges, lpCards, lpLightbox } from './competitors_learn.js';
 
 const md = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ''); return m ? `${+m[2]}/${+m[3]}` : (s || ''); };
@@ -41,7 +42,7 @@ function plainTable(heads, rows, testid) {
     h('thead', null, h('tr', null, heads.map((x) => h('th', { scope: 'col' }, x)))), h('tbody', null, rows)));
 }
 
-function adRow(a) {
+function adRow(a, brand) {
   const u = safeHttp(a.ad_library_url);
   return h('tr', null,
     h('td', { class: 'comp-hook' }, a.hook || '(no text)'),
@@ -50,9 +51,10 @@ function adRow(a) {
     h('td', { class: 'comp-n' }, String(a.variant_count || 1)),
     h('td', null, [a.cluster, a.pain_point].filter(Boolean).join(' / ') || '–'),
     h('td', null, a.landing_domain || '–'),
-    h('td', null, u ? link(u, 'Open in Ad Library', { 'data-testid': 'comp-adlink' }) : ''));
+    h('td', null, u ? link(u, 'Open in Ad Library', { 'data-testid': 'comp-adlink' }) : ''),
+    h('td', null, h('button', { type: 'button', class: 'btn small', 'data-testid': 'comp-brief', onclick: () => sendToNeedsBrief(a, brand) }, 'Send to Needs brief')));
 }
-const AD_HEADS = ['Ad text', 'Days running', 'Format', 'Ads sharing it', 'Angle', 'Lands on', 'Link'];
+const AD_HEADS = ['Ad text', 'Days running', 'Format', 'Ads sharing it', 'Angle', 'Lands on', 'Link', 'Needs brief'];
 
 function section(title, note, body, testid) {
   return h('section', { class: 'comp-sec', 'data-testid': testid }, h('h3', null, title), note ? h('p', { class: 'pri-sub' }, note) : null, body);
@@ -64,10 +66,10 @@ function detailPanel(d, st) {
   parts.push(h('p', { class: 'comp-top' }, bl ? link(bl, `Search ${d.brand} in the Ad Library`, { 'data-testid': 'comp-brandlink' }) : null,
     d.format !== 'all' ? h('span', { class: 'pri-sub' }, ` Showing ${d.format} ads only.`) : null));
   parts.push(section('Longest running ads', 'The ads kept on longest are the best sign of what works for them. Start dates reset when an ad is re-uploaded, so these ages can be too low.',
-    d.longest_running.length ? plainTable(AD_HEADS, d.longest_running.map(adRow), 'comp-longest') : h('p', { class: 'pri-sub' }, 'No ads in this view.'), 'comp-sec-longest'));
+    d.longest_running.length ? plainTable(AD_HEADS, d.longest_running.map((a) => adRow(a, d.brand)), 'comp-longest') : h('p', { class: 'pri-sub' }, 'No ads in this view.'), 'comp-sec-longest'));
   parts.push(section('New this week', null,
     d.first_snapshot ? h('p', { class: 'pri-sub', 'data-testid': 'comp-first' }, 'First snapshot: new ads show from next week.')
-      : d.new_this_week.length ? plainTable(AD_HEADS, d.new_this_week.map(adRow), 'comp-new') : h('p', { class: 'pri-sub' }, 'No new ads this week.'), 'comp-sec-new'));
+      : d.new_this_week.length ? plainTable(AD_HEADS, d.new_this_week.map((a) => adRow(a, d.brand)), 'comp-new') : h('p', { class: 'pri-sub' }, 'No new ads this week.'), 'comp-sec-new'));
   parts.push(section('Angles they push', 'Which message each ad leads with, matched to our market cluster and pain point lists. "New angle" means we have no line for it.',
     d.angles.length ? plainTable(['Market cluster', 'Pain point', 'Ads', 'Concepts', 'New angle'], d.angles.map((g) => h('tr', null,
       h('td', null, g.cluster || '–'), h('td', null, g.pain_point || '–'), h('td', { class: 'comp-n' }, String(g.ads)), h('td', { class: 'comp-n' }, String(g.concepts)),

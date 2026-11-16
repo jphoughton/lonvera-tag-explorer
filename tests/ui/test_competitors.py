@@ -437,3 +437,26 @@ def test_lightbox_keys_are_real_key_presses_and_do_not_hijack_inputs(page):
     page.evaluate("() => { const i = document.createElement('input'); i.id = 'zz'; document.querySelector('[data-testid=comp-lb]').append(i); i.focus(); }")
     page.keyboard.press("ArrowRight")
     assert page.locator("[data-testid=comp-lb-count]").text_content() == f"1 / {n}"
+
+
+def test_send_a_competitor_ad_to_needs_brief(page, ctx, base_url):
+    ctx.request.post(base_url + "/__test/backlog/reset")
+    goto(page)
+    page.locator("[data-testid=comp-spot] [data-testid=comp-card-open]").first.click()
+    page.locator("[data-testid=comp-lb-brief]").click()
+    page.wait_for_selector("[data-testid=comp-brief-title]")
+    assert not page.locator("[data-testid=comp-lb]").is_visible()                                              # the lightbox gives way to the form
+    assert page.locator("[data-testid=comp-brief-story]").input_value()                                        # prefilled from the ad's hook
+    page.locator("[data-testid=comp-brief-send]").click()
+    page.wait_for_function("() => document.querySelector('[data-testid=comp-brief-err]').textContent.toLowerCase().includes('add')")      # the five tags are required: it says what is missing
+    page.select_option("[data-testid=comp-brief-product]", "beef-liver")
+    page.select_option("[data-testid=comp-brief-media]", "video")
+    page.fill("[data-testid=comp-brief-cluster]", "Hair Thinning")
+    page.fill("[data-testid=comp-brief-icp]", "Denise")
+    page.fill("[data-testid=comp-brief-pain]", "Hair Loss")
+    page.locator("[data-testid=comp-brief-send]").click()
+    page.wait_for_selector("[data-testid=comp-brief-title]", state="detached")
+    page.goto("/priorities/production?view=backlog")
+    page.wait_for_selector("[data-testid=prod-bl-table]")
+    assert page.locator("[data-testid=prod-bl-row]").count() == 1
+    assert page.locator("[data-testid=prod-bl-note]").first.input_value().startswith("From a competitor:")

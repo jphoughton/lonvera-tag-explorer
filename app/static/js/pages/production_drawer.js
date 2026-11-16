@@ -131,9 +131,9 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
       sel = i;
       const it = items[i]; const pv = previewOf(it.url);
       tabEls.forEach((bt, j) => bt.setAttribute('aria-selected', String(j === i)));
-      viewer.replaceChildren(h('div', { class: 'prod-viewer-bar' }, h('strong', null, it.label), h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer', class: 'pri-sub' }, 'Open in Drive')),
+      viewer.replaceChildren(h('div', { class: 'prod-viewer-bar' }, h('strong', null, it.label), h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer', class: 'pri-sub' }, pv && pv.kind === 'frameio' ? 'Open in Frame.io' : /youtu|vimeo|loom/.test(it.url) ? 'Open the link' : 'Open in Drive')),
         pv ? h('iframe', { class: 'prod-viewer-frame prod-viewer-' + pv.kind, src: pv.src, title: it.label, allow: 'autoplay; fullscreen', allowfullscreen: 'true', referrerpolicy: pv.src.startsWith('https://www.youtube.com/') ? 'strict-origin-when-cross-origin' : 'no-referrer', sandbox: 'allow-scripts allow-same-origin allow-presentation allow-popups' })
-          : h('p', { class: 'pri-sub' }, 'This link opens outside the app: use Open in Drive.'));
+          : h('p', { class: 'pri-sub' }, 'This kind of link cannot be shown here (Drive, YouTube, Vimeo, Loom and Frame.io links can). Use the Open link above.'));
       showSaid();
     };
     for (const [i, it] of items.entries()) tabEls.push(h('button', { type: 'button', role: 'tab', class: 'prod-vtab', 'aria-selected': 'false', 'data-testid': 'prod-hook', onclick: () => show(i) }, it.label));

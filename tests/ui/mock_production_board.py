@@ -290,7 +290,7 @@ def register(app, deps):
                 skipped.append({"reason": "already in Needs brief for that week"})
                 continue
             r = {"id": BL["next"], "product": it.get("product") or "", "cluster": it.get("cluster") or "", "icp": it.get("icp") or "", "pain_point": it.get("pain_point") or "", "media_type": it.get("media_type"), "story": it.get("story") or "", "title": " - ".join(x for x in (it.get("product"), it.get("cluster"), it.get("icp"), it.get("pain_point")) if x),
-                 "for_week": wk, "note": "", "status": "needs_brief", "assignment_id": None, "created_by": "josh"}
+                 "for_week": wk, "note": it.get("note") or "", "status": "needs_brief", "assignment_id": None, "created_by": "josh"}
             BL["next"] += 1
             BL["rows"].append(r)
             made.append(bl_view(r))
