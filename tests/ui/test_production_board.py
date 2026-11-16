@@ -652,3 +652,11 @@ def test_preview_rules_cover_frameio_and_leave_other_links_alone(page):
       return [k('https://next.frame.io/share/29314a08-035d-4fbd-91af-1cb39608cb7c/view/f2dde08b-7345-48aa-96d9-51bb7051041e'), k('https://next.frame.io/share/29314a08-035d-4fbd-91af-1cb39608cb7c'), k('https://f.io/AbCd12'),
               k('https://drive.google.com/file/d/abc123/view'), k('https://evil.example/share/29314a08-035d-4fbd-91af-1cb39608cb7c'), k('https://next.frame.io.evil.com/share/29314a08-035d-4fbd-91af-1cb39608cb7c'), k('http://next.frame.io/share/29314a08-035d-4fbd-91af-1cb39608cb7c')]; }""")
     assert out == ["frameio", "frameio", "frameio", "file", None, None, None]
+
+
+def test_a_ticket_whose_variations_have_no_link_still_plays_its_creative_link(page):
+    goto(page)
+    page.evaluate("async (u) => { await fetch('/api/priorities/assignments/1', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ creative_url: u, variations: [{ label: 'Original' }] }) }); }", FRAMEIO)
+    page.goto("/priorities/production?card=1")
+    page.wait_for_selector("[data-testid=prod-drawer-preview] iframe.prod-viewer-frameio")
+    assert page.locator("[data-testid=prod-drawer-preview] iframe").first.get_attribute("src") == FRAMEIO
