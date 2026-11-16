@@ -8936,6 +8936,12 @@
      "type": "text",
      "nullable": false,
      "description": "The tagger's confidence and one-line reason, or why it failed; empty when nothing was auto-tagged."
+    },
+    {
+     "name": "media_type",
+     "type": "text",
+     "nullable": true,
+     "description": "image or video, chosen when the ticket is made or later; NULL when not chosen (the By cut view then treats a ticket with a creative format F1 to F6 as video)."
     }
    ],
    "examples": []
@@ -9289,6 +9295,114 @@
      "type": "boolean",
      "nullable": false,
      "description": "True while the format can be chosen on a new assignment."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.creative_backlog",
+   "schema": "public",
+   "relation": "creative_backlog",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "The Needs brief queue on the Creative Pipeline page: cuts (product, market cluster, ICP, pain point) the team decided to work on in a given week that still need a brief and a partner.",
+   "grain": "one row per cut x week (open rows are unique)",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "the Creative Pipeline Needs brief and By cut views, via /api/priorities/backlog (app/priorities_backlog.py)",
+   "refresh": "on demand (a person adds, edits, removes or assigns)",
+   "coverage": "from the day migration 268 was deployed",
+   "caveats": [
+    "Assigning a partner and a brief creates a ticket in creative_priorities_assignments and sets status = assigned and assignment_id here; the row stays as history."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Primary key (bigserial)."
+    },
+    {
+     "name": "product",
+     "type": "text",
+     "nullable": false,
+     "description": "Product slug (vita-bull, beef-liver, boneflex, vita-belle) or empty when the cut had no product."
+    },
+    {
+     "name": "cluster",
+     "type": "text",
+     "nullable": false,
+     "description": "Market cluster of the cut; empty when the cut did not include one."
+    },
+    {
+     "name": "icp",
+     "type": "text",
+     "nullable": false,
+     "description": "ICP (ideal customer profile) of the cut; empty when the cut did not include one."
+    },
+    {
+     "name": "pain_point",
+     "type": "text",
+     "nullable": false,
+     "description": "Pain point of the cut; empty when the cut did not include one."
+    },
+    {
+     "name": "media_type",
+     "type": "text",
+     "nullable": true,
+     "description": "image or video when chosen; NULL when not. Passed on to the ticket when assigned."
+    },
+    {
+     "name": "title",
+     "type": "text",
+     "nullable": false,
+     "description": "Name the ticket gets: the cut labels joined, or what the person typed."
+    },
+    {
+     "name": "for_week",
+     "type": "date",
+     "nullable": false,
+     "description": "The Monday of the week the team wants this made."
+    },
+    {
+     "name": "note",
+     "type": "text",
+     "nullable": false,
+     "description": "Free note, up to 500 characters."
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "nullable": false,
+     "description": "needs_brief (waiting for a partner and a brief) or assigned (a ticket was created)."
+    },
+    {
+     "name": "assignment_id",
+     "type": "bigint",
+     "nullable": true,
+     "description": "creative_priorities_assignments.id of the ticket created from this item; NULL until assigned. No foreign key."
+    },
+    {
+     "name": "created_by",
+     "type": "text",
+     "nullable": true,
+     "description": "Signed-in user who added the item."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the item was added."
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the item last changed."
     }
    ],
    "examples": []

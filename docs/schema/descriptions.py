@@ -1556,6 +1556,7 @@ rel("public.creative_priorities_assignments", group="creative", kind="table",
           "tracker_concept_ids": "Creative Tracker Concept IDs of the ads made from this assignment, entered by hand.", "created_at": "When the assignment was created.", "updated_at": "When it was last changed.",
           "created_by": "Who created the assignment: the signed-in user name; NULL when none.",
           "updated_by": "Who last changed it: the signed-in user name, or vendor:<name> for a write made on a vendor link page; NULL when none.",
+          "media_type": "image or video, chosen when the ticket is made or later; NULL when not chosen (the By cut view then treats a ticket with a creative format F1 to F6 as video).",
           "format_code": "Creative format chosen when assigning or later (creative_formats.code, foreign key); NULL when none was chosen. Set by a signed-in user only; a vendor sees it but cannot change it.",
           "status": "The board column, stored: assigned, brief_sent, in_production, in_review, ready or launched (a dropped assignment keeps its last status and has dropped_at set). Written only through set_status in app/priorities_assign.py; a linked Creative Tracker row can pull it forward (7 = ready, 8 or 9 = launched), never back.",
           "due_date": "When the vendor should be done: the Friday of for_week unless changed; NULL when cleared.", "priority": "'normal' or 'high'; high cards sort first on the board.",
@@ -1612,6 +1613,17 @@ rel("public.creative_formats", group="creative", kind="table",
     caveats=["A format with active = false stays on the assignments that already use it but can no longer be chosen."],
     cols={"code": "Short code (primary key), F1 to F6.", "name": "What the format is, shown in the pick list.", "length": "Typical running time, as text (for example '45 to 90s'); NULL when not set.",
           "sort": "Order in the pick list (ascending).", "active": "True while the format can be chosen on a new assignment."})
+
+rel("public.creative_backlog", group="creative", kind="table",
+    purpose="The Needs brief queue on the Creative Pipeline page: cuts (product, market cluster, ICP, pain point) the team decided to work on in a given week that still need a brief and a partner.",
+    grain="one row per cut x week (open rows are unique)", source="the Creative Pipeline Needs brief and By cut views, via /api/priorities/backlog (app/priorities_backlog.py)",
+    refresh="on demand (a person adds, edits, removes or assigns)", coverage="from the day migration 268 was deployed",
+    caveats=["Assigning a partner and a brief creates a ticket in creative_priorities_assignments and sets status = assigned and assignment_id here; the row stays as history."],
+    cols={"id": "Primary key (bigserial).", "product": "Product slug (vita-bull, beef-liver, boneflex, vita-belle) or empty when the cut had no product.", "cluster": "Market cluster of the cut; empty when the cut did not include one.",
+          "icp": "ICP (ideal customer profile) of the cut; empty when the cut did not include one.", "pain_point": "Pain point of the cut; empty when the cut did not include one.", "media_type": "image or video when chosen; NULL when not. Passed on to the ticket when assigned.",
+          "title": "Name the ticket gets: the cut labels joined, or what the person typed.", "for_week": "The Monday of the week the team wants this made.", "note": "Free note, up to 500 characters.",
+          "status": "needs_brief (waiting for a partner and a brief) or assigned (a ticket was created).", "assignment_id": "creative_priorities_assignments.id of the ticket created from this item; NULL until assigned. No foreign key.",
+          "created_by": "Signed-in user who added the item.", "created_at": "When the item was added.", "updated_at": "When the item last changed."})
 
 # ---- daily story (migration 248)
 rel("public.daily_story_metrics", group="story", kind="table",

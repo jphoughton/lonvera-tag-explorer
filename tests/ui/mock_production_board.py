@@ -228,6 +228,67 @@ def register(app, deps):
                         "dims": [], "basis": "Mock basis.", "warning": None,
                         "combos": sorted({(c["product"], c.get("cluster") or "", c.get("icp") or "", c.get("pain_point") or "") for c in cards()})})
 
+    BL = S.setdefault("backlog", {"rows": [], "next": 1})
+
+    def bl_view(r):
+        return {**r, "product_name": {"vita-bull": "Vita Bull", "beef-liver": "Beef Liver", "boneflex": "Boneflex"}.get(r["product"], r["product"])}
+
+    @app.post("/__test/backlog/reset")
+    def bl_reset():
+        BL["rows"], BL["next"] = [], 1
+        return jsonify(ok=True)
+
+    @app.get("/api/priorities/backlog")
+    def bl_list():
+        return jsonify({"rows": [bl_view(r) for r in BL["rows"] if r["status"] == "needs_brief"], "vendors": list(VENDORS), "ready": True})
+
+    @app.post("/api/priorities/backlog")
+    def bl_add():
+        b = request.get_json() or {}
+        made, skipped = [], []
+        for it in b.get("items") or []:
+            if not any(it.get(k) for k in ("product", "cluster", "icp", "pain_point")):
+                return jsonify(error="an item needs at least a product, cluster, ICP or pain point"), 400
+            wk = H["pa"].monday_of(b.get("for_week") or dt.date.today()).isoformat()
+            if any(r["status"] == "needs_brief" and r["for_week"] == wk and all(r[k] == (it.get(k) or "") for k in ("product", "cluster", "icp", "pain_point")) for r in BL["rows"]):
+                skipped.append({"reason": "already in Needs brief for that week"})
+                continue
+            r = {"id": BL["next"], "product": it.get("product") or "", "cluster": it.get("cluster") or "", "icp": it.get("icp") or "", "pain_point": it.get("pain_point") or "", "title": " - ".join(x for x in (it.get("product"), it.get("cluster"), it.get("icp"), it.get("pain_point")) if x),
+                 "for_week": wk, "note": "", "status": "needs_brief", "assignment_id": None, "created_by": "josh"}
+            BL["next"] += 1
+            BL["rows"].append(r)
+            made.append(bl_view(r))
+        return jsonify({"created": made, "skipped": skipped}), 201
+
+    @app.patch("/api/priorities/backlog/<int:iid>")
+    def bl_patch(iid):
+        r = next((x for x in BL["rows"] if x["id"] == iid), None)
+        if r is None:
+            return jsonify(error="No waiting item with that id."), 404
+        b = request.get_json() or {}
+        if "note" in b:
+            r["note"] = b["note"]
+        if "for_week" in b:
+            r["for_week"] = H["pa"].monday_of(b["for_week"]).isoformat()
+        return jsonify(bl_view(r))
+
+    @app.delete("/api/priorities/backlog/<int:iid>")
+    def bl_delete(iid):
+        n = len(BL["rows"])
+        BL["rows"] = [x for x in BL["rows"] if x["id"] != iid]
+        return jsonify({"removed": n - len(BL["rows"])})
+
+    @app.post("/api/priorities/backlog/assign")
+    def bl_assign():
+        b = request.get_json() or {}
+        if not b.get("vendor") or not (b.get("brief_url") or b.get("brief")):
+            return jsonify(error="every ticket needs a vendor and a brief"), 400
+        ids = b.get("ids") or []
+        rows = [x for x in BL["rows"] if x["id"] in ids and x["status"] == "needs_brief"]
+        for x in rows:
+            x["status"] = "assigned"
+        return jsonify({"created": [{"id": 900 + x["id"], "vendor": b["vendor"]} for x in rows], "assigned": [x["id"] for x in rows]}), 201
+
     @app.get("/api/priorities/cuts/ads")
     def cut_ads():
         a = request.args

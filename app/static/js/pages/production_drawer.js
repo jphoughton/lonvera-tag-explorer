@@ -80,6 +80,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
     const mk = (tid, el) => { el.setAttribute('data-testid', tid); el.addEventListener('input', () => { dirty = true; }); el.addEventListener('change', () => { dirty = true; }); return el; };
     const cname = mk('prod-drawer-concept-name', h('input', { type: 'text', class: 'pri-name', maxlength: '200', placeholder: 'Name of the concept', value: r.concept_name || '', 'aria-label': 'Concept name' }));
     const kind = mk('prod-drawer-kind', h('select', { class: 'pri-name' }, [['', 'Not set'], ['new', 'New concept'], ['iteration', 'Iteration']].map(([v, l]) => h('option', { value: v, selected: (r.concept_kind || '') === v }, l))));
+    const media = mk('prod-drawer-media', h('select', { class: 'pri-name' }, [['', 'Not chosen'], ['video', 'Video'], ['image', 'Image']].map(([v, l]) => h('option', { value: v, selected: (r.media_type || '') === v }, l))));
     const vendor = mk('prod-drawer-vendor', h('select', { class: 'pri-name' }, ops.vendors().map((v) => h('option', { value: v, selected: v === r.vendor }, v))));
     const week = mk('prod-drawer-week', h('select', { class: 'pri-name' }, weeks.map((w) => h('option', { value: w, selected: w === r.for_week }, weekLabel(w)))));
     const dueIn = mk('prod-drawer-due', h('input', { type: 'date', class: 'pri-name', value: r.due_date || '', 'aria-label': 'Due date' }));
@@ -93,6 +94,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
       const body = {};
       if (cname.value.trim() !== (r.concept_name || '')) body.concept_name = cname.value.trim();
       if ((kind.value || null) !== (r.concept_kind || null)) body.concept_kind = kind.value || null;
+      if ((media.value || null) !== (r.media_type || null)) body.media_type = media.value || null;
       if (vendor.value !== r.vendor) body.vendor = vendor.value;
       if (week.value !== r.for_week) body.for_week = week.value;
       if ((dueIn.value || null) !== (r.due_date || null)) body.due_date = dueIn.value || null;
@@ -148,7 +150,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
     const noteView = r.note ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Note, as written'), h('div', { class: 'prod-richnote', 'data-testid': 'prod-drawer-note-view' }, richLines(r.note))) : null;
     pane.replaceChildren(h('div', { class: 'prod-drawer-form', 'data-testid': 'prod-drawer-details' },
       preview, noteView,
-      fieldInput('Concept name', cname), fieldInput('New vs Iteration', kind),
+      fieldInput('Concept name', cname), fieldInput('New vs Iteration', kind), fieldInput('Image or video', media),
       h('dl', { class: 'prod-about', 'data-testid': 'prod-about' }, [['Vendor', r.vendor], ['Week of', weekLabel(r.for_week).replace('Week of ', '')], ['ICP', r.icp], ['Pain point', r.pain_point], ['Market Cluster', r.cluster], ['Line', r.line_code]].filter(([, v]) => v).map(([k, v]) => h('div', { class: 'prod-fact' }, h('dt', null, k + ':'), h('dd', null, v)))),
       fieldInput('Vendor', vendor), fieldInput('Week of', week), fieldInput('Due date', dueRow, 'The vendor sees this date. Clear it for no due date.'), fieldInput('Priority', prio), fieldInput('Format', fmt),
       fieldInput('Brief link', brief), fieldInput('Creative link', creative), fieldInput('Note', note),
