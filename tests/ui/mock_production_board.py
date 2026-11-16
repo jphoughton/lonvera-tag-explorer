@@ -384,6 +384,12 @@ def register(app, deps):
             r["position"] = float(i)
             r["status_changed_at"] = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=30 if i == 11 else 1)).isoformat()
             S["events"][i] = [{"at": _now(), "actor": "josh", "kind": "assigned", "stage_before": None, "stage_after": "assigned", "status_before": None, "status_after": "assigned", "detail": f"{v}, week of {r['for_week'].isoformat()}"}]
+        for i in (1, 2, 3):                                  # base rows default to the Friday of their week: on a Saturday / Sunday that is already past, which made them 'overdue' and broke the one-overdue-card assertions
+            if i in S["rows"]:
+                r = S["rows"][i]
+                ensure(r)
+                if r["due_date"] < today.isoformat():
+                    r["due_date"] = (today + dt.timedelta(days=10)).isoformat()
         S["seq"] = max(S["seq"], 11)
         r = S["rows"][7]
         r["comments"] = [{"id": 1, "author_kind": "vendor", "author_name": "Victoria", "body": "First cut is in the folder.", "created_at": _now()}, {"id": 2, "author_kind": "app", "author_name": "Josh", "body": "Looks good, checking the hook.", "created_at": _now()}]

@@ -72,6 +72,14 @@
    "schedule": null,
    "healthcheck": null,
    "source": "scripts/deploy/run_live.sh; no apply script in the repo, so the schedule is not verifiable here (project notes say hourly)"
+  },
+  {
+   "name": "tagging",
+   "kind": "cron",
+   "start": "scripts/deploy/run_tagging.sh",
+   "schedule": "0 18 * * 0",
+   "healthcheck": null,
+   "source": "scripts/deploy/apply_tagging_service.py"
   }
  ],
  "etl_jobs": [

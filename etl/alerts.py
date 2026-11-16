@@ -75,6 +75,8 @@ JOBS = [
     JobSpec("stage_moves", NIGHTLY_H, True, fix="Railway > etl logs; Test to scale keeps serving the last good rows meanwhile."),
     JobSpec("auto_tag", NIGHTLY_H, False, fix="Railway > etl logs (new ads stay untagged until it runs)."),
     JobSpec("competitor_ads", WEEKLY_H, False, fix="Railway > etl logs of the last Sunday run (Ad Library scrape or classification)."),
+    JobSpec("competitor_tags", WEEKLY_H, False, fix="Railway > tagging service logs of the last Sunday run (cron 0 18 * * 0 UTC; whisper / yt-dlp / Claude step named above)."),
+    JobSpec("own_ad_tags", WEEKLY_H, False, fix="Railway > tagging service logs of the last Sunday run (cron 0 18 * * 0 UTC; whisper / yt-dlp / Claude step named above)."),
     JobSpec("creative_priorities", WEEKLY_H, False, fix="Railway > etl logs of the last Sunday run."),
     # the dedicated `breakdowns` service runs every 2 hours but writes no row in the quiet hours (12:30-15:30 UTC) or when another run holds the lock, and a run lasts up to 110 minutes:
     # the longest normal gap between successful rows is about 5 h, so 6 h cadence = alert after 9 h. Silent until the first row exists.
@@ -88,11 +90,11 @@ JOBS = [
     JobSpec("inventory_snapshots", NIGHTLY_H, False, fix="Railway > etl logs for etl.inventory_snapshots (it reads the typed counts, the units feed and the landed purchase orders and transfers; no outside service)."),
     JobSpec("projection_daily", NIGHTLY_H, True, kind="heartbeat:projection_daily", fix="Railway > etl logs for etl.projection_daily; the module named above failed."),
 ]
-CLAUDE_JOBS = ("auto_tag", "competitor_ads")
+CLAUDE_JOBS = ("auto_tag", "competitor_ads", "competitor_tags", "own_ad_tags")
 TOKEN_RE = re.compile(r"authentication failed|CLAUDE_CODE_OAUTH_TOKEN|setup-token|not logged in|oauth", re.I)
 LIMIT_RE = re.compile(r"usage / rate limit|usage limit|rate.?limit|limit reached", re.I)
 TOKEN_FIX = ("Token expired (or missing): run `claude setup-token` on your laptop, then update CLAUDE_CODE_OAUTH_TOKEN on the Railway `etl` service "
-             "(auto_tag and competitor_ads both use it) and redeploy / wait for the next 13:00 UTC run.")
+             "(auto_tag and competitor_ads use it; the `tagging` service references it from etl) and redeploy / wait for the next 13:00 UTC run.")
 LIMIT_FIX = "The Claude plan usage limit was hit; the next nightly run retries by itself. Only act if this repeats: check the plan's usage or lower DEFAULT_LIMIT."
 
 
