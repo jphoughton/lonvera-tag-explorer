@@ -419,15 +419,28 @@ def test_the_explainer_says_which_time_windows_it_reads(page):
     assert "last 7 days" in t and "30 days before that" in t and "revive candidate" in t and "carries no weight" in t
 
 
-def test_the_table_header_stays_pinned_while_the_rows_scroll(page):
+
+def test_a_pinned_copy_of_the_header_follows_the_page_scroll_and_sorts(page):
+    page.set_viewport_size({"width": 1440, "height": 700})
+    goto(page)
+    assert page.locator("[data-testid=prod-stickyhead]").is_hidden()                                          # table header in view: no copy
+    page.evaluate("() => { const f = document.querySelector('[data-testid=prod-cuts-scroll]'); window.scrollTo(0, f.getBoundingClientRect().top + window.scrollY + 120); }")
+    page.wait_for_selector("[data-testid=prod-stickyhead]", state="visible")
+    top = page.evaluate("() => document.querySelector('[data-testid=prod-stickyhead]').getBoundingClientRect().top")
+    nav = page.evaluate("() => Math.max(...['#topbar', '#subnav'].map(s => { const e = document.querySelector(s); return e ? e.getBoundingClientRect().bottom : 0; }))")
+    assert abs(top - nav) < 3, (top, nav)
+    texts = page.locator("[data-testid=prod-stickyhead] th").all_text_contents()
+    assert "Spend" in "".join(texts) and "Priority score" in "".join(texts)
+    page.locator("[data-testid=prod-stickyhead] th").filter(has_text=re.compile(r"^Spend")).first.locator("button").click()         # clicking the pinned copy sorts the real table
+    page.wait_for_function("() => document.querySelector('[data-testid=prod-cuts-sort-spend]').closest('th').getAttribute('aria-sort') !== 'none'")
+    page.evaluate("() => window.scrollTo(0, 0)")
+    page.wait_for_selector("[data-testid=prod-stickyhead]", state="hidden")
+    page.locator("[data-testid=prod-view-board]").click()
+    page.wait_for_selector("[data-testid=prod-board], [data-testid=prod-empty]")
+    assert page.locator("[data-testid=prod-stickyhead]").count() == 0                                         # leaving the view removes the copy
+
+
+def test_the_table_has_no_scroll_of_its_own_so_only_the_page_scrolls(page):
     page.set_viewport_size({"width": 1440, "height": 520})
     goto(page)
-    th = page.locator("[data-testid=prod-cuts-table] thead th").nth(1)
-    assert page.evaluate("(el) => getComputedStyle(el).position", th.element_handle()) == "sticky"
-    box = page.locator("[data-testid=prod-cuts-scroll]")
-    assert page.evaluate("() => { const s = document.querySelector('[data-testid=prod-cuts-scroll]'); return s.scrollHeight > s.clientHeight }")
-    box.evaluate("(el) => { el.scrollTop = 400 }")
-    page.wait_for_timeout(100)
-    top_head = th.bounding_box()["y"]
-    top_box = box.bounding_box()["y"]
-    assert abs(top_head - top_box) < 3, (top_head, top_box)                                                  # the header is still at the top of the frame after scrolling down
+    assert page.evaluate("() => { const s = document.querySelector('[data-testid=prod-cuts-scroll]'); return s.scrollHeight <= s.clientHeight + 1 }")

@@ -184,6 +184,43 @@ function openScoreHelp() {
   } });
 }
 
+// A copy of the header row that follows the page scroll: while the table is on screen but its own header has scrolled up under the top bars, a fixed copy sits just below them, lined up with the real columns and
+// scrolled sideways with them. Clicking a copied header presses the real one (so sorting works); dragging a column is done on the real header. Removed as soon as the table leaves the page.
+let stickyCleanup = null;
+function enableStickyHeader(frame, table) {
+  if (stickyCleanup) stickyCleanup();
+  const wrap = h('div', { class: 'prod-page prod-stickyhead', hidden: true, 'data-testid': 'prod-stickyhead' });
+  let inner = null, last = '';
+  document.body.append(wrap);
+  const offset = () => Math.max(0, ...['#topbar', '#subnav'].map((s) => { const el = document.querySelector(s); return el ? el.getBoundingClientRect().bottom : 0; }));
+  const build = () => {
+    const real = table.querySelector('thead');
+    const clone = table.cloneNode(false); clone.removeAttribute('data-testid'); clone.style.width = table.getBoundingClientRect().width + 'px'; clone.style.tableLayout = 'fixed';
+    const head = real.cloneNode(true);
+    [...head.querySelectorAll('th')].forEach((th, i) => { const w = real.querySelectorAll('th')[i].getBoundingClientRect().width; th.style.width = th.style.minWidth = th.style.maxWidth = w + 'px'; th.removeAttribute('data-testid'); th.querySelectorAll('[data-testid]').forEach((e) => e.removeAttribute('data-testid')); });
+    clone.append(head); inner = h('div', { class: 'prod-stickyhead-in' }, clone); wrap.replaceChildren(inner);
+    head.addEventListener('click', (e) => { const th = e.target.closest('th'); if (!th) return; const i = [...head.querySelectorAll('th')].indexOf(th); real.querySelectorAll('th')[i]?.querySelector('button')?.click(); });
+  };
+  const update = () => {
+    if (!table.isConnected) { stickyCleanup && stickyCleanup(); return; }
+    const off = offset(), fr = frame.getBoundingClientRect(), tr = table.getBoundingClientRect(), hh = table.querySelector('thead').getBoundingClientRect().height;
+    const show = fr.top < off && tr.bottom - hh > off && fr.bottom > off;
+    wrap.hidden = !show;
+    if (!show) return;
+    const sig = Math.round(tr.width) + ':' + table.querySelectorAll('thead th').length + ':' + [...table.querySelectorAll('thead th')].map((t) => Math.round(t.getBoundingClientRect().width)).join(',');
+    if (sig !== last || !inner) { last = sig; build(); }
+    wrap.style.top = off + 'px'; wrap.style.left = fr.left + 'px'; wrap.style.width = fr.width + 'px';
+    inner.style.transform = `translateX(${-frame.scrollLeft}px)`;
+  };
+  let pending = false;
+  const tick = () => { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; update(); }); };
+  window.addEventListener('scroll', tick, { passive: true }); window.addEventListener('resize', tick); frame.addEventListener('scroll', tick, { passive: true });
+  const gone = new MutationObserver(() => { if (!table.isConnected && stickyCleanup) stickyCleanup(); });            // the table left the page (another view, another page): remove the copy at once
+  gone.observe(document.body, { childList: true, subtree: true });
+  stickyCleanup = () => { gone.disconnect(); window.removeEventListener('scroll', tick); window.removeEventListener('resize', tick); frame.removeEventListener('scroll', tick); wrap.remove(); stickyCleanup = null; };
+  tick();
+}
+
 // st: { by: ['product', ...], preset, from, to, pipelineOnly, stages: [status...], sort: {key, dir} }  (plain object kept by the page so it survives a redraw)
 export function cutsView({ host, st, filters, signal, onState, say, pageFilters }) {
   let out = null;
@@ -512,6 +549,7 @@ export function cutsView({ host, st, filters, signal, onState, say, pageFilters 
         + (out.warning || '')));
     const tbl = tableHost.querySelector('table.prod-cuts-table');
     if (tbl) enableHeaderDrag(tbl, () => orderedMetrics().map(([k]) => k), moveMetric);
+    if (tbl) enableStickyHeader(tableHost.querySelector('[data-testid=prod-cuts-scroll]'), tbl); else if (stickyCleanup) stickyCleanup();
   }
 
   drawBuilder();
