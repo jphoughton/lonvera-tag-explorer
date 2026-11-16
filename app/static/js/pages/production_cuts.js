@@ -24,12 +24,14 @@ export const METRICS = [
 // Quick filters: each is a plain rule over a cut's row. BASE is the blended NC ROAS of every cut in the window (the Total row); "working" = at or above it with at least MIN_SPEND spent.
 // "In pipeline" = concepts not yet launched (assigned through ready to launch).
 export const MIN_SPEND = 1000;
+const tierClass = (t) => 'prod-prio-' + String(t || 'none').toLowerCase().replace(/[^a-z]+/g, '-');
 const OPEN = ['assigned', 'brief_sent', 'in_production', 'in_review', 'ready'];
 export const openCount = (r) => OPEN.reduce((n, k) => n + (r.stages[k] || 0), 0);
 const working = (r, base) => (r.stats.spend || 0) >= MIN_SPEND && isNum(r.stats.nc_roas) && isNum(base) && r.stats.nc_roas >= base;
-const QV_COLOR = { stuck: 'pri-cc-sec-faded', gap: 'pri-cc-sec-iterate', scale: 'pri-cc-sec-new', ready: 'pri-cc-sec-proposal', dark: 'pri-cc-sec-stop' };
+const QV_COLOR = { prio: 'pri-cc-sec-competitor', stuck: 'pri-cc-sec-faded', gap: 'pri-cc-sec-iterate', scale: 'pri-cc-sec-new', ready: 'pri-cc-sec-proposal', dark: 'pri-cc-sec-stop' };
 export const QUICK = [
   ['', 'All cuts', 'Every cut', () => true],
+  ['prio', 'Make more now', 'Priority score of 55 or more: the cuts the score says need new creative first (needs Market cluster, ICP or Pain point in Group by)', (r) => !!r.priority && r.priority.tier === 'Make more now'],
   ['stuck', 'Lots in pipeline, not working', `3 or more concepts in the pipeline, at least $${MIN_SPEND.toLocaleString('en-US')} spent, and NC ROAS below the blended NC ROAS of all cuts in the window`, (r, base) => openCount(r) >= 3 && (r.stats.spend || 0) >= MIN_SPEND && isNum(r.stats.nc_roas) && isNum(base) && r.stats.nc_roas < base],
   ['gap', 'Working, nothing in pipeline', 'NC ROAS at or above blended with at least $1,000 spent, and no concepts in the pipeline', (r, base) => working(r, base) && openCount(r) === 0],
   ['scale', 'Working, 2 or fewer live ads', 'NC ROAS at or above blended with at least $1,000 spent, and 2 or fewer unique live ads', (r, base) => working(r, base) && (r.stats.live_ads || 0) <= 2],
@@ -96,6 +98,56 @@ function enableReorder(list, keysOf, onMove) {
     const up = (ev) => end(ev, true), cancel = (ev) => end(ev, false);
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', cancel);
   });
+}
+
+// Drag a metric column by its header to a new place in the table itself. The column follows the pointer as a label, the column being moved fades, a bar shows where it will land; on drop the columns slide into
+// place and the moved one flashes. keysOf() = the full metric order, onMove(newKeys, movedKey) saves it and redraws. A plain click still sorts (the click after a drag is swallowed).
+function enableHeaderDrag(table, keysOf, onMove) {
+  const heads = () => [...table.querySelectorAll('thead th[data-mkey]')];
+  table.querySelector('thead').addEventListener('pointerdown', (e) => {
+    const th = e.target.closest('th[data-mkey]');
+    if (!th || e.button !== 0) return;
+    const key = th.dataset.mkey, x0 = e.clientX;
+    let ghost = null, moved = false;
+    const cols = () => [th, ...table.querySelectorAll(`td[data-metric="${key}"]`)];
+    const target = (x) => { const others = heads().filter((c) => c !== th); let n = 0; for (const c of others) { const b = c.getBoundingClientRect(); if (x > b.left + b.width / 2) n++; } return { n, others }; };
+    const mark = (x) => { const { n, others } = target(x); heads().forEach((c) => c.classList.remove('prod-th-before', 'prod-th-end')); if (others[n]) others[n].classList.add('prod-th-before'); else if (others.length) others[others.length - 1].classList.add('prod-th-end'); };
+    const move = (ev) => {
+      if (!moved && Math.abs(ev.clientX - x0) < 6) return;
+      if (!moved) { moved = true; cols().forEach((c) => c.classList.add('prod-col-drag')); ghost = h('div', { class: 'prod-th-ghost', 'aria-hidden': 'true' }, th.textContent.trim()); document.body.append(ghost); document.body.classList.add('prod-dragging-col'); }
+      ev.preventDefault();
+      ghost.style.left = ev.clientX + 10 + 'px'; ghost.style.top = (th.getBoundingClientRect().top + 4) + 'px';
+      mark(ev.clientX);
+    };
+    const end = (ev, commit) => {
+      document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', cancel);
+      if (!moved) return;
+      document.body.classList.remove('prod-dragging-col');
+      ghost.remove(); cols().forEach((c) => c.classList.remove('prod-col-drag')); heads().forEach((c) => c.classList.remove('prod-th-before', 'prod-th-end'));
+      table.addEventListener('click', (c) => { c.stopPropagation(); c.preventDefault(); }, { once: true, capture: true });
+      if (!commit) return;
+      const { n, others } = target(ev.clientX), full = keysOf().filter((k) => k !== key);
+      const at = others[n] ? full.indexOf(others[n].dataset.mkey) : full.indexOf(others[others.length - 1].dataset.mkey) + 1;
+      full.splice(at, 0, key);
+      if (full.join() !== keysOf().join()) onMove(full, key);
+    };
+    const up = (ev) => end(ev, true), cancel = (ev) => end(ev, false);
+    document.addEventListener('pointermove', move, { passive: false }); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', cancel);
+  });
+}
+
+// After a redraw: slide every metric column from where it was to where it is, and flash the one that moved (FLIP).
+function animateColumns(table, before, movedKey) {
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  for (const th of table.querySelectorAll('thead th[data-mkey]')) {
+    const key = th.dataset.mkey, dx = before[key] === undefined ? 0 : before[key] - th.getBoundingClientRect().left;
+    const cells = [th, ...table.querySelectorAll(`td[data-metric="${key}"]`)];
+    if (key === movedKey) cells.forEach((c) => c.classList.add('prod-col-landed'));
+    if (!dx || reduce) continue;
+    cells.forEach((c) => { c.style.transition = 'none'; c.style.transform = `translateX(${dx}px)`; });
+    requestAnimationFrame(() => requestAnimationFrame(() => cells.forEach((c) => { c.style.transition = 'transform 280ms cubic-bezier(.2,.8,.2,1)'; c.style.transform = ''; })));
+  }
+  setTimeout(() => table.querySelectorAll('.prod-col-landed').forEach((c) => c.classList.remove('prod-col-landed')), 1100);
 }
 
 // st: { by: ['product', ...], preset, from, to, pipelineOnly, stages: [status...], sort: {key, dir} }  (plain object kept by the page so it survives a redraw)
@@ -271,7 +323,10 @@ export function cutsView({ host, st, filters, signal, onState, say, pageFilters 
           h('span', { class: 'pri-sub', 'data-testid': 'prod-cutads-count' }, `Showing ${shown.length} of ${d.window.length} ads${d.window.length >= 60 ? ' (the 60 biggest spenders)' : ''}`)),
         table(['Ad', 'Spend', 'NC revenue', 'NC ROAS', 'NC CPA', 'Meta ROAS'], shown.map((a) => tr([name(a), fmt.money(a.spend), fmt.money(a.nc_revenue), roasText(a.nc_roas), fmt.money2(a.nc_cpa), roasText(a.meta_roas)])), 'prod-cutads-window', `No ad spent $${ADS_MIN_SPEND} or more in these dates.`));
     };
-    body.replaceChildren(...[d.warning ? h('p', { class: 'pri-err' }, d.warning) : null,
+    const pr = r.priority;
+    const prio = pr ? h('div', { class: 'prod-cutads-prio', 'data-testid': 'prod-cutads-prio' }, h('div', null, h('span', { class: 'prod-prio prod-prio-big ' + tierClass(pr.tier) }, String(Math.round(pr.score))), ' ', h('strong', null, pr.tier), h('span', { class: 'pri-sub' }, ` · ${pr.confidence} confidence`)),
+      h('p', { class: 'pri-sub' }, pr.why), h('ul', { class: 'prod-cutads-drivers' }, (pr.drivers || []).map((x) => h('li', null, x.plain_text || x.label))), (pr.flags || []).length ? h('p', { class: 'pri-sub' }, 'Notes: ' + pr.flags.join(', ')) : null) : null;
+    body.replaceChildren(...[prio, d.warning ? h('p', { class: 'pri-err' }, d.warning) : null,
       h('h4', { class: 'pri-h' }, 'Top 5 spenders since launch ', h('span', { class: 'pri-hnote' }, 'all time, Meta numbers, for inspiration')),
       table(['Ad', 'Spend', 'Revenue', 'Meta ROAS', 'Purchases'], d.top.map((a) => tr([name(a), fmt.money(a.spend), fmt.money(a.revenue), roasText(a.meta_roas), fmt.int(a.purchases)])), 'prod-cutads-top'),
       h('h4', { class: 'pri-h' }, 'Top hooks ', h('span', { class: 'pri-hnote' }, `best NC ROAS among ads that spent $${ADS_MIN_SPEND} or more in these dates`)),
@@ -306,7 +361,7 @@ export function cutsView({ host, st, filters, signal, onState, say, pageFilters 
     const mine = ++seq;
     tableHost.classList.add('prod-cuts-busy');
     try {
-      const d = await api('/api/priorities/cuts', { group: st.by.join(','), from: st.from, to: st.to, week: filters().week, vendor: filters().vendor, product: filters().product, cluster: st.f.cluster.join('|'), icp: st.f.icp.join('|'), pain_point: st.f.pain_point.join('|') }, { signal });
+      const d = await api('/api/priorities/cuts', { score: 1, group: st.by.join(','), from: st.from, to: st.to, week: filters().week, vendor: filters().vendor, product: filters().product, cluster: st.f.cluster.join('|'), icp: st.f.icp.join('|'), pain_point: st.f.pain_point.join('|') }, { signal });
       if (mine !== seq) return;
       out = d; say('');
       combos = d.combos || [];
@@ -347,7 +402,7 @@ export function cutsView({ host, st, filters, signal, onState, say, pageFilters 
       h('button', { type: 'button', class: 'btn small', 'data-testid': 'prod-cuts-selclear', onclick: () => { sel.clear(); drawTable(); } }, 'Clear'), msg);
   }
   const stageList = () => (out && out.stages ? out.stages.map((s) => [s.status, s.label]) : STAGE_FALLBACK);
-  const val = (row, key) => (key.startsWith('label:') ? (row.labels[key.slice(6)] || '') : key.startsWith('stage:') ? row.stages[key.slice(6)] : key === 'open' ? openCount(row) : row.stats[key]);
+  const val = (row, key) => (key.startsWith('label:') ? (row.labels[key.slice(6)] || '') : key.startsWith('stage:') ? row.stages[key.slice(6)] : key === 'open' ? openCount(row) : key === 'priority' ? (row.priority ? row.priority.score : null) : row.stats[key]);
   function sorted(rows) {
     const { key, dir } = st.sort;
     if (!key) return rows;
@@ -372,17 +427,24 @@ export function cutsView({ host, st, filters, signal, onState, say, pageFilters 
     const metrics = orderedMetrics().filter(([k]) => st.metrics.includes(k));
     const sortBtn = (key, text, title, right) => {
       const on = st.sort.key === key;
-      return h('th', { scope: 'col', class: right ? 'prod-num' : null, title: title || null, 'aria-sort': on ? (st.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none' },
+      return h('th', { scope: 'col', class: (right ? 'prod-num' : '') + (METRICS.some(([m]) => m === key) ? ' prod-th-metric' : ''), 'data-mkey': METRICS.some(([m]) => m === key) ? key : null, title: (title || '') + (METRICS.some(([m]) => m === key) ? ' Drag the header to move this column.' : ''), 'aria-sort': on ? (st.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none' },
         h('button', { type: 'button', class: 'prod-sortbtn', 'data-testid': 'prod-cuts-sort-' + key.replace(':', '-'), onclick: () => { st.sort = on ? { key, dir: st.sort.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: typeof val(rows[0] || { labels: {}, stages: {}, stats: {} }, key) === 'string' ? 'asc' : 'desc' }; changed(); drawTable(); } }, text, on ? (st.sort.dir === 'asc' ? ' ▲' : ' ▼') : ''));
     };
-    const heads = [h('th', { scope: 'col' }, h('input', { type: 'checkbox', 'aria-label': 'Select all shown cuts', 'data-testid': 'prod-cuts-selall', checked: rows.length > 0 && rows.every((r) => sel.has(rowKey(r))), onchange: (e) => { for (const r of rows) { if (e.target.checked) sel.set(rowKey(r), r); else sel.delete(rowKey(r)); } drawTable(); } })), ...out.group.map((d) => sortBtn('label:' + d, DIM_LABEL[d])), ...shown.map(([k, t]) => sortBtn('stage:' + k, t, 'Concepts at this status (not dropped)', true)), sortBtn('open', 'Concepts in pipeline', 'Concepts given out and not yet launched (assigned through ready to launch); dropped ones left out', true), ...metrics.map(([k, t, , tip]) => sortBtn(k, t, tip, true))];
+    const heads = [h('th', { scope: 'col' }, h('input', { type: 'checkbox', 'aria-label': 'Select all shown cuts', 'data-testid': 'prod-cuts-selall', checked: rows.length > 0 && rows.every((r) => sel.has(rowKey(r))), onchange: (e) => { for (const r of rows) { if (e.target.checked) sel.set(rowKey(r), r); else sel.delete(rowKey(r)); } drawTable(); } })), ...out.group.map((d) => sortBtn('label:' + d, DIM_LABEL[d])), ...shown.map(([k, t]) => sortBtn('stage:' + k, t, 'Concepts at this status (not dropped)', true)), sortBtn('priority', 'Priority score', 'Creative priority, 0 to 100: how much this cut needs new creative now (hit rate, supply gap, scale, economics; discounted when briefs are already in the pipeline). Click for the reasons.', true), sortBtn('open', 'Concepts in pipeline', 'Concepts given out and not yet launched (assigned through ready to launch); dropped ones left out', true), ...metrics.map(([k, t, , tip]) => sortBtn(k, t, tip, true))];
     const cells = (r, total) => [h('td', { class: 'prod-c' }, total ? null : h('input', { type: 'checkbox', 'aria-label': 'Select this cut for Needs brief', 'data-testid': 'prod-cuts-sel', checked: sel.has(rowKey(r)), onchange: (e) => { if (e.target.checked) sel.set(rowKey(r), r); else sel.delete(rowKey(r)); drawTable(); } })), ...out.group.map((d, i) => h('td', { class: 'prod-c prod-cut-label' + (r.labels[d] === '(none)' ? ' prod-cut-none' : '') }, total ? (i === 0 ? 'Total' : '') : r.labels[d])),
       ...shown.map(([k]) => h('td', { class: 'prod-c prod-num' + (r.stages[k] ? ' prod-cut-has' : ' prod-cut-zero'), 'data-stage': k }, r.stages[k] ? String(r.stages[k]) : '–')),
+      h('td', { class: 'prod-c prod-num prod-prio-cell', 'data-metric': 'priority', title: total ? null : (r.priority ? r.priority.why : (out.priority_note || 'Not scored: no scorable cut in Group by.')) },
+        total || !r.priority ? (total ? null : '–') : [h('span', { class: 'prod-prio ' + tierClass(r.priority.tier), 'data-testid': 'prod-prio-score' }, String(Math.round(r.priority.score))), h('span', { class: 'prod-prio-tier' }, r.priority.tier)]),
       h('td', { class: 'prod-c prod-num', 'data-metric': 'open' }, openCount(r) ? String(openCount(r)) : '–'), ...metrics.map(([k, , f]) => h('td', { class: 'prod-c prod-num' + (total ? '' : (g => (g ? ' prod-heat-' + g : ''))(gradeOf(k, r.stats[k], out.totals.stats[k], r.stats.spend))), 'data-metric': k, 'data-grade': total ? null : gradeOf(k, r.stats[k], out.totals.stats[k], r.stats.spend) || null }, f(r.stats[k])))];
     const tot = { labels: {}, stages: out.totals.stages, concepts: out.totals.concepts, stats: out.totals.stats };
     const stageKeys = stages.map(([x]) => x), metricKeys = METRICS.map(([x]) => x);
     const group = (title, items, on, tidPrefix, setter) => h('fieldset', { class: 'prod-colgroup' }, h('legend', null, title),
       items.map(([k, t]) => h('label', { class: 'prod-cols-opt' }, h('input', { type: 'checkbox', checked: on.includes(k), 'data-testid': tidPrefix + k, onchange: (e) => setter(k, e.target.checked) }), ' ' + t)));
+    const moveMetric = (keys, movedKey) => {
+      const before = {};
+      tableHost.querySelectorAll('thead th[data-mkey]').forEach((th) => { before[th.dataset.mkey] = th.getBoundingClientRect().left; });
+      st.order = keys; changed(); drawTable(); animateColumns(tableHost.querySelector('table'), before, movedKey);
+    };
     const metricGroup = () => {
       const list = h('ul', { class: 'prod-ordlist', 'data-testid': 'prod-cuts-metric-list' }, orderedMetrics().map(([k, t]) => h('li', { class: 'prod-ordrow', 'data-key': k },
         h('button', { type: 'button', class: 'prod-ordgrip', 'aria-label': `Move ${t}. Drag, or press the up and down arrows.`, title: 'Drag to reorder', 'data-testid': 'prod-cuts-metric-grip-' + k }, h('span', { class: 'prod-grip', 'aria-hidden': 'true' })),
@@ -410,9 +472,12 @@ export function cutsView({ host, st, filters, signal, onState, say, pageFilters 
         ? h('div', { class: 'prod-scroll prod-cuts-scroll', 'data-testid': 'prod-cuts-scroll' }, h('table', { class: 'pri-table prod-table prod-cuts-table', 'data-testid': 'prod-cuts-table' },
           h('thead', null, h('tr', null, heads)), h('tbody', null, h('tr', { class: 'prod-cuts-total', 'data-testid': 'prod-cuts-total' }, cells(tot, true)), rows.map((r) => h('tr', { 'data-testid': 'prod-cuts-row', class: 'prod-cuts-clickrow', tabindex: '0', title: 'Click to see the ads behind this row', onclick: (e) => { if (!e.target.closest('a, button, input, label')) openAds(r); }, onkeydown: (e) => { if (e.key === 'Enter' && !e.target.closest('input')) openAds(r); } }, cells(r, false))))))
         : h('p', { 'data-testid': 'prod-cuts-empty' }, 'No cuts match these filters and dates.'),
+      out.priority_note ? h('p', { class: 'pri-sub', 'data-testid': 'prod-cuts-prionote' }, out.priority_note) : h('p', { class: 'pri-sub prod-cuts-priohow', 'data-testid': 'prod-cuts-priohow' }, 'Priority score (0 to 100): the higher, the more this cut needs new creative now. It weighs hit rate of tested ads (40%), the gap between how much spend the cut carries and how many new ads it got (25%), scale (25%) and new-customer return (10%), then discounts for briefs already in the pipeline; small samples are pulled toward the product average. Tested on past data it ranks cuts a little better than ranking by spend, best at ICP + Pain point and weak at Pain point alone: use it to order the list, not as a verdict. Spec: docs/PRIORITY_SCORE.md.'),
       h('p', { class: 'pri-sub prod-cuts-legend', 'data-testid': 'prod-cuts-legend' }, 'Colours compare each cut with the Total row: ', h('span', { class: 'prod-heat-r2 prod-legend-chip' }, 'well below'), h('span', { class: 'prod-heat-r1 prod-legend-chip' }, 'below'), h('span', { class: 'prod-heat-g0 prod-legend-chip' }, 'about the same'), h('span', { class: 'prod-heat-g1 prod-legend-chip' }, 'better'), h('span', { class: 'prod-heat-g2 prod-legend-chip' }, 'well better'), ` (lower is better for NC CPA, CPM and cost per link click; cuts under $${GRADE_MIN_SPEND} spent are not coloured).`),
       h('p', { class: 'pri-sub prod-cuts-basis', 'data-testid': 'prod-cuts-basis' }, `${out.from} to ${out.to}. ${out.basis} Status columns count production concepts (dropped ones left out) for the chosen week, vendor and product filters; they do not depend on the dates. A concept with no ICP or pain point yet shows under (none). Quick filters: blended NC ROAS of all cuts here is ${isNum(base) ? fmt.roas(base) + 'x' : 'n/a'}; working = at least $${MIN_SPEND.toLocaleString('en-US')} spent and NC ROAS at or above it; in pipeline = concepts not yet launched. `
         + (out.warning || '')));
+    const tbl = tableHost.querySelector('table.prod-cuts-table');
+    if (tbl) enableHeaderDrag(tbl, () => orderedMetrics().map(([k]) => k), moveMetric);
   }
 
   drawBuilder();

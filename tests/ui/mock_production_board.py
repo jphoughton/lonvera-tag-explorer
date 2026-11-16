@@ -221,11 +221,16 @@ def register(app, deps):
             rows.append({"labels": dict(zip(group, lab)), "stages": e["stages"], "concepts": e["concepts"], "stats": stats})
             for s2 in ORDER:
                 tot[s2] += e["stages"][s2]
+        if a.get("score") and any(g != "product" for g in group):
+            for i, r in enumerate(rows):
+                sc = max(5, 70 - 9 * i)
+                r["priority"] = {"score": sc, "tier": "Make more now" if sc >= 55 else "Make more" if sc >= 45 else "Keep steady" if sc >= 35 else "Low priority", "why": f"Mock reason {i}", "confidence": "medium", "flags": [], "drivers": [{"signal": "hit_rate", "label": "Hit rate", "plain_text": "Hit rate is high"}]}
         rows.sort(key=lambda r: -r["stats"]["spend"])
         sp = sum(r["stats"]["spend"] for r in rows)
         totals = {"stages": tot, "concepts": sum(r["concepts"] for r in rows), "stats": {"live_ads": 9, "ads_spending": 12, "spend": sp, "nc_revenue": sp * 0.8, "nc_purchases": 1, "nc_roas": 0.8, "nc_cpa": sp, "meta_roas": 1.1, "cpm": 20.0, "ctr": 0.012, "cplc": 1.5, "conv_rate": 0.03, "aov": 1.0}}
         return jsonify({"group": group, "from": frm.isoformat(), "to": to.isoformat(), "rows": rows, "totals": totals, "stages": [{"status": s, "label": LABEL[s]} for s in ORDER],
                         "dims": [], "basis": "Mock basis.", "warning": None,
+                        "priority_note": None if any(g != "product" for g in group) else "Add Market cluster, ICP or Pain point to Group by to score cuts (Product is a filter, not a level that is scored).",
                         "combos": sorted({(c["product"], c.get("cluster") or "", c.get("icp") or "", c.get("pain_point") or "") for c in cards()})})
 
     BL = S.setdefault("backlog", {"rows": [], "next": 1})
