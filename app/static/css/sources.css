@@ -1,6 +1,8 @@
 /* sources: stale-data banner, data source banner and tie-out, platform picker and source badge */
 /* ---------- stale banner, landing footer rows ---------- */
-.stale-banner { background: var(--warn-bg); color: var(--warn); border-bottom: 1px solid color-mix(in srgb, var(--warn) 40%, var(--warn-bg)); padding: 7px 16px; font-size: 12.5px; font-weight: 500; }
+.stale-banner { background: var(--warn-bg); color: var(--warn); border-bottom: 2px solid var(--warn); border-left: 8px solid var(--warn); padding: 14px 20px; font-size: 17px; line-height: 1.35; font-weight: 700; }
+.stale-banner::before { content: '\26A0\FE0F  '; }
+@media (max-width: 720px) { .stale-banner { padding: 12px 14px; font-size: 15px; } }
 .stale-banner[hidden] { display: none; }
 tr.total.extra td { color: var(--muted); font-weight: 500; background: var(--lv-hover); }
 tr.total.extra.all td { color: var(--text); font-weight: 650; background: var(--head-bg); }

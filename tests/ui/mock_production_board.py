@@ -247,13 +247,14 @@ def register(app, deps):
         b = request.get_json() or {}
         made, skipped = [], []
         for it in b.get("items") or []:
-            if not any(it.get(k) for k in ("product", "cluster", "icp", "pain_point")):
-                return jsonify(error="an item needs at least a product, cluster, ICP or pain point"), 400
+            lack = [n for k, n in (("product", "product"), ("cluster", "market cluster"), ("icp", "ICP"), ("pain_point", "pain point"), ("media_type", "image or video")) if not it.get(k)]
+            if lack:
+                return jsonify(error="add " + ", ".join(lack) + " before this goes to Needs brief"), 400
             wk = H["pa"].monday_of(b.get("for_week") or dt.date.today()).isoformat()
             if any(r["status"] == "needs_brief" and r["for_week"] == wk and all(r[k] == (it.get(k) or "") for k in ("product", "cluster", "icp", "pain_point")) for r in BL["rows"]):
                 skipped.append({"reason": "already in Needs brief for that week"})
                 continue
-            r = {"id": BL["next"], "product": it.get("product") or "", "cluster": it.get("cluster") or "", "icp": it.get("icp") or "", "pain_point": it.get("pain_point") or "", "title": " - ".join(x for x in (it.get("product"), it.get("cluster"), it.get("icp"), it.get("pain_point")) if x),
+            r = {"id": BL["next"], "product": it.get("product") or "", "cluster": it.get("cluster") or "", "icp": it.get("icp") or "", "pain_point": it.get("pain_point") or "", "media_type": it.get("media_type"), "title": " - ".join(x for x in (it.get("product"), it.get("cluster"), it.get("icp"), it.get("pain_point")) if x),
                  "for_week": wk, "note": "", "status": "needs_brief", "assignment_id": None, "created_by": "josh"}
             BL["next"] += 1
             BL["rows"].append(r)
@@ -266,8 +267,9 @@ def register(app, deps):
         if r is None:
             return jsonify(error="No waiting item with that id."), 404
         b = request.get_json() or {}
-        if "note" in b:
-            r["note"] = b["note"]
+        for k in ("product", "cluster", "icp", "pain_point", "media_type", "note"):
+            if k in b:
+                r[k] = b[k]
         if "for_week" in b:
             r["for_week"] = H["pa"].monday_of(b["for_week"]).isoformat()
         return jsonify(bl_view(r))
@@ -285,6 +287,8 @@ def register(app, deps):
             return jsonify(error="every ticket needs a vendor and a brief"), 400
         ids = b.get("ids") or []
         rows = [x for x in BL["rows"] if x["id"] in ids and x["status"] == "needs_brief"]
+        if any(not (x["product"] and x["cluster"] and x["icp"] and x["pain_point"] and (x.get("media_type") or b.get("media_type"))) for x in rows):
+            return jsonify(error="fill in product, market cluster, ICP, pain point and image or video first"), 400
         for x in rows:
             x["status"] = "assigned"
         return jsonify({"created": [{"id": 900 + x["id"], "vendor": b["vendor"]} for x in rows], "assigned": [x["id"] for x in rows]}), 201

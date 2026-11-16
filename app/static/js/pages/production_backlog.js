@@ -34,9 +34,9 @@ export function backlogView({ host, signal, say, goBoard }) {
     const err = h('p', { class: 'pri-err', role: 'alert' });
     addHost.replaceChildren(h('summary', null, 'Add to Needs brief by hand'),
       h('div', { class: 'ctl-row' },
-        h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, 'Product'), h('select', { 'data-testid': 'prod-bl-add-product', onchange: (e) => { f.product = e.target.value; } }, [h('option', { value: '' }, 'Any'), ...Object.entries(PRODUCT_NAMES).map(([k, v]) => h('option', { value: k }, v))])),
-        h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, 'Image / video'), h('select', { 'data-testid': 'prod-bl-add-media', onchange: (e) => { f.media_type = e.target.value; } }, [['', 'Either'], ['video', 'Video'], ['image', 'Image']].map(([v, l]) => h('option', { value: v }, l)))),
-        txt('cluster', 'Market cluster', 'prod-bl-add-cluster'), txt('icp', 'ICP', 'prod-bl-add-icp'), txt('pain_point', 'Pain point', 'prod-bl-add-pain'),
+        h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, 'Product (required)'), h('select', { 'data-testid': 'prod-bl-add-product', onchange: (e) => { f.product = e.target.value; } }, [h('option', { value: '' }, 'Choose'), ...Object.entries(PRODUCT_NAMES).map(([k, v]) => h('option', { value: k }, v))])),
+        h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, 'Image or video (required)'), h('select', { 'data-testid': 'prod-bl-add-media', onchange: (e) => { f.media_type = e.target.value; } }, [['', 'Choose'], ['video', 'Video'], ['image', 'Image']].map(([v, l]) => h('option', { value: v }, l)))),
+        txt('cluster', 'Market cluster (required)', 'prod-bl-add-cluster'), txt('icp', 'ICP (required)', 'prod-bl-add-icp'), txt('pain_point', 'Pain point (required)', 'prod-bl-add-pain'),
         h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, 'Week'), weekSelect(f.for_week, (v) => { f.for_week = v; }, 'prod-bl-add-week')),
         h('button', { type: 'button', class: 'btn primary small', 'data-testid': 'prod-bl-add-go', onclick: async () => {
           err.textContent = '';
@@ -68,6 +68,10 @@ export function backlogView({ host, signal, say, goBoard }) {
         try { for (const id of [...st.sel]) await api('/api/priorities/backlog/' + id, {}, { method: 'DELETE' }); st.sel.clear(); toast('Removed.'); await load(); } catch (e) { failed(e); } } }, 'Remove selected')), err);
   }
 
+  // The five tags are required: a missing one shows as an empty required box on the row and is filled in right there.
+  const save = async (r, k, v) => { try { await api('/api/priorities/backlog/' + r.id, {}, { method: 'PATCH', body: { [k]: v } }); toast('Saved.'); await load(); } catch (e) { failed(e); await load(); } };
+  const pick = (r, k, opts) => h('select', { class: r[k] ? null : 'prod-bl-missing', 'aria-label': k, 'data-testid': 'prod-bl-' + k, onchange: (e) => { if (e.target.value) save(r, k, e.target.value); } }, opts.map(([v, l]) => h('option', { value: v, selected: v === (r[k] || '') }, l)));
+  const field = (r, k) => h('input', { type: 'text', value: r[k] || '', maxlength: 200, placeholder: 'Required', class: r[k] ? null : 'prod-bl-missing', 'aria-label': k, 'data-testid': 'prod-bl-' + k, onchange: (e) => { if (e.target.value.trim()) save(r, k, e.target.value.trim()); } });
   function drawTable() {
     const weeks = [...new Set(st.rows.map((r) => r.for_week))].sort();
     const shown = st.week ? st.rows.filter((r) => r.for_week === st.week) : st.rows;
@@ -75,16 +79,17 @@ export function backlogView({ host, signal, say, goBoard }) {
     const row = (r) => h('tr', { 'data-testid': 'prod-bl-row', 'data-id': String(r.id) },
       h('td', { class: 'prod-c' }, h('input', { type: 'checkbox', 'aria-label': 'Select ' + r.title, 'data-testid': 'prod-bl-sel', checked: st.sel.has(r.id), onchange: (e) => { if (e.target.checked) st.sel.add(r.id); else st.sel.delete(r.id); drawBar(); } })),
       h('td', { class: 'prod-c prod-nowrap' }, weekSelect(r.for_week, async (v) => { try { await api('/api/priorities/backlog/' + r.id, {}, { method: 'PATCH', body: { for_week: v } }); await load(); } catch (e) { failed(e); await load(); } }, 'prod-bl-week')),
-      h('td', { class: 'prod-c' }, r.product_name || '–'), h('td', { class: 'prod-c' }, ({ video: 'Video', image: 'Image' })[r.media_type] || '–'), h('td', { class: 'prod-c' }, r.cluster || '–'), h('td', { class: 'prod-c' }, r.icp || '–'), h('td', { class: 'prod-c' }, r.pain_point || '–'),
+      h('td', { class: 'prod-c' }, pick(r, 'product', [['', 'Choose'], ...Object.entries(PRODUCT_NAMES)])), h('td', { class: 'prod-c' }, pick(r, 'media_type', [['', 'Choose'], ['video', 'Video'], ['image', 'Image']])),
+      h('td', { class: 'prod-c' }, field(r, 'cluster')), h('td', { class: 'prod-c' }, field(r, 'icp')), h('td', { class: 'prod-c' }, field(r, 'pain_point')),
       h('td', { class: 'prod-c' }, h('input', { type: 'text', value: r.note, maxlength: 500, 'aria-label': 'Note', 'data-testid': 'prod-bl-note', onchange: async (e) => { try { await api('/api/priorities/backlog/' + r.id, {}, { method: 'PATCH', body: { note: e.target.value } }); toast('Saved.'); } catch (x) { failed(x); } } })),
       h('td', { class: 'prod-c pri-sub' }, r.created_by || ''));
     tableHost.replaceChildren(
-      weeks.length > 1 ? h('div', { class: 'ctl-row' }, h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, 'Show week'), h('select', { 'data-testid': 'prod-bl-weekfilter', onchange: (e) => { st.week = e.target.value; drawTable(); } },
+      ...[weeks.length > 1 ? h('div', { class: 'ctl-row' }, h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, 'Show week'), h('select', { 'data-testid': 'prod-bl-weekfilter', onchange: (e) => { st.week = e.target.value; drawTable(); } },
         [h('option', { value: '' }, 'All weeks'), ...weeks.map((w) => h('option', { value: w, selected: w === st.week }, weekLabel(w)))]))) : null,
       shown.length ? h('div', { class: 'prod-scroll' }, h('table', { class: 'pri-table prod-table prod-bl-table', 'data-testid': 'prod-bl-table' },
-        h('thead', null, h('tr', null, [h('th', { scope: 'col' }, all), ...['Week', 'Product', 'Image / video', 'Market cluster', 'ICP', 'Pain point', 'Note', 'Added by'].map((t) => h('th', { scope: 'col' }, t))])), h('tbody', null, shown.map(row))))
+        h('thead', null, h('tr', null, [h('th', { scope: 'col' }, all), ...['Week', 'Product', 'Image or video', 'Market cluster', 'ICP', 'Pain point', 'Note', 'Added by'].map((t) => h('th', { scope: 'col' }, t))])), h('tbody', null, shown.map(row))))
         : h('p', { 'data-testid': 'prod-bl-empty' }, 'Nothing is waiting for a brief. In By cut, tick the cuts you decided to work on and add them here.'),
-      goBoard ? h('p', { class: 'pri-sub' }, h('a', { href: href('/priorities/production', {}), 'data-testid': 'prod-bl-board' }, 'Open the Board')) : null);
+      goBoard ? h('p', { class: 'pri-sub' }, h('a', { href: href('/priorities/production', {}), 'data-testid': 'prod-bl-board' }, 'Open the Board')) : null].filter(Boolean));
   }
 
   return { init: load, refresh: load };

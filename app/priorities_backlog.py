@@ -26,6 +26,16 @@ def _title(product: str, cluster: str, icp: str, pain: str) -> str:
     return " - ".join(x for x in (NAMES.get(product, product), cluster, icp, pain) if x)[:200] or "Concept"
 
 
+REQUIRED = (("product", "product"), ("cluster", "market cluster"), ("icp", "ICP"), ("pain_point", "pain point"), ("media_type", "image or video"))
+
+
+def _need_tags(f: dict, what: str = "") -> None:
+    """Every item that goes to Needs brief carries a product, a market cluster, an ICP, a pain point and image or video: the brief is written for that cut."""
+    missing = [name for key, name in REQUIRED if not f.get(key)]
+    if missing:
+        raise q.ApiError(400, (what + ": " if what else "") + "add " + ", ".join(missing[:-1]) + (" and " if len(missing) > 1 else "") + missing[-1] + " before this goes to Needs brief")
+
+
 def _clean_item(it, week: dt.date) -> dict:
     if not isinstance(it, dict):
         raise q.ApiError(400, "each item must be an object with product, cluster, icp and pain_point")
@@ -33,9 +43,8 @@ def _clean_item(it, week: dt.date) -> dict:
     if product and product not in pa.PRODUCT_SLUGS:
         raise q.ApiError(400, "product must be one of: " + ", ".join(pa.PRODUCT_SLUGS))
     f = {k: pa._text(it.get(k), k, 200) for k in ("cluster", "icp", "pain_point")}
-    if not (product or any(f.values())):
-        raise q.ApiError(400, "an item needs at least a product, cluster, ICP or pain point")
     media = pa._media_type(it.get("media_type"))
+    _need_tags({**f, "product": product, "media_type": media})
     title = pa._text(it.get("title"), "title", 200) or _title(product, f["cluster"], f["icp"], f["pain_point"])
     wk = pa.monday_of(it["for_week"]) if it.get("for_week") else week
     return {"product": product, **f, "media_type": media, "title": title, "for_week": wk, "note": pa._text(it.get("note"), "note", 500)}
@@ -59,7 +68,7 @@ def list_items(conn, week=None, include_assigned: bool = False) -> dict:
 
 
 def add_items(conn, body: dict, user: str | None = None) -> dict:
-    """{items: [{product?, cluster?, icp?, pain_point?, title?, note?, for_week?}, ...] (1 to 100), for_week? (default this week's Monday)} -> {created: [...], skipped: [{index, reason}]}. An item that is already waiting for the same week is skipped."""
+    """{items: [{cluster, icp, pain_point, product?, media_type?, title?, note?, for_week?}, ...] (1 to 100; product, cluster, icp, pain_point and media_type are required), for_week? (default this week's Monday)} -> {created: [...], skipped: [{index, reason}]}. An item that is already waiting for the same week is skipped."""
     items = body.get("items") if isinstance(body, dict) else None
     if not isinstance(items, list) or not items or len(items) > MAX_ITEMS:
         raise q.ApiError(400, f"items must be a list of 1 to {MAX_ITEMS} items")
@@ -82,10 +91,28 @@ def add_items(conn, body: dict, user: str | None = None) -> dict:
 
 
 def update_item(conn, item_id: int, body: dict) -> dict:
-    """PATCH one waiting item: for_week (any day, snaps to its Monday), note, title."""
+    """PATCH one waiting item: product, cluster, icp, pain_point, media_type (never empty), for_week (any day, snaps to its Monday), note, title."""
     if not isinstance(body, dict):
         raise q.ApiError(400, "JSON object body required")
     sets, params = [], []
+    if "media_type" in body:
+        m = pa._media_type(body["media_type"])
+        if not m:
+            raise q.ApiError(400, "image or video cannot be empty")
+        sets.append("media_type = %s")
+        params.append(m)
+    if "product" in body:
+        if body["product"] not in pa.PRODUCT_SLUGS:
+            raise q.ApiError(400, "product must be one of: " + ", ".join(pa.PRODUCT_SLUGS))
+        sets.append("product = %s")
+        params.append(body["product"])
+    for k, name in REQUIRED[1:4]:
+        if k in body:
+            v = pa._text(body[k], name, 200)
+            if not v:
+                raise q.ApiError(400, f"{name} cannot be empty")
+            sets.append(f"{k} = %s")
+            params.append(v)
     if "for_week" in body:
         sets.append("for_week = %s")
         params.append(pa.monday_of(body["for_week"]))
@@ -99,7 +126,7 @@ def update_item(conn, item_id: int, body: dict) -> dict:
         sets.append("title = %s")
         params.append(t)
     if not sets:
-        raise q.ApiError(400, "nothing to change: send for_week, note or title")
+        raise q.ApiError(400, "nothing to change: send product, cluster, icp, pain_point, media_type, for_week, note or title")
     try:
         with pa._rw() as w:
             try:
@@ -136,9 +163,11 @@ def assign(conn, body: dict, user: str | None = None) -> dict:
         raise q.ApiError(503, NOT_READY) from None
     if len(rows) != len(set(ids)):
         raise q.ApiError(404, "Some of those items are no longer waiting for a brief. Refresh the list.")
+    for r in rows:
+        _need_tags({**r, "media_type": pa._media_type(body.get("media_type")) or r["media_type"]}, r["title"])
     tickets = []
     for r in rows:
-        t = {"concept_name": r["title"], "vendor": body.get("vendor"), "product": r["product"], "cluster": r["cluster"], "icp": r["icp"], "pain_point": r["pain_point"], "media_type": body.get("media_type") or r["media_type"], "for_week": r["for_week"].isoformat(),
+        t = {"concept_name": r["title"], "vendor": body.get("vendor"), "product": r["product"], "cluster": r["cluster"], "icp": r["icp"], "pain_point": r["pain_point"], "media_type": pa._media_type(body.get("media_type")) or r["media_type"], "for_week": r["for_week"].isoformat(),
              "brief_url": body.get("brief_url"), "brief": body.get("brief"), "note": "; ".join(x for x in (r["note"], pa._text(body.get("note"), "note", 500)) if x)[:500]}
         if body.get("status"):
             t["status"] = body["status"]
