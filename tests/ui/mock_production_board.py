@@ -225,6 +225,14 @@ def register(app, deps):
         return jsonify({"group": group, "from": frm.isoformat(), "to": to.isoformat(), "rows": rows, "totals": totals, "stages": [{"status": s, "label": LABEL[s]} for s in ORDER],
                         "dims": [], "basis": "Mock basis.", "warning": None})
 
+    @app.get("/api/priorities/cuts/ads")
+    def cut_ads():
+        a = request.args
+        ad = lambda n, sp: {"key": f"k{n}", "name": f"Ad {n} ({a.get('icp') or a.get('product') or 'all'})", "product": "Vita Bull", "live": n % 2 == 0, "spend": sp, "nc_purchases": 3, "nc_revenue": sp * 0.8, "nc_roas": 0.8, "nc_cpa": sp / 3,
+                            "meta_roas": 1.1, "revenue": sp * 1.1, "purchases": 4, "story_url": "https://www.facebook.com/x/posts/1", "ad_id": n}
+        return jsonify({"cut": {k: v for k, v in a.items() if k in ("product", "cluster", "icp", "pain_point", "vendor")}, "from": a.get("from"), "to": a.get("to"), "window": [ad(i, 900 - 100 * i) for i in range(1, 5)],
+                        "top": [ad(i + 10, 5000 - 500 * i) for i in range(1, 6)], "window_shown": 4, "warning": None})
+
     @app.post("/api/priorities/assignments/<int:aid>/move")
     def move(aid):
         r = S["rows"].get(aid)

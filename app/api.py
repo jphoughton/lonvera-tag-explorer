@@ -891,6 +891,13 @@ def priorities_cuts():
     return jsonify(pcu.cuts(db.get_conn(), pcu.parse_group(_arg("group")), _arg("from"), _arg("to"), week=_arg("week"), vendor=_arg("vendor"), products=[p.strip() for p in prods] or None))
 
 
+@bp.get("/api/priorities/cuts/ads")
+def priorities_cut_ads():
+    """The ads behind one cut (the popup on a By cut row): ?product=<slug> &cluster= &icp= &pain_point= &vendor= (any subset; '(none)' = untagged) &from= &to= -> {cut, from, to, window: [ad], top: [ad], warning}.
+    window = unique ads tagged to the cut that spent in the dates (top 60 by spend) with Meta and Upstack new-customer numbers; top = the 5 biggest spenders since launch (Meta basis). See app/priorities_cuts.py (cut_ads)."""
+    return jsonify(pcu.cut_ads(db.get_conn(), {d: _arg(d) for d in pcu.DIMS}, _arg("from"), _arg("to")))
+
+
 @bp.get("/api/priorities/vendor-capacity")
 def priorities_vendor_capacity():
     """Concepts per week each vendor can take -> {capacity: [{vendor, per_week, updated_at}]} (10 where none is stored)."""

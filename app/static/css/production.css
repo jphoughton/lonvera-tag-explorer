@@ -506,3 +506,13 @@ body.prod-drawer-open { overflow: hidden; }
 .prod-cuts-basis { max-width: 110ch; }
 @media (max-width: 720px) { .prod-cuts-builder { grid-template-columns: minmax(0, 1fr); } }
 .prod-cutchip .prod-grip::before { display: none; }
+.prod-cuts-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 4px 0 8px; }
+.prod-cuts-quick .segs { flex-wrap: wrap; }
+.prod-cuts-metrics { position: relative; }
+.prod-cuts-clickrow { cursor: pointer; }
+.prod-cuts-clickrow:hover td { background: var(--hover); }
+.prod-cuts-clickrow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.modal.prod-cutads { width: min(980px, 96vw); max-height: 90vh; overflow: auto; padding: 16px; }
+.prod-cutads-title { margin: 0 28px 2px 0; font-size: 17px; }
+.prod-cutads-name { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; white-space: normal; }
+.prod-chip-live { background: var(--good-bg); color: var(--good); }
