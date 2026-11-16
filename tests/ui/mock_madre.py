@@ -14,7 +14,8 @@ TICKET = {"key": "t-one", "id": "Lonvera-VitalBull-A1", "product": "vita-bull", 
           "told": {"n": 3, "spend": 9000.0, "cpa": 90.0, "top": [{"family": "fam-x", "spend": 5000.0, "cpa": 80.0, "vendor": "Other"}]}}
 SLIDES = [
     {"id": "cover", "section": "overview", "kind": "cover", "title": "Madre · Week of Nov 9–15", "big": [["Spend", 22395.0, "money"], ["Purchases", 207.0, "num"], ["CPA", 108.19, "money2"], ["Account CPA", 104.26, "money2"]], "foot": "Meta-reported."},
-    {"id": "scorecard", "section": "overview", "kind": "table", "kicker": "Scorecard", "title": "Madre vs account", "table": {"keys": ["spend", "purchases", "cpa", "roas"], "cols": COLS}, "foot": "x"},
+    {"id": "scorecard", "section": "overview", "kind": "table", "kicker": "Scorecard", "title": "Madre vs account", "table": {"keys": ["spend", "purchases", "cpa", "roas"], "cols": COLS}, "foot": "x",
+     "vendors": [{"vendor": v, "m": M(spend=sp, purchases=pu, cpa=cp, roas=ro)} for v, sp, pu, cp, ro in (("Madre", 900.0, 9.0, 100.0, 0.9), ("Victoria", 12000.0, 40.0, None, 0.7), ("Internal", 300.0, 0.0, None, None))]},
     {"id": "cover", "section": "vita-bull", "kind": "cover", "kicker": "Madre · Vita Bull", "title": "Vita Bull", "big": [["Madre spend", 9000.0, "money"], ["Purchases", 80.0, "num"], ["Madre CPA", 112.0, "money2"], ["Product avg CPA", 103.0, "money2"]], "foot": "Nov 9–15."},
     {"id": "winners", "section": "vita-bull", "kind": "ads", "kicker": "Vita Bull · Winners", "title": "2 winners: CPA 10%+ under Vita Bull avg", "ads": ["a-play", "a-gone"], "total": 2, "empty": "none", "foot": "x"},
     {"id": "pipeline", "section": "vita-bull", "kind": "board", "kicker": "Vita Bull · Pipeline", "title": "Open concepts", "columns": [{"status_n": 7, "label": "7 - Approved - Ready To Launch", "tickets": ["t-one"]}], "empty": "none", "foot": "x"},
@@ -22,6 +23,9 @@ SLIDES = [
      "cards": [{"product": "vita-bull", "product_name": "Vita Bull", "cluster": "Cluster A", "icp": "ICP A", "pain": "Pain A", "title": "ICP A: Pain A", "why": "CPA $60.00 vs avg $100.00.",
                 "idea": {"product": "vita-bull", "cluster": "Cluster A", "icp": "ICP A", "pain_point": "Pain A", "media_type": "video", "note": "n"}}]},
     {"id": "asks", "section": "vita-bull", "kind": "asks", "kicker": "Vita Bull · Asks", "title": "Asks for Madre this week", "items": [[{"t": "Pause "}, {"ad": "a-gone", "label": "VB 7.9.3 h2"}, {"t": "."}]]},
+    {"id": "pockets", "section": "vita-bull", "kind": "pockets", "kicker": "Vita Bull · Pockets", "title": "Where spend went", "window": "Nov 9–15", "foot": "x",
+     "rows": [{"cluster": c, "icp": "ICP", "pain": "Pain", "m": M(spend=sp, cpa=cp, roas=ro, cvr=cv), "open": o, "ready": 0, "launched": 0, "flag": None, "flag_label": ""}
+              for c, sp, cp, ro, cv, o in (("Alpha", 500.0, 80.0, 1.1, 0.03, 2), ("Bravo", 2500.0, 120.0, 0.7, 0.02, 10), ("Charlie", 0.0, None, None, 0.0, 4), ("Delta", 1200.0, 95.0, 0.9, 0.025, 1))]},
     {"id": "notes", "section": "notes", "kind": "notes", "kicker": "Notes", "title": "How this is built", "bullets": ["one", "two"]},
 ]
 PAYLOAD = {"vendor": "Madre", "week": {"start": "2026-11-09", "end": "2026-11-15", "label": "Nov 9–15"}, "prev": {"label": "Nov 2–8"}, "default_week": "2026-11-09", "last_loaded_day": "2026-11-15",

@@ -17,31 +17,32 @@ def count(page):
 
 def test_deck_opens_on_the_cover_counts_slides_and_flips_with_keys(page):
     open_deck(page)
-    assert count(page) == "1 / 8 · Overview"
+    assert count(page) == "1 / 9 · Overview"
     expect(page.locator(".mr-slide.mr-on h1")).to_have_text("Madre · Week of Nov 9–15")
     page.keyboard.press("ArrowRight")
-    assert count(page) == "2 / 8 · Overview" and page.url.endswith("#s2")
+    assert count(page) == "2 / 9 · Overview" and page.url.endswith("#s2")
     page.keyboard.press("ArrowLeft")
-    assert count(page) == "1 / 8 · Overview"
+    assert count(page) == "1 / 9 · Overview"
     page.locator("[data-testid=mr-prev]").click()
-    assert count(page).startswith("1 / 8")                      # does not go below the first slide
+    assert count(page).startswith("1 / 9")                      # does not go below the first slide
 
 
 def test_section_buttons_and_anchors(page):
     open_deck(page)
     page.locator("[data-testid=mr-sec-vita-bull]").click()
-    assert count(page) == "3 / 8 · Vita Bull" and page.url.endswith("#vita-bull")
+    assert count(page) == "3 / 9 · Vita Bull" and page.url.endswith("#vita-bull")
     expect(page.locator("[data-testid=mr-sec-vita-bull]")).to_have_class("mr-sec mr-on")
     page.locator("[data-testid=mr-sec-notes]").click()
-    assert count(page) == "8 / 8 · Notes"
+    assert count(page) == "9 / 9 · Notes"
     open_deck(page, "#vita-bull")
-    assert count(page) == "3 / 8 · Vita Bull"
+    assert count(page) == "3 / 9 · Vita Bull"
     open_deck(page, "#s4")
-    assert count(page) == "4 / 8 · Vita Bull"
+    assert count(page) == "4 / 9 · Vita Bull"
 
 
 @pytest.mark.allow_errors
 def test_ad_tile_opens_a_panel_that_plays_and_a_missing_video_falls_back(page):
+    page.route("**/api/madre-review/video?family=ok", lambda r: None)        # hold the request open: the src stays put, no race with the video error handler
     open_deck(page, "#s4")
     tiles = page.locator(".mr-on [data-testid=mr-tile]")
     assert tiles.count() == 2
@@ -64,7 +65,7 @@ def test_ticket_panel_and_ask_link_open_panels(page):
     page.locator("[data-testid=mr-sec-vita-bull]").click()
     for _ in range(4):
         page.locator("[data-testid=mr-next]").click()
-    assert count(page).startswith("7 / 8")
+    assert count(page).startswith("7 / 9")
     page.locator(".mr-on .mr-inl").click()
     expect(page.locator("[data-testid=mr-panel]")).to_contain_text("vb-7.9.3-hook2")
 
@@ -83,3 +84,43 @@ def test_phone_width_has_no_sideways_scroll(page):
     open_deck(page, "#s2")
     assert page.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth")
     assert page.evaluate("() => document.querySelector('.mr-deck').getBoundingClientRect().width <= window.innerWidth")
+
+
+def first_col(page, table):
+    return page.locator(f".mr-on [data-testid={table}] tbody tr td:first-child").all_inner_texts()
+
+
+def test_pockets_table_shows_all_rows_scrolls_and_sorts(page):
+    open_deck(page, "#s8")
+    t = page.locator(".mr-on [data-testid=mr-pockets]")
+    assert page.locator(".mr-on [data-testid=mr-pocket]").count() == 4
+    assert [x.split("\n")[0] for x in first_col(page, "mr-pockets")] == ["Alpha", "Bravo", "Charlie", "Delta"]       # default order untouched
+    spend = t.locator("th[aria-sort] button", has_text="Spend")
+    spend.click()
+    assert [x.split("\n")[0] for x in first_col(page, "mr-pockets")] == ["Bravo", "Delta", "Alpha", "Charlie"]       # numeric, high first
+    expect(t.locator("th", has=page.locator("button", has_text="Spend"))).to_have_attribute("aria-sort", "descending")
+    spend.click()
+    assert [x.split("\n")[0] for x in first_col(page, "mr-pockets")] == ["Charlie", "Alpha", "Delta", "Bravo"]
+    cpa = t.locator("th button", has_text="CPA")
+    cpa.click()
+    assert [x.split("\n")[0] for x in first_col(page, "mr-pockets")][-1] == "Charlie"                                  # n/a last, descending
+    cpa.click()
+    assert [x.split("\n")[0] for x in first_col(page, "mr-pockets")][-1] == "Charlie"                                  # and last ascending too
+    t.locator("th button", has_text="Pocket").click()
+    assert [x.split("\n")[0] for x in first_col(page, "mr-pockets")][0] == "Alpha"
+    assert page.evaluate("() => { const t = document.querySelector('.mr-on .mr-scroll thead th'); return getComputedStyle(t).position; }") == "sticky"
+
+
+def test_vendor_table_sorts_and_scorecard_does_not(page):
+    open_deck(page, "#s2")
+    assert page.locator(".mr-on .mr-mt:not(.mr-vt) th button").count() == 0
+    assert first_col(page, "mr-vendors") == ["Madre", "Victoria", "Internal"]
+    page.locator(".mr-on [data-testid=mr-vendors] th button", has_text="Spend").click()
+    assert first_col(page, "mr-vendors") == ["Victoria", "Madre", "Internal"]
+    page.locator(".mr-on [data-testid=mr-vendors] th button", has_text="CPA").click()
+    assert first_col(page, "mr-vendors")[0] == "Madre" and first_col(page, "mr-vendors")[-1] in ("Victoria", "Internal")
+
+
+def test_slide_body_never_overflows_the_slide(page):
+    open_deck(page, "#s2")
+    assert page.evaluate("() => { const s = document.querySelector('.mr-on'); return s.scrollHeight <= s.clientHeight + 1; }")
