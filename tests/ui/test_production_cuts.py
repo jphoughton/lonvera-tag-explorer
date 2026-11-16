@@ -112,6 +112,7 @@ def test_date_presets_and_custom_dates_change_the_window(page):
 def test_status_columns_can_be_hidden_and_only_pipeline_cuts_filter(page):
     goto(page)
     assert "In production" in heads(page)
+    page.locator("[data-testid=prod-cuts-metrics] > summary").click()
     page.locator("[data-testid=prod-cuts-stage-in_production]").uncheck()
     assert "In production" not in heads(page)
     n = page.locator("[data-testid=prod-cuts-row]").count()
@@ -164,8 +165,9 @@ def test_clicking_a_row_opens_the_ads_popup_without_leaving_the_page(page):
     page.locator("[data-testid=prod-cuts-row]").first.click()
     page.wait_for_selector("[data-testid=prod-cutads-top]")
     assert page.locator("[data-testid=prod-cutads-top] [data-testid=prod-cutads-row]").count() == 5
-    assert page.locator("[data-testid=prod-cutads-window] [data-testid=prod-cutads-row]").count() == 4
-    assert page.locator("[data-testid=prod-cutads-title]").text_content().count("·") == 1
+    assert page.locator("[data-testid=prod-cutads-window] [data-testid=prod-cutads-row]").count() == 3
+    assert page.locator("[data-testid=prod-cutads-cut] dt").all_text_contents()[:2] == ["Product", "ICP"]
+    assert "null" not in page.locator(".prod-cutads").text_content()
     assert page.url == url
     page.keyboard.press("Escape")
     assert page.locator("[data-testid=prod-cutads-body]").count() == 0 and page.locator("[data-testid=prod-cuts-table]").is_visible()
@@ -195,3 +197,17 @@ def test_filter_by_pain_point_and_icp_narrows_rows(page):
     assert "fp=" in page.url
     page.locator("[data-testid=prod-cuts-f-clear]").click()
     page.wait_for_function("(n) => document.querySelectorAll('[data-testid=prod-cuts-row]').length === n", arg=n)
+
+
+def test_popup_hides_ads_under_250_dollars_until_unticked(page):
+    goto(page)
+    page.locator("[data-testid=prod-cuts-row]").first.click()
+    page.wait_for_selector("[data-testid=prod-cutads-window]")
+    assert page.locator("[data-testid=prod-cutads-count]").text_content() == "Showing 3 of 4 ads"          # the mock ads spent $700, $500, $300 and $100
+    page.locator("[data-testid=prod-cutads-min]").uncheck()
+    assert page.locator("[data-testid=prod-cutads-count]").text_content() == "Showing 4 of 4 ads"
+
+
+def test_no_stray_null_text_in_the_view(page):
+    goto(page)
+    assert "null" not in page.locator("[data-testid=prod-page]").text_content().lower().replace("nullable", "")
