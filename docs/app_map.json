@@ -672,6 +672,13 @@
    "bare": false
   },
   {
+   "url_pattern": "/no-attribution",
+   "page_function": "noAttributionPage",
+   "js_file": "app/static/js/pages/no_attribution.js",
+   "public": false,
+   "bare": false
+  },
+  {
    "url_pattern": "/p/<token>",
    "page_function": "productPage",
    "js_file": "app/static/js/pages/product.js",
@@ -1234,6 +1241,17 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": "What the nightly Meta breakdown pull holds, per set and level: status (ok / unsupported / error), first and last day, rows, last error (app/meta_breakdowns.py)."
+  },
+  {
+   "rule": "/api/no-attribution/products",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.no_attribution_products",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Products with no attribution: Meta spend by product beside the actual new-customer revenue of each product (first orders from every channel). window / from / to only; see app/no_attribution.py."
   },
   {
    "rule": "/api/platforms/kpis",
@@ -3688,6 +3706,17 @@
    "endpoint": "api.media",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
+   "summary": ""
+  },
+  {
+   "rule": "/no-attribution",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/no-attribution",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
    "summary": ""
   },
   {
