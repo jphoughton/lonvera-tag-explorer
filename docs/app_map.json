@@ -1391,6 +1391,17 @@
    "summary": "Creative Pipeline by cut: ?group=product,icp (any ordered subset of product, cluster, icp, pain_point, vendor) &from= &to= (YYYY-MM-DD, default the last 30 loaded days) &week= &vendor= (pipeline side only) &product= (both sides)"
   },
   {
+   "rule": "/api/priorities/cuts/ads",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_cut_ads",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The ads behind one cut (the popup on a By cut row): ?product=<slug> &cluster= &icp= &pain_point= &vendor= (any subset; '(none)' = untagged) &from= &to= -> {cut, from, to, window: [ad], top: [ad], warning}."
+  },
+  {
    "rule": "/api/priorities/launch/settings",
    "methods": [
     "GET"

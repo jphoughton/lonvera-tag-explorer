@@ -54,7 +54,7 @@ PARTNER_READ_BLOCKED = frozenset({
     "/api/brain/key", "/api/priorities.csv", "/api/priorities/views", "/api/priorities/views/<token>", "/api/priorities/views/<token>/csv",
     "/api/priorities/vendor-links", "/api/priorities/vendor/<token>", "/api/priorities/vendor/<token>/<int:aid>/comments", "/api/priorities/vendor/<token>/<int:aid>/detail",
     "/api/priorities/assignments", "/api/priorities/assignments/<int:aid>/comments", "/api/priorities/assignments/<int:aid>/detail", "/api/priorities/assignments/<int:aid>/launch",
-    "/api/priorities/assignments/<int:aid>/transcripts", "/api/priorities/board", "/api/priorities/cuts", "/api/priorities/vendor-capacity", "/api/priorities/launch/settings",
+    "/api/priorities/assignments/<int:aid>/transcripts", "/api/priorities/board", "/api/priorities/cuts", "/api/priorities/cuts/ads", "/api/priorities/vendor-capacity", "/api/priorities/launch/settings",
     # the team's own idea notes (manual concepts carry internal notes)
     "/api/priorities/manual", "/api/priorities/manual/<int:rid>"})
 # Reads that stay blocked for EVERY partner scope, partner_read_all included, because they return or open something that gives access: saved-view tokens, vendor link tokens, the brain key.

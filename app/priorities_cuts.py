@@ -190,3 +190,90 @@ def cuts(conn, group: list[str], raw_from: str | None, raw_to: str | None, week=
             "stages": [{"status": k, "label": pa.STATUS_LABELS[k]} for k in STATUSES], "dims": [{"key": d, "label": DIM_LABELS[d]} for d in DIMS],
             "basis": "Spend, clicks, impressions and Meta ROAS are Meta-reported; new-customer (NC) revenue, ROAS, cost per new customer, conversion rate and average order value are Upstack first orders (any-click, 30 day).",
             "warning": warning}
+
+
+# ---------------------------------------------------------------------------------------------------------------- the ads behind one cut (the popup on a row)
+ADS_TOP = 5
+ADS_WINDOW_MAX = 60
+
+
+def _cut_filter(args: dict) -> tuple[str, list]:
+    """WHERE fragment over `tagged t` for the cuts given in args (a dim missing = no filter; '(none)' = untagged). Values are compared lower-cased and trimmed, like the table's grouping."""
+    sql, params = [], []
+    for d in DIMS:
+        v = args.get(d)
+        if v in (None, ""):
+            continue
+        col = f"lower(btrim(COALESCE(t.{d}, '')))"
+        if d == "product":
+            sql.append("t.product = %s")
+            params.append(str(v))
+        elif v == NONE:
+            sql.append(f"{col} = ''")
+        else:
+            sql.append(f"{col} = %s")
+            params.append(_norm(v))
+    return (" AND " + " AND ".join(sql)) if sql else "", params
+
+
+WINDOW_ADS_SQL = CUT_CTE + """
+SELECT t.family_key, COALESCE(cs.display, t.family_key) AS name, t.product, sum(d.spend) AS spend, sum(d.purchases) AS meta_purchases, sum(d.conv_value) AS meta_revenue,
+       max(d.day) FILTER (WHERE d.spend > 0) AS last_spend_day
+FROM ad_daily d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
+LEFT JOIN creative_stage_moves cs ON cs.family_key = t.family_key
+WHERE d.day BETWEEN %s AND %s {flt}
+GROUP BY 1, 2, 3 HAVING sum(d.spend) > 0 ORDER BY sum(d.spend) DESC LIMIT %s
+"""
+NC_ADS_SQL = CUT_CTE + """
+SELECT t.family_key, sum(d.purchases) AS nc_purchases, sum(d.conv_value) AS nc_revenue
+FROM ad_daily_upstack_nc d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
+WHERE d.day BETWEEN %s AND %s AND t.family_key = ANY(%s) GROUP BY 1
+"""
+TOP_ADS_SQL = CUT_CTE + """
+SELECT t.family_key, COALESCE(cs.display, t.family_key) AS name, t.product, am.spend_launch AS spend, am.revenue_launch AS revenue, am.purchases_launch AS purchases
+FROM tagged t JOIN ad_metrics am ON am.family_key = t.family_key AND am.is_first_row
+LEFT JOIN creative_stage_moves cs ON cs.family_key = t.family_key
+WHERE am.spend_launch > 0 {flt}
+ORDER BY am.spend_launch DESC, t.family_key LIMIT %s
+"""
+LINKS_SQL = """
+SELECT fc.family_key, fc.story_url, (SELECT tr.id FROM tracker_rows tr WHERE tr.family_key = fc.family_key ORDER BY tr.sheet_row NULLS LAST, tr.id LIMIT 1) AS tracker_row_id
+FROM family_content fc WHERE fc.family_key = ANY(%s)
+"""
+LIVE_KEYS_SQL = "SELECT DISTINCT m.tracker_family_key AS k FROM ad_daily d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key WHERE d.spend > 0 AND d.day >= (SELECT max(day) FROM ad_daily) - 1 AND m.tracker_family_key = ANY(%s)"
+
+
+def cut_ads(conn, cut: dict, raw_from: str | None, raw_to: str | None) -> dict:
+    """{cut, from, to, window: [ad], top: [ad], window_total, window_shown}. window = the unique ads tagged to the cut that spent in the dates (top by spend, at most ADS_WINDOW_MAX), with Meta and Upstack
+    new-customer numbers and a live flag; top = the ADS_TOP highest spenders of the cut since launch (Meta basis, whatever the dates). An ad = one tracker family, copies counted once."""
+    frm, to = window(conn, raw_from, raw_to)
+    flt, fp = _cut_filter(cut)
+    out = {"cut": {d: cut.get(d) for d in DIMS if cut.get(d) not in (None, "")}, "from": frm.isoformat(), "to": to.isoformat(), "window": [], "top": [], "window_shown": 0, "warning": None}
+    try:
+        wrows = conn.execute(WINDOW_ADS_SQL.format(flt=flt), (frm, to, *fp, ADS_WINDOW_MAX)).fetchall()
+        trows = conn.execute(TOP_ADS_SQL.format(flt=flt), (*fp, ADS_TOP)).fetchall()
+        keys = sorted({r["family_key"] for r in wrows} | {r["family_key"] for r in trows})
+        nc = {r["family_key"]: r for r in conn.execute(NC_ADS_SQL, (frm, to, keys)).fetchall()} if keys else {}
+        live = {r["k"] for r in conn.execute(LIVE_KEYS_SQL, (keys,)).fetchall()} if keys else set()
+        links = {r["family_key"]: r for r in conn.execute(LINKS_SQL, (keys,)).fetchall()} if keys else {}
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        conn.rollback()
+        out["warning"] = "The ads behind this cut could not be read here (a table is missing)."
+        return out
+
+    def link(k):
+        l = links.get(k) or {}
+        return {"story_url": l.get("story_url"), "ad_id": l.get("tracker_row_id")}
+
+    for r in wrows:
+        n = nc.get(r["family_key"]) or {}
+        spend = _f(r["spend"])
+        out["window"].append({"key": r["family_key"], "name": r["name"], "product": PRODUCT_NAMES.get(r["product"], r["product"]), "live": r["family_key"] in live, "spend": spend,
+                              "nc_purchases": _f(n.get("nc_purchases")), "nc_revenue": _f(n.get("nc_revenue")), "nc_roas": _ratio(_f(n.get("nc_revenue")), spend), "nc_cpa": _ratio(spend, _f(n.get("nc_purchases"))),
+                              "meta_roas": _ratio(_f(r["meta_revenue"]), spend), **link(r["family_key"])})
+    for r in trows:
+        spend = _f(r["spend"])
+        out["top"].append({"key": r["family_key"], "name": r["name"], "product": PRODUCT_NAMES.get(r["product"], r["product"]), "live": r["family_key"] in live, "spend": spend, "revenue": _f(r["revenue"]),
+                           "purchases": _f(r["purchases"]), "meta_roas": _ratio(_f(r["revenue"]), spend), **link(r["family_key"])})
+    out["window_shown"] = len(out["window"])
+    return out

@@ -12,7 +12,7 @@ import { eventLine, STAGES, STATUSES, STATUS_LABEL, statusOf, VENDOR_FALLBACK, m
 import { board as boardView, loadBars } from './production_board.js';
 import { plan as planView } from './production_plan.js';
 import { openDrawer } from './production_drawer.js';
-import { cutsView, presetRange, DIMS as CUT_DIMS } from './production_cuts.js';
+import { cutsView, presetRange, DIMS as CUT_DIMS, METRICS as CUT_METRICS, QUICK as CUT_QUICK } from './production_cuts.js';
 const vendorLinkUrl = (tok) => `${location.origin}/priorities/vendor/${tok}`;
 export { mondayOf, addDays, today, VENDOR_FALLBACK, formatLabel, resultText };           // used by priorities_assign.js (the Assign to vendor dialog on /priorities)
 
@@ -36,7 +36,8 @@ export async function productionPage(ctx) {
   const cpre = CUT_PRESETS.includes(ctx.params.preset) ? ctx.params.preset : (ctx.params.from && ctx.params.to ? '' : '30');       // a named preset is recomputed from today; only a custom range keeps its dates
   const cr = cpre ? presetRange(cpre) : { from: ctx.params.from, to: ctx.params.to };
   st.cuts = { by: (ctx.params.by || 'product,icp').split(',').filter((k, i, a) => CUT_KEYS.includes(k) && a.indexOf(k) === i), preset: cpre, ...cr, pipelineOnly: ctx.params.po === '1',
-    stages: ctx.params.cs ? ctx.params.cs.split(',').filter((k) => CUT_STAGES.includes(k)) : CUT_STAGES.slice(), sort: { key: ctx.params.sort || '', dir: ctx.params.dir === 'asc' ? 'asc' : 'desc' } };
+    stages: ctx.params.cs ? ctx.params.cs.split(',').filter((k) => CUT_STAGES.includes(k)) : CUT_STAGES.slice(), sort: { key: ctx.params.sort || '', dir: ctx.params.dir === 'asc' ? 'asc' : 'desc' },
+    metrics: ctx.params.ms ? ctx.params.ms.split(',').filter((k) => CUT_METRICS.some(([m]) => m === k)) : CUT_METRICS.map(([k]) => k).filter((k) => !k.endsWith('_share')), quick: CUT_QUICK.some(([k]) => k && k === ctx.params.qf) ? ctx.params.qf : '' };
   if (!st.cuts.by.length) st.cuts.by = ['product', 'icp'];
   let cuts = null;                                             // the By cut view (production_cuts.js)
   let data = { rows: [], vendors: [], weeks: [] };          // the List payload (GET /api/priorities/assignments); also the source of vendors, weeks and formats for every view
@@ -87,7 +88,7 @@ export async function productionPage(ctx) {
   async function reload() {
     try { await load(); drawView(); if (drawer) drawer.refresh(); return true; } catch (e) { abortOk(e); say(e.message || 'Could not load.', true); return false; }
   }
-  const sync = () => navigate(href('/priorities/production', { view: st.view === 'board' ? '' : st.view, week: st.week, vendor: st.vendor, product: st.product, cluster: st.cluster, icp: st.icp, pain: st.pain, closed: st.closed ? 1 : '', stage: st.stage, overdue: st.overdue ? 1 : '', q: st.q, group: st.group, card: st.card, ...(st.view === 'cuts' ? { by: st.cuts.by.join(','), preset: st.cuts.preset || 'custom', from: st.cuts.from, to: st.cuts.to, po: st.cuts.pipelineOnly ? 1 : '', cs: st.cuts.stages.length === CUT_STAGES.length ? '' : st.cuts.stages.join(','), sort: st.cuts.sort.key, dir: st.cuts.sort.key ? st.cuts.sort.dir : '' } : {}) }), { replace: true, render: false });
+  const sync = () => navigate(href('/priorities/production', { view: st.view === 'board' ? '' : st.view, week: st.week, vendor: st.vendor, product: st.product, cluster: st.cluster, icp: st.icp, pain: st.pain, closed: st.closed ? 1 : '', stage: st.stage, overdue: st.overdue ? 1 : '', q: st.q, group: st.group, card: st.card, ...(st.view === 'cuts' ? { by: st.cuts.by.join(','), preset: st.cuts.preset || 'custom', from: st.cuts.from, to: st.cuts.to, po: st.cuts.pipelineOnly ? 1 : '', cs: st.cuts.stages.length === CUT_STAGES.length ? '' : st.cuts.stages.join(','), sort: st.cuts.sort.key, dir: st.cuts.sort.key ? st.cuts.sort.dir : '', ms: st.cuts.metrics.join(',') === CUT_METRICS.map(([k]) => k).filter((k) => !k.endsWith('_share')).join(',') ? '' : st.cuts.metrics.join(','), qf: st.cuts.quick } : {}) }), { replace: true, render: false });
   const refresh = () => { sync(); drawChrome(); reload(); };
 
   // ---- saving

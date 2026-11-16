@@ -48,7 +48,7 @@ def test_page_is_named_creative_pipeline(page):
 def test_by_cut_view_lists_cuts_with_status_counts_and_stats(page):
     goto(page)
     assert heads(page)[:2] == ["Product", "ICP"]
-    assert "Concepts" in heads(page) and "Spend" in heads(page) and "NC ROAS" in heads(page) and "Meta ROAS" in heads(page)
+    assert "Concepts in pipeline" in heads(page) and "Live concepts" in heads(page) and "Spend" in heads(page) and "NC ROAS" in heads(page) and "Meta ROAS" in heads(page)
     assert page.locator("[data-testid=prod-cuts-row]").count() > 0
     assert page.locator("[data-testid=prod-cuts-total] td").first.text_content() == "Total"
     assert "Mock basis." in page.locator("[data-testid=prod-cuts-basis]").text_content()
@@ -121,13 +121,60 @@ def test_status_columns_can_be_hidden_and_only_pipeline_cuts_filter(page):
 
 def test_sorting_by_a_column(page):
     goto(page)
-    page.locator("[data-testid=prod-cuts-sort-concepts]").click()
-    vals = [int(x) if x.isdigit() else 0 for x in page.locator("[data-testid=prod-cuts-row] td:nth-child(" + str(len(heads(page)) - 10) + ")").all_text_contents()]
+    page.locator("[data-testid=prod-cuts-sort-open]").click()
+    vals = [int(x) if x.isdigit() else 0 for x in page.locator("[data-testid=prod-cuts-row] td[data-metric=open]").all_text_contents()]
     assert vals == sorted(vals, reverse=True)
-    assert page.locator("[data-testid=prod-cuts-sort-concepts]").locator("xpath=..").get_attribute("aria-sort") == "descending"
+    assert page.locator("[data-testid=prod-cuts-sort-open]").locator("xpath=..").get_attribute("aria-sort") == "descending"
 
 
 def test_phone_width_has_no_sideways_page_scroll(page):
     page.set_viewport_size({"width": 375, "height": 812})
     goto(page)
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+
+
+def test_metrics_can_be_chosen(page):
+    goto(page)
+    assert "CPM" in heads(page)
+    page.locator("[data-testid=prod-cuts-metrics] > summary").click()
+    page.locator("[data-testid=prod-cuts-metric-cpm]").uncheck()
+    page.locator("[data-testid=prod-cuts-metric-ctr]").uncheck()
+    assert "CPM" not in heads(page) and "CTR" not in heads(page) and "Spend" in heads(page)
+    assert "ms=" in page.url
+    page.reload()
+    page.wait_for_selector("[data-testid=prod-cuts-table]")
+    assert "CPM" not in heads(page)
+
+
+def test_quick_filters_count_and_filter(page):
+    goto(page)
+    btns = page.locator("[data-testid=prod-cuts-quick] button").all_text_contents()
+    assert len(btns) == 6 and btns[0].startswith("All cuts") and "Lots in pipeline, not working" in btns[1] and btns[4].startswith("Ready to launch, none live")
+    n_ready = int(btns[4].rsplit(" ", 1)[1])
+    page.locator("[data-testid=prod-cuts-quick-ready]").click()
+    assert page.locator("[data-testid=prod-cuts-row]").count() == n_ready
+    assert "qf=ready" in page.url
+    page.locator("[data-testid=prod-cuts-quick-all]").click()
+    assert page.locator("[data-testid=prod-cuts-row]").count() >= n_ready
+
+
+def test_clicking_a_row_opens_the_ads_popup_without_leaving_the_page(page):
+    goto(page)
+    url = page.url
+    page.locator("[data-testid=prod-cuts-row]").first.click()
+    page.wait_for_selector("[data-testid=prod-cutads-top]")
+    assert page.locator("[data-testid=prod-cutads-top] [data-testid=prod-cutads-row]").count() == 5
+    assert page.locator("[data-testid=prod-cutads-window] [data-testid=prod-cutads-row]").count() == 4
+    assert page.locator("[data-testid=prod-cutads-title]").text_content().count("·") == 1
+    assert page.url == url
+    page.keyboard.press("Escape")
+    assert page.locator("[data-testid=prod-cutads-body]").count() == 0 and page.locator("[data-testid=prod-cuts-table]").is_visible()
+
+
+def test_share_metrics_are_off_by_default_and_selectable(page):
+    goto(page)
+    assert "% of spend" not in heads(page)
+    page.locator("[data-testid=prod-cuts-metrics] > summary").click()
+    page.locator("[data-testid=prod-cuts-metric-spend_share]").check()
+    assert "% of spend" in heads(page)
+    assert page.locator("[data-testid=prod-cuts-total] td[data-metric=spend_share]").text_content().strip() == "100.0%"

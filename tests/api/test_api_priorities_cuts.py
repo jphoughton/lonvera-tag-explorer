@@ -133,3 +133,21 @@ def test_group_by_vendor_counts_assignments_per_vendor(client, snaps):
 def test_parse_group_accepts_pain_alias_and_drops_repeats():
     assert pc.parse_group("pain,icp,pain_point,icp") == ["pain_point", "icp"]
     assert pc.parse_group(None) == ["product"]
+
+
+def test_ads_behind_a_cut_window_and_top(client, snaps, ads, pg):
+    pg.execute("INSERT INTO ad_metrics (tracker_row_id, product_id, family_key, is_first_row, spend_launch, purchases_launch, revenue_launch) SELECT 9301, product_id, %s, true, 777, 5, 900 FROM tracker_rows WHERE id = 9301", (FAM,))
+    pg.commit()
+    try:
+        r = client.get("/api/priorities/cuts/ads", query_string={"product": "vita-bull", "icp": "Given Up Guy", "pain_point": "Low T", "from": "2026-10-01", "to": "2026-10-31"})
+        assert r.status_code == 200, r.get_data(as_text=True)
+        d = r.get_json()
+        w = next(a for a in d["window"] if a["key"] == FAM)
+        assert w["spend"] == 150 and w["nc_revenue"] == 220 and w["nc_roas"] == pytest.approx(220 / 150) and w["meta_roas"] == pytest.approx(390 / 150)
+        t = next(a for a in d["top"] if a["key"] == FAM)
+        assert t["spend"] == 777 and t["meta_roas"] == pytest.approx(900 / 777) and len(d["top"]) <= 5
+        none = client.get("/api/priorities/cuts/ads", query_string={"icp": "No Such Icp", "from": "2026-10-01", "to": "2026-10-31"}).get_json()
+        assert none["window"] == [] and none["top"] == []
+    finally:
+        pg.execute("DELETE FROM ad_metrics WHERE tracker_row_id = 9301")
+        pg.commit()
