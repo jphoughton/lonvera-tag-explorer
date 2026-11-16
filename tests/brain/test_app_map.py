@@ -39,7 +39,7 @@ def test_services_schedules_and_jobs_come_from_the_deploy_scripts(built):
     assert sv["etl"]["schedule"] == "0 13 * * *" and sv["feeds"]["schedule"] == "0 21 * * *" and sv["alerts"]["schedule"] == "0 * * * *" and sv["backup"]["schedule"] == "30 8 * * *"
     assert sv["web"]["healthcheck"] == "/healthz"
     etl = [j["module"] for j in built["etl_jobs"] if j["service"] == "etl"]
-    assert etl[:2] == ["etl.run_daily", "etl.upstack_daily"] and etl[-1] == "etl.auto_tag"
+    assert etl[:2] == ["etl.run_daily", "etl.upstack_daily"] and etl[-4:] == ["etl.auto_tag", "etl.competitor_chatter", "etl.competitor_landing_pages", "etl.competitor_landing_pages"]
     assert next(j for j in built["etl_jobs"] if j["module"] == "etl.auto_tag")["fatal"] is False
     assert any(m["module"] == "etl.api_keys" for m in built["etl_modules"])
 

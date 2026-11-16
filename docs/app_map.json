@@ -196,6 +196,30 @@
    "note": "failure is logged and does not fail the run"
   },
   {
+   "service": "etl",
+   "order": 16,
+   "module": "etl.competitor_chatter",
+   "args": "--if-sunday",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 17,
+   "module": "etl.competitor_landing_pages",
+   "args": "--if-sunday",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 18,
+   "module": "etl.competitor_landing_pages",
+   "args": "--if-sunday --own",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
    "service": "feeds",
    "order": 1,
    "module": "etl.feeds",
