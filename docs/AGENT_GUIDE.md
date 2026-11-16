@@ -219,7 +219,7 @@ Everything on the Creative Pipeline page is on the HTTP API, so an agent or scri
 | Pipeline counts by status next to spend and return, for any cut and dates | `GET /api/priorities/cuts?group=product,icp&from=2026-10-16&to=2026-11-14` (cuts: product, cluster, icp, pain_point, vendor, media; filters `cluster=`, `icp=`, `pain_point=` as `\|` lists, `product=`, `week=`, `vendor=`) |
 | The ads behind one row | `GET /api/priorities/cuts/ads?product=vita-bull&icp=...&from=&to=` |
 | Read the Needs brief queue | `GET /api/priorities/backlog` (`include_assigned=1` for history) |
-| Add to Needs brief | `POST /api/priorities/backlog` `{items: [{product, cluster, icp, pain_point, media_type: image or video}], for_week}`: all five fields are required |
+| Add to Needs brief | `POST /api/priorities/backlog` `{items: [{product, cluster, icp, pain_point, media_type: image or video, story?}], for_week}`: the five tags are required, story (one sentence, 15 words or fewer) is optional |
 | Fix or move an item | `PATCH /api/priorities/backlog/<id>` (product, cluster, icp, pain_point, media_type, for_week, note, title; the five tags are never empty) |
 | Remove a waiting item | `DELETE /api/priorities/backlog/<id>` |
 | Assign a partner and a brief (creates the board tickets) | `POST /api/priorities/backlog/assign` `{ids, vendor, brief_url and / or brief}` |

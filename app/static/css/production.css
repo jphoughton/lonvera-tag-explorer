@@ -618,3 +618,4 @@ body.prod-dragging-col, body.prod-dragging-col * { cursor: grabbing !important; 
 .prod-cuts-table thead th { position: sticky; top: 0; z-index: 3; background: var(--head-bg); box-shadow: 0 1px 0 var(--line); }
 .prod-cuts-table thead th.prod-th-before { box-shadow: inset 4px 0 0 var(--accent), 0 1px 0 var(--line); }
 .prod-cuts-table thead th.prod-th-end { box-shadow: inset -4px 0 0 var(--accent), 0 1px 0 var(--line); }
+.prod-bl-storycell input { min-width: 320px; }

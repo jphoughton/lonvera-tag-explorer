@@ -95,6 +95,15 @@ def test_each_of_the_five_tags_is_required_to_enter_needs_brief(client, missing)
     assert {"product": "product", "cluster": "market cluster", "icp": "ICP", "pain_point": "pain point", "media_type": "image or video"}[missing] in r.get_json()["error"]
 
 
+def test_story_is_stored_edited_and_carried_to_the_ticket(client):
+    item = add(client, [{**ITEM, "story": "He decided feeling worn out is just turning 50, and stopped trying."}])["created"][0]
+    assert item["story"].startswith("He decided")
+    assert client.patch(f"/api/priorities/backlog/{item['id']}", json={"story": "He quit trying at 50."}).get_json()["story"] == "He quit trying at 50."
+    t = client.post("/api/priorities/backlog/assign", json={"ids": [item["id"]], "vendor": "Madre", "brief": "Write it."}).get_json()["created"][0]
+    assert "He quit trying at 50." in t["story"]
+    assert client.post("/api/priorities/backlog", json={"items": [{**ITEM, "pain_point": "Other", "story": "x" * 301}], "for_week": MONDAY}).status_code == 400
+
+
 def test_a_waiting_item_missing_a_tag_cannot_be_assigned_until_it_is_filled_in(client, pg):
     pg.execute("INSERT INTO creative_backlog (product, cluster, icp, pain_point, title, for_week) VALUES ('boneflex', '', 'Eileen', 'Knee Pain', 'Old item', %s)", (MONDAY,))
     pg.commit()

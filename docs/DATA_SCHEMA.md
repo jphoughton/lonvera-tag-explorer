@@ -7174,6 +7174,7 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `created_by` | text | yes | Signed-in user who added the item. |
 | `created_at` | timestamptz | no | When the item was added. |
 | `updated_at` | timestamptz | no | When the item last changed. |
+| `story` | text | no | The one-sentence situation of the buyer the brief is built around (15 words or fewer by convention); empty when none was given. Passed on to the ticket when a partner is assigned. |
 
 ### public.creative_cut_views
 

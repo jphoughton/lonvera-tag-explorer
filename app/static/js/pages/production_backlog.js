@@ -29,18 +29,18 @@ export function backlogView({ host, signal, say, goBoard }) {
 
   function drawAdd() {
     const open = addHost.open;
-    const f = { product: '', cluster: '', icp: '', pain_point: '', media_type: '', for_week: nextMondays()[0], note: '' };
+    const f = { product: '', cluster: '', icp: '', pain_point: '', media_type: '', story: '', for_week: nextMondays()[0], note: '' };
     const txt = (key, label, tid) => h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, label), h('input', { type: 'text', maxlength: 200, 'data-testid': tid, oninput: (e) => { f[key] = e.target.value; } }));
     const err = h('p', { class: 'pri-err', role: 'alert' });
     addHost.replaceChildren(h('summary', null, 'Add to Needs brief by hand'),
       h('div', { class: 'ctl-row' },
         h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, 'Product (required)'), h('select', { 'data-testid': 'prod-bl-add-product', onchange: (e) => { f.product = e.target.value; } }, [h('option', { value: '' }, 'Choose'), ...Object.entries(PRODUCT_NAMES).map(([k, v]) => h('option', { value: k }, v))])),
         h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, 'Image or video (required)'), h('select', { 'data-testid': 'prod-bl-add-media', onchange: (e) => { f.media_type = e.target.value; } }, [['', 'Choose'], ['video', 'Video'], ['image', 'Image']].map(([v, l]) => h('option', { value: v }, l)))),
-        txt('cluster', 'Market cluster (required)', 'prod-bl-add-cluster'), txt('icp', 'ICP (required)', 'prod-bl-add-icp'), txt('pain_point', 'Pain point (required)', 'prod-bl-add-pain'),
+        txt('cluster', 'Market cluster (required)', 'prod-bl-add-cluster'), txt('icp', 'ICP (required)', 'prod-bl-add-icp'), txt('pain_point', 'Pain point (required)', 'prod-bl-add-pain'), txt('story', 'Story (15 words or fewer)', 'prod-bl-add-story'),
         h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, 'Week'), weekSelect(f.for_week, (v) => { f.for_week = v; }, 'prod-bl-add-week')),
         h('button', { type: 'button', class: 'btn primary small', 'data-testid': 'prod-bl-add-go', onclick: async () => {
           err.textContent = '';
-          try { const r = await api('/api/priorities/backlog', {}, { method: 'POST', body: { items: [{ product: f.product, cluster: f.cluster, icp: f.icp, pain_point: f.pain_point, ...(f.media_type ? { media_type: f.media_type } : {}) }], for_week: f.for_week } }); toast(r.created.length ? 'Added to Needs brief.' : 'Already in Needs brief for that week.'); await load(); }
+          try { const r = await api('/api/priorities/backlog', {}, { method: 'POST', body: { items: [{ product: f.product, cluster: f.cluster, icp: f.icp, pain_point: f.pain_point, ...(f.media_type ? { media_type: f.media_type } : {}), ...(f.story ? { story: f.story } : {}) }], for_week: f.for_week } }); toast(r.created.length ? 'Added to Needs brief.' : 'Already in Needs brief for that week.'); await load(); }
           catch (e) { if (e && e.name === 'AbortError') throw e; err.textContent = e.message || 'Could not add.'; } } }, 'Add')), err);
     if (open) addHost.setAttribute('open', '');
   }
@@ -81,13 +81,14 @@ export function backlogView({ host, signal, say, goBoard }) {
       h('td', { class: 'prod-c prod-nowrap' }, weekSelect(r.for_week, async (v) => { try { await api('/api/priorities/backlog/' + r.id, {}, { method: 'PATCH', body: { for_week: v } }); await load(); } catch (e) { failed(e); await load(); } }, 'prod-bl-week')),
       h('td', { class: 'prod-c' }, pick(r, 'product', [['', 'Choose'], ...Object.entries(PRODUCT_NAMES)])), h('td', { class: 'prod-c' }, pick(r, 'media_type', [['', 'Choose'], ['video', 'Video'], ['image', 'Image']])),
       h('td', { class: 'prod-c' }, field(r, 'cluster')), h('td', { class: 'prod-c' }, field(r, 'icp')), h('td', { class: 'prod-c' }, field(r, 'pain_point')),
+      h('td', { class: 'prod-c prod-bl-storycell' }, h('input', { type: 'text', value: r.story || '', maxlength: 300, placeholder: 'One-sentence story', 'aria-label': 'Story', 'data-testid': 'prod-bl-story', onchange: async (e) => { try { await api('/api/priorities/backlog/' + r.id, {}, { method: 'PATCH', body: { story: e.target.value } }); toast('Saved.'); } catch (x) { failed(x); } } })),
       h('td', { class: 'prod-c' }, h('input', { type: 'text', value: r.note, maxlength: 500, 'aria-label': 'Note', 'data-testid': 'prod-bl-note', onchange: async (e) => { try { await api('/api/priorities/backlog/' + r.id, {}, { method: 'PATCH', body: { note: e.target.value } }); toast('Saved.'); } catch (x) { failed(x); } } })),
       h('td', { class: 'prod-c pri-sub' }, r.created_by || ''));
     tableHost.replaceChildren(
       ...[weeks.length > 1 ? h('div', { class: 'ctl-row' }, h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, 'Show week'), h('select', { 'data-testid': 'prod-bl-weekfilter', onchange: (e) => { st.week = e.target.value; drawTable(); } },
         [h('option', { value: '' }, 'All weeks'), ...weeks.map((w) => h('option', { value: w, selected: w === st.week }, weekLabel(w)))]))) : null,
       shown.length ? h('div', { class: 'prod-scroll' }, h('table', { class: 'pri-table prod-table prod-bl-table', 'data-testid': 'prod-bl-table' },
-        h('thead', null, h('tr', null, [h('th', { scope: 'col' }, all), ...['Week', 'Product', 'Image or video', 'Market cluster', 'ICP', 'Pain point', 'Note', 'Added by'].map((t) => h('th', { scope: 'col' }, t))])), h('tbody', null, shown.map(row))))
+        h('thead', null, h('tr', null, [h('th', { scope: 'col' }, all), ...['Week', 'Product', 'Image or video', 'Market cluster', 'ICP', 'Pain point', 'Story', 'Note', 'Added by'].map((t) => h('th', { scope: 'col' }, t))])), h('tbody', null, shown.map(row))))
         : h('p', { 'data-testid': 'prod-bl-empty' }, 'Nothing is waiting for a brief. In By cut, tick the cuts you decided to work on and add them here.'),
       goBoard ? h('p', { class: 'pri-sub' }, h('a', { href: href('/priorities/production', {}), 'data-testid': 'prod-bl-board' }, 'Open the Board')) : null].filter(Boolean));
   }

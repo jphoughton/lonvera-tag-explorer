@@ -1621,7 +1621,7 @@ rel("public.creative_backlog", group="creative", kind="table",
     caveats=["Assigning a partner and a brief creates a ticket in creative_priorities_assignments and sets status = assigned and assignment_id here; the row stays as history."],
     cols={"id": "Primary key (bigserial).", "product": "Product slug (vita-bull, beef-liver, boneflex, vita-belle) or empty when the cut had no product.", "cluster": "Market cluster of the cut; empty when the cut did not include one.",
           "icp": "ICP (ideal customer profile) of the cut; empty when the cut did not include one.", "pain_point": "Pain point of the cut; empty when the cut did not include one.", "media_type": "image or video when chosen; NULL when not. Passed on to the ticket when assigned.",
-          "title": "Name the ticket gets: the cut labels joined, or what the person typed.", "for_week": "The Monday of the week the team wants this made.", "note": "Free note, up to 500 characters.",
+          "story": "The one-sentence situation of the buyer the brief is built around (15 words or fewer by convention); empty when none was given. Passed on to the ticket when a partner is assigned.", "title": "Name the ticket gets: the cut labels joined, or what the person typed.", "for_week": "The Monday of the week the team wants this made.", "note": "Free note, up to 500 characters.",
           "status": "needs_brief (waiting for a partner and a brief) or assigned (a ticket was created).", "assignment_id": "creative_priorities_assignments.id of the ticket created from this item; NULL until assigned. No foreign key.",
           "created_by": "Signed-in user who added the item.", "created_at": "When the item was added.", "updated_at": "When the item last changed."})
 
