@@ -83,7 +83,7 @@ def test_default_window_is_the_last_30_days_and_the_view_switch_lists_countries(
     idle(page)
     assert "window=30d" in page.url
     segs = page.locator("#view-switch .seg")
-    assert [s.inner_text() for s in segs.all()] == ["Products", "Campaigns", "Countries"]
+    assert [s.inner_text() for s in segs.all()] == ["Products", "Campaigns", "Countries", "No attribution"]
     assert page.locator("#view-switch .seg[data-platform-view=countries]").get_attribute("aria-pressed") == "true"
     assert page.locator("[data-testid=nav-meta]").get_attribute("aria-current") == "page"
     page.locator("#view-switch .seg[data-platform-view=campaigns]").click()
