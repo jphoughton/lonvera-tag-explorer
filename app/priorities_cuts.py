@@ -151,7 +151,30 @@ def _tag_sql(tf: dict) -> tuple[str, list]:
     return "".join(sql), params
 
 
-def cuts(conn, group: list[str], raw_from: str | None, raw_to: str | None, week=None, vendor=None, products: list[str] | None = None, tf: dict | None = None) -> dict:
+def attach_priority(conn, out: dict, group: list[str], frm: dt.date, to: dt.date, tf: dict, products: list[str] | None, week, vendor) -> None:
+    """Add row['priority'] = {score, tier, why, confidence, drivers, flags} to every row that has one (app/priority_score.py; spec docs/PRIORITY_SCORE.md). Product is never a scoring level: a row is scored on the
+    other cuts of the grouping; when Product is one of the grouped cuts each product is scored on its own (its own prior), so an ICP row under Vita Bull is not diluted by Beef Liver. Rows with no scorable cut get none."""
+    from . import priority_score as ps, priority_signals as sig
+    sg = [d for d in group if d != "product"]
+    if not sg:
+        out["priority_note"] = "Add Market cluster, ICP or Pain point to Group by to score cuts (Product is a filter, not a level that is scored)."
+        return
+    names = {v: k for k, v in PRODUCT_NAMES.items()}
+    per_product = "product" in group
+    runs = [(slug, [slug]) for slug in sorted({names.get(r["labels"].get("product")) for r in out["rows"]} - {None})] if per_product else [(None, products or None)]
+    for slug, prods in runs:
+        filters = {**tf, **({"products": prods} if prods else {})}
+        scored = ps.score_cuts(sig.signals(conn, sg, frm, to, filters, week=week, vendor=vendor)["rows"])
+        by = {tuple(_norm(s["labels"].get(d)) for d in sg): s for s in scored}
+        for r in out["rows"]:
+            if per_product and names.get(r["labels"].get("product")) != slug:
+                continue
+            s = by.get(tuple(_norm(r["labels"].get(d)) for d in sg))
+            if s:
+                r["priority"] = {k: s[k] for k in ("score", "tier", "why", "confidence", "flags", "drivers")}
+
+
+def cuts(conn, group: list[str], raw_from: str | None, raw_to: str | None, week=None, vendor=None, products: list[str] | None = None, tf: dict | None = None, score: bool = False) -> dict:
     """{group, from, to, rows: [{labels: {dim: text}, stages: {status: n}, concepts, stats: {...}}], totals, stages, dims, warning?}.
     products filters BOTH sides to those product slugs; week and vendor filter the pipeline side only (spend is not tied to a week or a vendor)."""
     frm, to = window(conn, raw_from, raw_to)
@@ -217,10 +240,17 @@ def cuts(conn, group: list[str], raw_from: str | None, raw_to: str | None, week=
         if r.get("product") and r.get("stage") != "dropped":
             combos.add((r["product"], r.get("cluster") or "", r.get("icp") or "", r.get("pain_point") or ""))
     out.sort(key=lambda x: (-x["stats"]["spend"], -x["concepts"], tuple(x["labels"].values())))
-    return {"group": group, "from": frm.isoformat(), "to": to.isoformat(), "rows": out, "totals": {"stages": tot["stages"], "concepts": tot["concepts"], "stats": _stats(tot["ads"])},
+    result = {"group": group, "from": frm.isoformat(), "to": to.isoformat(), "rows": out, "totals": {"stages": tot["stages"], "concepts": tot["concepts"], "stats": _stats(tot["ads"])},
             "stages": [{"status": k, "label": pa.STATUS_LABELS[k]} for k in STATUSES], "dims": [{"key": d, "label": DIM_LABELS[d]} for d in DIMS],
             "basis": "Spend, clicks, impressions and Meta ROAS are Meta-reported; new-customer (NC) revenue, ROAS, cost per new customer, conversion rate and average order value are Upstack first orders (any-click, 30 day).",
             "combos": sorted([list(c) for c in combos]), "warning": warning}
+    if score:
+        try:
+            attach_priority(conn, result, group, frm, to, tf, products, week, vendor)
+        except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+            conn.rollback()
+            result["priority_note"] = "The priority score could not be read here (a table is missing)."
+    return result
 
 
 # ---------------------------------------------------------------------------------------------------------------- the ads behind one cut (the popup on a row)

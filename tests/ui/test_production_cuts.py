@@ -151,8 +151,8 @@ def test_metrics_can_be_chosen(page):
 def test_quick_filters_count_and_filter(page):
     goto(page)
     btns = page.locator("[data-testid=prod-cuts-quick] button").all_text_contents()
-    assert len(btns) == 6 and btns[0].startswith("All cuts") and "Lots in pipeline, not working" in btns[1] and btns[4].startswith("Ready to launch, none live")
-    n_ready = int(btns[4].rsplit(" ", 1)[1])
+    assert len(btns) == 7 and btns[0].startswith("All cuts") and btns[1].startswith("Make more now") and "Lots in pipeline, not working" in btns[2] and btns[5].startswith("Ready to launch, none live")
+    n_ready = int(btns[5].rsplit(" ", 1)[1])
     page.locator("[data-testid=prod-cuts-quick-ready]").click()
     assert page.locator("[data-testid=prod-cuts-row]").count() == n_ready
     assert "qf=ready" in page.url
@@ -343,3 +343,47 @@ def test_save_load_and_delete_a_view(page):
     assert heads(page)[0] == "ICP"
     page.locator("[data-testid=prod-cuts-view-delete]").click()
     page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-cuts-view-select] option').length === 1")
+
+
+def test_priority_score_column_quick_view_and_popup(page):
+    goto(page, "&by=product,icp")
+    assert "Priority score" in heads(page)
+    cells = page.locator("[data-testid=prod-cuts-row] td[data-metric=priority]")
+    assert cells.count() > 0 and cells.first.locator("[data-testid=prod-prio-score]").count() == 1
+    page.locator("[data-testid=prod-cuts-sort-priority]").click()
+    scores = [int(x) for x in page.locator("[data-testid=prod-prio-score]").all_text_contents()]
+    assert scores == sorted(scores, reverse=True)
+    n = int(page.locator("[data-testid=prod-cuts-quick-prio]").text_content().rsplit(" ", 1)[1])
+    page.locator("[data-testid=prod-cuts-quick-prio]").click()
+    assert page.locator("[data-testid=prod-cuts-row]").count() == n
+    page.locator("[data-testid=prod-cuts-row]").first.click()
+    page.wait_for_selector("[data-testid=prod-cutads-prio]")
+    assert "Mock reason" in page.locator("[data-testid=prod-cutads-prio]").text_content()
+
+
+def test_priority_score_needs_a_non_product_cut(page):
+    goto(page, "&by=product")
+    assert "Add Market cluster, ICP or Pain point" in page.locator("[data-testid=prod-cuts-prionote]").text_content()
+    assert page.locator("[data-testid=prod-prio-score]").count() == 0
+
+
+def test_a_metric_column_can_be_dragged_within_the_table_and_flashes(page):
+    page.set_viewport_size({"width": 2700, "height": 1000})
+    goto(page)
+    assert heads(page).index("CPM") < heads(page).index("AOV")
+    src = page.locator("[data-testid=prod-cuts-table] thead th[data-mkey=aov]")
+    dst = page.locator("[data-testid=prod-cuts-table] thead th[data-mkey=cpm]")
+    src.scroll_into_view_if_needed()
+    a, b = src.bounding_box(), dst.bounding_box()
+    page.mouse.move(a["x"] + a["width"] / 2, a["y"] + a["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(a["x"] + a["width"] / 2 - 30, a["y"] + a["height"] / 2, steps=4)
+    assert page.locator(".prod-th-ghost").count() == 1 and page.locator("th.prod-col-drag").count() == 1       # the column being moved follows the pointer and fades
+    page.mouse.move(b["x"] + 4, b["y"] + b["height"] / 2, steps=10)
+    assert page.locator("th.prod-th-before").count() == 1                                                      # the bar shows where it will land
+    page.mouse.up()
+    page.wait_for_function("() => { const h = [...document.querySelectorAll('[data-testid=prod-cuts-table] thead th')].map(t => t.textContent.trim()); return h.indexOf('AOV') < h.indexOf('CPM'); }")
+    assert page.locator("th.prod-col-landed").count() >= 0                                                     # the flash is a one second animation; its class is removed after
+    assert "mo=" in page.url and page.locator(".prod-th-ghost").count() == 0
+    page.locator("[data-testid=prod-cuts-sort-aov]").click()                                                   # a plain click on the header still sorts
+    assert page.locator("[data-testid=prod-cuts-sort-aov]").locator("xpath=..").get_attribute("aria-sort") in ("descending", "ascending")
