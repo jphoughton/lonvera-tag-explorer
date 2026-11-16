@@ -613,8 +613,12 @@ body.prod-dragging-col, body.prod-dragging-col * { cursor: grabbing !important; 
 .prod-cuts-tools { display: flex; align-items: center; gap: 8px; } .modal.prod-scorehelp { width: min(900px, 96vw); } .prod-sh-part { font-weight: 700; white-space: nowrap; } .prod-scorehelp td { white-space: normal; }
 .prod-prio-nodata { background: transparent; border-style: dashed; color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap; }
 
-/* By cut: the header row stays pinned while the rows scroll (the table scrolls inside its own frame, both ways) */
-.prod-cuts-scroll { max-height: max(360px, calc(100vh - 150px)); overflow: auto; }
-.prod-cuts-table thead th { position: sticky; top: 0; z-index: 3; background: var(--head-bg); box-shadow: 0 1px 0 var(--line); }
-.prod-cuts-table thead th.prod-th-before { box-shadow: inset 4px 0 0 var(--accent), 0 1px 0 var(--line); }
-.prod-cuts-table thead th.prod-th-end { box-shadow: inset -4px 0 0 var(--accent), 0 1px 0 var(--line); }
+/* By cut: the table has no vertical scroll of its own (only the page scrolls, so there is one scrollbar); the header is pinned by a copy that follows the page, see enableStickyHeader */
+.prod-cuts-scroll { overflow-x: auto; overflow-y: visible; }
+
+/* the pinned copy of the table header that follows the page scroll */
+.prod-stickyhead { position: fixed; z-index: 40; overflow: hidden; box-shadow: 0 2px 0 var(--line), 0 6px 12px rgba(0, 0, 0, .08); background: var(--head-bg); }
+.prod-stickyhead[hidden] { display: none; }
+.prod-stickyhead-in { will-change: transform; }
+.prod-stickyhead table { border-collapse: collapse; }
+.prod-stickyhead th { position: static !important; background: var(--head-bg); }

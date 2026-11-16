@@ -9403,6 +9403,12 @@
      "type": "timestamp with time zone",
      "nullable": false,
      "description": "When the item last changed."
+    },
+    {
+     "name": "story",
+     "type": "text",
+     "nullable": false,
+     "description": "The one-sentence situation of the buyer the brief is built around (15 words or fewer by convention); empty when none was given. Passed on to the ticket when a partner is assigned."
     }
    ],
    "examples": []

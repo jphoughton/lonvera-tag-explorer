@@ -10,7 +10,7 @@ import psycopg
 from . import priorities_assign as pa, queries as q
 
 MAX_ITEMS = 100
-COLS = "id, product, cluster, icp, pain_point, media_type, title, for_week, note, status, assignment_id, created_by, created_at, updated_at"
+COLS = "id, product, cluster, icp, pain_point, media_type, story, title, for_week, note, status, assignment_id, created_by, created_at, updated_at"
 NOT_READY = "The Needs brief queue is not set up yet (migration 268 is not applied)."
 
 
@@ -47,7 +47,7 @@ def _clean_item(it, week: dt.date) -> dict:
     _need_tags({**f, "product": product, "media_type": media})
     title = pa._text(it.get("title"), "title", 200) or _title(product, f["cluster"], f["icp"], f["pain_point"])
     wk = pa.monday_of(it["for_week"]) if it.get("for_week") else week
-    return {"product": product, **f, "media_type": media, "title": title, "for_week": wk, "note": pa._text(it.get("note"), "note", 500)}
+    return {"product": product, **f, "media_type": media, "story": pa._text(it.get("story"), "story", 300), "title": title, "for_week": wk, "note": pa._text(it.get("note"), "note", 500)}
 
 
 def list_items(conn, week=None, include_assigned: bool = False) -> dict:
@@ -79,8 +79,8 @@ def add_items(conn, body: dict, user: str | None = None) -> dict:
         with pa._rw() as w:
             for i, c in enumerate(clean):
                 r = w.execute(
-                    """INSERT INTO creative_backlog (product, cluster, icp, pain_point, media_type, title, for_week, note, created_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                       ON CONFLICT DO NOTHING RETURNING """ + COLS, (c["product"], c["cluster"], c["icp"], c["pain_point"], c["media_type"], c["title"], c["for_week"], c["note"], user)).fetchone()
+                    """INSERT INTO creative_backlog (product, cluster, icp, pain_point, media_type, story, title, for_week, note, created_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT DO NOTHING RETURNING """ + COLS, (c["product"], c["cluster"], c["icp"], c["pain_point"], c["media_type"], c["story"], c["title"], c["for_week"], c["note"], user)).fetchone()
                 if r is None:
                     skipped.append({"index": i, "reason": "already in Needs brief for that week"})
                 else:
@@ -95,6 +95,9 @@ def update_item(conn, item_id: int, body: dict) -> dict:
     if not isinstance(body, dict):
         raise q.ApiError(400, "JSON object body required")
     sets, params = [], []
+    if "story" in body:
+        sets.append("story = %s")
+        params.append(pa._text(body["story"], "story", 300))
     if "media_type" in body:
         m = pa._media_type(body["media_type"])
         if not m:
@@ -167,7 +170,7 @@ def assign(conn, body: dict, user: str | None = None) -> dict:
         _need_tags({**r, "media_type": pa._media_type(body.get("media_type")) or r["media_type"]}, r["title"])
     tickets = []
     for r in rows:
-        t = {"concept_name": r["title"], "vendor": body.get("vendor"), "product": r["product"], "cluster": r["cluster"], "icp": r["icp"], "pain_point": r["pain_point"], "media_type": pa._media_type(body.get("media_type")) or r["media_type"], "for_week": r["for_week"].isoformat(),
+        t = {"concept_name": r["title"], "vendor": body.get("vendor"), "product": r["product"], "cluster": r["cluster"], "icp": r["icp"], "pain_point": r["pain_point"], "story": r["story"], "media_type": pa._media_type(body.get("media_type")) or r["media_type"], "for_week": r["for_week"].isoformat(),
              "brief_url": body.get("brief_url"), "brief": body.get("brief"), "note": "; ".join(x for x in (r["note"], pa._text(body.get("note"), "note", 500)) if x)[:500]}
         if body.get("status"):
             t["status"] = body["status"]
