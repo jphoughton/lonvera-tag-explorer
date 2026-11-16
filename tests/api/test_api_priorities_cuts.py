@@ -68,11 +68,24 @@ def test_spend_and_return_behind_a_cut_for_a_window(client, snaps, ads):
     one(client)
     out = get(client, group="icp", **{"from": "2026-10-01", "to": "2026-10-31"})
     s = row(out, icp="Given Up Guy")["stats"]
+    assert s["ads_spending"] == 1
     assert s["spend"] == 150 and s["nc_revenue"] == 220 and s["nc_purchases"] == 2
     assert s["nc_roas"] == pytest.approx(220 / 150) and s["nc_cpa"] == 75 and s["meta_roas"] == pytest.approx(390 / 150)
     assert s["cpm"] == pytest.approx(150 * 1000 / 6000) and s["ctr"] == pytest.approx(60 / 6000) and s["cplc"] == pytest.approx(2.5)
     assert s["conv_rate"] == pytest.approx(2 / 60) and s["aov"] == 110
     assert row(out, icp="Given Up Guy")["concepts"] == 1                                  # the pipeline side is not narrowed by the dates
+
+
+def test_live_ads_count_once_and_ignore_the_window(client, snaps, ads, pg):
+    pg.execute("INSERT INTO ad_daily (ad_id, day, meta_family_key, meta_family, spend, source) SELECT 'zz-ad-copy', max(day), %s, 'ZZ-Cut-Fam', 5, 'meta_api' FROM ad_daily", (FAM,))
+    pg.commit()
+    try:
+        out = get(client, group="icp", **{"from": "2026-10-01", "to": "2026-10-02"})
+        r = row(out, icp="Given Up Guy")["stats"]
+        assert r["live_ads"] == 1 and r["ads_spending"] == 0                                 # two Meta ads of one family are one unique ad; the window did not matter for live
+    finally:
+        pg.execute("DELETE FROM ad_daily WHERE ad_id = 'zz-ad-copy'")
+        pg.commit()
 
 
 def test_the_date_window_narrows_the_spend(client, snaps, ads):
@@ -106,6 +119,15 @@ def test_default_window_is_thirty_loaded_days(client, snaps, ads):
 def test_bad_input_is_a_400(client):
     for q in ({"group": "colour"}, {"group": ","}, {"from": "nope"}, {"from": "2026-10-31", "to": "2026-10-01"}, {"from": "2020-01-01", "to": "2026-10-01"}):
         assert client.get("/api/priorities/cuts", query_string=q).status_code == 400
+
+
+def test_group_by_vendor_counts_assignments_per_vendor(client, snaps):
+    one(client, "Madre")
+    one(client, "Victoria")
+    one(client, "Victoria", "2026-11-16")
+    out = get(client, group="vendor")
+    assert row(out, vendor="Victoria")["concepts"] == 2 and row(out, vendor="Madre")["concepts"] == 1
+    assert pc.parse_group("vendor,product") == ["vendor", "product"]
 
 
 def test_parse_group_accepts_pain_alias_and_drops_repeats():

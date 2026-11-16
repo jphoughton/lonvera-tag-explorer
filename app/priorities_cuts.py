@@ -1,7 +1,7 @@
 """Creative Pipeline "By cut" view (/api/priorities/cuts): the production assignments counted by status AND the Meta spend and return behind the same cuts, for any date window.
 
-A cut is any ordered subset of product, market cluster, ICP (ideal customer profile) and pain point. Pipeline side: the rows of priorities_assign.list_assignments, counted by board status.
-Ad side: ad_daily (Meta spend, clicks, impressions, Meta-reported purchases) and ad_daily_upstack_nc (Upstack new customers and new-customer revenue, the NC basis) summed over the window and joined
+A cut is any ordered subset of product, market cluster, ICP (ideal customer profile), pain point and vendor (the assignment vendor on the pipeline side, the tracker Vendor column on the ad side). Pipeline side: the rows of priorities_assign.list_assignments, counted by board status.
+Ad side (unique live ads = tracker families that spent in the last two loaded days; ads with spend = families that spent in the window): ad_daily (Meta spend, clicks, impressions, Meta-reported purchases) and ad_daily_upstack_nc (Upstack new customers and new-customer revenue, the NC basis) summed over the window and joined
 Meta family -> tracker family -> first tracker row -> current tag (Communication Overview line tag, else the tracker's own columns). Nothing is written. Ratios come from sums, never an average.
 """
 from __future__ import annotations
@@ -12,8 +12,8 @@ import psycopg
 
 from . import priorities_assign as pa, queries as q
 
-DIMS = ("product", "cluster", "icp", "pain_point")
-DIM_LABELS = {"product": "Product", "cluster": "Market cluster", "icp": "ICP", "pain_point": "Pain point"}
+DIMS = ("product", "cluster", "icp", "pain_point", "vendor")
+DIM_LABELS = {"product": "Product", "cluster": "Market cluster", "icp": "ICP", "pain_point": "Pain point", "vendor": "Vendor"}
 PRODUCT_NAMES = {"vita-bull": "Vita Bull", "beef-liver": "Beef Liver", "boneflex": "Boneflex", "vita-belle": "Vita Belle"}
 STATUSES = ("assigned", "brief_sent", "in_production", "in_review", "ready", "launched")
 NONE = "(none)"
@@ -22,11 +22,11 @@ MAX_DAYS = 800
 # tag per tracker family: the linemap tag when there is one, else the tracker's own columns. first row of the family only, so a family counts once.
 CUT_CTE = """
 WITH fam AS (
-  SELECT DISTINCT ON (tr.family_key) tr.family_key, tr.id, p.slug AS product, tr.tracker_cluster, tr.tracker_icp, tr.tracker_pain
+  SELECT DISTINCT ON (tr.family_key) tr.family_key, tr.id, p.slug AS product, tr.vendor, tr.tracker_cluster, tr.tracker_icp, tr.tracker_pain
   FROM tracker_rows tr JOIN products p ON p.id = tr.product_id
   ORDER BY tr.family_key, tr.sheet_row NULLS LAST, tr.id
 ), tagged AS (
-  SELECT f.family_key, f.product,
+  SELECT f.family_key, f.product, NULLIF(btrim(f.vendor), '') AS vendor,
          COALESCE(NULLIF(btrim(g.cluster), ''), NULLIF(btrim(f.tracker_cluster), '')) AS cluster,
          COALESCE(NULLIF(btrim(g.icp), ''), NULLIF(btrim(f.tracker_icp), '')) AS icp,
          COALESCE(NULLIF(btrim(g.pain_point), ''), NULLIF(btrim(f.tracker_pain), '')) AS pain_point
@@ -35,14 +35,21 @@ WITH fam AS (
 """
 
 SQL_META = CUT_CTE + """
-SELECT t.product, t.cluster, t.icp, t.pain_point, sum(d.spend) AS spend, sum(d.link_clicks) AS clicks, sum(d.impressions) AS impressions, sum(d.purchases) AS meta_purchases, sum(d.conv_value) AS meta_revenue
+SELECT t.product, t.vendor, t.cluster, t.icp, t.pain_point, sum(d.spend) AS spend, sum(d.link_clicks) AS clicks, sum(d.impressions) AS impressions, sum(d.purchases) AS meta_purchases, sum(d.conv_value) AS meta_revenue,
+       count(DISTINCT t.family_key) FILTER (WHERE d.spend > 0) AS ads_spending
 FROM ad_daily d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
-WHERE d.day BETWEEN %s AND %s GROUP BY 1, 2, 3, 4
+WHERE d.day BETWEEN %s AND %s GROUP BY 1, 2, 3, 4, 5
+"""
+# unique live ads: tracker families (one per ad however many copies it has) that spent in the last two loaded days. Not tied to the date window: live is a now-state.
+SQL_LIVE = CUT_CTE + """
+SELECT t.product, t.vendor, t.cluster, t.icp, t.pain_point, count(DISTINCT t.family_key) AS live_ads
+FROM ad_daily d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
+WHERE d.spend > 0 AND d.day >= (SELECT max(day) FROM ad_daily) - 1 GROUP BY 1, 2, 3, 4, 5
 """
 SQL_NC = CUT_CTE + """
-SELECT t.product, t.cluster, t.icp, t.pain_point, sum(d.purchases) AS nc_purchases, sum(d.conv_value) AS nc_revenue
+SELECT t.product, t.vendor, t.cluster, t.icp, t.pain_point, sum(d.purchases) AS nc_purchases, sum(d.conv_value) AS nc_revenue
 FROM ad_daily_upstack_nc d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
-WHERE d.day BETWEEN %s AND %s GROUP BY 1, 2, 3, 4
+WHERE d.day BETWEEN %s AND %s GROUP BY 1, 2, 3, 4, 5
 """
 
 
@@ -116,13 +123,13 @@ def _ratio(a: float, b: float):
 
 def _stats(s: dict) -> dict:
     spend, clicks, imps = s["spend"], s["clicks"], s["impressions"]
-    return {"spend": spend, "nc_revenue": s["nc_revenue"], "nc_purchases": s["nc_purchases"], "nc_roas": _ratio(s["nc_revenue"], spend), "nc_cpa": _ratio(spend, s["nc_purchases"]),
+    return {"live_ads": s["live_ads"], "ads_spending": s["ads_spending"], "spend": spend, "nc_revenue": s["nc_revenue"], "nc_purchases": s["nc_purchases"], "nc_roas": _ratio(s["nc_revenue"], spend), "nc_cpa": _ratio(spend, s["nc_purchases"]),
             "meta_roas": _ratio(s["meta_revenue"], spend), "cpm": _ratio(spend * 1000, imps), "ctr": _ratio(clicks, imps), "cplc": _ratio(spend, clicks),
             "conv_rate": _ratio(s["nc_purchases"], clicks), "aov": _ratio(s["nc_revenue"], s["nc_purchases"])}
 
 
 def _blank() -> dict:
-    return {"stages": {k: 0 for k in STATUSES}, "concepts": 0, "ads": {"spend": 0.0, "clicks": 0.0, "impressions": 0.0, "meta_purchases": 0.0, "meta_revenue": 0.0, "nc_purchases": 0.0, "nc_revenue": 0.0}}
+    return {"stages": {k: 0 for k in STATUSES}, "concepts": 0, "ads": {"spend": 0.0, "clicks": 0.0, "impressions": 0.0, "meta_purchases": 0.0, "meta_revenue": 0.0, "nc_purchases": 0.0, "nc_revenue": 0.0, "live_ads": 0, "ads_spending": 0}}
 
 
 def cuts(conn, group: list[str], raw_from: str | None, raw_to: str | None, week=None, vendor=None, products: list[str] | None = None) -> dict:
@@ -156,7 +163,11 @@ def cuts(conn, group: list[str], raw_from: str | None, raw_to: str | None, week=
                 continue
             a = slot({d: r[d] for d in DIMS})["ads"]
             a["spend"] += _f(r["spend"]); a["clicks"] += _f(r["clicks"]); a["impressions"] += _f(r["impressions"])
-            a["meta_purchases"] += _f(r["meta_purchases"]); a["meta_revenue"] += _f(r["meta_revenue"])
+            a["meta_purchases"] += _f(r["meta_purchases"]); a["meta_revenue"] += _f(r["meta_revenue"]); a["ads_spending"] += int(r["ads_spending"] or 0)
+        for r in conn.execute(SQL_LIVE).fetchall():
+            if want and r["product"] not in want:
+                continue
+            slot({d: r[d] for d in DIMS})["ads"]["live_ads"] += int(r["live_ads"] or 0)
         for r in conn.execute(SQL_NC, (frm, to)).fetchall():
             if want and r["product"] not in want:
                 continue

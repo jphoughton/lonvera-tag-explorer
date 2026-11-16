@@ -1388,7 +1388,7 @@
    "endpoint": "api.priorities_cuts",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "Creative Pipeline by cut: ?group=product,icp (any ordered subset of product, cluster, icp, pain_point) &from= &to= (YYYY-MM-DD, default the last 30 loaded days) &week= &vendor= (pipeline side only) &product= (both sides)"
+   "summary": "Creative Pipeline by cut: ?group=product,icp (any ordered subset of product, cluster, icp, pain_point, vendor) &from= &to= (YYYY-MM-DD, default the last 30 loaded days) &week= &vendor= (pipeline side only) &product= (both sides)"
   },
   {
    "rule": "/api/priorities/launch/settings",
