@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, g, jsonify, request, send_file
 from werkzeug.datastructures import MultiDict
 
-from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_cut_views as pcv, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, madre_review as mrv, madre_media as mmed, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import amazon as amz, api_keys as ak, countries as cty, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_cut_views as pcv, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, madre_review as mrv, madre_media as mmed, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -222,6 +222,16 @@ def campaigns_all_platforms():
     finally:
         q.set_source("meta")
     return jsonify(res)
+
+
+@bp.get("/api/meta/countries")
+def meta_countries():
+    """Countries view (Meta): per country, Meta spend (Meta's country breakdown, from its first day) next to the new customers and new-customer revenue Shopify recorded by
+    ship-to country (each customer's first order, every channel), for window / from / to. Ratios are ratios of sums; the window is cut to the days both tables hold. See app/countries.py."""
+    conn = db.get_conn()
+    meta = q.load_meta(conn)
+    w = q.parse_window({k: request.args[k] for k in ("window", "from", "to") if k in request.args and request.args[k] is not None}, meta)
+    return jsonify(cty.build(cty.DbSource(conn), w, meta))
 
 
 @bp.get("/api/meta/breakdowns/coverage")

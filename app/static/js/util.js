@@ -167,7 +167,7 @@ const META_LABELS = { purchases: 'Purchases', revenue: 'Revenue', roas: 'ROAS', 
 // The default depends on the path so that old links keep their meaning: a bare '/' is the Overview roll-up (Josh's landing page), while '/campaigns' without
 // a platform was always Meta's Campaigns. A link to the Meta landing therefore carries platform=meta; platform=all is explicit on /campaigns.
 export const PLATFORM_PATHS = /^\/(campaigns)?\/?$/;
-export const DEFAULT_PLATFORM = { '/': 'all', '/campaigns': 'meta' };
+export const DEFAULT_PLATFORM = { '/': 'all', '/campaigns': 'meta', '/countries': 'meta' };
 const platformPath = (path) => (path.length > 1 ? path.replace(/\/$/, '') : path);
 export function currentPlatform() {
   const path = location.pathname;

@@ -3119,6 +3119,33 @@ for _t, _v, _dom, _span in [
         purpose=_extra + _s["purpose"], grain=_s["grain"], source=f"public.{_t} (ExpandFi merchant 1452)", refresh=_s["refresh"], coverage=_s["coverage"], caveats=list(_s["caveats"]), cols={}, examples=_ex)
 
 
+# ---------------------------------------------------------------------------------------------------------------------------- new customers by country (migration 273 table, 274 view)
+rel("public.nc_by_country_daily", group="orders", kind="table",
+    purpose="New customers and their revenue by Pacific day and ship-to country: each customer's first Shopify order ever, every channel. The only country split of new-customer revenue (Upstack has none); pair it with analytics.meta_breakdown_daily (breakdown = country) for Meta spend by country.",
+    grain="one row per (day, country_code) with at least one new customer", source="etl.feeds nc_by_country_daily (ExpandFi warehouse, merchant 1452: shopify_orders)",
+    refresh="feeds service 21:00 UTC (python -m etl.feeds run), trailing 21 days, non-fatal; each run replaces its window, an empty pull writes nothing; one-time backfill: python -m etl.feeds run --only nc_by_country_daily --backfill (from 2024-01-01 in 90-day windows)",
+    coverage="from the first load (the backfill reaches 2024-01-01) to about yesterday; the Countries view cuts every window to the days both this table and the Meta country breakdown (from 2026-10-12) hold",
+    caveats=["New customer = the customer's FIRST Shopify order ever (customer key = shopify_customer_id, else lower(email); earliest processed_at, then id), dated on its Pacific day (processed_at is stored UTC). A first order flagged as a test order is dropped. Every channel: Google and organic buyers are in it, which is why a country's ratio to Meta spend is not Meta's own return.",
+             "country_code is the ship-to address country, else the billing country, else 'unknown'. Customers who ship to a country Meta did not spend in still appear here; total new-customer revenue across ALL rows is the numerator of a total ratio.",
+             "Revenue is the order total_price in US dollars, tax included and before refunds, like analytics.orders_daily.new_customer_revenue. Within a few tenths of a percent of it but not identical (orders_daily comes from Upstack; this from Shopify through ExpandFi).",
+             "Aggregates only: no customer or order identifiers. A day or country with no new customer has no row; NULL does not occur, absence is zero customers."],
+    cols={"day": "Pacific day of the customer's first order.", "country_code": "ISO 3166 alpha-2 country of the ship-to address, else the billing address, else 'unknown' (upper case).",
+          "new_customers": "Customers whose first Shopify order ever fell on that day and country.", "new_customer_revenue": "Sum of total_price of those first orders, US dollars (tax included, before refunds).",
+          "loaded_at": "When the row was loaded."},
+    examples=[("New customers and revenue by country, last 30 days", "SELECT country_code, sum(new_customers) AS new_customers, round(sum(new_customer_revenue)) AS nc_revenue\nFROM analytics.nc_by_country_daily\nWHERE day > (SELECT max(day) FROM analytics.nc_by_country_daily) - 30 GROUP BY 1 ORDER BY 3 DESC;")])
+rel("analytics.nc_by_country_daily", group="analytics", kind="view", like="public.nc_by_country_daily", domain="orders", span=("nc_by_country_daily", "day"), base="nc_by_country_daily",
+    purpose="New customers and their revenue by Pacific day and ship-to country (each customer's first Shopify order, every channel). Use it with analytics.meta_breakdown_daily (breakdown = country) for Meta spend and new-customer ROAS by country; the Countries page of Marketing metrics does exactly that.",
+    grain="one row per (day, country_code) with at least one new customer", source="public.nc_by_country_daily (ExpandFi merchant 1452)",
+    refresh="feeds service 21:00 UTC, trailing 21 days", coverage="from the first load (backfill from 2024-01-01) to about yesterday",
+    caveats=["Every channel, not Meta-attributed: total NC ROAS by country = sum(new_customer_revenue) / Meta spend over days BOTH tables cover (the country breakdown starts 2026-10-12).",
+             "Sum within breakdown = 'country' only on the Meta side; ratios come from sums, never an average of daily ratios."],
+    cols={}, examples=[("New-customer ROAS by country over a window (Meta spend from the country breakdown)",
+                        "WITH s AS (SELECT upper(value) AS cc, sum(spend) AS spend FROM analytics.meta_breakdown_daily WHERE breakdown = 'country' AND day BETWEEN date '2026-10-17' AND date '2026-11-15' GROUP BY 1),\n"
+                        "     n AS (SELECT upper(country_code) AS cc, sum(new_customer_revenue) AS nc_revenue FROM analytics.nc_by_country_daily WHERE day BETWEEN date '2026-10-17' AND date '2026-11-15' GROUP BY 1)\n"
+                        "SELECT coalesce(s.cc, n.cc) AS country, round(s.spend) AS spend, round(n.nc_revenue) AS nc_revenue, round(n.nc_revenue / NULLIF(s.spend, 0), 2) AS nc_roas\nFROM s FULL JOIN n ON n.cc = s.cc ORDER BY s.spend DESC NULLS LAST;"),
+                       ("Row count", "SELECT count(*) AS rows FROM analytics.nc_by_country_daily;")])
+
+
 # ---------------------------------------------------------------------------------------------------------------------------- Amazon Ads keyword layer (migrations 252 tables, 253 views)
 # Sponsored Products only, loaded BY HAND from ExpandFi Data Dash pulls: `python -m etl.amazon_dash_load --dir <folder>` (no cron, not the feeds service). docs/AMAZON_DATA.md
 _KW_REFRESH = "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled"
@@ -3740,6 +3767,7 @@ views only); everything else is the app's own storage. **Start with `select * fr
 | Meta / Google spend back to 2025-01-01; Meta spend and unique outbound clicks by product; bid caps | `analytics.platform_daily_history`, `analytics.meta_product_daily`, `analytics.meta_product_reach`, `analytics.meta_bids_daily` |
 | last-click credit by source; any-click new customers by stage; orders no ad gets credit for | `analytics.attribution_source_daily`, `analytics.attribution_anyclick_daily`, `analytics.attribution_unmapped_daily` |
 | Amazon: ads by campaign / ASIN, organic search queries (shares, not rank), orders by ASIN, traffic, settlement fees | `analytics.amazon_ads_campaign_daily`, `amazon_ads_asin_daily`, `amazon_search_queries_weekly`, `amazon_search_queries_monthly`, `amazon_orders_asin_daily`, `amazon_traffic_daily`, `amazon_market_baskets`, `amazon_repeat_purchases`, `amazon_settlement_fees_daily`, `amazon_asin_products` (domain `amazon`, docs/AMAZON_DATA.md) |
+| Meta spend by country (Meta-reported) next to new customers and new-customer revenue by ship-to country (every channel, from Shopify) | `analytics.meta_breakdown_daily` (breakdown = country), `analytics.nc_by_country_daily` |
 | actual new-customer revenue by product or hour; tax and refunds; Amazon; site traffic | `analytics.orders_by_product_daily`, `analytics.orders_hourly`, `analytics.orders_daily_detail`, `analytics.amazon_daily`, `analytics.site_traffic_daily` |
 | creative family spend / results by basis, test to scale, copy and transcript | `analytics.creative_family_daily`, `analytics.creative_family_metrics`, `analytics.creative_stage_moves`, `analytics.creative_scaling_placements`, `analytics.creative_content`, `analytics.ad_transcripts` |
 | tags, taxonomy lines, ingredients, hooks | `analytics.tracker_tags`, `analytics.tag_taxonomy_lines`, `analytics.tag_line_ingredients`, `analytics.tracker_hooks`, `analytics.tag_products` |

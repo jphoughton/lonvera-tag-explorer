@@ -161,7 +161,7 @@ AMAZON_FEED_KEYS = [k for k, f in feeds.registry().items() if f.native and k.sta
 def test_the_stale_after_limit_depends_on_the_mode_and_every_feed_is_listed(dconn):
     reg = feeds.registry()
     twins = tuple(k for k, f in reg.items() if not f.native)                                             # the native feed has no sheet twin: it is always shadow
-    assert len(reg) == 26 and len(twins) == 14
+    assert len(reg) == 27 and len(twins) == 14
     for mode, limit in (("sheet", lambda f: f.sheet_stale_after), ("shadow", lambda f: f.stale_after), ("direct", lambda f: f.stale_after)):
         set_modes(dconn, mode, twins)
         listed = {e["key"]: e for e in feeds.freshness(dconn, TODAY, include_sheet=True)}
@@ -176,7 +176,7 @@ def test_the_stale_after_limit_depends_on_the_mode_and_every_feed_is_listed(dcon
         got[m] = {e["key"]: e for e in feeds.freshness(dconn, TODAY, include_sheet=True)}["units_intl"]["stale_after_days"]
     assert got == {"sheet": 4, "direct": 2}                                                                # intl: 4 -> 2 only while the feed is direct
     set_modes(dconn, "sheet", twins)
-    assert [e["key"] for e in feeds.freshness(dconn, TODAY)] == ["intl_estimate", "nc_hourly", *AMAZON_FEED_KEYS]   # the hook list is still only the non-sheet feeds (the native ones, the Amazon data feeds last)
+    assert [e["key"] for e in feeds.freshness(dconn, TODAY)] == ["intl_estimate", "nc_hourly", "nc_by_country_daily", *AMAZON_FEED_KEYS]   # the hook list is still only the non-sheet feeds (the native ones, the Amazon data feeds last)
 
 
 def test_the_freshness_command_lists_every_feed_in_every_mode(wired_db, dconn, monkeypatch, capsys):

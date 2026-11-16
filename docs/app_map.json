@@ -630,6 +630,13 @@
    "bare": false
   },
   {
+   "url_pattern": "/countries",
+   "page_function": "countriesPage",
+   "js_file": "app/static/js/pages/countries.js",
+   "public": false,
+   "bare": false
+  },
+  {
    "url_pattern": "/daily",
    "page_function": "dailyPage",
    "js_file": "app/static/js/pages/daily.js",
@@ -1234,6 +1241,17 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": "What the nightly Meta breakdown pull holds, per set and level: status (ok / unsupported / error), first and last day, rows, last error (app/meta_breakdowns.py)."
+  },
+  {
+   "rule": "/api/meta/countries",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.meta_countries",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Countries view (Meta): per country, Meta spend (Meta's country breakdown, from its first day) next to the new customers and new-customer revenue Shopify recorded by"
   },
   {
    "rule": "/api/platforms/kpis",
@@ -3574,6 +3592,17 @@
    ],
    "kind": "page",
    "endpoint": "shell:/connect-agent",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/countries",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/countries",
    "auth": "none (HTML page or health check; its data calls are protected)",
    "auth_exempt": true,
    "summary": ""

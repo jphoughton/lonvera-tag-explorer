@@ -14,14 +14,15 @@ export function breadcrumbs(items) {
         it.href && i !== last ? h('a', { href: it.href }, it.chip || null, it.label) : h('span', it.chip || null, it.label)))));
 }
 
-// "View: Products | Campaigns" (Meta) or "Overview | Campaigns" (Google): the two views of a platform; the range, stage and numbers choice carry over (platform stays in G)
+// "View: Products | Campaigns | Countries" (Meta) or "Overview | Campaigns" (Google): the two views of a platform; the range, stage and numbers choice carry over (platform stays in G)
 export function viewSwitch(active, G, platform = 'meta') {
   const first = platform === 'meta' ? 'Products' : platform === 'all' ? 'Platforms' : 'Overview';
   const mk = (label, key, to) => h('a', { class: 'seg', href: to, 'data-platform-view': key, 'aria-current': active === key ? 'page' : null, 'aria-pressed': String(active === key) }, label);
   const g = { ...G };
   delete g.type; delete g.product; delete g.only; delete g.chart; delete g.platform;
   return h('div', { class: 'ctl', id: 'view-switch' }, h('span', { class: 'ctl-name' }, 'View by'),
-    h('span', { class: 'segs', role: 'group', 'aria-label': 'View by' }, mk(first, 'home', platformUrl('/', platform, g)), mk('Campaigns', 'campaigns', platformUrl('/campaigns', platform, g))));
+    h('span', { class: 'segs', role: 'group', 'aria-label': 'View by' }, mk(first, 'home', platformUrl('/', platform, g)), mk('Campaigns', 'campaigns', platformUrl('/campaigns', platform, g)),
+      platform === 'meta' ? mk('Countries', 'countries', platformUrl('/countries', platform, g)) : null));
 }
 
 // "Numbers: Upstack · new customers": which numbers the table beside it shows; text kept current by controls.js (refreshSrcBadges) on every flip

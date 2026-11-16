@@ -12,6 +12,7 @@ import { adPage } from './js/pages/ad.js';
 import { googlePage } from './js/pages/google.js';
 import { amazonPage } from './js/pages/amazon.js';
 import { campaignsPage } from './js/pages/campaigns.js';
+import { countriesPage } from './js/pages/countries.js';
 import { allPlatformsPage } from './js/pages/platforms.js';
 import { allCampaignsPage } from './js/pages/all_campaigns.js';
 import { promotionsPage } from './js/pages/promotions.js';
@@ -32,7 +33,7 @@ const homePage = (ctx) => { const pl = currentPlatform(); return pl === 'all' ? 
 const campaignsRoute = (ctx) => { const pl = currentPlatform(); return pl === 'google' ? googlePage(ctx) : pl === 'all' ? allCampaignsPage(ctx) : campaignsPage(ctx); };
 // page functions by id; the URL patterns, Back targets, filters and defaults of each page are in js/pageconfig.js (PAGES)
 const PAGE_FNS = {
-  login: loginPage, amazon: amazonPage, home: homePage, campaigns: campaignsRoute, promotions: promotionsPage, 'madre-review': madreReviewPage, trends: trendsPage, daily: dailyPage, email: emailPage, 'inventory-history': inventoryHistoryPage, priorities: prioritiesPage, 'priorities-view': prioritiesViewPage,
+  login: loginPage, amazon: amazonPage, home: homePage, campaigns: campaignsRoute, countries: countriesPage, promotions: promotionsPage, 'madre-review': madreReviewPage, trends: trendsPage, daily: dailyPage, email: emailPage, 'inventory-history': inventoryHistoryPage, priorities: prioritiesPage, 'priorities-view': prioritiesViewPage,
   production: productionPage, competitors: competitorsPage, vendor: vendorPage, lookup: lookupPage, 'connect-agent': connectAgentPage, product: productPage, ad: adPage,
 };
 const routes = PAGES.map((r) => ({ ...r, page: PAGE_FNS[r.id] }));

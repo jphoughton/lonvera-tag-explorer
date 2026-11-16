@@ -26775,6 +26775,131 @@
    ]
   },
   {
+   "name": "public.nc_by_country_daily",
+   "schema": "public",
+   "relation": "nc_by_country_daily",
+   "kind": "table",
+   "group": "orders",
+   "purpose": "New customers and their revenue by Pacific day and ship-to country: each customer's first Shopify order ever, every channel. The only country split of new-customer revenue (Upstack has none); pair it with analytics.meta_breakdown_daily (breakdown = country) for Meta spend by country.",
+   "grain": "one row per (day, country_code) with at least one new customer",
+   "primary_key": [
+    "day",
+    "country_code"
+   ],
+   "foreign_keys": [],
+   "source": "etl.feeds nc_by_country_daily (ExpandFi warehouse, merchant 1452: shopify_orders)",
+   "refresh": "feeds service 21:00 UTC (python -m etl.feeds run), trailing 21 days, non-fatal; each run replaces its window, an empty pull writes nothing; one-time backfill: python -m etl.feeds run --only nc_by_country_daily --backfill (from 2024-01-01 in 90-day windows)",
+   "coverage": "from the first load (the backfill reaches 2024-01-01) to about yesterday; the Countries view cuts every window to the days both this table and the Meta country breakdown (from 2026-10-12) hold",
+   "caveats": [
+    "New customer = the customer's FIRST Shopify order ever (customer key = shopify_customer_id, else lower(email); earliest processed_at, then id), dated on its Pacific day (processed_at is stored UTC). A first order flagged as a test order is dropped. Every channel: Google and organic buyers are in it, which is why a country's ratio to Meta spend is not Meta's own return.",
+    "country_code is the ship-to address country, else the billing country, else 'unknown'. Customers who ship to a country Meta did not spend in still appear here; total new-customer revenue across ALL rows is the numerator of a total ratio.",
+    "Revenue is the order total_price in US dollars, tax included and before refunds, like analytics.orders_daily.new_customer_revenue. Within a few tenths of a percent of it but not identical (orders_daily comes from Upstack; this from Shopify through ExpandFi).",
+    "Aggregates only: no customer or order identifiers. A day or country with no new customer has no row; NULL does not occur, absence is zero customers."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": false,
+     "description": "Pacific day of the customer's first order."
+    },
+    {
+     "name": "country_code",
+     "type": "text",
+     "nullable": false,
+     "description": "ISO 3166 alpha-2 country of the ship-to address, else the billing address, else 'unknown' (upper case)."
+    },
+    {
+     "name": "new_customers",
+     "type": "integer",
+     "nullable": false,
+     "description": "Customers whose first Shopify order ever fell on that day and country."
+    },
+    {
+     "name": "new_customer_revenue",
+     "type": "numeric(14,2)",
+     "nullable": false,
+     "description": "Sum of total_price of those first orders, US dollars (tax included, before refunds)."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": [
+    {
+     "title": "New customers and revenue by country, last 30 days",
+     "sql": "SELECT country_code, sum(new_customers) AS new_customers, round(sum(new_customer_revenue)) AS nc_revenue\nFROM analytics.nc_by_country_daily\nWHERE day > (SELECT max(day) FROM analytics.nc_by_country_daily) - 30 GROUP BY 1 ORDER BY 3 DESC;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.nc_by_country_daily",
+   "schema": "analytics",
+   "relation": "nc_by_country_daily",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "New customers and their revenue by Pacific day and ship-to country (each customer's first Shopify order, every channel). Use it with analytics.meta_breakdown_daily (breakdown = country) for Meta spend and new-customer ROAS by country; the Countries page of Marketing metrics does exactly that.",
+   "grain": "one row per (day, country_code) with at least one new customer",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.nc_by_country_daily (ExpandFi merchant 1452)",
+   "refresh": "feeds service 21:00 UTC, trailing 21 days",
+   "coverage": "from the first load (backfill from 2024-01-01) to about yesterday",
+   "caveats": [
+    "Every channel, not Meta-attributed: total NC ROAS by country = sum(new_customer_revenue) / Meta spend over days BOTH tables cover (the country breakdown starts 2026-10-12).",
+    "Sum within breakdown = 'country' only on the Meta side; ratios come from sums, never an average of daily ratios."
+   ],
+   "like": "public.nc_by_country_daily",
+   "domain": "orders",
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": null,
+     "description": "Pacific day of the customer's first order."
+    },
+    {
+     "name": "country_code",
+     "type": "text",
+     "nullable": null,
+     "description": "ISO 3166 alpha-2 country of the ship-to address, else the billing address, else 'unknown' (upper case)."
+    },
+    {
+     "name": "new_customers",
+     "type": "integer",
+     "nullable": null,
+     "description": "Customers whose first Shopify order ever fell on that day and country."
+    },
+    {
+     "name": "new_customer_revenue",
+     "type": "numeric(14,2)",
+     "nullable": null,
+     "description": "Sum of total_price of those first orders, US dollars (tax included, before refunds)."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the row was loaded."
+    }
+   ],
+   "examples": [
+    {
+     "title": "New-customer ROAS by country over a window (Meta spend from the country breakdown)",
+     "sql": "WITH s AS (SELECT upper(value) AS cc, sum(spend) AS spend FROM analytics.meta_breakdown_daily WHERE breakdown = 'country' AND day BETWEEN date '2026-10-17' AND date '2026-11-15' GROUP BY 1),\n     n AS (SELECT upper(country_code) AS cc, sum(new_customer_revenue) AS nc_revenue FROM analytics.nc_by_country_daily WHERE day BETWEEN date '2026-10-17' AND date '2026-11-15' GROUP BY 1)\nSELECT coalesce(s.cc, n.cc) AS country, round(s.spend) AS spend, round(n.nc_revenue) AS nc_revenue, round(n.nc_revenue / NULLIF(s.spend, 0), 2) AS nc_roas\nFROM s FULL JOIN n ON n.cc = s.cc ORDER BY s.spend DESC NULLS LAST;"
+    },
+    {
+     "title": "Row count",
+     "sql": "SELECT count(*) AS rows FROM analytics.nc_by_country_daily;"
+    }
+   ]
+  },
+  {
    "name": "public.amazon_ads_search_term_daily",
    "schema": "public",
    "relation": "amazon_ads_search_term_daily",
