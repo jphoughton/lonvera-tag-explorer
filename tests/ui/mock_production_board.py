@@ -233,9 +233,36 @@ def register(app, deps):
     def bl_view(r):
         return {**r, "product_name": {"vita-bull": "Vita Bull", "beef-liver": "Beef Liver", "boneflex": "Boneflex"}.get(r["product"], r["product"])}
 
+    CV = S.setdefault("cutviews", {"rows": [], "next": 1})
+
+    @app.get("/api/priorities/cut-views")
+    def cv_list():
+        return jsonify({"views": sorted(CV["rows"], key=lambda v: v["name"].lower()), "ready": True})
+
+    @app.post("/api/priorities/cut-views")
+    def cv_save():
+        b = request.get_json() or {}
+        name = (b.get("name") or "").strip()
+        if not name:
+            return jsonify(error="give the view a name"), 400
+        old = next((v for v in CV["rows"] if v["name"].lower() == name.lower()), None)
+        if old:
+            old.update(name=name, state=b.get("state") or {})
+            return jsonify(old), 201
+        v = {"id": CV["next"], "name": name, "state": b.get("state") or {}, "created_by": "josh"}
+        CV["next"] += 1
+        CV["rows"].append(v)
+        return jsonify(v), 201
+
+    @app.delete("/api/priorities/cut-views/<int:vid>")
+    def cv_delete(vid):
+        CV["rows"] = [v for v in CV["rows"] if v["id"] != vid]
+        return jsonify({"removed": 1})
+
     @app.post("/__test/backlog/reset")
     def bl_reset():
         BL["rows"], BL["next"] = [], 1
+        CV["rows"], CV["next"] = [], 1
         return jsonify(ok=True)
 
     @app.get("/api/priorities/backlog")
@@ -297,9 +324,9 @@ def register(app, deps):
     def cut_ads():
         a = request.args
         ad = lambda n, sp: {"key": f"k{n}", "name": f"Ad {n} ({a.get('icp') or a.get('product') or 'all'})", "product": "Vita Bull", "live": n % 2 == 0, "spend": sp, "nc_purchases": 3, "nc_revenue": sp * 0.8, "nc_roas": 0.8, "nc_cpa": sp / 3,
-                            "meta_roas": 1.1, "revenue": sp * 1.1, "purchases": 4, "story_url": "https://www.facebook.com/x/posts/1", "ad_id": n}
+                            "meta_roas": 1.1, "revenue": sp * 1.1, "purchases": 4, "story_url": "https://www.facebook.com/x/posts/1", "ad_id": n, "hook": f"Hook line {n}"}
         return jsonify({"cut": {k: v for k, v in a.items() if k in ("product", "cluster", "icp", "pain_point", "vendor")}, "from": a.get("from"), "to": a.get("to"), "window": [ad(i, 900 - 200 * i) for i in range(1, 5)],
-                        "top": [ad(i + 10, 5000 - 500 * i) for i in range(1, 6)], "window_shown": 4, "warning": None})
+                        "top": [ad(i + 10, 5000 - 500 * i) for i in range(1, 6)], "top_hooks": [ad(i, 900 - 200 * i) for i in range(1, 4)], "window_shown": 4, "warning": None})
 
     @app.post("/api/priorities/assignments/<int:aid>/move")
     def move(aid):

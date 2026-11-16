@@ -159,10 +159,11 @@ def _write_rules(app):
     return out
 
 
-def test_allowed_writes_are_exactly_these_nine_and_exist():
+def test_allowed_writes_are_exactly_these_eleven_and_exist():
     assert ak.ALLOWED_WRITES == {("POST", "/api/priorities/assignments"), ("PATCH", "/api/priorities/assignments/<int:aid>"), ("POST", "/api/priorities/assignments/<int:aid>/move"),
                                  ("POST", "/api/priorities/assignments/<int:aid>/comments"), ("POST", "/api/priorities/tickets"),
-                                 ("POST", "/api/priorities/backlog"), ("PATCH", "/api/priorities/backlog/<int:item_id>"), ("DELETE", "/api/priorities/backlog/<int:item_id>"), ("POST", "/api/priorities/backlog/assign")}
+                                 ("POST", "/api/priorities/backlog"), ("PATCH", "/api/priorities/backlog/<int:item_id>"), ("DELETE", "/api/priorities/backlog/<int:item_id>"), ("POST", "/api/priorities/backlog/assign"),
+                                 ("POST", "/api/priorities/cut-views"), ("DELETE", "/api/priorities/cut-views/<int:view_id>")}
 
 
 def test_every_other_write_route_is_refused_with_403(app, anon, key, pg, snaps):

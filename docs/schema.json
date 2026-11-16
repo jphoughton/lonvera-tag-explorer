@@ -9408,6 +9408,66 @@
    "examples": []
   },
   {
+   "name": "public.creative_cut_views",
+   "schema": "public",
+   "relation": "creative_cut_views",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "Saved views of the Creative Pipeline By cut page: a name and the page state (cuts, dates, filters, metrics and their order, status columns, quick view, sort), shared by the team.",
+   "grain": "one row per saved view (the name is unique, any case)",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "the Creative Pipeline By cut view, via /api/priorities/cut-views (app/priorities_cut_views.py)",
+   "refresh": "on demand (a person saves, replaces or deletes a view)",
+   "coverage": "from the day migration 270 was deployed",
+   "caveats": [
+    "state is the page's own JSON; the server keeps only the keys the page knows and caps it at 8 KB."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Primary key (bigserial)."
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "nullable": false,
+     "description": "The view's name (1 to 80 characters; unique ignoring case; saving under an existing name replaces that view)."
+    },
+    {
+     "name": "state",
+     "type": "jsonb",
+     "nullable": false,
+     "description": "The page state as JSON: by, preset, from, to, f, metrics, order, stages, quick, sort, pipelineOnly, product, vendor, week."
+    },
+    {
+     "name": "created_by",
+     "type": "text",
+     "nullable": true,
+     "description": "Signed-in user (or key:<name>) who first saved the view."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the view was first saved."
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the view was last replaced."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.daily_story_metrics",
    "schema": "public",
    "relation": "daily_story_metrics",

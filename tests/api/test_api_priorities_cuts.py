@@ -165,3 +165,23 @@ def test_tag_filters_narrow_both_sides_and_report_combos(client, snaps, ads):
     two = get(client, **base, cluster="energy|Hair Thinning")                  # case does not matter, '|' lists several
     assert any(x["labels"]["icp"] == "Given Up Guy" for x in two["rows"])
     assert pc.tag_filters({"icp": "(none)|A b"}) == {"icp": ["", "a b"]}
+
+
+def test_hooks_on_ads_and_top_hooks_need_250_dollars_in_the_dates(client, snaps, ads, pg):
+    pg.execute("INSERT INTO ad_hooks (tracker_row_id, hook, version) VALUES (9301, 'You are not getting old, you are getting low.', 'hooks-test')")
+    pg.execute("INSERT INTO ad_daily (ad_id, day, meta_family_key, meta_family, spend, purchases, conv_value, link_clicks, impressions, source) VALUES ('zz-ad-big', '2026-10-06', %s, 'ZZ-Cut-Fam', 300, 4, 400, 50, 5000, 'meta_api')", (FAM,))
+    pg.execute("INSERT INTO ad_daily_upstack (ad_id, day, meta_family_key, meta_family, spend, nc_purchases, nc_conv_value, link_clicks, impressions) VALUES ('zz-ad-big', '2026-10-06', %s, 'ZZ-Cut-Fam', 300, 3, 600, 50, 5000)", (FAM,))
+    pg.commit()
+    try:
+        q = {"product": "vita-bull", "icp": "Given Up Guy", "pain_point": "Low T"}
+        d = client.get("/api/priorities/cuts/ads", query_string={**q, "from": "2026-10-01", "to": "2026-10-31"}).get_json()
+        w = next(a for a in d["window"] if a["key"] == FAM)
+        assert w["hook"] == "You are not getting old, you are getting low." and w["spend"] == 450
+        assert [h["hook"] for h in d["top_hooks"]] == [w["hook"]] and d["top_hooks"][0]["nc_roas"] == pytest.approx(820 / 450)
+        small = client.get("/api/priorities/cuts/ads", query_string={**q, "from": "2026-10-19", "to": "2026-10-31"}).get_json()                # $50 in these dates: under the $250 bar
+        assert small["top_hooks"] == [] and small["window"][0]["hook"]
+    finally:
+        pg.execute("DELETE FROM ad_daily WHERE ad_id = 'zz-ad-big'")
+        pg.execute("DELETE FROM ad_daily_upstack WHERE ad_id = 'zz-ad-big'")
+        pg.execute("DELETE FROM ad_hooks WHERE tracker_row_id = 9301")
+        pg.commit()
