@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, g, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_cut_views as pcv, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_cut_views as pcv, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, no_attribution as noattr, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -74,6 +74,18 @@ def status():
     res = q.status(conn, meta, n)
     res["sources"] = {**res["sources"], "amazon": amz.status_entry(amz.DbSource(conn))}          # not in sources.platforms: that list is the spend platforms of the All views
     return jsonify({**res, "auth": "disabled" if auth.auth_disabled() else "enabled", "user": auth.current_user()})
+
+
+@bp.get("/api/no-attribution/products")
+def no_attribution_products():
+    """Products with no attribution: Meta spend by product beside the actual new-customer revenue of each product (first orders from every channel). window / from / to only; see app/no_attribution.py."""
+    conn = db.get_conn()
+    ameta = noattr.span_meta(conn)
+    if ameta is None:
+        return jsonify(noattr.empty_payload())
+    w = noattr.parse(request.args, ameta)
+    info = noattr.window_info(w, ameta)
+    return jsonify({**noattr.products(conn, ameta, w), "window": info, "window_info": info, "compare_info": None})
 
 
 @bp.get("/api/products")
