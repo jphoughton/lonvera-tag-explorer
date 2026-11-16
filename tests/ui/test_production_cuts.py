@@ -59,8 +59,8 @@ def test_dragging_a_cut_into_group_by_rebuilds_the_table(page):
     on = page.locator("[data-testid=prod-cuts-on]")
     drag(page, page.locator("[data-testid=prod-chip-cluster]"), on.locator("[data-testid=prod-chip-product]"), dx=2)
     idle(page)
-    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-cuts-on] .prod-chip').length === 3")
-    assert [c.get_attribute("data-key") for c in on.locator(".prod-chip").all()] == ["cluster", "product", "icp"]
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-cuts-on] .prod-cutchip').length === 3")
+    assert [c.get_attribute("data-key") for c in on.locator(".prod-cutchip").all()] == ["cluster", "product", "icp"]
     assert heads(page)[:3] == ["Market cluster", "Product", "ICP"]
     assert re.search(r"by=cluster(,|%2C)product(,|%2C)icp", page.url)
 
@@ -69,11 +69,11 @@ def test_dragging_a_cut_out_and_reordering(page):
     goto(page, "&by=product,icp,pain_point")
     on = page.locator("[data-testid=prod-cuts-on]")
     drag(page, on.locator("[data-testid=prod-chip-pain_point]"), on.locator("[data-testid=prod-chip-product]"), dx=2)
-    page.wait_for_function("() => document.querySelector('[data-testid=prod-cuts-on] .prod-chip').dataset.key === 'pain_point'")
+    page.wait_for_function("() => document.querySelector('[data-testid=prod-cuts-on] .prod-cutchip').dataset.key === 'pain_point'")
     assert heads(page)[:3] == ["Pain point", "Product", "ICP"]
     drag(page, on.locator("[data-testid=prod-chip-product]"), page.locator("[data-testid=prod-cuts-off]"))
-    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-cuts-on] .prod-chip').length === 2")
-    assert [c.get_attribute("data-key") for c in on.locator(".prod-chip").all()] == ["pain_point", "icp"]
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-cuts-on] .prod-cutchip').length === 2")
+    assert [c.get_attribute("data-key") for c in on.locator(".prod-cutchip").all()] == ["pain_point", "icp"]
     assert page.locator("[data-testid=prod-cuts-off] [data-testid=prod-chip-product]").count() == 1
 
 
@@ -81,9 +81,9 @@ def test_keyboard_moves_and_reorders_chips(page):
     goto(page)
     page.locator("[data-testid=prod-chip-pain_point]").focus()
     page.keyboard.press("Enter")
-    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-cuts-on] .prod-chip').length === 3")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-cuts-on] .prod-cutchip').length === 3")
     page.keyboard.press("ArrowLeft")
-    page.wait_for_function("() => [...document.querySelectorAll('[data-testid=prod-cuts-on] .prod-chip')].map(c => c.dataset.key).join() === 'product,pain_point,icp'")
+    page.wait_for_function("() => [...document.querySelectorAll('[data-testid=prod-cuts-on] .prod-cutchip')].map(c => c.dataset.key).join() === 'product,pain_point,icp'")
     assert page.evaluate("document.activeElement.dataset.key") == "pain_point"
 
 
@@ -91,7 +91,7 @@ def test_the_last_cut_cannot_be_removed(page):
     goto(page, "&by=icp")
     page.locator("[data-testid=prod-chip-icp]").focus()
     page.keyboard.press("Enter")
-    assert page.locator("[data-testid=prod-cuts-on] .prod-chip").count() == 1
+    assert page.locator("[data-testid=prod-cuts-on] .prod-cutchip").count() == 1
     assert "At least one cut" in page.locator("[data-testid=prod-cuts-live]").text_content()
 
 

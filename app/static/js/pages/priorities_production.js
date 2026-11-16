@@ -330,7 +330,7 @@ export async function productionPage(ctx) {
         h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-copy-link', 'aria-label': 'Copy link for ' + v, onclick: () => vendorLink(v, false) }, 'Copy link'),
         h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-reset-link', 'aria-label': 'Reset link for ' + v, onclick: () => vendorLink(v, true) }, 'Reset link')))));
     body.replaceChildren(
-      pageHeader({ title: 'Creative Pipeline', description: 'Concepts given to vendors to make, by week, and the spend and return behind each cut of them. By cut groups the pipeline by product, market cluster, ICP or pain point.', testid: 'prod-head',
+      pageHeader({ title: 'Creative Pipeline', description: 'Concepts given to vendors to make, by week, and the spend and return behind each cut of them.', testid: 'prod-head',
         actions: [h('button', { type: 'button', class: 'btn primary small', 'data-testid': 'prod-new-ticket', onclick: newTicket }, 'New ticket'), h('a', { class: 'btn small', href: href('/priorities', {}), 'data-testid': 'prod-back' }, 'Back to Priorities')] }),
       controls, h('div', { class: 'prod-team', 'data-testid': 'prod-team' }, loadSlot, links), msg, viewHost);
     drawLoad();

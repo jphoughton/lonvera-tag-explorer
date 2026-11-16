@@ -481,14 +481,14 @@ body.prod-drawer-open { overflow: hidden; }
 .prod-cuts-zone { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 44px; padding: 6px; border: 1px dashed var(--line); border-radius: 8px; background: var(--panel); }
 .prod-cuts-on { border-style: solid; background: var(--head-bg); }
 .prod-cuts-zone.prod-over { background: var(--accent-bg); outline: 2px dashed var(--accent); outline-offset: -2px; }
-.prod-chip { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: grab; touch-action: none; user-select: none; }
-.prod-chip:hover { border-color: var(--accent); }
-.prod-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.prod-chip .prod-grip { width: 10px; margin: 0; }
-.prod-chip-n { display: inline-grid; place-items: center; min-width: 18px; height: 18px; border-radius: 9px; background: var(--accent); color: var(--on-accent, #fff); font-size: 11px; font-weight: 700; }
-.prod-chip-drag { opacity: .35; }
-.prod-chip-ghost { position: fixed; z-index: 1000; pointer-events: none; box-shadow: 0 6px 18px rgba(0, 0, 0, .18); opacity: .95; }
-.prod-chip-drop { align-self: stretch; width: 3px; border-radius: 2px; background: var(--accent); }
+.prod-cutchip { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: grab; touch-action: none; user-select: none; }
+.prod-cutchip:hover { border-color: var(--accent); }
+.prod-cutchip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.prod-cutchip .prod-grip { width: 10px; margin: 0; }
+.prod-cutchip-n { display: inline-grid; place-items: center; min-width: 18px; height: 18px; border-radius: 9px; background: var(--accent); color: var(--on-accent, #fff); font-size: 11px; font-weight: 700; }
+.prod-cutchip-drag { opacity: .35; }
+.prod-cutchip-ghost { position: fixed; z-index: 1000; pointer-events: none; box-shadow: 0 6px 18px rgba(0, 0, 0, .18); opacity: .95; }
+.prod-cutchip-drop { align-self: stretch; width: 3px; border-radius: 2px; background: var(--accent); }
 .prod-cuts-hint { grid-column: 1 / -1; margin: 0; }
 .prod-cuts-when { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 14px; margin: 6px 0 10px; }
 .prod-cuts-date input { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); }
@@ -505,4 +505,4 @@ body.prod-drawer-open { overflow: hidden; }
 .prod-sortbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .prod-cuts-basis { max-width: 110ch; }
 @media (max-width: 720px) { .prod-cuts-builder { grid-template-columns: minmax(0, 1fr); } }
-.prod-chip .prod-grip::before { display: none; }
+.prod-cutchip .prod-grip::before { display: none; }

@@ -47,10 +47,10 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
   // ---- drag and drop of the cut chips
   function chip(key, zone) {
     const idx = st.by.indexOf(key);
-    const el = h('button', { type: 'button', class: 'prod-chip', 'data-key': key, 'data-zone': zone, 'data-testid': 'prod-chip-' + key, draggable: 'false',
+    const el = h('button', { type: 'button', class: 'prod-cutchip', 'data-key': key, 'data-zone': zone, 'data-testid': 'prod-chip-' + key, draggable: 'false',
       title: zone === 'on' ? 'Drag left or right to reorder, or drag to Available to remove. Enter removes it.' : 'Drag into Group by to add it. Enter adds it.',
       'aria-label': zone === 'on' ? `${DIM_LABEL[key]}, grouping level ${idx + 1} of ${st.by.length}. Left and right arrows reorder, Enter removes.` : `${DIM_LABEL[key]}. Enter adds it to Group by.` },
-      zone === 'on' ? h('span', { class: 'prod-chip-n', 'aria-hidden': 'true' }, String(idx + 1)) : null, h('span', { class: 'prod-grip', 'aria-hidden': 'true' }), DIM_LABEL[key]);
+      zone === 'on' ? h('span', { class: 'prod-cutchip-n', 'aria-hidden': 'true' }, String(idx + 1)) : null, h('span', { class: 'prod-grip', 'aria-hidden': 'true' }), DIM_LABEL[key]);
     el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(key); return; }
       if (zone === 'on' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
@@ -58,7 +58,7 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
         const i = st.by.indexOf(key), j = i + (e.key === 'ArrowLeft' ? -1 : 1);
         if (j < 0 || j >= st.by.length) return;
         const by = st.by.slice(); [by[i], by[j]] = [by[j], by[i]];
-        rebuild(by); builder.querySelector(`.prod-chip[data-key="${key}"]`)?.focus();
+        rebuild(by); builder.querySelector(`.prod-cutchip[data-key="${key}"]`)?.focus();
         live.textContent = `${DIM_LABEL[key]} is now level ${j + 1}.`;
       }
     });
@@ -68,7 +68,7 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
   function toggle(key) {
     if (st.by.includes(key)) { if (st.by.length > 1) rebuild(st.by.filter((k) => k !== key)); else live.textContent = 'At least one cut must stay in Group by.'; }
     else rebuild([...st.by, key]);
-    builder.querySelector(`.prod-chip[data-key="${key}"]`)?.focus();
+    builder.querySelector(`.prod-cutchip[data-key="${key}"]`)?.focus();
   }
   function startDrag(e, el, key, zone) {
     if (e.button !== 0) return;
@@ -76,21 +76,21 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
     let ghost = null, moved = false;
     const onZone = () => builder.querySelector('[data-zone-box="on"]'), offZone = () => builder.querySelector('[data-zone-box="off"]');
     const hit = (x, y) => { for (const z of [onZone(), offZone()]) { const r = z.getBoundingClientRect(); if (x >= r.left && x <= r.right && y >= r.top - 8 && y <= r.bottom + 8) return z.dataset.zoneBox; } return ''; };
-    const insertAt = (x) => { const chips = [...onZone().querySelectorAll('.prod-chip')].filter((c) => c !== el); let n = 0; for (const c of chips) { const r = c.getBoundingClientRect(); if (x > r.left + r.width / 2) n++; } return n; };
+    const insertAt = (x) => { const chips = [...onZone().querySelectorAll('.prod-cutchip')].filter((c) => c !== el); let n = 0; for (const c of chips) { const r = c.getBoundingClientRect(); if (x > r.left + r.width / 2) n++; } return n; };
     const move = (ev) => {
       if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 6) return;
       if (!moved) {
-        moved = true; el.classList.add('prod-chip-drag');
-        ghost = el.cloneNode(true); ghost.classList.add('prod-chip-ghost'); ghost.removeAttribute('data-testid'); ghost.setAttribute('aria-hidden', 'true'); document.body.append(ghost);
+        moved = true; el.classList.add('prod-cutchip-drag');
+        ghost = el.cloneNode(true); ghost.classList.add('prod-cutchip-ghost'); ghost.removeAttribute('data-testid'); ghost.setAttribute('aria-hidden', 'true'); document.body.append(ghost);
       }
       ev.preventDefault();
       ghost.style.left = ev.clientX + 8 + 'px'; ghost.style.top = ev.clientY + 8 + 'px';
       const z = hit(ev.clientX, ev.clientY);
       onZone().classList.toggle('prod-over', z === 'on'); offZone().classList.toggle('prod-over', z === 'off');
-      const mark = onZone().querySelectorAll('.prod-chip-drop'); mark.forEach((m) => m.remove());
+      const mark = onZone().querySelectorAll('.prod-cutchip-drop'); mark.forEach((m) => m.remove());
       if (z === 'on') {
-        const chips = [...onZone().querySelectorAll('.prod-chip')].filter((c) => c !== el), n = insertAt(ev.clientX);
-        const bar = h('span', { class: 'prod-chip-drop', 'aria-hidden': 'true' });
+        const chips = [...onZone().querySelectorAll('.prod-cutchip')].filter((c) => c !== el), n = insertAt(ev.clientX);
+        const bar = h('span', { class: 'prod-cutchip-drop', 'aria-hidden': 'true' });
         if (chips[n]) onZone().insertBefore(bar, chips[n]); else onZone().append(bar);
       }
     };
@@ -98,7 +98,7 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
       document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', cancel);
       if (ghost) ghost.remove();
       onZone().classList.remove('prod-over'); offZone().classList.remove('prod-over');
-      el.classList.remove('prod-chip-drag');
+      el.classList.remove('prod-cutchip-drag');
       if (!moved) return;                                                       // a plain click falls through to the keyboard path below
       if (el._suppress) el._suppress = false;
       if (!commit) { drawBuilder(); return; }
