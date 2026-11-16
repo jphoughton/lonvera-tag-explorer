@@ -152,7 +152,8 @@ def _text(sig: str, c: dict) -> str:
     if sig == "economics":
         if r["roas30"] is None:
             return "No spend in the last 30 days, so return reads as average (no evidence either way)"
-        return f"New-customer ROAS {r['roas30']:.2f}x on {_usd(r['spend30'])} in 30 days vs {r['exp30']:.2f}x for its product mix (index {r['idx']:.2f} after shrinking)"
+        fx = lambda v: f"{v:.2f}" if v is not None else "n/a"                       # a thin cut can have no product-mix expectation to compare with
+        return f"New-customer ROAS {r['roas30']:.2f}x on {_usd(r['spend30'])} in 30 days vs {fx(r['exp30'])}x for its product mix (index {fx(r['idx'])} after shrinking)"
     if sig == "hit_rate":
         if not r["judged"]:
             return "No mature tested ads, so hit rate reads as average"

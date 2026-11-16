@@ -143,3 +143,8 @@ scored = priority_score.score_cuts(sig["rows"], config=None)
 ```
 
 `build_signals(families, daily, tickets, group, as_of, frm, data_start, filters)` is the pure core used by both `signals` and the backtest.
+
+
+## Not enough data (By cut view, added with the page)
+
+The By cut page ranks a cut only when the formula's confidence is medium or better: at least $1,000 of 30-day spend and 3 tested ads (spent $100 or more). Below that the page shows "Not enough data" instead of a number, sorts the cut after every scored cut, and keeps the model's own number as "indicative only" in the tooltip (`indicative_score`). This covers Untested cuts too. See `ENOUGH_SPEND` and `ENOUGH_ADS` in `app/priorities_cuts.py`.

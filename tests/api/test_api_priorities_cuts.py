@@ -185,3 +185,25 @@ def test_hooks_on_ads_and_top_hooks_need_250_dollars_in_the_dates(client, snaps,
         pg.execute("DELETE FROM ad_daily_upstack WHERE ad_id = 'zz-ad-big'")
         pg.execute("DELETE FROM ad_hooks WHERE tracker_row_id = 9301")
         pg.commit()
+
+
+def test_a_thin_cut_is_labelled_not_enough_data_with_no_number(client, snaps, ads, pg):
+    for t in ("family_daily", "family_daily_upstack_nc"):
+        pg.execute(f"INSERT INTO {t} (family_key, day, stage, spend, purchases, revenue, link_clicks) VALUES (%s, '2026-10-05', 'testing', 120, 2, 220, 40), (%s, '2026-10-20', 'testing', 60, 0, 0, 20)", (FAM, FAM))
+    pg.commit()
+    try:
+        _thin_cut_assertions(client)
+    finally:
+        pg.execute("DELETE FROM family_daily WHERE family_key = %s", (FAM,))
+        pg.execute("DELETE FROM family_daily_upstack_nc WHERE family_key = %s", (FAM,))
+        pg.commit()
+
+
+def _thin_cut_assertions(client):
+    out = client.get("/api/priorities/cuts", query_string={"group": "icp", "score": 1, "from": "2026-10-01", "to": "2026-10-31"}).get_json()
+    r = row(out, icp="Given Up Guy")
+    assert r["priority"]["tier"] == "Not enough data" and r["priority"]["score"] is None and r["priority"]["indicative_score"] is not None
+    assert "$1,000 spent in 30 days and 3 tested ads" in r["priority"]["why"]
+    assert out.get("priority_note") is None
+    only_product = client.get("/api/priorities/cuts", query_string={"group": "product", "score": 1}).get_json()
+    assert "Add Market cluster" in only_product["priority_note"] and all("priority" not in x for x in only_product["rows"])

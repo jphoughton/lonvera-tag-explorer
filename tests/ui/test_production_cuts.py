@@ -349,7 +349,7 @@ def test_priority_score_column_quick_view_and_popup(page):
     goto(page, "&by=product,icp")
     assert "Priority score" in heads(page)
     cells = page.locator("[data-testid=prod-cuts-row] td[data-metric=priority]")
-    assert cells.count() > 0 and cells.first.locator("[data-testid=prod-prio-score]").count() == 1
+    assert cells.count() > 0 and page.locator("[data-testid=prod-prio-score]").count() >= 1
     page.locator("[data-testid=prod-cuts-sort-priority]").click()
     scores = [int(x) for x in page.locator("[data-testid=prod-prio-score]").all_text_contents()]
     assert scores == sorted(scores, reverse=True)
@@ -395,8 +395,25 @@ def test_the_score_explainer_opens_in_a_popup_with_weights_and_the_backtest(page
     page.locator("[data-testid=prod-scorehelp-open]").click()
     page.wait_for_selector("[data-testid=prod-scorehelp-title]")
     text = page.locator(".prod-scorehelp").text_content()
-    for needle in ("Hit rate", "40%", "Supply gap", "25%", "Pipeline discount", "Make more now", "Does it work?", "Honest limits", "Cuts nobody has tested", "Untested"):
+    for needle in ("Hit rate", "40%", "Supply gap", "25%", "Pipeline discount", "Make more now", "Does it work?", "Honest limits", "Not enough data", "Test section"):
         assert needle in text, needle
     assert page.url == url
     page.keyboard.press("Escape")
     assert page.locator(".prod-scorehelp").count() == 0
+
+
+def test_cuts_below_the_data_threshold_say_not_enough_data_and_sort_last(page):
+    goto(page, "&by=product,icp")
+    assert page.locator("[data-testid=prod-prio-nodata]").count() >= 1
+    page.locator("[data-testid=prod-cuts-sort-priority]").click()
+    last = page.locator("[data-testid=prod-cuts-row]").last
+    assert last.locator("[data-testid=prod-prio-nodata]").count() == 1                                         # no number, sorted after every scored cut
+    page.locator("[data-testid=prod-scorehelp-open]").click()
+    assert "$1,000 spent in the last 30 days and 3 tested ads" in page.locator(".prod-scorehelp").text_content()
+
+
+def test_the_explainer_says_which_time_windows_it_reads(page):
+    goto(page, "&by=icp")
+    page.locator("[data-testid=prod-scorehelp-open]").click()
+    t = page.locator("[data-testid=prod-scorehelp-windows]").text_content()
+    assert "last 7 days" in t and "30 days before that" in t and "revive candidate" in t and "carries no weight" in t

@@ -151,6 +151,11 @@ def _tag_sql(tf: dict) -> tuple[str, list]:
     return "".join(sql), params
 
 
+NOT_ENOUGH = "Not enough data"
+ENOUGH_SPEND = 1000.0                       # the score ranks a cut only with at least this much 30-day spend and ENOUGH_ADS tested ads (the score module's own medium-confidence floor)
+ENOUGH_ADS = 3
+
+
 def attach_priority(conn, out: dict, group: list[str], frm: dt.date, to: dt.date, tf: dict, products: list[str] | None, week, vendor) -> None:
     """Add row['priority'] = {score, tier, why, confidence, drivers, flags} to every row that has one (app/priority_score.py; spec docs/PRIORITY_SCORE.md). Product is never a scoring level: a row is scored on the
     other cuts of the grouping; when Product is one of the grouped cuts each product is scored on its own (its own prior), so an ICP row under Vita Bull is not diluted by Beef Liver. Rows with no scorable cut get none."""
@@ -172,6 +177,11 @@ def attach_priority(conn, out: dict, group: list[str], frm: dt.date, to: dt.date
             s = by.get(tuple(_norm(r["labels"].get(d)) for d in sg))
             if s:
                 r["priority"] = {k: s[k] for k in ("score", "tier", "why", "confidence", "flags", "drivers")}
+                if s["confidence"] == "low":                       # not enough evidence to rank this cut: no number, an honest label, the model's own guess kept as "indicative"
+                    raw = s.get("signals") or {}
+                    spend, judged = _f(raw.get("spend_30d")), int(_f(raw.get("judged_ads")))
+                    r["priority"].update(score=None, tier=NOT_ENOUGH, indicative_score=s["score"],
+                                         why=f"Not enough data to score properly: a cut needs ${ENOUGH_SPEND:,.0f} spent in 30 days and {ENOUGH_ADS} tested ads (ads that spent $100 or more); this one has ${spend:,.0f} and {judged}. Indicative only: {s['score']:.0f}.")
 
 
 def cuts(conn, group: list[str], raw_from: str | None, raw_to: str | None, week=None, vendor=None, products: list[str] | None = None, tf: dict | None = None, score: bool = False) -> dict:

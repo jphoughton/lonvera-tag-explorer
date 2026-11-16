@@ -224,6 +224,9 @@ def register(app, deps):
         if a.get("score") and any(g != "product" for g in group):
             for i, r in enumerate(rows):
                 sc = max(5, 70 - 9 * i)
+                if i == len(rows) - 1:
+                    r["priority"] = {"score": None, "tier": "Not enough data", "why": "Not enough data to score properly: mock", "confidence": "low", "flags": [], "drivers": [], "indicative_score": 12}
+                    continue
                 r["priority"] = {"score": sc, "tier": "Make more now" if sc >= 55 else "Make more" if sc >= 45 else "Keep steady" if sc >= 35 else "Low priority", "why": f"Mock reason {i}", "confidence": "medium", "flags": [], "drivers": [{"signal": "hit_rate", "label": "Hit rate", "plain_text": "Hit rate is high"}]}
         rows.sort(key=lambda r: -r["stats"]["spend"])
         sp = sum(r["stats"]["spend"] for r in rows)

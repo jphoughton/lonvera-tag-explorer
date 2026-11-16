@@ -611,3 +611,4 @@ body.prod-dragging-col, body.prod-dragging-col * { cursor: grabbing !important; 
 .prod-ordgrip { padding: 6px 6px; border-radius: 6px; } .prod-ordgrip:hover { background: var(--hover); }
 .prod-ordgrip .prod-grip { width: 12px; opacity: .7; }
 .prod-cuts-tools { display: flex; align-items: center; gap: 8px; } .modal.prod-scorehelp { width: min(900px, 96vw); } .prod-sh-part { font-weight: 700; white-space: nowrap; } .prod-scorehelp td { white-space: normal; }
+.prod-prio-nodata { background: transparent; border-style: dashed; color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap; }
