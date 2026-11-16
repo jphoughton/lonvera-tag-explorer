@@ -631,3 +631,24 @@ def test_no_dragged_copy_is_left_floating_after_escape(page):
     assert page.locator(".prod-ghost").count() == 1
     page.keyboard.press("Escape"); page.mouse.up()
     no_ghost(page)
+
+
+FRAMEIO = "https://next.frame.io/share/29314a08-035d-4fbd-91af-1cb39608cb7c/view/f2dde08b-7345-48aa-96d9-51bb7051041e"
+
+
+def test_frameio_creative_links_render_in_the_ticket(page):
+    goto(page)
+    r = page.evaluate("async (u) => { const x = await fetch('/api/priorities/assignments/1', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ creative_url: u }) }); return x.status; }", FRAMEIO)
+    assert r == 200
+    page.goto("/priorities/production?card=1")
+    page.wait_for_selector("[data-testid=prod-drawer-preview] iframe.prod-viewer-frameio")
+    assert page.locator("[data-testid=prod-drawer-preview] iframe").first.get_attribute("src") == FRAMEIO
+    assert "Open in Frame.io" in page.locator("[data-testid=prod-drawer-preview]").text_content()
+
+
+def test_preview_rules_cover_frameio_and_leave_other_links_alone(page):
+    goto(page)
+    out = page.evaluate("""async () => { const m = await import('/static/js/pages/production_common.js'); const k = (u) => { const p = m.previewOf(u); return p ? p.kind : null; };
+      return [k('https://next.frame.io/share/29314a08-035d-4fbd-91af-1cb39608cb7c/view/f2dde08b-7345-48aa-96d9-51bb7051041e'), k('https://next.frame.io/share/29314a08-035d-4fbd-91af-1cb39608cb7c'), k('https://f.io/AbCd12'),
+              k('https://drive.google.com/file/d/abc123/view'), k('https://evil.example/share/29314a08-035d-4fbd-91af-1cb39608cb7c'), k('https://next.frame.io.evil.com/share/29314a08-035d-4fbd-91af-1cb39608cb7c'), k('http://next.frame.io/share/29314a08-035d-4fbd-91af-1cb39608cb7c')]; }""")
+    assert out == ["frameio", "frameio", "frameio", "file", None, None, None]

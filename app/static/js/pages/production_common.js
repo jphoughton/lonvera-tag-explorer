@@ -66,6 +66,8 @@ export function previewOf(url) {
   if (m) return { kind: 'file', src: `https://player.vimeo.com/video/${m[1]}` };
   m = /^https:\/\/(?:www\.)?loom\.com\/share\/([\w]{10,40})/.exec(s);
   if (m) return { kind: 'file', src: `https://www.loom.com/embed/${m[1]}` };
+  m = /^https:\/\/next\.frame\.io\/share\/[\w-]{8,40}(?:\/view\/[\w-]{8,40})?\/?(?:[?#].*)?$/.exec(s) || /^https:\/\/app\.frame\.io\/(?:reviews|presentations)\/[\w-]{8,40}(?:\/[\w-]+)?\/?(?:[?#].*)?$/.exec(s) || /^https:\/\/f\.io\/[\w-]{4,20}\/?$/.exec(s);
+  if (m) return { kind: 'frameio', src: s };
   return null;
 }
 // Image or video, worked out from what the card holds: its Concept IDs (...-Video-... / ...-Static-...), then the brief ('STATIC BRIEF', 'Type: VID'), then the format (every format F1 to F6 is a video). '' when nothing says.

@@ -627,3 +627,4 @@ body.prod-dragging-col, body.prod-dragging-col * { cursor: grabbing !important; 
 .prod-bl-openlabel { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .prod-bl-openlabel textarea { font: inherit; font-size: 14px; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text); padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); width: 100%; resize: vertical; }
 .prod-bl-openbar { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; }
+.prod-viewer-frame.prod-viewer-frameio { aspect-ratio: auto; height: 560px; background: #1c1c1e; }
