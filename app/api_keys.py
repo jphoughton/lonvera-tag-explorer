@@ -47,7 +47,7 @@ PARTNER_READ_RULES = frozenset({
 PARTNER_READ_BLOCKED_PREFIXES = ("/api/projection/",)         # finance, plan, cash, P&L, financing, inventory, supply, purchase orders, scenarios: the whole projection module, whatever routes it gains
 PARTNER_READ_BLOCKED = frozenset({
     # the plan behind Trends, inventory history, the daily story (finance facts), tie-out and status
-    "/api/trends/plan", "/api/inventory/history", "/api/daily-story", "/api/source/tieout", "/api/status",
+    "/api/madre-review", "/api/madre-review/video", "/api/trends/plan", "/api/inventory/history", "/api/daily-story", "/api/source/tieout", "/api/status",
     # Amazon (fees, settlement, profit, ads cost), email and SMS revenue
     "/api/amazon/ad-search-terms", "/api/amazon/ad-search-terms/matches", "/api/amazon/campaign-trend", "/api/amazon/campaigns", "/api/amazon/fees", "/api/amazon/keywords", "/api/amazon/negatives",
     "/api/amazon/overview", "/api/amazon/products", "/api/amazon/search-terms", "/api/amazon/search-terms/history", "/api/amazon/trend",
