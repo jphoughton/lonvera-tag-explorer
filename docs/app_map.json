@@ -77,7 +77,7 @@
    "name": "tagging",
    "kind": "cron",
    "start": "scripts/deploy/run_tagging.sh",
-   "schedule": "0 18 * * 0",
+   "schedule": "0 18 * * *",
    "healthcheck": null,
    "source": "scripts/deploy/apply_tagging_service.py"
   }
@@ -552,6 +552,10 @@
   {
    "module": "etl.tracker_sync",
    "summary": "Creative Tracker -> tracker_rows (ALL products) + ad_tags(tag_set='tracker', version='tracker-live')."
+  },
+  {
+   "module": "etl.transcribe_ads",
+   "summary": "Nightly step: transcribe the video ads on Production cards that are Ready to launch, from the real audio, into creative_ad_transcripts."
   },
   {
    "module": "etl.upstack_api",

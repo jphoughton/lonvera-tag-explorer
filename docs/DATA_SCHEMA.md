@@ -7103,9 +7103,9 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 **Purpose.** Transcripts of ads taken from the real audio: one row per ad variation (its tracker Concept ID), made for the videos on Production cards that are Ready to launch and shown on the card's ticket under the matching Hook.
 
 - **Grain:** primary key `(id)`; one row per ad (concept_id is unique)
-- **Source:** the transcription job (lonvera_creative_key/cycles/c2026-11-13-transcribe-ready/transcribe_ready.py: downloads the video from Google Drive and runs faster-whisper on this Mac)
-- **Refresh:** when the job is run (on demand, or on a schedule once one is set); a transcript is written once per ad and never overwritten
-- **Coverage:** videos of Ready to launch Production cards from 2026-11-13; images and silent videos have no speech to transcribe (a silent video is stored as [no speech])
+- **Source:** the nightly Railway step etl.transcribe_ads (downloads the video from Google Drive through the service account and runs faster-whisper in the etl service); the first 25 Studio Flow rows were loaded once from a Mac run
+- **Refresh:** nightly in the etl cron (etl.transcribe_ads, up to 20 ads per run, so a backlog clears over several nights); a transcript is written once per ad and never overwritten
+- **Coverage:** videos of Ready to launch Production cards that link a Google Drive file; images and silent videos have no speech to transcribe (a silent video is stored as [no speech]); Frame.io and other non-Drive links are not transcribed
 - **Caveat:** Speech to text as heard: brand and ingredient names can be misspelled (heme iron may come out as Heam iron).
 - **Caveat:** Audio is cut at 180 seconds.
 - **Caveat:** assignment_id is the Production card the ad was made for; it is not a foreign key.
