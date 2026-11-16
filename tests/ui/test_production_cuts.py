@@ -444,3 +444,42 @@ def test_the_table_has_no_scroll_of_its_own_so_only_the_page_scrolls(page):
     page.set_viewport_size({"width": 1440, "height": 520})
     goto(page)
     assert page.evaluate("() => { const s = document.querySelector('[data-testid=prod-cuts-scroll]'); return s.scrollHeight <= s.clientHeight + 1 }")
+
+
+def test_the_pinned_header_survives_a_redraw_of_the_table(page):
+    page.set_viewport_size({"width": 1440, "height": 700})
+    goto(page)
+    page.locator("[data-testid=prod-cuts-quick-all]").click()                                                  # redraws the table (twice on a real load: fetch, then filters)
+    page.locator("[data-testid=prod-cuts-sort-spend]").click()
+    page.evaluate("() => { const f = document.querySelector('[data-testid=prod-cuts-scroll]'); window.scrollTo(0, f.getBoundingClientRect().top + window.scrollY + 120); }")
+    page.wait_for_selector("[data-testid=prod-stickyhead]", state="visible")
+    assert page.locator("[data-testid=prod-stickyhead]").count() == 1
+
+
+def test_open_a_needs_brief_item_to_see_everything_and_edit_its_story(page):
+    page.goto("/priorities/production?view=backlog")
+    page.wait_for_selector("[data-testid=prod-bl-empty]")
+    page.locator("[data-testid=prod-bl-add] > summary").click()
+    page.select_option("[data-testid=prod-bl-add-product]", "vita-bull")
+    page.select_option("[data-testid=prod-bl-add-media]", "video")
+    page.fill("[data-testid=prod-bl-add-cluster]", "Energy & Multivitamin")
+    page.fill("[data-testid=prod-bl-add-icp]", "Given Up Guy")
+    page.fill("[data-testid=prod-bl-add-pain]", "Declining Testosterone")
+    page.fill("[data-testid=prod-bl-add-story]", "He decided feeling worn out is just turning 50.")
+    page.locator("[data-testid=prod-bl-add-go]").click()
+    page.wait_for_selector("[data-testid=prod-bl-table]")
+    url = page.url
+    page.locator("[data-testid=prod-bl-open]").first.click()
+    page.wait_for_selector("[data-testid=prod-bl-open-title]")
+    facts = page.locator("[data-testid=prod-bl-open-facts]").text_content()
+    for needle in ("Vita Bull", "Video", "Energy & Multivitamin", "Given Up Guy", "Declining Testosterone"):
+        assert needle in facts, needle
+    assert page.locator("[data-testid=prod-bl-open-story]").input_value().startswith("He decided")
+    page.wait_for_selector("[data-testid=prod-cutads-top]")                                                    # the evidence behind the cut loads in the same popup
+    page.fill("[data-testid=prod-bl-open-note]", "Net new: from the weekly test list.")
+    page.locator("[data-testid=prod-bl-open-save]").click()
+    page.wait_for_function("() => document.querySelector('[data-testid=prod-bl-open-msg]').textContent === 'Saved.'")
+    assert page.url == url
+    page.keyboard.press("Escape")
+    assert page.locator("[data-testid=prod-bl-open-title]").count() == 0
+    assert page.locator("[data-testid=prod-bl-note]").first.input_value().startswith("Net new")

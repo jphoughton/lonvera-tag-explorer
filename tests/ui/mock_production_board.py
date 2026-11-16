@@ -289,7 +289,7 @@ def register(app, deps):
             if any(r["status"] == "needs_brief" and r["for_week"] == wk and all(r[k] == (it.get(k) or "") for k in ("product", "cluster", "icp", "pain_point")) for r in BL["rows"]):
                 skipped.append({"reason": "already in Needs brief for that week"})
                 continue
-            r = {"id": BL["next"], "product": it.get("product") or "", "cluster": it.get("cluster") or "", "icp": it.get("icp") or "", "pain_point": it.get("pain_point") or "", "media_type": it.get("media_type"), "title": " - ".join(x for x in (it.get("product"), it.get("cluster"), it.get("icp"), it.get("pain_point")) if x),
+            r = {"id": BL["next"], "product": it.get("product") or "", "cluster": it.get("cluster") or "", "icp": it.get("icp") or "", "pain_point": it.get("pain_point") or "", "media_type": it.get("media_type"), "story": it.get("story") or "", "title": " - ".join(x for x in (it.get("product"), it.get("cluster"), it.get("icp"), it.get("pain_point")) if x),
                  "for_week": wk, "note": "", "status": "needs_brief", "assignment_id": None, "created_by": "josh"}
             BL["next"] += 1
             BL["rows"].append(r)
@@ -302,7 +302,7 @@ def register(app, deps):
         if r is None:
             return jsonify(error="No waiting item with that id."), 404
         b = request.get_json() or {}
-        for k in ("product", "cluster", "icp", "pain_point", "media_type", "note"):
+        for k in ("product", "cluster", "icp", "pain_point", "media_type", "note", "story"):
             if k in b:
                 r[k] = b[k]
         if "for_week" in b:
