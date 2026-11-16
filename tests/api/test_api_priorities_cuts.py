@@ -151,3 +151,17 @@ def test_ads_behind_a_cut_window_and_top(client, snaps, ads, pg):
     finally:
         pg.execute("DELETE FROM ad_metrics WHERE tracker_row_id = 9301")
         pg.commit()
+
+
+def test_tag_filters_narrow_both_sides_and_report_combos(client, snaps, ads):
+    one(client)
+    base = {"group": "icp", "from": "2026-10-01", "to": "2026-10-31"}
+    out = get(client, **base, cluster="Energy", pain_point="Low T")
+    r = row(out, icp="Given Up Guy")
+    assert r["concepts"] == 1 and r["stats"]["spend"] == 150 and ["vita-bull", "Energy", "Given Up Guy", "Low T"] in out["combos"]
+    assert all(x["labels"]["icp"] == "Given Up Guy" for x in out["rows"])
+    none = get(client, **base, icp="No Such Icp")
+    assert none["rows"] == [] and none["totals"]["concepts"] == 0 and none["combos"]
+    two = get(client, **base, cluster="energy|Hair Thinning")                  # case does not matter, '|' lists several
+    assert any(x["labels"]["icp"] == "Given Up Guy" for x in two["rows"])
+    assert pc.tag_filters({"icp": "(none)|A b"}) == {"icp": ["", "a b"]}

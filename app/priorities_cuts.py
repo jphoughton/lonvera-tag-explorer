@@ -38,19 +38,20 @@ SQL_META = CUT_CTE + """
 SELECT t.product, t.vendor, t.cluster, t.icp, t.pain_point, sum(d.spend) AS spend, sum(d.link_clicks) AS clicks, sum(d.impressions) AS impressions, sum(d.purchases) AS meta_purchases, sum(d.conv_value) AS meta_revenue,
        count(DISTINCT t.family_key) FILTER (WHERE d.spend > 0) AS ads_spending
 FROM ad_daily d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
-WHERE d.day BETWEEN %s AND %s GROUP BY 1, 2, 3, 4, 5
+WHERE d.day BETWEEN %s AND %s{flt} GROUP BY 1, 2, 3, 4, 5
 """
 # unique live ads: tracker families (one per ad however many copies it has) that spent in the last two loaded days. Not tied to the date window: live is a now-state.
 SQL_LIVE = CUT_CTE + """
 SELECT t.product, t.vendor, t.cluster, t.icp, t.pain_point, count(DISTINCT t.family_key) AS live_ads
 FROM ad_daily d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
-WHERE d.spend > 0 AND d.day >= (SELECT max(day) FROM ad_daily) - 1 GROUP BY 1, 2, 3, 4, 5
+WHERE d.spend > 0 AND d.day >= (SELECT max(day) FROM ad_daily) - 1{flt} GROUP BY 1, 2, 3, 4, 5
 """
 SQL_NC = CUT_CTE + """
 SELECT t.product, t.vendor, t.cluster, t.icp, t.pain_point, sum(d.purchases) AS nc_purchases, sum(d.conv_value) AS nc_revenue
 FROM ad_daily_upstack_nc d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
-WHERE d.day BETWEEN %s AND %s GROUP BY 1, 2, 3, 4, 5
+WHERE d.day BETWEEN %s AND %s{flt} GROUP BY 1, 2, 3, 4, 5
 """
+SQL_COMBOS = CUT_CTE + "SELECT DISTINCT product, cluster, icp, pain_point FROM tagged"
 
 
 def _norm(v) -> str:
@@ -132,7 +133,25 @@ def _blank() -> dict:
     return {"stages": {k: 0 for k in STATUSES}, "concepts": 0, "ads": {"spend": 0.0, "clicks": 0.0, "impressions": 0.0, "meta_purchases": 0.0, "meta_revenue": 0.0, "nc_purchases": 0.0, "nc_revenue": 0.0, "live_ads": 0, "ads_spending": 0}}
 
 
-def cuts(conn, group: list[str], raw_from: str | None, raw_to: str | None, week=None, vendor=None, products: list[str] | None = None) -> dict:
+def tag_filters(args: dict) -> dict:
+    """cluster / icp / pain_point from the query string: each a '|' separated list of chosen values ('(none)' = untagged). Returns {dim: [normalised values]} for the dims that have a choice."""
+    out = {}
+    for d in ("cluster", "icp", "pain_point"):
+        vals = [v for v in str(args.get(d) or "").split("|") if v.strip()]
+        if vals:
+            out[d] = ["" if v.strip() == NONE else _norm(v) for v in vals][:200]
+    return out
+
+
+def _tag_sql(tf: dict) -> tuple[str, list]:
+    sql, params = [], []
+    for d, vals in tf.items():
+        sql.append(f" AND lower(btrim(COALESCE(t.{d}, ''))) = ANY(%s)")
+        params.append(vals)
+    return "".join(sql), params
+
+
+def cuts(conn, group: list[str], raw_from: str | None, raw_to: str | None, week=None, vendor=None, products: list[str] | None = None, tf: dict | None = None) -> dict:
     """{group, from, to, rows: [{labels: {dim: text}, stages: {status: n}, concepts, stats: {...}}], totals, stages, dims, warning?}.
     products filters BOTH sides to those product slugs; week and vendor filter the pipeline side only (spend is not tied to a week or a vendor)."""
     frm, to = window(conn, raw_from, raw_to)
@@ -147,10 +166,13 @@ def cuts(conn, group: list[str], raw_from: str | None, raw_to: str | None, week=
         return acc[key]
 
     want = set(products or [])
+    tf = tf or {}
+    tsql, tparams = _tag_sql(tf)
+    keep = lambda r: all(_norm(r.get(d)) in vals for d, vals in tf.items())
     rows = pa.list_assignments(conn, week=week, vendor=vendor, include_closed=True)["rows"]
     for r in rows:
         st = status_of(r)
-        if r.get("stage") == "dropped" or r.get("dropped_at") or st not in STATUSES or (want and r.get("product") not in want):
+        if r.get("stage") == "dropped" or r.get("dropped_at") or st not in STATUSES or (want and r.get("product") not in want) or not keep(r):
             continue
         s = slot({d: r.get(d) for d in DIMS})
         s["stages"][st] += 1
@@ -158,17 +180,17 @@ def cuts(conn, group: list[str], raw_from: str | None, raw_to: str | None, week=
 
     warning = None
     try:
-        for r in conn.execute(SQL_META, (frm, to)).fetchall():
+        for r in conn.execute(SQL_META.format(flt=tsql), (frm, to, *tparams)).fetchall():
             if want and r["product"] not in want:
                 continue
             a = slot({d: r[d] for d in DIMS})["ads"]
             a["spend"] += _f(r["spend"]); a["clicks"] += _f(r["clicks"]); a["impressions"] += _f(r["impressions"])
             a["meta_purchases"] += _f(r["meta_purchases"]); a["meta_revenue"] += _f(r["meta_revenue"]); a["ads_spending"] += int(r["ads_spending"] or 0)
-        for r in conn.execute(SQL_LIVE).fetchall():
+        for r in conn.execute(SQL_LIVE.format(flt=tsql), tparams).fetchall():
             if want and r["product"] not in want:
                 continue
             slot({d: r[d] for d in DIMS})["ads"]["live_ads"] += int(r["live_ads"] or 0)
-        for r in conn.execute(SQL_NC, (frm, to)).fetchall():
+        for r in conn.execute(SQL_NC.format(flt=tsql), (frm, to, *tparams)).fetchall():
             if want and r["product"] not in want:
                 continue
             a = slot({d: r[d] for d in DIMS})["ads"]
@@ -185,11 +207,20 @@ def cuts(conn, group: list[str], raw_from: str | None, raw_to: str | None, week=
         tot["concepts"] += s["concepts"]
         for k, v in s["ads"].items():
             tot["ads"][k] += v
+    combos: set[tuple] = set()
+    try:
+        for r in conn.execute(SQL_COMBOS).fetchall():
+            combos.add((r["product"], r["cluster"] or "", r["icp"] or "", r["pain_point"] or ""))
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        conn.rollback()
+    for r in rows:                                                    # concepts with no ad yet still offer their tags
+        if r.get("product") and r.get("stage") != "dropped":
+            combos.add((r["product"], r.get("cluster") or "", r.get("icp") or "", r.get("pain_point") or ""))
     out.sort(key=lambda x: (-x["stats"]["spend"], -x["concepts"], tuple(x["labels"].values())))
     return {"group": group, "from": frm.isoformat(), "to": to.isoformat(), "rows": out, "totals": {"stages": tot["stages"], "concepts": tot["concepts"], "stats": _stats(tot["ads"])},
             "stages": [{"status": k, "label": pa.STATUS_LABELS[k]} for k in STATUSES], "dims": [{"key": d, "label": DIM_LABELS[d]} for d in DIMS],
             "basis": "Spend, clicks, impressions and Meta ROAS are Meta-reported; new-customer (NC) revenue, ROAS, cost per new customer, conversion rate and average order value are Upstack first orders (any-click, 30 day).",
-            "warning": warning}
+            "combos": sorted([list(c) for c in combos]), "warning": warning}
 
 
 # ---------------------------------------------------------------------------------------------------------------- the ads behind one cut (the popup on a row)

@@ -4,6 +4,7 @@
 // Everything from the API goes in through textContent / h(). Class names and test ids start with `prod-` (never ad-, ads-, sponsor, banner, promo: ad blockers hide those).
 import { h, fmt, isNum, href } from '../util.js';
 import { openModal } from '../modal.js';
+import { multiCtl } from '../ui/pagefilters.js';
 import { api } from '../api.js';
 import { today, addDays } from './production_common.js';
 
@@ -57,9 +58,11 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
   let seq = 0;
   const builder = h('div', { class: 'prod-cuts-builder', 'data-testid': 'prod-cuts-builder' });
   const when = h('div', { class: 'prod-cuts-when', 'data-testid': 'prod-cuts-when' });
+  const filterHost = h('div', { class: 'ctl-row prod-cuts-filters', 'data-testid': 'prod-cuts-filters' });
   const tableHost = h('div', { class: 'prod-cuts-out', 'data-testid': 'prod-cuts-out' });
   const live = h('p', { class: 'pri-sub prod-cuts-live', role: 'status', 'data-testid': 'prod-cuts-live' });
-  host.replaceChildren(builder, when, tableHost, live);
+  host.replaceChildren(builder, when, filterHost, tableHost, live);
+  let combos = [];                                               // every (product slug, cluster, ICP, pain point) the data knows, for the filter lists
 
   const changed = () => { if (onState) onState(); };
   const rebuild = (by) => { st.by = by.length ? by : st.by; drawBuilder(); changed(); fetchNow(); };
@@ -173,14 +176,35 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
       table(['Ad', 'Spend', 'NC revenue', 'NC ROAS', 'NC CPA', 'Meta ROAS'], d.window.map((a) => tr([name(a), fmt.money(a.spend), fmt.money(a.nc_revenue), roasText(a.nc_roas), fmt.money2(a.nc_cpa), roasText(a.meta_roas)])), 'prod-cutads-window'));
   }
 
+  // ---- filters on market cluster, ICP and pain point: the lists only offer values that exist together with the other choices (and the page's Product filter)
+  const NONE = '(none)';
+  const COMBO_DIM = { cluster: 1, icp: 2, pain_point: 3 };
+  function optionsFor(dim) {
+    const prods = (filters().product || '').split(',').filter(Boolean);
+    const set = new Set(st.f[dim]);
+    for (const c of combos) {
+      if (prods.length && !prods.includes(c[0])) continue;
+      if (Object.entries(COMBO_DIM).some(([d, i]) => d !== dim && st.f[d].length && !st.f[d].includes(c[i] || NONE))) continue;
+      set.add(c[COMBO_DIM[dim]] || NONE);
+    }
+    return [...set].sort((a, b) => (a === NONE) - (b === NONE) || a.localeCompare(b));
+  }
+  function drawFilters() {
+    const one = (dim, name, all, tid) => multiCtl({ name, allLabel: all, options: optionsFor(dim).map((v) => [v, v]), values: st.f[dim], testid: tid, onChange: (v) => { st.f[dim] = v; changed(); fetchNow(); } });
+    filterHost.replaceChildren(one('cluster', 'Market cluster', 'All clusters', 'prod-cuts-f-cluster'), one('icp', 'ICP', 'All ICPs', 'prod-cuts-f-icp'), one('pain_point', 'Pain point', 'All pain points', 'prod-cuts-f-pain'),
+      st.f.cluster.length + st.f.icp.length + st.f.pain_point.length ? h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-cuts-f-clear', onclick: () => { st.f = { cluster: [], icp: [], pain_point: [] }; changed(); fetchNow(); } }, 'Clear filters') : null);
+  }
+
   // ---- data and table
   async function fetchNow() {
     const mine = ++seq;
     tableHost.classList.add('prod-cuts-busy');
     try {
-      const d = await api('/api/priorities/cuts', { group: st.by.join(','), from: st.from, to: st.to, week: filters().week, vendor: filters().vendor, product: filters().product }, { signal });
+      const d = await api('/api/priorities/cuts', { group: st.by.join(','), from: st.from, to: st.to, week: filters().week, vendor: filters().vendor, product: filters().product, cluster: st.f.cluster.join('|'), icp: st.f.icp.join('|'), pain_point: st.f.pain_point.join('|') }, { signal });
       if (mine !== seq) return;
       out = d; say('');
+      combos = d.combos || [];
+      drawFilters();
       const T = d.totals.stats;
       for (const r of [...d.rows, { stats: T }]) { r.stats.spend_share = T.spend ? r.stats.spend / T.spend : null; r.stats.rev_share = T.nc_revenue ? r.stats.nc_revenue / T.nc_revenue : null; }
       drawTable();
