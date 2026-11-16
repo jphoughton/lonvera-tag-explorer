@@ -25,7 +25,6 @@ SCALE_MIN_SPEND, SCALE_MAX_OPEN = 300.0, 2                                   # p
 PILE_MIN_READY, PILE_MAX_SPEND = 8, 600.0                                    # Too much in pipeline: 8+ ready to launch, under $600 spend
 PULL_MIN_SPEND, PULL_CPA_OVER, PULL_MIN_OPEN = 300.0, 0.30, 5                # Pull back: $300+ spend, CPA 30%+ over the product, 5+ open
 POCKET_MIN_SPEND, POCKET_MIN_OPEN = 100.0, 3                                 # pockets listed: $100+ spend or 3+ open concepts
-POCKET_ROWS = 8
 SUGGEST_MIN_SPEND, SUGGEST_PER_PRODUCT = 150.0, 4
 WINNER_TILES, LOSER_TILES = 12, 9
 LAUNCHED_DAYS = 14
@@ -454,7 +453,7 @@ def _product_slides(prod, pname, vendor, cur_label, prev_label, pick, bench, ad_
     out.append({"id": "losers", "section": sec, "kind": "ads", "kicker": f"{pname} · Losers", "title": f"{len(losers)} losers: CPA {int(LOSE_CPA_OVER * 100)}%+ over {pname} avg or no sales",
                 "ads": [a["key"] for a in losers[:LOSER_TILES]], "total": len(losers), "empty": "No ads missed the bar this week.",
                 "foot": f"${LOSE_MIN_SPEND:,.0f}+ spend and CPA at least {int(LOSE_CPA_OVER * 100)}% over the product's avg CPA across all vendors ({money(b)}), or no purchases."})
-    shown = [r for r in pockets if r["m"]["spend"] >= POCKET_MIN_SPEND or r["open"] >= POCKET_MIN_OPEN][:POCKET_ROWS]
+    shown = [r for r in pockets if r["m"]["spend"] >= POCKET_MIN_SPEND or r["open"] >= POCKET_MIN_OPEN]
     out.append({"id": "pockets", "section": sec, "kind": "pockets", "kicker": f"{pname} · Pockets", "title": "Where spend went vs what's in the pipeline",
                 "rows": [{**r, "flag_label": FLAG_LABEL[r["flag"]]} for r in shown], "window": cur_label,
                 "foot": f"Open = concepts in status 2–7. Ready = ready to launch with an asset. Scale: ${SCALE_MIN_SPEND:,.0f}+ spend, CPA {int(WIN_CPA_UNDER * 100)}%+ under product, {SCALE_MAX_OPEN} or fewer open. "

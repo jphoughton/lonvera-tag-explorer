@@ -14,7 +14,7 @@
 .mr-ck { font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent-ink); }
 .mr-slide h1, .mr-slide h2 { margin: 0; letter-spacing: -.01em; text-wrap: balance; }
 .mr-slide h2 { font-size: 32px; font-weight: 700; line-height: 1.12; max-width: 1080px; }
-.mr-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+.mr-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
 .mr-foot { margin: auto 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; max-width: 1120px; }
 .mr-empty { color: var(--muted); font-size: 18px; margin: 12px 0; }
 /* cover */
@@ -58,7 +58,7 @@
 .mr-mt .mr-g1 { background: var(--head-bg); }
 .mr-mt .mr-gv { background: var(--accent-bg); }
 .mr-mt th.mr-grp.mr-gv { color: var(--accent-ink); border-bottom-width: 3px; }
-.mr-vt { margin-top: auto; width: 60%; font-size: 13px; }
+.mr-vt { margin-top: 10px; flex: none; width: 60%; font-size: 13px; }
 .mr-vt td, .mr-vt th { padding: 3px 9px; }
 .mr-pk { display: block; color: var(--text); font-weight: 600; }
 .mr-pki { display: block; font-size: 12px; color: var(--muted); }
@@ -130,3 +130,11 @@
   .mr-count { min-width: 0; font-size: 12px; }
   .mr-bar { justify-content: center; }
 }
+/* sortable tables, scrolling pockets body with sticky header */
+.mr-scroll { flex: 1; min-height: 0; overflow: auto; }
+.mr-scroll thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; box-shadow: 0 1px 0 var(--line); }
+.mr-sortbtn { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; letter-spacing: inherit; text-transform: inherit; text-align: inherit; }
+.mr-sortbtn:hover, .mr-sortbtn:focus-visible { color: var(--accent-ink); outline: none; text-decoration: underline; text-underline-offset: 3px; }
+.mr-arrow { display: inline-block; min-width: 1em; font-size: 9px; color: var(--accent-ink); }
+.mr-pt th:first-child .mr-sortbtn { font: 600 13px var(--font); }
+.mr-slide { min-width: 0; }

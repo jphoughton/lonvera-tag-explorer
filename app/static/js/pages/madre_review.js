@@ -38,6 +38,37 @@ function metricTable(t, vendor) {
   return h('table', { class: 'mr-mt' }, h('thead', null, head1, head2), h('tbody', null, body));
 }
 
+// click-to-sort for row-per-item tables: headers with data-sort become buttons; numbers parse out of $ , % x, blanks ("n/a", "–", "") always sort last
+const sortVal = (t) => { const x = t.replace(/[$,%x\s]/g, ''); return x !== '' && /^-?\d+(\.\d+)?$/.test(x) ? parseFloat(x) : null; };
+function makeSortable(table, textCols = [0]) {
+  const tb = table.tBodies[0];
+  const rows = [...tb.rows];
+  rows.forEach((r, n) => { r._o = n; });
+  const ths = [...table.tHead.rows[table.tHead.rows.length - 1].cells];
+  const cell = (r, c) => r.cells[c].textContent.trim();
+  const blank = (t) => t === '' || /^(n\/a|–|-)$/i.test(t);
+  ths.forEach((th, c) => {
+    if (!th.dataset.sort) return;
+    const label = th.textContent;
+    const btn = h('button', { type: 'button', class: 'mr-sortbtn', 'data-testid': 'mr-sort' }, label, h('span', { class: 'mr-arrow', 'aria-hidden': 'true' }));
+    th.replaceChildren(btn); th.setAttribute('aria-sort', 'none');
+    btn.addEventListener('click', () => {
+      const dir = th.getAttribute('aria-sort') === 'descending' ? 1 : (th.getAttribute('aria-sort') === 'ascending' ? -1 : (textCols.includes(c) ? 1 : -1));
+      ths.forEach((o) => { if (o.dataset.sort) { o.setAttribute('aria-sort', 'none'); o.querySelector('.mr-arrow').textContent = ''; } });
+      th.setAttribute('aria-sort', dir === 1 ? 'ascending' : 'descending'); th.querySelector('.mr-arrow').textContent = dir === 1 ? '▲' : '▼';
+      const key = (r) => { const t = cell(r, c); if (blank(t)) return null; return textCols.includes(c) ? t.toLowerCase() : sortVal(t); };
+      const sorted = [...rows].sort((a, b) => {
+        const x = key(a), y = key(b);
+        if (x === null || y === null) return x === y ? a._o - b._o : (x === null ? 1 : -1);
+        const cmp = typeof x === 'string' ? x.localeCompare(y) : x - y;
+        return cmp ? cmp * dir : a._o - b._o;
+      });
+      tb.replaceChildren(...sorted);
+    });
+  });
+  return table;
+}
+
 export async function madreReviewPage(ctx) {
   const { params: p, signal } = ctx;
   showControls(false);
@@ -86,15 +117,15 @@ export async function madreReviewPage(ctx) {
     return h('section', { class: 'mr-slide' }, h('header', null, ck(s.kicker), h('h2', null, s.title)), h('div', { class: 'mr-body' }, kids));
   }
   function vendorTable(rows) {
-    return h('table', { class: 'mr-mt mr-vt' }, h('thead', null, h('tr', null, h('th'), ['Spend', 'Purchases', 'CPA', 'ROAS'].map((t) => h('th', { class: 'mr-win' }, t)))),
-      h('tbody', null, rows.map((r) => h('tr', null, h('td', { class: 'mr-lab' }, r.vendor), h('td', { class: 'mr-n' }, money(r.m.spend)), h('td', { class: 'mr-n' }, num(r.m.purchases)), h('td', { class: 'mr-n' }, money(r.m.cpa, 2)), h('td', { class: 'mr-n' }, rat(r.m.roas))))));
+    return makeSortable(h('table', { class: 'mr-mt mr-vt', 'data-testid': 'mr-vendors' }, h('thead', null, h('tr', null, h('th', { 'data-sort': '1' }, 'Vendor'), ['Spend', 'Purchases', 'CPA', 'ROAS'].map((t) => h('th', { class: 'mr-win', 'data-sort': '1' }, t)))),
+      h('tbody', null, rows.map((r) => h('tr', null, h('td', { class: 'mr-lab' }, r.vendor), h('td', { class: 'mr-n' }, money(r.m.spend)), h('td', { class: 'mr-n' }, num(r.m.purchases)), h('td', { class: 'mr-n' }, money(r.m.cpa, 2)), h('td', { class: 'mr-n' }, rat(r.m.roas)))))));
   }
   function pocketTable(s) {
     if (!s.rows.length) return h('p', { class: 'mr-empty' }, 'No pockets with spend or open concepts.');
-    return h('table', { class: 'mr-pt' }, h('thead', null, h('tr', null, h('th', null, 'Pocket'), ['Spend ' + s.window, 'CPA', 'ROAS', 'CVR', 'Open', 'Ready to launch', 'Launched 14d'].map((t) => h('th', { class: 'mr-win' }, t)), h('th'))),
+    return h('div', { class: 'mr-scroll', 'data-testid': 'mr-scroll' }, makeSortable(h('table', { class: 'mr-pt', 'data-testid': 'mr-pockets' }, h('thead', null, h('tr', null, h('th', { 'data-sort': '1' }, 'Pocket'), ['Spend ' + s.window, 'CPA', 'ROAS', 'CVR', 'Open', 'Ready to launch', 'Launched 14d'].map((t) => h('th', { class: 'mr-win', 'data-sort': '1' }, t)), h('th'))),
       h('tbody', null, s.rows.map((r) => h('tr', { 'data-testid': 'mr-pocket' }, h('td', { class: 'mr-lab' }, h('span', { class: 'mr-pk' }, r.cluster), h('span', { class: 'mr-pki' }, `${r.icp} · ${r.pain}`)),
         h('td', { class: 'mr-n' }, money(r.m.spend)), h('td', { class: 'mr-n' }, isNum(r.m.cpa) ? money(r.m.cpa) : 'n/a'), h('td', { class: 'mr-n' }, r.m.spend ? rat(r.m.roas) : 'n/a'), h('td', { class: 'mr-n' }, pct(r.m.cvr, 2)),
-        h('td', { class: 'mr-n' }, r.open), h('td', { class: 'mr-n' }, r.ready), h('td', { class: 'mr-n' }, r.launched), h('td', null, r.flag ? h('span', { class: 'mr-pill mr-pill-' + r.flag }, r.flag_label) : null)))));
+        h('td', { class: 'mr-n' }, r.open), h('td', { class: 'mr-n' }, r.ready), h('td', { class: 'mr-n' }, r.launched), h('td', null, r.flag ? h('span', { class: 'mr-pill mr-pill-' + r.flag }, r.flag_label) : null)))))));
   }
   function suggestCard(c) {
     const status = h('span', { class: 'mr-more', role: 'status' });
@@ -154,7 +185,8 @@ export async function madreReviewPage(ctx) {
     const top = wrap.getBoundingClientRect().top + window.scrollY;
     const avail = Math.max(260, window.innerHeight - head.getBoundingClientRect().bottom - bar.offsetHeight - 24);
     stage.style.height = avail + 'px';
-    const s = Math.min(stage.clientWidth / 1280, avail / 720);
+    const availW = Math.min(stage.clientWidth, document.documentElement.clientWidth - 24);
+    const s = Math.min(availW / 1280, avail / 720);
     deck.style.transform = `translate(-50%, -50%) scale(${s})`;
     return top;
   };
