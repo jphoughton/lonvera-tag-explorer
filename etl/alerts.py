@@ -75,8 +75,9 @@ JOBS = [
     JobSpec("stage_moves", NIGHTLY_H, True, fix="Railway > etl logs; Test to scale keeps serving the last good rows meanwhile."),
     JobSpec("auto_tag", NIGHTLY_H, False, fix="Railway > etl logs (new ads stay untagged until it runs)."),
     JobSpec("competitor_ads", WEEKLY_H, False, fix="Railway > etl logs of the last Sunday run (Ad Library scrape or classification)."),
-    JobSpec("competitor_tags", WEEKLY_H, False, fix="Railway > tagging service logs of the last Sunday run (cron 0 18 * * 0 UTC; whisper / yt-dlp / Claude step named above)."),
-    JobSpec("own_ad_tags", WEEKLY_H, False, fix="Railway > tagging service logs of the last Sunday run (cron 0 18 * * 0 UTC; whisper / yt-dlp / Claude step named above)."),
+    JobSpec("competitor_tags", WEEKLY_H, False, fix="Railway > tagging service logs of the last Sunday run (cron 0 18 * * * UTC, tagging steps on Sundays; whisper / yt-dlp / Claude step named above)."),
+    JobSpec("transcribe_ads", NIGHTLY_H, False, fix="Railway > tagging service logs of the last run (Drive access to the video, ffmpeg or the whisper step named above)."),
+    JobSpec("own_ad_tags", WEEKLY_H, False, fix="Railway > tagging service logs of the last Sunday run (cron 0 18 * * * UTC, tagging steps on Sundays; whisper / yt-dlp / Claude step named above)."),
     JobSpec("creative_priorities", WEEKLY_H, False, fix="Railway > etl logs of the last Sunday run."),
     # the dedicated `breakdowns` service runs every 2 hours but writes no row in the quiet hours (12:30-15:30 UTC) or when another run holds the lock, and a run lasts up to 110 minutes:
     # the longest normal gap between successful rows is about 5 h, so 6 h cadence = alert after 9 h. Silent until the first row exists.
