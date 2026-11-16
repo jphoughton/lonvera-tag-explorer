@@ -29,7 +29,7 @@ function metricTable(t, vendor) {
   const tops = [];
   const gi = t.cols.map((c) => { if (!tops.length || tops[tops.length - 1][0] !== c.group) tops.push([c.group, 0]); tops[tops.length - 1][1] += 1; return tops.length - 1; });
   // class hooks per column: alternating tint, left/right box edges, accent for the vendor's own group
-  const gcls = t.cols.map((c, i) => `mr-g${gi[i] % 2}` + (i === 0 || gi[i - 1] !== gi[i] ? ' mr-gs' : '') + (i === t.cols.length - 1 || gi[i + 1] !== gi[i] ? ' mr-ge' : '') + (vendor && c.group === vendor ? ' mr-gv' : ''));
+  const gcls = t.cols.map((c, i) => `mr-g${gi[i] % 2}` + (i === 0 || gi[i - 1] !== gi[i] ? ' mr-gs' : '') + (i === t.cols.length - 1 || gi[i + 1] !== gi[i] ? ' mr-ge' : '') + (vendor && c.group.startsWith(vendor) ? ' mr-gv' : ''));
   const first = []; t.cols.forEach((c, i) => { if (first[gi[i]] === undefined) first[gi[i]] = i; });
   const head1 = h('tr', null, h('th'), tops.map(([g, n], k) => h('th', { colspan: n, class: 'mr-grp ' + gcls[first[k]].replace(' mr-ge', '') + (gcls[first[k] + n - 1].includes('mr-ge') ? ' mr-ge' : '') }, g)));
   const head2 = h('tr', null, h('th'), t.cols.map((c, i) => h('th', { class: 'mr-win ' + gcls[i] }, c.window)));
