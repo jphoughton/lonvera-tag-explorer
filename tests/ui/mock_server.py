@@ -97,6 +97,10 @@ import mock_promotions  # noqa: E402  (Test to scale: /api/promotions, built on 
 
 mock_promotions.register(app, dict(parse_win=parse_win, Bad=Bad))
 
+import mock_madre  # noqa: E402  (Madre review: /api/madre-review, a small canned deck in the production payload shape)
+
+mock_madre.register(app, dict(Bad=Bad))
+
 import mock_trends  # noqa: E402  (Trends: /api/trends, built on the real payload code in app/trends.py over made-up days)
 
 mock_trends.register(app, dict(Bad=Bad))
@@ -146,7 +150,7 @@ def shell(*_a, **_k):
     return send_from_directory(STATIC, "index.html")
 
 
-for rule in ("/", "/login", "/google", "/amazon", "/no-attribution", "/campaigns", "/promotions", "/trends", "/daily", "/email", "/inventory/history", "/priorities", "/priorities/v/<tok>", "/priorities/production", "/competitors", "/priorities/vendor/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
+for rule in ("/", "/login", "/google", "/amazon", "/no-attribution", "/campaigns", "/promotions", "/madre-review", "/trends", "/daily", "/email", "/inventory/history", "/priorities", "/priorities/v/<tok>", "/priorities/production", "/competitors", "/priorities/vendor/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
     app.add_url_rule(rule, endpoint="shell" + rule, view_func=shell)
 
 

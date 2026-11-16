@@ -26,6 +26,7 @@ export const SECTIONS = [
       { key: 'production', label: 'Creative Pipeline', href: '/priorities/production', testid: 'nav-production', hint: 'Concepts assigned to vendors, and where each stands' },
       { key: 'competitors', label: 'Competitors', href: '/competitors', testid: 'nav-competitors', hint: 'What competitors run on Meta, week by week' },
       { key: 'test-to-scale', label: 'Test to scale', href: '/promotions', testid: 'nav-test-to-scale', hint: 'Which testing creatives to scale or kill' },
+      { key: 'madre-review', label: 'Madre review', href: '/madre-review', testid: 'nav-madre-review', hint: 'Weekly review of Madre: ads, pockets, pipeline and asks' },
     ],
   },
   {
@@ -49,6 +50,7 @@ const RESOLVE = [
   { re: /^\/priorities\/vendor\//, section: 'creative', page: 'production' },
   { re: /^\/priorities(\/|$)/, section: 'creative', page: 'priorities' },
   { re: /^\/promotions\/?$/, section: 'creative', page: 'test-to-scale' },
+  { re: /^\/madre-review\/?$/, section: 'creative', page: 'madre-review' },
   { re: /^\/lookup\/?$/, section: 'creative', page: null },
   { re: /^\/connect-agent\/?$/, section: null, page: null },
   { re: /^\/inventory\/history\/?$/, section: 'plan', page: 'inventory-history' },

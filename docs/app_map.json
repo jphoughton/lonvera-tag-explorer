@@ -665,6 +665,13 @@
    "bare": false
   },
   {
+   "url_pattern": "/madre-review",
+   "page_function": "madreReviewPage",
+   "js_file": "app/static/js/pages/madre_review.js",
+   "public": false,
+   "bare": false
+  },
+  {
    "url_pattern": "/no-attribution",
    "page_function": "noAttributionPage",
    "js_file": "app/static/js/pages/no_attribution.js",
@@ -1179,6 +1186,28 @@
    "auth": "none (login routes, or a vendor link: the unguessable link is the access)",
    "auth_exempt": true,
    "summary": ""
+  },
+  {
+   "rule": "/api/madre-review",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.madre_review",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Madre review: a weekly deck for one creative vendor, Meta-reported. week=YYYY-MM-DD (any day; snaps to its Monday; default the latest complete Monday-Sunday week with data), vendor= (default Madre)."
+  },
+  {
+   "rule": "/api/madre-review/video",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.madre_review_video",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The video of one ad family for the Madre review side panel (family=<tracker family key>), streamed from a cached copy of the Drive file with Range support. 404 when there is no video to play."
   },
   {
    "rule": "/api/meta-ads/<ad_id>/preview",
@@ -3640,6 +3669,17 @@
    ],
    "kind": "page",
    "endpoint": "shell:/lookup",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/madre-review",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/madre-review",
    "auth": "none (HTML page or health check; its data calls are protected)",
    "auth_exempt": true,
    "summary": ""
