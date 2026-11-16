@@ -133,3 +133,26 @@ def test_cap_and_secret_scrub(conn):
     out = cc.finalize(items, [], NOW, 14, 3)
     assert [i["url"] for i in out] == ["https://n/0", "https://n/1", "https://n/2"]
     assert "sk-ant-oat01-abcdefghijklmnop" not in cc.db.scrub("err sk-ant-oat01-abcdefghijklmnop")
+
+
+def test_if_sunday_skips_other_days_without_touching_the_db(monkeypatch):
+    class FakeDT(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return dt.datetime(2026, 11, 12, 12, 0, tzinfo=tz)              # Thursday
+    monkeypatch.setattr(cc.dt, "datetime", FakeDT)
+    monkeypatch.setattr(cc.db, "JobRun", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run on a non-Sunday")))
+    monkeypatch.setattr("sys.argv", ["competitor_chatter", "--if-sunday"])
+    cc.main()
+
+
+def test_run_etl_sh_weekly_steps_are_nonfatal_sunday_gated_and_after_the_ad_library():
+    from pathlib import Path
+    s = (Path(__file__).resolve().parents[2] / "scripts" / "deploy" / "run_etl.sh").read_text()
+    lines = [x for x in s.splitlines() if x.strip().startswith("python -m etl.competitor_")]
+    cmds = [x.split("||")[0].strip() for x in lines]
+    assert cmds == ["python -m etl.competitor_ads --if-sunday", "python -m etl.competitor_chatter --if-sunday",
+                    "python -m etl.competitor_landing_pages --if-sunday", "python -m etl.competitor_landing_pages --if-sunday --own"]
+    assert all("|| echo" in x and "non-fatal" in x for x in lines)
+    assert s.index("etl.competitor_ads --if-sunday") < s.index("etl.competitor_chatter --if-sunday") < s.index("etl.competitor_landing_pages --if-sunday ||")
+    assert s.index("etl.competitor_landing_pages --if-sunday --own") < s.index('[ "$daily_rc" -eq 0 ]')

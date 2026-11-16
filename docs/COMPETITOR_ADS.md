@@ -108,3 +108,18 @@ So charts can compare Lonvera and the competitors 1:1, the learning tags (hook t
 - Transcripts are imported first (idempotent): cycle files on disk (Vita Bull `vbatches` `transcript` keyed by `ad_family`, `video_transcripts*.json` keyed by Meta family, Beef Liver / Boneflex `video_index*.json`), `creative_ad_transcripts`, `family_content`, tracker text as the weakest source (`tracker_copy`, replaced by any real one). A video family still without one is fetched in spend order (`OWN_TAGS_VIDEO_DIR` library copy, else yt-dlp on `facebook.com/watch/?v=ID` (`YT_DLP_BIN`), else the ad preview iframe), audio over 180 s skipped, transcribed with faster-whisper; a failed download never blocks tagging (method `vision` / `text`). Missing thumbnails are fetched read-only from the Graph API. No Meta writes.
 - Auth: `CLAUDE_CODE_OAUTH_TOKEN`, or `OWN_TAGS_LOCAL_CLAUDE_LOGIN=1` for a local `claude` login. `--workers 3` runs batches of 6 in parallel; a rate limit waits 30 / 90 / 180 s before the run stops; progress every 20 families.
 - Own landing pages: `python -m etl.competitor_landing_pages --own` takes the destination URLs of our ads (`landing_page_ads`, migration 207) ranked by spend over 120 days, top 25, brand `Lonvera`, `competitor_landing_pages.is_own = true` (competitor views must filter `is_own = false`), and records which family sends most of its spend to which page in `ad_family_lp`.
+
+## Weekly schedule (Sunday, Pacific)
+Everything below runs from `scripts/deploy/run_etl.sh` (Railway `etl`, nightly 13:00 UTC) and is a no-op except on a Pacific Sunday. Every step is NON-FATAL: a failure is logged, recorded in `etl_runs`, and never changes the nightly exit code.
+
+| Order | Step | Where | Notes |
+|---|---|---|---|
+| 1 | `etl.competitor_ads --if-sunday` | Railway etl | Ad Library snapshot + concept classification |
+| 2 | `etl.creative_priorities --if-sunday`, assignment tags, production status, Klaviyo, `etl.auto_tag` | Railway etl | unchanged |
+| 3 | `etl.competitor_chatter --if-sunday` | Railway etl | Google News + Reddit RSS, no model calls (about 10 minutes with Reddit's 65 s spacing). Last in the run so it never delays the data steps |
+| 4 | `etl.competitor_landing_pages --if-sunday` | Railway etl | competitor pages: headless Chromium capture + `claude -p` tagging (the jobs image has Chromium, the Claude CLI and `CLAUDE_CODE_OAUTH_TOKEN`; no whisper needed) |
+| 5 | `etl.competitor_landing_pages --if-sunday --own` | Railway etl | Lonvera's own top pages by 30-day spend (`is_own = true`) |
+| 6 | `etl.competitor_tags` (new competitor ads) and `etl.own_ad_tags` (new own ad families) | Mac desktop routine, Sunday about 09:00 local | needs yt-dlp + faster-whisper, which are NOT in the Railway image; runs via `railway run -s etl` with `DATABASE_URL=$DATABASE_PUBLIC_URL`, `OWN_TAGS_LOCAL_CLAUDE_LOGIN=1`, `LP_LOCAL_CLAUDE_LOGIN=1`, under `caffeinate`. Incremental: only untagged items. Exits non-zero on any failure |
+
+Reddit from Railway: see the verification note in the PR; if Railway egress is blocked the source is recorded as failed in `etl_runs.stats` and Google News still lands.
+Mac routine script: `scripts/mac/weekly_competitor_tags.sh` (the scheduled task only calls it). Run it by hand any time; with nothing new it finds 0 items.
