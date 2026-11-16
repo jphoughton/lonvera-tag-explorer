@@ -202,7 +202,7 @@ function enableStickyHeader(frame, table) {
     head.addEventListener('click', (e) => { const th = e.target.closest('th'); if (!th) return; const i = [...head.querySelectorAll('th')].indexOf(th); real.querySelectorAll('th')[i]?.querySelector('button')?.click(); });
   };
   const update = () => {
-    if (!table.isConnected) { stickyCleanup && stickyCleanup(); return; }
+    if (!table.isConnected) { cleanup(); return; }
     const off = offset(), fr = frame.getBoundingClientRect(), tr = table.getBoundingClientRect(), hh = table.querySelector('thead').getBoundingClientRect().height;
     const show = fr.top < off && tr.bottom - hh > off && fr.bottom > off;
     wrap.hidden = !show;
@@ -215,10 +215,41 @@ function enableStickyHeader(frame, table) {
   let pending = false;
   const tick = () => { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; update(); }); };
   window.addEventListener('scroll', tick, { passive: true }); window.addEventListener('resize', tick); frame.addEventListener('scroll', tick, { passive: true });
-  const gone = new MutationObserver(() => { if (!table.isConnected && stickyCleanup) stickyCleanup(); });            // the table left the page (another view, another page): remove the copy at once
+  const gone = new MutationObserver(() => { if (!table.isConnected) cleanup(); });                                  // the table left the page (another view, another page): remove the copy at once
   gone.observe(document.body, { childList: true, subtree: true });
-  stickyCleanup = () => { gone.disconnect(); window.removeEventListener('scroll', tick); window.removeEventListener('resize', tick); frame.removeEventListener('scroll', tick); wrap.remove(); stickyCleanup = null; };
+  let done = false;
+  const cleanup = () => { if (done) return; done = true; gone.disconnect(); window.removeEventListener('scroll', tick); window.removeEventListener('resize', tick); frame.removeEventListener('scroll', tick); wrap.remove(); if (stickyCleanup === cleanup) stickyCleanup = null; };    // each copy cleans only itself
+  stickyCleanup = cleanup;
   tick();
+}
+
+// The evidence behind a cut: priority score and reasons, top 5 spenders since launch, top hooks, and the ads driving it (with the $250 toggle). d = GET /api/priorities/cuts/ads, pr = the row's priority or null.
+export function renderEvidence(body, d, pr) {
+  const name = (a) => h('span', { class: 'prod-cutads-name' }, a.ad_id ? h('a', { href: href('/ad/' + encodeURIComponent(a.ad_id), {}), target: '_blank', rel: 'noopener noreferrer', 'data-testid': 'prod-cutads-link' }, a.name) : a.name,
+    a.story_url && /^https:\/\/(www\.)?(facebook|instagram)\.com\//.test(a.story_url) ? h('a', { class: 'pri-sub', href: a.story_url, target: '_blank', rel: 'noopener noreferrer' }, 'post') : null, a.live ? h('span', { class: 'prod-chip prod-chip-live', title: 'Spent in the last two loaded days' }, 'Live') : null, a.hook ? h('span', { class: 'prod-cutads-hook', 'data-testid': 'prod-cutads-hook' }, a.hook) : null);
+  const table = (heads, rows, tid, none) => (rows.length ? h('div', { class: 'prod-scroll' }, h('table', { class: 'pri-table prod-table prod-cuts-table', 'data-testid': tid }, h('thead', null, h('tr', null, heads.map((x, i) => h('th', { scope: 'col', class: i ? 'prod-num' : null }, x)))),
+    h('tbody', null, rows))) : h('p', { class: 'pri-sub' }, none || 'None.'));
+  const tr = (cells) => h('tr', { 'data-testid': 'prod-cutads-row' }, cells.map((c, i) => h('td', { class: 'prod-c' + (i ? ' prod-num' : '') }, c)));
+  let minOn = true;                                                           // view filter only: the data underneath is unchanged
+  const winHost = h('div', { 'data-testid': 'prod-cutads-winhost' });
+  const drawWindow = () => {
+    const shown = minOn ? d.window.filter((a) => a.spend >= ADS_MIN_SPEND) : d.window;
+    winHost.replaceChildren(
+      h('div', { class: 'prod-cutads-bar' }, h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: minOn, 'data-testid': 'prod-cutads-min', onchange: (e) => { minOn = e.target.checked; drawWindow(); } }), ` Only ads that spent $${ADS_MIN_SPEND} or more`),
+        h('span', { class: 'pri-sub', 'data-testid': 'prod-cutads-count' }, `Showing ${shown.length} of ${d.window.length} ads${d.window.length >= 60 ? ' (the 60 biggest spenders)' : ''}`)),
+      table(['Ad', 'Spend', 'NC revenue', 'NC ROAS', 'NC CPA', 'Meta ROAS'], shown.map((a) => tr([name(a), fmt.money(a.spend), fmt.money(a.nc_revenue), roasText(a.nc_roas), fmt.money2(a.nc_cpa), roasText(a.meta_roas)])), 'prod-cutads-window', `No ad spent $${ADS_MIN_SPEND} or more in these dates.`));
+  };
+  const prio = pr ? h('div', { class: 'prod-cutads-prio', 'data-testid': 'prod-cutads-prio' }, h('div', null, isNum(pr.score) ? h('span', { class: 'prod-prio prod-prio-big ' + tierClass(pr.tier) }, String(Math.round(pr.score))) : null, ' ', h('strong', null, pr.tier), h('span', { class: 'pri-sub' }, ` · ${pr.confidence} confidence`)),
+    h('p', { class: 'pri-sub' }, pr.why), h('ul', { class: 'prod-cutads-drivers' }, (pr.drivers || []).map((x) => h('li', null, x.plain_text || x.label))), (pr.flags || []).length ? h('p', { class: 'pri-sub' }, 'Notes: ' + pr.flags.join(', ')) : null) : null;
+  body.replaceChildren(...[prio, d.warning ? h('p', { class: 'pri-err' }, d.warning) : null,
+    h('h4', { class: 'pri-h' }, 'Top 5 spenders since launch ', h('span', { class: 'pri-hnote' }, 'all time, Meta numbers, for inspiration')),
+    table(['Ad', 'Spend', 'Revenue', 'Meta ROAS', 'Purchases'], d.top.map((a) => tr([name(a), fmt.money(a.spend), fmt.money(a.revenue), roasText(a.meta_roas), fmt.int(a.purchases)])), 'prod-cutads-top'),
+    h('h4', { class: 'pri-h' }, 'Top hooks ', h('span', { class: 'pri-hnote' }, `best NC ROAS among ads that spent $${ADS_MIN_SPEND} or more in these dates`)),
+    (d.top_hooks || []).length ? h('div', { class: 'prod-scroll' }, h('table', { class: 'pri-table prod-table prod-cuts-table', 'data-testid': 'prod-cutads-hooks' }, h('thead', null, h('tr', null, ['Hook', 'Spend', 'NC ROAS', 'NC CPA'].map((x, i) => h('th', { scope: 'col', class: i ? 'prod-num' : null }, x)))),
+      h('tbody', null, d.top_hooks.map((a) => h('tr', { 'data-testid': 'prod-cutads-hookrow' }, h('td', { class: 'prod-c prod-cutads-hooktext' }, h('span', { class: 'prod-cutads-hookline' }, a.hook), h('span', { class: 'pri-sub' }, ' ', a.ad_id ? h('a', { href: href('/ad/' + encodeURIComponent(a.ad_id), {}), target: '_blank', rel: 'noopener noreferrer' }, a.name) : a.name, a.live ? ' · Live' : '')),
+        h('td', { class: 'prod-c prod-num' }, fmt.money(a.spend)), h('td', { class: 'prod-c prod-num' }, roasText(a.nc_roas)), h('td', { class: 'prod-c prod-num' }, fmt.money2(a.nc_cpa))))))) : h('p', { class: 'pri-sub', 'data-testid': 'prod-cutads-nohooks' }, 'No hooks stored for the ads that spent enough in these dates.'),
+    h('h4', { class: 'pri-h' }, 'Ads driving this row ', h('span', { class: 'pri-hnote' }, `spent between ${d.from} and ${d.to}`)), winHost].filter(Boolean));
+  drawWindow();
 }
 
 // st: { by: ['product', ...], preset, from, to, pipelineOnly, stages: [status...], sort: {key, dir} }  (plain object kept by the page so it survives a redraw)
@@ -380,32 +411,7 @@ export function cutsView({ host, st, filters, signal, onState, say, pageFilters 
         h('p', { class: 'pri-sub' }, `Dates ${st.from} to ${st.to}`), body); } });
     let d;
     try { d = await api('/api/priorities/cuts/ads', { ...cut, from: st.from, to: st.to }, { signal }); } catch (e) { if (e && e.name === 'AbortError') return; body.replaceChildren(h('p', { class: 'pri-err' }, e.message || 'Could not load the ads.')); return; }
-    const name = (a) => h('span', { class: 'prod-cutads-name' }, a.ad_id ? h('a', { href: href('/ad/' + encodeURIComponent(a.ad_id), {}), target: '_blank', rel: 'noopener noreferrer', 'data-testid': 'prod-cutads-link' }, a.name) : a.name,
-      a.story_url && /^https:\/\/(www\.)?(facebook|instagram)\.com\//.test(a.story_url) ? h('a', { class: 'pri-sub', href: a.story_url, target: '_blank', rel: 'noopener noreferrer' }, 'post') : null, a.live ? h('span', { class: 'prod-chip prod-chip-live', title: 'Spent in the last two loaded days' }, 'Live') : null, a.hook ? h('span', { class: 'prod-cutads-hook', 'data-testid': 'prod-cutads-hook' }, a.hook) : null);
-    const table = (heads, rows, tid, none) => (rows.length ? h('div', { class: 'prod-scroll' }, h('table', { class: 'pri-table prod-table prod-cuts-table', 'data-testid': tid }, h('thead', null, h('tr', null, heads.map((x, i) => h('th', { scope: 'col', class: i ? 'prod-num' : null }, x)))),
-      h('tbody', null, rows))) : h('p', { class: 'pri-sub' }, none || 'None.'));
-    const tr = (cells) => h('tr', { 'data-testid': 'prod-cutads-row' }, cells.map((c, i) => h('td', { class: 'prod-c' + (i ? ' prod-num' : '') }, c)));
-    let minOn = true;                                                           // view filter only: the data underneath is unchanged
-    const winHost = h('div', { 'data-testid': 'prod-cutads-winhost' });
-    const drawWindow = () => {
-      const shown = minOn ? d.window.filter((a) => a.spend >= ADS_MIN_SPEND) : d.window;
-      winHost.replaceChildren(
-        h('div', { class: 'prod-cutads-bar' }, h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: minOn, 'data-testid': 'prod-cutads-min', onchange: (e) => { minOn = e.target.checked; drawWindow(); } }), ` Only ads that spent $${ADS_MIN_SPEND} or more`),
-          h('span', { class: 'pri-sub', 'data-testid': 'prod-cutads-count' }, `Showing ${shown.length} of ${d.window.length} ads${d.window.length >= 60 ? ' (the 60 biggest spenders)' : ''}`)),
-        table(['Ad', 'Spend', 'NC revenue', 'NC ROAS', 'NC CPA', 'Meta ROAS'], shown.map((a) => tr([name(a), fmt.money(a.spend), fmt.money(a.nc_revenue), roasText(a.nc_roas), fmt.money2(a.nc_cpa), roasText(a.meta_roas)])), 'prod-cutads-window', `No ad spent $${ADS_MIN_SPEND} or more in these dates.`));
-    };
-    const pr = r.priority;
-    const prio = pr ? h('div', { class: 'prod-cutads-prio', 'data-testid': 'prod-cutads-prio' }, h('div', null, isNum(pr.score) ? h('span', { class: 'prod-prio prod-prio-big ' + tierClass(pr.tier) }, String(Math.round(pr.score))) : null, ' ', h('strong', null, pr.tier), h('span', { class: 'pri-sub' }, ` · ${pr.confidence} confidence`)),
-      h('p', { class: 'pri-sub' }, pr.why), h('ul', { class: 'prod-cutads-drivers' }, (pr.drivers || []).map((x) => h('li', null, x.plain_text || x.label))), (pr.flags || []).length ? h('p', { class: 'pri-sub' }, 'Notes: ' + pr.flags.join(', ')) : null) : null;
-    body.replaceChildren(...[prio, d.warning ? h('p', { class: 'pri-err' }, d.warning) : null,
-      h('h4', { class: 'pri-h' }, 'Top 5 spenders since launch ', h('span', { class: 'pri-hnote' }, 'all time, Meta numbers, for inspiration')),
-      table(['Ad', 'Spend', 'Revenue', 'Meta ROAS', 'Purchases'], d.top.map((a) => tr([name(a), fmt.money(a.spend), fmt.money(a.revenue), roasText(a.meta_roas), fmt.int(a.purchases)])), 'prod-cutads-top'),
-      h('h4', { class: 'pri-h' }, 'Top hooks ', h('span', { class: 'pri-hnote' }, `best NC ROAS among ads that spent $${ADS_MIN_SPEND} or more in these dates`)),
-      (d.top_hooks || []).length ? h('div', { class: 'prod-scroll' }, h('table', { class: 'pri-table prod-table prod-cuts-table', 'data-testid': 'prod-cutads-hooks' }, h('thead', null, h('tr', null, ['Hook', 'Spend', 'NC ROAS', 'NC CPA'].map((x, i) => h('th', { scope: 'col', class: i ? 'prod-num' : null }, x)))),
-        h('tbody', null, d.top_hooks.map((a) => h('tr', { 'data-testid': 'prod-cutads-hookrow' }, h('td', { class: 'prod-c prod-cutads-hooktext' }, h('span', { class: 'prod-cutads-hookline' }, a.hook), h('span', { class: 'pri-sub' }, ' ', a.ad_id ? h('a', { href: href('/ad/' + encodeURIComponent(a.ad_id), {}), target: '_blank', rel: 'noopener noreferrer' }, a.name) : a.name, a.live ? ' · Live' : '')),
-          h('td', { class: 'prod-c prod-num' }, fmt.money(a.spend)), h('td', { class: 'prod-c prod-num' }, roasText(a.nc_roas)), h('td', { class: 'prod-c prod-num' }, fmt.money2(a.nc_cpa))))))) : h('p', { class: 'pri-sub', 'data-testid': 'prod-cutads-nohooks' }, 'No hooks stored for the ads that spent enough in these dates.'),
-      h('h4', { class: 'pri-h' }, 'Ads driving this row ', h('span', { class: 'pri-hnote' }, `spent between ${d.from} and ${d.to}`)), winHost].filter(Boolean));
-    drawWindow();
+    renderEvidence(body, d, r.priority);
   }
 
   // ---- filters on market cluster, ICP and pain point: the lists only offer values that exist together with the other choices (and the page's Product filter)

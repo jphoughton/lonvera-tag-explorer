@@ -622,3 +622,8 @@ body.prod-dragging-col, body.prod-dragging-col * { cursor: grabbing !important; 
 .prod-stickyhead-in { will-change: transform; }
 .prod-stickyhead table { border-collapse: collapse; }
 .prod-stickyhead th { position: static !important; background: var(--head-bg); }
+
+/* Needs brief: the opened item */
+.prod-bl-openlabel { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.prod-bl-openlabel textarea { font: inherit; font-size: 14px; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text); padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); width: 100%; resize: vertical; }
+.prod-bl-openbar { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; }
