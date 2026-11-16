@@ -884,11 +884,11 @@ def priorities_board():
 
 @bp.get("/api/priorities/cuts")
 def priorities_cuts():
-    """Creative Pipeline by cut: ?group=product,icp (any ordered subset of product, cluster, icp, pain_point, vendor) &from= &to= (YYYY-MM-DD, default the last 30 loaded days) &week= &vendor= (pipeline side only) &product= (both sides)
-    -> {group, from, to, rows: [{labels, stages, concepts, stats}], totals, stages, dims, basis, warning}. Stage counts are production assignments by board status; stats are the Meta spend and Upstack new-customer return of
+    """Creative Pipeline by cut: ?group=product,icp (any ordered subset of product, cluster, icp, pain_point, vendor) &from= &to= (YYYY-MM-DD, default the last 30 loaded days) &week= &vendor= (pipeline side only) &product= (both sides) &cluster= &icp= &pain_point= (each a '|' separated list of values, both sides)
+    -> {group, from, to, combos, rows: [{labels, stages, concepts, stats}], totals, stages, dims, basis, warning}. Stage counts are production assignments by board status; stats are the Meta spend and Upstack new-customer return of
     ads tagged to the cut in the window. See app/priorities_cuts.py."""
     prods = [p for p in (_arg("product") or "").split(",") if p.strip()]
-    return jsonify(pcu.cuts(db.get_conn(), pcu.parse_group(_arg("group")), _arg("from"), _arg("to"), week=_arg("week"), vendor=_arg("vendor"), products=[p.strip() for p in prods] or None))
+    return jsonify(pcu.cuts(db.get_conn(), pcu.parse_group(_arg("group")), _arg("from"), _arg("to"), week=_arg("week"), vendor=_arg("vendor"), products=[p.strip() for p in prods] or None, tf=pcu.tag_filters(request.args)))
 
 
 @bp.get("/api/priorities/cuts/ads")

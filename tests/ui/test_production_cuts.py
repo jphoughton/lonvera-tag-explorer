@@ -178,3 +178,20 @@ def test_share_metrics_are_off_by_default_and_selectable(page):
     page.locator("[data-testid=prod-cuts-metric-spend_share]").check()
     assert "% of spend" in heads(page)
     assert page.locator("[data-testid=prod-cuts-total] td[data-metric=spend_share]").text_content().strip() == "100.0%"
+
+
+def test_filter_by_pain_point_and_icp_narrows_rows(page):
+    goto(page, "&by=product,icp,pain_point")
+    n = page.locator("[data-testid=prod-cuts-row]").count()
+    d = page.locator("[data-testid=prod-cuts-f-pain]")
+    d.locator("summary").click()
+    first = d.locator("input[type=checkbox]").first
+    label = first.get_attribute("value")
+    first.check()
+    page.keyboard.press("Escape")
+    page.wait_for_function("(n) => document.querySelectorAll('[data-testid=prod-cuts-row]').length < n", arg=n)
+    cells = page.locator("[data-testid=prod-cuts-row] td:nth-child(3)").all_text_contents()
+    assert cells and all(c.strip() == label for c in cells)
+    assert "fp=" in page.url
+    page.locator("[data-testid=prod-cuts-f-clear]").click()
+    page.wait_for_function("(n) => document.querySelectorAll('[data-testid=prod-cuts-row]').length === n", arg=n)

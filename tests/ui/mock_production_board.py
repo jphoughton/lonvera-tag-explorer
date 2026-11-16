@@ -206,6 +206,8 @@ def register(app, deps):
         for c in cards(a.get("vendor") or "", a.get("week") or "", a.get("product") or ""):
             if c["status"] == "dropped" or c["stage"] == "dropped":
                 continue
+            if any(a.get(k) and (c.get(k) or "(none)") not in a.get(k).split("|") for k in ("cluster", "icp", "pain_point")):
+                continue
             lab = tuple((names.get(c.get(g)) or c.get(g) or "(none)") if g == "product" else (c.get(g) or "(none)") for g in group)
             e = acc.setdefault(lab, {"stages": {s: 0 for s in ORDER}, "concepts": 0})
             e["stages"][c["status"]] += 1
@@ -223,7 +225,8 @@ def register(app, deps):
         sp = sum(r["stats"]["spend"] for r in rows)
         totals = {"stages": tot, "concepts": sum(r["concepts"] for r in rows), "stats": {"live_ads": 9, "ads_spending": 12, "spend": sp, "nc_revenue": sp * 0.8, "nc_purchases": 1, "nc_roas": 0.8, "nc_cpa": sp, "meta_roas": 1.1, "cpm": 20.0, "ctr": 0.012, "cplc": 1.5, "conv_rate": 0.03, "aov": 1.0}}
         return jsonify({"group": group, "from": frm.isoformat(), "to": to.isoformat(), "rows": rows, "totals": totals, "stages": [{"status": s, "label": LABEL[s]} for s in ORDER],
-                        "dims": [], "basis": "Mock basis.", "warning": None})
+                        "dims": [], "basis": "Mock basis.", "warning": None,
+                        "combos": sorted({(c["product"], c.get("cluster") or "", c.get("icp") or "", c.get("pain_point") or "") for c in cards()})})
 
     @app.get("/api/priorities/cuts/ads")
     def cut_ads():
