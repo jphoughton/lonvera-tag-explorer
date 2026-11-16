@@ -1420,7 +1420,7 @@
    "endpoint": "api.priorities_backlog_add",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "Add cuts to Needs brief: {items: [{product?, cluster?, icp?, pain_point?, title?, note?, for_week?}] (1 to 100), for_week?} -> {created, skipped} (201). Signed-in users only."
+   "summary": "Add cuts to Needs brief: {items: [{product, cluster, icp, pain_point, media_type: image|video, title?, note?, for_week?}] (1 to 100; product, market cluster, ICP, pain point and image or video are all required), for_week?} -> {created, skipped} (201). Signed-in users only."
   },
   {
    "rule": "/api/priorities/backlog/<int:item_id>",
@@ -1442,7 +1442,7 @@
    "endpoint": "api.priorities_backlog_update",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "Change a waiting item: {for_week?, note?, title?}. Signed-in users only."
+   "summary": "Change a waiting item: {product?, cluster?, icp?, pain_point?, media_type?, for_week?, note?, title?} (the five tags are never empty). Signed-in users only."
   },
   {
    "rule": "/api/priorities/backlog/assign",

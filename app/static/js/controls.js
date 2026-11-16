@@ -229,12 +229,12 @@ async function logout() {
 }
 
 // ---------- state ----------
-// yellow strip under the header when the data is stale (not dismissible, hidden when fresh)
+// big warning strip under the header when the data is stale: on every page, with or without the filter bar (not dismissible, hidden when fresh)
 function renderStaleBanner(st) {
   const el = document.getElementById('stale-banner');
   if (!el) return;
   const stale = st && st.stale && st.stale.is_stale;
-  if (!stale || !controlsOn) { el.hidden = true; el.textContent = ''; return; }
+  if (!stale) { el.hidden = true; el.textContent = ''; return; }
   const when = st.last_ok_at ? fmt.dateTime(st.last_ok_at) : 'unknown';
   el.textContent = `Data may be out of date: ${st.stale.reason || 'the last refresh did not complete'}. Last successful refresh ${when}; data through ${fmt.day(st.data_through)}.`;
   el.hidden = false;

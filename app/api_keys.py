@@ -1,7 +1,7 @@
 """Scoped API keys (table api_keys, migration 205).
 
 A key looks like lvk_ plus 40 characters from secrets.token_urlsafe (240 bits). Only its sha256 hash is stored. The scope 'read_assign' lets a key read everything the app serves (GET and HEAD) and
-make exactly five writes on the production board: POST /api/priorities/assignments, POST /api/priorities/tickets (the ticket contract: concept_name, product, variations, cluster, concept_kind, vendor, for_week), PATCH /api/priorities/assignments/<aid>, POST .../<aid>/move and POST .../<aid>/comments (not vendor capacity). Nothing else is writable with a key (see ALLOWED_WRITES). app/auth.py enforces this in its
+make exactly nine writes on the production board and its Needs brief queue (the five below plus POST /api/priorities/backlog, PATCH and DELETE /api/priorities/backlog/<id>, POST /api/priorities/backlog/assign): POST /api/priorities/assignments, POST /api/priorities/tickets (the ticket contract: concept_name, product, variations, cluster, concept_kind, vendor, for_week), PATCH /api/priorities/assignments/<aid>, POST .../<aid>/move and POST .../<aid>/comments (not vendor capacity). Nothing else is writable with a key (see ALLOWED_WRITES). app/auth.py enforces this in its
 request guard; keys never satisfy the launch gate, never open the login route and are refused on the route that returns vendor link tokens (BLOCKED_READS).
 """
 from __future__ import annotations
@@ -23,7 +23,8 @@ PARTNER_SCOPES = (PARTNER_SCOPE, PARTNER_READ_ALL_SCOPE)
 SCOPES = (SCOPE, PARTNER_SCOPE, PARTNER_READ_ALL_SCOPE)
 SAFE_METHODS = ("GET", "HEAD")
 ALLOWED_WRITES = frozenset({("POST", "/api/priorities/assignments"), ("PATCH", "/api/priorities/assignments/<int:aid>"), ("POST", "/api/priorities/assignments/<int:aid>/move"),
-                            ("POST", "/api/priorities/assignments/<int:aid>/comments"), ("POST", "/api/priorities/tickets")})      # (method, Flask rule) pairs, nothing else
+                            ("POST", "/api/priorities/assignments/<int:aid>/comments"), ("POST", "/api/priorities/tickets"),
+                            ("POST", "/api/priorities/backlog"), ("PATCH", "/api/priorities/backlog/<int:item_id>"), ("DELETE", "/api/priorities/backlog/<int:item_id>"), ("POST", "/api/priorities/backlog/assign")})      # (method, Flask rule) pairs, nothing else
 # What a partner_push key may do (migration 261). WRITES: the partner routes below, nothing else. READS: only the creative and performance families of PARTNER_READ_RULES (default deny: a GET that is
 # not on that list is a 403). Every /api/ and /media/ GET rule of the app must be in PARTNER_READ_RULES or PARTNER_READ_BLOCKED (tests/api/test_partner_keys.py fails when a new route is in neither),
 # so a future route can never leak to a partner by default. A partner reads its OWN tickets only through /api/priorities/partner/tickets. Every route also checks the key's vendor in app/partner_tickets.py.

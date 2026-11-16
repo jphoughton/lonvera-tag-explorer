@@ -558,3 +558,5 @@ body.prod-drawer-open { overflow: hidden; }
 .prod-bl-add .ctl-row { margin-top: 8px; align-items: flex-end; }
 .prod-bl-table td input[type=text] { width: 100%; min-width: 160px; font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); }
 .prod-bl-bar { margin: 6px 0; }
+.prod-bl-table select, .prod-bl-table td input[type=text] { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); max-width: 100%; }
+.prod-bl-missing { border-color: var(--bad) !important; background: var(--bad-bg) !important; }

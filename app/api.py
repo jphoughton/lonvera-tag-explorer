@@ -914,7 +914,7 @@ def priorities_backlog():
 
 @bp.post("/api/priorities/backlog")
 def priorities_backlog_add():
-    """Add cuts to Needs brief: {items: [{product?, cluster?, icp?, pain_point?, title?, note?, for_week?}] (1 to 100), for_week?} -> {created, skipped} (201). Signed-in users only."""
+    """Add cuts to Needs brief: {items: [{product, cluster, icp, pain_point, media_type: image|video, title?, note?, for_week?}] (1 to 100; product, market cluster, ICP, pain point and image or video are all required), for_week?} -> {created, skipped} (201). Signed-in users only."""
     blocked = _backlog_guard()
     if blocked is not None:
         return blocked
@@ -923,7 +923,7 @@ def priorities_backlog_add():
 
 @bp.patch("/api/priorities/backlog/<int:item_id>")
 def priorities_backlog_update(item_id: int):
-    """Change a waiting item: {for_week?, note?, title?}. Signed-in users only."""
+    """Change a waiting item: {product?, cluster?, icp?, pain_point?, media_type?, for_week?, note?, title?} (the five tags are never empty). Signed-in users only."""
     blocked = _backlog_guard()
     if blocked is not None:
         return blocked

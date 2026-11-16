@@ -18,7 +18,7 @@ export const METRICS = [
   ['nc_roas', 'NC ROAS', (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–'), 'New-customer revenue / spend (Upstack)'], ['nc_cpa', 'NC CPA', fmt.money2, 'Spend per new customer (Upstack)'],
   ['meta_roas', 'Meta ROAS', (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–'), 'Meta-reported revenue / spend; counts returning customers'], ['cpm', 'CPM', fmt.money2, 'Spend per 1,000 impressions'],
   ['ctr', 'CTR', (v) => (isNum(v) ? (v * 100).toFixed(2) + '%' : '–'), 'Link clicks / impressions'], ['cplc', 'Cost per link click', fmt.money2, 'Spend / link clicks'],
-  ['pipeline_share', '% of pipeline concepts', (v) => (isNum(v) ? (v * 100).toFixed(1) + '%' : '–'), 'This cut\'s share of all concepts in the pipeline (assigned through ready to launch)'], ['spend_share', '% of spend', (v) => (isNum(v) ? (v * 100).toFixed(1) + '%' : '–'), 'This cut\'s share of all spend in the window (the Total row)'], ['rev_share', '% of NC revenue', (v) => (isNum(v) ? (v * 100).toFixed(1) + '%' : '–'), 'This cut\'s share of all new-customer revenue in the window'],
+  ['pipeline_share', '% of concepts in pipeline', (v) => (isNum(v) ? (v * 100).toFixed(1) + '%' : '–'), 'This cut\'s share of all concepts in the pipeline (assigned through ready to launch)'], ['spend_share', '% of spend', (v) => (isNum(v) ? (v * 100).toFixed(1) + '%' : '–'), 'This cut\'s share of all spend in the window (the Total row)'], ['rev_share', '% of NC revenue', (v) => (isNum(v) ? (v * 100).toFixed(1) + '%' : '–'), 'This cut\'s share of all new-customer revenue in the window'],
   ['conv_rate', 'Conv rate', (v) => (isNum(v) ? (v * 100).toFixed(2) + '%' : '–'), 'New customers / link clicks'], ['aov', 'AOV', fmt.money2, 'Average order value of new customers'],
 ];
 // Quick filters: each is a plain rule over a cut's row. BASE is the blended NC ROAS of every cut in the window (the Total row); "working" = at or above it with at least MIN_SPEND spent.
@@ -60,6 +60,7 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
   const sel = new Map();                                         // rows ticked for Needs brief: key = the cut's labels, value = the row
   const rowKey = (r) => JSON.stringify(out.group.map((d) => r.labels[d]));
   let addWeek = mondayOf(today());
+  let addMedia = '';                                            // image or video for the ticked cuts when Image / video is not one of the grouped cuts
   let seq = 0;
   const builder = h('div', { class: 'prod-cuts-builder', 'data-testid': 'prod-cuts-builder' });
   const when = h('div', { class: 'prod-cuts-when', 'data-testid': 'prod-cuts-when' });
@@ -237,12 +238,19 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
     if (!sel.size) return h('p', { class: 'pri-sub prod-cuts-selhint', 'data-testid': 'prod-cuts-selhint' }, 'Tick cuts to add them to Needs brief for a week.');
     const weeks = [...new Set([...Array.from({ length: 6 }, (_, i) => addDays(mondayOf(today()), 7 * i)), addWeek])].sort();
     const msg = h('span', { class: 'pri-err', role: 'alert', 'data-testid': 'prod-cuts-selmsg' });
+    const needMedia = !out.group.includes('media');
     return h('div', { class: 'prod-cuts-selbar', 'data-testid': 'prod-cuts-selbar' }, h('strong', null, `${sel.size} cut${sel.size === 1 ? '' : 's'} ticked`),
       h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, 'For week'), h('select', { 'data-testid': 'prod-cuts-addweek', onchange: (e) => { addWeek = e.target.value; } }, weeks.map((w) => h('option', { value: w, selected: w === addWeek }, weekLabel(w))))),
+      needMedia ? h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, 'Image or video (required)'), h('select', { 'data-testid': 'prod-cuts-addmedia', onchange: (e) => { addMedia = e.target.value; } }, [['', 'Choose'], ['video', 'Video'], ['image', 'Image']].map(([v, l]) => h('option', { value: v, selected: v === addMedia }, l)))) : null,
       h('button', { type: 'button', class: 'btn primary small', 'data-testid': 'prod-cuts-addbl', onclick: async () => {
         const items = [...sel.values()].map((r) => { const it = {}; for (const d of out.group) { const v = r.labels[d]; if (v && v !== '(none)' && ['product', 'cluster', 'icp', 'pain_point', 'media'].includes(d)) { if (d === 'media') it.media_type = v.toLowerCase(); else it[d] = d === 'product' ? (PRODUCT_SLUG[v] || v) : v; } } return it; });
         msg.textContent = '';
-        if (items.some((it) => !['product', 'cluster', 'icp', 'pain_point'].some((k) => it[k]))) { msg.textContent = 'Group by at least one of Product, Market cluster, ICP or Pain point to add cuts.'; return; }
+        const lack = ['product', 'cluster', 'icp', 'pain_point'].filter((k) => !out.group.includes(k));
+        if (lack.length) { msg.textContent = `Every item needs a product, market cluster, ICP, pain point and image or video. Group by ${lack.map((k) => DIM_LABEL[k]).join(', ')} too.`; return; }
+        if (needMedia && !addMedia) { msg.textContent = 'Choose image or video for these cuts.'; return; }
+        if (needMedia) for (const it of items) it.media_type = addMedia;
+        const bad = items.filter((it) => !['product', 'cluster', 'icp', 'pain_point', 'media_type'].every((k) => it[k]));
+        if (bad.length) { msg.textContent = `${bad.length} ticked cut${bad.length === 1 ? ' has' : 's have'} no product, market cluster, ICP, pain point or image / video yet (shown as none). Untick ${bad.length === 1 ? 'it' : 'them'} or fix the tags first.`; return; }
         try {
           const r = await api('/api/priorities/backlog', {}, { method: 'POST', body: { items, for_week: addWeek } });
           toast(`${r.created.length} added to Needs brief for ${weekLabel(addWeek).toLowerCase()}${r.skipped.length ? `, ${r.skipped.length} already there` : ''}.`);

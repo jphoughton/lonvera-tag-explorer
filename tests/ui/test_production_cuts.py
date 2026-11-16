@@ -214,11 +214,33 @@ def test_no_stray_null_text_in_the_view(page):
     assert "null" not in page.locator("[data-testid=prod-page]").text_content().lower().replace("nullable", "")
 
 
-def test_tick_cuts_and_add_them_to_needs_brief_then_assign(page):
-    goto(page, "&by=product,icp,pain_point")
+def tick_complete_rows(page, n):
+    """Tick the first n rows whose cut labels are all real (no '(none)')."""
+    done = 0
+    for i in range(page.locator("[data-testid=prod-cuts-row]").count()):
+        row = page.locator("[data-testid=prod-cuts-row]").nth(i)
+        if "(none)" not in row.text_content() and done < n:
+            row.locator("[data-testid=prod-cuts-sel]").check()
+            done += 1
+    assert done == n
+
+
+def test_cuts_without_all_five_tags_cannot_go_to_needs_brief(page):
+    goto(page, "&by=product,icp")
     page.locator("[data-testid=prod-cuts-sel]").nth(0).check()
-    page.locator("[data-testid=prod-cuts-sel]").nth(1).check()
+    page.locator("[data-testid=prod-cuts-addbl]").click()
+    assert "Group by Market cluster, Pain point" in page.locator("[data-testid=prod-cuts-selmsg]").text_content()
+    goto(page, "&by=product,cluster,icp,pain_point")
+    page.locator("[data-testid=prod-cuts-sel]").nth(0).check()
+    page.locator("[data-testid=prod-cuts-addbl]").click()
+    assert "image or video" in page.locator("[data-testid=prod-cuts-selmsg]").text_content().lower()
+
+
+def test_tick_cuts_and_add_them_to_needs_brief_then_assign(page):
+    goto(page, "&by=product,cluster,icp,pain_point")
+    tick_complete_rows(page, 2)
     assert "2 cuts ticked" in page.locator("[data-testid=prod-cuts-selbar]").text_content()
+    page.select_option("[data-testid=prod-cuts-addmedia]", "video")
     page.locator("[data-testid=prod-cuts-addbl]").click()
     page.wait_for_selector("[data-testid=prod-cuts-selhint]")
     page.locator("[data-testid=prod-view-backlog]").click()
@@ -242,10 +264,15 @@ def test_adding_by_hand_and_pipeline_share_metric_and_media_cut(page):
     page.wait_for_selector("[data-testid=prod-bl-empty]")
     page.locator("[data-testid=prod-bl-add] > summary").click()
     page.fill("[data-testid=prod-bl-add-pain]", "Hair Loss")
+    page.select_option("[data-testid=prod-bl-add-product]", "beef-liver")
+    page.select_option("[data-testid=prod-bl-add-media]", "image")
+    page.fill("[data-testid=prod-bl-add-cluster]", "Hair Thinning")
+    page.fill("[data-testid=prod-bl-add-icp]", "Denise")
     page.locator("[data-testid=prod-bl-add-go]").click()
     page.wait_for_selector("[data-testid=prod-bl-table]")
-    assert "Hair Loss" in page.locator("[data-testid=prod-bl-row]").first.text_content()
+    assert page.locator("[data-testid=prod-bl-row] [data-testid=prod-bl-pain_point]").first.input_value() == "Hair Loss"
     goto(page)
+    assert "% of concepts in pipeline" in heads(page)                                                  # on by default
     page.locator("[data-testid=prod-cuts-metrics] > summary").click()
-    page.locator("[data-testid=prod-cuts-metric-pipeline_share]").check()
-    assert "% of pipeline concepts" in heads(page)
+    page.locator("[data-testid=prod-cuts-metric-pipeline_share]").uncheck()
+    assert "% of concepts in pipeline" not in heads(page)
