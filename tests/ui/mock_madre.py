@@ -45,7 +45,3 @@ def register(app, deps):
         resp = jsonify(error="no video for this ad")
         resp.status_code = 404
         return resp
-
-    @app.post("/api/priorities/backlog")
-    def mock_backlog_add():
-        return jsonify(created=[{"id": 1}], skipped=[]), 201
