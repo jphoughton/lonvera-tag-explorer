@@ -49,6 +49,15 @@
 .mr-mt td.mr-n, .mr-pt td.mr-n { font-family: var(--mono); }
 .mr-mt td.mr-up { color: var(--good); font-weight: 600; }
 .mr-mt td.mr-down { color: var(--bad); font-weight: 600; }
+.mr-mt { --mr-box: color-mix(in srgb, var(--text) 32%, var(--line)); }
+.mr-mt:not(.mr-vt) { border-collapse: separate; border-spacing: 0; }
+.mr-mt .mr-gs { border-left: 1px solid var(--mr-box); }
+.mr-mt .mr-ge { border-right: 1px solid var(--mr-box); }
+.mr-mt th.mr-grp { border-top: 1px solid var(--mr-box); }
+.mr-mt tr.mr-last td.mr-g0, .mr-mt tr.mr-last td.mr-g1 { border-bottom-color: var(--mr-box); }
+.mr-mt .mr-g1 { background: var(--head-bg); }
+.mr-mt .mr-gv { background: var(--accent-bg); }
+.mr-mt th.mr-grp.mr-gv { color: var(--accent-ink); border-bottom-width: 3px; }
 .mr-vt { margin-top: auto; width: 60%; font-size: 13px; }
 .mr-vt td, .mr-vt th { padding: 3px 9px; }
 .mr-pk { display: block; color: var(--text); font-weight: 600; }
