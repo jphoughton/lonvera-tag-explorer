@@ -1,6 +1,7 @@
 """The Needs brief queue (app/priorities_backlog.py, /api/priorities/backlog): add cuts for a week, edit, remove, and assign a partner and a brief to several at once, which creates board tickets."""
 import pytest
 
+from .test_api_keys import fresh_throttle, key, mint                                                # noqa: F401  (fixtures)
 from .test_api_priorities_assign import MONDAY, NEXT_MONDAY, clean                                   # noqa: F401  (fixture: clean)
 
 ITEM = {"product": "vita-bull", "cluster": "Energy", "icp": "Given Up Guy", "pain_point": "Low T", "media_type": "video"}
