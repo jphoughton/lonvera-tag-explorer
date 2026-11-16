@@ -213,7 +213,7 @@ function enableStickyHeader(frame, table) {
     inner.style.transform = `translateX(${-frame.scrollLeft}px)`;
   };
   let pending = false;
-  const tick = () => { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; update(); }); };
+  const tick = () => { if (pending) return; pending = true; const run = () => { if (!pending) return; pending = false; update(); }; requestAnimationFrame(run); setTimeout(run, 60); };     // a frame, or 60 ms if the page is in a background tab and frames are paused
   window.addEventListener('scroll', tick, { passive: true }); window.addEventListener('resize', tick); frame.addEventListener('scroll', tick, { passive: true });
   const gone = new MutationObserver(() => { if (!table.isConnected) cleanup(); });                                  // the table left the page (another view, another page): remove the copy at once
   gone.observe(document.body, { childList: true, subtree: true });
