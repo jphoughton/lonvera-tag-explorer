@@ -120,6 +120,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
     });
     // the work itself, in one block: a tab per variation (Original, Hook 2 ...), the first one already open as a player (Google Drive files and folders), and what is said in it underneath
     const vars = variationList(r);
+    if (r.creative_url && vars.length && vars.every((v) => !v.url)) vars[0] = { ...vars[0], url: r.creative_url };      // a ticket whose variations carry no link of their own (Studio Flow) shows the creative link as its Original
     const items = vars.length ? vars : (r.creative_url ? [{ label: 'Creative', url: r.creative_url }] : []);
     const tmap = new Map();                                                          // label -> transcript, filled when the transcripts arrive
     const viewer = h('div', { class: 'prod-viewer', 'data-testid': 'prod-viewer' });
