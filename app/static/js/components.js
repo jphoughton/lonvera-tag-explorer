@@ -20,9 +20,13 @@ export function viewSwitch(active, G, platform = 'meta') {
   const mk = (label, key, to) => h('a', { class: 'seg', href: to, 'data-platform-view': key, 'aria-current': active === key ? 'page' : null, 'aria-pressed': String(active === key) }, label);
   const g = { ...G };
   delete g.type; delete g.product; delete g.only; delete g.chart; delete g.platform;
+  // Meta also has the no-attribution view; only the date range carries over to it (it has no stage, Numbers from or comparison)
+  const na = { ...g };
+  for (const k of ['source', 'basis', 'stage', 'compare', 'cfrom', 'cto', 'perday', 'active']) delete na[k];
   return h('div', { class: 'ctl', id: 'view-switch' }, h('span', { class: 'ctl-name' }, 'View by'),
     h('span', { class: 'segs', role: 'group', 'aria-label': 'View by' }, mk(first, 'home', platformUrl('/', platform, g)), mk('Campaigns', 'campaigns', platformUrl('/campaigns', platform, g)),
-      platform === 'meta' ? mk('Countries', 'countries', platformUrl('/countries', platform, g)) : null));
+      platform === 'meta' ? mk('Countries', 'countries', platformUrl('/countries', platform, g)) : null,
+      platform === 'meta' ? mk('No attribution', 'noattr', href('/no-attribution', na)) : null));
 }
 
 // "Numbers: Upstack · new customers": which numbers the table beside it shows; text kept current by controls.js (refreshSrcBadges) on every flip

@@ -40,6 +40,8 @@ export const PAGES = [
   { id: 'amazon', re: /^\/amazon\/?$/, filters: ['platform', 'range'], parent: toOverview, defaults: { window: '30d' }, skipDefaultsWhen: (p) => hasDateWindow(p) || p.window === 'launch' },
   // Countries is a Meta view: the platform picker and the range only; it opens on the last 30 days
   { id: 'countries', re: /^\/countries\/?$/, filters: ['platform', 'range'], parent: ({ G }) => platformUrl('/', 'meta', G), defaults: { window: '30d' }, skipDefaultsWhen: (p) => hasDateWindow(p) || p.window === 'launch' },
+  // No attribution (a view of Meta's products): the platform picker and the range only; it opens on the last 30 days
+  { id: 'no-attribution', re: /^\/no-attribution\/?$/, filters: ['platform', 'range'], parent: ({ G }) => platformUrl('/', 'meta', G), defaults: { window: '30d' }, skipDefaultsWhen: (p) => hasDateWindow(p) || p.window === 'launch' },
   { id: 'campaigns', re: /^\/campaigns\/?$/, filters: ALL_FILTERS, parent: ({ G }) => platformUrl('/', currentPlatform(), G) },
   // Test to scale is about stages and has no comparison; it opens on the last 30 days
   { id: 'promotions', re: /^\/promotions\/?$/, filters: ['platform', 'source', 'range'], parent: toOverview, defaults: { window: '30d' }, skipDefaultsWhen: (p) => hasDateWindow(p) || p.window === 'launch' },
