@@ -14,7 +14,7 @@ export function breadcrumbs(items) {
         it.href && i !== last ? h('a', { href: it.href }, it.chip || null, it.label) : h('span', it.chip || null, it.label)))));
 }
 
-// "View: Products | Campaigns" (Meta) or "Overview | Campaigns" (Google): the two views of a platform; the range, stage and numbers choice carry over (platform stays in G)
+// "View: Products | Campaigns | Countries" (Meta) or "Overview | Campaigns" (Google): the two views of a platform; the range, stage and numbers choice carry over (platform stays in G)
 export function viewSwitch(active, G, platform = 'meta') {
   const first = platform === 'meta' ? 'Products' : platform === 'all' ? 'Platforms' : 'Overview';
   const mk = (label, key, to) => h('a', { class: 'seg', href: to, 'data-platform-view': key, 'aria-current': active === key ? 'page' : null, 'aria-pressed': String(active === key) }, label);
@@ -25,6 +25,7 @@ export function viewSwitch(active, G, platform = 'meta') {
   for (const k of ['source', 'basis', 'stage', 'compare', 'cfrom', 'cto', 'perday', 'active']) delete na[k];
   return h('div', { class: 'ctl', id: 'view-switch' }, h('span', { class: 'ctl-name' }, 'View by'),
     h('span', { class: 'segs', role: 'group', 'aria-label': 'View by' }, mk(first, 'home', platformUrl('/', platform, g)), mk('Campaigns', 'campaigns', platformUrl('/campaigns', platform, g)),
+      platform === 'meta' ? mk('Countries', 'countries', platformUrl('/countries', platform, g)) : null,
       platform === 'meta' ? mk('No attribution', 'noattr', href('/no-attribution', na)) : null));
 }
 

@@ -89,6 +89,10 @@ import mock_amazon  # noqa: E402  (Amazon: /api/amazon/*, built on the real payl
 
 mock_amazon.register(app, dict(Bad=Bad))
 
+import mock_countries  # noqa: E402  (Countries: /api/meta/countries, built on the real payload code in app/countries.py over made-up rows)
+
+mock_countries.register(app, dict(Bad=Bad))
+
 import mock_noattr  # noqa: E402  (No attribution: /api/no-attribution/products, built on the real payload code in app/no_attribution.py)
 
 mock_noattr.register(app, dict(Bad=Bad))
@@ -150,7 +154,7 @@ def shell(*_a, **_k):
     return send_from_directory(STATIC, "index.html")
 
 
-for rule in ("/", "/login", "/google", "/amazon", "/no-attribution", "/campaigns", "/promotions", "/madre-review", "/trends", "/daily", "/email", "/inventory/history", "/priorities", "/priorities/v/<tok>", "/priorities/production", "/competitors", "/priorities/vendor/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
+for rule in ("/", "/login", "/google", "/amazon", "/no-attribution", "/campaigns", "/countries", "/promotions", "/madre-review", "/trends", "/daily", "/email", "/inventory/history", "/priorities", "/priorities/v/<tok>", "/priorities/production", "/competitors", "/priorities/vendor/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
     app.add_url_rule(rule, endpoint="shell" + rule, view_func=shell)
 
 

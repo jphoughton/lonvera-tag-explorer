@@ -434,6 +434,70 @@ def pull_nc_hourly(ctx: Ctx, span: Span) -> list[tuple]:
     return out
 
 
+# ---------------------------------------------------------------------------------------------------------------- new customers by ship-to country (Shopify)
+
+COUNTRY_CHUNK_DAYS = 90                               # a backfill is cut into windows that fit the warehouse's 150 s statement timeout
+
+# Same first-order rule as nc_product / nc_hourly (customer key = shopify_customer_id, else lower(email); earliest processed_at then id, over ALL history), but the
+# jsonb column is read only for the first orders whose Pacific day is inside the window, and only for two country codes and the test flag. Country = the ship-to
+# address, else the billing address, else 'unknown'. Revenue = total_price (US dollars). A first order flagged as a test order is dropped (the customer is not counted),
+# as in nc_product; unlike nc_product, an order without priced lines still counts (the rule here is "the customer's first order", whatever it holds).
+NC_COUNTRY_SQL = """
+    WITH keyed AS (
+        SELECT id, processed_at, COALESCE(NULLIF(shopify_customer_id, ''), NULLIF(lower(email), '')) AS ck
+        FROM shopify_orders
+        WHERE processed_at IS NOT NULL
+    ),
+    firsts AS (
+        SELECT DISTINCT ON (ck) id, processed_at
+        FROM keyed
+        WHERE ck IS NOT NULL
+        ORDER BY ck, processed_at, id
+    ),
+    window_firsts AS (
+        SELECT f.id, ((f.processed_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/Los_Angeles')::date AS pt_day
+        FROM firsts f
+        WHERE ((f.processed_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/Los_Angeles')::date BETWEEN %(since)s AND %(until)s
+    )
+    SELECT w.pt_day AS day,
+           COALESCE(NULLIF(upper(btrim(o.raw_data->'shipping_address'->>'country_code')), ''),
+                    NULLIF(upper(btrim(o.raw_data->'billing_address'->>'country_code')), ''),
+                    'unknown') AS country_code,
+           COUNT(*) AS new_customers,
+           ROUND(SUM(COALESCE(o.total_price, 0))::numeric, 2) AS new_customer_revenue
+    FROM window_firsts w
+    JOIN shopify_orders o ON o.id = w.id
+    WHERE COALESCE(o.raw_data->>'test', '') <> 'true'
+    GROUP BY 1, 2
+    ORDER BY 1, 2
+"""
+NC_COUNTRY_COLS = ("day", "country_code", "new_customers", "new_customer_revenue")
+
+
+def _chunks(span: Span, days: int):
+    d = span.since
+    while d <= span.until:
+        end = min(span.until, d + dt.timedelta(days=days - 1))
+        yield Span(d, end)
+        d = end + dt.timedelta(days=1)
+
+
+def nc_country_rows(rows: list[tuple]) -> list[tuple]:
+    """(day, country_code, customers, revenue) from the warehouse -> typed rows, one per (day, country), sorted."""
+    out = [(day, str(cc), int(n), round2(rev)) for day, cc, n, rev in rows]
+    out.sort(key=lambda r: (r[0], r[1]))
+    return out
+
+
+def pull_nc_by_country(ctx: Ctx, span: Span) -> list[tuple]:
+    w, rows = get_warehouse(ctx), []
+    for sp in _chunks(span, COUNTRY_CHUNK_DAYS):
+        rows += w.query(NC_COUNTRY_SQL, {"since": sp.since, "until": sp.until})
+    if not rows:
+        raise FeedEmpty("nc_by_country_daily: no first orders in the window; nothing written")
+    return nc_country_rows(rows)
+
+
 # ---------------------------------------------------------------------------------------------------------------- sheet parser (units)
 
 def sheet_rows_units_amazon(grid: list[list]) -> list[tuple]:
@@ -476,4 +540,8 @@ FEEDS = [
          delete_where=_amazon_units_where, scope_where="location = 'amazon'", metrics=(Metric("units", **_COUNT),),
          sheet_tab="Amazon - Product Daily", sheet_parser=("etl.feeds.expandfi_feeds", "sheet_rows_units_amazon"),
          notes="Same pull as the sheet's Amazon - Product Daily: quantity_shipped by purchase day and product; 'Other' not stored."),
+    Feed("nc_by_country_daily", "New customers by country (ExpandFi)", "expandfi", "nc_by_country_daily", "nc_by_country_daily", NC_COUNTRY_COLS, ("day", "country_code"), "day",
+         pull=pull_nc_by_country, days=21, stale_after=3, native=True, non_fatal=True, history_start=dt.date(2024, 1, 1),
+         notes="Shopify first orders by Pacific day and ship-to country (no sheet twin); feeds the Countries view. Same first-order rule as nc_product, revenue = total_price. "
+               "Trailing 21 days per run; `python -m etl.feeds run --only nc_by_country_daily --backfill` loads everything from 2024-01-01 in 90-day windows."),
 ]

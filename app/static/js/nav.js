@@ -58,6 +58,7 @@ const RESOLVE = [
   { re: /^\/daily\/?$/, section: 'performance', page: 'daily' },
   { re: /^\/email\/?$/, section: 'performance', page: 'email' },
   { re: /^\/campaigns\/?$/, section: 'performance', page: 'campaigns' },
+  { re: /^\/countries\/?$/, section: 'performance', page: 'meta' },
   { re: /^\/no-attribution\/?$/, section: 'performance', page: 'meta' },
   { re: /^\/(p|ad)\//, section: 'performance', page: 'meta' },
   { re: /^\/amazon\/?$/, section: 'performance', page: 'amazon' },

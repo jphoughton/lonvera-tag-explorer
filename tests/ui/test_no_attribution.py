@@ -40,8 +40,8 @@ def test_meta_products_page_links_to_the_view_and_the_range_carries_over(page):
     page.wait_for_selector("[data-testid=products-table] tbody tr[data-key]")
     idle(page)
     segs = page.locator("#view-switch .seg")
-    assert [s.inner_text() for s in segs.all()] == ["Products", "Campaigns", "No attribution"]
-    segs.nth(2).click()
+    assert [s.inner_text() for s in segs.all()] == ["Products", "Campaigns", "Countries", "No attribution"]
+    segs.nth(3).click()
     page.wait_for_selector(f"[data-testid={TABLE}] tbody tr[data-key]")
     idle(page)
     assert page.evaluate("location.pathname") == "/no-attribution" and qparams(page).get("window") == "14d"
