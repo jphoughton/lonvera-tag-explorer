@@ -101,7 +101,7 @@ Live URL: https://web-production-358da.up.railway.app
 
 ### Docs index
 
-`docs/CONTRACT.md` (metric rules), `DEPLOY.md`, `DATA_SCHEMA.md` (generated), `AGENT_DATA_GUIDE.md` (read-only SQL quick start), `CREATIVE_PRIORITIES.md` (priorities, production, API keys), `UPSTACK_SOURCE.md`, `TEST_TO_SCALE.md`, `TRENDS.md`, `AUTO_TAG.md`, `TAG_LOOKUP.md`, `ALERTS.md`, `BACKUP.md`, `COMPETITOR_ADS.md`, `AMAZON_MTD.md`, `PLATFORMS.md`, `projection/*`. There is no `docs/PRODUCTION_*.md`; production board documentation is the "Production" section of `docs/CREATIVE_PRIORITIES.md`.
+`docs/CONTRACT.md` (metric rules), `DEPLOY.md`, `DATA_SCHEMA.md` (generated), `AGENT_DATA_GUIDE.md` (read-only SQL quick start), `CREATIVE_PRIORITIES.md` (priorities, production, API keys), `PRIORITY_SCORE.md` (per-cut "make more creative" score and its backtest), `UPSTACK_SOURCE.md`, `TEST_TO_SCALE.md`, `TRENDS.md`, `AUTO_TAG.md`, `TAG_LOOKUP.md`, `ALERTS.md`, `BACKUP.md`, `COMPETITOR_ADS.md`, `AMAZON_MTD.md`, `PLATFORMS.md`, `projection/*`. There is no `docs/PRODUCTION_*.md`; production board documentation is the "Production" section of `docs/CREATIVE_PRIORITIES.md`.
 
 ## 3. Pages and what serves them
 
