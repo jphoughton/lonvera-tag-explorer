@@ -6,9 +6,9 @@ import { h, fmt, isNum, href } from '../util.js';
 import { openModal } from '../modal.js';
 import { multiCtl } from '../ui/pagefilters.js';
 import { api } from '../api.js';
-import { today, addDays } from './production_common.js';
+import { today, addDays, mondayOf, weekLabel, toast } from './production_common.js';
 
-export const DIMS = [['product', 'Product'], ['cluster', 'Market cluster'], ['icp', 'ICP'], ['pain_point', 'Pain point'], ['vendor', 'Vendor']];
+export const DIMS = [['product', 'Product'], ['cluster', 'Market cluster'], ['icp', 'ICP'], ['pain_point', 'Pain point'], ['vendor', 'Vendor'], ['media', 'Image / video']];
 const DIM_LABEL = Object.fromEntries(DIMS);
 const STAGE_FALLBACK = [['assigned', 'Assigned'], ['brief_sent', 'Brief sent'], ['in_production', 'In production'], ['in_review', 'In review'], ['ready', 'Ready to launch'], ['launched', 'Launched']];
 const PRESETS = [['7', 'Last 7 days'], ['14', 'Last 14 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['mtd', 'This month'], ['lastmonth', 'Last month']];
@@ -18,7 +18,7 @@ export const METRICS = [
   ['nc_roas', 'NC ROAS', (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–'), 'New-customer revenue / spend (Upstack)'], ['nc_cpa', 'NC CPA', fmt.money2, 'Spend per new customer (Upstack)'],
   ['meta_roas', 'Meta ROAS', (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–'), 'Meta-reported revenue / spend; counts returning customers'], ['cpm', 'CPM', fmt.money2, 'Spend per 1,000 impressions'],
   ['ctr', 'CTR', (v) => (isNum(v) ? (v * 100).toFixed(2) + '%' : '–'), 'Link clicks / impressions'], ['cplc', 'Cost per link click', fmt.money2, 'Spend / link clicks'],
-  ['spend_share', '% of spend', (v) => (isNum(v) ? (v * 100).toFixed(1) + '%' : '–'), 'This cut\'s share of all spend in the window (the Total row)'], ['rev_share', '% of NC revenue', (v) => (isNum(v) ? (v * 100).toFixed(1) + '%' : '–'), 'This cut\'s share of all new-customer revenue in the window'],
+  ['pipeline_share', '% of pipeline concepts', (v) => (isNum(v) ? (v * 100).toFixed(1) + '%' : '–'), 'This cut\'s share of all concepts in the pipeline (assigned through ready to launch)'], ['spend_share', '% of spend', (v) => (isNum(v) ? (v * 100).toFixed(1) + '%' : '–'), 'This cut\'s share of all spend in the window (the Total row)'], ['rev_share', '% of NC revenue', (v) => (isNum(v) ? (v * 100).toFixed(1) + '%' : '–'), 'This cut\'s share of all new-customer revenue in the window'],
   ['conv_rate', 'Conv rate', (v) => (isNum(v) ? (v * 100).toFixed(2) + '%' : '–'), 'New customers / link clicks'], ['aov', 'AOV', fmt.money2, 'Average order value of new customers'],
 ];
 // Quick filters: each is a plain rule over a cut's row. BASE is the blended NC ROAS of every cut in the window (the Total row); "working" = at or above it with at least MIN_SPEND spent.
@@ -27,6 +27,7 @@ export const MIN_SPEND = 1000;
 const OPEN = ['assigned', 'brief_sent', 'in_production', 'in_review', 'ready'];
 export const openCount = (r) => OPEN.reduce((n, k) => n + (r.stages[k] || 0), 0);
 const working = (r, base) => (r.stats.spend || 0) >= MIN_SPEND && isNum(r.stats.nc_roas) && isNum(base) && r.stats.nc_roas >= base;
+const QV_COLOR = { stuck: 'pri-cc-sec-faded', gap: 'pri-cc-sec-iterate', scale: 'pri-cc-sec-new', ready: 'pri-cc-sec-proposal', dark: 'pri-cc-sec-stop' };
 export const QUICK = [
   ['', 'All cuts', 'Every cut', () => true],
   ['stuck', 'Lots in pipeline, not working', `3 or more concepts in the pipeline, at least $${MIN_SPEND.toLocaleString('en-US')} spent, and NC ROAS below the blended NC ROAS of all cuts in the window`, (r, base) => openCount(r) >= 3 && (r.stats.spend || 0) >= MIN_SPEND && isNum(r.stats.nc_roas) && isNum(base) && r.stats.nc_roas < base],
@@ -56,6 +57,9 @@ export function presetRange(key, now = today()) {
 export function cutsView({ host, st, filters, signal, onState, say }) {
   let out = null;
   let metricOpen = false;
+  const sel = new Map();                                         // rows ticked for Needs brief: key = the cut's labels, value = the row
+  const rowKey = (r) => JSON.stringify(out.group.map((d) => r.labels[d]));
+  let addWeek = mondayOf(today());
   let seq = 0;
   const builder = h('div', { class: 'prod-cuts-builder', 'data-testid': 'prod-cuts-builder' });
   const when = h('div', { class: 'prod-cuts-when', 'data-testid': 'prod-cuts-when' });
@@ -219,13 +223,32 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
       combos = d.combos || [];
       drawFilters();
       const T = d.totals.stats;
-      for (const r of [...d.rows, { stats: T }]) { r.stats.spend_share = T.spend ? r.stats.spend / T.spend : null; r.stats.rev_share = T.nc_revenue ? r.stats.nc_revenue / T.nc_revenue : null; }
+      const openTotal = openCount({ stages: d.totals.stages });
+      for (const r of [...d.rows, { stats: T, stages: d.totals.stages }]) { r.stats.pipeline_share = openTotal ? openCount(r) / openTotal : null; r.stats.spend_share = T.spend ? r.stats.spend / T.spend : null; r.stats.rev_share = T.nc_revenue ? r.stats.nc_revenue / T.nc_revenue : null; }
       drawTable();
     } catch (e) {
       if (e && e.name === 'AbortError') throw e;
       if (mine !== seq) return;
       say(e.message || 'Could not load the cuts.', true);
     } finally { if (mine === seq) tableHost.classList.remove('prod-cuts-busy'); }
+  }
+  // ---- Needs brief: add the ticked cuts to the backlog for a week
+  function selBar() {
+    if (!sel.size) return h('p', { class: 'pri-sub prod-cuts-selhint', 'data-testid': 'prod-cuts-selhint' }, 'Tick cuts to add them to Needs brief for a week.');
+    const weeks = [...new Set([...Array.from({ length: 6 }, (_, i) => addDays(mondayOf(today()), 7 * i)), addWeek])].sort();
+    const msg = h('span', { class: 'pri-err', role: 'alert', 'data-testid': 'prod-cuts-selmsg' });
+    return h('div', { class: 'prod-cuts-selbar', 'data-testid': 'prod-cuts-selbar' }, h('strong', null, `${sel.size} cut${sel.size === 1 ? '' : 's'} ticked`),
+      h('label', { class: 'ctl' }, h('span', { class: 'ctl-label' }, 'For week'), h('select', { 'data-testid': 'prod-cuts-addweek', onchange: (e) => { addWeek = e.target.value; } }, weeks.map((w) => h('option', { value: w, selected: w === addWeek }, weekLabel(w))))),
+      h('button', { type: 'button', class: 'btn primary small', 'data-testid': 'prod-cuts-addbl', onclick: async () => {
+        const items = [...sel.values()].map((r) => { const it = {}; for (const d of out.group) { const v = r.labels[d]; if (v && v !== '(none)' && ['product', 'cluster', 'icp', 'pain_point', 'media'].includes(d)) { if (d === 'media') it.media_type = v.toLowerCase(); else it[d] = d === 'product' ? (PRODUCT_SLUG[v] || v) : v; } } return it; });
+        msg.textContent = '';
+        if (items.some((it) => !['product', 'cluster', 'icp', 'pain_point'].some((k) => it[k]))) { msg.textContent = 'Group by at least one of Product, Market cluster, ICP or Pain point to add cuts.'; return; }
+        try {
+          const r = await api('/api/priorities/backlog', {}, { method: 'POST', body: { items, for_week: addWeek } });
+          toast(`${r.created.length} added to Needs brief for ${weekLabel(addWeek).toLowerCase()}${r.skipped.length ? `, ${r.skipped.length} already there` : ''}.`);
+          sel.clear(); drawTable();
+        } catch (e) { if (e && e.name === 'AbortError') throw e; msg.textContent = e.message || 'Could not add.'; } } }, 'Add to Needs brief'),
+      h('button', { type: 'button', class: 'btn small', 'data-testid': 'prod-cuts-selclear', onclick: () => { sel.clear(); drawTable(); } }, 'Clear'), msg);
   }
   const stageList = () => (out && out.stages ? out.stages.map((s) => [s.status, s.label]) : STAGE_FALLBACK);
   const val = (row, key) => (key.startsWith('label:') ? (row.labels[key.slice(6)] || '') : key.startsWith('stage:') ? row.stages[key.slice(6)] : key === 'open' ? openCount(row) : row.stats[key]);
@@ -256,8 +279,8 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
       return h('th', { scope: 'col', class: right ? 'prod-num' : null, title: title || null, 'aria-sort': on ? (st.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none' },
         h('button', { type: 'button', class: 'prod-sortbtn', 'data-testid': 'prod-cuts-sort-' + key.replace(':', '-'), onclick: () => { st.sort = on ? { key, dir: st.sort.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: typeof val(rows[0] || { labels: {}, stages: {}, stats: {} }, key) === 'string' ? 'asc' : 'desc' }; changed(); drawTable(); } }, text, on ? (st.sort.dir === 'asc' ? ' ▲' : ' ▼') : ''));
     };
-    const heads = [...out.group.map((d) => sortBtn('label:' + d, DIM_LABEL[d])), ...shown.map(([k, t]) => sortBtn('stage:' + k, t, 'Concepts at this status (not dropped)', true)), sortBtn('open', 'Concepts in pipeline', 'Concepts given out and not yet launched (assigned through ready to launch); dropped ones left out', true), ...metrics.map(([k, t, , tip]) => sortBtn(k, t, tip, true))];
-    const cells = (r, total) => [...out.group.map((d, i) => h('td', { class: 'prod-c prod-cut-label' + (r.labels[d] === '(none)' ? ' prod-cut-none' : '') }, total ? (i === 0 ? 'Total' : '') : r.labels[d])),
+    const heads = [h('th', { scope: 'col' }, h('input', { type: 'checkbox', 'aria-label': 'Select all shown cuts', 'data-testid': 'prod-cuts-selall', checked: rows.length > 0 && rows.every((r) => sel.has(rowKey(r))), onchange: (e) => { for (const r of rows) { if (e.target.checked) sel.set(rowKey(r), r); else sel.delete(rowKey(r)); } drawTable(); } })), ...out.group.map((d) => sortBtn('label:' + d, DIM_LABEL[d])), ...shown.map(([k, t]) => sortBtn('stage:' + k, t, 'Concepts at this status (not dropped)', true)), sortBtn('open', 'Concepts in pipeline', 'Concepts given out and not yet launched (assigned through ready to launch); dropped ones left out', true), ...metrics.map(([k, t, , tip]) => sortBtn(k, t, tip, true))];
+    const cells = (r, total) => [h('td', { class: 'prod-c' }, total ? null : h('input', { type: 'checkbox', 'aria-label': 'Select this cut for Needs brief', 'data-testid': 'prod-cuts-sel', checked: sel.has(rowKey(r)), onchange: (e) => { if (e.target.checked) sel.set(rowKey(r), r); else sel.delete(rowKey(r)); drawTable(); } })), ...out.group.map((d, i) => h('td', { class: 'prod-c prod-cut-label' + (r.labels[d] === '(none)' ? ' prod-cut-none' : '') }, total ? (i === 0 ? 'Total' : '') : r.labels[d])),
       ...shown.map(([k]) => h('td', { class: 'prod-c prod-num' + (r.stages[k] ? ' prod-cut-has' : ' prod-cut-zero'), 'data-stage': k }, r.stages[k] ? String(r.stages[k]) : '–')),
       h('td', { class: 'prod-c prod-num', 'data-metric': 'open' }, openCount(r) ? String(openCount(r)) : '–'), ...metrics.map(([k, , f]) => h('td', { class: 'prod-c prod-num', 'data-metric': k }, f(r.stats[k])))];
     const tot = { labels: {}, stages: out.totals.stages, concepts: out.totals.concepts, stats: out.totals.stats };
@@ -272,13 +295,16 @@ export function cutsView({ host, st, filters, signal, onState, say }) {
     columns.addEventListener('toggle', () => { metricOpen = columns.open; });
     tableHost.replaceChildren(
       h('div', { class: 'prod-cuts-toolbar' },
-        h('div', { class: 'prod-cuts-quick', 'data-testid': 'prod-cuts-quick', role: 'group', 'aria-label': 'Quick filters' },
-          QUICK.map(([k, t, tip, fn]) => h('button', { type: 'button', class: 'prod-qf', 'aria-pressed': String(st.quick === k), title: tip, 'data-testid': 'prod-cuts-quick-' + (k || 'all'),
-            onclick: () => { st.quick = k; changed(); drawTable(); } }, t, ' ', h('span', { class: 'prod-qf-n' }, String(inScope.filter((r) => fn(r, base)).length))))),
+        h('div', { class: 'prod-qv' }, h('span', { class: 'prod-cuts-zonelabel', id: 'prod-qv-l' }, 'Quick view'),
+          h('div', { class: 'prod-cuts-quick', 'data-testid': 'prod-cuts-quick', role: 'group', 'aria-labelledby': 'prod-qv-l' },
+            QUICK.map(([k, t, tip, fn]) => h('button', { type: 'button', class: 'pri-chipbtn pri-cc ' + (QV_COLOR[k] || ''), 'aria-pressed': String(st.quick === k), 'data-on': String(st.quick === k && k !== ''), title: tip, 'data-testid': 'prod-cuts-quick-' + (k || 'all'),
+              onclick: () => { st.quick = k; changed(); drawTable(); } }, h('span', { class: 'pri-cdot', 'aria-hidden': 'true' }), t, ' ', h('span', { class: 'prod-qf-n' }, String(inScope.filter((r) => fn(r, base)).length))))),
+          h('p', { class: 'pri-sub prod-qv-desc', 'data-testid': 'prod-cuts-quick-desc' }, h('strong', null, quick[1] + ': '), quick[0] ? quick[2] + '.' : 'Every cut in the table. Pick a quick view to narrow it to the cuts that need attention.')),
         columns),
+      selBar(),
       rows.length
         ? h('div', { class: 'prod-scroll prod-cuts-scroll', 'data-testid': 'prod-cuts-scroll' }, h('table', { class: 'pri-table prod-table prod-cuts-table', 'data-testid': 'prod-cuts-table' },
-          h('thead', null, h('tr', null, heads)), h('tbody', null, h('tr', { class: 'prod-cuts-total', 'data-testid': 'prod-cuts-total' }, cells(tot, true)), rows.map((r) => h('tr', { 'data-testid': 'prod-cuts-row', class: 'prod-cuts-clickrow', tabindex: '0', title: 'Click to see the ads behind this row', onclick: (e) => { if (!e.target.closest('a, button')) openAds(r); }, onkeydown: (e) => { if (e.key === 'Enter') openAds(r); } }, cells(r, false))))))
+          h('thead', null, h('tr', null, heads)), h('tbody', null, h('tr', { class: 'prod-cuts-total', 'data-testid': 'prod-cuts-total' }, cells(tot, true)), rows.map((r) => h('tr', { 'data-testid': 'prod-cuts-row', class: 'prod-cuts-clickrow', tabindex: '0', title: 'Click to see the ads behind this row', onclick: (e) => { if (!e.target.closest('a, button, input, label')) openAds(r); }, onkeydown: (e) => { if (e.key === 'Enter' && !e.target.closest('input')) openAds(r); } }, cells(r, false))))))
         : h('p', { 'data-testid': 'prod-cuts-empty' }, 'No cuts match these filters and dates.'),
       h('p', { class: 'pri-sub prod-cuts-basis', 'data-testid': 'prod-cuts-basis' }, `${out.from} to ${out.to}. ${out.basis} Status columns count production concepts (dropped ones left out) for the chosen week, vendor and product filters; they do not depend on the dates. A concept with no ICP or pain point yet shows under (none). Quick filters: blended NC ROAS of all cuts here is ${isNum(base) ? fmt.roas(base) + 'x' : 'n/a'}; working = at least $${MIN_SPEND.toLocaleString('en-US')} spent and NC ROAS at or above it; in pipeline = concepts not yet launched. `
         + (out.warning || '')));

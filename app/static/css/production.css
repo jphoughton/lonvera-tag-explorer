@@ -540,3 +540,21 @@ body.prod-drawer-open { overflow: hidden; }
 .prod-cutads-cut dd { margin: 0; font-size: 14px; font-weight: 600; }
 .prod-cutads-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; margin: 4px 0 8px; font-size: 13px; }
 @media (max-width: 720px) { .prod-colpanel { position: static; width: auto; grid-template-columns: minmax(0, 1fr); } }
+
+/* quick view chips reuse the Priorities Action chips (pri-cc); only the layout and the count badge are local */
+.prod-qv { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 520px; }
+.prod-qv .prod-cuts-quick { display: flex; flex-wrap: wrap; gap: 8px; }
+.prod-qv .pri-cc { padding: 4px 12px 4px 10px; font-size: 13px; }
+.prod-qv .pri-cdot { width: 9px; height: 9px; border-radius: 50%; background: var(--cc); flex: 0 0 auto; }
+.prod-qv .pri-cc[data-on="true"] .pri-cdot { background: #fff; }
+.prod-qv .pri-cc[data-on="true"] .prod-qf-n { background: rgba(255, 255, 255, .25); color: #fff; }
+.prod-qv-desc { margin: 2px 0 0; max-width: 110ch; }
+
+/* Needs brief queue and the By cut selection bar */
+.prod-cuts-selbar, .prod-bl-assign { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 14px; margin: 6px 0 10px; padding: 8px 12px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-bg); }
+.prod-cuts-selhint { margin: 4px 0; }
+.prod-bl-add { margin: 8px 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.prod-bl-add > summary { cursor: pointer; font-weight: 700; font-size: 13px; }
+.prod-bl-add .ctl-row { margin-top: 8px; align-items: flex-end; }
+.prod-bl-table td input[type=text] { width: 100%; min-width: 160px; font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); }
+.prod-bl-bar { margin: 6px 0; }

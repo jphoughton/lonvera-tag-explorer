@@ -12,8 +12,8 @@ import psycopg
 
 from . import priorities_assign as pa, queries as q
 
-DIMS = ("product", "cluster", "icp", "pain_point", "vendor")
-DIM_LABELS = {"product": "Product", "cluster": "Market cluster", "icp": "ICP", "pain_point": "Pain point", "vendor": "Vendor"}
+DIMS = ("product", "cluster", "icp", "pain_point", "vendor", "media")
+DIM_LABELS = {"product": "Product", "cluster": "Market cluster", "icp": "ICP", "pain_point": "Pain point", "vendor": "Vendor", "media": "Image / video"}
 PRODUCT_NAMES = {"vita-bull": "Vita Bull", "beef-liver": "Beef Liver", "boneflex": "Boneflex", "vita-belle": "Vita Belle"}
 STATUSES = ("assigned", "brief_sent", "in_production", "in_review", "ready", "launched")
 NONE = "(none)"
@@ -22,11 +22,11 @@ MAX_DAYS = 800
 # tag per tracker family: the linemap tag when there is one, else the tracker's own columns. first row of the family only, so a family counts once.
 CUT_CTE = """
 WITH fam AS (
-  SELECT DISTINCT ON (tr.family_key) tr.family_key, tr.id, p.slug AS product, tr.vendor, tr.tracker_cluster, tr.tracker_icp, tr.tracker_pain
+  SELECT DISTINCT ON (tr.family_key) tr.family_key, tr.id, p.slug AS product, tr.vendor, tr.ad_type, tr.tracker_cluster, tr.tracker_icp, tr.tracker_pain
   FROM tracker_rows tr JOIN products p ON p.id = tr.product_id
   ORDER BY tr.family_key, tr.sheet_row NULLS LAST, tr.id
 ), tagged AS (
-  SELECT f.family_key, f.product, NULLIF(btrim(f.vendor), '') AS vendor,
+  SELECT f.family_key, f.product, NULLIF(btrim(f.vendor), '') AS vendor, CASE upper(btrim(f.ad_type)) WHEN 'VID' THEN 'Video' WHEN 'IMG' THEN 'Image' END AS media,
          COALESCE(NULLIF(btrim(g.cluster), ''), NULLIF(btrim(f.tracker_cluster), '')) AS cluster,
          COALESCE(NULLIF(btrim(g.icp), ''), NULLIF(btrim(f.tracker_icp), '')) AS icp,
          COALESCE(NULLIF(btrim(g.pain_point), ''), NULLIF(btrim(f.tracker_pain), '')) AS pain_point
@@ -35,21 +35,21 @@ WITH fam AS (
 """
 
 SQL_META = CUT_CTE + """
-SELECT t.product, t.vendor, t.cluster, t.icp, t.pain_point, sum(d.spend) AS spend, sum(d.link_clicks) AS clicks, sum(d.impressions) AS impressions, sum(d.purchases) AS meta_purchases, sum(d.conv_value) AS meta_revenue,
+SELECT t.product, t.vendor, t.media, t.cluster, t.icp, t.pain_point, sum(d.spend) AS spend, sum(d.link_clicks) AS clicks, sum(d.impressions) AS impressions, sum(d.purchases) AS meta_purchases, sum(d.conv_value) AS meta_revenue,
        count(DISTINCT t.family_key) FILTER (WHERE d.spend > 0) AS ads_spending
 FROM ad_daily d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
-WHERE d.day BETWEEN %s AND %s{flt} GROUP BY 1, 2, 3, 4, 5
+WHERE d.day BETWEEN %s AND %s{flt} GROUP BY 1, 2, 3, 4, 5, 6
 """
 # unique live ads: tracker families (one per ad however many copies it has) that spent in the last two loaded days. Not tied to the date window: live is a now-state.
 SQL_LIVE = CUT_CTE + """
-SELECT t.product, t.vendor, t.cluster, t.icp, t.pain_point, count(DISTINCT t.family_key) AS live_ads
+SELECT t.product, t.vendor, t.media, t.cluster, t.icp, t.pain_point, count(DISTINCT t.family_key) AS live_ads
 FROM ad_daily d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
-WHERE d.spend > 0 AND d.day >= (SELECT max(day) FROM ad_daily) - 1{flt} GROUP BY 1, 2, 3, 4, 5
+WHERE d.spend > 0 AND d.day >= (SELECT max(day) FROM ad_daily) - 1{flt} GROUP BY 1, 2, 3, 4, 5, 6
 """
 SQL_NC = CUT_CTE + """
-SELECT t.product, t.vendor, t.cluster, t.icp, t.pain_point, sum(d.purchases) AS nc_purchases, sum(d.conv_value) AS nc_revenue
+SELECT t.product, t.vendor, t.media, t.cluster, t.icp, t.pain_point, sum(d.purchases) AS nc_purchases, sum(d.conv_value) AS nc_revenue
 FROM ad_daily_upstack_nc d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
-WHERE d.day BETWEEN %s AND %s{flt} GROUP BY 1, 2, 3, 4, 5
+WHERE d.day BETWEEN %s AND %s{flt} GROUP BY 1, 2, 3, 4, 5, 6
 """
 SQL_COMBOS = CUT_CTE + "SELECT DISTINCT product, cluster, icp, pain_point FROM tagged"
 
@@ -174,7 +174,7 @@ def cuts(conn, group: list[str], raw_from: str | None, raw_to: str | None, week=
         st = status_of(r)
         if r.get("stage") == "dropped" or r.get("dropped_at") or st not in STATUSES or (want and r.get("product") not in want) or not keep(r):
             continue
-        s = slot({d: r.get(d) for d in DIMS})
+        s = slot({**{d: r.get(d) for d in DIMS}, "media": {"video": "Video", "image": "Image"}.get(r.get("media_type")) or ("Video" if r.get("format_code") else None)})      # the ticket's own Image / video choice; when none, a creative format (F1 to F6) is a video style
         s["stages"][st] += 1
         s["concepts"] += 1
 

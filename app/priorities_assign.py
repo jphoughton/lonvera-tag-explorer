@@ -25,7 +25,7 @@ FORMATS = [{"code": "F1", "name": "Long animated story, openly AI, told by the c
            {"code": "F3", "name": "Short acted scene with two people", "length": "30 to 60s"}, {"code": "F4", "name": "Whiteboard explainer", "length": "60 to 90s"},
            {"code": "F5", "name": "Opens on a sound", "length": "30 to 60s"}, {"code": "F6", "name": "Animated song", "length": "45 to 90s"}]
 CREATE_FIELDS = ("vendor", "for_week", "note", "format_code")
-PATCH_FIELDS = ("vendor", "for_week", "note", "format_code", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped", "status", "due_date", "priority", "position", "comment", "concept_name", "concept_kind", "variations", "cluster", "story")
+PATCH_FIELDS = ("vendor", "for_week", "note", "format_code", "media_type", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped", "status", "due_date", "priority", "position", "comment", "concept_name", "concept_kind", "variations", "cluster", "story")
 PATCH_BOOLS = ("ready", "launched", "dropped")
 VENDOR_PATCH_FIELDS = ("creative_url", "vendor_note", "ready", "status", "comment")
 # the board (migration 245): the stored status of an assignment, in column order. `dropped` is not a status (dropped_at hides the card in an archived lane).
@@ -73,6 +73,16 @@ def monday_of(d) -> dt.date:
 
 
 # ---------------------------------------------------------------------------------------------------------------- validation
+def _media_type(raw):
+    """image | video, or None when not chosen. Case does not matter."""
+    if raw in (None, ""):
+        return None
+    v = str(raw).strip().lower()
+    if v not in ("image", "video"):
+        raise q.ApiError(400, "media_type must be image or video")
+    return v
+
+
 def _format_code(raw):
     """A format code as typed: blank or null means none (None); otherwise trimmed text. Whether it is a real, active format is check_format's job (needs the list)."""
     if raw is None or (isinstance(raw, str) and not raw.strip()):
@@ -205,6 +215,8 @@ def clean_patch(body: dict) -> dict:
         out["position"] = clean_position(body["position"])
     if "concept_name" in body:
         out["concept_name"] = _text(body["concept_name"], "concept name", LIMITS["concept_name"])
+    if "media_type" in body:
+        out["media_type"] = _media_type(body["media_type"])
     if "concept_kind" in body:
         if body["concept_kind"] in (None, ""):
             out["concept_kind"] = None
@@ -412,7 +424,7 @@ VENDOR_RECENT_DAYS = 28                      # the vendor page also shows what w
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{22,64}")
 COLS = ("id, concept_key, text_key, product, vendor, line_id, manual_id, line_code, cluster, icp, pain_point, story, section_at_assign, note, vendor_note, for_week, brief_url, creative_url, "
         "brief_at, creative_at, ready_at, launched_at, dropped_at, tracker_concept_ids, created_at, updated_at, created_by, updated_by")
-STRUCT_COLS = ("concept_name", "concept_kind", "variations", "tag_state", "tagged_at", "tag_note")                                         # migration 258: the ticket fields; a database without it still serves every page
+STRUCT_COLS = ("concept_name", "concept_kind", "media_type", "variations", "tag_state", "tagged_at", "tag_note")                                         # migration 258: the ticket fields; a database without it still serves every page
 BOARD_COLS = ("status", "due_date", "priority", "position", "status_changed_at")        # migration 245; a database without it still serves every page (status is then derived from the links)
 FMT_COLS = ("format_code", "format_name", "format_length")                               # on every row; None when no format was chosen (or migration 204 is not applied)
 INTERNAL_ONLY = ("note", "created_by", "updated_by", "suggested_concept_ids")          # never sent to a vendor link page
@@ -716,6 +728,7 @@ def _ticket_fields(conn, body: dict) -> dict:
     if product and product not in PRODUCT_SLUGS:
         raise q.ApiError(400, "product must be one of: " + ", ".join(PRODUCT_SLUGS))
     cluster = _text(body.get("cluster"), "cluster", 200)
+    media = _media_type(body.get("media_type"))
     kind = body.get("concept_kind")
     if kind in (None, ""):
         kind = None
@@ -733,7 +746,7 @@ def _ticket_fields(conn, body: dict) -> dict:
     story = "\n\n".join(dict.fromkeys(x for x in (story, brief_text) if x))                 # the brief text is the story the ticket shows
     pending = bool(story or brief_url) and not (product and cluster and kind)
     return {"name": name, "product": product, "cluster": cluster, "kind": kind, "vendor": vendor, "week": week, "status": status, "variations": variations, "concept_ids": ids, "story": story,
-            "tag_state": "pending" if pending else "complete", "icp": _text(body.get("icp"), "icp", 200), "pain": _text(body.get("pain_point"), "pain point", 200), "note": _text(body.get("note"), "note", LIMITS["note"]),
+            "media": media, "tag_state": "pending" if pending else "complete", "icp": _text(body.get("icp"), "icp", 200), "pain": _text(body.get("pain_point"), "pain point", 200), "note": _text(body.get("note"), "note", LIMITS["note"]),
             "brief": brief_url, "due": (week + dt.timedelta(days=4)) if body.get("due_date") in (None, "") else _date(body["due_date"], "due date"), "format": _format_code(body.get("format_code"))}
 
 
@@ -741,10 +754,10 @@ def _insert_ticket(w, t: dict, user: str | None) -> int:
     pos = w.execute("SELECT COALESCE(max(position), 0) + 1 AS p FROM creative_priorities_assignments WHERE status = %s AND dropped_at IS NULL", (t["status"],)).fetchone()["p"]
     row = w.execute(
         """INSERT INTO creative_priorities_assignments (concept_key, text_key, product, vendor, line_code, cluster, icp, pain_point, story, section_at_assign, note, for_week, created_by, updated_by,
-               concept_name, concept_kind, variations, tracker_concept_ids, format_code, brief_url, brief_at, status, due_date, priority, position, status_changed_at, tag_state)
-           VALUES (%s,%s,%s,%s,'',%s,%s,%s,%s,'test',%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,CASE WHEN %s::text IS NOT NULL THEN now() END,%s,%s,'normal',%s,now(),%s) RETURNING id""",
+               concept_name, concept_kind, media_type, variations, tracker_concept_ids, format_code, brief_url, brief_at, status, due_date, priority, position, status_changed_at, tag_state)
+           VALUES (%s,%s,%s,%s,'',%s,%s,%s,%s,'test',%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,CASE WHEN %s::text IS NOT NULL THEN now() END,%s,%s,'normal',%s,now(),%s) RETURNING id""",
         ("ticket:" + secrets.token_hex(8), text_key({"product": t["product"], "cluster": t["cluster"], "icp": t["icp"], "pain_point": t["pain"]}), t["product"], t["vendor"], t["cluster"], t["icp"], t["pain"], t["story"], t["note"],
-         t["week"], user, user, t["name"], t["kind"], t["variations"], t["concept_ids"], t["format"], t["brief"], t["brief"], t["status"], t["due"], pos, t["tag_state"])).fetchone()
+         t["week"], user, user, t["name"], t["kind"], t["media"], t["variations"], t["concept_ids"], t["format"], t["brief"], t["brief"], t["status"], t["due"], pos, t["tag_state"])).fetchone()
     _log(w, row["id"], user, "assigned", None, "assigned", f"{t['vendor']}, week of {t['week']}")
     if t["status"] != "assigned":
         _log(w, row["id"], user, "status_changed", "assigned", t["status"], "Added on the board")
@@ -940,7 +953,7 @@ def _update(aid: int, f: dict, user: str | None, vendor: str | None = None, lega
                 note = "" if legacy_ready else check_transition(was, new_status, vendor=vendor is not None, creative_url=creative, comment=comment)
             sets: list[str] = []
             params: list = []
-            for c in ("vendor", "for_week", "note", "vendor_note", "format_code", "due_date", "priority", "position", "concept_name", "concept_kind", "variations", "cluster", "story"):
+            for c in ("vendor", "for_week", "note", "vendor_note", "format_code", "due_date", "priority", "position", "concept_name", "concept_kind", "media_type", "variations", "cluster", "story"):
                 if c in f:
                     sets.append(f"{c} = %s")
                     params.append(f[c])

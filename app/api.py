@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, g, jsonify, request
 from werkzeug.datastructures import MultiDict
 
-from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -896,6 +896,56 @@ def priorities_cut_ads():
     """The ads behind one cut (the popup on a By cut row): ?product=<slug> &cluster= &icp= &pain_point= &vendor= (any subset; '(none)' = untagged) &from= &to= -> {cut, from, to, window: [ad], top: [ad], warning}.
     window = unique ads tagged to the cut that spent in the dates (top 60 by spend) with Meta and Upstack new-customer numbers; top = the 5 biggest spenders since launch (Meta basis). See app/priorities_cuts.py (cut_ads)."""
     return jsonify(pcu.cut_ads(db.get_conn(), {d: _arg(d) for d in pcu.DIMS}, _arg("from"), _arg("to")))
+
+
+def _backlog_guard():
+    """Backlog writes: signed-in users only (an API key is refused), same-origin, rate limited like Assign to vendor."""
+    if g.get("api_key_scope") in ak.PARTNER_SCOPES:
+        raise q.ApiError(403, "This key cannot change the Needs brief queue.")
+    return _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
+
+
+@bp.get("/api/priorities/backlog")
+def priorities_backlog():
+    """The Needs brief queue: ?week=YYYY-MM-DD[,..] (snaps to Mondays) &include_assigned=1 -> {rows: [{id, product, product_name, cluster, icp, pain_point, title, for_week, note, status, assignment_id, created_by, created_at, updated_at}], vendors, ready}.
+    See app/priorities_backlog.py."""
+    return jsonify(pbl.list_items(db.get_conn(), week=_arg("week"), include_assigned=request.args.get("include_assigned") in ("1", "true")))
+
+
+@bp.post("/api/priorities/backlog")
+def priorities_backlog_add():
+    """Add cuts to Needs brief: {items: [{product?, cluster?, icp?, pain_point?, title?, note?, for_week?}] (1 to 100), for_week?} -> {created, skipped} (201). Signed-in users only."""
+    blocked = _backlog_guard()
+    if blocked is not None:
+        return blocked
+    return jsonify(pbl.add_items(db.get_conn(), _json_body(), auth.current_user())), 201
+
+
+@bp.patch("/api/priorities/backlog/<int:item_id>")
+def priorities_backlog_update(item_id: int):
+    """Change a waiting item: {for_week?, note?, title?}. Signed-in users only."""
+    blocked = _backlog_guard()
+    if blocked is not None:
+        return blocked
+    return jsonify(pbl.update_item(db.get_conn(), item_id, _json_body()))
+
+
+@bp.delete("/api/priorities/backlog/<int:item_id>")
+def priorities_backlog_remove(item_id: int):
+    """Remove a waiting item (assigned ones stay as history). Signed-in users only."""
+    blocked = _backlog_guard()
+    if blocked is not None:
+        return blocked
+    return jsonify(pbl.remove_items(db.get_conn(), [item_id]))
+
+
+@bp.post("/api/priorities/backlog/assign")
+def priorities_backlog_assign():
+    """Assign a partner and a brief to waiting items: {ids: [...], vendor, brief_url? and / or brief?, status?, note?} -> {created: [ticket cards], assigned: [ids]}. One board ticket per item, for the item's own week. Signed-in users only."""
+    blocked = _backlog_guard()
+    if blocked is not None:
+        return blocked
+    return jsonify(pbl.assign(db.get_conn(), _json_body(), auth.current_user())), 201
 
 
 @bp.get("/api/priorities/vendor-capacity")

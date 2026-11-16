@@ -11,6 +11,7 @@ pytestmark = pytest.mark.mock_only
 def fresh(ctx, base_url):
     ctx.request.post(base_url + "/__test/assign/reset")
     ctx.request.post(base_url + "/__test/board/seed")
+    ctx.request.post(base_url + "/__test/backlog/reset")
 
 
 def idle(page):
@@ -24,7 +25,7 @@ def goto(page, qs=""):
 
 
 def heads(page):
-    return [t.strip().rstrip("▲▼ ").strip() for t in page.locator("[data-testid=prod-cuts-table] thead th").all_text_contents()]
+    return [t.strip().rstrip("▲▼ ").strip() for t in page.locator("[data-testid=prod-cuts-table] thead th").all_text_contents()][1:]       # the first column is the tick box
 
 
 def drag(page, src, dst, dx=0):
@@ -50,7 +51,7 @@ def test_by_cut_view_lists_cuts_with_status_counts_and_stats(page):
     assert heads(page)[:2] == ["Product", "ICP"]
     assert "Concepts in pipeline" in heads(page) and "Live concepts" in heads(page) and "Spend" in heads(page) and "NC ROAS" in heads(page) and "Meta ROAS" in heads(page)
     assert page.locator("[data-testid=prod-cuts-row]").count() > 0
-    assert page.locator("[data-testid=prod-cuts-total] td").first.text_content() == "Total"
+    assert page.locator("[data-testid=prod-cuts-total] td").nth(1).text_content() == "Total"
     assert "Mock basis." in page.locator("[data-testid=prod-cuts-basis]").text_content()
 
 
@@ -192,7 +193,7 @@ def test_filter_by_pain_point_and_icp_narrows_rows(page):
     first.check()
     page.keyboard.press("Escape")
     page.wait_for_function("(n) => document.querySelectorAll('[data-testid=prod-cuts-row]').length < n", arg=n)
-    cells = page.locator("[data-testid=prod-cuts-row] td:nth-child(3)").all_text_contents()
+    cells = page.locator("[data-testid=prod-cuts-row] td:nth-child(4)").all_text_contents()
     assert cells and all(c.strip() == label for c in cells)
     assert "fp=" in page.url
     page.locator("[data-testid=prod-cuts-f-clear]").click()
@@ -211,3 +212,40 @@ def test_popup_hides_ads_under_250_dollars_until_unticked(page):
 def test_no_stray_null_text_in_the_view(page):
     goto(page)
     assert "null" not in page.locator("[data-testid=prod-page]").text_content().lower().replace("nullable", "")
+
+
+def test_tick_cuts_and_add_them_to_needs_brief_then_assign(page):
+    goto(page, "&by=product,icp,pain_point")
+    page.locator("[data-testid=prod-cuts-sel]").nth(0).check()
+    page.locator("[data-testid=prod-cuts-sel]").nth(1).check()
+    assert "2 cuts ticked" in page.locator("[data-testid=prod-cuts-selbar]").text_content()
+    page.locator("[data-testid=prod-cuts-addbl]").click()
+    page.wait_for_selector("[data-testid=prod-cuts-selhint]")
+    page.locator("[data-testid=prod-view-backlog]").click()
+    page.wait_for_selector("[data-testid=prod-bl-table]")
+    assert page.locator("[data-testid=prod-bl-row]").count() == 2
+    page.locator("[data-testid=prod-bl-sel]").nth(0).check()
+    page.locator("[data-testid=prod-bl-assign]").click()
+    assert "Choose a partner" in page.locator("[data-testid=prod-bl-err]").text_content()
+    page.select_option("[data-testid=prod-bl-vendor]", "Madre")
+    page.locator("[data-testid=prod-bl-assign]").click()
+    assert "brief" in page.locator("[data-testid=prod-bl-err]").text_content().lower()
+    page.fill("[data-testid=prod-bl-brief-url]", "https://docs.example/brief")
+    page.locator("[data-testid=prod-bl-assign]").click()
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-bl-row]').length === 1")
+
+
+def test_adding_by_hand_and_pipeline_share_metric_and_media_cut(page):
+    goto(page, "&by=media")
+    assert heads(page)[0] == "Image / video"
+    page.locator("[data-testid=prod-view-backlog]").click()
+    page.wait_for_selector("[data-testid=prod-bl-empty]")
+    page.locator("[data-testid=prod-bl-add] > summary").click()
+    page.fill("[data-testid=prod-bl-add-pain]", "Hair Loss")
+    page.locator("[data-testid=prod-bl-add-go]").click()
+    page.wait_for_selector("[data-testid=prod-bl-table]")
+    assert "Hair Loss" in page.locator("[data-testid=prod-bl-row]").first.text_content()
+    goto(page)
+    page.locator("[data-testid=prod-cuts-metrics] > summary").click()
+    page.locator("[data-testid=prod-cuts-metric-pipeline_share]").check()
+    assert "% of pipeline concepts" in heads(page)

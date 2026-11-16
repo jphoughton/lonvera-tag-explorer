@@ -12,6 +12,7 @@ import { eventLine, STAGES, STATUSES, STATUS_LABEL, statusOf, VENDOR_FALLBACK, m
 import { board as boardView, loadBars } from './production_board.js';
 import { plan as planView } from './production_plan.js';
 import { openDrawer } from './production_drawer.js';
+import { backlogView } from './production_backlog.js';
 import { cutsView, presetRange, DIMS as CUT_DIMS, METRICS as CUT_METRICS, QUICK as CUT_QUICK } from './production_cuts.js';
 const vendorLinkUrl = (tok) => `${location.origin}/priorities/vendor/${tok}`;
 export { mondayOf, addDays, today, VENDOR_FALLBACK, formatLabel, resultText };           // used by priorities_assign.js (the Assign to vendor dialog on /priorities)
@@ -27,7 +28,7 @@ function historyCell(r) {
 
 export async function productionPage(ctx) {
   showControls(false);
-  const VIEWS = [['board', 'Board'], ['list', 'List'], ['plan', 'Plan'], ['cuts', 'By cut']];
+  const VIEWS = [['board', 'Board'], ['list', 'List'], ['plan', 'Plan'], ['cuts', 'By cut'], ['backlog', 'Needs brief']];
   const st = { view: VIEWS.some(([k]) => k === ctx.params.view) ? ctx.params.view : 'board', week: ctx.params.week || '', vendor: ctx.params.vendor || '', product: ctx.params.product || '', cluster: ctx.params.cluster || '', icp: ctx.params.icp || '', pain: ctx.params.pain || '', closed: ctx.params.closed === '1',
     stage: ctx.params.stage || '', overdue: ctx.params.overdue === '1', q: ctx.params.q || '', group: ctx.params.group === 'vendor' ? 'vendor' : '', card: ctx.params.card || '', cols: { priority: false, ready: false } };
   const CUT_KEYS = CUT_DIMS.map(([k]) => k);
@@ -39,6 +40,7 @@ export async function productionPage(ctx) {
     stages: ctx.params.cs ? ctx.params.cs.split(',').filter((k) => CUT_STAGES.includes(k)) : CUT_STAGES.slice(), sort: { key: ctx.params.sort || '', dir: ctx.params.dir === 'asc' ? 'asc' : 'desc' },
     metrics: ctx.params.ms ? ctx.params.ms.split(',').filter((k) => CUT_METRICS.some(([m]) => m === k)) : CUT_METRICS.map(([k]) => k).filter((k) => !k.endsWith('_share')), f: { cluster: (ctx.params.fc || '').split('|').filter(Boolean), icp: (ctx.params.fi || '').split('|').filter(Boolean), pain_point: (ctx.params.fp || '').split('|').filter(Boolean) }, quick: CUT_QUICK.some(([k]) => k && k === ctx.params.qf) ? ctx.params.qf : '' };
   if (!st.cuts.by.length) st.cuts.by = ['product', 'icp'];
+  let backlog = null;                                          // the Needs brief view (production_backlog.js)
   let cuts = null;                                             // the By cut view (production_cuts.js)
   let data = { rows: [], vendors: [], weeks: [] };          // the List payload (GET /api/priorities/assignments); also the source of vendors, weeks and formats for every view
   let board = null;                                           // the Board payload (GET /api/priorities/board)
@@ -75,7 +77,7 @@ export async function productionPage(ctx) {
     try { meta = await api('/api/priorities/assignments', {}, { signal: ctx.signal }); } catch (e) { abortOk(e); meta = meta || { vendors: [], weeks: [], formats: [] }; }
   }
   async function load() {
-    if (st.view === 'cuts') { board = null; await ensureMeta(); return; }
+    if (st.view === 'cuts' || st.view === 'backlog') { board = null; if (st.view === 'cuts') await ensureMeta(); return; }
     if (st.view === 'list') {
       data = await api('/api/priorities/assignments', { week: st.week, vendor: st.vendor, include_closed: st.closed ? 1 : '' }, { signal: ctx.signal });
       meta = null;
@@ -193,6 +195,7 @@ export async function productionPage(ctx) {
         { key: 'product', label: 'Product (optional)', type: 'select', value: picked(st.product).length === 1 ? picked(st.product)[0] : '', options: [['', 'Let the system decide'], ...Object.entries(PRODUCT_NAMES)] },
         { key: 'cluster', label: 'Market Cluster (optional)', type: 'text', value: '', placeholder: 'Let the system decide' },
         { key: 'concept_kind', label: 'New vs Iteration (optional)', type: 'select', value: '', options: [['', 'Let the system decide'], ['new', 'New'], ['iteration', 'Iteration']] },
+        { key: 'media_type', label: 'Image or video (optional)', type: 'select', value: '', options: [['', 'Not chosen'], ['video', 'Video'], ['image', 'Image']] },
         { key: 'brief_url', label: 'Brief link (optional)', type: 'text', value: '', placeholder: 'https://' }] });
     if (!res) return;
     try {
@@ -308,15 +311,15 @@ export async function productionPage(ctx) {
     const weeks = [...new Set([...weeksList(), ...picked(st.week)])].sort().reverse();
     const list = st.view === 'list';
     const plan = st.view === 'plan';
-    const cutv = st.view === 'cuts';
+    const cutv = st.view === 'cuts' || st.view === 'backlog';
     const all = data.rows || [];
     const keys = Object.keys(STAGES).filter((k) => st.closed || (k !== 'launched' && k !== 'dropped'));
     const count = (k) => all.filter((r) => r.stage === k).length;
     const controls = filterRow(
-      seg({ name: 'View', options: VIEWS.map(([k, l]) => [k, l, `${l} view`, 'prod-view-' + k]), value: st.view, onChange: (v) => { st.view = v; root.dataset.view = v; board = null; cuts = null; sync(); drawChrome(); reload(); }, testid: 'prod-view' }),
-      plan ? null : multiCtl({ name: 'Week', allLabel: 'All weeks', options: weeks.map((w) => [w, weekLabel(w)]), values: picked(st.week), onChange: (v) => { st.week = v.join(','); refresh(); }, testid: 'prod-week' }),
-      plan ? null : multiCtl({ name: 'Vendor', allLabel: 'All vendors', options: vendorNames().map((v) => [v, v]), values: picked(st.vendor), onChange: (v) => { st.vendor = v.join(','); refresh(); }, testid: 'prod-vendor' }),
-      plan ? null : multiCtl({ name: 'Product', allLabel: 'All products', options: Object.entries(PRODUCT_NAMES), values: picked(st.product), onChange: (v) => { st.product = v.join(','); sync(); if (list) drawView(); else reload(); drawChrome(); }, testid: 'prod-product-filter' }),
+      seg({ name: 'View', options: VIEWS.map(([k, l]) => [k, l, `${l} view`, 'prod-view-' + k]), value: st.view, onChange: (v) => { st.view = v; root.dataset.view = v; board = null; cuts = null; backlog = null; sync(); drawChrome(); reload(); }, testid: 'prod-view' }),
+      plan || st.view === 'backlog' ? null : multiCtl({ name: 'Week', allLabel: 'All weeks', options: weeks.map((w) => [w, weekLabel(w)]), values: picked(st.week), onChange: (v) => { st.week = v.join(','); refresh(); }, testid: 'prod-week' }),
+      plan || st.view === 'backlog' ? null : multiCtl({ name: 'Vendor', allLabel: 'All vendors', options: vendorNames().map((v) => [v, v]), values: picked(st.vendor), onChange: (v) => { st.vendor = v.join(','); refresh(); }, testid: 'prod-vendor' }),
+      plan || st.view === 'backlog' ? null : multiCtl({ name: 'Product', allLabel: 'All products', options: Object.entries(PRODUCT_NAMES), values: picked(st.product), onChange: (v) => { st.product = v.join(','); sync(); if (list) drawView(); else reload(); drawChrome(); }, testid: 'prod-product-filter' }),
       ...[['Cluster', 'cluster', 'cluster', 'All clusters', 'prod-cluster-filter'], ['ICP', 'icp', 'icp', 'All ICPs', 'prod-icp-filter'], ['Pain point', 'pain_point', 'pain', 'All pain points', 'prod-pain-filter']].map(([name, field, key, all, tid]) => (plan || cutv ? null
         : multiCtl({ name, allLabel: all, options: facetValues(field, st[key]).map((v) => [v, v]), values: picked(st[key]), onChange: (v) => { st[key] = v.join(','); sync(); drawView(); drawChrome(); }, testid: tid }))),
       plan || cutv ? null : checkCtl({ label: 'Overdue only', checked: st.overdue, onChange: (v) => { st.overdue = v; sync(); drawView(); }, testid: 'prod-overdue-only' }),
@@ -364,9 +367,15 @@ export async function productionPage(ctx) {
     }
     return cuts.refresh().catch(() => {});
   }
+  function drawBacklog() {
+    if (!backlog) { backlog = backlogView({ host: viewHost, signal: ctx.signal, say, goBoard: true }); return backlog.init().catch(() => {}); }
+    return backlog.refresh().catch(() => {});
+  }
   function drawView() {
     if (st.view !== 'cuts') cuts = null;
-    if (st.view === 'cuts') drawCuts();
+    if (st.view !== 'backlog') backlog = null;
+    if (st.view === 'backlog') drawBacklog();
+    else if (st.view === 'cuts') drawCuts();
     else if (st.view === 'list') drawList();
     else if (st.view === 'plan') drawPlan();
     else {
