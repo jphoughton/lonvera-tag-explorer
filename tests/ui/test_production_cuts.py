@@ -387,3 +387,16 @@ def test_a_metric_column_can_be_dragged_within_the_table_and_flashes(page):
     assert "mo=" in page.url and page.locator(".prod-th-ghost").count() == 0
     page.locator("[data-testid=prod-cuts-sort-aov]").click()                                                   # a plain click on the header still sorts
     assert page.locator("[data-testid=prod-cuts-sort-aov]").locator("xpath=..").get_attribute("aria-sort") in ("descending", "ascending")
+
+
+def test_the_score_explainer_opens_in_a_popup_with_weights_and_the_backtest(page):
+    goto(page, "&by=icp")
+    url = page.url
+    page.locator("[data-testid=prod-scorehelp-open]").click()
+    page.wait_for_selector("[data-testid=prod-scorehelp-title]")
+    text = page.locator(".prod-scorehelp").text_content()
+    for needle in ("Hit rate", "40%", "Supply gap", "25%", "Pipeline discount", "Make more now", "Does it work?", "Honest limits", "Cuts nobody has tested", "Untested"):
+        assert needle in text, needle
+    assert page.url == url
+    page.keyboard.press("Escape")
+    assert page.locator(".prod-scorehelp").count() == 0
