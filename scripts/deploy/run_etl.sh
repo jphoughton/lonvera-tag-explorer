@@ -1,8 +1,8 @@
 #!/bin/sh
 # ETL service entrypoint (Railway cron): migrate, then the daily refresh. Exits non-zero on failure so the
 # Railway deployment is marked failed (visible in the dashboard / notifications).
-# Usage: run_etl.sh                -> python -m etl.run_daily, then etl.upstack_daily (Upstack source), then etl.stage_moves (Test to scale tables), then etl.projection_daily, then etl.amazon_mtd, then etl.inventory_snapshots (non-fatal), then etl.competitor_ads --if-sunday (non-fatal), then etl.assignment_tags (non-fatal), then etl.production_status (non-fatal), then etl.klaviyo --days 14 (non-fatal), then etl.meta_changes --days 3 (non-fatal), then etl.daily_story (non-fatal), then etl.auto_tag (non-fatal) (all always run; non-zero if any failed)
-# Usage: run_etl.sh                -> python -m etl.run_daily, then etl.upstack_daily (Upstack source), then etl.stage_moves (Test to scale tables), then etl.projection_daily, then etl.amazon_mtd, then etl.creative_priorities --if-sunday (non-fatal; runs AFTER the competitor step when that exists, it reads the competitor_concepts view), then etl.assignment_tags (non-fatal), then etl.production_status (non-fatal), then etl.klaviyo --days 14 (non-fatal), then etl.meta_changes --days 3 (non-fatal), then etl.daily_story (non-fatal), then etl.auto_tag (non-fatal) (all always run; non-zero if any failed)
+# Usage: run_etl.sh                -> python -m etl.run_daily, then etl.upstack_daily (Upstack source), then etl.stage_moves (Test to scale tables), then etl.projection_daily, then etl.amazon_mtd, then etl.inventory_snapshots (non-fatal), then etl.competitor_ads --if-sunday (non-fatal), then etl.assignment_tags (non-fatal), then etl.production_status (non-fatal), then etl.klaviyo --days 14 (non-fatal), then etl.meta_changes --days 3 (non-fatal), then etl.daily_story (non-fatal), then etl.auto_tag (non-fatal), then Sunday-only etl.competitor_chatter + etl.competitor_landing_pages (+ --own) (non-fatal) (all always run; non-zero if any failed)
+# Usage: run_etl.sh                -> python -m etl.run_daily, then etl.upstack_daily (Upstack source), then etl.stage_moves (Test to scale tables), then etl.projection_daily, then etl.amazon_mtd, then etl.creative_priorities --if-sunday (non-fatal; runs AFTER the competitor step when that exists, it reads the competitor_concepts view), then etl.assignment_tags (non-fatal), then etl.production_status (non-fatal), then etl.klaviyo --days 14 (non-fatal), then etl.meta_changes --days 3 (non-fatal), then etl.daily_story (non-fatal), then etl.auto_tag (non-fatal), then Sunday-only etl.competitor_chatter + etl.competitor_landing_pages (+ --own) (non-fatal) (all always run; non-zero if any failed)
 #        run_etl.sh <module> [args] -> python -m etl.<module> [args]   (manual one-offs, e.g. `meta_pull --days 185`)
 set -eu
 
@@ -47,6 +47,12 @@ if [ "$#" -eq 0 ]; then
   # Auto-tagging of new ads (headless Claude on the subscription token), LAST so a long run (up to ~150 ads) never delays the data steps above.
   # NON-FATAL by design: a failure is recorded in etl_runs (job auto_tag) and logged, never changes the exit code. Needs run_daily's tracker rows + metrics.
   python -m etl.auto_tag || echo "[run_etl] etl.auto_tag failed (exit $?), non-fatal; see etl_runs job auto_tag" >&2
+  # Weekly Sunday-only extras, LAST so their length (Reddit's 65 s spacing, ~200 page loads + tagging) never delays the steps above. Each is NON-FATAL and a no-op on other days (Pacific).
+  # Chatter (Google News + Reddit RSS, no model calls): table competitor_posts; failures land in etl_runs (job competitor_chatter). Reddit may be blocked from datacenter IPs: that source is then recorded failed, the rest completes.
+  python -m etl.competitor_chatter --if-sunday || echo "[run_etl] etl.competitor_chatter failed (exit $?), non-fatal; see etl_runs job competitor_chatter" >&2
+  # Landing pages of the competitors' ads (needs the competitor_ads snapshot above), then Lonvera's own top pages (--own). Headless Chromium + `claude -p` (CLAUDE_CODE_OAUTH_TOKEN) are in the jobs image.
+  python -m etl.competitor_landing_pages --if-sunday || echo "[run_etl] etl.competitor_landing_pages failed (exit $?), non-fatal; see etl_runs job competitor_landing_pages" >&2
+  python -m etl.competitor_landing_pages --if-sunday --own || echo "[run_etl] etl.competitor_landing_pages --own failed (exit $?), non-fatal; see etl_runs job competitor_landing_pages_own" >&2
   [ "$daily_rc" -eq 0 ] || echo "[run_etl] etl.run_daily failed (exit ${daily_rc})" >&2
   [ "$up_rc" -eq 0 ] || echo "[run_etl] etl.upstack_daily failed (exit ${up_rc})" >&2
   [ "$sm_rc" -eq 0 ] || echo "[run_etl] etl.stage_moves failed (exit ${sm_rc})" >&2

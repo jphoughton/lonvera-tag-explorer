@@ -8,7 +8,7 @@ Sources (see docs/COMPETITOR_ADS.md, "Chatter sources", for what was tested and 
                   that source for the run (non-fatal). Reddit has historically blocked datacenter IPs: on Railway it may return 403 for every subreddit, in
                   which case the source is recorded as failed and the rest of the run still completes.
 No model calls. Idempotent upsert into competitor_posts on (source, url). A failing source or brand is logged (db.scrub) and skipped, never fatal.
-Usage: python -m etl.competitor_chatter [--days 14] [--dry-run] [--source google_news|reddit] [--max-items N]"""
+Usage: python -m etl.competitor_chatter [--days 14] [--dry-run] [--source google_news|reddit] [--max-items N] [--if-sunday]"""
 from __future__ import annotations
 
 import argparse
@@ -299,7 +299,11 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="fetch and count; no writes")
     ap.add_argument("--source", choices=sorted(SOURCES), action="append", help="limit to a source (repeatable)")
     ap.add_argument("--max-items", type=int, default=MAX_ITEMS)
+    ap.add_argument("--if-sunday", action="store_true", help="do nothing unless today is Sunday in Pacific time (the nightly pipeline calls it every night)")
     a = ap.parse_args()
+    if a.if_sunday and dt.datetime.now(PT).weekday() != 6:
+        db.log("competitor_chatter: not Sunday (Pacific), skipped")
+        return
     with db.JobRun("competitor_chatter") as job, db.connect() as conn:
         st = run(conn, a.days, a.dry_run, a.source, a.max_items)
         job.stats = st
