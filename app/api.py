@@ -884,7 +884,7 @@ def priorities_board():
 
 @bp.get("/api/priorities/cuts")
 def priorities_cuts():
-    """Creative Pipeline by cut: ?group=product,icp (any ordered subset of product, cluster, icp, pain_point) &from= &to= (YYYY-MM-DD, default the last 30 loaded days) &week= &vendor= (pipeline side only) &product= (both sides)
+    """Creative Pipeline by cut: ?group=product,icp (any ordered subset of product, cluster, icp, pain_point, vendor) &from= &to= (YYYY-MM-DD, default the last 30 loaded days) &week= &vendor= (pipeline side only) &product= (both sides)
     -> {group, from, to, rows: [{labels, stages, concepts, stats}], totals, stages, dims, basis, warning}. Stage counts are production assignments by board status; stats are the Meta spend and Upstack new-customer return of
     ads tagged to the cut in the window. See app/priorities_cuts.py."""
     prods = [p for p in (_arg("product") or "").split(",") if p.strip()]

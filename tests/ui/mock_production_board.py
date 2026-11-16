@@ -215,13 +215,13 @@ def register(app, deps):
             spend = float(10 * days * (len("".join(lab)) % 7 + 1))
             rev = spend * 0.8
             n = max(1, round(spend / 80))
-            stats = {"spend": spend, "nc_revenue": rev, "nc_purchases": n, "nc_roas": rev / spend, "nc_cpa": spend / n, "meta_roas": 1.1, "cpm": 20.0, "ctr": 0.012, "cplc": 1.5, "conv_rate": 0.03, "aov": rev / n}
+            stats = {"live_ads": len(lab) + 1, "ads_spending": len(lab) + 2, "spend": spend, "nc_revenue": rev, "nc_purchases": n, "nc_roas": rev / spend, "nc_cpa": spend / n, "meta_roas": 1.1, "cpm": 20.0, "ctr": 0.012, "cplc": 1.5, "conv_rate": 0.03, "aov": rev / n}
             rows.append({"labels": dict(zip(group, lab)), "stages": e["stages"], "concepts": e["concepts"], "stats": stats})
             for s2 in ORDER:
                 tot[s2] += e["stages"][s2]
         rows.sort(key=lambda r: -r["stats"]["spend"])
         sp = sum(r["stats"]["spend"] for r in rows)
-        totals = {"stages": tot, "concepts": sum(r["concepts"] for r in rows), "stats": {"spend": sp, "nc_revenue": sp * 0.8, "nc_purchases": 1, "nc_roas": 0.8, "nc_cpa": sp, "meta_roas": 1.1, "cpm": 20.0, "ctr": 0.012, "cplc": 1.5, "conv_rate": 0.03, "aov": 1.0}}
+        totals = {"stages": tot, "concepts": sum(r["concepts"] for r in rows), "stats": {"live_ads": 9, "ads_spending": 12, "spend": sp, "nc_revenue": sp * 0.8, "nc_purchases": 1, "nc_roas": 0.8, "nc_cpa": sp, "meta_roas": 1.1, "cpm": 20.0, "ctr": 0.012, "cplc": 1.5, "conv_rate": 0.03, "aov": 1.0}}
         return jsonify({"group": group, "from": frm.isoformat(), "to": to.isoformat(), "rows": rows, "totals": totals, "stages": [{"status": s, "label": LABEL[s]} for s in ORDER],
                         "dims": [], "basis": "Mock basis.", "warning": None})
 

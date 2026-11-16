@@ -1,16 +1,17 @@
 // Creative Pipeline "By cut" view: production concepts counted by status next to the spend and return behind the same cuts, for a chosen date window (GET /api/priorities/cuts).
-// A cut is any ordered subset of Product, Market cluster, ICP (ideal customer profile) and Pain point. Drag the chips between "Available" and "Group by", and left or right inside "Group by", to rebuild the table.
+// A cut is any ordered subset of Product, Market cluster, ICP (ideal customer profile), Pain point and Vendor. Drag the chips between "Available" and "Group by", and left or right inside "Group by", to rebuild the table.
 // Without a mouse: Enter or Space on a chip moves it between the two boxes, the left and right arrows reorder it inside Group by.
 // Everything from the API goes in through textContent / h(). Class names and test ids start with `prod-` (never ad-, ads-, sponsor, banner, promo: ad blockers hide those).
 import { h, fmt, isNum } from '../util.js';
 import { api } from '../api.js';
 import { today, addDays } from './production_common.js';
 
-export const DIMS = [['product', 'Product'], ['cluster', 'Market cluster'], ['icp', 'ICP'], ['pain_point', 'Pain point']];
+export const DIMS = [['product', 'Product'], ['cluster', 'Market cluster'], ['icp', 'ICP'], ['pain_point', 'Pain point'], ['vendor', 'Vendor']];
 const DIM_LABEL = Object.fromEntries(DIMS);
 const STAGE_FALLBACK = [['assigned', 'Assigned'], ['brief_sent', 'Brief sent'], ['in_production', 'In production'], ['in_review', 'In review'], ['ready', 'Ready to launch'], ['launched', 'Launched']];
 const PRESETS = [['7', 'Last 7 days'], ['14', 'Last 14 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['mtd', 'This month'], ['lastmonth', 'Last month']];
 const METRICS = [
+  ['live_ads', 'Live ads', fmt.int, 'Unique ads (copies counted once) that spent in the last two loaded days, whatever the dates chosen'], ['ads_spending', 'Ads with spend', fmt.int, 'Unique ads that spent anything inside the chosen dates'],
   ['spend', 'Spend', fmt.money, 'Meta spend on ads tagged to the cut'], ['nc_revenue', 'NC revenue', fmt.money, 'Upstack new-customer revenue (first orders only)'],
   ['nc_roas', 'NC ROAS', (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–'), 'New-customer revenue / spend (Upstack)'], ['nc_cpa', 'NC CPA', fmt.money2, 'Spend per new customer (Upstack)'],
   ['meta_roas', 'Meta ROAS', (v) => (isNum(v) ? fmt.roas(v) + 'x' : '–'), 'Meta-reported revenue / spend; counts returning customers'], ['cpm', 'CPM', fmt.money2, 'Spend per 1,000 impressions'],
