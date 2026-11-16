@@ -1,5 +1,6 @@
 # Lonvera Tag Explorer: one Dockerfile, two flavors (see IMAGE_FLAVOR below).
 #   web  -> default CMD (scripts/deploy/start_web.sh: migrate, then gunicorn)
+#   tagging -> IMAGE_FLAVOR=tagging build variable on the `tagging` cron service (jobs + faster-whisper + yt-dlp + baked model)
 #   etl  -> start command override in railway.etl.json (python -m etl.run_daily), run on a cron schedule
 # Build flavor. Default `jobs` is the full image (identical to the old single-stage image): cron services etl / feeds / live / alerts.
 # `web` is the slim image (python deps + app code, no Chromium / Node / Claude CLI): set the build variable IMAGE_FLAVOR=web on the web service
@@ -52,6 +53,23 @@ USER app
 EXPOSE 8080
 # Railway ignores Docker HEALTHCHECK; its healthcheck is railway.json -> deploy.healthcheckPath (/healthz).
 CMD ["scripts/deploy/start_web.sh"]
+
+# ---- tagging: heavy + speech-to-text for the weekly `tagging` cron service (etl.competitor_tags, etl.own_ad_tags). Only that service sets IMAGE_FLAVOR=tagging, so the
+# whisper wheels (~170 MB) and the baked model (~141 MB) never touch the nightly etl / feeds / web images. The model is downloaded at BUILD time into HF_HOME and the
+# runtime is forced offline, so a run never fetches it (and a missing model fails loudly instead of re-downloading every week).
+FROM heavy AS tagging
+COPY requirements-whisper.txt ./
+RUN pip install -r requirements-whisper.txt yt-dlp==2026.10.26
+ENV HF_HOME=/opt/hf
+RUN python -c "from faster_whisper.utils import download_model; print(download_model('base'))" \
+ && chmod -R a+rX /opt/hf
+ENV HF_HUB_OFFLINE=1
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
+COPY --chown=app:app . .
+RUN chmod +x scripts/deploy/*.sh
+USER app
+EXPOSE 8080
+CMD ["scripts/deploy/run_tagging.sh"]
 
 # ---- web: slim, python deps + code only ----
 FROM base AS web
