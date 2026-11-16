@@ -4,10 +4,10 @@ from __future__ import annotations
 import datetime as dt
 import re
 
-from flask import Blueprint, Response, current_app, g, jsonify, request
+from flask import Blueprint, Response, current_app, g, jsonify, request, send_file
 from werkzeug.datastructures import MultiDict
 
-from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_cut_views as pcv, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, promotions as promo, queries as q, scale_views as sv, trends as trn
+from . import amazon as amz, api_keys as ak, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_cut_views as pcv, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, madre_review as mrv, madre_media as mmed, promotions as promo, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -493,6 +493,24 @@ def promotions_scale():
     conn = db.get_conn()
     meta = q.meta_for_source(q.load_meta(conn), q.parse_source(request.args)[0])
     return jsonify(sv.scale_views(conn, meta, request.args, product_slug=_arg("product")))
+
+
+@bp.get("/api/madre-review")
+def madre_review():
+    """Madre review: a weekly deck for one creative vendor, Meta-reported. week=YYYY-MM-DD (any day; snaps to its Monday; default the latest complete Monday-Sunday week with data), vendor= (default Madre).
+    Slides (overview, then Vita Bull, Beef Liver, Boneflex sections, then notes), plus the ads and tickets the side panels open. See app/madre_review.py."""
+    return jsonify(mrv.payload(db.get_conn(), request.args))
+
+
+@bp.get("/api/madre-review/video")
+def madre_review_video():
+    """The video of one ad family for the Madre review side panel (family=<tracker family key>), streamed from a cached copy of the Drive file with Range support. 404 when there is no video to play."""
+    fam = _arg("family") or ""
+    r = db.get_conn().execute("SELECT asset_url FROM analytics.creative_tracker WHERE family_key = %s AND is_first_row ORDER BY (asset_url IS NULL), tracker_row_id LIMIT 1", (fam,)).fetchone()
+    path = mmed.get_video(fam, (r or {}).get("asset_url"))
+    if path is None:
+        raise q.ApiError(404, "no video for this ad")
+    return send_file(path, mimetype="video/mp4", conditional=True, max_age=3600)
 
 
 @bp.get("/api/priorities")

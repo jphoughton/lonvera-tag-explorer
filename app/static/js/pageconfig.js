@@ -41,6 +41,7 @@ export const PAGES = [
   { id: 'campaigns', re: /^\/campaigns\/?$/, filters: ALL_FILTERS, parent: ({ G }) => platformUrl('/', currentPlatform(), G) },
   // Test to scale is about stages and has no comparison; it opens on the last 30 days
   { id: 'promotions', re: /^\/promotions\/?$/, filters: ['platform', 'source', 'range'], parent: toOverview, defaults: { window: '30d' }, skipDefaultsWhen: (p) => hasDateWindow(p) || p.window === 'launch' },
+  { id: 'madre-review', re: /^\/madre-review\/?$/, filters: [], parent: toOverview },
   { id: 'trends', re: /^\/trends\/?$/, filters: [], parent: toOverview },
   { id: 'daily', re: /^\/daily\/?$/, filters: [], parent: toOverview },
   { id: 'inventory-history', re: /^\/inventory\/history\/?$/, filters: [], parent: toOverview },
