@@ -25,6 +25,18 @@ export function variationGroups(items, idOf = (x) => x) {
 }
 export const variationLabel = (id, base) => String(id).slice(base.length).replace(/^[-_ ]+/, '') || String(id);
 // "Label: value" lines get a bold label so a long note or brief is easy to scan; every other line stays plain. Always built with h() and text nodes (never innerHTML).
+// plain text -> text and clickable links (any http/https address, trailing punctuation left outside the link)
+export function linkify(text) {
+  const s = String(text || ''); const parts = []; const re = /https?:\/\/[^\s<>"']+/g; let last = 0; let x;
+  while ((x = re.exec(s))) {
+    const url = x[0].replace(/[.,;:!?)\]]+$/, '');
+    if (x.index > last) parts.push(s.slice(last, x.index));
+    parts.push(h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, url.length > 60 ? url.slice(0, 57) + '…' : url));
+    last = x.index + url.length; re.lastIndex = last;
+  }
+  if (last < s.length) parts.push(s.slice(last));
+  return parts;
+}
 export function richLines(text) {
   const out = [];
   String(text || '').split('\n').forEach((line, i) => {
@@ -32,8 +44,8 @@ export function richLines(text) {
     const v = /^\s*([^:]{1,40}):\s*(https?:\/\/\S+)\s*$/.exec(line);                      // "hook1: https://..." -> bold "Hook 1:" and a link
     const m = /^([A-Z][A-Za-z0-9'\/& -]{0,34}):\s+(.*)$/.exec(line);
     if (v) { const hk = /^hook[\s_-]*(\d+)$/i.exec(v[1].trim()); out.push(h('strong', null, (hk ? `Hook ${hk[1]}` : v[1].trim().replace(/^./, (c) => c.toUpperCase())) + ':'), ' ', h('a', { href: v[2], target: '_blank', rel: 'noopener noreferrer' }, 'Open')); }
-    else if (m && !/^https?$/i.test(m[1])) out.push(h('strong', null, m[1] + ':'), ' ' + m[2]);
-    else out.push(line);
+    else if (m && !/^https?$/i.test(m[1])) out.push(h('strong', null, m[1] + ':'), ' ', ...linkify(m[2]));
+    else out.push(...linkify(line));
   });
   return out;
 }

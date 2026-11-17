@@ -69,6 +69,12 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
   }
 
   // ---- details
+  function urlField(label, input) {
+    const a = h('a', { class: 'pri-sub', target: '_blank', rel: 'noopener noreferrer', 'data-testid': 'prod-open-link' }, 'Open ↗');
+    const sync = () => { const v = input.value.trim(); if (/^https?:\/\//i.test(v)) { a.href = v; a.hidden = false; } else a.hidden = true; };
+    input.addEventListener('input', sync); sync();
+    return h('label', { class: 'prod-field' }, h('span', { class: 'pri-k' }, label, ' ', a), input);
+  }
   function fieldInput(label, el, hint) { return h('label', { class: 'prod-field' }, h('span', { class: 'pri-k' }, label), el, hint ? h('span', { class: 'pri-sub' }, hint) : null); }
   function drawDetails(r) {
     const mon = mondayOf(today());
@@ -154,7 +160,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
       fieldInput('Concept name', cname), fieldInput('New vs Iteration', kind), fieldInput('Image or video', media),
       h('dl', { class: 'prod-about', 'data-testid': 'prod-about' }, [['Vendor', r.vendor], ['Week of', weekLabel(r.for_week).replace('Week of ', '')], ['ICP', r.icp], ['Pain point', r.pain_point], ['Market Cluster', r.cluster], ['Line', r.line_code]].filter(([, v]) => v).map(([k, v]) => h('div', { class: 'prod-fact' }, h('dt', null, k + ':'), h('dd', null, v)))),
       fieldInput('Vendor', vendor), fieldInput('Week of', week), fieldInput('Due date', dueRow, 'The vendor sees this date. Clear it for no due date.'), fieldInput('Priority', prio), fieldInput('Format', fmt),
-      fieldInput('Brief link', brief), fieldInput('Creative link', creative), fieldInput('Note', note),
+      urlField('Brief link', brief), urlField('Creative link', creative), fieldInput('Note', note),
       r.vendor_note ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Vendor note'), h('p', { class: 'prod-drawer-vnote', 'data-testid': 'prod-drawer-vnote' }, r.vendor_note)) : null,
       ads.length || resText ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Ads'), h('p', { class: 'prod-drawer-vnote' }, [ads.join(', '), resText].filter(Boolean).join('. '))) : null,
       h('div', { class: 'prod-drawer-btns' }, save,
