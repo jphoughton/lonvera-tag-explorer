@@ -452,7 +452,7 @@ def test_board_shape_order_filters_and_capacity(client, snaps):
     assert first["count"] == 2 and [x["id"] for x in first["cards"]] == [b["id"], a["id"]]          # high priority first
     assert all("history" not in x for col in d["columns"] for x in col["cards"])
     cap = {x["vendor"]: x for x in d["capacity"]}
-    assert cap["Madre"] == {"vendor": "Madre", "per_week": 10, "open": 1, "week": MONDAY} and cap["Victoria"]["open"] == 1 and len(cap) == 9
+    assert cap["Madre"] == {"vendor": "Madre", "per_week": 10, "open": 1, "week": MONDAY} and cap["Victoria"]["open"] == 1 and len(cap) == 10
     allw = client.get("/api/priorities/board").get_json()
     assert sum(x["count"] for x in allw["columns"]) == 3 and allw["week"] == pa.monday_of(pa.today_pt()).isoformat()
     assert client.get("/api/priorities/board?vendor=Victoria").get_json()["columns"][0]["cards"][0]["id"] == b["id"]
