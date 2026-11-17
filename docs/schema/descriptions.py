@@ -3146,6 +3146,39 @@ rel("analytics.nc_by_country_daily", group="analytics", kind="view", like="publi
                        ("Row count", "SELECT count(*) AS rows FROM analytics.nc_by_country_daily;")])
 
 
+# ---------------------------------------------------------------------------------------------------------------------------- asset sync (migration 275)
+rel("public.asset_sync_links", group="creative", kind="table",
+    purpose="Every link found on a Production ticket (creative_url or a variation url) that the asset sync looked at, with what came of it. Use it to see which ticket assets reached the Drive folder Lonvera - Assets and which links held no file.",
+    grain="one row per ticket x link (assignment_id, url)", source="etl/asset_sync.py",
+    refresh="hourly (live service, non-fatal); folder links are re-checked every 6 hours while the ticket is recent, failed links each run, unresolvable links weekly",
+    coverage="from the first run (2026-11)",
+    caveats=["link_type comes from the URL: drive_file, drive_folder, google_doc, figma, frameio, loom, vimeo, youtube, dropbox, facebook_preview, facebook_post, direct, other.",
+             "status skipped (Google Docs, Figma) and unresolvable (private, expired or unsupported links) mean no media file could be taken; reason says why."],
+    cols={"assignment_id": "creative_priorities_assignments.id of the ticket.", "url": "The link as typed on the ticket.", "link_type": "Kind of link, from the URL.",
+          "field": "Where on the ticket the link sits: creative_url or variation:<label>.",
+          "status": "new | done | failed (retried) | unresolvable (re-tried weekly) | skipped (no file by nature, never retried).",
+          "files_found": "Media files found behind the link on the last look.", "files_copied": "Files of this link copied into Lonvera - Assets (running total).",
+          "files_duplicate": "Files not copied because the same md5 was already there (running total).", "attempts": "Looks that ended in an error since the last success.",
+          "reason": "Plain-English reason for failed, unresolvable or skipped; empty otherwise.", "first_seen_at": "When the sync first saw the link.",
+          "last_checked_at": "When the sync last looked at the link.", "next_check_at": "When it will look again; NULL = never."},
+    examples=[("Links by type and status", "SELECT link_type, status, count(*) AS links, sum(files_copied) AS copied FROM public.asset_sync_links GROUP BY 1, 2 ORDER BY 1, 2;")])
+rel("public.asset_sync_files", group="creative", kind="table",
+    purpose="Every media file the asset sync took from a ticket link: copied into Lonvera - Assets, skipped as a duplicate by md5, skipped on purpose, or failed.",
+    grain="one row per ticket x source file (assignment_id, source_key)", source="etl/asset_sync.py", refresh="hourly (live service, non-fatal)", coverage="from the first run (2026-11)",
+    caveats=["synced = copied (dest_file_id, dest_path); duplicate = the md5 was already under Lonvera - Assets, nothing copied; skipped = not taken on purpose (over the 150 MB cap for non-Drive downloads, not an image or video); failed = error, retried next run."],
+    cols={"id": "Primary key.", "assignment_id": "Ticket id.", "url": "The ticket link the file came from.", "source_key": "Drive file id for Drive files, else the URL downloaded.",
+          "source_name": "Original file name (kept in the destination).", "mime": "Mime type.", "size_bytes": "Size in bytes when known.", "md5": "md5 of the content when known.",
+          "status": "synced | duplicate | skipped | failed.", "dest_file_id": "Drive id of the copy, or of the existing file for a duplicate.", "dest_path": "Folder inside Lonvera - Assets, e.g. Beef Liver/Videos.",
+          "reason": "Why a file was skipped or failed.", "attempts": "Attempts that ended in an error.", "last_attempt_at": "Last attempt.", "synced_at": "When the copy was made."},
+    examples=[("Files by status", "SELECT status, count(*) AS files FROM public.asset_sync_files GROUP BY 1;")])
+rel("public.asset_sync_known_md5", group="creative", kind="table",
+    purpose="Cache of the md5 of every file under the Drive folder Lonvera - Assets, used by the asset sync to skip duplicates.",
+    grain="one row per md5", source="etl/asset_sync.py (full re-list every 6 hours plus each file the job copies)", refresh="hourly when there is work", coverage="the whole folder, about 28K files",
+    caveats=["A cache: safe to truncate; it is rebuilt from Drive at the next run."],
+    cols={"md5": "md5 checksum (hex).", "drive_file_id": "Drive id of one file with that md5.", "name": "Its name.", "seen_at": "When it was last seen in a listing."},
+    examples=[("Row count", "SELECT count(*) AS md5s FROM public.asset_sync_known_md5;")])
+
+
 # ---------------------------------------------------------------------------------------------------------------------------- Amazon Ads keyword layer (migrations 252 tables, 253 views)
 # Sponsored Products only, loaded BY HAND from ExpandFi Data Dash pulls: `python -m etl.amazon_dash_load --dir <folder>` (no cron, not the feeds service). docs/AMAZON_DATA.md
 _KW_REFRESH = "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled"

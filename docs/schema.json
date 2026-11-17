@@ -26900,6 +26900,307 @@
    ]
   },
   {
+   "name": "public.asset_sync_links",
+   "schema": "public",
+   "relation": "asset_sync_links",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "Every link found on a Production ticket (creative_url or a variation url) that the asset sync looked at, with what came of it. Use it to see which ticket assets reached the Drive folder Lonvera - Assets and which links held no file.",
+   "grain": "one row per ticket x link (assignment_id, url)",
+   "primary_key": [
+    "assignment_id",
+    "url"
+   ],
+   "foreign_keys": [
+    {
+     "columns": [
+      "assignment_id"
+     ],
+     "references": "public.creative_priorities_assignments",
+     "referenced_columns": [
+      "id"
+     ]
+    }
+   ],
+   "source": "etl/asset_sync.py",
+   "refresh": "hourly (live service, non-fatal); folder links are re-checked every 6 hours while the ticket is recent, failed links each run, unresolvable links weekly",
+   "coverage": "from the first run (2026-11)",
+   "caveats": [
+    "link_type comes from the URL: drive_file, drive_folder, google_doc, figma, frameio, loom, vimeo, youtube, dropbox, facebook_preview, facebook_post, direct, other.",
+    "status skipped (Google Docs, Figma) and unresolvable (private, expired or unsupported links) mean no media file could be taken; reason says why."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "assignment_id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "creative_priorities_assignments.id of the ticket."
+    },
+    {
+     "name": "url",
+     "type": "text",
+     "nullable": false,
+     "description": "The link as typed on the ticket."
+    },
+    {
+     "name": "link_type",
+     "type": "text",
+     "nullable": false,
+     "description": "Kind of link, from the URL."
+    },
+    {
+     "name": "field",
+     "type": "text",
+     "nullable": false,
+     "description": "Where on the ticket the link sits: creative_url or variation:<label>."
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "nullable": false,
+     "description": "new | done | failed (retried) | unresolvable (re-tried weekly) | skipped (no file by nature, never retried)."
+    },
+    {
+     "name": "files_found",
+     "type": "integer",
+     "nullable": false,
+     "description": "Media files found behind the link on the last look."
+    },
+    {
+     "name": "files_copied",
+     "type": "integer",
+     "nullable": false,
+     "description": "Files of this link copied into Lonvera - Assets (running total)."
+    },
+    {
+     "name": "files_duplicate",
+     "type": "integer",
+     "nullable": false,
+     "description": "Files not copied because the same md5 was already there (running total)."
+    },
+    {
+     "name": "attempts",
+     "type": "integer",
+     "nullable": false,
+     "description": "Looks that ended in an error since the last success."
+    },
+    {
+     "name": "reason",
+     "type": "text",
+     "nullable": false,
+     "description": "Plain-English reason for failed, unresolvable or skipped; empty otherwise."
+    },
+    {
+     "name": "first_seen_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the sync first saw the link."
+    },
+    {
+     "name": "last_checked_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the sync last looked at the link."
+    },
+    {
+     "name": "next_check_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When it will look again; NULL = never."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Links by type and status",
+     "sql": "SELECT link_type, status, count(*) AS links, sum(files_copied) AS copied FROM public.asset_sync_links GROUP BY 1, 2 ORDER BY 1, 2;"
+    }
+   ]
+  },
+  {
+   "name": "public.asset_sync_files",
+   "schema": "public",
+   "relation": "asset_sync_files",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "Every media file the asset sync took from a ticket link: copied into Lonvera - Assets, skipped as a duplicate by md5, skipped on purpose, or failed.",
+   "grain": "one row per ticket x source file (assignment_id, source_key)",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [
+    {
+     "columns": [
+      "assignment_id"
+     ],
+     "references": "public.creative_priorities_assignments",
+     "referenced_columns": [
+      "id"
+     ]
+    }
+   ],
+   "source": "etl/asset_sync.py",
+   "refresh": "hourly (live service, non-fatal)",
+   "coverage": "from the first run (2026-11)",
+   "caveats": [
+    "synced = copied (dest_file_id, dest_path); duplicate = the md5 was already under Lonvera - Assets, nothing copied; skipped = not taken on purpose (over the 150 MB cap for non-Drive downloads, not an image or video); failed = error, retried next run."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Primary key."
+    },
+    {
+     "name": "assignment_id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Ticket id."
+    },
+    {
+     "name": "url",
+     "type": "text",
+     "nullable": false,
+     "description": "The ticket link the file came from."
+    },
+    {
+     "name": "source_key",
+     "type": "text",
+     "nullable": false,
+     "description": "Drive file id for Drive files, else the URL downloaded."
+    },
+    {
+     "name": "source_name",
+     "type": "text",
+     "nullable": false,
+     "description": "Original file name (kept in the destination)."
+    },
+    {
+     "name": "mime",
+     "type": "text",
+     "nullable": false,
+     "description": "Mime type."
+    },
+    {
+     "name": "size_bytes",
+     "type": "bigint",
+     "nullable": true,
+     "description": "Size in bytes when known."
+    },
+    {
+     "name": "md5",
+     "type": "text",
+     "nullable": true,
+     "description": "md5 of the content when known."
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "nullable": false,
+     "description": "synced | duplicate | skipped | failed."
+    },
+    {
+     "name": "dest_file_id",
+     "type": "text",
+     "nullable": true,
+     "description": "Drive id of the copy, or of the existing file for a duplicate."
+    },
+    {
+     "name": "dest_path",
+     "type": "text",
+     "nullable": false,
+     "description": "Folder inside Lonvera - Assets, e.g. Beef Liver/Videos."
+    },
+    {
+     "name": "reason",
+     "type": "text",
+     "nullable": false,
+     "description": "Why a file was skipped or failed."
+    },
+    {
+     "name": "attempts",
+     "type": "integer",
+     "nullable": false,
+     "description": "Attempts that ended in an error."
+    },
+    {
+     "name": "last_attempt_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "Last attempt."
+    },
+    {
+     "name": "synced_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "description": "When the copy was made."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Files by status",
+     "sql": "SELECT status, count(*) AS files FROM public.asset_sync_files GROUP BY 1;"
+    }
+   ]
+  },
+  {
+   "name": "public.asset_sync_known_md5",
+   "schema": "public",
+   "relation": "asset_sync_known_md5",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "Cache of the md5 of every file under the Drive folder Lonvera - Assets, used by the asset sync to skip duplicates.",
+   "grain": "one row per md5",
+   "primary_key": [
+    "md5"
+   ],
+   "foreign_keys": [],
+   "source": "etl/asset_sync.py (full re-list every 6 hours plus each file the job copies)",
+   "refresh": "hourly when there is work",
+   "coverage": "the whole folder, about 28K files",
+   "caveats": [
+    "A cache: safe to truncate; it is rebuilt from Drive at the next run."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "md5",
+     "type": "text",
+     "nullable": false,
+     "description": "md5 checksum (hex)."
+    },
+    {
+     "name": "drive_file_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Drive id of one file with that md5."
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "nullable": false,
+     "description": "Its name."
+    },
+    {
+     "name": "seen_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When it was last seen in a listing."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Row count",
+     "sql": "SELECT count(*) AS md5s FROM public.asset_sync_known_md5;"
+    }
+   ]
+  },
+  {
    "name": "public.amazon_ads_search_term_daily",
    "schema": "public",
    "relation": "amazon_ads_search_term_daily",
