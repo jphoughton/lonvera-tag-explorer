@@ -268,6 +268,14 @@
    "note": ""
   },
   {
+   "service": "live",
+   "order": 1,
+   "module": "etl.asset_sync",
+   "args": "",
+   "fatal": true,
+   "note": ""
+  },
+  {
    "service": "alerts",
    "order": 1,
    "module": "etl.alerts",
@@ -316,6 +324,10 @@
   {
    "module": "etl.api_keys",
    "summary": "Manage scoped API keys (table api_keys, migration 205; what a key may do is in app/api_keys.py)."
+  },
+  {
+   "module": "etl.asset_sync",
+   "summary": "Asset sync: every media file linked from a Production ticket is copied once into the Drive folder \"Lonvera - Assets\" (<Product>/<Images|Videos>)."
   },
   {
    "module": "etl.assets_pull",

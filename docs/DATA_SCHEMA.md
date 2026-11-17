@@ -143,7 +143,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
 | Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily), [`public.nc_by_country_daily`](#publicnc_by_country_daily), [`public.shopify_orders`](#publicshopify_orders), [`public.shopify_order_lines`](#publicshopify_order_lines) |
-| Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_priorities_assignment_events`](#publiccreative_priorities_assignment_events), [`public.creative_priorities_assignment_comments`](#publiccreative_priorities_assignment_comments), [`public.creative_priorities_vendor_capacity`](#publiccreative_priorities_vendor_capacity), [`public.creative_ad_transcripts`](#publiccreative_ad_transcripts), [`public.creative_formats`](#publiccreative_formats), [`public.creative_backlog`](#publiccreative_backlog), [`public.creative_cut_views`](#publiccreative_cut_views), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links), [`public.creative_launch_settings`](#publiccreative_launch_settings), [`public.creative_launch_pages`](#publiccreative_launch_pages), [`public.creative_launch_vendor_prefixes`](#publiccreative_launch_vendor_prefixes), [`public.creative_launch_drafts`](#publiccreative_launch_drafts), [`public.creative_launch_jobs`](#publiccreative_launch_jobs), [`public.creative_launch_ads`](#publiccreative_launch_ads), [`public.creative_launch_adsets`](#publiccreative_launch_adsets), [`public.creative_launch_audit`](#publiccreative_launch_audit) |
+| Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_priorities_assignment_events`](#publiccreative_priorities_assignment_events), [`public.creative_priorities_assignment_comments`](#publiccreative_priorities_assignment_comments), [`public.creative_priorities_vendor_capacity`](#publiccreative_priorities_vendor_capacity), [`public.creative_ad_transcripts`](#publiccreative_ad_transcripts), [`public.creative_formats`](#publiccreative_formats), [`public.creative_backlog`](#publiccreative_backlog), [`public.creative_cut_views`](#publiccreative_cut_views), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links), [`public.asset_sync_links`](#publicasset_sync_links), [`public.asset_sync_files`](#publicasset_sync_files), [`public.asset_sync_known_md5`](#publicasset_sync_known_md5), [`public.creative_launch_settings`](#publiccreative_launch_settings), [`public.creative_launch_pages`](#publiccreative_launch_pages), [`public.creative_launch_vendor_prefixes`](#publiccreative_launch_vendor_prefixes), [`public.creative_launch_drafts`](#publiccreative_launch_drafts), [`public.creative_launch_jobs`](#publiccreative_launch_jobs), [`public.creative_launch_ads`](#publiccreative_launch_ads), [`public.creative_launch_adsets`](#publiccreative_launch_adsets), [`public.creative_launch_audit`](#publiccreative_launch_audit) |
 | Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.competitor_brands`](#publiccompetitor_brands), [`public.competitor_ads`](#publiccompetitor_ads), [`public.competitor_concept_class`](#publiccompetitor_concept_class), [`public.competitor_concepts`](#publiccompetitor_concepts), [`public.competitor_posts`](#publiccompetitor_posts), [`public.competitor_ad_media`](#publiccompetitor_ad_media), [`public.competitor_landing_pages`](#publiccompetitor_landing_pages), [`public.competitor_lp_media`](#publiccompetitor_lp_media), [`public.competitor_ad_lp`](#publiccompetitor_ad_lp), [`public.ad_transcript`](#publicad_transcript), [`public.ad_learning_tags`](#publicad_learning_tags), [`public.ad_family_lp`](#publicad_family_lp), [`public.competitor_ad_video`](#publiccompetitor_ad_video), [`public.competitor_ad_transcript`](#publiccompetitor_ad_transcript), [`public.competitor_ad_tags`](#publiccompetitor_ad_tags), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
 | Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta), [`public.api_keys`](#publicapi_keys), [`public.klaviyo_campaigns`](#publicklaviyo_campaigns), [`public.klaviyo_flows`](#publicklaviyo_flows), [`public.klaviyo_flow_messages`](#publicklaviyo_flow_messages), [`public.klaviyo_daily`](#publicklaviyo_daily), [`public.klaviyo_message_content`](#publicklaviyo_message_content), [`public.klaviyo_message_performance`](#publicklaviyo_message_performance), [`public.landing_page_ad_checks`](#publiclanding_page_ad_checks), [`public.brain_keys`](#publicbrain_keys), [`public.brain_audit`](#publicbrain_audit) |
 | Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow) | [`public.proj_feed_config`](#publicproj_feed_config), [`public.proj_feed_runs`](#publicproj_feed_runs), [`public.proj_feed_attempts`](#publicproj_feed_attempts), [`public.proj_feed_verify`](#publicproj_feed_verify), [`public.proj_feed_verify_runs`](#publicproj_feed_verify_runs), [`public.proj_feed_levers`](#publicproj_feed_levers), [`public.proj_feed_orders`](#publicproj_feed_orders), [`public.proj_feedx_orders`](#publicproj_feedx_orders), [`public.proj_feed_amazon`](#publicproj_feed_amazon), [`public.proj_feedx_amazon`](#publicproj_feedx_amazon), [`public.proj_feed_platform`](#publicproj_feed_platform), [`public.proj_feedx_platform`](#publicproj_feedx_platform), [`public.proj_feed_attribution`](#publicproj_feed_attribution), [`public.proj_feedx_attribution`](#publicproj_feedx_attribution), [`public.proj_feed_traffic`](#publicproj_feed_traffic), [`public.proj_feedx_traffic`](#publicproj_feedx_traffic), [`public.proj_feed_meta_reach`](#publicproj_feed_meta_reach), [`public.proj_feedx_meta_reach`](#publicproj_feedx_meta_reach), [`public.proj_feed_product_reach`](#publicproj_feed_product_reach), [`public.proj_feedx_product_reach`](#publicproj_feedx_product_reach), [`public.proj_feed_nc_product`](#publicproj_feed_nc_product), [`public.proj_feedx_nc_product`](#publicproj_feedx_nc_product), [`public.proj_feed_anyclick`](#publicproj_feed_anyclick), [`public.proj_feedx_anyclick`](#publicproj_feedx_anyclick), [`public.proj_feed_bids`](#publicproj_feed_bids), [`public.proj_feedx_bids`](#publicproj_feedx_bids), [`public.proj_feed_meta_day`](#publicproj_feed_meta_day), [`public.proj_feed_meta_product`](#publicproj_feed_meta_product), [`public.proj_pacing_hourly`](#publicproj_pacing_hourly), [`public.proj_pacing_setting`](#publicproj_pacing_setting), [`public.proj_units_daily`](#publicproj_units_daily), [`public.proj_feedx_units_daily`](#publicproj_feedx_units_daily), [`public.proj_demand_snapshot`](#publicproj_demand_snapshot), [`public.proj_feedx_demand_snapshot`](#publicproj_feedx_demand_snapshot), [`public.proj_feedx_intl_nonus_daily`](#publicproj_feedx_intl_nonus_daily), [`public.proj_feed_nc_hourly`](#publicproj_feed_nc_hourly), [`public.proj_live_today_snapshots`](#publicproj_live_today_snapshots), [`public.proj_amazon_mtd_snapshots`](#publicproj_amazon_mtd_snapshots), [`public.proj_feedx_intl_estimate`](#publicproj_feedx_intl_estimate), [`public.proj_meta_spend_monthly`](#publicproj_meta_spend_monthly) |
@@ -7284,6 +7284,104 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `token` | text | no | Unguessable link token (unique). |
 | `created_at` | timestamptz | no | When the link was first created. |
 | `rotated_at` | timestamptz | yes | When the token was last replaced by Reset link; NULL if never. |
+
+### public.asset_sync_links
+
+*table*
+
+**Purpose.** Every link found on a Production ticket (creative_url or a variation url) that the asset sync looked at, with what came of it. Use it to see which ticket assets reached the Drive folder Lonvera - Assets and which links held no file.
+
+- **Grain:** primary key `(assignment_id, url)`; one row per ticket x link (assignment_id, url)
+- **References:** `(assignment_id)` -> `public.creative_priorities_assignments(id)`
+- **Source:** etl/asset_sync.py
+- **Refresh:** hourly (live service, non-fatal); folder links are re-checked every 6 hours while the ticket is recent, failed links each run, unresolvable links weekly
+- **Coverage:** from the first run (2026-11)
+- **Caveat:** link_type comes from the URL: drive_file, drive_folder, google_doc, figma, frameio, loom, vimeo, youtube, dropbox, facebook_preview, facebook_post, direct, other.
+- **Caveat:** status skipped (Google Docs, Figma) and unresolvable (private, expired or unsupported links) mean no media file could be taken; reason says why.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `assignment_id` | bigint | no | creative_priorities_assignments.id of the ticket. |
+| `url` | text | no | The link as typed on the ticket. |
+| `link_type` | text | no | Kind of link, from the URL. |
+| `field` | text | no | Where on the ticket the link sits: creative_url or variation:<label>. |
+| `status` | text | no | new \| done \| failed (retried) \| unresolvable (re-tried weekly) \| skipped (no file by nature, never retried). |
+| `files_found` | integer | no | Media files found behind the link on the last look. |
+| `files_copied` | integer | no | Files of this link copied into Lonvera - Assets (running total). |
+| `files_duplicate` | integer | no | Files not copied because the same md5 was already there (running total). |
+| `attempts` | integer | no | Looks that ended in an error since the last success. |
+| `reason` | text | no | Plain-English reason for failed, unresolvable or skipped; empty otherwise. |
+| `first_seen_at` | timestamptz | no | When the sync first saw the link. |
+| `last_checked_at` | timestamptz | yes | When the sync last looked at the link. |
+| `next_check_at` | timestamptz | yes | When it will look again; NULL = never. |
+
+*Links by type and status*
+
+```sql
+SELECT link_type, status, count(*) AS links, sum(files_copied) AS copied FROM public.asset_sync_links GROUP BY 1, 2 ORDER BY 1, 2;
+```
+
+### public.asset_sync_files
+
+*table*
+
+**Purpose.** Every media file the asset sync took from a ticket link: copied into Lonvera - Assets, skipped as a duplicate by md5, skipped on purpose, or failed.
+
+- **Grain:** primary key `(id)`; one row per ticket x source file (assignment_id, source_key)
+- **References:** `(assignment_id)` -> `public.creative_priorities_assignments(id)`
+- **Source:** etl/asset_sync.py
+- **Refresh:** hourly (live service, non-fatal)
+- **Coverage:** from the first run (2026-11)
+- **Caveat:** synced = copied (dest_file_id, dest_path); duplicate = the md5 was already under Lonvera - Assets, nothing copied; skipped = not taken on purpose (over the 150 MB cap for non-Drive downloads, not an image or video); failed = error, retried next run.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Primary key. |
+| `assignment_id` | bigint | no | Ticket id. |
+| `url` | text | no | The ticket link the file came from. |
+| `source_key` | text | no | Drive file id for Drive files, else the URL downloaded. |
+| `source_name` | text | no | Original file name (kept in the destination). |
+| `mime` | text | no | Mime type. |
+| `size_bytes` | bigint | yes | Size in bytes when known. |
+| `md5` | text | yes | md5 of the content when known. |
+| `status` | text | no | synced \| duplicate \| skipped \| failed. |
+| `dest_file_id` | text | yes | Drive id of the copy, or of the existing file for a duplicate. |
+| `dest_path` | text | no | Folder inside Lonvera - Assets, e.g. Beef Liver/Videos. |
+| `reason` | text | no | Why a file was skipped or failed. |
+| `attempts` | integer | no | Attempts that ended in an error. |
+| `last_attempt_at` | timestamptz | no | Last attempt. |
+| `synced_at` | timestamptz | yes | When the copy was made. |
+
+*Files by status*
+
+```sql
+SELECT status, count(*) AS files FROM public.asset_sync_files GROUP BY 1;
+```
+
+### public.asset_sync_known_md5
+
+*table*
+
+**Purpose.** Cache of the md5 of every file under the Drive folder Lonvera - Assets, used by the asset sync to skip duplicates.
+
+- **Grain:** primary key `(md5)`; one row per md5
+- **Source:** etl/asset_sync.py (full re-list every 6 hours plus each file the job copies)
+- **Refresh:** hourly when there is work
+- **Coverage:** the whole folder, about 28K files
+- **Caveat:** A cache: safe to truncate; it is rebuilt from Drive at the next run.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `md5` | text | no | md5 checksum (hex). |
+| `drive_file_id` | text | no | Drive id of one file with that md5. |
+| `name` | text | no | Its name. |
+| `seen_at` | timestamptz | no | When it was last seen in a listing. |
+
+*Row count*
+
+```sql
+SELECT count(*) AS md5s FROM public.asset_sync_known_md5;
+```
 
 ### public.creative_launch_settings
 
