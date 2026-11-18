@@ -29,6 +29,7 @@ TYPES = ["New-Concept", "Iteration"]
 OPEN_STATES = ("queued", "running")
 BUSY = "A launch is already running for this row."
 STALE = "The plan changed. Prepare again."
+MAX_COPY_CHARS = 5000                                                # long-form primary texts (StefanBrain statics run to ~2,600)
 EXTRA_DRAFT_KEYS = ("primary_texts", "headlines", "link")           # copy overrides saved with the draft (the confirm dialog edits them)
 SETTINGS_OUT = ("product", "account_id", "campaign_id", "template_adset_id", "page_id", "instagram_actor_id", "pixel_id", "link_url", "url_tags", "daily_budget_cents", "cost_cap_cents",
                 "cta_image", "cta_video", "description", "primary_texts", "headlines", "updated_at", "updated_by")
@@ -176,8 +177,8 @@ def _clean_copy(raw, field: str) -> list[str]:
         if not isinstance(x, str):
             raise q.ApiError(400, f"each of {field.replace('_', ' ')} must be text")
         t = _CTRL.sub("", x.replace("\r\n", "\n").replace("\r", "\n")).strip()
-        if len(t) > 2000:
-            raise q.ApiError(400, f"each of {field.replace('_', ' ')} is at most 2,000 characters")
+        if len(t) > MAX_COPY_CHARS:
+            raise q.ApiError(400, f"each of {field.replace('_', ' ')} is at most {MAX_COPY_CHARS:,} characters")
         if t and t not in out:
             out.append(t)
     if len(out) > pl.MAX_COPY:
