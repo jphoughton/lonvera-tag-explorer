@@ -82,13 +82,9 @@ export function previewOf(url) {
   if (m) return { kind: 'frameio', src: s };
   return null;
 }
-// Image or video, worked out from what the card holds: its Concept IDs (...-Video-... / ...-Static-...), then the brief ('STATIC BRIEF', 'Type: VID'), then the format (every format F1 to F6 is a video). '' when nothing says.
+// Image or video: the ticket's own tag (media_type), the one stored value. Set by a person in the ticket panel, or filled automatically from the note, Concept IDs, creative format, synced files or links (etl/media_type.py). '' when not tagged.
 export function mediaOf(r) {
-  const ids = (r.tracker_concept_ids || []).join(' ');
-  const text = `${r.note || ''}\n${r.story || ''}`;
-  const vid = /video/i.test(ids) || /Type:\s*VID/i.test(text) || (!ids && !!r.format_code);
-  const img = /static|image/i.test(ids) || /Type:\s*IMG/i.test(text) || /STATIC BRIEF/i.test(text);
-  return vid && img ? 'Image + video' : vid ? 'Video' : img ? 'Image' : '';
+  return r.media_type === 'video' ? 'Video' : r.media_type === 'image' ? 'Image' : '';
 }
 // The name of the concept as a person says it: the stored concept name, else the first line of the story (the old way: 'Concept 01: Rest is making your knees worse', or 'BL-C1-E1 | Look past the surface | ...'), else the pain point.
 export function conceptName(r) {

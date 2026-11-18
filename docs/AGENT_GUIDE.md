@@ -224,7 +224,7 @@ Everything on the Creative Pipeline page is on the HTTP API, so an agent or scri
 | Remove a waiting item | `DELETE /api/priorities/backlog/<id>` |
 | Assign a partner and a brief (creates the board tickets) | `POST /api/priorities/backlog/assign` `{ids, vendor, brief_url and / or brief}` |
 | Saved By cut views (team-shared) | `GET /api/priorities/cut-views`; `POST /api/priorities/cut-views` `{name, state}` (saving under an existing name replaces it); `DELETE /api/priorities/cut-views/<id>` |
-| Set image or video on a ticket | `PATCH /api/priorities/assignments/<id>` `{media_type: image or video}` (also accepted by `POST /api/priorities/tickets`) |
+| Set image or video on a ticket | `PATCH /api/priorities/assignments/<id>` `{media_type: image or video}` (also accepted by `POST /api/priorities/tickets`); a person's choice is stored as `media_type_source = manual` and is never overwritten. Empty tags are filled automatically (`media_type_source = auto`, evidence in `media_type_basis`) by `python -m etl.media_type` (backfill, re-runnable) and by the hourly asset sync; the board and List have a Media filter (`?media=image\|video\|none`) |
 
 ## 6. Production board (`/priorities` and `/priorities/production`)
 
