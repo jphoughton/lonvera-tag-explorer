@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, g, jsonify, request, send_file
 from werkzeug.datastructures import MultiDict
 
-from . import amazon as amz, api_keys as ak, countries as cty, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_cut_views as pcv, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, madre_review as mrv, madre_media as mmed, promotions as promo, no_attribution as noattr, queries as q, scale_views as sv, trends as trn
+from . import amazon as amz, api_keys as ak, countries as cty, meta_pages as mpg, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_cut_views as pcv, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, madre_review as mrv, madre_media as mmed, promotions as promo, no_attribution as noattr, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -234,6 +234,16 @@ def campaigns_all_platforms():
     finally:
         q.set_source("meta")
     return jsonify(res)
+
+
+@bp.get("/api/meta/pages")
+def meta_pages_view():
+    """By page (Meta): the Lonvera Facebook Page vs every other page the ads run from, for window / from / to, stage and product=<slug>. Meta-reported numbers plus Upstack
+    new-customer ROAS / CPA; ratios of sums; ads with no page identity are the '(unknown page)' row so the total equals total Meta spend. See app/meta_pages.py."""
+    conn = db.get_conn()
+    meta = q.load_meta(conn)
+    w = q.parse_window({k: request.args[k] for k in ("window", "from", "to", "stage") if k in request.args and request.args[k] is not None}, meta)
+    return jsonify(mpg.build(mpg.DbSource(conn), w, meta, _arg("product")))
 
 
 @bp.get("/api/meta/countries")

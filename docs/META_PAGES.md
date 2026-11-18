@@ -35,3 +35,10 @@ never "caused by". Spend by page adds up to total Meta ad-level spend; ads with 
 SELECT product_slug, stage, is_lonvera_page, round(sum(spend)) AS spend, round(sum(meta_revenue) / NULLIF(sum(spend), 0), 2) AS meta_roas
 FROM analytics.meta_page_performance_daily WHERE day > current_date - 31 GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
 ```
+
+## The page: By page (`/pages`, Marketing metrics, platform Meta, "View by: By page")
+
+`GET /api/meta/pages?window=30d&stage=testing,scaling&product=<slug>` (code `app/meta_pages.py`, page `app/static/js/pages/pages.js`). Window picker is the usual range control (7 / 30 / 90 / 180 days, custom, since launch;
+Meta ad-level history is only ~200 days, so "365 days" = since launch, 2026-05-06). Two tables: Lonvera page vs all other pages vs unknown, then one row per page. Columns: ads with spend, Meta spend, share,
+NC ROAS and NC CPA (Upstack new customers, over the days Upstack data exists), Meta-reported ROAS (side column), cost per purchase, average order value, CPM, CTR (link clicks / impressions), cost per link click,
+conversion rate (Meta purchases / link clicks). Ratios of sums. The like-for-like warning prints on the page. Unique outbound clicks are not stored per ad, so click metrics are link clicks.

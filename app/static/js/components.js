@@ -26,6 +26,7 @@ export function viewSwitch(active, G, platform = 'meta') {
   return h('div', { class: 'ctl', id: 'view-switch' }, h('span', { class: 'ctl-name' }, 'View by'),
     h('span', { class: 'segs', role: 'group', 'aria-label': 'View by' }, mk(first, 'home', platformUrl('/', platform, g)), mk('Campaigns', 'campaigns', platformUrl('/campaigns', platform, g)),
       platform === 'meta' ? mk('Countries', 'countries', platformUrl('/countries', platform, g)) : null,
+      platform === 'meta' ? mk('By page', 'pages', platformUrl('/pages', platform, g)) : null,
       platform === 'meta' ? mk('No attribution', 'noattr', href('/no-attribution', na)) : null));
 }
 
