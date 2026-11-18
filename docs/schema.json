@@ -30456,7 +30456,7 @@
    "refresh": "nightly in the etl service (non-fatal step; etl_runs job meta_pages): ads updated in the last 14 days plus any ad with spend in the last 14 days and no row; the one-time backfill listed every ad",
    "coverage": "every ad of both accounts as of the backfill day, then new and changed ads nightly",
    "caveats": [
-    "page_id is NULL (source = 'unresolved') when the creative names no page: deleted creatives, some catalog / dynamic ads. They keep their row so they are not re-fetched every night.",
+    "page_id is NULL when the creative names no Page. source = 'instagram_only': creator / partnership (Trybe) ads that run from an Instagram account (instagram_user_id set, sponsor Page = Lonvera); source = 'unresolved': nothing readable (deleted creatives, some catalog / dynamic ads). Both keep their row so they are not re-fetched every night.",
     "An ad's creative can be swapped: the nightly listing overwrites page_id when Meta returns a new one, so a row is the CURRENT page, not the page on every historic day.",
     "first_seen is the first day a listing returned the ad (the backfill day for old ads), not the ad's creation date (see meta_ads.created_date)."
    ],
@@ -30515,7 +30515,7 @@
      "name": "source",
      "type": "text",
      "nullable": false,
-     "description": "Which field gave the page: effective_object_story_id | object_story_id | object_story_spec | unresolved."
+     "description": "Which field gave the page: effective_object_story_id | object_story_id | object_story_spec | instagram_only (no Page, Instagram account only) | unresolved."
     },
     {
      "name": "loaded_at",
@@ -30540,7 +30540,7 @@
    "refresh": "nightly (etl.meta_pages, etl_runs job meta_pages)",
    "coverage": "every ad of both accounts since the backfill",
    "caveats": [
-    "page_id is NULL for ads whose creative names no page; they are the 'unresolved' list: SELECT ... WHERE page_id IS NULL.",
+    "page_id is NULL for ads whose creative names no page: source 'instagram_only' (creator / partnership ads that run from an Instagram account) or 'unresolved' (nothing readable): SELECT ... WHERE page_id IS NULL.",
     "Current page of the ad's creative, not necessarily the page on each historic day (a swapped creative changes it)."
    ],
    "like": null,
@@ -30598,7 +30598,7 @@
      "name": "source",
      "type": "text",
      "nullable": null,
-     "description": "effective_object_story_id | object_story_id | object_story_spec | unresolved."
+     "description": "effective_object_story_id | object_story_id | object_story_spec | instagram_only | unresolved."
     },
     {
      "name": "first_seen",
@@ -30631,7 +30631,7 @@
    "kind": "view",
    "group": "analytics",
    "purpose": "Meta-reported results by Pacific day x Facebook Page x product x stage, so the Lonvera page can be compared with every other handle: spend, impressions, link clicks, purchases and purchase value. CPM, CTR (link clicks / impressions), cost per link click, conversion rate (purchases / link clicks), AOV, cost per purchase and ROAS all come from sums of these columns.",
-   "grain": "one row per (day, page_id, product_slug, stage); ads with no page row sit under page_id NULL, page_name '(unknown page)'",
+   "grain": "one row per (day, page_id, product_slug, stage); ads with no page sit under page_id NULL: '(Instagram-only handle)' for creator / partnership ads, '(unknown page)' for ads with no identity or no row",
    "primary_key": [],
    "foreign_keys": [],
    "source": "analytics.meta_ad_daily joined to public.meta_ad_pages and public.meta_pages",
@@ -30643,7 +30643,7 @@
     "Ratios come from sums over the window, never an average of daily ratios; NULL is not zero (product_slug / stage can be NULL for ads outside the tracked products).",
     "Clicks here are Meta LINK clicks (all clicks on the link), not unique outbound clicks: unique outbound clicks are not stored per ad (they do not add across ads). CTR here = link clicks / impressions.",
     "Purchases and purchase value count returning customers: for new-customer ROAS use the Upstack columns of meta_ad_daily joined to meta_ad_pages on ad_id.",
-    "Spend by page adds up to total Meta ad-level spend (analytics.meta_ad_daily) exactly; unresolved ads are the '(unknown page)' row."
+    "Spend by page adds up to total Meta ad-level spend (analytics.meta_ad_daily) exactly; creator / partnership ads are the '(Instagram-only handle)' row and ads with no identity the '(unknown page)' row."
    ],
    "like": null,
    "domain": "marketing",
@@ -30664,7 +30664,7 @@
      "name": "page_name",
      "type": "text",
      "nullable": null,
-     "description": "Page name; 'Page <id>' when the name is not readable, '(unknown page)' when there is no page."
+     "description": "Page name; 'Page <id>' when the name is not readable, '(Instagram-only handle)' for creator / partnership ads with no Page, '(unknown page)' when there is no identity."
     },
     {
      "name": "is_lonvera_page",

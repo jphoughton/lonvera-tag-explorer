@@ -66,5 +66,5 @@ export async function pagesPage(ctx) {
     h('div', { class: 'note-line', 'data-testid': 'pages-likeforlike' }, d.like_for_like),
     h('div', { class: 'tablehead' }, h('h2', { id: 'level-title' }, 'Lonvera page vs other pages')), sum.el,
     h('div', { class: 'tablehead' }, h('h2', null, 'By page')), t.el,
-    h('div', { class: 'note-line', 'data-testid': 'pages-caption' }, d.basis + ' Page identity covers ' + fmt.int(cov.with_page) + ' of ' + fmt.int(cov.ads) + ' ads; ads with no page identity are the “(unknown page)” row. Meta ad-level data starts ' + fmt.day(d.window_info.daily_start) + ', ' + String(d.window_info.daily_start).slice(0, 4) + '.')));
+    h('div', { class: 'note-line', 'data-testid': 'pages-caption' }, d.basis + ' Page identity covers ' + fmt.int(cov.with_page) + ' of ' + fmt.int(cov.ads) + ' ads; creator / partnership ads with no Page are the “(Instagram-only handle)” row and ads with no identity at all the “(unknown page)” row. Meta ad-level data starts ' + fmt.day(d.window_info.daily_start) + ', ' + String(d.window_info.daily_start).slice(0, 4) + '.')));
 }

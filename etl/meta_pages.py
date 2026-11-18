@@ -61,9 +61,10 @@ def parse_ad(ad: dict) -> dict:
     if not page:
         sp = _s(spec.get("page_id"))
         page, source = (sp if sp and sp.isdigit() else None), "object_story_spec"
+    ig = _s(spec.get("instagram_user_id")) or _s(cr.get("instagram_actor_id"))
     if not page:
-        source = "unresolved"
-    return {"ad_id": str(ad["id"]), "page_id": page, "instagram_user_id": _s(spec.get("instagram_user_id")) or _s(cr.get("instagram_actor_id")),
+        source = "instagram_only" if ig else "unresolved"          # creator / partnership ads run from an Instagram account with no Page of their own
+    return {"ad_id": str(ad["id"]), "page_id": page, "instagram_user_id": ig,
             "effective_object_story_id": eos or os_, "creative_id": _s(cr.get("id")), "source": source}
 
 
@@ -180,8 +181,8 @@ def missing_ids(conn, today: dt.date, days: int = INCREMENTAL_DAYS, cap: int = M
 
 
 def unresolved_share(conn, today: dt.date, days: int = INCREMENTAL_DAYS) -> tuple[float, float, int]:
-    """(spend with no page, total spend, ads with no page) over the last `days` days."""
-    r = conn.execute("""SELECT coalesce(sum(d.spend) FILTER (WHERE p.page_id IS NULL), 0), coalesce(sum(d.spend), 0), count(DISTINCT d.ad_id) FILTER (WHERE p.page_id IS NULL AND d.spend > 0)
+    """(spend with no page identity at all, total spend, ads with none) over the last `days` days. An Instagram-only ad (creator / partnership, source 'instagram_only') HAS an identity: its Instagram account."""
+    r = conn.execute("""SELECT coalesce(sum(d.spend) FILTER (WHERE p.page_id IS NULL AND coalesce(p.source, 'unresolved') = 'unresolved'), 0), coalesce(sum(d.spend), 0), count(DISTINCT d.ad_id) FILTER (WHERE p.page_id IS NULL AND coalesce(p.source, 'unresolved') = 'unresolved' AND d.spend > 0)
                         FROM ad_daily d LEFT JOIN meta_ad_pages p ON p.ad_id = d.ad_id WHERE d.day > %s""", (today - dt.timedelta(days=days),)).fetchone()
     return float(r[0]), float(r[1]), int(r[2])
 

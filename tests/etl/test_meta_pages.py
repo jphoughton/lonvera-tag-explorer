@@ -36,6 +36,11 @@ def test_parse_falls_back_to_object_story_id_then_spec_and_reads_instagram():
     assert (p["page_id"], p["source"], p["instagram_user_id"], p["effective_object_story_id"]) == ("777", "object_story_spec", "ig1", None)
 
 
+def test_instagram_only_creator_ads_are_not_unresolved():
+    p = mp.parse_ad({"id": "9", "creative": {"object_story_spec": {"instagram_user_id": "1784"}}})
+    assert (p["page_id"], p["source"], p["instagram_user_id"]) == (None, "instagram_only", "1784")
+
+
 @pytest.mark.parametrize("ad", [{"id": "4"}, {"id": "5", "creative": {}}, {"id": "6", "creative": {"effective_object_story_id": "garbage"}},
                                 {"id": "7", "creative": {"effective_object_story_id": "abc_123"}}, {"id": "8", "creative": {"object_story_spec": {"page_id": "x"}}}])
 def test_parse_missing_or_malformed_creative_is_unresolved_not_an_error(ad):
@@ -283,3 +288,13 @@ def test_spend_first_backfill_resolves_biggest_spenders_first_and_parks_deleted_
     assert st["looked_up"] == 2 and st["unresolved"] == 1 and order == ["big,mid,gone"]
     assert dict(clean.execute("SELECT ad_id, source FROM meta_ad_pages").fetchall()) == {"big": "effective_object_story_id", "mid": "effective_object_story_id", "gone": "unresolved"}
     assert mp.missing_ids(clean, TODAY, 200) == []
+
+
+def test_instagram_only_ads_do_not_count_toward_the_unresolved_failure(clean, monkeypatch):
+    spend(clean, "m1", TODAY - dt.timedelta(days=1), 500)
+    spend(clean, "ig", TODAY - dt.timedelta(days=1), 500)
+    clean.commit()
+    fake_graph(monkeypatch, {"act_1671338033619223": [{"id": "m1", "creative": {"effective_object_story_id": story("161085663758792")}},
+                                                     {"id": "ig", "creative": {"object_story_spec": {"instagram_user_id": "1784"}}}]})
+    st = mp.run(today=TODAY, sleep=NOSLEEP)
+    assert st["window_ads_no_page"] == 0 and st["window_spend_no_page"] == 0
