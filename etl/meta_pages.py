@@ -33,7 +33,7 @@ INCREMENTAL_DAYS = 14
 MISSING_CAP = 200                # ids looked up by /?ids= per run for ads with spend and no row yet
 UNRESOLVED_FAIL_SHARE = 0.05     # share of the window's Meta spend on ads with no page that fails the run
 PACE = 0.4
-USAGE_PAUSE_AT = 70.0            # % of the ad account's cpu / time budget (x-business-use-case-usage) at which the listing waits before the next page
+USAGE_PAUSE_AT = 90.0            # % of the ad account's cpu / time budget (x-business-use-case-usage) at which the listing waits before the next page
 MAX_PAUSE = 1800                 # never wait longer than this between two pages (seconds)
 
 
@@ -186,10 +186,50 @@ def unresolved_share(conn, today: dt.date, days: int = INCREMENTAL_DAYS) -> tupl
     return float(r[0]), float(r[1]), int(r[2])
 
 
-def run(full: bool = False, days: int = INCREMENTAL_DAYS, dry: bool = False, today: dt.date | None = None, sleep=time.sleep) -> dict:
+def spend_first(conn, tok, today: dt.date, since: dt.date, sleep=time.sleep, batch: int = 50) -> dict:
+    """Backfill in order of spend: ads with Meta spend since `since` and no row, biggest spend first, `batch` ids per /?ids= call (halved when the account is hot, doubled back when cheap),
+    paced by the reported usage. Ads Meta does not return (deleted) get an 'unresolved' row so they leave the queue. Resumable: it only ever works on ads with no row."""
+    tried, st = set(), {"looked_up": 0, "unresolved": 0, "calls": 0}
+    days = (today - since).days
+    while True:
+        ids = [i for i in missing_ids(conn, today, days, cap=batch + len(tried)) if i not in tried][:batch]
+        if not ids:
+            return st
+        tried.update(ids)
+        found = lookup_ids(tok, ids, batch=batch, sleep=sleep)
+        st["calls"] += 1
+        acct_of = dict(conn.execute("SELECT ad_id, account FROM meta_ads WHERE ad_id = ANY(%s)", (ids,)).fetchall())
+        got = {str(f["id"]) for f in found}
+        for an in {acct_of.get(str(f["id"]), "Lonvera Main") for f in found}:
+            upsert(conn, an, [parse_ad(f) for f in found if acct_of.get(str(f["id"]), "Lonvera Main") == an], today)
+        gone = [i for i in ids if i not in got]
+        if gone:
+            upsert(conn, "Lonvera Main", [{"ad_id": i, "page_id": None, "instagram_user_id": None, "effective_object_story_id": None, "creative_id": None, "source": "unresolved"} for i in gone], today)
+        conn.commit()
+        st["looked_up"] += len(found)
+        st["unresolved"] += len(gone)
+        batch = next_size(batch) if batch else batch
+        batch = max(10, min(50, batch))
+        wait = usage_pause()
+        db.log(f"  spend-first: {st['looked_up']} resolved, {st['unresolved']} unresolved, usage {meta_api.LAST_USAGE or '-'}" + (f", waiting {wait:.0f}s" if wait else ""))
+        sleep(max(PACE, wait))
+
+
+def run(full: bool = False, days: int = INCREMENTAL_DAYS, dry: bool = False, today: dt.date | None = None, sleep=time.sleep, spend_since: dt.date | None = None) -> dict:
     today = today or dt.datetime.now(meta_api.PT).date()
     with db.JobRun("meta_pages") as jr, db.connect() as conn:
         tok = meta_api.get_token()
+        if spend_since:
+            stats = {"mode": f"spend-first since {spend_since}"}
+            jr.stats = stats
+            try:
+                stats.update(spend_first(conn, tok, today, spend_since, sleep=sleep))
+            except meta_api.TokenRejected:
+                raise db.JobFailed("meta token rejected") from None
+            except (meta_api.GraphError, meta_api.TooBig) as e:
+                raise db.JobFailed(f"spend-first lookup failed: {db.scrub(e)[:300]}") from None
+            jr.rows_written, jr.data_through = stats["looked_up"] + stats["unresolved"], today
+            return stats
         since = None if full else dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)
         stats: dict = {"mode": "full" if full else f"incremental {days}d", "listed": {}, "looked_up": 0, "written": 0}
         jr.stats = stats
@@ -247,9 +287,10 @@ def main():
     ap.add_argument("--full", action="store_true")
     ap.add_argument("--days", type=int, default=INCREMENTAL_DAYS)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--spend-since", help="backfill by spend: ads with Meta spend since this day and no row, biggest first (e.g. 2026-05-06)")
     a = ap.parse_args()
     try:
-        st = run(a.full, a.days, a.dry_run)
+        st = run(a.full, a.days, a.dry_run, spend_since=dt.date.fromisoformat(a.spend_since) if a.spend_since else None)
     except Exception as e:                                                    # noqa: BLE001
         db.log("meta_pages FAILED:", db.scrub(e))
         sys.exit(1)
