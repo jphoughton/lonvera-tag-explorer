@@ -721,6 +721,13 @@
    "bare": false
   },
   {
+   "url_pattern": "/pages",
+   "page_function": "pagesPage",
+   "js_file": "app/static/js/pages/pages.js",
+   "public": false,
+   "bare": false
+  },
+  {
    "url_pattern": "/priorities",
    "page_function": "prioritiesPage",
    "js_file": "app/static/js/pages/priorities.js",
@@ -1287,6 +1294,17 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": "Countries view (Meta): per country, Meta spend (Meta's country breakdown, from its first day) next to the new customers and new-customer revenue Shopify recorded by"
+  },
+  {
+   "rule": "/api/meta/pages",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.meta_pages_view",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "By page (Meta): the Lonvera Facebook Page vs every other page the ads run from, for window / from / to, stage and product=<slug>. Meta-reported numbers plus Upstack"
   },
   {
    "rule": "/api/no-attribution/products",
@@ -3783,6 +3801,17 @@
    ],
    "kind": "page",
    "endpoint": "shell:/p/<slug>",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/pages",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/pages",
    "auth": "none (HTML page or health check; its data calls are protected)",
    "auth_exempt": true,
    "summary": ""
