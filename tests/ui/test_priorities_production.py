@@ -558,9 +558,9 @@ def test_cluster_icp_and_pain_point_filters_take_several_choices(page):
 def test_each_card_says_image_or_video_and_how_many_ads_and_hooks_come_in_order(page):
     goto(page, "?view=list&closed=1")
     got = page.evaluate("""async () => { const m = await import('/static/js/pages/production_common.js');
-      return { media: [m.mediaOf({ tracker_concept_ids: ['Lonvera-BoneFlex-Video-8.8-hook2'] }), m.mediaOf({ tracker_concept_ids: ['Victoria-BeefLiver-Static-C1.E1'] }), m.mediaOf({ note: 'STATIC BRIEF | BL-C1-E1' }), m.mediaOf({ format_code: 'F2' }), m.mediaOf({ note: 'Type: VID' }), m.mediaOf({})],
+      return { media: [m.mediaOf({ media_type: 'video' }), m.mediaOf({ media_type: 'image' }), m.mediaOf({ tracker_concept_ids: ['Lonvera-BoneFlex-Video-8.8'], format_code: 'F2' }), m.mediaOf({})],
         vars: m.parseVariations('x\\n\\nVariations\\nhook3: https://a.co/3\\nLonvera-BoneFlex-Video-8.8: https://a.co/0\\nhook1: https://a.co/1\\nhook2: https://a.co/2').map((v) => v.label), name: m.productName('vita-belle') }; }""")
-    assert got["media"] == ["Video", "Image", "Image", "Video", "Video", ""]
+    assert got["media"] == ["Video", "Image", "", ""]                                        # the stored tag is the only source: no guessing from Concept IDs, the note or the format here
     assert got["vars"] == ["Original", "Hook 1", "Hook 2", "Hook 3"] and got["name"] == "Vita Belle"
     row(page, 2).wait_for(state="attached")
     assert row(page, 4).locator("[data-fact=Variations] dd").text_content().strip() == "1"                                  # the ad count is the Variations line of the ticket
@@ -603,3 +603,38 @@ def test_a_ticket_needs_only_a_name_a_vendor_and_a_brief_and_shows_tagging_until
     assert page.locator("[data-testid=prod-row]", has_text="Grandfather used to eat well").count() == 1
 
 
+
+
+def test_media_filter_splits_image_video_and_not_tagged_and_lives_in_the_address(page):
+    goto(page, "?closed=1")
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-row]').length === 4")
+    ids = lambda: sorted(page.locator("[data-testid=prod-row]").evaluate_all("rs => rs.map(r => r.dataset.id)"))
+    sel = page.locator(".pagefilters [data-testid=prod-media-filter]")
+    assert sel.input_value() == ""
+    for value, want in (("video", ["1"]), ("image", ["3"]), ("none", ["2", "4"])):
+        sel.select_option(value)
+        page.wait_for_function("(n) => document.querySelectorAll('[data-testid=prod-row]').length === n", arg=len(want))
+        assert ids() == want and f"media={value}" in page.url
+    page.reload()                                                                       # the choice lives in the address
+    page.wait_for_selector("[data-testid=prod-page]")
+    idle(page)
+    assert page.locator(".pagefilters [data-testid=prod-media-filter]").input_value() == "none" and ids() == ["2", "4"]
+    page.goto("/priorities/production?closed=1&media=video")                            # and the board filters the same way
+    page.wait_for_selector("[data-testid=prod-board-card]")
+    idle(page)
+    assert page.locator("[data-testid=prod-board-card]").evaluate_all("cs => cs.map(c => c.dataset.id)") == ["1"]
+    assert page.locator("[data-testid=prod-card-media]").text_content().strip() == "Video"
+
+
+def test_the_ticket_panel_saves_image_or_video_and_the_chip_follows(page):
+    page.goto("/priorities/production?closed=1&card=2")
+    page.wait_for_selector("[data-testid=prod-drawer-media]")
+    sel = page.locator("select[data-testid=prod-drawer-media]")
+    assert sel.input_value() == ""
+    sel.select_option("image")
+    with page.expect_response(lambda r: r.request.method == "PATCH" and "/api/priorities/assignments/2" in r.url):
+        page.click("[data-testid=prod-drawer-save]")
+    page.goto("/priorities/production?closed=1&media=image&view=list")
+    page.wait_for_selector("[data-testid=prod-table]")
+    idle(page)
+    assert sorted(page.locator("[data-testid=prod-row]").evaluate_all("rs => rs.map(r => r.dataset.id)")) == ["2", "3"]

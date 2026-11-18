@@ -632,11 +632,27 @@ def run(conn, drive=None, dry_run: bool = False, **kw) -> dict:
                                 last_checked_at = now(), next_check_at = CASE WHEN %s::text IS NULL THEN NULL ELSE now() + (%s::text)::interval END WHERE assignment_id = %s AND url = %s""",
                              (status, reason, found, copied, dup, attempts, nxt, nxt, d["assignment_id"], d["url"]))
             conn.commit()
+            if not dry_run:
+                _autotag(cx, d["assignment_id"])
             if status in ("failed", "unresolvable"):
                 cx.log(f"  asset_sync: ticket {l['assignment_id']} {l['link_type']} {status}: {reason}")
+        if not dry_run:
+            _autotag(cx, None)                                                            # new tickets: the Image / video tag from what the ticket itself says
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return cx.stats
+
+
+def _autotag(cx, aid) -> None:
+    """Set the ticket's Image / video tag from the files just copied (or, with aid None, from every untagged ticket's own signals) while it is still empty. Never overwrites a tag, never fails the run."""
+    try:
+        from . import media_type
+        n = media_type.autotag(cx.conn, aid)
+        cx.conn.commit()
+        cx.stats["media_tagged"] = cx.stats.get("media_tagged", 0) + n
+    except Exception as e:                                                                # noqa: BLE001
+        cx.conn.rollback()
+        cx.log(f"  asset_sync: media tag skipped: {db.scrub(e)}")
 
 
 def main():

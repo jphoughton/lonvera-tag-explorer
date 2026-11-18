@@ -7099,6 +7099,8 @@ SELECT hook_source, confidence, count(*) AS hooks FROM ad_hooks GROUP BY 1, 2 OR
 | `tagged_at` | timestamptz | yes | When the system added tags from the brief (etl/ticket_tags.py); NULL when it did not. |
 | `tag_note` | text | no | The tagger's confidence and one-line reason, or why it failed; empty when nothing was auto-tagged. |
 | `media_type` | text | yes | image or video, chosen when the ticket is made or later; NULL when not chosen (the By cut view then treats a ticket with a creative format F1 to F6 as video). |
+| `media_type_source` | text | yes | Who set media_type: manual = a person (ticket creation or the ticket panel, including clearing it), auto = the backfill or the asset sync from evidence; NULL = never set. Automatic fills only touch rows whose source is not manual and whose media_type is empty. |
+| `media_type_basis` | text | yes | The evidence behind an automatic media_type: format_line (note line Format: Video or Image), type_line (Type: VID or IMG), concept_ids (Video or Static in the Concept IDs), format_code (a creative format F1 to F6 is video), asset_files (mime types of the files copied from the ticket links), drive_link (mime types of the files behind a Drive link), video_host (a Vimeo, YouTube or Loom link). NULL for a manual choice. |
 
 ### public.creative_priorities_assignment_events
 

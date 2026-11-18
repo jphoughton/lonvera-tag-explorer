@@ -454,6 +454,10 @@
    "summary": "Communication Overview -> taxonomy_lines + line_ingredients (all products)."
   },
   {
+   "module": "etl.media_type",
+   "summary": "Image / video tag of a Production ticket: the evidence rules, the backfill and the automatic fill."
+  },
+  {
    "module": "etl.meta_api",
    "summary": "Minimal read-only Meta Graph client: token loading, GET with retry/backoff on rate limits (incl. code 80004), insights pull with split/async"
   },

@@ -754,10 +754,10 @@ def _insert_ticket(w, t: dict, user: str | None) -> int:
     pos = w.execute("SELECT COALESCE(max(position), 0) + 1 AS p FROM creative_priorities_assignments WHERE status = %s AND dropped_at IS NULL", (t["status"],)).fetchone()["p"]
     row = w.execute(
         """INSERT INTO creative_priorities_assignments (concept_key, text_key, product, vendor, line_code, cluster, icp, pain_point, story, section_at_assign, note, for_week, created_by, updated_by,
-               concept_name, concept_kind, media_type, variations, tracker_concept_ids, format_code, brief_url, brief_at, status, due_date, priority, position, status_changed_at, tag_state)
-           VALUES (%s,%s,%s,%s,'',%s,%s,%s,%s,'test',%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,CASE WHEN %s::text IS NOT NULL THEN now() END,%s,%s,'normal',%s,now(),%s) RETURNING id""",
+               concept_name, concept_kind, media_type, variations, tracker_concept_ids, format_code, brief_url, brief_at, status, due_date, priority, position, status_changed_at, tag_state, media_type_source)
+           VALUES (%s,%s,%s,%s,'',%s,%s,%s,%s,'test',%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,CASE WHEN %s::text IS NOT NULL THEN now() END,%s,%s,'normal',%s,now(),%s,CASE WHEN %s::text IS NOT NULL THEN 'manual' END) RETURNING id""",
         ("ticket:" + secrets.token_hex(8), text_key({"product": t["product"], "cluster": t["cluster"], "icp": t["icp"], "pain_point": t["pain"]}), t["product"], t["vendor"], t["cluster"], t["icp"], t["pain"], t["story"], t["note"],
-         t["week"], user, user, t["name"], t["kind"], t["media"], t["variations"], t["concept_ids"], t["format"], t["brief"], t["brief"], t["status"], t["due"], pos, t["tag_state"])).fetchone()
+         t["week"], user, user, t["name"], t["kind"], t["media"], t["variations"], t["concept_ids"], t["format"], t["brief"], t["brief"], t["status"], t["due"], pos, t["tag_state"], t["media"])).fetchone()
     _log(w, row["id"], user, "assigned", None, "assigned", f"{t['vendor']}, week of {t['week']}")
     if t["status"] != "assigned":
         _log(w, row["id"], user, "status_changed", "assigned", t["status"], "Added on the board")
@@ -957,6 +957,8 @@ def _update(aid: int, f: dict, user: str | None, vendor: str | None = None, lega
                 if c in f:
                     sets.append(f"{c} = %s")
                     params.append(f[c])
+            if "media_type" in f:                                                     # a person chose (or cleared) it: automatic fills never overwrite this again (migration 276)
+                sets.append("media_type_source = 'manual', media_type_basis = NULL")
             for url, at in (("brief_url", "brief_at"), ("creative_url", "creative_at")):
                 if url in f:
                     sets.append(f"{url} = %s")

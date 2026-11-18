@@ -227,3 +227,19 @@ def test_the_live_script_runs_the_sync_non_fatally():
     from pathlib import Path
     t = (Path(__file__).resolve().parents[2] / "scripts/deploy/run_live.sh").read_text()
     assert "python -m etl.asset_sync ||" in t and 'exit "$live_rc"' in t
+
+
+def test_the_sync_tags_a_ticket_image_or_video_from_its_files_and_never_overwrites_a_person(env):
+    conn, d = env
+    d.add("img0000001", "photo.png", "image/png", None, md5="m9")
+    vid = ticket(conn, "beef-liver", "https://drive.google.com/drive/folders/srcfolder0")                    # folder holds videos and images: video
+    img = ticket(conn, "boneflex", "https://drive.google.com/file/d/img0000001/view")                                # one still: image
+    mine = ticket(conn, "boneflex", "https://drive.google.com/file/d/vid0000001/view?x=1")                   # a person chose image: stays
+    conn.execute("UPDATE creative_priorities_assignments SET media_type = 'image', media_type_source = 'manual' WHERE id = %s", (mine,))
+    conn.commit()
+    st = go(conn, d)
+    got = {r[0]: r[1:] for r in conn.execute("SELECT id, media_type, media_type_source, media_type_basis FROM creative_priorities_assignments").fetchall()}
+    assert got[vid] == ("video", "auto", "asset_files") and got[img] == ("image", "auto", "asset_files")
+    assert got[mine] == ("image", "manual", None) and st["media_tagged"] == 2
+    go(conn, d)                                                                                              # second run changes nothing
+    assert {r[0]: r[1] for r in conn.execute("SELECT id, media_type FROM creative_priorities_assignments").fetchall()} == {vid: "video", img: "image", mine: "image"}
