@@ -83,6 +83,7 @@ def test_empty_lane_says_so_and_still_offers_add_concept(page):
     assert page.locator("[data-testid=prod-prop-add]").is_visible()
 
 
+@pytest.mark.allow_errors            # the empty submit is a deliberate 400 the browser logs
 def test_add_concept_from_the_lane_checks_the_required_tags(page):
     goto(page)
     page.locator("[data-testid=prod-prop-add]").click()
