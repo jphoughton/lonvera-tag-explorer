@@ -63,6 +63,31 @@ def test_incremental_listing_filters_on_updated_time(monkeypatch):
     assert '"updated_time"' in seen[0]["filtering"] and '"GREATER_THAN"' in seen[0]["filtering"]
 
 
+def test_listing_waits_for_the_regain_time_meta_reports_between_pages(monkeypatch):
+    pages = [{"data": [{"id": "1"}], "paging": {"cursors": {"after": "C1"}, "next": "x"}}, {"data": [{"id": "2"}], "paging": {"cursors": {"after": "C2"}, "next": "x"}}, {"data": []}]
+
+    def fake(url, params, what, **kw):
+        j = pages.pop(0)
+        meta_api.LAST_USAGE.clear()
+        if len(pages) == 1:
+            meta_api.LAST_USAGE.update(cpu=128.0, time=102.0, calls=1.0, regain_minutes=20.0)
+        elif len(pages) == 0:
+            meta_api.LAST_USAGE.update(cpu=75.0, time=10.0, calls=1.0, regain_minutes=0.0)
+        return j
+    monkeypatch.setattr(meta_api, "graph_get", fake)
+    waits = []
+    assert mp.list_ads("tok", "act_1", "Main", None, lambda d: None, sleep=waits.append) == 2
+    assert waits == [mp.PACE, 20 * 60 + 5] and mp.usage_pause() == 25.0       # throttled: the whole regain time; hot but open: a short pause
+
+
+def test_usage_header_is_read_without_ever_failing_a_call():
+    meta_api.LAST_USAGE.clear()
+    meta_api._read_usage({"x-business-use-case-usage": '{"1":[{"type":"ads_management","call_count":1,"total_cputime":128,"total_time":102,"estimated_time_to_regain_access":36}]}'})
+    assert meta_api.LAST_USAGE["regain_minutes"] == 36.0 and meta_api.LAST_USAGE["cpu"] == 128.0
+    meta_api._read_usage({"x-business-use-case-usage": "not json"})
+    meta_api._read_usage({})
+
+
 def test_rate_limit_80004_backs_off_exponentially_then_succeeds(monkeypatch):
     class R:
         def __init__(self, j, status=400):

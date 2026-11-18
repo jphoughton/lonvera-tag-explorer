@@ -33,6 +33,8 @@ INCREMENTAL_DAYS = 14
 MISSING_CAP = 200                # ids looked up by /?ids= per run for ads with spend and no row yet
 UNRESOLVED_FAIL_SHARE = 0.05     # share of the window's Meta spend on ads with no page that fails the run
 PACE = 0.4
+USAGE_PAUSE_AT = 70.0            # % of the ad account's cpu / time budget (x-business-use-case-usage) at which the listing waits before the next page
+MAX_PAUSE = 1800                 # never wait longer than this between two pages (seconds)
 
 
 # ------------------------------------------------------------------------------------------------------------------ parsing
@@ -66,6 +68,18 @@ def parse_ad(ad: dict) -> dict:
 
 
 # ------------------------------------------------------------------------------------------------------------------ Graph
+def usage_pause() -> float:
+    """Seconds to wait before the next page, from the account usage Meta reported on the last call: the whole 'estimated_time_to_regain_access' when Meta has throttled us, a short pause while
+    cpu / time use is high. The ad account's budget is shared with every other job and person on this token (development access tier), so the backfill stays well under it."""
+    u = meta_api.LAST_USAGE
+    if not u:
+        return 0.0
+    if u.get("regain_minutes", 0) > 0:
+        return min(MAX_PAUSE, u["regain_minutes"] * 60 + 5)
+    hot = max(u.get("cpu", 0), u.get("time", 0))
+    return min(120.0, (hot - USAGE_PAUSE_AT) * 3 + 10) if hot >= USAGE_PAUSE_AT else 0.0
+
+
 def list_ads(tok, acct: str, an: str, since: dt.datetime | None, on_page, sleep=time.sleep) -> int:
     """Bulk-list ads (optionally updated_time >= since), calling on_page(list_of_graph_ads) after every page. Returns the number of ads listed."""
     params = {"access_token": tok, "fields": AD_FIELDS, "limit": PAGE_SIZE, "effective_status": STATUSES}
@@ -91,7 +105,10 @@ def list_ads(tok, acct: str, an: str, since: dt.datetime | None, on_page, sleep=
         after = (j.get("paging", {}).get("cursors") or {}).get("after") if j.get("paging", {}).get("next") else None
         if not after:
             return n
-        sleep(PACE)
+        wait = usage_pause()
+        if wait:
+            db.log(f"  {an} ads: account usage {meta_api.LAST_USAGE} -> waiting {wait:.0f}s before the next page")
+        sleep(max(PACE, wait))
 
 
 def lookup_ids(tok, ids: list[str], batch: int = 50, sleep=time.sleep) -> list[dict]:
