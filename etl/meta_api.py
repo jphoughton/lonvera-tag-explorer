@@ -55,6 +55,20 @@ def get_token() -> str:
         raise GraphError("no Meta token available (set META_ACCESS_TOKEN): " + db.scrub(e)) from None
 
 
+LAST_USAGE: dict = {}                                                      # the newest x-business-use-case-usage reading (cpu / time % of the ad account's budget, minutes to regain access)
+
+
+def _read_usage(headers) -> None:
+    try:
+        raw = headers.get("x-business-use-case-usage") or ""
+        for _acct, rows in json.loads(raw).items():
+            r = rows[0]
+            LAST_USAGE.update(cpu=float(r.get("total_cputime", 0)), time=float(r.get("total_time", 0)), calls=float(r.get("call_count", 0)),
+                              regain_minutes=float(r.get("estimated_time_to_regain_access", 0)))
+    except Exception:                                                      # noqa: BLE001 - a header we cannot read is just no reading
+        pass
+
+
 def graph_get(url: str, params: dict | None, what: str, max_retries: int = 7, sleep=time.sleep, on_wait=None):
     """on_wait(seconds, is_rate_limit) is called before every retry sleep and may raise to stop the retrying (the caller's own time budget)."""
     import requests
@@ -64,6 +78,7 @@ def graph_get(url: str, params: dict | None, what: str, max_retries: int = 7, sl
         try:
             r = requests.get(url, params=params, timeout=180)
             code = r.status_code
+            _read_usage(getattr(r, "headers", {}))
             j = r.json()
         except Exception as e:                              # noqa: BLE001 — network / JSON errors are retried
             j = {"error": {"message": db.scrub(e)[:200], "code": -1}}
