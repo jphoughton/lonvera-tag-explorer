@@ -138,8 +138,8 @@ One section per relation, grouped as in the table below. Column types, nullabili
 
 | Group | Relations |
 |---|---|
-| analytics schema: the read-only views (start here) | [`analytics.meta_ads`](#analyticsmeta_ads), [`analytics.meta_ad_daily`](#analyticsmeta_ad_daily), [`analytics.meta_adset_daily`](#analyticsmeta_adset_daily), [`analytics.meta_campaign_daily`](#analyticsmeta_campaign_daily), [`analytics.meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`analytics.meta_reach`](#analyticsmeta_reach), [`analytics.google_campaign_daily`](#analyticsgoogle_campaign_daily), [`analytics.platform_daily`](#analyticsplatform_daily), [`analytics.orders_daily`](#analyticsorders_daily), [`analytics.creative_tracker`](#analyticscreative_tracker), [`analytics.data_coverage`](#analyticsdata_coverage), [`analytics.etl_runs`](#analyticsetl_runs), [`analytics.meta_breakdown_daily`](#analyticsmeta_breakdown_daily), [`analytics.meta_change_log`](#analyticsmeta_change_log), [`analytics.why_findings`](#analyticswhy_findings), [`analytics.change_timeline`](#analyticschange_timeline), [`analytics.meta_adset_state_daily`](#analyticsmeta_adset_state_daily), [`analytics.meta_change_ledger`](#analyticsmeta_change_ledger), [`analytics.attribution_source_daily`](#analyticsattribution_source_daily), [`analytics.attribution_anyclick_daily`](#analyticsattribution_anyclick_daily), [`analytics.attribution_unmapped_daily`](#analyticsattribution_unmapped_daily), [`analytics.orders_daily_detail`](#analyticsorders_daily_detail), [`analytics.orders_by_product_daily`](#analyticsorders_by_product_daily), [`analytics.orders_hourly`](#analyticsorders_hourly), [`analytics.amazon_daily`](#analyticsamazon_daily), [`analytics.site_traffic_daily`](#analyticssite_traffic_daily), [`analytics.platform_daily_history`](#analyticsplatform_daily_history), [`analytics.meta_product_daily`](#analyticsmeta_product_daily), [`analytics.meta_product_reach`](#analyticsmeta_product_reach), [`analytics.meta_bids_daily`](#analyticsmeta_bids_daily), [`analytics.pacing_live_today`](#analyticspacing_live_today), [`analytics.pacing_amazon_month_to_date`](#analyticspacing_amazon_month_to_date), [`analytics.pacing_hourly_spend_curve`](#analyticspacing_hourly_spend_curve), [`analytics.pacing_levers`](#analyticspacing_levers), [`analytics.pacing_meta_spend_monthly`](#analyticspacing_meta_spend_monthly), [`analytics.pipeline_feeds`](#analyticspipeline_feeds), [`analytics.pipeline_feed_attempts`](#analyticspipeline_feed_attempts), [`analytics.pipeline_feed_verify`](#analyticspipeline_feed_verify), [`analytics.pipeline_refresh_runs`](#analyticspipeline_refresh_runs), [`analytics.pipeline_alerts`](#analyticspipeline_alerts), [`analytics.projection_scenarios`](#analyticsprojection_scenarios), [`analytics.projection_levers`](#analyticsprojection_levers), [`analytics.projection_series`](#analyticsprojection_series), [`analytics.projection_actuals`](#analyticsprojection_actuals), [`analytics.projection_pnl_drivers`](#analyticsprojection_pnl_drivers), [`analytics.projection_pnl_settings`](#analyticsprojection_pnl_settings), [`analytics.projection_pnl_account_map`](#analyticsprojection_pnl_account_map), [`analytics.projection_cogs_sku`](#analyticsprojection_cogs_sku), [`analytics.projection_vendor_retainers`](#analyticsprojection_vendor_retainers), [`analytics.inventory_purchase_orders`](#analyticsinventory_purchase_orders), [`analytics.inventory_fba_transfers`](#analyticsinventory_fba_transfers), [`analytics.inventory_vendor_lead_times`](#analyticsinventory_vendor_lead_times), [`analytics.inventory_vendor_costs`](#analyticsinventory_vendor_costs), [`analytics.inventory_product_costs`](#analyticsinventory_product_costs), [`analytics.inventory_reorder_params`](#analyticsinventory_reorder_params), [`analytics.inventory_stock_counts`](#analyticsinventory_stock_counts), [`analytics.inventory_stock_daily`](#analyticsinventory_stock_daily), [`analytics.inventory_units_daily`](#analyticsinventory_units_daily), [`analytics.inventory_units_monthly`](#analyticsinventory_units_monthly), [`analytics.inventory_units_by_country`](#analyticsinventory_units_by_country), [`analytics.cohorts_monthly`](#analyticscohorts_monthly), [`analytics.cohorts_curve_cumulative`](#analyticscohorts_curve_cumulative), [`analytics.cohorts_curve_goal`](#analyticscohorts_curve_goal), [`analytics.creative_family_daily`](#analyticscreative_family_daily), [`analytics.creative_family_metrics`](#analyticscreative_family_metrics), [`analytics.creative_unmatched_meta`](#analyticscreative_unmatched_meta), [`analytics.creative_stage_moves`](#analyticscreative_stage_moves), [`analytics.creative_scaling_placements`](#analyticscreative_scaling_placements), [`analytics.creative_scaling_benchmarks`](#analyticscreative_scaling_benchmarks), [`analytics.creative_content`](#analyticscreative_content), [`analytics.ad_transcripts`](#analyticsad_transcripts), [`analytics.tag_products`](#analyticstag_products), [`analytics.tag_taxonomy_lines`](#analyticstag_taxonomy_lines), [`analytics.tag_line_ingredients`](#analyticstag_line_ingredients), [`analytics.tracker_tags`](#analyticstracker_tags), [`analytics.tracker_hooks`](#analyticstracker_hooks), [`analytics.priorities_snapshots`](#analyticspriorities_snapshots), [`analytics.priorities_thresholds`](#analyticspriorities_thresholds), [`analytics.priorities_baselines`](#analyticspriorities_baselines), [`analytics.priorities_concepts`](#analyticspriorities_concepts), [`analytics.priorities_manual_concepts`](#analyticspriorities_manual_concepts), [`analytics.production_assignments`](#analyticsproduction_assignments), [`analytics.production_formats`](#analyticsproduction_formats), [`analytics.daily_story`](#analyticsdaily_story), [`analytics.daily_story_facts`](#analyticsdaily_story_facts), [`analytics.daily_story_patterns`](#analyticsdaily_story_patterns), [`analytics.daily_story_pattern_scoreboard`](#analyticsdaily_story_pattern_scoreboard), [`analytics.daily_story_metric_registry`](#analyticsdaily_story_metric_registry), [`analytics.competitor_brands`](#analyticscompetitor_brands), [`analytics.competitor_ads`](#analyticscompetitor_ads), [`analytics.competitor_concepts`](#analyticscompetitor_concepts), [`analytics.catalog`](#analyticscatalog), [`analytics.metric_glossary`](#analyticsmetric_glossary), [`analytics.amazon_asin_products`](#analyticsamazon_asin_products), [`analytics.amazon_ads_campaign_daily`](#analyticsamazon_ads_campaign_daily), [`analytics.amazon_ads_asin_daily`](#analyticsamazon_ads_asin_daily), [`analytics.amazon_search_queries_weekly`](#analyticsamazon_search_queries_weekly), [`analytics.amazon_search_queries_monthly`](#analyticsamazon_search_queries_monthly), [`analytics.amazon_orders_asin_daily`](#analyticsamazon_orders_asin_daily), [`analytics.amazon_traffic_daily`](#analyticsamazon_traffic_daily), [`analytics.amazon_market_baskets`](#analyticsamazon_market_baskets), [`analytics.amazon_repeat_purchases`](#analyticsamazon_repeat_purchases), [`analytics.amazon_settlement_fees_daily`](#analyticsamazon_settlement_fees_daily), [`analytics.nc_by_country_daily`](#analyticsnc_by_country_daily), [`analytics.amazon_ads_search_terms_daily`](#analyticsamazon_ads_search_terms_daily), [`analytics.amazon_ads_targeting_daily`](#analyticsamazon_ads_targeting_daily), [`analytics.amazon_ads_keywords_snapshot`](#analyticsamazon_ads_keywords_snapshot), [`analytics.amazon_ads_targets_snapshot`](#analyticsamazon_ads_targets_snapshot), [`analytics.amazon_ads_negative_keywords_snapshot`](#analyticsamazon_ads_negative_keywords_snapshot), [`analytics.amazon_ads_campaigns_snapshot`](#analyticsamazon_ads_campaigns_snapshot), [`analytics.amazon_ads_product_ads`](#analyticsamazon_ads_product_ads), [`analytics.amazon_ads_ad_group_products`](#analyticsamazon_ads_ad_group_products), [`analytics.amazon_ads_search_terms_vs_organic`](#analyticsamazon_ads_search_terms_vs_organic), [`analytics.klaviyo_daily`](#analyticsklaviyo_daily), [`analytics.klaviyo_campaigns`](#analyticsklaviyo_campaigns), [`analytics.klaviyo_flows`](#analyticsklaviyo_flows), [`analytics.klaviyo_flow_messages`](#analyticsklaviyo_flow_messages), [`analytics.klaviyo_message_content`](#analyticsklaviyo_message_content), [`analytics.klaviyo_message_performance`](#analyticsklaviyo_message_performance), [`analytics.landing_pages`](#analyticslanding_pages), [`analytics.landing_page_versions`](#analyticslanding_page_versions), [`analytics.landing_page_ads`](#analyticslanding_page_ads), [`analytics.landing_page_ad_checks`](#analyticslanding_page_ad_checks), [`analytics.landing_page_top_ads`](#analyticslanding_page_top_ads), [`analytics.shopify_orders`](#analyticsshopify_orders), [`analytics.shopify_order_lines`](#analyticsshopify_order_lines) |
-| Meta (Facebook / Instagram) ads: ads, campaigns, daily results | [`public.ad_daily`](#publicad_daily), [`public.meta_ads`](#publicmeta_ads), [`public.meta_campaigns`](#publicmeta_campaigns), [`public.meta_ad_lifetime`](#publicmeta_ad_lifetime), [`public.ad_lifetime`](#publicad_lifetime), [`public.meta_family_map`](#publicmeta_family_map), [`public.meta_breakdown_daily`](#publicmeta_breakdown_daily), [`public.meta_breakdown_coverage`](#publicmeta_breakdown_coverage), [`public.meta_breakdown_progress`](#publicmeta_breakdown_progress), [`public.meta_change_log`](#publicmeta_change_log), [`public.meta_adset_state_daily`](#publicmeta_adset_state_daily), [`public.why_findings`](#publicwhy_findings), [`public.landing_pages`](#publiclanding_pages), [`public.landing_page_versions`](#publiclanding_page_versions), [`public.landing_page_ads`](#publiclanding_page_ads), [`public.landing_page_top_ads`](#publiclanding_page_top_ads) |
+| analytics schema: the read-only views (start here) | [`analytics.meta_ads`](#analyticsmeta_ads), [`analytics.meta_ad_daily`](#analyticsmeta_ad_daily), [`analytics.meta_adset_daily`](#analyticsmeta_adset_daily), [`analytics.meta_campaign_daily`](#analyticsmeta_campaign_daily), [`analytics.meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`analytics.meta_reach`](#analyticsmeta_reach), [`analytics.google_campaign_daily`](#analyticsgoogle_campaign_daily), [`analytics.platform_daily`](#analyticsplatform_daily), [`analytics.orders_daily`](#analyticsorders_daily), [`analytics.creative_tracker`](#analyticscreative_tracker), [`analytics.data_coverage`](#analyticsdata_coverage), [`analytics.etl_runs`](#analyticsetl_runs), [`analytics.meta_breakdown_daily`](#analyticsmeta_breakdown_daily), [`analytics.meta_change_log`](#analyticsmeta_change_log), [`analytics.why_findings`](#analyticswhy_findings), [`analytics.change_timeline`](#analyticschange_timeline), [`analytics.meta_adset_state_daily`](#analyticsmeta_adset_state_daily), [`analytics.meta_change_ledger`](#analyticsmeta_change_ledger), [`analytics.attribution_source_daily`](#analyticsattribution_source_daily), [`analytics.attribution_anyclick_daily`](#analyticsattribution_anyclick_daily), [`analytics.attribution_unmapped_daily`](#analyticsattribution_unmapped_daily), [`analytics.orders_daily_detail`](#analyticsorders_daily_detail), [`analytics.orders_by_product_daily`](#analyticsorders_by_product_daily), [`analytics.orders_hourly`](#analyticsorders_hourly), [`analytics.amazon_daily`](#analyticsamazon_daily), [`analytics.site_traffic_daily`](#analyticssite_traffic_daily), [`analytics.platform_daily_history`](#analyticsplatform_daily_history), [`analytics.meta_product_daily`](#analyticsmeta_product_daily), [`analytics.meta_product_reach`](#analyticsmeta_product_reach), [`analytics.meta_bids_daily`](#analyticsmeta_bids_daily), [`analytics.pacing_live_today`](#analyticspacing_live_today), [`analytics.pacing_amazon_month_to_date`](#analyticspacing_amazon_month_to_date), [`analytics.pacing_hourly_spend_curve`](#analyticspacing_hourly_spend_curve), [`analytics.pacing_levers`](#analyticspacing_levers), [`analytics.pacing_meta_spend_monthly`](#analyticspacing_meta_spend_monthly), [`analytics.pipeline_feeds`](#analyticspipeline_feeds), [`analytics.pipeline_feed_attempts`](#analyticspipeline_feed_attempts), [`analytics.pipeline_feed_verify`](#analyticspipeline_feed_verify), [`analytics.pipeline_refresh_runs`](#analyticspipeline_refresh_runs), [`analytics.pipeline_alerts`](#analyticspipeline_alerts), [`analytics.projection_scenarios`](#analyticsprojection_scenarios), [`analytics.projection_levers`](#analyticsprojection_levers), [`analytics.projection_series`](#analyticsprojection_series), [`analytics.projection_actuals`](#analyticsprojection_actuals), [`analytics.projection_pnl_drivers`](#analyticsprojection_pnl_drivers), [`analytics.projection_pnl_settings`](#analyticsprojection_pnl_settings), [`analytics.projection_pnl_account_map`](#analyticsprojection_pnl_account_map), [`analytics.projection_cogs_sku`](#analyticsprojection_cogs_sku), [`analytics.projection_vendor_retainers`](#analyticsprojection_vendor_retainers), [`analytics.inventory_purchase_orders`](#analyticsinventory_purchase_orders), [`analytics.inventory_fba_transfers`](#analyticsinventory_fba_transfers), [`analytics.inventory_vendor_lead_times`](#analyticsinventory_vendor_lead_times), [`analytics.inventory_vendor_costs`](#analyticsinventory_vendor_costs), [`analytics.inventory_product_costs`](#analyticsinventory_product_costs), [`analytics.inventory_reorder_params`](#analyticsinventory_reorder_params), [`analytics.inventory_stock_counts`](#analyticsinventory_stock_counts), [`analytics.inventory_stock_daily`](#analyticsinventory_stock_daily), [`analytics.inventory_units_daily`](#analyticsinventory_units_daily), [`analytics.inventory_units_monthly`](#analyticsinventory_units_monthly), [`analytics.inventory_units_by_country`](#analyticsinventory_units_by_country), [`analytics.cohorts_monthly`](#analyticscohorts_monthly), [`analytics.cohorts_curve_cumulative`](#analyticscohorts_curve_cumulative), [`analytics.cohorts_curve_goal`](#analyticscohorts_curve_goal), [`analytics.creative_family_daily`](#analyticscreative_family_daily), [`analytics.creative_family_metrics`](#analyticscreative_family_metrics), [`analytics.creative_unmatched_meta`](#analyticscreative_unmatched_meta), [`analytics.creative_stage_moves`](#analyticscreative_stage_moves), [`analytics.creative_scaling_placements`](#analyticscreative_scaling_placements), [`analytics.creative_scaling_benchmarks`](#analyticscreative_scaling_benchmarks), [`analytics.creative_content`](#analyticscreative_content), [`analytics.ad_transcripts`](#analyticsad_transcripts), [`analytics.tag_products`](#analyticstag_products), [`analytics.tag_taxonomy_lines`](#analyticstag_taxonomy_lines), [`analytics.tag_line_ingredients`](#analyticstag_line_ingredients), [`analytics.tracker_tags`](#analyticstracker_tags), [`analytics.tracker_hooks`](#analyticstracker_hooks), [`analytics.priorities_snapshots`](#analyticspriorities_snapshots), [`analytics.priorities_thresholds`](#analyticspriorities_thresholds), [`analytics.priorities_baselines`](#analyticspriorities_baselines), [`analytics.priorities_concepts`](#analyticspriorities_concepts), [`analytics.priorities_manual_concepts`](#analyticspriorities_manual_concepts), [`analytics.production_assignments`](#analyticsproduction_assignments), [`analytics.production_formats`](#analyticsproduction_formats), [`analytics.daily_story`](#analyticsdaily_story), [`analytics.daily_story_facts`](#analyticsdaily_story_facts), [`analytics.daily_story_patterns`](#analyticsdaily_story_patterns), [`analytics.daily_story_pattern_scoreboard`](#analyticsdaily_story_pattern_scoreboard), [`analytics.daily_story_metric_registry`](#analyticsdaily_story_metric_registry), [`analytics.competitor_brands`](#analyticscompetitor_brands), [`analytics.competitor_ads`](#analyticscompetitor_ads), [`analytics.competitor_concepts`](#analyticscompetitor_concepts), [`analytics.catalog`](#analyticscatalog), [`analytics.metric_glossary`](#analyticsmetric_glossary), [`analytics.amazon_asin_products`](#analyticsamazon_asin_products), [`analytics.amazon_ads_campaign_daily`](#analyticsamazon_ads_campaign_daily), [`analytics.amazon_ads_asin_daily`](#analyticsamazon_ads_asin_daily), [`analytics.amazon_search_queries_weekly`](#analyticsamazon_search_queries_weekly), [`analytics.amazon_search_queries_monthly`](#analyticsamazon_search_queries_monthly), [`analytics.amazon_orders_asin_daily`](#analyticsamazon_orders_asin_daily), [`analytics.amazon_traffic_daily`](#analyticsamazon_traffic_daily), [`analytics.amazon_market_baskets`](#analyticsamazon_market_baskets), [`analytics.amazon_repeat_purchases`](#analyticsamazon_repeat_purchases), [`analytics.amazon_settlement_fees_daily`](#analyticsamazon_settlement_fees_daily), [`analytics.nc_by_country_daily`](#analyticsnc_by_country_daily), [`analytics.amazon_ads_search_terms_daily`](#analyticsamazon_ads_search_terms_daily), [`analytics.amazon_ads_targeting_daily`](#analyticsamazon_ads_targeting_daily), [`analytics.amazon_ads_keywords_snapshot`](#analyticsamazon_ads_keywords_snapshot), [`analytics.amazon_ads_targets_snapshot`](#analyticsamazon_ads_targets_snapshot), [`analytics.amazon_ads_negative_keywords_snapshot`](#analyticsamazon_ads_negative_keywords_snapshot), [`analytics.amazon_ads_campaigns_snapshot`](#analyticsamazon_ads_campaigns_snapshot), [`analytics.amazon_ads_product_ads`](#analyticsamazon_ads_product_ads), [`analytics.amazon_ads_ad_group_products`](#analyticsamazon_ads_ad_group_products), [`analytics.amazon_ads_search_terms_vs_organic`](#analyticsamazon_ads_search_terms_vs_organic), [`analytics.klaviyo_daily`](#analyticsklaviyo_daily), [`analytics.klaviyo_campaigns`](#analyticsklaviyo_campaigns), [`analytics.klaviyo_flows`](#analyticsklaviyo_flows), [`analytics.klaviyo_flow_messages`](#analyticsklaviyo_flow_messages), [`analytics.klaviyo_message_content`](#analyticsklaviyo_message_content), [`analytics.klaviyo_message_performance`](#analyticsklaviyo_message_performance), [`analytics.landing_pages`](#analyticslanding_pages), [`analytics.landing_page_versions`](#analyticslanding_page_versions), [`analytics.landing_page_ads`](#analyticslanding_page_ads), [`analytics.landing_page_ad_checks`](#analyticslanding_page_ad_checks), [`analytics.landing_page_top_ads`](#analyticslanding_page_top_ads), [`analytics.shopify_orders`](#analyticsshopify_orders), [`analytics.shopify_order_lines`](#analyticsshopify_order_lines), [`analytics.meta_ad_pages`](#analyticsmeta_ad_pages), [`analytics.meta_page_performance_daily`](#analyticsmeta_page_performance_daily) |
+| Meta (Facebook / Instagram) ads: ads, campaigns, daily results | [`public.ad_daily`](#publicad_daily), [`public.meta_ads`](#publicmeta_ads), [`public.meta_campaigns`](#publicmeta_campaigns), [`public.meta_ad_lifetime`](#publicmeta_ad_lifetime), [`public.ad_lifetime`](#publicad_lifetime), [`public.meta_family_map`](#publicmeta_family_map), [`public.meta_breakdown_daily`](#publicmeta_breakdown_daily), [`public.meta_breakdown_coverage`](#publicmeta_breakdown_coverage), [`public.meta_breakdown_progress`](#publicmeta_breakdown_progress), [`public.meta_change_log`](#publicmeta_change_log), [`public.meta_adset_state_daily`](#publicmeta_adset_state_daily), [`public.why_findings`](#publicwhy_findings), [`public.meta_pages`](#publicmeta_pages), [`public.meta_ad_pages`](#publicmeta_ad_pages), [`public.landing_pages`](#publiclanding_pages), [`public.landing_page_versions`](#publiclanding_page_versions), [`public.landing_page_ads`](#publiclanding_page_ads), [`public.landing_page_top_ads`](#publiclanding_page_top_ads) |
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
 | Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily), [`public.nc_by_country_daily`](#publicnc_by_country_daily), [`public.shopify_orders`](#publicshopify_orders), [`public.shopify_order_lines`](#publicshopify_order_lines) |
@@ -153,7 +153,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 
 | Domain | Analytics views |
 |---|---|
-| **marketing**: Meta and Google ads: spend, reach, bids, product splits, platform history | [`meta_ads`](#analyticsmeta_ads), [`meta_ad_daily`](#analyticsmeta_ad_daily), [`meta_adset_daily`](#analyticsmeta_adset_daily), [`meta_campaign_daily`](#analyticsmeta_campaign_daily), [`meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`meta_reach`](#analyticsmeta_reach), [`google_campaign_daily`](#analyticsgoogle_campaign_daily), [`platform_daily`](#analyticsplatform_daily), [`meta_breakdown_daily`](#analyticsmeta_breakdown_daily), [`meta_change_log`](#analyticsmeta_change_log), [`change_timeline`](#analyticschange_timeline), [`meta_adset_state_daily`](#analyticsmeta_adset_state_daily), [`meta_change_ledger`](#analyticsmeta_change_ledger), [`platform_daily_history`](#analyticsplatform_daily_history), [`meta_product_daily`](#analyticsmeta_product_daily), [`meta_product_reach`](#analyticsmeta_product_reach), [`meta_bids_daily`](#analyticsmeta_bids_daily) |
+| **marketing**: Meta and Google ads: spend, reach, bids, product splits, platform history | [`meta_ads`](#analyticsmeta_ads), [`meta_ad_daily`](#analyticsmeta_ad_daily), [`meta_adset_daily`](#analyticsmeta_adset_daily), [`meta_campaign_daily`](#analyticsmeta_campaign_daily), [`meta_campaign_daily_history`](#analyticsmeta_campaign_daily_history), [`meta_reach`](#analyticsmeta_reach), [`google_campaign_daily`](#analyticsgoogle_campaign_daily), [`platform_daily`](#analyticsplatform_daily), [`meta_breakdown_daily`](#analyticsmeta_breakdown_daily), [`meta_change_log`](#analyticsmeta_change_log), [`change_timeline`](#analyticschange_timeline), [`meta_adset_state_daily`](#analyticsmeta_adset_state_daily), [`meta_change_ledger`](#analyticsmeta_change_ledger), [`platform_daily_history`](#analyticsplatform_daily_history), [`meta_product_daily`](#analyticsmeta_product_daily), [`meta_product_reach`](#analyticsmeta_product_reach), [`meta_bids_daily`](#analyticsmeta_bids_daily), [`meta_ad_pages`](#analyticsmeta_ad_pages), [`meta_page_performance_daily`](#analyticsmeta_page_performance_daily) |
 | **attribution**: Which orders each source or campaign gets credit for (Upstack) | [`attribution_source_daily`](#analyticsattribution_source_daily), [`attribution_anyclick_daily`](#analyticsattribution_anyclick_daily), [`attribution_unmapped_daily`](#analyticsattribution_unmapped_daily) |
 | **orders**: Actual revenue, new customers, Amazon sales, site traffic | [`orders_daily`](#analyticsorders_daily), [`orders_daily_detail`](#analyticsorders_daily_detail), [`orders_by_product_daily`](#analyticsorders_by_product_daily), [`orders_hourly`](#analyticsorders_hourly), [`amazon_daily`](#analyticsamazon_daily), [`site_traffic_daily`](#analyticssite_traffic_daily), [`nc_by_country_daily`](#analyticsnc_by_country_daily), [`shopify_orders`](#analyticsshopify_orders), [`shopify_order_lines`](#analyticsshopify_order_lines) |
 | **creative**: Creative tracker, family roll-ups, test to scale, ad copy | [`creative_tracker`](#analyticscreative_tracker), [`creative_family_daily`](#analyticscreative_family_daily), [`creative_family_metrics`](#analyticscreative_family_metrics), [`creative_unmatched_meta`](#analyticscreative_unmatched_meta), [`creative_stage_moves`](#analyticscreative_stage_moves), [`creative_scaling_placements`](#analyticscreative_scaling_placements), [`creative_scaling_benchmarks`](#analyticscreative_scaling_benchmarks), [`creative_content`](#analyticscreative_content), [`ad_transcripts`](#analyticsad_transcripts) |
@@ -818,7 +818,7 @@ FROM analytics.creative_tracker GROUP BY 1 ORDER BY 2 DESC;
 
 | Column | Type | Null | Meaning |
 |---|---|---|---|
-| `source` | text |  | meta_ad_daily \| upstack_meta_attribution \| google_campaign_daily \| upstack_google_attribution \| orders_daily \| meta_reach (day grain) \| meta_campaign_daily_history \| amazon_ads_campaign_daily \| amazon_ads_asin_daily \| amazon_search_queries_weekly \| amazon_search_queries_monthly \| amazon_orders_asin_daily \| amazon_traffic_daily \| amazon_market_baskets \| amazon_repeat_purchases \| amazon_settlement_fees_daily. |
+| `source` | text |  | meta_ad_daily \| upstack_meta_attribution \| google_campaign_daily \| upstack_google_attribution \| orders_daily \| meta_reach (day grain) \| meta_campaign_daily_history \| amazon_ads_campaign_daily \| amazon_ads_asin_daily \| amazon_search_queries_weekly \| amazon_search_queries_monthly \| amazon_orders_asin_daily \| amazon_traffic_daily \| amazon_market_baskets \| amazon_repeat_purchases \| amazon_settlement_fees_daily \| meta_ad_pages. |
 | `first_day` | date |  | First day held. |
 | `last_day` | date |  | Last day held. |
 | `days` | integer |  | Distinct days held. |
@@ -5561,6 +5561,103 @@ SELECT * FROM analytics.shopify_order_lines LIMIT 20;
 SELECT count(*) AS rows FROM analytics.shopify_order_lines;
 ```
 
+### analytics.meta_ad_pages
+
+*view*
+
+**Purpose.** Which Facebook Page (handle) each Meta ad runs from, and whether it is the Lonvera page: the dimension to join to meta_ad_daily on ad_id, or to group ad families by page.
+
+- **Domain:** marketing
+- **Grain:** one row per Meta ad_id
+- **Source:** public.meta_ad_pages + public.meta_pages + public.meta_ads (family_key)
+- **Refresh:** nightly (etl.meta_pages, etl_runs job meta_pages)
+- **Coverage:** every ad of both accounts since the backfill
+- **Caveat:** page_id is NULL for ads whose creative names no page; they are the 'unresolved' list: SELECT ... WHERE page_id IS NULL.
+- **Caveat:** Current page of the ad's creative, not necessarily the page on each historic day (a swapped creative changes it).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `ad_id` | text |  | Meta ad id. |
+| `family_key` | text |  | Ad family key (lower(ad name without copy suffixes)); NULL when the ad is not in meta_ads. |
+| `page_id` | text |  | Facebook Page id, NULL when unresolved. |
+| `page_name` | text |  | Page name, NULL when not readable. |
+| `is_lonvera_page` | boolean |  | true when the page is the Lonvera handle (161085663758792). |
+| `account` | text |  | 'Lonvera Main' \| 'Lonvera BackUp'. |
+| `instagram_user_id` | text |  | Instagram account of the creative. |
+| `effective_object_story_id` | text |  | '<page_id>_<post_id>' of the served post. |
+| `source` | text |  | effective_object_story_id \| object_story_id \| object_story_spec \| unresolved. |
+| `first_seen` | date |  | First day a listing returned the ad. |
+| `last_seen` | date |  | Last day a listing returned the ad. |
+
+*Ads and spend by page (last 30 days)*
+
+```sql
+SELECT coalesce(p.page_name, '(unknown page)') AS page, count(DISTINCT p.ad_id) AS ads, round(sum(d.spend)) AS spend
+FROM analytics.meta_ad_daily d LEFT JOIN analytics.meta_ad_pages p ON p.ad_id = d.ad_id
+WHERE d.day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'meta_ad_daily') - 30 GROUP BY 1 ORDER BY 3 DESC;
+```
+
+*Unresolved ads with spend in the last 14 days*
+
+```sql
+SELECT d.ad_id, max(d.ad_name) AS ad_name, round(sum(d.spend)) AS spend
+FROM analytics.meta_ad_daily d LEFT JOIN analytics.meta_ad_pages p ON p.ad_id = d.ad_id
+WHERE d.day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'meta_ad_daily') - 14 AND p.page_id IS NULL GROUP BY 1 HAVING sum(d.spend) > 0 ORDER BY 3 DESC LIMIT 25;
+```
+
+### analytics.meta_page_performance_daily
+
+*view*
+
+**Purpose.** Meta-reported results by Pacific day x Facebook Page x product x stage, so the Lonvera page can be compared with every other handle: spend, impressions, link clicks, purchases and purchase value. CPM, CTR (link clicks / impressions), cost per link click, conversion rate (purchases / link clicks), AOV, cost per purchase and ROAS all come from sums of these columns.
+
+- **Domain:** marketing
+- **Grain:** one row per (day, page_id, product_slug, stage); ads with no page row sit under page_id NULL, page_name '(unknown page)'
+- **Source:** analytics.meta_ad_daily joined to public.meta_ad_pages and public.meta_pages
+- **Refresh:** same as meta_ad_daily (nightly); page identity refreshed nightly by etl.meta_pages
+- **Coverage:** 2026-05-06 through yesterday (Meta ad-level data; the page feed adds no earlier days)
+- **Caveat:** Meta-reported: purchases and purchase value count returning customers and Meta's own attribution windows (not Upstack new customers). Ad-level data starts 2026-05-06 (meta_campaign_daily_history goes back further but has no page).
+- **Caveat:** Page mix is confounded by product, stage and spend: the Lonvera page and the other pages carry different products, campaign stages, ad ages and budgets. Compare pages only like-for-like (same product_slug x stage x period) and say 'consistent with', never 'caused by'.
+- **Caveat:** Ratios come from sums over the window, never an average of daily ratios; NULL is not zero (product_slug / stage can be NULL for ads outside the tracked products).
+- **Caveat:** Clicks here are Meta LINK clicks (all clicks on the link), not unique outbound clicks: unique outbound clicks are not stored per ad (they do not add across ads). CTR here = link clicks / impressions.
+- **Caveat:** Purchases and purchase value count returning customers: for new-customer ROAS use the Upstack columns of meta_ad_daily joined to meta_ad_pages on ad_id.
+- **Caveat:** Spend by page adds up to total Meta ad-level spend (analytics.meta_ad_daily) exactly; unresolved ads are the '(unknown page)' row.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `day` | date |  | Calendar day (Main = Los Angeles, BackUp = New York, as in meta_ad_daily). |
+| `page_id` | text |  | Facebook Page id, NULL = ads with no page identity. |
+| `page_name` | text |  | Page name; 'Page <id>' when the name is not readable, '(unknown page)' when there is no page. |
+| `is_lonvera_page` | boolean |  | true for the Lonvera handle. |
+| `product_slug` | text |  | Product of the ad (as in meta_ad_daily), NULL when untracked. |
+| `stage` | text |  | 'testing' \| 'scaling' from the campaign name. |
+| `ads_with_spend` | integer |  | Distinct ads with spend > 0 that day for the page, product and stage. |
+| `spend` | numeric |  | Meta spend, dollars. |
+| `impressions` | numeric |  | Meta impressions. |
+| `link_clicks` | numeric |  | Meta link clicks. |
+| `meta_purchases` | numeric |  | Meta-reported purchases. |
+| `meta_revenue` | numeric |  | Meta-reported purchase value, dollars. |
+
+*Lonvera page vs other pages, last 30 days, like for like by product and stage*
+
+```sql
+SELECT product_slug, stage, is_lonvera_page, round(sum(spend)) AS spend,
+       round(sum(meta_revenue) / NULLIF(sum(spend), 0), 2) AS meta_roas,
+       round(sum(spend) / NULLIF(sum(meta_purchases), 0), 2) AS cost_per_purchase,
+       round(sum(spend) * 1000 / NULLIF(sum(impressions), 0), 2) AS cpm,
+       round(sum(link_clicks) / NULLIF(sum(impressions), 0), 4) AS ctr,
+       round(sum(meta_purchases) / NULLIF(sum(link_clicks), 0), 4) AS conv_rate
+FROM analytics.meta_page_performance_daily
+WHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'meta_ad_daily') - 30
+GROUP BY 1, 2, 3 HAVING sum(spend) > 0 ORDER BY 1, 2, 3;
+```
+
+*Spend by page, last 7 days*
+
+```sql
+SELECT page_name, round(sum(spend)) AS spend FROM analytics.meta_page_performance_daily WHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'meta_ad_daily') - 7 GROUP BY 1 ORDER BY 2 DESC;
+```
+
 ## Meta (Facebook / Instagram) ads: ads, campaigns, daily results
 
 ### public.ad_daily
@@ -5980,6 +6077,61 @@ SELECT created_at, window_end, hypothesis, verdict, evidence
 FROM analytics.why_findings WHERE metric = 'nc_roas' AND verdict IN ('supported by control', 'consistent with')
 ORDER BY created_at DESC LIMIT 20;
 ```
+
+### public.meta_pages
+
+*table*
+
+**Purpose.** Lookup of the Facebook Pages Lonvera ads run from: page id, name and whether it is the Lonvera handle. Small and hand-seeded; unseen pages are added by etl.meta_pages (unnamed).
+
+- **Grain:** primary key `(page_id)`; one row per page_id
+- **Source:** seeded in migration 278 (Lonvera 161085663758792, 830267930177476); new page ids are added by etl.meta_pages; names from Graph /?ids=&fields=name when the token may read the page
+- **Refresh:** nightly with etl.meta_pages (names retried for unnamed pages)
+- **Coverage:** every page any listed ad names
+- **Caveat:** name is NULL until the token can read the page (a page permission): a NULL name is shown as 'Page <id>' in the analytics views.
+- **Caveat:** is_lonvera is set by hand: true only for page 161085663758792. Every other page counts as 'another handle' in the Lonvera-vs-other comparison.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `page_id` | text | no | Facebook Page id (text). |
+| `name` | text | yes | Page name, NULL when not readable. |
+| `is_lonvera` | boolean | no | true for the Lonvera handle (161085663758792), false for every other page. |
+| `active` | boolean | no | false hides a page from pickers (never set by a job). |
+| `loaded_at` | timestamptz | no | When the row was written or its name resolved. |
+
+*Pages and how many ads run from each*
+
+```sql
+SELECT g.page_id, g.name, g.is_lonvera, count(p.ad_id) AS ads
+FROM public.meta_pages g LEFT JOIN public.meta_ad_pages p ON p.page_id = g.page_id GROUP BY 1, 2, 3 ORDER BY 4 DESC;
+```
+
+### public.meta_ad_pages
+
+*table*
+
+**Purpose.** Which Facebook Page each Meta ad runs from (page id taken from the ad creative's effective_object_story_id, else object_story_id, else object_story_spec.page_id), with the Instagram account and the post it serves.
+
+- **Grain:** primary key `(ad_id)`; one row per Meta ad_id (both ad accounts, every status Meta lists, ARCHIVED included (DELETED ads only via the capped lookup of ads with recent spend))
+- **Source:** etl.meta_pages: Graph GET /act_<id>/ads?fields=creative{effective_object_story_id,object_story_id,object_story_spec{page_id,instagram_user_id},instagram_actor_id} (bulk listing, 500 per page)
+- **Refresh:** nightly in the etl service (non-fatal step; etl_runs job meta_pages): ads updated in the last 14 days plus any ad with spend in the last 14 days and no row; the one-time backfill listed every ad
+- **Coverage:** every ad of both accounts as of the backfill day, then new and changed ads nightly
+- **Caveat:** page_id is NULL (source = 'unresolved') when the creative names no page: deleted creatives, some catalog / dynamic ads. They keep their row so they are not re-fetched every night.
+- **Caveat:** An ad's creative can be swapped: the nightly listing overwrites page_id when Meta returns a new one, so a row is the CURRENT page, not the page on every historic day.
+- **Caveat:** first_seen is the first day a listing returned the ad (the backfill day for old ads), not the ad's creation date (see meta_ads.created_date).
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `ad_id` | text | no | Meta ad id. Joins meta_ads and ad_daily. |
+| `ad_account` | text | yes | 'Lonvera Main' \| 'Lonvera BackUp'. |
+| `page_id` | text | yes | Facebook Page id the ad runs from, NULL when unresolved. |
+| `instagram_user_id` | text | yes | Instagram account id of the creative (object_story_spec.instagram_user_id, else instagram_actor_id), NULL when none. |
+| `effective_object_story_id` | text | yes | '<page_id>_<post_id>' of the post the ad serves (falls back to object_story_id). |
+| `creative_id` | text | yes | Meta creative id when the listing returned it. |
+| `first_seen` | date | no | First day a listing returned this ad. |
+| `last_seen` | date | no | Last day a listing returned this ad. |
+| `source` | text | no | Which field gave the page: effective_object_story_id \| object_story_id \| object_story_spec \| unresolved. |
+| `loaded_at` | timestamptz | no | When the row was last written. |
 
 ### public.landing_pages
 

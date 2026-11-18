@@ -182,7 +182,7 @@
   {
    "service": "etl",
    "order": 13,
-   "module": "etl.daily_story",
+   "module": "etl.meta_pages",
    "args": "",
    "fatal": false,
    "note": "failure is logged and does not fail the run"
@@ -190,7 +190,7 @@
   {
    "service": "etl",
    "order": 14,
-   "module": "etl.ticket_tags",
+   "module": "etl.daily_story",
    "args": "",
    "fatal": false,
    "note": "failure is logged and does not fail the run"
@@ -198,7 +198,7 @@
   {
    "service": "etl",
    "order": 15,
-   "module": "etl.auto_tag",
+   "module": "etl.ticket_tags",
    "args": "",
    "fatal": false,
    "note": "failure is logged and does not fail the run"
@@ -206,6 +206,14 @@
   {
    "service": "etl",
    "order": 16,
+   "module": "etl.auto_tag",
+   "args": "",
+   "fatal": false,
+   "note": "failure is logged and does not fail the run"
+  },
+  {
+   "service": "etl",
+   "order": 17,
    "module": "etl.competitor_chatter",
    "args": "--if-sunday",
    "fatal": false,
@@ -213,7 +221,7 @@
   },
   {
    "service": "etl",
-   "order": 17,
+   "order": 18,
    "module": "etl.competitor_landing_pages",
    "args": "--if-sunday",
    "fatal": false,
@@ -221,7 +229,7 @@
   },
   {
    "service": "etl",
-   "order": 18,
+   "order": 19,
    "module": "etl.competitor_landing_pages",
    "args": "--if-sunday --own",
    "fatal": false,
@@ -468,6 +476,10 @@
   {
    "module": "etl.meta_changes",
    "summary": "Meta change feeds (READ-ONLY Graph GETs, both ad accounts): the Marketing API activity log -> meta_change_log, and a snapshot of every ad set's settings ->"
+  },
+  {
+   "module": "etl.meta_pages",
+   "summary": "Ad -> Facebook Page identity (which handle each Meta ad runs from) -> meta_ad_pages (+ the small lookup meta_pages). READ-ONLY Graph GETs, both ad accounts."
   },
   {
    "module": "etl.meta_pull",

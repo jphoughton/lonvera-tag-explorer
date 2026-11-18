@@ -54,7 +54,8 @@ MIGRATIONS = {"013": ROOT / "migrations" / "013_schema_comments_analytics.sql", 
               "247": ROOT / "migrations" / "247_meta_checkout_changelog.sql", "248": ROOT / "migrations" / "248_daily_story.sql",
               "251": ROOT / "migrations" / "251_amazon_views.sql", "253": ROOT / "migrations" / "253_amazon_keyword_views.sql", "254": ROOT / "migrations" / "254_ad_transcripts_view.sql",
               "255": ROOT / "migrations" / "255_meta_breakdown_funnel.sql", "256": ROOT / "migrations" / "256_meta_breakdown_catalog.sql",
-              "274": ROOT / "migrations" / "274_nc_by_country_views.sql"}
+              "274": ROOT / "migrations" / "274_nc_by_country_views.sql",
+              "279": ROOT / "migrations" / "279_meta_page_views.sql"}
 # the Test to scale views (created by migration 015, after 013 runs on a fresh database): they and their comments live in migration 015
 # (migration 016 turned them into tables and added the placements tables; 015's own comment section is frozen history)
 LATE_STAGE_MOVES = {f"public.{n}{b}" for n in ("creative_stage_moves", "creative_scaling_placements") for b in ("", "_upstack_nc", "_upstack_all")}
@@ -109,6 +110,8 @@ LATE_AMAZON_KW = ({f"public.amazon_ads_{n}" for n in ("search_term_daily", "targ
 LATE_TRANSCRIPT_VIEW = {"analytics.ad_transcripts"}
 # new customers by country: the table of migration 273 and its analytics view; both sets of comments, and the catalog, live in migration 274
 LATE_COUNTRIES = {"public.nc_by_country_daily", "analytics.nc_by_country_daily"}
+# ad -> Facebook Page identity: the tables of migration 278 and the analytics views of 279; all comments (and the catalog) live in migration 279
+LATE_PAGES = {"public.meta_pages", "public.meta_ad_pages", "analytics.meta_ad_pages", "analytics.meta_page_performance_daily"}
 PROJ_GROUPS = {"proj_feeds", "proj_engine"}
 SCHEMAS = ("public", "analytics")
 KIND = {"r": "table", "p": "table", "v": "view", "m": "view"}
@@ -431,6 +434,8 @@ def scope_of(r: dict, d=None) -> str:
         return "197"
     if r["name"] in LATE_MANUAL:
         return "199"
+    if r["name"] in LATE_PAGES:
+        return "279"
     if r["name"] in LATE_COUNTRIES:
         return "274"
     if r["name"] in LATE_TRANSCRIPT_VIEW:
@@ -543,12 +548,12 @@ def catalog_sql(d=None) -> str:
 
 def migration_text(which: str, model: dict, d=None) -> str:
     """013, 015 and 190 keep their hand-written DDL (everything above COMMENTS_MARKER) and get the comment section rewritten; 191 is comments only."""
-    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "242", "243", "245", "247", "249", "251", "253", "254", "255", "256", "274"):
+    if which in ("013", "015", "016", "190", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "242", "243", "245", "247", "249", "251", "253", "254", "255", "256", "274", "279"):
         path = MIGRATIONS[which]
         if not path.exists():
             raise SystemExit(f"{path} must exist with its hand-written DDL and the comments marker before comments can be emitted")
         head = path.read_text().split(COMMENTS_MARKER, 1)[0] + COMMENTS_MARKER
-        if which in ("230", "247", "251", "253", "254", "256", "274"):                                # the catalog and the glossary are generated, so they sit below the marker, before their comments
+        if which in ("230", "247", "251", "253", "254", "256", "274", "279"):                                # the catalog and the glossary are generated, so they sit below the marker, before their comments
             head += "-- analytics.catalog and analytics.metric_glossary: generated from docs/schema/descriptions.py (domains, descriptions, grains, METRICS)\n" + catalog_sql(d) + "\n"
         return head + comment_sql(model, which, d)
     if which == "191":
@@ -615,7 +620,7 @@ def main(argv=None) -> int:
     g.add_argument("--write", action="store_true")
     g.add_argument("--check", action="store_true")
     g.add_argument("--problems", action="store_true")
-    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "242", "243", "245", "247", "249", "251", "253", "254", "255", "256", "274", "all"))
+    g.add_argument("--comments", choices=("013", "015", "016", "190", "191", "192", "193", "196", "197", "199", "202", "203", "204", "205", "206", "207", "210", "220", "221", "230", "240", "242", "243", "245", "247", "249", "251", "253", "254", "255", "256", "274", "279", "all"))
     g.add_argument("--catalog-sql", action="store_true")
     g.add_argument("--emit-migration", choices=sorted(MIGRATIONS))
     g.add_argument("--verify-live", action="store_true")

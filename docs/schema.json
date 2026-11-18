@@ -1613,7 +1613,7 @@
      "name": "source",
      "type": "text",
      "nullable": null,
-     "description": "meta_ad_daily | upstack_meta_attribution | google_campaign_daily | upstack_google_attribution | orders_daily | meta_reach (day grain) | meta_campaign_daily_history | amazon_ads_campaign_daily | amazon_ads_asin_daily | amazon_search_queries_weekly | amazon_search_queries_monthly | amazon_orders_asin_daily | amazon_traffic_daily | amazon_market_baskets | amazon_repeat_purchases | amazon_settlement_fees_daily."
+     "description": "meta_ad_daily | upstack_meta_attribution | google_campaign_daily | upstack_google_attribution | orders_daily | meta_reach (day grain) | meta_campaign_daily_history | amazon_ads_campaign_daily | amazon_ads_asin_daily | amazon_search_queries_weekly | amazon_search_queries_monthly | amazon_orders_asin_daily | amazon_traffic_daily | amazon_market_baskets | amazon_repeat_purchases | amazon_settlement_fees_daily | meta_ad_pages."
     },
     {
      "name": "first_day",
@@ -30377,6 +30377,358 @@
     {
      "title": "Row count",
      "sql": "SELECT count(*) AS rows FROM analytics.shopify_order_lines;"
+    }
+   ]
+  },
+  {
+   "name": "public.meta_pages",
+   "schema": "public",
+   "relation": "meta_pages",
+   "kind": "table",
+   "group": "meta",
+   "purpose": "Lookup of the Facebook Pages Lonvera ads run from: page id, name and whether it is the Lonvera handle. Small and hand-seeded; unseen pages are added by etl.meta_pages (unnamed).",
+   "grain": "one row per page_id",
+   "primary_key": [
+    "page_id"
+   ],
+   "foreign_keys": [],
+   "source": "seeded in migration 278 (Lonvera 161085663758792, 830267930177476); new page ids are added by etl.meta_pages; names from Graph /?ids=&fields=name when the token may read the page",
+   "refresh": "nightly with etl.meta_pages (names retried for unnamed pages)",
+   "coverage": "every page any listed ad names",
+   "caveats": [
+    "name is NULL until the token can read the page (a page permission): a NULL name is shown as 'Page <id>' in the analytics views.",
+    "is_lonvera is set by hand: true only for page 161085663758792. Every other page counts as 'another handle' in the Lonvera-vs-other comparison."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "page_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Facebook Page id (text)."
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "nullable": true,
+     "description": "Page name, NULL when not readable."
+    },
+    {
+     "name": "is_lonvera",
+     "type": "boolean",
+     "nullable": false,
+     "description": "true for the Lonvera handle (161085663758792), false for every other page."
+    },
+    {
+     "name": "active",
+     "type": "boolean",
+     "nullable": false,
+     "description": "false hides a page from pickers (never set by a job)."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was written or its name resolved."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Pages and how many ads run from each",
+     "sql": "SELECT g.page_id, g.name, g.is_lonvera, count(p.ad_id) AS ads\nFROM public.meta_pages g LEFT JOIN public.meta_ad_pages p ON p.page_id = g.page_id GROUP BY 1, 2, 3 ORDER BY 4 DESC;"
+    }
+   ]
+  },
+  {
+   "name": "public.meta_ad_pages",
+   "schema": "public",
+   "relation": "meta_ad_pages",
+   "kind": "table",
+   "group": "meta",
+   "purpose": "Which Facebook Page each Meta ad runs from (page id taken from the ad creative's effective_object_story_id, else object_story_id, else object_story_spec.page_id), with the Instagram account and the post it serves.",
+   "grain": "one row per Meta ad_id (both ad accounts, every status Meta lists, ARCHIVED included (DELETED ads only via the capped lookup of ads with recent spend))",
+   "primary_key": [
+    "ad_id"
+   ],
+   "foreign_keys": [],
+   "source": "etl.meta_pages: Graph GET /act_<id>/ads?fields=creative{effective_object_story_id,object_story_id,object_story_spec{page_id,instagram_user_id},instagram_actor_id} (bulk listing, 500 per page)",
+   "refresh": "nightly in the etl service (non-fatal step; etl_runs job meta_pages): ads updated in the last 14 days plus any ad with spend in the last 14 days and no row; the one-time backfill listed every ad",
+   "coverage": "every ad of both accounts as of the backfill day, then new and changed ads nightly",
+   "caveats": [
+    "page_id is NULL (source = 'unresolved') when the creative names no page: deleted creatives, some catalog / dynamic ads. They keep their row so they are not re-fetched every night.",
+    "An ad's creative can be swapped: the nightly listing overwrites page_id when Meta returns a new one, so a row is the CURRENT page, not the page on every historic day.",
+    "first_seen is the first day a listing returned the ad (the backfill day for old ads), not the ad's creation date (see meta_ads.created_date)."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "ad_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta ad id. Joins meta_ads and ad_daily."
+    },
+    {
+     "name": "ad_account",
+     "type": "text",
+     "nullable": true,
+     "description": "'Lonvera Main' | 'Lonvera BackUp'."
+    },
+    {
+     "name": "page_id",
+     "type": "text",
+     "nullable": true,
+     "description": "Facebook Page id the ad runs from, NULL when unresolved."
+    },
+    {
+     "name": "instagram_user_id",
+     "type": "text",
+     "nullable": true,
+     "description": "Instagram account id of the creative (object_story_spec.instagram_user_id, else instagram_actor_id), NULL when none."
+    },
+    {
+     "name": "effective_object_story_id",
+     "type": "text",
+     "nullable": true,
+     "description": "'<page_id>_<post_id>' of the post the ad serves (falls back to object_story_id)."
+    },
+    {
+     "name": "creative_id",
+     "type": "text",
+     "nullable": true,
+     "description": "Meta creative id when the listing returned it."
+    },
+    {
+     "name": "first_seen",
+     "type": "date",
+     "nullable": false,
+     "description": "First day a listing returned this ad."
+    },
+    {
+     "name": "last_seen",
+     "type": "date",
+     "nullable": false,
+     "description": "Last day a listing returned this ad."
+    },
+    {
+     "name": "source",
+     "type": "text",
+     "nullable": false,
+     "description": "Which field gave the page: effective_object_story_id | object_story_id | object_story_spec | unresolved."
+    },
+    {
+     "name": "loaded_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the row was last written."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "analytics.meta_ad_pages",
+   "schema": "analytics",
+   "relation": "meta_ad_pages",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Which Facebook Page (handle) each Meta ad runs from, and whether it is the Lonvera page: the dimension to join to meta_ad_daily on ad_id, or to group ad families by page.",
+   "grain": "one row per Meta ad_id",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.meta_ad_pages + public.meta_pages + public.meta_ads (family_key)",
+   "refresh": "nightly (etl.meta_pages, etl_runs job meta_pages)",
+   "coverage": "every ad of both accounts since the backfill",
+   "caveats": [
+    "page_id is NULL for ads whose creative names no page; they are the 'unresolved' list: SELECT ... WHERE page_id IS NULL.",
+    "Current page of the ad's creative, not necessarily the page on each historic day (a swapped creative changes it)."
+   ],
+   "like": null,
+   "domain": "marketing",
+   "columns": [
+    {
+     "name": "ad_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Meta ad id."
+    },
+    {
+     "name": "family_key",
+     "type": "text",
+     "nullable": null,
+     "description": "Ad family key (lower(ad name without copy suffixes)); NULL when the ad is not in meta_ads."
+    },
+    {
+     "name": "page_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Facebook Page id, NULL when unresolved."
+    },
+    {
+     "name": "page_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Page name, NULL when not readable."
+    },
+    {
+     "name": "is_lonvera_page",
+     "type": "boolean",
+     "nullable": null,
+     "description": "true when the page is the Lonvera handle (161085663758792)."
+    },
+    {
+     "name": "account",
+     "type": "text",
+     "nullable": null,
+     "description": "'Lonvera Main' | 'Lonvera BackUp'."
+    },
+    {
+     "name": "instagram_user_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Instagram account of the creative."
+    },
+    {
+     "name": "effective_object_story_id",
+     "type": "text",
+     "nullable": null,
+     "description": "'<page_id>_<post_id>' of the served post."
+    },
+    {
+     "name": "source",
+     "type": "text",
+     "nullable": null,
+     "description": "effective_object_story_id | object_story_id | object_story_spec | unresolved."
+    },
+    {
+     "name": "first_seen",
+     "type": "date",
+     "nullable": null,
+     "description": "First day a listing returned the ad."
+    },
+    {
+     "name": "last_seen",
+     "type": "date",
+     "nullable": null,
+     "description": "Last day a listing returned the ad."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Ads and spend by page (last 30 days)",
+     "sql": "SELECT coalesce(p.page_name, '(unknown page)') AS page, count(DISTINCT p.ad_id) AS ads, round(sum(d.spend)) AS spend\nFROM analytics.meta_ad_daily d LEFT JOIN analytics.meta_ad_pages p ON p.ad_id = d.ad_id\nWHERE d.day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'meta_ad_daily') - 30 GROUP BY 1 ORDER BY 3 DESC;"
+    },
+    {
+     "title": "Unresolved ads with spend in the last 14 days",
+     "sql": "SELECT d.ad_id, max(d.ad_name) AS ad_name, round(sum(d.spend)) AS spend\nFROM analytics.meta_ad_daily d LEFT JOIN analytics.meta_ad_pages p ON p.ad_id = d.ad_id\nWHERE d.day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'meta_ad_daily') - 14 AND p.page_id IS NULL GROUP BY 1 HAVING sum(d.spend) > 0 ORDER BY 3 DESC LIMIT 25;"
+    }
+   ]
+  },
+  {
+   "name": "analytics.meta_page_performance_daily",
+   "schema": "analytics",
+   "relation": "meta_page_performance_daily",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Meta-reported results by Pacific day x Facebook Page x product x stage, so the Lonvera page can be compared with every other handle: spend, impressions, link clicks, purchases and purchase value. CPM, CTR (link clicks / impressions), cost per link click, conversion rate (purchases / link clicks), AOV, cost per purchase and ROAS all come from sums of these columns.",
+   "grain": "one row per (day, page_id, product_slug, stage); ads with no page row sit under page_id NULL, page_name '(unknown page)'",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "analytics.meta_ad_daily joined to public.meta_ad_pages and public.meta_pages",
+   "refresh": "same as meta_ad_daily (nightly); page identity refreshed nightly by etl.meta_pages",
+   "coverage": "2026-05-06 through yesterday (Meta ad-level data; the page feed adds no earlier days)",
+   "caveats": [
+    "Meta-reported: purchases and purchase value count returning customers and Meta's own attribution windows (not Upstack new customers). Ad-level data starts 2026-05-06 (meta_campaign_daily_history goes back further but has no page).",
+    "Page mix is confounded by product, stage and spend: the Lonvera page and the other pages carry different products, campaign stages, ad ages and budgets. Compare pages only like-for-like (same product_slug x stage x period) and say 'consistent with', never 'caused by'.",
+    "Ratios come from sums over the window, never an average of daily ratios; NULL is not zero (product_slug / stage can be NULL for ads outside the tracked products).",
+    "Clicks here are Meta LINK clicks (all clicks on the link), not unique outbound clicks: unique outbound clicks are not stored per ad (they do not add across ads). CTR here = link clicks / impressions.",
+    "Purchases and purchase value count returning customers: for new-customer ROAS use the Upstack columns of meta_ad_daily joined to meta_ad_pages on ad_id.",
+    "Spend by page adds up to total Meta ad-level spend (analytics.meta_ad_daily) exactly; unresolved ads are the '(unknown page)' row."
+   ],
+   "like": null,
+   "domain": "marketing",
+   "columns": [
+    {
+     "name": "day",
+     "type": "date",
+     "nullable": null,
+     "description": "Calendar day (Main = Los Angeles, BackUp = New York, as in meta_ad_daily)."
+    },
+    {
+     "name": "page_id",
+     "type": "text",
+     "nullable": null,
+     "description": "Facebook Page id, NULL = ads with no page identity."
+    },
+    {
+     "name": "page_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Page name; 'Page <id>' when the name is not readable, '(unknown page)' when there is no page."
+    },
+    {
+     "name": "is_lonvera_page",
+     "type": "boolean",
+     "nullable": null,
+     "description": "true for the Lonvera handle."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "Product of the ad (as in meta_ad_daily), NULL when untracked."
+    },
+    {
+     "name": "stage",
+     "type": "text",
+     "nullable": null,
+     "description": "'testing' | 'scaling' from the campaign name."
+    },
+    {
+     "name": "ads_with_spend",
+     "type": "integer",
+     "nullable": null,
+     "description": "Distinct ads with spend > 0 that day for the page, product and stage."
+    },
+    {
+     "name": "spend",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Meta spend, dollars."
+    },
+    {
+     "name": "impressions",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Meta impressions."
+    },
+    {
+     "name": "link_clicks",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Meta link clicks."
+    },
+    {
+     "name": "meta_purchases",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Meta-reported purchases."
+    },
+    {
+     "name": "meta_revenue",
+     "type": "numeric",
+     "nullable": null,
+     "description": "Meta-reported purchase value, dollars."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Lonvera page vs other pages, last 30 days, like for like by product and stage",
+     "sql": "SELECT product_slug, stage, is_lonvera_page, round(sum(spend)) AS spend,\n       round(sum(meta_revenue) / NULLIF(sum(spend), 0), 2) AS meta_roas,\n       round(sum(spend) / NULLIF(sum(meta_purchases), 0), 2) AS cost_per_purchase,\n       round(sum(spend) * 1000 / NULLIF(sum(impressions), 0), 2) AS cpm,\n       round(sum(link_clicks) / NULLIF(sum(impressions), 0), 4) AS ctr,\n       round(sum(meta_purchases) / NULLIF(sum(link_clicks), 0), 4) AS conv_rate\nFROM analytics.meta_page_performance_daily\nWHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'meta_ad_daily') - 30\nGROUP BY 1, 2, 3 HAVING sum(spend) > 0 ORDER BY 1, 2, 3;"
+    },
+    {
+     "title": "Spend by page, last 7 days",
+     "sql": "SELECT page_name, round(sum(spend)) AS spend FROM analytics.meta_page_performance_daily WHERE day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 'meta_ad_daily') - 7 GROUP BY 1 ORDER BY 2 DESC;"
     }
    ]
   },
