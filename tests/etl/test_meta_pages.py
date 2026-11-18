@@ -12,6 +12,13 @@ TODAY = D(2026, 11, 18)
 NOSLEEP = lambda s: None                                                                # noqa: E731
 
 
+@pytest.fixture(autouse=True)
+def _no_usage_leak():
+    meta_api.LAST_USAGE.clear()
+    yield
+    meta_api.LAST_USAGE.clear()
+
+
 def story(page, post="999"):
     return f"{page}_{post}"
 
@@ -78,6 +85,18 @@ def test_listing_waits_for_the_regain_time_meta_reports_between_pages(monkeypatc
     waits = []
     assert mp.list_ads("tok", "act_1", "Main", None, lambda d: None, sleep=waits.append) == 2
     assert waits == [mp.PACE, 20 * 60 + 5] and mp.usage_pause() == 25.0       # throttled: the whole regain time; hot but open: a short pause
+
+
+def test_page_size_halves_when_a_page_used_the_whole_budget_and_grows_back_when_cheap():
+    meta_api.LAST_USAGE.clear()
+    assert mp.next_size(125) == 125                                                         # no reading: unchanged
+    meta_api.LAST_USAGE.update(cpu=128.0, time=102.0, regain_minutes=29.0)
+    assert mp.next_size(125) == 62 and mp.next_size(mp.MIN_PAGE_SIZE) == mp.MIN_PAGE_SIZE
+    meta_api.LAST_USAGE.update(cpu=5.0, time=3.0, regain_minutes=0.0)
+    assert mp.next_size(125) == 250 and mp.next_size(500) == 500
+    meta_api.LAST_USAGE.update(cpu=50.0, time=10.0)
+    assert mp.next_size(125) == 125
+    meta_api.LAST_USAGE.clear()
 
 
 def test_usage_header_is_read_without_ever_failing_a_call():

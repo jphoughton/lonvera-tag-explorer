@@ -80,6 +80,19 @@ def usage_pause() -> float:
     return min(120.0, (hot - USAGE_PAUSE_AT) * 3 + 10) if hot >= USAGE_PAUSE_AT else 0.0
 
 
+def next_size(size: int) -> int:
+    """Adaptive page size from the account usage Meta reported on the last call: halve when the page used more than the whole budget (cpu / time >= 100%), double (up to PAGE_SIZE) when it used under 20%."""
+    u = meta_api.LAST_USAGE
+    if not u:
+        return size
+    hot = max(u.get("cpu", 0), u.get("time", 0))
+    if hot >= 100 and size > MIN_PAGE_SIZE:
+        return max(MIN_PAGE_SIZE, size // 2)
+    if hot < 20 and size < PAGE_SIZE:
+        return min(PAGE_SIZE, size * 2)
+    return size
+
+
 def list_ads(tok, acct: str, an: str, since: dt.datetime | None, on_page, sleep=time.sleep) -> int:
     """Bulk-list ads (optionally updated_time >= since), calling on_page(list_of_graph_ads) after every page. Returns the number of ads listed."""
     params = {"access_token": tok, "fields": AD_FIELDS, "limit": PAGE_SIZE, "effective_status": STATUSES}
@@ -105,6 +118,7 @@ def list_ads(tok, acct: str, an: str, since: dt.datetime | None, on_page, sleep=
         after = (j.get("paging", {}).get("cursors") or {}).get("after") if j.get("paging", {}).get("next") else None
         if not after:
             return n
+        size = next_size(size)
         wait = usage_pause()
         if wait:
             db.log(f"  {an} ads: account usage {meta_api.LAST_USAGE} -> waiting {wait:.0f}s before the next page")
