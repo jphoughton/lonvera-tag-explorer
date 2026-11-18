@@ -5572,7 +5572,7 @@ SELECT count(*) AS rows FROM analytics.shopify_order_lines;
 - **Source:** public.meta_ad_pages + public.meta_pages + public.meta_ads (family_key)
 - **Refresh:** nightly (etl.meta_pages, etl_runs job meta_pages)
 - **Coverage:** every ad of both accounts since the backfill
-- **Caveat:** page_id is NULL for ads whose creative names no page; they are the 'unresolved' list: SELECT ... WHERE page_id IS NULL.
+- **Caveat:** page_id is NULL for ads whose creative names no page: source 'instagram_only' (creator / partnership ads that run from an Instagram account) or 'unresolved' (nothing readable): SELECT ... WHERE page_id IS NULL.
 - **Caveat:** Current page of the ad's creative, not necessarily the page on each historic day (a swapped creative changes it).
 
 | Column | Type | Null | Meaning |
@@ -5585,7 +5585,7 @@ SELECT count(*) AS rows FROM analytics.shopify_order_lines;
 | `account` | text |  | 'Lonvera Main' \| 'Lonvera BackUp'. |
 | `instagram_user_id` | text |  | Instagram account of the creative. |
 | `effective_object_story_id` | text |  | '<page_id>_<post_id>' of the served post. |
-| `source` | text |  | effective_object_story_id \| object_story_id \| object_story_spec \| unresolved. |
+| `source` | text |  | effective_object_story_id \| object_story_id \| object_story_spec \| instagram_only \| unresolved. |
 | `first_seen` | date |  | First day a listing returned the ad. |
 | `last_seen` | date |  | Last day a listing returned the ad. |
 
@@ -5612,7 +5612,7 @@ WHERE d.day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 
 **Purpose.** Meta-reported results by Pacific day x Facebook Page x product x stage, so the Lonvera page can be compared with every other handle: spend, impressions, link clicks, purchases and purchase value. CPM, CTR (link clicks / impressions), cost per link click, conversion rate (purchases / link clicks), AOV, cost per purchase and ROAS all come from sums of these columns.
 
 - **Domain:** marketing
-- **Grain:** one row per (day, page_id, product_slug, stage); ads with no page row sit under page_id NULL, page_name '(unknown page)'
+- **Grain:** one row per (day, page_id, product_slug, stage); ads with no page sit under page_id NULL: '(Instagram-only handle)' for creator / partnership ads, '(unknown page)' for ads with no identity or no row
 - **Source:** analytics.meta_ad_daily joined to public.meta_ad_pages and public.meta_pages
 - **Refresh:** same as meta_ad_daily (nightly); page identity refreshed nightly by etl.meta_pages
 - **Coverage:** 2026-05-06 through yesterday (Meta ad-level data; the page feed adds no earlier days)
@@ -5621,13 +5621,13 @@ WHERE d.day > (SELECT max(last_day) FROM analytics.data_coverage WHERE source = 
 - **Caveat:** Ratios come from sums over the window, never an average of daily ratios; NULL is not zero (product_slug / stage can be NULL for ads outside the tracked products).
 - **Caveat:** Clicks here are Meta LINK clicks (all clicks on the link), not unique outbound clicks: unique outbound clicks are not stored per ad (they do not add across ads). CTR here = link clicks / impressions.
 - **Caveat:** Purchases and purchase value count returning customers: for new-customer ROAS use the Upstack columns of meta_ad_daily joined to meta_ad_pages on ad_id.
-- **Caveat:** Spend by page adds up to total Meta ad-level spend (analytics.meta_ad_daily) exactly; unresolved ads are the '(unknown page)' row.
+- **Caveat:** Spend by page adds up to total Meta ad-level spend (analytics.meta_ad_daily) exactly; creator / partnership ads are the '(Instagram-only handle)' row and ads with no identity the '(unknown page)' row.
 
 | Column | Type | Null | Meaning |
 |---|---|---|---|
 | `day` | date |  | Calendar day (Main = Los Angeles, BackUp = New York, as in meta_ad_daily). |
 | `page_id` | text |  | Facebook Page id, NULL = ads with no page identity. |
-| `page_name` | text |  | Page name; 'Page <id>' when the name is not readable, '(unknown page)' when there is no page. |
+| `page_name` | text |  | Page name; 'Page <id>' when the name is not readable, '(Instagram-only handle)' for creator / partnership ads with no Page, '(unknown page)' when there is no identity. |
 | `is_lonvera_page` | boolean |  | true for the Lonvera handle. |
 | `product_slug` | text |  | Product of the ad (as in meta_ad_daily), NULL when untracked. |
 | `stage` | text |  | 'testing' \| 'scaling' from the campaign name. |
@@ -6116,7 +6116,7 @@ FROM public.meta_pages g LEFT JOIN public.meta_ad_pages p ON p.page_id = g.page_
 - **Source:** etl.meta_pages: Graph GET /act_<id>/ads?fields=creative{effective_object_story_id,object_story_id,object_story_spec{page_id,instagram_user_id},instagram_actor_id} (bulk listing, 500 per page)
 - **Refresh:** nightly in the etl service (non-fatal step; etl_runs job meta_pages): ads updated in the last 14 days plus any ad with spend in the last 14 days and no row; the one-time backfill listed every ad
 - **Coverage:** every ad of both accounts as of the backfill day, then new and changed ads nightly
-- **Caveat:** page_id is NULL (source = 'unresolved') when the creative names no page: deleted creatives, some catalog / dynamic ads. They keep their row so they are not re-fetched every night.
+- **Caveat:** page_id is NULL when the creative names no Page. source = 'instagram_only': creator / partnership (Trybe) ads that run from an Instagram account (instagram_user_id set, sponsor Page = Lonvera); source = 'unresolved': nothing readable (deleted creatives, some catalog / dynamic ads). Both keep their row so they are not re-fetched every night.
 - **Caveat:** An ad's creative can be swapped: the nightly listing overwrites page_id when Meta returns a new one, so a row is the CURRENT page, not the page on every historic day.
 - **Caveat:** first_seen is the first day a listing returned the ad (the backfill day for old ads), not the ad's creation date (see meta_ads.created_date).
 
@@ -6130,7 +6130,7 @@ FROM public.meta_pages g LEFT JOIN public.meta_ad_pages p ON p.page_id = g.page_
 | `creative_id` | text | yes | Meta creative id when the listing returned it. |
 | `first_seen` | date | no | First day a listing returned this ad. |
 | `last_seen` | date | no | Last day a listing returned this ad. |
-| `source` | text | no | Which field gave the page: effective_object_story_id \| object_story_id \| object_story_spec \| unresolved. |
+| `source` | text | no | Which field gave the page: effective_object_story_id \| object_story_id \| object_story_spec \| instagram_only (no Page, Instagram account only) \| unresolved. |
 | `loaded_at` | timestamptz | no | When the row was last written. |
 
 ### public.landing_pages

@@ -2,7 +2,7 @@
 
 Numbers come from analytics.meta_ad_daily joined to public.meta_ad_pages / public.meta_pages (feed etl.meta_pages, docs/META_PAGES.md). Meta-reported columns (purchases, purchase value,
 link clicks, impressions, spend) and, beside them, the Upstack new-customer columns the rest of the app uses for NC ROAS. Ratios are ratios of sums, never an average of daily ratios; a figure
-with nothing behind it reads blank. Ads whose creative names no page are the '(unknown page)' row, so the Total always equals total Meta ad-level spend.
+with nothing behind it reads blank. Creator / partnership ads that run from an Instagram account (no Page) are the '(Instagram-only handle)' row and ads with no identity the '(unknown page)' row, so the Total always equals total Meta ad-level spend.
 
 Shape (same as app/countries.py): `build()` is a pure function of a *source*; `DbSource` reads Postgres and tests feed the same builder from made-up rows.
 Page mix is confounded by product, stage and spend: the payload carries that note and the page prints it. No causal claims.
@@ -17,6 +17,7 @@ LIKE_FOR_LIKE = ("Page mix is confounded by product, stage and spend: compare pa
                  "consistent with a page effect, not as caused by it.")
 BASIS = "Spend, impressions, link clicks, purchases and purchase value are Meta-reported (purchases count returning customers). NC columns are Upstack-attributed first orders."
 UNKNOWN = "(unknown page)"
+INSTAGRAM = "(Instagram-only handle)"
 
 
 def _f(x):
@@ -54,7 +55,7 @@ class DbSource:
         where.append("(" + " OR ".join(cond) + ")" if cond else "false")
         rows = self.conn.execute(f"""
             SELECT p.page_id,
-                   CASE WHEN p.page_id IS NULL THEN '{UNKNOWN}' ELSE coalesce(g.name, 'Page ' || p.page_id) END AS page_name,
+                   CASE WHEN p.page_id IS NOT NULL THEN coalesce(g.name, 'Page ' || p.page_id) WHEN p.source = 'instagram_only' THEN '{INSTAGRAM}' ELSE '{UNKNOWN}' END AS page_name,
                    coalesce(g.is_lonvera, false) AS is_lonvera,
                    count(DISTINCT d.ad_id) FILTER (WHERE d.spend > 0) AS ads,
                    sum(d.spend) AS spend, sum(d.impressions) AS impressions, sum(d.link_clicks) AS link_clicks,
@@ -65,7 +66,7 @@ class DbSource:
             LEFT JOIN public.meta_ad_pages p ON p.ad_id = d.ad_id
             LEFT JOIN public.meta_pages g ON g.page_id = p.page_id
             WHERE {' AND '.join(where)}
-            GROUP BY p.page_id, g.name, g.is_lonvera""", args).fetchall()
+            GROUP BY p.page_id, g.name, g.is_lonvera, (p.source = 'instagram_only')""", args).fetchall()
         return [dict(r) for r in rows]
 
     def products(self, lo: dt.date, hi: dt.date) -> list[dict]:
@@ -113,13 +114,14 @@ def build(src, w: q.WindowSpec, meta: q.DataMeta, product: str | None = None) ->
     if not cov["ads"]:
         return {**base, "loaded": False, "message": "Page identity has not loaded yet", "rows": [], "groups": [], "total": None}
     total_spend = sum(float(r["spend"] or 0) for r in raw) if raw else None
-    rows = [{"page_id": r["page_id"], "page": r["page_name"], "is_lonvera": bool(r["is_lonvera"]), "unknown": r["page_id"] is None, **metrics(r, total_spend)} for r in raw]
+    rows = [{"page_id": r["page_id"], "page": r["page_name"], "is_lonvera": bool(r["is_lonvera"]), "unknown": r["page_id"] is None, "instagram_only": r["page_name"] == INSTAGRAM, **metrics(r, total_spend)} for r in raw]
     rows.sort(key=lambda r: (-(r["spend"] or 0.0), r["page"]))
     lon = [r for r in raw if r["is_lonvera"]]
     oth = [r for r in raw if not r["is_lonvera"] and r["page_id"] is not None]
-    unk = [r for r in raw if r["page_id"] is None]
+    ig = [r for r in raw if r["page_id"] is None and r["page_name"] == INSTAGRAM]
+    unk = [r for r in raw if r["page_id"] is None and r["page_name"] != INSTAGRAM]
     groups = []
-    for key, label, part in (("lonvera", "Lonvera page", lon), ("other", "All other pages", oth), ("unknown", UNKNOWN, unk)):
+    for key, label, part in (("lonvera", "Lonvera page", lon), ("other", "All other pages", oth), ("instagram", INSTAGRAM, ig), ("unknown", UNKNOWN, unk)):
         if part:
             groups.append({"key": key, "page": label, "pages": len(part), **metrics(_sum(part), total_spend)})
     total = {"page": "Total", **metrics(_sum(raw), total_spend)} if raw else None

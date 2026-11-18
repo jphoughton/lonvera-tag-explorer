@@ -97,3 +97,17 @@ def test_product_and_stage_filters_narrow_the_total(client, pages):
     st = get(client, pages, "&stage=testing")
     assert st["total"]["spend"] <= full["total"]["spend"] + 0.01
     assert full["like_for_like"] and "consistent with" in full["like_for_like"] and "Meta-reported" in full["basis"]
+
+
+def test_instagram_only_creator_ads_are_their_own_row_and_group(client, pages):
+    a, b = top_ads(pages, 2)
+    assign(pages, a, "161085663758792")
+    pages.execute("INSERT INTO meta_ad_pages (ad_id, ad_account, page_id, instagram_user_id, first_seen, last_seen, source) VALUES (%s,'Lonvera Main',NULL,'1784',"
+                  "'2026-11-18','2026-11-18','instagram_only') ON CONFLICT (ad_id) DO UPDATE SET source = 'instagram_only', instagram_user_id = '1784'", (b,))
+    pages.commit()
+    d = get(client, pages)
+    ig = next(r for r in d["rows"] if r["page"] == "(Instagram-only handle)")
+    assert ig["instagram_only"] and ig["page_id"] is None and {x["key"] for x in d["groups"]} >= {"lonvera", "instagram"}
+    assert abs(sum(x["spend"] for x in d["groups"]) - d["total"]["spend"]) < 0.05
+    v = pages.execute("SELECT page_name, round(sum(spend)) FROM analytics.meta_page_performance_daily WHERE page_id IS NULL GROUP BY 1").fetchall()
+    assert any(r[0] == "(Instagram-only handle)" for r in v)
