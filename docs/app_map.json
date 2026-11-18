@@ -747,6 +747,13 @@
    "bare": false
   },
   {
+   "url_pattern": "/theme-previews",
+   "page_function": "themePreviewsPage",
+   "js_file": "app/static/js/pages/theme_previews.js",
+   "public": false,
+   "bare": false
+  },
+  {
    "url_pattern": "/trends",
    "page_function": "trendsPage",
    "js_file": "app/static/js/pages/trends.js",
@@ -3572,6 +3579,61 @@
    "summary": "Tag lookup: q=<an ad name as the platform shows it | a Meta ad id | a tracker Concept ID or Ad Family>. The new (line-mapped) tags of the matching tracker rows,"
   },
   {
+   "rule": "/api/theme/previews",
+   "methods": [
+    "POST"
+   ],
+   "kind": "api",
+   "endpoint": "theme.preview_create",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Make a preview: {name} copies the live theme into a new UNPUBLISHED theme named preview-<login>-<yyyymmdd>-<slug>, records it, returns {id, name, preview_url}."
+  },
+  {
+   "rule": "/api/theme/previews/<pid>/files",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "theme.files_get",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Files of one of our preview themes: no key lists the editable file paths; ?key=<path> returns that file's text."
+  },
+  {
+   "rule": "/api/theme/previews/<pid>/files",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "theme.files_put",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Save one text file ({key, content}, at most 1 MB, allowed folders and types only) to one of our preview themes. Refuses the live theme and any theme not made here; writes an audit row."
+  },
+  {
+   "rule": "/api/theme/status",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "theme.theme_status",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Theme previews discovery: {enabled, can_edit} for the signed-in person. 404 while the feature is off."
+  },
+  {
+   "rule": "/api/theme/themes",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "theme.themes_list",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Our previews (newest first) and the live theme's name, id and role (read only)."
+  },
+  {
    "rule": "/api/trends",
    "methods": [
     "GET"
@@ -3855,6 +3917,17 @@
    ],
    "kind": "other",
    "endpoint": "robots",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/theme-previews",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/theme-previews",
    "auth": "none (HTML page or health check; its data calls are protected)",
    "auth_exempt": true,
    "summary": ""

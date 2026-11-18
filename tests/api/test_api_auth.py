@@ -350,7 +350,7 @@ def test_the_api_is_read_only(app, client, app_factory):
     writers = {}
     for rule in app.url_map.iter_rules():
         extra = set(rule.methods) - {"GET", "HEAD", "OPTIONS"}
-        if extra and not rule.rule.startswith(("/api/projection/", "/api/priorities/")):         # the projection editor and the /priorities saved views + manual concepts write through their own read-write pool; the metrics API never does
+        if extra and not rule.rule.startswith(("/api/projection/", "/api/priorities/", "/api/theme/")):         # the projection editor and the /priorities saved views + manual concepts write through their own read-write pool; the metrics API never does
             writers[rule.rule] = extra
     assert writers == {"/api/login": {"POST"}, "/api/logout": {"POST"}, "/api/brain/key": {"POST"}, "/mcp": {"POST", "DELETE"}}   # /api/brain/key = a signed-in person makes their own agent key (own rate limit, Origin check, not by API key); /mcp = the brain endpoint (own auth, own pool for its audit row; every tool is read only and SQL runs as analytics_reader)   # /api/priorities/* writers (saved views, manual concepts) use their own pool and are excluded above
     # 1b. the production write routes are exactly these (all on the app's own read-write pool, all behind the Origin check and a rate limit); the vendor ones are the only login-exempt API paths
@@ -363,6 +363,8 @@ def test_the_api_is_read_only(app, client, app_factory):
                     ("/api/priorities/assignments/<int:aid>/launch/confirm", "POST"), ("/api/priorities/assignments/<int:aid>/launch/cancel", "POST")}
     launch_put = {(r.rule, m) for r in app.url_map.iter_rules() if r.rule.startswith("/api/priorities/launch") for m in set(r.methods) - {"GET", "HEAD", "OPTIONS"}}
     assert launch_put == {("/api/priorities/launch/settings/<product>", "PUT")}
+    theme_w = {(r.rule, m) for r in app.url_map.iter_rules() if r.rule.startswith("/api/theme") for m in set(r.methods) - {"GET", "HEAD", "OPTIONS"}}
+    assert theme_w == {("/api/theme/previews", "POST"), ("/api/theme/previews/<pid>/files", "PUT")}      # theme previews (dark unless THEME_PREVIEW_ENABLED; three gates; never login-exempt; preview themes only, no publish, no delete)
     from app import auth as auth_mod
     tok = "A" * 30
     assert all(auth_mod.PUBLIC_API_RE.fullmatch(p) for p in (f"/api/priorities/vendor/{tok}", f"/api/priorities/vendor/{tok}/12", f"/api/priorities/vendor/{tok}/12/detail", f"/api/priorities/vendor/{tok}/12/comments"))        # the list, a row edit, the row's detail (GET) and its comments (GET, POST)

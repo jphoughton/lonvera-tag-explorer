@@ -1,0 +1,9 @@
+/* Theme previews (/theme-previews), tp- classes */
+.tp-page .tp-note { max-width: 80ch; margin: 8px 0 12px; }
+.tp-page .tp-h2 { font-size: 16px; margin: 18px 0 8px; }
+.tp-page .tp-new { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.tp-page .tp-new input { min-width: 0; flex: 1 1 220px; max-width: 360px; }
+.tp-page .tp-editor { width: 100%; min-height: 360px; font: 13px/1.45 ui-monospace, Menlo, monospace; box-sizing: border-box; tab-size: 2; }
+.tp-page .tp-msg { margin: 8px 0; }
+.tp-page .tp-files { max-height: 280px; overflow: auto; }
+.tp-page .tp-link { background: none; border: 0; padding: 0; color: var(--link, #2457c5); text-decoration: underline; cursor: pointer; font: inherit; text-align: left; }

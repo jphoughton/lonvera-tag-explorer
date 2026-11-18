@@ -143,7 +143,7 @@ One section per relation, grouped as in the table below. Column types, nullabili
 | Upstack attribution of Meta orders (the Meta \| Upstack switch) | [`public.upstack_attr_days`](#publicupstack_attr_days), [`public.upstack_attr_daily`](#publicupstack_attr_daily), [`public.upstack_campaign_daily`](#publicupstack_campaign_daily), [`public.upstack_channel_daily`](#publicupstack_channel_daily), [`public.upstack_unmapped_daily`](#publicupstack_unmapped_daily), [`public.ad_daily_upstack`](#publicad_daily_upstack), [`public.ad_daily_upstack_nc`](#publicad_daily_upstack_nc), [`public.ad_daily_upstack_all`](#publicad_daily_upstack_all), [`public.meta_ad_lifetime_upstack_nc`](#publicmeta_ad_lifetime_upstack_nc), [`public.meta_ad_lifetime_upstack_all`](#publicmeta_ad_lifetime_upstack_all) |
 | Google Ads (campaign grain, from Upstack) | [`public.upstack_google_campaigns`](#publicupstack_google_campaigns), [`public.upstack_google_channel_daily`](#publicupstack_google_channel_daily), [`public.upstack_google_attr_daily`](#publicupstack_google_attr_daily), [`public.upstack_google_days`](#publicupstack_google_days), [`public.google_daily`](#publicgoogle_daily) |
 | Actual orders: the business's real new-customer revenue | [`public.upstack_orders_daily`](#publicupstack_orders_daily), [`public.nc_by_country_daily`](#publicnc_by_country_daily), [`public.shopify_orders`](#publicshopify_orders), [`public.shopify_order_lines`](#publicshopify_order_lines) |
-| Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_priorities_assignment_events`](#publiccreative_priorities_assignment_events), [`public.creative_priorities_assignment_comments`](#publiccreative_priorities_assignment_comments), [`public.creative_priorities_vendor_capacity`](#publiccreative_priorities_vendor_capacity), [`public.creative_ad_transcripts`](#publiccreative_ad_transcripts), [`public.creative_formats`](#publiccreative_formats), [`public.creative_backlog`](#publiccreative_backlog), [`public.creative_cut_views`](#publiccreative_cut_views), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links), [`public.asset_sync_links`](#publicasset_sync_links), [`public.asset_sync_files`](#publicasset_sync_files), [`public.asset_sync_known_md5`](#publicasset_sync_known_md5), [`public.creative_launch_settings`](#publiccreative_launch_settings), [`public.creative_launch_pages`](#publiccreative_launch_pages), [`public.creative_launch_vendor_prefixes`](#publiccreative_launch_vendor_prefixes), [`public.creative_launch_drafts`](#publiccreative_launch_drafts), [`public.creative_launch_jobs`](#publiccreative_launch_jobs), [`public.creative_launch_ads`](#publiccreative_launch_ads), [`public.creative_launch_adsets`](#publiccreative_launch_adsets), [`public.creative_launch_audit`](#publiccreative_launch_audit) |
+| Creative tracker, tags, hooks, content | [`public.products`](#publicproducts), [`public.taxonomy_lines`](#publictaxonomy_lines), [`public.line_ingredients`](#publicline_ingredients), [`public.tracker_rows`](#publictracker_rows), [`public.ad_tags`](#publicad_tags), [`public.ad_hooks`](#publicad_hooks), [`public.family_content`](#publicfamily_content), [`public.creative_assets`](#publiccreative_assets), [`public.creative_priorities_snapshots`](#publiccreative_priorities_snapshots), [`public.creative_priorities_views`](#publiccreative_priorities_views), [`public.creative_priorities_manual`](#publiccreative_priorities_manual), [`public.creative_priorities_assignments`](#publiccreative_priorities_assignments), [`public.creative_priorities_assignment_events`](#publiccreative_priorities_assignment_events), [`public.creative_priorities_assignment_comments`](#publiccreative_priorities_assignment_comments), [`public.creative_priorities_vendor_capacity`](#publiccreative_priorities_vendor_capacity), [`public.creative_ad_transcripts`](#publiccreative_ad_transcripts), [`public.creative_formats`](#publiccreative_formats), [`public.creative_backlog`](#publiccreative_backlog), [`public.creative_cut_views`](#publiccreative_cut_views), [`public.creative_priorities_vendor_links`](#publiccreative_priorities_vendor_links), [`public.asset_sync_links`](#publicasset_sync_links), [`public.asset_sync_files`](#publicasset_sync_files), [`public.asset_sync_known_md5`](#publicasset_sync_known_md5), [`public.theme_previews`](#publictheme_previews), [`public.theme_edit_audit`](#publictheme_edit_audit), [`public.creative_launch_settings`](#publiccreative_launch_settings), [`public.creative_launch_pages`](#publiccreative_launch_pages), [`public.creative_launch_vendor_prefixes`](#publiccreative_launch_vendor_prefixes), [`public.creative_launch_drafts`](#publiccreative_launch_drafts), [`public.creative_launch_jobs`](#publiccreative_launch_jobs), [`public.creative_launch_ads`](#publiccreative_launch_ads), [`public.creative_launch_adsets`](#publiccreative_launch_adsets), [`public.creative_launch_audit`](#publiccreative_launch_audit) |
 | Derived creative-family roll-ups (rebuilt in full by etl.build_metrics) | [`public.family_daily`](#publicfamily_daily), [`public.family_daily_active`](#publicfamily_daily_active), [`public.family_daily_upstack_nc`](#publicfamily_daily_upstack_nc), [`public.family_daily_active_upstack_nc`](#publicfamily_daily_active_upstack_nc), [`public.family_daily_upstack_all`](#publicfamily_daily_upstack_all), [`public.family_daily_active_upstack_all`](#publicfamily_daily_active_upstack_all), [`public.ad_metrics`](#publicad_metrics), [`public.ad_metrics_upstack_nc`](#publicad_metrics_upstack_nc), [`public.ad_metrics_upstack_all`](#publicad_metrics_upstack_all), [`public.creative_stage_moves`](#publiccreative_stage_moves), [`public.creative_stage_moves_upstack_nc`](#publiccreative_stage_moves_upstack_nc), [`public.creative_stage_moves_upstack_all`](#publiccreative_stage_moves_upstack_all), [`public.creative_scaling_placements`](#publiccreative_scaling_placements), [`public.creative_scaling_placements_upstack_nc`](#publiccreative_scaling_placements_upstack_nc), [`public.creative_scaling_placements_upstack_all`](#publiccreative_scaling_placements_upstack_all), [`public.scaling_benchmarks`](#publicscaling_benchmarks), [`public.competitor_brands`](#publiccompetitor_brands), [`public.competitor_ads`](#publiccompetitor_ads), [`public.competitor_concept_class`](#publiccompetitor_concept_class), [`public.competitor_concepts`](#publiccompetitor_concepts), [`public.competitor_posts`](#publiccompetitor_posts), [`public.competitor_ad_media`](#publiccompetitor_ad_media), [`public.competitor_landing_pages`](#publiccompetitor_landing_pages), [`public.competitor_lp_media`](#publiccompetitor_lp_media), [`public.competitor_ad_lp`](#publiccompetitor_ad_lp), [`public.ad_transcript`](#publicad_transcript), [`public.ad_learning_tags`](#publicad_learning_tags), [`public.ad_family_lp`](#publicad_family_lp), [`public.competitor_ad_video`](#publiccompetitor_ad_video), [`public.competitor_ad_transcript`](#publiccompetitor_ad_transcript), [`public.competitor_ad_tags`](#publiccompetitor_ad_tags), [`public.unmatched_meta`](#publicunmatched_meta), [`public.unmatched_meta_upstack_nc`](#publicunmatched_meta_upstack_nc), [`public.unmatched_meta_upstack_all`](#publicunmatched_meta_upstack_all) |
 | Pipeline bookkeeping | [`public.alert_state`](#publicalert_state), [`public.etl_runs`](#publicetl_runs), [`public.app_meta`](#publicapp_meta), [`public.api_keys`](#publicapi_keys), [`public.klaviyo_campaigns`](#publicklaviyo_campaigns), [`public.klaviyo_flows`](#publicklaviyo_flows), [`public.klaviyo_flow_messages`](#publicklaviyo_flow_messages), [`public.klaviyo_daily`](#publicklaviyo_daily), [`public.klaviyo_message_content`](#publicklaviyo_message_content), [`public.klaviyo_message_performance`](#publicklaviyo_message_performance), [`public.landing_page_ad_checks`](#publiclanding_page_ad_checks), [`public.brain_keys`](#publicbrain_keys), [`public.brain_audit`](#publicbrain_audit) |
 | Projection pacing feeds (daily actuals read by the Projections module; sheet-fed today, direct feeds in shadow) | [`public.proj_feed_config`](#publicproj_feed_config), [`public.proj_feed_runs`](#publicproj_feed_runs), [`public.proj_feed_attempts`](#publicproj_feed_attempts), [`public.proj_feed_verify`](#publicproj_feed_verify), [`public.proj_feed_verify_runs`](#publicproj_feed_verify_runs), [`public.proj_feed_levers`](#publicproj_feed_levers), [`public.proj_feed_orders`](#publicproj_feed_orders), [`public.proj_feedx_orders`](#publicproj_feedx_orders), [`public.proj_feed_amazon`](#publicproj_feed_amazon), [`public.proj_feedx_amazon`](#publicproj_feedx_amazon), [`public.proj_feed_platform`](#publicproj_feed_platform), [`public.proj_feedx_platform`](#publicproj_feedx_platform), [`public.proj_feed_attribution`](#publicproj_feed_attribution), [`public.proj_feedx_attribution`](#publicproj_feedx_attribution), [`public.proj_feed_traffic`](#publicproj_feed_traffic), [`public.proj_feedx_traffic`](#publicproj_feedx_traffic), [`public.proj_feed_meta_reach`](#publicproj_feed_meta_reach), [`public.proj_feedx_meta_reach`](#publicproj_feedx_meta_reach), [`public.proj_feed_product_reach`](#publicproj_feed_product_reach), [`public.proj_feedx_product_reach`](#publicproj_feedx_product_reach), [`public.proj_feed_nc_product`](#publicproj_feed_nc_product), [`public.proj_feedx_nc_product`](#publicproj_feedx_nc_product), [`public.proj_feed_anyclick`](#publicproj_feed_anyclick), [`public.proj_feedx_anyclick`](#publicproj_feedx_anyclick), [`public.proj_feed_bids`](#publicproj_feed_bids), [`public.proj_feedx_bids`](#publicproj_feedx_bids), [`public.proj_feed_meta_day`](#publicproj_feed_meta_day), [`public.proj_feed_meta_product`](#publicproj_feed_meta_product), [`public.proj_pacing_hourly`](#publicproj_pacing_hourly), [`public.proj_pacing_setting`](#publicproj_pacing_setting), [`public.proj_units_daily`](#publicproj_units_daily), [`public.proj_feedx_units_daily`](#publicproj_feedx_units_daily), [`public.proj_demand_snapshot`](#publicproj_demand_snapshot), [`public.proj_feedx_demand_snapshot`](#publicproj_feedx_demand_snapshot), [`public.proj_feedx_intl_nonus_daily`](#publicproj_feedx_intl_nonus_daily), [`public.proj_feed_nc_hourly`](#publicproj_feed_nc_hourly), [`public.proj_live_today_snapshots`](#publicproj_live_today_snapshots), [`public.proj_amazon_mtd_snapshots`](#publicproj_amazon_mtd_snapshots), [`public.proj_feedx_intl_estimate`](#publicproj_feedx_intl_estimate), [`public.proj_meta_spend_monthly`](#publicproj_meta_spend_monthly) |
@@ -7381,6 +7381,63 @@ SELECT status, count(*) AS files FROM public.asset_sync_files GROUP BY 1;
 
 ```sql
 SELECT count(*) AS md5s FROM public.asset_sync_known_md5;
+```
+
+### public.theme_previews
+
+*table*
+
+**Purpose.** Preview (unpublished) Shopify themes created through the Theme previews page, each a copy of the live theme at the time. Use it to see which themes the app may edit and who made them.
+
+- **Grain:** primary key `(id)`; one row per preview theme
+- **Source:** app/theme_api.py
+- **Refresh:** a row is added when someone creates a preview
+- **Coverage:** from the first preview
+- **Caveat:** the app refuses to write to any theme that is not in this table or that Shopify reports as the live theme.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Primary key. |
+| `shopify_theme_id` | text | no | Shopify theme id (the number at the end of the theme gid). |
+| `name` | text | no | Theme name in Shopify: preview-<login>-<yyyymmdd>-<slug>. |
+| `created_by` | text | no | Login of the person who made the preview. |
+| `created_at` | timestamptz | no | When the preview was made. |
+| `source_theme_id` | text | yes | Shopify id of the live theme that was copied. |
+
+*Previews, newest first*
+
+```sql
+SELECT name, created_by, created_at FROM public.theme_previews ORDER BY id DESC;
+```
+
+### public.theme_edit_audit
+
+*table*
+
+**Purpose.** Every create and file save done through the Theme previews page: who, which preview, which file, and a checksum of what was saved.
+
+- **Grain:** primary key `(id)`; one row per action
+- **References:** `(theme_preview_id)` -> `public.theme_previews(id)`
+- **Source:** app/theme_api.py
+- **Refresh:** a row is added for each action
+- **Coverage:** from the first preview
+- **Caveat:** the file text itself is not stored here, only its sha256 and size; the text lives in the preview theme in Shopify and is not in git.
+
+| Column | Type | Null | Meaning |
+|---|---|---|---|
+| `id` | bigint | no | Primary key. |
+| `theme_preview_id` | bigint | yes | theme_previews.id. |
+| `user_login` | text | no | Login of the person who acted. |
+| `action` | text | no | create_preview or save_file. |
+| `file_key` | text | yes | Theme file path for save_file, such as sections/header.liquid; empty for create_preview. |
+| `content_sha256` | text | yes | sha256 of the saved text (hex). |
+| `size_bytes` | integer | yes | Size of the saved text in bytes. |
+| `created_at` | timestamptz | no | When the action happened. |
+
+*Saves per person*
+
+```sql
+SELECT user_login, count(*) AS saves FROM public.theme_edit_audit WHERE action = 'save_file' GROUP BY 1;
 ```
 
 ### public.creative_launch_settings

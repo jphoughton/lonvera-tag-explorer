@@ -34,6 +34,7 @@ export const SECTIONS = [
     pages: [
       { key: 'projections', label: 'Projections', href: '/projection', testid: 'nav-projections', hint: 'Pacing, scenarios, profit and loss, inventory and cash', external: true },
       { key: 'inventory-history', label: 'Inventory history', href: '/inventory/history', testid: 'nav-inventory-history', hint: 'Units on hand for any past day, every warehouse' },
+      { key: 'theme-previews', label: 'Theme previews', href: '/theme-previews', testid: 'nav-theme-previews', hint: 'Edit the store theme in a preview copy', gated: true },
     ],
   },
 ];
@@ -54,6 +55,7 @@ const RESOLVE = [
   { re: /^\/lookup\/?$/, section: 'creative', page: null },
   { re: /^\/connect-agent\/?$/, section: null, page: null },
   { re: /^\/inventory\/history\/?$/, section: 'plan', page: 'inventory-history' },
+  { re: /^\/theme-previews\/?$/, section: 'plan', page: 'theme-previews' },
   { re: /^\/trends\/?$/, section: 'performance', page: 'trends' },
   { re: /^\/daily\/?$/, section: 'performance', page: 'daily' },
   { re: /^\/email\/?$/, section: 'performance', page: 'email' },
@@ -72,6 +74,11 @@ export function resolveNav(path, params = {}) {
   }
   return { section: null, page: null };
 }
+
+// Pages marked `gated` show only after the app turns them on (setNavFlag), e.g. Theme previews when /api/status says the person may edit themes.
+const flags = {};
+export function setNavFlag(key, on) { flags[key] = !!on; }
+const shown = (pg) => !pg.gated || flags[pg.key];
 
 export const sectionByKey = (key) => SECTIONS.find((s) => s.key === key) || null;
 export const sectionHome = (s) => s.pages[0].href;
@@ -119,7 +126,7 @@ export function renderNav(opts = {}) {
     subnav.replaceChildren();
     if (!sec) { subnav.hidden = true; return cur; }
     subnav.hidden = false;
-    for (const pg of sec.pages) {
+    for (const pg of sec.pages.filter(shown)) {
       const on = pg.key === cur.page;
       subnav.append(el('a', {
         class: 'navtab' + (on ? ' on' : ''), href: pg.href, title: pg.hint, 'data-testid': pg.testid, 'data-page': pg.key,
