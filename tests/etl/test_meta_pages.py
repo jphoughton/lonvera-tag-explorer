@@ -79,7 +79,7 @@ def test_listing_waits_for_the_regain_time_meta_reports_between_pages(monkeypatc
         if len(pages) == 1:
             meta_api.LAST_USAGE.update(cpu=128.0, time=102.0, calls=1.0, regain_minutes=20.0)
         elif len(pages) == 0:
-            meta_api.LAST_USAGE.update(cpu=75.0, time=10.0, calls=1.0, regain_minutes=0.0)
+            meta_api.LAST_USAGE.update(cpu=95.0, time=10.0, calls=1.0, regain_minutes=0.0)
         return j
     monkeypatch.setattr(meta_api, "graph_get", fake)
     waits = []
@@ -266,3 +266,20 @@ def test_views_split_spend_by_page_and_tie_to_total_ad_spend(clean):
     assert cols == ["day", "page_id", "page_name", "is_lonvera_page", "product_slug", "stage", "ads_with_spend", "spend", "impressions", "link_clicks", "meta_purchases", "meta_revenue"]
     cov = clean.execute("SELECT source, last_day, rows FROM analytics.data_coverage WHERE source = 'meta_ad_pages'").fetchone()
     assert cov[0] == "meta_ad_pages" and cov[1] == TODAY and cov[2] == 2
+
+
+def test_spend_first_backfill_resolves_biggest_spenders_first_and_parks_deleted_ads(clean, monkeypatch):
+    for ad, amt in (("big", 900), ("mid", 90), ("gone", 9)):
+        spend(clean, ad, TODAY - dt.timedelta(days=3), amt)
+    clean.commit()
+    order = []
+
+    def g(url, params, what, **kw):
+        order.append(params["ids"])
+        return {"big": {"id": "big", "creative": {"effective_object_story_id": story("161085663758792")}}, "mid": {"id": "mid", "creative": {"effective_object_story_id": story("830267930177476")}}}
+    monkeypatch.setattr(meta_api, "graph_get", g)
+    monkeypatch.setattr(meta_api, "get_token", lambda: "tok")
+    st = mp.run(spend_since=D(2026, 5, 6), today=TODAY, sleep=NOSLEEP)
+    assert st["looked_up"] == 2 and st["unresolved"] == 1 and order == ["big,mid,gone"]
+    assert dict(clean.execute("SELECT ad_id, source FROM meta_ad_pages").fetchall()) == {"big": "effective_object_story_id", "mid": "effective_object_story_id", "gone": "unresolved"}
+    assert mp.missing_ids(clean, TODAY, 200) == []

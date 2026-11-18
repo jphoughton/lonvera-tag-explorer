@@ -42,3 +42,9 @@ FROM analytics.meta_page_performance_daily WHERE day > current_date - 31 GROUP B
 Meta ad-level history is only ~200 days, so "365 days" = since launch, 2026-05-06). Two tables: Lonvera page vs all other pages vs unknown, then one row per page. Columns: ads with spend, Meta spend, share,
 NC ROAS and NC CPA (Upstack new customers, over the days Upstack data exists), Meta-reported ROAS (side column), cost per purchase, average order value, CPM, CTR (link clicks / impressions), cost per link click,
 conversion rate (Meta purchases / link clicks). Ratios of sums. The like-for-like warning prints on the page. Unique outbound clicks are not stored per ad, so click metrics are link clicks.
+
+## Backfill notes (2026-11-18)
+
+Lonvera Main is on Meta's development access tier and its cpu budget is shared with every other job, so a full listing of ~40K ads is throttled (code 80004). The listing paces itself by the
+`x-business-use-case-usage` header (waits the reported regain time, pauses above 90% use, halves / doubles its page size). `python -m etl.meta_pages --spend-since 2026-05-06` backfills in order of spend instead:
+ads with Meta spend since that day and no row, biggest first, 50 ids per `/?ids=` call; ads Meta no longer returns get an `unresolved` row so they leave the queue. Resumable.
