@@ -13,7 +13,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.routing import IntegerConverter
 
-from . import api, auth, brain_mcp, competitors_media, db, preview, priorities_launch_api, projection, respcache
+from . import api, auth, brain_mcp, competitors_media, db, preview, priorities_launch_api, theme_api, projection, respcache
 from .config import load_config
 from .queries import ApiError
 
@@ -79,6 +79,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.before_request(lambda: respcache.lookup(cache))         # after the auth guard (registered in init_auth): a cached answer is never served unauthenticated
     app.register_blueprint(api.bp)
     app.register_blueprint(priorities_launch_api.bp)
+    app.register_blueprint(theme_api.bp)
     app.register_blueprint(competitors_media.bp)
     projection.register(app)
     app.register_blueprint(brain_mcp.bp)
@@ -113,7 +114,7 @@ def _register_pages(app: Flask) -> None:
         resp.headers["Content-Security-Policy"] = CSP
         return resp
 
-    for rule in ("/", "/login", "/google", "/amazon", "/campaigns", "/countries", "/no-attribution", "/promotions", "/madre-review", "/trends", "/daily", "/email", "/inventory/history", "/priorities", "/priorities/v/<token>", "/priorities/production", "/competitors", "/priorities/vendor/<token>", "/lookup", "/connect-agent", "/p/<slug>", "/ad/<id>"):
+    for rule in ("/", "/login", "/google", "/amazon", "/campaigns", "/countries", "/no-attribution", "/promotions", "/madre-review", "/trends", "/daily", "/email", "/inventory/history", "/theme-previews", "/priorities", "/priorities/v/<token>", "/priorities/production", "/competitors", "/priorities/vendor/<token>", "/lookup", "/connect-agent", "/p/<slug>", "/ad/<id>"):
         app.add_url_rule(rule, endpoint="shell:" + rule, view_func=shell)
 
 

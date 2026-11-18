@@ -27213,6 +27213,158 @@
    ]
   },
   {
+   "name": "public.theme_previews",
+   "schema": "public",
+   "relation": "theme_previews",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "Preview (unpublished) Shopify themes created through the Theme previews page, each a copy of the live theme at the time. Use it to see which themes the app may edit and who made them.",
+   "grain": "one row per preview theme",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "app/theme_api.py",
+   "refresh": "a row is added when someone creates a preview",
+   "coverage": "from the first preview",
+   "caveats": [
+    "the app refuses to write to any theme that is not in this table or that Shopify reports as the live theme."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Primary key."
+    },
+    {
+     "name": "shopify_theme_id",
+     "type": "text",
+     "nullable": false,
+     "description": "Shopify theme id (the number at the end of the theme gid)."
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "nullable": false,
+     "description": "Theme name in Shopify: preview-<login>-<yyyymmdd>-<slug>."
+    },
+    {
+     "name": "created_by",
+     "type": "text",
+     "nullable": false,
+     "description": "Login of the person who made the preview."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the preview was made."
+    },
+    {
+     "name": "source_theme_id",
+     "type": "text",
+     "nullable": true,
+     "description": "Shopify id of the live theme that was copied."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Previews, newest first",
+     "sql": "SELECT name, created_by, created_at FROM public.theme_previews ORDER BY id DESC;"
+    }
+   ]
+  },
+  {
+   "name": "public.theme_edit_audit",
+   "schema": "public",
+   "relation": "theme_edit_audit",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "Every create and file save done through the Theme previews page: who, which preview, which file, and a checksum of what was saved.",
+   "grain": "one row per action",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [
+    {
+     "columns": [
+      "theme_preview_id"
+     ],
+     "references": "public.theme_previews",
+     "referenced_columns": [
+      "id"
+     ]
+    }
+   ],
+   "source": "app/theme_api.py",
+   "refresh": "a row is added for each action",
+   "coverage": "from the first preview",
+   "caveats": [
+    "the file text itself is not stored here, only its sha256 and size; the text lives in the preview theme in Shopify and is not in git."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Primary key."
+    },
+    {
+     "name": "theme_preview_id",
+     "type": "bigint",
+     "nullable": true,
+     "description": "theme_previews.id."
+    },
+    {
+     "name": "user_login",
+     "type": "text",
+     "nullable": false,
+     "description": "Login of the person who acted."
+    },
+    {
+     "name": "action",
+     "type": "text",
+     "nullable": false,
+     "description": "create_preview or save_file."
+    },
+    {
+     "name": "file_key",
+     "type": "text",
+     "nullable": true,
+     "description": "Theme file path for save_file, such as sections/header.liquid; empty for create_preview."
+    },
+    {
+     "name": "content_sha256",
+     "type": "text",
+     "nullable": true,
+     "description": "sha256 of the saved text (hex)."
+    },
+    {
+     "name": "size_bytes",
+     "type": "integer",
+     "nullable": true,
+     "description": "Size of the saved text in bytes."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the action happened."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Saves per person",
+     "sql": "SELECT user_login, count(*) AS saves FROM public.theme_edit_audit WHERE action = 'save_file' GROUP BY 1;"
+    }
+   ]
+  },
+  {
    "name": "public.amazon_ads_search_term_daily",
    "schema": "public",
    "relation": "amazon_ads_search_term_daily",

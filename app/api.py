@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, g, jsonify, request, send_file
 from werkzeug.datastructures import MultiDict
 
-from . import amazon as amz, api_keys as ak, countries as cty, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_cut_views as pcv, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, madre_review as mrv, madre_media as mmed, promotions as promo, no_attribution as noattr, queries as q, scale_views as sv, trends as trn
+from . import amazon as amz, api_keys as ak, countries as cty, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_cut_views as pcv, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, theme_api as tha, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, madre_review as mrv, madre_media as mmed, promotions as promo, no_attribution as noattr, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -73,7 +73,7 @@ def status():
             OR EXISTS (SELECT 1 FROM unmatched_meta u WHERE u.product_id = p.id AND {"GREATEST(u.spend_all, u.spend_launch)" if q._CAPS["unm_launch"] else "u.spend_all"} > 0))"""))
     res = q.status(conn, meta, n)
     res["sources"] = {**res["sources"], "amazon": amz.status_entry(amz.DbSource(conn))}          # not in sources.platforms: that list is the spend platforms of the All views
-    return jsonify({**res, "auth": "disabled" if auth.auth_disabled() else "enabled", "user": auth.current_user()})
+    return jsonify({**res, "auth": "disabled" if auth.auth_disabled() else "enabled", "user": auth.current_user(), "theme": tha.discovery()})
 
 
 @bp.get("/api/no-attribution/products")

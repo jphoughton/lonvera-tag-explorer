@@ -49,6 +49,7 @@ export const PAGES = [
   { id: 'trends', re: /^\/trends\/?$/, filters: [], parent: toOverview },
   { id: 'daily', re: /^\/daily\/?$/, filters: [], parent: toOverview },
   { id: 'inventory-history', re: /^\/inventory\/history\/?$/, filters: [], parent: toOverview },
+  { id: 'theme-previews', re: /^\/theme-previews\/?$/, filters: [], parent: toOverview },
   { id: 'email', re: /^\/email\/?$/, filters: [], parent: toOverview },
   { id: 'priorities', re: /^\/priorities\/?$/, filters: [], parent: toOverview },
   { id: 'priorities-view', re: /^\/priorities\/v\/([A-Za-z0-9_-]+)\/?$/, filters: [], parent: () => href('/priorities', {}) },

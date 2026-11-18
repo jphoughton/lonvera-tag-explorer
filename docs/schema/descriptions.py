@@ -3181,6 +3181,23 @@ rel("public.asset_sync_known_md5", group="creative", kind="table",
     examples=[("Row count", "SELECT count(*) AS md5s FROM public.asset_sync_known_md5;")])
 
 
+# ---------------------------------------------------------------------------------------------------------------------------- theme previews (migration 276)
+rel("public.theme_previews", group="creative", kind="table",
+    purpose="Preview (unpublished) Shopify themes created through the Theme previews page, each a copy of the live theme at the time. Use it to see which themes the app may edit and who made them.",
+    grain="one row per preview theme", source="app/theme_api.py", refresh="a row is added when someone creates a preview", coverage="from the first preview",
+    caveats=["the app refuses to write to any theme that is not in this table or that Shopify reports as the live theme."],
+    cols={"id": "Primary key.", "shopify_theme_id": "Shopify theme id (the number at the end of the theme gid).", "name": "Theme name in Shopify: preview-<login>-<yyyymmdd>-<slug>.",
+          "created_by": "Login of the person who made the preview.", "created_at": "When the preview was made.", "source_theme_id": "Shopify id of the live theme that was copied."},
+    examples=[("Previews, newest first", "SELECT name, created_by, created_at FROM public.theme_previews ORDER BY id DESC;")])
+rel("public.theme_edit_audit", group="creative", kind="table",
+    purpose="Every create and file save done through the Theme previews page: who, which preview, which file, and a checksum of what was saved.",
+    grain="one row per action", source="app/theme_api.py", refresh="a row is added for each action", coverage="from the first preview",
+    caveats=["the file text itself is not stored here, only its sha256 and size; the text lives in the preview theme in Shopify and is not in git."],
+    cols={"id": "Primary key.", "theme_preview_id": "theme_previews.id.", "user_login": "Login of the person who acted.", "action": "create_preview or save_file.",
+          "file_key": "Theme file path for save_file, such as sections/header.liquid; empty for create_preview.", "content_sha256": "sha256 of the saved text (hex).",
+          "size_bytes": "Size of the saved text in bytes.", "created_at": "When the action happened."},
+    examples=[("Saves per person", "SELECT user_login, count(*) AS saves FROM public.theme_edit_audit WHERE action = 'save_file' GROUP BY 1;")])
+
 # ---------------------------------------------------------------------------------------------------------------------------- Amazon Ads keyword layer (migrations 252 tables, 253 views)
 # Sponsored Products only, loaded BY HAND from ExpandFi Data Dash pulls: `python -m etl.amazon_dash_load --dir <folder>` (no cron, not the feeds service). docs/AMAZON_DATA.md
 _KW_REFRESH = "manual: python -m etl.amazon_dash_load --dir <folder of Data Dash pulls>; idempotent upsert on the natural key; not scheduled"

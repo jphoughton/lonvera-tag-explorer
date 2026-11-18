@@ -2,7 +2,7 @@
 import { h, navigate, setParams, href, globalParams, fmt, isNum, currentParams, stageSet, stageParam, STAGES, hasDateWindow, compareOn, cmpView, applyCompareState, refreshCmp, qs, cleanParams, srcFromParams, applySourceState, srcView, currentPlatform, refreshSrcBadges, platformUrl } from './util.js';
 import { loadTieout } from './tieout.js';
 import { api, AuthError } from './api.js';
-import { renderNav } from './nav.js';
+import { renderNav, setNavFlag } from './nav.js';
 
 const PRESETS = [['launch', 'Since launch'], ['1d', '1d'], ['7d', '7d'], ['14d', '14d'], ['30d', '30d'], ['60d', '60d'], ['90d', '90d'], ['180d', '180d'], ['mtd', 'MTD']];
 const COMPARES = [['off', 'Off'], ['prev', 'Previous period'], ['7d', '7d'], ['14d', '14d'], ['30d', '30d'], ['60d', '60d'], ['90d', '90d'], ['custom', 'Custom range']];
@@ -460,6 +460,8 @@ export async function loadStatus(signal) {
   try {
     status = await api('/api/status', null, { signal });
     authDisabled = status.auth === 'disabled';
+    setNavFlag('theme-previews', !!(status.theme && status.theme.enabled && status.theme.can_edit));
+    if (navPieces) navPieces.setCurrent(location.pathname, currentParams());
     if (userEl) userEl.textContent = status.user || '';
     applyAuthUi();
     const lr = status.last_refresh;

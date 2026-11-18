@@ -44,7 +44,7 @@ PARTNER_READ_RULES = frozenset({
     "/api/priorities", "/api/priorities/lines/<int:line_id>/insights", "/api/priorities/manual/options",
     # thumbnails and creative files
     "/media/<aint:asset_id>"})
-PARTNER_READ_BLOCKED_PREFIXES = ("/api/projection/",)         # finance, plan, cash, P&L, financing, inventory, supply, purchase orders, scenarios: the whole projection module, whatever routes it gains
+PARTNER_READ_BLOCKED_PREFIXES = ("/api/projection/", "/api/theme/")         # finance, plan, cash, P&L, financing, inventory, supply, purchase orders, scenarios: the whole projection module, whatever routes it gains
 PARTNER_READ_BLOCKED = frozenset({
     # the plan behind Trends, inventory history, the daily story (finance facts), tie-out and status
     "/api/madre-review", "/api/madre-review/video", "/api/trends/plan", "/api/inventory/history", "/api/daily-story", "/api/source/tieout", "/api/status",

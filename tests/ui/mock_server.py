@@ -73,10 +73,14 @@ def logout():
     return r
 
 
+import mock_theme  # noqa: E402  (Theme previews: /api/theme/*, in memory, off by default)
+
+
 @app.get("/api/status")
 def status():
     extra = dict(auth="disabled", user="guest") if AUTH_DISABLED else dict(user=request.cookies.get("user"))
     extra["stale"] = dict(is_stale=os.environ.get("MOCK_STALE") == "1", reason="the last Meta pull failed (token rejected)" if os.environ.get("MOCK_STALE") == "1" else None)
+    extra["theme"] = mock_theme.discovery()
     extra["last_ok_at"] = "2026-11-02T22:12:00+00:00"
     extra["sources"] = dict(platforms=[dict(key="meta", name="Meta", available=True, first_day=DAILY_START.isoformat(), through=DATA_THROUGH.isoformat()),
                                        dict(key="google", name="Google", available=True, first_day=DAILY_START.isoformat(), through=DATA_THROUGH.isoformat())],
@@ -149,12 +153,14 @@ import mock_competitors  # noqa: E402  (Competitors: /api/competitors and /<bran
 
 mock_competitors.register(app, dict(Bad=Bad))
 
+mock_theme.register(app, dict(Bad=Bad))
+
 
 def shell(*_a, **_k):
     return send_from_directory(STATIC, "index.html")
 
 
-for rule in ("/", "/login", "/google", "/amazon", "/no-attribution", "/campaigns", "/countries", "/promotions", "/madre-review", "/trends", "/daily", "/email", "/inventory/history", "/priorities", "/priorities/v/<tok>", "/priorities/production", "/competitors", "/priorities/vendor/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
+for rule in ("/", "/login", "/google", "/amazon", "/no-attribution", "/campaigns", "/countries", "/promotions", "/madre-review", "/trends", "/daily", "/email", "/inventory/history", "/theme-previews", "/priorities", "/priorities/v/<tok>", "/priorities/production", "/competitors", "/priorities/vendor/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
     app.add_url_rule(rule, endpoint="shell" + rule, view_func=shell)
 
 
