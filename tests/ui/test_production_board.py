@@ -154,6 +154,7 @@ def test_drag_to_another_column_posts_move_with_neighbours_and_the_card_lands_th
 
 
 def test_drag_within_a_column_reorders_with_before_and_after_neighbours(page):
+    page.set_viewport_size({"width": 1440, "height": 1900})            # seven lanes make the cards taller: keep every card on screen for the mouse
     goto(page)
     assert col_ids(page, "assigned") == ["1", "3", "9"]
     body = drag_card(page, 9, "assigned", "top")                      # drag the last Assigned card above the first one
@@ -182,6 +183,7 @@ def test_rejected_move_reverts_and_shows_the_plain_english_reason(page):
 
 
 def test_dragging_onto_launched_is_refused_without_calling_the_server(page):
+    page.set_viewport_size({"width": 1900, "height": 1000})                       # seven lanes with Proposed Concept: Launched must be on screen for the mouse
     goto(page)
     calls = []
     page.on("request", lambda r: calls.append(r.url) if "/move" in r.url else None)
@@ -625,6 +627,7 @@ def test_no_dragged_copy_is_left_floating_after_a_refused_drop(page):
 
 
 def test_no_dragged_copy_is_left_floating_after_escape(page):
+    page.set_viewport_size({"width": 1440, "height": 1900})            # seven lanes make the cards taller: keep every card on screen for the mouse
     goto(page)
     a = card(page, 9).locator("[data-testid=prod-card-title]").bounding_box()
     page.mouse.move(a["x"] + 20, a["y"] + 10); page.mouse.down(); page.mouse.move(a["x"] + 200, a["y"] + 80, steps=6)

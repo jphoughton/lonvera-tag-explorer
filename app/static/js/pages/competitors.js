@@ -8,7 +8,7 @@ import { showControls } from '../controls.js';
 import { pageHeader } from '../ui/pagehead.js';
 import { filterRow, seg, selectCtl } from '../ui/pagefilters.js';
 import { adCard, lightbox, bars, link, safeHttp, tint } from './competitors_cards.js';
-import { sendToNeedsBrief } from './competitors_brief.js';
+import { sendToProposed } from './competitors_brief.js';
 import { TAG_PARAMS, tagFilters, learning, ownLandingPages, lpChanges, lpCards, lpLightbox } from './competitors_learn.js';
 
 const md = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ''); return m ? `${+m[2]}/${+m[3]}` : (s || ''); };
@@ -52,9 +52,9 @@ function adRow(a, brand) {
     h('td', null, [a.cluster, a.pain_point].filter(Boolean).join(' / ') || '–'),
     h('td', null, a.landing_domain || '–'),
     h('td', null, u ? link(u, 'Open in Ad Library', { 'data-testid': 'comp-adlink' }) : ''),
-    h('td', null, h('button', { type: 'button', class: 'btn small', 'data-testid': 'comp-brief', onclick: () => sendToNeedsBrief(a, brand) }, 'Send to Needs brief')));
+    h('td', null, h('button', { type: 'button', class: 'btn small', 'data-testid': 'comp-brief', onclick: () => sendToProposed(a, brand) }, 'Send to Proposed Concept')));
 }
-const AD_HEADS = ['Ad text', 'Days running', 'Format', 'Ads sharing it', 'Angle', 'Lands on', 'Link', 'Needs brief'];
+const AD_HEADS = ['Ad text', 'Days running', 'Format', 'Ads sharing it', 'Angle', 'Lands on', 'Link', 'Proposed Concept'];
 
 function section(title, note, body, testid) {
   return h('section', { class: 'comp-sec', 'data-testid': testid }, h('h3', null, title), note ? h('p', { class: 'pri-sub' }, note) : null, body);

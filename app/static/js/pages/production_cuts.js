@@ -256,7 +256,7 @@ export function renderEvidence(body, d, pr) {
 export function cutsView({ host, st, filters, signal, onState, say, pageFilters }) {
   let out = null;
   let metricOpen = false;
-  const sel = new Map();                                         // rows ticked for Needs brief: key = the cut's labels, value = the row
+  const sel = new Map();                                         // rows ticked for Proposed Concept: key = the cut's labels, value = the row
   const rowKey = (r) => JSON.stringify(out.group.map((d) => r.labels[d]));
   let addWeek = mondayOf(today());
   let addMedia = '';                                            // image or video for the ticked cuts when Image / video is not one of the grouped cuts
@@ -453,9 +453,9 @@ export function cutsView({ host, st, filters, signal, onState, say, pageFilters 
       say(e.message || 'Could not load the cuts.', true);
     } finally { if (mine === seq) tableHost.classList.remove('prod-cuts-busy'); }
   }
-  // ---- Needs brief: add the ticked cuts to the backlog for a week
+  // ---- Proposed Concept: add the ticked cuts to the backlog for a week
   function selBar() {
-    if (!sel.size) return h('p', { class: 'pri-sub prod-cuts-selhint', 'data-testid': 'prod-cuts-selhint' }, 'Tick cuts to add them to Needs brief for a week.');
+    if (!sel.size) return h('p', { class: 'pri-sub prod-cuts-selhint', 'data-testid': 'prod-cuts-selhint' }, 'Tick cuts to add them to Proposed Concept for a week.');
     const weeks = [...new Set([...Array.from({ length: 6 }, (_, i) => addDays(mondayOf(today()), 7 * i)), addWeek])].sort();
     const msg = h('span', { class: 'pri-err', role: 'alert', 'data-testid': 'prod-cuts-selmsg' });
     const needMedia = !out.group.includes('media');
@@ -473,9 +473,9 @@ export function cutsView({ host, st, filters, signal, onState, say, pageFilters 
         if (bad.length) { msg.textContent = `${bad.length} ticked cut${bad.length === 1 ? ' has' : 's have'} no product, market cluster, ICP, pain point or image / video yet (shown as none). Untick ${bad.length === 1 ? 'it' : 'them'} or fix the tags first.`; return; }
         try {
           const r = await api('/api/priorities/backlog', {}, { method: 'POST', body: { items, for_week: addWeek } });
-          toast(`${r.created.length} added to Needs brief for ${weekLabel(addWeek).toLowerCase()}${r.skipped.length ? `, ${r.skipped.length} already there` : ''}.`);
+          toast(`${r.created.length} added to Proposed Concept for ${weekLabel(addWeek).toLowerCase()}${r.skipped.length ? `, ${r.skipped.length} already there` : ''}.`);
           sel.clear(); drawTable();
-        } catch (e) { if (e && e.name === 'AbortError') throw e; msg.textContent = e.message || 'Could not add.'; } } }, 'Add to Needs brief'),
+        } catch (e) { if (e && e.name === 'AbortError') throw e; msg.textContent = e.message || 'Could not add.'; } } }, 'Add to Proposed Concept'),
       h('button', { type: 'button', class: 'btn small', 'data-testid': 'prod-cuts-selclear', onclick: () => { sel.clear(); drawTable(); } }, 'Clear'), msg);
   }
   const stageList = () => (out && out.stages ? out.stages.map((s) => [s.status, s.label]) : STAGE_FALLBACK);
@@ -508,7 +508,7 @@ export function cutsView({ host, st, filters, signal, onState, say, pageFilters 
         h('button', { type: 'button', class: 'prod-sortbtn', 'data-testid': 'prod-cuts-sort-' + key.replace(':', '-'), onclick: () => { st.sort = on ? { key, dir: st.sort.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: typeof val(rows[0] || { labels: {}, stages: {}, stats: {} }, key) === 'string' ? 'asc' : 'desc' }; changed(); drawTable(); } }, text, on ? (st.sort.dir === 'asc' ? ' ▲' : ' ▼') : ''));
     };
     const heads = [h('th', { scope: 'col' }, h('input', { type: 'checkbox', 'aria-label': 'Select all shown cuts', 'data-testid': 'prod-cuts-selall', checked: rows.length > 0 && rows.every((r) => sel.has(rowKey(r))), onchange: (e) => { for (const r of rows) { if (e.target.checked) sel.set(rowKey(r), r); else sel.delete(rowKey(r)); } drawTable(); } })), ...out.group.map((d) => sortBtn('label:' + d, DIM_LABEL[d])), ...shown.map(([k, t]) => sortBtn('stage:' + k, t, 'Concepts at this status (not dropped)', true)), sortBtn('priority', 'Priority score', 'Creative priority, 0 to 100: how much this cut needs new creative now (hit rate, supply gap, scale, economics; discounted when briefs are already in the pipeline). Click a row for the reasons; the How the score works button explains the formula.', true), sortBtn('open', 'Concepts in pipeline', 'Concepts given out and not yet launched (assigned through ready to launch); dropped ones left out', true), ...metrics.map(([k, t, , tip]) => sortBtn(k, t, tip, true))];
-    const cells = (r, total) => [h('td', { class: 'prod-c' }, total ? null : h('input', { type: 'checkbox', 'aria-label': 'Select this cut for Needs brief', 'data-testid': 'prod-cuts-sel', checked: sel.has(rowKey(r)), onchange: (e) => { if (e.target.checked) sel.set(rowKey(r), r); else sel.delete(rowKey(r)); drawTable(); } })), ...out.group.map((d, i) => h('td', { class: 'prod-c prod-cut-label' + (r.labels[d] === '(none)' ? ' prod-cut-none' : '') }, total ? (i === 0 ? 'Total' : '') : r.labels[d])),
+    const cells = (r, total) => [h('td', { class: 'prod-c' }, total ? null : h('input', { type: 'checkbox', 'aria-label': 'Select this cut for Proposed Concept', 'data-testid': 'prod-cuts-sel', checked: sel.has(rowKey(r)), onchange: (e) => { if (e.target.checked) sel.set(rowKey(r), r); else sel.delete(rowKey(r)); drawTable(); } })), ...out.group.map((d, i) => h('td', { class: 'prod-c prod-cut-label' + (r.labels[d] === '(none)' ? ' prod-cut-none' : '') }, total ? (i === 0 ? 'Total' : '') : r.labels[d])),
       ...shown.map(([k]) => h('td', { class: 'prod-c prod-num' + (r.stages[k] ? ' prod-cut-has' : ' prod-cut-zero'), 'data-stage': k }, r.stages[k] ? String(r.stages[k]) : '–')),
       h('td', { class: 'prod-c prod-num prod-prio-cell', 'data-metric': 'priority', title: total ? null : (r.priority ? r.priority.why : (out.priority_note || 'Not scored: no scorable cut in Group by.')) },
         total || !r.priority ? (total ? null : '–') : (isNum(r.priority.score) ? [h('span', { class: 'prod-prio ' + tierClass(r.priority.tier), 'data-testid': 'prod-prio-score' }, String(Math.round(r.priority.score))), h('span', { class: 'prod-prio-tier' }, r.priority.tier)] : [h('span', { class: 'prod-prio prod-prio-nodata', 'data-testid': 'prod-prio-nodata' }, 'Not enough data')])),

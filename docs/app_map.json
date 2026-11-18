@@ -1524,7 +1524,7 @@
    "endpoint": "api.priorities_backlog",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "The Needs brief queue: ?week=YYYY-MM-DD[,..] (snaps to Mondays) &include_assigned=1 -> {rows: [{id, product, product_name, cluster, icp, pain_point, title, for_week, note, status, assignment_id, created_by, created_at, updated_at}], vendors, ready}."
+   "summary": "The Proposed Concept lane of the Board (formerly Needs brief): ?week=YYYY-MM-DD[,..] (snaps to Mondays) &include_assigned=1 -> {rows: [{id, product, product_name, cluster, icp, pain_point, title, for_week, note, status, assignment_id, created_by, created_at, updated_at}], vendors, ready}."
   },
   {
    "rule": "/api/priorities/backlog",
@@ -1535,7 +1535,7 @@
    "endpoint": "api.priorities_backlog_add",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "Add cuts to Needs brief: {items: [{product, cluster, icp, pain_point, media_type: image|video, story?, title?, note?, for_week?}] (1 to 100; product, market cluster, ICP, pain point and image or video are all required), for_week?} -> {created, skipped} (201). Signed-in users only."
+   "summary": "Add a concept to the Proposed Concept lane: {items: [{product, cluster, icp, pain_point, media_type: image|video, story?, title?, note?, for_week?}] (1 to 100; product, market cluster, ICP, pain point and image or video are all required), for_week?} -> {created, skipped} (201). Signed-in users only."
   },
   {
    "rule": "/api/priorities/backlog/<int:item_id>",

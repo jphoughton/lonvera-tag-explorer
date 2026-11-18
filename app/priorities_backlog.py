@@ -1,4 +1,4 @@
-"""The Needs brief queue (/api/priorities/backlog): cuts the team decided to work on in a week that still need a brief. Table creative_backlog (migration 268).
+"""The Proposed Concept lane of the Creative Pipeline Board (/api/priorities/backlog, formerly the Needs brief view): concepts the team decided to work on in a week that are not yet given to a partner. Table creative_backlog (migration 268).
 Add cuts (from the By cut view or by hand), change their week or note, remove them, and assign a partner and a brief to several at once: that creates the real board tickets
 (priorities_assign.create_ticket) and links them back. Nothing here writes to the Google Sheet or Meta."""
 from __future__ import annotations
@@ -11,7 +11,7 @@ from . import priorities_assign as pa, queries as q
 
 MAX_ITEMS = 100
 COLS = "id, product, cluster, icp, pain_point, media_type, story, title, for_week, note, status, assignment_id, created_by, created_at, updated_at"
-NOT_READY = "The Needs brief queue is not set up yet (migration 268 is not applied)."
+NOT_READY = "The Proposed Concept lane is not set up yet (migration 268 is not applied)."
 
 
 NAMES = {"vita-bull": "Vita Bull", "beef-liver": "Beef Liver", "boneflex": "Boneflex", "vita-belle": "Vita Belle"}
@@ -30,10 +30,10 @@ REQUIRED = (("product", "product"), ("cluster", "market cluster"), ("icp", "ICP"
 
 
 def _need_tags(f: dict, what: str = "") -> None:
-    """Every item that goes to Needs brief carries a product, a market cluster, an ICP, a pain point and image or video: the brief is written for that cut."""
+    """Every item that goes to Proposed Concept carries a product, a market cluster, an ICP, a pain point and image or video: the brief is written for that cut."""
     missing = [name for key, name in REQUIRED if not f.get(key)]
     if missing:
-        raise q.ApiError(400, (what + ": " if what else "") + "add " + ", ".join(missing[:-1]) + (" and " if len(missing) > 1 else "") + missing[-1] + " before this goes to Needs brief")
+        raise q.ApiError(400, (what + ": " if what else "") + "add " + ", ".join(missing[:-1]) + (" and " if len(missing) > 1 else "") + missing[-1] + " before this goes to Proposed Concept")
 
 
 def _clean_item(it, week: dt.date) -> dict:
@@ -82,7 +82,7 @@ def add_items(conn, body: dict, user: str | None = None) -> dict:
                     """INSERT INTO creative_backlog (product, cluster, icp, pain_point, media_type, story, title, for_week, note, created_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT DO NOTHING RETURNING """ + COLS, (c["product"], c["cluster"], c["icp"], c["pain_point"], c["media_type"], c["story"], c["title"], c["for_week"], c["note"], user)).fetchone()
                 if r is None:
-                    skipped.append({"index": i, "reason": "already in Needs brief for that week"})
+                    skipped.append({"index": i, "reason": "already in Proposed Concept for that week"})
                 else:
                     created.append(_shape(r))
     except psycopg.errors.UndefinedTable:

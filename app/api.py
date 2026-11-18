@@ -951,20 +951,20 @@ def priorities_cut_ads():
 def _backlog_guard():
     """Backlog writes: signed-in users only (an API key is refused), same-origin, rate limited like Assign to vendor."""
     if g.get("api_key_scope") in ak.PARTNER_SCOPES:
-        raise q.ApiError(403, "This key cannot change the Needs brief queue.")
+        raise q.ApiError(403, "This key cannot change the Proposed Concept lane.")
     return _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
 
 
 @bp.get("/api/priorities/backlog")
 def priorities_backlog():
-    """The Needs brief queue: ?week=YYYY-MM-DD[,..] (snaps to Mondays) &include_assigned=1 -> {rows: [{id, product, product_name, cluster, icp, pain_point, title, for_week, note, status, assignment_id, created_by, created_at, updated_at}], vendors, ready}.
+    """The Proposed Concept lane of the Board (formerly Needs brief): ?week=YYYY-MM-DD[,..] (snaps to Mondays) &include_assigned=1 -> {rows: [{id, product, product_name, cluster, icp, pain_point, title, for_week, note, status, assignment_id, created_by, created_at, updated_at}], vendors, ready}.
     See app/priorities_backlog.py."""
     return jsonify(pbl.list_items(db.get_conn(), week=_arg("week"), include_assigned=request.args.get("include_assigned") in ("1", "true")))
 
 
 @bp.post("/api/priorities/backlog")
 def priorities_backlog_add():
-    """Add cuts to Needs brief: {items: [{product, cluster, icp, pain_point, media_type: image|video, story?, title?, note?, for_week?}] (1 to 100; product, market cluster, ICP, pain point and image or video are all required), for_week?} -> {created, skipped} (201). Signed-in users only."""
+    """Add a concept to the Proposed Concept lane: {items: [{product, cluster, icp, pain_point, media_type: image|video, story?, title?, note?, for_week?}] (1 to 100; product, market cluster, ICP, pain point and image or video are all required), for_week?} -> {created, skipped} (201). Signed-in users only."""
     blocked = _backlog_guard()
     if blocked is not None:
         return blocked

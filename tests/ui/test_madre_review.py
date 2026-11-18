@@ -75,7 +75,7 @@ def test_send_to_production_button(page):
     page.route("**/api/priorities/backlog", lambda r: (posted.append(r.request.post_data_json), r.fulfill(status=201, json={"created": [{"id": 1}], "skipped": []}))[1])
     open_deck(page, "#s6")
     page.locator("[data-testid=mr-send-idea]").click()
-    expect(page.locator(".mr-on .mr-more")).to_have_text("Added to Needs brief.")
+    expect(page.locator(".mr-on .mr-more")).to_have_text("Added to Proposed Concept.")
     assert posted[0]["items"][0]["pain_point"] == "Pain A" and posted[0]["items"][0]["media_type"] == "video"
 
 
