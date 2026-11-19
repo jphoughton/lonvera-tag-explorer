@@ -113,7 +113,10 @@ def test_phone_jump_chips_scroll_to_the_column_and_highlight_it(browser, base_ur
         pg = c.new_page()
         goto(pg)
         chips = pg.locator("[data-testid=prod-board-jump] .prod-jump-chip")
-        assert chips.count() == 6 and chips.first.is_visible() and chips.first.get_attribute("aria-current") == "true"
+        assert chips.count() == 7 and chips.first.is_visible()                       # Proposed Concept first, then the six columns
+        assert chips.first.text_content().strip().startswith('Proposed Concept')
+        assert chips.nth(1).text_content().strip().startswith('Assigned')
+        assert chips.first.is_visible() and chips.first.get_attribute("aria-current") == "true"
         assert chips.first.bounding_box()["height"] >= 44
         assert pg.locator("[data-testid=prod-board-jump-in_review]").text_content().strip().startswith("In review")
         pg.click("[data-testid=prod-board-jump-in_review]")

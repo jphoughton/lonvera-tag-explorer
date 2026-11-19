@@ -236,41 +236,41 @@ def test_cuts_without_all_five_tags_cannot_go_to_needs_brief(page):
     assert "image or video" in page.locator("[data-testid=prod-cuts-selmsg]").text_content().lower()
 
 
-def test_tick_cuts_and_add_them_to_needs_brief_then_assign(page):
+def test_tick_cuts_and_add_them_to_proposed_concept_then_assign(page):
     goto(page, "&by=product,cluster,icp,pain_point")
     tick_complete_rows(page, 2)
     assert "2 cuts ticked" in page.locator("[data-testid=prod-cuts-selbar]").text_content()
     page.select_option("[data-testid=prod-cuts-addmedia]", "video")
     page.locator("[data-testid=prod-cuts-addbl]").click()
     page.wait_for_selector("[data-testid=prod-cuts-selhint]")
-    page.locator("[data-testid=prod-view-backlog]").click()
-    page.wait_for_selector("[data-testid=prod-bl-table]")
-    assert page.locator("[data-testid=prod-bl-row]").count() == 2
-    page.locator("[data-testid=prod-bl-sel]").nth(0).check()
-    page.locator("[data-testid=prod-bl-assign]").click()
-    assert "Choose a partner" in page.locator("[data-testid=prod-bl-err]").text_content()
-    page.select_option("[data-testid=prod-bl-vendor]", "Madre")
-    page.locator("[data-testid=prod-bl-assign]").click()
-    assert "brief" in page.locator("[data-testid=prod-bl-err]").text_content().lower()
-    page.fill("[data-testid=prod-bl-brief-url]", "https://docs.example/brief")
-    page.locator("[data-testid=prod-bl-assign]").click()
-    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-bl-row]').length === 1")
+    page.locator("[data-testid=prod-view-board]").click()
+    page.wait_for_selector("[data-testid=prod-prop-card]")
+    assert page.locator("[data-testid=prod-prop-card]").count() == 2
+    page.locator("[data-testid=prod-prop-assign]").nth(0).click()
+    page.locator("[data-testid=prod-prop-assign-go]").click()
+    assert "Choose a partner" in page.locator("[data-testid=prod-prop-assign-err]").text_content()
+    page.select_option("[data-testid=prod-prop-assign-vendor]", "Madre")
+    page.locator("[data-testid=prod-prop-assign-go]").click()
+    assert "brief" in page.locator("[data-testid=prod-prop-assign-err]").text_content().lower()
+    page.fill("[data-testid=prod-prop-assign-url]", "https://docs.example/brief")
+    page.locator("[data-testid=prod-prop-assign-go]").click()
+    page.wait_for_function("() => document.querySelectorAll('[data-testid=prod-prop-card]').length === 1")
 
 
 def test_adding_by_hand_and_pipeline_share_metric_and_media_cut(page):
     goto(page, "&by=media")
     assert heads(page)[0] == "Image / video"
-    page.locator("[data-testid=prod-view-backlog]").click()
-    page.wait_for_selector("[data-testid=prod-bl-empty]")
-    page.locator("[data-testid=prod-bl-add] > summary").click()
-    page.fill("[data-testid=prod-bl-add-pain]", "Hair Loss")
-    page.select_option("[data-testid=prod-bl-add-product]", "beef-liver")
-    page.select_option("[data-testid=prod-bl-add-media]", "image")
-    page.fill("[data-testid=prod-bl-add-cluster]", "Hair Thinning")
-    page.fill("[data-testid=prod-bl-add-icp]", "Denise")
-    page.locator("[data-testid=prod-bl-add-go]").click()
-    page.wait_for_selector("[data-testid=prod-bl-table]")
-    assert page.locator("[data-testid=prod-bl-row] [data-testid=prod-bl-pain_point]").first.input_value() == "Hair Loss"
+    page.locator("[data-testid=prod-view-board]").click()
+    page.wait_for_selector("[data-testid=prod-prop-empty]")
+    page.locator("[data-testid=prod-prop-add]").click()
+    page.fill("[data-testid=prod-prop-add-pain]", "Hair Loss")
+    page.select_option("[data-testid=prod-prop-add-product]", "beef-liver")
+    page.select_option("[data-testid=prod-prop-add-media]", "image")
+    page.fill("[data-testid=prod-prop-add-cluster]", "Hair Thinning")
+    page.fill("[data-testid=prod-prop-add-icp]", "Denise")
+    page.locator("[data-testid=prod-prop-add-go]").click()
+    page.wait_for_selector("[data-testid=prod-prop-card]")
+    assert "Hair Loss" in page.locator("[data-testid=prod-prop-card]").first.text_content()
     goto(page)
     assert "% of concepts in pipeline" in heads(page)                                                  # on by default
     page.locator("[data-testid=prod-cuts-metrics] > summary").click()
@@ -456,30 +456,33 @@ def test_the_pinned_header_survives_a_redraw_of_the_table(page):
     assert page.locator("[data-testid=prod-stickyhead]").count() == 1
 
 
-def test_open_a_needs_brief_item_to_see_everything_and_edit_its_story(page):
-    page.goto("/priorities/production?view=backlog")
-    page.wait_for_selector("[data-testid=prod-bl-empty]")
-    page.locator("[data-testid=prod-bl-add] > summary").click()
-    page.select_option("[data-testid=prod-bl-add-product]", "vita-bull")
-    page.select_option("[data-testid=prod-bl-add-media]", "video")
-    page.fill("[data-testid=prod-bl-add-cluster]", "Energy & Multivitamin")
-    page.fill("[data-testid=prod-bl-add-icp]", "Given Up Guy")
-    page.fill("[data-testid=prod-bl-add-pain]", "Declining Testosterone")
-    page.fill("[data-testid=prod-bl-add-story]", "He decided feeling worn out is just turning 50.")
-    page.locator("[data-testid=prod-bl-add-go]").click()
-    page.wait_for_selector("[data-testid=prod-bl-table]")
+def test_open_a_proposed_concept_to_see_everything_and_edit_it(page):
+    page.goto("/priorities/production")
+    page.wait_for_selector("[data-testid=prod-prop-empty]")
+    page.locator("[data-testid=prod-prop-add]").click()
+    page.select_option("[data-testid=prod-prop-add-product]", "vita-bull")
+    page.select_option("[data-testid=prod-prop-add-media]", "video")
+    page.fill("[data-testid=prod-prop-add-cluster]", "Energy & Multivitamin")
+    page.fill("[data-testid=prod-prop-add-icp]", "Given Up Guy")
+    page.fill("[data-testid=prod-prop-add-pain]", "Declining Testosterone")
+    page.fill("[data-testid=prod-prop-add-story]", "He decided feeling worn out is just turning 50.")
+    page.locator("[data-testid=prod-prop-add-go]").click()
+    page.wait_for_selector("[data-testid=prod-prop-card]")
     url = page.url
-    page.locator("[data-testid=prod-bl-open]").first.click()
-    page.wait_for_selector("[data-testid=prod-bl-open-title]")
-    facts = page.locator("[data-testid=prod-bl-open-facts]").text_content()
-    for needle in ("Vita Bull", "Video", "Energy & Multivitamin", "Given Up Guy", "Declining Testosterone"):
-        assert needle in facts, needle
-    assert page.locator("[data-testid=prod-bl-open-story]").input_value().startswith("He decided")
+    page.locator("[data-testid=prod-prop-open]").first.click()
+    page.wait_for_selector("[data-testid=prod-prop-open-title]")
+    assert page.locator("[data-testid=prod-prop-open-product]").input_value() == "vita-bull"
+    assert page.locator("[data-testid=prod-prop-open-media]").input_value() == "video"
+    assert page.locator("[data-testid=prod-prop-open-cluster]").input_value() == "Energy & Multivitamin"
+    assert page.locator("[data-testid=prod-prop-open-icp]").input_value() == "Given Up Guy"
+    assert page.locator("[data-testid=prod-prop-open-pain]").input_value() == "Declining Testosterone"
+    assert page.locator("[data-testid=prod-prop-open-story]").input_value().startswith("He decided")
     page.wait_for_selector("[data-testid=prod-cutads-top]")                                                    # the evidence behind the cut loads in the same popup
-    page.fill("[data-testid=prod-bl-open-note]", "Net new: from the weekly test list.")
-    page.locator("[data-testid=prod-bl-open-save]").click()
-    page.wait_for_function("() => document.querySelector('[data-testid=prod-bl-open-msg]').textContent === 'Saved.'")
+    page.select_option("[data-testid=prod-prop-open-media]", "image")
+    page.fill("[data-testid=prod-prop-open-icp]", "Worn Out Dad")
+    page.fill("[data-testid=prod-prop-open-note]", "Net new: from the weekly test list.")
+    page.locator("[data-testid=prod-prop-open-save]").click()
+    page.wait_for_selector("[data-testid=prod-prop-open-title]", state="detached")
     assert page.url == url
-    page.keyboard.press("Escape")
-    assert page.locator("[data-testid=prod-bl-open-title]").count() == 0
-    assert page.locator("[data-testid=prod-bl-note]").first.input_value().startswith("Net new")
+    card = page.locator("[data-testid=prod-prop-card]").first.text_content()
+    assert "Net new" in card and "Worn Out Dad" in card and "Image" in card

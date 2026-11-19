@@ -284,10 +284,10 @@ def register(app, deps):
         for it in b.get("items") or []:
             lack = [n for k, n in (("product", "product"), ("cluster", "market cluster"), ("icp", "ICP"), ("pain_point", "pain point"), ("media_type", "image or video")) if not it.get(k)]
             if lack:
-                return jsonify(error="add " + ", ".join(lack) + " before this goes to Needs brief"), 400
+                return jsonify(error="add " + ", ".join(lack) + " before this goes to Proposed Concept"), 400
             wk = H["pa"].monday_of(b.get("for_week") or dt.date.today()).isoformat()
             if any(r["status"] == "needs_brief" and r["for_week"] == wk and all(r[k] == (it.get(k) or "") for k in ("product", "cluster", "icp", "pain_point")) for r in BL["rows"]):
-                skipped.append({"reason": "already in Needs brief for that week"})
+                skipped.append({"reason": "already in Proposed Concept for that week"})
                 continue
             r = {"id": BL["next"], "product": it.get("product") or "", "cluster": it.get("cluster") or "", "icp": it.get("icp") or "", "pain_point": it.get("pain_point") or "", "media_type": it.get("media_type"), "story": it.get("story") or "", "title": " - ".join(x for x in (it.get("product"), it.get("cluster"), it.get("icp"), it.get("pain_point")) if x),
                  "for_week": wk, "note": it.get("note") or "", "status": "needs_brief", "assignment_id": None, "created_by": "josh"}
@@ -324,9 +324,22 @@ def register(app, deps):
         rows = [x for x in BL["rows"] if x["id"] in ids and x["status"] == "needs_brief"]
         if any(not (x["product"] and x["cluster"] and x["icp"] and x["pain_point"] and (x.get("media_type") or b.get("media_type"))) for x in rows):
             return jsonify(error="fill in product, market cluster, ICP, pain point and image or video first"), 400
-        for x in rows:
+        made = []
+        base = S["rows"][1]
+        for x in rows:                                       # like the real flow: one board ticket per item, in the item's own week, status as asked (default Assigned)
             x["status"] = "assigned"
-        return jsonify({"created": [{"id": 900 + x["id"], "vendor": b["vendor"]} for x in rows], "assigned": [x["id"] for x in rows]}), 201
+            S["seq"] = max(S["seq"], max(S["rows"])) + 1
+            nid = S["seq"]
+            r = {**base, "id": nid, "vendor": b["vendor"], "for_week": dt.date.fromisoformat(x["for_week"]), "product": x["product"], "cluster": x["cluster"], "icp": x["icp"], "pain_point": x["pain_point"], "media_type": x.get("media_type"),
+                 "brief_url": b.get("brief_url"), "creative_url": None, "format_code": None, "tracker_concept_ids": [], "_suggested": [], "ready_at": None, "launched_at": None, "dropped_at": None, "note": x["note"], "vendor_note": "",
+                 "concept_name": x["title"], "concept_key": f"bl-{nid}", "text_key": f"bl-{nid}", "story": x["story"]}
+            r.pop("_ensured", None)
+            S["rows"][nid] = r
+            ensure(r)
+            r["_status"] = b.get("status") or ("brief_sent" if b.get("brief_url") else "assigned")
+            x["assignment_id"] = nid
+            made.append({"id": nid, "vendor": b["vendor"]})
+        return jsonify({"created": made, "assigned": [x["id"] for x in rows]}), 201
 
     @app.get("/api/priorities/cuts/ads")
     def cut_ads():

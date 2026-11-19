@@ -1,4 +1,4 @@
-"""The Needs brief queue (app/priorities_backlog.py, /api/priorities/backlog): add cuts for a week, edit, remove, and assign a partner and a brief to several at once, which creates board tickets."""
+"""The Proposed Concept lane (formerly Needs brief) (app/priorities_backlog.py, /api/priorities/backlog): add cuts for a week, edit, remove, and assign a partner and a brief to several at once, which creates board tickets."""
 import pytest
 
 from .test_api_keys import fresh_throttle, key, mint                                                # noqa: F401  (fixtures)

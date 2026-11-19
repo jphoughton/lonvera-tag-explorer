@@ -3,6 +3,7 @@
 import { h, fmt, isNum } from '../util.js';
 import { STATUSES, STATUS_LABEL, statusOf, md, ticketTitle, adCount, mediaOf, conceptName, factsEl, productName, weekLabel, formatLabel, dueInfo, link, short, nextActions } from './production_common.js';
 import { enableDrag, gripEl } from './production_dnd.js';
+import { proposedColumn } from './production_proposed.js';
 
 const LAUNCHED_DAYS = 14;
 
@@ -108,7 +109,8 @@ function colHead(label, cards, note) {
 }
 
 // board({columns, dropped, st, vendors, capacity, week, ops, onDrop}) -> {el}
-export function board({ columns, dropped, st, vendors, capacity, ops, onDrop, allCards }) {
+// proposed = {rows, ready, message, ctx} puts the Proposed Concept lane first (a column; above the vendor lanes when grouped by vendor); it is not a drop target.
+export function board({ columns, dropped, st, vendors, capacity, ops, onDrop, allCards, proposed }) {
   const filt = (r) => (!st.overdue || r.overdue) && (!st.q || [r.concept_name, r.pain_point, r.cluster, r.icp, r.vendor, r.note, r.vendor_note].filter(Boolean).join(' ').toLowerCase().includes(st.q.toLowerCase()));
   const byStatus = new Map(columns.map((c) => [c.status, c.cards || []]));
   let defs = STATUSES.map(([k, l]) => ({ key: k, label: l, cards: (byStatus.get(k) || []).filter(filt), hidden: (columns.find((c) => c.status === k) || {}).hidden || 0 }));
@@ -131,16 +133,20 @@ export function board({ columns, dropped, st, vendors, capacity, ops, onDrop, al
     return h('section', { class: 'prod-board-col prod-col-' + d.key, 'data-testid': 'prod-board-column', 'data-status': d.key, 'data-droptarget': '', 'aria-label': d.label }, colHead(d.label, cards, d.note), list);
   });
 
+  // the number of columns goes in a CSS custom property: it has to be set with setProperty (assigning it through style does nothing)
+  const colsRow = (n, ...kids) => { const row = h('div', { class: 'prod-board-cols' }, ...kids); row.style.setProperty('--cols', String(n)); return row; };
+  const showProp = !!proposed && !st.stage;
+  const nProp = showProp ? 1 : 0;
   const scroll = h('div', { class: 'prod-board-scroll', 'data-testid': 'prod-board-scroll' },
     lanes[0] === null
-      ? h('div', { class: 'prod-board-cols', style: { '--cols': defs.length } }, cols(null))
-      : lanes.map((v) => { const mine = defs.flatMap((d) => d.cards).filter((c) => c.vendor === v); const bar = loadBars(capacity, [v], (st.week && !st.week.includes(',') ? st.week : ''), allCards || mine);
+      ? colsRow(defs.length + nProp, showProp ? proposedColumn(proposed) : null, cols(null))
+      : [showProp ? h('div', { class: 'prod-lane', 'data-testid': 'prod-prop-lane' }, colsRow(1, proposedColumn(proposed))) : null].concat(lanes.map((v) => { const mine = defs.flatMap((d) => d.cards).filter((c) => c.vendor === v); const bar = loadBars(capacity, [v], (st.week && !st.week.includes(',') ? st.week : ''), allCards || mine);
         return h('div', { class: 'prod-lane', 'data-testid': 'prod-board-lane', 'data-vendor': v }, h('div', { class: 'prod-lane-head' }, h('strong', null, v), h('span', { class: 'prod-lane-n' }, `${mine.length} ${mine.length === 1 ? 'card' : 'cards'}`), bar),
-          h('div', { class: 'prod-board-cols', style: { '--cols': defs.length } }, cols(v))); }));
+          colsRow(defs.length, cols(v))); })));
   if (lanes.length === 0) scroll.append(h('p', { 'data-testid': 'prod-board-nolanes' }, 'No cards match.'));
 
   // Phone: chips above the board that jump to a column; the chip of the column in view is highlighted (aria-current). Hidden on a wide screen by CSS.
-  const chips = defs.map((d) => h('button', { type: 'button', class: 'prod-jump-chip', 'data-testid': 'prod-board-jump-' + d.key, 'data-status': d.key,
+  const chips = (showProp ? [{ key: 'proposed', label: 'Proposed Concept', cards: proposed.rows }] : []).concat(defs).map((d) => h('button', { type: 'button', class: 'prod-jump-chip', 'data-testid': 'prod-board-jump-' + d.key, 'data-status': d.key,
     onclick: () => { const col = scroll.querySelector(`.prod-board-col[data-status="${d.key}"]`); if (col) { scroll.scrollTo({ left: Math.max(0, col.offsetLeft - 12), behavior: 'smooth' }); mark(d.key); } } },
     d.label + ' ', h('span', { class: 'prod-jump-n' }, String(d.cards.length))));
   const jump = h('nav', { class: 'prod-jump', 'data-testid': 'prod-board-jump', 'aria-label': 'Jump to a column' }, chips);
@@ -157,7 +163,7 @@ export function board({ columns, dropped, st, vendors, capacity, ops, onDrop, al
       if (best) mark(best.dataset.status);
     });
   }, { passive: true });
-  if (defs.length) mark(defs[0].key);
+  if (showProp) mark('proposed'); else if (defs.length) mark(defs[0].key);
 
   const el = h('div', { class: 'prod-board', 'data-testid': 'prod-board' }, live, jump, scroll);
   enableDrag({ root: el, cardSel: '.prod-board-card', gripSel: '.prod-grip', listSel: '.prod-board-list:not(.prod-nodrop)', laneOf: (n) => (n.closest('[data-lane]') || n).dataset.lane || '', onDrop, live });

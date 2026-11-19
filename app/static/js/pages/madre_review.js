@@ -134,7 +134,7 @@ export async function madreReviewPage(ctx) {
       btn.disabled = true; status.textContent = 'Sending...';
       try {
         const r = await api('/api/priorities/backlog', null, { method: 'POST', body: { items: [c.idea] } });
-        status.textContent = (r.created && r.created.length) ? 'Added to Needs brief.' : ((r.skipped && r.skipped[0] && r.skipped[0].reason) || 'Already there.');
+        status.textContent = (r.created && r.created.length) ? 'Added to Proposed Concept.' : ((r.skipped && r.skipped[0] && r.skipped[0].reason) || 'Already there.');
       } catch (e) { status.textContent = e && e.message ? e.message : 'Could not add it.'; btn.disabled = false; }
     });
     return h('div', { class: 'mr-card', 'data-testid': 'mr-suggest' }, ck(c.product_name), h('b', { class: 'mr-pt2' }, c.title), h('p', null, `${c.cluster}. ${c.why}`), btn, status);

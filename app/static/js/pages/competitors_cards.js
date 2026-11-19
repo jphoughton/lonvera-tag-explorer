@@ -1,6 +1,6 @@
 // Competitors page parts: ad cards (a picture when one is stored, otherwise a typographic card), the lightbox, and the plain CSS bar charts.
 // Everything from the API goes in through textContent / h(); links are h('a') with an http(s) check. Class names and test ids start with `comp-` (ad blockers hide ad-, ads-, sponsor, banner, promo).
-import { sendToNeedsBrief } from './competitors_brief.js';
+import { sendToProposed } from './competitors_brief.js';
 import { h, isNum } from '../util.js';
 
 export const safeHttp = (u) => { try { const x = new URL(u, location.origin); return x.protocol === 'https:' || x.protocol === 'http:' ? x.href : null; } catch (e) { return null; } };
@@ -130,7 +130,7 @@ export function lightbox() {
         ad.format === 'video' && !saved ? h('span', { class: 'comp-novideo pri-sub', 'data-testid': 'comp-lb-novideo' }, 'Video not saved. Open in the Ad Library to watch.') : null,
         lp ? link(lp, ad.landing_domain ? 'Landing page: ' + ad.landing_domain : 'Landing page', { 'data-testid': 'comp-lb-landing' }) : null,
         u ? link(u, 'Open in the Ad Library', { 'data-testid': 'comp-lb-adlink' }) : null),
-      h('p', null, h('button', { type: 'button', class: 'btn primary small', 'data-testid': 'comp-lb-brief', onclick: () => { pauseAll(stage); dlg.close(); sendToNeedsBrief(ad); } }, 'Send to Needs brief'))].filter(Boolean));
+      h('p', null, h('button', { type: 'button', class: 'btn primary small', 'data-testid': 'comp-lb-brief', onclick: () => { pauseAll(stage); dlg.close(); sendToProposed(ad); } }, 'Send to Proposed Concept'))].filter(Boolean));
     if (dlg.open && !dlg.contains(document.activeElement)) dlg.focus({ preventScroll: true });          // the old player held focus: keep the arrow keys working
     count.textContent = `${i + 1} / ${list.length}`;
     prev.hidden = next.hidden = list.length < 2;

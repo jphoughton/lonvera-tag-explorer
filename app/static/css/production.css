@@ -141,7 +141,7 @@ body.pri-bare #topbar, body.pri-bare #controls { display: none; }
 /* board */
 .prod-board { position: relative; min-width: 0; }
 .prod-board-scroll { overflow-x: auto; max-width: 100%; padding-bottom: 10px; scroll-snap-type: x proximity; }
-.prod-board-cols { display: grid; grid-template-columns: repeat(var(--cols, 6), minmax(224px, 1fr)); gap: 10px; align-items: start; min-width: calc(var(--cols, 6) * 224px + (var(--cols, 6) - 1) * 10px); }
+.prod-board-cols { display: grid; grid-template-columns: repeat(var(--cols, 6), minmax(190px, 1fr)); gap: 10px; align-items: start; min-width: calc(var(--cols, 6) * 190px + (var(--cols, 6) - 1) * 10px); }
 .prod-board-col { background: var(--head-bg); border-radius: 10px; padding: 8px; min-width: 0; scroll-snap-align: start; border: 1px solid transparent; }
 .prod-col-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 2px 4px 8px; }
 .prod-col-head h3 { margin: 0; font-size: 13px; font-weight: 800; letter-spacing: .01em; }
@@ -550,16 +550,9 @@ body.prod-drawer-open { overflow: hidden; }
 .prod-qv .pri-cc[data-on="true"] .prod-qf-n { background: rgba(255, 255, 255, .25); color: #fff; }
 .prod-qv-desc { margin: 2px 0 0; max-width: 110ch; }
 
-/* Needs brief queue and the By cut selection bar */
-.prod-cuts-selbar, .prod-bl-assign { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 14px; margin: 6px 0 10px; padding: 8px 12px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-bg); }
+/* The By cut selection bar */
+.prod-cuts-selbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 14px; margin: 6px 0 10px; padding: 8px 12px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-bg); }
 .prod-cuts-selhint { margin: 4px 0; }
-.prod-bl-add { margin: 8px 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
-.prod-bl-add > summary { cursor: pointer; font-weight: 700; font-size: 13px; }
-.prod-bl-add .ctl-row { margin-top: 8px; align-items: flex-end; }
-.prod-bl-table td input[type=text] { width: 100%; min-width: 160px; font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); }
-.prod-bl-bar { margin: 6px 0; }
-.prod-bl-table select, .prod-bl-table td input[type=text] { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); max-width: 100%; }
-.prod-bl-missing { border-color: var(--bad) !important; background: var(--bad-bg) !important; }
 
 /* By cut: colour grading of the metric cells, and hooks in the ads popup */
 .prod-heat-g2 { background: color-mix(in srgb, var(--good) 28%, var(--bg)); }
@@ -623,8 +616,21 @@ body.prod-dragging-col, body.prod-dragging-col * { cursor: grabbing !important; 
 .prod-stickyhead table { border-collapse: collapse; }
 .prod-stickyhead th { position: static !important; background: var(--head-bg); }
 
-/* Needs brief: the opened item */
+/* Proposed Concept: the opened item */
 .prod-bl-openlabel { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .prod-bl-openlabel textarea { font: inherit; font-size: 14px; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text); padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); width: 100%; resize: vertical; }
 .prod-bl-openbar { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; }
 .prod-viewer-frame.prod-viewer-frameio { aspect-ratio: auto; height: 560px; background: var(--lv-ink); }
+
+/* Proposed Concept lane: the first column of the Board; cards look like board cards but are not draggable */
+.prod-col-proposed { background: var(--head-bg); }
+.prod-prop-add { margin: 0 0 8px; width: 100%; }
+.prod-prop-list { gap: 8px; }
+.prod-prop-card { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px 8px; display: grid; gap: 6px; min-width: 0; box-shadow: 0 1px 1px color-mix(in srgb, var(--lv-ink) 4%, transparent); border-left: 3px solid var(--accent); }
+.prod-prop-card .prod-facts dd { overflow-wrap: anywhere; }
+.prod-prop-by { margin: 0; }
+.prod-prop-card .prod-card-foot { flex-wrap: wrap; }
+.prod-prop-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 12px; margin: 8px 0; }
+.prod-prop-field select, .prod-prop-field input { width: 100%; min-width: 0; font: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); box-sizing: border-box; }
+.prod-prop-modal .prod-bl-openbar { flex-wrap: wrap; }
+@media (max-width: 760px) { .prod-prop-card .prod-card-action, .prod-prop-add { min-height: 44px; font-size: 14px; } .prod-prop-modal { width: 96vw; } }

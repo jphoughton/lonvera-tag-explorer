@@ -439,7 +439,7 @@ def test_lightbox_keys_are_real_key_presses_and_do_not_hijack_inputs(page):
     assert page.locator("[data-testid=comp-lb-count]").text_content() == f"1 / {n}"
 
 
-def test_send_a_competitor_ad_to_needs_brief(page, ctx, base_url):
+def test_send_a_competitor_ad_to_proposed_concept(page, ctx, base_url):
     ctx.request.post(base_url + "/__test/backlog/reset")
     goto(page)
     page.locator("[data-testid=comp-spot] [data-testid=comp-card-open]").first.click()
@@ -456,7 +456,7 @@ def test_send_a_competitor_ad_to_needs_brief(page, ctx, base_url):
     page.fill("[data-testid=comp-brief-pain]", "Hair Loss")
     page.locator("[data-testid=comp-brief-send]").click()
     page.wait_for_selector("[data-testid=comp-brief-title]", state="detached")
-    page.goto("/priorities/production?view=backlog")
-    page.wait_for_selector("[data-testid=prod-bl-table]")
-    assert page.locator("[data-testid=prod-bl-row]").count() == 1
-    assert page.locator("[data-testid=prod-bl-note]").first.input_value().startswith("From a competitor:")
+    page.goto("/priorities/production")
+    page.wait_for_selector("[data-testid=prod-prop-card]")
+    assert page.locator("[data-testid=prod-prop-card]").count() == 1
+    assert "From a competitor:" in page.locator("[data-testid=prod-prop-card]").first.text_content()

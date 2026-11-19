@@ -12,7 +12,6 @@ import { eventLine, STAGES, STATUSES, STATUS_LABEL, statusOf, VENDOR_FALLBACK, m
 import { board as boardView, loadBars } from './production_board.js';
 import { plan as planView } from './production_plan.js';
 import { openDrawer } from './production_drawer.js';
-import { backlogView } from './production_backlog.js';
 import { cutsView, presetRange, DIMS as CUT_DIMS, METRICS as CUT_METRICS, QUICK as CUT_QUICK } from './production_cuts.js';
 const vendorLinkUrl = (tok) => `${location.origin}/priorities/vendor/${tok}`;
 export { mondayOf, addDays, today, VENDOR_FALLBACK, formatLabel, resultText };           // used by priorities_assign.js (the Assign to vendor dialog on /priorities)
@@ -28,7 +27,8 @@ function historyCell(r) {
 
 export async function productionPage(ctx) {
   showControls(false);
-  const VIEWS = [['board', 'Board'], ['list', 'List'], ['plan', 'Plan'], ['cuts', 'By cut'], ['backlog', 'Needs brief']];
+  const VIEWS = [['board', 'Board'], ['list', 'List'], ['plan', 'Plan'], ['cuts', 'By cut']];
+  const oldNeedsBrief = ctx.params.view === 'backlog' || ctx.params.view === 'needs-brief' || /needs-brief|backlog/i.test(location.hash || '');       // the removed Needs brief view: its concepts are the Proposed Concept lane on the Board
   const st = { view: VIEWS.some(([k]) => k === ctx.params.view) ? ctx.params.view : 'board', week: ctx.params.week || '', vendor: ctx.params.vendor || '', product: ctx.params.product || '', cluster: ctx.params.cluster || '', icp: ctx.params.icp || '', pain: ctx.params.pain || '', media: ['image', 'video', 'none'].includes(ctx.params.media) ? ctx.params.media : '', closed: ctx.params.closed === '1',
     stage: ctx.params.stage || '', overdue: ctx.params.overdue === '1', q: ctx.params.q || '', group: ctx.params.group === 'vendor' ? 'vendor' : '', card: ctx.params.card || '', cols: { priority: false, ready: false } };
   const CUT_KEYS = CUT_DIMS.map(([k]) => k);
@@ -40,7 +40,7 @@ export async function productionPage(ctx) {
     stages: ctx.params.cs ? ctx.params.cs.split(',').filter((k) => CUT_STAGES.includes(k)) : CUT_STAGES.slice(), sort: { key: ctx.params.sort || '', dir: ctx.params.dir === 'asc' ? 'asc' : 'desc' },
     order: (ctx.params.mo ? ctx.params.mo.split(',') : []).filter((k) => CUT_METRICS.some(([m]) => m === k)).concat(CUT_METRICS.map(([k]) => k).filter((k) => !(ctx.params.mo || '').split(',').includes(k))), metrics: ctx.params.ms ? ctx.params.ms.split(',').filter((k) => CUT_METRICS.some(([m]) => m === k)) : CUT_METRICS.map(([k]) => k).filter((k) => k !== 'spend_share' && k !== 'rev_share'), f: { cluster: (ctx.params.fc || '').split('|').filter(Boolean), icp: (ctx.params.fi || '').split('|').filter(Boolean), pain_point: (ctx.params.fp || '').split('|').filter(Boolean) }, quick: CUT_QUICK.some(([k]) => k && k === ctx.params.qf) ? ctx.params.qf : '' };
   if (!st.cuts.by.length) st.cuts.by = ['product', 'icp'];
-  let backlog = null;                                          // the Needs brief view (production_backlog.js)
+  let proposed = { rows: [], ready: true, message: '' };       // the Proposed Concept lane of the Board (GET /api/priorities/backlog, production_proposed.js)
   let cuts = null;                                             // the By cut view (production_cuts.js)
   let data = { rows: [], vendors: [], weeks: [] };          // the List payload (GET /api/priorities/assignments); also the source of vendors, weeks and formats for every view
   let board = null;                                           // the Board payload (GET /api/priorities/board)
@@ -78,13 +78,16 @@ export async function productionPage(ctx) {
     try { meta = await api('/api/priorities/assignments', {}, { signal: ctx.signal }); } catch (e) { abortOk(e); meta = meta || { vendors: [], weeks: [], formats: [] }; }
   }
   async function load() {
-    if (st.view === 'cuts' || st.view === 'backlog') { board = null; if (st.view === 'cuts') await ensureMeta(); return; }
+    if (st.view === 'cuts') { board = null; await ensureMeta(); return; }
     if (st.view === 'list') {
       data = await api('/api/priorities/assignments', { week: st.week, vendor: st.vendor, include_closed: st.closed ? 1 : '' }, { signal: ctx.signal });
       meta = null;
     } else {
       const plan = st.view === 'plan';
-      board = await api('/api/priorities/board', { week: plan ? '' : st.week, vendor: plan ? '' : st.vendor, product: plan ? '' : st.product, closed: !plan && st.closed ? 1 : '' }, { signal: ctx.signal });
+      const [b, pr] = await Promise.all([api('/api/priorities/board', { week: plan ? '' : st.week, vendor: plan ? '' : st.vendor, product: plan ? '' : st.product, closed: !plan && st.closed ? 1 : '' }, { signal: ctx.signal }),
+        plan ? null : api('/api/priorities/backlog', {}, { signal: ctx.signal }).catch((e) => { abortOk(e); return { rows: [], ready: false, message: e.message || 'Could not load the proposed concepts.' }; })]);
+      board = b;
+      if (pr) proposed = { rows: pr.rows || [], ready: pr.ready !== false, message: pr.message || '' };
       await ensureMeta();
     }
   }
@@ -312,15 +315,15 @@ export async function productionPage(ctx) {
     const weeks = [...new Set([...weeksList(), ...picked(st.week)])].sort().reverse();
     const list = st.view === 'list';
     const plan = st.view === 'plan';
-    const cutv = st.view === 'cuts' || st.view === 'backlog';
+    const cutv = st.view === 'cuts';
     const all = data.rows || [];
     const keys = Object.keys(STAGES).filter((k) => st.closed || (k !== 'launched' && k !== 'dropped'));
     const count = (k) => all.filter((r) => r.stage === k).length;
     const controls = filterRow(
-      seg({ name: 'View', options: VIEWS.map(([k, l]) => [k, l, `${l} view`, 'prod-view-' + k]), value: st.view, onChange: (v) => { st.view = v; root.dataset.view = v; board = null; cuts = null; backlog = null; sync(); drawChrome(); reload(); }, testid: 'prod-view' }),
-      plan || st.view === 'backlog' ? null : multiCtl({ name: 'Week', allLabel: 'All weeks', options: weeks.map((w) => [w, weekLabel(w)]), values: picked(st.week), onChange: (v) => { st.week = v.join(','); refresh(); }, testid: 'prod-week' }),
-      plan || st.view === 'backlog' ? null : multiCtl({ name: 'Vendor', allLabel: 'All vendors', options: vendorNames().map((v) => [v, v]), values: picked(st.vendor), onChange: (v) => { st.vendor = v.join(','); refresh(); }, testid: 'prod-vendor' }),
-      plan || st.view === 'backlog' ? null : multiCtl({ name: 'Product', allLabel: 'All products', options: Object.entries(PRODUCT_NAMES), values: picked(st.product), onChange: (v) => { st.product = v.join(','); sync(); if (list) drawView(); else reload(); drawChrome(); }, testid: 'prod-product-filter' }),
+      seg({ name: 'View', options: VIEWS.map(([k, l]) => [k, l, `${l} view`, 'prod-view-' + k]), value: st.view, onChange: (v) => { st.view = v; root.dataset.view = v; board = null; cuts = null; sync(); drawChrome(); reload(); }, testid: 'prod-view' }),
+      plan || cutv ? null : multiCtl({ name: 'Week', allLabel: 'All weeks', options: weeks.map((w) => [w, weekLabel(w)]), values: picked(st.week), onChange: (v) => { st.week = v.join(','); refresh(); }, testid: 'prod-week' }),
+      plan || cutv ? null : multiCtl({ name: 'Vendor', allLabel: 'All vendors', options: vendorNames().map((v) => [v, v]), values: picked(st.vendor), onChange: (v) => { st.vendor = v.join(','); refresh(); }, testid: 'prod-vendor' }),
+      plan || cutv ? null : multiCtl({ name: 'Product', allLabel: 'All products', options: Object.entries(PRODUCT_NAMES), values: picked(st.product), onChange: (v) => { st.product = v.join(','); sync(); if (list) drawView(); else reload(); drawChrome(); }, testid: 'prod-product-filter' }),
       plan || cutv ? null : selectCtl({ name: 'Media', options: [['', 'All media'], ['image', 'Image'], ['video', 'Video'], ['none', 'Not tagged']], value: st.media, onChange: (v) => { st.media = v; sync(); drawView(); drawChrome(); }, testid: 'prod-media-filter' }),
       ...[['Cluster', 'cluster', 'cluster', 'All clusters', 'prod-cluster-filter'], ['ICP', 'icp', 'icp', 'All ICPs', 'prod-icp-filter'], ['Pain point', 'pain_point', 'pain', 'All pain points', 'prod-pain-filter']].map(([name, field, key, all, tid]) => (plan || cutv ? null
         : multiCtl({ name, allLabel: all, options: facetValues(field, st[key]).map((v) => [v, v]), values: picked(st[key]), onChange: (v) => { st[key] = v.join(','); sync(); drawView(); drawChrome(); }, testid: tid }))),
@@ -369,15 +372,9 @@ export async function productionPage(ctx) {
     }
     return cuts.refresh().catch(() => {});
   }
-  function drawBacklog() {
-    if (!backlog) { backlog = backlogView({ host: viewHost, signal: ctx.signal, say, goBoard: true }); return backlog.init().catch(() => {}); }
-    return backlog.refresh().catch(() => {});
-  }
   function drawView() {
     if (st.view !== 'cuts') cuts = null;
-    if (st.view !== 'backlog') backlog = null;
-    if (st.view === 'backlog') drawBacklog();
-    else if (st.view === 'cuts') drawCuts();
+    if (st.view === 'cuts') drawCuts();
     else if (st.view === 'list') drawList();
     else if (st.view === 'plan') drawPlan();
     else {
@@ -405,6 +402,14 @@ export async function productionPage(ctx) {
     moveCard(c, to, nb);
   }
 
+  // The Proposed Concept lane follows the page filters that make sense for a concept with no partner yet: week, product, cluster, ICP, pain point, image or video and search.
+  function proposedLane() {
+    const wk = picked(st.week);
+    const rows = st.overdue ? [] : proposed.rows.filter((r) => (!wk.length || wk.includes(r.for_week)) && productOk(r)
+      && (!st.q || [r.title, r.pain_point, r.cluster, r.icp, r.story, r.note].filter(Boolean).join(' ').toLowerCase().includes(st.q.toLowerCase())));
+    return { rows, ready: proposed.ready, message: proposed.message, ctx: { signal: ctx.signal, vendors: vendorNames, reload } };
+  }
+
   function drawBoard() {
     if (!board) { viewHost.replaceChildren(h('p', { role: 'status' }, 'Loading…')); return; }
     const columns = board.columns.map((c) => ({ ...c, cards: (c.cards || []).filter(productOk) }));
@@ -412,12 +417,12 @@ export async function productionPage(ctx) {
     const cards = columns.flatMap((c) => c.cards);
     const week = oneWeek() || mondayOf(today());
     drawLoad();
-    const empty = !cards.length && !dropped.length;
+    const empty = !cards.length && !dropped.length && !proposedLane().rows.length;
     const stageNote = st.stage ? h('p', { class: 'prod-stagenote', 'data-testid': 'prod-board-stagenote' }, `Showing only ${STATUS_LABEL[st.stage === 'creative_in' ? 'in_review' : st.stage] || st.stage}. `, h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-board-showall', onclick: () => { st.stage = ''; sync(); drawView(); } }, 'Show all columns')) : null;
     viewHost.replaceChildren(...[
       stageNote,
       empty ? h('p', { 'data-testid': 'prod-empty' }, 'Nothing here yet. On Priorities, tick concepts and click Assign to vendor.') : null,
-      boardView({ columns, dropped, st, vendors: vendorNames(), capacity: board.capacity, ops, onDrop: onBoardDrop, allCards: cards }).el].filter(Boolean));
+      boardView({ columns, dropped, st, vendors: vendorNames(), capacity: board.capacity, ops, onDrop: onBoardDrop, allCards: cards, proposed: proposedLane() }).el].filter(Boolean));
   }
 
   function drawPlan() {
@@ -468,6 +473,7 @@ export async function productionPage(ctx) {
   drawView();
   ctx.mount(root);
   document.title = 'Creative Pipeline · Lonvera';
+  if (oldNeedsBrief) { sync(); }
   if (st.card) { const c = findCard(st.card); if (c) openCard(c); else { st.card = ''; sync(); } }
 }
 
