@@ -1,7 +1,7 @@
 // The Production board (kanban): six columns, cards, drag and drop, "Move to" menu, swimlanes by vendor, and the weekly load bars. Pure drawing plus events: the page (priorities_production.js) owns the data and saves moves.
 // Test ids: prod-board-*, prod-card-*. Class names start with prod- (never ad-, ads-, sponsor, banner, promo: ad blockers hide those).
 import { h, fmt, isNum } from '../util.js';
-import { STATUSES, STATUS_LABEL, statusOf, md, ticketTitle, adCount, mediaOf, conceptName, factsEl, productName, weekLabel, formatLabel, dueInfo, link, short, nextActions } from './production_common.js';
+import { STATUSES, STATUS_LABEL, statusOf, md, ticketTitle, adCount, mediaOf, conceptName, factsEl, productName, weekLabel, formatLabel, dueInfo, launchedShort, link, short, nextActions } from './production_common.js';
 import { enableDrag, gripEl } from './production_dnd.js';
 import { proposedColumn } from './production_proposed.js';
 
@@ -71,6 +71,7 @@ export function cardEl(r, ops, { compact = false } = {}) {
     h('div', { class: 'prod-card-chips' },
       mediaOf(r) ? chip('prod-chip-media prod-media-' + mediaOf(r).toLowerCase().replace(/\W+/g, '-'), mediaOf(r), { 'data-testid': 'prod-card-media' }) : null,
       r.format_code ? chip('prod-chip-fmt', r.format_code, { 'data-testid': 'prod-card-format', title: formatLabel({ code: r.format_code, name: r.format_name || '', length: r.format_length || '' }) }) : null,
+      launchedShort(r) ? chip('prod-chip-live', launchedShort(r), { 'data-testid': 'prod-card-launched', title: 'Variations with a live Meta ad linked' }) : null,
       due ? chip('prod-chip-due' + (due.tone ? ' prod-due-' + due.tone : ''), due.text, { 'data-testid': 'prod-card-due', 'data-tone': due.tone }) : null),
     h('div', { class: 'prod-card-meta' },
       r.comment_count ? h('button', { type: 'button', class: 'prod-card-comments', 'data-testid': 'prod-card-comments', 'aria-label': `${r.comment_count} comments, open`, onclick: () => ops.open(r, 'comments') },

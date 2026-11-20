@@ -4,7 +4,7 @@
 import { h } from '../util.js';
 import { api } from '../api.js';
 import { assignmentPanel } from './priorities_panel.js';
-import { STATUSES, STATUS_LABEL, statusOf, md, weekLabel, ticketTitle, richLines, variationList, previewOf, adCount, mediaOf, conceptName, factsEl, productName, formatLabel, dueInfo, nextActions, eventLine, link, resultText, mondayOf, addDays, today, askDialog } from './production_common.js';
+import { STATUSES, STATUS_LABEL, statusOf, md, weekLabel, ticketTitle, richLines, variationList, previewOf, adCount, mediaOf, conceptName, factsEl, productName, formatLabel, dueInfo, nextActions, eventLine, launchedSummary, liveAdText, link, resultText, mondayOf, addDays, today, askDialog } from './production_common.js';
 
 const when = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`; };
 
@@ -48,6 +48,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
         h('h2', { id: 'prod-drawer-title', 'data-testid': 'prod-drawer-title' }, conceptName(r)),
         h('button', { type: 'button', class: 'btn prod-drawer-close', 'data-testid': 'prod-drawer-close', 'aria-label': 'Close', onclick: close }, 'Close')),
       factsEl(r, 'prod-facts prod-drawer-facts'),
+      launchedSummary(r) ? h('p', { class: 'pri-sub prod-live-summary', 'data-testid': 'prod-drawer-launched' }, launchedSummary(r)) : null,
       r.stage === 'dropped' ? h('p', { class: 'prod-pill prod-st-dropped', 'data-testid': 'prod-drawer-status' }, 'Dropped')
         : h('ol', { class: 'prod-stepper', 'data-testid': 'prod-drawer-stepper', 'aria-label': 'Status' }, STATUSES.map(([k, l], i) => h('li', { class: 'prod-step' + (i < idx ? ' prod-step-done' : '') + (i === idx ? ' prod-step-now' : ''), 'data-status': k, 'aria-current': i === idx ? 'step' : null, 'data-testid': 'prod-drawer-step' }, h('span', { class: 'prod-step-dot' }), h('span', { class: 'prod-step-label' }, l)))),
       h('div', { class: 'prod-drawer-meta' },
@@ -156,7 +157,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
     }).catch(() => { /* a failed load just leaves the transcripts out */ });
     const noteView = r.note ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Note, as written'), h('div', { class: 'prod-richnote', 'data-testid': 'prod-drawer-note-view' }, richLines(r.note))) : null;
     pane.replaceChildren(h('div', { class: 'prod-drawer-form', 'data-testid': 'prod-drawer-details' },
-      preview, noteView,
+      preview, liveAds(r), noteView,
       fieldInput('Concept name', cname), fieldInput('New vs Iteration', kind), fieldInput('Image or video', media),
       h('dl', { class: 'prod-about', 'data-testid': 'prod-about' }, [['Vendor', r.vendor], ['Week of', weekLabel(r.for_week).replace('Week of ', '')], ['ICP', r.icp], ['Pain point', r.pain_point], ['Market Cluster', r.cluster], ['Line', r.line_code]].filter(([, v]) => v).map(([k, v]) => h('div', { class: 'prod-fact' }, h('dt', null, k + ':'), h('dd', null, v)))),
       fieldInput('Vendor', vendor), fieldInput('Week of', week), fieldInput('Due date', dueRow, 'The vendor sees this date. Clear it for no due date.'), fieldInput('Priority', prio), fieldInput('Format', fmt),
@@ -166,6 +167,59 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
       h('div', { class: 'prod-drawer-btns' }, save,
         r.stage === 'dropped' ? null : h('button', { type: 'button', class: 'btn', 'data-testid': 'prod-drawer-drop', onclick: () => dropIt(r) }, 'Drop')),
       more));
+  }
+
+  // ---- launched ads: the live Meta ad of each variation, and the concept's own list. Saved on their own (blur / Enter), without touching the other fields of the form.
+  function liveAds(r) {
+    const host = h('div', { class: 'prod-live', 'data-testid': 'prod-live' });
+    const failed = (text) => say(text || ops.lastError() || 'Could not save.', true);
+    async function saveAds(body) {
+      say('');
+      const ok = await ops.save(getCard(), body);
+      if (!ok) { failed(); return false; }
+      history = null;
+      if (await ops.reload()) { const c = getCard(); if (c) { drawHead(c); host.replaceChildren(...build(c)); } }
+      say('Saved.');
+      return true;
+    }
+    const infoOf = (a) => h('div', { class: 'pri-sub prod-live-info', 'data-testid': 'prod-live-info' }, liveAdText(a.meta));
+    function varRow(c, v, i) {
+      const entry = (c.launched_ads || []).find((a) => a.source === 'variation' && a.variation_index === i);
+      const input = h('input', { type: 'text', class: 'pri-name prod-live-input', 'data-testid': 'prod-live-input', 'data-index': String(i), maxlength: '2000', placeholder: 'Paste Meta ad ID or Ads Manager link', 'aria-label': `Launched ad for ${v.label}`, value: v.ad_id || '' });
+      const send = async (value) => {
+        const fresh = (getCard().variations || []).map((x) => ({ ...x }));
+        if (!fresh[i]) return;
+        if (value) fresh[i].ad_id = value; else delete fresh[i].ad_id;
+        delete fresh[i].ad_url;
+        await saveAds({ variations: fresh });
+      };
+      const commit = () => { const val = input.value.trim(); if (val !== (v.ad_id || '')) send(val); };
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
+      const clear = h('button', { type: 'button', class: 'btn prod-small prod-live-clear', 'data-testid': 'prod-live-clear', 'aria-label': `Clear the launched ad for ${v.label}`, hidden: !v.ad_id, onmousedown: (e) => e.preventDefault(), onclick: () => { input.value = ''; send(''); } }, '×');
+      return h('li', { class: 'prod-live-row', 'data-testid': 'prod-live-row', 'data-index': String(i) },
+        h('strong', { class: 'prod-live-label' }, v.label), h('div', { class: 'prod-live-edit' }, input, clear), entry ? infoOf(entry) : null);
+    }
+    function ticketBox(c) {
+      const mine = (c.launched_ads || []).filter((a) => a.source === 'ticket');
+      const input = h('input', { type: 'text', class: 'pri-name prod-live-input', 'data-testid': 'prod-ticket-live-input', maxlength: '2000', placeholder: 'Paste Meta ad ID or Ads Manager link', 'aria-label': 'Add a launched ad for this concept' });
+      const add = async () => { const val = input.value.trim(); if (!val) return; const ids = (getCard().launched_ad_ids || []).slice(); await saveAds({ launched_ad_ids: [...ids, val] }); };
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+      return h('div', { class: 'prod-field prod-live-ticket', 'data-testid': 'prod-ticket-live' },
+        h('span', { class: 'pri-k' }, 'Launched ads for this concept'),
+        mine.length ? h('ul', { class: 'prod-live-list' }, mine.map((a) => h('li', { class: 'prod-live-row', 'data-testid': 'prod-ticket-live-row', 'data-ad': a.ad_id },
+          h('div', { class: 'prod-live-edit' }, h('code', { class: 'prod-live-id' }, a.ad_id), h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-ticket-live-remove', 'aria-label': `Remove launched ad ${a.ad_id}`, onclick: () => saveAds({ launched_ad_ids: (getCard().launched_ad_ids || []).filter((x) => x !== a.ad_id) }) }, '×')), infoOf(a))))
+          : h('p', { class: 'pri-sub', 'data-testid': 'prod-ticket-live-none' }, 'None added yet.'),
+        h('div', { class: 'prod-live-edit' }, input, h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-ticket-live-add', onclick: add }, 'Add')));
+    }
+    function build(c) {
+      const vs = Array.isArray(c.variations) ? c.variations : [];
+      return [
+        vs.length ? h('div', { class: 'prod-field', 'data-testid': 'prod-live-vars' }, h('span', { class: 'pri-k' }, 'Launched ad for each variation'), h('ul', { class: 'prod-live-list' }, vs.map((v, i) => varRow(c, v, i)))) : null,
+        ticketBox(c)];
+    }
+    host.replaceChildren(...build(r));
+    return host;
   }
   async function dropIt(r) {
     const res = await askDialog({ title: 'Drop this assignment?', note: `${r.vendor}, ${weekLabel(r.for_week).toLowerCase()}: ${r.cluster} / ${r.icp} / ${r.pain_point}. It moves to Dropped (shown under Show launched and dropped).`, okLabel: 'Drop', danger: true });

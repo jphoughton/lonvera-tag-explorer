@@ -59,6 +59,8 @@ def partner_url(raw, field: str) -> str:
 def _check_variation_urls(variations, prefix: str = "") -> None:
     if isinstance(variations, list):
         for i, v in enumerate(variations):
+            if isinstance(v, dict) and (v.get("ad_id") not in (None, "") or v.get("ad_url") not in (None, "")):
+                raise q.ApiError(400, f"{prefix}variations[{i + 1}]: ad_id is internal and cannot be set with a partner key")
             if isinstance(v, dict) and v.get("url") not in (None, ""):
                 partner_url(v["url"], f"{prefix}variations[{i + 1}].url")
 
@@ -164,12 +166,14 @@ def _int(raw, default: int, name: str, lo: int, hi: int) -> int:
 
 
 # ----------------------------------------------------------------------------------------------------------------------------- every vendor's tickets, read only
-HIDE = ("created_by", "updated_by")                           # who made or changed a row (a login name or a key name): not shown to partners
+HIDE = ("created_by", "updated_by", "launched_ad_ids", "launched_ads", "ads_total", "ads_linked")                           # who made or changed a row (a login name or a key name): not shown to partners
 
 
 def _scrub(card: dict) -> dict:
     out = {k: v for k, v in card.items() if k not in HIDE}
-    out["history"] = [{**e, "actor": "api" if str(e.get("actor") or "").startswith("key:") else e.get("actor")} for e in card.get("history", [])]
+    if isinstance(out.get("variations"), list):
+        out["variations"] = [{k: x for k, x in v.items() if k != "ad_id"} if isinstance(v, dict) else v for v in out["variations"]]      # the live Meta ad is internal
+    out["history"] = [{**e, "actor": "api" if str(e.get("actor") or "").startswith("key:") else e.get("actor")} for e in card.get("history", []) if e.get("kind") not in ("ad_linked", "ad_unlinked")]      # which live ads are linked is internal
     return out
 
 
@@ -289,7 +293,7 @@ def _incoming(body, pre: str = "") -> list[dict]:
 
 def merge(existing: list, incoming: list[dict]) -> list[dict]:
     """Merge by label (case does not matter): a known label gets the new url (and concept_id when one is sent), a new label is appended, nothing is ever removed."""
-    out = [{"label": v.get("label", ""), "url": v.get("url", ""), "concept_id": v.get("concept_id", "")} for v in (existing or []) if isinstance(v, dict)]
+    out = [{"label": v.get("label", ""), "url": v.get("url", ""), "concept_id": v.get("concept_id", ""), **({"ad_id": v["ad_id"]} if v.get("ad_id") else {})} for v in (existing or []) if isinstance(v, dict)]
     index = {v["label"].lower(): v for v in out}
     for v in incoming:
         cur = index.get(v["label"].lower())

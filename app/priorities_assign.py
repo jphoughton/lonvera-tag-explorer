@@ -25,7 +25,7 @@ FORMATS = [{"code": "F1", "name": "Long animated story, openly AI, told by the c
            {"code": "F3", "name": "Short acted scene with two people", "length": "30 to 60s"}, {"code": "F4", "name": "Whiteboard explainer", "length": "60 to 90s"},
            {"code": "F5", "name": "Opens on a sound", "length": "30 to 60s"}, {"code": "F6", "name": "Animated song", "length": "45 to 90s"}]
 CREATE_FIELDS = ("vendor", "for_week", "note", "format_code")
-PATCH_FIELDS = ("vendor", "for_week", "note", "format_code", "media_type", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped", "status", "due_date", "priority", "position", "comment", "concept_name", "concept_kind", "variations", "cluster", "story")
+PATCH_FIELDS = ("vendor", "for_week", "note", "format_code", "media_type", "brief_url", "creative_url", "tracker_concept_ids", "ready", "launched", "dropped", "status", "due_date", "priority", "position", "comment", "concept_name", "concept_kind", "variations", "cluster", "story", "launched_ad_ids")
 PATCH_BOOLS = ("ready", "launched", "dropped")
 VENDOR_PATCH_FIELDS = ("creative_url", "vendor_note", "ready", "status", "comment")
 # the board (migration 245): the stored status of an assignment, in column order. `dropped` is not a status (dropped_at hides the card in an archived lane).
@@ -230,6 +230,8 @@ def clean_patch(body: dict) -> dict:
         out["cluster"] = _text(body["cluster"], "cluster", 200)
     if "story" in body:
         out["story"] = _text(body["story"], "story", 20000)
+    if "launched_ad_ids" in body:
+        out["launched_ad_ids"] = clean_launched_ids(body["launched_ad_ids"])
     if "comment" in body:
         out["comment"] = _comment_opt(body["comment"])
     return out
@@ -427,7 +429,7 @@ COLS = ("id, concept_key, text_key, product, vendor, line_id, manual_id, line_co
 STRUCT_COLS = ("concept_name", "concept_kind", "media_type", "variations", "tag_state", "tagged_at", "tag_note")                                         # migration 258: the ticket fields; a database without it still serves every page
 BOARD_COLS = ("status", "due_date", "priority", "position", "status_changed_at")        # migration 245; a database without it still serves every page (status is then derived from the links)
 FMT_COLS = ("format_code", "format_name", "format_length")                               # on every row; None when no format was chosen (or migration 204 is not applied)
-INTERNAL_ONLY = ("note", "created_by", "updated_by", "suggested_concept_ids")          # never sent to a vendor link page
+INTERNAL_ONLY = ("note", "created_by", "updated_by", "suggested_concept_ids", "launched_ad_ids", "launched_ads", "ads_total", "ads_linked")          # never sent to a vendor link page
 _TS = ("tagged_at", "brief_at", "creative_at", "ready_at", "launched_at", "dropped_at", "created_at", "updated_at", "status_changed_at")
 VENDOR_HIDDEN = INTERNAL_ONLY + ("priority", "position")
 
@@ -485,7 +487,7 @@ def _tracker_ads(conn, recs: list[dict]) -> dict:
 
 # ---------------------------------------------------------------------------------------------------------------- history (who did what, when)
 EVENT_KINDS = ("tagged", "assigned", "brief_added", "brief_removed", "creative_added", "creative_removed", "ready", "ready_cleared", "launched", "launched_cleared", "dropped", "restored", "vendor", "week", "format",
-               "status_changed", "due_changed", "priority_changed", "comment_added")
+               "status_changed", "due_changed", "priority_changed", "comment_added", "ad_linked", "ad_unlinked")
 
 
 def _log(w, aid: int, actor: str | None, kind: str, before: str | None, after: str | None, detail: str = "") -> None:
@@ -581,6 +583,8 @@ def _shape(rec: dict, ads: list[dict], vendor_view: bool = False, today: dt.date
             d.pop(k, None)
         for a in d["ads"]:
             a.pop("ad_url", None)                      # the ad page needs a login
+        if isinstance(d.get("variations"), list):
+            d["variations"] = [{k: x for k, x in v.items() if k != "ad_id"} if isinstance(v, dict) else v for v in d["variations"]]      # the live Meta ad is internal
     return d
 
 
@@ -641,11 +645,92 @@ def _shape_all(conn, recs: list[dict], vendor_view: bool = False, history: bool 
     counts = _comment_counts(conn, [r["id"] for r in recs])
     today = today_pt()
     shaped = [_shape(r, ads[r["id"]], vendor_view, today, counts.get(r["id"], 0)) for r in recs]
+    if not vendor_view:
+        _attach_launched(conn, shaped)
     if not vendor_view and history:                                      # who did what is internal: a vendor link page never gets it
         hist = _history(conn, [r["id"] for r in recs])
         for d in shaped:
             d["history"] = hist.get(d["id"], [])
     return shaped
+
+
+def _meta_ads(conn, ids: list[str]) -> dict[str, dict]:
+    """{ad_id: {name, status, spend, roas, purchases}} for the Meta ads the app already holds (meta_ads + ad_daily, Meta-reported, lifetime in the app's data). Reads the app database only."""
+    if not ids:
+        return {}
+    try:
+        rows = conn.execute("""SELECT a.ad_id, a.ad_name, a.status, sum(d.spend) AS spend, sum(d.purchases) AS purchases, sum(d.conv_value) AS conv
+                               FROM meta_ads a LEFT JOIN ad_daily d ON d.ad_id = a.ad_id WHERE a.ad_id = ANY(%s) GROUP BY a.ad_id, a.ad_name, a.status""", (ids,)).fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        conn.rollback()
+        return {}
+    out = {}
+    for r in rows:
+        sp = _num(r["spend"])
+        out[r["ad_id"]] = {"name": r["ad_name"] or "", "status": r["status"] or "", "spend": sp, "purchases": _num(r["purchases"]),
+                           "roas": round(float(r["conv"]) / sp, 2) if sp and r["conv"] is not None else None}
+    return out
+
+
+def _attach_launched(conn, shaped: list[dict]) -> None:
+    """Internal rows only: launched_ad_ids (ticket level), launched_ads [{ad_id, source, label, variation_index, meta}], ads_total (variations) and ads_linked (distinct linked ad IDs)."""
+    if not shaped:
+        return
+    try:
+        have = {r["id"]: list(r["launched_ad_ids"] or []) for r in conn.execute("SELECT id, launched_ad_ids FROM creative_priorities_assignments WHERE id = ANY(%s)", ([d["id"] for d in shaped],)).fetchall()}
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):          # migration 281 not applied yet
+        conn.rollback()
+        have = {}
+    meta = _meta_ads(conn, sorted({i for d in shaped for i in launched_entry_ids(d, have.get(d["id"], []))}))
+    for d in shaped:
+        compose_launched(d, have.get(d["id"], []), meta)
+
+
+def launched_entry_ids(d: dict, ticket_ids) -> list[str]:
+    return [str(v["ad_id"]) for v in (d.get("variations") or []) if isinstance(v, dict) and v.get("ad_id")] + [str(x) for x in ticket_ids]
+
+
+def compose_launched(d: dict, ticket_ids, meta: dict) -> None:
+    """Set launched_ad_ids, launched_ads, ads_total and ads_linked on one internal row from its variations, the ticket-level IDs and {ad_id: meta} (pure: the UI mock server uses it too)."""
+    es = []
+    for i, v in enumerate(d.get("variations") or []):
+        if isinstance(v, dict) and v.get("ad_id"):
+            es.append({"ad_id": str(v["ad_id"]), "source": "variation", "label": v.get("label", ""), "variation_index": i, "meta": meta.get(str(v["ad_id"]))})
+    for x in ticket_ids:
+        es.append({"ad_id": str(x), "source": "ticket", "label": "", "variation_index": None, "meta": meta.get(str(x))})
+    d["launched_ad_ids"] = [str(x) for x in ticket_ids]
+    d["launched_ads"] = es
+    d["ads_total"] = len(d.get("variations") or [])
+    d["ads_linked"] = len({e["ad_id"] for e in es})
+
+
+def _ad_ids_of(variations, launched) -> set[str]:
+    return {str(v["ad_id"]) for v in (variations or []) if isinstance(v, dict) and v.get("ad_id")} | {str(x) for x in (launched or [])}
+
+
+def _ad_state(w, aid: int) -> set[str]:
+    try:
+        with w.transaction():
+            r = w.execute("SELECT variations, launched_ad_ids FROM creative_priorities_assignments WHERE id = %s", (aid,)).fetchone()
+    except psycopg.errors.UndefinedColumn:
+        return set()
+    return _ad_ids_of(r["variations"], r["launched_ad_ids"]) if r else set()
+
+
+def _keep_ad_ids(w, aid: int, variations_json: str) -> str:
+    """A vendor or partner rewrote the variations: they cannot see or set the launched ads, so each variation keeps the ad_id the stored variation with the same label had."""
+    import json
+    try:
+        with w.transaction():
+            r = w.execute("SELECT variations FROM creative_priorities_assignments WHERE id = %s", (aid,)).fetchone()
+    except psycopg.errors.UndefinedColumn:
+        return variations_json
+    old = {str(v.get("label", "")).lower(): v["ad_id"] for v in ((r or {}).get("variations") or []) if isinstance(v, dict) and v.get("ad_id")}
+    new = json.loads(variations_json)
+    for v in new:
+        if v["label"].lower() in old and "ad_id" not in v:
+            v["ad_id"] = old[v["label"].lower()]
+    return json.dumps(new)
 
 
 def _multi(raw, clean) -> list:
@@ -697,8 +782,53 @@ def clean_variations(raw, required: bool = True) -> str:
         label = _text(v.get("label"), "variation label", 60)
         if not label:
             raise q.ApiError(400, f"variation {i + 1}: label is required (Original, Hook 2 ...)")
-        out.append({"label": label, "url": _opt_url(v.get("url")) or "", "concept_id": _text(v.get("concept_id"), "variation concept id", LIMITS["concept_id"])})
+        item = {"label": label, "url": _opt_url(v.get("url")) or "", "concept_id": _text(v.get("concept_id"), "variation concept id", LIMITS["concept_id"])}
+        raw_ad = v.get("ad_id") if v.get("ad_id") not in (None, "") else v.get("ad_url")
+        if raw_ad not in (None, ""):
+            try:
+                item["ad_id"] = parse_ad_id(raw_ad)
+            except q.ApiError as e:
+                raise q.ApiError(400, f"variation {i + 1}: {e.message}") from None
+        out.append(item)
     return json.dumps(out)
+
+
+# ---- launched ads (migration 281): the live Meta ad behind each variation (variations[].ad_id) and the ticket's own list (launched_ad_ids). Internal only.
+AD_ID_RE = re.compile(r"\d{5,25}")
+MAX_LAUNCHED_ADS = 200
+_AD_PARAMS = ("selected_ad_ids", "ad_id", "ad_ids", "selected_ad_id")
+
+
+def parse_ad_id(raw) -> str:
+    """A Meta ad ID from what was pasted: digits (5 to 25) or an Ads Manager link that has the ad selected (?selected_ad_ids=123 or ad_id=123). A Facebook post link has no ad ID and is refused."""
+    from urllib.parse import urlsplit, parse_qs
+    if isinstance(raw, bool) or not isinstance(raw, (str, int)):
+        raise q.ApiError(400, "a launched ad must be a Meta ad ID (digits) or an Ads Manager link")
+    s = str(raw).strip()
+    if AD_ID_RE.fullmatch(s):
+        return s
+    if re.match(r"https?://", s, re.I):
+        parts = urlsplit(s)
+        qs = parts.query + ("&" + parts.fragment.split("?", 1)[1] if "?" in parts.fragment else "")
+        query = {k.lower(): v for k, v in parse_qs(qs).items()}
+        for k in _AD_PARAMS:
+            for v in query.get(k, []):
+                for piece in re.split(r"[,\s]+", v):
+                    if AD_ID_RE.fullmatch(piece):
+                        return piece
+        if "/posts/" in parts.path or "/videos/" in parts.path or "/reel/" in parts.path or "/photo" in parts.path:
+            raise q.ApiError(400, "That is a Facebook post link, which has no ad ID. Paste the ad ID, or an Ads Manager link with the ad selected.")
+    raise q.ApiError(400, "Paste the Meta ad ID (5 to 25 digits) or an Ads Manager link with the ad selected (it contains selected_ad_ids=...).")
+
+
+def clean_launched_ids(raw) -> str:
+    """The ticket-level launched ads: a list of up to 200 Meta ad IDs (links are parsed), de-duplicated, order kept. Returned as a JSON string for the jsonb column."""
+    import json
+    if not isinstance(raw, list):
+        raise q.ApiError(400, "launched_ad_ids must be a list of Meta ad IDs")
+    if len(raw) > MAX_LAUNCHED_ADS:
+        raise q.ApiError(400, f"at most {MAX_LAUNCHED_ADS} launched ads")
+    return json.dumps(list(dict.fromkeys(parse_ad_id(x) for x in raw)))
 
 
 # what every ticket must carry, however it was added (the New ticket button, POST /api/priorities/tickets, an import): a NAME, a VENDOR and a BRIEF (text saying what it is, and / or a brief link).
@@ -953,7 +1083,10 @@ def _update(aid: int, f: dict, user: str | None, vendor: str | None = None, lega
                 note = "" if legacy_ready else check_transition(was, new_status, vendor=vendor is not None, creative_url=creative, comment=comment)
             sets: list[str] = []
             params: list = []
-            for c in ("vendor", "for_week", "note", "vendor_note", "format_code", "due_date", "priority", "position", "concept_name", "concept_kind", "media_type", "variations", "cluster", "story"):
+            if vendor is not None and "variations" in f:
+                f["variations"] = _keep_ad_ids(w, aid, f["variations"])
+            ads_before = _ad_state(w, aid) if ("variations" in f or "launched_ad_ids" in f) else set()
+            for c in ("vendor", "for_week", "note", "vendor_note", "format_code", "due_date", "priority", "position", "concept_name", "concept_kind", "media_type", "variations", "cluster", "story", "launched_ad_ids"):
                 if c in f:
                     sets.append(f"{c} = %s")
                     params.append(f[c])
@@ -976,6 +1109,11 @@ def _update(aid: int, f: dict, user: str | None, vendor: str | None = None, lega
                 after = _snapshot(w, aid, "id = %s", [aid])
                 for kind, sb, sa, detail in events_for(before, after):
                     _log(w, aid, user, kind, sb, sa, detail)
+                if "variations" in f or "launched_ad_ids" in f:
+                    ads_after = _ad_state(w, aid)
+                    for kind, ids_ in (("ad_linked", ads_after - ads_before), ("ad_unlinked", ads_before - ads_after)):
+                        if ids_:
+                            _log(w, aid, user, kind, stage_of(after), stage_of(after), ", ".join(sorted(ids_))[:300])
             if new_status is not None:
                 body = comment
                 if comment and was == "in_review" and new_status == "in_production" and vendor is None:

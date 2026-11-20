@@ -106,6 +106,11 @@ export function factsEl(r, cls = 'prod-facts', ids = {}) {
 // How many variations the concept has: the stored list first, then the Concept IDs on the card, then the lines of the brief's Variations section.
 export const variationList = (r) => (Array.isArray(r.variations) && r.variations.length ? r.variations.map((v) => ({ label: v.label, url: v.url || '' })) : parseVariations(r.story));
 export const adCount = (r) => (Array.isArray(r.variations) && r.variations.length) || (r.tracker_concept_ids || []).length || parseVariations(r.story).length;
+// Launched ads (internal rows only: a vendor page never carries ads_total / ads_linked): "Launched 3 of 9 ads" and the compact "3/9 launched"
+export const launchedSummary = (r) => { if (!isNum(r.ads_total) && !isNum(r.ads_linked)) return ''; const t = r.ads_total || 0; const l = r.ads_linked || 0; return !t && !l ? '' : t && l <= t ? `Launched ${l} of ${t} ads` : t ? `Launched ${l} ads (${t} variations)` : `Launched ${l} ad${l === 1 ? '' : 's'}`; };
+export const launchedShort = (r) => { if (!isNum(r.ads_total) && !isNum(r.ads_linked)) return ''; const t = r.ads_total || 0; const l = r.ads_linked || 0; return !t && !l ? '' : t ? `${l}/${t} launched` : `${l} launched`; };
+// What the app's Meta data says about a linked ad (Meta-reported), or why it says nothing
+export const liveAdText = (m) => (m ? [m.name || 'Unnamed ad', m.status ? String(m.status).toLowerCase() : '', isNum(m.spend) ? fmt.money(m.spend) + ' spent' : '', isNum(m.roas) ? fmt.roas(m.roas) + ' return' : ''].filter(Boolean).join(' · ') + ' (Meta-reported)' : 'Not found in Meta data yet');
 export const productName = (p) => PRODUCT_NAMES[p] || p || '';
 export const stageLabel = (r) => r.stage_label || STAGES[r.stage] || r.stage || '';
 export const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -202,7 +207,7 @@ export function nextActions(r) {
 
 // History of an assignment: "11/10 2:14 PM  Josh: Brief sent to Creative delivered". Who did it comes from the sign-in name; a vendor link page shows as "Madre (vendor link)"; older rows have no name.
 const EVENT_TEXT = { tagged: 'Tags added from the brief', assigned: 'Assigned to production', brief_added: 'Brief link added', brief_removed: 'Brief link removed', creative_added: 'Creative link added', creative_removed: 'Creative link removed', ready: 'Marked ready to launch', ready_cleared: 'Ready to launch removed',
-  launched: 'Marked launched', status_changed: 'Status changed', due_changed: 'Due date changed', comment_added: 'Comment added', priority_changed: 'Priority changed', capacity_changed: 'Weekly capacity changed', launched_cleared: 'Launched removed', dropped: 'Dropped', restored: 'Restored', vendor: 'Vendor changed', tagged: 'Tags added by the system', week: 'Week changed', format: 'Format changed' };
+  launched: 'Marked launched', status_changed: 'Status changed', due_changed: 'Due date changed', comment_added: 'Comment added', priority_changed: 'Priority changed', capacity_changed: 'Weekly capacity changed', launched_cleared: 'Launched removed', dropped: 'Dropped', restored: 'Restored', vendor: 'Vendor changed', tagged: 'Tags added by the system', week: 'Week changed', format: 'Format changed', ad_linked: 'Launched ad linked', ad_unlinked: 'Launched ad removed' };
 const actorName = (a) => (!a ? 'Not recorded' : a.startsWith('vendor:') ? a.slice(7) + ' (vendor link)' : a);
 const whenText = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`; };
 export function eventLine(e) {

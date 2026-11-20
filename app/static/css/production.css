@@ -515,7 +515,6 @@ body.prod-drawer-open { overflow: hidden; }
 .modal.prod-cutads { width: min(980px, 96vw); max-height: 90vh; overflow: auto; padding: 16px; }
 .prod-cutads-title { margin: 0 28px 2px 0; font-size: 17px; }
 .prod-cutads-name { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; white-space: normal; }
-.prod-chip-live { background: var(--good-bg); color: var(--good); }
 
 /* ---- By cut: tidy toolbar, columns menu, popup (second pass) ---- */
 .prod-cuts-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 6px 0 10px; padding: 8px 0; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
@@ -634,3 +633,13 @@ body.prod-dragging-col, body.prod-dragging-col * { cursor: grabbing !important; 
 .prod-prop-field select, .prod-prop-field input { width: 100%; min-width: 0; font: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); box-sizing: border-box; }
 .prod-prop-modal .prod-bl-openbar { flex-wrap: wrap; }
 @media (max-width: 760px) { .prod-prop-card .prod-card-action, .prod-prop-add { min-height: 44px; font-size: 14px; } .prod-prop-modal { width: 96vw; } }
+
+/* launched ads: the live Meta ad of each variation (drawer) */
+.prod-live-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 8px; }
+.prod-live-row { display: grid; gap: 2px; }
+.prod-live-label { font-size: 13px; }
+.prod-live-edit { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.prod-live-edit .prod-live-input { flex: 1 1 auto; min-width: 0; }
+.prod-live-id { font-size: 12px; overflow-wrap: anywhere; }
+.prod-live-info { font-size: 12px; overflow-wrap: anywhere; }
+.prod-live-summary { margin: 2px 0 0; }

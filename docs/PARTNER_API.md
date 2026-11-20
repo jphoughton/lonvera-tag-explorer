@@ -120,7 +120,7 @@ curl -s -X PATCH $LONVERA_URL/api/priorities/partner/tickets/123 \
   -d '{"concept_name": "Grandma back on the floor v2", "cluster": "Menopause"}'
 ```
 
-You can change `concept_name`, `concept_kind`, `cluster`, `variations` (this replaces the whole list; to add links use the creative call below), `brief_url`, `creative_url` and `story`. Anything else is refused and the message names the field.
+You can change `concept_name`, `concept_kind`, `cluster`, `variations` (this replaces the whole list; to add links use the creative call below) (`ad_id` is internal and cannot be set; the live-ad links the Lonvera team keeps on a ticket are kept when you rewrite the list), `brief_url`, `creative_url` and `story`. Anything else is refused and the message names the field.
 
 ## Adding the creative
 
