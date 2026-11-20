@@ -1,4 +1,4 @@
-Source of truth: /Users/joshhoughton/Desktop/Google Sheets/lonvera_creative_key/cycles/c2026-11-18-madre-rewrites/GRADER_BRIEF.md; copied 2026-11-19; re-copy when it changes.
+Source of truth: /Users/joshhoughton/Desktop/Google Sheets/lonvera_creative_key/cycles/c2026-11-18-madre-rewrites/GRADER_BRIEF.md; copied 2026-11-20; re-copy when it changes.
 
 # Grader brief: independent RMBC ad creative audit
 

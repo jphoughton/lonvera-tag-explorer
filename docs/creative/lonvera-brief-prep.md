@@ -1,4 +1,4 @@
-Source of truth: /Users/joshhoughton/.claude/skills/lonvera-brief-prep/SKILL.md; copied 2026-11-19; re-copy when it changes.
+Source of truth: /Users/joshhoughton/.claude/skills/lonvera-brief-prep/SKILL.md; copied 2026-11-20; re-copy when it changes.
 
 ---
 name: lonvera-brief-prep
