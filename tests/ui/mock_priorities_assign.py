@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import secrets
 
 from flask import jsonify, request
@@ -35,6 +36,7 @@ def register(app, deps):
         ]
         S["rows"] = {r["id"]: r for r in rows}
         S["seq"] = 4
+        S["meta"] = {"123456789012": {"name": "Lonvera-VitalBull-Static-5.4 - Copy 2", "status": "ACTIVE", "spend": 1240.4, "purchases": 14.0, "roas": 1.8}}      # what the app's Meta tables know about a linked ad
         S["capacity"] = {v: 10 for v in VENDORS}
         S["capacity"]["Madre"] = 2
         S["events"] = {r["id"]: [{"at": now(), "actor": "josh", "kind": "assigned", "stage_before": None, "stage_after": "assigned", "detail": f"{r['vendor']}, week of {r['for_week'].isoformat()}"}] for r in rows}
@@ -77,12 +79,15 @@ def register(app, deps):
         out.update(stage=stage, stage_label=pa.stage_label(stage), tracker_status=statuses[0] if statuses else None, tracker_concept_ids=list(r["tracker_concept_ids"]))
         out["suggested_concept_ids"] = [c for c in r["_suggested"] if c not in r["tracker_concept_ids"]]
         out["ads"] = ads_of(r)
+        out["variations"] = [dict(v) for v in (r.get("variations") or [])]
         if not vendor_side:
             out["history"] = list(S["events"].get(r["id"], []))
+            pa.compose_launched(out, r.get("launched_ad_ids") or [], S.get("meta") or {})                    # the real composer: launched_ads, ads_total, ads_linked
         if vendor_side:                                     # a vendor sees own rows, their ads' spend and return, but nothing in INTERNAL_ONLY and no ad page links (those need a login)
             for k in pa.INTERNAL_ONLY:
                 out.pop(k, None)
             out["ads"] = [{k: v for k, v in a.items() if k != "ad_url"} for a in out["ads"]]
+            out["variations"] = [{k: x for k, x in v.items() if k != "ad_id"} for v in out["variations"]]
         if not vendor_side:
             import mock_production_board as pb
             pb.decorate(HANDLE, r, out)
@@ -93,6 +98,10 @@ def register(app, deps):
         for k in ("vendor", "for_week", "note", "brief_url", "creative_url", "tracker_concept_ids", "vendor_note", "format_code", "media_type"):
             if k in f:
                 r[k] = f[k]
+        if "variations" in f:
+            r["variations"] = json.loads(f["variations"])
+        if "launched_ad_ids" in f:
+            r["launched_ad_ids"] = json.loads(f["launched_ad_ids"])
         for b, col in (("ready", "ready_at"), ("launched", "launched_at"), ("dropped", "dropped_at")):
             if b in f:
                 r[col] = now() if f[b] else None

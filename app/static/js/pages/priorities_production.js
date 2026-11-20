@@ -8,7 +8,7 @@ import { expander } from './priorities_panel.js';
 import { pageHeader } from '../ui/pagehead.js';
 import { filterRow, seg, selectCtl, multiCtl, checkCtl, searchCtl } from '../ui/pagefilters.js';
 
-import { eventLine, STAGES, STATUSES, STATUS_LABEL, statusOf, VENDOR_FALLBACK, md, weekLabel, ticketTitle, richLines, PRODUCT_NAMES, mediaOf, adCount, conceptName, factsEl, variationGroups, variationLabel, productName, stageLabel, today, mondayOf, addDays, formatLabel, rowFormat, resultText, link, short, askDialog, toast, dueInfo } from './production_common.js';
+import { eventLine, STAGES, STATUSES, STATUS_LABEL, statusOf, VENDOR_FALLBACK, md, weekLabel, ticketTitle, richLines, PRODUCT_NAMES, mediaOf, adCount, conceptName, factsEl, variationGroups, variationLabel, productName, stageLabel, today, mondayOf, addDays, formatLabel, rowFormat, launchedShort, resultText, link, short, askDialog, toast, dueInfo } from './production_common.js';
 import { board as boardView, loadBars } from './production_board.js';
 import { plan as planView } from './production_plan.js';
 import { openDrawer } from './production_drawer.js';
@@ -255,6 +255,7 @@ export async function productionPage(ctx) {
     const ids = r.tracker_concept_ids || [];
     const byId = new Map((r.ads || []).map((a) => [a.concept_id, a]));
     return h('td', { class: 'prod-c prod-c-made', 'data-testid': 'prod-made' },
+      launchedShort(r) ? h('div', { class: 'pri-sub', 'data-testid': 'prod-launched-count' }, launchedShort(r)) : null,
       variationGroups(ids).map(({ base, list }) => {
         const one = (id, text) => { const a = byId.get(id); return a && a.ad_url ? link(a.ad_url, text, { 'data-testid': 'prod-cid' }) : h('span', { 'data-testid': 'prod-cid' }, text); };
         if (list.length === 1) return h('div', null, one(list[0], list[0]));
