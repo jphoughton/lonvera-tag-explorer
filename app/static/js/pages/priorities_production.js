@@ -156,6 +156,11 @@ export async function productionPage(ctx) {
     return moveCard(card, to);
   }
   async function save(card, b) { return patch(card.id, b, 'Saved.'); }
+  async function saveCopy(card, variation, copy) {
+    lastErr = '';
+    try { await api(`/api/priorities/assignments/${card.id}/copy`, {}, { method: 'PUT', body: { variation, ...copy } }); await load(); drawView(); return true; }
+    catch (e) { abortOk(e); lastErr = e.message || 'Could not save the copy.'; return false; }
+  }
   async function comment(card, text) {
     lastErr = '';
     try { await api(`/api/priorities/assignments/${card.id}/comments`, {}, { method: 'POST', body: { body: text } }); const c = findCard(card.id); if (c) c.comment_count = (c.comment_count || 0) + 1; await load(); drawView(); return true; }
@@ -165,7 +170,7 @@ export async function productionPage(ctx) {
     if (drawer) drawer.close();
     st.card = String(card.id); sync();
     drawer = openDrawer({ id: card.id, tab: tab || 'details', signal: ctx.signal, getCard: () => findCard(card.id), onClose: () => { drawer = null; st.card = ''; sync(); },
-      ops: { run, save, comment, reload, vendors: vendorNames, formats: formatsList, lastError: () => lastErr } });
+      ops: { run, save, saveCopy, comment, reload, vendors: vendorNames, formats: formatsList, lastError: () => lastErr } });
   };
   const ops = { open: openCard, run, moveTo };
 

@@ -80,6 +80,7 @@ def register(app, deps):
         out["suggested_concept_ids"] = [c for c in r["_suggested"] if c not in r["tracker_concept_ids"]]
         out["ads"] = ads_of(r)
         out["variations"] = [dict(v) for v in (r.get("variations") or [])]
+        out["ad_copy"] = dict(r.get("ad_copy") or {})
         if not vendor_side:
             out["history"] = list(S["events"].get(r["id"], []))
             pa.compose_launched(out, r.get("launched_ad_ids") or [], S.get("meta") or {})                    # the real composer: launched_ads, ads_total, ads_linked
@@ -193,6 +194,25 @@ def register(app, deps):
             S["events"][rec["id"]] = [{"at": now(), "actor": "josh", "kind": "assigned", "stage_before": None, "stage_after": "assigned", "detail": f"{f['vendor']}, week of {f['for_week']}"}]
             created.append(view(rec))
         return jsonify(created=created, skipped=skipped), 201
+
+    @app.put("/api/priorities/assignments/<int:aid>/copy")
+    def assign_copy(aid):
+        r = S["rows"].get(aid)
+        if r is None:
+            return jsonify(error="Assignment not found."), 404
+        try:
+            c = pa.clean_copy(request.get_json(silent=True))
+        except q.ApiError as e:
+            return err(e)
+        labels = [v["label"] for v in (r.get("variations") or [])] or ["Original"]
+        m = next((x for x in labels if x.lower() == c["variation"].lower()), None)
+        if m is None:
+            return jsonify(error="variation must be one of: " + ", ".join(labels)), 400
+        cur = {k: v for k, v in (r.get("ad_copy") or {}).items() if k.lower() != m.lower()}
+        if c["primary_texts"] or c["headlines"]:
+            cur[m] = {"primary_texts": c["primary_texts"], "headlines": c["headlines"]}
+        r["ad_copy"] = cur
+        return jsonify({"ad_copy": cur, "variation": m, "primary_texts": c["primary_texts"], "headlines": c["headlines"], "card": view(r)})
 
     @app.patch("/api/priorities/assignments/<int:aid>")
     def assign_patch(aid):

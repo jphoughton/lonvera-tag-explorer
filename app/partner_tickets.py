@@ -403,10 +403,11 @@ def contract(vendor: str, limit_per_min: int = WRITES_PER_MIN, scope: str = "par
         "variation": {"fields": {"label": "required, up to 60 characters", "url": "https link, up to 2000 characters", "concept_id": "optional"}, "max_per_ticket": MAX_VARIATIONS, "min_per_ticket": 1},
         "for_week": "any date in the week; it snaps to that week's Monday (YYYY-MM-DD)",
         "patchable_fields": list(PATCH_FIELDS),
+        "ad_copy": {"fields": {"variation": "required, one of the ticket's variation labels", "primary_texts": f"up to {pas.COPY_MAX_ITEMS}, each 1 to {pas.COPY_PRIMARY_MAX} characters", "headlines": f"up to {pas.COPY_MAX_ITEMS}, each 1 to {pas.COPY_HEADLINE_MAX} characters"}, "replaces": "the whole copy of that variation; both lists empty clears it"},
         "links": {"scheme": "https only", "max_length": pas.LIMITS["url"], "plays_inside_ticket": PLAYS_IN_TICKET, "other_platforms": "any public https link works; it stays a link"},
         "limits": {"max_tickets_per_request": MAX_BATCH, "max_creatives_per_request": MAX_BATCH, "writes_per_minute": limit_per_min, "max_body_bytes": BODY_BYTES, "list_page_default": 100, "list_page_max": 500,
                    "concept_name_max": pas.LIMITS["concept_name"], "note_max": pas.LIMITS["note"]},
         "endpoints": [{"method": m, "path": p} for m, p in (("POST", "/api/priorities/tickets"), ("GET", "/api/priorities/partner/tickets"), ("GET", "/api/priorities/partner/all-tickets"), ("GET", "/api/priorities/partner/all-tickets/<id>"), ("PATCH", "/api/priorities/partner/tickets/<id>"),
-                                                            ("POST", "/api/priorities/partner/tickets/<id>/creative"), ("POST", "/api/priorities/partner/creative"), ("GET", "/api/priorities/partner/contract"))],
+                                                            ("PUT", "/api/priorities/partner/tickets/<id>/copy"), ("POST", "/api/priorities/partner/tickets/<id>/creative"), ("POST", "/api/priorities/partner/creative"), ("GET", "/api/priorities/partner/contract"))],
         "generated": dt.date.today().isoformat(),
     }

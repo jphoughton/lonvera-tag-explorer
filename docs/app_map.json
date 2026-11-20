@@ -1428,6 +1428,17 @@
    "summary": "Post a comment: {body} (1 to 2,000 characters) -> 201 {comment}. The author is the signed-in user (Team when none)."
   },
   {
+   "rule": "/api/priorities/assignments/<int:aid>/copy",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_assignment_copy",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Set the ad copy of one variation: {variation, primary_texts?, headlines?} (up to 5 of each; primary text 1 to 2,000 characters, headline 1 to 255; both empty clears it) -> {card, ad_copy, variation, primary_texts, headlines}."
+  },
+  {
    "rule": "/api/priorities/assignments/<int:aid>/detail",
    "methods": [
     "GET"
@@ -1800,6 +1811,17 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": "Fix one of the key's own tickets: concept_name, concept_kind, cluster, variations, brief_url, creative_url, story. Anything else is a 400; another vendor's ticket is a 404."
+  },
+  {
+   "rule": "/api/priorities/partner/tickets/<int:tid>/copy",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_partner_copy",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Set the ad copy of one variation of one of the key's own tickets: {variation, primary_texts?, headlines?} (up to 5 of each) -> {ad_copy, variation, primary_texts, headlines}. Another vendor's ticket is a 404."
   },
   {
    "rule": "/api/priorities/partner/tickets/<int:tid>/creative",

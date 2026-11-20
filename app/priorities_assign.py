@@ -429,7 +429,7 @@ COLS = ("id, concept_key, text_key, product, vendor, line_id, manual_id, line_co
 STRUCT_COLS = ("concept_name", "concept_kind", "media_type", "variations", "tag_state", "tagged_at", "tag_note")                                         # migration 258: the ticket fields; a database without it still serves every page
 BOARD_COLS = ("status", "due_date", "priority", "position", "status_changed_at")        # migration 245; a database without it still serves every page (status is then derived from the links)
 FMT_COLS = ("format_code", "format_name", "format_length")                               # on every row; None when no format was chosen (or migration 204 is not applied)
-INTERNAL_ONLY = ("note", "created_by", "updated_by", "suggested_concept_ids", "launched_ad_ids", "launched_ads", "ads_total", "ads_linked")          # never sent to a vendor link page
+INTERNAL_ONLY = ("note", "created_by", "updated_by", "suggested_concept_ids", "launched_ad_ids", "launched_ads", "ads_total", "ads_linked", "ad_copy")          # never sent to a vendor link page
 _TS = ("tagged_at", "brief_at", "creative_at", "ready_at", "launched_at", "dropped_at", "created_at", "updated_at", "status_changed_at")
 VENDOR_HIDDEN = INTERNAL_ONLY + ("priority", "position")
 
@@ -487,7 +487,7 @@ def _tracker_ads(conn, recs: list[dict]) -> dict:
 
 # ---------------------------------------------------------------------------------------------------------------- history (who did what, when)
 EVENT_KINDS = ("tagged", "assigned", "brief_added", "brief_removed", "creative_added", "creative_removed", "ready", "ready_cleared", "launched", "launched_cleared", "dropped", "restored", "vendor", "week", "format",
-               "status_changed", "due_changed", "priority_changed", "comment_added", "ad_linked", "ad_unlinked")
+               "status_changed", "due_changed", "priority_changed", "comment_added", "ad_linked", "ad_unlinked", "copy_changed")
 
 
 def _log(w, aid: int, actor: str | None, kind: str, before: str | None, after: str | None, detail: str = "") -> None:
@@ -647,6 +647,7 @@ def _shape_all(conn, recs: list[dict], vendor_view: bool = False, history: bool 
     shaped = [_shape(r, ads[r["id"]], vendor_view, today, counts.get(r["id"], 0)) for r in recs]
     if not vendor_view:
         _attach_launched(conn, shaped)
+        _attach_copy(conn, shaped)
     if not vendor_view and history:                                      # who did what is internal: a vendor link page never gets it
         hist = _history(conn, [r["id"] for r in recs])
         for d in shaped:
@@ -829,6 +830,85 @@ def clean_launched_ids(raw) -> str:
     if len(raw) > MAX_LAUNCHED_ADS:
         raise q.ApiError(400, f"at most {MAX_LAUNCHED_ADS} launched ads")
     return json.dumps(list(dict.fromkeys(parse_ad_id(x) for x in raw)))
+
+
+# ---- ad copy (migration 282): primary texts and headlines per variation, in creative_priorities_assignments.ad_copy. Internal; every write is a copy_changed history row.
+COPY_MAX_ITEMS = 5
+COPY_PRIMARY_MAX = 2000
+COPY_HEADLINE_MAX = 255
+
+
+def _attach_copy(conn, shaped: list[dict]) -> None:
+    """Internal rows only: ad_copy = {variation label: {primary_texts, headlines}} ({} when none or migration 282 is not applied)."""
+    if not shaped:
+        return
+    try:
+        have = {r["id"]: r["ad_copy"] or {} for r in conn.execute("SELECT id, ad_copy FROM creative_priorities_assignments WHERE id = ANY(%s)", ([d["id"] for d in shaped],)).fetchall()}
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        conn.rollback()
+        have = {}
+    for d in shaped:
+        d["ad_copy"] = have.get(d["id"], {})
+
+
+def _copy_list(raw, field: str, limit: int) -> list[str]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise q.ApiError(400, f"{field} must be a list of texts")
+    if len(raw) > COPY_MAX_ITEMS:
+        raise q.ApiError(400, f"at most {COPY_MAX_ITEMS} {field.replace('_', ' ')}")
+    out = []
+    for i, t in enumerate(raw):
+        if not isinstance(t, str):
+            raise q.ApiError(400, f"{field.replace('_', ' ')} {i + 1} must be text")
+        s = _text(t, f"{field.replace('_', ' ')} {i + 1}", limit)
+        if not s:
+            raise q.ApiError(400, f"{field.replace('_', ' ')} {i + 1} is empty (leave it out instead)")
+        out.append(s)
+    return out
+
+
+def clean_copy(body) -> dict:
+    """{variation, primary_texts?, headlines?}: up to 5 primary texts (1 to 2,000 characters each) and up to 5 headlines (1 to 255). Both lists empty clears that variation's copy."""
+    if not isinstance(body, dict):
+        raise q.ApiError(400, "JSON object body required")
+    unknown = set(body) - {"variation", "primary_texts", "headlines"}
+    if unknown:
+        raise q.ApiError(400, "unknown field: " + ", ".join(sorted(unknown)))
+    label = _text(body.get("variation"), "variation", 60)
+    if not label:
+        raise q.ApiError(400, "variation is required (the label on the ticket: Execution A, Hook 2 ...)")
+    return {"variation": label, "primary_texts": _copy_list(body.get("primary_texts"), "primary_texts", COPY_PRIMARY_MAX), "headlines": _copy_list(body.get("headlines"), "headlines", COPY_HEADLINE_MAX)}
+
+
+def set_copy(aid: int, body, user: str | None = None, vendor: str | None = None) -> dict:
+    """PUT .../assignments/<id>/copy: replace the copy of one variation (the label must be one of the ticket's variations, case does not matter; a ticket with no variations takes Original).
+    vendor= limits it to that vendor's own open ticket (partner key; 404 for another vendor's ticket, 409 for a dropped one). Logs copy_changed. -> {ad_copy, variation, primary_texts, headlines}."""
+    import json
+    c = clean_copy(body)
+    try:
+        with _rw() as w:
+            r = w.execute("SELECT vendor, dropped_at, variations, ad_copy, status FROM creative_priorities_assignments WHERE id = %s FOR UPDATE", (aid,)).fetchone()
+            if r is None or (vendor is not None and r["vendor"] != vendor):
+                raise q.ApiError(404, "Assignment not found.")
+            if r["dropped_at"]:
+                raise q.ApiError(409 if vendor is not None else 400, "This concept was dropped. Restore it before changing its copy.")
+            labels = [str(v.get("label", "")) for v in (r["variations"] or []) if isinstance(v, dict) and v.get("label")] or ["Original"]
+            match = next((x for x in labels if x.lower() == c["variation"].lower()), None)
+            if match is None:
+                raise q.ApiError(400, "variation must be one of: " + ", ".join(labels))
+            cur = dict(r["ad_copy"] or {})
+            for k in [k for k in cur if k.lower() == match.lower()]:
+                del cur[k]
+            if c["primary_texts"] or c["headlines"]:
+                cur[match] = {"primary_texts": c["primary_texts"], "headlines": c["headlines"]}
+            w.execute("UPDATE creative_priorities_assignments SET ad_copy = %s, updated_at = now(), updated_by = COALESCE(%s, updated_by) WHERE id = %s", (json.dumps(cur), user, aid))
+            _log(w, aid, user, "copy_changed", r["status"], r["status"],
+                 f"{match}: " + (f"{len(c['primary_texts'])} primary texts, {len(c['headlines'])} headlines" if match in cur else "copy cleared"))
+    except psycopg.errors.UndefinedColumn:
+        raise q.ApiError(503, "Ad copy is not set up yet (migration 282 is not applied).") from None
+    return {"ad_copy": cur, "variation": match, "primary_texts": c["primary_texts"], "headlines": c["headlines"]}
 
 
 # what every ticket must carry, however it was added (the New ticket button, POST /api/priorities/tickets, an import): a NAME, a VENDOR and a BRIEF (text saying what it is, and / or a brief link).
