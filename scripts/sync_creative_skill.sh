@@ -14,4 +14,8 @@ copy "$SK/SKILL.md" lonvera-brief-prep.md
 copy "$SK/reference/script-voice.md" script-voice.md
 copy "$CY/GRADER_BRIEF.md" script-grader-brief.md
 copy "$CY/SELL_HARDER.md" script-sell-harder.md
-echo "copied 4 files to $OUT"
+# RMBC scoring rubric the grader uses (MIT, github.com/coleschaffer/copywritingskills-rmbc, downloaded 2026-11-18)
+copy "$SK/reference/rmbc/ad-creative-audit.md" rmbc-ad-creative-audit.md
+copy "$SK/reference/rmbc/rmbc-context.md" rmbc-context.md
+copy "$SK/reference/rmbc/rmbc-copy-audit.md" rmbc-copy-audit.md
+echo "copied 7 files to $OUT"
