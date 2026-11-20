@@ -643,3 +643,14 @@ body.prod-dragging-col, body.prod-dragging-col * { cursor: grabbing !important; 
 .prod-live-id { font-size: 12px; overflow-wrap: anywhere; }
 .prod-live-info { font-size: 12px; overflow-wrap: anywhere; }
 .prod-live-summary { margin: 2px 0 0; }
+
+/* ad copy on the ticket drawer */
+.prod-copy-group { margin-top: 10px; display: grid; gap: 6px; justify-items: start; }
+.prod-copy-title { font-size: 13px; }
+.prod-copy-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; width: 100%; }
+.prod-copy-item { display: grid; gap: 4px; }
+.prod-copy-text { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; line-height: 1.4; }
+.prod-copy-bar { display: flex; gap: 6px; align-items: center; }
+.prod-copy-n { margin-right: auto; }
+.prod-copy .prod-drawer-btns { margin-top: 10px; align-items: center; }
+@media (max-width: 640px) { .prod-copy-bar .btn { min-height: 40px; } }

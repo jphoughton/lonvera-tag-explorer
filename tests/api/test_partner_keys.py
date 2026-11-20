@@ -376,7 +376,7 @@ def test_every_other_route_and_write_is_refused_for_a_partner(app, anon, pk, sna
 
 def test_partner_routes_are_exactly_these(app):
     assert ak.PARTNER_ROUTES == {("POST", "/api/priorities/tickets"), ("GET", "/api/priorities/partner/tickets"), ("PATCH", "/api/priorities/partner/tickets/<int:tid>"),
-                                 ("POST", "/api/priorities/partner/tickets/<int:tid>/creative"), ("POST", "/api/priorities/partner/creative"), ("GET", "/api/priorities/partner/contract"),
+                                 ("PUT", "/api/priorities/partner/tickets/<int:tid>/copy"), ("POST", "/api/priorities/partner/tickets/<int:tid>/creative"), ("POST", "/api/priorities/partner/creative"), ("GET", "/api/priorities/partner/contract"),
                                  ("GET", "/api/priorities/partner/all-tickets"), ("GET", "/api/priorities/partner/all-tickets/<int:tid>")}
     have = {(m, r.rule) for r in app.url_map.iter_rules() for m in r.methods if r.rule.startswith("/api/priorities/partner/")}
     assert {x for x in ak.PARTNER_ROUTES if "/partner/" in x[1]} <= have

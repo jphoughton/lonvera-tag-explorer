@@ -8960,6 +8960,12 @@
      "type": "jsonb",
      "nullable": false,
      "description": "Meta ad IDs (digit strings, up to 200, no duplicates, order kept) of the live ads for the concept as a whole, entered by an app user on the ticket. The per-variation ad is variations[].ad_id. Internal only: vendor link pages and partner keys never see it. Matched read-only against meta_ads / ad_daily for name, status, spend and return."
+    },
+    {
+     "name": "ad_copy",
+     "type": "jsonb",
+     "nullable": false,
+     "description": "Ad copy per variation: {\"<variation label>\": {\"primary_texts\": [up to 5 strings, 1 to 2000 characters], \"headlines\": [up to 5 strings, 1 to 255 characters]}}. The key is the variation label as written on the ticket (matched without regard to case when written). Written only through PUT /api/priorities/assignments/<id>/copy (or the partner route); every write is a copy_changed row in the ticket history. Internal: vendor link pages never see it."
     }
    ],
    "examples": []

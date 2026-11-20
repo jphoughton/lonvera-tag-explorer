@@ -21,6 +21,7 @@ Keep it private, like a password. Your key belongs to one company only (for exam
 | Send one ticket, or up to 100 at once | `POST /api/priorities/tickets` |
 | See your tickets | `GET /api/priorities/partner/tickets` |
 | Fix a ticket | `PATCH /api/priorities/partner/tickets/<id>` |
+| Set the ad copy (primary texts, headlines) of one variation | `PUT /api/priorities/partner/tickets/<id>/copy` |
 | Add creative (links) to one ticket | `POST /api/priorities/partner/tickets/<id>/creative` |
 | Add creative to many tickets at once | `POST /api/priorities/partner/creative` |
 | See every company's tickets (read only) | `GET /api/priorities/partner/all-tickets`, one ticket: `.../all-tickets/<id>` |
@@ -121,6 +122,16 @@ curl -s -X PATCH $LONVERA_URL/api/priorities/partner/tickets/123 \
 ```
 
 You can change `concept_name`, `concept_kind`, `cluster`, `variations` (this replaces the whole list; to add links use the creative call below) (`ad_id` is internal and cannot be set; the live-ad links the Lonvera team keeps on a ticket are kept when you rewrite the list), `brief_url`, `creative_url` and `story`. Anything else is refused and the message names the field.
+
+## Ad copy
+
+```bash
+curl -s -X PUT $LONVERA_URL/api/priorities/partner/tickets/123/copy \
+  -H "Authorization: Bearer $LONVERA_KEY" -H "Content-Type: application/json" \
+  -d '{"variation": "Execution A", "primary_texts": ["First primary text", "Second primary text"], "headlines": ["Headline one", "Headline two"]}'
+```
+
+Sets the primary texts (up to 5, 1 to 2,000 characters each) and headlines (up to 5, 1 to 255) for one variation of one of your own tickets. `variation` must be one of the ticket's labels (case does not matter). It replaces that variation's copy; send both lists empty to clear it. The answer is `{ad_copy, variation, primary_texts, headlines}` with the copy of every variation. Another vendor's ticket is a 404, a dropped ticket a 409. The Lonvera team sees and edits the same copy in the ticket drawer.
 
 ## Adding the creative
 

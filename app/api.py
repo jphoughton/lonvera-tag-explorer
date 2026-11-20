@@ -856,6 +856,16 @@ def priorities_partner_ticket_patch(tid: int):
     return jsonify(ptk.patch(db.get_conn(), vendor, tid, _json_body(), auth.current_user()))
 
 
+@bp.put("/api/priorities/partner/tickets/<int:tid>/copy")
+def priorities_partner_copy(tid: int):
+    """Set the ad copy of one variation of one of the key's own tickets: {variation, primary_texts?, headlines?} (up to 5 of each) -> {ad_copy, variation, primary_texts, headlines}. Another vendor's ticket is a 404."""
+    vendor = _partner()
+    blocked = _partner_guard()
+    if blocked is not None:
+        return blocked
+    return jsonify(pas.set_copy(tid, _json_body(), auth.current_user(), vendor=vendor))
+
+
 @bp.post("/api/priorities/partner/tickets/<int:tid>/creative")
 def priorities_partner_creative(tid: int):
     """Add the creative (links) to one of the key's own tickets: {variations: [{label, url, concept_id?}] | creative_url, submit?} merged by label -> {ticket, submitted, status, message?}."""
@@ -923,6 +933,17 @@ def priorities_comment_create(aid: int):
     if blocked is not None:
         return blocked
     return jsonify(pas.post_comment(db.get_conn(), aid, _json_body(), auth.current_user())), 201
+
+
+@bp.put("/api/priorities/assignments/<int:aid>/copy")
+def priorities_assignment_copy(aid: int):
+    """Set the ad copy of one variation: {variation, primary_texts?, headlines?} (up to 5 of each; primary text 1 to 2,000 characters, headline 1 to 255; both empty clears it) -> {card, ad_copy, variation, primary_texts, headlines}.
+    The variation must be one of the ticket's labels. Signed-in users and read_assign API keys; logged in the ticket history as copy_changed."""
+    blocked = _views_write_guard("_assign_limiter", "PRIORITIES_ASSIGN_PER_MIN", 60)
+    if blocked is not None:
+        return blocked
+    res = pas.set_copy(aid, _json_body(), auth.current_user())
+    return jsonify({**res, "card": pas._after_write([aid])[0]})
 
 
 @bp.get("/api/priorities/board")

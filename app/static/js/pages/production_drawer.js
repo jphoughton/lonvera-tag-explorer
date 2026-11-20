@@ -14,6 +14,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
   let history = null;
   let detail = null;
   let dirty = false;
+  let copySel = '';               // the variation tab open in the Copy section (kept across a redraw)
   const opener = document.activeElement;
   const scrim = h('div', { class: 'prod-drawer-scrim', 'data-testid': 'prod-drawer-scrim', onclick: () => close() });
   const box = h('aside', { class: 'prod-drawer', 'data-testid': 'prod-drawer', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'prod-drawer-title', 'data-id': id });
@@ -157,7 +158,7 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
     }).catch(() => { /* a failed load just leaves the transcripts out */ });
     const noteView = r.note ? h('div', { class: 'prod-field' }, h('span', { class: 'pri-k' }, 'Note, as written'), h('div', { class: 'prod-richnote', 'data-testid': 'prod-drawer-note-view' }, richLines(r.note))) : null;
     pane.replaceChildren(h('div', { class: 'prod-drawer-form', 'data-testid': 'prod-drawer-details' },
-      preview, liveAds(r), noteView,
+      preview, adCopy(r), liveAds(r), noteView,
       fieldInput('Concept name', cname), fieldInput('New vs Iteration', kind), fieldInput('Image or video', media),
       h('dl', { class: 'prod-about', 'data-testid': 'prod-about' }, [['Vendor', r.vendor], ['Week of', weekLabel(r.for_week).replace('Week of ', '')], ['ICP', r.icp], ['Pain point', r.pain_point], ['Market Cluster', r.cluster], ['Line', r.line_code]].filter(([, v]) => v).map(([k, v]) => h('div', { class: 'prod-fact' }, h('dt', null, k + ':'), h('dd', null, v)))),
       fieldInput('Vendor', vendor), fieldInput('Week of', week), fieldInput('Due date', dueRow, 'The vendor sees this date. Clear it for no due date.'), fieldInput('Priority', prio), fieldInput('Format', fmt),
@@ -167,6 +168,60 @@ export function openDrawer({ id, tab = 'details', ops, getCard, onClose, signal 
       h('div', { class: 'prod-drawer-btns' }, save,
         r.stage === 'dropped' ? null : h('button', { type: 'button', class: 'btn', 'data-testid': 'prod-drawer-drop', onclick: () => dropIt(r) }, 'Drop')),
       more));
+  }
+
+  // ---- ad copy: primary texts and headlines per variation, plain text with a Copy button on each. Saved on its own (Save copy), without touching the other fields of the form.
+  function adCopy(r) {
+    const host = h('div', { class: 'prod-field prod-copy', 'data-testid': 'prod-copy' });
+    const MAXN = 5;
+    const drafts = new Map();                                   // label -> { primary: [], heads: [] } while being edited
+    const labelsOf = (c) => { const l = (Array.isArray(c.variations) ? c.variations : []).map((v) => v.label).filter(Boolean); return l.length ? l : ['Original']; };
+    const saved = (c, label) => { const m = c.ad_copy || {}; const k = Object.keys(m).find((x) => x.toLowerCase() === label.toLowerCase()); return k ? m[k] : {}; };
+    const draftOf = (c, label) => { if (!drafts.has(label)) { const s = saved(c, label); drafts.set(label, { primary: (s.primary_texts || []).slice(), heads: (s.headlines || []).slice() }); } return drafts.get(label); };
+    async function copyText(text, btn) {
+      let ok = false;
+      try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {
+        const t = h('textarea', { style: 'position:fixed;opacity:0' }, text); document.body.append(t); t.select();
+        try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } t.remove();
+      }
+      const was = btn.textContent; btn.textContent = ok ? 'Copied' : 'Press Ctrl+C'; setTimeout(() => { btn.textContent = was; }, 1500);
+    }
+    function list(c, label, kind, title, max, rows) {
+      const d = draftOf(c, label); const arr = kind === 'primary' ? d.primary : d.heads;
+      const ul = h('ul', { class: 'prod-copy-list' }, arr.map((t, i) => {
+        const ta = h('textarea', { class: 'pri-name prod-copy-text', rows: String(rows), maxlength: String(max), 'aria-label': `${title.slice(0, -1)} ${i + 1}`, 'data-testid': 'prod-copy-' + kind });
+        ta.value = t;
+        const n = h('span', { class: 'pri-sub prod-copy-n' }, `${t.length} of ${max}`);
+        ta.addEventListener('input', () => { arr[i] = ta.value; n.textContent = `${ta.value.length} of ${max}`; });
+        const cp = h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-copy-btn', 'aria-label': `Copy ${title.toLowerCase().slice(0, -1)} ${i + 1}`, onclick: () => copyText(ta.value, cp) }, 'Copy');
+        const rm = h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-copy-remove', 'aria-label': `Remove ${title.toLowerCase().slice(0, -1)} ${i + 1}`, onclick: () => { arr.splice(i, 1); redraw(); } }, 'Remove');
+        return h('li', { class: 'prod-copy-item' }, h('span', { class: 'pri-sub' }, `${title.slice(0, -1)} ${i + 1}`), ta, h('div', { class: 'prod-copy-bar' }, n, cp, rm));
+      }));
+      const add = h('button', { type: 'button', class: 'btn prod-small', 'data-testid': 'prod-copy-add-' + kind, disabled: arr.length >= MAXN, onclick: () => { arr.push(''); redraw(); const t = host.querySelectorAll(`[data-testid=prod-copy-${kind}]`); if (t.length) t[t.length - 1].focus(); } }, `Add ${title.toLowerCase().slice(0, -1)}`);
+      return h('div', { class: 'prod-copy-group' }, h('strong', { class: 'prod-copy-title' }, `${title} (${arr.length} of ${MAXN})`), arr.length ? ul : h('p', { class: 'pri-sub', 'data-testid': 'prod-copy-none-' + kind }, 'None yet.'), add);
+    }
+    function redraw() { host.replaceChildren(...build(getCard() || r)); }
+    function build(c) {
+      const labels = labelsOf(c);
+      if (!labels.some((l) => l.toLowerCase() === copySel.toLowerCase())) copySel = labels[0];
+      const label = labels.find((l) => l.toLowerCase() === copySel.toLowerCase());
+      const tabs = labels.length > 1 ? h('div', { class: 'prod-vtabs', role: 'tablist' }, labels.map((l) => {
+        const has = (saved(c, l).primary_texts || []).length + (saved(c, l).headlines || []).length > 0;
+        return h('button', { type: 'button', role: 'tab', class: 'prod-vtab', 'aria-selected': String(l === label), 'data-testid': 'prod-copy-tab', 'data-label': l, onclick: () => { copySel = l; redraw(); } }, l + (has ? '' : ' (none)'));
+      })) : null;
+      const status = h('span', { class: 'pri-sub', role: 'status', 'data-testid': 'prod-copy-msg' });
+      const save = h('button', { type: 'button', class: 'btn primary', 'data-testid': 'prod-copy-save', onclick: async () => {
+        const d = draftOf(c, label);
+        const clean = (a) => a.map((t) => t.trim()).filter(Boolean);
+        save.disabled = true; status.textContent = '';
+        const ok = await ops.saveCopy(getCard() || c, label, { primary_texts: clean(d.primary), headlines: clean(d.heads) });
+        save.disabled = false;
+        if (ok) { drafts.delete(label); history = null; say('Copy saved.'); redraw(); } else { status.textContent = ops.lastError() || 'Could not save.'; status.classList.add('pri-err'); }
+      } }, 'Save copy');
+      return [h('span', { class: 'pri-k' }, 'Ad copy'), tabs, list(c, label, 'primary', 'Primary texts', 2000, 5), list(c, label, 'head', 'Headlines', 255, 2), h('div', { class: 'prod-drawer-btns' }, save, status)];
+    }
+    host.replaceChildren(...build(r));
+    return host;
   }
 
   // ---- launched ads: the live Meta ad of each variation, and the concept's own list. Saved on their own (blur / Enter), without touching the other fields of the form.
