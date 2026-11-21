@@ -100,6 +100,13 @@ function periodCell(r) {
 const periodTitle = (r) => (r.state === 'open' ? `Open period: ${r.days_cov} of ${r.days} days so far (through ${fmt.day(r.covered_end)}). ${r.compare.text ? 'Its change is against ' + r.compare.text + '.' : (r.compare.why || '')}`
   : r.state === 'not_loaded' ? (r.compare.why || 'Not loaded yet') : (vsText(r) ? `Its change is ${vsText(r)}` : null));
 
+const projTitle = (r, iv) => {
+  const pj = r.projected;
+  const how = iv === 'month' ? 'Month to date divided by days with data, times the days in the month (the Pacing page\'s rule).'
+    : 'Week to date scaled by the usual share of the week those weekdays carry (last 8 complete weeks).';
+  return `Projection, not actual: ${pj.sub}. ${how} Ratios are recomputed from the projected sums. Its change is against ${pj.compare.text}.`;
+};
+
 // Which bands show: the URL's groups, else the defaults of this interval ('plan' only for month); legacy single-product values map to By product, 'all' is every chip.
 const LEGACY = { vitabull: 'products', beefliver: 'products', boneflex: 'products' };
 function groupsOn(p, d) {
@@ -168,15 +175,26 @@ function buildTable({ d, plan, byKey, on, lineKey, onLine, delta }) {
   }
   const thead = h('thead', h('tr', { class: 'trn-bandrow' }, band1), h('tr', { class: 'trn-colrow' }, band2));
   const tbody = h('tbody');
-  for (const r of rows) {
-    const tr = h('tr', { 'data-key': r.key, class: r.state === 'open' ? 'trn-open' : r.state === 'not_loaded' ? 'trn-pending' : '' },
-      h('td', { class: 'trn-pcol', title: periodTitle(r) }, periodCell(r)));
+  const addRow = (r, tr) => {
     for (const c of cols) {
       const x = r.state === 'not_loaded' ? { text: '–', cls: 'trn-none' } : c.cell(r);
       const td = h('td', { class: ['num', c.first ? 'trn-bfirst' : '', x.tint ? 'trn-tint ' + x.cls : ''].join(' ').trim(), title: x.title || null }, x.node || h('span', { class: 'trn-val' + (x.tint ? ' ' + x.cls : ''), 'data-v': isNum(x.v) ? String(x.v) : '', 'data-dir': x.dir || null }, x.text), x.thru ? h('span', { class: 'trn-thru', 'data-thru': x.thru }, ' thru ' + fmt.day(x.thru)) : null);
       tr.append(td);
     }
     tbody.append(tr);
+  };
+  for (const r of rows) {
+    addRow(r, h('tr', { 'data-key': r.key, class: r.state === 'open' ? 'trn-open' : r.state === 'not_loaded' ? 'trn-pending' : '' },
+      h('td', { class: 'trn-pcol', title: periodTitle(r) }, periodCell(r))));
+    if (r.projected) {
+      const pj = r.projected;
+      // the projected row: the same columns, values from the projection, the change against the previous full period; plan columns repeat the month's own plan figures
+      const pr = { ...r, state: 'projected', v: pj.v, d: pj.d, why: pj.why, thru: {}, reach_through: null, compare: { ...r.compare, kind: 'previous', start: pj.compare.start, end: pj.compare.end, text: pj.compare.text, why: null } };
+      addRow(pr, h('tr', { 'data-key': pj.key, class: 'trn-proj', 'data-testid': 'trn-projected-row' },
+        h('td', { class: 'trn-pcol', title: projTitle(r, d.interval) }, h('div', { class: 'trn-period' },
+          h('div', { class: 'trn-pname' }, h('strong', { 'data-testid': 'trn-proj-label' }, pj.label), h('span', { class: 'badge trn-projbadge' }, 'projected')),
+          h('div', { class: 'meta trn-psub' }, pj.sub + ' · not actual')))));
+    }
   }
   if (!rows.length) tbody.append(h('tr', null, h('td', { colspan: String(cols.length + 1), class: 'trn-empty' }, 'No periods to show.')));
   const box = h('div', { class: 'tablewrap trn-box', 'data-testid': 'trn-table' }, h('table', { class: 'dt trn-grid' }, thead, tbody));
@@ -280,6 +298,7 @@ export async function trendsPage(ctx) {
         h('strong', null, 'NC ROAS'), ' (new-customer return on ad spend) is actual new-customer revenue over Meta + Google spend; ', h('strong', null, 'NC CPA'), ' (new-customer cost per acquisition) is that spend over actual new customers. In the product bands the ', h('strong', null, 'Total'), ' of NC ROAS and NC CPA divides by Meta spend alone, as the sheet does. ', h('strong', null, 'NC Conversion'), ' is Upstack new customers over Upstack new visitors (the NC Orders and New Visitors columns), which differs from the sheet; the sheet\'s link-click version is NC Conversion (clicks) in the Meta band.'),
       h('p', null, h('strong', null, 'So far. '), 'Month to date is compared with the first days of last month, week to date with the same weekdays of last week, never with the full period. ',
         `Sources load once a day, so today (${fmt.day(d.today)}) has no numbers yet: its row says so instead of showing a misleading change.`),
+      h('p', { 'data-testid': 'trn-help-projected' }, h('strong', null, 'Projected row. '), 'Week and Month views add one row under the so far row that shows where the open period is expected to land. It is a projection, never an actual, and is not counted in any total or in the chart. Money and counts are the period so far times a factor: for a month, days in the month over days with data (the Pacing page\'s rule, so its Total Revenue, Total Spend and NC Revenue match the Projected* plan columns); for a week, the share of the week the elapsed weekdays usually carry, taken from the last 8 complete weeks for that column (a Monday to Wednesday so far is scaled by what Monday to Wednesday usually are of a whole week; with fewer than 4 complete weeks of data it falls back to 7 over days elapsed). Ratios (NC ROAS, NC CPA, CPM, CTR, conversion, AOV, cost per new visitor, MER) are recomputed from the projected sums, never scaled or averaged. Reach, frequency and unique outbound clicks cannot be projected (Meta de-duplicates them per period) and show a dash. The change columns on that row compare the projection with the full previous week or month. The Day view has no projected row: today has no numbers until the day ends.'),
       h('p', null, h('strong', null, 'Dashes. '), 'The period starts before a source does, or the source has a gap. Reach is de-duplicated by Meta per period, so it is read from Meta\'s own day, week and month rows and has no like-for-like change while the period is open. ',
         d.notes.length ? d.notes.join(' ') : ''),
       h('p', { class: 'muted' }, `Counts are Upstack's orders feed (tax included, before refunds). Meta and Google purchases and revenue: ${d.basis}. Data runs through ${fmt.day(d.data_through)}; Meta restates conversions for several days, so the latest days can still move.`)));
@@ -298,6 +317,7 @@ export async function trendsPage(ctx) {
   const open = d.rows.find((r) => r.state === 'open');
   const notes = h('div', { class: 'trn-notes', 'data-testid': 'trn-notes' },
     open ? h('p', { 'data-testid': 'trn-vs' }, h('strong', null, `${open.label} (${open.days_cov} of ${open.days} days, so far)`), open.compare.text ? ` is compared with ${open.compare.text}: ${vsText(open)}.` : ` has no like-for-like comparison: ${open.compare.why}`) : null,
+    open && open.projected ? h('p', { class: 'trn-projnote', 'data-testid': 'trn-proj-note' }, h('strong', null, `${open.projected.label}: `), `projected from ${open.projected.days_cov} of ${open.projected.days} days; not actual. ${iv === 'month' ? 'Month to date over days with data, times the days in the month (the Pacing page\'s rule).' : 'Week to date scaled by the weekday pattern of the last 8 complete weeks.'} Its change is against ${open.projected.compare.text}.`) : null,
     iv === 'month' && plan ? h('p', { 'data-testid': 'trn-plan-note' }, plan.available ? h('span', null, h('strong', null, 'Projected*: '), plan.caption) : h('span', null, h('strong', null, 'Plan columns are empty. '), plan.reason)) : null,
     h('p', { class: 'muted', 'data-testid': 'trn-left-out' }, 'Left out because this app has no data for them: the sheet\'s BUSINESS-WIDE and AMAZON bands, EBITDA (earnings before interest, taxes, depreciation and amortization) from the live P&L and the plan block on the day and week views, TikTok spend, the per-product click bands and the bid columns.'));
 

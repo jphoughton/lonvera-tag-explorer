@@ -1122,7 +1122,7 @@ def priorities_vendor_update(token: str, aid: int):
 
 @bp.get("/api/trends")
 def trends():
-    """Trends: the key marketing metrics by day, week or month with the change vs the previous period (like for like for the open period).
+    """Trends: the key marketing metrics by day, week or month with the change vs the previous period (like for like for the open period); week and month add a projected row under the open period (rows[].projected).
     interval=day|week|month (default week), periods=<n> (default 14 / 12 / 12), numbers=own|nc|all (Meta / Google purchases and revenue basis). See app/trends.py."""
     return jsonify(trn.trends(db.get_conn(), request.args))
 

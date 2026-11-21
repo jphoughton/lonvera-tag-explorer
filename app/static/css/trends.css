@@ -33,6 +33,11 @@ table.trn-grid .thbtn.active { color: var(--lv-ink); text-decoration: underline;
 table.trn-grid td.trn-tint.trn-good { background: var(--good-bg); }
 table.trn-grid td.trn-tint.trn-bad { background: var(--bad-bg); }
 tr.trn-open td { background: var(--lv-hover); }
+tr.trn-proj td { background: color-mix(in srgb, var(--warn-bg) 55%, var(--panel)); font-style: italic; border-top: 1px dashed var(--line); }
+tr.trn-proj td.trn-pcol { background: color-mix(in srgb, var(--warn-bg) 55%, var(--panel)); }
+tr.trn-proj td.trn-tint.trn-good { background: var(--good-bg); } tr.trn-proj td.trn-tint.trn-bad { background: var(--bad-bg); }
+.badge.trn-projbadge { background: transparent; color: var(--warn); border: 1px dashed var(--warn); }
+.trn-projnote { font-style: italic; }
 tr.trn-pending td { color: var(--muted); font-style: italic; }
 td.trn-empty { padding: 18px; color: var(--muted); }
 /* band title (dark) and column head (light) per tone */
