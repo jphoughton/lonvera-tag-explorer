@@ -574,6 +574,50 @@ def _reach_values(row: dict | None, spend: float | None) -> dict[str, float | No
             "uoc": row["uoc"], "uoc_ctr": _div(row["uoc"], row["impr"])}
 
 
+# ---------------------------------------------------------------------------------------------------------------- the projected row (open period)
+# Where the open period will land: every additive column (money, counts) is its period-to-date times a factor; every ratio is recomputed from those projected sums; reach and
+# frequency cannot be projected (Meta de-duplicates them per period) and stay dashes. The factor is the Pacing page's own for a month (days in the month over days with data),
+# and for a week the weekday-weighted one: the key's expected full week over its expected elapsed weekdays, from the last BASELINE_WEEKS complete weeks (docs/TRENDS.md).
+BASELINE_WEEKS = 8
+MIN_BASELINE_DAYS = 28                       # fewer complete days than this and a week falls back to the plain pace (7 / days elapsed)
+PROJECTED_INTERVALS = ("week", "month")      # a day has no open row with numbers: today is not loaded, and there is no hourly curve for it here
+
+
+def baseline_start(interval: str, start: dt.date) -> dt.date:
+    """The earliest day the projection reads (so the frame can be fetched far enough back)."""
+    return start - dt.timedelta(days=7 * BASELINE_WEEKS) if interval == "week" else start
+
+
+def projection_factors(interval: str, start: dt.date, end: dt.date, e: dt.date, fr: dict, floor: dt.date | None) -> tuple[dict[str, float], bool]:
+    """({sum key: factor}, weekday_weighted) for the open period [start, end] with days start..e elapsed. floor = the first day every source the metric needs holds."""
+    total = (end - start).days + 1
+    n = (e - start).days + 1
+    pace = {k: total / n for k in SUM_KEYS}
+    if interval != "week":
+        return pace, False
+    lo = start - dt.timedelta(days=7 * BASELINE_WEEKS)
+    if floor and floor > lo:
+        lo = floor
+    hi = start - dt.timedelta(days=1)
+    if (hi - lo).days + 1 < MIN_BASELINE_DAYS:
+        return pace, False
+    cnt = [0] * 7
+    acc = [dict.fromkeys(SUM_KEYS, 0.0) for _ in range(7)]
+    for d in daterange(lo, hi):
+        w = d.weekday()
+        cnt[w] += 1
+        for k, v in (fr.get(d) or {}).items():
+            acc[w][k] += v
+    out: dict[str, float] = {}
+    elapsed_w = [(start + dt.timedelta(days=i)).weekday() for i in range(n)]
+    for k in SUM_KEYS:
+        mean = [acc[w][k] / cnt[w] for w in range(7)]
+        den = sum(mean[w] for w in elapsed_w)
+        out[k] = sum(mean) / den if den > 0 else total / n
+    return out, True
+
+
+
 def trends(conn, args, *, today: dt.date | None = None) -> dict:
     """The /api/trends payload: periods newest first, each with every metric's value, its change vs the comparison base, and the reason for every dash."""
     conn.execute(f"SET LOCAL statement_timeout = {QUERY_TIMEOUT_MS}")           # a bad query answers a clear JSON error (503 'query timed out'), not a 20 s hang
@@ -583,6 +627,9 @@ def trends(conn, args, *, today: dt.date | None = None) -> dict:
     through = through_of(cov, today)
     periods = build_periods(opt["interval"], today, through, opt["periods"])
     lo = min(min(p["start"], p["compare"]["start"]) for p in periods)
+    for p in periods:
+        if p["state"] == "open" and opt["interval"] in PROJECTED_INTERVALS:
+            lo = min(lo, baseline_start(opt["interval"], p["start"]))
     lo = max(lo, FIRST_DAY - dt.timedelta(days=1))
     fr, present = fetch_frame(conn, lo, through, cov)
     cov["meta"].present = present["meta"]
@@ -590,6 +637,59 @@ def trends(conn, args, *, today: dt.date | None = None) -> dict:
     cov["traffic"].present = present["traffic"]
     reach = fetch_reach(conn, opt["interval"], lo, today)
     return assemble(opt, today, cov, through, periods, fr, reach)
+
+
+def project_row(interval, p, catalog, cov, fr, thru, v, why, values_for, kind_of) -> dict:
+    """The open period's projected row: values, change against the previous FULL period, the factor of every additive column, and the method."""
+    start, end, cend = p["start"], p["end"], p["covered_end"]
+    pv: dict[str, float | None] = {}
+    pwhy: dict[str, str] = {}
+    factor: dict[str, float] = {}
+    fallback: list[str] = []
+    cache: dict[tuple, tuple[dict, bool]] = {}
+    S_cache: dict[dt.date, dict[str, float]] = {}
+    for m in catalog:
+        k = m["key"]
+        if m["fn"] is None:
+            pv[k] = None
+            pwhy[k] = "Reach, frequency and unique outbound clicks are de-duplicated by Meta for exactly one period, so they cannot be projected."
+            continue
+        if v.get(k) is None:
+            pv[k] = None
+            pwhy[k] = why.get(k) or "Not available for the days elapsed."
+            continue
+        e = thru.get(k, cend)
+        floors = [cov[s].first for s in m["needs"] if cov[s].first]
+        ck = (e, max(floors) if floors else None)
+        if ck not in cache:
+            cache[ck] = projection_factors(interval, start, end, e, fr, ck[1])
+        fac, weighted = cache[ck]
+        if interval == "week" and not weighted:
+            fallback.append(k)
+        if e not in S_cache:
+            S_cache[e] = sums(fr, start, e)
+        S = S_cache[e]
+        proj = m["fn"]({kk: S[kk] * fac[kk] for kk in SUM_KEYS})
+        pv[k] = _num(proj)
+        if proj is None:
+            pwhy[k] = "Undefined: the denominator is zero in this period."
+        elif m["kind"] in ("money", "int") and v[k]:
+            factor[k] = round(proj / v[k], 4)
+    ps, pe = previous_span(interval, start)
+    base_v, base_why, _ = values_for(ps, pe)
+    pd: dict[str, dict] = {}
+    for m in catalog:
+        k = m["key"]
+        if m["fn"] is None or pv.get(k) is None:
+            continue
+        ch = change_of(m["kind"], pv[k], base_v.get(k))
+        if ch is None:
+            pwhy[k + ":d"] = base_why.get(k) or ("The previous period's value is zero." if base_v.get(k) == 0 else "No comparison value.")
+        else:
+            pd[k] = ch
+    label = f"{MONTHS[start.month - 1]} projected" if interval == "month" else f"{p['label']} projected"
+    return {"key": p["key"] + ":projected", "label": label, "sub": f"from {p['days_cov']} of {p['days']} days", "days_cov": p["days_cov"], "days": p["days"], "v": pv, "d": pd, "why": pwhy, "factor": factor,
+            "method": "pace" if interval == "month" else "weekday", "fallback": fallback, "compare": {"start": ps.isoformat(), "end": pe.isoformat(), "text": f"the full {'week' if interval == 'week' else 'month'} before ({_range_text(ps, pe)})"}}
 
 
 def assemble(opt: dict, today: dt.date, cov: dict[str, Cov], through: dt.date, periods: list[dict], fr: dict, reach: dict) -> dict:
@@ -714,6 +814,8 @@ def assemble(opt: dict, today: dt.date, cov: dict[str, Cov], through: dt.date, p
                 d[k] = change_of(kind_of[k], v.get(k), pv.get(k))
                 if d[k] is None and v.get(k) is not None:
                     why[k + ":d"] = "The previous period has no reach row." if not prow else "No comparison value."
+        if p["open"] and interval in PROJECTED_INTERVALS:
+            row["projected"] = project_row(interval, p, catalog, cov, fr, thru, v, why, values_for, kind_of)
         row.update(v=v, d={k: x for k, x in d.items() if x is not None}, why=why, thru={k: t.isoformat() for k, t in thru.items()}, reach_through=rrow["end"].isoformat() if rrow and p["open"] else None)
         rows.append(row)
 

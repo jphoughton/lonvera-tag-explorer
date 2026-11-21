@@ -3636,7 +3636,7 @@
    "endpoint": "api.trends",
    "auth": "signed-in session or API key",
    "auth_exempt": false,
-   "summary": "Trends: the key marketing metrics by day, week or month with the change vs the previous period (like for like for the open period)."
+   "summary": "Trends: the key marketing metrics by day, week or month with the change vs the previous period (like for like for the open period); week and month add a projected row under the open period (rows[].projected)."
   },
   {
    "rule": "/api/trends/plan",

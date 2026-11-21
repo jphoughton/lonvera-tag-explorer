@@ -423,7 +423,7 @@ Auth column: what the server checks. Page routes serve the same HTML shell; thei
 | `/api/source/tieout` | GET | api | signed-in session or API key | Meta vs Upstack totals for a window (window=7d\|30d\|...\|mtd\|launch(=every day held) or from/to). Days outside Upstack's history are not compared. |
 | `/api/status` | GET | api | signed-in session or API key |  |
 | `/api/tag-lookup` | GET | api | signed-in session or API key | Tag lookup: q=<an ad name as the platform shows it \| a Meta ad id \| a tracker Concept ID or Ad Family>. The new (line-mapped) tags of the matching tracker rows, |
-| `/api/trends` | GET | api | signed-in session or API key | Trends: the key marketing metrics by day, week or month with the change vs the previous period (like for like for the open period). |
+| `/api/trends` | GET | api | signed-in session or API key | Trends: the key marketing metrics by day, week or month with the change vs the previous period (like for like for the open period); week and month add a projected row under the open period (rows[].projected). |
 | `/api/trends/plan` | GET | api | signed-in session or API key | Trends, month grain: the Pacing page's projected / target / % diff per month (from=YYYY-MM-DD&to=YYYY-MM-DD). Answers 200 with available=false and the reason when the |
 | `/campaigns` | GET | page | none (HTML page or health check; its data calls are protected) |  |
 | `/competitors` | GET | page | none (HTML page or health check; its data calls are protected) |  |
