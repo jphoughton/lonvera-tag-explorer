@@ -54,7 +54,7 @@ def test_new_columns_only_add_to_the_old_ones():
     p = payload("week", "own")
     old = set(GOLDEN["week:own"][p["rows"][0]["key"]]["v"])
     new = {k for r in p["rows"] for k in r["v"]} - old
-    assert new == {"p_vitabull_nc_orders", "p_beefliver_nc_orders", "p_boneflex_nc_orders", "meta_nc_roas", "meta_nc_cpa", "new_visitors", "cost_nv", "nc_cvr_clicks", "f_lpv", "f_lc_atc", "f_atc_ic", "f_ic_p", "f_atc_p", "f_nc_lc"}
+    assert new == {"p_vitabull_nc_orders", "p_beefliver_nc_orders", "p_boneflex_nc_orders", "meta_nc_roas", "meta_nc_cpa", "new_visitors", "cost_nv", "nc_cvr_clicks", "scale_roas", "test_roas", "f_lpv", "f_lc_atc", "f_atc_ic", "f_ic_p", "f_atc_p", "f_nc_lc"}
 
 
 def test_the_two_new_total_columns_are_the_sheets_definitions():
