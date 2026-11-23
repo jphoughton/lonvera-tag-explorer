@@ -15,7 +15,7 @@ const NUMBERS = [['own', 'Own reporting', "Meta's and Google's own purchases and
 const DEFAULT_PERIODS = { day: 14, week: 12, month: 12 };
 const MAX_PERIODS = { day: 120, week: 104, month: 36 };
 const SLOW_MS = 15000;
-const CHART_KIND = { money: 'money', money2: 'money2', int: 'int', roas: 'roas', dec: 'roas', rate: 'rate' };
+const CHART_KIND = { money: 'money', money2: 'money2', int: 'int', roas: 'roas', dec: 'roas', rate: 'rate', frate: 'rate' };
 const DEFAULT_LINE = 'nc_roas';
 
 const intervalOf = (p) => (['day', 'week', 'month'].includes(p.interval) ? p.interval : 'week');
@@ -57,6 +57,7 @@ const fmtValue = (kind, v) => {
     case 'roas': return fmt.roas(v) + 'x';
     case 'dec': return fmt.roas(v);
     case 'rate': return fmt.rate(v);
+    case 'frate': return (v * 100).toFixed(Math.abs(v) < 0.1 ? 2 : 1) + '%';     // funnel rates: two decimals under 10%, one decimal above
     default: return fmt.int(v);
   }
 };
@@ -319,6 +320,7 @@ export async function trendsPage(ctx) {
   const notes = h('div', { class: 'trn-notes', 'data-testid': 'trn-notes' },
     open ? h('p', { 'data-testid': 'trn-vs' }, h('strong', null, `${open.label} (${open.days_cov} of ${open.days} days, so far)`), open.compare.text ? ` is compared with ${open.compare.text}: ${vsText(open)}.` : ` has no like-for-like comparison: ${open.compare.why}`) : null,
     open && open.projected ? h('p', { class: 'trn-projnote', 'data-testid': 'trn-proj-note' }, h('strong', null, `${open.projected.label}: `), `projected from ${open.projected.days_cov} of ${open.projected.days} days; not actual. ${iv === 'month' ? 'Month to date over days with data, times the days in the month (the Pacing page\'s rule).' : 'Week to date scaled by the weekday pattern of the last 8 complete weeks.'} Its change is against ${open.projected.compare.text}.`) : null,
+    ...d.layout.filter((b) => on.has(b.group) && d.captions && d.captions[b.group]).map((b) => h('p', { 'data-testid': 'trn-caption-' + b.group }, d.captions[b.group])),
     iv === 'month' && plan ? h('p', { 'data-testid': 'trn-plan-note' }, plan.available ? h('span', null, h('strong', null, 'Projected*: '), plan.caption) : h('span', null, h('strong', null, 'Plan columns are empty. '), plan.reason)) : null,
     h('p', { class: 'muted', 'data-testid': 'trn-left-out' }, 'Left out because this app has no data for them: the sheet\'s BUSINESS-WIDE and AMAZON bands, EBITDA (earnings before interest, taxes, depreciation and amortization) from the live P&L and the plan block on the day and week views, TikTok spend, the per-product click bands and the bid columns.'));
 
