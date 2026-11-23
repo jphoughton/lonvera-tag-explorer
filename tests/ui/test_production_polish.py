@@ -143,7 +143,7 @@ def test_plan_collapses_idle_vendors_and_expands_with_capacity_inputs(page):
     assert page.locator("[data-testid=prod-plan-capacity][data-vendor=Madre]").is_visible()
     idle_box.locator("> summary").click()
     assert page.locator("[data-testid=prod-plan-capacity][data-vendor=TrybeOrion]").is_visible()
-    assert page.locator("[data-testid=prod-plan-row]").count() == 11
+    assert page.locator("[data-testid=prod-plan-row]").count() == 12
 
 
 def test_plan_capacity_saves_on_enter_with_a_saved_cue_and_no_spinner(page):
