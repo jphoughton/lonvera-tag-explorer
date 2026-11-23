@@ -255,7 +255,7 @@ def through_of(cov: dict[str, Cov], today: dt.date) -> dt.date:
 # ---------------------------------------------------------------------------------------------------------------- the day frame
 
 SUM_KEYS = ("ms", "mi", "mc", "mp_own", "mr_own", "mp_nc", "mr_nc", "mp_all", "mr_all", "gs", "gi", "gc", "gp_own", "gr_own", "gp_nc", "gr_nc", "gp_all", "gr_all",
-            "onc_rev", "onc_ord", "orc", "otot", "ts", "ss", "tnc", "snc", "nv") + tuple(f"{k}_{s}" for k, _ in PRODUCTS for s in ("spend", "ncrev", "ncord"))
+            "onc_rev", "onc_ord", "orc", "otot", "ts", "ss", "tnc", "snc", "tncrev", "sncrev", "nv") + tuple(f"{k}_{s}" for k, _ in PRODUCTS for s in ("spend", "ncrev", "ncord"))
 
 
 def _f(x: Any) -> float:
@@ -306,8 +306,9 @@ def fetch_frame(conn, lo: dt.date, hi: dt.date, cov: dict[str, Cov]) -> tuple[di
     for r in conn.execute("SELECT day, new_visitors FROM proj_feed_traffic WHERE day BETWEEN %s AND %s", (lo, hi)):
         present["traffic"].add(r["day"])
         put(r["day"], nv=_f(r["new_visitors"]))
-    for r in conn.execute("SELECT day, stage, nc FROM proj_feed_anyclick WHERE day BETWEEN %s AND %s", (lo, hi)):
-        put(r["day"], **{("tnc" if r["stage"] == "Testing" else "snc"): _f(r["nc"])})
+    for r in conn.execute("SELECT day, stage, nc, nc_rev FROM proj_feed_anyclick WHERE day BETWEEN %s AND %s", (lo, hi)):
+        k = "t" if r["stage"] == "Testing" else "s"
+        put(r["day"], **{k + "nc": _f(r["nc"]), k + "ncrev": _f(r["nc_rev"])})
     for r in conn.execute("SELECT day, product, nc_rev, nc_orders FROM proj_feed_nc_product WHERE day BETWEEN %s AND %s", (lo, hi)):
         if r["product"] in slug:
             put(r["day"], **{f"{slug[r['product']]}_ncrev": _f(r["nc_rev"]), f"{slug[r['product']]}_ncord": _f(r["nc_orders"])})
@@ -428,6 +429,8 @@ def build_catalog(numbers: str) -> list[dict]:
     add("scale_nc", "Scaling new customers", "stage", "int", UP, ("anyclick",), lambda S: S["snc"], "New customers Upstack credits to Scaling campaigns (any-click, 30-day window).")
     add("test_cpa", "Testing NC CPA", "stage", "money2", DOWN, ("meta", "anyclick"), lambda S: _div(S["ts"], S["tnc"]), "Testing spend / new customers credited to Testing campaigns.")
     add("scale_cpa", "Scaling NC CPA", "stage", "money2", DOWN, ("meta", "anyclick"), lambda S: _div(S["ss"], S["snc"]), "Scaling spend / new customers credited to Scaling campaigns.")
+    add("test_roas", "Testing NC ROAS", "stage", "roas", UP, ("meta", "anyclick"), lambda S: _div(S["tncrev"], S["ts"]), "Testing Upstack any-click new-customer revenue / Testing spend (same attribution as the stage new customers, not the actual NC revenue).")
+    add("scale_roas", "Scaling NC ROAS", "stage", "roas", UP, ("meta", "anyclick"), lambda S: _div(S["sncrev"], S["ss"]), "Scaling Upstack any-click new-customer revenue / Scaling spend (same attribution as the stage new customers, not the actual NC revenue).")
     return M
 
 
@@ -471,7 +474,7 @@ def _col(key: str, label: str, **kw) -> dict:
 
 def build_layout(interval: str, numbers: str, catalog: list[dict]) -> list[dict]:
     """The bands, left to right, in the order of the sheet's Rollup tabs: [Projected* | Target | % Diff (month)] DTC / SHOPIFY, META, per-product metric bands, SPEND BY STAGE,
-    TESTING % OF SPEND, NC (UPSTACK ANY-CLICK), NC CPA BY STAGE, GOOGLE, then the change block. Bands the app has no data for (BUSINESS-WIDE with Amazon, AMAZON, EBITDA (LIVE P&L),
+    TESTING % OF SPEND, NC (UPSTACK ANY-CLICK), NC CPA BY STAGE, NC ROAS BY STAGE, GOOGLE, then the change block. Bands the app has no data for (BUSINESS-WIDE with Amazon, AMAZON, EBITDA (LIVE P&L),
     the per-product click bands) are left out; columns inside a band the app cannot supply are left out too (docs/TRENDS.md lists them).
     Each band: key, title, group (the chip), tone (the colour family), cols [{key, label, tone?}]; a column key is a metric key of the payload (or a plan_ key)."""
     by = {m["key"]: m for m in catalog}
@@ -500,8 +503,8 @@ def build_layout(interval: str, numbers: str, catalog: list[dict]) -> list[dict]
         _col("frequency", "Frequency"), _col("uoc", "Unique Outbound Clicks"), _col("uoc_ctr", "Unique Outbound CTR"), _col("m_ctr", "Link CTR"), _col("nc_cvr_clicks", "NC Conversion (clicks)")]})
     prod = [("vitabull", "VitaBull", "vb"), ("beefliver", "Beef Liver", "bl"), ("boneflex", "Boneflex", "bf")]
     for i, (bkey, title, per, total) in enumerate((("spend", "SPEND", "p_{}_spend", "meta_spend"), ("nc_rev", "NC REVENUE", "p_{}_nc_rev", "nc_rev"),
-                                                   ("nc_roas", "NC ROAS", "p_{}_nc_roas", "meta_nc_roas"), ("nc_orders", "NC ORDERS", "p_{}_nc_orders", "nc_orders"),
-                                                   ("nc_cpa", "NC CPA", "p_{}_nc_cpa", "meta_nc_cpa"))):
+                                                   ("nc_orders", "NC ORDERS", "p_{}_nc_orders", "nc_orders"), ("nc_cpa", "NC CPA", "p_{}_nc_cpa", "meta_nc_cpa"),
+                                                   ("nc_roas", "NC ROAS", "p_{}_nc_roas", "meta_nc_roas"))):
         bands.append({"key": "prod_" + bkey, "title": title, "group": "products", "tone": "plum" if i % 2 == 0 else "slate",
                       "cols": [_col(per.format(slug), name, tone=tone) for slug, name, tone in prod] + [_col(total, "Total", tone="tot")]})
     bands += [
@@ -509,6 +512,7 @@ def build_layout(interval: str, numbers: str, catalog: list[dict]) -> list[dict]
         {"key": "stage_share", "title": "TESTING % OF SPEND", "group": "stage", "tone": "plum", "cols": [_col("test_share", "Testing %")]},
         {"key": "stage_nc", "title": "NC (UPSTACK ANY-CLICK)", "group": "stage", "tone": "slate", "cols": [_col("scale_nc", "Scaling NC"), _col("test_nc", "Testing NC")]},
         {"key": "stage_cpa", "title": "NC CPA BY STAGE", "group": "stage", "tone": "plum", "cols": [_col("scale_cpa", "Scaling NC CPA"), _col("test_cpa", "Testing NC CPA")]},
+        {"key": "stage_roas", "title": "NC ROAS BY STAGE", "group": "stage", "tone": "slate", "cols": [_col("scale_roas", "Scaling NC ROAS"), _col("test_roas", "Testing NC ROAS")]},
         {"key": "google", "title": "GOOGLE", "group": "google", "tone": "green", "cols": [
             _col("google_spend", "Spend"), _col("g_clicks", "Clicks"), _col("g_cpc", "CPC"), *plat("g", "Google "), _col("g_cvr", "CVR"),
             _col("g_roas", "Platform ROAS" if own else short("g_roas", "Google ")), _col("g_cpp", "Cost per Purchase" if own else short("g_cpp", "Google ")),

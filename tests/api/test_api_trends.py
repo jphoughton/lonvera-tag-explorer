@@ -58,6 +58,8 @@ def orev(d): return 0 if d == NO_ORDERS_DAY else 300 + 10 * d.weekday()  # actua
 def orc(d):  return 0 if d == NO_ORDERS_DAY else 500 + d.day
 def tnc(d):  return 1 + d.day % 3                                       # any-click new customers, Testing campaigns
 def snc(d):  return 2 + d.weekday()
+def tncrev(d): return 70 * tnc(d) + 5                                   # any-click new-customer revenue by stage
+def sncrev(d): return 80 * snc(d) + 7
 def ssum(f, a, b):  return sum(f(d) for d in rng(a, b))
 def nv(d):   return 0 if d == ZERO_VISITORS_DAY else 1000 + 37 * d.weekday() + d.day   # tracked new visitors
 def meta_present(d): return not (HOLE[0] <= d <= HOLE[1])
@@ -112,8 +114,8 @@ def tdb():
             # traffic feed: Jan 20 on, one missing day, and a partial row for today (999999) that must never be read
             cur.executemany("INSERT INTO proj_feed_traffic (day, new_visitors, visitors, sessions) VALUES (%s,%s,%s,%s)",
                             [(d, nv(d), nv(d) * 2, nv(d) * 3) for d in rng(TRAFFIC_FIRST, LAST) if d != TRAFFIC_HOLE] + [(TODAY, 999999, 999999, 999999)])
-            cur.executemany("INSERT INTO proj_feed_anyclick (day, stage, nc, nc_rev) VALUES (%s,%s,%s,0)",
-                            [(d, st, f(d)) for d in rng(ANYCLICK_FIRST, LAST) for st, f in (("Testing", tnc), ("Scaling", snc))])
+            cur.executemany("INSERT INTO proj_feed_anyclick (day, stage, nc, nc_rev) VALUES (%s,%s,%s,%s)",
+                            [(d, st, f(d), r(d)) for d in rng(ANYCLICK_FIRST, LAST) for st, f, r in (("Testing", tnc, tncrev), ("Scaling", snc, sncrev))])
             # reach feed: day rows for the last 60 days, week rows (ISO, Monday start), month rows; the current periods run through today (partial)
             reach_rows = []
             for d in rng(TODAY - dt.timedelta(days=60), TODAY):
@@ -347,7 +349,7 @@ def test_missing_meta_days_give_dashes_not_partial_sums(tc):
     d = get(tc, interval="week", as_of="2026-02-02", periods=8)
     w = by_start(d, D(2026, 1, 5))                                         # contains the Jan 10-11 hole
     assert w["state"] == "closed"
-    for k in ("meta_spend", "total_spend", "nc_roas", "nc_cpa", "m_cpm", "test_share", "p_vitabull_spend"):
+    for k in ("meta_spend", "total_spend", "nc_roas", "nc_cpa", "m_cpm", "test_share", "p_vitabull_spend", "p_vitabull_nc_roas", "meta_nc_roas", "scale_roas", "test_roas"):
         assert w["v"][k] is None, k
         assert "no data for Jan 10, 2026" in w["why"][k] or "Meta" in w["why"][k], (k, w["why"][k])
     assert approx(w["v"]["google_spend"], ssum(gs, D(2026, 1, 5), D(2026, 1, 11)))      # the other sources are not affected
@@ -401,6 +403,10 @@ def test_testing_vs_scaling_and_products(tc):
     assert approx(o["v"]["test_share"], ssum(ts, a, b) / ssum(ms, a, b), 1e-6)
     assert approx(o["v"]["test_nc"], ssum(tnc, a, b)) and approx(o["v"]["test_cpa"], ssum(ts, a, b) / ssum(tnc, a, b), 1e-4)
     assert approx(o["v"]["scale_cpa"], (ssum(ms, a, b) - ssum(ts, a, b)) / ssum(snc, a, b), 1e-4)
+    assert approx(o["v"]["test_roas"], ssum(tncrev, a, b) / ssum(ts, a, b), 1e-4)                    # stage NC ROAS = any-click NC revenue / stage spend, ratio of sums
+    assert approx(o["v"]["scale_roas"], ssum(sncrev, a, b) / (ssum(ms, a, b) - ssum(ts, a, b)), 1e-4)
+    assert approx(o["v"]["p_vitabull_nc_roas"], ssum(lambda x: orev(x) // 2, a, b) / ssum(lambda x: ms(x) // 2, a, b), 1e-5)
+    assert approx(o["v"]["meta_nc_roas"], ssum(orev, a, b) / ssum(ms, a, b), 1e-5)                   # the product bands' Total: actual NC revenue / Meta spend
     assert approx(o["v"]["p_vitabull_spend"], ssum(lambda x: ms(x) // 2, a, b)) and approx(o["v"]["p_beefliver_nc_rev"], ssum(lambda x: orev(x) // 4, a, b))
     assert approx(o["v"]["p_boneflex_nc_roas"], ssum(lambda x: orev(x) // 8, a, b) / ssum(lambda x: ms(x) // 8, a, b), 1e-5)
     assert approx(o["v"]["p_vitabull_nc_cpa"], ssum(lambda x: ms(x) // 2, a, b) / ssum(lambda x: onc(x) // 2, a, b), 1e-4)
@@ -472,13 +478,13 @@ def test_groups_and_catalog(tc):
 
 def test_layout_is_the_sheets_bands_in_the_sheets_order(tc):
     d = get(tc)
-    assert [b["title"] for b in d["layout"]] == ["DTC / SHOPIFY", "META", "SPEND", "NC REVENUE", "NC ROAS", "NC ORDERS", "NC CPA", "SPEND BY STAGE", "TESTING % OF SPEND",
-                                                 "NC (UPSTACK ANY-CLICK)", "NC CPA BY STAGE", "GOOGLE", "WoW Δ"]
+    assert [b["title"] for b in d["layout"]] == ["DTC / SHOPIFY", "META", "SPEND", "NC REVENUE", "NC ORDERS", "NC CPA", "NC ROAS", "SPEND BY STAGE", "TESTING % OF SPEND",
+                                                 "NC (UPSTACK ANY-CLICK)", "NC CPA BY STAGE", "NC ROAS BY STAGE", "GOOGLE", "WoW Δ"]
     cols = {b["key"]: [c["label"] for c in b["cols"]] for b in d["layout"]}
     assert cols["dtc"] == ["Total Revenue", "NC Revenue", "Repeat Revenue", "NC Orders", "NC AOV", "Ad Spend", "NC CPA", "NC ROAS", "MER", "NC Conversion", "Repeat Share %", "New Visitors", "Cost per New Visitor"]
     assert cols["meta"][:9] == ["Spend", "Link Clicks", "CPC", "Purchases", "Purchase Value", "CVR", "Platform ROAS", "Cost per Purchase", "Impressions"]
     assert cols["meta"][-1] == "NC Conversion (clicks)"                                  # the click-based NC conversion, kept after Link CTR
-    assert cols["prod_nc_roas"] == ["VitaBull", "Beef Liver", "Boneflex", "Total"]
+    assert cols["prod_nc_roas"] == ["VitaBull", "Beef Liver", "Boneflex", "Total"] and cols["stage_roas"] == ["Scaling NC ROAS", "Testing NC ROAS"]
     assert [x["title"] for x in get(tc, interval="month")["layout"]][0] == "Projected* | Target | % Diff" and get(tc, interval="month")["layout"][-1]["title"] == "MoM Δ"
     assert get(tc, interval="day")["layout"][-1]["title"] == "DoD Δ"
     nc = {b["key"]: [c["label"] for c in b["cols"]] for b in get(tc, numbers="nc")["layout"]}

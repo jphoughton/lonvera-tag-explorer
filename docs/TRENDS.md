@@ -26,8 +26,8 @@ One header row of band titles, one of column labels, the period column and both 
 |---|---|
 | DTC / SHOPIFY | `DTC / SHOPIFY` chip: Total Revenue, NC Revenue, Repeat Revenue, NC Orders, NC AOV, Ad Spend (Meta + Google), NC CPA, NC ROAS, MER, NC Conversion (new customers / new visitors), Repeat Share %, New Visitors, Cost per New Visitor |
 | META | `Meta` chip: Spend, Link Clicks, CPC, Purchases, Purchase Value (Platform basis; follows the Numbers-from switch), CVR, Platform ROAS, Cost per Purchase, Impressions, Reach, First-Time Impression %, Cost per 1,000 Reached, CPM, Frequency, Unique Outbound Clicks, Unique Outbound CTR, Link CTR, NC Conversion (clicks) |
-| per-product bands | `By product` chip: SPEND, NC REVENUE, NC ROAS, NC ORDERS, NC CPA, each VitaBull / Beef Liver / Boneflex / Total |
-| SPEND BY STAGE, TESTING %, NC (ANY-CLICK), NC CPA BY STAGE | `Testing vs scaling` chip: Scaling / Testing columns (no Total columns, no 'Testing CPA vs Scaling') |
+| per-product bands | `By product` chip: SPEND, NC REVENUE, NC ORDERS, NC CPA, NC ROAS (right after NC CPA), each VitaBull / Beef Liver / Boneflex / Total |
+| SPEND BY STAGE, TESTING %, NC (ANY-CLICK), NC CPA BY STAGE, NC ROAS BY STAGE | `Testing vs scaling` chip: Scaling / Testing columns (no Total columns, no 'Testing CPA vs Scaling') |
 | GOOGLE | `Google` chip |
 | WoW / MoM Δ | `Change` chip: the nine headline changes the app can supply (Total Revenue, Total Spend, NC Revenue, Repeat Revenue, NC ROAS, NC CPA, New Customers, Meta ROAS, Google ROAS), signed `0.0%`, tinted green/red **by polarity** (CPA down and ROAS up are good, spend is neutral; the sheet colours by sign only), on Day too (the sheet's Daily tab has none) |
 | Projected* / Target / % Diff (monthly) | `Plan` chip, month grain only, see below |
@@ -49,7 +49,7 @@ Two columns are new, both the sheet's own definition: the Total column of the pe
 * **Meta** spend, impressions, link clicks, purchases, revenue: `ad_daily` (both ad accounts, each in its own day, as every other page). Days before `ad_daily` begins (2026-05-06) come from the sheet-fed campaign history (`proj_feed_meta_day`, source `sheet`; the same rule as `analytics.meta_campaign_daily_history`), Meta's own reporting only. Upstack-basis Meta numbers start 2026-05-06; Google's start 2025-05-13.
 * **Reach, frequency, first-time impression %, unique outbound clicks**: read from the feed's own day / week / month rows (`proj_feed_meta_reach`), never summed over days (Meta de-duplicates per period). Cost / 1,000 reached = Meta spend / reach, closed periods only.
 * **Per product** (VitaBull, Beef Liver, Boneflex): Meta spend (`proj_feed_meta_product`: campaign name, then ad set name, then ad name), actual NC revenue and new customers (`proj_feed_nc_product`), NC ROAS and NC CPA from those.
-* **Testing vs scaling**: Meta spend by campaign stage (campaign name contains `test` = testing; `meta_campaigns.stage`), testing share of spend; new customers by stage are Upstack's any-click credits (`proj_feed_anyclick`, not additive to actual new customers) and the NC CPA by stage is spend over those.
+* **Testing vs scaling**: Meta spend by campaign stage (campaign name contains `test` = testing; `meta_campaigns.stage`), testing share of spend; new customers by stage are Upstack's any-click credits (`proj_feed_anyclick`, not additive to actual new customers) and the NC CPA by stage is spend over those. NC ROAS by stage = the same feed's `nc_rev` (Upstack any-click first-order revenue by stage) / the stage's Meta spend; it is on the any-click basis, never mixed with actual NC revenue, so it does not tie to the actual NC ROAS.
 
 ## Like for like (the open period)
 

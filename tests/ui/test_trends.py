@@ -165,8 +165,8 @@ def test_change_after_every_column_switch_is_off_by_default_and_adds_the_old_col
 
 def test_layout_is_the_sheets_bands_in_the_sheets_order_oldest_first(page):
     goto(page, "?groups=all")
-    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "SPEND", "NC REVENUE", "NC ROAS", "NC ORDERS", "NC CPA", "SPEND BY STAGE", "TESTING % OF SPEND",
-                                           "NC (UPSTACK ANY-CLICK)", "NC CPA BY STAGE", "GOOGLE", "WoW Δ"]
+    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "SPEND", "NC REVENUE", "NC ORDERS", "NC CPA", "NC ROAS", "SPEND BY STAGE", "TESTING % OF SPEND",
+                                           "NC (UPSTACK ANY-CLICK)", "NC CPA BY STAGE", "NC ROAS BY STAGE", "GOOGLE", "WoW Δ"]
     spans = dict(bands(page))
     assert spans["DTC / SHOPIFY"] == 13 and spans["SPEND"] == 4 and spans["TESTING % OF SPEND"] == 1 and spans["WoW Δ"] == 11
     labels = page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] thead tr.trn-colrow th')].map(th => th.innerText.replace(/\\s+/g, ' ').trim())")
@@ -258,6 +258,7 @@ def test_band_chips_show_and_hide_bands_and_chart_line_pick(page):
     pressed(page, "trn-group-products")
     h = heads(page)
     assert "p_vitabull_nc_roas" in h and "p_boneflex_nc_cpa" in h and "meta_nc_roas" in h
+    assert h.index("p_vitabull_nc_roas") > h.index("meta_nc_cpa")                                              # the NC ROAS band sits right after NC CPA
     page.locator("[data-testid=trn-group-all]").click()
     pressed(page, "trn-group-all")
     assert page.locator("[data-testid=trn-group-stage]").get_attribute("aria-pressed") == "true" and "test_share" in heads(page)
@@ -283,6 +284,11 @@ def test_band_chips_show_and_hide_bands_and_chart_line_pick(page):
     assert "NC CPA" in page.locator("[data-testid=trn-chart-note]").inner_text()
     line_label = page.evaluate("() => Chart.getChart(document.getElementById('trn-chart')).data.datasets[1].label")
     assert line_label == "NC CPA"
+    page.goto("/trends?groups=stage")                                                                             # the stage ROAS headings pick the chart line too
+    page.wait_for_selector(TABLE + " tbody tr[data-key]:not(.trn-proj)")
+    page.locator("[data-testid=trn-pick-scale_roas]").click()
+    pressed(page, "trn-pick-scale_roas")
+    assert params(page)["line"] == "scale_roas" and "Scaling NC ROAS" in page.locator("[data-testid=trn-chart-note]").inner_text()
     nbars = page.evaluate("() => Chart.getChart(document.getElementById('trn-chart')).data.labels.length")
     assert nbars == 12
 
