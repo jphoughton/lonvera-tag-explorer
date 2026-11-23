@@ -80,7 +80,7 @@ def test_nav_link_and_default_week_view(page):
     h = heads(page)
     assert h[:6] == ["period", "total_rev", "nc_rev", "rc_rev", "nc_orders", "nc_aov"]
     assert h[-11:] == ["chg:total_rev", "chg:total_spend", "chg:nc_rev", "chg:rc_rev", "chg:nc_roas", "chg:nc_cpa", "chg:nc_orders", "chg:new_visitors", "chg:cost_nv", "chg:m_roas", "chg:g_roas"]
-    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "WoW Δ"]
+    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "CONVERSION", "WoW Δ"]
 
 
 def test_toggle_day_week_month_changes_the_rows_and_url(page):
@@ -165,7 +165,7 @@ def test_change_after_every_column_switch_is_off_by_default_and_adds_the_old_col
 
 def test_layout_is_the_sheets_bands_in_the_sheets_order_oldest_first(page):
     goto(page, "?groups=all")
-    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "SPEND", "NC REVENUE", "NC ROAS", "NC ORDERS", "NC CPA", "SPEND BY STAGE", "TESTING % OF SPEND",
+    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "CONVERSION", "SPEND", "NC REVENUE", "NC ROAS", "NC ORDERS", "NC CPA", "SPEND BY STAGE", "TESTING % OF SPEND",
                                            "NC (UPSTACK ANY-CLICK)", "NC CPA BY STAGE", "GOOGLE", "WoW Δ"]
     spans = dict(bands(page))
     assert spans["DTC / SHOPIFY"] == 13 and spans["SPEND"] == 4 and spans["TESTING % OF SPEND"] == 1 and spans["WoW Δ"] == 11
@@ -188,7 +188,7 @@ def test_layout_is_the_sheets_bands_in_the_sheets_order_oldest_first(page):
 
 def test_plan_block_on_the_month_grain(page):
     goto(page, "?interval=month")
-    assert [b[0] for b in bands(page)] == ["Projected* | Target | % Diff", "DTC / SHOPIFY", "META", "MoM Δ"]
+    assert [b[0] for b in bands(page)] == ["Projected* | Target | % Diff", "DTC / SHOPIFY", "META", "CONVERSION", "MoM Δ"]
     assert dict(bands(page))["Projected* | Target | % Diff"] == 17
     h = heads(page)
     assert h[1:4] == ["plan_total_rev_proj", "plan_total_rev_goal", "plan_total_rev_diff"] and h[16:18] == ["plan_ebitda_gap", "plan_noi_gap"]
@@ -251,7 +251,7 @@ def test_band_chips_show_and_hide_bands_and_chart_line_pick(page):
     assert h.index("nc_roas") < h.index("meta_spend") < h.index("chg:total_rev")                                 # the sheet's order: DTC, Meta, ..., the change block last
     page.locator("[data-testid=trn-group-meta]").click()                                                          # switching it off hides the Meta columns
     page.wait_for_function("() => { const e = document.querySelector('[data-testid=trn-group-meta]'); return !!e && e.getAttribute('aria-pressed') === 'false'; }")
-    assert "meta_spend" not in heads(page) and params(page)["groups"] == "totals,change"
+    assert "meta_spend" not in heads(page) and params(page)["groups"] == "totals,funnel,change"
     page.locator("[data-testid=trn-group-meta]").click()
     pressed(page, "trn-group-meta")
     page.locator("[data-testid=trn-group-products]").click()
@@ -512,3 +512,36 @@ def test_projected_row_sits_under_the_so_far_row_on_week_and_month_but_not_day(p
         assert page.locator("[data-testid=trn-proj-note]").inner_text().startswith(label)
     goto(page, "?interval=day")
     assert page.locator(TABLE + " tr.trn-proj").count() == 0
+
+
+def test_conversion_band_values_dashes_caption_and_no_sideways_scroll(page):
+    """The Conversion band: Meta funnel steps and new customers per link click, rates under 10% with two decimals and above with one, dashes before the first funnel day
+    (mock: 2026-05-06), a caption that says what is Meta-reported and where the data starts, and no page-level sideways scroll at 375 px."""
+    goto(page, "?interval=month&periods=12")
+    h = heads(page)
+    keys = ["f_lpv", "f_lc_atc", "f_atc_ic", "f_ic_p", "f_atc_p", "f_nc_lc"]
+    for k in keys:
+        assert k in h, k
+    assert page.locator("[data-testid=trn-group-funnel]").get_attribute("aria-pressed") == "true"
+    cap = page.locator("[data-testid=trn-caption-funnel]").inner_text()
+    assert "Meta-reported and include returning buyers" in cap and "New customers per link click uses actual first orders" in cap and "May 6, 2026" in cap
+    assert "\u2014" not in cap
+    r = rows(page)
+    by = {x["key"]: x["cells"] for x in r}
+    early, late = by["2026-02-01"], by["2026-09-01"]
+    for k in keys[:5]:
+        assert early[h.index(k)] == "–", k                                    # before the funnel data starts
+        assert re.fullmatch(r"\d+\.\d{1,2}%", late[h.index(k)]), (k, late[h.index(k)])
+    assert re.fullmatch(r"\d\.\d\d%", late[h.index("f_lc_atc")])           # under 10%: two decimals
+    assert re.fullmatch(r"\d\d\.\d%", late[h.index("f_lpv")])              # above 10%: one decimal
+    assert late[h.index("f_nc_lc")] != "–" and early[h.index("f_nc_lc")] != "–"   # actual orders over link clicks needs no funnel events
+    page.locator("[data-testid=trn-group-funnel]").click()
+    page.wait_for_function("() => { const e = document.querySelector('[data-testid=trn-group-funnel]'); return !!e && e.getAttribute('aria-pressed') === 'false'; }")
+    assert "f_lc_atc" not in heads(page) and page.locator("[data-testid=trn-caption-funnel]").count() == 0
+    page.locator("[data-testid=trn-group-funnel]").click()
+    pressed(page, "trn-group-funnel")
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.reload()
+    page.wait_for_selector(TABLE + " tbody tr[data-key]:not(.trn-proj)")
+    idle(page)
+    assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1")
