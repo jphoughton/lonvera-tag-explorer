@@ -184,8 +184,10 @@ def test_endpoint_without_the_hourly_table_projects_nothing(api, pacing_db):
 @pytest.fixture()
 def last28(pacing_db):
     """28 closed days Oct 6..Nov 2: Meta 1,000 + Google 50 spend, 700 NC revenue, 10 new customers a day. The three Trends tables are not in the pacing
-    test database, so they are created here (same columns the Trends frame reads) and dropped afterwards."""
-    ddl = ["CREATE TABLE IF NOT EXISTS ad_daily_upstack (day date, nc_purchases numeric DEFAULT 0, nc_conv_value numeric DEFAULT 0, purchases numeric DEFAULT 0, conv_value numeric DEFAULT 0)",
+    test database, so they are created here (same columns the Trends frame reads; the funnel columns of ad_daily too, this database holds only some migrations) and dropped afterwards."""
+    ddl = ["ALTER TABLE ad_daily ADD COLUMN IF NOT EXISTS landing_page_views numeric(12,0)", "ALTER TABLE ad_daily ADD COLUMN IF NOT EXISTS add_to_carts numeric(12,0)",
+           "ALTER TABLE ad_daily ADD COLUMN IF NOT EXISTS initiated_checkouts numeric(12,0)",
+           "CREATE TABLE IF NOT EXISTS ad_daily_upstack (day date, nc_purchases numeric DEFAULT 0, nc_conv_value numeric DEFAULT 0, purchases numeric DEFAULT 0, conv_value numeric DEFAULT 0)",
            "CREATE TABLE IF NOT EXISTS google_daily (day date, campaign_key text, spend numeric DEFAULT 0, impressions numeric DEFAULT 0, clicks numeric DEFAULT 0, purchases numeric DEFAULT 0, "
            "purchases_value numeric DEFAULT 0, nc numeric DEFAULT 0, nc_rev numeric DEFAULT 0, orders numeric DEFAULT 0, rev numeric DEFAULT 0)",
            "CREATE TABLE IF NOT EXISTS upstack_orders_daily (day date PRIMARY KEY, nc_rev numeric DEFAULT 0, rc_rev numeric DEFAULT 0, nc_orders numeric DEFAULT 0, total_rev numeric DEFAULT 0)"]
