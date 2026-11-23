@@ -26,7 +26,7 @@ One header row of band titles, one of column labels, the period column and both 
 |---|---|
 | DTC / SHOPIFY | `DTC / SHOPIFY` chip: Total Revenue, NC Revenue, Repeat Revenue, NC Orders, NC AOV, Ad Spend (Meta + Google), NC CPA, NC ROAS, MER, NC Conversion (new customers / new visitors), Repeat Share %, New Visitors, Cost per New Visitor |
 | META | `Meta` chip: Spend, Link Clicks, CPC, Purchases, Purchase Value (Platform basis; follows the Numbers-from switch), CVR, Platform ROAS, Cost per Purchase, Impressions, Reach, First-Time Impression %, Cost per 1,000 Reached, CPM, Frequency, Unique Outbound Clicks, Unique Outbound CTR, Link CTR, NC Conversion (clicks) |
-| per-product bands | `By product` chip: SPEND, NC REVENUE, NC ORDERS, NC CPA, NC ROAS (right after NC CPA), each VitaBull / Beef Liver / Boneflex / Total |
+| per-product bands | `By product` chip: SPEND, NC REVENUE, NC ROAS, NC ORDERS, NC CPA, each VitaBull / Beef Liver / Boneflex / Total |
 | SPEND BY STAGE, TESTING %, NC (ANY-CLICK), NC CPA BY STAGE, NC ROAS BY STAGE | `Testing vs scaling` chip: Scaling / Testing columns (no Total columns, no 'Testing CPA vs Scaling') |
 | GOOGLE | `Google` chip |
 | WoW / MoM Δ | `Change` chip: the nine headline changes the app can supply (Total Revenue, Total Spend, NC Revenue, Repeat Revenue, NC ROAS, NC CPA, New Customers, Meta ROAS, Google ROAS), signed `0.0%`, tinted green/red **by polarity** (CPA down and ROAS up are good, spend is neutral; the sheet colours by sign only), on Day too (the sheet's Daily tab has none) |

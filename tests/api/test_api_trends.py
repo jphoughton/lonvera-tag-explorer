@@ -478,7 +478,7 @@ def test_groups_and_catalog(tc):
 
 def test_layout_is_the_sheets_bands_in_the_sheets_order(tc):
     d = get(tc)
-    assert [b["title"] for b in d["layout"]] == ["DTC / SHOPIFY", "META", "SPEND", "NC REVENUE", "NC ORDERS", "NC CPA", "NC ROAS", "SPEND BY STAGE", "TESTING % OF SPEND",
+    assert [b["title"] for b in d["layout"]] == ["DTC / SHOPIFY", "META", "SPEND", "NC REVENUE", "NC ROAS", "NC ORDERS", "NC CPA", "SPEND BY STAGE", "TESTING % OF SPEND",
                                                  "NC (UPSTACK ANY-CLICK)", "NC CPA BY STAGE", "NC ROAS BY STAGE", "GOOGLE", "WoW Δ"]
     cols = {b["key"]: [c["label"] for c in b["cols"]] for b in d["layout"]}
     assert cols["dtc"] == ["Total Revenue", "NC Revenue", "Repeat Revenue", "NC Orders", "NC AOV", "Ad Spend", "NC CPA", "NC ROAS", "MER", "NC Conversion", "Repeat Share %", "New Visitors", "Cost per New Visitor"]

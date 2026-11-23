@@ -503,8 +503,8 @@ def build_layout(interval: str, numbers: str, catalog: list[dict]) -> list[dict]
         _col("frequency", "Frequency"), _col("uoc", "Unique Outbound Clicks"), _col("uoc_ctr", "Unique Outbound CTR"), _col("m_ctr", "Link CTR"), _col("nc_cvr_clicks", "NC Conversion (clicks)")]})
     prod = [("vitabull", "VitaBull", "vb"), ("beefliver", "Beef Liver", "bl"), ("boneflex", "Boneflex", "bf")]
     for i, (bkey, title, per, total) in enumerate((("spend", "SPEND", "p_{}_spend", "meta_spend"), ("nc_rev", "NC REVENUE", "p_{}_nc_rev", "nc_rev"),
-                                                   ("nc_orders", "NC ORDERS", "p_{}_nc_orders", "nc_orders"), ("nc_cpa", "NC CPA", "p_{}_nc_cpa", "meta_nc_cpa"),
-                                                   ("nc_roas", "NC ROAS", "p_{}_nc_roas", "meta_nc_roas"))):
+                                                   ("nc_roas", "NC ROAS", "p_{}_nc_roas", "meta_nc_roas"), ("nc_orders", "NC ORDERS", "p_{}_nc_orders", "nc_orders"),
+                                                   ("nc_cpa", "NC CPA", "p_{}_nc_cpa", "meta_nc_cpa"))):
         bands.append({"key": "prod_" + bkey, "title": title, "group": "products", "tone": "plum" if i % 2 == 0 else "slate",
                       "cols": [_col(per.format(slug), name, tone=tone) for slug, name, tone in prod] + [_col(total, "Total", tone="tot")]})
     bands += [

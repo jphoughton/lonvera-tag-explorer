@@ -165,7 +165,7 @@ def test_change_after_every_column_switch_is_off_by_default_and_adds_the_old_col
 
 def test_layout_is_the_sheets_bands_in_the_sheets_order_oldest_first(page):
     goto(page, "?groups=all")
-    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "SPEND", "NC REVENUE", "NC ORDERS", "NC CPA", "NC ROAS", "SPEND BY STAGE", "TESTING % OF SPEND",
+    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "SPEND", "NC REVENUE", "NC ROAS", "NC ORDERS", "NC CPA", "SPEND BY STAGE", "TESTING % OF SPEND",
                                            "NC (UPSTACK ANY-CLICK)", "NC CPA BY STAGE", "NC ROAS BY STAGE", "GOOGLE", "WoW Δ"]
     spans = dict(bands(page))
     assert spans["DTC / SHOPIFY"] == 13 and spans["SPEND"] == 4 and spans["TESTING % OF SPEND"] == 1 and spans["WoW Δ"] == 11
@@ -258,7 +258,6 @@ def test_band_chips_show_and_hide_bands_and_chart_line_pick(page):
     pressed(page, "trn-group-products")
     h = heads(page)
     assert "p_vitabull_nc_roas" in h and "p_boneflex_nc_cpa" in h and "meta_nc_roas" in h
-    assert h.index("p_vitabull_nc_roas") > h.index("meta_nc_cpa")                                              # the NC ROAS band sits right after NC CPA
     page.locator("[data-testid=trn-group-all]").click()
     pressed(page, "trn-group-all")
     assert page.locator("[data-testid=trn-group-stage]").get_attribute("aria-pressed") == "true" and "test_share" in heads(page)
