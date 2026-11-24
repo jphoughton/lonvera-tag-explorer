@@ -87,7 +87,7 @@ def test_graph_get_too_big_and_fatal_and_token_scrub(monkeypatch):
 def test_pull_chunk_splits_when_too_big(monkeypatch):
     calls = []
 
-    def fake_paged(url, params, what, pace=0):
+    def fake_paged(url, params, what, pace=0, split_after=None):
         import json
         tr = json.loads(params["time_range"])
         calls.append((tr["since"], tr["until"]))
@@ -298,3 +298,14 @@ def test_fill_funnel_fills_the_checkout_columns_only_and_keeps_existing_funnel_v
     assert after == before                                              # nothing else changed, the already-filled funnel columns kept their values
     n = len(calls)
     assert meta_pull.fill_funnel(conn, D(2026, 10, 30), D(2026, 10, 31), chunk_days=7, pause=0, sleep=lambda s: None)["skipped"] == 1 and len(calls) == n     # resumable
+
+
+def test_graph_get_code_2_turns_into_too_big_when_the_caller_can_split(monkeypatch):
+    import requests
+    monkeypatch.setattr(requests, "get", lambda *a, **k: FakeResp(400, {"error": {"code": 2, "message": "Service temporarily unavailable"}}))
+    sleeps = []
+    with pytest.raises(meta_api.TooBig):
+        meta_api.graph_get("http://x", {}, "t", sleep=sleeps.append, split_after=3)
+    assert len(sleeps) == 2                                                    # 3rd failure splits instead of retrying to the 7th
+    with pytest.raises(meta_api.GraphError):                                   # no split option: unchanged, retried to exhaustion
+        meta_api.graph_get("http://x", {}, "t", sleep=lambda s: None)

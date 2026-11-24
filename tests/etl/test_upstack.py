@@ -97,3 +97,22 @@ def test_channel_rows_keep_meta_campaigns_only():
 def test_rename_tables_swaps_whole_tokens_only(sql, out):
     assert build_metrics.rename_tables(sql, "_upstack_nc") == out
     assert build_metrics.rename_tables(out, "") == out                                                         # no suffix = untouched
+
+
+class _Flaky:
+    """Upstack client whose utm_ad split 502s for one campaign (the 2026-11-18 outage)."""
+    def attribution(self, day, dimension, extra_filters=None, source="Meta Ads"):
+        if dimension == "utm_campaign":
+            return [{"utm_campaign": "C1", "m": 1}, {"utm_campaign": "C2", "m": 1}]
+        camp = extra_filters[0]["value"]
+        if camp == "C1":
+            raise api.UpstackError("utm_ad failed after 7 tries: HTTP 502")
+        return [{"utm_campaign": camp, "utm_ad": "Ad Z", "m": 1}]
+
+
+def test_pull_day_survives_a_persistent_ad_split_failure(monkeypatch):
+    monkeypatch.setattr(api, "campaign_rows", lambda p: [["C1", 2.0, 200.0, 2.0, 200.0], ["C2", 1.0, 90.0, 1.0, 90.0]])
+    monkeypatch.setattr(api, "ad_rows", lambda c, p: [[c, "Ad Z", 1.0, 90.0, 1.0, 90.0]])
+    rec = api.pull_day(_Flaky(), D1, workers=1)
+    assert rec["ad_split_failed"] == ["C1"] and rec["unidentified"] == ["C1"]
+    assert ["C1", api.NOT_IDENTIFIED, 2.0, 200.0, 2.0, 200.0] in rec["ads"]     # kept at campaign totals, nothing dropped

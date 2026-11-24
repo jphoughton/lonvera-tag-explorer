@@ -69,8 +69,10 @@ def _read_usage(headers) -> None:
         pass
 
 
-def graph_get(url: str, params: dict | None, what: str, max_retries: int = 7, sleep=time.sleep, on_wait=None):
-    """on_wait(seconds, is_rate_limit) is called before every retry sleep and may raise to stop the retrying (the caller's own time budget)."""
+def graph_get(url: str, params: dict | None, what: str, max_retries: int = 7, sleep=time.sleep, on_wait=None, split_after: int | None = None):
+    """split_after: a caller that can shrink its request (insights windows) passes N; Meta code 2 "Service temporarily unavailable" that survives N retries is that window being
+    too heavy (it turns into "reduce the amount of data" once split), so it raises TooBig instead of retrying to exhaustion (2026-11-24: BackUp 14-day chunk failed 7 nights running).
+    on_wait(seconds, is_rate_limit) is called before every retry sleep and may raise to stop the retrying (the caller's own time budget)."""
     import requests
     fails = 0
     while True:
@@ -96,6 +98,8 @@ def graph_get(url: str, params: dict | None, what: str, max_retries: int = 7, sl
         if not (rate or transient):
             raise GraphError(f"{what}: HTTP {code} code {ecode}: {msg[:200]}")
         fails += 1
+        if split_after is not None and ecode == 2 and fails >= split_after:
+            raise TooBig(f"{what}: Meta code 2 still failing after {fails} tries ({msg[:80]})")
         if fails > max_retries:
             raise (RateLimited if rate else GraphError)(f"{what}: gave up after {max_retries} retries: HTTP {code} code {ecode}: {msg[:160]}")
         wait = min(900, 60 * 2 ** (fails - 1)) if rate else 15 * fails
@@ -118,10 +122,10 @@ def rows_from(data) -> list[dict]:
     return out
 
 
-def _paged(url, params, what, pace=0.4):
+def _paged(url, params, what, pace=0.4, split_after=None):
     rows = []
     while url:
-        j = graph_get(url, params, what)
+        j = graph_get(url, params, what, split_after=split_after)
         rows += rows_from(j.get("data", []))
         url = j.get("paging", {}).get("next")
         params = None
@@ -164,7 +168,7 @@ def pull_chunk(tok, acct, an, since: dt.date, until: dt.date) -> list[dict]:
     params = {"access_token": tok, "level": "ad", "time_increment": 1, "limit": 500, "fields": INSIGHT_FIELDS,
               "time_range": json.dumps({"since": since.isoformat(), "until": until.isoformat()})}
     try:
-        rows = _paged(f"{G}/{acct}/insights", params, f"{an} {since}..{until}")
+        rows = _paged(f"{G}/{acct}/insights", params, f"{an} {since}..{until}", split_after=3 if since < until else None)
     except TooBig as e:
         if since < until:
             mid = since + (until - since) // 2

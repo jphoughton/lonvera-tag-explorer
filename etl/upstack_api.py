@@ -166,6 +166,7 @@ def day_record(camps: list[list], ads_by_camp: dict[str, list[list]]) -> dict:
 def pull_day(client: Client, day: dt.date, workers: int = 4) -> dict:
     camps = campaign_rows(client.attribution(day, "utm_campaign"))
     todo = [c[0] for c in camps if needs_ads(c)]
+    failed_splits: list[str] = []
 
     def one(c: str):
         try:
@@ -173,11 +174,15 @@ def pull_day(client: Client, day: dt.date, workers: int = 4) -> dict:
         except UpstackError as e:
             if re.search(r"HTTP 4(?!29)\d\d", str(e)):       # filter rejected outright (odd campaign name): not identifiable, not a failure
                 return c, []
+            if "failed after" in str(e):                    # 5xx / network on this campaign's ad split survived every retry (2026-11-18: 502 for a week): keep the campaign at
+                failed_splits.append(c)                      # its totals as '(ad not identified)' instead of failing the whole window; the next nightly run re-pulls the day
+                return c, []
             raise
     with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
         got = dict(ex.map(one, todo))
     rec = day_record(camps, got)
     rec["calls"] = 1 + len(todo)
+    rec["ad_split_failed"] = failed_splits
     return rec
 
 
