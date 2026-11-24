@@ -285,6 +285,12 @@ def pull_lifetime(tok, acct, an, since: dt.date, until: dt.date) -> list[dict]:
             if not (isinstance(e, TooBig) or "async" in str(e)) or attempt == 3:
                 break
             time.sleep(LIFETIME_RETRY_SLEEP * attempt)
+    if (until - since).days > 60 and (isinstance(last, TooBig) or "async" in str(last)):
+        # The whole-history report keeps failing (2026-11-19..24: Main "async job Job Failed" every night): pull each half on its own. Totals are additive per ad, and
+        # lifetime_pull.aggregate sums rows of the same ad_id, so the halves concatenate exactly.
+        mid = since + (until - since) // 2
+        db.log(f"  {an} lifetime {since}..{until} failed 3 times -> pulling {since}..{mid} and {mid + dt.timedelta(days=1)}..{until} separately")
+        return pull_lifetime(tok, acct, an, since, mid) + pull_lifetime(tok, acct, an, mid + dt.timedelta(days=1), until)
     if isinstance(last, TooBig):
         raise GraphError(f"{an}: lifetime report too big after 3 attempts: {db.scrub(last)[:160]}")
     raise last or GraphError(f"{an}: lifetime pull failed")
