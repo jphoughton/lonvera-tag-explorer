@@ -110,9 +110,17 @@ def run(since: dt.date, until: dt.date, workers: int = 4, dry_run: bool = False,
         todo = [d for d in days_between(since, until) if d not in done]
         recs: dict[dt.date, dict] = {}
         batch: dict[dt.date, dict] = {}
+        failed_days: dict[dt.date, str] = {}
         t0 = time.time()
         for i, d in enumerate(todo, start=1):
-            rec = api.pull_day(client, d, workers)
+            try:
+                rec = api.pull_day(client, d, workers)
+            except api.UpstackError as e:                          # one bad day must not freeze the others: keep its old rows, write the rest, fail loudly at the end
+                failed_days[d] = db.scrub(e)[:200]
+                db.log(f"{d}: FAILED, old rows kept ({failed_days[d]})")
+                continue
+            if rec.get("ad_split_failed"):
+                db.log(f"{d}: ad split failed for {len(rec['ad_split_failed'])} campaign(s), kept at campaign totals: {rec['ad_split_failed'][:3]}")
             recs[d] = batch[d] = rec
             gap = rec["nc_campaigns"] - rec["nc_ads"]
             db.log(f"{d}: {len(rec['camps'])} campaigns, {len(rec['ads'])} ad rows, NC campaigns {rec['nc_campaigns']:,.0f} vs ads {rec['nc_ads']:,.0f} "
@@ -123,7 +131,7 @@ def run(since: dt.date, until: dt.date, workers: int = 4, dry_run: bool = False,
                 conn.commit()
                 batch = {}
         if not recs and not skip_done:
-            raise db.JobFailed("nothing to pull")
+            raise db.JobFailed("nothing to pull" + (f"; every day failed: {next(iter(failed_days.values()))}" if failed_days else ""))
         chan_since = min(recs) if recs else since             # a resumed backfill with nothing left still refreshes the channel feed and the build
         chan = pull_channel(client, chan_since, until)
         stats.update(days_pulled=len(recs), api_calls=client.calls, channel_rows=len(chan))
@@ -137,6 +145,8 @@ def run(since: dt.date, until: dt.date, workers: int = 4, dry_run: bool = False,
         db.set_meta(conn, "upstack_pulled_at", dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
         stats["build"] = upstack_build.build(conn)
         conn.commit()
+        if failed_days:                                           # everything that did pull is written; the job still fails so the alert fires
+            raise db.JobFailed(f"upstack pulled {len(recs)} of {len(todo)} days; failed: " + "; ".join(f"{d} {m}" for d, m in sorted(failed_days.items()))[:380])
         return stats
     except Exception:
         conn.rollback()

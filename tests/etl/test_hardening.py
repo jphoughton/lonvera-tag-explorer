@@ -215,7 +215,7 @@ def test_status_refresh_updates_status_names_and_created(conn, tmp_path, monkeyp
 def test_daily_pull_has_no_row_filter(monkeypatch):
     seen = {}
 
-    def fake(url, params, what, pace=0):
+    def fake(url, params, what, pace=0, split_after=None):
         seen.update(params)
         return []
     monkeypatch.setattr(meta_api, "_paged", fake)
