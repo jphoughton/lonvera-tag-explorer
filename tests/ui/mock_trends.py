@@ -26,6 +26,7 @@ TODAY = D(2026, 11, 5)
 HOLE = (D(2025, 3, 4), D(2025, 3, 13))                  # Meta has no rows on these days (the real sheet history has this hole)
 META_UP_FIRST, G_UP_FIRST = D(2026, 5, 6), D(2025, 5, 13)
 FUNNEL_FIRST = D(2026, 5, 6)                             # the ad-level funnel events (landing page views, adds to cart, checkouts) start here
+PURCH_FIRST = D(2026, 5, 6)                              # Meta purchases by product come from the ad-level rows
 TRAFFIC_FIRST = D(2025, 5, 8)                            # the traffic feed (new visitors) starts here
 
 
@@ -63,6 +64,11 @@ def _build():
             row[f"{slug}_spend"] = ms * sh * R.uniform(0.9, 1.1)
             row[f"{slug}_ncrev"] = row["onc_rev"] * sh * R.uniform(0.9, 1.1)
             row[f"{slug}_ncord"] = round(nc_o * sh)
+        RC = random.Random(d.toordinal() + 9000)             # its own stream again: product link clicks (every day) and Meta purchases by product (from the ad-level rows' first day)
+        for (slug, _n), sh in zip(T.PRODUCTS, shares):
+            row[f"{slug}_clk"] = mc * sh * RC.uniform(0.9, 1.1)
+            if d >= PURCH_FIRST:
+                row[f"{slug}_mp"] = row["mp_own"] * sh * RC.uniform(0.9, 1.1)
         if not (HOLE[0] <= d <= HOLE[1]):
             meta_days.add(d)
             prod_days.add(d)
@@ -92,7 +98,7 @@ FR, META_DAYS, PROD_DAYS, REACH = _build()
 
 def _cov():
     return {"meta": T.Cov(FIRST, LAST, META_DAYS), "meta_up": T.Cov(META_UP_FIRST, LAST), "google": T.Cov(FIRST, LAST), "google_up": T.Cov(G_UP_FIRST, LAST),
-            "orders": T.Cov(FIRST, LAST), "prod_spend": T.Cov(FIRST, LAST, PROD_DAYS), "prod_nc": T.Cov(FIRST, LAST), "anyclick": T.Cov(D(2025, 5, 8), LAST), "traffic": T.Cov(TRAFFIC_FIRST, LAST), "funnel": T.Cov(FUNNEL_FIRST, LAST), "reach": T.Cov(FIRST, LAST)}
+            "orders": T.Cov(FIRST, LAST), "prod_spend": T.Cov(FIRST, LAST, PROD_DAYS), "prod_nc": T.Cov(FIRST, LAST), "anyclick": T.Cov(D(2025, 5, 8), LAST), "traffic": T.Cov(TRAFFIC_FIRST, LAST), "funnel": T.Cov(FUNNEL_FIRST, LAST), "prod_purch": T.Cov(PURCH_FIRST, LAST), "reach": T.Cov(FIRST, LAST)}
 
 
 def register(app, deps):

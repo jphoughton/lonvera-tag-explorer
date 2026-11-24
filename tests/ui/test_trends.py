@@ -80,7 +80,7 @@ def test_nav_link_and_default_week_view(page):
     h = heads(page)
     assert h[:6] == ["period", "total_rev", "nc_rev", "rc_rev", "nc_orders", "nc_aov"]
     assert h[-11:] == ["chg:total_rev", "chg:total_spend", "chg:nc_rev", "chg:rc_rev", "chg:nc_roas", "chg:nc_cpa", "chg:nc_orders", "chg:new_visitors", "chg:cost_nv", "chg:m_roas", "chg:g_roas"]
-    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "CONVERSION", "WoW Δ"]
+    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "CONVERSION", "CONVERSION RATE, META (PURCHASES PER LINK CLICK)", "CONVERSION RATE, NEW CUSTOMERS PER LINK CLICK", "WoW Δ"]
 
 
 def test_toggle_day_week_month_changes_the_rows_and_url(page):
@@ -165,14 +165,15 @@ def test_change_after_every_column_switch_is_off_by_default_and_adds_the_old_col
 
 def test_layout_is_the_sheets_bands_in_the_sheets_order_oldest_first(page):
     goto(page, "?groups=all")
-    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "CONVERSION", "SPEND", "NC REVENUE", "NC ROAS", "NC ORDERS", "NC CPA", "SPEND BY STAGE", "TESTING % OF SPEND",
+    assert [b[0] for b in bands(page)] == ["DTC / SHOPIFY", "META", "CONVERSION", "SPEND", "NC REVENUE", "NC ROAS", "NC ORDERS", "NC CPA",
+                                              "CONVERSION RATE, META (PURCHASES PER LINK CLICK)", "CONVERSION RATE, NEW CUSTOMERS PER LINK CLICK", "SPEND BY STAGE", "TESTING % OF SPEND",
                                            "NC (UPSTACK ANY-CLICK)", "NC CPA BY STAGE", "NC ROAS BY STAGE", "GOOGLE", "WoW Δ"]
     spans = dict(bands(page))
     assert spans["DTC / SHOPIFY"] == 13 and spans["SPEND"] == 4 and spans["TESTING % OF SPEND"] == 1 and spans["WoW Δ"] == 11
     labels = page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] thead tr.trn-colrow th')].map(th => th.innerText.replace(/\\s+/g, ' ').trim())")
     assert labels[:5] == ["Total Revenue", "NC Revenue", "Repeat Revenue", "NC Orders", "NC AOV"]
     assert "Platform ROAS" in labels and "Purchase Value" in labels and "Cost per 1,000 Reached" in labels
-    assert page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] thead tr.trn-colrow th.trn-t-vb')].length") == 5       # the sheet's per-product tint on the VitaBull heads
+    assert page.evaluate("() => [...document.querySelectorAll('[data-testid=trn-table] thead tr.trn-colrow th.trn-t-vb')].length") == 7       # the sheet's per-product tint on the VitaBull heads
     # the first column and the two header rows are frozen
     st = page.evaluate("""() => { const g = (el) => getComputedStyle(el).position;
         const t = document.querySelector('[data-testid=trn-table]');
@@ -188,7 +189,7 @@ def test_layout_is_the_sheets_bands_in_the_sheets_order_oldest_first(page):
 
 def test_plan_block_on_the_month_grain(page):
     goto(page, "?interval=month")
-    assert [b[0] for b in bands(page)] == ["Projected* | Target | % Diff", "DTC / SHOPIFY", "META", "CONVERSION", "MoM Δ"]
+    assert [b[0] for b in bands(page)] == ["Projected* | Target | % Diff", "DTC / SHOPIFY", "META", "CONVERSION", "CONVERSION RATE, META (PURCHASES PER LINK CLICK)", "CONVERSION RATE, NEW CUSTOMERS PER LINK CLICK", "MoM Δ"]
     assert dict(bands(page))["Projected* | Target | % Diff"] == 17
     h = heads(page)
     assert h[1:4] == ["plan_total_rev_proj", "plan_total_rev_goal", "plan_total_rev_diff"] and h[16:18] == ["plan_ebitda_gap", "plan_noi_gap"]
@@ -251,7 +252,7 @@ def test_band_chips_show_and_hide_bands_and_chart_line_pick(page):
     assert h.index("nc_roas") < h.index("meta_spend") < h.index("chg:total_rev")                                 # the sheet's order: DTC, Meta, ..., the change block last
     page.locator("[data-testid=trn-group-meta]").click()                                                          # switching it off hides the Meta columns
     page.wait_for_function("() => { const e = document.querySelector('[data-testid=trn-group-meta]'); return !!e && e.getAttribute('aria-pressed') === 'false'; }")
-    assert "meta_spend" not in heads(page) and params(page)["groups"] == "totals,funnel,change"
+    assert "meta_spend" not in heads(page) and params(page)["groups"] == "totals,funnel,prodconv,change"
     page.locator("[data-testid=trn-group-meta]").click()
     pressed(page, "trn-group-meta")
     page.locator("[data-testid=trn-group-products]").click()
@@ -550,3 +551,34 @@ def test_conversion_band_values_dashes_caption_and_no_sideways_scroll(page):
     page.wait_for_selector(TABLE + " tbody tr[data-key]:not(.trn-proj)")
     idle(page)
     assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1")
+
+
+def test_conversion_by_product_bands_values_dashes_captions_and_chip(page):
+    """Two bands under their own chip (default on): Meta purchases per link click and new customers per link click, by product and in total, two decimals, dashes
+    before Meta purchases by product start (mock: 2026-05-06), a one-line caption each saying the basis, and the chip hides both."""
+    goto(page, "?interval=month&periods=12")
+    h = heads(page)
+    meta_keys = [f"p_{s}_cvr_meta" for s in ("vitabull", "beefliver", "boneflex")] + ["pc_meta_total"]
+    nc_keys = [f"p_{s}_cvr_nc" for s in ("vitabull", "beefliver", "boneflex")] + ["pc_nc_total"]
+    for k in meta_keys + nc_keys:
+        assert k in h, k
+    assert page.locator("[data-testid=trn-group-prodconv]").get_attribute("aria-pressed") == "true"
+    assert page.locator("[data-testid=trn-group-prodconv]").inner_text() == "Conversion by product"
+    capm = page.locator("[data-testid=trn-caption-prod_cvr_meta]").inner_text()
+    capn = page.locator("[data-testid=trn-caption-prod_cvr_nc]").inner_text()
+    assert "Meta purchases / Meta link clicks, Meta-reported" in capm and "May 6, 2026" in capm
+    assert "Actual new customers (Shopify first orders via Upstack) / Meta link clicks" in capn
+    assert "—" not in capm + capn
+    by = {x["key"]: x["cells"] for x in rows(page)}
+    early, late = by["2026-02-01"], by["2026-09-01"]
+    for k in meta_keys:
+        # the three product columns need Meta purchases by product (from May 6); the Total reads all Meta purchases, which the sheet history also holds
+        assert (early[h.index(k)] == "–") == (k != "pc_meta_total"), k
+        assert re.fullmatch(r"\d\.\d\d%", late[h.index(k)]), (k, late[h.index(k)])
+    for k in nc_keys:
+        assert re.fullmatch(r"\d\.\d\d%", late[h.index(k)]) and early[h.index(k)] != "–", k       # actual orders over product clicks needs no purchases feed
+    page.locator("[data-testid=trn-group-prodconv]").click()
+    page.wait_for_function("() => { const e = document.querySelector('[data-testid=trn-group-prodconv]'); return !!e && e.getAttribute('aria-pressed') === 'false'; }")
+    assert "pc_nc_total" not in heads(page) and page.locator("[data-testid=trn-caption-prod_cvr_meta]").count() == 0
+    page.locator("[data-testid=trn-group-prodconv]").click()
+    pressed(page, "trn-group-prodconv")
