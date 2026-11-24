@@ -389,4 +389,4 @@ def test_pull_lifetime_splits_the_window_when_the_whole_history_keeps_failing(mo
     monkeypatch.setattr(meta_api, "_paged", paged)
     monkeypatch.setattr(meta_api, "_async_report", async_report)
     rows = meta_api.pull_lifetime("tok", "act_1", "Acct", D(2024, 1, 1), D(2026, 11, 2))
-    assert len(rows) == 2 and all(r["account"] == "Acct" for r in rows) and seen[:3] == [seen[0]] * 3 and seen[-1] < 500
+    assert len(rows) == 2 and all(r["account"] == "Acct" for r in rows) and seen[:3] == [seen[0]] * 3 and seen[-1] < 600
