@@ -164,6 +164,7 @@ SOURCE_LABELS = {
     "orders": "Upstack orders (new customers, revenue)", "prod_spend": "Meta spend by product", "prod_nc": "New customers by product", "reach": "Meta reach",
     "anyclick": "Upstack any-click new customers by stage", "traffic": "Upstack site traffic (new visitors)",
     "funnel": "Meta landing page views, adds to cart and checkouts",
+    "prod_purch": "Meta purchases by product",
 }
 SHORT = {"meta": "Meta", "google": "Google", "orders": "Orders", "meta_up": "Meta attribution", "google_up": "Google attribution", "prod_spend": "Product spend", "prod_nc": "Product customers", "reach": "Reach", "traffic": "Traffic", "anyclick": "Stage customers"}
 SOURCE_ORDER = ("meta", "google", "orders", "meta_up", "google_up", "prod_spend", "prod_nc", "anyclick", "traffic", "reach")
@@ -217,6 +218,7 @@ def coverage(conn, today: dt.date) -> dict[str, Cov]:
         UNION ALL SELECT 'anyclick', min(day), max(day) FROM proj_feed_anyclick
         UNION ALL SELECT 'traffic', min(day), max(day) FROM proj_feed_traffic
         UNION ALL SELECT 'reach', min(period_start), max(period_end) FROM proj_feed_meta_reach WHERE grain = 'day'
+        UNION ALL SELECT 'prod_purch', min(day), max(day) FROM ad_daily
         UNION ALL SELECT 'funnel', min(day), max(day) FROM ad_daily WHERE landing_page_views IS NOT NULL AND add_to_carts IS NOT NULL AND initiated_checkouts IS NOT NULL""").fetchall()
     mm = {r["k"]: (r["lo"], r["hi"]) for r in rows}
     yday = today - dt.timedelta(days=1)
@@ -244,6 +246,8 @@ def coverage(conn, today: dt.date) -> dict[str, Cov]:
     lo, hi = mm["reach"]
     cov["reach"] = Cov(lo, min(hi, yday) if hi else None)
     lo, hi = mm["funnel"]
+    pp_lo, pp_hi = mm["prod_purch"]
+    cov["prod_purch"] = Cov(pp_lo, min(pp_hi, yday) if pp_hi else None)    # ad_daily (the app's own ad-level rows): Meta purchases by product exist only from there
     cov["funnel"] = Cov(lo, min(hi, yday) if hi else None)                 # the app's own ad-level rows only (the sheet-fed history has no funnel events)
     return cov
 
@@ -259,7 +263,7 @@ def through_of(cov: dict[str, Cov], today: dt.date) -> dt.date:
 # ---------------------------------------------------------------------------------------------------------------- the day frame
 
 SUM_KEYS = ("ms", "mi", "mc", "mp_own", "mr_own", "mp_nc", "mr_nc", "mp_all", "mr_all", "gs", "gi", "gc", "gp_own", "gr_own", "gp_nc", "gr_nc", "gp_all", "gr_all",
-            "onc_rev", "onc_ord", "orc", "otot", "ts", "ss", "tnc", "snc", "tncrev", "sncrev", "nv", "lpv", "atc", "ic") + tuple(f"{k}_{s}" for k, _ in PRODUCTS for s in ("spend", "ncrev", "ncord"))
+            "onc_rev", "onc_ord", "orc", "otot", "ts", "ss", "tnc", "snc", "tncrev", "sncrev", "nv", "lpv", "atc", "ic") + tuple(f"{k}_{s}" for k, _ in PRODUCTS for s in ("spend", "ncrev", "ncord", "clk", "mp"))
 
 
 def _f(x: Any) -> float:
@@ -269,13 +273,14 @@ def _f(x: Any) -> float:
 def fetch_frame(conn, lo: dt.date, hi: dt.date, cov: dict[str, Cov]) -> tuple[dict[dt.date, dict[str, float]], dict[str, set[dt.date]]]:
     """Per-day sums for [lo, hi] from every source, one grouped query each. Returns ({day: {key: value}}, {source: days that have rows})."""
     fr: dict[dt.date, dict[str, float]] = {}
-    present: dict[str, set[dt.date]] = {k: set() for k in ("meta", "prod_spend", "traffic", "funnel")}
+    present: dict[str, set[dt.date]] = {k: set() for k in ("meta", "prod_spend", "traffic", "funnel", "prod_purch")}
 
     def put(day: dt.date, **kv: float) -> None:
         row = fr.setdefault(day, {})
         for k, v in kv.items():
             row[k] = row.get(k, 0.0) + v
 
+    slug_of = {name: key for key, name in PRODUCTS}
     app_first = getattr(cov["meta"], "app_first", None)
     # Meta: the app's ad_daily (every page of the app reads it) ...
     for r in conn.execute("""SELECT a.day, sum(a.spend) AS s, sum(a.impressions) AS i, sum(a.link_clicks) AS c, sum(a.purchases) AS p, sum(a.conv_value) AS v,
@@ -288,6 +293,20 @@ def fetch_frame(conn, lo: dt.date, hi: dt.date, cov: dict[str, Cov]) -> tuple[di
         if r["n"] and r["n_ok"] == r["n"]:                    # a day with any ad row still missing its funnel events is not read (NULL is not zero)
             present["funnel"].add(r["day"])
             put(r["day"], lpv=_f(r["lpv"]), atc=_f(r["atc"]), ic=_f(r["ic"]))
+    # Meta purchases by product: the same ad_daily rows classified by the SAME function and rules that build proj_feed_meta_product (campaign name, then ad set name, else Other),
+    # so numerator (here) and denominator (that feed's link clicks) always share one product mapping.
+    rules = _product_rules(conn)
+    memo: dict[tuple, str] = {}
+    for r in conn.execute("""SELECT a.day, c.name AS cname, ads.adset_name AS adset, sum(a.purchases) AS p, count(*) AS n
+                             FROM ad_daily a LEFT JOIN meta_campaigns c ON c.campaign_id = a.campaign_id LEFT JOIN meta_ads ads ON ads.ad_id = a.ad_id
+                             WHERE a.day BETWEEN %s AND %s GROUP BY a.day, c.name, ads.adset_name""", (lo, hi)):
+        present["prod_purch"].add(r["day"])
+        key = (r["cname"] or "", r["adset"] or "")
+        prod = memo.get(key)
+        if prod is None:
+            prod = memo[key] = product_of(r["cname"], r["adset"], rules)
+        if prod in slug_of:
+            put(r["day"], **{f"{slug_of[prod]}_mp": _f(r["p"])})
     # ... plus, for days before ad_daily begins, the sheet-fed campaign history (the only Meta data there is; campaign grain)
     if app_first is None or lo < app_first:
         top = (app_first - dt.timedelta(days=1)) if app_first else hi
@@ -305,13 +324,13 @@ def fetch_frame(conn, lo: dt.date, hi: dt.date, cov: dict[str, Cov]) -> tuple[di
     for r in conn.execute("SELECT day, nc_rev, nc_orders, rc_rev, total_rev FROM upstack_orders_daily WHERE day BETWEEN %s AND %s", (lo, hi)):
         put(r["day"], onc_rev=_f(r["nc_rev"]), onc_ord=_f(r["nc_orders"]), orc=_f(r["rc_rev"]), otot=_f(r["total_rev"]))
     # product feeds: a day is read from 'app' when it has app rows, else from 'sheet' (the same rule as analytics.meta_campaign_daily_history)
-    slug = {name: key for key, name in PRODUCTS}
-    for r in conn.execute("""SELECT h.day, h.product, sum(h.spend) AS s FROM proj_feed_meta_product h WHERE h.day BETWEEN %s AND %s
+    slug = slug_of
+    for r in conn.execute("""SELECT h.day, h.product, sum(h.spend) AS s, sum(h.link_clicks) AS c FROM proj_feed_meta_product h WHERE h.day BETWEEN %s AND %s
                              AND (h.source = 'app' OR NOT EXISTS (SELECT 1 FROM proj_feed_meta_product a WHERE a.day = h.day AND a.source = 'app'))
                              GROUP BY 1, 2""", (lo, hi)):
         present["prod_spend"].add(r["day"])
         if r["product"] in slug:
-            put(r["day"], **{f"{slug[r['product']]}_spend": _f(r["s"])})
+            put(r["day"], **{f"{slug[r['product']]}_spend": _f(r["s"]), f"{slug[r['product']]}_clk": _f(r["c"])})
     for r in conn.execute("SELECT day, new_visitors FROM proj_feed_traffic WHERE day BETWEEN %s AND %s", (lo, hi)):
         present["traffic"].add(r["day"])
         put(r["day"], nv=_f(r["new_visitors"]))
@@ -322,6 +341,17 @@ def fetch_frame(conn, lo: dt.date, hi: dt.date, cov: dict[str, Cov]) -> tuple[di
         if r["product"] in slug:
             put(r["day"], **{f"{slug[r['product']]}_ncrev": _f(r["nc_rev"]), f"{slug[r['product']]}_ncord": _f(r["nc_orders"])})
     return fr, present
+
+
+def _product_rules(conn):
+    from etl.projection_pacing import load_rules          # the rules the product feed is built with (lazy: the ETL package is heavy and only this call needs it)
+    return load_rules(conn)
+
+
+def product_of(campaign: str | None, adset: str | None, rules) -> str:
+    """The product of an ad_daily row: THE function that fills proj_feed_meta_product (etl.projection_pacing.refresh_meta_from_app), never a copy of it."""
+    from etl.projection_pacing import classify_product_by_level
+    return classify_product_by_level(campaign, adset, rules)
 
 
 def sums(fr: dict[dt.date, dict[str, float]], a: dt.date, b: dt.date) -> dict[str, float]:
@@ -437,6 +467,18 @@ def build_catalog(numbers: str) -> list[dict]:
         add(f"p_{slug}_nc_cpa", f"{name} NC CPA", slug, "money2", DOWN, ("prod_nc", "prod_spend"), lambda S, no=no, sp=sp: _div(S[sp], S[no]), "Product Meta spend / product new customers (orders whose largest product line is this product).")
         add(f"p_{slug}_nc_orders", f"{name} NC orders", slug, "int", UP, ("prod_nc",), lambda S, no=no: S[no], "Actual new customers whose first order was mostly this product (feed nc_product).")
 
+    # conversion by product: both bands divide by the product's Meta link clicks (proj_feed_meta_product, the same rows and classification as the product's Meta spend)
+    for slug, name in PRODUCTS:
+        mp, no, ck, sp = f"{slug}_mp", f"{slug}_ncord", f"{slug}_clk", f"{slug}_spend"
+        add(f"p_{slug}_cvr_meta", f"{name} Meta conversion", slug, "frate", UP, ("prod_purch", "prod_spend"), lambda S, mp=mp, ck=ck: _div(S[mp], S[ck]),
+            "Product Meta-reported purchases / product Meta link clicks. Ratio of the period's sums; includes returning buyers.")
+        add(f"p_{slug}_cvr_nc", f"{name} new customers per link click", slug, "frate", UP, ("prod_nc", "prod_spend"), lambda S, no=no, ck=ck: _div(S[no], S[ck]),
+            "Product new customers (actual first orders) / product Meta link clicks. Ratio of the period's sums.")
+    add("pc_meta_total", "Meta conversion, all products", "products", "frate", UP, ("meta",), lambda S: _div(S["mp_own"], S["mc"]),
+        "All Meta-reported purchases / all Meta link clicks (includes campaigns outside the three products).")
+    add("pc_nc_total", "New customers per link click, all products", "products", "frate", UP, ("orders", "meta"), lambda S: _div(S["onc_ord"], S["mc"]),
+        "All actual new customers (includes products outside the three) / all Meta link clicks.")
+
     # the product bands' Total columns divide by Meta spend alone, exactly as the sheet does (the DTC band's NC ROAS / NC CPA use Meta + Google)
     add("meta_nc_roas", "NC ROAS on Meta spend", "totals", "roas", UP, ("orders", "meta"), lambda S: _div(S["onc_rev"], S["ms"]), "Actual NC revenue / Meta spend (the product bands' Total column).")
     add("meta_nc_cpa", "NC CPA on Meta spend", "totals", "money2", DOWN, ("orders", "meta"), lambda S: _div(S["ms"], S["onc_ord"]), "Meta spend / actual new customers (the product bands' Total column).")
@@ -463,6 +505,7 @@ GROUPS = [
     {"key": "funnel", "label": "Conversion", "default": True},
     {"key": "google", "label": "Google", "default": False},
     {"key": "products", "label": "By product", "default": False},
+    {"key": "prodconv", "label": "Conversion by product", "default": True},
     {"key": "stage", "label": "Testing vs scaling", "default": False},
     {"key": "change", "label": "Change", "default": True},
 ]
@@ -530,6 +573,11 @@ def build_layout(interval: str, numbers: str, catalog: list[dict]) -> list[dict]
                                                    ("nc_roas", "NC ROAS", "p_{}_nc_roas", "meta_nc_roas"), ("nc_orders", "NC ORDERS", "p_{}_nc_orders", "nc_orders"),
                                                    ("nc_cpa", "NC CPA", "p_{}_nc_cpa", "meta_nc_cpa"))):
         bands.append({"key": "prod_" + bkey, "title": title, "group": "products", "tone": "plum" if i % 2 == 0 else "slate",
+                      "cols": [_col(per.format(slug), name, tone=tone) for slug, name, tone in prod] + [_col(total, "Total", tone="tot")]})
+    for bkey, title, per, total in (("cvr_meta", "CONVERSION RATE, META (PURCHASES PER LINK CLICK)", "p_{}_cvr_meta", "pc_meta_total"),
+                                    ("cvr_nc", "CONVERSION RATE, NEW CUSTOMERS PER LINK CLICK", "p_{}_cvr_nc", "pc_nc_total")):
+        i += 1
+        bands.append({"key": "prod_" + bkey, "title": title, "group": "prodconv", "tone": "plum" if i % 2 == 0 else "slate",
                       "cols": [_col(per.format(slug), name, tone=tone) for slug, name, tone in prod] + [_col(total, "Total", tone="tot")]})
     bands += [
         {"key": "stage_spend", "title": "SPEND BY STAGE", "group": "stage", "tone": "slate", "cols": [_col("scale_spend", "Scaling Spend"), _col("test_spend", "Testing Spend")]},
@@ -868,7 +916,11 @@ def assemble(opt: dict, today: dt.date, cov: dict[str, Cov], through: dt.date, p
     if cov["meta"].first and cov["meta"].first < (cov["meta_up"].first or cov["meta"].first):
         notes.append(f"Meta before {_d(cov['meta_up'].first, True)} comes from the sheet-fed campaign history (campaign grain, Meta's own reporting); Upstack attribution of Meta starts {_d(cov['meta_up'].first, True)}.")
     ff = cov["funnel"].first
-    captions = {"funnel": "Funnel steps are Meta-reported and include returning buyers. New customers per link click uses actual first orders."
+    pf_ = cov["prod_purch"].first
+    captions = {"prod_cvr_meta": "Meta purchases / Meta link clicks, Meta-reported (counts returning buyers), by product."
+                + (f" Starts {_d(pf_, True)}; earlier periods show a dash." if pf_ else " Not loaded yet."),
+                "prod_cvr_nc": "Actual new customers (Shopify first orders via Upstack) / Meta link clicks, by product. Total counts every new customer and every Meta link click, including other products.",
+                "funnel": "Funnel steps are Meta-reported and include returning buyers. New customers per link click uses actual first orders."
                 + (f" Funnel data starts {_d(ff, True)}; earlier periods show a dash." if ff else " Funnel data is not loaded yet.")}
     return {"interval": interval, "periods": n, "numbers": numbers, "basis": BASIS_NAME[numbers], "today": today.isoformat(), "data_through": through.isoformat(),
             "metrics": [{k: m[k] for k in ("key", "label", "group", "kind", "pol", "help")} | {"change": KINDS[m["kind"]], "needs": list(m["needs"])} for m in catalog],

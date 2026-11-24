@@ -465,7 +465,7 @@ def test_groups_and_catalog(tc):
     d = get(tc)
     keys = {m["key"] for m in d["metrics"]}
     g = {x["key"]: x["metrics"] for x in d["groups"]}
-    assert list(g) == ["totals", "meta", "funnel", "google", "products", "stage", "change"]
+    assert list(g) == ["totals", "meta", "funnel", "google", "products", "prodconv", "stage", "change"]
     assert g["funnel"] == ["f_lpv", "f_lc_atc", "f_atc_ic", "f_ic_p", "f_atc_p", "f_nc_lc"]
     assert g["totals"][:5] == ["total_rev", "nc_rev", "rc_rev", "nc_orders", "nc_aov"] and "nc_roas" in g["totals"] and "nc_cpa" in g["totals"]
     assert {"m_impr", "m_cpm", "m_ctr", "m_cpc", "m_roas", "reach", "frequency", "meta_spend"} <= set(g["meta"]) and {"g_clicks", "g_cpc", "g_roas", "google_spend"} <= set(g["google"])
@@ -479,7 +479,8 @@ def test_groups_and_catalog(tc):
 
 def test_layout_is_the_sheets_bands_in_the_sheets_order(tc):
     d = get(tc)
-    assert [b["title"] for b in d["layout"]] == ["DTC / SHOPIFY", "META", "CONVERSION", "SPEND", "NC REVENUE", "NC ROAS", "NC ORDERS", "NC CPA", "SPEND BY STAGE", "TESTING % OF SPEND",
+    assert [b["title"] for b in d["layout"]] == ["DTC / SHOPIFY", "META", "CONVERSION", "SPEND", "NC REVENUE", "NC ROAS", "NC ORDERS", "NC CPA",
+                                                 "CONVERSION RATE, META (PURCHASES PER LINK CLICK)", "CONVERSION RATE, NEW CUSTOMERS PER LINK CLICK", "SPEND BY STAGE", "TESTING % OF SPEND",
                                                  "NC (UPSTACK ANY-CLICK)", "NC CPA BY STAGE", "NC ROAS BY STAGE", "GOOGLE", "WoW Δ"]
     cols = {b["key"]: [c["label"] for c in b["cols"]] for b in d["layout"]}
     assert cols["dtc"] == ["Total Revenue", "NC Revenue", "Repeat Revenue", "NC Orders", "NC AOV", "Ad Spend", "NC CPA", "NC ROAS", "MER", "NC Conversion", "Repeat Share %", "New Visitors", "Cost per New Visitor"]
