@@ -366,5 +366,27 @@ def test_pull_lifetime_gives_up_after_three_too_big_attempts_as_a_graph_error(mo
     monkeypatch.setattr(meta_api, "_paged", lambda *a, **k: (_ for _ in ()).throw(meta_api.TooBig("reduce")))
     monkeypatch.setattr(meta_api, "_async_report", async_report)
     with pytest.raises(meta_api.GraphError, match="too big after 3 attempts"):
-        meta_api.pull_lifetime("tok", "act_1", "Acct", D(2025, 1, 1), D(2026, 11, 2))
+        meta_api.pull_lifetime("tok", "act_1", "Acct", D(2026, 10, 1), D(2026, 11, 2))      # a window this short is not split further
     assert n["async"] == 3
+
+
+def test_pull_lifetime_splits_the_window_when_the_whole_history_keeps_failing(monkeypatch):
+    monkeypatch.setattr(meta_api, "LIFETIME_RETRY_SLEEP", 0)
+    import json
+    seen = []
+
+    def paged(url, params, what, **k):
+        raise meta_api.TooBig("reduce")
+
+    def async_report(tok, acct, an, extra):
+        tr = json.loads(extra["time_range"])
+        span = (D.fromisoformat(tr["until"]) - D.fromisoformat(tr["since"])).days
+        seen.append(span)
+        if span > 600:
+            raise meta_api.GraphError("Acct: async job Job Failed")
+        return [{"day": D(2026, 11, 2), "ad_id": str(len(seen)), "ad_name": "x", "campaign_id": "", "campaign_name": "", "adset_id": "", "adset_name": "",
+                 "spend": 1.0, "purchases": 0, "value": 0, "clicks": 0}]
+    monkeypatch.setattr(meta_api, "_paged", paged)
+    monkeypatch.setattr(meta_api, "_async_report", async_report)
+    rows = meta_api.pull_lifetime("tok", "act_1", "Acct", D(2024, 1, 1), D(2026, 11, 2))
+    assert len(rows) == 2 and all(r["account"] == "Acct" for r in rows) and seen[:3] == [seen[0]] * 3 and seen[-1] < 500
