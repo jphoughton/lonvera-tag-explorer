@@ -173,3 +173,22 @@ def test_layout_titles_group_and_captions(cc):
     assert "Meta-reported" in d["captions"]["prod_cvr_meta"] and "Shopify first orders via Upstack" in d["captions"]["prod_cvr_nc"]
     for text in d["captions"].values():
         assert "—" not in text
+
+
+def test_a_lagging_product_feed_does_not_split_numerator_from_denominator(cc, cdb):
+    """If proj_feed_meta_product trails ad_daily (Meta restated clicks after the nightly feed ran), the rates still use ad_daily's clicks for both the purchases and the
+    clicks of the product: the page ties to ad_daily, not to the stale feed."""
+    day = D(2026, 11, 17)
+    with psycopg.connect(CV_URL) as conn:
+        conn.execute("UPDATE proj_feed_meta_product SET link_clicks = link_clicks - 50 WHERE day = %s AND product = 'Beef Liver'", (day,))
+        conn.commit()
+    try:
+        row = week(get(cc), W2[0])
+        out, *_ = expected(*W2)
+        p, c, o = out["beefliver"]
+        assert row["v"]["p_beefliver_cvr_meta"] == pytest.approx(p / c, abs=1e-6)
+        assert row["v"]["p_beefliver_cvr_nc"] == pytest.approx(o / c, abs=1e-6)
+    finally:
+        with psycopg.connect(CV_URL) as conn:
+            conn.execute("UPDATE proj_feed_meta_product SET link_clicks = link_clicks + 50 WHERE day = %s AND product = 'Beef Liver'", (day,))
+            conn.commit()

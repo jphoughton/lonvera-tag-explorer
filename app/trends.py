@@ -294,10 +294,10 @@ def fetch_frame(conn, lo: dt.date, hi: dt.date, cov: dict[str, Cov]) -> tuple[di
             present["funnel"].add(r["day"])
             put(r["day"], lpv=_f(r["lpv"]), atc=_f(r["atc"]), ic=_f(r["ic"]))
     # Meta purchases by product: the same ad_daily rows classified by the SAME function and rules that build proj_feed_meta_product (campaign name, then ad set name, else Other),
-    # so numerator (here) and denominator (that feed's link clicks) always share one product mapping.
+    # so numerator and denominator (link clicks of the same rows) share one product mapping; before ad_daily begins, the sheet-fed product feed's clicks are used.
     rules = _product_rules(conn)
     memo: dict[tuple, str] = {}
-    for r in conn.execute("""SELECT a.day, c.name AS cname, ads.adset_name AS adset, sum(a.purchases) AS p, count(*) AS n
+    for r in conn.execute("""SELECT a.day, c.name AS cname, ads.adset_name AS adset, sum(a.purchases) AS p, sum(a.link_clicks) AS c, count(*) AS n
                              FROM ad_daily a LEFT JOIN meta_campaigns c ON c.campaign_id = a.campaign_id LEFT JOIN meta_ads ads ON ads.ad_id = a.ad_id
                              WHERE a.day BETWEEN %s AND %s GROUP BY a.day, c.name, ads.adset_name""", (lo, hi)):
         present["prod_purch"].add(r["day"])
@@ -306,7 +306,7 @@ def fetch_frame(conn, lo: dt.date, hi: dt.date, cov: dict[str, Cov]) -> tuple[di
         if prod is None:
             prod = memo[key] = product_of(r["cname"], r["adset"], rules)
         if prod in slug_of:
-            put(r["day"], **{f"{slug_of[prod]}_mp": _f(r["p"])})
+            put(r["day"], **{f"{slug_of[prod]}_mp": _f(r["p"]), f"{slug_of[prod]}_clk": _f(r["c"])})
     # ... plus, for days before ad_daily begins, the sheet-fed campaign history (the only Meta data there is; campaign grain)
     if app_first is None or lo < app_first:
         top = (app_first - dt.timedelta(days=1)) if app_first else hi
@@ -330,7 +330,10 @@ def fetch_frame(conn, lo: dt.date, hi: dt.date, cov: dict[str, Cov]) -> tuple[di
                              GROUP BY 1, 2""", (lo, hi)):
         present["prod_spend"].add(r["day"])
         if r["product"] in slug:
-            put(r["day"], **{f"{slug[r['product']]}_spend": _f(r["s"]), f"{slug[r['product']]}_clk": _f(r["c"])})
+            kv = {f"{slug[r['product']]}_spend": _f(r["s"])}
+            if app_first is None or r["day"] < app_first:          # link clicks: ad_daily's own rows from its first day (the same pass as the purchases), this feed only before it
+                kv[f"{slug[r['product']]}_clk"] = _f(r["c"])
+            put(r["day"], **kv)
     for r in conn.execute("SELECT day, new_visitors FROM proj_feed_traffic WHERE day BETWEEN %s AND %s", (lo, hi)):
         present["traffic"].add(r["day"])
         put(r["day"], nv=_f(r["new_visitors"]))
