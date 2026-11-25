@@ -484,12 +484,13 @@ function render(d, view = null, opts = {}) {
       h('span', { class: 'pri-btngroup', role: 'group', 'aria-label': 'Export' }, csvLink, h('button', { type: 'button', class: 'btn', 'data-testid': 'pri-print', onclick: () => window.print() }, printLabel)));
     const prodLink = h('a', { class: 'btn pri-prodlink', href: href('/priorities/production', {}), title: 'Concepts assigned to vendors, by week', 'data-testid': 'pri-prod-link' }, 'Creative Pipeline');
     if (actl) actl.onCount((n) => { prodLink.textContent = n === null ? 'Creative Pipeline' : `Creative Pipeline (${n})`; });
+    const boardLink = h('a', { class: 'btn pri-boardlink', href: href('/priorities/board', {}), title: 'Plan the week on a whiteboard: drag concepts into Must do, If time or Parked', 'data-testid': 'pri-wb-mode-board' }, 'Board');
     const about = (title, tid, ...kids) => h('details', { class: 'pri-about', 'data-testid': tid }, h('summary', null, title), h('div', { class: 'pri-about-b' }, ...kids));
     const head = pageHeader({
       title: readonly ? `Priorities: ${view.name}` : act ? `Priorities: ${act.view.name}` : 'Priorities',
       description: sub,
       titleTestid: 'pri-title',
-      actions: readonly ? null : [act ? null : weekCtl, viewbar, prodLink],
+      actions: readonly ? null : [act ? null : weekCtl, viewbar, boardLink, prodLink],
     });
     const subEl = head.querySelector('.note-line');
     if (subEl) { subEl.classList.add('pri-sub', 'pri-hd-screen'); subEl.setAttribute('data-testid', 'pri-sub'); }
@@ -767,7 +768,7 @@ export async function prioritiesPage(ctx) {
     const nd = await fetchSnap();
     ctx.mount(render(act ? effective(nd, act, mode) : nd, null, { reload, ref, carry: ref.state, vm }));
   };
-  ctx.mount(render(act ? effective(d, act, mode) : d, null, { reload, ref, vm }));
+  ctx.mount(render(act ? effective(d, act, mode) : d, null, { reload, ref, vm, carry: ctx.params.q ? { q: ctx.params.q } : undefined }));
   document.title = act ? `${act.view.name} · Priorities · Lonvera` : 'Priorities · Lonvera';
 }
 

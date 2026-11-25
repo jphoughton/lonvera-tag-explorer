@@ -9438,6 +9438,224 @@
    "examples": []
   },
   {
+   "name": "public.creative_whiteboard_picks",
+   "schema": "public",
+   "relation": "creative_whiteboard_picks",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "The This week whiteboard on the Creative priorities page: the concepts the team picked to make in a week, their lane (must, if_time, parked), order and note, plus the ones it dropped.",
+   "grain": "one row per concept x week (unique)",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "the whiteboard on /priorities, via /api/priorities/whiteboard (app/priorities_whiteboard.py)",
+   "refresh": "on demand (a person picks, moves, notes or drops; the page saves the whole board at once)",
+   "coverage": "from the day migration 284 was deployed",
+   "caveats": [
+    "A drop sets status = dropped and the row stays, so it can be restored.",
+    "The tag text is copied from the concept when it is first picked; assignment_id is a soft link with no foreign key."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Primary key (bigserial)."
+    },
+    {
+     "name": "week",
+     "type": "date",
+     "nullable": false,
+     "description": "The Monday of the week the concept is picked for (a CHECK enforces a Monday)."
+    },
+    {
+     "name": "concept_key",
+     "type": "text",
+     "nullable": false,
+     "description": "Stable concept handle: line:<taxonomy_lines.id>, manual:<id>, or text:<product>|<cluster>|<icp>|<pain point>."
+    },
+    {
+     "name": "product",
+     "type": "text",
+     "nullable": false,
+     "description": "Product slug copied when first picked; empty when unknown."
+    },
+    {
+     "name": "cluster",
+     "type": "text",
+     "nullable": false,
+     "description": "Market cluster of the concept, copied when first picked."
+    },
+    {
+     "name": "icp",
+     "type": "text",
+     "nullable": false,
+     "description": "ICP (ideal customer profile) of the concept, copied when first picked."
+    },
+    {
+     "name": "pain_point",
+     "type": "text",
+     "nullable": false,
+     "description": "Pain point of the concept, copied when first picked."
+    },
+    {
+     "name": "line_code",
+     "type": "text",
+     "nullable": false,
+     "description": "Communication Overview line code (for example BL12) at the time of the pick; empty when none."
+    },
+    {
+     "name": "title",
+     "type": "text",
+     "nullable": false,
+     "description": "Card title shown on the whiteboard (up to 200 characters)."
+    },
+    {
+     "name": "lane",
+     "type": "text",
+     "nullable": false,
+     "description": "must, if_time or parked."
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "nullable": false,
+     "description": "picked (on the board) or dropped (taken off; the row stays)."
+    },
+    {
+     "name": "rank",
+     "type": "double precision",
+     "nullable": false,
+     "description": "Position across all picked cards of the week (1 is first)."
+    },
+    {
+     "name": "note",
+     "type": "text",
+     "nullable": false,
+     "description": "Free note on the card, up to 500 characters."
+    },
+    {
+     "name": "rev",
+     "type": "integer",
+     "nullable": false,
+     "description": "Counts the changes to this card; starts at 1."
+    },
+    {
+     "name": "assignment_id",
+     "type": "bigint",
+     "nullable": true,
+     "description": "creative_priorities_assignments.id when the concept was later given to a vendor; NULL until then."
+    },
+    {
+     "name": "created_by",
+     "type": "text",
+     "nullable": true,
+     "description": "Signed-in user who first picked the concept for the week."
+    },
+    {
+     "name": "updated_by",
+     "type": "text",
+     "nullable": true,
+     "description": "Signed-in user who last changed the card."
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the concept was first picked for the week."
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the card last changed."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "public.creative_whiteboard_events",
+   "schema": "public",
+   "relation": "creative_whiteboard_events",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "Change log of the This week whiteboard: one row for every card whose lane, order, status or note actually changed in a save.",
+   "grain": "one row per card change",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "source": "/api/priorities/whiteboard (app/priorities_whiteboard.py)",
+   "refresh": "on demand, with each save that changes something",
+   "coverage": "from the day migration 284 was deployed",
+   "caveats": [
+    "The largest id of a week is the version the page uses to detect changes (ETag).",
+    "A save that changes nothing writes no events."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Primary key (bigserial); the largest id of a week is that week's version."
+    },
+    {
+     "name": "week",
+     "type": "date",
+     "nullable": false,
+     "description": "The Monday of the whiteboard week."
+    },
+    {
+     "name": "pick_id",
+     "type": "bigint",
+     "nullable": true,
+     "description": "creative_whiteboard_picks.id of the card that changed. No foreign key."
+    },
+    {
+     "name": "at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the change was saved."
+    },
+    {
+     "name": "actor",
+     "type": "text",
+     "nullable": true,
+     "description": "Signed-in user who saved it."
+    },
+    {
+     "name": "kind",
+     "type": "text",
+     "nullable": false,
+     "description": "pick, drop, restore, move, note or remove (sent back to the backlog; the row is deleted)."
+    },
+    {
+     "name": "batch",
+     "type": "uuid",
+     "nullable": true,
+     "description": "Identifier shared by every event written by the same save."
+    },
+    {
+     "name": "before",
+     "type": "jsonb",
+     "nullable": true,
+     "description": "Card state before the change as JSON (lane, rank, status, note); NULL for a first pick."
+    },
+    {
+     "name": "after",
+     "type": "jsonb",
+     "nullable": true,
+     "description": "Card state after the change as JSON."
+    }
+   ],
+   "examples": []
+  },
+  {
    "name": "public.creative_cut_views",
    "schema": "public",
    "relation": "creative_cut_views",

@@ -48,6 +48,7 @@ const RESOLVE = [
   { re: /^\/competitors\/?$/, section: 'creative', page: 'competitors' },
   { re: /^\/priorities\/production\/?$/, section: 'creative', page: 'production' },
   { re: /^\/priorities\/vendor\//, section: 'creative', page: 'production' },
+  { re: /^\/priorities\/board\/?$/, section: 'creative', page: 'priorities' },
   { re: /^\/priorities(\/|$)/, section: 'creative', page: 'priorities' },
   { re: /^\/promotions\/?$/, section: 'creative', page: 'test-to-scale' },
   { re: /^\/madre-review\/?$/, section: 'creative', page: 'madre-review' },
