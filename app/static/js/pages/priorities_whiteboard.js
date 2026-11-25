@@ -23,6 +23,8 @@ const textKeyOf = (r) => 'text:' + [r.product, r.cluster, r.icp, r.pain_point].m
 const isOpen = (a) => a.stage !== 'launched' && a.stage !== 'dropped';
 const reduced = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const ssGet = (k) => { try { return sessionStorage.getItem(k); } catch (e) { return null; } };
+const ssSet = (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { /* not remembered */ } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* blocked: the board still works, it just is not remembered here */ } };
 const copyObj = (o) => JSON.parse(JSON.stringify(o));
 const SAVE_MS = 4000;
@@ -76,7 +78,7 @@ export async function whiteboardPage(ctx) {
 
   // ---------- store ----------
   const S = { week: ctx.params.week || mondayOf(today()), version: 0, lanes: { must: [], if_time: [], parked: [] }, notes: {}, dropped: [], meta: {}, removed: new Set(), undo: [], target: Number(lsGet('wb-target')) || 8,
-    saved: 'saved', dirty: false, pending: 0, loading: true, loadError: '', q: '', prods: new Set(), secs: new Set(), stats: new Set(), sort: 'action', group: false, collapsed: new Set(), pane: 'backlog', editing: false, trayOpen: false };
+    saved: 'saved', dirty: false, pending: 0, loading: true, loadError: '', q: '', prods: new Set(), secs: new Set(), stats: new Set(), sort: 'action', group: ssGet('wb-group') !== '0', collapsed: new Set(), pane: 'backlog', editing: false, trayOpen: false };
   const infoOf = (key) => byKey.get(key) || (() => { const m = S.meta[key] || {}; return { key, r: null, hue: hueOf(m.cluster), pain: m.pain_point || m.title || key, cluster: m.cluster || '', icp: m.icp || '', product: m.product, section: null, status: '', story: '' }; })();
   const tagOf = (key) => { const it = infoOf(key); return { product: it.product, cluster: it.cluster, icp: it.icp, pain_point: it.pain, line_code: it.r ? it.r.line_code : (S.meta[key] || {}).line_code, title: it.pain }; };
   const laneOfKey = (key) => LANES.map(([l]) => l).find((l) => S.lanes[l].includes(key)) || null;
@@ -160,7 +162,9 @@ export async function whiteboardPage(ctx) {
   function setNote(key, text) { const t = text.trim().slice(0, 500); if ((S.notes[key] || '') === t) return; mutate(() => { if (t) S.notes[key] = t; else delete S.notes[key]; }); }
   function undo() {
     const st = S.undo.pop(); if (!st) return;
+    const was = LANES.flatMap(([l]) => S.lanes[l]);
     S.lanes = st.lanes; S.notes = st.notes; S.dropped = st.dropped;
+    was.forEach((k) => { if (!onBoard(k) && !S.dropped.includes(k)) S.removed.add(k); });         // an undone add must come off the server's week too
     [...S.removed].forEach((k) => { if (onBoard(k) || S.dropped.includes(k)) S.removed.delete(k); });
     changed();
   }
@@ -208,10 +212,11 @@ export async function whiteboardPage(ctx) {
         h('span', { class: 'wb-cl' }, `${it.cluster} > ${it.icp}`),
         h('i', { class: 'wb-pd wb-p-' + it.product, title: prodName(it.product) }),
         h('span', { class: 'wb-num' + (n.tone ? ' wb-num-' + n.tone : ''), title: n.text === '–' ? 'Under $100 of spend in the last 14 days: no ratio shown' : 'Spend and ROAS, last 14 days' }, n.text + n.arrow)),
+      h('div', { class: 'wb-story', 'data-testid': 'pri-wb-story' }, it.story),
       h('button', { type: 'button', class: 'wb-add', 'data-testid': 'pri-wb-add', 'aria-label': 'Add to this week: ' + it.pain, onclick: (e) => { e.stopPropagation(); addTo(it.key, 'must'); } }, '+ This week'),
       h('span', { class: 'wb-grip', 'aria-hidden': 'true', title: 'Drag to move' }));
     el.style.setProperty('--h', String(it.hue));
-    it.el = el;
+    it.el = el; it.clEl = el.querySelector('.wb-cl');
     return it;
   }
 
@@ -229,36 +234,85 @@ export async function whiteboardPage(ctx) {
     const cmp = { action: (a, b) => secRank(a) - secRank(b) || sp(b) - sp(a) || a.ord - b.ord, spend: (a, b) => sp(b) - sp(a) || a.ord - b.ord, roas: (a, b) => ro(b) - ro(a) || a.ord - b.ord, cluster: (a, b) => a.cluster.localeCompare(b.cluster) || a.pain.localeCompare(b.pain) }[S.sort];
     return items.slice().sort(cmp);
   };
+  const spendOf = (its) => its.reduce((t, it) => t + (it._ok && it.r && has14(it.r) ? it.r.metrics.spend_14d : 0), 0);
   function layoutBacklog() {                                                       // builds the list (cards are created once; sorting and grouping only move them)
     const frag = document.createDocumentFragment();
     const list = sorted();
-    ui.heads = [];
-    if (S.group) {
+    ui.groups = [];
+    ui.list.classList.toggle('wb-grouped', S.group);
+    if (S.group) {                                                                 // cluster > ideal customer profile (ICP) > pain point cards
       const order = []; const by = new Map();
-      list.forEach((it) => { if (!by.has(it.cluster)) { by.set(it.cluster, []); order.push(it.cluster); } by.get(it.cluster).push(it); });
-      order.forEach((c) => {
-        const open = !S.collapsed.has(c);
-        const head = h('button', { type: 'button', class: 'wb-ch', 'aria-expanded': String(open), 'data-cluster': c, 'data-testid': 'pri-wb-chead', onclick: () => { if (S.collapsed.has(c)) S.collapsed.delete(c); else S.collapsed.add(c); layoutBacklog(); } },
-          h('span', { class: 'wb-chev', 'aria-hidden': 'true' }), h('span', { class: 'wb-ch-n' }, c), h('span', { class: 'wb-ch-c' }));
-        head.style.setProperty('--h', String(hueOf(c)));
-        head._items = by.get(c);
-        ui.heads.push(head);
-        frag.append(head, ...by.get(c).map((it) => it.el));
+      list.forEach((it) => {
+        if (!by.has(it.cluster)) { by.set(it.cluster, new Map()); order.push(it.cluster); }
+        const m = by.get(it.cluster);
+        if (!m.has(it.icp)) m.set(it.icp, []);
+        m.get(it.icp).push(it);
       });
-    } else frag.append(...list.map((it) => it.el));
+      order.forEach((c) => {
+        const icps = [...by.get(c).entries()];
+        const all = [].concat(...icps.map(([, v]) => v));
+        const open = !S.collapsed.has(c);
+        const G = { cluster: c, items: all, igs: [] };
+        G.toggle = h('button', { type: 'button', class: 'wb-ch-t', 'aria-expanded': String(open), 'data-cluster': c, 'data-testid': 'pri-wb-chead', onclick: () => { if (S.collapsed.has(c)) S.collapsed.delete(c); else S.collapsed.add(c); G.toggle.setAttribute('aria-expanded', String(!S.collapsed.has(c))); applyFilters(); } },
+          h('span', { class: 'wb-chev', 'aria-hidden': 'true' }), h('span', { class: 'wb-ch-n' }, c || '(no cluster)'));
+        G.count = h('span', { class: 'wb-ch-c', 'data-testid': 'pri-wb-chead-count', title: 'Concepts in this cluster' });
+        G.spend = h('span', { class: 'wb-ch-s', title: 'Meta spend, last 14 days' });
+        G.btn = h('button', { type: 'button', class: 'wb-addall', 'data-testid': 'pri-wb-addall', title: 'Add every concept of this cluster that is not on the board yet to Must do', onclick: (e) => { e.stopPropagation(); addMany(all, 'Added', c || 'this cluster'); } });
+        G.head = h('div', { class: 'wb-ch' }, G.toggle, G.count, G.spend, G.btn);
+        G.el = h('div', { class: 'wb-cg', 'data-cluster': c, 'data-testid': 'pri-wb-cgroup' }, G.head);
+        G.el.style.setProperty('--h', String(hueOf(c)));
+        icps.forEach(([icp, its]) => {
+          const I = { icp, items: its };
+          I.count = h('span', { class: 'wb-ih-c', 'data-testid': 'pri-wb-ihead-count' });
+          I.btn = h('button', { type: 'button', class: 'wb-addicp', 'data-testid': 'pri-wb-addicp', title: 'Add every concept of this customer profile that is not on the board yet to Must do', onclick: (e) => { e.stopPropagation(); addMany(its, 'Added', icp || 'this profile'); } });
+          I.head = h('div', { class: 'wb-ih', 'data-testid': 'pri-wb-ihead' }, h('span', { class: 'wb-ih-n' }, icp || '(no profile)'), I.count, I.btn);
+          I.el = h('div', { class: 'wb-ig', 'data-testid': 'pri-wb-igroup' }, I.head, ...its.map((it) => it.el));
+          G.igs.push(I);
+          G.el.append(I.el);
+        });
+        ui.groups.push(G);
+        frag.append(G.el);
+      });
+      list.forEach((it) => { it.clEl.textContent = prodName(it.product); });
+    } else {
+      list.forEach((it) => { it.clEl.textContent = `${it.cluster} > ${it.icp}`; });
+      frag.append(...list.map((it) => it.el));
+    }
     frag.append(ui.noMatch);
     ui.list.replaceChildren(frag);
     applyFilters();
   }
+  const notOn = (its) => its.filter((it) => it._ok && !onBoard(it.key));
+  function updateGroupBtns() {
+    (ui.groups || []).forEach((G) => {
+      const ng = notOn(G.items).length;
+      G.btn.textContent = `+ All ${ng}`; G.btn.disabled = ng === 0;
+      G.igs.forEach((I) => { const ni = notOn(I.items).length; I.btn.textContent = `+ ICP ${ni}`; I.btn.disabled = ni === 0; });
+    });
+  }
+  function addMany(its, verb, name) {                                              // every visible concept not on the board yet goes to the bottom of Must do: one save, one undo step
+    const todo = notOn(its);
+    if (!todo.length) return;
+    mutate(() => todo.forEach((it) => place(it.key, 'must')));
+    toast(`${verb} ${todo.length} from ${name}`, undo);
+  }
   function applyFilters() {
     let n = 0;
     items.forEach((it) => { const ok = visible(it); if (ok) n += 1; it._ok = ok; it.el.hidden = !ok || (S.group && S.collapsed.has(it.cluster)); });
-    (ui.heads || []).forEach((hd) => { const c = hd._items.filter((it) => it._ok).length; hd.hidden = c === 0; hd.querySelector('.wb-ch-c').textContent = String(c); });
+    (ui.groups || []).forEach((G) => {
+      const c = G.items.filter((it) => it._ok).length;
+      G.el.hidden = c === 0; G.count.textContent = String(c);
+      const sp = spendOf(G.items); G.spend.textContent = G.items.some((it) => it._ok && it.r && has14(it.r)) ? compact$(sp) : '';
+      const shut = S.collapsed.has(G.cluster);
+      G.igs.forEach((I) => { const k = I.items.filter((it) => it._ok).length; I.el.hidden = k === 0 || shut; I.count.textContent = String(k); });
+    });
+    updateGroupBtns();
     ui.count.textContent = `${n} of ${items.length}`;
     ui.noMatch.hidden = n !== 0;
     ui.list.dataset.shown = String(n);
   }
   function markGhosts() {
+    updateGroupBtns();
     items.forEach((it) => {
       const lane = laneOfKey(it.key);
       const was = it.el.classList.contains('wb-onboard');
@@ -297,7 +351,7 @@ export async function whiteboardPage(ctx) {
       h('span', { class: 'wb-rank', 'data-testid': 'pri-wb-rank' }),
       h('div', { class: 'wb-bb' },
         h('div', { class: 'wb-bt', 'data-testid': 'pri-wb-btitle' }, it.pain),
-        h('div', { class: 'wb-bm' }, h('span', { class: 'wb-cl' }, `${it.cluster} > ${it.icp}`), actionChip(it.section)),
+        h('div', { class: 'wb-bm' }, h('span', { class: 'wb-ctag', 'data-testid': 'pri-wb-ctag', title: it.cluster }, it.cluster), h('span', { class: 'wb-cl' }, it.icp), actionChip(it.section)),
         h('div', { class: 'wb-bs' }, it.story || ''),
         h('div', { class: 'wb-bf wb-num' + (n.tone ? ' wb-num-' + n.tone : '') }, foot + (n.arrow || '')),
         h('div', { class: 'wb-bn', 'data-testid': 'pri-wb-note', hidden: true })),
@@ -403,7 +457,7 @@ export async function whiteboardPage(ctx) {
   ui.noMatch = h('div', { class: 'wb-nomatch', 'data-testid': 'pri-wb-nomatch', hidden: true }, 'No concepts match these filters.');
   ui.list = h('div', { class: 'wb-blist', 'data-testid': 'pri-wb-backlog', tabindex: '-1' });
   items.forEach(backlogCard);
-  const groupBtn = pill('Group by cluster', false, (b) => { S.group = !S.group; b.setAttribute('aria-pressed', String(S.group)); layoutBacklog(); }, 'pri-wb-group');
+  const groupBtn = pill('Group by cluster', S.group, (b) => { S.group = !S.group; ssSet('wb-group', S.group ? '1' : '0'); b.setAttribute('aria-pressed', String(S.group)); layoutBacklog(); }, 'pri-wb-group');
   const filters = h('div', { class: 'wb-filters', 'data-testid': 'pri-wb-filters' },
     h('div', { class: 'wb-f1' }, search, ui.count),
     h('div', { class: 'wb-f2' }, h('span', { class: 'wb-fl' }, 'Product'), ...PRODUCTS.map((p) => pill(prodName(p), false, toggler(S.prods, p), 'pri-wb-f-prod-' + p)),

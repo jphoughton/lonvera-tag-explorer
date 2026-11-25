@@ -97,7 +97,76 @@ def test_renders_backlog_lanes_and_totals(page, ctx, base_url):
     assert page.evaluate("document.documentElement.scrollHeight <= window.innerHeight + 2")
     # each backlog card is compact and carries the cluster colour bar
     box = card(page, 0).bounding_box()
-    assert 50 <= box["height"] <= 54
+    assert 80 <= box["height"] <= 84
+    assert card(page, 0).locator("[data-testid=pri-wb-story]").is_visible()
+
+
+def cluster_group(page, i=0):
+    return page.locator("[data-testid=pri-wb-cgroup]:visible").nth(i)
+
+
+def test_backlog_nests_cluster_icp_and_pain_point_with_stories(page):
+    goto(page)
+    assert page.locator("[data-testid=pri-wb-group]").get_attribute("aria-pressed") == "true"
+    cg = cluster_group(page)
+    head = cg.locator(".wb-ch")
+    assert head.locator("[data-testid=pri-wb-chead]").inner_text().strip()
+    assert int(head.locator("[data-testid=pri-wb-chead-count]").inner_text()) == cg.locator("[data-testid=pri-wb-card]:visible").count()
+    assert cg.locator("[data-testid=pri-wb-ihead]").count() >= 1
+    ig = cg.locator("[data-testid=pri-wb-igroup]").first
+    assert ig.locator("[data-testid=pri-wb-ihead]").count() == 1 and ig.locator("[data-testid=pri-wb-card]").count() >= 1
+    c = ig.locator("[data-testid=pri-wb-card]").first
+    assert c.locator("[data-testid=pri-wb-story]").is_visible()                                      # the story is on the card
+    assert ">" not in c.locator(".wb-cl").text_content()                                              # cluster and ICP live in the headers when grouped
+    bx, ix = cg.bounding_box(), ig.bounding_box()
+    assert ix["x"] > bx["x"] + 8                                                                     # ICP group is indented under the cluster
+    assert 80 <= c.bounding_box()["height"] <= 84
+    # a board card carries the cluster as a tag
+    c.dblclick()
+    settle(page)
+    assert page.locator("[data-testid=pri-wb-bcard] [data-testid=pri-wb-ctag]").first.inner_text().strip()
+
+
+def test_add_all_and_add_icp_one_save_one_undo(page, ctx, base_url):
+    goto(page)
+    cg = cluster_group(page)
+    n = int(cg.locator("[data-testid=pri-wb-chead-count]").inner_text())
+    btn = cg.locator("[data-testid=pri-wb-addall]")
+    assert btn.inner_text() == f"+ All {n}"
+    keys_in = cg.locator("[data-testid=pri-wb-card]").evaluate_all("cs => cs.map(c => c.dataset.key)")
+    before = len(server_state(ctx, base_url)["picks"])
+    btn.click()
+    settle(page)
+    assert keys(page, "must") == keys_in                                                              # appended to the bottom, in the backlog's order
+    assert page.locator("[data-testid=pri-wb-toast]").inner_text().startswith(f"Added {n} from")
+    assert before == 0 and len(server_state(ctx, base_url)["picks"]) == n
+    assert btn.is_disabled() and btn.inner_text() == "+ All 0"
+    page.locator("body").click(position={"x": 5, "y": 5})
+    page.keyboard.press("Control+z")                                                                  # one undo step takes all of them back
+    settle(page)
+    assert keys(page, "must") == [] and btn.inner_text() == f"+ All {n}"
+    # + ICP adds only that profile
+    ig = cg.locator("[data-testid=pri-wb-igroup]").first
+    ni = ig.locator("[data-testid=pri-wb-card]").count()
+    ig.locator("[data-testid=pri-wb-addicp]").click()
+    settle(page)
+    assert len(keys(page, "must")) == ni and page.locator("[data-testid=pri-wb-toast]").inner_text().startswith(f"Added {ni} from")
+
+
+def test_filters_shrink_the_add_all_count(page):
+    goto(page)
+    page.locator("[data-testid=pri-wb-f-sec-test]").click()
+    for i in range(page.locator("[data-testid=pri-wb-cgroup]:visible").count()):
+        g = cluster_group(page, i)
+        shown = g.locator("[data-testid=pri-wb-card]:visible").count()
+        assert g.locator("[data-testid=pri-wb-addall]").inner_text() == f"+ All {shown}"
+    g = cluster_group(page)
+    shown = g.locator("[data-testid=pri-wb-card]:visible").count()
+    g.locator("[data-testid=pri-wb-addall]").click()
+    settle(page)
+    assert len(keys(page, "must")) == shown
+    assert page.locator("[data-testid=pri-wb-card][data-section=test]:visible").evaluate_all("cs => true")
+    assert all(k in keys(page, "must") for k in g.locator("[data-testid=pri-wb-card]:visible").evaluate_all("cs => cs.map(c => c.dataset.key)"))
 
 
 def test_table_and_board_link_each_other(page):
@@ -316,14 +385,19 @@ def test_filters_with_a_populated_board(page):
     assert page.locator("[data-testid=pri-wb-card]:visible").evaluate_all("cs => cs.every(c => c.dataset.section === 'test')")
     assert page.locator("[data-testid=pri-wb-count]").inner_text() == f"{shown} of {total}"
     page.locator("[data-testid=pri-wb-f-sec-test]").click()
-    page.locator("[data-testid=pri-wb-group]").click()                     # grouped: sticky cluster headers that collapse
+    assert page.locator("[data-testid=pri-wb-group]").get_attribute("aria-pressed") == "true"      # grouped by default: sticky cluster headers that collapse
     heads = page.locator("[data-testid=pri-wb-chead]:visible")
     assert heads.count() >= 2
     n = page.locator("[data-testid=pri-wb-card]:visible").count()
     heads.first.click()
     assert page.locator("[data-testid=pri-wb-card]:visible").count() < n
-    page.locator("[data-testid=pri-wb-group]").click()
+    assert page.locator("[data-testid=pri-wb-ihead]:visible").count() < page.locator("[data-testid=pri-wb-ihead]").count()
+    heads.first.click()
+    page.locator("[data-testid=pri-wb-group]").click()                     # off: flat list, no headers, Cluster > ICP on each card
+    assert page.locator("[data-testid=pri-wb-chead]").count() == 0
     assert page.locator("[data-testid=pri-wb-card]:visible").count() == total
+    assert ">" in card(page, 0).locator(".wb-cl").text_content()
+    page.locator("[data-testid=pri-wb-group]").click()
     # "/" jumps to the search box
     page.locator("body").click(position={"x": 5, "y": 5})
     page.keyboard.press("/")
@@ -407,7 +481,7 @@ def test_frame_time_over_250_concepts(page, ctx, base_url):
     assert page.locator("[data-testid=pri-wb-card]").count() == 250
     for i in range(4):
         add(page, i)
-    src = card(page, 6).bounding_box()
+    src = card(page, 4).bounding_box()
     must = lane(page, "must").bounding_box()
     ift = lane(page, "if_time").bounding_box()
     page.evaluate("""() => { window.__d = []; let last = performance.now(); window.__run = true;
