@@ -1,8 +1,9 @@
 """QuickBooks "Profit and Loss by Month" upload: parse (csv or xlsx), map accounts to P&L lines, preview the diff, commit.
 
 Rules
-    * The header row is the first row (in the first 30) with at least three month labels; every later row whose first cell is an account name and
-      which carries numbers is an account. "Total ..." rows and the computed subtotals (Gross Profit, Net Operating Income, Net Income, ...) are never
+    * The header row is the first row (in the first 30) with at least three month labels (month-per-column layout); when there is none, the first row with
+      a month label right of column A (the single-month layout: one month column, plus a "% of Income" column that is ignored). Every later row whose
+      first cell is an account name and which carries numbers is an account. "Total ..." rows and the computed subtotals (Gross Profit, Net Operating Income, Net Income, ...) are never
       loaded, and the preview says so. Accounts with numbers and no mapping are listed as unmapped; nothing is dropped silently.
     * Only closed months (before the first of the current month) inside the model axis (2025-01 .. 2029-12) are loaded; every other month column is
       listed with the reason it was skipped.
@@ -22,6 +23,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from ..interfaces import AXIS_END, AXIS_START, add_months
+from . import charts
 from . import lines as L
 from .store import norm_account
 from .xlsx_read import XlsxError, read_first_sheet
@@ -122,6 +124,7 @@ class Account:
     name: str
     row: int
     values: dict[date, float]
+    parent: str | None = None                                    # the header row (an account line with no amounts) the account sits under
 
 
 @dataclass
@@ -134,39 +137,74 @@ class Parsed:
     filename: str = ""
     bytes: int = 0
     rows: int = 0
+    chart_guess: str = charts.SHEET                              # qb2026 when the accounts carry four-digit codes
+
+
+_CODE = re.compile(r"^(\d{4})\b\s*")
+
+
+def strip_code(name: str) -> str:
+    return _CODE.sub("", str(name or "").strip())
+
+
+def lookup_account(qb_map: dict[str, str], name: str, parent: str | None = None) -> str | None:
+    """The line an account feeds. Tried in order: the full name; the parent-qualified name without codes ("software & apps > marketing", for exports
+    that drop the account code of the ambiguous children of "6165 Software & Apps"); the four-digit account code (an account renamed in the books but
+    keeping its number)."""
+    key = norm_account(name)
+    if key in qb_map:
+        return qb_map[key]
+    if parent:
+        q = norm_account(strip_code(parent)) + " > " + norm_account(strip_code(name))
+        if q in qb_map:
+            return qb_map[q]
+    m = _CODE.match(name.strip())
+    if m:
+        pre = m.group(1) + " "
+        hits = {line for k, line in qb_map.items() if k.startswith(pre)}
+        if len(hits) == 1:
+            return hits.pop()
+    return None
 
 
 def parse(data: bytes, filename: str = "") -> Parsed:
     rows = read_rows(data, filename)
     out = Parsed(sha256=hashlib.sha256(data).hexdigest(), filename=filename[:200], bytes=len(data), rows=len(rows))
     header = None
-    for i, r in enumerate(rows[:HEADER_SCAN_ROWS]):
-        cols = {j: _month_from_label(c) for j, c in enumerate(r)}
-        found = {j: m for j, m in cols.items() if m is not None and j > 0}
-        if len(found) >= 3:
-            header = (i, found)
+    for need in (3, 1):                                            # month-per-column layout first, then the single-month layout
+        for i, r in enumerate(rows[:HEADER_SCAN_ROWS]):
+            cols = {j: _month_from_label(c) for j, c in enumerate(r)}
+            found = {j: m for j, m in cols.items() if m is not None and j > 0}
+            if len(found) >= need:
+                header = (i, found)
+                break
+        if header is not None:
             break
     if header is None:
-        raise UploadError("no month header found: expected a row with month columns such as 'Jan 2026' (QuickBooks 'Profit and Loss by Month')")
+        raise UploadError("no month header found: expected a row with month columns such as 'Jan 2026' (QuickBooks 'Profit and Loss by Month' or a single month)")
     hi, colmonth = header
     out.header_row = hi + 1
     seen_months = sorted(set(colmonth.values()))
     if len(seen_months) != len(colmonth):
         raise UploadError("the month header repeats a month")
     out.months = seen_months
+    parent: str | None = None
     for ri in range(hi + 1, len(rows)):
         r = rows[ri]
         if not r or r[0] is None or str(r[0]).strip() == "":
             continue
         name = re.sub(r"\s+", " ", str(r[0])).strip()
         vals = {m: a for j, m in colmonth.items() if j < len(r) for a in [_amount(r[j])] if a is not None}
-        if not vals:
-            continue                                              # a section header such as "Expenses" or an empty account
         low = norm_account(name)
+        if not vals:
+            parent = None if (low.startswith("total") or low in SUBTOTALS) else name       # a section or parent header such as "Expenses" or "6165 Software & Apps"
+            continue                                              # (an empty account is skipped the same way)
         if low.startswith("total") or low in SUBTOTALS:
             out.ignored.append({"account": name, "row": ri + 1, "reason": "Computed row, not loaded"})
+            parent = None
             continue
-        out.accounts.append(Account(name=name, row=ri + 1, values=vals))
+        out.accounts.append(Account(name=name, row=ri + 1, values=vals, parent=parent))
+    out.chart_guess = charts.QB2026 if any(_CODE.match(a.name) for a in out.accounts) else charts.SHEET
     if not out.accounts and not out.ignored:
         raise UploadError("the file has a month header but no account rows with numbers")
     return out
@@ -174,8 +212,9 @@ def parse(data: bytes, filename: str = "") -> Parsed:
 
 # ---------------------------------------------------------------------------------------------------------------- mapping and diff
 
-def build_cells(parsed: Parsed, qb_map: dict[str, str], today: date) -> dict:
+def build_cells(parsed: Parsed, qb_map: dict[str, str], today: date, chart: str = charts.SHEET) -> dict:
     """Apply the account map and the closed-month rule. Returns {cells: {(line_key, month): value}, mapped, unmapped, skipped_months}."""
+    qb_keys = charts.get(chart).qb_keys
     cap = today.replace(day=1)
     months_ok: list[date] = []
     skipped_months: list[dict] = []
@@ -190,12 +229,12 @@ def build_cells(parsed: Parsed, qb_map: dict[str, str], today: date) -> dict:
     mapped: list[dict] = []
     unmapped: list[dict] = []
     for a in parsed.accounts:
-        key = qb_map.get(norm_account(a.name))
+        key = lookup_account(qb_map, a.name, a.parent)
         vals = {m: v for m, v in a.values.items() if m in months_ok}
         if key is None:
             unmapped.append({"account": a.name, "row": a.row, "months": len(a.values), "total": round(sum(a.values.values()), 2)})
             continue
-        if key not in L.QB_KEYS:
+        if key not in qb_keys:
             unmapped.append({"account": a.name, "row": a.row, "months": len(a.values), "total": round(sum(a.values.values()), 2),
                              "error": f"mapped to {key!r}, which is not a loadable line"})
             continue
@@ -242,39 +281,34 @@ def months_summary(cells, diff) -> list[dict]:
     return out
 
 
-# Account families a closed month must carry before it can become "books". Membership is the structure of the P&L (which line belongs to which
-# family); which families are required, and how far a month may stray from its neighbours before it needs a second look, are settings
-# (proj_pnl_settings 'upload', defaults in model.DEFAULT_SETTINGS).
-FAMILIES: dict[str, tuple[str, ...]] = {
-    "revenue": L.REVENUE_KEYS,
-    "cost_of_goods": ("china_cogs", "us_cogs"),
-    "fulfillment": ("fulfillment_services", "inbound_shipping"),
-    "marketing_spend": L.CHANNEL_KEYS,
-    "operating_expenses": tuple(k for k in L.QB_KEYS if k not in L.REVENUE_KEYS and k not in L.CHANNEL_KEYS and k not in
-                                ("china_cogs", "us_cogs", "fulfillment_services", "inbound_shipping", "amazon_fba_fees", "amazon_seller_fees",
-                                 "amazon_subscriptions", "amazon_inbound_transport", "shipping_supplies", "shopify_subscriptions", "seller_fees",
-                                 "inventory_shrinkage")),
-}
-FAMILY_LABEL = {"revenue": "revenue", "cost_of_goods": "cost of goods", "fulfillment": "fulfillment and shipping", "marketing_spend": "ad spend",
-                "operating_expenses": "operating expenses"}
+# Account families a closed month must carry before it can become "books". Membership is the structure of the chart (which line belongs to which
+# family, charts/sheet.py and charts/qb2026.py); which families are required, and how far a month may stray from its neighbours before it needs a second
+# look, are settings (proj_pnl_settings 'upload', defaults in model.DEFAULT_SETTINGS). Both charts use the same family names.
+from .charts import sheet as _sheet                                 # noqa: E402
+
+FAMILIES: dict[str, tuple[str, ...]] = _sheet.FAMILIES               # the sheet chart's families (kept under this name for existing callers)
+FAMILY_LABEL = _sheet.FAMILY_LABEL
 
 
 def _money(v: float) -> str:
     return f"${v:,.0f}" if abs(v) < 1e6 else f"${v / 1e6:,.2f}M"
 
 
-def _totals(merged: dict[tuple[str, date], float], m: date) -> tuple[float, float, bool]:
-    """(income, cost, has_data) for one month of a merged {(line, month): value} map."""
-    income = sum(v for (k, mm), v in merged.items() if mm == m and k in L.REVENUE_KEYS)
-    cost = sum(v for (k, mm), v in merged.items() if mm == m and k not in L.REVENUE_KEYS)
+def _totals(merged: dict[tuple[str, date], float], m: date, chart: str = charts.SHEET) -> tuple[float, float, bool]:
+    """(income, cost, has_data) for one month of a merged {(line, month): value} map. Below-the-line lines (other income, interest) are neither."""
+    c = charts.get(chart)
+    income = sum(v for (k, mm), v in merged.items() if mm == m and k in c.income_keys)
+    below = ("other_income", "interest_expense") if chart == charts.QB2026 else ()
+    cost = sum(v for (k, mm), v in merged.items() if mm == m and k not in c.income_keys and k not in below)
     return income, cost, any(mm == m for (_, mm) in merged)
 
 
 def coverage_checks(cells: dict[tuple[str, date], float], existing: dict[str, dict[date, float]], months: list[date], cfg: dict,
-                    estimates: dict[date, dict] | None) -> dict:
+                    estimates: dict[date, dict] | None, chart: str = charts.SHEET) -> dict:
     """Per loaded month: which account families are present once the file is applied, whether the totals look right next to the neighbouring
     months and the model's own figure, and what that means for net operating income. Blockers stop a commit; review items need a confirmation."""
-    required = [f for f in cfg["required_families"] if f in FAMILIES]
+    fams, flabel = charts.get(chart).families, charts.get(chart).family_label
+    required = [f for f in cfg["required_families"] if f in fams]
     merged: dict[tuple[str, date], float] = {(k, m): v for k, mv in existing.items() for m, v in mv.items()}
     merged.update(cells)
     lo, hi = float(cfg["low_ratio"]), float(cfg["high_ratio"])
@@ -284,12 +318,12 @@ def coverage_checks(cells: dict[tuple[str, date], float], existing: dict[str, di
     loaded = sorted({m for (_, m) in cells})
     for m in loaded:
         label = f"{MONTH_NAMES[m.month - 1]} {m.year}"
-        present = {f for f, keys in FAMILIES.items() if any((k, m) in merged for k in keys)}
+        present = {f for f, keys in fams.items() if any((k, m) in merged for k in keys)}
         missing = [f for f in required if f not in present]
-        income, cost, _ = _totals(merged, m)
+        income, cost, _ = _totals(merged, m, chart)
         refs_i, refs_c = [], []
         for nb in (add_months(m, -1), add_months(m, 1)):
-            i, c, has = _totals(merged, nb)
+            i, c, has = _totals(merged, nb, chart)
             if has and i > 0 and c > 0:
                 refs_i.append(i)
                 refs_c.append(c)
@@ -305,22 +339,23 @@ def coverage_checks(cells: dict[tuple[str, date], float], existing: dict[str, di
                 if ratio < lo or ratio > hi:
                     flags.append(f"{label} {name} {_money(value)} is {ratio * 100:.0f}% of the {_money(ref)} its neighbouring months and the model suggest")
         if missing:
-            blockers.append(f"{label} has no {' and no '.join(FAMILY_LABEL[f] for f in missing)} accounts, so it cannot become books. Map the missing accounts or upload the full report")
+            blockers.append(f"{label} has no {' and no '.join(flabel[f] for f in missing)} accounts, so it cannot become books. Map the missing accounts or upload the full report")
         review.extend(flags)
-        rows.append({"month": m.isoformat(), "families": {f: (f in present) for f in FAMILIES}, "missing": [FAMILY_LABEL[f] for f in missing],
+        rows.append({"month": m.isoformat(), "families": {f: (f in present) for f in fams}, "missing": [flabel[f] for f in missing],
                      "income": income, "cost": cost, "noi": income - cost, "model_noi": (est or {}).get("noi"), "flags": flags, "ok": not missing and not flags})
     return {"rows": rows, "blockers": blockers, "review": review}
 
 
 def preview(parsed: Parsed, qb_map: dict[str, str], existing: dict[str, dict[date, float]], today: date, estimates: dict[date, dict] | None = None,
-            checks: dict | None = None) -> dict:
+            checks: dict | None = None, chart: str = charts.SHEET) -> dict:
     if checks is None:
         from .model import DEFAULT_SETTINGS
         checks = DEFAULT_SETTINGS["upload"]
-    b = build_cells(parsed, qb_map, today)
+    cd = charts.get(chart)
+    b = build_cells(parsed, qb_map, today, chart)
     d = diff_cells(b["cells"], existing)
-    cov = coverage_checks(b["cells"], existing, b["months"], checks, estimates)
-    revenue_mapped = {x["line_key"] for x in b["mapped"]} & set(L.REVENUE_KEYS)
+    cov = coverage_checks(b["cells"], existing, b["months"], checks, estimates, chart)
+    revenue_mapped = {x["line_key"] for x in b["mapped"]} & set(cd.families["revenue"])
     notes = []
     if not revenue_mapped:
         notes.append("No revenue account is mapped: DTC, Amazon and TikTok revenue for these months will keep coming from the spend plan and cohorts.")
@@ -330,7 +365,7 @@ def preview(parsed: Parsed, qb_map: dict[str, str], existing: dict[str, dict[dat
     months = months_summary(b["cells"], d)
     for m in months:
         m.update({k: by_month[m["month"]][k] for k in ("families", "missing", "income", "cost", "noi", "model_noi", "flags", "ok")})
-    return {"file": {"name": parsed.filename, "sha256": parsed.sha256, "bytes": parsed.bytes, "rows": parsed.rows, "header_row": parsed.header_row,
+    return {"chart": chart, "file": {"name": parsed.filename, "sha256": parsed.sha256, "bytes": parsed.bytes, "rows": parsed.rows, "header_row": parsed.header_row,
                      "months": [m.isoformat() for m in parsed.months]},
             "months": months,
             "mapped": b["mapped"], "unmapped": b["unmapped"], "ignored": parsed.ignored, "skipped_months": b["skipped_months"],
@@ -338,5 +373,5 @@ def preview(parsed: Parsed, qb_map: dict[str, str], existing: dict[str, dict[dat
             "changes": d["changed"][:MAX_CHANGES_SHOWN], "changes_truncated": max(0, len(d["changed"]) - MAX_CHANGES_SHOWN),
             "new_sample": d["new"][:20], "diff_sha256": diff_hash(b["cells"]), "notes": notes,
             "blockers": cov["blockers"], "review": cov["review"], "needs_confirmation": bool(cov["review"]) and not cov["blockers"],
-            "required_families": [FAMILY_LABEL[f] for f in checks["required_families"] if f in FAMILY_LABEL],
+            "required_families": [cd.family_label[f] for f in checks["required_families"] if f in cd.family_label],
             "committable": bool(b["cells"]) and not cov["blockers"]}, b["cells"]

@@ -277,7 +277,7 @@ def _resolve_table(spec: VariableSpec, ctx: Context) -> Resolved:
         text = f"{n} saved snapshot{'s' if n != 1 else ''}, newest in use" if n is not None else text
         changed = bool(n and n > 1)
     elif name == "pnl.monthly_overrides":
-        cells = [c for c in _series_cells(ctx, "pnl.") if c["kind"] == "override"]
+        cells = [c for c in _series_cells(ctx, "pnl.") if c["kind"] == "override" and not c["line_key"].startswith("pnl.qb26.")]       # sheet chart only
         text, changed = (f"{len(cells)} typed month{'s' if len(cells) != 1 else ''}" if cells else "No typed months"), bool(cells)
     elif name == "pnl.cogs_sku":
         n = _count(conn, "SELECT count(*) FROM proj_pnl_cogs_sku")

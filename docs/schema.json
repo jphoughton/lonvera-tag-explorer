@@ -15577,6 +15577,7 @@
    "purpose": "How each P&L line is projected (segments of fixed / carry / rate modes). Finance. Projection engine (finance / planning); read it through the analytics projection_* / inventory_* / cohorts_* views, never the raw table.",
    "grain": "one row per line",
    "primary_key": [
+    "chart",
     "line_key"
    ],
    "foreign_keys": [],
@@ -15616,6 +15617,12 @@
      "type": "timestamp with time zone",
      "nullable": false,
      "description": "When changed."
+    },
+    {
+     "name": "chart",
+     "type": "text",
+     "nullable": false,
+     "description": "Chart of accounts the driver belongs to: sheet (the sheet's lines, the default) or qb2026 (the numbered QuickBooks accounts)."
     }
    ],
    "examples": []
@@ -15751,6 +15758,7 @@
    "purpose": "QuickBooks account name -> P&L line key map. Finance. Projection engine (finance / planning); read it through the analytics projection_* / inventory_* / cohorts_* views, never the raw table.",
    "grain": "one row per account",
    "primary_key": [
+    "chart",
     "account"
    ],
    "foreign_keys": [],
@@ -15784,6 +15792,12 @@
      "type": "timestamp with time zone",
      "nullable": false,
      "description": "When changed."
+    },
+    {
+     "name": "chart",
+     "type": "text",
+     "nullable": false,
+     "description": "Chart of accounts the map belongs to: sheet or qb2026."
     }
    ],
    "examples": []
@@ -15948,6 +15962,12 @@
      "type": "text",
      "nullable": true,
      "description": "Who undid it."
+    },
+    {
+     "name": "chart",
+     "type": "text",
+     "nullable": false,
+     "description": "Chart of accounts the upload loaded: sheet or qb2026."
     }
    ],
    "examples": []
@@ -18806,6 +18826,12 @@
      "type": "timestamp with time zone",
      "nullable": null,
      "description": "When changed."
+    },
+    {
+     "name": "chart",
+     "type": "text",
+     "nullable": null,
+     "description": "Chart of accounts the driver belongs to: sheet (the sheet's lines, the default) or qb2026 (the numbered QuickBooks accounts)."
     }
    ],
    "examples": [
@@ -18912,6 +18938,12 @@
      "type": "timestamp with time zone",
      "nullable": null,
      "description": "When changed."
+    },
+    {
+     "name": "chart",
+     "type": "text",
+     "nullable": null,
+     "description": "Chart of accounts the map belongs to: sheet or qb2026."
     }
    ],
    "examples": [

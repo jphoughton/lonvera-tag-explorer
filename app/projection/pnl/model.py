@@ -67,6 +67,10 @@ class PnlInputs:
     settings: dict[str, dict] = field(default_factory=dict)        # defaults over DEFAULT_SETTINGS (proj_pnl_settings)
     cogs_sku: list[dict] = field(default_factory=list)             # proj_pnl_cogs_sku rows
     today: date | None = None                                      # actual months must be closed: before the first of this month
+    # the qb2026 chart (read only when the scenario selects it): loaded books ('qb26.<line>'), typed months ('pnl.qb26.<line>'), driver defaults (chart 'qb2026')
+    qb_actuals: dict[str, Series] = field(default_factory=dict)
+    qb_overrides: dict[str, Series] = field(default_factory=dict)
+    qb_drivers: dict[str, list[dict]] = field(default_factory=dict)
 
 
 @dataclass
@@ -82,6 +86,10 @@ class PnlOutput(PnlResult):
     settings: dict = field(default_factory=dict)                   # effective settings (defaults + scenario)
     warnings: list[str] = field(default_factory=list)
     fy_flat: dict[str, float] = field(default_factory=dict)        # '<year>.<line key>' -> fiscal-year value (the reconcile harness addresses cells by path)
+    chart: str = "sheet"                                           # which chart `lines` is keyed by: 'sheet' or 'qb2026' (qb2026 lines also carry every sheet key, see charts/qb2026.py)
+    old_format_through: date | None = None                         # qb2026 only: last month shown from the earlier chart
+    below_noi: tuple[str, ...] = ()                                 # lines that net operating income is already before (qb2026: interest, other income); an EBITDA add-back of one would double count
+    sheet_books_through: date | None = None                        # qb2026 only: the sheet chart's own books boundary (old-format months up to it are real history)
 
 
 # ---------------------------------------------------------------------------------------------------------------- settings and drivers
@@ -114,8 +122,11 @@ def effective_drivers(defaults: dict[str, list[dict]], params: dict) -> dict[str
     return out
 
 
-def validate_segments(key: str, segments: Any) -> list[dict]:
+def validate_segments(key: str, segments: Any, chart: str = "sheet") -> list[dict]:
     """Normalise and check one driver. ValueError with a message naming the problem."""
+    if chart == "qb2026":
+        from .charts import qb2026
+        return qb2026.validate_segments(key, segments)
     if key not in L.DRIVER_KEYS + L.DRIVEN_PARENTS:
         raise ValueError(f"{key!r} is not a driven line")
     if not isinstance(segments, list) or not segments or len(segments) > 12:

@@ -2273,20 +2273,22 @@ rel("public.proj_curve_goal", purpose="Goal retention curve snapshots (repeat $ 
           "saved_at": "When saved.", "saved_by": "Who saved.", "restored_from": "snapshot_id this is a copy of."}, **_ENG)
 
 rel("public.proj_pnl_drivers", purpose="How each P&L line is projected (segments of fixed / carry / rate modes). Finance. " + _FIN, grain="one row per line", source="seeded from the sheet",
-    refresh="on edit", coverage="32 lines", cols={"line_key": "P&L line key.", "segments": "Ordered segments (jsonb).", "note": "Note.", "source": "Sheet cell the default came from.", "updated_at": "When changed."}, **_ENG)
+    refresh="on edit", coverage="32 lines", cols={"line_key": "P&L line key.", "segments": "Ordered segments (jsonb).", "note": "Note.", "source": "Sheet cell the default came from.", "updated_at": "When changed.",
+    "chart": "Chart of accounts the driver belongs to: sheet (the sheet's lines, the default) or qb2026 (the numbered QuickBooks accounts)."}, **_ENG)
 rel("public.proj_pnl_settings", purpose="P&L engine settings (rate window, inflation, headcount, COGS, EV). Finance. " + _FIN, grain="one row per setting", source="the Projections app",
     refresh="on edit", coverage="6 keys", cols={"key": "Setting name.", "value": "Value (jsonb).", "note": "Note.", "updated_at": "When changed."}, **_ENG)
 rel("public.proj_pnl_cogs_sku", purpose="Landed unit cost by SKU and the sales mix that weights it (the forward COGS model). Finance. " + _FIN, grain="one row per SKU", source="typed inputs",
     refresh="on edit", coverage="12 SKUs", cols={"sku": "SKU.", "label": "Label.", "china_unit_cost": "Landed cost per unit from the China vendor.", "us_unit_cost": "Landed cost per unit from the US vendor.",
     "sales_mix": "Share of sales.", "in_stock_qty": "Units in stock.", "sort": "Order.", "note": "Note.", "updated_at": "When changed."}, **_ENG)
 rel("public.proj_pnl_qb_map", purpose="QuickBooks account name -> P&L line key map. Finance. " + _FIN, grain="one row per account", source="typed", refresh="on edit", coverage="61 accounts",
-    cols={"account": "QuickBooks account (lower-cased).", "line_key": "P&L line key.", "note": "Note.", "updated_at": "When changed."}, **_ENG)
+    cols={"account": "QuickBooks account (lower-cased).", "line_key": "P&L line key.", "note": "Note.", "updated_at": "When changed.",
+          "chart": "Chart of accounts the map belongs to: sheet or qb2026."}, **_ENG)
 rel("public.proj_pnl_vendors", purpose="Vendor retainers, current vs proposed, monthly. Reference only. Finance. " + _FIN, grain="one row per vendor", source="typed", refresh="on edit", coverage="10 vendors",
     cols={"vendor": "Vendor.", "current_monthly": "Current monthly retainer.", "proposed_monthly": "Proposed monthly retainer.", "sort": "Order.", "note": "Note."}, **_ENG)
 rel("public.proj_upload_history", purpose="Every QuickBooks upload commit with what it replaced, so the latest can be undone. Finance. " + _FIN, grain="one row per upload", source="the Projections app",
     refresh="on upload", coverage="empty", cols={"id": "Primary key.", "at": "When.", "actor": "Who.", "filename": "File.", "sha256": "Hash.", "bytes": "Size.", "file_rows": "Rows in file.",
     "months": "Months touched (jsonb).", "new_cells": "Cells created.", "changed_cells": "Cells changed.", "replaced": "Replaced cells (jsonb).", "created": "Created cells (jsonb).",
-    "status": "applied | undone.", "undone_at": "When undone.", "undone_by": "Who undid it."}, **_ENG)
+    "status": "applied | undone.", "undone_at": "When undone.", "undone_by": "Who undid it.", "chart": "Chart of accounts the upload loaded: sheet or qb2026."}, **_ENG)
 
 rel("public.proj_po", purpose="Purchase orders (planned and actual): units, vendor, dates, deposit state, unit cost. Finance / supply. " + _FIN, grain="one row per purchase order", source="the Projections app (manual and auto-plan)",
     refresh="on edit", coverage="74 rows", caveats=["Money (unit_cost) and vendor terms: finance. Exposed as analytics.inventory_purchase_orders (the link column is left out)."],

@@ -74,13 +74,20 @@ function ensureStyle() {
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const mon = (iso) => { const [y, m] = String(iso).split('-'); return `${MON[Number(m) - 1]} ${y}`; };
 const BASES = { amazon_rev: 'Amazon revenue', dtc_rev: 'DTC revenue', total_revenue: 'Total company revenue' };
-const MODES = { fixed: 'Fixed amount a month', carry: 'Same as last month', avg: 'Average of previous months', rate: 'Share of revenue', headcount: 'Headcount formula' };
+const MODES = { fixed: 'Fixed amount a month', carry: 'Same as last month', avg: 'Average of previous months', rate: 'Share of revenue', headcount: 'Headcount formula',
+  books_mean: 'Mean of the loaded books months' };
 const RATE_KINDS = { window: 'Trailing actual months', ratio_avg: 'Mean of monthly ratios', typed: 'Typed percent', cogs_model: 'COGS model' };
+// The new chart (numbered QuickBooks accounts): its own revenue bases, its modes, and no cost of goods model
+const QB_BASES = { dtc_sales: 'DTC sales', amazon_sales: 'Amazon sales', tiktok_sales: 'TikTok sales', gross_sales: 'Gross sales' };
+const QB_MODES = ['fixed', 'carry', 'avg', 'rate', 'books_mean'];
+const QB_RATE_KINDS = { window: 'Trailing books months', ratio_avg: 'Mean of monthly ratios', typed: 'Typed percent' };
+const CHARTS = { sheet: 'Sheet chart (old format)', qb2026: 'New chart (numbered QuickBooks accounts)' };
 
 // multipart upload: the shared fetch layer is JSON only
-async function postUpload(file, { commit = false, token = '', confirm = false } = {}) {
+async function postUpload(file, { commit = false, token = '', confirm = false, chart = '' } = {}) {
   const fd = new FormData();
   fd.append('file', file, file.name);
+  if (chart) fd.append('chart', chart);
   if (commit) fd.append('diff_sha256', token);
   if (commit && confirm) fd.append('confirm_review', '1');
   const res = await fetch('/api/projection/pnl/upload' + (commit ? '?commit=1' : ''), { method: 'POST', body: fd, credentials: 'same-origin' });
@@ -115,6 +122,7 @@ export async function render(el, ctx) {
 
   const cleanups = [];
   const money = (v) => (Number.isFinite(v) ? fmt.compact(v) : 'none');
+  const isQb = table.chart === 'qb2026';                          // the scenario shows the new chart of accounts
 
   // ---------------------------------------------------------------- header and TLDR
   function tldrFor(s) {
@@ -166,7 +174,7 @@ export async function render(el, ctx) {
   const rowOf = (t, key) => (t.rows.find((r) => r.key === key) || { values: [], label: key });
   function drawCharts() {
     charts.destroyAll();
-    const rev = rowOf(table, 'total_revenue'), noi = rowOf(table, 'noi'), gp = rowOf(table, 'gross_profit_pct'), nm = rowOf(table, 'noi_margin');
+    const rev = rowOf(table, isQb ? 'total_income' : 'total_revenue'), noi = rowOf(table, 'noi'), gp = rowOf(table, isQb ? 'gross_margin' : 'gross_profit_pct'), nm = rowOf(table, 'noi_margin');
     charts.comboChart(revCanvas, { months: table.months, status: table.status, yFmt: 'usd0',
       series: [{ label: rev.label, values: rev.values, type: 'bar', axis: 'y' }, { label: noi.label, values: noi.values, type: 'line', axis: 'y' }] });
     charts.lineChart(marginCanvas, { months: table.months, status: table.status, yFmt: 'pct',
@@ -184,10 +192,11 @@ export async function render(el, ctx) {
   const ss = table.status_summary || {};
   const legend = h('div', { class: 'pn-legend', 'aria-label': 'What each month is based on' },
     h('span', { class: 'grp' }, ui.chip('BOOKS', 'good'), ss.books_through ? `QuickBooks, through ${mon(ss.books_through)}` : 'No QuickBooks loaded'),
+    isQb && ss.old_span ? h('span', { class: 'grp' }, ui.chip('OLD FORMAT', 'neutral'), `${ss.old_span}: the earlier chart of accounts, rolled up to these lines`) : null,
     ss.feeds_span ? h('span', { class: 'grp' }, ui.chip('FEEDS', 'info'), `${ss.feeds_span}: revenue from the cohort and ad feeds, costs projected`) : null,
     h('span', { class: 'grp' }, ui.chip('PROJECTED', 'info'), ss.projected_from ? `From ${mon(ss.projected_from)}` : 'No projected months'));
   const gridCard = h('div', { class: 'pg-card' },
-    h('div', { class: 'pn-card-head' }, h('h2', 'Profit and loss by month')),
+    h('div', { class: 'pn-card-head' }, h('h2', 'Profit and loss by month'), isQb ? h('span', { class: 'pg-source' }, CHARTS.qb2026) : null),
     legend, gridHost);
 
   // ---------------------------------------------------------------- trends
@@ -240,7 +249,7 @@ export async function render(el, ctx) {
     if (!list.length) return null;
     const fmtAt = (iso) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
     const rows = list.map((u) => h('tr', null,
-      h('td', null, fmtAt(u.at)), h('td', { class: 'text' }, u.filename), h('td', null, u.actor || ''),
+      h('td', null, fmtAt(u.at)), h('td', { class: 'text' }, u.filename, u.chart === 'qb2026' ? h('small', 'New chart') : null), h('td', null, u.actor || ''),
       h('td', { class: 'text' }, (u.months || []).map(mon).join(', ')),
       h('td', null, `${u.new_cells} added, ${u.changed_cells} changed`),
       h('td', null, u.status === 'undone' ? ui.chip('UNDONE', 'neutral') : ui.chip('APPLIED', 'good')),
@@ -250,13 +259,13 @@ export async function render(el, ctx) {
       h('div', { class: 'pn-scroll' }, h('table', { class: 'pn-table' },
         h('thead', null, h('tr', null, h('th', 'When'), h('th', { class: 'text' }, 'File'), h('th', 'Who'), h('th', { class: 'text' }, 'Months'), h('th', 'Cells'), h('th', 'Status'), h('th', ''))),
         h('tbody', null, rows))),
-      ui.source('Undo puts back exactly the values the latest upload replaced and removes the ones it added.')));
+      ui.source('Undo puts back exactly the values the latest upload replaced and removes the ones it added. Each chart of accounts keeps its own latest upload.')));
   }
   async function undoUpload(u) {
     await confirmBox({
       title: 'Undo the last upload', message: `This puts back the ${u.changed_cells} values ${u.filename} replaced and removes the ${u.new_cells} it added. The projection returns to how it was before the upload.`,
       confirmText: 'Undo upload', danger: false,
-      onConfirm: async () => { await ctx.api.post('pnl/upload/undo', { upload_id: u.id }); events.emit('saved', { scenario: slug }); toast('Upload undone', 'ok'); ctx.refreshHeadline(); ctx.reload(); },
+      onConfirm: async () => { await ctx.api.post('pnl/upload/undo', { upload_id: u.id, chart: u.chart }); events.emit('saved', { scenario: slug }); toast('Upload undone', 'ok'); ctx.refreshHeadline(); ctx.reload(); },
     });
   }
 
@@ -302,7 +311,8 @@ export async function render(el, ctx) {
       h('div', { class: 'pn-card-head' }, h('h2', 'Cost drivers'),
         h('span', { class: 'pg-source' }, drivers.window_text ? `Trailing rates read ${drivers.window_text}` : 'No QuickBooks months loaded')),
       groups,
-      ui.source('Each projected month follows these drivers. Change one here, or type over a single projected month from its Change dialog.')));
+      ui.source('Each projected month follows these drivers. Change one here, or type over a single projected month from its Change dialog.'
+        + (isQb && (drivers.spend_plan_lines || []).length ? ` ${drivers.spend_plan_lines.map((l) => l.label).join(' and ')} follow the spend plan, not a driver here.` : ''))));
   }
 
   function openDriverEditor(item) {
@@ -310,7 +320,10 @@ export async function render(el, ctx) {
     const err = h('div', { class: 'pg-dialog-err', role: 'alert' });
     let steps = JSON.parse(JSON.stringify(item.segments.length ? item.segments : [{ from: null, mode: 'fixed', value: 0 }]));
     const list = h('div', { class: 'pn-steps' });
-    const allowed = item.key === 'headcount' ? ['headcount', 'fixed'] : ['fixed', 'carry', 'avg', 'rate'];
+    const bases = isQb ? QB_BASES : BASES;
+    const rateKinds = isQb ? QB_RATE_KINDS : RATE_KINDS;
+    const allowed = isQb ? QB_MODES : item.key === 'headcount' ? ['headcount', 'fixed'] : ['fixed', 'carry', 'avg', 'rate'];
+    const seriesKey = (isQb ? 'pnl.qb26.' : 'pnl.') + item.key;
     const select = (opts, value, onchange, label) => {
       const s = h('select', { class: 'pg-input', 'aria-label': label }, Object.entries(opts).map(([k, v]) => h('option', { value: k, selected: k === value }, v)));
       s.addEventListener('change', () => onchange(s.value));
@@ -332,9 +345,10 @@ export async function render(el, ctx) {
       params.append(h('label', null, 'How', select(Object.fromEntries(allowed.map((k) => [k, MODES[k]])), s.mode, (v) => { s.mode = v; Object.assign(s, defaultsFor(v, s)); renderSteps(); }, `Step ${i + 1} method`)));
       if (s.mode === 'fixed') params.append(h('label', null, 'Dollars a month', num(s.value, (v) => { s.value = v; }, { label: 'Dollars a month' })));
       if (s.mode === 'avg') params.append(h('label', null, 'Previous months', num(s.window, (v) => { s.window = v; }, { step: 1, min: 1, max: 36, label: 'Previous months' })));
+      if (s.mode === 'books_mean') params.append(h('label', null, 'Books months (blank = setting)', num(s.window, (v) => { s.window = v; }, { step: 1, min: 1, max: 36, label: 'Books months' })));
       if (s.mode === 'rate') {
-        params.append(h('label', null, 'Of', select(BASES, s.base, (v) => { s.base = v; }, 'Revenue base')));
-        params.append(h('label', null, 'Rate from', select(RATE_KINDS, s.rate_kind || 'window', (v) => { s.rate_kind = v; renderSteps(); }, 'Rate source')));
+        params.append(h('label', null, 'Of', select(bases, s.base, (v) => { s.base = v; }, 'Revenue base')));
+        params.append(h('label', null, 'Rate from', select(rateKinds, s.rate_kind || 'window', (v) => { s.rate_kind = v; renderSteps(); }, 'Rate source')));
         if (['window', 'ratio_avg'].includes(s.rate_kind || 'window')) params.append(h('label', null, 'Months (blank = setting)', num(s.window, (v) => { s.window = v; }, { step: 1, min: 1, max: 36, label: 'Months' })));
         if (s.rate_kind === 'typed') params.append(h('label', null, 'Percent', num(s.rate == null ? null : Math.round(s.rate * 1e6) / 1e4, (v) => { s.rate = v == null ? null : v / 100; }, { label: 'Percent' })));
       }
@@ -344,7 +358,7 @@ export async function render(el, ctx) {
     function defaultsFor(mode, s) {
       if (mode === 'fixed') return { value: s.value ?? 0 };
       if (mode === 'avg') return { window: s.window ?? drivers.settings.engine.rate_window_months };
-      if (mode === 'rate') return { base: s.base || 'total_revenue', rate_kind: s.rate_kind || 'window' };
+      if (mode === 'rate') return { base: s.base || (isQb ? 'dtc_sales' : 'total_revenue'), rate_kind: s.rate_kind || 'window' };
       return {};
     }
     function renderSteps() { list.replaceChildren(...steps.map(stepRow)); }
@@ -353,6 +367,7 @@ export async function render(el, ctx) {
       const o = { from: s.from || null, mode: s.mode };
       if (s.mode === 'fixed') o.value = s.value == null ? NaN : s.value;
       if (s.mode === 'avg') o.window = s.window == null ? drivers.settings.engine.rate_window_months : s.window;
+      if (s.mode === 'books_mean' && s.window != null) o.window = s.window;
       if (s.mode === 'rate') {
         o.base = s.base; o.rate_kind = s.rate_kind || 'window';
         if (s.window != null && ['window', 'ratio_avg'].includes(o.rate_kind)) o.window = s.window;
@@ -374,7 +389,7 @@ export async function render(el, ctx) {
     async function putOverride(month, value) {
       err.textContent = '';
       try {
-        await whileAside(() => ctx.api.saveSeries([{ line_key: 'pnl.' + item.key, month, value, kind: 'override' }]));
+        await whileAside(() => ctx.api.saveSeries([{ line_key: seriesKey, month, value, kind: 'override' }]));
         events.emit('saved', { scenario: slug });
         ovChanged = true;
         return true;
@@ -451,28 +466,38 @@ export async function render(el, ctx) {
       if (into === fields) into.push(h('div', { class: 'pn-field' }, h('label', { for: input.id }, label), input, hint ? h('span', { class: 'hint' }, hint) : null));
       return input;
     };
+    const chartSel = h('select', { id: 'pn-chart', class: 'pg-input', 'aria-label': 'Chart of accounts' },
+      Object.entries(CHARTS).map(([k, v]) => h('option', { value: k, selected: k === (isQb ? 'qb2026' : 'sheet') }, v)));
+    chartSel.addEventListener('change', () => markDirty());
+    const chartInitial = chartSel.value;
+    fields.push(h('div', { class: 'pn-field' }, h('label', { for: 'pn-chart' }, 'Chart of accounts for this scenario'), chartSel,
+      h('span', { class: 'hint' }, 'The new chart follows the numbered QuickBooks accounts; months before its first books are the earlier chart rolled up to the same lines.')));
     field('engine', 'rate_window_months', 'Months behind trailing rates', S.engine.rate_window_months, { step: 1, min: 1, max: 36, hint: drivers.window_text || 'Last actual months' });
     field('engine', 'opex_inflation', 'Operating cost inflation a year (%)', S.engine.opex_inflation, { scale: 100, step: 0.5, min: -50, max: 100, hint: 'Applied to projected months' });
     field('engine', 'cogs_inflation', 'Product cost inflation a year (%)', S.engine.cogs_inflation, { scale: 100, step: 0.5, min: -50, max: 100 });
     field('trend', 'avg_window', 'Months in growth averages', S.trend.avg_window, { step: 1, min: 1, max: 36, hint: 'Growth rows that show an average' });
+    if (!isQb) {          // the cost of goods model and the headcount formula belong to the sheet chart
     field('cogs', 'price_per_bottle', 'Average price per bottle ($)', S.cogs.price_per_bottle, { step: 0.01, min: 0.01,
       hint: cm.rate_at_current_price ? `Cost of goods is ${fmt.pct(cm.rate, 1)} of revenue at this price; ${fmt.pct(cm.rate_at_current_price, 1)} at the current price` : '' });
     field('cogs', 'current_price_per_bottle', 'Current price per bottle ($)', S.cogs.current_price_per_bottle, { step: 0.01, min: 0.01, hint: 'Shown as a comparison; it does not change the projection' });
     field('cogs', 'us_share', 'Bottles sourced in the US (%)', S.cogs.us_share, { scale: 100, step: 5, min: 0, max: 100, hint: `Blended landed cost ${fmt.money(cm.cost_per_bottle, { digits: 2 })} per bottle` });
+    }
     field('ev', 'year', 'Value year', S.ev.year, { step: 1, min: 2025, max: 2029 });
     field('ev', 'loi', 'Offer ($)', S.ev.loi, { step: 50000, min: 0 });
     field('ev', 'multiples', 'Multiples (comma separated)', (S.ev.multiples || []).join(', '), { type: 'text' });
+    if (!isQb) {
     field('headcount', 'base', 'Headcount base a month ($)', S.headcount.base, { step: 500, min: 0 });
     field('headcount', 'threshold', 'Annual revenue before headcount steps up ($)', S.headcount.threshold, { step: 1000000, min: 1 });
     field('headcount', 'step', 'Revenue per step ($)', S.headcount.step, { step: 1000000, min: 1 });
     field('headcount', 'increment', 'Added per step a month ($)', S.headcount.increment, { step: 500, min: 0 });
     field('headcount', 'start', 'Headcount starts', S.headcount.start ? S.headcount.start.slice(0, 7) : '', { type: 'month' });
+    }
     // the sales tax deduction belongs to the spend plan; it is edited here through the same lever
     const tax = drivers.sales_tax || {};
     const taxInput = h('input', { id: 'pn-tax', type: 'number', class: 'pg-input', step: 0.5, min: 0, max: 50, 'aria-label': 'Sales tax deducted from DTC revenue (%)',
       value: tax.rate == null ? '' : String(Math.round(tax.rate * 1e6) / 1e4) });
     taxInput.addEventListener('input', markDirty);
-    fields.push(h('div', { class: 'pn-field' }, h('label', { for: 'pn-tax' }, 'Sales tax deducted from DTC revenue (%)'), taxInput, h('span', { class: 'hint' }, tax.text || '')));
+    if (!isQb) fields.push(h('div', { class: 'pn-field' }, h('label', { for: 'pn-tax' }, 'Sales tax deducted from DTC revenue (%)'), taxInput, h('span', { class: 'hint' }, tax.text || '')));
     const upc = drivers.upload_checks || {};
     const lowInput = h('input', { id: 'pn-up-low', type: 'number', class: 'pg-input', step: 5, min: 1, max: 100, 'aria-label': 'Flag a QuickBooks month below (% of neighbours)', value: String(Math.round((upc.low_ratio || 0) * 100)) });
     const highInput = h('input', { id: 'pn-up-high', type: 'number', class: 'pg-input', step: 10, min: 100, max: 10000, 'aria-label': 'Flag a QuickBooks month above (% of neighbours)', value: String(Math.round((upc.high_ratio || 0) * 100)) });
@@ -490,7 +515,8 @@ export async function render(el, ctx) {
     const initialFams = (upc.required_families || []).slice().sort().join(',');
     const upChanged = () => lowInput.value !== String(Math.round((upc.low_ratio || 0) * 100)) || highInput.value !== String(Math.round((upc.high_ratio || 0) * 100))
       || famBoxes.filter((f) => f.box.checked).map((f) => f.key).sort().join(',') !== initialFams;
-    const taxChanged = () => taxInput.value !== (tax.rate == null ? '' : String(Math.round(tax.rate * 1e6) / 1e4));
+    const taxChanged = () => !isQb && taxInput.value !== (tax.rate == null ? '' : String(Math.round(tax.rate * 1e6) / 1e4));
+    const chartChanged = () => chartSel.value !== chartInitial;
     const lateInput = h('input', { id: 'pn-late', type: 'number', class: 'pg-input', step: 1, min: 1, max: 365, 'aria-label': 'Days before QuickBooks is late', value: String(drivers.late_after_days) });
     lateInput.addEventListener('input', markDirty);
     fields.push(h('div', { class: 'pn-field' }, h('label', { for: 'pn-late' }, 'Days before QuickBooks is late'), lateInput, h('span', { class: 'hint' }, 'Counted from the close of the first month not loaded. Applies to every scenario.')));
@@ -500,7 +526,7 @@ export async function render(el, ctx) {
     function changed() { return inputs.filter((x) => x.input.value !== x.initial); }
     const lateChanged = () => lateInput.value !== String(drivers.late_after_days);
     function markDirty() {
-      const n = changed().length + (lateChanged() ? 1 : 0) + (taxChanged() ? 1 : 0) + (upChanged() ? 1 : 0);
+      const n = changed().length + (lateChanged() ? 1 : 0) + (taxChanged() ? 1 : 0) + (upChanged() ? 1 : 0) + (chartChanged() ? 1 : 0);
       saveBtn.disabled = n === 0;
       status.className = 'status';
       status.textContent = n ? 'Unsaved changes.' : (Object.keys(own).length ? 'Custom settings in this scenario.' : 'Defaults.');
@@ -521,6 +547,7 @@ export async function render(el, ctx) {
     }
     function save() {
       const patch = {};
+      if (chartChanged()) patch.chart = chartSel.value;
       for (const x of changed()) {
         let v;
         if (x.type === 'month') v = x.input.value ? x.input.value + '-01' : null;
@@ -537,7 +564,7 @@ export async function render(el, ctx) {
       for (const g of Object.keys(own)) if (g !== 'drivers') patch[g] = null;
       put(patch);
     }
-    const skuRows = cm.all_skus.map((r) => h('tr', null, h('td', null, r.label || r.sku),
+    const skuRows = (isQb ? [] : cm.all_skus).map((r) => h('tr', null, h('td', null, r.label || r.sku),
       h('td', null, field('cogs', 'mix', `Sales mix for ${r.label || r.sku} (%)`, r.mix, { scale: 100, step: 5, min: 0, max: 100, sku: r.sku, into: [] })),
       h('td', null, field('cogs', 'china_cost', `China cost per unit for ${r.label || r.sku}`, r.china, { step: 0.01, min: 0, sku: r.sku, into: [] })),
       h('td', null, field('cogs', 'us_cost', `US cost per unit for ${r.label || r.sku}`, r.us, { step: 0.01, min: 0, sku: r.sku, into: [] }))));
@@ -545,11 +572,12 @@ export async function render(el, ctx) {
     return h('div', { class: 'pg-section' }, h('div', { class: 'pg-card' },
       h('div', { class: 'pn-card-head' }, h('h2', 'Settings')),
       h('div', { class: 'pn-fields' }, fields),
-      h('div', { class: 'pn-group-title' }, 'Cost of goods sold model'),
-      h('div', { class: 'pn-scroll' }, h('table', { class: 'pn-table pn-sku' },
+      isQb ? null : h('div', { class: 'pn-group-title' }, 'Cost of goods sold model'),
+      isQb ? null : h('div', { class: 'pn-scroll' }, h('table', { class: 'pn-table pn-sku' },
         h('thead', null, h('tr', null, h('th', 'Product'), h('th', 'Sales mix (%)'), h('th', 'China cost per unit ($)'), h('th', 'US cost per unit ($)'))),
         h('tbody', null, skuRows))),
-      ui.source(`Blended cost per bottle ${fmt.money(cm.cost_per_bottle, { digits: 2 })} divided by ${fmt.money(cm.price_per_bottle, { digits: 2 })} per bottle gives ${fmt.pct(cm.rate, 2)} of revenue.`),
+      isQb ? ui.source('The new chart projects every cost from the trailing books months (the Cost drivers table above); there is no cost of goods model or sales tax deduction.')
+        : ui.source(`Blended cost per bottle ${fmt.money(cm.cost_per_bottle, { digits: 2 })} divided by ${fmt.money(cm.price_per_bottle, { digits: 2 })} per bottle gives ${fmt.pct(cm.rate, 2)} of revenue.`),
       h('div', { class: 'pn-actions' }, saveBtn, resetBtn, status),
       vendors.length ? h('div', null,
         h('div', { class: 'pn-group-title' }, 'Vendor retainers a month'),
@@ -580,6 +608,7 @@ export async function render(el, ctx) {
       try {
         const res = await postUpload(f);
         current = { file: f, res };
+        linesPromise = null;
         show(res);
       } catch (e) { preview.replaceChildren(); errBox.textContent = e.message; }
     }
@@ -590,6 +619,8 @@ export async function render(el, ctx) {
       const parts = [
         h('p', { class: 'pn-step-label' }, '2  Review changes'),
         h('p', { style: { margin: 0 } }, `Read ${res.file.rows} rows from ${res.file.name}. Only months that are over are loaded. Nothing is saved until you commit.`),
+        h('p', { style: { margin: 0 } }, ui.chip(res.chart === 'qb2026' ? 'NEW CHART' : 'SHEET CHART', 'info'),
+          res.chart === 'qb2026' ? ' Numbered QuickBooks accounts. Loaded as books for the new chart; the sheet chart is not touched.' : ' The sheet chart of accounts.'),
         h('div', { class: 'counts' }, count(c.new, 'cells added'), count(c.changed, 'cells changed'), count(c.same, 'unchanged'), count(res.unmapped.length, 'accounts not mapped')),
       ];
       if (res.unmapped.length) {
@@ -641,14 +672,15 @@ export async function render(el, ctx) {
       ensureLines().then((lines) => { lines.forEach((l) => sel.append(h('option', { value: l.key }, l.label))); });
       const btn = h('button', { type: 'button', class: 'btn small', disabled: true, onclick: async () => {
         btn.disabled = true;
-        try { await ctx.api.put('pnl/qb-map', { account: u.account, line_key: sel.value }); await read(); } catch (e) { errBox.textContent = e.message; btn.disabled = false; }
+        try { await ctx.api.put('pnl/qb-map', { account: u.account, line_key: sel.value, chart: current && current.res.chart }); await read(); } catch (e) { errBox.textContent = e.message; btn.disabled = false; }
       } }, 'Map');
       sel.addEventListener('change', () => { btn.disabled = !sel.value; });
       return h('tr', null, h('td', null, u.account, u.error ? h('small', u.error) : null), h('td', null, fmt.money(u.total, { digits: 2 })), h('td', { class: 'text' }, sel, ' ', btn));
     }
     let linesPromise = null;
     function ensureLines() {
-      if (!linesPromise) linesPromise = ctx.api.get('pnl/qb-map').then((m) => { m.lines.forEach((l) => { lineLabels[l.key] = l.label; }); return m.lines; });
+      const chart = (current && current.res.chart) || 'sheet';
+      if (!linesPromise) linesPromise = ctx.api.get('pnl/qb-map', chart === 'sheet' ? undefined : { chart }).then((m) => { m.lines.forEach((l) => { lineLabels[l.key] = l.label; }); return m.lines; });
       return linesPromise;
     }
     ensureLines();
@@ -657,7 +689,7 @@ export async function render(el, ctx) {
       commitBtn.disabled = true;
       errBox.textContent = '';
       try {
-        const res = await postUpload(current.file, { commit: true, token: current.res.diff_sha256, confirm: confirmed });
+        const res = await postUpload(current.file, { commit: true, token: current.res.diff_sha256, confirm: confirmed, chart: current.res.chart });
         toast(`Saved ${res.cells_written} cells to ${res.months.length} month${res.months.length === 1 ? '' : 's'}`, 'ok');
         close();
         ctx.refreshHeadline();
