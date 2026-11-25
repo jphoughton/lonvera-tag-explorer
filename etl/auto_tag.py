@@ -1,14 +1,14 @@
 """Nightly auto-tagging: give every current ad that has NO linemap tag a Communication Overview line (cluster / ICP / pain point / trigger).
 
 What it does: for Vita Bull, Beef Liver and Boneflex it finds ad families (tracker rows grouped by family_key) whose tracker rows carry no current
-ad_tags row in tag_set 'linemap', that have spend or were launched in the last RECENT_DAYS, gathers the copy / hook / transcript start and the stored
+ad_tags row in tag_set 'linemap', that have spend or were launched in the last RECENT_DAYS, gathers the copy / hook / transcript (real audio first, then tracker, then family_content; up to TRANSCRIPT_CAP chars) and the stored
 thumbnail (creative_assets; fetched from Meta first when missing), and asks headless Claude Code (`claude -p`, Sonnet, only the Read tool, cwd = a temp dir
 holding the picture) to pick ONE line code from the product's catalog (etl/autotag/catalogs/<slug>.json). Auth = CLAUDE_CODE_OAUTH_TOKEN (Claude
 subscription, from `claude setup-token`); no API key, usage counts against the plan.
 Writes ad_tags(tag_set='linemap', version='auto-YYYY-MM-DD', tagger='auto-claude-sonnet-5-5', extra.source='auto'). It only fills rows that have NO current
 linemap tag: human / cycle tags are never overwritten or marked not-current. Re-running the same day finds nothing new (the day's tags are current); with
---retag-today the day's own auto rows are replaced (never any other version). Videos: cover image + copy + hook + transcript start only (method
-'cover + copy (auto)', confidence capped at medium); no picture: method 'text only (auto)', capped at medium.
+--retag-today the day's own auto rows are replaced (never any other version). Videos: cover image + copy + hook + transcript only (method
+'cover + copy (auto)', '+ audio' variant when the real-audio transcript was used, confidence capped at medium); no picture: method 'text only (auto)', capped at medium.
 Safety: missing token / auth error / usage limit -> the run stops early and is recorded failed in etl_runs (the nightly pipeline carries on, see
 scripts/deploy/run_etl.sh); hard cap per run (--limit, default 400 ads); 3 tries per ad with backoff.
 Rules (2026-11-10): the ad's PAIN (the felt symptom) is chosen first, then ICP, then trigger; the tracker Pain Point is the default answer (kept_tracker_pain / override_reason).
@@ -176,14 +176,32 @@ def gather(conn, f: dict) -> tuple[dict, tuple | None]:
                         (fk, f["rows"])).fetchone()
     img = conn.execute("SELECT bytes, mime FROM creative_assets WHERE family_key=%s AND kind='thumb' ORDER BY idx LIMIT 1", (fk,)).fetchone()
     is_video = (rep.get("type") or "").upper() == "VID" or bool(fc and fc[4])
+    aud = audio_transcript(conn, fk)            # transcript source order: real audio, then the tracker's typed transcript, then family_content
+    trans, tsrc = (aud, "audio") if aud else ((rep.get("transcript"), "tracker") if rep.get("transcript") else ((fc[3], "family_content") if fc and fc[3] else (None, None)))
     unit = {"name": _clip(rep.get("name"), 200), "concept_id": rep.get("concept_id"), "type": "video" if is_video else "static image",
             "primary_text": [_clip(x, 700) for x in rep["primary_text"][:3]], "headlines": [_clip(x, 200) for x in rep["headlines"][:3]],
             "ad_description": _clip(rep.get("ad_description"), 300), "description": _clip(rep.get("description"), 400), "hypothesis": _clip(rep.get("hypothesis"), 300),
             "hook": _clip(hook[0], 300) if hook else None, "meta_body": _clip(fc[0], 800) if fc else None, "meta_title": _clip(fc[1], 200) if fc else None,
-            "transcript": _clip(rep.get("transcript") or (fc[3] if fc else None), 900), "existing_tags": rep["existing_tags"], "briefed": bool(rep.get("briefed"))}
+            "transcript": _clip(trans, TRANSCRIPT_CAP), "existing_tags": rep["existing_tags"], "briefed": bool(rep.get("briefed"))}
     unit = {k: v for k, v in unit.items() if v not in (None, "", [], False)}
     unit["_is_video"] = is_video
+    unit["_transcript_source"] = tsrc if unit.get("transcript") else None
     return unit, ((bytes(img[0]), img[1]) if img else None)
+
+
+TRANSCRIPT_CAP = 4000                  # chars of the script handed to the tagger (the whole script for nearly every ad)
+NO_SPEECH = re.compile(r"^\[?\s*no speech\s*\]?$", re.I)
+
+
+def audio_transcript(conn, fk: str) -> str | None:
+    """Real-audio transcript (ad_transcript, written by etl.transcribe_ads / etl.own_ad_tags) for the tracker family or any Meta family mapped to it.
+    Rows whose source is 'tracker_copy' are typed text, not audio, and silent videos ('[no speech]') carry no words: both are ignored."""
+    r = conn.execute("""SELECT x.transcript FROM ad_transcript x
+                        WHERE x.source <> 'tracker_copy' AND btrim(x.transcript) <> ''
+                          AND (x.family_key = %s OR x.family_key IN (SELECT m.meta_family_key FROM meta_family_map m WHERE m.tracker_family_key = %s))
+                        ORDER BY (x.family_key = %s) DESC, length(x.transcript) DESC LIMIT 1""", (fk, fk, fk)).fetchone()
+    t = " ".join(r[0].split()) if r and r[0] else ""
+    return t if t and not NO_SPEECH.match(t) else None
 
 
 def has_words(unit: dict) -> bool:
@@ -313,21 +331,23 @@ def final_confidence(conf: str, is_video: bool, has_image: bool) -> str:
 
 # ---- write ----------------------------------------------------------------------------------------------------------------------------
 
-def method_for(is_video: bool, has_image: bool) -> str:
+def method_for(is_video: bool, has_image: bool, audio: bool = False) -> str:
+    """'+audio' = the tagger read the real audio transcript (ad_transcript); without it the transcript, if any, was typed / Meta text."""
+    a = " + audio" if audio else ""
     if not has_image:
-        return "text only (auto)"
-    return "cover + copy (auto)" if is_video else "image + copy (auto)"
+        return f"text only{a} (auto)"
+    return f"cover + copy{a} (auto)" if is_video else f"image + copy{a} (auto)"
 
 
 def write_tags(conn, slug: str, f: dict, ans: dict, unit: dict, has_image: bool, version: str, attempts: int, line_ids: dict) -> int:
     """Insert the tag on every still-untagged row of the family. Never touches another version or an existing current tag."""
     is_video = bool(unit.get("_is_video"))
     conf = final_confidence(ans["confidence"], is_video, has_image)
-    method = method_for(is_video, has_image)
+    method = method_for(is_video, has_image, unit.get("_transcript_source") == "audio")
     lid = line_ids[ans["line"]]
     cat_row = lid["row"]
     extra = db.jsonb({"source": "auto", "model": MODEL, "line_code": ans["line"], "needs_review": conf == "low", "model_confidence": ans["confidence"],
-                      "attempts": attempts, "has_image": has_image, "is_video": is_video,
+                      "attempts": attempts, "has_image": has_image, "is_video": is_video, "transcript_source": unit.get("_transcript_source"),
                       "kept_tracker_pain": ans.get("kept_tracker_pain"), "override_reason": ans.get("override_reason")})
     with conn.transaction():
         conn.execute("DELETE FROM ad_tags WHERE tag_set='linemap' AND version=%s AND tracker_row_id = ANY(%s)", (version, f["rows"]))

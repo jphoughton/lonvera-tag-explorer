@@ -370,3 +370,72 @@ def test_instructions_unbriefed_prior_and_opening_outcome_rule():
     assert "is a PRIOR only" in ins and "opening pain WINS" in ins and "valid override with a reason" in ins
     assert "Strong default" in ins and "flatly contradicts" in ins
     assert "OPENS on, not the one it closes on" in ins
+
+
+# ---- transcript source order (real audio first) ------------------------------------------------------------------------------------------
+
+def put_audio(conn, key, text, source="whisper"):
+    conn.execute("INSERT INTO ad_transcript (family_key, transcript, source) VALUES (%s,%s,%s)", (key, text, source))
+    conn.commit()
+
+
+def vid_unit(conn, tmp_path, **kw):
+    for t in ("ad_transcript", "family_content", "meta_family_map"):            # committed rows leak between tests in a worker
+        conn.execute(f"DELETE FROM {t}")
+    conn.commit()
+    sync(conn, tmp_path, [trow("v1", "fv", "Boneflex", launch=NEW, Type="VID", **kw)])
+    seed_taxonomy(conn)
+    return at.candidates(conn, ("boneflex",), TODAY)["boneflex"][0]
+
+
+def test_audio_transcript_wins_over_tracker_and_family_content(conn, tmp_path):
+    f = vid_unit(conn, tmp_path, Transcript="typed tracker script")
+    conn.execute("INSERT INTO family_content (family_key, transcript, is_video) VALUES ('fv','meta transcript',true)")
+    put_audio(conn, "fv", "REAL AUDIO script about my knees")
+    unit, _ = at.gather(conn, f)
+    assert unit["transcript"] == "REAL AUDIO script about my knees" and unit["_transcript_source"] == "audio"
+
+
+def test_falls_back_to_tracker_then_family_content_and_ignores_tracker_copy_and_silence(conn, tmp_path):
+    f = vid_unit(conn, tmp_path, Transcript="typed tracker script")
+    put_audio(conn, "fv", "typed copy row", source="tracker_copy")
+    unit, _ = at.gather(conn, f)
+    assert unit["transcript"] == "typed tracker script" and unit["_transcript_source"] == "tracker"
+    conn.execute("DELETE FROM ad_transcript")
+    put_audio(conn, "fv", "[no speech]")
+    assert at.gather(conn, f)[0]["_transcript_source"] == "tracker"
+    conn.execute("UPDATE tracker_rows SET transcript=NULL WHERE family_key='fv'")
+    conn.execute("INSERT INTO family_content (family_key, transcript, is_video) VALUES ('fv','meta transcript',true)")
+    conn.commit()
+    f["rep"]["transcript"] = None
+    unit, _ = at.gather(conn, f)
+    assert unit["transcript"] == "meta transcript" and unit["_transcript_source"] == "family_content"
+
+
+def test_audio_matches_via_meta_family_map(conn, tmp_path):
+    f = vid_unit(conn, tmp_path)
+    conn.execute("INSERT INTO meta_family_map (meta_family_key, meta_family, tracker_family_key) VALUES ('meta_fv','meta fv','fv')")
+    put_audio(conn, "meta_fv", "audio under the meta family key")
+    assert at.gather(conn, f)[0]["transcript"] == "audio under the meta family key"
+
+
+def test_whole_script_up_to_cap_and_no_transcript_unchanged(conn, tmp_path):
+    f = vid_unit(conn, tmp_path)
+    put_audio(conn, "fv", "word " * 2000)            # 10,000 chars
+    unit, _ = at.gather(conn, f)
+    assert len(unit["transcript"]) == at.TRANSCRIPT_CAP > 900
+    conn.execute("DELETE FROM ad_transcript")
+    conn.commit()
+    unit, _ = at.gather(conn, f)
+    assert "transcript" not in unit and unit["_transcript_source"] is None
+
+
+def test_method_records_audio_source(conn, tmp_path):
+    vid_unit(conn, tmp_path)
+    add_thumb(conn, "fv")
+    put_audio(conn, "fv", "my knees ached for years")
+    fake = ok()
+    run(conn, fake)
+    assert [r[3] for r in tags(conn)] == ["cover + copy + audio (auto)"]
+    assert conn.execute("SELECT extra->>'transcript_source' FROM ad_tags WHERE tag_set='linemap'").fetchone()[0] == "audio"
+    assert at.method_for(False, True) == "image + copy (auto)" and at.method_for(False, False, True) == "text only + audio (auto)"
