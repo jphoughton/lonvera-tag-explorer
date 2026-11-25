@@ -55,13 +55,13 @@ EXPOSE 8080
 CMD ["scripts/deploy/start_web.sh"]
 
 # ---- tagging: heavy + speech-to-text for the weekly `tagging` cron service (etl.competitor_tags, etl.own_ad_tags). Only that service sets IMAGE_FLAVOR=tagging, so the
-# whisper wheels (~170 MB) and the baked model (~141 MB) never touch the nightly etl / feeds / web images. The model is downloaded at BUILD time into HF_HOME and the
+# whisper wheels (~170 MB) and the baked models base + base.en (~141 MB each; competitor tags use base, etl.transcribe_ads uses base.en) never touch the nightly etl / feeds / web images. The model is downloaded at BUILD time into HF_HOME and the
 # runtime is forced offline, so a run never fetches it (and a missing model fails loudly instead of re-downloading every week).
 FROM heavy AS tagging
 COPY requirements-whisper.txt ./
 RUN pip install -r requirements-whisper.txt yt-dlp==2026.10.26
 ENV HF_HOME=/opt/hf
-RUN python -c "from faster_whisper.utils import download_model; print(download_model('base'))" \
+RUN python -c "from faster_whisper.utils import download_model; print(download_model('base')); print(download_model('base.en'))" \
  && chmod -R a+rX /opt/hf
 ENV HF_HUB_OFFLINE=1
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app

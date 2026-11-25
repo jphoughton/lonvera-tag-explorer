@@ -14,7 +14,7 @@ STORY = "Brief\nVariations\nOriginal: https://drive.google.com/file/d/ORIG123456
 @pytest.fixture(autouse=True)
 def clean(conn):
     conn.execute("TRUNCATE creative_priorities_assignments RESTART IDENTITY CASCADE")
-    conn.execute("TRUNCATE creative_ad_transcripts")
+    conn.execute("TRUNCATE creative_ad_transcripts, ad_transcript")
     conn.commit()
     yield
     conn.rollback()
@@ -123,3 +123,65 @@ def test_no_op_before_the_table_exists(conn):
         conn.rollback()
         conn.execute("ALTER TABLE IF EXISTS creative_ad_transcripts_gone RENAME TO creative_ad_transcripts")
         conn.commit()
+
+
+# ---- Meta route: ad families with spend since 2026-11-16 and no transcript ----------------------------------------------------------------
+
+def meta_ad(conn, fam, spend, day="2026-11-18", ad_type="VID", is_video=True, cid=None, video_id="V1", ad_id=None, track=True):
+    ad_id = ad_id or f"ad-{fam}"
+    conn.execute("INSERT INTO meta_ads (ad_id, meta_family_key, ad_name) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING", (ad_id, fam, fam))
+    conn.execute("INSERT INTO ad_daily (ad_id, day, meta_family_key, meta_family, spend, source) VALUES (%s,%s,%s,%s,%s,'meta_api')", (ad_id, day, fam, fam, spend))
+    if track:
+        conn.execute("INSERT INTO tracker_rows (row_key, concept_id, ad_family, family_key, sheet_row, ad_type) VALUES (%s,%s,%s,%s,1,%s)", (fam, cid or fam.title(), fam, fam, ad_type))
+    if is_video is not None:
+        conn.execute("INSERT INTO family_content (family_key, is_video, video_id, ad_id) VALUES (%s,%s,%s,%s)", (fam, is_video, video_id, ad_id))
+    conn.commit()
+
+
+def fake_meta(it, dest):
+    return "video"
+
+
+def test_meta_families_are_taken_by_spend_and_stored_under_the_tracker_concept_id(conn):
+    meta_ad(conn, "austin-small", 50, cid="Austin-Small")
+    meta_ad(conn, "austin-big", 900, cid="Austin-Big")
+    meta_ad(conn, "austin-mid", 300, cid="Austin-Mid")
+    conn.commit()
+    conn.row_factory = dict_row
+    todo, st = ta.meta_candidates(conn, set())
+    conn.row_factory = tuple_row
+    assert [t["concept_id"] for t in todo] == ["Austin-Big", "Austin-Mid", "Austin-Small"] and st["meta_candidates"] == 3
+    out = go(conn, limit=2, meta_fetch_fn=fake_meta, transcribe_fn=fake_tr)
+    assert out["meta_stored"] == 2 and out["stored"] == 2 and out["deferred"] == 1
+    assert [r[0] for r in rows(conn)] == ["Austin-Big", "Austin-Mid"]
+    assert conn.execute("SELECT source FROM ad_transcript WHERE family_key = 'austin-big'").fetchone()[0] == "whisper"
+
+
+def test_meta_skips_old_spend_statics_and_already_transcribed(conn):
+    meta_ad(conn, "old-ad", 500, day="2026-11-10")
+    meta_ad(conn, "static-ad", 400, ad_type="IMG", is_video=False)
+    meta_ad(conn, "done-ad", 300, cid="Done-Ad")
+    meta_ad(conn, "live-ad", 200, cid="Live-Ad")
+    conn.execute("INSERT INTO creative_ad_transcripts (concept_id, transcript) VALUES ('done-AD','already there')")
+    conn.commit()
+    st = go(conn, dry_run=True, meta_fetch_fn=lambda *a: pytest.fail("no download in a dry run"))
+    assert st["meta_candidates"] == 1 and st["meta_static"] == 1 and st["meta_already"] == 1 and st["to_do"] == 1
+
+
+def test_meta_fetch_failure_is_counted_and_does_not_stop_the_rest(conn):
+    meta_ad(conn, "bad-ad", 900, cid="Bad-Ad")
+    meta_ad(conn, "good-ad", 100, cid="Good-Ad")
+    def f(it, dest):
+        if it["concept_id"] == "Bad-Ad":
+            raise RuntimeError("download failed")
+        return "video"
+    st = go(conn, meta_fetch_fn=f, transcribe_fn=fake_tr)
+    assert st["meta_fetch_failed"] == 1 and st["meta_stored"] == 1 and st["errors"] == [] and [r[0] for r in rows(conn)] == ["Good-Ad"]
+    again = go(conn, meta_fetch_fn=f, transcribe_fn=fake_tr)
+    assert again["meta_candidates"] == 1 and again["meta_fetch_failed"] == 1 and again["meta_stored"] == 0       # retried next run
+
+
+def test_meta_family_without_tracker_row_uses_its_family_key(conn):
+    meta_ad(conn, "untracked-ad", 120, track=False)
+    st = go(conn, meta_fetch_fn=fake_meta, transcribe_fn=fake_tr)
+    assert st["meta_stored"] == 1 and [r[0] for r in rows(conn)] == ["untracked-ad"]
