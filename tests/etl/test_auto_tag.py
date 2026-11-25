@@ -439,3 +439,28 @@ def test_method_records_audio_source(conn, tmp_path):
     assert [r[3] for r in tags(conn)] == ["cover + copy + audio (auto)"]
     assert conn.execute("SELECT extra->>'transcript_source' FROM ad_tags WHERE tag_set='linemap'").fetchone()[0] == "audio"
     assert at.method_for(False, True) == "image + copy (auto)" and at.method_for(False, False, True) == "text only + audio (auto)"
+
+
+def test_retag_audio_supersedes_auto_tag_without_audio_and_keeps_old_row(conn, tmp_path):
+    vid_unit(conn, tmp_path)
+    add_thumb(conn, "fv")
+    run(conn, ok())                                            # tagged today without audio
+    assert [r[3] for r in tags(conn)] == ["cover + copy (auto)"]
+    assert at.candidates(conn, ("boneflex",), TODAY, retag_audio=True)["boneflex"] == []          # no audio yet: not eligible
+    put_audio(conn, "fv", "my knees ached for years")
+    st = run(conn, ok(line="BF21"), retag_audio=True, dry_run=True)
+    assert st["retag_audio_eligible"]["boneflex"] == {"families": 1, "rows": 1}
+    st = run(conn, ok(line="BF21"), retag_audio=True)
+    assert st["tagged_rows"] == 1 and st["version"] == "auto-audio-2026-11-10"
+    rows = conn.execute("SELECT version, is_current, method, extra->>'previous_tag_id' FROM ad_tags WHERE tag_set='linemap' ORDER BY id").fetchall()
+    assert [(r[0], r[1]) for r in rows] == [("auto-2026-11-10", False), ("auto-audio-2026-11-10", True)]      # old row kept, superseded
+    assert rows[1][2] == "cover + copy + audio (auto)" and rows[1][3] is not None
+    assert run(conn, ok(), retag_audio=True)["tagged_rows"] == 0                                   # idempotent
+
+
+def test_retag_audio_never_touches_human_tags(conn, tmp_path):
+    vid_unit(conn, tmp_path)
+    pid = conn.execute("SELECT id FROM tracker_rows WHERE family_key='fv'").fetchone()[0]
+    conn.execute("INSERT INTO ad_tags (tracker_row_id, tag_set, version, is_current, cluster, icp, pain_point, confidence, tagger) VALUES (%s,'linemap','linemap-v2',true,'X','Y','Z','high','human')", (pid,))
+    put_audio(conn, "fv", "audio exists")
+    assert at.candidates(conn, ("boneflex",), TODAY, retag_audio=True)["boneflex"] == []

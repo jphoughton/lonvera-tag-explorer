@@ -12,7 +12,7 @@ linemap tag: human / cycle tags are never overwritten or marked not-current. Re-
 Safety: missing token / auth error / usage limit -> the run stops early and is recorded failed in etl_runs (the nightly pipeline carries on, see
 scripts/deploy/run_etl.sh); hard cap per run (--limit, default 400 ads); 3 tries per ad with backoff.
 Rules (2026-11-10): the ad's PAIN (the felt symptom) is chosen first, then ICP, then trigger; the tracker Pain Point is the default answer (kept_tracker_pain / override_reason).
-Usage: python -m etl.auto_tag [--product slug] [--limit N] [--dry-run] [--retag-today] [--no-assets]"""
+Usage: python -m etl.auto_tag [--product slug] [--limit N] [--dry-run] [--retag-today] [--retag-audio] [--no-assets]"""
 from __future__ import annotations
 
 import argparse
@@ -90,9 +90,18 @@ def _clip(s, n) -> str | None:
     return s[:n] if s else None
 
 
-def candidates(conn, slugs, day: dt.date, retag_today: bool = False) -> dict[str, list[dict]]:
+def audio_families(conn) -> set[str]:
+    """Tracker family keys that have a real-audio transcript (directly or through meta_family_map)."""
+    q = """SELECT x.family_key FROM ad_transcript x WHERE x.source <> 'tracker_copy' AND btrim(x.transcript) <> '' AND lower(btrim(x.transcript, ' []')) <> 'no speech'
+           UNION SELECT m.tracker_family_key FROM ad_transcript x JOIN meta_family_map m ON m.meta_family_key = x.family_key
+           WHERE x.source <> 'tracker_copy' AND btrim(x.transcript) <> '' AND lower(btrim(x.transcript, ' []')) <> 'no speech' AND m.tracker_family_key IS NOT NULL"""
+    return {r[0] for r in conn.execute(q).fetchall()}
+
+
+def candidates(conn, slugs, day: dt.date, retag_today: bool = False, retag_audio: bool = False) -> dict[str, list[dict]]:
     """{slug: [family dicts]} biggest spend first. A family qualifies when at least one of its (live, real) tracker rows has no current linemap tag and the
-    family has spend (since launch) or a launch date within RECENT_DAYS. `rows` = ids of the family's tracker rows that need a tag."""
+    family has spend (since launch) or a launch date within RECENT_DAYS. `rows` = ids of the family's tracker rows that need a tag.
+    retag_audio: also the rows whose current tag is an AUTO tag made without the real-audio transcript, for families that now have one."""
     ver = "auto-" + day.isoformat()
     has_del = conn.execute("SELECT 1 FROM information_schema.columns WHERE table_name='tracker_rows' AND column_name='deleted_at'").fetchone()
     live = " AND t.deleted_at IS NULL" if has_del else ""
@@ -101,19 +110,21 @@ def candidates(conn, slugs, day: dt.date, retag_today: bool = False) -> dict[str
            t.headlines, t.ad_description, t.transcript, t.tracker_cluster, t.tracker_icp, t.tracker_pain, t.tracker_emotion,
            (btrim(coalesce(t.raw->>'Brief Link', '')) <> ''),
            coalesce(am.spend_launch, 0), coalesce(t.launch_date, am.launch_date),
-           (SELECT g.version FROM ad_tags g WHERE g.tracker_row_id = t.id AND g.tag_set = 'linemap' AND g.is_current) AS cur_version
+           (SELECT g.version FROM ad_tags g WHERE g.tracker_row_id = t.id AND g.tag_set = 'linemap' AND g.is_current) AS cur_version,
+           (SELECT (g.extra->>'source' = 'auto' AND coalesce(g.method, '') NOT LIKE '%%audio%%') FROM ad_tags g WHERE g.tracker_row_id = t.id AND g.tag_set = 'linemap' AND g.is_current) AS cur_auto_no_audio
     FROM tracker_rows t JOIN products p ON p.id = t.product_id LEFT JOIN ad_metrics am ON am.tracker_row_id = t.id
     WHERE p.slug = ANY(%s) AND btrim(t.concept_id) <> ''{live}
     ORDER BY t.family_key, t.sheet_row NULLS LAST, t.id"""
+    aud = audio_families(conn) if retag_audio else set()
     fams: dict[tuple, dict] = {}
     for r in conn.execute(sql, (list(slugs),)).fetchall():
-        (slug, fk, rid, cid, af, ty, cname, desc, hyp, mname, ptext, heads, adesc, trans, tcl, ticp, tpain, temo, briefed, spend, launch, curver) = r
+        (slug, fk, rid, cid, af, ty, cname, desc, hyp, mname, ptext, heads, adesc, trans, tcl, ticp, tpain, temo, briefed, spend, launch, curver, auto_no_audio) = r
         f = fams.setdefault((slug, fk), {"slug": slug, "family_key": fk, "rows": [], "spend": 0.0, "launch": None, "rep": None, "all_rows": 0})
         f["all_rows"] += 1
         f["spend"] = max(f["spend"], float(spend))
         if launch and (f["launch"] is None or launch > f["launch"]):
             f["launch"] = launch
-        if curver is None or (retag_today and curver == ver):
+        if curver is None or (retag_today and curver == ver) or (retag_audio and auto_no_audio and fk in aud):
             f["rows"].append(rid)
         copy_len = sum(len(x or "") for x in (ptext or [])) + sum(len(x or "") for x in (heads or [])) + len(adesc or "") + len(trans or "")
         if f["rep"] is None or copy_len > f["rep"]["_len"]:
@@ -339,20 +350,29 @@ def method_for(is_video: bool, has_image: bool, audio: bool = False) -> str:
     return f"cover + copy{a} (auto)" if is_video else f"image + copy{a} (auto)"
 
 
-def write_tags(conn, slug: str, f: dict, ans: dict, unit: dict, has_image: bool, version: str, attempts: int, line_ids: dict) -> int:
-    """Insert the tag on every still-untagged row of the family. Never touches another version or an existing current tag."""
+def write_tags(conn, slug: str, f: dict, ans: dict, unit: dict, has_image: bool, version: str, attempts: int, line_ids: dict, supersede: bool = False) -> int:
+    """Insert the tag on every still-untagged row of the family. Never touches another version or an existing current tag.
+    supersede (--retag-audio): the family's listed rows hold a current AUTO tag made without audio; it is set is_current=false (kept, never deleted)
+    and the new tag records extra.previous_tag_id / previous_line_id."""
     is_video = bool(unit.get("_is_video"))
     conf = final_confidence(ans["confidence"], is_video, has_image)
     method = method_for(is_video, has_image, unit.get("_transcript_source") == "audio")
     lid = line_ids[ans["line"]]
     cat_row = lid["row"]
-    extra = db.jsonb({"source": "auto", "model": MODEL, "line_code": ans["line"], "needs_review": conf == "low", "model_confidence": ans["confidence"],
+    extra_json = json.dumps({"source": "auto", "model": MODEL, "line_code": ans["line"], "needs_review": conf == "low", "model_confidence": ans["confidence"],
                       "attempts": attempts, "has_image": has_image, "is_video": is_video, "transcript_source": unit.get("_transcript_source"),
                       "kept_tracker_pain": ans.get("kept_tracker_pain"), "override_reason": ans.get("override_reason")})
+    extra = db.jsonb(json.loads(extra_json))
     with conn.transaction():
         conn.execute("DELETE FROM ad_tags WHERE tag_set='linemap' AND version=%s AND tracker_row_id = ANY(%s)", (version, f["rows"]))
         n = 0
         for rid in f["rows"]:
+            if supersede:
+                prev = conn.execute("UPDATE ad_tags SET is_current=false WHERE tracker_row_id=%s AND tag_set='linemap' AND is_current AND extra->>'source'='auto' "
+                                    "AND coalesce(method,'') NOT LIKE '%%audio%%' RETURNING id, line_id", (rid,)).fetchone()
+                if prev is None:
+                    continue
+                extra = db.jsonb({**json.loads(extra_json), "previous_tag_id": prev[0], "previous_line_id": prev[1]})
             n += conn.execute("""INSERT INTO ad_tags (tracker_row_id, tag_set, version, is_current, line_id, cluster, icp, pain_point, emotional_trigger, confidence, method,
                                  seen, why, runner_up, tagger, extra)
                                  SELECT %s,'linemap',%s,true,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
@@ -370,9 +390,9 @@ def taxonomy_ids(conn, slug: str) -> dict[str, dict]:
 # ---- run ------------------------------------------------------------------------------------------------------------------------------
 
 def run(conn, slugs=PRODUCTS, limit: int = DEFAULT_LIMIT, dry_run: bool = False, retag_today: bool = False, fetch_assets: bool = True,
-        day: dt.date | None = None, runner=subprocess.run, sleep=time.sleep, log=db.log) -> dict:
+        retag_audio: bool = False, day: dt.date | None = None, runner=subprocess.run, sleep=time.sleep, log=db.log) -> dict:
     day = day or dt.date.today()
-    version = "auto-" + day.isoformat()
+    version = ("auto-audio-" if retag_audio else "auto-") + day.isoformat()
     t0 = time.time()
     stats: dict = {"version": version, "dry_run": dry_run, "limit": limit, "by_product": {}, "tagged_families": 0, "tagged_rows": 0, "no_content": 0,
                    "failed": 0, "skipped_repeat_failures": 0, "confidence": {}, "calls": 0, "attempts": 0, "input_tokens": 0, "output_tokens": 0,
@@ -392,7 +412,9 @@ def run(conn, slugs=PRODUCTS, limit: int = DEFAULT_LIMIT, dry_run: bool = False,
         except Exception as e:                                           # noqa: BLE001
             stats["assets_error"] = db.scrub(e)[:200]
             log(f"  assets_pull skipped: {stats['assets_error']}")
-    cands = candidates(conn, slugs, day, retag_today)
+    cands = candidates(conn, slugs, day, retag_today, retag_audio)
+    if retag_audio:                                    # bounded: the highest-spend families first, at most `limit` (the rest wait for a later run)
+        stats["retag_audio_eligible"] = {s: {"families": len(c), "rows": sum(len(f["rows"]) for f in c)} for s, c in cands.items()}
     fails = {k[len("autotag_fail:"):]: v for k, v in conn.execute("SELECT key, value FROM app_meta WHERE key LIKE 'autotag_fail:%'").fetchall()}
     budget = limit
     for s in slugs:
@@ -441,7 +463,7 @@ def run(conn, slugs=PRODUCTS, limit: int = DEFAULT_LIMIT, dry_run: bool = False,
                     stats["failed"] += 1
                     log(f"  {s} {f['family_key']}: {ans['line']} is not in taxonomy_lines, skipped")
                     continue
-                n = write_tags(conn, s, f, ans, unit, img is not None, version, usage["attempts"], ids)
+                n = write_tags(conn, s, f, ans, unit, img is not None, version, usage["attempts"], ids, retag_audio)
                 conn.commit()
                 stats["tagged_families"] += 1
                 stats["tagged_rows"] += n
@@ -464,12 +486,13 @@ def main():
     ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help="hard cap on ads (claude calls' units) per run (default 400)")
     ap.add_argument("--dry-run", action="store_true", help="count candidates and show sample units; no claude call, no writes")
     ap.add_argument("--retag-today", action="store_true", help="also redo the rows tagged by today's own auto version (never other versions)")
+    ap.add_argument("--retag-audio", action="store_true", help="redo auto tags made without the real-audio transcript for families that now have one (spend order, capped by --limit); old tags are kept as superseded")
     ap.add_argument("--no-assets", action="store_true", help="do not try to fetch missing thumbnails from Meta first")
     a = ap.parse_args()
     slugs = (a.product,) if a.product else PRODUCTS
     with db.JobRun("auto_tag") as job, db.connect() as conn:
         job.stats = {}
-        st = run(conn, slugs, a.limit, a.dry_run, a.retag_today, not a.no_assets)
+        st = run(conn, slugs, a.limit, a.dry_run, a.retag_today, not a.no_assets, a.retag_audio)
         job.stats = st
         job.rows_written = st["tagged_rows"]
         db.log(f"  {json.dumps({k: v for k, v in st.items() if k != 'samples'}, default=str)}")
