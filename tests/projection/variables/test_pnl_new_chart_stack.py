@@ -134,6 +134,8 @@ def test_a_new_chart_scenario_feeds_every_other_module(client, vdb, clean_qb):
     # pacing: the month's revenue and net operating income goals are the new chart's
     pm = {r["key"]: r for r in snap["pacing/month"][1]["rows"]}
     assert pm["total_rev"]["goal"] == pytest.approx(pnl.lines["total_income"][nov]) and pm["noi"]["goal"] == pytest.approx(pnl.lines["noi"][nov])
+    assert pm["sales_tax"]["label"] == "Shipping income, refunds and discounts"
+    assert next(r for r in client.get(f"{M}/pacing/month", query_string={"scenario": "current"}).get_json()["rows"] if r["key"] == "sales_tax")["label"] == "Sales tax (est.)"
     assert pm["cogs_direct"]["goal"] == pytest.approx(pnl.lines["cogs_product"][nov]) and pm["inbound"]["goal"] == 0.0
 
     # financing: operating cash before inventory = net operating income + the product cost the inventory buys replace

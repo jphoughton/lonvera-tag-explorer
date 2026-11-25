@@ -255,7 +255,11 @@ def build_rows(c: Ctx) -> list[dict]:
     add(ratio_row(c, S_("dtc_nc_aov", "DTC NC AOV", "REVENUE", "money2", "up", 1, "ratio",
                         "New-customer revenue / new customers, month to date. Goal: the plan's new-customer revenue / the plan's new customers (the plan's AOV)."), nc, ncc))
     add(amount_row(c, S_("amazon_rev", "Amazon revenue", "REVENUE", "money", "up", 1), amz))
-    add(amount_row(c, S_("sales_tax", "Sales tax (est.)", "REVENUE", "money", None, 1, "memo", "DTC revenue x the plan's sales-tax rate"), tax))
+    if getattr(getattr(c.book, "pnl", None), "chart", "sheet") == "qb2026":      # the new chart has no sales-tax line: this slot holds shipping income plus refunds and discounts
+        add(amount_row(c, S_("sales_tax", "Shipping income, refunds and discounts", "REVENUE", "money", None, 1, "memo",
+                             "Shipping income plus refunds and discounts (negative), as the new chart books them. No sales tax is deducted."), tax))
+    else:
+        add(amount_row(c, S_("sales_tax", "Sales tax (est.)", "REVENUE", "money", None, 1, "memo", "DTC revenue x the plan's sales-tax rate"), tax))
     add(_proj_only(c, S_("refunds", "Refunds (actual)", "REVENUE", "money", None, 1, "memo", "Shopify refunds so far. The plan's revenue does not deduct refunds."),
                    base_amt(c, "o_refunds", None)))
 
