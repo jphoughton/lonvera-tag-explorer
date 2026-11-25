@@ -169,8 +169,17 @@ LEFT JOIN LATERAL (SELECT h.hook, h.confidence FROM tracker_rows tr JOIN ad_hook
 WHERE m.is_first_row AND (m.spend_launch > 0 OR g.line_id IS NOT NULL)
 """
 
+# Meta families with a native line tag (ad_family_line_tags, migration 285) and NO tracker row have no family_daily rows (family_daily is keyed on tracker families): their days come straight from
+# ad_daily / ad_daily_upstack_nc, keyed like own_ad_tags: COALESCE(meta_family_map.tracker_family_key, meta_ads.meta_family_key). Tracker families never appear here (tracker wins).
+NATIVE_DAILY_SQL = """
+SELECT COALESCE(m.tracker_family_key, a.meta_family_key, d.meta_family_key) AS family_key, d.day, sum(d.spend) AS spend, sum(d.purchases) AS purchases, sum(d.conv_value) AS revenue
+FROM {src} d LEFT JOIN meta_ads a ON a.ad_id = d.ad_id LEFT JOIN meta_family_map m ON m.meta_family_key = COALESCE(a.meta_family_key, d.meta_family_key)
+WHERE left(d.ad_id, 4) <> 'fam:' AND COALESCE(m.tracker_family_key, a.meta_family_key, d.meta_family_key) IN
+      (SELECT g.family_key FROM ad_family_line_tags g WHERE g.is_current AND NOT EXISTS (SELECT 1 FROM ad_metrics am WHERE am.family_key = g.family_key))
+GROUP BY 1, 2
+"""
 WIN_SQL = """
-WITH t AS (SELECT max(day) AS d FROM {table})
+WITH fd AS ({fd}), t AS (SELECT max(day) AS d FROM fd)
 SELECT f.family_key,
   sum(spend) AS s_all, sum(purchases) AS p_all, sum(revenue) AS r_all,
   COALESCE(sum(spend) FILTER (WHERE day > t.d - 30), 0) AS s30, COALESCE(sum(purchases) FILTER (WHERE day > t.d - 30), 0) AS p30, COALESCE(sum(revenue) FILTER (WHERE day > t.d - 30), 0) AS r30,
@@ -180,7 +189,7 @@ SELECT f.family_key,
   COALESCE(sum(spend) FILTER (WHERE day > t.d - 14), 0) AS s14, COALESCE(sum(purchases) FILTER (WHERE day > t.d - 14), 0) AS p14, COALESCE(sum(revenue) FILTER (WHERE day > t.d - 14), 0) AS r14,
   COALESCE(sum(spend) FILTER (WHERE day <= t.d - 30 AND day > t.d - 90), 0) AS s60, COALESCE(sum(purchases) FILTER (WHERE day <= t.d - 30 AND day > t.d - 90), 0) AS p60,
   COALESCE(sum(revenue) FILTER (WHERE day <= t.d - 30 AND day > t.d - 90), 0) AS r60
-FROM {table} f CROSS JOIN t GROUP BY f.family_key
+FROM fd f CROSS JOIN t GROUP BY f.family_key
 """
 
 FUNNEL_SQL = """
@@ -200,7 +209,22 @@ WHERE age BETWEEN %s AND %s GROUP BY slug
 """
 
 WEEKLY_SQL = """
-SELECT family_key, date_trunc('week', day)::date AS wk, sum(spend) AS spend, sum(revenue) AS revenue, sum(purchases) AS purchases FROM family_daily GROUP BY 1, 2
+WITH fd AS ({fd})
+SELECT family_key, date_trunc('week', day)::date AS wk, sum(spend) AS spend, sum(revenue) AS revenue, sum(purchases) AS purchases FROM fd GROUP BY 1, 2
+"""
+
+# native families (no tracker row) as rows of the same shape as FAM_SQL: tracker_row_id NULL, windows from ad_daily, tracker wins where a family has an ad_metrics row
+NATIVE_FAM_SQL = """
+WITH nd AS (""" + NATIVE_DAILY_SQL.format(src="ad_daily") + """),
+agg AS (SELECT family_key, sum(spend) AS s, sum(purchases) AS p, sum(revenue) AS r, min(day) FILTER (WHERE spend > 0) AS fd, max(day) FILTER (WHERE spend > 0) AS ld FROM nd GROUP BY 1),
+b AS (SELECT min(day) AS ds, max(day) AS dt FROM family_daily)
+SELECT g.family_key, NULL::bigint AS tracker_row_id, g.product_slug AS product, g.line_id, g.confidence AS tag_conf, g.method AS tag_method, g.tagger,
+       COALESCE(a.s, 0) AS spend_launch, COALESCE(a.p, 0) AS purchases_launch, COALESCE(a.r, 0) AS revenue_launch, COALESCE(a.ld >= b.dt - 1, false) AS live,
+       a.fd AS first_day, a.ld AS last_spend_day, COALESCE(a.fd <= b.ds, false) AS before_start, COALESCE(NULLIF(btrim(g.ad_name), ''), g.family_key) AS display,
+       NULL::text AS hook, NULL::text AS hook_conf, false AS has_launch, CASE WHEN a.fd <= b.ds THEN NULL ELSE a.fd END AS eff_launch
+FROM ad_family_line_tags g LEFT JOIN agg a ON a.family_key = g.family_key CROSS JOIN b
+WHERE g.is_current AND g.product_slug = ANY(%s) AND NOT EXISTS (SELECT 1 FROM ad_metrics m WHERE m.family_key = g.family_key)
+  AND (COALESCE(a.s, 0) > 0 OR g.line_id IS NOT NULL)
 """
 
 LINE_SQL = """
@@ -210,6 +234,21 @@ SELECT l.id, p.slug AS product, p.name AS product_name, l.line_code, l.cluster, 
 FROM taxonomy_lines l JOIN products p ON p.id = l.product_id AND p.slug = ANY(%s)
 ORDER BY p.slug, l.sort_order, l.id
 """
+
+
+def has_native(conn) -> bool:
+    """True when the native line-tag table (migration 285) exists and holds a current tag; the snapshot then adds those families to the tracker ones."""
+    if conn.execute("SELECT to_regclass('public.ad_family_line_tags')").fetchone()[0] is None:
+        return False
+    return conn.execute("SELECT 1 FROM ad_family_line_tags WHERE is_current LIMIT 1").fetchone() is not None
+
+
+def fd_sql(table: str, native: bool) -> str:
+    """CTE body of family days for `table` ('family_daily' or 'family_daily_upstack_nc'); with native families, ad_daily / ad_daily_upstack_nc days of the native families are added."""
+    if not native:
+        return f"SELECT family_key, day, spend, purchases, revenue FROM {table}"
+    src = "ad_daily" if table == "family_daily" else "ad_daily_upstack_nc"
+    return f"SELECT family_key, day, spend, purchases, revenue FROM {table} UNION ALL " + NATIVE_DAILY_SQL.format(src=src)
 
 
 def load_inputs(conn) -> dict:
@@ -222,13 +261,17 @@ def load_inputs(conn) -> dict:
     cur = conn.execute(FAM_SQL, (list(PRODUCTS),))
     fcols = [d.name for d in cur.description]
     fams = [dict(zip(fcols, r)) for r in cur.fetchall()]
+    native = has_native(conn)
+    if native:
+        cur = conn.execute(NATIVE_FAM_SQL, (list(PRODUCTS),))
+        fams += [dict(zip([d.name for d in cur.description], r)) for r in cur.fetchall()]
     win = {}
     for key, table in (("meta", "family_daily"), ("nc", "family_daily_upstack_nc")):
-        cur = conn.execute(WIN_SQL.format(table=table))
+        cur = conn.execute(WIN_SQL.format(fd=fd_sql(table, native)))
         wc = [d.name for d in cur.description]
         win[key] = {r[0]: dict(zip(wc, r)) for r in cur.fetchall()}
     weekly: dict = {}
-    for fk, wk, sp, rv, pu in conn.execute(WEEKLY_SQL).fetchall():
+    for fk, wk, sp, rv, pu in conn.execute(WEEKLY_SQL.format(fd=fd_sql("family_daily", native))).fetchall():
         weekly.setdefault(fk, {})[wk] = (_f(sp), _f(rv), _f(pu))
     funnel = {r[0]: {"launched": r[1], "under_tested": r[2], "tested": r[3], "top": r[4]} for r in conn.execute(FUNNEL_SQL, (JUDGED_SPEND, JUDGED_SPEND, TOP_SPEND, list(PRODUCTS))).fetchall()}
     cohorts: dict = {}

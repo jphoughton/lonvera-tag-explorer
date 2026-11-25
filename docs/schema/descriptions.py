@@ -3470,6 +3470,35 @@ rel("analytics.meta_page_performance_daily", group="analytics", kind="view", dom
               ("Spend by page, last 7 days", "SELECT page_name, round(sum(spend)) AS spend FROM analytics.meta_page_performance_daily WHERE day > " + LAST_META_DAY + " - 7 GROUP BY 1 ORDER BY 2 DESC;")])
 
 
+rel("public.ad_family_line_tags", group="creative", kind="table",
+    purpose="App-native line tags for Meta ad families that have no Creative Tracker row: the Communication Overview line (cluster / ICP / pain point / trigger) chosen for the family, keyed on the Meta ad family instead of a tracker row. Same payload as ad_tags.",
+    grain="one current row per family_key (unique); older versions kept with is_current = false",
+    source="etl.auto_tag second candidate source (Meta ad families with spend and no current line tag, via ad_daily x meta_ads x meta_family_map), and production tickets with a line (ticket tag, no model call)",
+    refresh="nightly in the etl service with etl.auto_tag; bounded backfill and retag runs by hand", coverage="from 2026-11-25; families with spend since 2026-05-06 that are not on the tracker and belong to Vita Bull, Beef Liver or Boneflex",
+    caveats=["family_key is COALESCE(meta_family_map.tracker_family_key, meta_ads.meta_family_key), the key etl.own_ad_tags uses. A family that also has a tracker row is tagged on the tracker (ad_tags) and this table is ignored for it.",
+             "method says how sure the tagger could be: 'text only' tags came from copy alone; '+ audio' means the real-audio transcript was read; 'ticket' tags copy the line of a production ticket without a model call. A later retag run supersedes a tag made without audio once the transcript exists (the old row stays, is_current = false).",
+             "No tracker row is read or written."],
+    cols={"id": "Primary key.", "family_key": "Meta ad family key (lower-case family name; or the tracker family key when mapped).", "product_slug": "vita-bull | beef-liver | boneflex.",
+          "ad_name": "Name of the family's top-spending ad.", "tag_set": "Always 'linemap'.", "version": "Tagging run, e.g. 'auto-2026-11-25', 'auto-audio-2026-11-25', 'ticket-2026-11-25'.",
+          "is_current": "true for the tag in force.", "line_id": "taxonomy_lines.id of the chosen line.", "cluster": "Market cluster.", "icp": "ICP / persona.", "pain_point": "Pain point.",
+          "emotional_trigger": "Emotional trigger.", "confidence": "high | medium | low (videos and ads without a picture are capped at medium).",
+          "method": "How it was tagged: 'image + copy (auto)', 'cover + copy (auto)', 'text only (auto)', each with ' + audio' when the real-audio transcript was used, or 'ticket (production assignment)'.",
+          "seen": "What the tagger saw in the creative.", "why": "Why the line was chosen.", "runner_up": "Second-best line code.", "tagger": "'auto-claude-sonnet-5-5' or 'assignment'.",
+          "tagged_at": "When the tag was written.", "extra": "JSON: source, model, line_code, needs_review, model_confidence, attempts, has_image, is_video, transcript_source (audio | tracker | family_content | NULL), kept_tracker_pain, override_reason, previous_tag_id."})
+rel("analytics.family_line_tags", group="analytics", kind="view", domain="tags", span=("ad_family_line_tags", "tagged_at::date"), base="ad_family_line_tags",
+    purpose="Line tags of Meta ad families that are not on the Creative Tracker (current and superseded), with product, taxonomy line and the transcript source. The counterpart of tracker_tags for ads the tracker never had; filter is_current for what stands now.",
+    grain="one row per tag_id", source="public.ad_family_line_tags joined to taxonomy_lines (and tracker_rows for on_tracker)", refresh="nightly with etl.auto_tag; bounded runs by hand", coverage="from 2026-11-25",
+    caveats=["Join to analytics.meta_ad_daily / meta_ads on family_key (meta_ads.family_key) for spend and returns: these families have no creative_tracker or creative_family_metrics row.",
+             "on_tracker = true means the family has since been added to the tracker: the tracker tag (tracker_tags) then wins and this row is ignored by the Priorities snapshot.",
+             "confidence / method say how sure the tagger was: text-only and cover-only tags are weaker evidence."],
+    cols={"tag_id": "Primary key of the tag.", "family_key": "Meta ad family key.", "product_slug": "vita-bull | beef-liver | boneflex.", "ad_name": "Name of the family's top-spending ad.",
+          "tag_set": "Always 'linemap'.", "version": "Tagging run.", "is_current": "true for the tag in force.", "line_id": "taxonomy_lines.id.", "line_code": "taxonomy_lines.line_code the tag points at.",
+          "cluster": "Market cluster.", "icp": "ICP / persona.", "pain_point": "Pain point.", "emotional_trigger": "Emotional trigger.", "confidence": "high | medium | low.",
+          "method": "How it was tagged (image / cover / text only, with ' + audio' when the real-audio transcript was read; 'ticket' for production-ticket tags).", "seen": "What the tagger saw.",
+          "why": "Why the line was chosen.", "runner_up": "Second-best line code.", "tagger": "Who / what tagged it.", "tagged_at": "When the tag was written.",
+          "transcript_source": "audio | tracker | family_content | NULL: which transcript the tagger read.", "on_tracker": "true when the family now has a live tracker row."},
+    examples=[("Current native line tags per product and method", "SELECT product_slug, method, count(*) AS tags FROM analytics.family_line_tags WHERE is_current GROUP BY 1, 2 ORDER BY 1, 3 DESC;"),
+              ("Spend of tagged families by line (Meta basis, since 2026-05-06)", "SELECT t.product_slug, t.line_code, count(*) AS families, round(sum(s.spend)) AS spend FROM analytics.family_line_tags t JOIN (SELECT a.family_key, sum(d.spend) AS spend FROM analytics.meta_ad_daily d JOIN analytics.meta_ads a ON a.ad_id = d.ad_id GROUP BY 1) s ON s.family_key = t.family_key WHERE t.is_current GROUP BY 1, 2 ORDER BY 4 DESC LIMIT 20;")])
 # =====================================================================================================================================
 # The existing analytics views: domain and the table that gives their first / last day (for analytics.catalog)
 # =====================================================================================================================================
