@@ -1,6 +1,6 @@
 #!/bin/sh
 # `tagging` service entrypoint (Railway cron, DAILY `0 18 * * *` UTC, after the nightly etl): 
-#   every day  : transcribe the video ads on Ready to launch cards (etl.transcribe_ads: Drive download + faster-whisper, up to 20 new ads, stored once, so a backlog clears over a few nights).
+#   every day  : transcribe the video ads on Ready to launch cards plus every ad with Meta spend since 2026-11-16 (etl.transcribe_ads: Drive download or Meta video + faster-whisper, up to TRANSCRIBE_MAX_PER_RUN new ads, default 20, stored once, so a backlog clears over a few nights).
 #   Sundays UTC: also tag NEW competitor ads (etl.competitor_tags) and NEW own ad families (etl.own_ad_tags), after the transcripts so the tagger reads them. Incremental: both skip anything already
 #                tagged at the current tag version, so a quiet week finds 0 to a few. TAGGING_FORCE=1 runs them on any day (manual re-run).
 # Runs on the `tagging` image flavor (Dockerfile IMAGE_FLAVOR=tagging: jobs + faster-whisper + yt-dlp + baked whisper model), never on the nightly etl image.
@@ -18,6 +18,9 @@ if [ "${TAGGING_FORCE:-0}" = "1" ] || [ "$(date -u +%u)" = "7" ]; then tag_day=1
 pre_rc=0
 python -c "import faster_whisper" || pre_rc=$?
 command -v ffmpeg >/dev/null 2>&1 || { echo "[run_tagging] ffmpeg missing" >&2; pre_rc=1; }
+for m in base base.en; do   # the baked models must load offline (HF_HUB_OFFLINE=1); base.en is the one etl.transcribe_ads uses
+  python -c "import sys; from faster_whisper.utils import download_model; download_model(sys.argv[1], local_files_only=True)" "$m" >/dev/null 2>&1 || { echo "[run_tagging] whisper model $m is not baked into the image" >&2; pre_rc=1; }
+done
 if [ "$tag_day" -eq 1 ]; then
   command -v yt-dlp >/dev/null 2>&1 || { echo "[run_tagging] yt-dlp missing" >&2; pre_rc=1; }
   command -v claude >/dev/null 2>&1 || { echo "[run_tagging] claude CLI missing" >&2; pre_rc=1; }
