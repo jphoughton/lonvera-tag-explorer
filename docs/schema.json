@@ -30995,6 +30995,327 @@
    ]
   },
   {
+   "name": "public.ad_family_line_tags",
+   "schema": "public",
+   "relation": "ad_family_line_tags",
+   "kind": "table",
+   "group": "creative",
+   "purpose": "App-native line tags for Meta ad families that have no Creative Tracker row: the Communication Overview line (cluster / ICP / pain point / trigger) chosen for the family, keyed on the Meta ad family instead of a tracker row. Same payload as ad_tags.",
+   "grain": "one current row per family_key (unique); older versions kept with is_current = false",
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [
+    {
+     "columns": [
+      "line_id"
+     ],
+     "references": "public.taxonomy_lines",
+     "referenced_columns": [
+      "id"
+     ]
+    }
+   ],
+   "source": "etl.auto_tag second candidate source (Meta ad families with spend and no current line tag, via ad_daily x meta_ads x meta_family_map), and production tickets with a line (ticket tag, no model call)",
+   "refresh": "nightly in the etl service with etl.auto_tag; bounded backfill and retag runs by hand",
+   "coverage": "from 2026-11-25; families with spend since 2026-05-06 that are not on the tracker and belong to Vita Bull, Beef Liver or Boneflex",
+   "caveats": [
+    "family_key is COALESCE(meta_family_map.tracker_family_key, meta_ads.meta_family_key), the key etl.own_ad_tags uses. A family that also has a tracker row is tagged on the tracker (ad_tags) and this table is ignored for it.",
+    "method says how sure the tagger could be: 'text only' tags came from copy alone; '+ audio' means the real-audio transcript was read; 'ticket' tags copy the line of a production ticket without a model call. A later retag run supersedes a tag made without audio once the transcript exists (the old row stays, is_current = false).",
+    "No tracker row is read or written."
+   ],
+   "like": null,
+   "domain": null,
+   "columns": [
+    {
+     "name": "id",
+     "type": "bigint",
+     "nullable": false,
+     "description": "Primary key."
+    },
+    {
+     "name": "family_key",
+     "type": "text",
+     "nullable": false,
+     "description": "Meta ad family key (lower-case family name; or the tracker family key when mapped)."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": false,
+     "description": "vita-bull | beef-liver | boneflex."
+    },
+    {
+     "name": "ad_name",
+     "type": "text",
+     "nullable": true,
+     "description": "Name of the family's top-spending ad."
+    },
+    {
+     "name": "tag_set",
+     "type": "text",
+     "nullable": false,
+     "description": "Always 'linemap'."
+    },
+    {
+     "name": "version",
+     "type": "text",
+     "nullable": false,
+     "description": "Tagging run, e.g. 'auto-2026-11-25', 'auto-audio-2026-11-25', 'ticket-2026-11-25'."
+    },
+    {
+     "name": "is_current",
+     "type": "boolean",
+     "nullable": false,
+     "description": "true for the tag in force."
+    },
+    {
+     "name": "line_id",
+     "type": "integer",
+     "nullable": true,
+     "description": "taxonomy_lines.id of the chosen line."
+    },
+    {
+     "name": "cluster",
+     "type": "text",
+     "nullable": true,
+     "description": "Market cluster."
+    },
+    {
+     "name": "icp",
+     "type": "text",
+     "nullable": true,
+     "description": "ICP / persona."
+    },
+    {
+     "name": "pain_point",
+     "type": "text",
+     "nullable": true,
+     "description": "Pain point."
+    },
+    {
+     "name": "emotional_trigger",
+     "type": "text",
+     "nullable": true,
+     "description": "Emotional trigger."
+    },
+    {
+     "name": "confidence",
+     "type": "text",
+     "nullable": true,
+     "description": "high | medium | low (videos and ads without a picture are capped at medium)."
+    },
+    {
+     "name": "method",
+     "type": "text",
+     "nullable": true,
+     "description": "How it was tagged: 'image + copy (auto)', 'cover + copy (auto)', 'text only (auto)', each with ' + audio' when the real-audio transcript was used, or 'ticket (production assignment)'."
+    },
+    {
+     "name": "seen",
+     "type": "text",
+     "nullable": true,
+     "description": "What the tagger saw in the creative."
+    },
+    {
+     "name": "why",
+     "type": "text",
+     "nullable": true,
+     "description": "Why the line was chosen."
+    },
+    {
+     "name": "runner_up",
+     "type": "text",
+     "nullable": true,
+     "description": "Second-best line code."
+    },
+    {
+     "name": "tagger",
+     "type": "text",
+     "nullable": true,
+     "description": "'auto-claude-sonnet-5-5' or 'assignment'."
+    },
+    {
+     "name": "tagged_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "description": "When the tag was written."
+    },
+    {
+     "name": "extra",
+     "type": "jsonb",
+     "nullable": true,
+     "description": "JSON: source, model, line_code, needs_review, model_confidence, attempts, has_image, is_video, transcript_source (audio | tracker | family_content | NULL), kept_tracker_pain, override_reason, previous_tag_id."
+    }
+   ],
+   "examples": []
+  },
+  {
+   "name": "analytics.family_line_tags",
+   "schema": "analytics",
+   "relation": "family_line_tags",
+   "kind": "view",
+   "group": "analytics",
+   "purpose": "Line tags of Meta ad families that are not on the Creative Tracker (current and superseded), with product, taxonomy line and the transcript source. The counterpart of tracker_tags for ads the tracker never had; filter is_current for what stands now.",
+   "grain": "one row per tag_id",
+   "primary_key": [],
+   "foreign_keys": [],
+   "source": "public.ad_family_line_tags joined to taxonomy_lines (and tracker_rows for on_tracker)",
+   "refresh": "nightly with etl.auto_tag; bounded runs by hand",
+   "coverage": "from 2026-11-25",
+   "caveats": [
+    "Join to analytics.meta_ad_daily / meta_ads on family_key (meta_ads.family_key) for spend and returns: these families have no creative_tracker or creative_family_metrics row.",
+    "on_tracker = true means the family has since been added to the tracker: the tracker tag (tracker_tags) then wins and this row is ignored by the Priorities snapshot.",
+    "confidence / method say how sure the tagger was: text-only and cover-only tags are weaker evidence."
+   ],
+   "like": null,
+   "domain": "tags",
+   "columns": [
+    {
+     "name": "tag_id",
+     "type": "bigint",
+     "nullable": null,
+     "description": "Primary key of the tag."
+    },
+    {
+     "name": "family_key",
+     "type": "text",
+     "nullable": null,
+     "description": "Meta ad family key."
+    },
+    {
+     "name": "product_slug",
+     "type": "text",
+     "nullable": null,
+     "description": "vita-bull | beef-liver | boneflex."
+    },
+    {
+     "name": "ad_name",
+     "type": "text",
+     "nullable": null,
+     "description": "Name of the family's top-spending ad."
+    },
+    {
+     "name": "tag_set",
+     "type": "text",
+     "nullable": null,
+     "description": "Always 'linemap'."
+    },
+    {
+     "name": "version",
+     "type": "text",
+     "nullable": null,
+     "description": "Tagging run."
+    },
+    {
+     "name": "is_current",
+     "type": "boolean",
+     "nullable": null,
+     "description": "true for the tag in force."
+    },
+    {
+     "name": "line_id",
+     "type": "integer",
+     "nullable": null,
+     "description": "taxonomy_lines.id."
+    },
+    {
+     "name": "line_code",
+     "type": "text",
+     "nullable": null,
+     "description": "taxonomy_lines.line_code the tag points at."
+    },
+    {
+     "name": "cluster",
+     "type": "text",
+     "nullable": null,
+     "description": "Market cluster."
+    },
+    {
+     "name": "icp",
+     "type": "text",
+     "nullable": null,
+     "description": "ICP / persona."
+    },
+    {
+     "name": "pain_point",
+     "type": "text",
+     "nullable": null,
+     "description": "Pain point."
+    },
+    {
+     "name": "emotional_trigger",
+     "type": "text",
+     "nullable": null,
+     "description": "Emotional trigger."
+    },
+    {
+     "name": "confidence",
+     "type": "text",
+     "nullable": null,
+     "description": "high | medium | low."
+    },
+    {
+     "name": "method",
+     "type": "text",
+     "nullable": null,
+     "description": "How it was tagged (image / cover / text only, with ' + audio' when the real-audio transcript was read; 'ticket' for production-ticket tags)."
+    },
+    {
+     "name": "seen",
+     "type": "text",
+     "nullable": null,
+     "description": "What the tagger saw."
+    },
+    {
+     "name": "why",
+     "type": "text",
+     "nullable": null,
+     "description": "Why the line was chosen."
+    },
+    {
+     "name": "runner_up",
+     "type": "text",
+     "nullable": null,
+     "description": "Second-best line code."
+    },
+    {
+     "name": "tagger",
+     "type": "text",
+     "nullable": null,
+     "description": "Who / what tagged it."
+    },
+    {
+     "name": "tagged_at",
+     "type": "timestamp with time zone",
+     "nullable": null,
+     "description": "When the tag was written."
+    },
+    {
+     "name": "transcript_source",
+     "type": "text",
+     "nullable": null,
+     "description": "audio | tracker | family_content | NULL: which transcript the tagger read."
+    },
+    {
+     "name": "on_tracker",
+     "type": "boolean",
+     "nullable": null,
+     "description": "true when the family now has a live tracker row."
+    }
+   ],
+   "examples": [
+    {
+     "title": "Current native line tags per product and method",
+     "sql": "SELECT product_slug, method, count(*) AS tags FROM analytics.family_line_tags WHERE is_current GROUP BY 1, 2 ORDER BY 1, 3 DESC;"
+    },
+    {
+     "title": "Spend of tagged families by line (Meta basis, since 2026-05-06)",
+     "sql": "SELECT t.product_slug, t.line_code, count(*) AS families, round(sum(s.spend)) AS spend FROM analytics.family_line_tags t JOIN (SELECT a.family_key, sum(d.spend) AS spend FROM analytics.meta_ad_daily d JOIN analytics.meta_ads a ON a.ad_id = d.ad_id GROUP BY 1) s ON s.family_key = t.family_key WHERE t.is_current GROUP BY 1, 2 ORDER BY 4 DESC LIMIT 20;"
+    }
+   ]
+  },
+  {
    "name": "public.creative_launch_settings",
    "schema": "public",
    "relation": "creative_launch_settings",

@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 TEST_URL = os.environ.get("TEST_DATABASE_URL", "postgresql://localhost/tagexp_test")
-DATA_TABLES = ("ad_tags, ad_metrics, tracker_rows, taxonomy_lines, line_ingredients, ad_daily, meta_campaigns, ad_lifetime, meta_family_map, meta_ads, "
+DATA_TABLES = ("ad_family_line_tags, ad_tags, ad_metrics, tracker_rows, taxonomy_lines, line_ingredients, ad_daily, meta_campaigns, ad_lifetime, meta_family_map, meta_ads, "
                "meta_ad_lifetime, family_content, creative_assets, unmatched_meta, app_meta, etl_runs, family_daily")
 
 

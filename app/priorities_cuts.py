@@ -31,24 +31,29 @@ WITH fam AS (
          COALESCE(NULLIF(btrim(g.icp), ''), NULLIF(btrim(f.tracker_icp), '')) AS icp,
          COALESCE(NULLIF(btrim(g.pain_point), ''), NULLIF(btrim(f.tracker_pain), '')) AS pain_point
   FROM fam f LEFT JOIN ad_tags g ON g.tracker_row_id = f.id AND g.tag_set = 'linemap' AND g.is_current
+  UNION ALL
+  -- Meta families with NO tracker row that carry an app-native line tag (migration 285); the tracker wins where a family is on both
+  SELECT n.family_key, n.product_slug, NULL, NULL, NULLIF(btrim(n.cluster), ''), NULLIF(btrim(n.icp), ''), NULLIF(btrim(n.pain_point), '')
+  FROM ad_family_line_tags n
+  WHERE n.is_current AND NOT EXISTS (SELECT 1 FROM tracker_rows tr WHERE tr.family_key = n.family_key)
 )
 """
 
 SQL_META = CUT_CTE + """
 SELECT t.product, t.vendor, t.media, t.cluster, t.icp, t.pain_point, sum(d.spend) AS spend, sum(d.link_clicks) AS clicks, sum(d.impressions) AS impressions, sum(d.purchases) AS meta_purchases, sum(d.conv_value) AS meta_revenue,
        count(DISTINCT t.family_key) FILTER (WHERE d.spend > 0) AS ads_spending
-FROM ad_daily d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
+FROM ad_daily d LEFT JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = COALESCE(m.tracker_family_key, d.meta_family_key)
 WHERE d.day BETWEEN %s AND %s{flt} GROUP BY 1, 2, 3, 4, 5, 6
 """
 # unique live ads: tracker families (one per ad however many copies it has) that spent in the last two loaded days. Not tied to the date window: live is a now-state.
 SQL_LIVE = CUT_CTE + """
 SELECT t.product, t.vendor, t.media, t.cluster, t.icp, t.pain_point, count(DISTINCT t.family_key) AS live_ads
-FROM ad_daily d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
+FROM ad_daily d LEFT JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = COALESCE(m.tracker_family_key, d.meta_family_key)
 WHERE d.spend > 0 AND d.day >= (SELECT max(day) FROM ad_daily) - 1{flt} GROUP BY 1, 2, 3, 4, 5, 6
 """
 SQL_NC = CUT_CTE + """
 SELECT t.product, t.vendor, t.media, t.cluster, t.icp, t.pain_point, sum(d.purchases) AS nc_purchases, sum(d.conv_value) AS nc_revenue
-FROM ad_daily_upstack_nc d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
+FROM ad_daily_upstack_nc d LEFT JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = COALESCE(m.tracker_family_key, d.meta_family_key)
 WHERE d.day BETWEEN %s AND %s{flt} GROUP BY 1, 2, 3, 4, 5, 6
 """
 SQL_COMBOS = CUT_CTE + "SELECT DISTINCT product, cluster, icp, pain_point FROM tagged"
@@ -290,14 +295,14 @@ def _cut_filter(args: dict) -> tuple[str, list]:
 WINDOW_ADS_SQL = CUT_CTE + """
 SELECT t.family_key, COALESCE(cs.display, t.family_key) AS name, t.product, sum(d.spend) AS spend, sum(d.purchases) AS meta_purchases, sum(d.conv_value) AS meta_revenue,
        max(d.day) FILTER (WHERE d.spend > 0) AS last_spend_day
-FROM ad_daily d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
+FROM ad_daily d LEFT JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = COALESCE(m.tracker_family_key, d.meta_family_key)
 LEFT JOIN creative_stage_moves cs ON cs.family_key = t.family_key
 WHERE d.day BETWEEN %s AND %s {flt}
 GROUP BY 1, 2, 3 HAVING sum(d.spend) > 0 ORDER BY sum(d.spend) DESC LIMIT %s
 """
 NC_ADS_SQL = CUT_CTE + """
 SELECT t.family_key, sum(d.purchases) AS nc_purchases, sum(d.conv_value) AS nc_revenue
-FROM ad_daily_upstack_nc d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = m.tracker_family_key
+FROM ad_daily_upstack_nc d LEFT JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key JOIN tagged t ON t.family_key = COALESCE(m.tracker_family_key, d.meta_family_key)
 WHERE d.day BETWEEN %s AND %s AND t.family_key = ANY(%s) GROUP BY 1
 """
 TOP_ADS_SQL = CUT_CTE + """
@@ -319,7 +324,7 @@ ORDER BY tr.family_key, tr.sheet_row NULLS LAST, tr.id
 """
 HOOK_MIN_SPEND = 250.0                       # an ad must have spent this much in the dates before its hook can be called a top performer
 HOOKS_TOP = 5
-LIVE_KEYS_SQL = "SELECT DISTINCT m.tracker_family_key AS k FROM ad_daily d JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key WHERE d.spend > 0 AND d.day >= (SELECT max(day) FROM ad_daily) - 1 AND m.tracker_family_key = ANY(%s)"
+LIVE_KEYS_SQL = "SELECT DISTINCT COALESCE(m.tracker_family_key, d.meta_family_key) AS k FROM ad_daily d LEFT JOIN meta_family_map m ON m.meta_family_key = d.meta_family_key WHERE d.spend > 0 AND d.day >= (SELECT max(day) FROM ad_daily) - 1 AND COALESCE(m.tracker_family_key, d.meta_family_key) = ANY(%s)"
 
 
 def cut_ads(conn, cut: dict, raw_from: str | None, raw_to: str | None) -> dict:

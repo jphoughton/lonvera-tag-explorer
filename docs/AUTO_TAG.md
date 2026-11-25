@@ -61,6 +61,17 @@ After Josh edits the Communication Overview:
 A code the model returns that is in the catalog but not in `taxonomy_lines` is skipped and logged. Lines added to the sheet after the cycles (e.g. Beef Liver B64-B66) are not taggable until the refresh.
 The tagging rules live in `etl/autotag/instructions.md`, the per-product blurbs in `etl/auto_tag.py` (`INTROS`).
 
+## Meta families with no tracker row (migration 285, 2026-11-25)
+`ad_tags` is keyed to `tracker_rows`, so a Meta ad family that was never typed into the Creative Tracker (the `Austin Lee |` ads, `Boneflex | Caveman`) could not be tagged. The tracker is not used for
+them: the line tag lives in `ad_family_line_tags` (same payload as `ad_tags`, keyed on `family_key` = `COALESCE(meta_family_map.tracker_family_key, meta_ads.meta_family_key)`, the key `etl/own_ad_tags.py`
+uses; one current row per family; superseded rows are kept). `python -m etl.auto_tag` runs it as a second source after the tracker path, same prompt, catalog, transcript order (real audio first, then
+Meta copy) and cover image:
+* Candidates: families with Meta spend since 2026-05-06 of at least $50 (`--min-spend`, `--since`), product from `unmatched_meta` (Vita Bull, Beef Liver, Boneflex), no live tracker row, no current native tag; highest spend first.
+* Production tickets with a taxonomy line and Meta ad ids (`launched_ad_ids`, `variations[].ad_id`) tag the ad's family with the ticket's own line, no model call (method `ticket (production assignment)`); never overwrites.
+* `--retag-audio` also upgrades native auto tags made without the real-audio transcript once it exists (old row kept, `is_current = false`, `extra.previous_tag_id`). `--native-only` / `--no-native` pick one path.
+* Downstream: the Priorities snapshot (`etl.creative_priorities`: families, windows and weekly series come from `ad_daily` for these families) and the cuts view (`/api/priorities/cuts`) include them; where a family is also on the tracker the tracker tag wins.
+  Read it with `analytics.family_line_tags`. Not unioned: the per-line example and insight panels (`/priorities` row panel) and the Tags tree pages, which link to tracker ad pages.
+
 ## Verification done / not done
 * Unit tests (`tests/etl/test_auto_tag.py`, `claude` mocked): selection, never overwriting, invalid code, idempotence, missing token, auth / limit stop, cap, usage stats, caps, env whitelist, command flags.
 * Real CLI 2.1.321, one call with a generated picture, run from this Mac with Josh's own login: flags accepted, picture read, JSON envelope parsed, ~7 s, correct line (BF18).
