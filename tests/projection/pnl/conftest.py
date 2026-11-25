@@ -29,7 +29,7 @@ from pnl_support import login as _login                                         
 from werkzeug.security import generate_password_hash                # noqa: E402
 USERS = {name: generate_password_hash(_PASSWORD, method="scrypt:1024:8:1") for name in ("JoshHoughton", "Lazer")}
 MIGRATIONS = ("001_init.sql", "002_family_daily.sql", "003_traffic.sql", "004_api_lifetime.sql", "100_proj_core.sql", "106_proj_scenario_lifecycle.sql", "130_proj_pnl.sql", "131_proj_pnl_upload_history.sql", "150_proj_inventory_supply.sql",
-              "151_proj_inventory_supply_history.sql")
+              "151_proj_inventory_supply_history.sql", "283_proj_pnl_qb2026.sql")
 
 
 def _pnl_make_app(**overrides):

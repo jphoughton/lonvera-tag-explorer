@@ -18,6 +18,7 @@ from ..interfaces import MONTHS
 from ...queries import ApiError
 from .. import audit, engine, rwdb, scenarios, series
 from .. import freshness as fresh
+from . import charts
 from . import lines as L
 from . import qb, store, views
 from .model import SCENARIO_GROUPS, PnlOutput, validate_segments
@@ -47,6 +48,23 @@ def _slug(conn, name: str | None = None) -> str:
     return name
 
 
+def _scenario_chart(conn, slug: str) -> str:
+    """The chart a scenario selects (effective params, so a copy and a scenario on a base inherit it)."""
+    return charts.chart_of((scenarios.get_scenario(conn, slug).params or {}).get("pnl"))
+
+
+def _chart_arg(data: dict | None = None) -> str | None:
+    """An explicit `chart` (query string or JSON body); None when absent. 400 for anything but a known chart."""
+    v = (data or {}).get("chart") if data is not None else None
+    if v is None:
+        v = request.args.get("chart")
+    if v in (None, ""):
+        return None
+    if v not in charts.CHARTS:
+        raise ApiError(400, f"chart must be one of {', '.join(charts.CHARTS)}")
+    return v
+
+
 def _run(conn, slug: str):
     res = engine.run(slug, conn, today=_today())              # not strict: another module's failure falls back to its stub
     out = res.results.get("pnl")
@@ -67,7 +85,7 @@ def _freshness(conn) -> dict:
 def table():
     conn = db.get_conn()
     _, out = _run(conn, _slug(conn))
-    return jsonify(views.table_payload(out, sources=store.actual_sources(conn)))
+    return jsonify(views.table_payload(out, sources=store.actual_sources(conn, out.chart)))
 
 
 @bp.get("/metrics")
@@ -159,10 +177,11 @@ def _drivers_payload(conn, slug: str) -> dict:
     res, out = _run(conn, slug)
     row = scenarios.get_row(conn, slug)
     own = (row["params"] or {}).get("pnl", {})
-    payload = views.drivers_payload(out, store.load_driver_defaults(conn), own.get("drivers") or {}, store.load_driver_notes(conn))
+    cd = charts.get(out.chart)
+    payload = views.drivers_payload(out, store.load_driver_defaults(conn, out.chart), charts.driver_params(own, out.chart), store.load_driver_notes(conn, out.chart))
     first_projected = next((m for m in MONTHS if out.actual_through is None or m > out.actual_through), None)
     overrides = {k: [{"month": m.isoformat(), "value": v} for m, v in sorted(s.items())]
-                 for k, s in store.load_overrides(conn, slug).items() if k in L.DRIVER_KEYS + L.DRIVEN_PARENTS}
+                 for k, s in store.load_overrides(conn, slug, out.chart).items() if k in cd.driver_keys + cd.driven_parents}
     for g in payload["groups"]:
         for it in g["items"]:
             it["overrides"] = overrides.get(it["key"], [])
@@ -170,7 +189,7 @@ def _drivers_payload(conn, slug: str) -> dict:
     payload.update(scenario=slug, version=row["version"], vendors=store.load_vendors(conn), late_after_days=store.stale_after_days(conn),
                    upload_checks=store.upload_checks(conn),
                    sales_tax={"rate": rate, "text": "History months carry no deduction; projected months deduct this."}, first_projected=first_projected.isoformat() if first_projected else None,
-                   own_settings={k: v for k, v in own.items() if k != "drivers"})
+                   own_settings={k: v for k, v in own.items() if k not in ("drivers", "qb26")}, chart=out.chart)
     return payload
 
 
@@ -198,16 +217,19 @@ def drivers_put():
     slug = data.get("scenario")
     if not isinstance(slug, str) or not slug:
         raise ApiError(400, "scenario is required")
-    if not isinstance(key, str) or key not in L.DRIVER_KEYS + L.DRIVEN_PARENTS:
-        raise ApiError(400, "key must be a driven line")
-    if segs is None:
-        patch: Any = {"pnl": {"drivers": {key: None}}}                 # null: back to the default
-    else:
-        try:
-            patch = {"pnl": {"drivers": {key: {"segments": validate_segments(key, segs)}}}}
-        except ValueError as e:
-            raise ApiError(400, str(e)) from None
     with rwdb.get_rw() as conn:
+        chart = _chart_arg(data) or _scenario_chart(conn, slug)         # the scenario's own chart unless the request names one
+        cd = charts.get(chart)
+        if not isinstance(key, str) or key not in cd.driver_keys + cd.driven_parents:
+            raise ApiError(400, "key must be a driven line" + (" of the new chart" if chart == charts.QB2026 else ""))
+        inner: Any = None
+        if segs is not None:
+            try:
+                inner = {"segments": validate_segments(key, segs, chart)}
+            except ValueError as e:
+                raise ApiError(400, str(e)) from None
+        drivers_patch = {key: inner}                                    # null: back to the default
+        patch: Any = {"pnl": ({"qb26": {"drivers": drivers_patch}} if chart == charts.QB2026 else {"drivers": drivers_patch})}
         row = scenarios.update(conn, slug, params=patch, expected_version=_version(data), actor=audit.current_actor())
     return jsonify({"scenario": row})
 
@@ -226,6 +248,11 @@ def check_settings(patch: Any) -> dict:
         raise ApiError(400, "settings must be a non-empty object")
     out: dict = {}
     for name, v in patch.items():
+        if name == "chart":                                              # the chart a scenario shows: a name, not a group
+            if v is not None and v not in charts.CHARTS:
+                raise ApiError(400, f"chart must be one of {', '.join(charts.CHARTS)}")
+            out[name] = v
+            continue
         if name not in SCENARIO_GROUPS:
             raise ApiError(400, f"unknown setting group {name!r}")
         if v is None:
@@ -294,42 +321,47 @@ def settings_put():
 
 @bp.get("/qb-map")
 def qb_map_get():
+    chart = _chart_arg() or charts.SHEET
+    cd = charts.get(chart)
     conn = db.get_conn()
-    m = store.load_qb_map(conn)
-    return jsonify({"map": [{"account": a, "line_key": k, "line": L.LINE_KEYS[k].label if k in L.LINE_KEYS else k} for a, k in sorted(m.items())],
-                    "lines": [{"key": k, "label": L.LINE_KEYS[k].label} for k in L.QB_KEYS]})
+    m = store.load_qb_map(conn, chart)
+    return jsonify({"chart": chart,
+                    "map": [{"account": a, "line_key": k, "line": cd.line_keys[k].label if k in cd.line_keys else k} for a, k in sorted(m.items())],
+                    "lines": [{"key": k, "label": cd.line_keys[k].label} for k in cd.qb_keys]})
 
 
 @bp.put("/qb-map")
 def qb_map_put():
     data = _body()
+    chart = _chart_arg(data) or charts.SHEET
     account, key = data.get("account"), data.get("line_key")
     if not isinstance(account, str) or not store.norm_account(account) or len(account) > 200:
         raise ApiError(400, "account is required")
-    if key not in L.QB_KEYS:
+    if key not in charts.get(chart).qb_keys:
         raise ApiError(400, "line_key must be a line that takes QuickBooks data")
     with rwdb.get_rw() as conn:
-        store.upsert_qb_map(conn, [(account, key, "Mapped on upload")], actor=audit.current_actor(), audit_it=True)
-    return jsonify({"account": store.norm_account(account), "line_key": key})
+        store.upsert_qb_map(conn, [(account, key, "Mapped on upload")], actor=audit.current_actor(), audit_it=True, chart=chart)
+    return jsonify({"account": store.norm_account(account), "line_key": key, "chart": chart})
 
 
 @bp.delete("/qb-map")
 def qb_map_delete():
     data = _body()
+    chart = _chart_arg(data) or charts.SHEET
     account = data.get("account")
     if not isinstance(account, str) or not store.norm_account(account):
         raise ApiError(400, "account is required")
     with rwdb.get_rw() as conn:
-        removed = store.delete_qb_map(conn, account, actor=audit.current_actor())
+        removed = store.delete_qb_map(conn, account, actor=audit.current_actor(), chart=chart)
     if not removed:
         raise ApiError(404, "no such account in the map")
-    return jsonify({"deleted": store.norm_account(account)})
+    return jsonify({"deleted": store.norm_account(account), "chart": chart})
 
 
 # ------------------------------------------------------------------------------------------------------------------ upload
 
-def _existing(conn) -> dict[str, dict[date, float]]:
-    return store.load_actuals(conn)
+def _existing(conn, chart: str = charts.SHEET) -> dict[str, dict[date, float]]:
+    return store.load_actuals(conn, chart)
 
 
 def _upload_file() -> tuple[bytes, str]:
@@ -342,13 +374,18 @@ def _upload_file() -> tuple[bytes, str]:
     return data, f.filename
 
 
-def _estimates(conn, slug: str, months: list[date]) -> dict[date, dict]:
-    """The model's own income, cost and net operating income for each month (what the plan says today), to set next to what a file claims."""
+def _estimates(conn, slug: str, months: list[date], chart: str = charts.SHEET) -> dict[date, dict]:
+    """The model's own income, cost and net operating income for each month (what the plan says today), to set next to what a file claims. The
+    comparison uses the chart being uploaded; every scenario carries the sheet's line keys (a new-chart scenario through its legacy view)."""
     try:
         _, out = _run(conn, slug)
     except ApiError:
         return {}
     L_ = out.lines
+    if chart == charts.QB2026:                                          # net revenue (total income) against what the plan holds for the month
+        inc = L_.get("total_income") if out.chart == charts.QB2026 else L_["total_revenue"]
+        return {m: {"income": inc.get(m, 0.0), "cost": L_["total_cogs"].get(m, 0.0) + L_["total_expenses"].get(m, 0.0), "noi": L_["noi"].get(m, 0.0)}
+                for m in months}
     return {m: {"income": sum(L_[k].get(m, 0.0) for k in L.REVENUE_KEYS), "cost": L_["total_cogs"].get(m, 0.0) + L_["total_expenses"].get(m, 0.0),
                 "noi": L_["noi"].get(m, 0.0)} for m in months}
 
@@ -360,7 +397,8 @@ def _file_months(parsed) -> list[date]:
 @bp.post("/upload")
 def upload():
     """Preview (default) or commit (?commit=1 with the preview's diff_sha256 in the form). A month becomes books only when its account families are all
-    present; a month whose totals sit far from its neighbours needs `confirm_review=1`. Every commit keeps what it replaced (proj_upload_history)."""
+    present; a month whose totals sit far from its neighbours needs `confirm_review=1`. Every commit keeps what it replaced (proj_upload_history).
+    The chart is the `chart` form field ('sheet' or 'qb2026'); without it the file decides (accounts that start with a four-digit code = qb2026)."""
     data, name = _upload_file()
     commit = request.args.get("commit") in ("1", "true")
     today = _today()
@@ -368,19 +406,23 @@ def upload():
         parsed = qb.parse(data, name)
     except qb.UploadError as e:
         raise ApiError(400, str(e)) from None
+    chart = request.form.get("chart") or request.args.get("chart") or parsed.chart_guess
+    if chart not in charts.CHARTS:
+        raise ApiError(400, f"chart must be one of {', '.join(charts.CHARTS)}")
     rconn = db.get_conn()
     slug = _slug(rconn)
-    est = _estimates(rconn, slug, _file_months(parsed))
+    est = _estimates(rconn, slug, _file_months(parsed), chart)
     checks = store.upload_checks(rconn)
     if not commit:
-        pv, _ = qb.preview(parsed, store.load_qb_map(rconn), _existing(rconn), today, est, checks)
+        pv, _ = qb.preview(parsed, store.load_qb_map(rconn, chart), _existing(rconn, chart), today, est, checks, chart)
         return jsonify({**pv, "committed": False})
     token = (request.form.get("diff_sha256") or "").strip()
     if not token:
         raise ApiError(400, "diff_sha256 is required: preview the file first and send the hash it returned")
+    cd = charts.get(chart)
     with rwdb.get_rw() as conn:
-        existing = _existing(conn)
-        pv, cells = qb.preview(parsed, store.load_qb_map(conn), existing, today, est, checks)
+        existing = _existing(conn, chart)
+        pv, cells = qb.preview(parsed, store.load_qb_map(conn, chart), existing, today, est, checks, chart)
         if token != pv["diff_sha256"]:
             raise ApiError(409, "the loaded data changed since the preview: preview the file again")
         if not cells:
@@ -391,25 +433,26 @@ def upload():
             raise ApiError(400, "some months look unusual: review them and confirm before committing")
         who = audit.current_actor()
         replaced = [{"line_key": k, "month": m.isoformat(), "old": existing[k][m], "new": v,
-                     "source": (conn.execute("SELECT source FROM proj_actuals WHERE line_key = %s AND month = %s", (L.actuals_key(k), m)).fetchone() or {}).get("source")}
+                     "source": (conn.execute("SELECT source FROM proj_actuals WHERE line_key = %s AND month = %s", (cd.actuals_key(k), m)).fetchone() or {}).get("source")}
                     for (k, m), v in cells.items() if k in existing and m in existing[k] and abs(existing[k][m] - v) > qb.TOL]
         created = [{"line_key": k, "month": m.isoformat(), "value": v} for (k, m), v in cells.items() if not (k in existing and m in existing[k])]
-        rows = [(L.actuals_key(k), m, v) for (k, m), v in cells.items()]
-        src = f"QuickBooks upload {name[:80]} (sha256 {parsed.sha256[:12]})"
+        rows = [(cd.actuals_key(k), m, v) for (k, m), v in cells.items()]
+        src = f"QuickBooks upload {name[:80]} (sha256 {parsed.sha256[:12]})" + ("" if chart == charts.SHEET else f" [{chart}]")
         n = series.upsert_actuals(conn, rows, src, actor=who)
         hist_id = store.record_upload(conn, actor=who, filename=name, sha256=parsed.sha256, size=parsed.bytes, file_rows=parsed.rows,
-                                      months=[m["month"] for m in pv["months"]], replaced=replaced, created=created)
+                                      months=[m["month"] for m in pv["months"]], replaced=replaced, created=created, chart=chart)
         audit.record(conn, actor=who, scenario=None, action="pnl.upload", note=name[:200],
                      old={"changed": pv["changes"], "changes_truncated": pv["changes_truncated"]},
                      new={"upload_id": hist_id, "sha256": parsed.sha256, "bytes": parsed.bytes, "file_rows": parsed.rows, "cells": n, "new": pv["cells"]["new"],
-                          "changed": pv["cells"]["changed"], "months": [m["month"] for m in pv["months"]]})
+                          "changed": pv["cells"]["changed"], "months": [m["month"] for m in pv["months"]],
+                          **({} if chart == charts.SHEET else {"chart": chart})})
     return jsonify({**pv, "committed": True, "cells_written": n, "upload_id": hist_id})
 
 
 @bp.get("/uploads")
 def uploads_list():
     """The last QuickBooks uploads; only the newest applied one can be undone."""
-    rows = store.list_uploads(db.get_conn(), int(request.args.get("limit") or 10))
+    rows = store.list_uploads(db.get_conn(), int(request.args.get("limit") or 10), _chart_arg())
     return jsonify({"uploads": [{**r, "at": r["at"].isoformat(), "undone_at": r["undone_at"].isoformat() if r["undone_at"] else None} for r in rows]})
 
 
@@ -420,8 +463,9 @@ def upload_undo():
     uid = data.get("upload_id")
     if uid is not None and (isinstance(uid, bool) or not isinstance(uid, int)):
         raise ApiError(400, "upload_id must be an integer")
+    chart = _chart_arg(data) or charts.SHEET                           # the latest applied upload of THIS chart; the other chart's books are not touched
     with rwdb.get_rw() as conn:
-        res = store.undo_upload(conn, uid, actor=audit.current_actor())
+        res = store.undo_upload(conn, uid, actor=audit.current_actor(), chart=chart)
     return jsonify(res)
 
 

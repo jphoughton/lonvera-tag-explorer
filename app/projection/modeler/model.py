@@ -148,9 +148,15 @@ def _line(pnl, key: str) -> dict:
     return pnl.lines.get(key) or {}
 
 
+def _already_below_noi(pnl) -> tuple[str, ...]:
+    """Lines the P&L's net operating income is already before (the new chart's is before interest, the sheet chart's after): adding one back would count it twice."""
+    return tuple(getattr(pnl, "below_noi", ()) or ())
+
+
 def monthly_ebitda(pnl, addbacks: tuple[str, ...]) -> dict[Month, float]:
     noi = _line(pnl, "noi")
-    adds = [_line(pnl, k) for k in addbacks]
+    skip = _already_below_noi(pnl)
+    adds = [_line(pnl, k) for k in addbacks if k not in skip]
     return {m: noi.get(m, 0.0) + sum(a.get(m, 0.0) for a in adds) for m in MONTHS}
 
 
@@ -171,7 +177,8 @@ def years_table(pnl, addbacks: tuple[str, ...]) -> list[dict]:
         closed = [m for m in months if through and m <= through]
         total, nc, rep = float(fy.get("total_revenue", 0.0)), float(fy.get("nc_rev", 0.0)), float(fy.get("repeat_rev", 0.0))
         noi = float(fy.get("noi", 0.0))
-        adds = {k: float(fy.get(k, 0.0)) for k in addbacks}
+        skip = _already_below_noi(pnl)
+        adds = {k: (0.0 if k in skip else float(fy.get(k, 0.0))) for k in addbacks}
         ebitda = noi + sum(adds.values())
         status = "actual" if len(closed) == len(months) else "projected" if not closed else "partial"
         sub = ""

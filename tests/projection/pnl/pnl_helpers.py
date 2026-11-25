@@ -92,3 +92,104 @@ def to_csv(rows: list[list]) -> bytes:
     for r in rows:
         w.writerow(["" if v is None else v for v in r])
     return buf.getvalue().encode()
+
+
+# ---------------------------------------------------------------------------------------------------------------- new chart (qb2026) exports
+# Synthetic numbers (not Josh's books) in the layout of the QuickBooks "Profit and Loss" with numbered accounts: header accounts with no amount,
+# "Total for ..." rows, computed rows, and for a single month a "% of Income" column.
+QB26_ACCOUNTS: list[tuple[str, float]] = [
+    ("4010 Amazon Sales", 100_000.0), ("4020 DTC Sales", 800_000.0), ("4030 TikTok Sales", 1_000.0), ("4200 Shipping Income", 10_000.0),
+    ("4400 Refunds & Discounts to Customers", -150_000.0),
+    ("5010 Amazon COGS", 10_000.0), ("5020 Shopify COGS", 80_000.0), ("5030 TikTok COGS", 100.0),
+    ("5310 3PL Services", 90_000.0), ("5320 FBA Fees", 12_000.0),
+    ("5410 Adyen Fees", 25_000.0), ("5420 Amazon Fees", 18_000.0), ("5430 PayPal Fees", 12_000.0), ("5440 Shopify Fees", 9_000.0), ("5450 TikTok Fees", 50.0),
+    ("6011 Creative Agency", 30_000.0), ("6012 Email Agency", 8_000.0),
+    ("6031 Amazon Ads", 20_000.0), ("6032 Facebook Ads", 300_000.0), ("6033 Google Ads", 10_000.0), ("6035 TikTok Ads", 50.0),
+    ("6110 Accounting", 2_500.0), ("6115 Chargeback Management", 500.0), ("6120 Consulting", 12_000.0), ("6125 Customer Service", 8_000.0),
+    ("6135 Legal", 3_000.0), ("6145 Office Supplies", 2_000.0), ("6166 Marketing", 7_000.0), ("6167 Operations", 5_000.0), ("6170 Bank Fees", 400.0),
+    ("7000 Other Income", 300.0), ("8000 Interest Expense", 30_000.0),
+]
+
+
+def qb26_expected(factor: float = 1.0) -> dict[str, float]:
+    a = {name.split(" ", 1)[0]: v * factor for name, v in QB26_ACCOUNTS}
+    gross = a["4010"] + a["4020"] + a["4030"]
+    total_income = gross + a["4200"] + a["4400"]
+    cogs = a["5010"] + a["5020"] + a["5030"] + a["5310"] + a["5320"] + a["5410"] + a["5420"] + a["5430"] + a["5440"] + a["5450"]
+    marketing = a["6011"] + a["6012"] + a["6031"] + a["6032"] + a["6033"] + a["6035"]
+    overhead = a["6110"] + a["6115"] + a["6120"] + a["6125"] + a["6135"] + a["6145"] + a["6166"] + a["6167"] + a["6170"]
+    noi = total_income - cogs - marketing - overhead
+    other = a["7000"] - a["8000"]
+    return {"gross_sales": gross, "total_income": total_income, "total_cogs": cogs, "gross_profit": total_income - cogs, "marketing_total": marketing,
+            "overhead_total": overhead, "total_expenses": marketing + overhead, "noi": noi, "net_other_income": other, "net_income": noi + other}
+
+
+def qb26_rows(labels: list[str], factors: list[float] | None = None, *, drop_codes: bool = False) -> list[list]:
+    """A new-chart export. One label = the single-month layout (Total / month header, '% of Income' column); several = month per column plus a Total column.
+    `factors` scale each month's amounts. `drop_codes` writes bare account names (the two Software children then collide: they are told apart by their parent)."""
+    factors = factors or [1.0] * len(labels)
+    single = len(labels) == 1
+
+    def name(n: str) -> str:
+        return n.split(" ", 1)[1] if drop_codes else n
+
+    def line(n: str, vals: list[float | None]):
+        if single:
+            return [n, vals[0], 0.0 if vals[0] is None else 1.5]
+        return [n, *vals, sum(v for v in vals if v is not None)]
+
+    def acct(code: str):
+        full = next(n for n, _ in QB26_ACCOUNTS if n.startswith(code))
+        base = dict(QB26_ACCOUNTS)[full]
+        return line(name(full), [round(base * f, 2) for f in factors])
+
+    def hdr(n: str):
+        return line(n, [None] * len(labels))
+
+    def tot(n: str, vals: list[float]):
+        return line(n, [round(v, 2) for v in vals])
+
+    ex = [qb26_expected(f) for f in factors]
+    head = [["TEST CO LLC"], ["Profit and Loss"], [labels[0] if single else f"{labels[0]} - {labels[-1]}"], []]
+    if single:
+        head += [[None, "Total"], [None, labels[0], "% of Income"]]
+    else:
+        head += [[None, *labels, "Total"]]
+    rows = head + [["Income"], hdr("4000 Sales"), acct("4010"), acct("4020"), acct("4030"), tot("Total for 4000 Sales", [e["gross_sales"] for e in ex]),
+                   acct("4200"), acct("4400"), tot("Total Income", [e["total_income"] for e in ex]),
+                   ["Cost of Goods Sold"], hdr("5000 Cost of Goods Sold"), acct("5010"), acct("5020"), acct("5030"),
+                   tot("Total for 5000 Cost of Goods Sold", [qb26_expected_part(f, ("5010", "5020", "5030")) for f in factors]),
+                   hdr("5300 Fulfillment"), acct("5310"), acct("5320"), tot("Total for 5300 Fulfillment", [qb26_expected_part(f, ("5310", "5320")) for f in factors]),
+                   hdr("5400 Seller Fees"), acct("5410"), acct("5420"), acct("5430"), acct("5440"), acct("5450"),
+                   tot("Total for 5400 Seller Fees", [qb26_expected_part(f, ("5410", "5420", "5430", "5440", "5450")) for f in factors]),
+                   tot("Total Cost of Goods Sold", [e["total_cogs"] for e in ex]), tot("Gross Profit", [e["gross_profit"] for e in ex]),
+                   ["Expenses"], hdr("6000 Marketing"), hdr("6010 Marketing Agency"), acct("6011"), acct("6012"),
+                   tot("Total for 6010 Marketing Agency", [qb26_expected_part(f, ("6011", "6012")) for f in factors]),
+                   hdr("6030 Marketing Media"), acct("6031"), acct("6032"), acct("6033"), acct("6035"),
+                   tot("Total for 6030 Marketing Media", [qb26_expected_part(f, ("6031", "6032", "6033", "6035")) for f in factors]),
+                   tot("Total for 6000 Marketing", [e["marketing_total"] for e in ex]),
+                   hdr("6100 Overhead Expenses"), acct("6110"), acct("6115"), acct("6120"), acct("6125"), acct("6135"), acct("6145"),
+                   hdr("6165 Software & Apps"), acct("6166"), acct("6167"),
+                   tot("Total for 6165 Software & Apps", [qb26_expected_part(f, ("6166", "6167")) for f in factors]),
+                   acct("6170"), tot("Total for 6100 Overhead Expenses", [e["overhead_total"] for e in ex]),
+                   tot("Total Expenses", [e["total_expenses"] for e in ex]), tot("Net Operating Income", [e["noi"] for e in ex]),
+                   ["Other Income"], acct("7000"), tot("Total Other Income", [qb26_expected_part(f, ("7000",)) for f in factors]),
+                   ["Other Expenses"], hdr("Unrealized Gain or Loss"), acct("8000"), tot("Total Other Expenses", [qb26_expected_part(f, ("8000",)) for f in factors]),
+                   tot("Net Other Income", [e["net_other_income"] for e in ex]), tot("Net Income", [e["net_income"] for e in ex]), [], [],
+                   ["Accrual Basis Tuesday, November 24, 2026"]]
+    return rows
+
+
+def qb26_expected_part(factor: float, codes: tuple[str, ...]) -> float:
+    d = dict(QB26_ACCOUNTS)
+    return sum(next(v for n, v in d.items() if n.startswith(c)) * factor for c in codes)
+
+
+def seed_qb2026(pg) -> None:
+    """The new chart's account map and driver structure, exactly as migration 283 seeds them (the test database cleaner empties those tables)."""
+    from pathlib import Path
+    sql = (Path(__file__).resolve().parents[3] / "migrations" / "283_proj_pnl_qb2026.sql").read_text()
+    for stmt in sql.split(";\n"):
+        st = "\n".join(ln for ln in stmt.splitlines() if not ln.lstrip().startswith("--")).strip()
+        if st.startswith("INSERT INTO proj_pnl_qb_map") or st.startswith("INSERT INTO proj_pnl_drivers"):
+            pg.execute(st)

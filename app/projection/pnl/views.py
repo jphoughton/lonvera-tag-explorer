@@ -6,26 +6,18 @@ from datetime import date, timedelta
 from typing import Any
 
 from ..interfaces import MONTHS, add_months, series_to_list
+from . import charts
 from . import lines as L
+from .charts.sheet import DRIVER_GROUPS                                   # the sheet chart's driver groups (qb2026 has its own in charts/qb2026.py)
 from .model import PnlOutput
 
 MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 TOTAL_KEYS = ("total_revenue", "gross_profit", "noi")
 SUBTOTAL_CALC = ("total_cogs", "total_expenses", "non_media_expenses")
-BASE_LABEL = {"amazon_rev": "Amazon revenue", "dtc_rev": "DTC revenue", "total_revenue": "total company revenue"}
+BASE_LABEL = {"amazon_rev": "Amazon revenue", "dtc_rev": "DTC revenue", "total_revenue": "total company revenue",
+              "dtc_sales": "DTC sales", "amazon_sales": "Amazon sales", "tiktok_sales": "TikTok sales", "gross_sales": "gross sales"}
 TREND_KEYS = ("ttm_revenue", "ttm_noi", "ttm_noi_margin", "ftm_revenue", "ftm_noi", "dtc_rev_mom", "dtc_rev_mom_6m", "dtc_rev_yoy", "dtc_rev_yoy_6m",
               "total_rev_mom", "total_rev_mom_6m", "total_rev_yoy", "total_rev_yoy_6m", "noi_mom", "noi_mom_6m", "noi_yoy", "noi_yoy_6m")
-DRIVER_GROUPS: list[tuple[str, list[str]]] = [
-    ("Amazon fees", ["amazon_fba_fees", "amazon_seller_fees", "amazon_subscriptions", "amazon_inbound_transport"]),
-    ("Cost of goods sold", ["china_cogs", "us_cogs", "inventory_shrinkage", "fulfillment_services", "inbound_shipping", "shipping_supplies",
-                            "shopify_subscriptions", "seller_fees"]),
-    ("Marketing", ["marketing_agency", "marketing_services", "marketing_influencers", "marketing_software"]),
-    ("Other business expenses", ["other_business_expenses"]),
-    ("Headcount", ["headcount"]),
-    ("Overhead", ["accounting", "chargeback_management", "consulting", "customer_service", "insurance", "interest_expense", "legal", "memberships",
-                  "office_admin", "outside_services", "sales_tax_filing", "samples", "software_apps"]),
-    ("Other", ["uncategorized"]),
-]
 
 
 def month_label(iso: str) -> str:
@@ -63,6 +55,9 @@ def segment_text(seg: dict | None, info: dict | None = None, cogs: dict | None =
         return "Last month's amount carried forward"
     if mode == "avg":
         return f"Mean of the previous {seg['window']} months"
+    if mode == "books_mean":
+        w = seg.get("window")
+        return f"Mean of the last {w} months of books" if w else "Mean of the trailing months of books"
     if mode == "headcount":
         return "Base amount plus a step as annualised revenue grows"
     base = BASE_LABEL.get(seg.get("base"), seg.get("base", ""))
@@ -79,13 +74,14 @@ def segment_text(seg: dict | None, info: dict | None = None, cogs: dict | None =
 
 # ---------------------------------------------------------------------------------------------------------------- the grid
 
-def _row_kind(key: str) -> str:
-    ln = L.LINE_KEYS[key]
+def _row_kind(key: str, cd=None) -> str:
+    cd = cd or charts.get(charts.SHEET)
+    ln = cd.line_keys[key]
     if ln.kind == "ratio":
         return "ratio"
-    if key in TOTAL_KEYS:
+    if key in cd.total_keys:
         return "total"
-    if ln.kind == "sum" or key in SUBTOTAL_CALC:
+    if ln.kind == "sum" or key in cd.subtotal_calc:
         return "subtotal"
     return "calc"
 
@@ -122,6 +118,10 @@ def status_summary(out: PnlOutput) -> dict:
     last_real = max([d for d in (out.books_through, out.feeds_through) if d], default=None)
     first_proj = next((m for m in MONTHS if out.month_status.get(m) == "projected"), None)
     parts = [f"Books through {month_label(out.books_through.isoformat())}" if out.books_through else "No books loaded"]
+    old = [m for m in MONTHS if out.month_status.get(m) == "old"] if out.chart == charts.QB2026 else []
+    if old:
+        parts = (["No new-format books loaded"] if not any(out.month_status.get(m) == "books" for m in MONTHS)
+                 else [f"Books through {month_label(out.books_through.isoformat())}"]) + [f"Old format, taken from the earlier chart: {span_text(old)}"]
     if feeds:
         parts.append(f"Feeds only, no books yet: {span_text(feeds)}")
     if first_proj:
@@ -129,7 +129,8 @@ def status_summary(out: PnlOutput) -> dict:
     return {"text": ". ".join(parts) + ".", "books_through": out.books_through.isoformat() if out.books_through else None,
             "feeds_through": out.feeds_through.isoformat() if out.feeds_through else None, "feeds_span": span_text(feeds),
             "feeds_months": [m.isoformat() for m in feeds], "projected_from": first_proj.isoformat() if first_proj else None,
-            "last_real": last_real.isoformat() if last_real else None}
+            "last_real": last_real.isoformat() if last_real else None,
+            **({"old_months": [m.isoformat() for m in old], "old_span": span_text(old)} if out.chart == charts.QB2026 else {})}
 
 
 def table_payload(out: PnlOutput, *, sources: dict[date, str] | None = None) -> dict:
@@ -137,20 +138,26 @@ def table_payload(out: PnlOutput, *, sources: dict[date, str] | None = None) -> 
     (actual / projected): books months are actual, feeds and projected months are projected (their cost lines are). `month_status` carries the three
     words for the legend."""
     through = out.books_through
-    status = ["actual" if through and m <= through else "projected" for m in MONTHS]
+    cd = charts.get(out.chart)
+    qb = out.chart == charts.QB2026
+    if qb:               # books months and old-format months that are real history in the earlier chart are actual; the rest (feeds, projected) are not
+        status = ["actual" if out.month_status.get(m) == "books" or (out.month_status.get(m) == "old" and out.sheet_books_through and m <= out.sheet_books_through)
+                  else "projected" for m in MONTHS]
+    else:
+        status = ["actual" if through and m <= through else "projected" for m in MONTHS]
     rows: list[dict] = []
     fy_rows: dict[str, list] = {}
     years = sorted(out.fy)
-    for title, keys in L.SECTIONS:
+    for title, keys in cd.sections:
         rows.append({"key": "hdr_" + title.lower().replace(" ", "_"), "label": title, "kind": "header", "fmt": "usd0", "values": [None] * len(MONTHS),
                      "input": False})
         for k in keys:
-            ln = L.LINE_KEYS[k]
-            driven = k in L.DRIVER_KEYS or k in L.DRIVEN_PARENTS
+            ln = cd.line_keys[k]
+            driven = k in cd.driver_keys or k in cd.driven_parents
             vals = series_to_list(out.lines.get(k, {}), MONTHS, None)
             # Not an input row: the shared grid would make every month editable, QuickBooks months included. Projected months are changed through the
             # driver table (a new step, or a typed month), so the cells here stay calculated.
-            row = {"key": k, "label": ln.label, "kind": _row_kind(k), "fmt": ln.fmt, "values": vals, "input": False,
+            row = {"key": k, "label": ln.label, "kind": _row_kind(k, cd), "fmt": ln.fmt, "values": vals, "input": False,
                    "indent": ln.indent if ln.indent else None}
             if row["indent"] is None:
                 row.pop("indent")
@@ -162,17 +169,24 @@ def table_payload(out: PnlOutput, *, sources: dict[date, str] | None = None) -> 
             rows.append(row)
             fy_rows[k] = [out.fy[y].get(k) for y in years]
     cap = "Source: QuickBooks through " + (month_label(through.isoformat()) if through else "(none loaded)") + "; later months projected from the drivers"
-    return {"months": [m.isoformat() for m in MONTHS], "status": status, "month_status": [out.month_status.get(m, "projected") for m in MONTHS],
-            "status_summary": status_summary(out), "rows": rows, "captions": [cap],
-            "fy": {"years": years, "rows": fy_rows}, "actual_through": through.isoformat() if through else None,
-            "sources": {m.isoformat(): s for m, s in (sources or {}).items()}}
+    caps = [cap]
+    if qb:
+        caps = [cap + (". Months marked old format are the earlier chart of accounts rolled up to these lines" if out.old_format_through else "")]
+    payload = {"months": [m.isoformat() for m in MONTHS], "status": status, "month_status": [out.month_status.get(m, "projected") for m in MONTHS],
+               "status_summary": status_summary(out), "rows": rows, "captions": caps,
+               "fy": {"years": years, "rows": fy_rows}, "actual_through": through.isoformat() if through else None,
+               "sources": {m.isoformat(): s for m, s in (sources or {}).items()}}
+    if qb:
+        payload.update(chart=out.chart, chart_label=cd.label, old_format_through=out.old_format_through.isoformat() if out.old_format_through else None)
+    return payload
 
 
 def metrics_payload(out: PnlOutput) -> dict:
+    cd = charts.get(out.chart)
     status = ["actual" if out.actual_through and m <= out.actual_through else "projected" for m in MONTHS]
     rows = []
     for k in TREND_KEYS:
-        ln = L.LINE_KEYS[k]
+        ln = cd.line_keys[k]
         rows.append({"key": k, "label": ln.label, "kind": "ratio" if ln.fmt == "pct" else "calc", "fmt": ln.fmt,
                      "values": series_to_list(out.lines.get(k, {}), MONTHS, None), "input": False})
     return {"months": [m.isoformat() for m in MONTHS], "status": status, "rows": rows,
@@ -204,21 +218,22 @@ def summary(out: PnlOutput, freshness: dict | None = None, today: date | None = 
             "loi": ev.get("loi"), "ttm_noi": (out.ttm.get(out.actual_through) if out.actual_through else None),
             "actual_through": through.isoformat() if through else None, "actual_year": actual_year, "quickbooks_text": qb_text, "status": ss,
             "freshness": freshness, "cogs_rate": out.cogs_model.get("rate"), "cogs_rate_at_current_price": out.cogs_model.get("rate_at_current_price"),
-            "warnings": out.warnings}
+            "warnings": out.warnings, **({"chart": out.chart} if out.chart != charts.SHEET else {})}
 
 
 # ---------------------------------------------------------------------------------------------------------------- driver table
 
 def drivers_payload(out: PnlOutput, defaults: dict[str, list[dict]], scenario_overrides: dict[str, Any], notes: dict[str, dict]) -> dict:
     groups = []
-    for title, keys in DRIVER_GROUPS:
+    cd = charts.get(out.chart)
+    for title, keys in cd.driver_groups:
         items = []
         for k in keys:
             info = out.driver_info.get(k, {})
             segs = info.get("segments") or []
             first = segs[0] if segs else None
             current = segs[-1] if segs else None
-            e = {"key": k, "label": L.LINE_KEYS[k].label, "mode": info.get("mode"), "segments": segs, "default_segments": defaults.get(k) or [],
+            e = {"key": k, "label": cd.line_keys[k].label, "mode": info.get("mode"), "segments": segs, "default_segments": defaults.get(k) or [],
                  "overridden": k in scenario_overrides, "text": segment_text(current, info, out.cogs_model),
                  "source": (notes.get(k) or {}).get("source"), "note": (notes.get(k) or {}).get("note")}
             if info.get("rate") is not None:
@@ -228,11 +243,18 @@ def drivers_payload(out: PnlOutput, defaults: dict[str, list[dict]], scenario_ov
                 e["window_text"] = window_text(e["window"])
             if info.get("value") is not None:
                 e["value"] = info["value"]
+            if info.get("mode") == "books_mean":
+                e["window"] = info.get("window") or []
+                e["window_text"] = window_text(e["window"])
             items.append(e)
         groups.append({"title": title, "items": items})
-    return {"groups": groups, "settings": out.settings, "cogs_model": out.cogs_model,
-            "window": [m.isoformat() for m in out.window], "window_text": window_text([m.isoformat() for m in out.window]),
-            "actual_through": out.actual_through.isoformat() if out.actual_through else None}
+    payload = {"groups": groups, "settings": out.settings, "cogs_model": out.cogs_model,
+               "window": [m.isoformat() for m in out.window], "window_text": window_text([m.isoformat() for m in out.window]),
+               "actual_through": out.actual_through.isoformat() if out.actual_through else None}
+    if out.chart == charts.QB2026:
+        payload["chart"] = out.chart
+        payload["spend_plan_lines"] = [{"key": k, "label": cd.line_keys[k].label} for k in cd.channel_keys]     # not driven: they come from the spend plan
+    return payload
 
 
 # ---------------------------------------------------------------------------------------------------------------- data checks

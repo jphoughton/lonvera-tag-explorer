@@ -2115,6 +2115,7 @@ SELECT * FROM analytics.projection_actuals LIMIT 20;
 | `note` | text |  | Note. |
 | `source` | text |  | Sheet cell the default came from. |
 | `updated_at` | timestamptz |  | When changed. |
+| `chart` | text |  | Chart of accounts the driver belongs to: sheet (the sheet's lines, the default) or qb2026 (the numbered QuickBooks accounts). |
 
 *All driver lines*
 
@@ -2177,6 +2178,7 @@ SELECT * FROM analytics.projection_pnl_settings LIMIT 20;
 | `line_key` | text |  | P&L line key. |
 | `note` | text |  | Note. |
 | `updated_at` | timestamptz |  | When changed. |
+| `chart` | text |  | Chart of accounts the map belongs to: sheet or qb2026. |
 
 *Accounts per P&L line*
 
@@ -10425,7 +10427,7 @@ SELECT product, round(sum(nc_rev)) AS nc_revenue, sum(nc_orders) AS new_customer
 
 **Purpose.** How each P&L line is projected (segments of fixed / carry / rate modes). Finance. Projection engine (finance / planning); read it through the analytics projection_* / inventory_* / cohorts_* views, never the raw table.
 
-- **Grain:** primary key `(line_key)`; one row per line
+- **Grain:** primary key `(chart, line_key)`; one row per line
 - **Source:** seeded from the sheet
 - **Refresh:** on edit
 - **Coverage:** 32 lines
@@ -10437,6 +10439,7 @@ SELECT product, round(sum(nc_rev)) AS nc_revenue, sum(nc_orders) AS new_customer
 | `note` | text | yes | Note. |
 | `source` | text | yes | Sheet cell the default came from. |
 | `updated_at` | timestamptz | no | When changed. |
+| `chart` | text | no | Chart of accounts the driver belongs to: sheet (the sheet's lines, the default) or qb2026 (the numbered QuickBooks accounts). |
 
 ### public.proj_pnl_settings
 
@@ -10485,7 +10488,7 @@ SELECT product, round(sum(nc_rev)) AS nc_revenue, sum(nc_orders) AS new_customer
 
 **Purpose.** QuickBooks account name -> P&L line key map. Finance. Projection engine (finance / planning); read it through the analytics projection_* / inventory_* / cohorts_* views, never the raw table.
 
-- **Grain:** primary key `(account)`; one row per account
+- **Grain:** primary key `(chart, account)`; one row per account
 - **Source:** typed
 - **Refresh:** on edit
 - **Coverage:** 61 accounts
@@ -10496,6 +10499,7 @@ SELECT product, round(sum(nc_rev)) AS nc_revenue, sum(nc_orders) AS new_customer
 | `line_key` | text | no | P&L line key. |
 | `note` | text | yes | Note. |
 | `updated_at` | timestamptz | no | When changed. |
+| `chart` | text | no | Chart of accounts the map belongs to: sheet or qb2026. |
 
 ### public.proj_pnl_vendors
 
@@ -10544,6 +10548,7 @@ SELECT product, round(sum(nc_rev)) AS nc_revenue, sum(nc_orders) AS new_customer
 | `status` | text | no | applied \| undone. |
 | `undone_at` | timestamptz | yes | When undone. |
 | `undone_by` | text | yes | Who undid it. |
+| `chart` | text | no | Chart of accounts the upload loaded: sheet or qb2026. |
 
 ### public.proj_po
 
