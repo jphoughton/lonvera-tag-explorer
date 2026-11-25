@@ -7,7 +7,7 @@ import re
 from flask import Blueprint, Response, current_app, g, jsonify, request, send_file
 from werkzeug.datastructures import MultiDict
 
-from . import amazon as amz, api_keys as ak, countries as cty, meta_pages as mpg, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_cut_views as pcv, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, madre_review as mrv, madre_media as mmed, promotions as promo, no_attribution as noattr, queries as q, scale_views as sv, trends as trn
+from . import amazon as amz, api_keys as ak, countries as cty, meta_pages as mpg, auth, partner_tickets as ptk, competitors as comp, meta_breakdowns as mbd, own_tags as own, creative_priorities as cpr, priorities_assign as pas, priorities_backlog as pbl, priorities_whiteboard as pwb, priorities_cut_views as pcv, priorities_cuts as pcu, priorities_detail as pdt, priorities_launch_api as pla, priorities_manual as pman, priorities_insights as pins, daily_story as dstory, db, email_view as em, google as gg, inventory_history as invh, landing_pages as lpg, platforms as pf, preview as pv, lookup as tlk, madre_review as mrv, madre_media as mmed, promotions as promo, no_attribution as noattr, queries as q, scale_views as sv, trends as trn
 
 bp = Blueprint("api", __name__)
 
@@ -1017,6 +1017,44 @@ def priorities_backlog_assign():
     if blocked is not None:
         return blocked
     return jsonify(pbl.assign(db.get_conn(), _json_body(), auth.current_user())), 201
+
+
+def _wb_guard():
+    """Whiteboard writes: signed-in users only (an API key is refused), same-origin, 120 saves a minute per IP (the page saves after every drag)."""
+    if g.get("api_key_scope") in ak.PARTNER_SCOPES:
+        raise q.ApiError(403, "This key cannot change the whiteboard.")
+    return _views_write_guard("_wb_limiter", "PRIORITIES_WB_PER_MIN", 120)
+
+
+def _wb_week(raw):
+    return pas.monday_of(raw or pas.today_pt())
+
+
+@bp.get("/api/priorities/whiteboard")
+def priorities_whiteboard():
+    """The This week whiteboard: ?week=YYYY-MM-DD (snaps to Monday; default this week) -> {week, version, picks: [{id, concept_key, product, cluster, icp, pain_point, line_code, title, lane, rank, note, rev, updated_by, updated_at, in_production}] (lane order must, if_time, parked, then rank), dropped: [same, newest first]}. ETag W/"wb-<week>-<version>"; send If-None-Match to get a 304. See app/priorities_whiteboard.py."""
+    week = _wb_week(_arg("week"))
+    conn = db.get_conn()
+    tag = pwb.etag(week, pwb.version_of(conn, week))
+    if request.headers.get("If-None-Match", "").strip() == tag:
+        resp = current_app.response_class(status=304)
+        resp.headers["ETag"] = tag
+        return resp
+    resp = jsonify(pwb.read_week(conn, week))
+    resp.headers["ETag"] = tag
+    return resp
+
+
+@bp.put("/api/priorities/whiteboard")
+def priorities_whiteboard_save():
+    """Save the whole board: {week?, picks: [{concept_key, lane: must|if_time|parked, note?, product?, cluster?, icp?, pain_point?, line_code?, title?}] (array order = rank), dropped: [{concept_key, note?, tags?, title?}]} (at most 300 items). Concepts not listed are left alone. Writes only what changed, one event per changed card. Returns the same shape as GET. Last write wins. Signed-in users only."""
+    blocked = _wb_guard()
+    if blocked is not None:
+        return blocked
+    out, _ = pwb.save(db.get_conn(), _json_body(), auth.current_user())
+    resp = jsonify(out)
+    resp.headers["ETag"] = pwb.etag(pas.monday_of(out["week"]), out["version"])
+    return resp
 
 
 @bp.get("/api/priorities/cut-views")

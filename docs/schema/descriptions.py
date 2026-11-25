@@ -1629,6 +1629,32 @@ rel("public.creative_backlog", group="creative", kind="table",
           "status": "needs_brief (waiting for a partner and a brief) or assigned (a ticket was created).", "assignment_id": "creative_priorities_assignments.id of the ticket created from this item; NULL until assigned. No foreign key.",
           "created_by": "Signed-in user who added the item.", "created_at": "When the item was added.", "updated_at": "When the item last changed."})
 
+rel("public.creative_whiteboard_picks", group="creative", kind="table",
+    purpose="The This week whiteboard on the Creative priorities page: the concepts the team picked to make in a week, their lane (must, if_time, parked), order and note, plus the ones it dropped.",
+    grain="one row per concept x week (unique)", source="the whiteboard on /priorities, via /api/priorities/whiteboard (app/priorities_whiteboard.py)",
+    refresh="on demand (a person picks, moves, notes or drops; the page saves the whole board at once)", coverage="from the day migration 284 was deployed",
+    caveats=["A drop sets status = dropped and the row stays, so it can be restored.", "The tag text is copied from the concept when it is first picked; assignment_id is a soft link with no foreign key."],
+    cols={"id": "Primary key (bigserial).", "week": "The Monday of the week the concept is picked for (a CHECK enforces a Monday).",
+          "concept_key": "Stable concept handle: line:<taxonomy_lines.id>, manual:<id>, or text:<product>|<cluster>|<icp>|<pain point>.",
+          "product": "Product slug copied when first picked; empty when unknown.", "cluster": "Market cluster of the concept, copied when first picked.",
+          "icp": "ICP (ideal customer profile) of the concept, copied when first picked.", "pain_point": "Pain point of the concept, copied when first picked.",
+          "line_code": "Communication Overview line code (for example BL12) at the time of the pick; empty when none.", "title": "Card title shown on the whiteboard (up to 200 characters).",
+          "lane": "must, if_time or parked.", "status": "picked (on the board) or dropped (taken off; the row stays).",
+          "rank": "Position across all picked cards of the week (1 is first).", "note": "Free note on the card, up to 500 characters.",
+          "rev": "Counts the changes to this card; starts at 1.", "assignment_id": "creative_priorities_assignments.id when the concept was later given to a vendor; NULL until then.",
+          "created_by": "Signed-in user who first picked the concept for the week.", "updated_by": "Signed-in user who last changed the card.",
+          "created_at": "When the concept was first picked for the week.", "updated_at": "When the card last changed."})
+
+rel("public.creative_whiteboard_events", group="creative", kind="table",
+    purpose="Change log of the This week whiteboard: one row for every card whose lane, order, status or note actually changed in a save.",
+    grain="one row per card change", source="/api/priorities/whiteboard (app/priorities_whiteboard.py)",
+    refresh="on demand, with each save that changes something", coverage="from the day migration 284 was deployed",
+    caveats=["The largest id of a week is the version the page uses to detect changes (ETag).", "A save that changes nothing writes no events."],
+    cols={"id": "Primary key (bigserial); the largest id of a week is that week's version.", "week": "The Monday of the whiteboard week.",
+          "pick_id": "creative_whiteboard_picks.id of the card that changed. No foreign key.", "at": "When the change was saved.", "actor": "Signed-in user who saved it.",
+          "kind": "pick, drop, restore, move, note or remove (sent back to the backlog; the row is deleted).", "batch": "Identifier shared by every event written by the same save.",
+          "before": "Card state before the change as JSON (lane, rank, status, note); NULL for a first pick.", "after": "Card state after the change as JSON."})
+
 rel("public.creative_cut_views", group="creative", kind="table",
     purpose="Saved views of the Creative Pipeline By cut page: a name and the page state (cuts, dates, filters, metrics and their order, status columns, quick view, sort), shared by the team.",
     grain="one row per saved view (the name is unique, any case)", source="the Creative Pipeline By cut view, via /api/priorities/cut-views (app/priorities_cut_views.py)",

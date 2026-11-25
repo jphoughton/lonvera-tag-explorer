@@ -735,6 +735,13 @@
    "bare": false
   },
   {
+   "url_pattern": "/priorities/board",
+   "page_function": "whiteboardPage",
+   "js_file": "app/static/js/pages/priorities_whiteboard.js",
+   "public": false,
+   "bare": false
+  },
+  {
    "url_pattern": "/priorities/production",
    "page_function": "productionPage",
    "js_file": "app/static/js/pages/priorities_production.js",
@@ -2042,6 +2049,28 @@
    "auth": "signed-in session or API key",
    "auth_exempt": false,
    "summary": ""
+  },
+  {
+   "rule": "/api/priorities/whiteboard",
+   "methods": [
+    "GET"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_whiteboard",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "The This week whiteboard: ?week=YYYY-MM-DD (snaps to Monday; default this week) -> {week, version, picks: [{id, concept_key, product, cluster, icp, pain_point, line_code, title, lane, rank, note, rev, updated_by, updated_at, in_production}] (lane order must, if_time, parked, then rank), dropped: [same, newest first]}. ETag W/\"wb-<week>-<version>\"; send If-None-Match to get a 304. See app/priorities_whiteboard.py."
+  },
+  {
+   "rule": "/api/priorities/whiteboard",
+   "methods": [
+    "PUT"
+   ],
+   "kind": "api",
+   "endpoint": "api.priorities_whiteboard_save",
+   "auth": "signed-in session or API key",
+   "auth_exempt": false,
+   "summary": "Save the whole board: {week?, picks: [{concept_key, lane: must|if_time|parked, note?, product?, cluster?, icp?, pain_point?, line_code?, title?}] (array order = rank), dropped: [{concept_key, note?, tags?, title?}]} (at most 300 items). Concepts not listed are left alone. Writes only what changed, one event per changed card. Returns the same shape as GET. Last write wins. Signed-in users only."
   },
   {
    "rule": "/api/products",
@@ -3845,6 +3874,17 @@
    ],
    "kind": "page",
    "endpoint": "shell:/priorities",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/priorities/board",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/priorities/board",
    "auth": "none (HTML page or health check; its data calls are protected)",
    "auth_exempt": true,
    "summary": ""

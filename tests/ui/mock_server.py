@@ -149,6 +149,10 @@ import mock_priorities_launch  # noqa: E402  (Production launch to Meta: /api/pr
 
 mock_priorities_launch.register(app, dict(Bad=Bad))
 
+import mock_whiteboard  # noqa: E402  (Creative priorities whiteboard: /api/priorities/whiteboard, in memory, with ETag)
+
+mock_whiteboard.register(app, dict(Bad=Bad))
+
 import mock_competitors  # noqa: E402  (Competitors: /api/competitors and /<brand>, two synthetic weeks)
 
 mock_competitors.register(app, dict(Bad=Bad))
@@ -158,7 +162,7 @@ def shell(*_a, **_k):
     return send_from_directory(STATIC, "index.html")
 
 
-for rule in ("/", "/login", "/google", "/amazon", "/no-attribution", "/campaigns", "/countries", "/pages", "/promotions", "/madre-review", "/trends", "/daily", "/email", "/inventory/history", "/priorities", "/priorities/v/<tok>", "/priorities/production", "/competitors", "/priorities/vendor/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
+for rule in ("/", "/login", "/google", "/amazon", "/no-attribution", "/campaigns", "/countries", "/pages", "/promotions", "/madre-review", "/trends", "/daily", "/email", "/inventory/history", "/priorities", "/priorities/v/<tok>", "/priorities/production", "/priorities/board", "/competitors", "/priorities/vendor/<tok>", "/lookup", "/p/<slug>", "/ad/<rid>"):
     app.add_url_rule(rule, endpoint="shell" + rule, view_func=shell)
 
 
