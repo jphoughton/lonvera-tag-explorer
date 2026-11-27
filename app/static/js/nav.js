@@ -24,6 +24,7 @@ export const SECTIONS = [
     pages: [
       { key: 'priorities', label: 'Priorities', href: '/priorities', testid: 'nav-priorities', hint: 'What to make next, by product and tag' },
       { key: 'production', label: 'Creative Pipeline', href: '/priorities/production', testid: 'nav-production', hint: 'Concepts assigned to vendors, and where each stands' },
+      { key: 'vendors', label: 'Vendors', href: '/priorities/vendors', testid: 'nav-vendors', hint: 'Spend, new-customer return and pipeline by creative vendor' },
       { key: 'competitors', label: 'Competitors', href: '/competitors', testid: 'nav-competitors', hint: 'What competitors run on Meta, week by week' },
       { key: 'test-to-scale', label: 'Test to scale', href: '/promotions', testid: 'nav-test-to-scale', hint: 'Which testing creatives to scale or kill' },
       { key: 'madre-review', label: 'Madre review', href: '/madre-review', testid: 'nav-madre-review', hint: 'Weekly review of Madre: ads, pockets, pipeline and asks' },
@@ -47,6 +48,7 @@ const RESOLVE = [
   { re: /^\/projection(\/|$)/, section: 'plan', page: 'projections' },
   { re: /^\/competitors\/?$/, section: 'creative', page: 'competitors' },
   { re: /^\/priorities\/production\/?$/, section: 'creative', page: 'production' },
+  { re: /^\/priorities\/vendors\/?$/, section: 'creative', page: 'vendors' },
   { re: /^\/priorities\/vendor\//, section: 'creative', page: 'production' },
   { re: /^\/priorities\/board\/?$/, section: 'creative', page: 'priorities' },
   { re: /^\/priorities(\/|$)/, section: 'creative', page: 'priorities' },

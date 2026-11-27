@@ -19,6 +19,7 @@ import { allPlatformsPage } from './js/pages/platforms.js';
 import { allCampaignsPage } from './js/pages/all_campaigns.js';
 import { promotionsPage } from './js/pages/promotions.js';
 import { madreReviewPage } from './js/pages/madre_review.js';
+import { vendorsPage } from './js/pages/priorities_vendors.js';
 import { trendsPage } from './js/pages/trends.js';
 import { dailyPage } from './js/pages/daily.js';
 import { emailPage } from './js/pages/email.js';
@@ -37,7 +38,7 @@ const campaignsRoute = (ctx) => { const pl = currentPlatform(); return pl === 'g
 // page functions by id; the URL patterns, Back targets, filters and defaults of each page are in js/pageconfig.js (PAGES)
 const PAGE_FNS = {
   login: loginPage, amazon: amazonPage, 'no-attribution': noAttributionPage, home: homePage, campaigns: campaignsRoute, countries: countriesPage, pages: pagesPage, promotions: promotionsPage, 'madre-review': madreReviewPage, trends: trendsPage, daily: dailyPage, email: emailPage, 'inventory-history': inventoryHistoryPage, priorities: prioritiesPage, 'priorities-view': prioritiesViewPage,
-  production: productionPage, 'priorities-board': whiteboardPage, competitors: competitorsPage, vendor: vendorPage, lookup: lookupPage, 'connect-agent': connectAgentPage, product: productPage, ad: adPage,
+  production: productionPage, 'priorities-vendors': vendorsPage, 'priorities-board': whiteboardPage, competitors: competitorsPage, vendor: vendorPage, lookup: lookupPage, 'connect-agent': connectAgentPage, product: productPage, ad: adPage,
 };
 const routes = PAGES.map((r) => ({ ...r, page: PAGE_FNS[r.id] }));
 

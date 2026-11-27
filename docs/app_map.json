@@ -763,6 +763,13 @@
    "bare": true
   },
   {
+   "url_pattern": "/priorities/vendors",
+   "page_function": "vendorsPage",
+   "js_file": "app/static/js/pages/priorities_vendors.js",
+   "public": false,
+   "bare": false
+  },
+  {
    "url_pattern": "/projection[/<module>]",
    "page_function": "projection shell",
    "js_file": "app/static/js/projection/shell.js",
@@ -3918,6 +3925,17 @@
    ],
    "kind": "page",
    "endpoint": "shell:/priorities/vendor/<token>",
+   "auth": "none (HTML page or health check; its data calls are protected)",
+   "auth_exempt": true,
+   "summary": ""
+  },
+  {
+   "rule": "/priorities/vendors",
+   "methods": [
+    "GET"
+   ],
+   "kind": "page",
+   "endpoint": "shell:/priorities/vendors",
    "auth": "none (HTML page or health check; its data calls are protected)",
    "auth_exempt": true,
    "summary": ""
